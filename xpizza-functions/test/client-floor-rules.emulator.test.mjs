@@ -48,6 +48,7 @@ export function onAuthStateChanged() { return () => {}; }
 export function getDatabase() { return {}; }
 export function ref(_db, path) { return D().ref(path == null ? undefined : path); }
 export function onValue() { return () => {}; }
+export function query(r) { return r; } export function orderByChild() { return {}; } export function equalTo() { return {}; }   // F2 Q2: the KDS feed's location query (inert here: onValue is a no-op)
 export function set(r, v) { return r.set(v); }
 export function update(r, obj) { return r.update(obj); }
 export function get(r) { return r.get(); }
@@ -61,7 +62,7 @@ globalThis.location = { hostname: 'kitchen.example' };
 const shimUrl = ('data:text/javascript,' + encodeURIComponent(shim)).replace(/'/g, '%27');
 const sdkSrc = readFileSync(new URL('xpizza-delivery.js', KITCHEN), 'utf8')
   .replace(/https:\/\/www\.gstatic\.com\/firebasejs\/[\d.]+\/firebase-(app|auth|database)\.js/g, shimUrl)
-  .replace(/from '\.\/order-filter\.js'/g, `from '${new URL('order-filter.js', KITCHEN).href}'`);
+  .replace(/from '\.\/([\w-]+\.js)'/g, (_, f) => `from '${new URL(f, KITCHEN).href}'`);   // every sibling module (order-filter, cancel-ack-set, …)
 const XPD = await import('data:text/javascript,' + encodeURIComponent(sdkSrc));
 XPD.initDelivery({});
 const realWrite = (db, rid, rawKey, available, uid, compat) => { globalThis.__db = db; return XPD.setItemAvailability(rid, rawKey, available, uid, compat); };   // compat: CP2's stamped KDS

@@ -57,6 +57,7 @@ export function initializeApp() { return {}; } export function getAuth() { retur
 export function signInWithEmailAndPassword() { return Promise.resolve({ user: {} }); } export function signOut() { return Promise.resolve(); }
 export function onAuthStateChanged() { return () => {}; } export function getDatabase() { return {}; }
 export function ref(_db, p) { return D().ref(p == null ? undefined : p); } export function onValue() { return () => {}; }
+export function query(r) { return r; } export function orderByChild() { return {}; } export function equalTo() { return {}; }   // F2 Q2: the KDS feed's location query (inert here: onValue is a no-op)
 export function set(r, v) { return r.set(v); } export function update(r, o) { return r.update(o); } export function get(r) { return r.get(); }
 export function remove(r) { return r.remove(); } export function runTransaction(r, f) { return r.transaction(f); }
 export function serverTimestamp() { return { '.sv': 'timestamp' }; } export function off() {}`;
@@ -65,7 +66,7 @@ export function serverTimestamp() { return { '.sv': 'timestamp' }; } export func
   const shimUrl = ('data:text/javascript,' + encodeURIComponent(shim)).replace(/'/g, '%27');
   const src = readFileSync(path.join(K, 'xpizza-delivery.js'), 'utf8')
     .replace(/https:\/\/www\.gstatic\.com\/firebasejs\/[\d.]+\/firebase-(app|auth|database)\.js/g, shimUrl)
-    .replace(/from '\.\/order-filter\.js'/g, `from '${new URL('file://' + path.join(K, 'order-filter.js')).href}'`);
+    .replace(/from '\.\/([\w-]+\.js)'/g, (_, f) => `from '${new URL('file://' + path.join(K, f)).href}'`);   // every sibling module (order-filter, cancel-ack-set, …)
   const XPD = await import('data:text/javascript,' + encodeURIComponent(src));
   XPD.initDelivery({});
   return XPD;

@@ -19,6 +19,7 @@ export function onAuthStateChanged() { return () => {}; }
 export function getDatabase() { return {}; }
 export function ref(_db, path) { return { path: path == null ? "" : path }; }
 export function onValue() { return () => {}; }
+export function query(r) { return r; } export function orderByChild() { return {}; } export function equalTo() { return {}; }   // F2 Q2: the KDS feed's location query (inert here: onValue is a no-op)
 export function set(r, v) { globalThis.__fbWrites.push({ scope: r.path, payload: { __set: v } }); return Promise.resolve(); }
 export function update(r, obj) { globalThis.__fbWrites.push({ scope: r.path, payload: obj }); return Promise.resolve(); }
 export function get() { return Promise.resolve({ val: () => null, exists: () => false }); }
@@ -35,7 +36,7 @@ sdk = sdk
   .replace(/https:\/\/www\.gstatic\.com\/firebasejs\/[\d.]+\/firebase-app\.js/g, stubUrl)
   .replace(/https:\/\/www\.gstatic\.com\/firebasejs\/[\d.]+\/firebase-auth\.js/g, stubUrl)
   .replace(/https:\/\/www\.gstatic\.com\/firebasejs\/[\d.]+\/firebase-database\.js/g, stubUrl)
-  .replace(/from '\.\/order-filter\.js'/g, `from '${new URL('./order-filter.js', KITCHEN).href}'`);
+  .replace(/from '\.\/([\w-]+\.js)'/g, (_, f) => `from '${new URL(`./${f}`, KITCHEN).href}'`);   // every sibling module (order-filter, cancel-ack-set, …)
 const XPD = await import('data:text/javascript,' + encodeURIComponent(sdk));
 XPD.initDelivery({});
 
