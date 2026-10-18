@@ -3036,7 +3036,12 @@ function startOrdersSubscription() {
     const visibleOrders = orders.filter(o => !isStaleCancelled(o, nowCancelMs, CANCELLED_STALE_MS));
     allOrders = visibleOrders;
     // F2 Q2: the cancel-ack listeners follow the cancelled orders in view (both tabs); an order leaving the window detaches.
-    try { cancelAckSet?.setIds(visibleOrders.filter(o => o.estado === KDS_STATUS.CANCELADO).map(o => o.id)); } catch (e) { console.warn('cancel-ack setIds failed', e); }
+    try {
+      if (cancelAckSet) {
+        cancelAckSet.setIds(visibleOrders.filter(o => o.estado === KDS_STATUS.CANCELADO).map(o => o.id));
+        cancelAcks = cancelAckSet.acks();   // a detached id's ack is dropped NOW (no stale ack); a re-attached one is UNREAD until delivered
+      }
+    } catch (e) { console.warn('cancel-ack setIds failed', e); }
     // Render the FULL live set — render() splits Open vs Completed by deriveTab (completed = locally
     // bumped OR delivered). checkForNewOrders still fires on the Open pool only.
     render(visibleOrders);
