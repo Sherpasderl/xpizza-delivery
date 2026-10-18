@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>F · Fallas y sin respuesta</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Manrope,system-ui,sans-serif;color:#15181E}
+  button{font-family:inherit}
+  .k{font-variant-numeric:tabular-nums}
+  .wrap{background:#EDEAE4;padding:56px;display:flex;align-items:flex-start;width:2280px;height:1060px}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:12px;width:360px;flex:0 0 auto}
+  .phone{width:360px;height:740px;background:#F4F2EE;border:1px solid #D7D3CB;border-radius:30px;display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:0 12px 30px rgba(20,24,30,.09)}
+  .top{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 10px}
+  .loc{font-weight:800;font-size:15px;line-height:1.2}
+  .locsub{font-size:14px;font-weight:600;color:#4F5968}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-size:14px;padding:0 14px;height:48px;border-radius:999px;background:#E3F2E9;color:#17633D;border:none}
+  .pill.pz{background:#15181E;color:#fff}
+  .pill.off{background:#FBEDE6;color:#7A2E0E}
+  .icb{width:48px;height:48px;border-radius:12px;background:#fff;border:1px solid #E6E3DD;display:flex;align-items:center;justify-content:center}
+  .card{background:#fff;border:1px solid #E6E3DD;border-radius:16px;padding:14px}
+  .it{display:flex;gap:10px;font-size:15px;font-weight:700;line-height:1.3}
+  .it .q{min-width:26px;color:#1E7F4F;font-weight:800}
+  .pd{width:8px;height:8px;border-radius:50%;background:#1E7F4F}
+  .tabs{display:flex;gap:6px;padding:12px 16px 12px}
+  .tab{flex:1;height:52px;border-radius:12px;background:#fff;border:1px solid #E6E3DD;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;color:#3A4250}
+  .tab.on{background:#15181E;color:#fff;border-color:#15181E}
+  .cnt{min-width:22px;height:22px;border-radius:11px;background:#EEF0F2;color:#15181E;font-size:13px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}
+  .tab.on .cnt{background:#fff}
+  .body{flex:1;padding:0 16px 16px;display:flex;flex-direction:column;gap:10px;min-height:0}
+  .btn{height:56px;border-radius:14px;background:#15181E;color:#fff;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;gap:8px;border:none;width:100%}
+  .btn.g{background:#1E7F4F}.btn.ghost{background:#fff;color:#15181E;border:1.5px solid #D7D3CB}.btn.sm{height:48px;font-size:15px}
+  .banner{display:flex;align-items:center;gap:10px;padding:11px 12px 11px 16px;font-weight:700;font-size:13px;line-height:1.3}
+  .banner.off{background:#7A2E0E;color:#fff}
+  .banner.pz{background:#15181E;color:#fff}
+  .banner.warn{background:#F6E7C8;color:#5A3605}
+  .bq{margin-left:auto;height:48px;padding:0 14px;border-radius:12px;border:1.5px solid currentColor;background:transparent;color:inherit;font-weight:800;font-size:13px;flex:0 0 auto}
+  .oc{background:#fff;border:1px solid #E6E3DD;border-radius:16px;padding:13px 14px;display:flex;flex-direction:column;gap:6px}
+  .tag{display:inline-flex;align-items:center;gap:5px;font-size:14px;font-weight:800;padding:4px 9px;border-radius:999px;background:#EEF0F2;color:#3A4250}
+  .tag.late{background:#FCE4E1;color:#9A1C12}
+  .tag.pend{background:#FBEDE6;color:#7A2E0E}
+  .alert{position:absolute;inset:0;background:#1E7F4F;color:#fff;display:flex;flex-direction:column;padding:28px 22px 22px}
+  .ring{width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;align-self:center}
+  .ring2{width:104px;height:104px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center}
+  .name{font-weight:800;font-size:13px;color:#15181E;text-align:center;line-height:1.3;max-width:340px}
+  .bnote{width:360px;background:#E4E7EC;border:1px solid #D2D7DE;border-radius:10px;padding:9px 11px;font-size:11px;font-weight:600;color:#44505F;line-height:1.4;text-align:left}
+  .bnote b{color:#2B3340}
+  .bnote .t{font-weight:800;color:#6B7684;text-transform:uppercase;letter-spacing:.04em;font-size:9.5px;display:block;margin-bottom:3px}
+  .arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:92px;flex:0 0 auto;padding-top:330px}
+  .arrow .lab{font-size:11px;font-weight:700;color:#5A6473;text-align:center;line-height:1.25}
+</style>
+</helmet>
+<div class="wrap">
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><div><div class="loc">Fonda Mirador</div><div class="locsub">Los Próceres</div></div><button class="pill off"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M2 2l20 20M8.5 16.4a5 5 0 0 1 7 0M12 20h.01"/></svg>Sin conexión</button></div>
+      <div class="banner off"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="flex:0 0 auto"><path d="M2 2l20 20M8.5 16.4a5 5 0 0 1 7 0M5 12.6a10 10 0 0 1 4.2-2.4M19 12.6a10 10 0 0 0-2.1-1.5M1.4 9a15 15 0 0 1 4.4-2.8M12 20h.01"/></svg><span>Sin conexión. Los pedidos nuevos pueden no llegar. Reintentando…</span></div>
+      <div class="tabs"><button class="tab">Nuevos <span class="cnt k">0</span></button><button class="tab on">En prep. <span class="cnt k">2</span></button><button class="tab">Listos <span class="cnt k">1</span></button></div>
+      <div class="body">
+        <div class="oc">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:18px;font-weight:800" class="k">#47 · Entrega</span><span class="tag pend"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Por enviar</span></div>
+          <div style="font-size:15px;font-weight:700;color:#3A4250">Listo tocado 7:41 · se envía al volver la conexión</div>
+        </div>
+        <div class="oc">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:18px;font-weight:800" class="k">#49 · Pickup</span><span style="font-size:24px;font-weight:800" class="k">7:55</span></div>
+          <div style="font-size:15px;font-weight:600;color:#44505F">El cliente pasa a recoger</div>
+        </div>
+      </div>
+    </div>
+    <div class="name">F1 · Sin conexión (banda fija + acciones en cola)</div>
+    <div class="bnote"><span class="t">Nota build</span>Banda fija en todas las pantallas mientras dure y la píldora pasa a «Sin conexión» (no se puede saber si la sucursal está abierta para el servidor). «Listo», «Más tiempo» y «Aceptar» se guardan con su hora real y se envían al volver; si el servidor ya cambió el pedido (lo canceló Despacho), gana el servidor y se muestra «Este pedido cambió». Del lado servidor, un equipo sin latido cuenta como sin respuesta (escalera F3–F4).</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">al abrir o<br>cada hora</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><div><div class="loc">Fonda Mirador</div><div class="locsub">Los Próceres</div></div><button class="pill"><span class="pd"></span>Abierto</button></div>
+      <div class="banner warn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="flex:0 0 auto"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M22 9l-6 6M16 9l6 6"/></svg><span>El volumen está bajo: un pedido nuevo podría no escucharse.</span><button class="bq">Subir</button></div>
+      <div class="tabs"><button class="tab on">Nuevos <span class="cnt k">0</span></button><button class="tab">En prep. <span class="cnt k">0</span></button><button class="tab">Listos <span class="cnt k">0</span></button></div>
+      <div class="body" style="align-items:center;justify-content:center;text-align:center;gap:8px">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9AA3B2" stroke-width="1.8" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
+        <div style="font-weight:800;font-size:17px">Sin pedidos nuevos</div>
+        <div style="font-size:14px;font-weight:600;color:#4F5968;max-width:250px">Batería 18 %. Conectá el cargador antes del turno de la noche.</div>
+      </div>
+    </div>
+    <div class="name">F2 · Volumen bajo y batería</div>
+    <div class="bnote"><span class="t">Nota build</span>Chequeo al arrancar y cada hora: volumen de alerta, ahorro de batería (A3), batería &lt; 20 % sin cargador. Una sola banda a la vez, prioridad: sin conexión &gt; pausado &gt; volumen &gt; ocupado. La alerta de pedido igual fuerza el volumen máximo.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">nadie abre<br>el pedido</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="alert">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:15px;font-weight:800">Pedido nuevo</span><span style="font-size:13px;font-weight:800;background:#fff;color:#9A1C12;border-radius:999px;padding:4px 10px" class="k">hace 2:10</span></div>
+        <div style="font-size:64px;font-weight:800;letter-spacing:-.03em;line-height:1;margin-top:6px" class="k">#47</div>
+        <div style="font-size:16px;font-weight:700;margin-top:8px;color:#D3EBDD" class="k">Entrega · 4 productos · L 485</div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center">
+          <div class="ring"><div class="ring2"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></div></div>
+        </div>
+        <div style="font-size:14px;font-weight:800;text-align:center;margin-bottom:4px">Avisamos a Despacho</div>
+        <div style="font-size:13px;font-weight:700;text-align:center;color:#D3EBDD;margin-bottom:12px">A los 5 min sin respuesta pausamos la sucursal</div>
+        <button class="btn" style="background:#fff;color:#15181E;height:64px;font-size:18px">Ver pedido</button>
+      </div>
+    </div>
+    <div class="name">F3 · 2 min sin respuesta → Despacho avisado</div>
+    <div class="bnote"><span class="t">Nota build · decisión del dueño</span>A los 2 min Despacho recibe «Sin respuesta · Fonda Mirador Los Próceres · 2 min» (lane del dispatch executor) y puede llamar a la sucursal. El reloj corre en el <b>servidor</b> desde que entra el pedido, no en el equipo: funciona aunque el equipo esté apagado.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">5 min sin<br>respuesta</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><div><div class="loc">Fonda Mirador</div><div class="locsub">Los Próceres</div></div><button class="pill pz"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="3.4" height="12" rx="1" fill="currentColor"/><rect x="9.6" y="2" width="3.4" height="12" rx="1" fill="currentColor"/></svg>Pausado</button></div>
+      <div class="banner pz"><span>Pausamos la sucursal porque nadie respondió. No entran pedidos nuevos.</span></div>
+      <div class="tabs"><button class="tab on">Nuevos <span class="cnt k">1</span></button><button class="tab">En prep. <span class="cnt k">0</span></button><button class="tab">Listos <span class="cnt k">0</span></button></div>
+      <div class="body">
+        <div class="oc">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:18px;font-weight:800" class="k">#47 · Entrega</span><span class="tag late k">Sin abrir · 5:20</span></div>
+          <div style="font-size:15px;font-weight:600;color:#44505F" class="k">4 productos · L 485 · Andrea M.</div>
+          <div style="font-size:14px;font-weight:700;color:#4F5968">Despacho está resolviendo este pedido.</div>
+        </div>
+        <div style="flex:1"></div>
+        <button class="btn g">Reanudar pedidos</button>
+      </div>
+    </div>
+    <div class="name">F4 · 5 min → sucursal pausada (nunca cancela sola)</div>
+    <div class="bnote"><span class="t">Nota build · decisión del dueño</span>Escribe la pausa existente (until ausente, motivo «sin respuesta», actor «sistema»). La alerta <b>sigue sonando</b> hasta que alguien toque «Ver pedido»; esta es la pantalla que ven al tocarla. El pedido queda abierto: Despacho llama o cancela por el camino existente; el equipo todavía puede aceptarlo. «Reanudar» no pide PIN. Sin dinero nuevo.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">detalle<br>sin conexión</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><button class="icb" aria-label="Volver"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill off"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M2 2l20 20M8.5 16.4a5 5 0 0 1 7 0M12 20h.01"/></svg>Sin conexión</button></div>
+      <div class="banner off"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="flex:0 0 auto"><path d="M2 2l20 20M8.5 16.4a5 5 0 0 1 7 0M5 12.6a10 10 0 0 1 4.2-2.4M19 12.6a10 10 0 0 0-2.1-1.5M1.4 9a15 15 0 0 1 4.4-2.8M12 20h.01"/></svg><span>Sin conexión. Reintentando…</span></div>
+      <div class="body" style="padding-top:12px">
+        <div><div style="font-size:24px;font-weight:800" class="k">#49 · Pickup</div><div style="display:flex;align-items:center;gap:8px;margin-top:4px"><span style="font-size:18px;font-weight:800" class="k">Listo a las 7:55</span><span class="tag k">Faltan 14 min</span></div></div>
+        <div class="card" style="display:flex;flex-direction:column;gap:9px">
+          <div class="it"><span class="q k">1×</span><div>Pollo frito 3 piezas</div></div>
+        </div>
+        <div style="flex:1"></div>
+        <div style="font-size:15px;font-weight:700;color:#2B3340;line-height:1.4;background:#EAE7E1;border-radius:12px;padding:10px 12px">Sin conexión no se puede pedir más tiempo ni escribirle al cliente. «Listo» se guarda y se envía al volver.</div>
+        <button class="btn g" style="height:62px;font-size:18px">Listo</button>
+      </div>
+    </div>
+    <div class="name">F5 · Detalle sin conexión</div>
+    <div class="bnote"><span class="t">Nota build</span>Sin conexión: «Listo» sí (se guarda con su hora real); «Más tiempo» y WhatsApp se ocultan con la línea que explica por qué (el cambio de hora necesita al servidor para reprogramar al repartidor). Al volver: banda verde breve «Conexión restablecida · 1 acción enviada».</div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2280,"height":1060}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

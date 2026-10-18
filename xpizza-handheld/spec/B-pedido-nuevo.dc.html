@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>B · Pedido nuevo</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Manrope,system-ui,sans-serif;color:#15181E}
+  button{font-family:inherit}
+  .k{font-variant-numeric:tabular-nums}
+  .wrap{background:#EDEAE4;padding:56px;display:flex;align-items:flex-start;width:1828px;height:1060px}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:12px;width:360px;flex:0 0 auto}
+  .phone{width:360px;height:740px;background:#F4F2EE;border:1px solid #D7D3CB;border-radius:30px;display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:0 12px 30px rgba(20,24,30,.09)}
+  .top{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 10px}
+  .loc{font-weight:800;font-size:15px;line-height:1.2}
+  .locsub{font-size:14px;font-weight:600;color:#4F5968}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-size:14px;padding:0 14px;height:48px;border-radius:999px;background:#E3F2E9;color:#17633D}
+  .pd{width:8px;height:8px;border-radius:50%;background:#1E7F4F}
+  .body{flex:1;padding:0 16px 16px;display:flex;flex-direction:column;gap:10px;min-height:0}
+  .card{background:#fff;border:1px solid #E6E3DD;border-radius:16px;padding:14px}
+  .lbl{font-size:12px;font-weight:800;letter-spacing:.04em;color:#4F5968;text-transform:uppercase;margin:0 0 6px}
+  .btn{height:56px;border-radius:14px;background:#15181E;color:#fff;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;gap:8px;border:none;width:100%}
+  .btn.g{background:#1E7F4F}.btn.ghost{background:#fff;color:#15181E;border:1.5px solid #D7D3CB}.btn.red{background:#B42318}.btn.sm{height:48px;font-size:15px}
+  .tchip{flex:1;height:52px;border-radius:12px;border:1.5px solid #D7D3CB;background:#fff;font-weight:800;font-size:16px;color:#15181E}
+  .tchip.on{background:#15181E;color:#fff;border-color:#15181E}
+  .it{display:flex;gap:10px;font-size:15px;font-weight:700;line-height:1.3}
+  .it .q{min-width:26px;color:#1E7F4F;font-weight:800}
+  .mod{font-size:13px;font-weight:600;color:#7A4A06;margin-top:2px}
+  .note{background:#FBF6EC;border-radius:10px;padding:9px 11px;font-size:13px;font-weight:700;color:#7A4A06}
+  .scrim{position:absolute;inset:0;background:rgba(21,24,30,.45);display:flex;flex-direction:column;justify-content:flex-end}
+  .sh{background:#fff;border-radius:22px 22px 0 0;padding:12px 16px 18px;display:flex;flex-direction:column;gap:10px}
+  .grab{width:40px;height:4px;border-radius:2px;background:#D7D3CB;align-self:center;margin-bottom:4px}
+  .opt{min-height:54px;border:1.5px solid #E6E3DD;border-radius:13px;padding:0 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-weight:700;font-size:15px;background:#fff;width:100%;text-align:left;color:#15181E}
+  .opt.on{border-color:#15181E;box-shadow:inset 0 0 0 1px #15181E}
+  .rad{width:20px;height:20px;border-radius:50%;border:2px solid #CFCCC3;flex:0 0 auto}
+  .opt.on .rad{border:6px solid #15181E}
+  .cb{width:22px;height:22px;border-radius:6px;border:2px solid #CFCCC3;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+  .opt.on .cb{background:#15181E;border-color:#15181E}
+  .alert{position:absolute;inset:0;background:#1E7F4F;color:#fff;display:flex;flex-direction:column;padding:28px 22px 22px}
+  .ring{width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;align-self:center}
+  .ring2{width:104px;height:104px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center}
+  .name{font-weight:800;font-size:13px;color:#15181E;text-align:center;line-height:1.3;max-width:340px}
+  .bnote{width:360px;background:#E4E7EC;border:1px solid #D2D7DE;border-radius:10px;padding:9px 11px;font-size:11px;font-weight:600;color:#44505F;line-height:1.4;text-align:left}
+  .bnote b{color:#2B3340}
+  .bnote .t{font-weight:800;color:#6B7684;text-transform:uppercase;letter-spacing:.04em;font-size:9.5px;display:block;margin-bottom:3px}
+  .arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:92px;flex:0 0 auto;padding-top:330px}
+  .arrow .lab{font-size:11px;font-weight:700;color:#5A6473;text-align:center;line-height:1.25}
+</style>
+</helmet>
+<div class="wrap">
+
+  <div class="cell">
+    <div class="phone">
+      <div class="alert">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:15px;font-weight:800">Pedido nuevo</span><span style="font-size:13px;font-weight:700;color:#D3EBDD" class="k">hace 0:08</span></div>
+        <div style="font-size:64px;font-weight:800;letter-spacing:-.03em;line-height:1;margin-top:6px" class="k">#47</div>
+        <div style="font-size:16px;font-weight:700;margin-top:8px;color:#D3EBDD" class="k">Entrega · 4 productos · L 485</div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center">
+          <div class="ring"><div class="ring2"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></div></div>
+        </div>
+        <div style="font-size:13px;font-weight:700;text-align:center;color:#D3EBDD;margin-bottom:12px">Suena a todo volumen hasta que lo abrás</div>
+        <button class="btn" style="background:#fff;color:#15181E;height:64px;font-size:18px">Ver pedido</button>
+      </div>
+    </div>
+    <div class="name">B1 · Alerta a pantalla llena</div>
+    <div class="bnote"><span class="t">Nota build · reusar 2f</span>Toma la pantalla aunque esté bloqueada; sonido en bucle a volumen máximo + vibración. Para al abrir el pedido. Si queda sin decidir 60 s, vuelve a sonar. Dos pedidos a la vez: «2 pedidos nuevos» y «Ver» abre el más viejo. El anillo late suave (sin animación si el sistema pide menos movimiento).</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">abre<br>el pedido</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><div><div class="loc">Fonda Mirador</div><div class="locsub">Los Próceres</div></div><span class="pill"><span class="pd"></span>Abierto</span></div>
+      <div class="body">
+        <div style="display:flex;align-items:baseline;justify-content:space-between">
+          <div style="font-size:22px;font-weight:800" class="k">#47 · Entrega</div>
+          <div style="font-size:14px;font-weight:700;color:#4F5968">Andrea M.</div>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column;gap:9px">
+          <div class="it"><span class="q k">2×</span><div>Baleada con huevo y aguacate</div></div>
+          <div class="it"><span class="q k">1×</span><div>Pollo frito 3 piezas<div class="mod">Sin picante</div></div></div>
+          <div class="it"><span class="q k">1×</span><div>Horchata grande</div></div>
+          <div class="note">«Sin cebolla en las baleadas, por favor»</div>
+        </div>
+        <div style="font-size:14px;font-weight:700;color:#4F5968" class="k">L 485 · pagado con tarjeta</div>
+        <div style="flex:1"></div>
+        <p style="margin:0;font-size:15px;font-weight:800">Listo en</p>
+        <div style="display:flex;gap:6px">
+          <button class="tchip k">−5</button><button class="tchip k">18</button><button class="tchip k on">+5</button><button class="tchip k">+10</button><button class="tchip k">+15</button>
+        </div>
+        <button class="btn g k">Aceptar · listo en 23 min</button>
+        <button class="btn ghost sm">Rechazar</button>
+      </div>
+    </div>
+    <div class="name">B2 · Aceptar con hora (un toque, o dos para ajustar)</div>
+    <div class="bnote"><span class="t">Nota build</span>18 = mediana de la <b>sucursal × franja</b> (+ Ocupado si está activo); sin historia → la de la marca → default de plataforma. Los chips cambian el botón; mínimo 5 min y máximo 90 min. La elección <b>no</b> entrena la mediana: solo la hora real de «Listo». Cliente = nombre + inicial.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">rechazar</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><div><div class="loc">Fonda Mirador</div><div class="locsub">Los Próceres</div></div><span class="pill"><span class="pd"></span>Abierto</span></div>
+      <div class="body"><div style="font-size:22px;font-weight:800" class="k">#47 · Entrega</div></div>
+      <div class="scrim">
+        <div class="sh">
+          <div class="grab"></div>
+          <div style="font-size:18px;font-weight:800">¿Por qué lo rechazás?</div>
+          <button class="opt on"><span>Se acabó un producto</span><span class="rad"></span></button>
+          <button class="opt"><span>Cocina saturada</span><span class="rad"></span></button>
+          <button class="opt"><span>Estamos por cerrar</span><span class="rad"></span></button>
+          <button class="opt"><span>Otro motivo</span><span class="rad"></span></button>
+          <button class="btn">Continuar</button>
+          <button class="btn ghost sm">Volver</button>
+        </div>
+      </div>
+    </div>
+    <div class="name">B3 · Rechazar con motivo</div>
+    <div class="bnote"><span class="t">Nota build</span>Sin motivo, el botón queda apagado. «Se acabó un producto» → «Continuar» (tinta) → B4. Los otros tres → el botón dice «Rechazar pedido» (rojo) y rechaza directo. «Otro motivo» muestra, entre las opciones y el botón, un campo «Contanos el motivo (opcional)» de una línea. Después de rechazar por «Cocina saturada» se abre <b>directamente la hoja E2</b> (Modo ocupado), y por «Estamos por cerrar» <b>la hoja E3</b> (Pausar). Su «Cancelar» es la salida; no hay un paso de confirmación aparte. <b>Decisión del dueño (A-R1):</b> rechazar <b>cancela</b> el pedido con la cancelación existente de Despacho (efectivo y tarjeta). Toast: «Pedido #N cancelado. Sherpa le avisa al cliente.»; con tarjeta agrega «Le devolvemos el dinero al cliente.» Mientras el servidor responde: «Cancelando…». Si la cancelación queda en revisión, la tarjeta sigue en Nuevos con «Despacho termina la cancelación», sin alarma. <b>No</b> hay lógica de dinero nueva.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">se acabó<br>un producto</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><div><div class="loc">Fonda Mirador</div><div class="locsub">Los Próceres</div></div><span class="pill"><span class="pd"></span>Abierto</span></div>
+      <div class="body"><div style="font-size:22px;font-weight:800" class="k">#47 · Entrega</div></div>
+      <div class="scrim">
+        <div class="sh">
+          <div class="grab"></div>
+          <div style="font-size:18px;font-weight:800">¿Qué se acabó?</div>
+          <div style="font-size:14px;font-weight:600;color:#4F5968">Lo marcamos agotado en esta sucursal hasta que lo reactivés.</div>
+          <button class="opt"><span>Baleada con huevo y aguacate</span><span class="cb"></span></button>
+          <button class="opt on"><span>Pollo frito 3 piezas</span><span class="cb"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg></span></button>
+          <button class="opt"><span>Horchata grande</span><span class="cb"></span></button>
+          <button class="btn red">Rechazar y marcar agotado</button>
+          <button class="btn ghost sm">Volver</button>
+        </div>
+      </div>
+    </div>
+    <div class="name">B4 · Marcar agotado al rechazar</div>
+    <div class="bnote"><span class="t">Nota build</span>Escribe <b>restaurants/{rid}/item_availability</b> (el canal existente, por sucursal). Hay que elegir al menos un producto. WhatsApp no aparece aquí: según la decisión del dueño vive solo en el detalle de un pedido aceptado (C4/D4).</div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1828,"height":1060}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

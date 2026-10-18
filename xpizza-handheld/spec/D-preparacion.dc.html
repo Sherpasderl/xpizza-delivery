@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>D · Durante la preparación</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Manrope,system-ui,sans-serif;color:#15181E}
+  button{font-family:inherit}
+  .k{font-variant-numeric:tabular-nums}
+  .wrap{background:#EDEAE4;padding:56px;display:flex;align-items:flex-start;width:1828px;height:1060px}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:12px;width:360px;flex:0 0 auto}
+  .phone{width:360px;height:740px;background:#F4F2EE;border:1px solid #D7D3CB;border-radius:30px;display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:0 12px 30px rgba(20,24,30,.09)}
+  .top{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 6px}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-weight:800;font-size:14px;padding:0 14px;height:48px;border-radius:999px;background:#E3F2E9;color:#17633D;border:none}
+  .pd{width:9px;height:9px;border-radius:50%;background:#1E7F4F}
+  .tag.soon{background:#F6E7C8;color:#6B4106}
+  .tabs{display:flex;gap:6px;padding:10px 16px 12px}
+  .tab{flex:1;height:52px;border-radius:12px;background:#fff;border:1px solid #E6E3DD;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;color:#3A4250}
+  .tab.on{background:#15181E;color:#fff;border-color:#15181E}
+  .cnt{min-width:22px;height:22px;border-radius:11px;background:#EEF0F2;color:#15181E;font-size:13px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}
+  .tab.on .cnt{background:#fff}
+  .body{flex:1;padding:0 16px 16px;display:flex;flex-direction:column;gap:10px;min-height:0}
+  .card{background:#fff;border:1px solid #E6E3DD;border-radius:16px;padding:14px}
+  .btn{height:56px;border-radius:14px;background:#15181E;color:#fff;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;gap:8px;border:none;width:100%}
+  .btn.g{background:#1E7F4F}.btn.ghost{background:#fff;color:#15181E;border:1.5px solid #D7D3CB}.btn.sm{height:48px;font-size:15px}
+  .tchip{flex:1;height:56px;border-radius:12px;border:1.5px solid #D7D3CB;background:#fff;font-weight:800;font-size:17px;color:#15181E}
+  .tchip.on{background:#15181E;color:#fff;border-color:#15181E}
+  .it{display:flex;gap:10px;font-size:15px;font-weight:700;line-height:1.3}
+  .it .q{min-width:26px;color:#1E7F4F;font-weight:800}
+  .scrim{position:absolute;inset:0;background:rgba(21,24,30,.45);display:flex;flex-direction:column;justify-content:flex-end}
+  .sh{background:#fff;border-radius:22px 22px 0 0;padding:12px 16px 18px;display:flex;flex-direction:column;gap:10px}
+  .grab{width:40px;height:4px;border-radius:2px;background:#D7D3CB;align-self:center;margin-bottom:4px}
+  .opt{min-height:54px;border:1.5px solid #E6E3DD;border-radius:13px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-weight:700;font-size:15px;background:#fff;width:100%;text-align:left;color:#15181E}
+  .opt.on{border-color:#15181E;box-shadow:inset 0 0 0 1px #15181E}
+  .rad{width:20px;height:20px;border-radius:50%;border:2px solid #CFCCC3;flex:0 0 auto}
+  .opt.on .rad{border:6px solid #15181E}
+  .bubble{background:#E8F3EA;border-radius:12px;padding:10px 12px;font-size:13.5px;font-weight:600;color:#1F3B2A;line-height:1.4}
+  .oc{background:#fff;border:1px solid #E6E3DD;border-radius:16px;padding:13px 14px;display:flex;flex-direction:column;gap:6px}
+  .tag{display:inline-flex;align-items:center;font-size:14px;font-weight:800;padding:4px 9px;border-radius:999px;background:#EEF0F2;color:#3A4250}
+  .toast{position:absolute;left:16px;right:16px;bottom:16px;background:#15181E;color:#fff;border-radius:14px;padding:0 8px 0 16px;height:62px;display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:15px;box-shadow:0 10px 24px rgba(20,24,30,.25)}
+  .undo{height:48px;padding:0 14px;border-radius:10px;border:none;background:#fff;color:#15181E;font-weight:800;font-size:14px}
+  .icb{width:48px;height:48px;border-radius:12px;background:#fff;border:1px solid #E6E3DD;display:flex;align-items:center;justify-content:center}
+  .name{font-weight:800;font-size:13px;color:#15181E;text-align:center;line-height:1.3;max-width:340px}
+  .bnote{width:360px;background:#E4E7EC;border:1px solid #D2D7DE;border-radius:10px;padding:9px 11px;font-size:11px;font-weight:600;color:#44505F;line-height:1.4;text-align:left}
+  .bnote b{color:#2B3340}
+  .bnote .t{font-weight:800;color:#6B7684;text-transform:uppercase;letter-spacing:.04em;font-size:9.5px;display:block;margin-bottom:3px}
+  .arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:92px;flex:0 0 auto;padding-top:330px}
+  .arrow .lab{font-size:11px;font-weight:700;color:#5A6473;text-align:center;line-height:1.25}
+</style>
+</helmet>
+<div class="wrap">
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><button class="icb" aria-label="Volver"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill"><span class="pd"></span>Abierto</button></div>
+      <div class="body"><div style="font-size:24px;font-weight:800" class="k">#47 · Entrega</div><div style="font-size:18px;font-weight:800;margin-top:4px" class="k">Listo a las 7:43</div></div>
+      <div class="scrim">
+        <div class="sh">
+          <div class="grab"></div>
+          <div style="font-size:18px;font-weight:800">¿Cuánto tiempo más?</div>
+          <div style="display:flex;gap:6px"><button class="tchip k">+5</button><button class="tchip k on">+10</button><button class="tchip k">+15</button></div>
+          <div class="card" style="background:#F4F2EE;border:none;display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:14px;font-weight:700;color:#44505F">Nueva hora de listo</span><span style="font-size:26px;font-weight:800" class="k">7:53</span></div>
+          <div style="font-size:14px;font-weight:600;color:#4F5968">Le avisamos al cliente y el repartidor se programa con la nueva hora.</div>
+          <button class="btn">Mover a las 7:53</button>
+          <button class="btn ghost sm">Cancelar</button>
+        </div>
+      </div>
+    </div>
+    <div class="name">D1 · Necesito más tiempo</div>
+    <div class="bnote"><span class="t">Nota build</span>Permitido solo mientras <b>no hay repartidor asignado</b> (regla DoorDash/Uber). Tope total: +30 min por pedido; pasado eso, Despacho decide. Actualiza ready_at, el ETA del cliente (WhatsApp de la marca, si está activo) y el despacho programado.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">ya hay<br>repartidor</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><button class="icb" aria-label="Volver"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill"><span class="pd"></span>Abierto</button></div>
+      <div class="body">
+        <div><div style="font-size:24px;font-weight:800" class="k">#47 · Entrega</div><div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap"><span style="font-size:18px;font-weight:800" class="k">Listo a las 7:43</span><span class="tag soon k">Faltan 2 min</span></div><div style="font-size:15px;font-weight:700;color:#3A4250;margin-top:4px">Carlos asignado · llega 7:42</div></div>
+        <div class="card" style="display:flex;flex-direction:column;gap:9px">
+          <div class="it"><span class="q k">2×</span><div>Baleada con huevo y aguacate</div></div>
+          <div class="it"><span class="q k">1×</span><div>Pollo frito 3 piezas</div></div>
+          <div class="it"><span class="q k">1×</span><div>Horchata grande</div></div>
+        </div>
+        <div style="flex:1"></div>
+        <div class="card" style="background:#F4F2EE;border:none;display:flex;gap:10px;align-items:flex-start">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#44505F" stroke-width="2" aria-hidden="true" style="flex:0 0 auto;margin-top:1px"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          <div style="font-size:15px;font-weight:700;color:#2B3340;line-height:1.4">Carlos ya va en camino: la hora ya no se puede mover. Si te atrasás, avisale a Despacho.</div>
+        </div>
+        <button class="btn g" style="height:60px;font-size:18px">Listo</button>
+      </div>
+    </div>
+    <div class="name">D2 · Más tiempo bloqueado (repartidor asignado)</div>
+    <div class="bnote"><span class="t">Nota build</span>El botón desaparece; queda una línea que explica por qué. «Avisale a Despacho» = sin botón nuevo en v1 (llamada normal). Evita la trampa: mover la hora cuando el repartidor ya salió lo deja esperando en el local.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">toca<br>Listo</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top" style="padding-bottom:0"><div><div style="font-weight:800;font-size:15px;line-height:1.2">Fonda Mirador</div><div style="font-size:13px;font-weight:600;color:#4F5968">Los Próceres</div></div><button class="pill"><span class="pd"></span>Abierto</button></div>
+      <div class="tabs"><button class="tab">Nuevos <span class="cnt k">0</span></button><button class="tab">En prep. <span class="cnt k">2</span></button><button class="tab on">Listos <span class="cnt k">3</span></button></div>
+      <div class="body">
+        <div class="oc"><div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:18px;font-weight:800" class="k">#47 · Entrega</span><span class="tag k">Listo 7:41</span></div><div style="font-size:15px;font-weight:700;color:#3A4250">Carlos llega en 1 min</div><div style="font-size:14px;font-weight:600;color:#4F5968" class="k">Prometido 7:43 · listo 7:41</div></div>
+        <div class="oc"><div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:18px;font-weight:800" class="k">#45 · Entrega</span><span class="tag k">Listo 7:31</span></div><div style="font-size:15px;font-weight:700;color:#17633D">Carlos está en el local</div></div>
+      </div>
+      <div class="toast"><span>#47 marcado listo</span><button class="undo">Deshacer</button></div>
+    </div>
+    <div class="name">D3 · Listo, con 5 s para deshacer</div>
+    <div class="bnote"><span class="t">Nota build</span>Se guarda la <b>hora real</b> al tocar (entrena la mediana sucursal × franja; nunca se marca solo por tiempo). Si no hay repartidor asignado, Despacho busca uno ya. «Deshacer» devuelve a En preparación sin dejar rastro de listo.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">desde el<br>detalle</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><button class="icb" aria-label="Volver"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill"><span class="pd"></span>Abierto</button></div>
+      <div class="body"><div style="font-size:24px;font-weight:800" class="k">#47 · Entrega</div></div>
+      <div class="scrim">
+        <div class="sh">
+          <div class="grab"></div>
+          <div style="font-size:18px;font-weight:800">Escribile a Andrea</div>
+          <button class="opt on"><span>Se acabó un producto</span><span class="rad"></span></button>
+          <button class="opt"><span>Tenemos una pregunta</span><span class="rad"></span></button>
+          <button class="opt"><span>Escribir mi propio mensaje</span><span class="rad"></span></button>
+          <div class="bubble">Hola Andrea, te escribimos de Fonda Mirador por tu pedido #47. Se nos acabó un producto: ¿te lo podemos cambiar por otro?</div>
+          <button class="btn g"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>Abrir WhatsApp</button>
+        </div>
+      </div>
+    </div>
+    <div class="name">D4 · WhatsApp al cliente (solo pedido activo)</div>
+    <div class="bnote"><span class="t">Nota build</span>Abre el WhatsApp del equipo (cuenta de la sucursal) con el texto listo; el personal lo envía. Nombre del local desde la <b>config de la sucursal</b>, nunca literal; el texto no nombra a la plataforma. El número del cliente no se muestra en pantalla. Visible desde que se acepta hasta que el repartidor recoge. Cambios de productos y dinero: fuera de v1 (Despacho).</div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1828,"height":1060}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

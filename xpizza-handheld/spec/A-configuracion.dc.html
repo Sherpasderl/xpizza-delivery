@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>A · Configuración del equipo</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Manrope,system-ui,sans-serif;color:#15181E}
+  button,input{font-family:inherit}
+  .k{font-variant-numeric:tabular-nums}
+  .wrap{background:#EDEAE4;padding:56px;display:flex;align-items:flex-start;width:1828px;height:1060px}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:12px;width:360px;flex:0 0 auto}
+  .phone{width:360px;height:740px;background:#F4F2EE;border:1px solid #D7D3CB;border-radius:30px;display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:0 12px 30px rgba(20,24,30,.09)}
+  .pad{flex:1;padding:24px 18px 18px;display:flex;flex-direction:column;gap:12px;min-height:0}
+  .ttl{font-weight:800;font-size:24px;letter-spacing:-.02em;margin:0;line-height:1.15}
+  .sub{color:#4F5968;font-size:15px;font-weight:600;margin:0;line-height:1.4}
+  .card{background:#fff;border:1px solid #E6E3DD;border-radius:16px;padding:14px}
+  .lbl{font-size:12px;font-weight:800;color:#44505F;margin:0 0 6px;display:block}
+  .inp{height:54px;border-radius:13px;border:1.5px solid #D7D3CB;background:#fff;padding:0 14px;font-size:16px;font-weight:600;width:100%;color:#15181E}
+  .btn{height:56px;border-radius:14px;background:#15181E;color:#fff;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;gap:8px;border:none;width:100%}
+  .btn.g{background:#1E7F4F}.btn.ghost{background:#fff;color:#15181E;border:1.5px solid #D7D3CB}.btn.sm{height:48px;font-size:15px}
+  .opt{min-height:64px;border:1.5px solid #E6E3DD;border-radius:14px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;width:100%;text-align:left;color:#15181E}
+  .opt.on{border-color:#15181E;box-shadow:inset 0 0 0 1px #15181E}
+  .rad{width:22px;height:22px;border-radius:50%;border:2px solid #CFCCC3;flex:0 0 auto}
+  .opt.on .rad{border:7px solid #15181E}
+  .row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #EEEBE5}
+  .ok{width:28px;height:28px;border-radius:50%;background:#E3F2E9;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .todo{width:28px;height:28px;border-radius:50%;border:2px dashed #C9C4BA;flex:0 0 auto}
+  .key{height:58px;border-radius:14px;background:#fff;border:1px solid #E6E3DD;font-size:22px;font-weight:700;color:#15181E}
+  .pin{width:16px;height:16px;border-radius:50%;border:2px solid #15181E}
+  .pin.f{background:#15181E}
+  .name{font-weight:800;font-size:13px;color:#15181E;text-align:center;line-height:1.3;max-width:340px}
+  .bnote{width:360px;background:#E4E7EC;border:1px solid #D2D7DE;border-radius:10px;padding:9px 11px;font-size:11px;font-weight:600;color:#44505F;line-height:1.4;text-align:left}
+  .bnote b{color:#2B3340}
+  .bnote .t{font-weight:800;color:#6B7684;text-transform:uppercase;letter-spacing:.04em;font-size:9.5px;display:block;margin-bottom:3px}
+  .arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:92px;flex:0 0 auto;padding-top:330px}
+  .arrow .lab{font-size:11px;font-weight:700;color:#5A6473;text-align:center;line-height:1.25}
+</style>
+</helmet>
+<div class="wrap">
+
+  <div class="cell">
+    <div class="phone">
+      <div class="pad">
+        <div style="width:48px;height:48px;border-radius:14px;background:#15181E;display:flex;align-items:center;justify-content:center;margin-top:18px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></div>
+        <h1 class="ttl" style="margin-top:6px">Configurá este equipo</h1>
+        <p class="sub">Iniciá sesión con la cuenta del dueño o encargado. Se hace una sola vez.</p>
+        <div style="height:6px"></div>
+        <div><label class="lbl" for="em">Correo</label><input id="em" class="inp" type="email" value="encargado@fondamirador.hn"></div>
+        <div><label class="lbl" for="pw">Contraseña</label><input id="pw" class="inp" type="password" value="••••••••••"></div>
+        <div style="flex:1"></div>
+        <button class="btn">Iniciar sesión</button>
+        <p class="sub" style="text-align:center;font-size:12.5px">¿Sin cuenta? Sherpa te la crea al darte de alta.</p>
+      </div>
+    </div>
+    <div class="name">A1 · Iniciar sesión (una vez)</div>
+    <div class="bnote"><span class="t">Nota build</span>Firebase Auth. Vale <b>owners</b> de la marca o <b>managers</b> de una sucursal (PLAN-multi-location §5). Error: «Correo o contraseña incorrectos. Revisalos e intentá de nuevo.» Sin registro desde el equipo.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">sesión<br>válida</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="pad">
+        <h1 class="ttl">Elegí la sucursal</h1>
+        <p class="sub">Este equipo va a recibir solo los pedidos de la sucursal que elijás.</p>
+        <button class="opt on"><span><span style="display:block;font-weight:800;font-size:16px">Los Próceres</span><span style="display:block;font-size:14px;font-weight:600;color:#4F5968;margin-top:2px">Fonda Mirador · Blvd. Los Próceres</span></span><span class="rad"></span></button>
+        <button class="opt"><span><span style="display:block;font-weight:800;font-size:16px">Circunvalación</span><span style="display:block;font-size:14px;font-weight:600;color:#4F5968;margin-top:2px">Fonda Mirador · Av. Circunvalación</span></span><span class="rad"></span></button>
+        <button class="opt"><span><span style="display:block;font-weight:800;font-size:16px">Altara</span><span style="display:block;font-size:14px;font-weight:600;color:#4F5968;margin-top:2px">Fonda Mirador · Res. Altara</span></span><span class="rad"></span></button>
+        <div style="flex:1"></div>
+        <button class="btn">Usar Los Próceres</button>
+      </div>
+    </div>
+    <div class="name">A2 · Elegir la sucursal</div>
+    <div class="bnote"><span class="t">Nota build</span>Lista = sucursales de <b>brands/{b}.locations</b> que esta cuenta puede manejar. Un encargado con una sola sucursal salta esta pantalla. Se guarda el vínculo equipo → <b>rid</b> de la sucursal; el feed se filtra en el servidor por ese rid.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">sucursal<br>elegida</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="pad">
+        <h1 class="ttl">Que no se pierda ningún pedido</h1>
+        <p class="sub">Revisamos el sonido y que el equipo siga despierto.</p>
+        <div class="card" style="padding:4px 14px">
+          <div class="row"><span class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1E7F4F" stroke-width="3" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg></span><div style="flex:1"><div style="font-weight:800;font-size:15px">Notificaciones</div><div class="sub" style="font-size:12.5px">Activadas</div></div></div>
+          <div class="row"><span class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1E7F4F" stroke-width="3" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg></span><div style="flex:1"><div style="font-weight:800;font-size:15px">Volumen de alerta</div><div class="sub" style="font-size:12.5px">Al máximo, aunque el equipo esté en silencio</div></div></div>
+          <div class="row" style="border-bottom:none"><span class="todo"></span><div style="flex:1"><div style="font-weight:800;font-size:15px">Ahorro de batería</div><div class="sub" style="font-size:12.5px">Tiene que estar apagado para esta app</div></div><button class="btn sm" style="width:auto;padding:0 14px;height:48px">Apagar</button></div>
+        </div>
+        <button class="btn ghost sm"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>Probar la alerta</button>
+        <div style="flex:1"></div>
+        <button class="btn" disabled style="opacity:.45">Continuar</button>
+        <p class="sub" style="text-align:center;font-size:12.5px">Falta apagar el ahorro de batería.</p>
+      </div>
+    </div>
+    <div class="name">A3 · Sonido y equipo despierto</div>
+    <div class="bnote"><span class="t">Nota build · reusar 2f</span>Servicio en primer plano + audio al máximo con foco de audio + exención de optimización de batería, como la app de repartidor (<b>preguntar a 2f antes de copiar</b>). «Continuar» se bloquea hasta que todo esté en verde. Se re-chequea en cada arranque (ver F).</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">todo<br>en verde</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="pad" style="align-items:center;text-align:center">
+        <h1 class="ttl" style="margin-top:14px">Creá el PIN del encargado</h1>
+        <p class="sub" style="max-width:280px">Protege cambiar de sucursal y cerrar sesión. Para aceptar pedidos no hace falta.</p>
+        <div style="display:flex;gap:16px;margin:22px 0 18px" aria-label="2 de 4 dígitos"><span class="pin f"></span><span class="pin f"></span><span class="pin"></span><span class="pin"></span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:100%">
+          <button class="key">1</button><button class="key">2</button><button class="key">3</button>
+          <button class="key">4</button><button class="key">5</button><button class="key">6</button>
+          <button class="key">7</button><button class="key">8</button><button class="key">9</button>
+          <span></span><button class="key">0</button><button class="key" aria-label="Borrar" style="font-size:16px">Borrar</button>
+        </div>
+      </div>
+    </div>
+    <div class="name">A4 · PIN del encargado → equipo listo</div>
+    <div class="bnote"><span class="t">Nota build</span>4 dígitos, se pide dos veces. Al terminar: queda abierto como kiosco en «Nuevos» de Los Próceres y sobrevive reinicios y cambio de batería. Cada acción queda registrada con <b>device_id</b> + hora (no por persona; decisión del dueño).</div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1828,"height":1060}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

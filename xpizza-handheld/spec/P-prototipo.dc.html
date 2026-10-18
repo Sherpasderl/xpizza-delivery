@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Prototipo completo · equipo de la sucursal</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Manrope,system-ui,sans-serif;color:#15181E}
+  button,input{font-family:inherit}
+  button{cursor:pointer}
+  button:focus-visible{outline:3px solid #2F6FEB;outline-offset:2px}
+  .k{font-variant-numeric:tabular-nums}
+  .phone{width:360px;height:720px;background:#F4F2EE;border:1px solid #D7D3CB;border-radius:30px;display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:0 12px 30px rgba(20,24,30,.09);flex:0 0 auto}
+  .top{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;gap:10px;flex:0 0 auto}
+  .loc{font-weight:800;font-size:15px;line-height:1.2}
+  .locsub{font-size:13px;font-weight:600;color:#4F5968}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-weight:800;font-size:14px;padding:0 14px;height:48px;border-radius:999px;background:#E3F2E9;color:#17633D;border:none;flex:0 0 auto}
+  .pill.busy{background:#F6E7C8;color:#6B4106}
+  .pill.pz{background:#15181E;color:#fff}
+  .pill.off{background:#FBEDE6;color:#7A2E0E}
+  .pd{width:9px;height:9px;border-radius:50%;background:currentColor}
+  .banner{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 16px;font-weight:700;font-size:13.5px;line-height:1.3;flex:0 0 auto}
+  .banner.busy{background:#F6E7C8;color:#5A3605}
+  .banner.pz{background:#15181E;color:#fff}
+  .banner.off{background:#7A2E0E;color:#fff}
+  .bq{margin-left:auto;height:48px;padding:0 14px;border-radius:12px;border:1.5px solid currentColor;background:transparent;color:inherit;font-weight:800;font-size:13.5px;flex:0 0 auto}
+  .tabs{display:flex;gap:6px;padding:10px 16px 12px;flex:0 0 auto}
+  .tab{flex:1;height:52px;border-radius:12px;background:#fff;border:1px solid #E6E3DD;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;color:#3A4250}
+  .tab.on{background:#15181E;color:#fff;border-color:#15181E}
+  .cnt{min-width:22px;height:22px;border-radius:11px;background:#EEF0F2;color:#15181E;font-size:13px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}
+  .tab.on .cnt{background:#fff}
+  .body{flex:1;padding:0 16px 16px;display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto}
+  .card{background:#fff;border:1px solid #E6E3DD;border-radius:16px;padding:14px}
+  .flbl{font-size:15px;font-weight:800;margin:0;color:#15181E}
+  .btn{min-height:56px;border-radius:14px;background:#15181E;color:#fff;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;gap:8px;border:none;width:100%;flex:0 0 auto}
+  .btn.g{background:#1E7F4F}
+  .btn.ghost{background:#fff;color:#15181E;border:1.5px solid #D7D3CB}
+  .btn.red{background:#B42318}
+  .btn.amb{background:#8A5307}
+  .btn.sm{min-height:52px;font-size:15px}
+  .btn.dis{opacity:.45}
+  .tchip{flex:1;height:54px;border-radius:12px;border:1.5px solid #D7D3CB;background:#fff;font-weight:800;font-size:16px;color:#15181E}
+  .tchip.on{background:#15181E;color:#fff;border-color:#15181E}
+  .tchip.dis{opacity:.35}
+  .rchip{height:48px;padding:0 14px;border-radius:12px;border:1.5px solid #D7D3CB;background:#fff;font-weight:800;font-size:14px;color:#15181E}
+  .rchip.on{background:#15181E;color:#fff;border-color:#15181E}
+  .it{display:flex;gap:10px;font-size:16px;font-weight:700;line-height:1.3}
+  .it .q{min-width:28px;color:#1E7F4F;font-weight:800}
+  .mod{font-size:14px;font-weight:700;color:#7A4A06;margin-top:2px}
+  .note{background:#FBF6EC;border-radius:10px;padding:9px 11px;font-size:14px;font-weight:700;color:#7A4A06}
+  .oc{background:#fff;border:1px solid #E6E3DD;border-radius:16px;padding:13px 14px;display:flex;flex-direction:column;gap:7px;width:100%;text-align:left;color:#15181E;flex:0 0 auto}
+  .row1{display:flex;justify-content:space-between;align-items:baseline;gap:10px;width:100%}
+  .oid{font-size:19px;font-weight:800}
+  .otm{font-size:32px;font-weight:800;letter-spacing:-.01em}
+  .osub{font-size:15px;font-weight:600;color:#44505F}
+  .tag{display:inline-flex;align-items:center;font-size:14px;font-weight:800;padding:4px 10px;border-radius:999px;background:#EEF0F2;color:#3A4250;align-self:flex-start}
+  .tag.soon{background:#F6E7C8;color:#6B4106}
+  .tag.late{background:#FCE4E1;color:#9A1C12}
+  .tag.new{background:#15181E;color:#fff}
+  .tag.pend{background:#FBEDE6;color:#7A2E0E}
+  .dl{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:#3A4250}
+  .dl.ok{color:#17633D}
+  .icb{width:48px;height:48px;border-radius:12px;background:#fff;border:1px solid #E6E3DD;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .pr{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid #EEEBE5}
+  .av{width:36px;height:36px;border-radius:50%;background:#EEF0F2;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#3A4250;flex:0 0 auto}
+  .wa{height:48px;padding:0 14px;border-radius:12px;background:#E3F2E9;color:#17633D;border:none;font-weight:800;font-size:14px;display:flex;align-items:center;gap:6px}
+  .info{font-size:14.5px;font-weight:700;color:#2B3340;line-height:1.4;background:#EAE7E1;border-radius:12px;padding:10px 12px}
+  .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px}
+  .scrim{position:absolute;inset:0;background:rgba(21,24,30,.45);display:flex;flex-direction:column;justify-content:flex-end;z-index:5}
+  .sh{background:#fff;border-radius:22px 22px 0 0;padding:12px 16px 18px;display:flex;flex-direction:column;gap:10px;max-height:94%;overflow-y:auto}
+  .grab{width:40px;height:4px;border-radius:2px;background:#D7D3CB;align-self:center;margin-bottom:4px;flex:0 0 auto}
+  .shT{font-size:19px;font-weight:800}
+  .shS{font-size:14.5px;font-weight:600;color:#4F5968;line-height:1.4}
+  .opt{min-height:54px;border:1.5px solid #E6E3DD;border-radius:13px;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-weight:700;font-size:16px;background:#fff;width:100%;text-align:left;color:#15181E;flex:0 0 auto}
+  .opt.on{border-color:#15181E;box-shadow:inset 0 0 0 1px #15181E}
+  .rad{width:22px;height:22px;border-radius:50%;border:2px solid #CFCCC3;flex:0 0 auto}
+  .opt.on .rad{border:7px solid #15181E}
+  .cb{width:24px;height:24px;border-radius:6px;border:2px solid #CFCCC3;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+  .opt.on .cb{background:#15181E;border-color:#15181E}
+  .st{min-height:62px;border:1.5px solid #E6E3DD;border-radius:14px;padding:8px 14px;display:flex;align-items:center;gap:12px;background:#fff;width:100%;text-align:left;color:#15181E}
+  .st.on{border-color:#15181E;box-shadow:inset 0 0 0 1px #15181E}
+  .sd{width:12px;height:12px;border-radius:50%;flex:0 0 auto}
+  .lnk{min-height:52px;display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:15px;background:none;border:none;border-top:1px solid #EEEBE5;width:100%;padding:0 4px;color:#15181E}
+  .srow{min-height:58px;display:flex;align-items:center;justify-content:space-between;gap:10px;border:none;border-bottom:1px solid #EEEBE5;font-weight:700;font-size:16px;background:none;width:100%;text-align:left;color:#15181E;padding:0 2px}
+  .alert{position:absolute;inset:0;background:#1E7F4F;color:#fff;display:flex;flex-direction:column;padding:26px 22px 22px;z-index:9}
+  .ring{width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;align-self:center}
+  .ring2{width:104px;height:104px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center}
+  .toast{overflow:hidden;position:absolute;left:16px;right:16px;bottom:16px;background:#15181E;color:#fff;border-radius:14px;padding:0 8px 0 16px;min-height:62px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:700;font-size:14.5px;box-shadow:0 10px 24px rgba(20,24,30,.25);z-index:8}
+  .undo{height:48px;padding:0 16px;border-radius:10px;border:none;background:#fff;color:#15181E;font-weight:800;font-size:15px;flex:0 0 auto}
+  .key{height:56px;border-radius:14px;background:#fff;border:1px solid #E6E3DD;font-size:22px;font-weight:700;color:#15181E}
+  .pin{width:16px;height:16px;border-radius:50%;border:2px solid #15181E}
+  .pin.f{background:#15181E}
+  .inp{height:54px;border-radius:13px;border:1.5px solid #D7D3CB;background:#fff;padding:0 14px;font-size:16px;font-weight:600;width:100%;color:#15181E}
+  .sw{width:52px;height:32px;border-radius:16px;background:#1E7F4F;position:relative;flex:0 0 auto;border:none}
+  .sw::after{content:"";position:absolute;top:3px;right:3px;width:26px;height:26px;border-radius:50%;background:#fff}
+  .sw.off{background:#C9C4BA}.sw.off::after{right:auto;left:3px}
+  .prr{display:flex;align-items:center;gap:10px;min-height:56px;border-bottom:1px solid #E6E3DD}
+  .swl{font-size:13px;font-weight:700;color:#4F5968}
+  .sim{min-height:42px;border-radius:11px;border:1.5px solid #15181E;background:#fff;color:#15181E;font-weight:800;font-size:13px;padding:0 12px}
+  .sim.dark{background:#15181E;color:#fff}
+  .kv{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:6px 0;border-bottom:1px solid #E1DDD5}
+  .kv span:first-child{font-weight:700;color:#4F5968;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+  .kv span:last-child{font-weight:800;text-align:right}
+  .lg{font-size:12.5px;font-weight:600;color:#2B3340;line-height:1.35;padding:5px 0;border-bottom:1px dashed #DAD6CE}
+  .ph{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#4F5968}
+  /* ── Movimiento (solo CSS; liviano para SUNMI) ── */
+  @keyframes alertPulse{0%,100%{background-color:#1E7F4F}50%{background-color:#2E9D63}}
+  .alert{animation:alertPulse 1s ease-in-out infinite}
+  .alert.fast{animation-duration:.7s}
+  .alert.fast .bell,.alert.fast .ripple{animation-duration:.7s}
+  .astrip{margin:-26px -22px 16px;padding:12px 22px;font-size:15px;font-weight:800;line-height:1.3;display:flex;align-items:center;gap:8px}
+  @keyframes bellSwing{0%,50%,100%{transform:rotate(0)}8%{transform:rotate(16deg)}18%{transform:rotate(-14deg)}28%{transform:rotate(9deg)}38%{transform:rotate(-5deg)}}
+  .bell{display:flex;transform-origin:50% 10%;animation:bellSwing 1s ease-in-out infinite}
+  .ring{position:relative}
+  @keyframes ripple{0%{transform:scale(.72);opacity:.6}100%{transform:scale(1.28);opacity:0}}
+  .ripple{position:absolute;inset:0;border-radius:50%;border:3px solid rgba(255,255,255,.7);animation:ripple 1s ease-out infinite}
+  @keyframes enter{from{transform:translateY(-12px);opacity:0}to{transform:none;opacity:1}}
+  .enter{animation:enter 200ms cubic-bezier(.2,.8,.2,1)}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  .scrim{animation:fadeIn 160ms ease-out}
+  @keyframes sheetUp{from{transform:translateY(28px)}to{transform:none}}
+  .sh{animation:sheetUp 200ms cubic-bezier(.2,.8,.2,1)}
+  @keyframes slideDown{from{transform:translateY(-100%);opacity:0}to{transform:none;opacity:1}}
+  .banner{animation:slideDown 200ms ease-out}
+  @keyframes pop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.15);opacity:1}100%{transform:scale(1)}}
+  .pop{display:flex;animation:pop 200ms ease-out}
+  @keyframes drain{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+  .drain{position:absolute;left:0;right:0;bottom:0;height:4px;background:#5BC48A;transform-origin:left center;animation:drain 5s linear forwards}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .spin{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;display:inline-block;margin-right:6px;animation:spin .9s linear infinite}
+  .cring .arc{transition:stroke-dashoffset 200ms ease-out,stroke 200ms ease-out}
+  .pring .arc{transition:stroke-dashoffset 200ms ease-out}
+  .btn,.tchip,.oc,.opt,.key,.tab,.pill,.rchip,.st,.wa,.bq,.undo{transition:transform 100ms ease-out,background-color 150ms ease-out,border-color 150ms ease-out}
+  .btn:active,.tchip:active,.oc:active,.opt:active,.key:active,.tab:active,.pill:active,.rchip:active,.st:active,.wa:active,.bq:active,.undo:active{transform:scale(.98)}
+  .ladder{font-size:13.5px;font-weight:700;color:#4F5968}
+  @media (prefers-reduced-motion: reduce){
+    .bell,.ripple,.enter,.scrim,.sh,.banner,.pop,.drain,.spin{animation:none !important}
+    .alert.fast{animation-duration:1s}
+    .cring .arc,.pring .arc,.btn,.tchip,.oc,.opt,.key,.tab,.pill,.rchip,.st,.wa,.bq,.undo{transition:none !important}
+    .btn:active,.tchip:active,.oc:active,.opt:active,.key:active,.tab:active,.pill:active,.rchip:active,.st:active,.wa:active,.bq:active,.undo:active{transform:none}
+    .spin{border-right-color:currentColor;opacity:.6}
+  }
+</style>
+</helmet>
+<div style="width:1000px;height:900px;background:#EDEAE4;padding:48px 56px;display:flex;gap:44px;align-items:flex-start">
+
+  <div class="phone">
+
+    <sc-if value="{{isLogin}}" hint-placeholder-val="{{ false }}">
+      <div class="body" style="padding-top:26px">
+        <div style="width:48px;height:48px;border-radius:14px;background:#15181E;display:flex;align-items:center;justify-content:center;margin-top:14px;flex:0 0 auto"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></div>
+        <div style="font-weight:800;font-size:24px;letter-spacing:-.02em;margin-top:6px">Configurá este equipo</div>
+        <div class="shS" style="font-size:15px">Iniciá sesión con la cuenta del dueño o encargado. Se hace una sola vez.</div>
+        <label style="font-size:13px;font-weight:800;color:#44505F;margin-top:6px" for="em">Correo</label>
+        <input id="em" class="inp" type="email" placeholder="encargado@fondamirador.hn">
+        <label style="font-size:13px;font-weight:800;color:#44505F" for="pw">Contraseña</label>
+        <input id="pw" class="inp" type="password" placeholder="••••••••••">
+        <div style="flex:1"></div>
+        <button class="btn" onClick="{{goBranch}}">Iniciar sesión</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isBranch}}" hint-placeholder-val="{{ false }}">
+      <div class="body" style="padding-top:26px">
+        <div style="font-weight:800;font-size:24px;letter-spacing:-.02em">Elegí la sucursal</div>
+        <div class="shS" style="font-size:15px">Este equipo va a recibir solo los pedidos de la sucursal que elijás.</div>
+        <sc-for list="{{branches}}" as="b" hint-placeholder-count="3">
+          <button class="opt {{b.cls}}" onClick="{{b.pick}}"><span><span style="display:block;font-weight:800;font-size:16px">{{b.name}}</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968;margin-top:2px">{{b.addr}}</span></span><span class="rad"></span></button>
+        </sc-for>
+        <div style="flex:1"></div>
+        <button class="btn" onClick="{{goChecks}}">{{useBranchLabel}}</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isChecks}}" hint-placeholder-val="{{ false }}">
+      <div class="body" style="padding-top:26px">
+        <div style="font-weight:800;font-size:24px;letter-spacing:-.02em;line-height:1.15">Que no se pierda ningún pedido</div>
+        <div class="shS" style="font-size:15px">Revisamos el sonido y que el equipo siga despierto.</div>
+        <div class="card" style="padding:2px 14px">
+          <div class="srow"><span>Notificaciones</span><span style="color:#17633D;font-size:15px">Activadas</span></div>
+          <div class="srow"><span>Volumen de alerta</span><span style="color:#17633D;font-size:15px">Máximo</span></div>
+          <div class="srow" style="border-bottom:none"><span><span style="display:block">Ahorro de batería</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">{{batteryText}}</span></span>
+            <sc-if value="{{batteryPending}}" hint-placeholder-val="{{ true }}"><button class="btn sm" style="width:auto;padding:0 16px;min-height:48px" onClick="{{fixBattery}}">Apagar</button></sc-if>
+            <sc-if value="{{batteryOk}}" hint-placeholder-val="{{ false }}"><span style="color:#17633D;font-size:15px">Listo</span></sc-if>
+          </div>
+        </div>
+        <button class="btn ghost sm" onClick="{{testAlert}}">Probar la alerta</button>
+        <div style="flex:1"></div>
+        <button class="btn {{checksBtnCls}}" onClick="{{goPinCreate}}">Continuar</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isKeypad}}" hint-placeholder-val="{{ false }}">
+      <sc-if value="{{isPinPrompt}}" hint-placeholder-val="{{ false }}">
+        <div class="top"><button class="icb" aria-label="Volver" onClick="{{goList}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill {{pillCls}}" onClick="{{openStatus}}"><sc-if value="{{pillRing}}" hint-placeholder-val="{{ false }}"><svg class="pring" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="{{pillRingAria}}"><circle cx="9" cy="9" r="6.5" fill="none" stroke="rgba(107,65,6,.25)" stroke-width="2.6"></circle><circle class="arc" cx="9" cy="9" r="6.5" fill="none" stroke="#6B4106" stroke-width="2.6" stroke-dasharray="40.84" stroke-dashoffset="{{pillRingOff}}" transform="rotate(-90 9 9)"></circle></svg></sc-if><sc-if value="{{pillDot}}" hint-placeholder-val="{{ true }}"><span class="pd"></span></sc-if>{{pillLabel}}</button></div>
+      </sc-if>
+      <div class="body" style="align-items:center;text-align:center;padding-top:14px">
+        <div style="font-weight:800;font-size:22px;margin-top:8px">{{keypadTitle}}</div>
+        <div class="shS" style="font-size:15px;max-width:280px">{{keypadSub}}</div>
+        <div style="display:flex;gap:16px;margin:16px 0 10px">
+          <sc-for list="{{pinDots}}" as="d" hint-placeholder-count="4"><span class="pin {{d.cls}}"></span></sc-for>
+        </div>
+        <div style="min-height:22px;font-size:14.5px;font-weight:800;color:#9A1C12">{{pinErrText}}</div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:100%">
+          <sc-for list="{{keys}}" as="kk" hint-placeholder-count="12">
+            <sc-if value="{{kk.blank}}" hint-placeholder-val="{{ false }}"><span></span></sc-if>
+            <sc-if value="{{kk.real}}" hint-placeholder-val="{{ true }}"><button class="key" style="font-size:{{kk.size}}" onClick="{{kk.press}}">{{kk.label}}</button></sc-if>
+          </sc-for>
+        </div>
+        <sc-if value="{{isPinPrompt}}" hint-placeholder-val="{{ false }}">
+          <button class="btn ghost sm" style="margin-top:8px" onClick="{{forgotPin}}">Olvidé el PIN · iniciar sesión</button>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isMain}}" hint-placeholder-val="{{ true }}">
+      <sc-if value="{{topIsList}}" hint-placeholder-val="{{ true }}">
+        <div class="top"><div><div class="loc">Fonda Mirador</div><div class="locsub">{{loc}}</div></div><button class="pill {{pillCls}}" onClick="{{openStatus}}"><sc-if value="{{pillRing}}" hint-placeholder-val="{{ false }}"><svg class="pring" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="{{pillRingAria}}"><circle cx="9" cy="9" r="6.5" fill="none" stroke="rgba(107,65,6,.25)" stroke-width="2.6"></circle><circle class="arc" cx="9" cy="9" r="6.5" fill="none" stroke="#6B4106" stroke-width="2.6" stroke-dasharray="40.84" stroke-dashoffset="{{pillRingOff}}" transform="rotate(-90 9 9)"></circle></svg></sc-if><sc-if value="{{pillDot}}" hint-placeholder-val="{{ true }}"><span class="pd"></span></sc-if>{{pillLabel}}</button></div>
+      </sc-if>
+      <sc-if value="{{topIsBack}}" hint-placeholder-val="{{ false }}">
+        <div class="top"><button class="icb" aria-label="Volver" onClick="{{goList}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill {{pillCls}}" onClick="{{openStatus}}"><sc-if value="{{pillRing}}" hint-placeholder-val="{{ false }}"><svg class="pring" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="{{pillRingAria}}"><circle cx="9" cy="9" r="6.5" fill="none" stroke="rgba(107,65,6,.25)" stroke-width="2.6"></circle><circle class="arc" cx="9" cy="9" r="6.5" fill="none" stroke="#6B4106" stroke-width="2.6" stroke-dasharray="40.84" stroke-dashoffset="{{pillRingOff}}" transform="rotate(-90 9 9)"></circle></svg></sc-if><sc-if value="{{pillDot}}" hint-placeholder-val="{{ true }}"><span class="pd"></span></sc-if>{{pillLabel}}</button></div>
+      </sc-if>
+
+      <sc-if value="{{bannerOff}}" hint-placeholder-val="{{ false }}"><div class="banner off"><span>Sin conexión. Los pedidos nuevos pueden no llegar. Reintentando…</span></div></sc-if>
+      <sc-if value="{{bannerPause}}" hint-placeholder-val="{{ false }}"><div class="banner pz"><span>{{pauseText}}</span><button class="bq" onClick="{{resume}}">Reanudar</button></div></sc-if>
+      <sc-if value="{{bannerBusy}}" hint-placeholder-val="{{ false }}"><div class="banner busy"><span class="k">{{busyText}}</span><button class="bq" onClick="{{clearBusy}}">Quitar</button></div></sc-if>
+
+      <sc-if value="{{isList}}" hint-placeholder-val="{{ true }}">
+        <div class="tabs">
+          <button class="tab {{tabN}}" onClick="{{goN}}">Nuevos <span class="cnt k">{{cN}}</span></button>
+          <button class="tab {{tabP}}" onClick="{{goP}}">En prep. <span class="cnt k">{{cP}}</span></button>
+          <button class="tab {{tabL}}" onClick="{{goL}}">Listos <span class="cnt k">{{cL}}</span></button>
+        </div>
+        <div class="body">
+          <sc-if value="{{showN}}" hint-placeholder-val="{{ true }}">
+            <sc-for list="{{newCards}}" as="o" hint-placeholder-count="1">
+              <button class="oc" onClick="{{o.open}}"><span class="row1"><span class="oid k">{{o.title}}</span><span class="tag {{o.tagCls}} k">{{o.tag}}</span></span><span style="display:flex;align-items:center;gap:10px;width:100%"><svg class="cring" width="34" height="34" viewBox="0 0 32 32" role="img" aria-label="{{o.ringAria}}" style="flex:0 0 auto"><circle cx="16" cy="16" r="13" fill="none" stroke="#E6E3DD" stroke-width="4"></circle><circle class="arc" cx="16" cy="16" r="13" fill="none" stroke="{{o.ringColor}}" stroke-width="4" stroke-linecap="round" stroke-dasharray="81.68" stroke-dashoffset="{{o.ringOff}}" transform="rotate(-90 16 16)"></circle><circle cx="23.6" cy="26.5" r="2.2" fill="#15181E"></circle></svg><span style="display:flex;flex-direction:column;gap:2px"><span class="osub k">{{o.sub}}</span><span class="ladder k">{{o.ladder}}</span></span></span></button>
+            </sc-for>
+            <sc-if value="{{emptyN}}" hint-placeholder-val="{{ true }}">
+              <div class="empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9AA3B2" stroke-width="1.8" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><div style="font-weight:800;font-size:18px">Sin pedidos nuevos</div><div class="shS" style="max-width:250px">Cuando entre uno, el equipo suena a todo volumen hasta que lo abrás.</div></div>
+            </sc-if>
+          </sc-if>
+          <sc-if value="{{showP}}" hint-placeholder-val="{{ false }}">
+            <sc-for list="{{prepCards}}" as="o" hint-placeholder-count="1">
+              <button class="oc {{o.enterCls}}" onClick="{{o.open}}"><span class="row1"><span class="oid k">{{o.title}}</span><span class="otm k" style="color:{{o.tmColor}}">{{o.time}}</span></span><span style="display:flex;gap:6px;flex-wrap:wrap"><span class="tag {{o.tagCls}} k">{{o.tag}}</span><sc-if value="{{o.pending}}" hint-placeholder-val="{{ false }}"><span class="tag pend"><span class="spin"></span>Por enviar</span></sc-if></span><span class="dl">{{o.driver}}</span></button>
+            </sc-for>
+            <sc-if value="{{emptyP}}" hint-placeholder-val="{{ false }}"><div class="empty"><div style="font-weight:800;font-size:17px;color:#4F5968">Nada en preparación</div></div></sc-if>
+          </sc-if>
+          <sc-if value="{{showL}}" hint-placeholder-val="{{ false }}">
+            <sc-for list="{{readyCards}}" as="o" hint-placeholder-count="1">
+              <div class="oc {{o.enterCls}}"><span class="row1"><span class="oid k">{{o.title}}</span><span class="tag k">{{o.tag}}</span></span><sc-if value="{{o.pending}}" hint-placeholder-val="{{ false }}"><span class="tag pend"><span class="spin"></span>Por enviar</span></sc-if><span class="dl {{o.lineCls}}">{{o.line}}</span><sc-if value="{{o.isPickup}}" hint-placeholder-val="{{ false }}"><button class="btn ghost sm" style="min-height:48px" onClick="{{o.handed}}">Entregado al cliente</button></sc-if></div>
+            </sc-for>
+            <sc-if value="{{emptyL}}" hint-placeholder-val="{{ false }}"><div class="empty"><div style="font-weight:800;font-size:17px;color:#4F5968">Nada listo todavía</div></div></sc-if>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isDetail}}" hint-placeholder-val="{{ false }}">
+        <div class="body">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+            <div style="font-size:23px;font-weight:800" class="k">{{d.title}}</div>
+            <div style="font-size:15px;font-weight:700;color:#4F5968">{{d.cust}}</div>
+          </div>
+          <sc-if value="{{d.showTime}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:18px;font-weight:800" class="k">{{d.timeLine}}</span><span class="tag {{d.tagCls}} k">{{d.tag}}</span></div>
+          </sc-if>
+          <div class="card" style="display:flex;flex-direction:column;gap:9px;flex:0 0 auto">
+            <sc-for list="{{d.items}}" as="i" hint-placeholder-count="3">
+              <div class="it"><span class="q k">{{i.q}}</span><div>{{i.name}}<sc-if value="{{i.hasMod}}" hint-placeholder-val="{{ false }}"><div class="mod">{{i.mod}}</div></sc-if></div></div>
+            </sc-for>
+            <sc-if value="{{d.hasNote}}" hint-placeholder-val="{{ false }}"><div class="note">{{d.note}}</div></sc-if>
+          </div>
+
+          <sc-if value="{{d.isNew}}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:15px;font-weight:700;color:#4F5968" class="k">{{d.payLine}}</div>
+            <div style="flex:1"></div>
+            <p class="flbl">Listo en</p>
+            <div style="display:flex;gap:6px;flex:0 0 auto">
+              <sc-for list="{{chips}}" as="c" hint-placeholder-count="5"><button class="tchip k {{c.cls}}" onClick="{{c.pick}}">{{c.label}}</button></sc-for>
+            </div>
+            <sc-if value="{{busyExplain}}" hint-placeholder-val="{{ false }}"><div style="font-size:14px;font-weight:700;color:#5A3605;background:#F6E7C8;border-radius:10px;padding:8px 11px" class="k">{{busyExplainText}}</div></sc-if>
+            <button class="btn g k" onClick="{{d.accept}}">{{acceptLabel}}</button>
+            <button class="btn ghost sm" onClick="{{openReject}}">Rechazar</button>
+          </sc-if>
+
+          <sc-if value="{{d.isActive}}" hint-placeholder-val="{{ false }}">
+            <div class="card" style="padding:2px 14px;flex:0 0 auto">
+              <div class="pr" style="border-top:none"><span class="av">{{d.initial}}</span><div style="flex:1"><div style="font-weight:800;font-size:16px">{{d.cust}}</div><div style="font-size:14px;font-weight:600;color:#4F5968">Cliente</div></div><sc-if value="{{d.showWA}}" hint-placeholder-val="{{ false }}"><button class="wa" onClick="{{openWA}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>WhatsApp</button></sc-if></div>
+              <sc-if value="{{d.isDelivery}}" hint-placeholder-val="{{ false }}"><div class="pr"><span class="av"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3A4250" stroke-width="2" aria-hidden="true"><circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M9 17h6l-3-7h4l2 7M12 10l-2-4H7"/></svg></span><div style="flex:1"><div style="font-weight:800;font-size:16px">{{d.driverName}}</div><div style="font-size:14px;font-weight:600;color:#4F5968" class="k">{{d.driverSub}}</div></div></div></sc-if>
+            </div>
+            <div style="flex:1"></div>
+            <sc-if value="{{d.canMore}}" hint-placeholder-val="{{ false }}"><button class="btn ghost sm" onClick="{{openMore}}">Necesito más tiempo</button></sc-if>
+            <sc-if value="{{d.hasInfo}}" hint-placeholder-val="{{ false }}"><div class="info">{{d.info}}</div></sc-if>
+            <sc-if value="{{d.isPrep}}" hint-placeholder-val="{{ false }}"><button class="btn g" style="min-height:62px;font-size:18px" onClick="{{d.ready}}">Listo</button></sc-if>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isAgotados}}" hint-placeholder-val="{{ false }}">
+        <div class="body" style="padding-top:12px">
+          <div style="font-size:21px;font-weight:800">Productos agotados</div>
+          <div class="shS">{{agotadosSub}}</div>
+          <sc-for list="{{menuRows}}" as="m" hint-placeholder-count="6">
+            <div class="prr"><div style="flex:1"><div style="font-weight:800;font-size:15.5px">{{m.name}}</div><sc-if value="{{m.out}}" hint-placeholder-val="{{ false }}"><div style="font-size:14px;font-weight:700;color:#9A1C12">Agotado en esta sucursal</div></sc-if></div><span class="swl">{{m.lbl}}</span><button class="sw {{m.swCls}}" aria-label="{{m.aria}}" onClick="{{m.toggle}}"></button></div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isSettings}}" hint-placeholder-val="{{ false }}">
+        <div class="body" style="padding-top:6px">
+          <div style="font-size:22px;font-weight:800">Ajustes del equipo</div>
+          <div class="card" style="padding:2px 14px;flex:0 0 auto">
+            <button class="srow" onClick="{{testAlert}}"><span>Probar la alerta</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4F5968" stroke-width="2.2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+            <div class="srow"><span>Volumen de alerta</span><span style="font-size:15px;color:#17633D">Máximo</span></div>
+            <button class="srow" onClick="{{openBranchSheet}}"><span><span style="display:block">Sucursal</span><span style="display:block;font-size:14px;font-weight:600;color:#4F5968">{{loc}}</span></span><span style="font-size:15px;font-weight:800">Cambiar</span></button>
+            <button class="srow" onClick="{{goAgotados}}"><span>Productos agotados</span><span style="font-size:15px;color:#4F5968" class="k">{{agotadosCount}}</span></button>
+            <div class="srow" style="border-bottom:none"><span><span style="display:block">Equipo</span><span style="display:block;font-size:14px;font-weight:600;color:#4F5968">SUNMI · app 1.0.0</span></span></div>
+          </div>
+          <div style="flex:1"></div>
+          <button class="btn ghost sm" style="color:#9A1C12" onClick="{{askLogout}}">Cerrar sesión</button>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{shReject}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">¿Por qué lo rechazás?</div>
+        <sc-for list="{{reasons}}" as="r" hint-placeholder-count="4"><button class="opt {{r.cls}}" onClick="{{r.pick}}"><span>{{r.label}}</span><span class="rad"></span></button></sc-for>
+        <sc-if value="{{isOtro}}" hint-placeholder-val="{{ false }}"><input class="inp" placeholder="Contanos el motivo (opcional)" aria-label="Motivo"></sc-if>
+        <sc-if value="{{isAgotadoReason}}" hint-placeholder-val="{{ false }}"><button class="btn" onClick="{{toItems}}">Continuar</button></sc-if>
+        <sc-if value="{{isOtherReason}}" hint-placeholder-val="{{ true }}"><button class="btn red {{rejBtnCls}}" onClick="{{confirmReject}}">Rechazar pedido</button></sc-if>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Volver</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shItems}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">¿Qué se acabó?</div>
+        <div class="shS">Lo marcamos agotado en esta sucursal hasta que lo reactivés.</div>
+        <sc-for list="{{rejItems}}" as="i" hint-placeholder-count="3"><button class="opt {{i.cls}}" onClick="{{i.pick}}"><span>{{i.label}}</span><span class="cb"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg></span></button></sc-for>
+        <button class="btn red {{itemsBtnCls}}" onClick="{{confirmReject}}">Rechazar y marcar agotado</button>
+        <button class="btn ghost sm" onClick="{{openReject}}">Volver</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shMore}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">¿Cuánto tiempo más?</div>
+        <div style="display:flex;gap:6px"><sc-for list="{{moreChips}}" as="m" hint-placeholder-count="3"><button class="tchip k {{m.cls}}" onClick="{{m.pick}}">{{m.label}}</button></sc-for></div>
+        <div class="card" style="background:#F4F2EE;border:none;display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:15px;font-weight:700;color:#44505F">Nueva hora de listo</span><span style="font-size:28px;font-weight:800" class="k">{{newReadyAt}}</span></div>
+        <div class="shS">Le avisamos al cliente y el repartidor se programa con la nueva hora.</div>
+        <button class="btn k" onClick="{{confirmMore}}">{{moveLabel}}</button>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Cancelar</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shWA}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">{{waTitle}}</div>
+        <sc-for list="{{waOpts}}" as="w" hint-placeholder-count="3"><button class="opt {{w.cls}}" onClick="{{w.pick}}"><span>{{w.label}}</span><span class="rad"></span></button></sc-for>
+        <div style="background:#E8F3EA;border-radius:12px;padding:10px 12px;font-size:14px;font-weight:600;color:#1F3B2A;line-height:1.4">{{waText}}</div>
+        <button class="btn g" onClick="{{sendWA}}">Abrir WhatsApp</button>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Cancelar</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shStatus}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">{{statusTitle}}</div>
+        <button class="st {{stOpenCls}}" onClick="{{setOpen}}"><span class="sd" style="background:#1E7F4F"></span><span style="flex:1"><span style="display:block;font-weight:800;font-size:16px">Abierto</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">Recibiendo pedidos con la hora normal</span></span></button>
+        <button class="st {{stBusyCls}}" onClick="{{toBusy}}"><span class="sd" style="background:#C58A12"></span><span style="flex:1"><span style="display:block;font-weight:800;font-size:16px">Ocupado</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">Siguen entrando, con más tiempo</span></span></button>
+        <button class="st {{stPauseCls}}" onClick="{{toPause}}"><span class="sd" style="background:#15181E"></span><span style="flex:1"><span style="display:block;font-weight:800;font-size:16px">Pausado</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">No entran pedidos nuevos</span></span></button>
+        <button class="lnk" onClick="{{goAgotados}}"><span>Productos agotados</span><span style="color:#4F5968" class="k">{{agotadosCount}}</span></button>
+        <button class="lnk" onClick="{{goPinPrompt}}"><span>Ajustes del equipo</span><span style="color:#4F5968;font-size:13.5px">PIN</span></button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shBusy}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">Modo ocupado</div>
+        <div class="shS">Los pedidos siguen entrando. A cada uno le sumamos tiempo y el cliente ve la hora real.</div>
+        <div style="font-size:13px;font-weight:800;color:#44505F">Sumar a cada pedido</div>
+        <div style="display:flex;gap:6px"><sc-for list="{{busyAddChips}}" as="c" hint-placeholder-count="3"><button class="tchip k {{c.cls}}" onClick="{{c.pick}}">{{c.label}}</button></sc-for></div>
+        <div style="font-size:13px;font-weight:800;color:#44505F">Durante</div>
+        <div style="display:flex;gap:6px"><sc-for list="{{busyDurChips}}" as="c" hint-placeholder-count="3"><button class="tchip k {{c.cls}}" onClick="{{c.pick}}">{{c.label}}</button></sc-for></div>
+        <div style="font-size:14px;font-weight:700;color:#44505F" class="k">{{busyUntilLine}}</div>
+        <button class="btn amb" onClick="{{confirmBusy}}">Activar ocupado</button>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Cancelar</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shPause}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">Pausar pedidos</div>
+        <div class="shS">No entran pedidos nuevos. Los que ya tenés siguen igual.</div>
+        <div style="font-size:13px;font-weight:800;color:#44505F">Por cuánto tiempo</div>
+        <div style="display:flex;gap:6px"><sc-for list="{{pauseDurChips}}" as="c" hint-placeholder-count="3"><button class="tchip {{c.cls}}" style="font-size:14.5px" onClick="{{c.pick}}">{{c.label}}</button></sc-for></div>
+        <div style="font-size:13px;font-weight:800;color:#44505F">Motivo</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{pauseReasonChips}}" as="c" hint-placeholder-count="4"><button class="rchip {{c.cls}}" onClick="{{c.pick}}">{{c.label}}</button></sc-for></div>
+        <button class="btn" onClick="{{confirmPause}}">{{pauseBtnLabel}}</button>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Cancelar</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shBranch}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">Cambiar de sucursal</div>
+        <div class="shS">El equipo dejará de recibir los pedidos de la sucursal actual.</div>
+        <sc-for list="{{branchesSheet}}" as="b" hint-placeholder-count="3"><button class="opt {{b.cls}}" onClick="{{b.pickNow}}"><span><span style="display:block;font-weight:800">{{b.name}}</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">{{b.addr}}</span></span><span class="rad"></span></button></sc-for>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Cancelar</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shLogout}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">¿Cerrar sesión?</div>
+        <div class="shS">Este equipo dejará de recibir pedidos hasta que alguien inicie sesión de nuevo.</div>
+        <button class="btn red" onClick="{{doLogout}}">Cerrar sesión</button>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Cancelar</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{alertOn}}" hint-placeholder-val="{{ false }}">
+      <div class="alert {{alertCls}}">
+        <sc-if value="{{alertStrip}}" hint-placeholder-val="{{ false }}"><div class="astrip" style="background:{{stripBg}};color:{{stripFg}}" role="status"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="flex:0 0 auto"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg><span>{{stripText}}</span></div></sc-if>
+        <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:16px;font-weight:800">{{alertHead}}</span><span style="font-size:13.5px;font-weight:800;background:{{alertAgeBg}};color:{{alertAgeFg}};border-radius:999px;padding:4px 10px" class="k">{{alertAge}}</span></div>
+        <div style="font-size:64px;font-weight:800;letter-spacing:-.03em;line-height:1;margin-top:6px" class="k">{{alertNum}}</div>
+        <div style="font-size:17px;font-weight:700;margin-top:8px;color:#DDF0E4" class="k">{{alertSub}}</div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center">
+          <div class="ring"><span class="ripple"></span><div class="ring2"><span class="bell"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></span></div></div>
+        </div>
+        <div style="font-size:15px;font-weight:800;text-align:center;margin-bottom:4px">{{alertLine1}}</div>
+        <div style="font-size:14px;font-weight:700;text-align:center;color:#DDF0E4;margin-bottom:12px">{{alertLine2}}</div>
+        <button class="btn" style="background:#fff;color:#15181E;min-height:64px;font-size:18px" onClick="{{openAlert}}">Ver pedido</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
+      <div class="toast"><span style="display:flex;align-items:center;gap:10px"><sc-if value="{{toastUndo}}" hint-placeholder-val="{{ false }}"><span class="pop"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#1E7F4F"></circle><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></sc-if><span>{{toastMsg}}</span></span><sc-if value="{{toastUndo}}" hint-placeholder-val="{{ false }}"><button class="undo" onClick="{{undoReady}}">Deshacer</button><span class="drain"></span></sc-if></div>
+    </sc-if>
+  </div>
+
+  <div style="flex:1;display:flex;flex-direction:column;gap:14px;min-width:0">
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><span class="ph">Simular el mundo</span><span style="font-size:22px;font-weight:800" class="k">{{clockLabel}}</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:7px">
+        <button class="sim dark" onClick="{{simNew}}">Entra un pedido</button>
+        <button class="sim" onClick="{{ff1}}">Pasa 1 min</button>
+        <button class="sim" onClick="{{ff5}}">Pasa 5 min</button>
+        <button class="sim" onClick="{{simDriver}}">Se asigna repartidor</button>
+        <button class="sim" onClick="{{simPickup}}">El repartidor recoge</button>
+        <button class="sim" onClick="{{toggleNextManual}}">{{nextManualLabel}}</button>
+        <button class="sim" onClick="{{simDispatchCancel}}">Despacho termina la cancelación</button>
+        <button class="sim" onClick="{{toggleNet}}">{{netLabel}}</button>
+        <button class="sim" onClick="{{toggleSound}}">{{soundLabel}}</button>
+        <sc-if value="{{notSetup}}" hint-placeholder-val="{{ false }}"><button class="sim" onClick="{{skipSetup}}">Saltar configuración</button></sc-if>
+        <button class="sim" onClick="{{reset}}">Reiniciar</button>
+      </div>
+    </div>
+    <div style="background:#fff;border:1px solid #DAD6CE;border-radius:14px;padding:10px 16px">
+      <div class="ph" style="margin:2px 0 4px">Estado</div>
+      <div class="kv"><span>alerta</span><span>{{sAlert}}</span></div>
+      <div class="kv"><span>sin_respuesta</span><span class="k">{{sNoAnswer}}</span></div>
+      <div class="kv"><span>despacho_avisado</span><span>{{sDispatch}}</span></div>
+      <div class="kv"><span>sucursal</span><span class="k">{{sControl}}</span></div>
+      <div class="kv"><span>conexion</span><span>{{sNet}}</span></div>
+      <div class="kv"><span>acciones_por_enviar</span><span class="k">{{sPending}}</span></div>
+      <div class="kv"><span>agotados</span><span class="k">{{agotadosCount}}</span></div>
+      <div class="kv" style="border-bottom:none"><span>pin_encargado</span><span class="k">{{sPin}}</span></div>
+    </div>
+    <div style="background:#F7F5F1;border:1px solid #DAD6CE;border-radius:14px;padding:8px 16px;flex:1;min-height:0;overflow:hidden">
+      <div class="ph" style="margin:4px 0 2px">Bitácora (más reciente arriba)</div>
+      <sc-for list="{{log}}" as="l" hint-placeholder-count="5"><div class="lg">{{l.t}}</div></sc-for>
+    </div>
+    <div style="font-size:12px;font-weight:600;color:#4F5968;line-height:1.4">Datos de prueba. «Pasa 1 / 5 min» adelanta el reloj: así se ve la escalera de sin respuesta (2 min → Despacho, 5 min → pausa), el fin automático de Ocupado y la Pausa, y que un pedido abierto sin decidir vuelve a sonar al minuto. Movimiento solo con CSS; con «reducir movimiento» del sistema queda quieto todo menos el color de la alerta (y su sonido), por seguridad. El sonido de prueba arranca apagado.</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1000,"height":900}}'>
+var BRANCHES = [['Los Próceres', 'Fonda Mirador · Blvd. Los Próceres'], ['Circunvalación', 'Fonda Mirador · Av. Circunvalación'], ['Altara', 'Fonda Mirador · Res. Altara']];
+var MENU = ['Baleada sencilla', 'Baleada con huevo y aguacate', 'Pollo frito 3 piezas', 'Tajadas con carne', 'Horchata grande', 'Refresco 600 ml'];
+var TEMPLATES = [
+  { type: 'Entrega', cust: 'Andrea M.', items: [[2, 'Baleada con huevo y aguacate', ''], [1, 'Pollo frito 3 piezas', 'Sin picante'], [1, 'Horchata grande', '']], note: '«Sin cebolla en las baleadas, por favor»', total: 'L 485', pay: 'pagado con tarjeta', online: true },
+  { type: 'Pickup', cust: 'Mario L.', items: [[3, 'Baleada sencilla', ''], [2, 'Horchata grande', '']], note: '', total: 'L 210', pay: 'paga en efectivo al recoger', online: false },
+  { type: 'Entrega', cust: 'Daniela P.', items: [[1, 'Tajadas con carne', 'Extra repollo'], [1, 'Refresco 600 ml', '']], note: '«Tocar el timbre dos veces»', total: 'L 260', pay: 'pagado con tarjeta', online: true }
+];
+var BASE = 18;
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = this.fresh(true); }
+  fresh(withSetup) {
+    return { setup: withSetup ? 'login' : 'done', loc: 'Los Próceres', pin: withSetup ? '' : '1234', pinEntry: '', pinErr: false, battery: false,
+      view: 'list', tab: 'n', sheet: null, cur: null, orders: [], seq: 0, clock: 19 * 60 + 20,
+      control: { mode: 'open' }, offline: false, agotados: {}, delta: 0, reason: null, gone: {}, moreSel: 5, nextManual: false,
+      busyAdd: 15, busyDur: 60, soundOn: false, entered: null, pauseDur: 30, pauseReason: 'Cocina llena', waSel: 'agotado', toast: null, notified: {},
+      log: [withSetup ? 'Equipo nuevo · falta configurarlo' : 'Equipo listo en Los Próceres · esperando pedidos'] };
+  }
+  fmt(m) { var h = Math.floor(m / 60) % 24, mm = m % 60; return (((h + 11) % 12) + 1) + ':' + (mm < 10 ? '0' : '') + mm; }
+  push(log, line) { return [this.fmt(this.state.clock) + ' · ' + line].concat(log).slice(0, 12); }
+  find(id) { var o = null; this.state.orders.forEach(function (x) { if (x.id === id) o = x; }); return o; }
+  upd(orders, id, patch) { return orders.map(function (x) { return x.id === id ? Object.assign({}, x, patch) : x; }); }
+  readyMin(o) { return o.acceptedAt + o.committed + o.extra; }
+  qty(o) { var n = 0; o.items.forEach(function (i) { n += i[0]; }); return n; }
+  toast(msg, undoId) {
+    var self = this; clearTimeout(this._tt);
+    this.setState({ toast: { msg: msg, undo: undoId || null } });
+    this._tt = setTimeout(function () { self.setState({ toast: null }); }, 5000);
+  }
+  flash(id) { var self = this; clearTimeout(this._ft); this._ft = setTimeout(function () { self.setState({ entered: null }); }, 400); this.setState({ entered: id }); }
+  audio() { try { if (!this._ctx) { var A = window.AudioContext || window.webkitAudioContext; if (A) this._ctx = new A(); } if (this._ctx && this._ctx.resume) this._ctx.resume(); } catch (e) {} return this._ctx; }
+  beep() {
+    var c = this._ctx; if (!c) return;
+    [0, 0.22].forEach(function (t) { var o = c.createOscillator(), g = c.createGain(); o.type = 'square'; o.frequency.value = 880; g.gain.setValueAtTime(0.0001, c.currentTime + t); g.gain.exponentialRampToValueAtTime(0.18, c.currentTime + t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + t + 0.16); o.connect(g); g.connect(c.destination); o.start(c.currentTime + t); o.stop(c.currentTime + t + 0.18); });
+  }
+  componentDidUpdate() {
+    var s = this.state, self = this;
+    var ringing = s.soundOn && s.setup === 'done' && s.orders.some(function (o) { return o.status === 'new' && !o.opened; });
+    if (ringing && !this._bi) { this.beep(); this._bi = setInterval(function () { self.beep(); }, 1000); }
+    if (!ringing && this._bi) { clearInterval(this._bi); this._bi = null; }
+  }
+  componentWillUnmount() { clearInterval(this._bi); clearTimeout(this._tt); clearTimeout(this._ft); }
+  advance(n) {
+    var s = this.state, self = this;
+    var clock = s.clock, orders = s.orders.slice(), control = Object.assign({}, s.control), notified = Object.assign({}, s.notified), log = s.log;
+    var say = function (line) { log = [self.fmt(clock) + ' · ' + line].concat(log).slice(0, 12); };
+    for (var i = 0; i < n; i++) {
+      clock++;
+      if ((control.mode === 'busy' || control.mode === 'paused') && control.until != null && clock >= control.until) {
+        say(control.mode === 'busy' ? 'Ocupado se apagó solo' : 'La pausa terminó sola · vuelven a entrar pedidos'); control = { mode: 'open' };
+      }
+      orders = orders.map(function (o) {
+        if (o.status === 'new' && o.opened && clock - o.openedAt >= 1) { say('#' + o.num + ' abierto sin decidir → vuelve a sonar'); return Object.assign({}, o, { opened: false }); }
+        return o;
+      });
+      var waiting = orders.filter(function (o) { return o.status === 'new' && !o.opened; }).sort(function (a, b) { return a.createdAt - b.createdAt; });
+      if (waiting.length) {
+        var w = waiting[0], age = clock - w.createdAt;
+        if (age >= 2 && !notified[w.id]) { notified[w.id] = true; say('2 min sin respuesta en #' + w.num + ' → avisamos a Despacho'); }
+        if (age >= 5 && control.mode !== 'paused') { control = { mode: 'paused', until: null, auto: true }; say('5 min sin respuesta → sucursal pausada (no se cancela nada)'); }
+      }
+    }
+    this.setState({ clock: clock, orders: orders, control: control, notified: notified, log: log });
+  }
+  renderVals() {
+    var s = this.state, self = this, set = function (o) { self.setState(o); };
+    var setupDone = s.setup === 'done';
+    var off = s.offline, ctl = s.control;
+    var busyOn = ctl.mode === 'busy', pausedOn = ctl.mode === 'paused';
+    var baseNow = BASE + (busyOn ? ctl.add : 0);
+    var news = s.orders.filter(function (o) { return o.status === 'new'; }).sort(function (a, b) { return a.createdAt - b.createdAt; });
+    var preps = s.orders.filter(function (o) { return o.status === 'prep'; }).sort(function (a, b) { return self.readyMin(a) - self.readyMin(b); });
+    var readys = s.orders.filter(function (o) { return o.status === 'ready'; });
+    var rejreqs = s.orders.filter(function (o) { return o.status === 'rejreq'; });
+    var unopened = news.filter(function (o) { return !o.opened; });
+    var alertOrder = setupDone && unopened.length ? unopened[0] : null;
+    var pendingN = s.orders.filter(function (o) { return o.pending; }).length;
+    var lateTag = function (left) {
+      if (left <= 0) return { cls: 'late', label: left === 0 ? 'Listo ahora' : 'Atrasado ' + (-left) + ' min' };
+      if (left <= 5) return { cls: 'soon', label: 'Faltan ' + left + ' min' };
+      return { cls: '', label: 'Faltan ' + left + ' min' };
+    };
+    var openOrder = function (o) { return function () {
+      var orders = s.orders;
+      if (o.status === 'new' && !o.opened) orders = self.upd(orders, o.id, { opened: true, openedAt: s.clock });
+      set({ orders: orders, cur: o.id, view: 'detail', sheet: null, delta: 0, tab: o.status === 'new' ? 'n' : s.tab });
+    }; };
+    var cur = s.cur ? this.find(s.cur) : null;
+    var d = { items: [] };
+    if (cur) {
+      var isNew = cur.status === 'new', isPrep = cur.status === 'prep', isReady = cur.status === 'ready';
+      var rm = isPrep || isReady ? this.readyMin(cur) : 0;
+      var lt = lateTag(rm - s.clock);
+      var info = '';
+      if (isPrep) {
+        if (off) info = 'Sin conexión no se puede pedir más tiempo ni escribirle al cliente. «Listo» se guarda y se envía al volver.';
+        else if (cur.driver) info = 'Carlos ya va en camino: la hora ya no se puede mover. Si te atrasás, avisale a Despacho.';
+        else if (cur.extra >= 30) info = 'Ya sumaste 30 min. Para más tiempo, hablá con Despacho.';
+      }
+      if (isReady && off) info = 'Sin conexión. Se envía al volver.';
+      d = {
+        title: '#' + cur.num + ' · ' + cur.type, cust: cur.cust, initial: cur.cust.charAt(0),
+        items: cur.items.map(function (i) { return { q: i[0] + '×', name: i[1], mod: i[2], hasMod: !!i[2] }; }),
+        note: cur.note, hasNote: !!cur.note, payLine: cur.total + ' · ' + cur.pay,
+        isNew: isNew, isPrep: isPrep, isActive: isPrep || isReady, isDelivery: cur.type === 'Entrega',
+        showTime: isPrep || isReady,
+        timeLine: isReady ? 'Listo a las ' + this.fmt(cur.realAt) : 'Listo a las ' + this.fmt(rm),
+        tag: isReady ? (cur.realAt <= rm ? 'A tiempo' : 'Con ' + (cur.realAt - rm) + ' min de atraso') : lt.label,
+        tagCls: isReady ? '' : lt.cls,
+        driverName: cur.driver ? 'Carlos' : (isReady ? 'Buscando repartidor' : 'Repartidor programado'),
+        driverSub: cur.driver ? (isReady ? 'En camino · llega en 3 min' : 'Asignado · llega ' + this.fmt(rm - 1)) : (isReady ? 'Lo pedimos ahora mismo' : 'Sale a tiempo para llegar ' + this.fmt(rm - 1)),
+        showWA: !off, canMore: isPrep && !off && !cur.driver && cur.extra < 30,
+        info: info, hasInfo: !!info,
+        accept: function () {
+          var committed = baseNow + s.delta;
+          var orders = self.upd(s.orders, cur.id, { status: 'prep', acceptedAt: s.clock, committed: committed, extra: 0, driver: false, pending: off });
+          self.flash(cur.id); set({ orders: orders, view: 'list', tab: 'p', cur: null, delta: 0, log: self.push(s.log, 'Aceptado #' + cur.num + ' · listo en ' + committed + ' min (' + self.fmt(s.clock + committed) + ')' + (off ? ' · por enviar' : ' · el despacho programa al repartidor')) });
+        },
+        ready: function () {
+          var orders = self.upd(s.orders, cur.id, { status: 'ready', realAt: s.clock, pending: off || cur.pending });
+          self.flash(cur.id); set({ orders: orders, view: 'list', tab: 'l', cur: null, log: self.push(s.log, 'Listo #' + cur.num + ' · hora real ' + self.fmt(s.clock) + (off ? ' · por enviar' : '')) });
+          self.toast(off ? '#' + cur.num + ' guardado como listo · se envía al volver' : '#' + cur.num + ' marcado listo', cur.id);
+        }
+      };
+    }
+    var reasonsDef = [['agotado', 'Se acabó un producto'], ['saturada', 'Cocina saturada'], ['cerrando', 'Estamos por cerrar'], ['otro', 'Otro motivo']];
+    var reasonLabel = ''; reasonsDef.forEach(function (r) { if (r[0] === s.reason) reasonLabel = r[1].toLowerCase(); });
+    var goneNames = cur ? cur.items.map(function (i) { return i[1]; }).filter(function (n) { return s.gone[n]; }) : [];
+    var finalizeReject = function () {
+      if (!cur) return;
+      var ag = Object.assign({}, s.agotados); goneNames.forEach(function (n) { ag[n] = true; });
+      var next = s.reason === 'saturada' ? 'busy' : (s.reason === 'cerrando' ? 'pause' : null);
+      var online = !!cur.online;
+      var manual = !!s.nextManual;
+      set({ orders: self.upd(s.orders, cur.id, { status: manual ? 'rejreq' : 'rejected' }), agotados: ag, sheet: next, view: 'list', tab: 'n', cur: null, reason: null, gone: {}, nextManual: false,
+        log: self.push(s.log, 'Rechazado #' + cur.num + ' · ' + reasonLabel + (goneNames.length ? ' · agotado: ' + goneNames.join(', ') : '') + (manual ? ' · la cancelación queda en revisión: Despacho la termina' : (online ? ' · cancelado y devolución del dinero' : ' · cancelado'))) });
+      if (!manual) self.toast('Pedido #' + cur.num + ' cancelado. Sherpa le avisa al cliente.' + (online ? ' Le devolvemos el dinero al cliente.' : ''));
+    };
+    var waDefs = [['agotado', 'Se acabó un producto'], ['pregunta', 'Tenemos una pregunta'], ['propio', 'Escribir mi propio mensaje']];
+    var waTexts = { agotado: 'Se nos acabó un producto: ¿te lo podemos cambiar por otro?', pregunta: 'Tenemos una pregunta sobre tu pedido.', propio: '' };
+    var mkChips = function (vals, sel, key, fmtF) { return vals.map(function (v) { var o = {}; o[key] = v; return { label: fmtF(v), cls: sel === v ? 'on' : '', pick: function () { set(o); } }; }); };
+    var press = function (dg) { return function () {
+      var e = s.pinEntry + dg;
+      if (e.length < 4) { set({ pinEntry: e, pinErr: false }); return; }
+      if (s.setup === 'pin') { set({ pin: e, pinEntry: '', setup: 'done', view: 'list', tab: 'n', log: self.push(s.log, 'Equipo configurado en ' + s.loc + ' · PIN creado') }); return; }
+      if (e === s.pin) set({ pinEntry: '', pinErr: false, view: 'settings' });
+      else set({ pinEntry: '', pinErr: true });
+    }; };
+    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map(function (k) {
+      if (k === '') return { blank: true, real: false };
+      if (k === 'del') return { blank: false, real: true, label: 'Borrar', size: '16px', press: function () { set({ pinEntry: s.pinEntry.slice(0, -1) }); } };
+      return { blank: false, real: true, label: k, size: '22px', press: press(k) };
+    });
+    var isKeypad = s.setup === 'pin' || (setupDone && s.view === 'pinPrompt');
+    var pill = off ? ['off', 'Sin conexión'] : (pausedOn ? ['pz', 'Pausado'] : (busyOn ? ['busy', 'Ocupado'] : ['', 'Abierto']));
+    var view = s.view;
+    var age = alertOrder ? s.clock - alertOrder.createdAt : 0;
+    return {
+      isLogin: s.setup === 'login', isBranch: s.setup === 'branch', isChecks: s.setup === 'checks', isKeypad: isKeypad, isPinPrompt: setupDone && view === 'pinPrompt',
+      notSetup: !setupDone,
+      goBranch: function () { set({ setup: 'branch' }); },
+      branches: BRANCHES.map(function (b) { return { name: b[0], addr: b[1], cls: s.loc === b[0] ? 'on' : '', pick: function () { set({ loc: b[0] }); } }; }),
+      branchesSheet: BRANCHES.map(function (b) { return { name: b[0], addr: b[1], cls: s.loc === b[0] ? 'on' : '', pickNow: function () { set({ loc: b[0], sheet: null, log: self.push(s.log, 'Equipo movido a ' + b[0] + ' · recibe solo sus pedidos') }); self.toast('Ahora este equipo recibe los pedidos de ' + b[0]); } }; }),
+      useBranchLabel: 'Usar ' + s.loc,
+      goChecks: function () { set({ setup: 'checks' }); },
+      batteryText: s.battery ? 'Apagado para esta app' : 'Tiene que estar apagado para esta app',
+      batteryPending: !s.battery, batteryOk: s.battery,
+      fixBattery: function () { set({ battery: true }); },
+      testAlert: function () { self.toast('Sonando la alerta de prueba a todo volumen…'); },
+      checksBtnCls: s.battery ? '' : 'dis',
+      goPinCreate: function () { if (s.battery) set({ setup: 'pin', pinEntry: '' }); },
+      keypadTitle: s.setup === 'pin' ? 'Creá el PIN del encargado' : 'PIN del encargado',
+      keypadSub: s.setup === 'pin' ? 'Protege cambiar de sucursal y cerrar sesión. Para aceptar pedidos no hace falta.' : 'Para entrar a los ajustes del equipo.',
+      pinDots: [0, 1, 2, 3].map(function (i) { return { cls: i < s.pinEntry.length ? 'f' : '' }; }),
+      pinErrText: s.pinErr ? 'PIN incorrecto. Probá de nuevo.' : '',
+      keys: keys,
+      forgotPin: function () { set(self.fresh(true)); },
+      isMain: setupDone && !isKeypad,
+      topIsList: view === 'list', topIsBack: view !== 'list',
+      loc: s.loc, pillCls: pill[0], pillLabel: pill[1],
+      pillRing: !off && !pausedOn && busyOn, pillDot: off || pausedOn || !busyOn,
+      pillRingOff: busyOn && ctl.dur ? (40.84 * (1 - Math.max(0, ctl.until - s.clock) / ctl.dur)).toFixed(2) : '0',
+      pillRingAria: busyOn ? 'Quedan ' + Math.max(0, ctl.until - s.clock) + ' min de Ocupado' : '',
+      soundLabel: s.soundOn ? 'Sonido de alerta: encendido' : 'Sonido de alerta: apagado',
+      toggleSound: function () { if (!s.soundOn) self.audio(); set({ soundOn: !s.soundOn }); },
+      openStatus: function () { set({ sheet: 'status' }); },
+      bannerOff: off, bannerPause: !off && pausedOn, bannerBusy: !off && !pausedOn && busyOn,
+      pauseText: ctl.auto ? 'Pausamos la sucursal porque nadie respondió. No entran pedidos nuevos.' : ('Pedidos pausados' + (ctl.until != null ? ' · hasta ' + this.fmt(ctl.until) : '')),
+      busyText: busyOn ? 'Ocupado +' + ctl.add + ' min · hasta ' + this.fmt(ctl.until) : '',
+      resume: function () { set({ control: { mode: 'open' }, log: self.push(s.log, 'Pedidos reanudados') }); },
+      clearBusy: function () { set({ control: { mode: 'open' }, log: self.push(s.log, 'Ocupado quitado') }); },
+      isList: view === 'list', isDetail: view === 'detail' && !!cur, isAgotados: view === 'agotados', isSettings: view === 'settings',
+      goList: function () { set({ view: 'list', cur: null, pinEntry: '', pinErr: false }); },
+      tabN: s.tab === 'n' ? 'on' : '', tabP: s.tab === 'p' ? 'on' : '', tabL: s.tab === 'l' ? 'on' : '',
+      cN: news.length + rejreqs.length, cP: preps.length, cL: readys.length,
+      goN: function () { set({ tab: 'n' }); }, goP: function () { set({ tab: 'p' }); }, goL: function () { set({ tab: 'l' }); },
+      showN: s.tab === 'n', showP: s.tab === 'p', showL: s.tab === 'l',
+      emptyN: !news.length && !rejreqs.length, emptyP: !preps.length, emptyL: !readys.length,
+      newCards: rejreqs.map(function (o) {
+        return { title: '#' + o.num + ' · ' + o.type, sub: self.qty(o) + ' productos · ' + o.total + ' · ' + o.cust, tag: 'Despacho termina la cancelación', tagCls: '', open: openOrder(o),
+          ringOff: '81.68', ringColor: '#15181E', ladder: 'Despacho termina la cancelación', ringAria: 'Despacho termina la cancelación' };
+      }).concat(news.map(function (o) {
+        var a = s.clock - o.createdAt;
+        return { title: '#' + o.num + ' · ' + o.type, sub: self.qty(o) + ' productos · ' + o.total + ' · ' + o.cust,
+          tag: o.opened ? 'Abierto · sin decidir' : (a >= 2 ? 'Sin abrir · ' + a + ' min' : 'Nuevo'), tagCls: o.opened ? '' : (a >= 2 ? 'late' : 'new'), open: openOrder(o),
+          ringOff: (81.68 * (1 - Math.min(a / 5, 1))).toFixed(2), ringColor: a >= 5 ? '#B42318' : (a >= 2 ? '#C58A12' : '#15181E'),
+          ladder: a < 2 ? 'Despacho en ' + (2 - a) + ' min' : (a < 5 ? 'Despacho avisado · pausa en ' + (5 - a) + ' min' : 'Pausamos la sucursal por falta de respuesta'),
+          ringAria: a + ' de 5 minutos sin decidir' };
+      })),
+      prepCards: preps.map(function (o) {
+        var rm = self.readyMin(o), t = lateTag(rm - s.clock);
+        return { enterCls: s.entered === o.id ? 'enter' : '', title: '#' + o.num + ' · ' + o.type, time: self.fmt(rm), tmColor: t.cls === 'late' ? '#9A1C12' : '#15181E', tag: t.label, tagCls: t.cls, pending: !!o.pending,
+          driver: o.type === 'Pickup' ? 'El cliente pasa a recoger' : (o.driver ? 'Carlos · llega ' + self.fmt(rm - 1) : 'Repartidor programado · ' + self.fmt(rm - 1)), open: openOrder(o) };
+      }),
+      readyCards: readys.map(function (o) {
+        var isP = o.type === 'Pickup';
+        return { enterCls: s.entered === o.id ? 'enter' : '', title: '#' + o.num + ' · ' + o.type, tag: 'Listo ' + self.fmt(o.realAt), pending: !!o.pending, isPickup: isP,
+          line: isP ? 'Esperando al cliente' : (o.driver ? 'Carlos llega en 3 min' : 'Buscando repartidor ahora'), lineCls: (!isP && o.driver) ? 'ok' : '',
+          handed: function () { set({ orders: self.upd(s.orders, o.id, { status: 'done' }), log: self.push(s.log, '#' + o.num + ' entregado al cliente') }); } };
+      }),
+      d: d,
+      chips: [-5, 0, 5, 10, 15].map(function (v) { return { label: v === 0 ? String(baseNow) : (v < 0 ? '−' + (-v) : '+' + v), cls: s.delta === v ? 'on' : '', pick: function () { set({ delta: v }); } }; }),
+      acceptLabel: 'Aceptar · listo en ' + (baseNow + s.delta) + ' min',
+      busyExplain: busyOn, busyExplainText: busyOn ? baseNow + ' = 18 de siempre + ' + ctl.add + ' de Ocupado' : '',
+      openReject: function () { set({ sheet: 'reject' }); },
+      shReject: s.sheet === 'reject', shItems: s.sheet === 'items', shMore: s.sheet === 'more', shWA: s.sheet === 'wa', shStatus: s.sheet === 'status',
+      shBusy: s.sheet === 'busy', shPause: s.sheet === 'pause', shBranch: s.sheet === 'branch', shLogout: s.sheet === 'logout',
+      reasons: reasonsDef.map(function (r) { return { label: r[1], cls: s.reason === r[0] ? 'on' : '', pick: function () { set({ reason: r[0] }); } }; }),
+      isOtro: s.reason === 'otro', isAgotadoReason: s.reason === 'agotado', isOtherReason: s.reason !== 'agotado',
+      rejBtnCls: s.reason ? '' : 'dis',
+      confirmReject: function () { if (!s.reason) return; if (s.reason === 'agotado' && !goneNames.length) return; finalizeReject(); },
+      toItems: function () { set({ sheet: 'items', gone: {} }); },
+      rejItems: cur ? cur.items.map(function (i) { return { label: i[1], cls: s.gone[i[1]] ? 'on' : '', pick: function () { var g = Object.assign({}, s.gone); g[i[1]] = !g[i[1]]; set({ gone: g }); } }; }) : [],
+      itemsBtnCls: goneNames.length ? '' : 'dis',
+      closeSheet: function () { set({ sheet: null }); },
+      openMore: function () { set({ sheet: 'more', moreSel: 5 }); },
+      moreChips: [5, 10, 15].map(function (v) { var allowed = !!cur && cur.extra + v <= 30; return { label: '+' + v, cls: (s.moreSel === v ? 'on' : '') + (allowed ? '' : ' dis'), pick: function () { if (allowed) set({ moreSel: v }); } }; }),
+      newReadyAt: cur && cur.status === 'prep' ? this.fmt(this.readyMin(cur) + s.moreSel) : '',
+      moveLabel: cur && cur.status === 'prep' ? 'Mover a las ' + this.fmt(this.readyMin(cur) + s.moreSel) : '',
+      confirmMore: function () { if (!cur || cur.extra + s.moreSel > 30) return; set({ orders: self.upd(s.orders, cur.id, { extra: cur.extra + s.moreSel }), sheet: null, log: self.push(s.log, 'Más tiempo #' + cur.num + ' +' + s.moreSel + ' min → listo ' + self.fmt(self.readyMin(cur) + s.moreSel) + ' · se avisa al cliente') }); },
+      openWA: function () { set({ sheet: 'wa', waSel: 'agotado' }); },
+      waTitle: cur ? 'Escribile a ' + cur.cust.split(' ')[0] : '',
+      waOpts: waDefs.map(function (w) { return { label: w[1], cls: s.waSel === w[0] ? 'on' : '', pick: function () { set({ waSel: w[0] }); } }; }),
+      waText: cur ? 'Hola ' + cur.cust.split(' ')[0] + ', te escribimos de Fonda Mirador por tu pedido #' + cur.num + '. ' + waTexts[s.waSel] : '',
+      sendWA: function () { set({ sheet: null, log: self.push(s.log, 'WhatsApp abierto con el mensaje listo (lo envía el personal)') }); self.toast('Abriendo WhatsApp con el mensaje listo…'); },
+      statusTitle: 'Estado de ' + s.loc,
+      stOpenCls: ctl.mode === 'open' ? 'on' : '', stBusyCls: busyOn ? 'on' : '', stPauseCls: pausedOn ? 'on' : '',
+      setOpen: function () { set({ control: { mode: 'open' }, sheet: null, log: self.push(s.log, 'Sucursal abierta con la hora normal') }); },
+      toBusy: function () { set({ sheet: 'busy' }); }, toPause: function () { set({ sheet: 'pause' }); },
+      goAgotados: function () { set({ view: 'agotados', sheet: null, cur: null }); },
+      goPinPrompt: function () { set({ view: 'pinPrompt', sheet: null, pinEntry: '', pinErr: false, cur: null }); },
+      busyAddChips: mkChips([10, 15, 20], s.busyAdd, 'busyAdd', function (v) { return '+' + v + ' min'; }),
+      busyDurChips: mkChips([30, 60, 90], s.busyDur, 'busyDur', function (v) { return v === 30 ? '30 min' : (v === 60 ? '1 hora' : '1 h 30'); }),
+      busyUntilLine: 'Se apaga solo a las ' + this.fmt(s.clock + s.busyDur) + '.',
+      confirmBusy: function () { set({ control: { mode: 'busy', add: s.busyAdd, dur: s.busyDur, until: s.clock + s.busyDur }, sheet: null, log: self.push(s.log, 'Ocupado +' + s.busyAdd + ' min hasta ' + self.fmt(s.clock + s.busyDur)) }); },
+      pauseDurChips: mkChips([30, 60, 0], s.pauseDur, 'pauseDur', function (v) { return v === 0 ? 'Hasta reanudar' : (v === 30 ? '30 min' : '1 hora'); }),
+      pauseReasonChips: mkChips(['Cocina llena', 'Falta personal', 'Problema técnico', 'Otro'], s.pauseReason, 'pauseReason', function (v) { return v; }),
+      pauseBtnLabel: s.pauseDur === 0 ? 'Pausar hasta reanudar' : 'Pausar hasta las ' + this.fmt(s.clock + s.pauseDur),
+      confirmPause: function () { set({ control: { mode: 'paused', until: s.pauseDur === 0 ? null : s.clock + s.pauseDur, reason: s.pauseReason }, sheet: null, log: self.push(s.log, 'Pausado (' + s.pauseReason.toLowerCase() + ')' + (s.pauseDur ? ' hasta ' + self.fmt(s.clock + s.pauseDur) : '')) }); },
+      agotadosSub: 'Lo que marqués acá no se puede pedir en ' + s.loc + '. El menú y los precios son de la marca.',
+      agotadosCount: String(Object.keys(s.agotados).filter(function (k) { return s.agotados[k]; }).length),
+      menuRows: MENU.slice().sort(function (a, b) { return (s.agotados[b] ? 1 : 0) - (s.agotados[a] ? 1 : 0); }).map(function (m) {
+        var out = !!s.agotados[m];
+        return { name: m, out: out, lbl: out ? 'Agotado' : 'Disponible', swCls: out ? 'off' : '', aria: m + (out ? ': agotado. Activar' : ': disponible. Marcar agotado'),
+          toggle: function () { var ag = Object.assign({}, s.agotados); ag[m] = !out; set({ agotados: ag, log: self.push(s.log, m + (out ? ' disponible otra vez' : ' marcado agotado en ' + s.loc)) }); } };
+      }),
+      openBranchSheet: function () { set({ sheet: 'branch' }); },
+      askLogout: function () { set({ sheet: 'logout' }); },
+      doLogout: function () { set(self.fresh(true)); },
+      alertOn: !!alertOrder,
+      alertHead: unopened.length > 1 ? unopened.length + ' pedidos nuevos' : 'Pedido nuevo',
+      alertAge: alertOrder ? 'hace ' + age + ' min' : '',
+      alertAgeBg: age >= 2 ? '#fff' : 'rgba(255,255,255,.18)', alertAgeFg: age >= 2 ? '#9A1C12' : '#fff',
+      alertNum: alertOrder ? '#' + alertOrder.num : '',
+      alertSub: alertOrder ? alertOrder.type + ' · ' + this.qty(alertOrder) + ' productos · ' + alertOrder.total : '',
+      alertLine1: age >= 2 ? 'Tocá «Ver pedido» para decidir' : 'Suena a todo volumen hasta que lo abrás',
+      alertCls: age >= 5 ? 'fast' : '', alertStrip: age >= 2,
+      stripBg: age >= 5 ? '#B42318' : '#F6E7C8', stripFg: age >= 5 ? '#fff' : '#5A3605',
+      stripText: age >= 5 ? 'Sucursal en pausa · este pedido sigue esperando' : 'Despacho avisado · aceptá o rechazá',
+      alertLine2: age >= 5 ? 'Reanudá la sucursal desde la banda negra cuando estés listo' : (age >= 2 ? 'A los 5 min sin respuesta pausamos la sucursal' : ''),
+      openAlert: function () { if (alertOrder) openOrder(alertOrder)(); },
+      hasToast: !!s.toast, toastMsg: s.toast ? s.toast.msg : '', toastUndo: !!(s.toast && s.toast.undo),
+      undoReady: function () {
+        var id = s.toast && s.toast.undo; if (!id) return; clearTimeout(self._tt);
+        set({ orders: self.upd(s.orders, id, { status: 'prep', realAt: null }), toast: null, view: 'detail', cur: id, tab: 'p', log: self.push(s.log, 'Deshecho · vuelve a En preparación') });
+      },
+      clockLabel: this.fmt(s.clock),
+      simNew: function () {
+        if (!setupDone) { set({ log: self.push(s.log, '(Primero configurá el equipo o tocá «Saltar configuración»)') }); return; }
+        if (off) { set({ log: self.push(s.log, 'Sin conexión: el pedido no llega al equipo; el servidor igual cuenta el tiempo sin respuesta') }); return; }
+        if (pausedOn) { set({ log: self.push(s.log, 'Sucursal pausada: Sherpa no envía pedidos nuevos (el cliente ve «no está recibiendo pedidos»)') }); return; }
+        var t = TEMPLATES[s.seq % TEMPLATES.length], num = 47 + s.seq;
+        var o = Object.assign({ id: 'o' + s.seq, num: num, status: 'new', createdAt: s.clock, opened: false, openedAt: null, acceptedAt: null, committed: 0, extra: 0, driver: false, realAt: null, pending: false }, t);
+        set({ orders: s.orders.concat([o]), seq: s.seq + 1, log: self.push(s.log, 'Entra #' + num + ' (' + t.type + ') · alerta a todo volumen') });
+      },
+      ff1: function () { self.advance(1); }, ff5: function () { self.advance(5); },
+      simDriver: function () {
+        var c = preps.filter(function (o) { return o.type === 'Entrega' && !o.driver; })[0];
+        if (!c) { set({ log: self.push(s.log, '(No hay entregas en preparación sin repartidor)') }); return; }
+        set({ orders: self.upd(s.orders, c.id, { driver: true }), log: self.push(s.log, 'Carlos asignado a #' + c.num + ' → «Más tiempo» se bloquea') });
+      },
+      simPickup: function () {
+        var c = readys.filter(function (o) { return o.type === 'Entrega'; })[0];
+        if (!c) { set({ log: self.push(s.log, '(No hay entregas listas para recoger)') }); return; }
+        set({ orders: self.upd(s.orders, c.id, { status: 'done', driver: true }), view: s.cur === c.id ? 'list' : s.view, cur: s.cur === c.id ? null : s.cur, log: self.push(s.log, 'El repartidor recogió #' + c.num + ' · sale de Listos y se apaga WhatsApp') });
+      },
+      simDispatchCancel: function () {
+        var c = rejreqs[0];
+        if (!c) { set({ log: self.push(s.log, '(No hay cancelaciones en revisión)') }); return; }
+        set({ orders: self.upd(s.orders, c.id, { status: 'rejected' }), view: s.cur === c.id ? 'list' : s.view, cur: s.cur === c.id ? null : s.cur, log: self.push(s.log, 'Despacho terminó la cancelación de #' + c.num + ' · sale de Nuevos') });
+      },
+      nextManualLabel: s.nextManual ? 'Próximo rechazo: en revisión (activo)' : 'Próximo rechazo queda en revisión',
+      toggleNextManual: function () { set({ nextManual: !s.nextManual, log: self.push(s.log, s.nextManual ? 'Próximo rechazo: se cancela normal' : 'Próximo rechazo: la cancelación queda en revisión (Despacho la termina)') }); },
+      netLabel: off ? 'Vuelve la conexión' : 'Se corta la conexión',
+      toggleNet: function () {
+        if (off) {
+          var n = s.orders.filter(function (o) { return o.pending; }).length;
+          set({ offline: false, orders: s.orders.map(function (o) { return o.pending ? Object.assign({}, o, { pending: false }) : o; }), log: self.push(s.log, 'Conexión restablecida · ' + n + ' acciones enviadas') });
+          self.toast('Conexión restablecida · ' + n + (n === 1 ? ' acción enviada' : ' acciones enviadas'));
+        } else set({ offline: true, sheet: null, log: self.push(s.log, 'Sin conexión · banda fija y píldora «Sin conexión»') });
+      },
+      skipSetup: function () { set({ setup: 'done', pin: '1234', battery: true, view: 'list', log: self.push(s.log, 'Configuración saltada · PIN de prueba 1234') }); },
+      reset: function () { clearTimeout(self._tt); set(self.fresh(true)); },
+      sAlert: alertOrder ? 'sonando' : '—',
+      sNoAnswer: alertOrder ? age + ' min' : '—',
+      sDispatch: alertOrder && s.notified[alertOrder.id] ? 'sí' : 'no',
+      sControl: off ? 'sin conexión' : (pausedOn ? 'pausada' + (ctl.auto ? ' (sin respuesta)' : '') + (ctl.until != null ? ' hasta ' + this.fmt(ctl.until) : '') : (busyOn ? 'ocupada +' + ctl.add + ' hasta ' + this.fmt(ctl.until) : 'abierta')),
+      sNet: off ? 'cortada' : 'ok',
+      sPending: String(pendingN),
+      sPin: s.pin ? s.pin : '(se crea en la configuración)',
+      log: s.log.map(function (t) { return { t: t }; })
+    };
+  }
+}
+</script>
+</body>
+</html>

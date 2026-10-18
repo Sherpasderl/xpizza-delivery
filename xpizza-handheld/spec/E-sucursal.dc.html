@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>E · Estado de la sucursal</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Manrope,system-ui,sans-serif;color:#15181E}
+  button,input{font-family:inherit}
+  .k{font-variant-numeric:tabular-nums}
+  .wrap{background:#EDEAE4;padding:56px;display:flex;align-items:flex-start;width:3184px;height:1060px}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:12px;width:360px;flex:0 0 auto}
+  .phone{width:360px;height:740px;background:#F4F2EE;border:1px solid #D7D3CB;border-radius:30px;display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:0 12px 30px rgba(20,24,30,.09)}
+  .top{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 10px}
+  .loc{font-weight:800;font-size:15px;line-height:1.2}
+  .locsub{font-size:14px;font-weight:600;color:#4F5968}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-size:14px;padding:0 14px;height:48px;border-radius:999px;background:#E3F2E9;color:#17633D;border:none}
+  .pill.busy{background:#F6E7C8;color:#6B4106}
+  .pd{width:8px;height:8px;border-radius:50%;background:#1E7F4F}
+  .body{flex:1;padding:0 16px 16px;display:flex;flex-direction:column;gap:10px;min-height:0}
+  .btn{height:56px;border-radius:14px;background:#15181E;color:#fff;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;gap:8px;border:none;width:100%}
+  .btn.ghost{background:#fff;color:#15181E;border:1.5px solid #D7D3CB}.btn.sm{height:48px;font-size:15px}.btn.amb{background:#8A5307}
+  .tchip{flex:1;height:52px;border-radius:12px;border:1.5px solid #D7D3CB;background:#fff;font-weight:800;font-size:15px;color:#15181E}
+  .tchip.on{background:#15181E;color:#fff;border-color:#15181E}
+  .scrim{position:absolute;inset:0;background:rgba(21,24,30,.45);display:flex;flex-direction:column;justify-content:flex-end}
+  .sh{background:#fff;border-radius:22px 22px 0 0;padding:12px 16px 18px;display:flex;flex-direction:column;gap:10px}
+  .grab{width:40px;height:4px;border-radius:2px;background:#D7D3CB;align-self:center;margin-bottom:4px}
+  .st{min-height:64px;border:1.5px solid #E6E3DD;border-radius:14px;padding:10px 14px;display:flex;align-items:center;gap:12px;background:#fff;width:100%;text-align:left;color:#15181E}
+  .st.on{border-color:#15181E;box-shadow:inset 0 0 0 1px #15181E}
+  .sd{width:12px;height:12px;border-radius:50%;flex:0 0 auto}
+  .lnk{min-height:52px;display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:15px;background:none;border:none;border-top:1px solid #EEEBE5;width:100%;padding:0 4px;color:#15181E}
+  .lbl{font-size:12px;font-weight:800;color:#44505F;margin:4px 0 0}
+  .banner{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 16px;font-weight:700;font-size:13px}
+  .banner.busy{background:#F6E7C8;color:#5A3605}
+  .bq{margin-left:auto;height:48px;padding:0 14px;border-radius:12px;border:1.5px solid currentColor;background:transparent;color:inherit;font-weight:800;font-size:13px}
+  .srch{height:50px;border-radius:13px;border:1.5px solid #D7D3CB;background:#fff;display:flex;align-items:center;gap:8px;padding:0 12px;font-size:15px;font-weight:600;color:#6B7684}
+  .cat{font-size:12px;font-weight:800;letter-spacing:.04em;color:#4F5968;text-transform:uppercase;margin:6px 0 0}
+  .pr{display:flex;align-items:center;gap:10px;min-height:56px;padding:0 2px;border-bottom:1px solid #E6E3DD}
+  .sw{width:52px;height:32px;border-radius:16px;background:#1E7F4F;position:relative;flex:0 0 auto;border:none}
+  .sw::after{content:"";position:absolute;top:3px;right:3px;width:26px;height:26px;border-radius:50%;background:#fff}
+  .sw.off{background:#C9C4BA}.sw.off::after{right:auto;left:3px}
+  .it{display:flex;gap:10px;font-size:15px;font-weight:700;line-height:1.3}
+  .it .q{min-width:26px;color:#1E7F4F;font-weight:800}
+  .card{background:#fff;border:1px solid #E6E3DD;border-radius:16px;padding:14px}
+  .btn.g{background:#1E7F4F}
+  .key{height:58px;border-radius:14px;background:#fff;border:1px solid #E6E3DD;font-size:22px;font-weight:700;color:#15181E}
+  .pin{width:16px;height:16px;border-radius:50%;border:2px solid #15181E}
+  .pin.f{background:#15181E}
+  .icb{width:48px;height:48px;border-radius:12px;background:#fff;border:1px solid #E6E3DD;display:flex;align-items:center;justify-content:center}
+  .srow{min-height:60px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #EEEBE5;font-weight:700;font-size:16px;background:none;border-left:none;border-right:none;border-top:none;width:100%;text-align:left;color:#15181E;padding:0 2px}
+  .swl{font-size:13px;font-weight:700;color:#4F5968;margin-right:8px}
+  .name{font-weight:800;font-size:13px;color:#15181E;text-align:center;line-height:1.3;max-width:340px}
+  .bnote{width:360px;background:#E4E7EC;border:1px solid #D2D7DE;border-radius:10px;padding:9px 11px;font-size:11px;font-weight:600;color:#44505F;line-height:1.4;text-align:left}
+  .bnote b{color:#2B3340}
+  .bnote .t{font-weight:800;color:#6B7684;text-transform:uppercase;letter-spacing:.04em;font-size:9.5px;display:block;margin-bottom:3px}
+  .arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:92px;flex:0 0 auto;padding-top:330px}
+  .arrow .lab{font-size:11px;font-weight:700;color:#5A6473;text-align:center;line-height:1.25}
+</style>
+</helmet>
+<div class="wrap">
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><div><div class="loc">Fonda Mirador</div><div class="locsub">Los Próceres</div></div><button class="pill"><span class="pd"></span>Abierto</button></div>
+      <div class="scrim">
+        <div class="sh">
+          <div class="grab"></div>
+          <div style="font-size:18px;font-weight:800">Estado de Los Próceres</div>
+          <button class="st on"><span class="sd" style="background:#1E7F4F"></span><span style="flex:1"><span style="display:block;font-weight:800;font-size:16px">Abierto</span><span style="display:block;font-size:14px;font-weight:600;color:#4F5968">Recibiendo pedidos con la hora normal</span></span></button>
+          <button class="st"><span class="sd" style="background:#C58A12"></span><span style="flex:1"><span style="display:block;font-weight:800;font-size:16px">Ocupado</span><span style="display:block;font-size:14px;font-weight:600;color:#4F5968">Siguen entrando, con más tiempo</span></span></button>
+          <button class="st"><span class="sd" style="background:#15181E"></span><span style="flex:1"><span style="display:block;font-weight:800;font-size:16px">Pausado</span><span style="display:block;font-size:14px;font-weight:600;color:#4F5968">No entran pedidos nuevos</span></span></button>
+          <div style="height:2px"></div>
+          <button class="lnk"><span>Productos agotados</span><span style="display:flex;align-items:center;gap:8px;color:#5A6473">2<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></button>
+          <button class="lnk"><span>Ajustes del equipo</span><span style="display:flex;align-items:center;gap:6px;color:#5A6473;font-size:13px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>PIN</span></button>
+        </div>
+      </div>
+    </div>
+    <div class="name">E1 · Estado (toca la píldora de arriba)</div>
+    <div class="bnote"><span class="t">Nota build</span>La píldora «Abierto/Ocupado/Pausado/Sin conexión» está arriba a la derecha en todas las pantallas (incluido el detalle) menos la alerta a pantalla llena, y abre esta hoja. Ajustes (cambiar sucursal, cerrar sesión, volumen, probar alerta) piden el PIN. Sin menú hamburguesa.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">Ocupado</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><div><div class="loc">Fonda Mirador</div><div class="locsub">Los Próceres</div></div><button class="pill"><span class="pd"></span>Abierto</button></div>
+      <div class="scrim">
+        <div class="sh">
+          <div class="grab"></div>
+          <div style="font-size:18px;font-weight:800">Modo ocupado</div>
+          <div style="font-size:14px;font-weight:600;color:#4F5968">Los pedidos siguen entrando. A cada uno le sumamos tiempo y el cliente ve la hora real.</div>
+          <p class="lbl">Sumar a cada pedido</p>
+          <div style="display:flex;gap:6px"><button class="tchip k">+10 min</button><button class="tchip k on">+15 min</button><button class="tchip k">+20 min</button></div>
+          <p class="lbl">Durante</p>
+          <div style="display:flex;gap:6px"><button class="tchip k">30 min</button><button class="tchip k on">1 hora</button><button class="tchip k">1 h 30</button></div>
+          <div style="font-size:13px;font-weight:700;color:#44505F" class="k">Se apaga solo a las 8:40.</div>
+          <button class="btn amb">Activar ocupado</button>
+          <button class="btn ghost sm">Cancelar</button>
+        </div>
+      </div>
+    </div>
+    <div class="name">E2 · Modo ocupado (+tiempo, se apaga solo)</div>
+    <div class="bnote"><span class="t">Nota build · decisión del dueño</span>Suma minutos al default de los pedidos <b>nuevos</b> y al ETA del cliente; los ya aceptados no cambian. Marca de multi-sucursal: el enrutador prefiere una sucursal no ocupada, pero igual envía aquí si es la única que cubre (refina D2). Campo nuevo, no reusa el interruptor de pausa.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">Pausado</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><div><div class="loc">Fonda Mirador</div><div class="locsub">Los Próceres</div></div><button class="pill"><span class="pd"></span>Abierto</button></div>
+      <div class="scrim">
+        <div class="sh">
+          <div class="grab"></div>
+          <div style="font-size:18px;font-weight:800">Pausar pedidos</div>
+          <div style="font-size:14px;font-weight:600;color:#4F5968">No entran pedidos nuevos. Los que ya tenés siguen igual.</div>
+          <p class="lbl">Por cuánto tiempo</p>
+          <div style="display:flex;gap:6px"><button class="tchip k on">30 min</button><button class="tchip k">1 hora</button><button class="tchip">Hasta reanudar</button></div>
+          <p class="lbl">Motivo</p>
+          <div style="display:flex;flex-wrap:wrap;gap:6px"><button class="tchip" style="flex:0 0 auto;padding:0 14px;height:48px;font-size:14px">Cocina llena</button><button class="tchip on" style="flex:0 0 auto;padding:0 14px;height:48px;font-size:14px">Falta personal</button><button class="tchip" style="flex:0 0 auto;padding:0 14px;height:48px;font-size:14px">Problema técnico</button><button class="tchip" style="flex:0 0 auto;padding:0 14px;height:48px;font-size:14px">Otro</button></div>
+          <button class="btn">Pausar hasta las 8:10</button>
+          <button class="btn ghost sm">Cancelar</button>
+        </div>
+      </div>
+    </div>
+    <div class="name">E3 · Pausar (interruptor existente)</div>
+    <div class="bnote"><span class="t">Nota build · reusa D4-c4</span>Escribe <b>order_control/{rid}/current</b> {paused, until} + fila de auditoría, como el CLI (actor = device_id). Hoy el único escritor es el CLI: el plan agrega un escritor callable con las mismas reglas. Despacho ya muestra el banner. El cliente ve el mensaje 423 existente.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">agotados<br>(con Ocupado activo)</span></div>
+
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><div><div class="loc">Fonda Mirador</div><div class="locsub">Los Próceres</div></div><button class="pill busy"><span class="pd" style="background:#C58A12"></span>Ocupado</button></div>
+      <div class="banner busy"><span class="k">Ocupado +15 min · hasta 8:40</span><button class="bq">Quitar</button></div>
+      <div class="body" style="padding-top:12px">
+        <div style="font-size:20px;font-weight:800">Productos agotados</div>
+        <div class="srch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>Buscá un producto</div>
+        <p class="cat">Agotados ahora · 2</p>
+        <div class="pr"><div style="flex:1"><div style="font-weight:800;font-size:15px">Pollo frito 3 piezas</div><div style="font-size:14px;font-weight:700;color:#9A1C12">Agotado desde 7:31</div></div><span class="swl">Agotado</span><button class="sw off" aria-label="Pollo frito 3 piezas: agotado. Activar"></button></div>
+        <div class="pr"><div style="flex:1"><div style="font-weight:800;font-size:15px">Horchata grande</div><div style="font-size:14px;font-weight:700;color:#9A1C12">Agotado desde 6:50</div></div><span class="swl">Agotado</span><button class="sw off" aria-label="Horchata grande: agotado. Activar"></button></div>
+        <p class="cat">Baleadas</p>
+        <div class="pr"><div style="flex:1;font-weight:700;font-size:15px">Baleada sencilla</div><span class="swl">Disponible</span><button class="sw" aria-label="Baleada sencilla: disponible. Marcar agotado"></button></div>
+        <div class="pr"><div style="flex:1;font-weight:700;font-size:15px">Baleada con huevo y aguacate</div><span class="swl">Disponible</span><button class="sw" aria-label="Baleada con huevo y aguacate: disponible. Marcar agotado"></button></div>
+      </div>
+    </div>
+    <div class="name">E4 · Productos agotados en esta sucursal</div>
+    <div class="bnote"><span class="t">Nota build</span>Mismo canal <b>item_availability</b> por sucursal que el portal (D4: menú por marca; la sucursal solo marca agotado). Agotados arriba. «Vuelve mañana» automático = patrón DoorDash, queda para después. La banda ámbar de Ocupado vive arriba de todas las pantallas mientras dure.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">pedido nuevo<br>con Ocupado</span></div>
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><div><div class="loc">Fonda Mirador</div><div class="locsub">Los Próceres</div></div><button class="pill busy"><span class="pd" style="background:#C58A12"></span>Ocupado</button></div>
+      <div class="banner busy"><span class="k">Ocupado +15 min · hasta 8:40</span><button class="bq">Quitar</button></div>
+      <div class="body" style="padding-top:12px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font-size:22px;font-weight:800" class="k">#48 · Entrega</div><div style="font-size:15px;font-weight:700;color:#4F5968">Mario L.</div></div>
+        <div class="card" style="display:flex;flex-direction:column;gap:9px">
+          <div class="it"><span class="q k">3×</span><div>Baleada sencilla</div></div>
+          <div class="it"><span class="q k">2×</span><div>Horchata grande</div></div>
+        </div>
+        <div style="flex:1"></div>
+        <p style="margin:0;font-size:15px;font-weight:800">Listo en</p>
+        <div style="display:flex;gap:6px"><button class="tchip k">−5</button><button class="tchip k on">33</button><button class="tchip k">+5</button><button class="tchip k">+10</button><button class="tchip k">+15</button></div>
+        <div style="font-size:14px;font-weight:700;color:#5A3605;background:#F6E7C8;border-radius:10px;padding:8px 11px" class="k">33 = 18 de siempre + 15 de Ocupado</div>
+        <button class="btn g k">Aceptar · listo en 33 min</button>
+        <button class="btn ghost sm">Rechazar</button>
+      </div>
+    </div>
+    <div class="name">E5 · Pedido nuevo con Ocupado activo</div>
+    <div class="bnote"><span class="t">Nota build</span>El chip base ya incluye Ocupado y una línea explica la suma, así nadie se sorprende con «33». La banda ámbar y la píldora «Ocupado» siguen visibles en esta y todas las pantallas (menos la alerta a pantalla llena).</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">Ajustes<br>del equipo</span></div>
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><button class="icb" aria-label="Volver"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill"><span class="pd"></span>Abierto</button></div>
+      <div class="body" style="align-items:center;text-align:center">
+        <div style="font-size:22px;font-weight:800;margin-top:10px">PIN del encargado</div>
+        <div style="font-size:15px;font-weight:600;color:#4F5968;max-width:270px">Para entrar a los ajustes del equipo.</div>
+        <div style="display:flex;gap:16px;margin:20px 0 16px" aria-label="1 de 4 dígitos"><span class="pin f"></span><span class="pin"></span><span class="pin"></span><span class="pin"></span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:100%">
+          <button class="key">1</button><button class="key">2</button><button class="key">3</button>
+          <button class="key">4</button><button class="key">5</button><button class="key">6</button>
+          <button class="key">7</button><button class="key">8</button><button class="key">9</button>
+          <span></span><button class="key">0</button><button class="key" style="font-size:16px">Borrar</button>
+        </div>
+        <button class="btn ghost sm" style="margin-top:6px;height:48px;font-size:15px">Olvidé el PIN · iniciar sesión</button>
+      </div>
+    </div>
+    <div class="name">E6 · PIN para entrar a Ajustes</div>
+    <div class="bnote"><span class="t">Nota build</span>PIN incorrecto: los puntos tiemblan y «PIN incorrecto». 5 intentos fallidos → espera 1 min. «Olvidé el PIN» lleva al login de A1 (correo y contraseña del encargado) y luego a crear un PIN nuevo (A4). Los pedidos siguen entrando y la alerta interrumpe esta pantalla.</div>
+  </div>
+
+  <div class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7AEBB" stroke-width="2" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg><span class="lab">PIN<br>correcto</span></div>
+  <div class="cell">
+    <div class="phone">
+      <div class="top"><button class="icb" aria-label="Volver"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill"><span class="pd"></span>Abierto</button></div>
+      <div class="body">
+        <div style="font-size:22px;font-weight:800">Ajustes del equipo</div>
+        <div class="card" style="padding:2px 14px">
+          <button class="srow"><span>Probar la alerta</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4F5968" stroke-width="2.2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+          <div class="srow"><span>Volumen de alerta</span><span style="font-size:15px;color:#17633D">Máximo</span></div>
+          <button class="srow"><span><span style="display:block">Sucursal</span><span style="display:block;font-size:14px;font-weight:600;color:#4F5968">Los Próceres</span></span><span style="font-size:15px;font-weight:800">Cambiar</span></button>
+          <button class="srow"><span>Cambiar PIN</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4F5968" stroke-width="2.2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+          <div class="srow" style="border-bottom:none"><span><span style="display:block">Equipo</span><span style="display:block;font-size:14px;font-weight:600;color:#4F5968">SUNMI · app 1.0.0</span></span></div>
+        </div>
+        <div style="flex:1"></div>
+        <button class="btn ghost sm" style="color:#9A1C12">Cerrar sesión</button>
+      </div>
+    </div>
+    <div class="name">E7 · Ajustes (detrás del PIN)</div>
+    <div class="bnote"><span class="t">Nota build</span>Cambiar sucursal vuelve a A2; cerrar sesión vuelve a A1 y deja de recibir pedidos (se confirma con «¿Cerrar sesión? Este equipo dejará de recibir pedidos»). Hueco reservado: «Impresora» (siguiente paso inmediato).</div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":3184,"height":1060}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>
