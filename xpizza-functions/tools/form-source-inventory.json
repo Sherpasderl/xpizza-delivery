@@ -197,6 +197,7 @@
     "xpizza-functions/test/identity-shadow.emulator.test.js",
     "xpizza-functions/test/ingest-liveness.emulator.test.js",
     "xpizza-functions/test/intake-availability.emulator.test.js",
+    "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/order-control.emulator.test.js",
     "xpizza-functions/test/order-exists.emulator.test.js",
@@ -358,6 +359,7 @@
     "xpizza-functions/test/identity-shadow.emulator.test.js",
     "xpizza-functions/test/ingest-liveness.emulator.test.js",
     "xpizza-functions/test/intake-availability.emulator.test.js",
+    "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/otp-brand.emulator.test.js",
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
@@ -572,6 +574,7 @@
     "xpizza-functions/test/identity-shadow.emulator.test.js",
     "xpizza-functions/test/ingest-liveness.emulator.test.js",
     "xpizza-functions/test/intake-availability.emulator.test.js",
+    "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/order-control.emulator.test.js",
     "xpizza-functions/test/order-exists.emulator.test.js",
@@ -734,6 +737,7 @@
     "xpizza-functions/test/identity-shadow.emulator.test.js",
     "xpizza-functions/test/ingest-liveness.emulator.test.js",
     "xpizza-functions/test/intake-availability.emulator.test.js",
+    "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/otp-brand.emulator.test.js",
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
@@ -759,7 +763,6 @@
    "tests": [
     "avail-key.test.mjs",
     "d4b-availability.test.mjs",
-    "xpizza-functions/access/access-census-core.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -778,15 +781,22 @@
     "xpizza-functions/contract/timer-bounds.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
     "xpizza-functions/contract/tracer.test.js",
+    "xpizza-functions/kitchen-compat-floor.test.js",
+    "xpizza-functions/kitchen-sdk-harness.guard.test.js",
     "xpizza-functions/pselfupdate-stamp.test.js",
     "xpizza-functions/secrets-scan-omit.guard.test.js",
     "xpizza-functions/test/availability-reset.emulator.test.js",
     "xpizza-functions/test/client-floor-rules.emulator.test.mjs",
     "xpizza-functions/test/d4b-readers.emulator.test.js",
+    "xpizza-functions/test/kds-cancel-acks-devices.emulator.test.mjs",
+    "xpizza-functions/test/kds-feed-parity.emulator.test.mjs",
+    "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/kds-pre-q2-denial.emulator.test.mjs",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-kitchen/avail-write.test.mjs",
     "xpizza-kitchen/card-model.test.mjs",
     "xpizza-kitchen/kds-smoke.test.mjs",
+    "xpizza-kitchen/kds-version-label.test.mjs",
     "xpizza-kitchen/order-filter.test.mjs",
     "xpizza-kitchen/rail-count.test.mjs",
     "xpizza-kitchen/ready-nudge.test.mjs",
@@ -802,7 +812,8 @@
     "xpizza-functions/contract/scenario-state.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
     "xpizza-functions/contract/tracer.test.js",
-    "xpizza-functions/test/availability-reset.emulator.test.js"
+    "xpizza-functions/test/availability-reset.emulator.test.js",
+    "xpizza-functions/test/kds-cancel-acks-devices.emulator.test.mjs"
    ]
   },
   "xpizza-dispatch": {
@@ -944,7 +955,8 @@
     "xpizza-functions/test/brands-rules.emulator.test.js",
     "xpizza-functions/test/driver-assignment-parity.emulator.test.js",
     "xpizza-functions/test/driver-cuadre-rules.emulator.test.js",
-    "xpizza-functions/test/driver-eligibility-rules.emulator.test.js"
+    "xpizza-functions/test/driver-eligibility-rules.emulator.test.js",
+    "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js"
    ],
    "via_helper": [
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -1111,6 +1123,7 @@
   "xpizza-functions/portal/functions.js",
   "xpizza-functions/seed-kitchen-staff.mjs",
   "xpizza-functions/test/_c2b-fixture.js",
+  "xpizza-functions/test/_kds-sdk-loader.mjs",
   "xpizza-functions/test/d4b-legacy-capture.js",
   "xpizza-functions/test/d4b-legacy-fixtures.js",
   "xpizza-functions/test/kds-writer-capture.mjs",
@@ -1511,6 +1524,7 @@
  ],
  "seed_problems": [],
  "server_modules_edited": [
+  "access/access-census-core.js",
   "catalog/bound-reuse.js",
   "catalog/canonical-binding.js",
   "catalog/text-version.js",
@@ -1525,6 +1539,12 @@
   "rewards-reserve.js"
  ],
  "server": {
+  "access/access-census-core.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/access/kds-filter-pre-f2.guard.test.js"
+   ]
+  },
   "catalog/bound-reuse.js": {
    "pins": [],
    "lifts": [
@@ -1794,6 +1814,7 @@
     "xpizza-functions/identity-shadow-placement.test.js",
     "xpizza-functions/intake-gate-placement.test.js",
     "xpizza-functions/n2-paid-strand-decision.test.js",
+    "xpizza-functions/order-creators.guard.test.js",
     "xpizza-functions/order-exists-census.guard.test.js",
     "xpizza-functions/platform-sync.guard.test.js",
     "xpizza-functions/prod-ladder-wiring.test.js",
