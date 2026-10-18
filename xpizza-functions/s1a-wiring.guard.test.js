@@ -9,7 +9,6 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { HUNKS, applyS1aIndex, unapplyS1aIndex } = require('./tools/s1a-inverse');
-const { unapplyS1bIndex } = require('./tools/s1b-inverse');   // S1b sits ON TOP of S1a — strip it FIRST (newest-first)
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');

@@ -9,6 +9,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { unapplyS1bIndex, BLOCKS } = require('./tools/s1b-inverse');
 const { applyS1aIndex } = require('./tools/s1a-inverse');
+const { unapplyA1Index } = require('./tools/a1-inverse'); // S1b now restacks on A-1; A-1 sits between S1b and S1a
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
@@ -17,16 +18,17 @@ const s2Idx = execFileSync('git', ['show', `${S2}:xpizza-functions/index.js`], {
 const s1aIdx = applyS1aIndex(s2Idx); // the S1a index.js layer S1b sits on (deterministic across rebases)
 const real = read('index.js');
 
-// 1. the inverse reproduces the S1a layer byte-for-byte
-assert.strictEqual(unapplyS1bIndex(real), s1aIdx, '🔴 index.js minus the S1b blocks is not the S1a index.js');
+// 1. the inverses reproduce the S1a layer byte-for-byte. S1b restacks on A-1, so S1b is INNERMOST: strip the
+//    S1b blocks first, then A-1's, to reach the S1a index.js layer (both inverses proven byte-exact).
+assert.strictEqual(unapplyA1Index(unapplyS1bIndex(real)), s1aIdx, '🔴 index.js minus the S1b and A-1 blocks is not the S1a index.js');
 assert.notStrictEqual(unapplyS1bIndex(real), real, 'non-vacuity: the S1b blocks are present and removed');
-ok(`unapplyS1bIndex(index.js) === S1a:index.js byte-for-byte (${BLOCKS.length} blocks)`);
+ok(`unapplyA1Index(unapplyS1bIndex(index.js)) === S1a:index.js byte-for-byte (${BLOCKS.length} S1b blocks, A-1 innermost-but-one)`);
 
 // 2. sensitivity — an edit inside a block, a missing delimiter, a third block, a byte outside every block
 assert.throws(() => unapplyS1bIndex(real.replace("require('./lib/driver-admin-ops')", "require('./lib/driver-admin-OPS')")), /differs from its pinned bytes/, 'an edit INSIDE a block is caught by the SHA pin');
 assert.throws(() => unapplyS1bIndex(real.replace('/* s1b:end require */\n', '')), /expected exactly 2/, 'a missing delimiter is caught');
 assert.throws(() => unapplyS1bIndex(real.replace('exports.inviteDriver', '/* s1b:begin x */\n/* s1b:end x */\nexports.inviteDriver')), /expected exactly 2/, 'a third block is caught');
-{ const outside = '// s1b-wiring outside-byte probe\n' + real; assert.notStrictEqual(unapplyS1bIndex(outside), s1aIdx, 'a byte OUTSIDE the blocks survives and fails the pin'); }
+{ const outside = '// s1b-wiring outside-byte probe\n' + real; assert.notStrictEqual(unapplyA1Index(unapplyS1bIndex(outside)), s1aIdx, 'a byte OUTSIDE the blocks survives and fails the pin'); }
 ok('edit-inside, missing-delimiter, third-block and outside-byte are each detected');
 
 // 3. wired — the six admin callables + the sweep + the require are present

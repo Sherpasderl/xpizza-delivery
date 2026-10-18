@@ -23,7 +23,7 @@ const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-func
 
 // ── 1a. index.js ──
 {
-  const real = require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/s1b-inverse').unapplyS1bIndex(read('index.js'))))));   // the newer §3 serial3 blocks are reversed FIRST
+  const real = require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(read('index.js'))))));   // the newer §3 serial3 blocks are reversed FIRST
   const base = baseOf('index.js', INDEX_BASE);
   assert.notStrictEqual(unapplyExtrasIndex(real), real, 'non-vacuity: the blocks are present and swapped back');
   assert.strictEqual(unapplyExtrasIndex(real), base, `🔴 index.js minus the extras blocks is not ${INDEX_BASE}:index.js`);
