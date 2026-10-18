@@ -3,7 +3,7 @@
 //   CURRENT set (an id not in it re-rings via start) · status() · keepAwake(on) · onResume(cb) → unsubscribe
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createBridge, C2_BROWSER_NOTE, NATIVE_PLUGIN } from './bridge.js';
+import { createBridge, blockedEx, C2_BROWSER_NOTE, NATIVE_PLUGIN } from './bridge.js';
 
 function browserRig() {
   const sound = { on: false, starts: 0, start() { this.on = true; this.starts++; }, stop() { this.on = false; } };
@@ -88,4 +88,68 @@ test('native-missing guard: inside the native shell WITHOUT the plugin → statu
   await b.keepAwake(true);
   assert.equal(typeof b.onResume(() => {}), 'function');
   assert.equal(NATIVE_PLUGIN, 'SherpaHandheld', 'the frozen plugin name H1c registers');
+});
+
+// ── H1c additions (PLAN-H1c "Contract additions") ──
+function nativeRig(statusEx) {
+  const calls = []; const ls = {};
+  const plugin = {
+    alarmStart: async (a) => calls.push(['alarmStart', a]), alarmStop: async () => {}, alarmAck: async () => {},
+    status: async () => ({ notifications: true, alarmVolumeMax: true, batteryExempt: true }), keepAwake: async () => {},
+    statusEx: statusEx === undefined ? undefined : async () => statusEx,
+    openSettings: async (a) => calls.push(['openSettings', a]), setDeviceCredential: async (a) => calls.push(['setDeviceCredential', a]),
+    endDeviceSession: async () => calls.push(['endDeviceSession']), pushToken: async () => ({ token: 'tok_1' }),
+    addListener: (ev, cb) => { ls[ev] = cb; const h = { remove: () => { delete ls[ev]; calls.push(['remove', ev]); } }; return Object.assign(Promise.resolve(h), h); },
+  };
+  if (statusEx === undefined) delete plugin.statusEx;
+  return { b: createBridge({ isNative: () => true, plugin, sound: { start() { throw new Error('never'); }, stop() {} } }), calls, ls };
+}
+const ALL = { notifications: true, fullScreen: true, channelOk: true, alarmVolumeMax: true, batteryExempt: true, pushReady: true, defaultHome: false };
+
+test('H1c: alarm.start(ids, {known}) sends the feed snapshot; without {known} the payload is EXACTLY the frozen one', () => {
+  const { b, calls } = nativeRig(ALL);
+  b.alarm.start(['o2', 'o1'], { known: ['o3', 'o1', 'o2', 'o1'] });
+  b.alarm.start([], { known: ['o1'] });
+  b.alarm.start(['o1']);
+  assert.deepEqual(calls, [['alarmStart', { orderIds: ['o1', 'o2'], known: ['o1', 'o2', 'o3'] }], ['alarmStart', { orderIds: [], known: ['o1'] }], ['alarmStart', { orderIds: ['o1'] }]]);
+});
+
+test('H1c: statusEx — normalized booleans; blocked = status()\'s rule OR fullScreen / channelOk / pushReady false; defaultHome is info only', async () => {
+  assert.deepEqual(await nativeRig(ALL).b.statusEx(), { ...ALL, native: true, blocked: false });
+  for (const k of ['notifications', 'fullScreen', 'channelOk', 'alarmVolumeMax', 'batteryExempt', 'pushReady']) {
+    assert.equal((await nativeRig({ ...ALL, [k]: false }).b.statusEx()).blocked, true, `${k} false → blocked`);
+    assert.equal((await nativeRig({ ...ALL, [k]: 'true' }).b.statusEx()).blocked, true, `${k} non-boolean → false → blocked`);
+  }
+  assert.equal((await nativeRig({ ...ALL, defaultHome: false }).b.statusEx()).blocked, false);
+  const old = await nativeRig(undefined).b.statusEx();
+  assert.equal(old.blocked, true, 'an older shell without statusEx fails CLOSED');
+  assert.equal(blockedEx(ALL), false);
+});
+
+test('H1c: openSettings / setDeviceCredential / endDeviceSession / pushToken delegate; listeners deliver and unsubscribe', async () => {
+  const { b, calls, ls } = nativeRig(ALL);
+  await b.openSettings('fullScreen'); await b.setDeviceCredential('CT', 'hh_1', 'tb_norte'); await b.endDeviceSession();
+  assert.equal(await b.pushToken(), 'tok_1');
+  const seen = []; const tok = [];
+  const offA = b.onAlarmChanged((e) => seen.push(e)); const offT = b.onTokenChange((t) => tok.push(t));
+  await Promise.resolve();
+  ls.alarmChanged({ ids: ['o1'], ringing: true }); ls.alarmChanged(null); ls.tokenChange({ token: 'tok_2' });
+  offA(); offT();
+  assert.deepEqual(seen, [{ ids: ['o1'], ringing: true }, { ids: [], ringing: false }]);
+  assert.deepEqual(tok, ['tok_2']);
+  assert.deepEqual(calls, [['openSettings', { kind: 'fullScreen' }], ['setDeviceCredential', { customToken: 'CT', uid: 'hh_1', rid: 'tb_norte' }], ['endDeviceSession'],
+    ['remove', 'alarmChanged'], ['remove', 'tokenChange']]);
+});
+
+test('H1c: the browser stub and the native-missing bridge — additions are no-ops; only native-missing has statusEx (blocked)', async () => {
+  const { bridge, sound } = browserRig();
+  assert.equal(bridge.statusEx, undefined, 'the browser checks screen reads status()');
+  await bridge.openSettings('battery'); await bridge.setDeviceCredential('CT', 'u', 'r'); await bridge.endDeviceSession();
+  assert.equal(await bridge.pushToken(), null);
+  bridge.onAlarmChanged(() => {})(); bridge.onTokenChange(() => {})();
+  bridge.alarm.start(['o1'], { known: ['o1', 'o2'] });
+  assert.equal(sound.on, true, 'a {known} argument changes nothing in the browser');
+  const miss = createBridge({ isNative: () => true, plugin: null, sound: { start() { throw new Error('never'); }, stop() {} } });
+  assert.equal((await miss.statusEx()).blocked, true);
+  await miss.endDeviceSession(); assert.equal(await miss.pushToken(), null);
 });

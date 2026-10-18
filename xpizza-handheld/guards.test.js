@@ -159,5 +159,10 @@ test('codex H1b r1 P1-2: the human who pairs signs in on a SEPARATE in-memory Au
   assert.match(src, /signInHuman: \(e, p\) => signInWithEmailAndPassword\(humanAuth, e, p\)/, 'human email/password only on the in-memory app');
   assert.ok(!/signInWithEmailAndPassword\(auth\b/.test(src), 'never on the persistent device app');
   assert.match(src, /signInWithToken: async \(tk, uid\) => \{ authWatch\.expect\(uid\); return \(await signInWithCustomToken\(auth, tk\)\)\.user; \}/, 'the device custom token on the default (persistent) app, the watch armed first');
-  assert.match(src, /startPairing\(\{ auth: pairingAuth, call: humanCall, store \}/, 'pairing callables run as the in-memory human');
+  assert.match(src, /startPairing\(\{ auth: pairingAuth, call: humanCall, store, native: bridge \}/, 'pairing callables run as the in-memory human (native gets only the device token)');
+  // H1c follow-up: stop() is logout-only (setup.signOut); every feed update is a {known} snapshot; a native mutation voids the cache
+  assert.match(src, /bridge\.alarm\.start\(ids, \{ known \}\);/, 'ringSync sends feed snapshots');
+  assert.ok(!/ringSync[\s\S]{0,400}bridge\.alarm\.stop\(\)/.test(src.slice(src.indexOf('function ringSync'), src.indexOf('function ringSync') + 600)), 'ringSync never stops');
+  assert.match(src, /bridge\.onAlarmChanged\(\(\) => \{ lastRing = ''; \}\);/, 'alarmChanged drops the ring cache');
+  assert.equal((src.match(/bridge\.alarm\.stop\(\)/g) || []).length, 1, 'the only app.js stop() is the checks screen\'s test alert');
 });

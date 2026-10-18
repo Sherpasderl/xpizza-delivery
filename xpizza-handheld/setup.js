@@ -39,7 +39,7 @@ export function createSessionStore(storage) {
 }
 
 // ── pairing ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-export async function startPairing({ auth, call, store }, { email, password }) {
+export async function startPairing({ auth, call, store, native = null }, { email, password }) {
   await auth.signInHuman(email, password);
   const raw = await call('merchantMyLocations', {});
   const rows = (Array.isArray(raw) ? raw : []).filter((r) => isObj(r) && typeof r.rid === 'string' && typeof r.brand_id === 'string');
@@ -53,6 +53,9 @@ export async function startPairing({ auth, call, store }, { email, password }) {
     const session = { uid: (dev && dev.uid) || res.uid, rid: sel.rid, brand_id: sel.brand_id, location_name: sel.location_name || null,
       prep_default_min: validBase(sel.prep_default_min) ? sel.prep_default_min : null };
     store.save(session);
+    // H1c: the SAME custom token signs the native layer in (push registration + reconcile). A failure leaves pushReady false, so the
+    // checks screen blocks and asks for a re-pair; the web pairing itself stands.
+    if (native) { try { await native.setDeviceCredential(res.custom_token, session.uid, session.rid); } catch (_) { /* pushReady false */ } }
     return { ok: true, session };
   };
   if (!rows.length) return { screen: 'none', copy: C1_NO_LOCATIONS, rows, pair };
@@ -130,6 +133,8 @@ export async function signOut({ session, feeds, queue, undoStop, eta, bridge, au
   if (undoStop) undoStop();
   if (eta) eta.stopAll();
   const note = queue ? queue.discard(reason) : { discarded: 0, reason };
+  // H1c: native drops the pairing at once (later pushes are ignored) and unregisters this device's token, retrying offline
+  if (bridge && bridge.endDeviceSession) { try { await bridge.endDeviceSession(); } catch (_) { /* native retries on its own */ } }
   if (bridge) bridge.alarm.stop();
   await auth.signOut();
   if (store) store.clear();
