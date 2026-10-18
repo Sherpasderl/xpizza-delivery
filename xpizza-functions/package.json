@@ -44,6 +44,7 @@
     "test:f2-n-human-suites": "npm run sync:rules && node tools/emulator-run.js --only database \"node test/f2-n-human-suites.emulator.test.js\"",
     "test:kds-feed-parity": "node tools/emulator-run.js --only database \"node test/kds-feed-parity.emulator.test.mjs\"",
     "test:kds-legacy-intake-parity": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/kds-legacy-intake-parity.emulator.test.js\"",
+    "test:kds-cancel-acks-devices": "node tools/emulator-run.js --only database \"node test/kds-cancel-acks-devices.emulator.test.mjs\"",
     "test:driver-cash-subscription": "node tools/emulator-run.js --only database \"node test/driver-cash-subscription.emulator.test.js\"",
     "test:catalog-rules": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/catalog-rules.emulator.test.js\"",
     "test:catalog-parity": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/catalog-parity.emulator.test.js\"",
