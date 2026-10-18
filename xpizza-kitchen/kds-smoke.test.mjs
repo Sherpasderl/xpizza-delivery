@@ -81,8 +81,15 @@ const XPD = {
     const live = new Map();
     XPD._ackServer = XPD._ackServer || {};
     XPD._cancelAcksCb = (m) => { XPD._ackServer = m || {}; for (const [id, h] of live) h(XPD._ackServer[id] || null); };
+    XPD._ackRelease = () => { const h = XPD._ackHeld || []; XPD._ackHeld = []; XPD._ackHold = false; for (const f of h) f(); };
     const set = createCancelAckSet({
-      listen: (id, onVal) => { live.set(id, onVal); queueMicrotask(() => { if (live.get(id) === onVal) onVal(XPD._ackServer[id] || null); }); return () => { if (live.get(id) === onVal) live.delete(id); }; },
+      // XPD._ackHold = true parks a newly attached listener's FIRST delivery until XPD._ackRelease() (an UNREAD window)
+      listen: (id, onVal) => {
+        live.set(id, onVal);
+        const first = () => { if (live.get(id) === onVal) onVal(XPD._ackServer[id] || null); };
+        if (XPD._ackHold) (XPD._ackHeld = XPD._ackHeld || []).push(first); else queueMicrotask(first);
+        return () => { if (live.get(id) === onVal) live.delete(id); };
+      },
       onChange,
     });
     const teardown = set.teardown;
@@ -695,6 +702,27 @@ ok('DELIVERY completion → purely local blue→green→bump beat, ZERO extra st
   // reopen-safety: the reconcile also PURGED the bump from localStorage, so a close+reopen cannot resurrect it
   assert.ok(!JSON.parse(store['xpizza_kds_completed'] || '[]').includes('PZX-X'), 'A: the stale bump is purged from localStorage too → cannot resurrect Completed on reopen');
   ok('cancel-ack: ACKING device converges to Open on a cross-device recall + localStorage purged (dual-overlay reconcile, reopen-safe)');
+}
+
+// ══ F2 Q2 — PER-ID READINESS (codex F2q plan r1 P1-9): a locally archived cancelado whose ack listener is RE-ATTACHED and still
+//    UNREAD must keep its local archive — a missing ack counts as a recall only once THAT id's absence is CONFIRMED ══
+{
+  const tick = () => new Promise((r) => setImmediate(r));
+  const Y = { order_id: 'PZX-Y', status: 'cancelled', customer_name: 'Gabi', items_text: '1x Hawaiana', created_at: Date.now(), order_type: 'delivery' };
+  XPD._ordersCb({ 'PZX-Y': Y }); await tick();
+  window.archiveCancel('PZX-Y'); await tick();
+  XPD._cancelAcksCb({ 'PZX-Y': { at: Date.now(), by: 'A' } }); await tick();
+  assert.equal(getEl('count-completed').textContent, 1, 'premise: PZX-Y archived, ack-backed');
+  XPD._ordersCb({}); await tick();                                   // PZX-Y leaves the feed → its ack listener is detached
+  XPD._ackHold = true;
+  XPD._ordersCb({ 'PZX-Y': Y }); await tick();                        // …and returns → a FRESH listener, still UNREAD
+  assert.equal(getEl('count-completed').textContent, 1, 'UNREAD ack: the local archive is KEPT (never treated as a recall before THIS id\'s absence is confirmed)');
+  assert.equal(getEl('count-open').textContent, 0, 'UNREAD ack: the cancelado does not falsely resurface in Open');
+  XPD._ackRelease(); await tick();                                   // the server state arrives: the ack is still there
+  assert.equal(getEl('count-completed').textContent, 1, 'after the delivery (ack present) it stays archived');
+  XPD._cancelAcksCb({}); await tick();                                // a CONFIRMED absence (another device recalled)
+  assert.equal(getEl('count-open').textContent, 1, 'a CONFIRMED absence for this id → the recall converges to Open');
+  ok('cancel-ack (F2 Q2): an UNREAD re-attached listener never drops a local archive; only a confirmed absence for THAT id recalls');
 }
 
 console.log(`kds-smoke: OK (${n} cases)`);
