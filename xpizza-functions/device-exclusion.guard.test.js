@@ -60,11 +60,11 @@ function unwrap(s) {
 // the alternatives of an expression, each as its list of top-level conjuncts
 function alternatives(expr) {
   const out = [];
-  for (let alt of splitTop(expr, '||')) {
-    let u = unwrap(alt);
+  for (const part of splitTop(expr, '||')) {
+    let alt = part; let u = unwrap(alt);
     while (u !== alt) { alt = u; u = unwrap(alt); }
-    const ors = splitTop(alt, '||');
-    if (ors.length > 1) { out.push(...alternatives(alt)); continue; }
+    // a fully parenthesised part that is itself a disjunction contributes each of ITS alternatives
+    if (alt !== part && splitTop(alt, '||').length > 1) { out.push(...alternatives(alt)); continue; }
     out.push({ text: alt, conj: splitTop(alt, '&&').map((c) => c.trim()) });
   }
   return out;
