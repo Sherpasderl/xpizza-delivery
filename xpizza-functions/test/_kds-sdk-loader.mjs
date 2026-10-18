@@ -46,7 +46,7 @@ export function onAuthStateChanged() { return () => {}; }
 `);
   let k = 0;
   async function loadKds(hostname) {
-    const appName = `kds-${++k}`;
+    const appName = `kds-${project}-${++k}`;   // unique per loader AND project (a reused name would be a duplicate-app error)
     globalThis.location = { hostname };
     let sdk = fs.readFileSync(path.join(KDIR, 'xpizza-delivery.js'), 'utf8');
     sdk = sdk
