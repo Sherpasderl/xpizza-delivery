@@ -156,7 +156,7 @@ const ROWS = [
 
 (async () => {
   let n = 0; const pass = (l) => console.log(`  ✓ ${++n} ${l}`);
-  const fails = [];
+  const fails = []; const reconnectEvidence = {};
   for (const [vi, v] of ['R', 'H', 'F'].entries()) {
     const env = await initializeTestEnvironment({ projectId: `demo-f2-access-${v.toLowerCase()}`, database: { rules: ARTIFACTS[v] } });
     await env.withSecurityRulesDisabled((ctx) => ctx.database().ref().update(SEED));
@@ -192,6 +192,31 @@ const ROWS = [
       try { await assertSucceeds(get(env.authenticatedContext('u-d1').database(), 'orders/O2')); } catch (_) { fails.push(`[${v}] Q-B: an attribution-granted order became unreadable`); }
       await env.withSecurityRulesDisabled((ctx) => ctx.database().ref().update(SEED));
     }
+    // ── a REAL reconnect (codex Q1 r2 P2): the old driver's OWN subscribed instance goes offline, the order is reassigned while it
+    //    is offline, the instance comes back online → its listener must be cancelled (PERMISSION_DENIED) or never re-deliver,
+    //    and a later order update must not reach it ──
+    {
+      const rdb = env.authenticatedContext('u-d1').database();
+      const rseen = []; let rcancel = null;
+      const rref = rdb.ref('orders/O1');
+      rref.on('value', (snap) => rseen.push(snap.val() && snap.val().status), (e) => { rcancel = String((e && e.code) || e); });
+      await sleep(600);
+      if (rseen[0] !== 'preparing') fails.push(`[${v}] reconnect: the initial delivery did not arrive (${JSON.stringify(rseen)})`);
+      rdb.goOffline();
+      await admin({ 'tasks/O1_pickup/assigned_driver_id': 'u-d2', 'tasks/O1_delivery/assigned_driver_id': 'u-d2', 'orders/O1/status': 'while_offline' });
+      await sleep(400);
+      rdb.goOnline();
+      await sleep(1200);
+      await admin({ 'orders/O1/status': 'after_reconnect' });
+      await sleep(1200);
+      rref.off();
+      const leaked = rseen.filter((x) => x === 'while_offline' || x === 'after_reconnect');
+      if (v === 'R') { if (!rseen.includes('after_reconnect')) fails.push(`[R] reconnect CONTROL: under the broad grant the old driver must keep receiving (${JSON.stringify(rseen)})`); }
+      else if (leaked.length) fails.push(`[${v}] reconnect: the old driver received ${JSON.stringify(leaked)} after reconnecting`);
+      if (rcancel !== null && !/PERMISSION_DENIED/i.test(rcancel)) fails.push(`[${v}] reconnect: cancelled with an unexpected error (${rcancel})`);
+      reconnectEvidence[v] = { seen: rseen, cancelled: rcancel };
+      await env.withSecurityRulesDisabled((ctx) => ctx.database().ref().update(SEED));
+    }
     // ── device revoked DURING an active subscription (F only: the device query is allowed there) → the listener is cancelled ──
     if (v === 'F') {
       const seen = []; let cancelled = null;
@@ -209,8 +234,9 @@ const ROWS = [
       try { await assertFails(env.authenticatedContext('u-devLive', { handheld: true, rid: C }).database().ref('orders').orderByChild('restaurant_id').equalTo(C).once('value')); } catch (_) { fails.push('[F] device live: a fresh query after revocation was allowed'); }
     }
     await env.cleanup();
-    pass(`${v === 'R' ? 'R-pre (base + Q0 + indexes)' : v === 'H' ? 'N-human (Q4 = R-post)' : 'N-full (Q6)'}: ${ROWS.length} principal rows${v !== 'R' ? ' + the Q-B lifecycle (initial delivery, PERMISSION_DENIED cancel, reconnect denied, new driver allowed)' : ''}${v === 'F' ? ' + device revoked mid-subscription → cancelled' : ''}`);
+    pass(`${v === 'R' ? 'R-pre (base + Q0 + indexes)' : v === 'H' ? 'N-human (Q4 = R-post)' : 'N-full (Q6)'}: ${ROWS.length} principal rows${v !== 'R' ? ' + the Q-B lifecycle (initial delivery, PERMISSION_DENIED cancel, fresh read denied, new driver allowed, REAL reconnect: no re-delivery)' : ''}${v === 'F' ? ' + device revoked mid-subscription → cancelled' : ''}`);
   }
+  console.log(`  · real reconnect (old driver's own instance offline → reassigned → online): ${JSON.stringify(reconnectEvidence)}`);
   assert.deepStrictEqual(fails, [], `access table mismatches:\n  ${fails.join('\n  ')}`);
   console.log(`f2-access-rules.emulator: OK (${n})`);
   process.exit(0);
