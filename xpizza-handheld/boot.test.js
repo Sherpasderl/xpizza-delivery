@@ -1,7 +1,7 @@
 // H1b — boot.js: the serialized boot decision and the device-auth watch, across every notification ordering codex r2 reproduced.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decideBoot, createAuthWatch, runBoot, runPair } from './boot.js';
+import { decideBoot, createAuthWatch, runBoot, runPair, signedOutPatch } from './boot.js';
 
 const saved = { uid: 'hh_tb_norte_a', rid: 'tb_norte' };
 const later = (v, ms) => new Promise((r) => setTimeout(() => r(v), ms));
@@ -120,4 +120,21 @@ test('runPair: a teardown during pair() itself → no session is ever assigned',
   pr.resolve({ ok: true, session: { uid: 'u' } });
   assert.equal(await run, 'stale');
   assert.deepEqual([h.sess, h.phase], [null, 'login']);
+});
+
+test('codex H1b r4 P2: a teardown during pairing → the login is usable again (working reset); a stale pairing touches no state', async () => {
+  const S = { phase: 'branch', working: true, pairing: { rows: [] }, sel: { rid: 'tb_norte' }, loginErr: 'x', pairErr: 'y' };
+  Object.assign(S, signedOutPatch());
+  assert.equal(S.working, false, 'the login button is enabled after the teardown');
+  assert.deepEqual([S.phase, S.pairing, S.sel, S.loginErr, S.pairErr], ['login', null, null, '', '']);
+  assert.notStrictEqual(signedOutPatch().opened, signedOutPatch().opened, 'fresh objects each time');
+  // the pairing resolves AFTER the teardown (generation bumped): runPair reports stale and calls none of its state setters
+  let gen = 1; let resolve; const calls = [];
+  const p = runPair({ pairing: { pair: () => new Promise((r) => { resolve = r; }) }, sel: { rid: 'tb_norte' }, label: 'x', genNow: () => gen, isLive: (g) => g === gen,
+    refreshStatus: async () => calls.push('status'), onSession: () => calls.push('session'), onDone: () => calls.push('done'), onRefused: () => calls.push('refused') });
+  gen++; Object.assign(S, signedOutPatch());
+  resolve({ ok: true, session: { uid: 'u', rid: 'tb_norte' } });
+  assert.equal(await p, 'stale');
+  assert.deepEqual(calls, []);
+  assert.equal(S.working, false);
 });

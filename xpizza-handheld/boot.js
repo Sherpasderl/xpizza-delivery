@@ -51,6 +51,12 @@ export async function runBoot({ saved, hasPin, statusP, firstAuthP, genNow, isLi
 
 // runPair (codex H1b r3 P1-2): every await is followed by a generation check — after a teardown (auth loss mid-pairing) nothing
 // resumes: no session is assigned, no screen changes.
+// The screen state after a teardown (sign-out / session loss). codex H1b r4 P2: `working` is reset here too — a teardown DURING pairing
+// otherwise left it true, so the login button looked disabled and its clicks were ignored.
+export function signedOutPatch() {
+  return { phase: 'login', view: 'list', sheet: null, cur: null, pairing: null, sel: null, loginErr: '', pairErr: '', working: false, opened: {}, driver: {}, eta: {}, toast: null };
+}
+
 export async function runPair({ pairing, sel, label, genNow, isLive, refreshStatus, onSession, onDone, onRefused }) {
   const g = genNow();
   const r = await pairing.pair(sel, label);

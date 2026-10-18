@@ -14,7 +14,7 @@ import { startPairing, createSessionStore, hashPin, createPinGate, signOut } fro
 import { createBridge, webAudioSound, NATIVE_PLUGIN } from './bridge.js';
 import { COPY, BOARD } from './copy.js';
 import { buildVM, WA_TEXT } from './view.js';
-import { createAuthWatch, runBoot, runPair } from './boot.js';
+import { createAuthWatch, runBoot, runPair, signedOutPatch } from './boot.js';
 import { FIREBASE_CONFIG, FUNCTIONS_REGION, MAPS_KEY } from './config.js';
 import { initializeApp } from './vendor/firebase-app.js';
 import { getAuth, initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, signInWithCustomToken, signOut as fbSignOut, onAuthStateChanged } from './vendor/firebase-auth.js';
@@ -243,7 +243,7 @@ async function doPair() {
     onRefused: (r) => (r.error === 'token_exchange'
       ? set({ working: false, phase: 'login', pairing: null, sel: null, loginErr: COPY.pairRefused })
       : set({ working: false, pairErr: COPY.pairRefused })) });
-  if (out === 'stale') S.working = false;
+  void out;                                            // 'stale': the teardown already reset the screen (signedOutPatch) — touch nothing
 }
 async function refreshStatus() { set({ status: await bridge.status() }); }
 async function pinPress(k) {
@@ -277,7 +277,7 @@ async function doSignOut(reason) {
   feeds = null; queue = null; undo = null; api = null; sess = null;
   S.feed = { orders: {}, loaded: false, control: null, brand: null, menu: null, availability: null, offset: null, connected: false, sessionLost: false };
   bridge.keepAwake(false);
-  set({ phase: 'login', view: 'list', sheet: null, cur: null, pairing: null, sel: null, loginErr: '', pairErr: '', opened: {}, driver: {}, eta: {}, toast: null });
+  set(signedOutPatch());
 }
 
 // ── main (paired) ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
