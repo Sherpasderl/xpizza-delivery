@@ -31,12 +31,16 @@ import {
   remove,
   runTransaction,
   serverTimestamp,
-  off
+  off,
+  query,
+  orderByChild,
+  equalTo
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js';
 import { stackedTasksToAccept } from './stacking-helpers.js';
 import { getIngestToken } from './native-location.js';   // add-only: per-shift token for the diag sink
-import { shiftIdentityError, cuadreRecordPayload } from './cash-helpers.js';   // pure cuadre id-guard + write payload (reset discipline)
+import { shiftIdentityError, cuadreRecordPayload, isPermissionDenied } from './cash-helpers.js';   // pure cuadre id-guard + write payload (reset discipline) + the permission-cancel predicate (F2 revocation)
+import { makeDriverFeed } from './driver-feed.js';   // F2 query-rules feed controller (pure; this module injects the live Firebase env)
 
 const FUNCTIONS_REGION = 'us-central1';   // matches native-location.js — the callables live in us-central1
 
@@ -645,6 +649,43 @@ export function subscribeToOrders(callback) {
   // Filter out non-live (e.g. unpaid pending_payment) orders centrally so no
   // reader ever shows an unpaid online order as a real order.
   return onValue(ordersRef, (snap) => callback(filterLiveOrders(snap.val() || {})));
+}
+
+// ============================================================
+// F2 QUERY-RULES FEED — live wiring for the pure driver-feed controller
+// ============================================================
+// Builds the injected env from this module's Firebase handles and returns a STARTED feed. The UI supplies
+// `emit` ({ onOrders, onTasks, onReadiness, onDriver }) and OWNS the returned disposer (§7). Reads:
+//   tasks       — own-assignment query (index assigned_driver_id EXISTS)
+//   orders/{oid}— per-order point listener; a PERMISSION_DENIED cancel = revocation (order left my scope)
+//   orders      — the delivered-by UNION: two queries (delivered_by_driver_uid, delivered_by_uid)
+//   drivers/{uid}— own record point listener (§8)
+// Grants are BROAD today (zero-diff); narrowed to these exact shapes after fleet adoption (§11).
+export const ownTasksQuery = (uid) => query(ref(db, 'tasks'), orderByChild('assigned_driver_id'), equalTo(uid));
+const histField = (which) => (which === 'primary' ? 'delivered_by_driver_uid' : 'delivered_by_uid');
+const ordersByDeliveredQuery = (which, uid) => query(ref(db, 'orders'), orderByChild(histField(which)), equalTo(uid));
+
+export function createLiveDriverFeed(uid, emit) {
+  const env = {
+    emit,
+    filterLiveOrders,
+    subscribeOwnTasks(cb) { return onValue(ownTasksQuery(uid), (s) => cb(s.val() || {}), () => {}); },
+    subscribeOrder(oid, cb, onRevoked) {
+      return onValue(ref(db, `orders/${oid}`), (s) => cb(s.val()), (err) => { if (isPermissionDenied(err)) onRevoked(); });
+    },
+    subscribeHistory(which, cb, onError) {
+      return onValue(ordersByDeliveredQuery(which, uid), (s) => cb(s.val() || {}), (err) => onError(err));
+    },
+    getHistoryOnce() {
+      return Promise.all([get(ordersByDeliveredQuery('primary', uid)), get(ordersByDeliveredQuery('legacy', uid))])
+        .then(([p, l]) => ({ primary: p.val() || {}, legacy: l.val() || {} }));
+    },
+    subscribeOwnDriver(cb) { return onValue(ref(db, `drivers/${uid}`), (s) => cb(s.val()), () => {}); },
+    onReconnect,
+  };
+  const feed = makeDriverFeed(env);
+  feed.start();
+  return feed;
 }
 
 /**
