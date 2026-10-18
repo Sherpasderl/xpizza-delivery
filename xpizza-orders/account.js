@@ -9,6 +9,11 @@
     OTP_URL:    'https://requestotp-m7syoovdsa-uc.a.run.app',
     VERIFY_URL: 'https://verifyotp-m7syoovdsa-uc.a.run.app',
     DELETE_URL: 'https://deleteaccount-m7syoovdsa-uc.a.run.app',
+    SIGNUP_CONFIG_URL:    'https://getsignupconfig-m7syoovdsa-uc.a.run.app',   // signup phase 1 (PLAN-signup-email-social)
+    GOOGLE_START_URL:     'https://googlestart-m7syoovdsa-uc.a.run.app',
+    GOOGLE_SIGNIN_URL:    'https://googlesignin-m7syoovdsa-uc.a.run.app',
+    COMPLETE_PROFILE_URL: 'https://completeprofile-m7syoovdsa-uc.a.run.app',
+    SET_PROMOS_URL:       'https://setpromos-m7syoovdsa-uc.a.run.app',
     fb: { apiKey:'AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU', authDomain:'xpizza-delivery.firebaseapp.com',
           databaseURL:'https://xpizza-delivery-default-rtdb.firebaseio.com', projectId:'xpizza-delivery',
           messagingSenderId:'185867271616', appId:'1:185867271616:web:84bb37552b40c1d517dc25' },
@@ -1288,6 +1293,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // — the polished sheet finalizer doesn't cover that state, so it would otherwise leak stale _nad*/map/
   // mode into the next open. Every other pane (picker/account) just closes (order unchanged).
   function dismissSheet() {
+    suOnDismiss();   // signup: an unfinished completion reports its dismissal (nothing saved)
     const nad = $('acct-pane-newaddr');
     if (nad && nad.classList.contains('acct-on') && _nadPaneMode === 'order') {
       _acctFsEpoch++;
@@ -1364,6 +1370,8 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     } : null;
     if (inp) { inp.value = digits.length === 8 ? digits.slice(0, 4) + '-' + digits.slice(4) : ''; setTimeout(() => inp.focus(), 80); }
     if (cta) cta.disabled = digits.length !== 8;
+    _su.viaGoogle = false; _su.flow = null;
+    suDecoratePhonePane(!!_claimCtx).catch(() => {});   // signup: "Continuar con Google" when the brand has it (server config)
   }
 
   // Track A: open the profile-claim create flow soft-filled from a tracker deep-link (index.html
@@ -1463,12 +1471,13 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   }
 
   async function sendCode(phone) {
+    _su.attempt++;   // codex build r1 P1-2: the phone path cancels any pending Google attempt (a late callback is ignored)
     _loginPhone = phone;
     const otpPhoneEl = $('acct-otp-phone'); if (otpPhoneEl) otpPhoneEl.textContent = phone;   // textContent — no innerHTML sink
     try {
       await sherpaFetch(CONFIG.OTP_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, restaurant_id: CONFIG.restaurant_id }),
+        body: JSON.stringify({ phone, restaurant_id: CONFIG.restaurant_id, ...suTicketFields() }),   // the ticket fields only while a Google link waits
       });
     } catch (_) { /* uniform UX regardless — never reveal rate-limit/enumeration */ }
     showPane('otp');
@@ -1505,7 +1514,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     try {
       const res = await sherpaFetch(CONFIG.VERIFY_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: _loginPhone, code }),
+        body: JSON.stringify({ phone: _loginPhone, code, ...suTicketFields() }),
       });
       data = await res.json().catch(() => ({}));
     } catch (_) { data = { ok: false }; }
@@ -1520,20 +1529,27 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     // Success — NOW load Firebase (H8: only on a verified login) and mint the session.
     try {
       const { auth, authMod } = await ensureFirebase();
-      await authMod.signInWithCustomToken(auth, data.token);
-      localStorage.setItem(CONFIG.MARKER, JSON.stringify({
-        uid: auth.currentUser.uid, name: data.name || '', phone: _loginPhone,
-      }));
+      const minted = await suMint(auth, authMod, data.token, () => true, (uid) => localStorage.setItem(CONFIG.MARKER, JSON.stringify({
+        uid, name: data.name || '', phone: _loginPhone,
+      })));
+      if (!minted) return;   // superseded by a later sign-in (codex build r3 P1) — that one routes
     } catch (_) {
       if (errEl) { errEl.textContent = 'No pudimos iniciar sesión. Intentá de nuevo.'; errEl.style.display = 'block'; }
       if (verifyBtn) verifyBtn.disabled = false;
       return;
     }
 
+    await afterLogin(data, suLinkOutcome(data));
+  }
+
+  // signup phase 1: every verified login (phone, or a LINKED Google sign-in) lands here. A post-rollout account without this
+  // brand's terms completes its profile first (the prototype panes; the claim branch runs completeProfile BEFORE claimOrder);
+  // one with them sees "¡Hola de nuevo!"; a legacy account / no server config → today's routing (routeAfterLogin), untouched.
+  async function afterLogin(data, linkedGoogle) {
     // Completeness-routed (not is_new): confirm the LIVE profile before deciding (codex R1 #1).
     // A TRI-STATE read distinguishes a resolved-but-incomplete profile (→ show Creá tu perfil) from
     // an unavailable read (timeout/error → fail-open to Mi Cuenta, NEVER the create pane).
-    const st = await accountSnapshotStatus();
+    let st = await accountSnapshotStatus();
     // Arm the CHECKOUT account layer for THIS page load regardless of branch (codex R1 FIX 1): the
     // user was a guest at DOMContentLoaded, so the marker-gated init already skipped — wrapPageHooks()
     // + initDeliveryStep() must run now on EVERY logged-in outcome, not only the complete one. Without
@@ -1544,11 +1560,29 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     // showPane and never disturbs the overlay pane shown below; it also respects the existing
     // _acctRestoring/_acctRestoreGen guards internally.
     try { wrapPageHooks(); } catch (_) {}
+    if (_su.viaGoogle && st.status === 'ok' && st.snap && st.snap.phone) {   // a Google login: the account's phone, from the profile, for display
+      const m = marker(); if (m && !m.phone) { m.phone = '+' + String(st.snap.phone).replace(/\D/g, ''); try { localStorage.setItem(CONFIG.MARKER, JSON.stringify(m)); } catch (_) {} }
+      if (!_loginPhone) _loginPhone = (marker() || {}).phone || '';
+    }
+    if (st.status !== 'ok') { const st2 = await accountSnapshotStatus(); if (st2.status === 'ok') st = st2; }   // retried once
+    const su = await suRefreshGate(st.status === 'ok' ? st.snap : null);
+    if (suMustComplete(su)) {   // codex build r1 P1-3: an unreadable state keeps the panes (never a bypass of completion or the claim)
+      const prov = (linkedGoogle && linkedGoogle.email) || '';
+      const gName = (linkedGoogle && linkedGoogle.name) || '';
+      suStartCompletion({ name: gName || (st.snap && st.snap.name) || _prefillName || data.name || '', email: prov, emailFromProvider: !!prov,
+        prefillLabel: gName ? 'Google' : (_prefillName ? 'tu pedido' : ''), skipDone: !!_claimCtx,
+        onDone: async () => { suSetGate('complete'); await routeAfterLogin(await accountSnapshotStatus(), data, true); } });
+      return;
+    }
+    if (su === 'complete' && !_claimCtx) { suWelcomeBackPane((st.snap && st.snap.name) || data.name || '', () => routeAfterLogin(st, data, false)); return; }
+    await routeAfterLogin(st, data, false);
+  }
+  async function routeAfterLogin(st, data, completed) {
     // Task 4: a claim-context signup (reward-card CTA / tracker deep-link) → persist the soft-filled name,
     // credit THIS order via claimOrder, and show the credited/pending confirmation — for BOTH new + existing
     // users (claimOrder needs only the profile phone_hash, set at verify, + the fresh token). Fail-open.
     if (_claimCtx) {
-      try { if (_prefillName) await saveName(_prefillName); } catch (_) {}
+      try { if (_prefillName && !completed) await saveName(_prefillName); } catch (_) {}   // signup: a completed profile already wrote its name
       // Task 2: auto-save the just-placed order's delivery address as the primary "Casa" → the profile is
       // complete (name + address) with no separate address step to abandon. Fail-open: never blocks the claim.
       try { const claimAddr = claimAddressPayload(_prefillOrder); if (claimAddr) await saveAddress(claimAddr); } catch (_) {}
@@ -1603,6 +1637,423 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       // account is already live (token minted); a failed name write must not wedge the flow
       toast('No pudimos guardar tu nombre, podés intentarlo luego');
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // Signup phase 1 (PLAN-signup-email-social r3; approved prototype 2026-10-15) — the phone account stays THE account;
+  // Google is a LOGIN METHOD on it; a post-rollout account completes its profile (email + name + per-brand terms /
+  // promotions) through the prototype's panes, written by the server's completeProfile. Gated on the SERVER config
+  // (getSignupConfig): no config, no legal documents for the brand, no rollout_at, or a LEGACY account (created before
+  // rollout_at) → today's flow, untouched. Panes are built lazily (never on the guest fast-path).
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  const SU_COPY = {
+    emailHint: 'Te enviamos ahí tu recibo y nuestras promociones.',   // OWNER DECISION 2026-10-16 — shown to everyone
+    terms: 'Acepto los <a href="__T__" target="_blank" rel="noopener">Términos</a> y la <a href="__P__" target="_blank" rel="noopener">Política de privacidad</a>',
+    promos: 'Quiero recibir promociones por correo y WhatsApp',
+    googleUnavailable: 'Google no está disponible acá. Seguí con tu número.',
+    linkConflict: 'Esa cuenta de Google ya está conectada a otro número. Entraste con tu número.',   // copy pending owner (§7.4)
+  };
+  const _su = { cfgP: null, google: null, attempt: 0, gisP: null, flow: null, phoneMode: false, gate: undefined, gateP: null, gateGen: 0, authP: null, authGen: 0 };
+  const suPhoneFmt = (p) => { const m = /^\+?(\d{3})(\d{4})(\d{4})$/.exec(String(p || '').replace(/[\s-]/g, '')); return m ? '+' + m[1] + ' ' + m[2] + '-' + m[3] : String(p || ''); };   // +504 9999-0000
+  const suRand = () => { const b = new Uint8Array(18); crypto.getRandomValues(b); return btoa(String.fromCharCode.apply(null, b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+  function suConfig() {
+    if (_su.cfgP) return _su.cfgP;
+    _su.cfgP = (async () => {
+      try {
+        const res = await Promise.race([sherpaFetch(CONFIG.SIGNUP_CONFIG_URL + '?restaurant_id=' + encodeURIComponent(CONFIG.restaurant_id)), new Promise((r) => setTimeout(() => r(null), 2500))]);
+        const j = res ? await res.json().catch(() => null) : null;
+        if (j && j.ok) return j;
+      } catch (_) { /* below */ }
+      _su.cfgP = null;   // a failed read is never cached (codex build r1 P1-3) — the next decision reads again
+      return null;
+    })();
+    return _su.cfgP;
+  }
+  // this brand's terms record — true / false / null (unreadable — never treated as done: the caller retries, then keeps the panes)
+  async function suHasTerms() {
+    try {
+      return await Promise.race([(async () => {
+        const { auth, db, dbMod } = await ensureFirebase();
+        await auth.authStateReady();
+        if (!auth.currentUser) return null;
+        const s = await dbMod.get(dbMod.ref(db, 'user_private/' + auth.currentUser.uid + '/consent/' + CONFIG.restaurant_id + '/terms'));
+        return s.exists();
+      })(), new Promise((r) => setTimeout(() => r(null), 1500))]);
+    } catch (_) { return null; }
+  }
+  // DERIVED FROM THE SERVER EVERY TIME (codex build r1 P1-3/P1-4 — never a local flag):
+  //   'off'      CONFIRMED by the server config: the brand is not rolled out (no rollout_at — the server withholds it while the
+  //              legal documents aren't ready, codex build r2 #3), or a LEGACY account (created before rollout_at) → today's flow;
+  //   'complete' this brand's terms are on record;
+  //   'needed'   a post-rollout account without them;
+  //   'unknown'  a read failed (config / profile / terms), each retried once → treated like 'needed' (never as done).
+  async function suCompletionState(snap) {
+    let cfg = await suConfig(); if (!cfg) cfg = await suConfig();
+    if (!cfg) return 'unknown';
+    if (typeof cfg.rollout_at !== 'number') return 'off';
+    if (!cfg.legal_ready) return 'unknown';   // rolled out without legal documents: inconsistent → never a bypass (codex build r2 #3)
+    if (!snap || typeof snap.created_at !== 'number') return 'unknown';
+    if (snap.created_at < cfg.rollout_at) return 'off';   // legacy — never routed
+    let t = await suHasTerms(); if (t === null) t = await suHasTerms();
+    return t === true ? 'complete' : (t === false ? 'needed' : 'unknown');
+  }
+  const suMustComplete = (state) => state === 'needed' || state === 'unknown';
+  // the gate the checkout / Mi cuenta consult: the LAST server-derived state (recomputed at login, on load, on Mi cuenta).
+  // codex build r2 #4: while a read is PENDING the gate is undefined + _su.gateP — counted as 'unknown' (never a pass).
+  // codex build r3 P2: each read carries a generation; a SUPERSEDED read (a newer read, or suSetGate) never routes — every
+  // caller gets the CURRENT state instead (the newer read's result, or the stored gate).
+  function suRefreshGate(snap) {
+    const gen = ++_su.gateGen;
+    const out = (async () => {
+      if (snap === undefined) { const t = await accountSnapshotStatus(); snap = t.status === 'ok' ? t.snap : null; }
+      return suCompletionState(snap);
+    })().catch(() => 'unknown').then((g) => {
+      if (gen === _su.gateGen) { _su.gate = g; _su.gateP = null; return g; }
+      return _su.gateP || _su.gate;
+    });
+    _su.gate = undefined; _su.gateP = out;
+    return out;
+  }
+  function suSetGate(g) { _su.gateGen++; _su.gateP = null; _su.gate = g; }   // a newer, definite state (a completion just saved) — a pending read is superseded
+  const suGateOpen = () => !_su.gateP && _su.gate !== undefined && !suMustComplete(_su.gate);
+  // pay was refused on a pending / unknown / needed gate: AWAIT the server-derived state, then open the panes only if it requires them
+  async function suGateBlocked() {
+    const g = _su.gateP ? await _su.gateP : (_su.gate === undefined ? await suRefreshGate() : _su.gate);
+    if (suMustComplete(g)) await suOpenCompletion(null);
+  }
+  // open the completion panes over whatever is on screen (checkout pay / Mi cuenta / page load), then continue
+  async function suOpenCompletion(onDone) {
+    let snap = null; try { const t = await accountSnapshotStatus(); snap = t.status === 'ok' ? t.snap : null; } catch (_) {}
+    openOverlay();
+    suStartCompletion({ name: (snap && snap.name) || ((marker() || {}).name) || '', email: '', onDone: async () => { suSetGate('complete'); closeSheet(); if (onDone) await onDone(); } });
+  }
+
+  function injectSignupStyles() {
+    if ($('acct-su-styles')) return;
+    const st = document.createElement('style');
+    st.id = 'acct-su-styles';
+    st.textContent = `
+.acct-su-inp{flex:none;width:100%;height:56px;box-sizing:border-box}
+.acct-or{display:flex;align-items:center;gap:12px;color:#B3A594;font-size:13px;margin:16px 0 4px}
+.acct-or::before,.acct-or::after{content:"";flex:1;height:1px;background:${CONFIG.palette.line}}
+.acct-alt{width:100%;height:50px;border:1.5px solid ${CONFIG.palette.line2};border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;gap:10px;font-family:inherit;font-size:15px;font-weight:650;color:#17130F;cursor:pointer;margin-top:10px}
+.acct-su-chips{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.acct-su-chips button{align-self:flex-start;border:1.5px solid ${CONFIG.palette.line2};background:#fff;border-radius:999px;padding:10px 14px;font-family:inherit;font-size:14px;font-weight:600;color:#17130F;cursor:pointer;min-height:44px}
+.acct-su-hint{color:#8C7B6E;font-size:13px;line-height:1.45;margin:10px 0 0}
+.acct-chk{display:flex;gap:12px;align-items:flex-start;margin-top:14px;font-size:13.5px;line-height:1.45;color:#4A4038;cursor:pointer;min-height:44px}
+.acct-chk input{width:22px;height:22px;margin:0;flex:none;accent-color:#17130F}
+.acct-chk a{color:#17130F;font-weight:700}
+.acct-opt{color:#B3A594;font-size:12px}
+.acct-prefill{font-size:12px;color:#2A6A42;background:#E7F0E9;border-radius:8px;padding:4px 8px;align-self:flex-start;margin-top:8px;font-weight:600}
+.acct-su-done{align-items:center;text-align:center;padding-top:6px}
+.acct-su-tick{width:58px;height:58px;border-radius:50%;background:#E7F0E9;color:#2A6A42;display:flex;align-items:center;justify-content:center;font-size:28px;margin-top:6px}
+.acct-su-facts{width:100%;margin-top:16px;border-top:1px solid ${CONFIG.palette.line}}
+.acct-su-facts div{display:flex;justify-content:space-between;gap:10px;padding:12px 2px;border-bottom:1px solid ${CONFIG.palette.line};font-size:14px}
+.acct-su-facts span{color:#8C7B6E}
+.acct-su-err{color:#B23B3B;font-size:13px;margin-top:10px;display:none}
+#acct-su-gslot{margin-top:10px;min-height:50px;display:flex;justify-content:center}
+#acct-su-gslot .acct-alt{margin-top:0}
+label.acct-row{cursor:pointer;min-height:44px}
+.acct-su-switch{appearance:none;-webkit-appearance:none;width:46px;height:28px;border-radius:999px;background:${CONFIG.palette.line3};position:relative;cursor:pointer;flex:none;margin:0;transition:background .15s}
+.acct-su-switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .15s}
+.acct-su-switch:checked{background:#17130F}
+.acct-su-switch:checked::after{transform:translateX(18px)}
+.acct-su-switch:focus-visible{outline:2px solid ${CONFIG.accent};outline-offset:2px}
+`;
+    document.head.appendChild(st);
+  }
+  function suPane(id) {
+    let p = $('acct-pane-' + id);
+    if (!p) { const body = document.querySelector('#acct-overlay .acct-body'); if (!body) return null; p = document.createElement('section'); p.className = 'acct-pane'; p.id = 'acct-pane-' + id; body.appendChild(p); }
+    return p;
+  }
+  const G_ICON = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
+
+  // ── the phone pane: "o" + "Continuar con Google" when the brand has Google configured (never on a claim prefill) ──
+  async function suDecoratePhonePane(isClaim) {
+    _su.google = null; _su.attempt++; suPhoneMode(false);
+    const old = $('acct-su-alts'); if (old) old.remove();
+    if (isClaim) return;
+    const cfg = await suConfig();
+    if (!cfg || !cfg.google_enabled || !cfg.google_client_id) return;
+    const pane = $('acct-pane-phone'); const guest = pane && pane.querySelector('.acct-guest');
+    if (!pane || !guest || $('acct-su-alts')) return;
+    injectSignupStyles();
+    const box = document.createElement('div'); box.id = 'acct-su-alts';
+    // the placeholder (the prototype's look) holds the slot until Google's own button is rendered into it — the GIS BUTTON flow
+    // (codex build r1 P2-5: never One Tap / prompt(), which can show nothing during cooldown / opt-out / no Google session)
+    box.innerHTML = `<div class="acct-or">o</div><div id="acct-su-gslot"><button class="acct-alt" type="button" id="acct-su-google" aria-disabled="true">${G_ICON}Continuar con Google</button></div><p class="acct-su-err" id="acct-su-gerr"></p>`;
+    pane.insertBefore(box, guest);
+    suGoogleArm(cfg);
+  }
+  // after an UNLINKED Google sign-in the phone pane asks for the phone that the account lives on (prototype "Tu teléfono")
+  function suPhoneMode(on) {
+    _su.phoneMode = on;
+    const pane = $('acct-pane-phone'); if (!pane) return;
+    const h = pane.querySelector('.acct-h1'), s = pane.querySelector('.acct-sub');
+    if (h) h.textContent = on ? 'Tu teléfono' : 'Entrá a tu cuenta';
+    if (s) s.textContent = on ? 'Lo necesitamos para la entrega y para avisarte por WhatsApp.' : 'Guardá tus datos y pedí más rápido la próxima vez.';
+    const alts = $('acct-su-alts'); if (alts) alts.style.display = on ? 'none' : '';
+  }
+  // codex build r2 #2: the session mints (phone verify / linked Google) run ONE AT A TIME, so a Google sign-in already underway
+  // when the customer picks the phone settles first — and, now stale, signs itself out — before the phone session is minted.
+  // codex build r3 P1: a turn waits for the previous one AT MOST SU_AUTH_WAIT_MS — a mint that never settles can't wedge sign-in;
+  // each turn gets a generation, and one that resolves after a later turn started is SUPERSEDED (undone below).
+  const SU_AUTH_WAIT_MS = 8000;   // + the 1.5 s profile read after it stays within the form's 10 s timer horizon; a mint settles in ~1–2 s, and an early-superseded one is undone
+  function suAuthSerial(fn) {
+    const prior = _su.authP || Promise.resolve();
+    let tm = null;
+    const turn = Promise.race([prior, new Promise((r) => { tm = setTimeout(r, SU_AUTH_WAIT_MS); })])
+      .then(() => { clearTimeout(tm); return fn(++_su.authGen); });
+    _su.authP = turn.catch(() => {});
+    return turn;
+  }
+  // one session mint in its turn: wanted() false before → nothing; superseded / unwanted after → signed out, no marker, no routing;
+  // otherwise it becomes the session (onMinted writes the marker in the same tick)
+  function suMint(auth, authMod, token, wanted, onMinted) {
+    return suAuthSerial(async (gen) => {
+      if (!wanted()) return false;
+      await authMod.signInWithCustomToken(auth, token);
+      const uid = auth.currentUser && auth.currentUser.uid;
+      if (gen !== _su.authGen || !wanted()) { await suUndoMint(auth, authMod); return false; }
+      onMinted(uid);
+      return true;
+    });
+  }
+  // a superseded / unwanted mint replaced whatever session there was when it resolved. OWNER rulings (codex build r4, r7): no
+  // repair — sign out; if someone was signed in on screen, clear the marker and RELOAD the page: every pending continuation of
+  // that session dies with it (a write landing before unload can only touch the marker, which the fresh page heals — signed out),
+  // and the customer lands on the normal signed-out page (the cart persists on the device; unsaved typing is lost — accepted)
+  async function suUndoMint(auth, authMod) {
+    const hadMarker = !!marker();   // codex build r8 P2: read BEFORE the await — a heal() during signOut must not skip the reload
+    try { await authMod.signOut(auth); } catch (_) {}
+    if (!hadMarker && !marker()) return;   // nobody signed in on screen (e.g. the phone code still pending): the open flow carries on
+    try { localStorage.removeItem(CONFIG.MARKER); } catch (_) {}
+    location.reload();
+  }
+  function suGoogleError(msg) { const e = $('acct-su-gerr'); if (e) { e.textContent = msg; e.style.display = 'block'; } }
+  function suLoadGis() {
+    if (_su.gisP) return _su.gisP;
+    _su.gisP = new Promise((resolve, reject) => {
+      if (window.google && window.google.accounts && window.google.accounts.id) return resolve(window.google.accounts.id);
+      const sc = document.createElement('script');
+      sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+      sc.onload = () => (window.google && window.google.accounts && window.google.accounts.id) ? resolve(window.google.accounts.id) : reject(new Error('gis'));
+      sc.onerror = () => reject(new Error('gis'));
+      document.head.appendChild(sc);
+    }).catch((e) => { _su.gisP = null; throw e; });
+    return _su.gisP;
+  }
+  async function suGoogleArm(cfg) {
+    const attempt = ++_su.attempt; const session = suRand();
+    const e = $('acct-su-gerr'); if (e) e.style.display = 'none';
+    let start = null;
+    try {
+      const r = await sherpaFetch(CONFIG.GOOGLE_START_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurant_id: CONFIG.restaurant_id, session_id: session }) });
+      start = await r.json().catch(() => null);
+    } catch (_) { start = null; }
+    if (attempt !== _su.attempt) return;
+    if (!start || !start.ok || !start.nonce) { suGoogleError(SU_COPY.googleUnavailable); return; }
+    let gis;
+    try { gis = await suLoadGis(); } catch (_) { if (attempt === _su.attempt) suGoogleError(SU_COPY.googleUnavailable); return; }   // the script failed to load → the phone path
+    if (attempt !== _su.attempt) return;
+    gis.initialize({ client_id: cfg.google_client_id, nonce: start.nonce, callback: suGoogleCredential.bind(null, attempt, session), ux_mode: 'popup', use_fedcm_for_button: true });
+    const slot = $('acct-su-gslot'); if (!slot) return;
+    const w = Math.max(200, Math.min(400, Math.round(slot.getBoundingClientRect().width) || 320));
+    slot.innerHTML = '';
+    gis.renderButton(slot, { type: 'standard', theme: 'outline', size: 'large', text: 'continue_with', shape: 'rectangular', logo_alignment: 'center', locale: 'es', width: w });
+  }
+  async function suGoogleCredential(attempt, session, resp) {
+    const credential = resp && resp.credential;
+    if (attempt !== _su.attempt || !credential) return;   // a stale attempt (the customer moved on) is ignored
+    let j = null;
+    try {
+      const r = await sherpaFetch(CONFIG.GOOGLE_SIGNIN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurant_id: CONFIG.restaurant_id, session_id: session, id_token: credential }) });
+      j = await r.json().catch(() => null);
+    } catch (_) { j = null; }
+    if (attempt !== _su.attempt) return;
+    if (!j || !j.ok) {   // the challenge is single use: arm a fresh one so the button works again
+      suGoogleError(SU_COPY.googleUnavailable);
+      suConfig().then((cfg) => { if (cfg && attempt === _su.attempt) suGoogleArm(cfg); }).catch(() => {});
+      return;
+    }
+    if (j.linked && j.token) {
+      try {
+        const { auth, authMod } = await ensureFirebase();
+        // codex build r1 P1-2 / r2 #2: the customer chose the phone before or DURING the mint → nothing / undone, nothing else
+        const minted = await suMint(auth, authMod, j.token, () => attempt === _su.attempt,
+          (uid) => localStorage.setItem(CONFIG.MARKER, JSON.stringify({ uid, name: j.name || '', phone: '' })));
+        if (!minted) return;
+      } catch (_) { if (attempt === _su.attempt) suGoogleError('No pudimos iniciar sesión. Intentá de nuevo.'); return; }
+      _su.viaGoogle = true;
+      await afterLogin({ ok: true, token: j.token, name: j.name || '' });
+      return;
+    }
+    _su.google = { ticket: j.ticket, session, name: j.name || '', email: j.email || '' };
+    suPhoneMode(true);
+    const inp = $('acct-ph-inp'); if (inp) setTimeout(() => inp.focus(), 60);
+  }
+  // the extra request fields while a Google ticket waits for its phone (none otherwise — today's bytes)
+  const suTicketFields = () => (_su.google ? { link_ticket: _su.google.ticket, session_id: _su.google.session } : {});
+  // verifyOtp told us how the link went: keep the Google prefill only on a real link; drop it on a conflict / invalid ticket
+  function suLinkOutcome(data) {
+    if (!_su.google) return null;
+    const g = _su.google; _su.google = null; suPhoneMode(false);
+    if (data && (data.link === 'linked' || data.link === 'noop')) { _su.viaGoogle = true; return g; }
+    if (data && data.link === 'conflict') toast(SU_COPY.linkConflict);
+    return null;
+  }
+
+  // ── completion: [email] → name + terms + promotions → completeProfile (+ the client name write) → done ──
+  // opts: { name, email, emailFromProvider, skipDone, onDone(), onDismiss() }
+  function suStartCompletion(opts) {
+    injectSignupStyles();
+    _su.flow = Object.assign({ email: '', name: '' }, opts, { finished: false });
+    if (opts.email && opts.emailFromProvider) suNamePane(); else suEmailPane();
+  }
+  function suEmailPane() {
+    const f = _su.flow; const p = suPane('su-email'); if (!p || !f) return;
+    p.innerHTML = `<h1 class="acct-h1">Tu correo</h1>
+<div class="acct-mlabel">Correo</div>
+<input class="acct-inp acct-su-inp" id="acct-su-email" type="email" inputmode="email" autocomplete="email" placeholder="tu@correo.com" maxlength="254">
+<p class="acct-su-hint">${escapeHtml(SU_COPY.emailHint)}</p>
+<div class="acct-su-chips" id="acct-su-chips"></div>
+<button class="acct-cta" type="button" id="acct-su-email-go" disabled>Continuar</button>`;
+    const inp = $('acct-su-email'), btn = $('acct-su-email-go'), chips = $('acct-su-chips');
+    inp.value = f.email || '';
+    const valid = (v) => /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(v.trim());
+    const paint = () => {
+      const v = inp.value.trim(); f.email = v; btn.disabled = !valid(v);
+      const at = v.indexOf('@'); chips.innerHTML = '';
+      if (at > 0 && !valid(v)) {
+        const user = v.slice(0, at), dom = v.slice(at + 1).toLowerCase();
+        ['gmail.com', 'hotmail.com', 'yahoo.com'].filter((d) => d.startsWith(dom)).forEach((d) => {
+          const c = document.createElement('button'); c.type = 'button'; c.textContent = user + '@' + d;
+          c.onclick = () => { inp.value = user + '@' + d; paint(); }; chips.appendChild(c);
+        });
+      }
+    };
+    inp.addEventListener('input', paint); paint();
+    btn.onclick = () => { if (valid(inp.value)) suNamePane(); };
+    showPane('su-email');
+    setTimeout(() => { try { inp.focus({ preventScroll: true }); } catch (_) {} }, 60);
+  }
+  async function suNamePane() {
+    const f = _su.flow; const p = suPane('su-name'); if (!p || !f) return;
+    const cfg = (await suConfig()) || {};
+    const safeUrl = (u) => (typeof u === 'string' && /^https:\/\//.test(u) ? escapeHtml(u) : '#');
+    p.innerHTML = `<h1 class="acct-h1">¿Cómo te llamás?</h1>
+<p class="acct-sub">Así te saludamos y el repartidor sabe a quién buscar.</p>
+<div class="acct-mlabel">Tu nombre</div>
+<input class="acct-inp acct-su-inp" id="acct-su-name" autocomplete="name" placeholder="Nombre y apellido" maxlength="80">
+${f.name && f.prefillLabel ? `<span class="acct-prefill">Lleno desde ${escapeHtml(f.prefillLabel)}</span>` : ''}
+<label class="acct-chk"><input type="checkbox" id="acct-su-terms"><span>${SU_COPY.terms.replace('__T__', safeUrl(cfg.terms_url)).replace('__P__', safeUrl(cfg.privacy_url))}</span></label>
+<label class="acct-chk"><input type="checkbox" id="acct-su-promo"><span>${escapeHtml(SU_COPY.promos)} <span class="acct-opt">· opcional</span></span></label>
+<p class="acct-su-err" id="acct-su-name-err"></p>
+<button class="acct-cta" type="button" id="acct-su-save" disabled>Guardar</button>`;
+    const inp = $('acct-su-name'), terms = $('acct-su-terms'), promo = $('acct-su-promo'), btn = $('acct-su-save');
+    inp.value = f.name || '';
+    const sync = () => { f.name = inp.value; btn.disabled = !(inp.value.trim() && terms.checked); };
+    inp.addEventListener('input', sync); terms.addEventListener('change', sync); sync();
+    btn.onclick = () => suSave(!!promo.checked);
+    showPane('su-name');
+    if (!inp.value) setTimeout(() => { try { inp.focus({ preventScroll: true }); } catch (_) {} }, 60);
+  }
+  async function suSave(promos) {
+    const f = _su.flow; if (!f) return;
+    const btn = $('acct-su-save'), err = $('acct-su-name-err');
+    const name = String(f.name || '').trim().slice(0, 80);
+    if (!name || !$('acct-su-terms') || !$('acct-su-terms').checked) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+    if (err) err.style.display = 'none';
+    let ok = false;
+    try {
+      const { auth, db, dbMod } = await ensureFirebase();
+      await auth.authStateReady();
+      if (!auth.currentUser) { heal(); throw new Error('no-session'); }
+      await dbMod.update(dbMod.ref(db, 'user_profiles/' + auth.currentUser.uid), { name });   // the NAME stays a client write (today's rules)
+      const idTok = await auth.currentUser.getIdToken();
+      const r = await sherpaFetch(CONFIG.COMPLETE_PROFILE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Firebase-ID-Token': idTok },
+        body: JSON.stringify({ restaurant_id: CONFIG.restaurant_id, email: f.email, accept_terms: true, promos }) });
+      const j = await r.json().catch(() => null);
+      ok = !!(r.ok && j && j.ok);
+      if (ok) { const m = marker(); if (m) { m.name = name; try { localStorage.setItem(CONFIG.MARKER, JSON.stringify(m)); } catch (_) {} } }
+    } catch (_) { ok = false; }
+    if (!ok) {   // nothing is reported complete
+      if (err) { err.textContent = 'No pudimos guardar tu perfil. Intentá de nuevo.'; err.style.display = 'block'; }
+      if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
+      return;
+    }
+    f.finished = true; f.promos = promos;
+    try { renderChip(); } catch (_) {}
+    if (f.skipDone) { _su.flow = null; await f.onDone(f); return; }
+    suDonePane();
+  }
+  function suDonePane() {
+    const f = _su.flow; const p = suPane('su-done'); if (!p || !f) return;
+    const phone = suPhoneFmt(_loginPhone || ((marker() || {}).phone) || '');
+    p.className = 'acct-pane acct-su-done';
+    p.innerHTML = `<div class="acct-su-tick" aria-hidden="true">✓</div><h1 class="acct-h1">¡Perfil creado!</h1>
+<p class="acct-sub">Ya podés pedir más rápido la próxima vez.</p>
+<div class="acct-su-facts">
+  <div><span>Nombre</span><b>${escapeHtml(String(f.name || '').trim() || '—')}</b></div>
+  <div><span>Teléfono</span><b>${escapeHtml(phone)}</b></div>
+  <div><span>Correo</span><b>${escapeHtml(f.email || 'Sin correo')}</b></div>
+  <div><span>Promociones</span><b>${f.promos ? 'Sí' : 'No'}</b></div>
+</div>
+<button class="acct-cta" type="button" id="acct-su-finish">Listo</button>`;
+    $('acct-su-finish').onclick = async () => { const done = f.onDone; _su.flow = null; await done(f); };
+    showPane('su-done');
+  }
+  // a returning account with this brand's terms on record — "¡Hola de nuevo!" (no write), then today's routing
+  function suWelcomeBackPane(name, onDone) {
+    injectSignupStyles();
+    const p = suPane('su-hello'); if (!p) { onDone(); return; }
+    const phone = suPhoneFmt(_loginPhone || ((marker() || {}).phone) || '');
+    const first = firstName(name);
+    p.className = 'acct-pane acct-su-done';
+    p.innerHTML = `<div class="acct-su-tick" aria-hidden="true">✓</div><h1 class="acct-h1">¡Hola de nuevo${first ? ', ' + escapeHtml(first) : ''}!</h1>
+<p class="acct-sub">${_su.viaGoogle ? 'Entraste con Google a tu misma cuenta (la próxima vez podés usar cualquiera de los dos).' : 'Entraste con tu número.'}</p>
+${phone ? `<div class="acct-su-facts"><div><span>Cuenta</span><b>${escapeHtml(phone)}</b></div></div>` : ''}
+<button class="acct-cta" type="button" id="acct-su-hello-ok">Listo</button>`;
+    $('acct-su-hello-ok').onclick = () => onDone();
+    showPane('su-hello');
+  }
+  // "Recibir promociones" in Mi cuenta (plan §3.4 / codex build r1 P2-7): only for an account with this brand's terms on record;
+  // the switch calls setPromos; a failure reverts it and says so. Terms are never touched.
+  async function suPromosRow() {
+    const pane = $('acct-pane-account'); if (!pane || $('acct-row-promos')) return;
+    const { auth, db, dbMod } = await ensureFirebase();
+    await auth.authStateReady();
+    if (!auth.currentUser) return;
+    const c = (await dbMod.get(dbMod.ref(db, 'user_private/' + auth.currentUser.uid + '/consent/' + CONFIG.restaurant_id))).val();
+    if (!c || !c.terms) return;
+    const rows = pane.querySelector('.acct-rows'); if (!rows || $('acct-row-promos')) return;
+    injectSignupStyles();
+    const row = document.createElement('label');
+    row.className = 'acct-row'; row.id = 'acct-row-promos';
+    row.innerHTML = '<div class="acct-rl"><span class="acct-rt">Recibir promociones</span><span class="acct-rd">Por correo y WhatsApp</span></div>'
+      + '<input type="checkbox" class="acct-su-switch" id="acct-su-promos" role="switch">';
+    rows.appendChild(row);
+    const sw = $('acct-su-promos'); sw.checked = !!(c.promos && c.promos.value === true);
+    const suPromosToggle = async () => {
+      const want = sw.checked; sw.disabled = true;
+      let ok = false;
+      try {
+        const idTok = await auth.currentUser.getIdToken();
+        const r = await sherpaFetch(CONFIG.SET_PROMOS_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Firebase-ID-Token': idTok }, body: JSON.stringify({ restaurant_id: CONFIG.restaurant_id, value: want }) });
+        const j = await r.json().catch(() => null); ok = !!(r.ok && j && j.ok);
+      } catch (_) { ok = false; }
+      sw.disabled = false;
+      if (!ok) { sw.checked = !want; toast('No pudimos guardar tu preferencia. Intentá de nuevo.'); }
+    };
+    sw.onchange = suPromosToggle;
+  }
+  // the sheet was dismissed: an unfinished completion reports it (checkout keeps its card; nothing was saved)
+  function suOnDismiss() {
+    const f = _su.flow; _su.flow = null;
+    _su.attempt++; _su.google = null;
+    if (f && !f.finished && typeof f.onDismiss === 'function') { try { f.onDismiss(); } catch (_) {} }
   }
 
   // ── Account sheet (logged-in) — name/phone (from marker, no SDK needed to display), Pronto rows
@@ -1958,6 +2409,9 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       // already-open sheet (which rendered instantly above from the marker alone).
       const snap = await accountSnapshot();
       if (snap) { _acctData = snap; renderAddressesSection(); }
+      // signup (codex build r1 P1-4): Mi cuenta never skips completion — the state is read from the server here
+      if (suMustComplete(await suRefreshGate(snap || undefined))) { await suOpenCompletion(() => openAccountSheet()); return; }
+      suPromosRow().catch(() => {});   // codex build r1 P2-7: "Recibir promociones" for an account with this brand's terms
     } catch (_) { /* fail-open — leave the marker as-is; sign-out/delete surface any real trouble */ }
   }
 
@@ -4005,7 +4459,8 @@ ${footer}`;
 
     const nombre = (($('acct-cp-nombre') || {}).value || '').trim();
     const apellido = (($('acct-cp-apellido') || {}).value || '').trim();
-    if (!nombre || !apellido) {
+    const resumedName = (_su.resume && _su.resumeName) ? _su.resumeName : null;   // codex build r1 P2-8: the name the completion pane saved
+    if (!resumedName && (!nombre || !apellido)) {
       const err = $('acct-cp-name-err');
       if (err) { err.style.display = 'block'; err.textContent = 'Ingresá tu nombre y apellido.'; }
       (nombre ? $('acct-cp-apellido') : $('acct-cp-nombre'))?.focus();
@@ -4030,14 +4485,25 @@ ${footer}`;
       return;
     }
 
+    // signup (advisor ruling 2026-10-17 (2)): a post-rollout account without this brand's terms completes through the sheet
+    // FIRST — the typed address stays on this card and is saved automatically once completeProfile succeeds; a dismissal
+    // saves nothing and leaves this card as it is. Legacy accounts / no server config: today's path, unchanged.
+    if (!_su.resume && suMustComplete(await suCompletionState(_acctData || await (async () => { const t = await accountSnapshotStatus(); return t.status === 'ok' ? t.snap : null; })()))) {
+      if (btn) btn.disabled = true;
+      openOverlay();
+      suStartCompletion({ name: (nombre + ' ' + apellido).trim().slice(0, 80), email: '', skipDone: true,
+        onDone: async (f) => { closeSheet(); _su.resume = true; _su.resumeName = String(f.name || '').trim().slice(0, 80); try { await saveCreateProfile(); } finally { _su.resume = false; _su.resumeName = null; } },
+        onDismiss: () => { if (btn) btn.disabled = false; } });
+      return;
+    }
     if (btn) { btn.disabled = true; btn.innerHTML = 'Guardando…'; }
-    const fullName = (nombre + ' ' + apellido).trim().slice(0, 80);
+    const fullName = resumedName || (nombre + ' ' + apellido).trim().slice(0, 80);
 
     try {
       const { auth, db, dbMod } = await ensureFirebase();
       await auth.authStateReady();
       if (!auth.currentUser) { heal(); throw new Error('no-session'); }
-      await dbMod.update(dbMod.ref(db, 'user_profiles/' + auth.currentUser.uid), { name: fullName });
+      if (!resumedName) await dbMod.update(dbMod.ref(db, 'user_profiles/' + auth.currentUser.uid), { name: fullName });   // a resumed save: the completion already wrote it
       if (!_acctData) _acctData = {};
       _acctData.name = fullName;
       const m = marker(); if (m) { m.name = fullName; try { localStorage.setItem(CONFIG.MARKER, JSON.stringify(m)); } catch (_) {} }
@@ -4246,6 +4712,10 @@ ${footer}`;
   // processPayment().
   function deliverySubmitBlocked() {
     try {
+      // signup (codex build r1 P1-4): a post-rollout account without this brand's terms — or whose state could not be read —
+      // completes before paying, whatever its name / address. The gate is the last SERVER-derived state (_su.gate); a read
+      // still PENDING (a restored session at load) counts as unknown — refused, then the panes once it resolves (codex build r2 #4).
+      if (marker() && !suGateOpen()) { suGateBlocked().catch(() => {}); return true; }
       // Gate ONLY while the create-profile step is genuinely on screen (explicit flag set inside
       // applyCreateProfileFlow via setPaymentVisible(false)). Guest / complete / pickup, OR a failed/slow
       // snapshot that fell back to the normal fillable form (payment shown → flag false), all proceed —
@@ -4580,6 +5050,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
     if (!marker()) return;
     wrapPageHooks();
     initDeliveryStep().catch(() => {});
+    suRefreshGate().catch(() => {});   // signup (codex build r1 P1-4): a restored session's gate comes from the server, every load
   });
 
   window.__ACCOUNT = { CONFIG, ensureFirebase };   // internal handle for later tasks/tests

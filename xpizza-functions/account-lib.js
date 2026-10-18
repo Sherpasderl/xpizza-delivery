@@ -35,4 +35,16 @@ function pruneUpdates(profiles, cutoff) {
   return { updates, count };
 }
 
-module.exports = { INACTIVE_MS, accountDeleteUpdates, pruneUpdates };
+// The SAME selection as pruneUpdates, as a list — the signup deletion core (signup-endpoints.deleteAccountCore) removes each
+// account on its own, after its BC2 tombstone (which aborts when a login refreshed last_active since this read).
+function pruneCandidates(profiles, cutoff) {
+  const out = [];
+  for (const uid of Object.keys(profiles || {})) {
+    const p = profiles[uid] || {};
+    const lastActivity = Number(p.last_login || p.created_at || 0);
+    if (lastActivity && lastActivity < cutoff) out.push({ uid, phoneHash: p.phone_hash || null });
+  }
+  return out;
+}
+
+module.exports = { INACTIVE_MS, accountDeleteUpdates, pruneUpdates, pruneCandidates };

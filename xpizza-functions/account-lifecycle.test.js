@@ -107,4 +107,20 @@ const cutoff = NOW - A.INACTIVE_MS;
   assert.equal(count, 2); ok('mixed batch → only stale profiles selected');
 }
 
+{
+  // pruneCandidates selects EXACTLY what pruneUpdates selects (the signup deletion core removes them one by one)
+  const batch = {
+    u_stale1: { last_login: cutoff - 100, phone_hash: 'h1' },
+    u_fresh1: { last_login: cutoff + 100, phone_hash: 'h2' },
+    u_stale2: { created_at: cutoff - 100 },
+    u_none: { phone_hash: 'h3' },
+    u_edge: { last_login: cutoff, phone_hash: 'h4' },
+  };
+  const c = A.pruneCandidates(batch, cutoff);
+  assert.deepStrictEqual(c, [{ uid: 'u_stale1', phoneHash: 'h1' }, { uid: 'u_stale2', phoneHash: null }]);
+  const merged = Object.assign({}, ...c.map((x) => A.accountDeleteUpdates(x.uid, x.phoneHash)));
+  assert.deepStrictEqual(merged, A.pruneUpdates(batch, cutoff).updates, 'the same removals as pruneUpdates');
+  ok('pruneCandidates selects exactly pruneUpdates\' accounts (same removals)');
+}
+
 console.log(`account-lifecycle: OK (${n})`);

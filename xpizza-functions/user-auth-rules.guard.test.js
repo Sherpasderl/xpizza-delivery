@@ -69,4 +69,19 @@ for (const f of ['phone', 'phone_hash', 'created_at', 'last_login']) {
     `user_profiles write must require '${f}' present via hasChildren — got: ${up['.write']}`);
   ok(`user_profiles write requires ${f} present (blocks client child-delete of server-truth field)`);
 }
+// ── signup phase 1 (PLAN-signup-email-social r3): BC1 + the server-owned nodes ──
+assert.ok(/!root\.child\('user_private'\)\.child\(\$uid\)\.child\('deleted_at'\)\.exists\(\)/.test(up['.write']),
+  `BC1: user_profiles write must also block a uid tombstoned in user_private (got: ${up['.write']})`); ok('BC1: user_profiles write blocks a uid with user_private/{uid}/deleted_at');
+{
+  const upv = rules.user_private;
+  assert.deepStrictEqual(Object.keys(upv), ['$uid'], 'user_private: only $uid'); assert.deepStrictEqual(upv.$uid, { '.read': 'auth != null && auth.token.handheld !== true && auth.uid === $uid', '.write': false });
+  ok('user_private/$uid: owner-read, NO write at any depth (no descendant grant)');
+  for (const k of ['auth_links', 'link_tickets', 'auth_challenges', 'signup_config']) {
+    assert.strictEqual(rules[k]['.read'], false, k); assert.strictEqual(rules[k]['.write'], false, k);
+    assert.ok(!JSON.stringify(rules[k]).replace(/"\.read":false|"\.write":false/g, '').includes('.read') && !JSON.stringify(rules[k]).replace(/"\.read":false|"\.write":false/g, '').includes('.write'), `${k}: no nested grant`);
+  }
+  assert.deepStrictEqual(rules.auth_links.google['.indexOn'], ['uid']); assert.deepStrictEqual(rules.auth_links.email['.indexOn'], ['uid']);
+  assert.deepStrictEqual(rules.restaurants.$restaurant_id.legal, { '.read': false, '.write': false });
+  ok('auth_links (indexOn uid per provider) / link_tickets / auth_challenges / signup_config / restaurants/$rid/legal: server-only, no nested grant');
+}
 console.log(`user-auth-rules.guard: OK (${n})`);

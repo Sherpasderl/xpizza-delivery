@@ -42,6 +42,7 @@
     "s5-baseline.golden.test.mjs",
     "s5-confirmation.test.mjs",
     "s5-live-status.test.mjs",
+    "signup-client.test.mjs",
     "stage-race.test.mjs",
     "visibility-refetch.test.mjs",
     "whole-flow.test.mjs",
@@ -216,6 +217,7 @@
     "xpizza-functions/test/public-menu.emulator.test.js",
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -379,6 +381,7 @@
     "xpizza-functions/test/public-menu.emulator.test.js",
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -426,6 +429,7 @@
     "s5-baseline.golden.test.mjs",
     "s5-confirmation.test.mjs",
     "s5-live-status.test.mjs",
+    "signup-client.test.mjs",
     "stage-race.test.mjs",
     "visibility-refetch.test.mjs",
     "whole-flow.test.mjs",
@@ -599,6 +603,7 @@
     "xpizza-functions/test/public-menu.emulator.test.js",
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -763,6 +768,7 @@
     "xpizza-functions/test/public-menu.emulator.test.js",
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -1538,6 +1544,7 @@
  "seed_problems": [],
  "server_modules_edited": [
   "access/access-census-core.js",
+  "account-lib.js",
   "alert-prune.js",
   "catalog/bound-reuse.js",
   "catalog/canonical-binding.js",
@@ -1568,7 +1575,9 @@
   "pixelpay-hosted-charge.js",
   "prep-stats.js",
   "rewards-redeem-intake.js",
-  "rewards-reserve.js"
+  "rewards-reserve.js",
+  "signup-core.js",
+  "signup-endpoints.js"
  ],
  "server": {
   "access/access-census-core.js": {
@@ -1576,6 +1585,10 @@
    "lifts": [
     "xpizza-functions/access/kds-filter-pre-f2.guard.test.js"
    ]
+  },
+  "account-lib.js": {
+   "pins": [],
+   "lifts": []
   },
   "alert-prune.js": {
    "pins": [],
@@ -1631,7 +1644,8 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/s1b-inverse.js",
-      "tools/s5-inverse.js"
+      "tools/s5-inverse.js",
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1648,6 +1662,7 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
+      "tools/signup-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1666,6 +1681,7 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
+      "tools/signup-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1686,6 +1702,7 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
+      "tools/signup-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1702,6 +1719,7 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
+      "tools/signup-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1716,7 +1734,8 @@
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
-      "tools/serial3-inverse.js"
+      "tools/serial3-inverse.js",
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1728,20 +1747,23 @@
       "tools/h1c-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
-      "tools/s5-inverse.js"
+      "tools/s5-inverse.js",
+      "tools/signup-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/h1-wiring.guard.test.js",
      "inverses": [
       "tools/h1-inverse.js",
-      "tools/h1c-inverse.js"
+      "tools/h1c-inverse.js",
+      "tools/signup-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/h1c-wiring.guard.test.js",
      "inverses": [
-      "tools/h1c-inverse.js"
+      "tools/h1c-inverse.js",
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1760,6 +1782,7 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
+      "tools/signup-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1780,6 +1803,7 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
+      "tools/signup-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1791,7 +1815,8 @@
       "tools/h1c-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
-      "tools/s5-inverse.js"
+      "tools/s5-inverse.js",
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1802,7 +1827,8 @@
       "tools/h1c-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
-      "tools/s5-inverse.js"
+      "tools/s5-inverse.js",
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1810,7 +1836,8 @@
      "inverses": [
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
-      "tools/s5-inverse.js"
+      "tools/s5-inverse.js",
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1823,7 +1850,14 @@
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
-      "tools/serial3-inverse.js"
+      "tools/serial3-inverse.js",
+      "tools/signup-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/signup-wiring.guard.test.js",
+     "inverses": [
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1840,6 +1874,7 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
+      "tools/signup-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1856,6 +1891,12 @@
      ]
     },
     {
+     "file": "xpizza-functions/tools/signup-inverse.js",
+     "inverses": [
+      "tools/signup-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/wacancel-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
@@ -1867,6 +1908,7 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
+      "tools/signup-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     }
@@ -2038,6 +2080,18 @@
   "rewards-reserve.js": {
    "pins": [],
    "lifts": []
+  },
+  "signup-core.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/signup-wiring.guard.test.js"
+   ]
+  },
+  "signup-endpoints.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/signup-wiring.guard.test.js"
+   ]
   }
  },
  "unregistered": []

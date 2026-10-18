@@ -6878,6 +6878,19 @@ exports.getPublicMenu = onRequest(
   },
 );
 
+/* signup:begin endpoints */
+// Customer signup phase 1 (PLAN-signup-email-social r3, BC1–BC3): Google as a LOGIN METHOD on the phone account, the email +
+// per-brand consent, deletion tombstones. Handlers + hooks: signup-endpoints.js; every decision: signup-core.js.
+const SE = require('./signup-endpoints');
+const SIGNUP_H = SE.makeSignup({ getDatabase, getAuth, checkRateLimit, resolveRid: (raw) => resolveRestaurantId(raw, restaurantRegistry().known()) });
+const SIGNUP_OPTS = { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 };
+exports.googleStart = onRequest(SIGNUP_OPTS, SIGNUP_H.googleStart);
+exports.googleSignIn = onRequest(SIGNUP_OPTS, SIGNUP_H.googleSignIn);
+exports.completeProfile = onRequest(SIGNUP_OPTS, SIGNUP_H.completeProfile);
+exports.setPromos = onRequest(SIGNUP_OPTS, SIGNUP_H.setPromos);
+exports.getSignupConfig = onRequest(SIGNUP_OPTS, SIGNUP_H.getSignupConfig);
+/* signup:end endpoints */
+
 exports.requestOtp = onRequest(
   { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
   async (req, res) => {
@@ -6904,6 +6917,9 @@ exports.requestOtp = onRequest(
       // welcome to the RIGHT brand — spoof-proof, no client-supplied brand at verify. verifyConsume spreads
       // `...v`, so this rid survives the consume transaction. Fail-open: on miss, verifyOtp defaults x_pizza.
       try { await db.ref('otp/' + pHash + '/rid').set(restaurantId); } catch (_) {}
+      /* signup:begin request-otp */
+      if (req.body.link_ticket != null) await SE.bindOtpTicket(db, { body: req.body, restaurantId, phoneHash: pHash, otpRecord: tx.snapshot.val(), now });   // only with a ticket
+      /* signup:end request-otp */
       /* d12b:begin */
       await whatsapp.sendMessage(phone, whatsapp.tplOtp({ code }), restaurantId);   // D12b: the brand from this restaurant's config, never a literal
       /* d12b:end */
@@ -6932,7 +6948,7 @@ exports.verifyOtp = onRequest(
       // ATOMIC (H3): verify expiry/attempts/code AND consume (mark consumed) in ONE transaction, BEFORE any
       // mint. Parallel verifies can't exceed the 5-attempt cap or mint twice — `consumed` is CAS-guarded.
       let outcome = 'fail';
-      await otpRef.transaction((v) => { const r = OTP.verifyConsume(v, now, String(code)); outcome = r.outcome; return r.next; });
+      const otpTx = await otpRef.transaction((v) => { const r = OTP.verifyConsume(v, now, String(code)); outcome = r.outcome; return r.next; });   // signup: the consumed record names the OTP challenge
       if (outcome !== 'ok') return res.status(200).json({ ok: false });   // wrong/expired/capped → generic, no mint
 
       // Resolve/create the stable server-issued uid. `u_`-prefixed → DISJOINT from Firebase staff/driver
@@ -6954,6 +6970,13 @@ exports.verifyOtp = onRequest(
       // survives account deletion). Fail-open: NEVER block login/token issuance on a rewards error.
       try { await creditWelcome(db, { uid, phoneHash: pHash, restaurantId: rid, now: now2 }); }
       catch (e) { console.warn('verifyOtp: welcome credit fail-open —', e && e.message); }
+      /* signup:begin verify-otp */
+      await SE.refreshActivity(db, uid, now2);   // BC3: user_private/{uid}/last_active — aborts on a tombstone; bounded, fail-open
+      if (req.body.link_ticket != null) {   // only with a ticket: redeem + link (the phone login succeeds whatever the link outcome)
+        const link = await SE.redeemOtpTicket(db, { body: req.body, uid, phoneHash: pHash, rid, consumedOtp: otpTx.snapshot.val(), now: now2 });
+        return res.status(200).json({ ok: true, token, is_new: !prof, name: (prof && prof.name) || null, link });
+      }
+      /* signup:end verify-otp */
       return res.status(200).json({ ok: true, token, is_new: !prof, name: (prof && prof.name) || null });
     } catch (e) {
       console.error('verifyOtp', e);
@@ -7128,7 +7151,7 @@ exports.deleteAccount = onRequest(
       const uid = dec.uid;   // only ever the CALLER's own account — a client can't pass someone else's uid
       const db = getDatabase();
       const pHash = (await db.ref(`user_profiles/${uid}/phone_hash`).get()).val();
-      await db.ref().update(ACCOUNT.accountDeleteUpdates(uid, pHash, Date.now()));
+      await SE.deleteAccountCore(db, ACCOUNT, { uid, phoneHash: pHash, now: Date.now() });   // signup BC2: tombstone first, today's removals, auth_links
       console.log(`deleteAccount: cleared account ${uid}`);
       return res.status(200).json({ ok: true });
     } catch (e) {
@@ -7146,10 +7169,23 @@ exports.pruneInactiveAccounts = onSchedule(
   async () => {
     const db = getDatabase();
     const snap = await db.ref('user_profiles').get();
-    if (!snap.exists()) { console.log('pruneInactiveAccounts: no profiles'); return; }
+    /* signup:begin prune-residual */
+    if (!snap.exists()) {   // codex build r1 P2-10: the residual cleanup runs even when no profiles remain
+      const resid = await SE.pruneResidual(db);
+      console.log(`pruneInactiveAccounts: no profiles (residual: ${resid.deadLinks} dead link(s), ${resid.expired} expired row(s))`);
+      return;
+    }
+    /* signup:end prune-residual */
     const cutoff = Date.now() - ACCOUNT.INACTIVE_MS;
-    const { updates, count } = ACCOUNT.pruneUpdates(snap.val(), cutoff);
-    if (count) await db.ref().update(updates);
+    /* signup:begin prune */
+    // each account: its BC2 tombstone first — it aborts when a login refreshed last_active since the read above — then removal
+    let count = 0;
+    for (const c of ACCOUNT.pruneCandidates(snap.val(), cutoff)) {
+      if (await SE.deleteAccountCore(db, ACCOUNT, { uid: c.uid, phoneHash: c.phoneHash, now: Date.now(), sweepCutoff: cutoff })) count++;
+    }
+    const resid = await SE.pruneResidual(db);   // links that raced a deletion (inert at login) + expired challenges / tickets
+    if (resid.deadLinks || resid.expired) console.log(`pruneInactiveAccounts: residual ${resid.deadLinks} dead link(s), ${resid.expired} expired row(s)`);
+    /* signup:end prune */
     console.log(`pruneInactiveAccounts: removed ${count} inactive profile(s) (cutoff ${new Date(cutoff).toISOString()})`);
   }
 );

@@ -134,6 +134,14 @@
  },
  "sentinelExemptions": [
   {
+   "key": "normEmail",
+   "reason": "signup-core's exported email NORMALIZER (a module.exports key) — customer-identity email for the account, not an order email sender; §1's 'no order email' stands"
+  },
+  {
+   "key": "validEmail",
+   "reason": "signup-core's exported email VALIDATOR (a module.exports key) — customer-identity email for the account, not an order email sender"
+  },
+  {
    "key": "customer_email",
    "reason": "the customer's contact field (persisted on the order since launch) — not an order-email SENDER; §1's 'no order email' stands"
   },
@@ -606,7 +614,13 @@
   "merchant/merchant-push.js#servedAtHandheld": "merchant",
   "merchant/merchant-push.js#stillPending": "merchant",
   "merchant/merchant-push.js#pendingOf": "merchant",
-  "merchant/merchant-push.js#pendingOf>anon": "merchant"
+  "merchant/merchant-push.js#pendingOf>anon": "merchant",
+  "signup-endpoints.js#googleStart": "infra",
+  "signup-endpoints.js#googleSignIn": "infra",
+  "signup-endpoints.js#limited": "infra",
+  "signup-endpoints.js#getSignupConfig": "infra",
+  "signup-endpoints.js#setPromos": "infra",
+  "signup-endpoints.js#completeProfile": "infra"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
@@ -623,6 +637,18 @@
   "xpizza-orders/account.js#openLoginSheet": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
   "xpizza-orders/account.js#sendCode": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
   "xpizza-orders/account.js#verifyCode": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+  "xpizza-orders/account.js#afterLogin": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "xpizza-orders/account.js#routeAfterLogin": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "xpizza-orders/account.js#suConfig>anon": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "xpizza-orders/account.js#suHasTerms>anon": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "xpizza-orders/account.js#suGoogleArm": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "xpizza-orders/account.js#suRefreshGate>anon": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "xpizza-orders/account.js#suOpenCompletion": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "xpizza-orders/account.js#suPromosRow": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "xpizza-orders/account.js#suPromosToggle": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "xpizza-orders/account.js#suGoogleCredential": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "xpizza-orders/account.js#suSave": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "xpizza-orders/account.js#saveCreateProfile>anon": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
   "xpizza-orders/account.js#renderOrdersPane>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
   "xpizza-orders/account.js#reorderFromEntry": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
   "xpizza-orders/account.js#saveAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
@@ -681,6 +707,18 @@
   "la-musa-orders/account.js#openLoginSheet": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
   "la-musa-orders/account.js#sendCode": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
   "la-musa-orders/account.js#verifyCode": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+  "la-musa-orders/account.js#afterLogin": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "la-musa-orders/account.js#routeAfterLogin": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "la-musa-orders/account.js#suConfig>anon": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "la-musa-orders/account.js#suHasTerms>anon": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "la-musa-orders/account.js#suGoogleArm": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "la-musa-orders/account.js#suRefreshGate>anon": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "la-musa-orders/account.js#suOpenCompletion": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "la-musa-orders/account.js#suPromosRow": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "la-musa-orders/account.js#suPromosToggle": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "la-musa-orders/account.js#suGoogleCredential": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "la-musa-orders/account.js#suSave": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
+  "la-musa-orders/account.js#saveCreateProfile>anon": "signup phase 1 — account UI (login routing / Google sign-in / profile completion; customer identity), not persisted-order reads",
   "la-musa-orders/account.js#renderOrdersPane>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
   "la-musa-orders/account.js#reorderFromEntry": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
   "la-musa-orders/account.js#saveAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",

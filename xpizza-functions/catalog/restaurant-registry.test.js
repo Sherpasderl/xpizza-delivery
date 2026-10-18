@@ -194,7 +194,8 @@ const FLOOR = [...KNOWN_RESTAURANTS].sort();
       calls.push(CODE.slice(start, j));
     }
     assert.ok(calls.every((c) => c.split('(').length === c.split(')').length), 'the scanner must extract balanced argument lists');
-    assert.strictEqual(calls.length, 6, `expected exactly the 6 known call sites, found ${calls.length} — a new one would need wiring too`);
+    // 7: + signup phase 1's handler factory (signup-endpoints: a KNOWN, explicitly-sent rid — never the default brand)
+    assert.strictEqual(calls.length, 7, `expected exactly the 7 known call sites, found ${calls.length} — a new one would need wiring too`);
     for (const args of calls) {
       assert.ok(/,\s*restaurantRegistry\(\)\.known\(\)\s*$/.test(args.trim()),
         `every call site must pass the LIVE registry set — found resolveRestaurantId(${args})`);

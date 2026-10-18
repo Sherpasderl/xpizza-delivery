@@ -510,6 +510,10 @@
           ".read": false,
           ".write": false
         },
+        "legal": {
+          ".read": false,
+          ".write": false
+        },
         "identity": {
           ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true",
           ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists() && (newData.exists() || !data.child('brand_id').exists())",
@@ -632,7 +636,7 @@
     "user_profiles": {
       "$uid": {
         ".read": "auth != null && auth.token.handheld !== true && auth.uid === $uid",
-        ".write": "auth != null && auth.token.handheld !== true && auth.uid === $uid && newData.exists() && newData.hasChildren(['phone', 'phone_hash', 'created_at', 'last_login']) && !root.child('deleted_uids').child($uid).exists() && (!newData.child('default_address').exists() || newData.child('default_address').val() === null || newData.child('addresses').hasChild(newData.child('default_address').val()))",
+        ".write": "auth != null && auth.token.handheld !== true && auth.uid === $uid && newData.exists() && newData.hasChildren(['phone', 'phone_hash', 'created_at', 'last_login']) && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && (!newData.child('default_address').exists() || newData.child('default_address').val() === null || newData.child('addresses').hasChild(newData.child('default_address').val()))",
         "name": {
           ".validate": "newData.isString() && newData.val().length <= 80"
         },
@@ -734,6 +738,44 @@
       ".write": false
     },
     "deleted_uids": {
+      ".read": false,
+      ".write": false
+    },
+    "user_private": {
+      "$uid": {
+        ".read": "auth != null && auth.token.handheld !== true && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "auth_links": {
+      ".read": false,
+      ".write": false,
+      "google": {
+        ".indexOn": [
+          "uid"
+        ]
+      },
+      "email": {
+        ".indexOn": [
+          "uid"
+        ]
+      }
+    },
+    "link_tickets": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "exp"
+      ]
+    },
+    "auth_challenges": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "exp"
+      ]
+    },
+    "signup_config": {
       ".read": false,
       ".write": false
     }

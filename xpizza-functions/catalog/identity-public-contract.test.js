@@ -908,12 +908,12 @@ function cartAdapterOf(rid) {
     `🔴 the set of opaque computed members on window/self/globalThis in the forms changed:\n    ${countByText(computedGlobalSites).join('\n    ')}\n  pinned:\n    ${PINNED_COMPUTED_GLOBALS.join('\n    ')}\n    An opaque key on a global cannot be ruled out as a loader by reading it. The pinned ones are a stashed click handler; a NEW one must be looked at rather than absorbed.`);
 
   const PINNED_DYNAMIC_IMPORTS = [
-    'xpizza-orders/account.js:28 `${V}/firebase-app.js` → https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js',
-    'xpizza-orders/account.js:29 `${V}/firebase-auth.js` → https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js',
-    'xpizza-orders/account.js:30 `${V}/firebase-database.js` → https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js',
-    'la-musa-orders/account.js:32 `${V}/firebase-app.js` → https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js',
-    'la-musa-orders/account.js:33 `${V}/firebase-auth.js` → https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js',
-    'la-musa-orders/account.js:34 `${V}/firebase-database.js` → https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js',
+    'xpizza-orders/account.js:33 `${V}/firebase-app.js` → https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js',
+    'xpizza-orders/account.js:34 `${V}/firebase-auth.js` → https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js',
+    'xpizza-orders/account.js:35 `${V}/firebase-database.js` → https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js',
+    'la-musa-orders/account.js:37 `${V}/firebase-app.js` → https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js',
+    'la-musa-orders/account.js:38 `${V}/firebase-auth.js` → https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js',
+    'la-musa-orders/account.js:39 `${V}/firebase-database.js` → https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js',
   ];
   assert.deepStrictEqual(dynamicSites.slice().sort(), PINNED_DYNAMIC_IMPORTS.slice().sort(),
     `🔴 the set of ACCEPTED dynamic imports in the forms changed:\n    ${dynamicSites.join('\n    ')}\n  pinned:\n    ${PINNED_DYNAMIC_IMPORTS.join('\n    ')}\n    These are the modular Firebase SDK's lazy loads, accepted because the base const is PROVED to be an https:// literal in the same file. A new one — even one the proof accepts — is a decision to take deliberately, not a line to update. account.js is production and is NOT edited for this test's sake.`);

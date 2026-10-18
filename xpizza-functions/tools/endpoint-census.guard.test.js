@@ -62,6 +62,8 @@ const D = {
   // D4-c2b: the monitor's fresh-process child and the §8 latency measure — `_emulator-required('database', 'firestore')` is the
   // first statement of each, before index.js is loaded (driven below like every harness)
   [F('test/_c2b-monitor-child.js')]: 'harness', [F('test/c2b-latency.measure.js')]: 'harness',
+  // signup phase 1: the verifyOtp differential worker — `_emulator-required('database', 'firestore')` first, before index.js loads
+  [F('test/_signup-otp-worker.js')]: 'harness',
   // KDS parent: self-launches the runner when NO signal is present (by design) — driven with foreign + half-configured
   [F('kds-manifest-writer.test.mjs')]: 'harness-selflaunch',
   // the latency child: `node -e` children that load index.js — guarded by lib/admin.js (driven: its child shape)

@@ -556,7 +556,7 @@
    "reachesAsserted": false,
    "reason": "account.js rewards-key debounce re-armed on each keystroke of the reward/claim flow; no order output",
    "sha": "bf487578908ef92771f568ad76efbde6b15f80d1d8fe926d80b69f234282816e",
-   "ctrlSha": "8d1dc97b792311769a1520ebec63fee883fc899f8a11be19107b5f82935acf87"
+   "ctrlSha": "da35f7e6b0344f3b9bd10d026a46aa0af93393bb36cd525585a75ea565c66222"
   },
   {
    "key": "xpizza-orders/account.js#startResendCountdown:setInterval#0 → xpizza-orders/account.js#startResendCountdown:setInterval#0",
@@ -566,7 +566,7 @@
    "reachesAsserted": false,
    "reason": "the OTP resend countdown (1 s ticks, stops at 0 / 60 s): profile sign-in only — not in S1 (guest checkout, precondition no-otp)",
    "sha": "2918ed1daf9d7c8e2109079da11d777c06d6eb7314817ce55042db589df5bdc8",
-   "ctrlSha": "8d1dc97b792311769a1520ebec63fee883fc899f8a11be19107b5f82935acf87"
+   "ctrlSha": "da35f7e6b0344f3b9bd10d026a46aa0af93393bb36cd525585a75ea565c66222"
   },
   {
    "key": "xpizza-orders/account.js#openAcctFullscreenMap:setTimeout#0 → xpizza-orders/account.js#openAcctFullscreenMap:setTimeout#0",
@@ -576,7 +576,7 @@
    "reachesAsserted": false,
    "reason": "account address map preview retries until Maps is ready; it touches only the account map preview",
    "sha": "fc8f59810c1d44ea2173db0a9712d02f7ee1af634b5d972cbdd789b6c2ad600f",
-   "ctrlSha": "8d1dc97b792311769a1520ebec63fee883fc899f8a11be19107b5f82935acf87"
+   "ctrlSha": "da35f7e6b0344f3b9bd10d026a46aa0af93393bb36cd525585a75ea565c66222"
   },
   {
    "key": "xpizza-orders/account.js#openAcctFullscreenMap:setTimeout#0 → xpizza-orders/account.js#initAcctPreviewMap:setTimeout#0 → xpizza-orders/account.js#initAcctPreviewMap:setTimeout#0",
@@ -586,7 +586,7 @@
    "reachesAsserted": false,
    "reason": "account address map preview retries until Maps is ready; it touches only the account map preview",
    "sha": "87e80d87e79634ce994c8c6bbaaf4b43df24f0e36757acfb3d9a45a3908db02f",
-   "ctrlSha": "c619ccc1dd8b6dd25b4765ecf11a321c2e81ea42f39bf4ed7f7723c4d8e6c3b2"
+   "ctrlSha": "2ddd3efba12a7e9d8e69a575c0c5762ae295cd9d879fe5b16e378351458c382e"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#scheduleBeat:setT#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#0",
@@ -992,7 +992,7 @@
    "mayChangeSelectors": [],
    "changesAsserted": false,
    "sha": "425dce5f41ee83fc2ec0297889164ec4cb18849ae35bd517aa50be582b0255e8",
-   "ctrlSha": "68815a623fa1af475c98ed21acae63114078b75da0b1b408174bf3c243354676"
+   "ctrlSha": "238dc5703001be6660e7a298b0a3e298be897fbf466fb7cd5bc36a7c184f8328"
   }
  ]
 }

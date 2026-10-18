@@ -14309,6 +14309,358 @@
     ]
   },
   {
+    "id": "signup-01",
+    "slice": "signup",
+    "label": "codex r1 P1-1: a linked Google login ignores a tombstone its activity transaction saw — a token for a deleted account",
+    "file": "signup-core.js",
+    "from": "    if (!(await touchActivity(db, link.uid, now))) return { ok: false, reason: 'account_unavailable' };",
+    "to": "    await touchActivity(db, link.uid, now);",
+    "kills_with": [
+      "a linked login whose activity transaction saw the tombstone must refuse"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:signup-core"
+    ]
+  },
+  {
+    "id": "signup-02",
+    "slice": "signup",
+    "label": "codex r1 P2-6: a consumed ticket keeps its email / provider id / hashes",
+    "file": "signup-core.js",
+    "from": "return { state: 'consumed', consumed_at: now, exp: t.exp };",
+    "to": "return { ...t, state: 'consumed', consumed_at: now };",
+    "kills_with": [
+      "a consumed ticket keeps private data"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:signup-core"
+    ]
+  },
+  {
+    "id": "signup-03",
+    "slice": "signup",
+    "label": "codex r1 P2-6: expired challenges / tickets are never pruned",
+    "file": "signup-core.js",
+    "from": "for (const node of ['auth_challenges', 'link_tickets']) {",
+    "to": "for (const node of []) {",
+    "kills_with": [
+      "the expired challenge + the expired ticket"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:signup-core"
+    ]
+  },
+  {
+    "id": "signup-04",
+    "slice": "signup",
+    "label": "codex r1 P2-9: completeProfile is not rate-limited",
+    "file": "signup-endpoints.js",
+    "from": "      if (await limited(db, 'profile', req, res)) return;   // codex build r1 P2-9: like the other account endpoints\n",
+    "to": "",
+    "kills_with": [
+      "the profile endpoints must be rate-limited"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:signup-http"
+    ]
+  },
+  {
+    "id": "signup-05",
+    "slice": "signup",
+    "label": "codex r1 P2-9: setPromos is not rate-limited",
+    "file": "signup-endpoints.js",
+    "from": "      if (await limited(db, 'profile', req, res)) return;\n",
+    "to": "",
+    "kills_with": [
+      "the profile endpoints must be rate-limited"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:signup-http"
+    ]
+  },
+  {
+    "id": "signup-06",
+    "slice": "signup",
+    "label": "codex r1 P2-10: the scheduled run skips the residual cleanup when no profiles remain",
+    "file": "index.js",
+    "from": "      const resid = await SE.pruneResidual(db);",
+    "to": "      const resid = { deadLinks: 0, expired: 0 };",
+    "kills_with": [
+      "the dead link survives a run with no profiles"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:signup-http"
+    ]
+  },
+  {
+    "id": "signup-07",
+    "slice": "signup",
+    "label": "codex r1 P2-5: One Tap prompt() instead of the GIS button flow",
+    "file": "../xpizza-orders/account.js",
+    "from": "    gis.renderButton(slot, {",
+    "to": "    gis.prompt(); ({",
+    "kills_with": [
+      "GIS initialized + button rendered"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-08",
+    "slice": "signup",
+    "label": "codex r1 P2-7: a failed setPromos leaves the switch showing the unsaved choice",
+    "file": "../xpizza-orders/account.js",
+    "from": "if (!ok) { sw.checked = !want; toast(",
+    "to": "if (!ok) { toast(",
+    "kills_with": [
+      "a failure reverts the switch"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-09",
+    "slice": "signup",
+    "label": "codex r1 P1-2: choosing the phone leaves the pending Google attempt live (a late callback replaces the session)",
+    "file": "../xpizza-orders/account.js",
+    "from": "    _su.attempt++;   // codex build r1 P1-2: the phone path cancels any pending Google attempt (a late callback is ignored)\n",
+    "to": "",
+    "kills_with": [
+      "a Google callback after choosing the phone must be ignored"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-10",
+    "slice": "signup",
+    "label": "codex r1 P1-3: a failed config read is cached for the page lifetime",
+    "file": "../xpizza-orders/account.js",
+    "from": "      _su.cfgP = null;   // a failed read is never cached (codex build r1 P1-3) — the next decision reads again\n",
+    "to": "",
+    "kills_with": [
+      "the config read is retried, never cached as a failure"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-11",
+    "slice": "signup",
+    "label": "codex r1 P1-4: pay is not gated on the server-derived completion state",
+    "file": "../xpizza-orders/account.js",
+    "from": "      if (marker() && !suGateOpen()) { suGateBlocked().catch(() => {}); return true; }",
+    "to": "",
+    "kills_with": [
+      "a named post-rollout account without terms must not pay before completing"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-12",
+    "slice": "signup",
+    "label": "codex r1 P2-8: resuming checkout rewrites the card's original name over the completed one",
+    "file": "../xpizza-orders/account.js",
+    "from": "    const resumedName = (_su.resume && _su.resumeName) ? _su.resumeName : null;",
+    "to": "    const resumedName = null;",
+    "kills_with": [
+      "María López"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-13",
+    "slice": "signup",
+    "label": "codex r2 #2: a Google mint that finishes after the phone was chosen keeps its session (no sign-out)",
+    "file": "../xpizza-orders/account.js",
+    "from": "    try { await authMod.signOut(auth); } catch (_) {}\n    if (!hadMarker && !marker()) return;",
+    "to": "    if (!hadMarker && !marker()) return;",
+    "kills_with": [
+      "the stale Google session is signed out"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-14",
+    "slice": "signup",
+    "label": "codex r2 #2: the phone mint does not wait for a Google mint underway (the Google session can land last)",
+    "file": "../xpizza-orders/account.js",
+    "from": "      const minted = await suMint(auth, authMod, data.token, () => true, (uid) => localStorage.setItem(CONFIG.MARKER, JSON.stringify({",
+    "to": "      await authMod.signInWithCustomToken(auth, data.token); const minted = await ((w, cb) => (cb(auth.currentUser.uid), true))(() => true, (uid) => localStorage.setItem(CONFIG.MARKER, JSON.stringify({",
+    "kills_with": [
+      "the phone mint must wait for the Google mint already underway"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-15",
+    "slice": "signup",
+    "label": "codex r2 #3 (client): legal_ready:false with a rollout timestamp → 'off' (completion bypassed)",
+    "file": "../xpizza-orders/account.js",
+    "from": "    if (typeof cfg.rollout_at !== 'number') return 'off';\n    if (!cfg.legal_ready) return 'unknown';",
+    "to": "    if (!cfg.legal_ready || typeof cfg.rollout_at !== 'number') return 'off';",
+    "kills_with": [
+      "legal_ready:false with a rollout must not bypass completion"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-16",
+    "slice": "signup",
+    "label": "codex r2 #3 (server): getSignupConfig reports rollout_at while the brand's legal documents are missing",
+    "file": "signup-core.js",
+    "from": "    rollout_at: legal && isNum(r) ? r : null };",
+    "to": "    rollout_at: isNum(r) ? r : null };",
+    "kills_with": [
+      "legal not ready must withhold rollout_at"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:signup-http"
+    ]
+  },
+  {
+    "id": "signup-17",
+    "slice": "signup",
+    "label": "codex r2 #4: pay during a PENDING restore read passes (undefined treated as open)",
+    "file": "../xpizza-orders/account.js",
+    "from": "  const suGateOpen = () => !_su.gateP && _su.gate !== undefined && !suMustComplete(_su.gate);",
+    "to": "  const suGateOpen = () => !suMustComplete(_su.gate);",
+    "kills_with": [
+      "pay while the completion read is PENDING must be refused"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-18",
+    "slice": "signup",
+    "label": "codex r3 P1: no bounded wait — a mint that never settles wedges every later sign-in",
+    "file": "../xpizza-orders/account.js",
+    "from": "tm = setTimeout(r, SU_AUTH_WAIT_MS);",
+    "to": "tm = null;",
+    "kills_with": [
+      "a hung mint must not wedge the next sign-in"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-19",
+    "slice": "signup",
+    "label": "owner rulings (codex r4/r7): a late stale mint with a session on screen signs out but neither clears the marker nor reloads",
+    "file": "../xpizza-orders/account.js",
+    "from": "    if (!hadMarker && !marker()) return;   // nobody signed in on screen",
+    "to": "    return;   // nobody signed in on screen",
+    "kills_with": [
+      "a late stale mint leaves the customer fully signed out, no marker"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-20",
+    "slice": "signup",
+    "label": "codex r3 P2: a superseded gate read still sets the gate and routes (completion panes reopen)",
+    "file": "../xpizza-orders/account.js",
+    "from": "      if (gen === _su.gateGen) { _su.gate = g; _su.gateP = null; return g; }",
+    "to": "      { _su.gate = g; _su.gateP = null; return g; }",
+    "kills_with": [
+      "a superseded read must not reopen the completion panes"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-21",
+    "slice": "signup",
+    "label": "owner ruling (r7): the forced sign-out reloads even with NO marker on screen (kills the pending phone-code flow)",
+    "file": "../xpizza-orders/account.js",
+    "from": "    if (!hadMarker && !marker()) return;   // nobody signed in on screen (e.g. the phone code still pending): the open flow carries on\n",
+    "to": "",
+    "kills_with": [
+      "no marker on screen (the phone code pending) → no reload: the open flow carries on"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-22",
+    "slice": "signup",
+    "label": "owner ruling (r7): the forced sign-out with a session on screen does not reload (its pending continuations survive)",
+    "file": "../xpizza-orders/account.js",
+    "from": "    location.reload();\n",
+    "to": "    if (false) location.reload();\n",
+    "kills_with": [
+      "a late stale mint with a session on screen RELOADS the page"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-23",
+    "slice": "signup",
+    "label": "codex r8 P2: the marker is checked only AFTER the signOut await (a heal() during it skips the reload)",
+    "file": "../xpizza-orders/account.js",
+    "from": "    if (!hadMarker && !marker()) return;",
+    "to": "    if (!marker()) return;",
+    "kills_with": [
+      "also when a heal() drops the marker during its signOut"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
     "id": "s1b-01",
     "slice": "s1b",
     "label": "premature eligibility: invite creates pending enabled:TRUE",
