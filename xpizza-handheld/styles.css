@@ -142,3 +142,5 @@
 /* ── DEVICE FRAME (build only): the prototype's phone card becomes the screen ── */
 html,body{height:100%;background:#F4F2EE}
 .phone{width:100vw;height:100vh;height:100dvh;border:none;border-radius:0;box-shadow:none}
+.swhit{min-width:52px;min-height:48px;display:flex;align-items:center;justify-content:center;background:none;border:none;padding:0;flex:0 0 auto}
+.swhit .sw{display:block}

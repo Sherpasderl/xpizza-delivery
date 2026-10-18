@@ -36,23 +36,67 @@ test('copy: every text node of the screen template is prototype / board text or 
   assert.ok(parts.length > 60, `the template carries the prototype's copy (${parts.length} fragments)`);
 });
 
+// A small JS string-literal tokenizer (codex H1b r1 P2-14): comments skipped, '…' "…" and `…${…}…` (nested) collected, regex
+// literals skipped — a URL inside a template literal or a quote inside a regex no longer derails it.
+export function stringLiterals(src) {
+  const out = []; let i = 0; let prev = '';
+  const isRegexStart = () => /^$|[(,=:[!&|?{};+\-*%<>~^]$/.test(prev) || /\b(return|typeof|case|in|of)$/.test(prev);
+  function readString(q) {                            // i at the opening quote
+    let buf = ''; i++;
+    while (i < src.length) {
+      const c = src[i];
+      if (c === '\\') { buf += src[i + 1] === undefined ? '' : src[i + 1]; i += 2; continue; }
+      if (c === q) { i++; return buf; }
+      if (q === '`' && c === '$' && src[i + 1] === '{') {
+        buf += '\u0000'; i += 2; let depth = 1;
+        while (i < src.length && depth > 0) {
+          const d = src[i];
+          if (d === "'" || d === '"' || d === '`') { out.push(readString(d)); continue; }
+          if (d === '{') depth++; else if (d === '}') depth--;
+          i++;
+        }
+        continue;
+      }
+      buf += c; i++;
+    }
+    return buf;
+  }
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '/' && src[i + 1] === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+    if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i + 2); i = i < 0 ? src.length : i + 2; continue; }
+    if (c === "'" || c === '"' || c === '`') { out.push(readString(c)); prev = 'x'; continue; }
+    if (c === '/' && isRegexStart()) {
+      i++; let cls = false;
+      while (i < src.length) { const d = src[i]; if (d === '\\') { i += 2; continue; } if (d === '[') cls = true; else if (d === ']') cls = false; else if (d === '/' && !cls) break; i++; }
+      i++; while (/[a-z]/i.test(src[i] || '')) i++; prev = 'x'; continue;
+    }
+    if (!/\s/.test(c)) prev = (/[\w$]/.test(c) ? (prev + c).slice(-8) : c);
+    i++;
+  }
+  return out;
+}
+
 test('copy: every Spanish string literal the modules can show is prototype / board text or approved', () => {
-  const TECH = new Set(['Equipo de la sucursal']);    // the device LABEL sent to merchantPairDevice (shown in the portal, not here)
-  const files = ['model.js', 'view.js', 'app.js', 'api.js', 'setup.js', 'bridge.js', 'copy.js'];
+  // never shown on the device: the device LABEL sent to merchantPairDevice (shown in the portal), a programmer-error throw
+  const TECH = new Set(['Equipo de la sucursal', 'is not a queued action']);
+  const files = ['model.js', 'view.js', 'app.js', 'api.js', 'setup.js', 'bridge.js', 'copy.js', 'morph.js'];
   const unknown = [];
   for (const f of files) {
-    const src = read(`./${f}`).replace(/\/\/.*$/gm, '').replace(/throw new Error\([^)]*\)/g, '').replace(/console\.\w+\([^)]*\)/g, '');
-    for (const m of src.matchAll(/'([^'\\\n]*(?:\\.[^'\\\n]*)*)'|`([^`]*)`/g)) {
-      const raw = m[1] !== undefined ? m[1] : m[2];
+    for (const raw of stringLiterals(read(`./${f}`))) {
       if (!/[a-záéíóúñ]{3,}\s+[a-záéíóúñ]{2,}/i.test(raw) && !/[«»¿¡áéíóúñ·…]/.test(raw)) continue;   // looks like a phrase
-      const flat = raw.replace(/\$\{(?:[^{}]|\{[^{}]*\})*\}/g, '\u0000');
-      for (const piece of flat.split('\u0000').map((x) => norm(x)).filter((x) => /[A-Za-záéíóúñ]{3}/.test(x))) {
+      for (const piece of raw.split('\u0000').map((x) => norm(x)).filter((x) => /[A-Za-záéíóúñ]{3}/.test(x))) {
         if (TECH.has(piece) || known(piece) || /^[a-z_]+$/.test(piece)) continue;
         unknown.push(`${f}: ${piece}`);
       }
     }
   }
   assert.deepEqual(unknown, []);
+});
+
+test('the literal scanner sees double quotes, template pieces, and ignores comments and regexes (P2-14)', () => {
+  const lits = stringLiterals(`const a = "Texto nunca aprobado"; // 'comentario'\nconst b = \`x \${'adentro'} y\`; const r = /["']/g; /* "no" */ const c = 'fin';`);
+  assert.deepEqual(lits, ['Texto nunca aprobado', 'adentro', 'x \u0000 y', 'fin']);
 });
 
 test('no restaurant / brand literal in any shipped file (spec copies, vendor and the platform config excepted)', () => {
@@ -93,8 +137,19 @@ test('vendor + font checksums: SHA256SUMS verified (a mismatch is red)', () => {
   for (const f of ['firebase-auth.js', 'firebase-database.js', 'firebase-functions.js']) assert.ok(!/gstatic\.com/.test(read(`./vendor/${f}`)), `${f} loads nothing remote`);
 });
 
-test('the app imports Firebase ONLY from vendor/ (no CDN at runtime)', () => {
+test('the app imports Firebase ONLY from vendor/ (no CDN at runtime); the one remote script is Maps, only when a key is configured', () => {
   const src = read('./app.js');
-  assert.ok(!/https?:\/\//.test(src.replace(/https:\/\/wa\.me\//g, '')), 'no remote URL besides the WhatsApp deep link');
+  const urls = [...src.matchAll(/https?:\/\/[^\s'"`$]+/g)].map((m) => m[0]);
+  assert.deepEqual([...new Set(urls)].sort(), ['https://maps.googleapis.com/maps/api/js?key=', 'https://wa.me/'], 'only the Maps loader and the WhatsApp deep link');
+  assert.match(src, /if \(!MAPS_KEY \|\| mapsRequested/, 'Maps loads only behind MAPS_KEY');
   for (const m of src.matchAll(/from '([^']+)'/g)) assert.ok(m[1].startsWith('./'), m[1]);
+});
+
+test('codex H1b r1 P1-2: the human who pairs signs in on a SEPARATE in-memory Auth app; the device identity keeps the persistent default app', () => {
+  const src = read('./app.js');
+  assert.match(src, /const humanAuth = initializeAuth\(humanApp, \{ persistence: inMemoryPersistence \}\);/);
+  assert.match(src, /signInHuman: \(e, p\) => signInWithEmailAndPassword\(humanAuth, e, p\)/, 'human email/password only on the in-memory app');
+  assert.ok(!/signInWithEmailAndPassword\(auth\b/.test(src), 'never on the persistent device app');
+  assert.match(src, /signInWithToken: async \(tk\) => \(await signInWithCustomToken\(auth, tk\)\)\.user/, 'the device custom token on the default (persistent) app');
+  assert.match(src, /startPairing\(\{ auth: pairingAuth, call: humanCall, store \}/, 'pairing callables run as the in-memory human');
 });

@@ -65,8 +65,8 @@ async function putRules() {
   if (!res.ok) throw new Error(`rules load failed: ${res.status}`);
 }
 // the feeds.js adapter over a rules-enforced compat database (the device's own credentials)
-const denied = new Set();                              // which listener paths the rules refused (diagnosis)
-function adapter(cdb) {
+// which listener paths the rules refused, PER FEED (a cross-location feed's intended denials never taint another feed's verdict)
+function adapter(cdb, denied = new Set()) {
   const tag = (p, err) => (e) => { denied.add(p); err(e); };
   return {
     onQuery(p, child, value, h) {
@@ -82,9 +82,24 @@ function adapter(cdb) {
   };
 }
 const until = async (pred, ms = 4000) => { const t = Date.now(); while (Date.now() - t < ms) { if (pred()) return true; await new Promise((r) => setTimeout(r, 50)); } return pred(); };
-async function feedCase(label, fn) {
+// codex H1b r1 P2-11: expected-red is allowed ONLY for a failure caused by the identified missing F2(c) grants (the own-rid /orders
+// query and order_control/{rid}), and only under the repo rules. Security cases (mayBeRed:false) must pass; under HC_RULES every case
+// must pass; any other failure (an assertion bug, a regression) is a HARD failure → exit 1.
+const MISSING_GRANTS = new Set(['orders?restaurant_id=tb_norte', 'order_control/tb_norte']);
+const hard = [];
+function missingGrantError(what, denied) {
+  const d = [...denied];
+  if (d.length && d.every((x) => MISSING_GRANTS.has(x))) return Object.assign(new Error(`${what} — denied: ${d.join(', ')}`), { missingGrant: true });
+  return new Error(`${what} — denied: ${d.join(', ') || '(none)'}: NOT the identified missing grants`);
+}
+async function feedCase(label, fn, { mayBeRed = true } = {}) {
   try { await fn(); feedResults.push({ label, ok: true }); console.log(`  ok   [feed] ${label}`); }
-  catch (e) { feedResults.push({ label, ok: false, why: e && e.message }); console.log(`  RED  [feed] ${label} — expected until F2(c): ${e && e.message}`); }
+  catch (e) {
+    const expected = mayBeRed && !process.env.HC_RULES && e && e.missingGrant === true;
+    feedResults.push({ label, ok: false, expected, why: e && e.message });
+    if (expected) console.log(`  RED  [feed] ${label} — expected until F2(c): ${e.message}`);
+    else { hard.push(label); console.log(`  FAIL [feed] ${label} — ${e && e.message}`); }
+  }
 }
 
 (async () => {
@@ -131,26 +146,29 @@ async function feedCase(label, fn) {
     void queue;
   }
 
-  // ── C2: a persisted queue replay after a simulated restart ───────────────────────────────────────────────────────────────
+  // ── C2: a persisted queue replay after a simulated restart (codex H1b r1 P2-12: the response loss is controlled, deterministically) ─
   {
     const auth = authOf(DEV_N, 'tb_norte');
     const storage = memoryStorage();
-    const first = mkApi(storage, auth, 'tb_norte');
+    const first = mkApi(storage, auth, 'tb_norte', () => false);      // OFFLINE: act() persists and sends nothing on its own
     const it = first.api.act('accept', 'o2', { prep_min: 15 });
-    // the app dies before the response: the send fails at the transport, the item stays persisted with its op_id
+    assert.strictEqual(await val('orders/o2/status'), 'new', 'nothing sent yet');
+    // the app sends, the server COMMITS, and the response is lost before the client sees it (the app dies)
     const dead = createQueue({ storage, partition: { uid: DEV_N, rid: 'tb_norte' }, session: session(DEV_N, 'tb_norte') });
-    const r0 = await dead.flush(async () => { throw new TypeError('Failed to fetch'); });
+    const r0 = await dead.flush(async (x) => {
+      await callAs(auth)('merchantAccept', { rid: 'tb_norte', oid: x.order_id, op_id: x.op_id, ...x.payload });
+      throw new TypeError('response lost');
+    });
     assert.strictEqual(r0.stopped, 'retry');
-    assert.strictEqual(await val('orders/o2/status'), 'new');
-    const reborn = mkApi(storage, auth, 'tb_norte');                // restart: a new queue over the same storage
-    assert.deepStrictEqual(reborn.queue.items().map((x) => x.op_id), [it.item.op_id]);
+    assert.strictEqual(await val('orders/o2/status'), 'preparing', 'the server committed');
+    const reborn = mkApi(storage, auth, 'tb_norte');                // restart: a new client over the same storage
+    assert.deepStrictEqual(reborn.queue.items().map((x) => x.op_id), [it.item.op_id], 'the original op_id survived');
     const r1 = await reborn.api.flush();
-    assert.deepStrictEqual([r1.sent, await val('orders/o2/status')], [1, 'preparing']);
-    const again = await callAs(auth)('merchantAccept', { rid: 'tb_norte', oid: 'o2', op_id: it.item.op_id, prep_min: 15 });
-    assert.strictEqual(classify(again).class, 'ok');
+    assert.deepStrictEqual([r1.sent, r1.dropped.length], [1, 0], 'the resend is a receipt replay → ok, not a stale refusal');
     const ops = (await val('orders/o2/handheld_ops')) || {};
     assert.strictEqual(Object.keys(ops).length, 1, 'ONE receipt: the server applied the op once');
-    ok('a persisted accept survives a restart and is resent with its ORIGINAL op_id; the server applies it once');
+    assert.strictEqual((await val('orders/o2/prep')).committed_min, 15);
+    ok('a committed accept whose response was lost is resent after a restart with its ORIGINAL op_id; the server applies it once');
   }
 
   // ── C1 (cont.): a revoked device is refused ──────────────────────────────────────────────────────────────────────────────
@@ -166,16 +184,16 @@ async function feedCase(label, fn) {
   // ── FEED cases (expected red until F2(c)) ────────────────────────────────────────────────────────────────────────────────
   await feedCase('F2 a forbidden root /orders read (unqueried) is denied', async () => {
     const cdb = deviceDb(DEV_N, 'tb_norte');
-    let denied = false;
-    try { await cdb.ref('orders').once('value'); } catch (_) { denied = true; }
-    assert.ok(denied, 'the device read ALL orders');
-  });
+    let refused = false;
+    try { await cdb.ref('orders').once('value'); } catch (_) { refused = true; }
+    assert.ok(refused, 'the device read ALL orders');
+  }, { mayBeRed: false });
 
-  let feedN = null; let stN = null;
+  let feedN = null; let stN = null; const deniedN = new Set();
   await feedCase('F1 own-rid query delivers only its own orders (and sessionLost stays false)', async () => {
-    feedN = startFeeds({ rtdb: adapter(deviceDb(DEV_N, 'tb_norte')), rid: 'tb_norte', brandId: 'tb', onState: (s) => { stN = s; } });
+    feedN = startFeeds({ rtdb: adapter(deviceDb(DEV_N, 'tb_norte'), deniedN), rid: 'tb_norte', brandId: 'tb', onState: (s) => { stN = s; } });
     await until(() => stN && (stN.loaded || stN.sessionLost));
-    assert.ok(stN && !stN.sessionLost, `sessionLost — denied: ${[...denied].join(', ')} (F2(c) adds the device query clause + the order_control/{rid} grant)`);
+    if (!stN || stN.sessionLost) throw missingGrantError('sessionLost on the own-rid feed', deniedN);
     assert.ok(stN.loaded);
     assert.deepStrictEqual(Object.keys(stN.orders).sort(), ['o1', 'o2', 'os']);
   });
@@ -185,9 +203,9 @@ async function feedCase(label, fn) {
     await until(() => lost);
     f.stop();
     assert.ok(lost, 'a tb_norte device read tb_centro');
-  });
+  }, { mayBeRed: false });
   await feedCase('F3 feed transitions new → preparing → ready through the real callables', async () => {
-    assert.ok(stN && !stN.sessionLost && stN.loaded, 'no feed (own-rid query refused)');
+    if (!stN || stN.sessionLost || !stN.loaded) throw missingGrantError('no feed for F3', deniedN);
     const auth = authOf(DEV_N, 'tb_norte');
     await db.ref('orders/o3').set(order('o3', 'tb_norte'));
     await until(() => stN.orders.o3 && stN.orders.o3.status === 'new');
@@ -201,20 +219,20 @@ async function feedCase(label, fn) {
     assert.ok(M.queues(stN.orders).listos.some((o) => o.id === 'o3'));
   });
   await feedCase('F5 (BC4) a scheduled order released into new across an app restart appears in Nuevos', async () => {
-    assert.ok(stN && !stN.sessionLost && stN.loaded, 'no feed (own-rid query refused)');
+    if (!stN || stN.sessionLost || !stN.loaded) throw missingGrantError('no feed for F5', deniedN);
     assert.ok(!M.queues(stN.orders).nuevos.some((o) => o.id === 'os'), 'scheduled stays hidden');
     feedN.stop();                                                        // the app dies
     await db.ref('orders/os/status').set('new');                        // the server releases it meanwhile
     let st2 = null;
-    feedN = startFeeds({ rtdb: adapter(deviceDb(DEV_N, 'tb_norte')), rid: 'tb_norte', brandId: 'tb', onState: (s) => { st2 = s; } });   // restart
+    feedN = startFeeds({ rtdb: adapter(deviceDb(DEV_N, 'tb_norte'), deniedN), rid: 'tb_norte', brandId: 'tb', onState: (s) => { st2 = s; } });   // restart
     await until(() => st2 && st2.loaded);
     assert.ok(M.queues(st2.orders).nuevos.some((o) => o.id === 'os'));
   });
   await feedCase('F4 revoked → sessionLost (the listener is cancelled)', async () => {
-    let lost = false;
-    const f = startFeeds({ rtdb: adapter(deviceDb(DEV_N, 'tb_norte')), rid: 'tb_norte', brandId: 'tb', onState: (s) => { if (s.sessionLost) lost = true; } });
+    let lost = false; const deniedR = new Set();
+    const f = startFeeds({ rtdb: adapter(deviceDb(DEV_N, 'tb_norte'), deniedR), rid: 'tb_norte', brandId: 'tb', onState: (s) => { if (s.sessionLost) lost = true; } });
     await until(() => false, 500);
-    assert.ok(!lost, 'lost BEFORE the revoke (no F2(c) device clause yet)');
+    if (lost) throw missingGrantError('sessionLost BEFORE the revoke', deniedR);
     await db.ref(`restaurants/tb_norte/handhelds/${DEV_N}/revoked`).set(true);
     await until(() => lost);
     f.stop();
@@ -223,7 +241,8 @@ async function feedCase(label, fn) {
   if (feedN) feedN.stop();
   await env.cleanup();
 
-  const red = feedResults.filter((r) => !r.ok);
-  console.log(`\nhandheld-client: callable/queue OK (${n}); feed ${feedResults.length - red.length}/${feedResults.length}${red.length ? ` — ${red.length} EXPECTED RED until F2(c) (device query clause)` : ' — FULLY GREEN'}`);
+  const red = feedResults.filter((r) => !r.ok && r.expected);
+  if (hard.length) { console.error(`\nhandheld-client FAILED: ${hard.length} feed case(s) failed for a reason other than the missing F2(c) grants: ${hard.join(' | ')}`); process.exit(1); }
+  console.log(`\nhandheld-client: callable/queue OK (${n}); feed ${feedResults.length - red.length}/${feedResults.length}${red.length ? ` — ${red.length} EXPECTED RED until F2(c) (the own-rid query + order_control/{rid} grants)` : ' — FULLY GREEN'}`);
   process.exit(0);
 })().catch((e) => { console.error('handheld-client FAILED:', e && e.stack || e); process.exit(1); });

@@ -19,9 +19,10 @@ function rig({ online = true, responses = {} } = {}) {
     if (v instanceof Error) throw v;
     return v === undefined ? { ok: true } : v;
   };
+  const lost = [];
   const api = createApi({ call, queue, isOnline: () => state.online, rid: P.rid, newOpId: () => `d-op-${String(++n).padStart(6, '0')}`,
-    setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimer: () => {} });
-  return { api, queue, calls, timers, state };
+    setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimer: () => {}, onAuthLost: () => lost.push(1) });
+  return { api, queue, calls, timers, state, lost };
 }
 const tick = () => new Promise((r) => setImmediate(r));
 
@@ -107,4 +108,47 @@ test('rejectToast: only from the device\'s OWN returned outcome; the refund line
   assert.equal(rejectToast(o, 'cancelled'), 'Pedido #47 cancelado. Sherpa le avisa al cliente. Le devolvemos el dinero al cliente.');
   assert.equal(rejectToast({ ...o, payment_method: 'cash' }, 'refund_pending'), 'Pedido #47 cancelado. Sherpa le avisa al cliente.');
   for (const st of ['manual_review', 'pending', 'not_cancelable', 'referred_recon', null]) assert.equal(rejectToast(o, st), null, String(st));
+});
+
+test('codex H1b r1 P1-1: after stop() a late reject / direct / orderState / BC2 retry touches NOTHING and onResolved never fires', async () => {
+  let release; const gate = new Promise((r) => { release = r; });
+  const r = rig({ responses: { merchantReject: async () => { await gate; return { ok: true, state: 'pending' }; }, merchantSetBusy: async () => { await gate; return { ok: true }; },
+    merchantOrderState: async () => { await gate; return { driver_assigned: true }; } } });
+  const resolved = [];
+  const pr = r.api.reject('o1', { reason: 'agotado' }, { onResolved: (st) => resolved.push(st) });
+  const pd = r.api.direct('merchantSetBusy', { add_min: 15, dur_min: 60 });
+  const po = r.api.orderState('o1');
+  r.api.stop();                                        // sign-out while the three are in flight
+  release();
+  assert.deepEqual([(await pr).class, (await pd).class, await po], ['stopped', 'stopped', null]);
+  assert.equal(r.timers.length, 0, 'no BC2 retry scheduled after stop');
+  assert.deepEqual(resolved, []);
+  assert.deepEqual(r.api.act('accept', 'o2', { prep_min: 20 }), { ok: false, reason: 'stopped' });
+  assert.equal(r.queue.items().length, 0);
+});
+
+test('codex H1b r1 P1-1: a BC2 retry already scheduled is voided by stop()', async () => {
+  const r = rig({ responses: { merchantReject: { ok: true, state: 'pending' } } });
+  const resolved = [];
+  await r.api.reject('o1', { reason: 'saturada' }, { onResolved: (st) => resolved.push(st) });
+  const callsBefore = r.calls.length;
+  r.api.stop();
+  await r.timers[0].fn();
+  assert.equal(r.calls.length, callsBefore, 'the retry never sends');
+  assert.deepEqual(resolved, []);
+});
+
+test('codex H1b r1 P1-3: every auth-class result reports onAuthLost — automatic flush, explicit flush, direct, reject, orderState', async () => {
+  const unauth = Object.assign(new Error('x'), { code: 'functions/unauthenticated' });
+  const r = rig({ responses: { merchantAccept: unauth, merchantHeartbeat: unauth, merchantReject: unauth, merchantOrderState: unauth } });
+  r.api.act('accept', 'o1', { prep_min: 20 });         // the automatic flush inside act()
+  await tick(); await tick();
+  assert.equal(r.lost.length, 1, 'the automatic flush\'s auth result is not discarded');
+  await r.api.direct('merchantHeartbeat', {});
+  await r.api.reject('o1', { reason: 'saturada' });
+  await r.api.orderState('o1');
+  assert.equal(r.lost.length, 4);
+  r.api.stop();
+  await r.api.direct('merchantHeartbeat', {});
+  assert.equal(r.lost.length, 4, 'nothing reported after stop');
 });

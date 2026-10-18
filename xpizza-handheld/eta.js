@@ -16,10 +16,12 @@ export function travelSeconds(res, status) {
 }
 
 // The browser route adapter over the Maps JS API (loaded by index.html when a key is configured). Never throws.
-export function googleRoute(g) {
+export function googleRoute(source) {
+  const G = typeof source === 'function' ? source : () => source;   // a getter: the Maps global may load after the adapter is made
   let svc = null;
   return (origin, destination) => new Promise((resolve) => {
     try {
+      const g = G();
       if (!(g && g.maps && g.maps.DirectionsService)) { resolve(null); return; }
       if (!svc) svc = new g.maps.DirectionsService();
       svc.route({ origin, destination, travelMode: g.maps.TravelMode.DRIVING, drivingOptions: { departureTime: new Date() } },

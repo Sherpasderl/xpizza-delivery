@@ -19,6 +19,7 @@
      - checks: C-2 browser note + board A3 blocked line
      - top bar: the brand name from /public/brands (no literal)
      - reject: the note input gets an id (its text survives re-renders)
+     - agotados: the switch's button is a 52×48 transparent hit area around the unchanged visual switch (codex H1b r1 P2-15, ≥ 48 px)
 -->
 <div class="phone" id="app" aria-live="polite"></div>
 <template id="screen">
@@ -184,7 +185,7 @@
           <div style="font-size:21px;font-weight:800">Productos agotados</div>
           <div class="shS">{{agotadosSub}}</div>
           <sc-for list="{{menuRows}}" as="m" hint-placeholder-count="6">
-            <div class="prr"><div style="flex:1"><div style="font-weight:800;font-size:15.5px">{{m.name}}</div><sc-if value="{{m.out}}" hint-placeholder-val="{{ false }}"><div style="font-size:14px;font-weight:700;color:#9A1C12">Agotado en esta sucursal</div></sc-if></div><span class="swl">{{m.lbl}}</span><button class="sw {{m.swCls}}" aria-label="{{m.aria}}" onClick="{{m.toggle}}"></button></div>
+            <div class="prr"><div style="flex:1"><div style="font-weight:800;font-size:15.5px">{{m.name}}</div><sc-if value="{{m.out}}" hint-placeholder-val="{{ false }}"><div style="font-size:14px;font-weight:700;color:#9A1C12">Agotado en esta sucursal</div></sc-if></div><span class="swl">{{m.lbl}}</span><button class="swhit" aria-label="{{m.aria}}" onClick="{{m.toggle}}"><span class="sw {{m.swCls}}"></span></button></div>
           </sc-for>
         </div>
       </sc-if>

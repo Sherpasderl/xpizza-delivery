@@ -84,31 +84,41 @@ export async function verifyPin(pin, rec) {
 
 export function createPinGate({ storage, wall = () => Date.now(), mono = () => performance.now() }) {
   const readLock = () => { try { const v = JSON.parse(storage.get(LOCK_KEY) || 'null'); return isObj(v) ? v : { fails: 0, lockout_until: null }; } catch (_) { return { fails: 0, lockout_until: null }; } };
-  const writeLock = (v) => { try { storage.set(LOCK_KEY, JSON.stringify(v)); } catch (_) { /* in-session lock still holds */ } };
+  const writeLock = (v) => { try { storage.set(LOCK_KEY, JSON.stringify(v)); return true; } catch (_) { return false; } };
   let session = null;                                 // {monoStart, ms} for the lock started in THIS session
   // within a session: remaining = min(wall-based, mono-based) — elapsed is the max of the two clocks (T2's rule), so neither a
   // suspended monotonic clock nor a wall clock set back stretches it; after a restart only the persisted wall deadline exists
   const remaining = (lk) => {
     const wallRem = typeof lk.lockout_until === 'number' ? lk.lockout_until - wall() : 0;
-    const r = session ? Math.min(wallRem, session.ms - (mono() - session.monoStart)) : wallRem;
+    let r = wallRem;
+    if (session) {
+      const monoRem = session.ms - (mono() - session.monoStart);
+      r = session.closed ? monoRem : Math.min(wallRem, monoRem);   // closed = the lockout could not be persisted: mono alone holds it
+    }
     return Math.max(0, Math.min(LOCK_MS, r));
   };
+  const lockNow = () => { session = { monoStart: mono(), ms: LOCK_MS, closed: !writeLock({ fails: 0, lockout_until: wall() + LOCK_MS }) }; return { ok: false, locked: true, remainingMs: LOCK_MS }; };
+  // codex H1b r1 P1-5: attempts are SERIALIZED (a chain), each attempt is COUNTED and persisted BEFORE the slow PBKDF2 verify (a kill
+  // mid-verify still counts), and a count / lockout that cannot be persisted FAILS CLOSED (locked for the full minute in-session).
+  let chain = Promise.resolve();
+  async function attempt(pin, rec) {
+    const lk = readLock();
+    const rem = remaining(lk);
+    if (rem > 0) return { ok: false, locked: true, remainingMs: rem };
+    const fails = (lk.lockout_until !== null && rem === 0 ? 0 : (lk.fails || 0)) + 1;
+    if (!writeLock({ fails, lockout_until: null })) return lockNow();
+    if (await verifyPin(pin, rec)) { writeLock({ fails: 0, lockout_until: null }); session = null; return { ok: true }; }
+    if (fails >= MAX_FAILS) return lockNow();
+    return { ok: false, locked: false };
+  }
   return {
     setRecord(rec) { storage.set(PIN_KEY, JSON.stringify(rec)); writeLock({ fails: 0, lockout_until: null }); session = null; },
     record() { try { return JSON.parse(storage.get(PIN_KEY) || 'null'); } catch (_) { return null; } },
     clear() { storage.remove(PIN_KEY); storage.remove(LOCK_KEY); session = null; },
-    async try(pin) {
-      const lk = readLock();
-      const rem = remaining(lk);
-      if (rem > 0) return { ok: false, locked: true, remainingMs: rem };
-      if (await verifyPin(pin, this.record())) { writeLock({ fails: 0, lockout_until: null }); session = null; return { ok: true }; }
-      const fails = (lk.lockout_until !== null && rem === 0 ? 0 : (lk.fails || 0)) + 1;
-      if (fails >= MAX_FAILS) {
-        writeLock({ fails: 0, lockout_until: wall() + LOCK_MS }); session = { monoStart: mono(), ms: LOCK_MS };
-        return { ok: false, locked: true, remainingMs: LOCK_MS };
-      }
-      writeLock({ fails, lockout_until: null });
-      return { ok: false, locked: false };
+    try(pin) {
+      const run = chain.then(() => attempt(pin, this.record()));
+      chain = run.catch(() => {});
+      return run;
     },
   };
 }

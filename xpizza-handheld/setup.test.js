@@ -135,3 +135,34 @@ test('"Olvidé el PIN" / sign-out ORDER: gen bump → feeds stop → queue parti
   assert.deepEqual(log, ['gen++', 'feeds.stop', 'undo.drop', 'eta.stopAll', 'queue.discard:cambiar_sucursal', 'alarm.stop', 'auth.signOut', 'store.clear']);
   assert.deepEqual(note, { discarded: 2, reason: 'cambiar_sucursal' });
 });
+
+test('codex H1b r1 P1-5: five CONCURRENT wrong attempts lock exactly once — never five unlocked answers', async () => {
+  const st = memoryStorage(); let t = 1_000_000;
+  const g = createPinGate({ storage: st, wall: () => t, mono: () => t }); g.setRecord(await hashPin('2468'));
+  const rs = await Promise.all(['0000', '0000', '0000', '0000', '0000', '2468'].map((p) => g.try(p)));
+  assert.deepEqual(rs.map((r) => r.locked), [false, false, false, false, true, true], 'the right PIN in the same burst is NOT let through');
+  assert.equal(rs[5].ok, false);
+  assert.equal((await g.try('2468')).locked, true, 'the right PIN waits too');
+});
+
+test('codex H1b r1 P1-5: a lockout state that cannot be persisted FAILS CLOSED (locked in-session for the full minute)', async () => {
+  let t = 1_000_000; const rec = await hashPin('2468');
+  const st = memoryStorage({ failWrites: true });
+  st.setRaw('hh_pin', JSON.stringify(rec));
+  const g = createPinGate({ storage: st, wall: () => t, mono: () => t });
+  assert.deepEqual(await g.try('0000'), { ok: false, locked: true, remainingMs: 60000 }, 'the count cannot be persisted → locked at once');
+  assert.equal((await g.try('2468')).locked, true);
+  t += 60000;
+  assert.equal((await g.try('2468')).locked, true, 'still cannot persist the count → still closed');
+});
+
+test('codex H1b r1 P1-5: the attempt is counted BEFORE the verify (a kill mid-verify still counts)', async () => {
+  const st = memoryStorage(); const t = 1_000_000;
+  const g = createPinGate({ storage: st, wall: () => t, mono: () => t }); g.setRecord(await hashPin('2468'));
+  let settled = false;
+  const p = g.try('0000').then((r) => { settled = true; return r; });
+  await new Promise((r) => setImmediate(r));          // the chain has started; PBKDF2 (100k iterations) has not finished
+  assert.equal(settled, false);
+  assert.equal(JSON.parse(st.raw('hh_pin_lock')).fails, 1, 'persisted before PBKDF2 resolves');
+  await p;
+});

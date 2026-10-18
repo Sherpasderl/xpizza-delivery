@@ -97,7 +97,20 @@ try {
   assert.ok(text.includes('Sin conexión. Los pedidos nuevos pueden no llegar. Reintentando…'), `the offline banner is shown:\n${text}`);
   assert.ok(!text.includes('Sin pedidos nuevos'), 'and NOT the empty state (no snapshot yet ≠ no orders)');
   assert.ok(text.includes('Nuevos') && text.includes('En prep.') && text.includes('Listos'), 'the list (tabs) is up');
-  console.log('test:offline: OK — zero failed local requests; font loaded; offline banner, no empty state');
+  console.log('  ok cold start: zero failed local requests; font loaded; offline banner, no empty state');
+
+  // codex H1b r1 P1-4: the SAME persisted pairing inside a native shell whose plugin is missing → the checks screen, never the list
+  const t2 = await send('Target.createTarget', { url: 'about:blank' });
+  const s2 = (await send('Target.attachToTarget', { targetId: t2.targetId, flatten: true })).sessionId;
+  await send('Page.enable', {}, s2);
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: `try{localStorage.setItem('hh_session',JSON.stringify({uid:'hh_tb_norte_test',rid:'tb_norte',brand_id:'tb',location_name:'Norte',prep_default_min:18}));localStorage.setItem('hh_pin',JSON.stringify({v:1,iter:100000,salt:'AA==',hash:'AA=='}));}catch(e){} window.Capacitor={isNativePlatform:()=>true,Plugins:{}};` }, s2);
+  await send('Page.navigate', { url: `${base}/index.html` }, s2);
+  await new Promise((r) => setTimeout(r, 4000));
+  const text2 = (await send('Runtime.evaluate', { expression: 'document.body.innerText', returnByValue: true }, s2)).result.value;
+  assert.ok(text2.includes('Que no se pierda ningún pedido'), `a native shell without the plugin opens the checks screen:\n${text2}`);
+  assert.ok(!text2.includes('En prep.'), 'and never the list (silent alarms)');
+  console.log('  ok native-missing guard on a persisted pairing → the checks screen (P1-4)');
+  console.log('test:offline: OK');
   exitCode = 0;
 } catch (e) {
   console.error('test:offline FAILED:', e && e.message);
