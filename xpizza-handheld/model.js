@@ -325,3 +325,9 @@ export function applyPending(orders, items, undoReadies = []) {
   }
   return out;
 }
+
+// the customer's WhatsApp number from the order (8 local digits → Honduras +504; longer = already international); '' = none
+export function phoneOf(o) {
+  const d = String((o && o.customer_phone) || '').replace(/\D/g, '');
+  return d.length === 8 ? `504${d}` : (d.length >= 10 && d.length <= 15 ? d : '');
+}

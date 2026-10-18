@@ -145,7 +145,7 @@ function detail(S, ctx, cur, t, off, b) {
     timeLine: isReady ? `Listo a las ${M.fmt(realAt)}` : `Listo a las ${M.fmt(rm)}`,
     tag: isReady ? (realAt !== null && rm !== null ? (realAt <= rm ? 'A tiempo' : `Con ${Math.ceil((realAt - rm) / MIN)} min de atraso`) : '') : lt.label,
     tagCls: isReady ? '' : lt.cls, driverName: dv.name, driverSub: dv.sub,
-    showWA: !off && !!ctx.act.phoneOf(cur), canMore: M.canMore(cur, drv.assigned, off) && !cur._pending, info, hasInfo: !!info,
+    showWA: !off && !!M.phoneOf(cur), canMore: M.canMore(cur, drv.assigned, off) && !cur._pending, info, hasInfo: !!info,
     accept: () => ctx.act.doAccept(cur, b), ready: () => ctx.act.doReady(cur),
   };
 }

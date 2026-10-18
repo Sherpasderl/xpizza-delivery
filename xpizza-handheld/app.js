@@ -120,7 +120,7 @@ const driverOf = (oid) => M.driverInfo(S.driver[oid], S.eta[oid]);
 function vm() {
   return buildVM(S, {
     now: now(), online: online(), orders: viewOrders(), base: base(), sess, driverOf, set,
-    act: { doLogin, doPair, refreshStatus, pinPress, doSignOut, control, openOrder, handed, doReject, doMore, openWhatsApp, undoReady, doAccept, doReady, phoneOf,
+    act: { doLogin, doPair, refreshStatus, pinPress, doSignOut, control, openOrder, handed, doReject, doMore, openWhatsApp, undoReady, doAccept, doReady,
       testAlert: () => { sound.unlock(); bridge.alarm.start(['__prueba__']); setTimeout(() => bridge.alarm.stop(), 2500); toast('Sonando la alerta de prueba a todo volumen…'); } },
   });
 }
@@ -187,9 +187,8 @@ async function doReject(goneNames) {
   }
   set({ sheet: next });
 }
-function phoneOf(o) { const d = String((o && o.customer_phone) || '').replace(/\D/g, ''); return d.length === 8 ? `504${d}` : (d.length >= 10 ? d : ''); }
 function openWhatsApp(cur, v, brandName) {
-  const p = phoneOf(cur); if (!p || !v) return;
+  const p = M.phoneOf(cur); if (!p || !v) return;
   const text = `Hola ${v.cust.split(' ')[0]}, te escribimos de ${brandName} por tu pedido #${v.num}. ${WA_TEXT[S.waSel]}`;
   window.open(`https://wa.me/${p}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
   set({ sheet: null }); toast('Abriendo WhatsApp con el mensaje listo…');

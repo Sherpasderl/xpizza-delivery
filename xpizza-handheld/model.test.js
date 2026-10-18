@@ -243,3 +243,11 @@ test('applyPending: queued accept / more / ready (and an undo-window Listo) over
   const moved = M.applyPending({ a: order('a', { status: 'cancelled' }) }, [{ action: 'accept', order_id: 'a', payload: { prep_min: 20 }, enqueued_at: T }], []);
   assert.equal(moved.a.status, 'cancelled');
 });
+
+test('phoneOf: 8 local digits → +504; international kept; junk → none', () => {
+  assert.equal(M.phoneOf({ customer_phone: '9999-0000' }), '50499990000');
+  assert.equal(M.phoneOf({ customer_phone: '+504 9999 0000' }), '50499990000');
+  assert.equal(M.phoneOf({ customer_phone: '123' }), '');
+  assert.equal(M.phoneOf({}), '');
+  assert.equal(M.phoneOf(null), '');
+});
