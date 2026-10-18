@@ -15,11 +15,17 @@
 //
 // Uses only modules that exist at 717f97e, and the same external stubs as test/d4b-readers.emulator.test.js.
 require('./_emulator-required')('database', 'firestore');
-// A CONTROLLED CLOCK (as test/pselfupdate-mirror-trace's, 3e34706c), installed BEFORE index.js loads so every per-instance
-// cache captures it. It is at real time (offset 0) for every recorded request; only the render-ON companion's warm-ups run ahead.
+// A LOGICAL CLOCK, installed BEFORE index.js loads so every per-instance cache captures it (codex A-1 trace r2 P2-2): Date.now
+// is a FIXED base plus an offset that only this test moves — WALL TIME NEVER ENTERS IT, so no cache age in any recorded
+// request depends on how long the run (or any step of it) takes. Every unrecorded warm-up runs AHEAD (+61 s, then put back),
+// so each cache it fills is stamped ahead of the requests recorded after it; the one cell that must see a TTL expire
+// (post-TTL) advances the offset explicitly. The base sits 1 h AHEAD of the real start, so a deadline an SDK computes on it
+// is never in the real past (grpc compares deadlines with new Date()); asserted at the end. Quiescence keeps the monotonic
+// clock (test/_quiescence.js, performance.now).
 const REAL_NOW = Date.now.bind(Date);
+const CLOCK_BASE = REAL_NOW() + 3600 * 1000;
 let CLOCK_OFFSET = 0;
-Date.now = () => REAL_NOW() + CLOCK_OFFSET;
+Date.now = () => CLOCK_BASE + CLOCK_OFFSET;
 
 const assert = require('assert');
 const http = require('http');
@@ -153,7 +159,6 @@ function post(handler, body, headers = {}) {
     });
   });
 }
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const OPEN = { open: true, start: '00:00', end: '24:00' };
 const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, hub_lat: 14.1, hub_lng: -87.2, delivery_radius_km: 8, version: 1,
   hours: { sun: OPEN, mon: OPEN, tue: OPEN, wed: OPEN, thu: OPEN, fri: OPEN, sat: OPEN } });
@@ -219,8 +224,14 @@ async function traced(rid, oid, uid, phone) {
     await rtdb.ref(`user_rewards/${uid}/${rid}`).set({ balance: 100000, reserved: 0 });
     // warm-up (NOT recorded): the instance's cached reads (context, config) settle, so the recorded calls are the
     // per-request sequence rather than a cold-cache artefact.
+    // It runs AHEAD of real time (+61 s, past every ≤ 60 s TTL, then put back), as the render-ON companion's warm() below: a
+    // cache it fills is stamped in the future, so no recorded request after it can cross that cache's TTL however slow the run.
     await rtdb.ref('rate_limits').remove();
-    assert.strictEqual((await post(app.chargeOnlineOrder, bodyFor(rid, `trace_${rid}_warm`, '99330000'), { 'x-firebase-id-token': uid })).status, 200, `${rid}: warm-up`);
+    CLOCK_OFFSET += 61000;
+    try {
+      assert.strictEqual((await post(app.chargeOnlineOrder, bodyFor(rid, `trace_${rid}_warm`, '99330000'), { 'x-firebase-id-token': uid })).status, 200, `${rid}: warm-up`);
+      await Q.quiescent();
+    } finally { CLOCK_OFFSET -= 61000; }
     // D4-c4: the switch cache is put WARM before each recorded request (not left to timing) → no switch read in these
     await CTL.controlWarm(rtdb, rid);
     const a1 = await traced(rid, `trace_${rid}_normal`, uid, '99331001');
@@ -281,13 +292,30 @@ async function traced(rid, oid, uid, phone) {
       assert.ok(stillRed, '🔴 a corrupted (different-content) binding must leave the comparison RED');
     }
     console.log(`  ✓ §3 r1 declared delta: ${S3_DELTA_SEEN} case(s) differ only by the order-independent content key (content-bound); a wrong binding stays red`);
-    // NON-VACUOUS ALLOWLIST: one more fresh request after the floor cache has EXPIRED (one TTL since any earlier read) MUST
+    // NON-VACUOUS ALLOWLIST: one more request after the floor cache has EXPIRED (one TTL since any earlier read) MUST
     // carry exactly ONE floor GET, and with it removed its sequence must equal the golden's a_normal_retry (a retry: no other cache — e.g. the catalog verifier's 45 s TTL — enters its sequence).
+    // DETERMINISTIC (A-1 close, 2026-10-18: RED 1/3 with an extra get + getAll restaurants/x_pizza/meta/active_version — the
+    // old wall-time wait, FLOOR_TTL_MS + 1.5 s after the earlier cells, let the 45 s catalog pointer expire with the floor
+    // whenever those cells ran > 13.5 s; a forced boundary reproduced that exact diff): the CLOCK puts only the floor past its
+    // TTL. An unrecorded fresh charge at +400 s — past every request-path TTL (the 5 min registry included) by more than any
+    // warm-up's lead — refills every cache at one known instant; the recorded retry of THAT order runs FLOOR_TTL_MS + 2 s later
+    // on the logical clock: the floor (30 s) has expired, every 45 s / 60 s cache is EXACTLY 32 s old (no wall time in it). The recorded cells' phone (the
+    // golden's content key hashes it): at +400 s their 120 s content stamp is long expired, so the unrecorded charge is a FRESH
+    // order (no duplicate guard) that stamps anew — 32 s old at the retry, as a retry's. The clock is put back after (a cache
+    // stamped ahead only stays fresh longer).
     {
       const { FLOOR_TTL_MS } = require('../client-floor');
-      await wait(FLOOR_TTL_MS + 1500);
-      CTL.controlCold();   // D4-c4: the switch cache COLD too (explicitly, not by timing) → this request makes its own read
-      const t = await traced('x_pizza', 'trace_x_pizza_normal', 'u_trace_x_pizza', '99331001');
+      const OID = 'trace_x_pizza_postttl', UID_X = 'u_trace_x_pizza', PHONE = '99331001';
+      let lead = 0, t;
+      try {
+        CLOCK_OFFSET += 400000; lead += 400000;
+        await rtdb.ref('rate_limits').remove();
+        assert.strictEqual((await post(app.chargeOnlineOrder, bodyFor('x_pizza', OID, PHONE), { 'x-firebase-id-token': UID_X })).status, 200, 'post-TTL: the unrecorded fresh charge');
+        await Q.quiescent();
+        CLOCK_OFFSET += FLOOR_TTL_MS + 2000; lead += FLOOR_TTL_MS + 2000;
+        CTL.controlCold();   // D4-c4: the switch cache COLD too (explicitly, not by timing) → this request makes its own read
+        t = await traced('x_pizza', OID, UID_X, PHONE);
+      } finally { CLOCK_OFFSET -= lead; }
       assert.strictEqual(t.status, 200, 'post-TTL request premise');
       const fl = t.trace.filter(isFloorRead);
       assert.deepStrictEqual(fl.map((e) => e.op), ['get'], `🔴 after the TTL exactly ONE floor GET is made (got ${JSON.stringify(fl)})`);
@@ -317,9 +345,9 @@ async function traced(rid, oid, uid, phone) {
       // DETERMINISTIC warm (gate flake on A-1 87275fbf, 2026-10-18 — the class 3e34706c fixed in pselfupdate-mirror-trace): the warm
       // request runs with the clock pushed past EVERY TTL (the 45 s catalog pointer / menu-gates / context caches, the 60 s verifier
       // observation), so IT refreshes every cache — at a moment ahead of the pair — and no recorded side can cross a TTL boundary.
-      // The clock is put back before the pair, so the pair runs on real time exactly as before (the 120 s content-dedup window and
-      // every stamp it compares keep today's ages). A real wait putting the boundary between the warm-up and the OFF recording
-      // reproduced the gate's exact diff on base 3e34706c and on A-1.
+      // The clock is put back before the pair, so the pair runs at the logical base like every recorded cell (each content stamp
+      // it compares is inside the 120 s window, as on any run). A real wait putting the boundary between the warm-up and the OFF
+      // recording reproduced the gate's exact diff on base 3e34706c and on A-1.
       const warm = async (rid, uid, tag) => {
         await rtdb.ref('rate_limits').remove(); W += 1;
         CLOCK_OFFSET += 61000;
@@ -355,6 +383,7 @@ async function traced(rid, oid, uid, phone) {
         console.log(`  ✓ ${rid} render-ON: fresh / render-OFF-order retry / classify failure = the render-OFF trace + exactly the probe's order read after the customer check; a render-ON order's retry = the render-OFF prefix + exactly the full probe, answering the render-OFF reuse's body`);
       }
     }
+    assert.ok(REAL_NOW() < CLOCK_BASE, 'premise: the run stayed inside the logical clock\'s 1 h lead (no SDK deadline computed on it fell in the real past)');
     console.log('d4b-charge-trace(emulator): OK');
   }
   FINISHED = true;
