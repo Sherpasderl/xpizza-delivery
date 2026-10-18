@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { unapplyA1Index, unapplyA1Module, HUNKS, FILES, BASE } = require('./tools/a1-inverse');
+const { unapplyS1bIndex } = require('./tools/s1b-inverse');   // S1b restacks ON TOP of A-1 (S1b innermost) — strip it first
 const TV = require('./catalog/text-version');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -21,12 +22,15 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 // ── 1. the inverse ──
 {
   const idx = read('index.js');
-  assert.notStrictEqual(unapplyA1Index(idx), idx, 'non-vacuity: index.js carries a1 hunks');
-  assert.strictEqual(unapplyA1Index(idx), baseOf('index.js'), `🔴 index.js minus the a1 hunks is not ${BASE}:index.js`);
+  // S1b restacks on top of A-1 (S1b innermost): strip the S1b blocks first to reach the A-1 index.js layer,
+  // then verify a1-inverse turns THAT into the base byte-for-byte (both inverses proven byte-exact in s1b-wiring).
+  const a1layer = unapplyS1bIndex(idx);
+  assert.notStrictEqual(unapplyA1Index(a1layer), a1layer, 'non-vacuity: the A-1 layer carries a1 hunks');
+  assert.strictEqual(unapplyA1Index(a1layer), baseOf('index.js'), `🔴 index.js minus the S1b blocks and a1 hunks is not ${BASE}:index.js`);
   const hi = HUNKS.find((h) => h.file === 'index.js' && /TV\./.test(h.now));
-  assert.throws(() => unapplyA1Index(idx.replace(hi.now, hi.now.replace('TV.', 'TVx.'))), /occurs 0 times/, 'index.js: a byte INSIDE a hunk');
-  assert.throws(() => unapplyA1Index(idx + hi.now), /occurs 2 times/, 'index.js: a duplicated hunk');
-  assert.notStrictEqual(unapplyA1Index('\n' + idx), baseOf('index.js'), 'index.js: a byte OUTSIDE every hunk');
+  assert.throws(() => unapplyA1Index(a1layer.replace(hi.now, hi.now.replace('TV.', 'TVx.'))), /occurs 0 times/, 'index.js: a byte INSIDE a hunk');
+  assert.throws(() => unapplyA1Index(a1layer + hi.now), /occurs 2 times/, 'index.js: a duplicated hunk');
+  assert.notStrictEqual(unapplyA1Index('\n' + a1layer), baseOf('index.js'), 'index.js: a byte OUTSIDE every hunk');
   assert.deepStrictEqual([...FILES].sort(), ['createorder-classify.js', 'rewards-redeem-intake.js']);
   for (const f of FILES) {
     const src = read(f);

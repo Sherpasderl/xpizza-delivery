@@ -804,6 +804,8 @@
     "xpizza-dispatch/dispatch-cashbar-layout.test.js",
     "xpizza-dispatch/dispatch-cola.test.js",
     "xpizza-dispatch/dispatch-drawer.test.js",
+    "xpizza-dispatch/dispatch-driver-admin-panel.test.js",
+    "xpizza-dispatch/dispatch-driver-admin.test.js",
     "xpizza-dispatch/dispatch-driver-deactivated.test.js",
     "xpizza-dispatch/dispatch-h0-alerts.test.mjs",
     "xpizza-dispatch/dispatch-heartbeat-alerts.test.js",
@@ -867,6 +869,7 @@
     "xpizza-dispatch-mobile/parity.test.mjs",
     "xpizza-dispatch-mobile/payment-line.test.mjs",
     "xpizza-dispatch-mobile/readonly.test.mjs",
+    "xpizza-dispatch/dispatch-driver-admin-panel.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
@@ -1500,6 +1503,8 @@
   "catalog/text-version.js",
   "createorder-classify.js",
   "index.js",
+  "lib/driver-admin-ops.js",
+  "lib/driver-callable-guard.js",
   "pixelpay-charge.js",
   "pixelpay-hosted-charge.js",
   "rewards-redeem-intake.js",
@@ -1552,7 +1557,8 @@
     {
      "file": "xpizza-functions/a1-wiring.guard.test.js",
      "inverses": [
-      "tools/a1-inverse.js"
+      "tools/a1-inverse.js",
+      "tools/s1b-inverse.js"
      ]
     },
     {
@@ -1564,6 +1570,7 @@
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/s1a-inverse.js",
+      "tools/s1b-inverse.js",
       "tools/serial3-inverse.js",
       "tools/wacancel-inverse.js"
      ]
@@ -1578,6 +1585,7 @@
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/s1a-inverse.js",
+      "tools/s1b-inverse.js",
       "tools/serial3-inverse.js",
       "tools/wacancel-inverse.js"
      ]
@@ -1594,6 +1602,7 @@
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/s1a-inverse.js",
+      "tools/s1b-inverse.js",
       "tools/serial3-inverse.js",
       "tools/wacancel-inverse.js"
      ]
@@ -1606,6 +1615,7 @@
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/s1a-inverse.js",
+      "tools/s1b-inverse.js",
       "tools/serial3-inverse.js",
       "tools/wacancel-inverse.js"
      ]
@@ -1617,6 +1627,7 @@
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/s1a-inverse.js",
+      "tools/s1b-inverse.js",
       "tools/serial3-inverse.js"
      ]
     },
@@ -1625,7 +1636,8 @@
      "inverses": [
       "tools/a1-inverse.js",
       "tools/h0-inverse.js",
-      "tools/s1a-inverse.js"
+      "tools/s1a-inverse.js",
+      "tools/s1b-inverse.js"
      ]
     },
     {
@@ -1639,6 +1651,7 @@
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/s1a-inverse.js",
+      "tools/s1b-inverse.js",
       "tools/serial3-inverse.js",
       "tools/wacancel-inverse.js"
      ]
@@ -1655,6 +1668,7 @@
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/s1a-inverse.js",
+      "tools/s1b-inverse.js",
       "tools/serial3-inverse.js",
       "tools/wacancel-inverse.js"
      ]
@@ -1663,7 +1677,8 @@
      "file": "xpizza-functions/s1a-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
-      "tools/s1a-inverse.js"
+      "tools/s1a-inverse.js",
+      "tools/s1b-inverse.js"
      ]
     },
     {
@@ -1672,6 +1687,7 @@
       "tools/a1-inverse.js",
       "tools/h0-inverse.js",
       "tools/s1a-inverse.js",
+      "tools/s1b-inverse.js",
       "tools/serial3-inverse.js"
      ]
     },
@@ -1684,6 +1700,7 @@
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/s1a-inverse.js",
+      "tools/s1b-inverse.js",
       "tools/serial3-inverse.js",
       "tools/wacancel-inverse.js"
      ]
@@ -1701,6 +1718,7 @@
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/s1a-inverse.js",
+      "tools/s1b-inverse.js",
       "tools/serial3-inverse.js",
       "tools/wacancel-inverse.js"
      ]
@@ -1736,6 +1754,7 @@
     "xpizza-functions/recon-close-fulfilled.test.js",
     "xpizza-functions/restaurant-config.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
+    "xpizza-functions/s1b-wiring.guard.test.js",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
     "xpizza-functions/serial3-differential.test.js",
@@ -1748,6 +1767,14 @@
     "xpizza-functions/tools/portal-split.js",
     "xpizza-functions/whatsapp-brand.test.js"
    ]
+  },
+  "lib/driver-admin-ops.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "lib/driver-callable-guard.js": {
+   "pins": [],
+   "lifts": []
   },
   "pixelpay-charge.js": {
    "pins": [],
