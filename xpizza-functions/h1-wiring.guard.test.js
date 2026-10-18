@@ -47,7 +47,7 @@ for (const [i, h] of INDEX_HUNKS.entries()) {
 }
 const marked = real.split('\n').filter((l) => l.includes('h1 A-R1'));
 assert.strictEqual(marked.length, 7, 'exactly seven A-R1-marked lines in index.js (no stray hook call)');
-assert.strictEqual(real.split('merchantHooks.').length - 1, 7, 'merchantHooks is called only from the seven hunks');
+assert.strictEqual(real.split('merchantHooks.').length - 1, 8, 'merchantHooks is called only from the seven hunks (the reassign hunk calls holdAfterClaim + releaseHeld)');
 ok('A-R1: seven hunks, each exactly once; removed / duplicated / edited hunks are each caught');
 
 const lines = block.split('\n').slice(1, -1).filter((l) => l && !l.startsWith('//'));

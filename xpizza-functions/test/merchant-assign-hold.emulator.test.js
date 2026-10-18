@@ -13,6 +13,8 @@
  *   5. codex r1 P1-2 — a reject landing AFTER the initial check (right after the assigner's delivery claim commits, via the REAL
  *      cancelOrderCore + stub PixelPay): autoAssign rolls back (cancelled and manual_review); the timeout reassign never gives
  *      the order to the next driver — a cancelled order keeps today's cancel end state, a manual_review order goes to SIN ASIGNAR.
+ *   6. codex r2 P1 — the exact overlap: a card cancel waits on its refund → the post-claim check sees HELD → the cancel completes
+ *      → the held release runs LAST → both tasks stay cancelled (never revived to pending).
  */
 require('./_emulator-required')('database');
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
@@ -44,6 +46,7 @@ const written = (before, after, ref) => ({ params: { orderId: ref, taskId: ref }
 // The claim-window hook: when an assigner's delivery CAS-claim COMMITS on a watched path, the test awaits a real reject before
 // control returns to the assigner — deterministically inside the claim → finalize gap (one-shot per path).
 const claimHooks = new Map();
+const releaseHooks = new Map();
 (() => {
   let o = Object.getPrototypeOf(db.ref('x'));
   while (o && !Object.prototype.hasOwnProperty.call(o, 'transaction')) o = Object.getPrototypeOf(o);
@@ -53,6 +56,8 @@ const claimHooks = new Map();
     const path = decodeURIComponent(new URL(this.toString()).pathname).replace(/^\//, '');
     const h = claimHooks.get(path);
     if (h && r && r.committed && r.snapshot && r.snapshot.val()) { claimHooks.delete(path); await h(); }
+    const rel = releaseHooks.get(path);
+    if (rel && r && r.committed && r.snapshot && r.snapshot.val() === null) { releaseHooks.delete(path); await rel(); }
     return r;
   };
 })();
@@ -64,20 +69,36 @@ const realReject = (oid) => R.runReject({ db, resolveBrand: async (_d, rid) => (
   { rid: 'tb_norte', oid, reason: 'saturada', gone_items: [], op_id: `op_${oid}_r1` }, O.runOrderActionDetailed);
 const outcomes = {};
 const hookClaim = (oid) => claimHooks.set(`tasks/${oid}_delivery/assigned_driver_id`, async () => { outcomes[oid] = (await realReject(oid)).state; });
+// m5: a captured card whose void WAITS on a gate (the refund in flight)
+let openGate; const gate = new Promise((r) => { openGate = r; });
+const gatedCore = (args) => cancelOrderCore({ db, client: { voidTransaction: async () => { await gate; return { ok: true }; } }, voidOrRefund, alert: async () => {}, serverTimestamp: Date.now() }, args);
+const rejectWith = (oid, core) => R.runReject({ db, resolveBrand: async (_d, rid) => (rid.startsWith('tb_') ? 'tb' : 'unknown'), HttpsError, now: () => Date.now(),
+  cancelCore: core, newClaimId: () => `claim_hold_${++claimSeq}` }, { uid: 'hh_a', token: { handheld: true, rid: 'tb_norte' } },
+  { rid: 'tb_norte', oid, reason: 'saturada', gone_items: [], op_id: `op_${oid}_r1` }, O.runOrderActionDetailed);
+let m5Reject = null;
+claimHooks.set('tasks/m5_delivery/assigned_driver_id', async () => {
+  m5Reject = rejectWith('m5', gatedCore);             // NOT awaited: the core claims, then waits on the refund
+  for (let i = 0; i < 200; i++) { const c = (await db.ref('orders/m5/cancel_claim_id').once('value')).val(); if (c) return; await new Promise((r) => setTimeout(r, 25)); }
+  throw new Error('m5: the core never claimed');
+});
+releaseHooks.set('tasks/m5_delivery/assigned_driver_id', async () => {   // the held release has begun: let the cancel finish first
+  openGate(); outcomes.m5 = (await m5Reject).state;
+});
 const ambiguousCard = (oid) => ({ payment_method: 'online', payment_status: 'confirmed', active_attempt_id: `att_${oid}`, total_cents: 10000 });
 
 (async () => {
   await db.ref().set({
     config: { auto_assign_enabled: true },
     drivers: { dA: driver('A'), dB: driver('B'), dM1: { ...driver('M1') }, dM2: { ...driver('M2') }, dE: driver('E'), dF: driver('F'),
-      dM3: driver('M3'), dM4: driver('M4'), dG: driver('G'), dH: driver('H') },
+      dM3: driver('M3'), dM4: driver('M4'), dG: driver('G'), dH: driver('H'), dM5: driver('M5'), dI: driver('I') },
     restaurants: { tb_norte: { order_surface: 'handheld', handhelds: { hh_a: { kind: 'handheld', revoked: false } } } },
-    payment_attempts: { att_a2: { order_id: 'a2', hosted_order_id: 'a2-att_a2', hosted_state: 'paid' }, att_m4: { order_id: 'm4', hosted_order_id: 'm4-att_m4', hosted_state: 'paid' } },
+    payment_attempts: { att_m5: { order_id: 'm5', hosted_order_id: 'm5-att_m5', hosted_state: 'paid', payment_uuid: 'S-m5', capture_verified: true }, att_a2: { order_id: 'a2', hosted_order_id: 'a2-att_a2', hosted_state: 'paid' }, att_m4: { order_id: 'm4', hosted_order_id: 'm4-att_m4', hosted_state: 'paid' } },
     orders: {
       h1: order('h1'), c1: order('c1'),
       m1: order('m1', { handheld_answered: rejected('m1'), reject_intent: { op_id: 'op_m1', at: Date.now() } }), m2: order('m2'),
       a1: order('a1', { payment_method: 'cash' }), a2: order('a2', ambiguousCard('a2')),
       m3: order('m3', { payment_method: 'cash' }), m4: order('m4', ambiguousCard('m4')),
+      m5: order('m5', { payment_method: 'online', payment_status: 'confirmed', active_attempt_id: 'att_m5', total_cents: 10000 }),
     },
     tasks: {
       ...tasksFor('h1'), ...tasksFor('c1'),
@@ -86,6 +107,7 @@ const ambiguousCard = (oid) => ({ payment_method: 'online', payment_status: 'con
       ...tasksFor('a1'), ...tasksFor('a2'),
       ...tasksFor('m3', { status: 'assigned', assigned_driver_id: 'dM3', assignment_attempts: 1 }),
       ...tasksFor('m4', { status: 'assigned', assigned_driver_id: 'dM4', assignment_attempts: 1 }),
+      ...tasksFor('m5', { status: 'assigned', assigned_driver_id: 'dM5', assignment_attempts: 1 }),
     },
   });
 
@@ -94,7 +116,7 @@ const ambiguousCard = (oid) => ({ payment_method: 'online', payment_status: 'con
   const mon = (oid, drv) => fns.monitorAssignmentTimeout.run(written(null, drv, `${oid}_pickup`));
   const lateReject = (async () => { await new Promise((r) => setTimeout(r, 1000)); await db.ref('orders/h1/handheld_answered').set(rejected('h1')); })();
   for (const oid of ['a1', 'a2', 'm3', 'm4']) hookClaim(oid);
-  await Promise.all([auto('h1'), auto('c1'), mon('m1', 'dM1'), mon('m2', 'dM2'), lateReject, auto('a1'), auto('a2'), mon('m3', 'dM3'), mon('m4', 'dM4')]);
+  await Promise.all([auto('h1'), auto('c1'), mon('m1', 'dM1'), mon('m2', 'dM2'), lateReject, auto('a1'), auto('a2'), mon('m3', 'dM3'), mon('m4', 'dM4'), mon('m5', 'dM5')]);
 
   assert.strictEqual(await val('tasks/h1_pickup/assigned_driver_id'), null, 'held h1 not auto-assigned');
   assert.strictEqual(await val('tasks/h1_delivery/assigned_driver_id'), null);
@@ -126,6 +148,15 @@ const ambiguousCard = (oid) => ({ payment_method: 'online', payment_status: 'con
   const alerts2 = Object.values((await val('dispatcher_alerts')) || {});
   assert.ok(alerts2.some((a) => a.type === 'no_response_takeover' && a.order_id === 'm4'), 'm4 takeover alert');
   ok('timeout reassign: a reject inside the claim → finalize gap → never reassigned (cancelled keeps the cancel state; manual_review → SIN ASIGNAR + takeover)');
+
+  // 6. codex r2 P1 — the exact overlap
+  assert.strictEqual(outcomes.m5, 'cancelled', `m5 cancelled through the gated refund (${outcomes.m5})`);
+  const m5o = await val('orders/m5');
+  assert.deepStrictEqual([m5o.status, m5o.payment_status], ['cancelled', 'refunded']);
+  const m5t = { d: await val('tasks/m5_delivery'), p: await val('tasks/m5_pickup') };
+  assert.deepStrictEqual([m5t.d.status, m5t.p.status], ['cancelled', 'cancelled'], 'the release ran LAST and revived nothing');
+  assert.ok(m5t.d.assigned_driver_id == null, 'the claim itself was released');
+  ok('timeout reassign, exact overlap (refund waits → held → cancel completes → release last) → both tasks stay cancelled');
 
   // Phase 2: the sweeper offer pass (flag on). Fresh drivers; h2 held, c2 control, h3 becomes held mid-placement.
   await db.ref('drivers').update({ dC: driver('C'), dD: driver('D') });

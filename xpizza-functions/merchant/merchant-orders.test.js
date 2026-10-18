@@ -130,6 +130,7 @@ test('orderState carries the location prep base: valid → the value; invalid / 
 
 test('orderState driver fields: ONLY this order\'s open-pickup driver — first name, at-restaurant, fresh location; fail closed', async () => {
   const st = async (db) => { const r = await M.orderState(deps(db), dev(), { rid: 'tb_norte', oid: 'o1' }); return { first: r.driver_first_name, here: r.driver_at_restaurant, loc: r.driver_location }; };
+  const dst = async (db) => (await M.orderState(deps(db), dev(), { rid: 'tb_norte', oid: 'o1' })).pickup_location;
   const setup = (pickup, driver) => { const db = createFakeDb(world()); db.put('tasks/o1_pickup', pickup); if (driver) db.put('drivers/drv', driver); return db; };
   const live = { name: '  Ana María López ', status: 'assigned', current_task_id: 'o1_pickup', lat: 15.5, lng: -88.02, last_ping: T0 - 30000, phone: '+504 9999' };
   // the happy path
@@ -137,6 +138,12 @@ test('orderState driver fields: ONLY this order\'s open-pickup driver — first 
   assert.deepStrictEqual(await st(setup({ assigned_driver_id: 'drv', status: 'accepted' }, { ...live, status: 'at_restaurant' })), { first: 'Ana', here: true, loc: { lat: 15.5, lng: -88.02, at: T0 - 30000 } });
   const full = await M.orderState(deps(setup({ assigned_driver_id: 'drv', status: 'assigned' }, live)), dev(), { rid: 'tb_norte', oid: 'o1' });
   assert.ok(!JSON.stringify(full).includes('+504') && !('driver_id' in full), 'no phone, no driver id');
+  // pickup_location (advisor): THIS order's pickup destination, only together with a live driver_location
+  const withDest = { assigned_driver_id: 'drv', status: 'assigned', destination_lat: 15.49, destination_lng: -88.01 };
+  assert.deepStrictEqual(await dst(setup(withDest, live)), { lat: 15.49, lng: -88.01 });
+  assert.strictEqual(await dst(setup(withDest, { ...live, last_ping: T0 - 91000 })), null, 'no live location → no destination either');
+  assert.strictEqual(await dst(setup({ ...withDest, destination_lat: 'x' }, live)), null);
+  assert.strictEqual(await dst(setup({ assigned_driver_id: 'drv', status: 'assigned' }, live)), null);
   // stale ping / future ping / no coords → no location (name stays)
   assert.deepStrictEqual(await st(setup({ assigned_driver_id: 'drv', status: 'assigned' }, { ...live, last_ping: T0 - 91000 })), { first: 'Ana', here: false, loc: null });
   assert.deepStrictEqual((await st(setup({ assigned_driver_id: 'drv', status: 'assigned' }, { ...live, last_ping: T0 + 60000 }))).loc, null);
@@ -155,6 +162,16 @@ test('orderState driver fields: ONLY this order\'s open-pickup driver — first 
   assert.deepStrictEqual(await st(pk), { first: null, here: false, loc: null });
 });
 
+test('codex r2 P2: freshness is judged on the clock read AFTER the reads (a slow read crossing 90 s → no location)', async () => {
+  const db = createFakeDb(world());
+  db.put('tasks/o1_pickup', { assigned_driver_id: 'drv', status: 'assigned', destination_lat: 15.49, destination_lng: -88.01 });
+  db.put('drivers/drv', { name: 'Ana', status: 'assigned', current_task_id: 'o1_pickup', lat: 15.5, lng: -88.02, last_ping: T0 - 60000 });
+  let t = T0;
+  const slow = { ...db, ref: (p) => { const r = db.ref(p); return p === 'drivers/drv' ? { ...r, once: async (...a) => { const v = await r.once(...a); t += 31000; return v; } } : r; } };
+  const r = await M.orderState({ db: slow, resolveBrand, now: () => t, HttpsError }, dev(), { rid: 'tb_norte', oid: 'o1' });
+  assert.deepStrictEqual([r.driver_location, r.pickup_location, r.driver_first_name], [null, null, 'Ana'], '60 s at the start, 91 s when judged');
+});
+
 test('unauthenticated → unauthenticated; revoked device → permission-denied', async () => {
   const db = createFakeDb(world());
   await throwsCode(call(db, 'accept', { rid: 'tb_norte', oid: 'o1', prep_min: 20, op_id: 'op_u0000001' }, null), 'unauthenticated');
@@ -162,7 +179,7 @@ test('unauthenticated → unauthenticated; revoked device → permission-denied'
   await throwsCode(call(db, 'accept', { rid: 'tb_norte', oid: 'o1', prep_min: 20, op_id: 'op_u0000002' }), 'permission-denied');
 });
 
-const NOD = { driver_first_name: null, driver_at_restaurant: false, driver_location: null };
+const NOD = { driver_first_name: null, driver_at_restaurant: false, driver_location: null, pickup_location: null };
 test('orderState: driver presence, fail closed, served orders only', async () => {
   const db = createFakeDb(world());
   assert.deepStrictEqual(await M.orderState(deps(db), dev(), { rid: 'tb_norte', oid: 'o1' }), { driver_assigned: false, prep_default_min: null, ...NOD });

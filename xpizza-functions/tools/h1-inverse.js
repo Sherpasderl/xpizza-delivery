@@ -38,7 +38,7 @@ const INDEX_HUNKS = Object.freeze([
  },
  {
   "was": "    const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);\n",
-  "now": "    const hold = await merchantHooks.holdAfterClaim(db, orderId, (o) => o.status === 'cancelled'); if (hold === 'gone') { await claim.rollback(); return; } if (hold === 'held') { if (await releaseToSinAsignar(db, orderId, nextDriver.driverId)) await db.ref('dispatcher_alerts').push({ type: 'no_response_takeover', order_id: orderId, customer_name: orderForTimeout.recipient_name || 'Cliente', total: orderForTimeout.total || null, attempts, created_at: ServerValue.TIMESTAMP }); return; } const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);   // h1 A-R1\n"
+  "now": "    const hold = await merchantHooks.holdAfterClaim(db, orderId, (o) => o.status === 'cancelled'); if (hold === 'gone') { await claim.rollback(); return; } if (hold === 'held') { if (await merchantHooks.releaseHeld(db, orderId, nextDriver.driverId)) await db.ref('dispatcher_alerts').push({ type: 'no_response_takeover', order_id: orderId, customer_name: orderForTimeout.recipient_name || 'Cliente', total: orderForTimeout.total || null, attempts, created_at: ServerValue.TIMESTAMP }); return; } const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);   // h1 A-R1\n"
  }
 ]);
 

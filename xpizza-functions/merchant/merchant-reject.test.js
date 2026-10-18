@@ -156,16 +156,16 @@ test('codex r1 P1-1: the handler AWAITS the core — its promise never resolves 
   assert.deepStrictEqual(db.get('orders/o1/reject_outcome'), { state: 'cancelled', at: T0, op_id: 'op_rej00001', by: 'handler' }, 'settled INSIDE the invocation');
 });
 
-test('codex r1 P1-1: a 20 s core (mocked clock) is still awaited to its real outcome', async (t) => {
+test('codex r1 P1-1 (+r2 test strength): a 60 s core — past the OLD 45 s deadline, mocked clock — is still awaited to its real outcome', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const db = createFakeDb(world());
-  const core = fakeCore(db, { status: 409, body: { outcome: 'refund_pending' } }, { apply: cancelled('refund_pending'), delayMs: 20000 });
+  const core = fakeCore(db, { status: 409, body: { outcome: 'refund_pending' } }, { apply: cancelled('refund_pending'), delayMs: 60000 });
   let done = false;
   const p = reject(db, core, 'op_rej00001').then((r) => { done = true; return r; });
   for (let i = 0; i < 50 && core.calls.length === 0; i++) await new Promise((r) => setImmediate(r));
-  t.mock.timers.tick(19999);
+  t.mock.timers.tick(59999);
   for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
-  assert.strictEqual(done, false, 'still pending at 19.999 s');
+  assert.strictEqual(done, false, 'still pending at 59.999 s — the old 45 s deadline would have answered pending by now');
   t.mock.timers.tick(1);
   const r = await p;
   assert.strictEqual(r.state, 'refund_pending');
