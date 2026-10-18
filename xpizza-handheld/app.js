@@ -436,10 +436,15 @@ setInterval(() => { if (S.phase === 'main' && api && online()) api.direct('merch
 bridge.onResume(() => { undo && undo.onResume(); if (online() && api) api.flush(); render(); });
 
 // ── boot ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// A paired device (session + PIN) opens straight onto the list — also offline at a cold start (the banner shows until the feed's
+// first snapshot). An invalid identity is caught where it already is: online, the feed's permission error → sessionLost →
+// re-pair; an Auth user that is a DIFFERENT uid signs out at once. A device paired but without a PIN resumes at the checks.
 const saved = store.load();
+if (saved && pinGate.record()) { sess = saved; startMain(); }
 const unsub = onAuthStateChanged(auth, (u) => {
   unsub();
-  if (saved && u && u.uid === saved.uid && pinGate.record()) { sess = saved; startMain(); return; }
+  if (saved && u && u.uid !== saved.uid) { doSignOut('session_lost'); return; }
+  if (S.phase === 'main') return;
   if (saved && u && u.uid === saved.uid) { sess = saved; refreshStatus().then(() => set({ phase: 'checks' })); return; }
   set({ phase: 'login' });
 });
