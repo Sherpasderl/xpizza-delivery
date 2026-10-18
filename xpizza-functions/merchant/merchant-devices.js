@@ -2,7 +2,8 @@
 // H1a C-3/C-4 — device pairing, revocation and heartbeat.
 //   pairDevice:   pairing gate ON (A1 sets it only after F2(c) narrowed the rules) + an owner/manager of the location →
 //                 a fresh Auth user (server-chosen uid hh_{rid}_{rand}), the registry row, and a custom token carrying ONLY
-//                 {handheld:true, rid}. A request that tries to choose the uid or claims is refused.
+//                 {handheld:true, rid}. A request that tries to choose the uid or claims is refused. PRECONDITION (advisor,
+//                 prep base): the location has a valid identity.prep_default_min, so a paired device always has a base.
 //   revokeDevice: never gated. The target must ALREADY be a kind:'handheld' row under the authorized rid — otherwise not-found,
 //                 with no Auth call and no row created. Steps in order, each idempotent, so a retry recovers a partial failure:
 //                 revoked:true (immediate denial via the registry + the F2 rule clause) → disable the user → revoke tokens.
@@ -32,6 +33,9 @@ async function pairDevice(deps, auth, data) {
   if (!rid || !label) throw new HttpsError('invalid-argument', 'bad rid/label');
   if (!(await pairingEnabled(db))) throw new HttpsError('failed-precondition', 'not_enabled');
   const by = await asManager(deps, auth, rid);
+  let base;
+  try { base = V.vPrepBase((await db.ref(`restaurants/${rid}/identity/prep_default_min`).once('value')).val()); } catch (_) { throw new HttpsError('unavailable', 'identity unreadable'); }
+  if (base === null) throw new HttpsError('failed-precondition', 'no_prep_base');
   const uid = `hh_${rid}_${randomId()}`;
   await adminAuth.createUser({ uid });
   await db.ref(`restaurants/${rid}/handhelds/${uid}`).set({ kind: 'handheld', label, paired_at: now(), paired_by: by, revoked: false });
@@ -67,7 +71,7 @@ async function heartbeat(deps, auth, data) {
 
 // merchantMyLocations (advisor O-2): the locations a HUMAN may pair a device for — every member location of a brand they own,
 // plus each member location they manage. Retired locations are excluded. Reads /brands (small) and per-candidate owner /
-// manager / location_name nodes; never /orders. Devices and customers are refused; a read failure is `unavailable`.
+// manager / location_name / prep_default_min nodes; never /orders. Devices and customers are refused; a read failure is `unavailable`.
 async function myLocations(deps, auth, _data) {
   const { db, HttpsError } = deps;
   if (!auth || !auth.uid) throw new HttpsError('unauthenticated', 'sign in');
@@ -85,7 +89,8 @@ async function myLocations(deps, auth, _data) {
       for (const rid of members) {
         if (!owner && (await val(`restaurants/${rid}/managers/${auth.uid}`)) == null) continue;
         const name = await val(`restaurants/${rid}/identity/location_name`);
-        out.push({ rid, brand_id: b, location_name: typeof name === 'string' ? name : null });
+        const base = V.vPrepBase(await val(`restaurants/${rid}/identity/prep_default_min`));
+        out.push({ rid, brand_id: b, location_name: typeof name === 'string' ? name : null, prep_default_min: base });
       }
     }
   } catch (_) { throw new HttpsError('unavailable', 'locations unreadable'); }

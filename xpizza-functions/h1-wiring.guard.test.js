@@ -1,5 +1,5 @@
 'use strict';
-// H1a (PLAN-H1a r2 T8 + A-R1) — the handheld's index.js footprint is ONE delimited block plus A-R1's five one-line hunks,
+// H1a (PLAN-H1a r2 T8 + A-R1) — the handheld's index.js footprint is ONE delimited block plus A-R1's seven one-line hunks (incl. codex r1 P1-2's holdAfterClaim),
 // nothing else. Run: node h1-wiring.guard.test.js
 //   1. unapplyH1Index(index.js) === the pre-H1a index.js. The base is the parent of the commit that introduced the block
 //      (found with git log -S), or HEAD's index.js while the block is still uncommitted.
@@ -35,20 +35,20 @@ assert.notStrictEqual(unapplyH1Index(outside), base, 'a byte OUTSIDE the block s
 ok('sensitivity: missing begin, missing end, a second block and a byte outside are each caught');
 
 // A-R1 hunks: each occurs exactly once; a missing or duplicated hunk, or a byte changed inside one, is caught.
-assert.strictEqual(INDEX_HUNKS.length, 5, 'A-R1 adds exactly five index.js hunks');
+assert.strictEqual(INDEX_HUNKS.length, 7, 'A-R1 adds exactly seven index.js hunks');
 for (const [i, h] of INDEX_HUNKS.entries()) {
   assert.strictEqual(real.split(h.now).length - 1, 1, `hunk ${i} present exactly once`);
   assert.ok(h.now.includes('// h1 A-R1'), `hunk ${i} carries its marker`);
   assert.throws(() => unapplyH1Index(real.replace(h.now, h.was)), /occurs 0 times/, `hunk ${i} removed → caught`);
   assert.throws(() => unapplyH1Index(real.replace(h.now, h.now + h.now)), /occurs 2 times/, `hunk ${i} duplicated → caught`);
-  const mutated = real.replace(h.now, h.now.replace('heldByReject', 'heldByRejct').replace('safeRejectRepair', 'safeRejectRepar'));
+  const mutated = real.replace(h.now, h.now.replace('heldByReject', 'heldByRejct').replace('safeRejectRepair', 'safeRejectRepar').replace('holdAfterClaim', 'holdAfterClam'));
   assert.notStrictEqual(mutated, real);
   assert.throws(() => unapplyH1Index(mutated), /occurs 0 times/, `hunk ${i} edited → caught`);
 }
 const marked = real.split('\n').filter((l) => l.includes('h1 A-R1'));
-assert.strictEqual(marked.length, 5, 'exactly five A-R1-marked lines in index.js (no stray hook call)');
-assert.strictEqual(real.split('merchantHooks.').length - 1, 5, 'merchantHooks is called only from the five hunks');
-ok('A-R1: five hunks, each exactly once; removed / duplicated / edited hunks are each caught');
+assert.strictEqual(marked.length, 7, 'exactly seven A-R1-marked lines in index.js (no stray hook call)');
+assert.strictEqual(real.split('merchantHooks.').length - 1, 7, 'merchantHooks is called only from the seven hunks');
+ok('A-R1: seven hunks, each exactly once; removed / duplicated / edited hunks are each caught');
 
 const lines = block.split('\n').slice(1, -1).filter((l) => l && !l.startsWith('//'));
 assert.strictEqual(lines[0], "require('./merchant/merchant-core-binding').bindCancelCore((args) => cancelOrderCore(cancelDeps(getDatabase()), args));");

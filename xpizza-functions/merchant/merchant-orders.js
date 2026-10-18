@@ -67,6 +67,31 @@ async function driverAssigned(db, oid) {
   } catch (_) { return true; }
 }
 
+// Advisor (H1b copy rulings): what the handheld may know about THIS order's pickup driver — the first name, whether they are at the
+// restaurant, and their fresh location (the device computes a traffic-aware ETA client-side, like the tracker). Only the driver
+// assigned to THIS order's OPEN pickup; never other drivers or orders; no phone. Every unknown fails closed (null / false).
+const STALE_PING_MS = 90 * 1000;                                   // = index.js STALE_PING_MS / dispatch STALE_PING_THRESHOLD_S
+const PICKUP_OPEN = new Set(['assigned', 'accepted', 'in_progress']);
+const NO_DRIVER = Object.freeze({ driver_first_name: null, driver_at_restaurant: false, driver_location: null });
+async function pickupDriver(db, oid, nowMs) {
+  try {
+    const pickup = await readVal(db, `tasks/${oid}_pickup`);
+    const id = pickup && typeof pickup === 'object' ? pickup.assigned_driver_id : null;
+    if (typeof id !== 'string' || !id || !PICKUP_OPEN.has(pickup.status)) return NO_DRIVER;
+    const d = await readVal(db, `drivers/${id}`);
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return NO_DRIVER;
+    const first = typeof d.name === 'string' ? (d.name.trim().split(/\s+/)[0] || null) : null;
+    const onThisPickup = d.current_task_id === `${oid}_pickup`;
+    const fresh = typeof d.last_ping === 'number' && Number.isFinite(d.last_ping) && nowMs - d.last_ping >= 0 && nowMs - d.last_ping <= STALE_PING_MS;
+    const located = Number.isFinite(d.lat) && Number.isFinite(d.lng) && Math.abs(d.lat) <= 90 && Math.abs(d.lng) <= 180;
+    return {
+      driver_first_name: first ? first.slice(0, 40) : null,
+      driver_at_restaurant: d.status === 'at_restaurant' && onThisPickup,
+      driver_location: fresh && located ? { lat: d.lat, lng: d.lng, at: d.last_ping } : null,
+    };
+  } catch (_) { return NO_DRIVER; }
+}
+
 // { outcome, fresh }: fresh = THIS call committed the order transaction (false for a receipt replay or an abort). A-R1's
 // runReject runs the cancel core only on a fresh reject, so a replay never re-executes it.
 async function runOrderActionDetailed(deps, auth, action, data) {
@@ -107,7 +132,13 @@ async function orderState(deps, auth, data) {
   let o;
   try { o = await readVal(db, `orders/${oid}`); } catch (_) { throw new HttpsError('unavailable', 'order unreadable'); }
   if (!o || o.restaurant_id !== rid || typeof o.routing_reason !== 'string') throw new HttpsError('failed-precondition', 'not_served');
-  return { driver_assigned: o.order_type === 'pickup' ? false : await driverAssigned(db, oid) };
+  // the location's prep base, refreshed on every detail open (advisor ruling); invalid or unreadable → null (the device keeps its
+  // persisted base — pairing guaranteed one)
+  let base = null;
+  try { base = V.vPrepBase(await readVal(db, `restaurants/${rid}/identity/prep_default_min`)); } catch (_) { base = null; }
+  const pickupOrder = o.order_type === 'pickup';
+  const driver = pickupOrder ? NO_DRIVER : await pickupDriver(db, oid, deps.now());
+  return { driver_assigned: pickupOrder ? false : await driverAssigned(db, oid), prep_default_min: base, ...driver };
 }
 
 module.exports = { runOrderAction, runOrderActionDetailed, orderState, gateAndAuth, hashOf, canonical };

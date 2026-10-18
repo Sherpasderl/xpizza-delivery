@@ -81,6 +81,26 @@ test('resumeIfOwn (no-answer undo): resumes only its OWN pause; a newer pause by
   assert.strictEqual(db.get('order_control/tb_norte/current/paused'), true);
 });
 
+test('codex r1 P1-3: a staff pause landing BETWEEN the ownership read and the write is never resumed (system v1 → staff v2)', async () => {
+  const db = createFakeDb({});
+  const sys = await C.writePause(deps(db), 'tb_norte', { op: 'pause', forMs: null, reason: 'sin respuesta', actor: 'sistema', principal: 'sistema' });
+  assert.strictEqual(db.get('order_control/tb_norte/current/version'), 1);
+  // wrap the db: right after resumeIfOwn's FIRST read of the node (ownership looks fine at v1), staff pauses (v2)
+  let reads = 0;
+  const wrapped = { ...db, ref: (p) => {
+    const r = db.ref(p);
+    if (p !== 'order_control/tb_norte') return r;
+    return { ...r, transaction: r.transaction.bind(r), once: async (...a) => {
+      const snap = await r.once(...a);
+      if (++reads === 1) await C.writePause(deps(db), 'tb_norte', { op: 'pause', forMs: 1800000, reason: 'Cocina llena', actor: 'handheld:hh', principal: 'hh' });
+      return snap;
+    } };
+  } };
+  assert.deepStrictEqual(await C.resumeIfOwn(deps(wrapped), 'tb_norte', sys.op_id), { ok: true, resumed: false });
+  const cur = db.get('order_control/tb_norte/current');
+  assert.deepStrictEqual([cur.paused, cur.version, cur.by], [true, 2, 'handheld:hh'], 'the staff pause stands');
+});
+
 test('effectiveBusy: live → add_min; expired / absent / malformed → 0', () => {
   assert.strictEqual(C.effectiveBusy({ add_min: 15, until: T0 + 1 }, T0), 15);
   assert.strictEqual(C.effectiveBusy({ add_min: 15, until: T0 }, T0), 0);

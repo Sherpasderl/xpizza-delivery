@@ -47,4 +47,7 @@ function vStoredPrep(p) {
   return 'full';
 }
 
-module.exports = { PREP_MIN, PREP_MAX, vPrep, vAdd, vReason, vRid, vOid, vOpId, vLabel, vNote, vItems, vStoredPrep };
+// The location's default prep minutes (F1 identity.prep_default_min, rules: integer 5–120) → the value, else null.
+const vPrepBase = (v) => (Number.isInteger(v) && v >= 5 && v <= 120 ? v : null);
+
+module.exports = { vPrepBase, PREP_MIN, PREP_MAX, vPrep, vAdd, vReason, vRid, vOid, vOpId, vLabel, vNote, vItems, vStoredPrep };

@@ -6240,7 +6240,7 @@ exports.autoAssignOnOrderCreate = onValueWritten(
 
     // attempts=1 = initial assignment. monitorAssignmentTimeout uses this
     // for its 2-strikes rule (only relevant for non-stacked).
-    const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);
+    if (await merchantHooks.holdAfterClaim(db, orderId, (o) => !AUTO_ASSIGNABLE_STATUSES.has(o.status))) { console.log(`autoAssign: ${orderId} held or gone after the claim, rolling back`); await claim.rollback(); return; } const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);   // h1 A-R1
     try {
       await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'autoAssign.finalize', target: chosen.driverId });   // S1a §3
       console.log(`autoAssign: success for ${orderId} → ${chosen.driverId}`);
@@ -6413,7 +6413,7 @@ exports.monitorAssignmentTimeout = onValueWritten(
       console.log(`timeout-monitor: ${orderId} delivery no longer on ${driverId} (now ${claim.current}); backing off reassign`);
       return;
     }
-    const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);
+    const hold = await merchantHooks.holdAfterClaim(db, orderId, (o) => o.status === 'cancelled'); if (hold === 'gone') { await claim.rollback(); return; } if (hold === 'held') { if (await releaseToSinAsignar(db, orderId, nextDriver.driverId)) await db.ref('dispatcher_alerts').push({ type: 'no_response_takeover', order_id: orderId, customer_name: orderForTimeout.recipient_name || 'Cliente', total: orderForTimeout.total || null, attempts, created_at: ServerValue.TIMESTAMP }); return; } const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);   // h1 A-R1
     try {
       await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(reassignUpdates), { site: 'timeout.finalize', target: nextDriver.driverId });   // S1a §3
       // The new assigned_driver_id write will trigger another monitorAssignmentTimeout

@@ -32,10 +32,23 @@ async function writePause(deps, rid, { op, forMs, reason, actor, principal }) {
 }
 
 async function resumeIfOwn(deps, rid, opId) {
-  const node = (await deps.db.ref(`order_control/${rid}`).once('value')).val();
+  // codex r1 P1-3: the checked version AND op ownership are enforced INSIDE the transaction — a newer pause written between
+  // this read and the commit (staff, dispatch, the CLI) is never resumed.
+  const { db, timestamp, newOpId } = deps;
+  const ref = db.ref(`order_control/${rid}`);
+  const node = (await ref.once('value')).val();
   if (!node || !node.current || node.current.op_id !== opId || node.current.paused !== true) return { ok: true, resumed: false };
-  const r = await writePause(deps, rid, { op: 'resume', forMs: null, reason: 'sin respuesta · respondido a tiempo', actor: 'sistema', principal: 'sistema' });
-  return { ok: true, resumed: r.ok === true && !r.noop };
+  const checked = OCC.versionOf(node);
+  const resumeOp = newOpId();
+  const apply = OCC.txnCallback({ expectedVersion: checked, to: { paused: false }, opId: resumeOp, actor: 'sistema', principal: 'sistema',
+    reason: 'sin respuesta · respondido a tiempo', timestamp: timestamp() });
+  const tx = await ref.transaction((cur) => {
+    if (cur === null) return null;                                                        // null-first safe
+    if (!cur || !cur.current || cur.current.op_id !== opId || cur.current.paused !== true || OCC.versionOf(cur) !== checked) return undefined;
+    return apply(cur);
+  });
+  const after = tx.snapshot.val();
+  return { ok: true, resumed: !!(tx.committed && after && after.current && after.current.op_id === resumeOp) };
 }
 
 async function writeBusy(deps, rid, spec) {

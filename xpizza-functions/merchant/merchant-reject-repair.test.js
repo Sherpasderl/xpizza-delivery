@@ -27,7 +27,20 @@ test('needs(): the repair table', () => {
   assert.strictEqual(n(rej('a', 3), { stranded: 1 }), null, 'notice exists = handled');
   assert.strictEqual(n(rej('a', 1)), null, 'younger than 2 min');
   assert.strictEqual(n(rej('a', 24 * 60 + 1)), null, 'older than 24 h');
-  assert.strictEqual(n(rej('a', 3, { status: 'preparing' })), null);
+  assert.strictEqual(n(rej('a', 3, { status: 'preparing' })).notice, 'stranded', 'a live non-new order whose reject never resolved');
+  assert.strictEqual(n(rej('a', 3, { status: 'preparing', reject_outcome: { state: 'cancelled', op_id: 'op_a' } })), null, 'a live order with a known outcome is handled');
+  // codex r1 P2-4
+  for (const st of ['delivered', 'completed']) {
+    const t = n(rej('a', 3, { status: st }));
+    assert.deepStrictEqual([t.notice, t.outcome], ['not_cancelable', 'not_cancelable'], st);
+    assert.strictEqual(n(rej('a', 3, { status: st, reject_outcome: { state: 'not_cancelable', op_id: 'op_a' } })).notice, 'not_cancelable', 'a lost notice is re-raised');
+    assert.strictEqual(n(rej('a', 3, { status: st, reject_outcome: { state: 'not_cancelable', op_id: 'op_a' } }), { not_cancelable: 1 }), null);
+  }
+  const rr = n(rej('a', 3, { status: 'pending_payment', payment_status: 'manual_reconciliation' }));
+  assert.deepStrictEqual([rr.notice, rr.outcome], ['referred_recon', 'referred_recon']);
+  const rm = n(rej('a', 3, { status: 'pending_payment', payment_status: 'manual_reconciliation' }), { referred_recon: 1 });
+  assert.deepStrictEqual([rm.notice, rm.outcome], [null, 'referred_recon'], 'notice already raised; the outcome is still written');
+  assert.strictEqual(n(rej('a', 3, { status: 'pending_payment' })).notice, 'stranded', 'pending_payment outside the recon surface: the core would cancel it');
   assert.strictEqual(n({ status: 'new', reject_intent: { at: T0 - 5 * MIN } }), null, 'no rejected marker → not a handheld reject');
   assert.strictEqual(n(rej('a', 3, { reject_outcome: { state: 'manual_review', op_id: 'op_OTHER' } })).notice, 'stranded', 'another op\'s outcome is ignored');
 });

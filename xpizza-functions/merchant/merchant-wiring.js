@@ -39,7 +39,7 @@ module.exports = {
   merchantMoreTime: orderAction('more'),
   merchantReady: orderAction('ready'),
   merchantHanded: orderAction('handed'),
-  // A-R1: synchronous reject → cancel. 120 s so the core can settle after the 45 s response deadline.
+  // A-R1: synchronous reject → cancel; the invocation awaits the core to completion (codex r1 P1-1), bounded by 120 s.
   merchantReject: onCall({ region: REGION, timeoutSeconds: 120 },
     (request) => R.runReject(rejectDeps(), request.auth || null, request.data, O.runOrderActionDetailed)),
   merchantOrderState: call(O.orderState),

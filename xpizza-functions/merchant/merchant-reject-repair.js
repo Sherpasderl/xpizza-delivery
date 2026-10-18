@@ -9,6 +9,9 @@
 //   status 'cancelled', no outcome (crash after finalize)           → outcome cancelled | refund_pending from payment_status,
 //                                                                      refund_pending's notice FIRST
 //   status 'cancelled', outcome refund_pending                      → notice refund_pending
+//   status delivered | completed (codex r1 P2-4)                    → outcome not_cancelable + its notice
+//   status pending_payment + manual_reconciliation (codex r1 P2-4)  → outcome referred_recon + its notice
+//   any other live status (e.g. preparing), no outcome               → the same claim_held / manual_review / stranded rules as 'new'
 // A notice "exists" when merchant_reject_notices/{oid}/{kind} is set (written atomically WITH the alert, by the handler too),
 // so a pruned alert is never re-raised.
 //
@@ -18,6 +21,7 @@
 const R = require('./merchant-reject');
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const TERMINAL_SUCCESS = new Set(['delivered', 'completed']);   // cancel-order.js gate: not cancelable
 const MIN_AGE_MS = 2 * 60000;
 const WINDOW_MS = 24 * 3600000;
 const CAP = 25;
@@ -32,16 +36,21 @@ function needs(order, notices, nowMs) {
   const opId = order.reject_intent.op_id;
   const out = isObj(order.reject_outcome) && order.reject_outcome.op_id === opId ? order.reject_outcome : null;
   let notice = null; let outcome = null;
-  if (order.status === 'new') {
-    if (order.resolving_action === 'cancel' && order.cancel_claim_id) notice = 'claim_held';
-    else if (out && out.state === 'manual_review') notice = 'manual_review';
-    else notice = 'stranded';
-  } else if (order.status === 'cancelled') {
+  if (order.status === 'cancelled') {
     if (!out) {
       outcome = order.payment_status === 'refund_pending' ? 'refund_pending' : 'cancelled';
       if (outcome === 'refund_pending') notice = 'refund_pending';
     } else if (out.state === 'refund_pending') notice = 'refund_pending';
-  } else return null;
+  } else if (TERMINAL_SUCCESS.has(order.status)) {
+    // codex r1 P2-4: the core refuses a delivered/completed order (not_cancelable) — truthful outcome + its notice
+    if (!out) { outcome = 'not_cancelable'; notice = 'not_cancelable'; } else if (out.state === 'not_cancelable') notice = 'not_cancelable';
+  } else if (order.status === 'pending_payment' && order.payment_status === 'manual_reconciliation') {
+    // codex r1 P2-4: in the recon surface the core refers it there (in_recon_surface)
+    if (!out) { outcome = 'referred_recon'; notice = 'referred_recon'; } else if (out.state === 'referred_recon') notice = 'referred_recon';
+  } else if (order.resolving_action === 'cancel' && order.cancel_claim_id) notice = 'claim_held';
+  else if (out && out.state === 'manual_review') notice = 'manual_review';
+  else if (order.status === 'new' || !out) notice = 'stranded';   // a live order whose reject never got a known result
+  else return null;
   if (notice && isObj(notices) && notices[notice] != null) notice = null;
   if (!notice && !outcome) return null;
   return { notice, outcome, at, opId, outState: out ? out.state : null };

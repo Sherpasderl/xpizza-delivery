@@ -1,8 +1,9 @@
 'use strict';
 // H1a (PLAN-H1a r2 T8 + amendment A-R1) — the slice's index.js INVERSE. H1a adds ONE delimited block at the END of index.js:
 //   "\n/* h1:begin */ … /* h1:end */\n"
-// plus FIVE one-line hunks inside existing functions (A-R1: heldByReject in autoAssignOnOrderCreate, the sweepPendingOrders
-// offer pass + its fresh re-check, monitorAssignmentTimeout's takeover branch; safeRejectRepair after sweepStuckOrders' loop).
+// plus SEVEN one-line hunks inside existing functions (A-R1: heldByReject in autoAssignOnOrderCreate, the sweepPendingOrders
+// offer pass + its fresh re-check, monitorAssignmentTimeout's takeover branch; safeRejectRepair after sweepStuckOrders' loop;
+// codex r1 P1-2: holdAfterClaim before autoAssign's and the timeout reassign's finalize).
 // unapplyH1Index swaps each hunk back (each must occur exactly once) and removes the block (exactly once, both delimiters,
 // begin before end), returning the index.js that existed before H1a, byte-for-byte. It is the NEWEST layer, so every index.js-reversing wiring guard applies it FIRST
 // (innermost), before S1a's inverse. h1-wiring.guard.test.js proves the result equals the base and that the block is the ONLY
@@ -30,6 +31,14 @@ const INDEX_HUNKS = Object.freeze([
  {
   "was": "      }\n    }\n  }\n);\n",
   "now": "      }\n    } await merchantHooks.safeRejectRepair(db, orders, now);   // h1 A-R1 — never throws; after the existing loop, same snapshot\n  }\n);\n"
+ },
+ {
+  "was": "    const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);\n",
+  "now": "    if (await merchantHooks.holdAfterClaim(db, orderId, (o) => !AUTO_ASSIGNABLE_STATUSES.has(o.status))) { console.log(`autoAssign: ${orderId} held or gone after the claim, rolling back`); await claim.rollback(); return; } const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);   // h1 A-R1\n"
+ },
+ {
+  "was": "    const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);\n",
+  "now": "    const hold = await merchantHooks.holdAfterClaim(db, orderId, (o) => o.status === 'cancelled'); if (hold === 'gone') { await claim.rollback(); return; } if (hold === 'held') { if (await releaseToSinAsignar(db, orderId, nextDriver.driverId)) await db.ref('dispatcher_alerts').push({ type: 'no_response_takeover', order_id: orderId, customer_name: orderForTimeout.recipient_name || 'Cliente', total: orderForTimeout.total || null, attempts, created_at: ServerValue.TIMESTAMP }); return; } const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);   // h1 A-R1\n"
  }
 ]);
 

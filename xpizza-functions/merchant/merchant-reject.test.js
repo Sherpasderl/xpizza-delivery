@@ -40,7 +40,9 @@ test('classify: the approved table — known results only; everything else null'
   assert.deepStrictEqual(r(200, 'already_cancelled'), { state: 'cancelled', notice: null });
   assert.deepStrictEqual(r(409, 'refund_pending'), { state: 'refund_pending', notice: 'refund_pending' });
   for (const o of ['manual_review', 'resolving_in_progress', 'claim_lost']) assert.deepStrictEqual(r(409, o), { state: 'manual_review', notice: 'manual_review', code: o });
-  for (const [s, o] of [[503, 'retryable'], [404, undefined], [409, 'not_cancelable'], [409, 'in_recon_surface'], [200, 'weird'], [500, 'cancelled']]) assert.strictEqual(r(s, o), null, `${s} ${o}`);
+  assert.deepStrictEqual(r(409, 'not_cancelable'), { state: 'not_cancelable', notice: 'not_cancelable', code: 'not_cancelable' }, 'codex r1 P2-4');
+  assert.deepStrictEqual(r(409, 'in_recon_surface'), { state: 'referred_recon', notice: 'referred_recon', code: 'in_recon_surface' }, 'codex r1 P2-4');
+  for (const [s, o] of [[503, 'retryable'], [404, undefined], [200, 'weird'], [500, 'cancelled'], [200, 'not_cancelable']]) assert.strictEqual(r(s, o), null, `${s} ${o}`);
   assert.strictEqual(R.classify(null), null); assert.strictEqual(R.classify({ status: 200 }), null);
 });
 
@@ -137,14 +139,52 @@ test('concurrent rejects from two taps → one commits the intent, one core call
   assert.strictEqual(core.calls.length, 1);
 });
 
-test('delayed completion: the response deadline returns pending and writes nothing; the truthful outcome lands when the core settles', async () => {
+test('codex r1 P1-1: the handler AWAITS the core — its promise never resolves before the core settles, however slow', async () => {
   const db = createFakeDb(world());
-  const core = fakeCore(db, { status: 200, body: { outcome: 'cancelled' } }, { apply: cancelled(), delayMs: 60 });
-  const r = await reject(db, core, 'op_rej00001', { responseDeadlineMs: 10 });
-  assert.strictEqual(r.state, 'pending');
-  assert.strictEqual(db.get('orders/o1/reject_outcome'), null, 'nothing written at the deadline');
-  await new Promise((res) => setTimeout(res, 120));
-  assert.deepStrictEqual(db.get('orders/o1/reject_outcome'), { state: 'cancelled', at: T0, op_id: 'op_rej00001', by: 'handler' });
+  let release; const gate = new Promise((r) => { release = r; });
+  let settled = false;
+  const core = async (args) => { core.calls.push(args); await gate; settled = true; db.put('orders/o1/status', 'cancelled'); return { status: 200, body: { outcome: 'cancelled' } }; };
+  core.calls = [];
+  let done = false;
+  const p = reject(db, core, 'op_rej00001').then((r) => { done = true; return r; });
+  await new Promise((r) => setTimeout(r, 200));
+  assert.deepStrictEqual([core.calls.length, settled, done], [1, false, false], 'the core is in flight and the handler is still pending');
+  assert.strictEqual(db.get('orders/o1/reject_outcome'), null);
+  release();
+  const r = await p;
+  assert.strictEqual(r.state, 'cancelled', 'the real outcome, not pending');
+  assert.deepStrictEqual(db.get('orders/o1/reject_outcome'), { state: 'cancelled', at: T0, op_id: 'op_rej00001', by: 'handler' }, 'settled INSIDE the invocation');
+});
+
+test('codex r1 P1-1: a 20 s core (mocked clock) is still awaited to its real outcome', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const db = createFakeDb(world());
+  const core = fakeCore(db, { status: 409, body: { outcome: 'refund_pending' } }, { apply: cancelled('refund_pending'), delayMs: 20000 });
+  let done = false;
+  const p = reject(db, core, 'op_rej00001').then((r) => { done = true; return r; });
+  for (let i = 0; i < 50 && core.calls.length === 0; i++) await new Promise((r) => setImmediate(r));
+  t.mock.timers.tick(19999);
+  for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+  assert.strictEqual(done, false, 'still pending at 19.999 s');
+  t.mock.timers.tick(1);
+  const r = await p;
+  assert.strictEqual(r.state, 'refund_pending');
+  assert.strictEqual(db.get('orders/o1/reject_outcome').state, 'refund_pending');
+});
+
+test('codex r1 P2-4: not_cancelable / in_recon_surface persist truthful outcomes + their notices (existing copy)', async () => {
+  for (const [outcome, state, action] of [['not_cancelable', 'not_cancelable', 'El pedido ya fue entregado — no se puede cancelar'], ['in_recon_surface', 'referred_recon', 'Resuélvelo en "Reconciliación de pagos"']]) {
+    const db = createFakeDb(world());
+    const core = fakeCore(db, { status: 409, body: { outcome } });
+    const r = await reject(db, core, 'op_rej00001');
+    assert.strictEqual(r.state, state);
+    assert.deepStrictEqual(db.get('orders/o1/reject_outcome'), { state, at: T0, op_id: 'op_rej00001', by: 'handler', code: outcome });
+    const a = db.get(`dispatcher_alerts/handheld_reject_${state}_o1`);
+    assert.deepStrictEqual([a.type, a.detail.action, a.detail.outcome], [`payment_handheld_reject_${state}`, action, state]);
+    assert.strictEqual(db.get(`merchant_reject_notices/o1/${state}`), T0);
+    const again = await reject(db, core, 'op_rej00001');
+    assert.deepStrictEqual([again.state, core.calls.length], [state, 1], 'a replay returns the stored terminal state, no core call');
+  }
 });
 
 test('post-finalize failure: the outcome write throws after the core cancelled → response pending, nothing half-written', async () => {

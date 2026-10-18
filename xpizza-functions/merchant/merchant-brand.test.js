@@ -4,37 +4,57 @@ const assert = require('node:assert');
 const { createFakeDb } = require('./_fake-db');
 const { makeResolveBrand, resolveBrand } = require('./merchant-brand');
 
-const fakeF1 = { brandIdOf: (rid, identity, brands) => (identity && identity.brand_id) || (brands && brands[rid] && brands[rid].activation && brands[rid].activation.state === 'legacy' ? rid : 'unknown') };
+// Third synthetic brand ('tb'); record shapes per brands/brand-model.js validateBrand.
+const brand = (locations, state = 'on') => ({ name: 'Marca TB', active: true, locations, activation: { state, since: 1 } });
+const legacy = (rid) => ({ name: 'Legado', active: true, locations: { [rid]: 'member' }, activation: { state: 'legacy', since: 1 } });
 
-test('resolveBrand reads ONE identity + ONE brand record and delegates to F1 brandIdOf', async () => {
-  const db = createFakeDb({ restaurants: { tb_norte: { identity: { brand_id: 'tb' } }, x_pizza: { identity: {} } }, brands: { x_pizza: { activation: { state: 'legacy' } } } });
-  const resolve = makeResolveBrand(fakeF1);
-  assert.strictEqual(await resolve(db, 'tb_norte'), 'tb');
-  assert.strictEqual(await resolve(db, 'x_pizza'), 'x_pizza');
-  assert.strictEqual(await resolve(db, 'zz'), 'unknown');
-});
-
-test('without an F1 module the resolver fails CLOSED (unknown) — the handheld stays refused', async () => {
-  const resolve = makeResolveBrand(null);
-  assert.strictEqual(await resolve(createFakeDb({ restaurants: { tb_norte: { identity: { brand_id: 'tb' } } } }), 'tb_norte'), 'unknown');
-});
-
-test('the exported resolver runs the REAL F1 brandIdOf (explicit brand_id, valid legacy singleton, else unknown)', async () => {
-  // Third synthetic brand ('tb'); legacy record shape per brands/brand-model.js validateBrand.
-  const legacy = (rid) => ({ name: 'Legado', active: true, locations: { [rid]: 'member' }, activation: { state: 'legacy', since: 1 } });
+test('the exported resolver runs the REAL F1 model: explicit brand_id that lists the location, valid legacy singleton', async () => {
   const db = createFakeDb({
-    restaurants: { tb_norte: { identity: { brand_id: 'tb' } }, tb_solo: { identity: {} }, tb_bad: { identity: { brand_id: 'Not Valid' } }, tb_half: { identity: {} } },
-    brands: { tb_solo: legacy('tb_solo'), tb_half: { ...legacy('tb_half'), activation: { state: 'on', since: 1 } } },
+    restaurants: { tb_norte: { identity: { brand_id: 'tb' } }, tb_viejo: { identity: { brand_id: 'tb' } }, tb_solo: { identity: {} }, tb_bare: {} },
+    brands: { tb: brand({ tb_norte: 'member', tb_viejo: 'retired' }), tb_solo: legacy('tb_solo'), tb_bare: legacy('tb_bare') },
   });
   assert.strictEqual(await resolveBrand(db, 'tb_norte'), 'tb');
-  assert.strictEqual(await resolveBrand(db, 'tb_solo'), 'tb_solo');
-  assert.strictEqual(await resolveBrand(db, 'tb_bad'), 'unknown', 'a malformed brand_id fails closed');
+  assert.strictEqual(await resolveBrand(db, 'tb_viejo'), 'tb', 'a retired location keeps its brand (read-only service is the caller\'s rule)');
+  assert.strictEqual(await resolveBrand(db, 'tb_solo'), 'tb_solo', 'a valid legacy singleton is its own brand');
+  assert.strictEqual(await resolveBrand(db, 'tb_bare'), 'tb_bare', 'a legacy singleton with no identity node at all');
+});
+
+test('codex r1 P2-5: membership is REQUIRED — missing / invalid / unlisted brand, or a mismatched identity → unknown', async () => {
+  const db = createFakeDb({
+    restaurants: {
+      tb_ghost: { identity: { brand_id: 'missing_brand' } },     // the codex reproduction
+      tb_unlisted: { identity: { brand_id: 'tb' } },
+      tb_broken: { identity: { brand_id: 'tb_bad' } },
+      tb_bad_id: { identity: { brand_id: 'Not Valid' } },
+      tb_half: { identity: {} },
+      tb_none: { identity: {} },
+    },
+    brands: { tb: brand({ tb_norte: 'member' }), tb_bad: { name: 'x', locations: { tb_broken: 'member' } }, tb_half: { ...legacy('tb_half'), activation: { state: 'on', since: 1 } } },
+  });
+  assert.strictEqual(await resolveBrand(db, 'tb_ghost'), 'unknown', 'missing_brand → denied');
+  assert.strictEqual(await resolveBrand(db, 'tb_unlisted'), 'unknown', 'the brand exists but does not list the location');
+  assert.strictEqual(await resolveBrand(db, 'tb_broken'), 'unknown', 'an invalid brand record');
+  assert.strictEqual(await resolveBrand(db, 'tb_bad_id'), 'unknown', 'a malformed brand_id');
   assert.strictEqual(await resolveBrand(db, 'tb_half'), 'unknown', 'a non-legacy singleton is not its own brand');
   assert.strictEqual(await resolveBrand(db, 'tb_none'), 'unknown');
 });
 
+test('activation off keeps serving (membership is not an intake gate)', async () => {
+  const db = createFakeDb({ restaurants: { tb_norte: { identity: { brand_id: 'tb' } } }, brands: { tb: brand({ tb_norte: 'member' }, 'off') } });
+  assert.strictEqual(await resolveBrand(db, 'tb_norte'), 'tb');
+});
+
+test('without an F1 module the resolver fails CLOSED (unknown)', async () => {
+  const db = createFakeDb({ restaurants: { tb_norte: { identity: { brand_id: 'tb' } } }, brands: { tb: brand({ tb_norte: 'member' }) } });
+  assert.strictEqual(await makeResolveBrand(null)(db, 'tb_norte'), 'unknown');
+  assert.strictEqual(await makeResolveBrand({ brandIdOf: () => 'tb' })(db, 'tb_norte'), 'unknown', 'an F1 without checkMembership');
+});
+
 test('a read failure propagates (callers map it to unavailable)', async () => {
-  const db = createFakeDb({});
+  const db = createFakeDb({ restaurants: { tb_norte: { identity: { brand_id: 'tb' } } }, brands: { tb: brand({ tb_norte: 'member' }) } });
   db.failReads.add('restaurants/tb_norte');
-  await assert.rejects(() => makeResolveBrand(fakeF1)(db, 'tb_norte'));
+  await assert.rejects(() => resolveBrand(db, 'tb_norte'));
+  const db2 = createFakeDb({ restaurants: { tb_norte: { identity: { brand_id: 'tb' } } }, brands: { tb: brand({ tb_norte: 'member' }) } });
+  db2.failReads.add('brands/tb');
+  await assert.rejects(() => resolveBrand(db2, 'tb_norte'), undefined, 'the membership read failing also propagates');
 });

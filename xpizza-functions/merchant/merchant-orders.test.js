@@ -116,6 +116,45 @@ test('runOrderActionDetailed: fresh only for the call that committed; replay and
   assert.deepStrictEqual([lost.fresh, lost.outcome.code], [false, 'stale_state']);
 });
 
+test('orderState carries the location prep base: valid → the value; invalid / unreadable → null (the device keeps its own)', async () => {
+  const db = createFakeDb(world());
+  db.put('restaurants/tb_norte/identity/prep_default_min', 22);
+  assert.strictEqual((await M.orderState(deps(db), dev(), { rid: 'tb_norte', oid: 'o1' })).prep_default_min, 22);
+  db.put('restaurants/tb_norte/identity/prep_default_min', 3);
+  assert.strictEqual((await M.orderState(deps(db), dev(), { rid: 'tb_norte', oid: 'o1' })).prep_default_min, null);
+  db.put('restaurants/tb_norte/identity/prep_default_min', 22);
+  db.failReads.add('restaurants/tb_norte/identity');
+  const r = await M.orderState(deps(db), dev(), { rid: 'tb_norte', oid: 'o1' });
+  assert.deepStrictEqual([r.prep_default_min, typeof r.driver_assigned], [null, 'boolean'], 'an identity read failure never fails the call');
+});
+
+test('orderState driver fields: ONLY this order\'s open-pickup driver — first name, at-restaurant, fresh location; fail closed', async () => {
+  const st = async (db) => { const r = await M.orderState(deps(db), dev(), { rid: 'tb_norte', oid: 'o1' }); return { first: r.driver_first_name, here: r.driver_at_restaurant, loc: r.driver_location }; };
+  const setup = (pickup, driver) => { const db = createFakeDb(world()); db.put('tasks/o1_pickup', pickup); if (driver) db.put('drivers/drv', driver); return db; };
+  const live = { name: '  Ana María López ', status: 'assigned', current_task_id: 'o1_pickup', lat: 15.5, lng: -88.02, last_ping: T0 - 30000, phone: '+504 9999' };
+  // the happy path
+  assert.deepStrictEqual(await st(setup({ assigned_driver_id: 'drv', status: 'assigned' }, live)), { first: 'Ana', here: false, loc: { lat: 15.5, lng: -88.02, at: T0 - 30000 } });
+  assert.deepStrictEqual(await st(setup({ assigned_driver_id: 'drv', status: 'accepted' }, { ...live, status: 'at_restaurant' })), { first: 'Ana', here: true, loc: { lat: 15.5, lng: -88.02, at: T0 - 30000 } });
+  const full = await M.orderState(deps(setup({ assigned_driver_id: 'drv', status: 'assigned' }, live)), dev(), { rid: 'tb_norte', oid: 'o1' });
+  assert.ok(!JSON.stringify(full).includes('+504') && !('driver_id' in full), 'no phone, no driver id');
+  // stale ping / future ping / no coords → no location (name stays)
+  assert.deepStrictEqual(await st(setup({ assigned_driver_id: 'drv', status: 'assigned' }, { ...live, last_ping: T0 - 91000 })), { first: 'Ana', here: false, loc: null });
+  assert.deepStrictEqual((await st(setup({ assigned_driver_id: 'drv', status: 'assigned' }, { ...live, last_ping: T0 + 60000 }))).loc, null);
+  assert.deepStrictEqual((await st(setup({ assigned_driver_id: 'drv', status: 'assigned' }, { ...live, lat: 'x' }))).loc, null);
+  // at_restaurant for ANOTHER order's task → false
+  assert.strictEqual((await st(setup({ assigned_driver_id: 'drv', status: 'assigned' }, { ...live, status: 'at_restaurant', current_task_id: 'o9_pickup' }))).here, false);
+  // pickup done / cancelled / unassigned → nothing at all
+  for (const p of [{ assigned_driver_id: 'drv', status: 'completed' }, { assigned_driver_id: 'drv', status: 'cancelled' }, { assigned_driver_id: null, status: 'pending' }]) {
+    assert.deepStrictEqual(await st(setup(p, live)), { first: null, here: false, loc: null }, JSON.stringify(p));
+  }
+  // driver read failure → fail closed
+  const broken = setup({ assigned_driver_id: 'drv', status: 'assigned' }, live); broken.failReads.add('drivers/drv');
+  assert.deepStrictEqual(await st(broken), { first: null, here: false, loc: null });
+  // a pickup ORDER never exposes a driver
+  const pk = setup({ assigned_driver_id: 'drv', status: 'assigned' }, live); pk.put('orders/o1/order_type', 'pickup');
+  assert.deepStrictEqual(await st(pk), { first: null, here: false, loc: null });
+});
+
 test('unauthenticated → unauthenticated; revoked device → permission-denied', async () => {
   const db = createFakeDb(world());
   await throwsCode(call(db, 'accept', { rid: 'tb_norte', oid: 'o1', prep_min: 20, op_id: 'op_u0000001' }, null), 'unauthenticated');
@@ -123,13 +162,14 @@ test('unauthenticated → unauthenticated; revoked device → permission-denied'
   await throwsCode(call(db, 'accept', { rid: 'tb_norte', oid: 'o1', prep_min: 20, op_id: 'op_u0000002' }), 'permission-denied');
 });
 
+const NOD = { driver_first_name: null, driver_at_restaurant: false, driver_location: null };
 test('orderState: driver presence, fail closed, served orders only', async () => {
   const db = createFakeDb(world());
-  assert.deepStrictEqual(await M.orderState(deps(db), dev(), { rid: 'tb_norte', oid: 'o1' }), { driver_assigned: false });
+  assert.deepStrictEqual(await M.orderState(deps(db), dev(), { rid: 'tb_norte', oid: 'o1' }), { driver_assigned: false, prep_default_min: null, ...NOD });
   db.put('tasks/o1_delivery/assigned_driver_id', 'drv');
-  assert.deepStrictEqual(await M.orderState(deps(db), dev(), { rid: 'tb_norte', oid: 'o1' }), { driver_assigned: true });
+  assert.deepStrictEqual(await M.orderState(deps(db), dev(), { rid: 'tb_norte', oid: 'o1' }), { driver_assigned: true, prep_default_min: null, ...NOD });
   db.failReads.add('tasks/o1_delivery');
-  assert.deepStrictEqual(await M.orderState(deps(db), dev(), { rid: 'tb_norte', oid: 'o1' }), { driver_assigned: true });
+  assert.deepStrictEqual(await M.orderState(deps(db), dev(), { rid: 'tb_norte', oid: 'o1' }), { driver_assigned: true, prep_default_min: null, ...NOD });
   const db2 = createFakeDb(world());
   db2.put('orders/o1/restaurant_id', 'tb_centro');
   await throwsCode(M.orderState(deps(db2), dev(), { rid: 'tb_norte', oid: 'o1' }), 'failed-precondition');

@@ -23,7 +23,7 @@ const world = (over = {}) => ({
   platform_config: { handheld_pairing_enabled: true },
   restaurants: {
     tb: { owners: { own_tb: true } },
-    tb_centro: { managers: { mgr_c: true }, handhelds: { hh_tb_centro_a: { kind: 'handheld', revoked: false } } },
+    tb_centro: { managers: { mgr_c: true }, identity: { prep_default_min: 18 }, handhelds: { hh_tb_centro_a: { kind: 'handheld', revoked: false } } },
     tb_norte: { handhelds: { hh_tb_norte_b: { kind: 'handheld', revoked: false }, human_row: { revoked: false } } },
   },
   ...over,
@@ -48,6 +48,18 @@ test('pair: refused while the pairing gate is off (even for an owner), across lo
   await rejectsCode(D.pairDevice(deps(db, fakeAuth()), human('hh_tb_centro_a', { handheld: true, rid: 'tb_centro' }), { rid: 'tb_centro', label: 'x' }), 'permission-denied');
   await rejectsCode(D.pairDevice(deps(db, fakeAuth()), human('mgr_c'), { rid: 'tb_centro', label: 'x', uid: 'chosen' }), 'invalid-argument');
   await rejectsCode(D.pairDevice(deps(db, fakeAuth()), human('mgr_c'), { rid: 'tb_centro', label: 'x', claims: { admin: true } }), 'invalid-argument');
+});
+
+test('pair: PRECONDITION — a location without a valid prep_default_min (5–120) is refused before any Auth call', async () => {
+  for (const bad of [undefined, null, 4, 121, 18.5, '18']) {
+    const w = world(); if (bad === undefined) delete w.restaurants.tb_centro.identity; else w.restaurants.tb_centro.identity.prep_default_min = bad;
+    const db = createFakeDb(w); const a = fakeAuth();
+    await rejectsCode(D.pairDevice(deps(db, a), human('mgr_c'), { rid: 'tb_centro', label: 'x' }), 'failed-precondition');
+    assert.deepStrictEqual(a.calls, [], `no Auth call for ${JSON.stringify(bad)}`);
+    assert.strictEqual(db.get('restaurants/tb_centro/handhelds/hh_tb_centro_r4nd'), null);
+  }
+  const broken = createFakeDb(world()); broken.failReads.add('restaurants/tb_centro/identity');
+  await rejectsCode(D.pairDevice(deps(broken, fakeAuth()), human('mgr_c'), { rid: 'tb_centro', label: 'x' }), 'unavailable');
 });
 
 test('revoke: only an existing kind:handheld row under the authorized rid; nothing created; no Auth call otherwise', async () => {
@@ -86,16 +98,16 @@ test('myLocations: owner → every member location of their brand; manager → o
     brands: { tb: { name: 'TB', active: true, locations: { tb_centro: 'member', tb_norte: 'member', tb_viejo: 'retired' } }, zz: { locations: { zz_1: 'member' } } },
     restaurants: {
       tb: { owners: { own_tb: true } },
-      tb_centro: { managers: { mgr_c: true }, identity: { location_name: 'Centro' } },
-      tb_norte: { identity: { location_name: 'Norte' } },
-      zz_1: { managers: { mgr_c: true }, identity: { location_name: 'Uno' } },
+      tb_centro: { managers: { mgr_c: true }, identity: { location_name: 'Centro', prep_default_min: 18 } },
+      tb_norte: { identity: { location_name: 'Norte', prep_default_min: 200 } },
+      zz_1: { managers: { mgr_c: true }, identity: { location_name: 'Uno', prep_default_min: 25 } },
     },
   });
   const d = deps(db, fakeAuth());
   assert.deepStrictEqual(await D.myLocations(d, human('own_tb'), {}), [
-    { rid: 'tb_centro', brand_id: 'tb', location_name: 'Centro' }, { rid: 'tb_norte', brand_id: 'tb', location_name: 'Norte' }]);
+    { rid: 'tb_centro', brand_id: 'tb', location_name: 'Centro', prep_default_min: 18 }, { rid: 'tb_norte', brand_id: 'tb', location_name: 'Norte', prep_default_min: null }]);
   assert.deepStrictEqual(await D.myLocations(d, human('mgr_c'), {}), [
-    { rid: 'tb_centro', brand_id: 'tb', location_name: 'Centro' }, { rid: 'zz_1', brand_id: 'zz', location_name: 'Uno' }]);
+    { rid: 'tb_centro', brand_id: 'tb', location_name: 'Centro', prep_default_min: 18 }, { rid: 'zz_1', brand_id: 'zz', location_name: 'Uno', prep_default_min: 25 }]);
   assert.deepStrictEqual(await D.myLocations(d, human('nobody'), {}), []);
   await rejectsCode(D.myLocations(d, { uid: 'hh_x', token: { handheld: true, rid: 'tb_centro' } }, {}), 'permission-denied');
   await rejectsCode(D.myLocations(d, human('own_tb', { customer: true }), {}), 'permission-denied');

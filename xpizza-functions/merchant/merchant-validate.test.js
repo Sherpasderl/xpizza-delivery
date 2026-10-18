@@ -52,3 +52,9 @@ test('vStoredPrep: full | ready_only | null', () => {
   assert.strictEqual(V.vStoredPrep(null), null);
   assert.strictEqual(V.vStoredPrep({}), null);
 });
+
+test('vPrepBase: integer 5–120 only', () => {
+  const { vPrepBase } = require('./merchant-validate');
+  for (const ok of [5, 18, 120]) assert.strictEqual(vPrepBase(ok), ok);
+  for (const bad of [4, 121, 18.5, '18', null, undefined, NaN, Infinity, true]) assert.strictEqual(vPrepBase(bad), null);
+});
