@@ -63,7 +63,7 @@
  "sites": [
   {
    "id": "xpizza-functions/access/access-census-core.js#exact#restaurant_id#0",
-   "line": 92,
+   "line": 100,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -73,7 +73,7 @@
   },
   {
    "id": "xpizza-functions/access/access-census-core.js#runAccessCensus>anon#restaurant_id#0",
-   "line": 95,
+   "line": 103,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -83,7 +83,7 @@
   },
   {
    "id": "xpizza-functions/access/access-census-core.js#runAccessCensus>anon#status#0",
-   "line": 101,
+   "line": 109,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -96,7 +96,7 @@
   },
   {
    "id": "xpizza-functions/access/access-census-core.js#runAccessCensus>anon#status#1",
-   "line": 102,
+   "line": 110,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -109,7 +109,7 @@
   },
   {
    "id": "xpizza-functions/access/access-census-core.js#runAccessCensus>anon#delivered_by_driver_uid#0",
-   "line": 106,
+   "line": 114,
    "kind": "member",
    "facts": [
     "DRIVER",
@@ -120,7 +120,7 @@
   },
   {
    "id": "xpizza-functions/access/access-census-core.js#runAccessCensus>anon#delivered_by_uid#0",
-   "line": 106,
+   "line": 114,
    "kind": "member",
    "facts": [
     "DRIVER"
@@ -130,7 +130,7 @@
   },
   {
    "id": "xpizza-functions/access/access-census-core.js#runAccessCensus>anon#order_id#0",
-   "line": 127,
+   "line": 135,
    "kind": "member",
    "facts": [
     "NUM"
@@ -140,7 +140,7 @@
   },
   {
    "id": "xpizza-functions/access/access-census-core.js#runAccessCensus>anon#order_id#1",
-   "line": 127,
+   "line": 135,
    "kind": "member",
    "facts": [
     "NUM"
@@ -19321,7 +19321,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#startOrdersSubscription>anon>anon#status#0",
-   "line": 3039,
+   "line": 3041,
    "kind": "projection",
    "facts": [
     "STATUS",
@@ -19335,7 +19335,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#order_id#0",
-   "line": 3066,
+   "line": 3071,
    "kind": "member",
    "facts": [
     "NUM"
@@ -19345,7 +19345,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#status#0",
-   "line": 3075,
+   "line": 3080,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19358,7 +19358,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#status#1",
-   "line": 3078,
+   "line": 3083,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19371,32 +19371,6 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#status#2",
-   "line": 3084,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "kds",
-   "r": "R1"
-  },
-  {
-   "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#status#3",
-   "line": 3084,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "kds",
-   "r": "R1"
-  },
-  {
-   "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#status#4",
    "line": 3089,
    "kind": "member",
    "facts": [
@@ -19409,8 +19383,34 @@
    "r": "R1"
   },
   {
+   "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#status#3",
+   "line": 3089,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "kds",
+   "r": "R1"
+  },
+  {
+   "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#status#4",
+   "line": 3094,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "kds",
+   "r": "R1"
+  },
+  {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#status#5",
-   "line": 3091,
+   "line": 3096,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19423,7 +19423,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#status#6",
-   "line": 3091,
+   "line": 3096,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19436,7 +19436,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#order_id#1",
-   "line": 3107,
+   "line": 3112,
    "kind": "member",
    "facts": [
     "NUM"
@@ -19446,7 +19446,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#display_number#0",
-   "line": 3108,
+   "line": 3113,
    "kind": "member",
    "facts": [
     "NUM"
@@ -19456,7 +19456,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#items_text#0",
-   "line": 3111,
+   "line": 3116,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -19466,7 +19466,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#total#0",
-   "line": 3112,
+   "line": 3117,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -19478,7 +19478,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#total#1",
-   "line": 3112,
+   "line": 3117,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -19490,7 +19490,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#maps_link#0",
-   "line": 3113,
+   "line": 3118,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -19500,7 +19500,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#items_text#1",
-   "line": 3114,
+   "line": 3119,
    "kind": "projection",
    "facts": [
     "ITEMS"
@@ -19511,7 +19511,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#order_type#0",
-   "line": 3116,
+   "line": 3121,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -19521,7 +19521,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#pickup_time#0",
-   "line": 3117,
+   "line": 3122,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -19531,7 +19531,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#scheduled_for#0",
-   "line": 3118,
+   "line": 3123,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -19541,7 +19541,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#delivered_at#0",
-   "line": 3121,
+   "line": 3126,
    "kind": "member",
    "facts": [
     "DRIVER",
@@ -19552,7 +19552,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#delivered_at#1",
-   "line": 3121,
+   "line": 3126,
    "kind": "projection",
    "facts": [
     "DRIVER",
@@ -19564,7 +19564,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard#status#7",
-   "line": 3125,
+   "line": 3130,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -19577,7 +19577,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#showLog#order_id#0",
-   "line": 3140,
+   "line": 3145,
    "kind": "projection",
    "facts": [
     "NUM"
@@ -19588,7 +19588,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#checkForNewOrders>anon#status#0",
-   "line": 3220,
+   "line": 3225,
    "kind": "projection",
    "facts": [
     "STATUS",
@@ -19602,7 +19602,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#checkForNewOrders>anon#status#1",
-   "line": 3232,
+   "line": 3237,
    "kind": "projection",
    "facts": [
     "STATUS",
@@ -19616,7 +19616,7 @@
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#showCancelBanner#order_id#0",
-   "line": 3296,
+   "line": 3301,
    "kind": "projection",
    "facts": [
     "NUM"
@@ -39015,7 +39015,7 @@
    "file": "xpizza-kitchen/index.html<script@0>",
    "alias": "orden",
    "field": "order_id",
-   "line": 3107,
+   "line": 3112,
    "round": 1
   },
   {
@@ -39023,7 +39023,7 @@
    "file": "xpizza-kitchen/index.html<script@0>",
    "alias": "pedido",
    "field": "items_text",
-   "line": 3111,
+   "line": 3116,
    "round": 1
   },
   {
@@ -39031,7 +39031,7 @@
    "file": "xpizza-kitchen/index.html<script@0>",
    "alias": "maps",
    "field": "maps_link",
-   "line": 3113,
+   "line": 3118,
    "round": 1
   },
   {
@@ -39039,7 +39039,7 @@
    "file": "xpizza-kitchen/index.html<script@0>",
    "alias": "notas",
    "field": "items_text",
-   "line": 3114,
+   "line": 3119,
    "round": 1
   },
   {
@@ -39047,7 +39047,7 @@
    "file": "xpizza-kitchen/index.html<script@0>",
    "alias": "completed_at",
    "field": "delivered_at",
-   "line": 3121,
+   "line": 3126,
    "round": 1
   },
   {
@@ -39558,7 +39558,7 @@
  "clocks": [
   {
    "key": "xpizza-functions/access/access-census-core.js:runAccessCensus>anon:new Date()",
-   "line": 117,
+   "line": 125,
    "class": "display"
   },
   {
