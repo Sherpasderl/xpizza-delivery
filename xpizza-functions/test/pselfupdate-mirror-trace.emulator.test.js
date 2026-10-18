@@ -320,6 +320,11 @@ async function capturePhase() {
     const side = async (on, rid, kind, refresh) => {
       if (refresh) CLOCK_OFFSET += 61000;
       else {   // warmed: an unrecorded request of the same kind, same render, right before — absorbs any due refill
+        // DETERMINISTIC warm (load flake, 2026-10-16): the clock passes EVERY TTL first, so the warm request — not whichever
+        // recorded side crosses a TTL boundary — refreshes every cache (e.g. the context source's 45 s persisted mirror node
+        // catalog_snapshot_ctx/<rid>: 3a saw it re-read on the render-ON side only, under load); traced() ends at quiescence,
+        // so its background refills have landed and the recorded request below finds every cache fresh, on BOTH sides alike
+        CLOCK_OFFSET += 61000;
         P += 1;
         await RP.withRender(on, () => traced(rid, kind === 'cash' ? `mronw_${rid}_${P}` : 'qtrace_unused_oid', `u_trace_${rid}`, `9957${String(P).padStart(4, '0')}`, { kind }));
       }
