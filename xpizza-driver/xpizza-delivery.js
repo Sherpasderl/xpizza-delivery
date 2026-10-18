@@ -557,7 +557,19 @@ export async function acceptTask(driverId, taskId) {
   // order's delivery is untouched here — it's accepted at pickup as before.
   const allTasksSnap = await get(ref(db, 'tasks'));
   const allTasks = allTasksSnap.val() || {};
-  for (const tid of stackedTasksToAccept(allTasks, driverId, task.order_id)) {
+  // F2 §5: resolve each candidate order's stacking hub from its ORDER node (hub_lat/hub_lng) — split-leg-robust —
+  // instead of the sibling pickup task. Point-get every candidate order (the current order + every OTHER order
+  // the driver has an assigned task for) BEFORE the pure scan so hubs are present; an unreadable/absent order →
+  // null hub → fail-closed (not cascaded). This is independent of the cuadre readiness gate.
+  const candidateOids = new Set([task.order_id]);
+  for (const t of Object.values(allTasks)) {
+    if (t && t.assigned_driver_id === driverId && t.order_id != null) candidateOids.add(String(t.order_id));
+  }
+  const allOrders = {};
+  await Promise.all([...candidateOids].map(async (oid) => {
+    try { allOrders[oid] = (await get(ref(db, `orders/${oid}`))).val(); } catch (_) { allOrders[oid] = null; }
+  }));
+  for (const tid of stackedTasksToAccept(allTasks, allOrders, driverId, task.order_id)) {
     updates[`tasks/${tid}/status`] = TASK_STATUS.ACCEPTED;
     updates[`tasks/${tid}/accepted_at`] = serverTimestamp();
   }

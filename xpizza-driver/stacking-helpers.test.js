@@ -1,4 +1,5 @@
 // Pure stacking-helper tests — run: `node stacking-helpers.test.js` (repo idiom).
+// F2 §5: hubs now come from the ORDER node (allOrders[oid].hub_lat/hub_lng + restaurant_id), the 2nd arg.
 import assert from 'node:assert/strict';
 import { stackedTasksToAccept } from './stacking-helpers.js';
 
@@ -12,30 +13,33 @@ const base = {
   B_pickup:   { assigned_driver_id: 'me', order_id: 'B', type: 'pickup',   status: 'assigned' },
   B_delivery: { assigned_driver_id: 'me', order_id: 'B', type: 'delivery', status: 'assigned' },
 };
+// Orders with NO stamped hub (legacy) → both resolve to the X. Pizza fallback → same-hub → still cascade.
+// That IS the legacy-no-hub regression pin: legacy stacks keep cascading exactly as before.
+const ordersUnstamped = { A: {}, B: {} };
 
 t('cascades the OTHER order\'s assigned tasks (both pickup+delivery)', () => {
-  const ids = stackedTasksToAccept(base, 'me', 'A').sort();
+  const ids = stackedTasksToAccept(base, ordersUnstamped, 'me', 'A').sort();
   assert.deepEqual(ids, ['B_delivery', 'B_pickup']);
 });
 
 t('NEVER touches the current order (A) — its delivery keeps the normal flow', () => {
-  const ids = stackedTasksToAccept(base, 'me', 'A');
+  const ids = stackedTasksToAccept(base, ordersUnstamped, 'me', 'A');
   assert.ok(!ids.includes('A_pickup') && !ids.includes('A_delivery'));
 });
 
 t('lone order → empty (no-op; single-order flow unchanged)', () => {
   const lone = { A_pickup: base.A_pickup, A_delivery: base.A_delivery };
-  assert.deepEqual(stackedTasksToAccept(lone, 'me', 'A'), []);
+  assert.deepEqual(stackedTasksToAccept(lone, { A: {} }, 'me', 'A'), []);
 });
 
 t('already-accepted stacked order → NOT cascaded (no-op vs today\'s auto-assign)', () => {
   const preAccepted = { ...base, B_pickup: { ...base.B_pickup, status: 'accepted' }, B_delivery: { ...base.B_delivery, status: 'accepted' } };
-  assert.deepEqual(stackedTasksToAccept(preAccepted, 'me', 'A'), []);
+  assert.deepEqual(stackedTasksToAccept(preAccepted, ordersUnstamped, 'me', 'A'), []);
 });
 
 t('mixed: only the assigned ones of the other order', () => {
   const mixed = { ...base, B_delivery: { ...base.B_delivery, status: 'accepted' } };
-  assert.deepEqual(stackedTasksToAccept(mixed, 'me', 'A'), ['B_pickup']);
+  assert.deepEqual(stackedTasksToAccept(mixed, ordersUnstamped, 'me', 'A'), ['B_pickup']);
 });
 
 t('ignores other drivers, completed, and cancelled', () => {
@@ -45,50 +49,53 @@ t('ignores other drivers, completed, and cancelled', () => {
     D_pickup: { assigned_driver_id: 'me', order_id: 'D', type: 'pickup', status: 'completed' },
     E_pickup: { assigned_driver_id: 'me', order_id: 'E', type: 'pickup', status: 'cancelled' },
   };
-  const ids = stackedTasksToAccept(noisy, 'me', 'A').sort();
+  const ids = stackedTasksToAccept(noisy, { A: {}, B: {}, C: {}, D: {}, E: {} }, 'me', 'A').sort();
   assert.deepEqual(ids, ['B_delivery', 'B_pickup']);
 });
 
 t('null/empty tasks → empty', () => {
-  assert.deepEqual(stackedTasksToAccept(null, 'me', 'A'), []);
-  assert.deepEqual(stackedTasksToAccept({}, 'me', 'A'), []);
+  assert.deepEqual(stackedTasksToAccept(null, null, 'me', 'A'), []);
+  assert.deepEqual(stackedTasksToAccept({}, {}, 'me', 'A'), []);
 });
-
-// NOTE: `base` above has NO stamped hubs → both A and B resolve to the X. Pizza fallback → same-hub →
-// still cascade. That IS the legacy-x_pizza regression pin (S2 fold-in #2/#3): legacy no-hub stacks
-// keep cascading exactly as before.
 
 const XP = { lat: 15.507489753573818, lng: -88.0398486953722 };
 const LM = { lat: 15.50414, lng: -88.03848 };
 
 t('S2: cross-hub other order (la_musa) → NOT cascaded (stays assigned for explicit swipe)', () => {
-  const crossHub = {
-    A_pickup:   { assigned_driver_id: 'me', order_id: 'A', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' },
-    A_delivery: { assigned_driver_id: 'me', order_id: 'A', type: 'delivery', status: 'assigned' },
-    B_pickup:   { assigned_driver_id: 'me', order_id: 'B', type: 'pickup',   status: 'assigned', destination_lat: LM.lat, destination_lng: LM.lng, restaurant_id: 'la_musa' },
-    B_delivery: { assigned_driver_id: 'me', order_id: 'B', type: 'delivery', status: 'assigned' },
+  const orders = {
+    A: { restaurant_id: 'x_pizza', hub_lat: XP.lat, hub_lng: XP.lng },
+    B: { restaurant_id: 'la_musa', hub_lat: LM.lat, hub_lng: LM.lng },
   };
-  assert.deepEqual(stackedTasksToAccept(crossHub, 'me', 'A'), []);
+  assert.deepEqual(stackedTasksToAccept(base, orders, 'me', 'A'), []);
 });
 
 t('S2: mismatched-coord other order (la_musa rid + x_pizza coords) → NOT cascaded (fail-closed)', () => {
-  const corrupt = {
-    A_pickup:   { assigned_driver_id: 'me', order_id: 'A', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' },
-    A_delivery: { assigned_driver_id: 'me', order_id: 'A', type: 'delivery', status: 'assigned' },
-    B_pickup:   { assigned_driver_id: 'me', order_id: 'B', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'la_musa' },
-    B_delivery: { assigned_driver_id: 'me', order_id: 'B', type: 'delivery', status: 'assigned' },
+  const orders = {
+    A: { restaurant_id: 'x_pizza', hub_lat: XP.lat, hub_lng: XP.lng },
+    B: { restaurant_id: 'la_musa', hub_lat: XP.lat, hub_lng: XP.lng },   // rid says la_musa but coords are X. Pizza → null
   };
-  assert.deepEqual(stackedTasksToAccept(corrupt, 'me', 'A'), []);
+  assert.deepEqual(stackedTasksToAccept(base, orders, 'me', 'A'), []);
 });
 
 t('S2: same-hub stamped other order (both x_pizza) → cascaded', () => {
-  const sameHub = {
-    A_pickup:   { assigned_driver_id: 'me', order_id: 'A', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' },
-    A_delivery: { assigned_driver_id: 'me', order_id: 'A', type: 'delivery', status: 'assigned' },
-    B_pickup:   { assigned_driver_id: 'me', order_id: 'B', type: 'pickup',   status: 'assigned', destination_lat: XP.lat, destination_lng: XP.lng, restaurant_id: 'x_pizza' },
-    B_delivery: { assigned_driver_id: 'me', order_id: 'B', type: 'delivery', status: 'assigned' },
+  const orders = {
+    A: { restaurant_id: 'x_pizza', hub_lat: XP.lat, hub_lng: XP.lng },
+    B: { restaurant_id: 'x_pizza', hub_lat: XP.lat, hub_lng: XP.lng },
   };
-  assert.deepEqual(stackedTasksToAccept(sameHub, 'me', 'A').sort(), ['B_delivery', 'B_pickup']);
+  assert.deepEqual(stackedTasksToAccept(base, orders, 'me', 'A').sort(), ['B_delivery', 'B_pickup']);
+});
+
+t('S5: same-hub stamped la_musa pair → cascaded (brand-agnostic by coords, not literal)', () => {
+  const orders = {
+    A: { restaurant_id: 'la_musa', hub_lat: LM.lat, hub_lng: LM.lng },
+    B: { restaurant_id: 'la_musa', hub_lat: LM.lat, hub_lng: LM.lng },
+  };
+  assert.deepEqual(stackedTasksToAccept(base, orders, 'me', 'A').sort(), ['B_delivery', 'B_pickup']);
+});
+
+t('S5: candidate order ABSENT from allOrders → null hub → NOT cascaded (fail-closed, §5 point-get precondition)', () => {
+  const orders = { A: { restaurant_id: 'x_pizza', hub_lat: XP.lat, hub_lng: XP.lng } };   // B missing
+  assert.deepEqual(stackedTasksToAccept(base, orders, 'me', 'A'), []);
 });
 
 console.log(`✓ stacking-helpers: ${passed} tests passed`);

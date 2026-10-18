@@ -37,16 +37,32 @@ function sameHub(a, b) {
   return !!a && !!b && Math.abs(a.lat - b.lat) < HUB_EPS && Math.abs(a.lng - b.lng) < HUB_EPS;
 }
 
-export function stackedTasksToAccept(allTasks, driverId, currentOrderId) {
+// F2 §5 — hub-from-order. Resolve the stacking hub from the ORDER's stamped `hub_lat/hub_lng` (+ its
+// `restaurant_id`) instead of the sibling `${oid}_pickup` TASK's `destination_lat/lng`. Zero-diff in value:
+// create-order-build.js writes the order's hub_lat/hub_lng and the pickup task's destination_lat/lng from the
+// SAME hub snapshot, so an order carries the identical coords — and it is split-leg-robust (no dependence on a
+// pickup leg owned by another driver). The SAME ALLOWED_HUBS coord validation applies (reuse resolvePickupHub by
+// mapping the order into its pickup-shape). An UNSTAMPED legacy x_pizza order (no hub_lat/hub_lng) still falls
+// back to the X. Pizza hub exactly as the no-coords pickup task did → legacy stacks keep cascading (BC4: the
+// cutover census guarantees 0 ACTIVE unstamped-legacy orders, so the non-x_pizza unstamped gap is empty).
+function resolveOrderHub(order) {
+  if (!order) return null;
+  return resolvePickupHub({ restaurant_id: order.restaurant_id, destination_lat: order.hub_lat, destination_lng: order.hub_lng });
+}
+
+export function stackedTasksToAccept(allTasks, allOrders, driverId, currentOrderId) {
   const all = allTasks || {};
-  const currentHub = resolvePickupHub(all[`${currentOrderId}_pickup`]);
+  const orders = allOrders || {};
+  const currentHub = resolveOrderHub(orders[currentOrderId]);
   const ids = [];
   for (const [tid, t] of Object.entries(all)) {
     if (!t || t.assigned_driver_id !== driverId) continue;
     if (t.order_id === currentOrderId) continue;   // current order: untouched
     if (t.status !== 'assigned') continue;
-    // same-hub only (S2): the other order's pickup hub must match the current order's hub
-    if (sameHub(currentHub, resolvePickupHub(all[`${t.order_id}_pickup`]))) ids.push(tid);
+    // same-hub only (S2): the other order's hub (from ITS order node) must match the current order's hub. A
+    // candidate order absent from allOrders → null hub → not cascaded (fail-closed; acceptTask point-gets every
+    // candidate order's hub BEFORE calling, per §5).
+    if (sameHub(currentHub, resolveOrderHub(orders[t.order_id]))) ids.push(tid);
   }
   return ids;
 }
