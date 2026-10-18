@@ -1259,16 +1259,21 @@ let currentUser = null;
 let driverState = null;
 // Optimistic shift transition: on toggle tap, flip the screen immediately (true=on-shift,
 // false=off-shift) instead of waiting for startDriverShift/endDriverShift + the RTDB echo
-// (a multi-second round-trip on slow connections). Cleared in subscribeToDrivers once the
+// (a multi-second round-trip on slow connections). Cleared in the feed's onDriver callback once the
 // server state catches up; reverted if the shift call fails.
 let optimisticShift = null;
 let allTasks = {};
 let allOrders = {};
+// F2 query-rules feed: ONE controller (disposer) owning the own-assignment task query, per-order point
+// listeners, both delivered-by history queries, the reconnect edge, and the own-driver listener (§7). It
+// publishes allTasks/allOrders/driverState + a CONTINUOUS readiness (feedReady) via emit callbacks.
+let driverFeed = null;
 // Cuadre readiness: the clock-out cash must never be computed before the orders feed AND the money-grade
-// cutover config have both loaded, or the receipt would show a false L0 (the whole bug). ordersLoaded flips
-// on the first /orders emission; cutoverLoaded on the first config read (value may legitimately be null =
-// confirmed-absent ⇒ pre-cutover provisional mode).
-let ordersLoaded = false;
+// cutover config are ready, or the receipt would show a false L0 (the whole bug). feedReady is CONTINUOUS
+// (replaces the one-shot ordersLoaded): it holds only while every needed source has a current post-connect
+// emission, and drops back to false on reconnect until all re-emit (§6/BC3). cutoverLoaded flips on the first
+// config read (value may legitimately be null = confirmed-absent ⇒ pre-cutover provisional mode).
+let feedReady = false;
 let cutoverLoaded = false;
 let driverIdentityCutoverMs = null;
 // In-flight completeTask writes (so clock-out can wait for them to settle before computing cash — a rejected
@@ -1569,6 +1574,7 @@ async function boot() {
     companionDraft = null;                              // drop the previous session's in-memory draft on ANY auth transition (logout / uid change) — codex r3 #4
     if (!user) {
       if (companion) companion.invalidateSession();     // a pending submit from the signed-out session must not resurface a screen over login — codex r3 #1
+      disposeDriverFeed();                               // §7: tear down the F2 feed + reset its state on logout
       cleanupShift();
       showScreen('login');
       return;
@@ -1627,26 +1633,41 @@ async function boot() {
   XPD.onReconnect(() => { if (companion) companion.refresh(); });
 }
 
+// Tear down the F2 feed (all order/task/driver subs) + reset its published state. Idempotent. Called on logout
+// / uid change and at the top of (re)subscribeToFirebase so a new session never runs atop the old one (§7).
+function disposeDriverFeed() {
+  if (driverFeed) { try { driverFeed.dispose(); } catch (_) {} driverFeed = null; }
+  feedReady = false;
+  allTasks = {};
+  allOrders = {};
+}
+
 function subscribeToFirebase() {
-  XPD.subscribeToDrivers((drivers) => {
-    if (!currentUser) return;
-    driverState = drivers[currentUser.uid] || null;
-    // Server caught up to (or past) the optimistic guess → drop the override so RTDB is truth again.
-    if (optimisticShift !== null && !!(driverState && driverState.active) === optimisticShift) {
-      optimisticShift = null;
-    }
-    render();
-  });
-  XPD.subscribeToTasks((tasks) => {
-    detectNewAssignments(tasks);
-    allTasks = tasks || {};
-    render();
-  });
-  XPD.subscribeToOrders((orders) => {
-    allOrders = orders || {};
-    ordersLoaded = true;
-    render();
-    refreshOpenCashSurfaces();
+  disposeDriverFeed();   // uid change without an explicit logout → dispose the prior session's feed first
+  driverFeed = XPD.createLiveDriverFeed(currentUser.uid, {
+    onDriver: (record) => {
+      if (!currentUser) return;
+      driverState = record || null;   // §8: own drivers/{uid} record directly (not a {uid: rec} map)
+      // Server caught up to (or past) the optimistic guess → drop the override so RTDB is truth again.
+      if (optimisticShift !== null && !!(driverState && driverState.active) === optimisticShift) {
+        optimisticShift = null;
+      }
+      render();
+    },
+    onTasks: (tasks) => {
+      detectNewAssignments(tasks);
+      allTasks = tasks || {};
+      render();
+    },
+    onOrders: (orders) => {
+      allOrders = orders || {};
+      render();
+      refreshOpenCashSurfaces();
+    },
+    onReadiness: (state) => {
+      feedReady = (state === 'ready');       // continuous (§6/BC3): a reconnect drops it to false until all re-emit
+      refreshOpenCashSurfaces();             // flips the open cuadre between "cargando" and the receipt
+    },
   });
   XPD.subscribeToIdentityCutover((ms) => {
     driverIdentityCutoverMs = ms;   // number, or null (confirmed-absent ⇒ pre-cutover provisional mode)
@@ -1913,7 +1934,10 @@ function showCuadre() {
   // and never without a valid shift identity. Show "cargando…" instead of a false L0; the subscriptions
   // re-call showCuadre as they arrive. A loaded-but-identity-less shift (legacy, pre-2.5.0) is a distinct,
   // explicit state — not cargando — because it will not resolve on its own.
-  if (!ordersLoaded || !cutoverLoaded) {
+  // §6/BC1: continuous readiness gate. Hold "cargando" while the feed is not ready (initial load OR a reconnect
+  // re-sync) OR the cutover config has not loaded OR a pending-handoff order is awaiting its fresh history
+  // reconcile — a just-delivered order mid-handoff must never let the cuadre undercount.
+  if (!feedReady || !cutoverLoaded || (driverFeed && driverFeed.hasPendingHandoff())) {
     screen._ident = null;
     $('cuadre-receipt').innerHTML = `
       <div class="rc-title">Cierre de turno</div>
@@ -2112,6 +2136,17 @@ $('cuadre-screen').addEventListener('click', async (e) => {
   }
   // P1-3: the shift may have changed while we waited — re-validate before touching money.
   if (!identityMatches(bound)) { closeInFlight = false; toast('El turno cambió — volvé a abrir el cierre', 'error'); $('cuadre-screen').classList.remove('open'); return; }
+
+  // §6/BC1: re-check COMBINED feed readiness at confirm time. If the feed re-synced (a reconnect dropped it to
+  // loading) or a just-delivered order is mid-handoff, the receipt could undercount — do NOT finalize; stay on
+  // shift, re-render (→ "cargando"), and leave retry available.
+  if (!feedReady || (driverFeed && driverFeed.hasPendingHandoff())) {
+    closeInFlight = false;
+    toast('Un momento — actualizando el resumen del turno…', '');
+    refreshOpenCashSurfaces();
+    reEnableConfirm();
+    return;
+  }
 
   // RECOMPUTE + REDISPLAY together from the now-settled orders (codex r3 E): renderCuadreReceipt rewrites the
   // receipt AND stashes screen._cash, and we submit that exact value — so what is DISPLAYED is what is SUBMITTED
