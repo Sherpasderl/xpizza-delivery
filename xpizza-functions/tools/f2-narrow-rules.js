@@ -18,9 +18,10 @@ const G = `${Q0} && auth.token.customer !== true && root.child('driver_accounts'
 const DISP = "root.child('dispatchers').child(auth.uid).exists()";
 const REST = (r) => `root.child('restaurants').child(${r})`;
 const kitchen = (r) => `${REST(r)}.child('kitchen_staff').child(auth.uid).exists()`;
-// brand owner: the location's own owners (a legacy brand IS its location, F1) OR, when the identity names a brand, that brand's
-// owners. Written as a disjunction instead of `brand_id ? … : rid` (no ternaries).
-const owner = (r) => `(${REST(r)}.child('owners').child(auth.uid).exists() || (${REST(r)}.child('identity').child('brand_id').isString() && ${REST(`${REST(r)}.child('identity').child('brand_id').val()`)}.child('owners').child(auth.uid).exists()))`;
+// brand owner (PLAN §1.5, codex Q1 r1 P1-1): the owners of the RESOLVED brand — restaurants/{identity.brand_id}/owners when the
+// location's identity names a brand — and the location's own restaurants/{rid}/owners ONLY when it names none (a legacy brand IS
+// its location, F1). Written as two mutually exclusive disjuncts instead of `brand_id ? … : rid` (no ternaries).
+const owner = (r) => `((${REST(r)}.child('identity').child('brand_id').isString() && ${REST(`${REST(r)}.child('identity').child('brand_id').val()`)}.child('owners').child(auth.uid).exists()) || (!${REST(r)}.child('identity').child('brand_id').exists() && ${REST(r)}.child('owners').child(auth.uid).exists()))`;
 const manager = (r) => `${REST(r)}.child('managers').child(auth.uid).exists()`;
 const scope = (r, full) => `(${kitchen(r)} || ${owner(r)}${full ? ` || ${manager(r)}` : ''})`;
 const ORDER_RID = "root.child('orders').child($order_id).child('restaurant_id')";

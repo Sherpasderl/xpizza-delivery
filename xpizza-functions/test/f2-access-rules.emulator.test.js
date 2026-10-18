@@ -28,6 +28,8 @@ const SEED = {
   'kitchen/u-kitA': true, [`restaurants/${C}/kitchen_staff/u-kitA`]: true,
   [`restaurants/${C}/identity/brand_id`]: 'tb_brand', [`restaurants/${NO}/identity/brand_id`]: 'tb_brand',
   'restaurants/tb_brand/owners/u-ownA': true, [`restaurants/${LEG}/owners/u-ownL`]: true,
+  [`restaurants/${C}/owners/u-ownLocal`]: true,   // a location-LOCAL owner on a location whose identity names another brand (codex Q1 r1 P1-1)
+  [`restaurants/${C}/handhelds/u-devLive`]: { kind: 'handheld', revoked: false },
   [`restaurants/${C}/managers/u-mgrA`]: true,
   [`restaurants/${C}/handhelds/u-dev`]: { kind: 'handheld', revoked: false },
   [`restaurants/${C}/handhelds/u-devRev`]: { kind: 'handheld', revoked: true },
@@ -47,7 +49,7 @@ const SEED = {
 };
 const DEV = (uid, rid = C) => ({ handheld: true, rid });
 const PRINCIPALS = {
-  disp: ['u-disp'], kitA: ['u-kitA'], ownA: ['u-ownA'], ownL: ['u-ownL'], mgrA: ['u-mgrA'], d1: ['u-d1'], svc: ['svc-assigner', { svc_assigner: true }],
+  disp: ['u-disp'], kitA: ['u-kitA'], ownA: ['u-ownA'], ownL: ['u-ownL'], ownLocal: ['u-ownLocal'], mgrA: ['u-mgrA'], d1: ['u-d1'], svc: ['svc-assigner', { svc_assigner: true }],
   cust: ['u-cust', { customer: true }], deact: ['u-deact'],
   dev: ['u-dev', DEV()], devRev: ['u-devRev', DEV()], devKind: ['u-devKind', DEV()], devNoRevoked: ['u-devNoRevoked', DEV()],
   devNoReg: ['u-devNoReg', DEV()], devMis: ['u-devMis', DEV('u-devMis', NO)], devRole: ['u-devRole', DEV()],
@@ -80,6 +82,9 @@ const ROWS = [
   ['kitchen A: whole /orders', (db) => get(db, 'orders'), 'kitA', 'ADD'],
   ['kitchen A: whole /kds_cancel_acks', (db) => get(db, 'kds_cancel_acks'), 'kitA', 'ADD'],
   ['kitchen A: UNINDEXED orderByChild(notes)', (db) => by(db, 'orders', 'notes', 'x'), 'kitA', 'ADD'],
+  // an unrelated orderBy field EQUAL TO AN AUTHORIZED rid: only the orderByChild check can deny these (codex Q1 r1 P2-6)
+  ['kitchen A: orderByChild(notes).equalTo(own rid)', (db) => by(db, 'orders', 'notes', C), 'kitA', 'ADD'],
+  ['kitchen A: orderByChild(status).equalTo(own rid)', (db) => by(db, 'orders', 'status', C), 'kitA', 'ADD'],
   ['kitchen A: orderByChild(status)', (db) => by(db, 'orders', 'status', 'preparing'), 'kitA', 'ADD'],
   ['kitchen A: orderByChild(created_at)', (db) => by(db, 'orders', 'created_at', 1), 'kitA', 'ADD'],
   ['kitchen A: orderByKey', (db) => db.ref('orders').orderByKey().equalTo('O1').once('value'), 'kitA', 'ADD'],
@@ -100,6 +105,9 @@ const ROWS = [
   ['brand owner: other brand rid (leg_x)', (db) => byRid(db, LEG), 'ownA', 'ADD'],
   ['legacy owner: own location query', (db) => byRid(db, LEG), 'ownL', 'AAA'],
   ['legacy owner: other location query', (db) => byRid(db, C), 'ownL', 'ADD'],
+  // the rid-local owners list counts ONLY when the identity names no brand (codex Q1 r1 P1-1)
+  ['rid-local owner of a BRANDED location: rid query denied', (db) => byRid(db, C), 'ownLocal', 'ADD'],
+  ['rid-local owner of a BRANDED location: order point read denied', (db) => get(db, 'orders/O1'), 'ownLocal', 'ADD'],
   ['manager A: rid-A query', (db) => byRid(db, C), 'mgrA', 'ADA'],
   ['manager A: A point read', (db) => get(db, 'orders/O1'), 'mgrA', 'ADA'],
   ['manager A: rid-B query', (db) => byRid(db, NO), 'mgrA', 'ADD'],
@@ -160,24 +168,48 @@ const ROWS = [
       // writes that succeeded mutate state: reseed so every row sees the same fixture
       await env.withSecurityRulesDisabled((ctx) => ctx.database().ref().update(SEED));
     }
-    // ── Q-B reassignment (H, F): a retained order listener granted only via task legs stops after both legs move ──
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const admin = (u) => env.withSecurityRulesDisabled((ctx) => ctx.database().ref().update(u));
+    // ── Q-B reassignment (H, F; codex Q1 r1 P2-8): initial delivery ASSERTED; both legs reassigned → the retained listener is
+    //    CANCELLED with PERMISSION_DENIED and gets no later value; a reconnect is denied; the NEW driver's task read is allowed ──
     if (v !== 'R') {
-      const d1 = env.authenticatedContext('u-d1').database();
       const seen = []; let cancelled = null;
-      const ref = d1.ref('orders/O1');
+      const ref = env.authenticatedContext('u-d1').database().ref('orders/O1');
       ref.on('value', (s) => seen.push(s.val() && s.val().status), (e) => { cancelled = String((e && e.code) || e); });
-      await new Promise((r) => setTimeout(r, 600));
-      await env.withSecurityRulesDisabled((ctx) => ctx.database().ref().update({ 'tasks/O1_pickup/assigned_driver_id': 'u-d2', 'tasks/O1_delivery/assigned_driver_id': 'u-d2' }));
-      await new Promise((r) => setTimeout(r, 600));
-      await env.withSecurityRulesDisabled((ctx) => ctx.database().ref('orders/O1/status').set('after_reassign'));
-      await new Promise((r) => setTimeout(r, 1200));
+      await sleep(600);
+      if (seen[0] !== 'preparing') fails.push(`[${v}] Q-B: the initial delivery did not arrive (${JSON.stringify(seen)})`);
+      await admin({ 'tasks/O1_pickup/assigned_driver_id': 'u-d2', 'tasks/O1_delivery/assigned_driver_id': 'u-d2' });
+      await sleep(600);
+      await admin({ 'orders/O1/status': 'after_reassign' });
+      await sleep(1200);
       ref.off();
-      if (seen.includes('after_reassign') || cancelled === null) fails.push(`[${v}] Q-B: a reassigned-away driver kept receiving the order (seen ${JSON.stringify(seen)}, cancelled ${cancelled})`);
-      try { await assertFails(get(env.authenticatedContext('u-d1').database(), 'orders/O1')); } catch (_) { fails.push(`[${v}] Q-B: a fresh read after reassignment was allowed`); }
+      if (!/PERMISSION_DENIED/i.test(String(cancelled))) fails.push(`[${v}] Q-B: the retained listener was not cancelled with PERMISSION_DENIED (${cancelled})`);
+      if (seen.includes('after_reassign')) fails.push(`[${v}] Q-B: a reassigned-away driver received a later value (${JSON.stringify(seen)})`);
+      try { await assertFails(get(env.authenticatedContext('u-d1').database(), 'orders/O1')); } catch (_) { fails.push(`[${v}] Q-B: a reconnect (fresh read) after reassignment was allowed`); }
+      try { await assertFails(get(env.authenticatedContext('u-d1').database(), 'tasks/O1_pickup')); } catch (_) { fails.push(`[${v}] Q-B: the old driver still reads the task`); }
+      try { await assertSucceeds(get(env.authenticatedContext('u-d2').database(), 'tasks/O1_pickup')); } catch (_) { fails.push(`[${v}] Q-B: the NEW driver cannot read its task`); }
+      try { await assertSucceeds(get(env.authenticatedContext('u-d2').database(), 'orders/O1')); } catch (_) { fails.push(`[${v}] Q-B: the NEW driver cannot read the order`); }
       try { await assertSucceeds(get(env.authenticatedContext('u-d1').database(), 'orders/O2')); } catch (_) { fails.push(`[${v}] Q-B: an attribution-granted order became unreadable`); }
+      await env.withSecurityRulesDisabled((ctx) => ctx.database().ref().update(SEED));
+    }
+    // ── device revoked DURING an active subscription (F only: the device query is allowed there) → the listener is cancelled ──
+    if (v === 'F') {
+      const seen = []; let cancelled = null;
+      const q = env.authenticatedContext('u-devLive', { handheld: true, rid: C }).database().ref('orders').orderByChild('restaurant_id').equalTo(C);
+      q.on('value', (s) => seen.push(Object.keys(s.val() || {}).length), (e) => { cancelled = String((e && e.code) || e); });
+      await sleep(600);
+      if (!(seen[0] > 0)) fails.push(`[F] device live: the initial delivery did not arrive (${JSON.stringify(seen)})`);
+      await admin({ [`restaurants/${C}/handhelds/u-devLive/revoked`]: true });
+      await sleep(600);
+      await admin({ 'orders/O1/status': 'after_revoke' });
+      await sleep(1200);
+      q.off();
+      if (!/PERMISSION_DENIED/i.test(String(cancelled))) fails.push(`[F] device live: revocation did not cancel the active subscription (${cancelled})`);
+      if (seen.length > 1) fails.push(`[F] device live: values arrived after revocation (${JSON.stringify(seen)})`);
+      try { await assertFails(env.authenticatedContext('u-devLive', { handheld: true, rid: C }).database().ref('orders').orderByChild('restaurant_id').equalTo(C).once('value')); } catch (_) { fails.push('[F] device live: a fresh query after revocation was allowed'); }
     }
     await env.cleanup();
-    pass(`${v === 'R' ? 'R-pre (base + Q0 + indexes)' : v === 'H' ? 'N-human (Q4 = R-post)' : 'N-full (Q6)'}: ${ROWS.length} principal rows${v !== 'R' ? ' + the Q-B reassignment cell' : ''}`);
+    pass(`${v === 'R' ? 'R-pre (base + Q0 + indexes)' : v === 'H' ? 'N-human (Q4 = R-post)' : 'N-full (Q6)'}: ${ROWS.length} principal rows${v !== 'R' ? ' + the Q-B lifecycle (initial delivery, PERMISSION_DENIED cancel, reconnect denied, new driver allowed)' : ''}${v === 'F' ? ' + device revoked mid-subscription → cancelled' : ''}`);
   }
   assert.deepStrictEqual(fails, [], `access table mismatches:\n  ${fails.join('\n  ')}`);
   console.log(`f2-access-rules.emulator: OK (${n})`);

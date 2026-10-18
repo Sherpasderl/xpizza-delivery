@@ -21,13 +21,11 @@ if (!mappingPath) { console.error('usage: kitchen-roster.js --project <id> --map
 let mapping;
 try { mapping = JSON.parse(fs.readFileSync(mappingPath, 'utf8')); } catch (e) { console.error(`kitchen-roster: REFUSED — mapping unreadable: ${e.message}`); process.exit(2); }
 const sites = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'platform', 'sites.json'), 'utf8'));
-const kitchenDeployments = new Set(sites.deployments.filter((d) => d.app === 'kitchen').map((d) => d.id));
+const kitchenDeployments = new Map(sites.deployments.filter((d) => d.app === 'kitchen').map((d) => [d.id, d.context]));
 
 admin.initializeApp({ projectId: PROJECT_ID, databaseURL: RTDB_URL });
 (async () => {
   console.log(`kitchen-roster — project ${PROJECT_ID}${argv.includes('--apply') ? ' — APPLY' : ' — dry run'}`);
-  const brands = (await admin.database().ref('brands').once('value')).val() || {};
-  const locations = new Set(Object.values(brands).flatMap((b) => Object.keys((b && b.locations) || {})));
-  const code = await runKitchenRoster({ rtdb: admin.database(), mapping, locations, kitchenDeployments, apply: argv.includes('--apply'), log: (l) => console.log(l) });
+  const code = await runKitchenRoster({ rtdb: admin.database(), mapping, kitchenDeployments, apply: argv.includes('--apply'), log: (l) => console.log(l) });
   process.exit(code);
 })().catch((e) => { console.error('kitchen-roster FAILED:', e && e.message); process.exit(1); });
