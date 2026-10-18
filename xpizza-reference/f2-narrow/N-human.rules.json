@@ -1,0 +1,621 @@
+{
+  "rules": {
+    "dispatchers": {
+      ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true",
+      "$uid": {
+        ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()"
+      }
+    },
+    "drivers": {
+      ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true",
+      "$driver_id": {
+        ".write": "auth != null && auth.token.handheld !== true && ((auth.uid === $driver_id && auth.uid !== 'svc-assigner') || root.child('dispatchers').child(auth.uid).exists()) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true",
+        ".validate": "newData.hasChildren(['name']) && (!((newData.child('active').val() === true && data.child('active').val() !== true) || (newData.child('current_shift_id').exists() && newData.child('current_shift_id').val() !== data.child('current_shift_id').val())) || (root.child('driver_accounts').child($driver_id).child('deactivated').val() !== true && (root.child('driver_accounts').child($driver_id).child('enabled').val() === true || (root.child('platform_config').child('driver_enforcement_mode').val() !== 'closed' && !root.child('driver_accounts').child($driver_id).exists()))))",
+        "status": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
+          ".validate": "newData.val() === 'off_shift' || newData.val() === 'available' || newData.val() === 'assigned' || newData.val() === 'at_restaurant' || newData.val() === 'en_route_delivery' || newData.val() === 'returning' || newData.val() === 'on_break'"
+        },
+        "active": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'"
+        },
+        "shift_started_at": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'"
+        },
+        "last_ping": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'"
+        },
+        "current_task_id": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'"
+        },
+        "lat": {
+          ".validate": "newData.isNumber() || newData.val() === null"
+        },
+        "lng": {
+          ".validate": "newData.isNumber() || newData.val() === null"
+        },
+        "push_reachable": {
+          ".validate": "newData.isBoolean() && root.child('dispatchers').child(auth.uid).exists()"
+        },
+        "location_source": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
+          ".validate": "root.child('dispatchers').child(auth.uid).exists() || auth.uid === 'svc-assigner'"
+        },
+        "current_shift_id": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
+          ".validate": "root.child('dispatchers').child(auth.uid).exists() || auth.uid === 'svc-assigner'"
+        },
+        "current_hub_lat": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
+          ".validate": "root.child('dispatchers').child(auth.uid).exists() || auth.uid === 'svc-assigner'"
+        },
+        "current_hub_lng": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
+          ".validate": "root.child('dispatchers').child(auth.uid).exists() || auth.uid === 'svc-assigner'"
+        },
+        "current_restaurant_id": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
+          ".validate": "root.child('dispatchers').child(auth.uid).exists() || auth.uid === 'svc-assigner'"
+        },
+        "current_hub_task_id": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
+          ".validate": "root.child('dispatchers').child(auth.uid).exists() || auth.uid === 'svc-assigner'"
+        },
+        "ingest_token_hash": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
+          ".validate": "root.child('dispatchers').child(auth.uid).exists() || auth.uid === 'svc-assigner'"
+        },
+        "last_location_ts": {
+          ".validate": "root.child('dispatchers').child(auth.uid).exists()"
+        }
+      }
+    },
+    "staff_push": {
+      "$uid": {
+        ".read": "auth != null && auth.token.handheld !== true && auth.uid === $uid",
+        ".write": "auth != null && auth.token.handheld !== true && auth.uid === $uid && auth.uid !== 'svc-assigner' && auth.token.customer !== true"
+      }
+    },
+    "tasks": {
+      ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && (root.child('dispatchers').child(auth.uid).exists() || (query.orderByChild === 'assigned_driver_id' && query.equalTo === auth.uid && auth.uid !== 'svc-assigner'))",
+      ".indexOn": [
+        "assigned_driver_id",
+        "order_id",
+        "status",
+        "type"
+      ],
+      "$task_id": {
+        ".write": "auth != null && auth.token.handheld !== true && (root.child('dispatchers').child(auth.uid).exists() || (data.exists() && data.child('assigned_driver_id').val() === auth.uid && auth.uid !== 'svc-assigner')) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true",
+        ".validate": "newData.hasChildren(['order_id', 'type', 'status']) && (!(newData.child('assigned_driver_id').exists() && (newData.child('assigned_driver_id').val() !== data.child('assigned_driver_id').val() || ((data.child('status').val() === 'completed' || data.child('status').val() === 'cancelled') && !(newData.child('status').val() === 'completed' || newData.child('status').val() === 'cancelled')))) || (root.child('driver_accounts').child(newData.child('assigned_driver_id').val()).child('deactivated').val() !== true && (root.child('driver_accounts').child(newData.child('assigned_driver_id').val()).child('enabled').val() === true || (root.child('platform_config').child('driver_enforcement_mode').val() !== 'closed' && !root.child('driver_accounts').child(newData.child('assigned_driver_id').val()).exists()))))",
+        "type": {
+          ".validate": "newData.val() === 'pickup' || newData.val() === 'delivery'"
+        },
+        "status": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
+          ".validate": "newData.val() === 'pending' || newData.val() === 'assigned' || newData.val() === 'accepted' || newData.val() === 'in_progress' || newData.val() === 'completed' || newData.val() === 'cancelled'"
+        },
+        "assigned_driver_id": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
+          ".validate": "newData.val() !== 'svc-assigner'",
+          ".read": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'"
+        },
+        "assigned_at": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'"
+        },
+        "accepted_at": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'"
+        },
+        "assignment_deadline": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'"
+        },
+        "assignment_attempts": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'"
+        },
+        "auto_assigned": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'"
+        },
+        "half_claim_since": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && $task_id.endsWith('_delivery')"
+        },
+        "retry_count": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && $task_id.endsWith('_delivery')"
+        },
+        "last_swept": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && $task_id.endsWith('_delivery')"
+        },
+        ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner' && data.child('assigned_driver_id').val() === auth.uid"
+      }
+    },
+    "orders": {
+      ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && (root.child('dispatchers').child(auth.uid).exists() || (query.orderByChild === 'restaurant_id' && query.equalTo.length > 0 && (root.child('restaurants').child(query.equalTo).child('kitchen_staff').child(auth.uid).exists() || (root.child('restaurants').child(query.equalTo).child('owners').child(auth.uid).exists() || (root.child('restaurants').child(query.equalTo).child('identity').child('brand_id').isString() && root.child('restaurants').child(root.child('restaurants').child(query.equalTo).child('identity').child('brand_id').val()).child('owners').child(auth.uid).exists())))) || ((query.orderByChild === 'delivered_by_driver_uid' || query.orderByChild === 'delivered_by_uid') && query.equalTo === auth.uid && auth.uid !== 'svc-assigner'))",
+      ".indexOn": [
+        "status",
+        "created_at",
+        "order_type",
+        "restaurant_id",
+        "delivered_by_driver_uid",
+        "delivered_by_uid"
+      ],
+      "$order_id": {
+        ".write": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()",
+        ".validate": "((root.child('dispatchers').child(auth.uid).exists() && auth.token.customer !== true) || !data.child('delivered_by_driver_uid').exists() || newData.child('delivered_by_driver_uid').val() === data.child('delivered_by_driver_uid').val()) && (!data.child('restaurant_id').exists() || newData.child('restaurant_id').val() === data.child('restaurant_id').val()) && (!data.child('brand_id').exists() || newData.child('brand_id').val() === data.child('brand_id').val())",
+        "status": {
+          ".write": "auth != null && auth.token.handheld !== true && (root.child('dispatchers').child(auth.uid).exists() || (root.child('orders').child($order_id).child('restaurant_id').isString() && root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('kitchen_staff').child(auth.uid).exists()) || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && !(newData.val() === 'cancelled' && root.child('orders').child($order_id).child('payment_method').val() === 'online' && (root.child('orders').child($order_id).child('payment_status').val() === 'confirmed' || root.child('orders').child($order_id).child('payment_status').val() === 'pending')) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner'"
+        },
+        "picked_up_at": {
+          ".write": "auth != null && auth.token.handheld !== true && (root.child('dispatchers').child(auth.uid).exists() || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner'"
+        },
+        "delivered_at": {
+          ".write": "auth != null && auth.token.handheld !== true && (root.child('dispatchers').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner'"
+        },
+        "delivered_by_driver_uid": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && (root.child('dispatchers').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner'",
+          ".validate": "auth.token.customer !== true && ((root.child('dispatchers').child(auth.uid).exists() && data.exists()) || (!root.child('dispatchers').child(auth.uid).exists() && !data.exists() && newData.val() === auth.uid && newData.val() === root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() && root.child('orders').child($order_id).child('status').val() !== 'delivered' && newData.parent().child('status').val() === 'delivered'))"
+        },
+        ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && ((data.child('restaurant_id').isString() && (root.child('restaurants').child(data.child('restaurant_id').val()).child('kitchen_staff').child(auth.uid).exists() || (root.child('restaurants').child(data.child('restaurant_id').val()).child('owners').child(auth.uid).exists() || (root.child('restaurants').child(data.child('restaurant_id').val()).child('identity').child('brand_id').isString() && root.child('restaurants').child(root.child('restaurants').child(data.child('restaurant_id').val()).child('identity').child('brand_id').val()).child('owners').child(auth.uid).exists())))) || (auth.uid !== 'svc-assigner' && (root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || data.child('delivered_by_driver_uid').val() === auth.uid || data.child('delivered_by_uid').val() === auth.uid)))"
+      }
+    },
+    "config": {
+      ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true",
+      ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()",
+      "rewards_public": {
+        "redemption_live": {
+          ".read": true
+        }
+      }
+    },
+    "order_control": {
+      ".read": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()",
+      ".write": false
+    },
+    "catalog_integrity": {
+      ".read": false,
+      ".write": false
+    },
+    "brands": {
+      ".read": false,
+      ".write": false
+    },
+    "public": {
+      ".read": false,
+      ".write": false,
+      "brands": {
+        ".read": true
+      }
+    },
+    "dispatcher_alerts": {
+      ".read": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()",
+      ".indexOn": [
+        "created_at"
+      ],
+      "$alert_id": {
+        ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()"
+      }
+    },
+    "order_tracking": {
+      "$token": {
+        ".read": true,
+        ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()"
+      }
+    },
+    "order_events": {
+      ".read": false,
+      ".write": false
+    },
+    "order_timelines": {
+      ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && root.child('dispatchers').child(auth.uid).exists()",
+      ".write": false,
+      "$order_id": {
+        ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && (root.child('dispatchers').child(auth.uid).exists() || (root.child('orders').child($order_id).child('restaurant_id').isString() && (root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('kitchen_staff').child(auth.uid).exists() || (root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('owners').child(auth.uid).exists() || (root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('identity').child('brand_id').isString() && root.child('restaurants').child(root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('identity').child('brand_id').val()).child('owners').child(auth.uid).exists())))) || (auth.uid !== 'svc-assigner' && (root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('orders').child($order_id).child('delivered_by_driver_uid').val() === auth.uid || root.child('orders').child($order_id).child('delivered_by_uid').val() === auth.uid)))"
+      }
+    },
+    "order_predictions": {
+      ".read": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()",
+      ".write": false
+    },
+    "prediction_logs": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "v1-hier-ringmed-30/new_at"
+      ]
+    },
+    "ready_time_config": {
+      ".read": false,
+      ".write": false
+    },
+    "ready_time_quality": {
+      ".read": false,
+      ".write": false
+    },
+    "ready_time_model": {
+      ".read": false,
+      ".write": false
+    },
+    "ready_time_graduation": {
+      ".read": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()",
+      ".write": false
+    },
+    "pickup_ready_notifications": {
+      ".read": false,
+      ".write": false
+    },
+    "preparing_notifications": {
+      ".read": false,
+      ".write": false
+    },
+    "incoming_messages": {
+      ".read": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()",
+      ".indexOn": [
+        "received_at",
+        "handled"
+      ],
+      "$msg_id": {
+        ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()"
+      }
+    },
+    "kitchen": {
+      ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true",
+      "$uid": {
+        ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()"
+      }
+    },
+    "kds_cancel_acks": {
+      "$order_id": {
+        ".write": "auth != null && auth.token.handheld !== true && (root.child('orders').child($order_id).child('restaurant_id').isString() && root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('kitchen_staff').child(auth.uid).exists())",
+        ".validate": "newData.hasChild('at')",
+        "at": {
+          ".validate": "newData.isNumber() || newData.isString()"
+        },
+        "by": {
+          ".validate": "newData.isString()"
+        },
+        "$other": {
+          ".validate": false
+        },
+        ".read": "auth != null && auth.token.handheld !== true && (root.child('orders').child($order_id).child('restaurant_id').isString() && root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('kitchen_staff').child(auth.uid).exists())"
+      }
+    },
+    "driver_cash": {
+      ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists() && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true",
+      "$driver_id": {
+        ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && (auth.uid === $driver_id || root.child('dispatchers').child(auth.uid).exists()) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true",
+        "$shift_id": {
+          "cuadre": {
+            ".write": "auth != null && auth.token.handheld !== true && auth.uid === $driver_id && auth.uid !== 'svc-assigner' && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true",
+            ".validate": "newData.hasChildren(['cash_owed','cash_order_count','closed_at'])",
+            "cash_owed": {
+              ".validate": "newData.isNumber()"
+            },
+            "cash_order_count": {
+              ".validate": "newData.isNumber()"
+            },
+            "closed_at": {
+              ".validate": "newData.isNumber()"
+            },
+            "provisional": {
+              ".validate": "newData.isBoolean()"
+            },
+            "legacy_provisional_count": {
+              ".validate": "newData.isNumber()"
+            },
+            "unresolved_count": {
+              ".validate": "newData.isNumber()"
+            },
+            "close_op_id": {
+              ".validate": "newData.isString()"
+            }
+          }
+        }
+      }
+    },
+    "driver_push_tokens": {
+      ".read": false,
+      ".write": false
+    },
+    "driver_tokens": {
+      ".read": false,
+      "$hash": {
+        ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && ((newData.exists() && newData.parent().parent().child('drivers').child(newData.child('uid').val()).child('ingest_token_hash').val() === $hash && newData.child('shift_id').val() === newData.parent().parent().child('drivers').child(newData.child('uid').val()).child('current_shift_id').val() && root.child('drivers').child(newData.child('uid').val()).child('ingest_token_hash').val() !== $hash && !root.child('dispatchers').child(newData.child('uid').val()).exists()) || (!newData.exists() && root.child('drivers').child(data.child('uid').val()).child('ingest_token_hash').val() === $hash && newData.parent().parent().child('drivers').child(data.child('uid').val()).child('ingest_token_hash').val() !== $hash && newData.parent().parent().child('drivers').child(data.child('uid').val()).child('ingest_token_hash').val() !== null && newData.parent().child(newData.parent().parent().child('drivers').child(data.child('uid').val()).child('ingest_token_hash').val()).child('uid').val() === data.child('uid').val() && newData.parent().child(newData.parent().parent().child('drivers').child(data.child('uid').val()).child('ingest_token_hash').val()).child('shift_id').val() === newData.parent().parent().child('drivers').child(data.child('uid').val()).child('current_shift_id').val()))",
+        ".validate": "newData.hasChildren(['uid','shift_id']) && newData.child('uid').isString() && newData.child('shift_id').isString()",
+        "uid": {
+          ".validate": "newData.isString()"
+        },
+        "shift_id": {
+          ".validate": "newData.isString()"
+        },
+        "device_id": {
+          ".validate": "newData.isString() || newData.val() === null"
+        },
+        "issued_at": {
+          ".validate": "newData.isNumber()"
+        },
+        "expires_at": {
+          ".validate": "newData.isNumber()"
+        },
+        "revoked_at": {
+          ".validate": "newData.isNumber() || newData.val() === null"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "driver_accounts": {
+      ".read": false,
+      "$uid": {
+        ".read": "auth != null && auth.token.handheld !== true && (auth.uid === $uid || root.child('dispatchers').child(auth.uid).exists())",
+        ".write": false,
+        ".validate": "newData.hasChild('enabled')",
+        "enabled": {
+          ".validate": "newData.isBoolean()"
+        },
+        "deactivated": {
+          ".validate": "newData.isBoolean()"
+        },
+        "onboarding_state": {
+          ".validate": "newData.val() === 'pending' || newData.val() === 'profile_submitted' || newData.val() === 'active'"
+        },
+        "grandfathered": {
+          ".validate": "newData.isBoolean()"
+        },
+        "note": {
+          ".validate": "newData.isString()"
+        }
+      }
+    },
+    "client_versions": {
+      ".read": false,
+      ".write": false,
+      "$app": {
+        ".indexOn": [
+          "last_seen"
+        ]
+      }
+    },
+    "client_version_limits": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "window_start"
+      ]
+    },
+    "client_version_stats": {
+      ".read": false,
+      ".write": false
+    },
+    "platform_config": {
+      ".read": false,
+      ".write": false
+    },
+    "payment_attempts": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "paid_at",
+        "uncertain_at"
+      ]
+    },
+    "pending_paid_alerts": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "at"
+      ]
+    },
+    "webhook_events": {
+      ".read": false,
+      ".write": false
+    },
+    "outbox": {
+      ".read": false,
+      ".write": false
+    },
+    "refund_attempts": {
+      ".read": false,
+      ".write": false
+    },
+    "payment_audit": {
+      ".read": false,
+      ".write": false
+    },
+    "facturas": {
+      ".read": false,
+      ".write": false
+    },
+    "counters": {
+      ".read": false,
+      ".write": false
+    },
+    "restaurants": {
+      "$restaurant_id": {
+        "factura_config": {
+          ".read": false,
+          ".write": false
+        },
+        "identity": {
+          ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true",
+          ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists() && (newData.exists() || !data.child('brand_id').exists())",
+          ".validate": "newData.hasChildren(['name','hub_lat','hub_lng','phone','whatsapp_instance','whatsapp_enabled','delivery_radius_km','hours','active','version']) && newData.child('brand_id').val() === data.child('brand_id').val()",
+          "hub_lat": {
+            ".validate": "newData.isNumber()"
+          },
+          "hub_lng": {
+            ".validate": "newData.isNumber()"
+          },
+          "active": {
+            ".validate": "newData.isBoolean()"
+          },
+          "version": {
+            ".validate": "newData.isNumber() && (!data.exists() || newData.val() > data.val())"
+          },
+          "whatsapp_enabled": {
+            ".validate": "newData.isBoolean()"
+          },
+          "delivery_radius_km": {
+            ".validate": "newData.isNumber()"
+          },
+          "location_name": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 60"
+          },
+          "prep_default_min": {
+            ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 5 && newData.val() <= 120"
+          },
+          "zone": {
+            ".validate": "newData.hasChildren(['type', 'radius_km'])",
+            "type": {
+              ".validate": "newData.val() === 'circle'"
+            },
+            "radius_km": {
+              ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= 50"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "kitchen_staff": {
+          ".read": "auth != null && auth.token.handheld !== true && (root.child('dispatchers').child(auth.uid).exists() || root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists())",
+          "$uid": {
+            ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()"
+          }
+        },
+        "item_availability": {
+          ".read": true,
+          "$key": {
+            ".write": "auth != null && auth.token.handheld !== true && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists() && (!root.child('restaurants').child($restaurant_id).child('client_floor').child('kitchen').exists() || (newData.child('compat').isNumber() && newData.child('compat').val() >= root.child('restaurants').child($restaurant_id).child('client_floor').child('kitchen').val() && newData.child('updated_at').val() == now))",
+            ".validate": "newData.hasChildren(['available','updated_at'])",
+            "available": {
+              ".validate": "newData.isBoolean()"
+            },
+            "updated_at": {
+              ".validate": "newData.isNumber()"
+            },
+            "compat": {
+              ".validate": "newData.isNumber()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "availability_audit": {
+          ".read": "auth != null && auth.token.handheld !== true && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()",
+          "$key": {
+            ".write": "auth != null && auth.token.handheld !== true && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists() && (!root.child('restaurants').child($restaurant_id).child('client_floor').child('kitchen').exists() || (newData.child('compat').isNumber() && newData.child('compat').val() >= root.child('restaurants').child($restaurant_id).child('client_floor').child('kitchen').val() && newData.child('updated_at').val() == now))"
+          }
+        },
+        "client_floor": {
+          ".read": "auth != null && auth.token.handheld !== true && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()",
+          ".write": false
+        },
+        "availability_reset_marker": {
+          ".read": false,
+          ".write": false
+        }
+      }
+    },
+    "menus": {
+      ".read": true,
+      "_meta": {
+        ".read": true,
+        ".write": false
+      },
+      "$rid": {
+        ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()"
+      }
+    },
+    "user_profiles": {
+      "$uid": {
+        ".read": "auth != null && auth.token.handheld !== true && auth.uid === $uid",
+        ".write": "auth != null && auth.token.handheld !== true && auth.uid === $uid && newData.exists() && newData.hasChildren(['phone', 'phone_hash', 'created_at', 'last_login']) && !root.child('deleted_uids').child($uid).exists() && (!newData.child('default_address').exists() || newData.child('default_address').val() === null || newData.child('addresses').hasChild(newData.child('default_address').val()))",
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "phone": {
+          ".validate": "newData.isString() && (!data.exists() || newData.val() === data.val())"
+        },
+        "created_at": {
+          ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val())"
+        },
+        "updated_at": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+        },
+        "last_login": {
+          ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val())"
+        },
+        "default_address": {
+          ".validate": "newData.val() === null || (newData.isString() && newData.parent().child('addresses').child(newData.val()).exists())"
+        },
+        "addresses": {
+          ".validate": "!newData.isString() && !newData.isNumber() && !newData.isBoolean()",
+          "$addrId": {
+            ".validate": "$addrId.matches(/^a_[a-f0-9]{6,32}$/) && newData.hasChildren(['label','detected','details','lat','lng','created_at','last_used_at'])",
+            "label": {
+              ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 40"
+            },
+            "detected": {
+              ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 200"
+            },
+            "details": {
+              ".validate": "newData.isString() && newData.val().length <= 200"
+            },
+            "lat": {
+              ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+            },
+            "lng": {
+              ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+            },
+            "created_at": {
+              ".validate": "newData.isNumber()"
+            },
+            "last_used_at": {
+              ".validate": "newData.isNumber()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "user_orders": {
+      "$uid": {
+        ".read": "auth != null && auth.token.handheld !== true && auth.uid === $uid",
+        ".write": false,
+        ".indexOn": [
+          "ts"
+        ]
+      }
+    },
+    "user_rewards": {
+      "$uid": {
+        ".read": "auth != null && auth.token.handheld !== true && auth.uid === $uid",
+        ".write": false,
+        ".validate": "!newData.isString() && !newData.isNumber() && !newData.isBoolean()"
+      }
+    },
+    "reward_welcome": {
+      ".read": false,
+      ".write": false
+    },
+    "otp": {
+      ".read": false,
+      ".write": false
+    },
+    "otp_ip": {
+      ".read": false,
+      ".write": false
+    },
+    "phone_index": {
+      ".read": false,
+      ".write": false
+    },
+    "deleted_uids": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}
