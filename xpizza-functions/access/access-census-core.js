@@ -1,0 +1,132 @@
+'use strict';
+// PLATFORM F2 Q1 (PLAN-F2-query-rules §1.2) — the ACCESS CENSUS core: read-only, over an injected RTDB handle; paged by key so no
+// query returns more than a page. A BLOCKING finding → exit 1; a read failure → exit 1 (fail closed); a bad mapping → exit 2.
+//   (a) ownership       every order's restaurant_id is a non-empty string, a /brands location (member ∪ retired), and the
+//                       location's identity.brand_id is consistent with the brand that lists it (absent only for a legacy brand
+//                       whose id IS the location)
+//   (b) KDS parity      per kitchen deployment (platform/sites.json app 'kitchen', context = its pinned rid): TODAY's effective
+//                       live / scheduled sets (xpizza-kitchen/order-filter.js) vs the PROPOSED exact-rid sets; a difference is
+//                       blocking unless the reviewed mapping lists that order under visibility_exceptions
+//   (c) kitchen roster  restaurants/*/kitchen_staff vs the reviewed mapping {uid: {rids, kind: human|terminal, deployment?}}:
+//                       missing / extra membership, a terminal with ≠ 1 rid or a deployment pinned elsewhere, a global /kitchen
+//                       uid absent from the mapping — all blocking
+//   (d) attribution     primary ≠ legacy delivery attribution pairs, legacy-only orders — INFORMATIONAL (advisor: union accepted)
+//   (e) task keys       every tasks/{tid} has tid === order_id + '_' + type, type ∈ {pickup, delivery} — blocking
+//   (f) history size    per rid: count + bytes of its orders; per driver: count + bytes of each attribution set; daily counts
+//                       of the last 14 days per rid
+// No brand literal: the locations come from /brands, the KDS deployments from the manifest.
+const PAGE = 200;
+const TASK_TYPES = new Set(['pickup', 'delivery']);
+const isId = (v) => typeof v === 'string' && v.length > 0;
+const bytes = (v) => Buffer.byteLength(JSON.stringify(v), 'utf8');
+
+async function pageKeys(rtdb, path, pageSize, fn) {
+  let last = null;
+  for (;;) {
+    let q = rtdb.ref(path).orderByKey();
+    if (last !== null) q = q.startAfter(last);
+    const snap = await q.limitToFirst(pageSize).once('value');
+    const rows = []; snap.forEach((c) => { rows.push([c.key, c.val()]); });
+    for (const [k, v] of rows) { await fn(k, v); last = k; }
+    if (rows.length < pageSize) return;
+  }
+}
+const val = async (rtdb, p) => (await rtdb.ref(p).once('value')).val();
+
+function validateMapping(m, locations, kitchenDeployments) {
+  const errs = [];
+  if (!m || typeof m !== 'object' || !m.kitchen || typeof m.kitchen !== 'object') return ['mapping: missing "kitchen" object'];
+  for (const [uid, e] of Object.entries(m.kitchen)) {
+    if (!e || !Array.isArray(e.rids) || !e.rids.every(isId)) { errs.push(`mapping: ${uid}.rids must be a list of rids`); continue; }
+    if (!['human', 'terminal'].includes(e.kind)) errs.push(`mapping: ${uid}.kind must be human | terminal`);
+    for (const r of e.rids) if (!locations.has(r)) errs.push(`mapping: ${uid} names ${r}, which is not a /brands location`);
+    if (e.deployment !== undefined && !kitchenDeployments.has(e.deployment)) errs.push(`mapping: ${uid}.deployment ${e.deployment} is not a kitchen deployment in the manifest`);
+  }
+  if (m.visibility_exceptions !== undefined && (typeof m.visibility_exceptions !== 'object' || Array.isArray(m.visibility_exceptions))) errs.push('mapping: visibility_exceptions must be {orderId: reason}');
+  return errs;
+}
+
+async function runAccessCensus({ rtdb, mapping, sites, filters, nowMs, pageSize = PAGE }) {
+  const blocking = []; const info = {};
+  // ── locations from /brands ──
+  const brands = (await val(rtdb, 'brands')) || {};
+  const locBrand = new Map();   // rid → brandId
+  for (const [b, rec] of Object.entries(brands)) for (const rid of Object.keys((rec && rec.locations) || {})) {
+    if (locBrand.has(rid)) blocking.push(`location_in_two_brands:${rid}`); else locBrand.set(rid, b);
+  }
+  const locations = new Set(locBrand.keys());
+  const kitchenDeps = new Map((sites.deployments || []).filter((d) => d.app === 'kitchen').map((d) => [d.id, d.context]));
+  const mapErrs = validateMapping(mapping, locations, new Set(kitchenDeps.keys()));
+  if (mapErrs.length) return { code: 2, report: { mapping_errors: mapErrs } };
+  for (const [dep, rid] of kitchenDeps) if (!locations.has(rid)) blocking.push(`kds_deployment_unknown_location:${dep}:${rid}`);
+  // (a) identity ↔ brand consistency per location
+  for (const [rid, b] of locBrand) {
+    const bid = await val(rtdb, `restaurants/${rid}/identity/brand_id`);
+    if (bid === null || bid === undefined) { if (b !== rid) blocking.push(`identity_brand_missing:${rid} (listed by ${b})`); }
+    else if (bid !== b) blocking.push(`identity_brand_mismatch:${rid} (${bid} ≠ ${b})`);
+  }
+  // ── one paged pass over /orders: (a) ownership, (b) parity, (d) attribution, (f) history ──
+  const exceptions = (mapping && mapping.visibility_exceptions) || {};
+  const parity = []; const perRid = {}; const perDriver = {}; const daily = {};
+  let primaryNeLegacy = 0; let legacyOnly = 0; let orders = 0;
+  const DAY = 86400000; const since = nowMs - 14 * DAY;
+  const exact = (o, rid) => o && o.restaurant_id === rid;
+  await pageKeys(rtdb, 'orders', pageSize, async (oid, o) => {
+    orders += 1;
+    const rid = o && o.restaurant_id;
+    if (!isId(rid)) blocking.push(`order_location_absent:${oid}`);
+    else if (!locations.has(rid)) blocking.push(`order_location_unknown:${oid}:${rid}`);
+    const one = { [oid]: o };
+    for (const [dep, kr] of kitchenDeps) {
+      const todayLive = oid in filters.filterLiveOrders(one, kr); const todaySched = oid in filters.filterScheduledOrders(one, kr);
+      const newLive = exact(o, kr) && !filters.NON_LIVE_ORDER_STATUSES.has(o.status);
+      const newSched = exact(o, kr) && filters.SCHEDULED_ORDER_STATUSES.has(o.status);
+      if ((todayLive !== newLive || todaySched !== newSched) && !Object.prototype.hasOwnProperty.call(exceptions, oid)) parity.push(`${dep}:${oid} (today live=${todayLive} sched=${todaySched}; proposed live=${newLive} sched=${newSched})`);
+    }
+    if (o) {
+      const p = o.delivered_by_driver_uid; const l = o.delivered_by_uid;
+      if (isId(p) && isId(l) && p !== l) primaryNeLegacy += 1;
+      if (!isId(p) && isId(l)) legacyOnly += 1;
+      const b = bytes(o);
+      if (isId(rid)) { const r = (perRid[rid] = perRid[rid] || { count: 0, bytes: 0 }); r.count += 1; r.bytes += b; }
+      for (const [field, uid] of [['primary', p], ['legacy', l]]) if (isId(uid)) {
+        const d = (perDriver[uid] = perDriver[uid] || { primary: { count: 0, bytes: 0 }, legacy: { count: 0, bytes: 0 } });
+        d[field].count += 1; d[field].bytes += b;
+      }
+      const at = Number(o.created_at);
+      if (isId(rid) && Number.isFinite(at) && at >= since) {
+        const day = new Date(at).toISOString().slice(0, 10);
+        daily[rid] = daily[rid] || {}; daily[rid][day] = (daily[rid][day] || 0) + 1;
+      }
+    }
+  });
+  for (const p of parity) blocking.push(`kds_parity:${p}`);
+  // (e) task keys
+  let tasks = 0;
+  await pageKeys(rtdb, 'tasks', pageSize, async (tid, t) => {
+    tasks += 1;
+    if (!t || !isId(t.order_id) || !TASK_TYPES.has(t.type) || tid !== `${t.order_id}_${t.type}`) blocking.push(`task_key_noncanonical:${tid}`);
+  });
+  // (c) roster
+  const globalKitchen = Object.keys((await val(rtdb, 'kitchen')) || {});
+  const actual = new Map();   // uid → Set(rid)
+  for (const rid of locations) for (const uid of Object.keys((await val(rtdb, `restaurants/${rid}/kitchen_staff`)) || {})) {
+    if (!actual.has(uid)) actual.set(uid, new Set()); actual.get(uid).add(rid);
+  }
+  const mapped = mapping.kitchen;
+  for (const [uid, e] of Object.entries(mapped)) {
+    const have = actual.get(uid) || new Set();
+    for (const r of e.rids) if (!have.has(r)) blocking.push(`roster_missing:${uid}@${r}`);
+    for (const r of have) if (!e.rids.includes(r)) blocking.push(`roster_extra:${uid}@${r}`);
+    if (e.kind === 'terminal' && e.rids.length !== 1) blocking.push(`roster_terminal_rids:${uid} (${e.rids.length})`);
+    if (e.deployment !== undefined && !e.rids.includes(kitchenDeps.get(e.deployment))) blocking.push(`roster_terminal_deployment:${uid} (${e.deployment} pins ${kitchenDeps.get(e.deployment)})`);
+  }
+  for (const uid of actual.keys()) if (!mapped[uid]) for (const r of actual.get(uid)) blocking.push(`roster_extra:${uid}@${r}`);
+  for (const uid of globalKitchen) if (!mapped[uid]) blocking.push(`kitchen_unmapped:${uid}`);
+  info.attribution = { primary_ne_legacy: primaryNeLegacy, legacy_only: legacyOnly };
+  info.history = { per_rid: perRid, per_driver: perDriver, daily_last_14d: daily };
+  info.scanned = { orders, tasks, locations: locations.size, kitchen_deployments: kitchenDeps.size, kitchen_uids: globalKitchen.length };
+  return { code: blocking.length ? 1 : 0, report: { blocking, info } };
+}
+
+module.exports = { runAccessCensus, validateMapping, pageKeys };

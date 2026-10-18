@@ -221,7 +221,8 @@
     "readytime": "ready-time predictor / quality — shadow model, no customer or staff surface",
     "infra": "client floor / version / health / auth (OTP, account deletion) / rate-limit / alert-pruning infrastructure — no order fact displayed",
     "fixtures": "test FIXTURE module (required only by *.test.js) — not production",
-    "seed": "operator seed / publish script — not an order reader"
+    "seed": "operator seed / publish script — not an order reader",
+    "access": "owner ACCESS-CENSUS / kitchen-roster CLI (PLATFORM F2 Q1) — read-only audit of order ownership, KDS parity, attribution counts and history size; no customer or staff surface, never a writer of /orders"
   },
   "serverFunctions": {
     "alert-prune.js#alertOrderIds": "infra",
@@ -562,7 +563,9 @@
     "superseded-capture.js#frequentPass": "payment",
     "superseded-capture.js#dailyPass": "payment",
     "index.js#detectSupersededCaptures": "payment",
-    "driver-accounts-backfill.lib.js#lookupAuthExistence": "infra"
+    "driver-accounts-backfill.lib.js#lookupAuthExistence": "infra",
+    "access/access-census-core.js#runAccessCensus>anon": "access",
+    "access/access-census-core.js#exact": "access"
   },
   "pageFunctionExemptions": {
     "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
@@ -1400,7 +1403,8 @@
     "type@xpizza-functions/index.js#notifyDriverOnAssignment": "the task type in notifyDriverOnAssignment ('pickup' guard) — routing, not an order money field",
     "waze_link@la-musa-orders/index.html<script@2>#showSuccess": "a navigation link on the receipt — display only",
     "waze_link@xpizza-orders/index.html<script@2>#showSuccess": "a navigation link on the receipt — display only",
-    "length@xpizza-dispatch/index.html<script@0>#alertContent": "NOT an order field: Array.prototype.length of a.order_ids (the list of affected order ids in the driver_deactivated alert) — a derived count for rendering, not a persisted order field (S1a §5/P1-8)"
+    "length@xpizza-dispatch/index.html<script@0>#alertContent": "NOT an order field: Array.prototype.length of a.order_ids (the list of affected order ids in the driver_deactivated alert) — a derived count for rendering, not a persisted order field (S1a §5/P1-8)",
+    "created_at@xpizza-functions/access/access-census-core.js#runAccessCensus>anon": "NOT a fact (PLATFORM F2 Q1): the owner access census only BUCKETS an order by its created_at day for the 14-day history-size report (info, never blocking). It selects no amount, collection or display; a wrong bucket only mis-counts the informational growth table (access-census-core.test cell 5)."
   },
   "unreachableOnSurface": {
     "_doc": "P1-a (reviewed): a page function that NOTHING in its page scope references (no identifier, NS.member or inline HTML handler) cannot run on that surface — reachability is a FIXPOINT from top-level code, registered callbacks and inline HTML handlers, so a function referenced only by unreachable functions is unreachable too, so its order reads are not that surface's outputs. census.js marks them (over-approximating reachability); this list must EQUAL the marked set — a function that becomes referenced again makes its entry stale (RED: review its mapping); a new unreferenced one is RED until reviewed here.",
