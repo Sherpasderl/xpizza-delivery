@@ -37,3 +37,28 @@ export function createAuthWatch({ onLoss }) {
     state: () => ({ expected, seen, lost }),
   };
 }
+
+// runBoot (codex H1b r3 P1-1): the caller ARMS the watch with the persisted device uid and subscribes to Auth BEFORE calling this; an
+// Auth loss / foreign uid during the await tears the session down (bumping the generation), and this continuation then does nothing.
+export async function runBoot({ saved, hasPin, statusP, firstAuthP, genNow, isLive, signOut, route }) {
+  const g = genNow();
+  const d = await decideBoot({ saved, hasPin, statusP, firstAuthP });
+  if (!isLive(g)) return 'stale';
+  if (d.signOut) { await signOut('session_lost'); return 'signed_out'; }
+  route(d);
+  return d.route;
+}
+
+// runPair (codex H1b r3 P1-2): every await is followed by a generation check — after a teardown (auth loss mid-pairing) nothing
+// resumes: no session is assigned, no screen changes.
+export async function runPair({ pairing, sel, label, genNow, isLive, refreshStatus, onSession, onDone, onRefused }) {
+  const g = genNow();
+  const r = await pairing.pair(sel, label);
+  if (!isLive(g)) return 'stale';
+  if (!r.ok) { onRefused(r); return 'refused'; }
+  onSession(r.session);
+  const st = await refreshStatus();
+  if (!isLive(g)) return 'stale';
+  onDone(st);
+  return 'paired';
+}

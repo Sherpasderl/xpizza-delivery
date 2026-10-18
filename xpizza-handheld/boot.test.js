@@ -1,7 +1,7 @@
 // H1b — boot.js: the serialized boot decision and the device-auth watch, across every notification ordering codex r2 reproduced.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decideBoot, createAuthWatch } from './boot.js';
+import { decideBoot, createAuthWatch, runBoot, runPair } from './boot.js';
 
 const saved = { uid: 'hh_tb_norte_a', rid: 'tb_norte' };
 const later = (v, ms) => new Promise((r) => setTimeout(() => r(v), ms));
@@ -52,4 +52,72 @@ test('auth watch: a different uid is a loss; nothing is watched before expect() 
   assert.deepEqual(losses, ['other_uid'], 'cleared at sign-out');
   w.expect('hh_c'); w.observe({ uid: 'hh_c' }); w.observe(null);
   assert.deepEqual(losses, ['other_uid', 'signed_out'], 're-armed by the next expect()');
+});
+
+// a tiny controller harness: generations, a teardown that bumps them, and the watch wired as app.js wires it
+function harness() {
+  const h = { gen: 1, sess: null, phase: 'boot', signOuts: 0, routes: [] };
+  h.watch = createAuthWatch({ onLoss: () => h.teardown() });
+  h.teardown = async () => { h.gen++; h.signOuts++; h.sess = null; h.phase = 'login'; h.watch.clear(); };
+  h.genNow = () => h.gen; h.isLive = (g) => g === h.gen;
+  return h;
+}
+const deferred = () => { let resolve; const p = new Promise((r) => { resolve = r; }); return { p, resolve }; };
+
+test('codex H1b r3 P1-1: a restored session — watch armed BEFORE Auth; the restored user counts as seen; null after restore → sign-out', async () => {
+  const h = harness(); h.watch.expect(saved.uid);                  // armed before the Auth subscription
+  const auth = deferred(); const status = deferred();
+  const run = runBoot({ saved, hasPin: true, statusP: status.p, firstAuthP: auth.p, genNow: h.genNow, isLive: h.isLive, signOut: h.teardown,
+    route: (d) => { h.phase = d.route; h.sess = saved; h.routes.push(d.route); } });
+  h.watch.observe({ uid: saved.uid }); auth.resolve({ uid: saved.uid }); // Auth first …
+  status.resolve(browserSt);                                         // … status later
+  assert.equal(await run, 'main');
+  h.watch.observe(null);                                             // the device identity disappears after the restore
+  assert.deepEqual([h.signOuts, h.phase, h.sess], [1, 'login', null]);
+});
+
+test('codex H1b r3 P1-1: a FOREIGN uid while the status is still pending → loss; the boot continuation then routes NOTHING', async () => {
+  const h = harness(); h.watch.expect(saved.uid);
+  const status = deferred();
+  const run = runBoot({ saved, hasPin: true, statusP: status.p, firstAuthP: Promise.resolve({ uid: 'intruder' }), genNow: h.genNow, isLive: h.isLive,
+    signOut: h.teardown, route: (d) => h.routes.push(d.route) });
+  h.watch.observe({ uid: 'intruder' });                             // the observer sees it before the status resolves
+  status.resolve(nativeBlocked);
+  assert.equal(await run, 'stale');
+  assert.deepEqual([h.signOuts, h.routes, h.phase, h.sess], [1, [], 'login', null]);
+});
+
+test('codex H1b r3 P1-1: status first, Auth later — both orders route once; an intervening teardown stops the boot', async () => {
+  const h = harness(); h.watch.expect(saved.uid);
+  const auth = deferred();
+  const run = runBoot({ saved, hasPin: true, statusP: Promise.resolve(browserSt), firstAuthP: auth.p, genNow: h.genNow, isLive: h.isLive,
+    signOut: h.teardown, route: (d) => h.routes.push(d.route) });
+  await h.teardown();                                                // e.g. a feed sessionLost before Auth resolved
+  auth.resolve({ uid: saved.uid });
+  assert.equal(await run, 'stale');
+  assert.deepEqual(h.routes, []);
+});
+
+test('codex H1b r3 P1-2: auth loss DURING refreshStatus → stays on login with no session; nothing resumes', async () => {
+  const h = harness(); h.phase = 'branch';
+  const status = deferred();
+  const pairing = { pair: async () => { h.watch.expect('hh_new'); h.watch.observe({ uid: 'hh_new' }); return { ok: true, session: { uid: 'hh_new', rid: 'tb_norte' } }; } };
+  const run = runPair({ pairing, sel: { rid: 'tb_norte' }, label: 'x', genNow: h.genNow, isLive: h.isLive, refreshStatus: () => status.p,
+    onSession: (s) => { h.sess = s; }, onDone: () => { h.phase = 'checks'; }, onRefused: () => { h.phase = 'refused'; } });
+  await Promise.resolve(); await Promise.resolve();
+  h.watch.observe(null);                                             // the device identity is lost while the status is being read
+  status.resolve(browserSt);
+  assert.equal(await run, 'stale');
+  assert.deepEqual([h.phase, h.sess, h.signOuts], ['login', null, 1]);
+});
+
+test('runPair: a teardown during pair() itself → no session is ever assigned', async () => {
+  const h = harness();
+  const pr = deferred();
+  const run = runPair({ pairing: { pair: () => pr.p }, sel: {}, label: 'x', genNow: h.genNow, isLive: h.isLive, refreshStatus: async () => browserSt,
+    onSession: (s) => { h.sess = s; }, onDone: () => { h.phase = 'checks'; }, onRefused: () => {} });
+  await h.teardown();
+  pr.resolve({ ok: true, session: { uid: 'u' } });
+  assert.equal(await run, 'stale');
+  assert.deepEqual([h.sess, h.phase], [null, 'login']);
 });

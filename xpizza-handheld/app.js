@@ -14,7 +14,7 @@ import { startPairing, createSessionStore, hashPin, createPinGate, signOut } fro
 import { createBridge, webAudioSound, NATIVE_PLUGIN } from './bridge.js';
 import { COPY, BOARD } from './copy.js';
 import { buildVM, WA_TEXT } from './view.js';
-import { decideBoot, createAuthWatch } from './boot.js';
+import { createAuthWatch, runBoot, runPair } from './boot.js';
 import { FIREBASE_CONFIG, FUNCTIONS_REGION, MAPS_KEY } from './config.js';
 import { initializeApp } from './vendor/firebase-app.js';
 import { getAuth, initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, signInWithCustomToken, signOut as fbSignOut, onAuthStateChanged } from './vendor/firebase-auth.js';
@@ -231,14 +231,19 @@ const pairingAuth = {
 };
 // logout: the device identity (and any lingering human session)
 const deviceAuth = { signOut: async () => { await fbSignOut(auth); try { await fbSignOut(humanAuth); } catch (_) { /* none */ } } };
+// codex H1b r3 P1-2: boot.js runPair guards every await with the session generation — after a teardown nothing resumes
 async function doPair() {
   if (S.working || !S.sel || !S.pairing) return;
   set({ working: true, pairErr: '' });
-  const r = await S.pairing.pair(S.sel, 'Equipo de la sucursal');
-  // codex H1b r1 P2-9: a failed token exchange happens AFTER the human was signed out — back to the login, never a dead picker
-  if (!r.ok && r.error === 'token_exchange') { set({ working: false, phase: 'login', pairing: null, sel: null, loginErr: COPY.pairRefused }); return; }
-  if (!r.ok) { set({ working: false, pairErr: COPY.pairRefused }); return; }
-  sess = r.session; await refreshStatus(); set({ working: false, phase: 'checks' });
+  const out = await runPair({ pairing: S.pairing, sel: S.sel, label: 'Equipo de la sucursal', genNow: () => gen.n, isLive: live,
+    refreshStatus: () => bridge.status(),
+    onSession: (s2) => { sess = s2; },
+    onDone: (st) => set({ status: st, working: false, phase: 'checks' }),
+    // codex H1b r1 P2-9: a failed token exchange happens AFTER the human was signed out — back to the login, never a dead picker
+    onRefused: (r) => (r.error === 'token_exchange'
+      ? set({ working: false, phase: 'login', pairing: null, sel: null, loginErr: COPY.pairRefused })
+      : set({ working: false, pairErr: COPY.pairRefused })) });
+  if (out === 'stale') S.working = false;
 }
 async function refreshStatus() { set({ status: await bridge.status() }); }
 async function pinPress(k) {
@@ -350,16 +355,20 @@ bridge.onResume(() => { undo && undo.onResume(); if (online() && api) api.flush(
 // guard, on every boot) and the FIRST Auth state, then routes exactly once. Late duplicates never re-route.
 // codex H1b r1 P1-3 / r2 P1-2: the Auth observer stays subscribed and only feeds the watch (boot.js createAuthWatch).
 const authWatch = createAuthWatch({ onLoss: () => doSignOut('session_lost') });
+// codex H1b r3 P1-1: the watch is ARMED with the persisted device uid BEFORE Auth is subscribed, so the restored user counts as seen
+// (a later null is a loss) and a foreign uid — even while the status is still pending — tears down; boot.js runBoot then routes
+// nothing (generation guard).
+const saved = store.load();
+if (saved) authWatch.expect(saved.uid);
 let firstAuth; const firstAuthP = new Promise((r) => { firstAuth = r; });
 let authCalls = 0;
 onAuthStateChanged(auth, (u) => { if (authCalls++ === 0) firstAuth(u); authWatch.observe(u); });
-(async function boot() {
-  const saved = store.load();
-  const d = await decideBoot({ saved, hasPin: !!pinGate.record(), statusP: bridge.status(), firstAuthP });
-  if (d.signOut) { sess = saved; authWatch.expect(saved.uid); await doSignOut('session_lost'); return; }
-  if (d.route === 'login') { set({ phase: 'login' }); return; }
-  sess = saved; authWatch.expect(saved.uid);
-  if (d.route === 'checks') { set({ status: d.status, phase: 'checks' }); return; }
-  S.status = d.status; startMain();
-})();
+runBoot({ saved, hasPin: !!pinGate.record(), statusP: bridge.status(), firstAuthP, genNow: () => gen.n, isLive: live,
+  signOut: async (why) => { sess = saved; await doSignOut(why); },
+  route: (d) => {
+    if (d.route === 'login') { set({ phase: 'login' }); return; }
+    sess = saved;
+    if (d.route === 'checks') { set({ status: d.status, phase: 'checks' }); return; }
+    S.status = d.status; startMain();
+  } });
 render();
