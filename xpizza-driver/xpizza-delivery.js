@@ -559,7 +559,7 @@ export async function acceptTask(driverId, taskId) {
   // 'assigned' tasks only, so it's a NO-OP for a lone order AND for today's
   // auto-assign (where the stacked 2nd is already 'accepted'). The current
   // order's delivery is untouched here — it's accepted at pickup as before.
-  const allTasksSnap = await get(ref(db, 'tasks'));
+  const allTasksSnap = await get(ownTasksQuery(driverId));   // §4: own-assignment query (the scan own-filters → zero-diff)
   const allTasks = allTasksSnap.val() || {};
   // F2 §5: resolve each candidate order's stacking hub from its ORDER node (hub_lat/hub_lng) — split-leg-robust —
   // instead of the sibling pickup task. Point-get every candidate order (the current order + every OTHER order
@@ -624,7 +624,7 @@ export async function completeTask(driverId, taskId) {
   // Only a delivery needs the stacking scan over /tasks.
   let allTasks = {};
   if (task.type === TASK_TYPE.DELIVERY) {
-    allTasks = (await get(ref(db, 'tasks'))).val() || {};
+    allTasks = (await get(ownTasksQuery(driverId))).val() || {};   // §4: own-assignment query (delivery scan own-filters → zero-diff)
   }
   const updates = buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now: serverTimestamp() });
   await update(ref(db), updates);
@@ -1043,7 +1043,7 @@ export async function pickupComplete(driverId, pickupTaskId) {
 
   // Look for stacked pickups: other pending pickup tasks assigned to this
   // same driver. They get auto-completed in the same atomic write.
-  const allTasksSnap = await get(ref(db, 'tasks'));
+  const allTasksSnap = await get(ownTasksQuery(driverId));   // §4: own-assignment query (the scan own-filters → zero-diff)
   const allTasks = allTasksSnap.val() || {};
   const stackedPickupIds = [];
   for (const [tid, t] of Object.entries(allTasks)) {
