@@ -598,7 +598,15 @@
   "index.js#monitorAssignmentTimeout>anon": "dispatch",
   "merchant/merchant-orders.js#pickupDriver": "merchant",
   "merchant/merchant-hooks.js#releaseHeld>anon": "dispatch",
-  "merchant/merchant-orders.js#pickupDriver>anon": "merchant"
+  "merchant/merchant-orders.js#pickupDriver>anon": "merchant",
+  "merchant/merchant-push-io.js#pendingOrders>anon": "merchant",
+  "merchant/merchant-push-io.js#guardServed": "merchant",
+  "merchant/merchant-push-io.js#onAnsweredWritten": "merchant",
+  "merchant/merchant-push-io.js#onlyKeys": "merchant",
+  "merchant/merchant-push.js#servedAtHandheld": "merchant",
+  "merchant/merchant-push.js#stillPending": "merchant",
+  "merchant/merchant-push.js#pendingOf": "merchant",
+  "merchant/merchant-push.js#pendingOf>anon": "merchant"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",

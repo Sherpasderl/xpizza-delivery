@@ -722,6 +722,14 @@
       ".read": false,
       ".write": false
     },
+    "merchant_push_tokens": {
+      ".read": false,
+      ".write": false
+    },
+    "merchant_push_log": {
+      ".read": false,
+      ".write": false
+    },
     "deleted_uids": {
       ".read": false,
       ".write": false

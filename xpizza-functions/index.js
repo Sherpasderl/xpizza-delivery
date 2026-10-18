@@ -7260,3 +7260,14 @@ exports.merchantRevokeDevice = merchantFunctions.merchantRevokeDevice;
 exports.merchantHeartbeat = merchantFunctions.merchantHeartbeat;
 exports.merchantMyLocations = merchantFunctions.merchantMyLocations;
 /* h1:end */
+
+/* h1c:begin */
+// H1c-server (PLAN-H1c, APPROVED) — the handheld push: device push registration (epoch-fenced), the reconcile read, and two narrow
+// order triggers that send data messages to a handheld location's devices. DARK until A1 sets the H1a gates.
+const merchantPushFunctions = require('./merchant/merchant-push-wiring');
+exports.merchantRegisterPush = merchantPushFunctions.merchantRegisterPush;
+exports.merchantUnregisterPush = merchantPushFunctions.merchantUnregisterPush;
+exports.merchantPendingOrders = merchantPushFunctions.merchantPendingOrders;
+exports.merchantPushOnStatus = merchantPushFunctions.merchantPushOnStatus;
+exports.merchantPushOnAnswered = merchantPushFunctions.merchantPushOnAnswered;
+/* h1c:end */

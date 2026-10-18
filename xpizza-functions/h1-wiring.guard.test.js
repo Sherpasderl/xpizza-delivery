@@ -12,7 +12,8 @@ const { execFileSync } = require('child_process');
 const { unapplyH1Index, BEGIN, END, INDEX_HUNKS } = require('./tools/h1-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+// H1c-server (newer) is reversed first: this guard checks H1a's own layer
+const real = require('./tools/h1c-inverse').unapplyH1cIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 // The commit that introduced the block (oldest commit whose index.js contains BEGIN); its parent's index.js is the base.
