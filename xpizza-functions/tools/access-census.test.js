@@ -31,4 +31,12 @@ const ab = run(['--project', 'xpizza-delivery', '--sections', 'a,b']);
 assert.ok(!/usage: access-census/.test(ab.out), `--sections a,b needs no mapping (gets past argument parsing)\n${ab.out.slice(0, 300)}`);
 const abc = run(['--project', 'xpizza-delivery', '--sections', 'a,b,c']);
 assert.strictEqual(abc.code, 2, '--sections with c needs --mapping'); assert.match(abc.out, /usage: access-census/);
-console.log('access-census: OK (inherited project refused, exit 2; explicit --project accepted by the guard; --sections a,b needs no mapping, c needs one)');
+// codex Q3 r1 P2-5: an unknown section or an empty selection is a USAGE error (exit 2) decided BEFORE any Admin client is built —
+// the credential here is unavailable, so reaching admin.initializeApp would surface as a credential failure (exit 1) instead
+for (const bad of ['z', 'a,z', ',', '']) {
+  const r = run(['--project', 'xpizza-delivery', '--sections', bad]);
+  assert.strictEqual(r.code, 2, `--sections ${JSON.stringify(bad)} → exit 2 (usage), before any credential\n${r.out.slice(0, 400)}`);
+  assert.match(r.out, /usage: access-census/, `--sections ${JSON.stringify(bad)}: the usage line is what stopped it\n${r.out.slice(0, 400)}`);
+  assert.ok(!/FAILED|credential|nonexistent/i.test(r.out), `--sections ${JSON.stringify(bad)}: nothing past argument parsing ran\n${r.out.slice(0, 400)}`);
+}
+console.log('access-census: OK (inherited project refused, exit 2; explicit --project accepted by the guard; --sections a,b needs no mapping, c needs one; unknown/empty sections → exit 2 before any credential)');

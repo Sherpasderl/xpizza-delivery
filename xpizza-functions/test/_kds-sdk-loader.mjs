@@ -1,6 +1,6 @@
 // PLATFORM F2 Q2 — test-only loader for the REAL kitchen SDK (xpizza-kitchen/xpizza-delivery.js) against the RTDB emulator:
 // its firebase CDN imports are rewritten to the npm firebase SDK (database connected to the emulator; query and onValue
-// INSTRUMENTED — every query recorded, every listener counted while attached), auth stubbed. Each loadKds() is an independent
+// INSTRUMENTED — every query recorded, every listener counted while attached, every cancellation recorded), auth stubbed. Each loadKds() is an independent
 // client (its own firebase app → its own connection), so two calls are two devices.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -29,12 +29,15 @@ export function remove(r) { __WRITES.push(['remove', r.toString()]); return remo
 export function runTransaction(r, f, o) { __WRITES.push(['transaction', r.toString()]); return tx0(r, f, o); }
 export function push(r, v) { __WRITES.push(['push', r.toString()]); return push0(r, v); }
 export const __QUERIES = [];
-export const __LISTENERS = { active: 0, attached: 0, detached: 0, byPath: new Map() };
+export const __LISTENERS = { active: 0, attached: 0, detached: 0, byPath: new Map(), cancels: [] };
 export function query(r, ...c) { __QUERIES.push({ path: r.toString(), constraints: c.map((x) => x.type || (x.constructor && x.constructor.name)) }); return q0(r, ...c); }
 export function onValue(r, cb, err) {
   const key = r.toString(); const L = __LISTENERS;
   L.active += 1; L.attached += 1; L.byPath.set(key, (L.byPath.get(key) || 0) + 1);
-  const un = on0(r, cb, err); let done = false;
+  // every listener CANCELLATION is recorded {path, code, message} (an SDK without a cancel callback otherwise only logs a warning); the
+  // SDK's own cancel callback, when it passes one, is still called exactly as before
+  const onCancel = (e) => { L.cancels.push({ path: key, code: String((e && e.code) || ''), message: String((e && e.message) || '') }); if (err) err(e); };
+  const un = on0(r, cb, onCancel); let done = false;
   return () => { if (done) return; done = true; L.active -= 1; L.detached += 1; L.byPath.set(key, L.byPath.get(key) - 1); un(); };
 }
 export function getDatabase(app) { const d = g(app); if (!d.__emu) { connectDatabaseEmulator(d, '${host}', ${Number(port)}${opts.mockUser ? `, { mockUserToken: ${JSON.stringify(opts.mockUser)} }` : ''}); d.__emu = true; } return d; }

@@ -152,4 +152,4 @@ async function runAccessCensus({ rtdb, mapping, sites, filters, nowMs, pageSize 
   return { code: gating.length ? 1 : 0, report };
 }
 
-module.exports = { runAccessCensus, validateMapping, readWorld, pageKeys, isKey };
+module.exports = { runAccessCensus, validateMapping, readWorld, pageKeys, isKey, SECTIONS };

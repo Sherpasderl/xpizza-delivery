@@ -15,14 +15,17 @@ const admin = require('firebase-admin');
 const { requireProject } = require('./require-project');
 const PROJECT_ID = requireProject({ requireFlag: true });   // FIRST: before any client is constructed
 const { RTDB_URL } = require('../catalog/mirror-rtdb');
-const { runAccessCensus } = require('../access/access-census-core');
+const { runAccessCensus, SECTIONS } = require('../access/access-census-core');
 
 const argv = process.argv.slice(2);
 const mi = argv.indexOf('--mapping');
 const mappingPath = mi >= 0 ? argv[mi + 1] : null;
 const si = argv.indexOf('--sections');
 const sections = si >= 0 ? String(argv[si + 1] || '').split(',').map((x) => x.trim()).filter(Boolean) : null;
-if (!mappingPath && !(sections && !sections.includes('c'))) { console.error('usage: access-census.js --project <id> (--mapping <kitchen-mapping.json> | --sections <subset of a,b,c,e without c> [--mapping <file>])'); process.exit(2); }
+const USAGE = 'usage: access-census.js --project <id> (--mapping <kitchen-mapping.json> | --sections <subset of a,b,c,e without c> [--mapping <file>])';
+// codex Q3 r1 P2-5: validate the selection HERE, before any Admin client — an unknown or empty --sections is a usage error (exit 2)
+if (sections && (!sections.length || sections.some((x) => !SECTIONS.has(x)))) { console.error(`access-census: --sections must be a non-empty subset of ${[...SECTIONS].join(',')}\n${USAGE}`); process.exit(2); }
+if (!mappingPath && !(sections && !sections.includes('c'))) { console.error(USAGE); process.exit(2); }
 let mapping = null;
 if (mappingPath) { try { mapping = JSON.parse(fs.readFileSync(mappingPath, 'utf8')); } catch (e) { console.error(`access-census: REFUSED — mapping unreadable: ${e.message}`); process.exit(2); } }
 const sites = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'platform', 'sites.json'), 'utf8'));
