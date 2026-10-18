@@ -33,12 +33,16 @@ const SVC = 'svc-assigner';
   const driver = env.authenticatedContext(DRIVER).database();
   const customer = env.authenticatedContext('u_cust000000000000000000', { customer: true }).database();
   const svc = env.authenticatedContext(SVC, { svc_assigner: true }).database();
+  // a SUNMI handheld DEVICE token for the SAME uid that is a registered dispatcher — isolates the
+  // handheld:true claim (F2 Q0 device-exclusion) as the sole cause of denial, not dispatcher membership
+  const dispHandheld = env.authenticatedContext(DISP, { handheld: true }).database();
 
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.database();
     await db.ref(`dispatchers/${DISP}`).set({ name: 'D' });
     await db.ref(`driver_accounts/${DRIVER}`).set({ enabled: false, onboarding_state: 'pending', email: 'p@c.hn', version: 0 });
     await db.ref(`driver_accounts/${DRIVER2}`).set({ enabled: true, onboarding_state: 'active', grandfathered: true });
+    await db.ref('driver_account_ops/op1').set({ type: 'invited', actor_uid: DISP, at: 1 });
   });
 
   // ============ COLLECTION READ (finding 9) ============
@@ -49,6 +53,12 @@ const SVC = 'svc-assigner';
   await no('a driver CANNOT read ANOTHER driver\'s node', driver.ref(`driver_accounts/${DRIVER2}`).get());
   await no('a customer CANNOT read the collection', customer.ref('driver_accounts').get());
   await no('a customer CANNOT read a node', customer.ref(`driver_accounts/${DRIVER}`).get());
+
+  // ============ HANDHELD EXCLUSION (PLATFORM F2 Q0 device-exclusion contract) ============
+  // dispatcher control still allowed; the SAME uid with handheld:true is denied both driver-admin reads.
+  await ok('dispatcher (no handheld) reads /driver_account_ops', disp.ref('driver_account_ops').get());
+  await no('a HANDHELD token is DENIED the /driver_accounts collection (even as a registered dispatcher)', dispHandheld.ref('driver_accounts').get());
+  await no('a HANDHELD token is DENIED /driver_account_ops (even as a registered dispatcher)', dispHandheld.ref('driver_account_ops').get());
 
   // ============ SERVER-ONLY WRITES (.write:false — Admin only) ============
   await no('a dispatcher CANNOT write /driver_accounts (server-only)', disp.ref(`driver_accounts/${DRIVER}/enabled`).set(true));
