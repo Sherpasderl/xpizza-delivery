@@ -26,7 +26,7 @@ const NOW = 1_800_000_000_000 + 3600_000;
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 (async () => {
-  const filters = await import(pathToFileURL(path.join(__dirname, '..', '..', 'xpizza-kitchen', 'order-filter.js')).href);
+  const filters = await import(pathToFileURL(path.join(__dirname, 'kds-filter-pre-f2.mjs')).href);
   const world = (orders, more = {}) => ({ brands: BRANDS(), restaurants: REST(), kitchen: { kA: true, kB: true }, orders, tasks: { O1_pickup: { order_id: 'O1', type: 'pickup' } }, ...more });
   const run = (data, mapping = MAP()) => runAccessCensus({ rtdb: pagedFake(data), mapping, sites: SITES, filters, nowMs: NOW, pageSize: 2 });
 

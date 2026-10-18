@@ -25,32 +25,35 @@ const snapshot = {
   c: { status: 'ready', restaurant_id: '' },   // empty-string legacy
   d: { status: 'new', restaurant_id: 'la_musa' },
   e: { status: 'pending_payment', restaurant_id: 'x_pizza' },
+  f: { status: 'new', restaurant_id: 'tb_centro' },   // a THIRD location
 };
-assert.deepEqual(Object.keys(filterLiveOrders(snapshot, 'x_pizza')).sort(), ['a', 'b', 'c']); ok('x_pizza keeps x_pizza/absent/empty-string, drops la_musa + pending');
-assert.deepEqual(Object.keys(filterLiveOrders(snapshot, 'la_musa')).sort(), ['d']);            ok('la_musa keeps only la_musa');
-assert.deepEqual(Object.keys(filterLiveOrders(snapshot, 'bogus')).sort(), ['a', 'b', 'c']);    ok('unknown selector → x_pizza (fail-safe)');
+// PLATFORM F2 Q2 (C1 pulled forward, PLAN-F2-query-rules §2): EXACT location — the same predicate as the KDS's
+// orderByChild('restaurant_id').equalTo(rid) query. Absent / empty / third-location ids are no longer shown on the X. Pizza KDS;
+// access-census (a)+(b) prove none exist in production before the switch (and the write-inventory guard keeps it so).
+assert.deepEqual(Object.keys(filterLiveOrders(snapshot, 'x_pizza')).sort(), ['a']); ok('x_pizza keeps EXACTLY x_pizza (absent / empty / la_musa / third location / pending dropped)');
+assert.deepEqual(Object.keys(filterLiveOrders(snapshot, 'la_musa')).sort(), ['d']); ok('la_musa keeps only la_musa');
+assert.deepEqual(Object.keys(filterLiveOrders(snapshot, 'bogus')).sort(), ['a']);   ok('unknown selector → x_pizza (fail-safe), exact');
 
 // ── GOLDEN no-op (#4): a no-la_musa snapshot under x_pizza == snapshot minus pending, same keys/order/refs ──
 {
   const today = {
     o1: { status: 'new', restaurant_id: 'x_pizza' },
-    o2: { status: 'preparing' },
+    o2: { status: 'preparing', restaurant_id: 'x_pizza' },
     o3: { status: 'pending_payment', restaurant_id: 'x_pizza' }, // dropped (non-live)
-    o4: { status: 'ready', restaurant_id: '' },
+    o4: { status: 'ready', restaurant_id: 'x_pizza' },
   };
   const out = filterLiveOrders(today, 'x_pizza');
   const expectedKeys = Object.keys(today).filter((k) => today[k].status !== 'pending_payment'); // today's live set, in order
   assert.deepEqual(Object.keys(out), expectedKeys);                       // same keys, same order
   for (const k of expectedKeys) assert.strictEqual(out[k], today[k]);     // same value REFERENCES (no clone)
-  ok("GOLDEN no-op: x_pizza returns exactly today's live set (keys, order, refs)");
+  ok("GOLDEN no-op: on data where every order carries its location (census (a)), x_pizza returns exactly today's live set (keys, order, refs)");
 }
 
 // ── null passthrough preserved (callback contract unchanged) ──
 {
   const out = filterLiveOrders({ x: null, y: { status: 'new', restaurant_id: 'x_pizza' } }, 'x_pizza');
-  assert.deepEqual(Object.keys(out).sort(), ['x', 'y']);
-  assert.strictEqual(out.x, null);
-  ok('null order value passes through (contract preserved)');
+  assert.deepEqual(Object.keys(out), ['y']);
+  ok('a null order value has no location → not shown (RTDB never stores null; the card mapper dropped it anyway)');
 }
 
 // ── SDK re-export (#7): the SDK can't be node-loaded (CDN firebase imports) — statically assert it
@@ -82,6 +85,8 @@ assert.deepEqual(Object.keys(filterLiveOrders(snapshot, 'bogus')).sort(), ['a', 
     c: { status: 'new',             restaurant_id: 'x_pizza' },   // live → excluded
     d: { status: 'pending_payment', restaurant_id: 'x_pizza' },   // unpaid → excluded
     e: { status: 'scheduled',       restaurant_id: 'la_musa' },   // wrong restaurant for x_pizza
+    f: { status: 'scheduled' },                                   // absent location → no longer on the x_pizza KDS
+    g: { status: 'releasing',       restaurant_id: 'tb_norte' },  // a third location → not on either KDS
   };
   assert.deepEqual(Object.keys(filterScheduledOrders(orders, 'x_pizza')).sort(), ['a', 'b']);
   ok('filterScheduledOrders: x_pizza → scheduled+releasing only, excludes live/unpaid/la_musa');

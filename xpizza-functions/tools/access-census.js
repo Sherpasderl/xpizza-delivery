@@ -25,7 +25,7 @@ const sites = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'platf
 
 admin.initializeApp({ projectId: PROJECT_ID, databaseURL: RTDB_URL });
 (async () => {
-  const filters = await import(pathToFileURL(path.join(__dirname, '..', '..', 'xpizza-kitchen', 'order-filter.js')).href);
+  const filters = await import(pathToFileURL(path.join(__dirname, '..', 'access', 'kds-filter-pre-f2.mjs')).href);
   const { code, report } = await runAccessCensus({ rtdb: admin.database(), mapping, sites, filters, nowMs: Date.now() });
   console.log(JSON.stringify(report, null, 2));
   process.exit(code);

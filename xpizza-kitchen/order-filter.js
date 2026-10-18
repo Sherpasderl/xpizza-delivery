@@ -25,18 +25,17 @@ export function kdsRestaurantFromHost(host) {
 }
 
 // Filter a /orders snapshot to the operationally-live orders for one restaurant.
-//   La Musa KDS: strict — only restaurant_id === 'la_musa'.
-//   X. Pizza KDS: everything that ISN'T explicitly la_musa (x_pizza, absent, '', any legacy) →
-//                 airtight no-op on today's data.
-// Unknown selector → x_pizza (explicit fail-safe, no throw). Null order values pass through
-// (preserves the current callback contract; RTDB can't store null anyway).
+// PLATFORM F2 Q2 (PLAN-F2-query-rules §2): an EXACT location match — the same predicate as the KDS feed's
+// orderByChild('restaurant_id').equalTo(rid) query, so filter and query can never disagree. (Before F2 the X. Pizza KDS
+// was a catch-all for every order that wasn't la_musa; access-census (a)+(b) prove no absent / unknown / third-location
+// order exists before the switch.) Unknown selector → x_pizza (explicit fail-safe, no throw).
 export function filterLiveOrders(orders, restaurantId = 'x_pizza') {
   const pin = restaurantId === 'la_musa' ? 'la_musa' : 'x_pizza';
   const out = {};
   for (const id of Object.keys(orders || {})) {
     const o = orders[id];
-    if (o && NON_LIVE_ORDER_STATUSES.has(o.status)) continue;       // status filter (unchanged)
-    if (o && (pin === 'la_musa' ? o.restaurant_id !== 'la_musa' : o.restaurant_id === 'la_musa')) continue;
+    if (!o || o.restaurant_id !== pin) continue;                     // exact location
+    if (NON_LIVE_ORDER_STATUSES.has(o.status)) continue;            // status filter (unchanged)
     out[id] = o;
   }
   return out;
@@ -47,14 +46,14 @@ export function filterLiveOrders(orders, restaurantId = 'x_pizza') {
 export const SCHEDULED_ORDER_STATUSES = new Set(['scheduled', 'releasing']);
 
 // Filter a /orders snapshot to the scheduled/held orders for one restaurant. Mirrors filterLiveOrders'
-// restaurant match exactly (la_musa strict; x_pizza = everything not-la_musa). Read-only, pure.
+// EXACT location match (F2 Q2). Read-only, pure.
 export function filterScheduledOrders(orders, restaurantId = 'x_pizza') {
   const pin = restaurantId === 'la_musa' ? 'la_musa' : 'x_pizza';
   const out = {};
   for (const id of Object.keys(orders || {})) {
     const o = orders[id];
-    if (!o || !SCHEDULED_ORDER_STATUSES.has(o.status)) continue;
-    if (pin === 'la_musa' ? o.restaurant_id !== 'la_musa' : o.restaurant_id === 'la_musa') continue;
+    if (!o || o.restaurant_id !== pin) continue;                     // exact location
+    if (!SCHEDULED_ORDER_STATUSES.has(o.status)) continue;
     out[id] = o;
   }
   return out;

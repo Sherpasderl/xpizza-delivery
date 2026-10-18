@@ -5,7 +5,7 @@
 //                       exception) over every brand and every restaurant identity; then every order's restaurant_id is a
 //                       non-empty string and a location of a VALID brand (member ∪ retired)
 //   (b) KDS parity      per kitchen deployment (platform/sites.json app 'kitchen', context = its pinned rid): TODAY's effective
-//                       live / scheduled sets (xpizza-kitchen/order-filter.js) vs the PROPOSED exact-rid sets; a difference is
+//                       live / scheduled sets (the FROZEN pre-F2 filter, access/kds-filter-pre-f2.mjs) vs the PROPOSED exact-rid sets; a difference is
 //                       blocking unless the reviewed mapping lists that order under visibility_exceptions
 //   (c) kitchen roster  EVERY actual restaurants/*/kitchen_staff roster (orphan restaurants included) vs the reviewed mapping
 //                       {uid: {rids, kind: human|terminal, deployment?}}: missing / extra membership and a global /kitchen uid
