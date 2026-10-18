@@ -1,4 +1,6 @@
 'use strict';
+// F2 Q0 (PLAN-F2-query-rules §0): every non-public grant carries the device exclusion `auth.token.handheld !== true`;
+// the pinned sibling/owner expressions below include it.
 
 /**
  * Offline structural guard for the /catalog_integrity RTDB rule (server-only) — 1D D4-c2b (PLAN-D4c2b rev 14 §4).
@@ -35,6 +37,6 @@ assert(!rules['.read'], 'FAIL: rules root has a truthy .read grant — would cas
 assert(!rules['.write'], 'FAIL: rules root has a truthy .write grant — would cascade over /catalog_integrity');
 
 // Sanity: an unrelated sibling keeps its access (proves this guard didn't over-restrict the tree).
-assert.strictEqual(rules.order_control['.read'], "auth != null && root.child('dispatchers').child(auth.uid).exists()", 'FAIL: sibling order_control .read changed — guard over-reached');
+assert.strictEqual(rules.order_control['.read'], "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()", 'FAIL: sibling order_control .read changed — guard over-reached');
 
 console.log('catalog-integrity-rules.guard: OK (/catalog_integrity is an explicit server-only deny; no nested grant; no root cascade; sibling order_control unchanged)');

@@ -1,4 +1,6 @@
 'use strict';
+// F2 Q0 (PLAN-F2-query-rules §0): every non-public grant carries the device exclusion `auth.token.handheld !== true`;
+// the pinned sibling/owner expressions below include it.
 // H1 guard: customer custom tokens (customer:true) must NOT satisfy any operational staff read.
 const fs = require('fs'); const path = require('path'); const assert = require('assert');
 const rules = JSON.parse(fs.readFileSync(path.join(__dirname,'..','xpizza-reference','database.rules.json'),'utf8')).rules;
@@ -24,7 +26,7 @@ ok('zero bare auth!=null reads remain');
 
 // ── Task 2: user_profiles owner-only + otp/phone_index/user_orders deny-all ──
 const up = rules.user_profiles.$uid;
-assert.equal(up['.read'],  "auth != null && auth.uid === $uid"); ok('user_profiles read owner-only');
+assert.equal(up['.read'],  "auth != null && auth.token.handheld !== true && auth.uid === $uid"); ok('user_profiles read owner-only');
 assert.ok(/newData\.exists\(\)/.test(up['.write']) && /auth\.uid === \$uid/.test(up['.write'])); ok('user_profiles write owner-only + no wholesale delete');
 assert.ok(/newData\.val\(\) === data\.val\(\)/.test(up.phone['.validate'])); ok('phone immutable');
 assert.ok(/newData\.val\(\) === data\.val\(\)/.test(up.created_at['.validate'])); ok('created_at immutable');
@@ -48,7 +50,7 @@ for (const k of ['otp','otp_ip','phone_index','deleted_uids']){
 // P3: user_orders opened to READ-OWN (was deny-all "until P3"); Admin-SDK-only write; indexed by ts
 {
   const uo = rules.user_orders.$uid;
-  assert.equal(uo['.read'], 'auth != null && auth.uid === $uid'); ok('user_orders/$uid read-own (auth.uid === $uid)');
+  assert.equal(uo['.read'], 'auth != null && auth.token.handheld !== true && auth.uid === $uid'); ok('user_orders/$uid read-own (auth.uid === $uid)');
   assert.equal(uo['.write'], false); ok('user_orders/$uid write denied (Admin-SDK only)');
   assert.deepStrictEqual(uo['.indexOn'], ['ts']); ok('user_orders/$uid indexOn ["ts"]');
 }

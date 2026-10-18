@@ -1,4 +1,6 @@
 'use strict';
+// F2 Q0 (PLAN-F2-query-rules §0): every non-public grant carries the device exclusion `auth.token.handheld !== true`;
+// the pinned sibling/owner expressions below include it.
 
 /**
  * Offline structural guard for the /counters RTDB rule (admin-only) — order-display-number Core (R1-F7).
@@ -40,6 +42,6 @@ assert(!rules['.write'], 'FAIL: rules root has a truthy .write grant — would c
 
 // Sanity: an unrelated sibling keeps its access (proves this guard didn't over-restrict the tree).
 // S1a (§6 read gate): order_timelines .read now additionally requires the READER's own account not deactivated.
-assert.strictEqual(rules.order_timelines['.read'], "auth != null && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true", 'FAIL: sibling order_timelines .read changed unexpectedly — guard over-reached');
+assert.strictEqual(rules.order_timelines['.read'], "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true", 'FAIL: sibling order_timelines .read changed unexpectedly — guard over-reached');
 
 console.log('counters-rules.guard: OK (/counters is admin-only deny; no nested grant; no root cascade; sibling order_timelines as expected)');
