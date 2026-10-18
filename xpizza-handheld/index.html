@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>Sherpa · equipo de la sucursal</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<!-- H1b T7 — the screens are the owner-approved prototype's own markup (spec/P-prototipo.dc.html, the phone), rendered by tmpl.js
+     from app.js's view model. The simulation panel is dropped. Edits to the prototype markup, each deliberate:
+     - login: the placeholder email (a brand literal) dropped
+     - login: autocomplete hints
+     - login: board A1 error line + the no-account line
+     - branch: C-1 (zero locations) + the pairing error line
+     - branch: no use-button with zero locations
+     - checks: rows bound to bridge.status()
+     - checks: C-2 browser note + board A3 blocked line
+     - top bar: the brand name from /public/brands (no literal)
+     - reject: the note input gets an id (its text survives re-renders)
+-->
+<div class="phone" id="app" aria-live="polite"></div>
+<template id="screen">
+
+    <sc-if value="{{isLogin}}" hint-placeholder-val="{{ false }}">
+      <div class="body" style="padding-top:26px">
+        <div style="width:48px;height:48px;border-radius:14px;background:#15181E;display:flex;align-items:center;justify-content:center;margin-top:14px;flex:0 0 auto"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></div>
+        <div style="font-weight:800;font-size:24px;letter-spacing:-.02em;margin-top:6px">Configurá este equipo</div>
+        <div class="shS" style="font-size:15px">Iniciá sesión con la cuenta del dueño o encargado. Se hace una sola vez.</div>
+        <label style="font-size:13px;font-weight:800;color:#44505F;margin-top:6px" for="em">Correo</label>
+        <input id="em" class="inp" type="email" autocomplete="username">
+        <label style="font-size:13px;font-weight:800;color:#44505F" for="pw">Contraseña</label>
+        <input id="pw" class="inp" type="password" placeholder="••••••••••" autocomplete="current-password">
+        <div style="flex:1"></div>
+        <sc-if value="{{loginErr}}"><div class="info" role="alert">{{loginErr}}</div></sc-if>
+        <button class="btn {{loginBtnCls}}" onClick="{{goBranch}}">Iniciar sesión</button>
+        <div class="shS" style="text-align:center">¿Sin cuenta? Sherpa te la crea al darte de alta.</div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isBranch}}" hint-placeholder-val="{{ false }}">
+      <div class="body" style="padding-top:26px">
+        <div style="font-weight:800;font-size:24px;letter-spacing:-.02em">Elegí la sucursal</div>
+        <sc-if value="{{noBranches}}"><div class="info">{{noBranchesText}}</div></sc-if>
+        <sc-if value="{{pairErr}}"><div class="info" role="alert">{{pairErr}}</div></sc-if>
+        <div class="shS" style="font-size:15px">Este equipo va a recibir solo los pedidos de la sucursal que elijás.</div>
+        <sc-for list="{{branches}}" as="b" hint-placeholder-count="3">
+          <button class="opt {{b.cls}}" onClick="{{b.pick}}"><span><span style="display:block;font-weight:800;font-size:16px">{{b.name}}</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968;margin-top:2px">{{b.addr}}</span></span><span class="rad"></span></button>
+        </sc-for>
+        <div style="flex:1"></div>
+        <sc-if value="{{hasBranches}}"><button class="btn {{pairBtnCls}}" onClick="{{goChecks}}">{{useBranchLabel}}</button></sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isChecks}}" hint-placeholder-val="{{ false }}">
+      <div class="body" style="padding-top:26px">
+        <div style="font-weight:800;font-size:24px;letter-spacing:-.02em;line-height:1.15">Que no se pierda ningún pedido</div>
+        <div class="shS" style="font-size:15px">Revisamos el sonido y que el equipo siga despierto.</div>
+        <div class="card" style="padding:2px 14px">
+          <div class="srow"><span>Notificaciones</span><span style="color:{{notifColor}};font-size:15px">{{notifText}}</span></div>
+          <div class="srow"><span>Volumen de alerta</span><span style="color:{{volColor}};font-size:15px">{{volText}}</span></div>
+          <div class="srow" style="border-bottom:none"><span><span style="display:block">Ahorro de batería</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">{{batteryText}}</span></span>
+            <sc-if value="{{batteryPending}}" hint-placeholder-val="{{ true }}"><button class="btn sm" style="width:auto;padding:0 16px;min-height:48px" onClick="{{fixBattery}}">Apagar</button></sc-if>
+            <sc-if value="{{batteryOk}}" hint-placeholder-val="{{ false }}"><span style="color:#17633D;font-size:15px">Listo</span></sc-if>
+          </div>
+        </div>
+        <button class="btn ghost sm" onClick="{{testAlert}}">Probar la alerta</button>
+        <sc-if value="{{browserNote}}"><div class="shS">{{browserNote}}</div></sc-if>
+        <sc-if value="{{checksBlocked}}"><div class="info">Falta apagar el ahorro de batería.</div></sc-if>
+        <div style="flex:1"></div>
+        <button class="btn {{checksBtnCls}}" onClick="{{goPinCreate}}">Continuar</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isKeypad}}" hint-placeholder-val="{{ false }}">
+      <sc-if value="{{isPinPrompt}}" hint-placeholder-val="{{ false }}">
+        <div class="top"><button class="icb" aria-label="Volver" onClick="{{goList}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill {{pillCls}}" onClick="{{openStatus}}"><sc-if value="{{pillRing}}" hint-placeholder-val="{{ false }}"><svg class="pring" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="{{pillRingAria}}"><circle cx="9" cy="9" r="6.5" fill="none" stroke="rgba(107,65,6,.25)" stroke-width="2.6"></circle><circle class="arc" cx="9" cy="9" r="6.5" fill="none" stroke="#6B4106" stroke-width="2.6" stroke-dasharray="40.84" stroke-dashoffset="{{pillRingOff}}" transform="rotate(-90 9 9)"></circle></svg></sc-if><sc-if value="{{pillDot}}" hint-placeholder-val="{{ true }}"><span class="pd"></span></sc-if>{{pillLabel}}</button></div>
+      </sc-if>
+      <div class="body" style="align-items:center;text-align:center;padding-top:14px">
+        <div style="font-weight:800;font-size:22px;margin-top:8px">{{keypadTitle}}</div>
+        <div class="shS" style="font-size:15px;max-width:280px">{{keypadSub}}</div>
+        <div style="display:flex;gap:16px;margin:16px 0 10px">
+          <sc-for list="{{pinDots}}" as="d" hint-placeholder-count="4"><span class="pin {{d.cls}}"></span></sc-for>
+        </div>
+        <div style="min-height:22px;font-size:14.5px;font-weight:800;color:#9A1C12">{{pinErrText}}</div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:100%">
+          <sc-for list="{{keys}}" as="kk" hint-placeholder-count="12">
+            <sc-if value="{{kk.blank}}" hint-placeholder-val="{{ false }}"><span></span></sc-if>
+            <sc-if value="{{kk.real}}" hint-placeholder-val="{{ true }}"><button class="key" style="font-size:{{kk.size}}" onClick="{{kk.press}}">{{kk.label}}</button></sc-if>
+          </sc-for>
+        </div>
+        <sc-if value="{{isPinPrompt}}" hint-placeholder-val="{{ false }}">
+          <button class="btn ghost sm" style="margin-top:8px" onClick="{{forgotPin}}">Olvidé el PIN · iniciar sesión</button>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isMain}}" hint-placeholder-val="{{ true }}">
+      <sc-if value="{{topIsList}}" hint-placeholder-val="{{ true }}">
+        <div class="top"><div><div class="loc">{{brandName}}</div><div class="locsub">{{loc}}</div></div><button class="pill {{pillCls}}" onClick="{{openStatus}}"><sc-if value="{{pillRing}}" hint-placeholder-val="{{ false }}"><svg class="pring" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="{{pillRingAria}}"><circle cx="9" cy="9" r="6.5" fill="none" stroke="rgba(107,65,6,.25)" stroke-width="2.6"></circle><circle class="arc" cx="9" cy="9" r="6.5" fill="none" stroke="#6B4106" stroke-width="2.6" stroke-dasharray="40.84" stroke-dashoffset="{{pillRingOff}}" transform="rotate(-90 9 9)"></circle></svg></sc-if><sc-if value="{{pillDot}}" hint-placeholder-val="{{ true }}"><span class="pd"></span></sc-if>{{pillLabel}}</button></div>
+      </sc-if>
+      <sc-if value="{{topIsBack}}" hint-placeholder-val="{{ false }}">
+        <div class="top"><button class="icb" aria-label="Volver" onClick="{{goList}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill {{pillCls}}" onClick="{{openStatus}}"><sc-if value="{{pillRing}}" hint-placeholder-val="{{ false }}"><svg class="pring" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="{{pillRingAria}}"><circle cx="9" cy="9" r="6.5" fill="none" stroke="rgba(107,65,6,.25)" stroke-width="2.6"></circle><circle class="arc" cx="9" cy="9" r="6.5" fill="none" stroke="#6B4106" stroke-width="2.6" stroke-dasharray="40.84" stroke-dashoffset="{{pillRingOff}}" transform="rotate(-90 9 9)"></circle></svg></sc-if><sc-if value="{{pillDot}}" hint-placeholder-val="{{ true }}"><span class="pd"></span></sc-if>{{pillLabel}}</button></div>
+      </sc-if>
+
+      <sc-if value="{{bannerOff}}" hint-placeholder-val="{{ false }}"><div class="banner off"><span>Sin conexión. Los pedidos nuevos pueden no llegar. Reintentando…</span></div></sc-if>
+      <sc-if value="{{bannerPause}}" hint-placeholder-val="{{ false }}"><div class="banner pz"><span>{{pauseText}}</span><button class="bq" onClick="{{resume}}">Reanudar</button></div></sc-if>
+      <sc-if value="{{bannerBusy}}" hint-placeholder-val="{{ false }}"><div class="banner busy"><span class="k">{{busyText}}</span><button class="bq" onClick="{{clearBusy}}">Quitar</button></div></sc-if>
+
+      <sc-if value="{{isList}}" hint-placeholder-val="{{ true }}">
+        <div class="tabs">
+          <button class="tab {{tabN}}" onClick="{{goN}}">Nuevos <span class="cnt k">{{cN}}</span></button>
+          <button class="tab {{tabP}}" onClick="{{goP}}">En prep. <span class="cnt k">{{cP}}</span></button>
+          <button class="tab {{tabL}}" onClick="{{goL}}">Listos <span class="cnt k">{{cL}}</span></button>
+        </div>
+        <div class="body">
+          <sc-if value="{{showN}}" hint-placeholder-val="{{ true }}">
+            <sc-for list="{{newCards}}" as="o" hint-placeholder-count="1">
+              <button class="oc" onClick="{{o.open}}"><span class="row1"><span class="oid k">{{o.title}}</span><span class="tag {{o.tagCls}} k">{{o.tag}}</span></span><span style="display:flex;align-items:center;gap:10px;width:100%"><svg class="cring" width="34" height="34" viewBox="0 0 32 32" role="img" aria-label="{{o.ringAria}}" style="flex:0 0 auto"><circle cx="16" cy="16" r="13" fill="none" stroke="#E6E3DD" stroke-width="4"></circle><circle class="arc" cx="16" cy="16" r="13" fill="none" stroke="{{o.ringColor}}" stroke-width="4" stroke-linecap="round" stroke-dasharray="81.68" stroke-dashoffset="{{o.ringOff}}" transform="rotate(-90 16 16)"></circle><circle cx="23.6" cy="26.5" r="2.2" fill="#15181E"></circle></svg><span style="display:flex;flex-direction:column;gap:2px"><span class="osub k">{{o.sub}}</span><span class="ladder k">{{o.ladder}}</span></span></span></button>
+            </sc-for>
+            <sc-if value="{{emptyN}}" hint-placeholder-val="{{ true }}">
+              <div class="empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9AA3B2" stroke-width="1.8" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><div style="font-weight:800;font-size:18px">Sin pedidos nuevos</div><div class="shS" style="max-width:250px">Cuando entre uno, el equipo suena a todo volumen hasta que lo abrás.</div></div>
+            </sc-if>
+          </sc-if>
+          <sc-if value="{{showP}}" hint-placeholder-val="{{ false }}">
+            <sc-for list="{{prepCards}}" as="o" hint-placeholder-count="1">
+              <button class="oc {{o.enterCls}}" onClick="{{o.open}}"><span class="row1"><span class="oid k">{{o.title}}</span><span class="otm k" style="color:{{o.tmColor}}">{{o.time}}</span></span><span style="display:flex;gap:6px;flex-wrap:wrap"><span class="tag {{o.tagCls}} k">{{o.tag}}</span><sc-if value="{{o.pending}}" hint-placeholder-val="{{ false }}"><span class="tag pend"><span class="spin"></span>Por enviar</span></sc-if></span><span class="dl">{{o.driver}}</span></button>
+            </sc-for>
+            <sc-if value="{{emptyP}}" hint-placeholder-val="{{ false }}"><div class="empty"><div style="font-weight:800;font-size:17px;color:#4F5968">Nada en preparación</div></div></sc-if>
+          </sc-if>
+          <sc-if value="{{showL}}" hint-placeholder-val="{{ false }}">
+            <sc-for list="{{readyCards}}" as="o" hint-placeholder-count="1">
+              <div class="oc {{o.enterCls}}"><span class="row1"><span class="oid k">{{o.title}}</span><span class="tag k">{{o.tag}}</span></span><sc-if value="{{o.pending}}" hint-placeholder-val="{{ false }}"><span class="tag pend"><span class="spin"></span>Por enviar</span></sc-if><span class="dl {{o.lineCls}}">{{o.line}}</span><sc-if value="{{o.isPickup}}" hint-placeholder-val="{{ false }}"><button class="btn ghost sm" style="min-height:48px" onClick="{{o.handed}}">Entregado al cliente</button></sc-if></div>
+            </sc-for>
+            <sc-if value="{{emptyL}}" hint-placeholder-val="{{ false }}"><div class="empty"><div style="font-weight:800;font-size:17px;color:#4F5968">Nada listo todavía</div></div></sc-if>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isDetail}}" hint-placeholder-val="{{ false }}">
+        <div class="body">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+            <div style="font-size:23px;font-weight:800" class="k">{{d.title}}</div>
+            <div style="font-size:15px;font-weight:700;color:#4F5968">{{d.cust}}</div>
+          </div>
+          <sc-if value="{{d.showTime}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:18px;font-weight:800" class="k">{{d.timeLine}}</span><span class="tag {{d.tagCls}} k">{{d.tag}}</span></div>
+          </sc-if>
+          <div class="card" style="display:flex;flex-direction:column;gap:9px;flex:0 0 auto">
+            <sc-for list="{{d.items}}" as="i" hint-placeholder-count="3">
+              <div class="it"><span class="q k">{{i.q}}</span><div>{{i.name}}<sc-if value="{{i.hasMod}}" hint-placeholder-val="{{ false }}"><div class="mod">{{i.mod}}</div></sc-if></div></div>
+            </sc-for>
+            <sc-if value="{{d.hasNote}}" hint-placeholder-val="{{ false }}"><div class="note">{{d.note}}</div></sc-if>
+          </div>
+
+          <sc-if value="{{d.isNew}}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:15px;font-weight:700;color:#4F5968" class="k">{{d.payLine}}</div>
+            <div style="flex:1"></div>
+            <p class="flbl">Listo en</p>
+            <div style="display:flex;gap:6px;flex:0 0 auto">
+              <sc-for list="{{chips}}" as="c" hint-placeholder-count="5"><button class="tchip k {{c.cls}}" onClick="{{c.pick}}">{{c.label}}</button></sc-for>
+            </div>
+            <sc-if value="{{busyExplain}}" hint-placeholder-val="{{ false }}"><div style="font-size:14px;font-weight:700;color:#5A3605;background:#F6E7C8;border-radius:10px;padding:8px 11px" class="k">{{busyExplainText}}</div></sc-if>
+            <button class="btn g k" onClick="{{d.accept}}">{{acceptLabel}}</button>
+            <button class="btn ghost sm" onClick="{{openReject}}">Rechazar</button>
+          </sc-if>
+
+          <sc-if value="{{d.isActive}}" hint-placeholder-val="{{ false }}">
+            <div class="card" style="padding:2px 14px;flex:0 0 auto">
+              <div class="pr" style="border-top:none"><span class="av">{{d.initial}}</span><div style="flex:1"><div style="font-weight:800;font-size:16px">{{d.cust}}</div><div style="font-size:14px;font-weight:600;color:#4F5968">Cliente</div></div><sc-if value="{{d.showWA}}" hint-placeholder-val="{{ false }}"><button class="wa" onClick="{{openWA}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>WhatsApp</button></sc-if></div>
+              <sc-if value="{{d.isDelivery}}" hint-placeholder-val="{{ false }}"><div class="pr"><span class="av"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3A4250" stroke-width="2" aria-hidden="true"><circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M9 17h6l-3-7h4l2 7M12 10l-2-4H7"/></svg></span><div style="flex:1"><div style="font-weight:800;font-size:16px">{{d.driverName}}</div><div style="font-size:14px;font-weight:600;color:#4F5968" class="k">{{d.driverSub}}</div></div></div></sc-if>
+            </div>
+            <div style="flex:1"></div>
+            <sc-if value="{{d.canMore}}" hint-placeholder-val="{{ false }}"><button class="btn ghost sm" onClick="{{openMore}}">Necesito más tiempo</button></sc-if>
+            <sc-if value="{{d.hasInfo}}" hint-placeholder-val="{{ false }}"><div class="info">{{d.info}}</div></sc-if>
+            <sc-if value="{{d.isPrep}}" hint-placeholder-val="{{ false }}"><button class="btn g" style="min-height:62px;font-size:18px" onClick="{{d.ready}}">Listo</button></sc-if>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isAgotados}}" hint-placeholder-val="{{ false }}">
+        <div class="body" style="padding-top:12px">
+          <div style="font-size:21px;font-weight:800">Productos agotados</div>
+          <div class="shS">{{agotadosSub}}</div>
+          <sc-for list="{{menuRows}}" as="m" hint-placeholder-count="6">
+            <div class="prr"><div style="flex:1"><div style="font-weight:800;font-size:15.5px">{{m.name}}</div><sc-if value="{{m.out}}" hint-placeholder-val="{{ false }}"><div style="font-size:14px;font-weight:700;color:#9A1C12">Agotado en esta sucursal</div></sc-if></div><span class="swl">{{m.lbl}}</span><button class="sw {{m.swCls}}" aria-label="{{m.aria}}" onClick="{{m.toggle}}"></button></div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isSettings}}" hint-placeholder-val="{{ false }}">
+        <div class="body" style="padding-top:6px">
+          <div style="font-size:22px;font-weight:800">Ajustes del equipo</div>
+          <div class="card" style="padding:2px 14px;flex:0 0 auto">
+            <button class="srow" onClick="{{testAlert}}"><span>Probar la alerta</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4F5968" stroke-width="2.2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+            <div class="srow"><span>Volumen de alerta</span><span style="font-size:15px;color:#17633D">Máximo</span></div>
+            <button class="srow" onClick="{{openBranchSheet}}"><span><span style="display:block">Sucursal</span><span style="display:block;font-size:14px;font-weight:600;color:#4F5968">{{loc}}</span></span><span style="font-size:15px;font-weight:800">Cambiar</span></button>
+            <button class="srow" onClick="{{goAgotados}}"><span>Productos agotados</span><span style="font-size:15px;color:#4F5968" class="k">{{agotadosCount}}</span></button>
+            <div class="srow" style="border-bottom:none"><span><span style="display:block">Equipo</span><span style="display:block;font-size:14px;font-weight:600;color:#4F5968">SUNMI · app 1.0.0</span></span></div>
+          </div>
+          <div style="flex:1"></div>
+          <button class="btn ghost sm" style="color:#9A1C12" onClick="{{askLogout}}">Cerrar sesión</button>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{shReject}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">¿Por qué lo rechazás?</div>
+        <sc-for list="{{reasons}}" as="r" hint-placeholder-count="4"><button class="opt {{r.cls}}" onClick="{{r.pick}}"><span>{{r.label}}</span><span class="rad"></span></button></sc-for>
+        <sc-if value="{{isOtro}}" hint-placeholder-val="{{ false }}"><input id="rejnote" class="inp" maxlength="200" placeholder="Contanos el motivo (opcional)" aria-label="Motivo"></sc-if>
+        <sc-if value="{{isAgotadoReason}}" hint-placeholder-val="{{ false }}"><button class="btn" onClick="{{toItems}}">Continuar</button></sc-if>
+        <sc-if value="{{isOtherReason}}" hint-placeholder-val="{{ true }}"><button class="btn red {{rejBtnCls}}" onClick="{{confirmReject}}">Rechazar pedido</button></sc-if>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Volver</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shItems}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">¿Qué se acabó?</div>
+        <div class="shS">Lo marcamos agotado en esta sucursal hasta que lo reactivés.</div>
+        <sc-for list="{{rejItems}}" as="i" hint-placeholder-count="3"><button class="opt {{i.cls}}" onClick="{{i.pick}}"><span>{{i.label}}</span><span class="cb"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg></span></button></sc-for>
+        <button class="btn red {{itemsBtnCls}}" onClick="{{confirmReject}}">Rechazar y marcar agotado</button>
+        <button class="btn ghost sm" onClick="{{openReject}}">Volver</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shMore}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">¿Cuánto tiempo más?</div>
+        <div style="display:flex;gap:6px"><sc-for list="{{moreChips}}" as="m" hint-placeholder-count="3"><button class="tchip k {{m.cls}}" onClick="{{m.pick}}">{{m.label}}</button></sc-for></div>
+        <div class="card" style="background:#F4F2EE;border:none;display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:15px;font-weight:700;color:#44505F">Nueva hora de listo</span><span style="font-size:28px;font-weight:800" class="k">{{newReadyAt}}</span></div>
+        <div class="shS">Le avisamos al cliente y el repartidor se programa con la nueva hora.</div>
+        <button class="btn k" onClick="{{confirmMore}}">{{moveLabel}}</button>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Cancelar</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shWA}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">{{waTitle}}</div>
+        <sc-for list="{{waOpts}}" as="w" hint-placeholder-count="3"><button class="opt {{w.cls}}" onClick="{{w.pick}}"><span>{{w.label}}</span><span class="rad"></span></button></sc-for>
+        <div style="background:#E8F3EA;border-radius:12px;padding:10px 12px;font-size:14px;font-weight:600;color:#1F3B2A;line-height:1.4">{{waText}}</div>
+        <button class="btn g" onClick="{{sendWA}}">Abrir WhatsApp</button>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Cancelar</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shStatus}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">{{statusTitle}}</div>
+        <button class="st {{stOpenCls}}" onClick="{{setOpen}}"><span class="sd" style="background:#1E7F4F"></span><span style="flex:1"><span style="display:block;font-weight:800;font-size:16px">Abierto</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">Recibiendo pedidos con la hora normal</span></span></button>
+        <button class="st {{stBusyCls}}" onClick="{{toBusy}}"><span class="sd" style="background:#C58A12"></span><span style="flex:1"><span style="display:block;font-weight:800;font-size:16px">Ocupado</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">Siguen entrando, con más tiempo</span></span></button>
+        <button class="st {{stPauseCls}}" onClick="{{toPause}}"><span class="sd" style="background:#15181E"></span><span style="flex:1"><span style="display:block;font-weight:800;font-size:16px">Pausado</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">No entran pedidos nuevos</span></span></button>
+        <button class="lnk" onClick="{{goAgotados}}"><span>Productos agotados</span><span style="color:#4F5968" class="k">{{agotadosCount}}</span></button>
+        <button class="lnk" onClick="{{goPinPrompt}}"><span>Ajustes del equipo</span><span style="color:#4F5968;font-size:13.5px">PIN</span></button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shBusy}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">Modo ocupado</div>
+        <div class="shS">Los pedidos siguen entrando. A cada uno le sumamos tiempo y el cliente ve la hora real.</div>
+        <div style="font-size:13px;font-weight:800;color:#44505F">Sumar a cada pedido</div>
+        <div style="display:flex;gap:6px"><sc-for list="{{busyAddChips}}" as="c" hint-placeholder-count="3"><button class="tchip k {{c.cls}}" onClick="{{c.pick}}">{{c.label}}</button></sc-for></div>
+        <div style="font-size:13px;font-weight:800;color:#44505F">Durante</div>
+        <div style="display:flex;gap:6px"><sc-for list="{{busyDurChips}}" as="c" hint-placeholder-count="3"><button class="tchip k {{c.cls}}" onClick="{{c.pick}}">{{c.label}}</button></sc-for></div>
+        <div style="font-size:14px;font-weight:700;color:#44505F" class="k">{{busyUntilLine}}</div>
+        <button class="btn amb" onClick="{{confirmBusy}}">Activar ocupado</button>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Cancelar</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shPause}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">Pausar pedidos</div>
+        <div class="shS">No entran pedidos nuevos. Los que ya tenés siguen igual.</div>
+        <div style="font-size:13px;font-weight:800;color:#44505F">Por cuánto tiempo</div>
+        <div style="display:flex;gap:6px"><sc-for list="{{pauseDurChips}}" as="c" hint-placeholder-count="3"><button class="tchip {{c.cls}}" style="font-size:14.5px" onClick="{{c.pick}}">{{c.label}}</button></sc-for></div>
+        <div style="font-size:13px;font-weight:800;color:#44505F">Motivo</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{pauseReasonChips}}" as="c" hint-placeholder-count="4"><button class="rchip {{c.cls}}" onClick="{{c.pick}}">{{c.label}}</button></sc-for></div>
+        <button class="btn" onClick="{{confirmPause}}">{{pauseBtnLabel}}</button>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Cancelar</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shBranch}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">Cambiar de sucursal</div>
+        <div class="shS">El equipo dejará de recibir los pedidos de la sucursal actual.</div>
+        <sc-for list="{{branchesSheet}}" as="b" hint-placeholder-count="3"><button class="opt {{b.cls}}" onClick="{{b.pickNow}}"><span><span style="display:block;font-weight:800">{{b.name}}</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">{{b.addr}}</span></span><span class="rad"></span></button></sc-for>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Cancelar</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{shLogout}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim"><div class="sh">
+        <div class="grab"></div>
+        <div class="shT">¿Cerrar sesión?</div>
+        <div class="shS">Este equipo dejará de recibir pedidos hasta que alguien inicie sesión de nuevo.</div>
+        <button class="btn red" onClick="{{doLogout}}">Cerrar sesión</button>
+        <button class="btn ghost sm" onClick="{{closeSheet}}">Cancelar</button>
+      </div></div>
+    </sc-if>
+
+    <sc-if value="{{alertOn}}" hint-placeholder-val="{{ false }}">
+      <div class="alert {{alertCls}}">
+        <sc-if value="{{alertStrip}}" hint-placeholder-val="{{ false }}"><div class="astrip" style="background:{{stripBg}};color:{{stripFg}}" role="status"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="flex:0 0 auto"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg><span>{{stripText}}</span></div></sc-if>
+        <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:16px;font-weight:800">{{alertHead}}</span><span style="font-size:13.5px;font-weight:800;background:{{alertAgeBg}};color:{{alertAgeFg}};border-radius:999px;padding:4px 10px" class="k">{{alertAge}}</span></div>
+        <div style="font-size:64px;font-weight:800;letter-spacing:-.03em;line-height:1;margin-top:6px" class="k">{{alertNum}}</div>
+        <div style="font-size:17px;font-weight:700;margin-top:8px;color:#DDF0E4" class="k">{{alertSub}}</div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center">
+          <div class="ring"><span class="ripple"></span><div class="ring2"><span class="bell"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></span></div></div>
+        </div>
+        <div style="font-size:15px;font-weight:800;text-align:center;margin-bottom:4px">{{alertLine1}}</div>
+        <div style="font-size:14px;font-weight:700;text-align:center;color:#DDF0E4;margin-bottom:12px">{{alertLine2}}</div>
+        <button class="btn" style="background:#fff;color:#15181E;min-height:64px;font-size:18px" onClick="{{openAlert}}">Ver pedido</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
+      <div class="toast"><span style="display:flex;align-items:center;gap:10px"><sc-if value="{{toastUndo}}" hint-placeholder-val="{{ false }}"><span class="pop"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#1E7F4F"></circle><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></sc-if><span>{{toastMsg}}</span></span><sc-if value="{{toastUndo}}" hint-placeholder-val="{{ false }}"><button class="undo" onClick="{{undoReady}}">Deshacer</button><span class="drain"></span></sc-if></div>
+    </sc-if>
+  </template>
+<script type="module" src="app.js"></script>
+</body>
+</html>

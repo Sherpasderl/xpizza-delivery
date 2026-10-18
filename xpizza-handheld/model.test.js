@@ -224,3 +224,22 @@ test('brand-agnostic: model.js carries no restaurant or brand literal', async ()
 });
 
 function pick(o, keys) { return Object.fromEntries(keys.map((k) => [k, o[k]])); }
+
+test('applyPending: queued accept / more / ready (and an undo-window Listo) overlay the feed, as the prototype moves cards at once', () => {
+  const orders = { a: order('a'), b: order('b', { status: 'preparing', prep: fullPrep(T, 20) }), c: order('c', { status: 'preparing', prep: fullPrep(T, 15) }) };
+  const items = [
+    { action: 'accept', order_id: 'a', payload: { prep_min: 25 }, enqueued_at: T + MIN },
+    { action: 'more', order_id: 'b', payload: { add_min: 10 }, enqueued_at: T + 2 * MIN },
+    { action: 'ready', order_id: 'a', payload: null, enqueued_at: T + 3 * MIN },
+    { action: 'accept', order_id: 'zz', payload: { prep_min: 20 }, enqueued_at: T },          // not in the feed → ignored
+  ];
+  const v = M.applyPending(orders, items, [{ order_id: 'c', at: T + 4 * MIN }]);
+  assert.deepEqual([v.a.status, v.a.prep.ready_marked_at, v.a.prep.committed_min, v.a._pending], ['ready', T + 3 * MIN, 25, true]);
+  assert.deepEqual([v.b.prep.extra_min, v.b.prep.ready_at, v.b._pending], [10, T + 30 * MIN, true]);
+  assert.deepEqual([v.c.status, v.c.prep.ready_marked_at, v.c._pending, v.c._undo], ['ready', T + 4 * MIN, false, true]);
+  assert.equal(v.zz, undefined);
+  assert.equal(orders.a.status, 'new', 'the feed itself is never mutated');
+  // the server already moved on (accepted elsewhere / cancelled) → the overlay never resurrects a stale step
+  const moved = M.applyPending({ a: order('a', { status: 'cancelled' }) }, [{ action: 'accept', order_id: 'a', payload: { prep_min: 20 }, enqueued_at: T }], []);
+  assert.equal(moved.a.status, 'cancelled');
+});

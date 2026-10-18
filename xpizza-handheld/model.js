@@ -288,7 +288,7 @@ export function pill({ offline = false, control = null, nowMs = null } = {}) {
   if (mode === 'paused') {
     out.auto = isObj(c.current) && c.current.by === 'sistema';
     out.pauseText = out.auto ? 'Pausamos la sucursal porque nadie respondió. No entran pedidos nuevos.'
-      : `Pedidos pausados${ps.until !== null ? ` · hasta ${fmt(ps.until)}` : ''}`;
+      : 'Pedidos pausados' + (ps.until !== null ? ' · hasta ' + fmt(ps.until) : '');
   }
   if (mode === 'busy') {
     const left = Math.max(0, Math.ceil((c.busy.until - nowMs) / MIN));
@@ -297,6 +297,31 @@ export function pill({ offline = false, control = null, nowMs = null } = {}) {
     out.ringOff = dur ? (40.84 * (1 - left / dur)).toFixed(2) : '0';
     out.ringAria = `Quedan ${left} min de Ocupado`;
     out.busyText = `Ocupado +${add} min · hasta ${fmt(c.busy.until)}`;
+  }
+  return out;
+}
+
+// ── the optimistic overlay ────────────────────────────────────────────────────────────────────────────────────────────────────
+// The prototype moves a card AT ONCE on Aceptar / Listo / Más tiempo (with «Por enviar» while unsent). The view overlays the
+// T3 queue's items, in order, and the T4 undo-window Listos onto the feed — never mutating it, never resurrecting an order the
+// server already moved past (an overlay applies only from the status it expects).
+export function applyPending(orders, items, undoReadies = []) {
+  const out = {};
+  for (const [k, o] of Object.entries(orders || {})) out[k] = { ...o, prep: isObj(o.prep) ? { ...o.prep } : o.prep, _pending: false, _undo: false };
+  for (const it of items || []) {
+    const o = out[it.order_id]; if (!o) continue;
+    const t = it.enqueued_at;
+    if (it.action === 'accept' && o.status === 'new' && it.payload && isNum(it.payload.prep_min)) {
+      o.status = 'preparing'; o.prep = { committed_min: it.payload.prep_min, extra_min: 0, accepted_at: t, ready_at: t + it.payload.prep_min * MIN }; o._pending = true;
+    } else if (it.action === 'more' && o.status === 'preparing' && fullPrep(o.prep) && it.payload && isNum(it.payload.add_min)) {
+      o.prep = { ...o.prep, extra_min: o.prep.extra_min + it.payload.add_min, ready_at: o.prep.ready_at + it.payload.add_min * MIN }; o._pending = true;
+    } else if (it.action === 'ready' && o.status === 'preparing') {
+      o.status = 'ready'; o.prep = { ...(isObj(o.prep) ? o.prep : {}), ready_marked_at: t }; o._pending = true;
+    }
+  }
+  for (const u of undoReadies || []) {
+    const o = out[u.order_id];
+    if (o && o.status === 'preparing') { o.status = 'ready'; o.prep = { ...(isObj(o.prep) ? o.prep : {}), ready_marked_at: u.at }; o._undo = true; }
   }
   return out;
 }
