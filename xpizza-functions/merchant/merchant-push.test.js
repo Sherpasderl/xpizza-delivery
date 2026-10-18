@@ -11,17 +11,19 @@ test('vToken / vEpoch', () => {
   for (const bad of ['short', 'x'.repeat(65), 'has space here here', null, 7]) assert.strictEqual(P.vEpoch(bad), null);
 });
 
-test('pushTargets: only registered, unrevoked handhelds with a valid token AND epoch; uid-sorted', () => {
+test('pushTargets: only registered, unrevoked handhelds with a valid token, epoch AND claim seq; uid-sorted', () => {
   const rows = {
-    hh_b: { kind: 'handheld', revoked: false, fcm_token: 'tb', push_epoch: EP },
-    hh_a: { kind: 'handheld', revoked: false, fcm_token: 'ta', push_epoch: EP },
+    hh_b: { kind: 'handheld', revoked: false, fcm_token: 'tb', push_epoch: EP, push_seq: 3 },
+    hh_a: { kind: 'handheld', revoked: false, fcm_token: 'ta', push_epoch: EP, push_seq: 1 },
+    hh_noseq: { kind: 'handheld', revoked: false, fcm_token: 'tq', push_epoch: EP },
+    hh_badseq: { kind: 'handheld', revoked: false, fcm_token: 'tz', push_epoch: EP, push_seq: 0 },
     hh_noepoch: { kind: 'handheld', revoked: false, fcm_token: 'tn' },
     hh_rev: { kind: 'handheld', revoked: true, fcm_token: 'tr', push_epoch: EP },
     hh_none: { kind: 'handheld', revoked: false, push_epoch: EP },
     human: { kind: 'human', revoked: false, fcm_token: 'th', push_epoch: EP },
     hh_unk: { kind: 'handheld', fcm_token: 'tu', push_epoch: EP },              // revoked absent → excluded (fail closed)
   };
-  assert.deepStrictEqual(P.pushTargets(rows), [{ uid: 'hh_a', token: 'ta', epoch: EP }, { uid: 'hh_b', token: 'tb', epoch: EP }]);
+  assert.deepStrictEqual(P.pushTargets(rows), [{ uid: 'hh_a', token: 'ta', epoch: EP, seq: 1 }, { uid: 'hh_b', token: 'tb', epoch: EP, seq: 3 }]);
   assert.deepStrictEqual(P.pushTargets(null), []);
 });
 
@@ -68,8 +70,10 @@ test('dead tokens: a HANDHELD-only classifier (invalid-argument retained) + comp
   assert.strictEqual(P.isDeadHandheldToken({ code: 'messaging/invalid-registration-token' }), true);
   assert.strictEqual(P.isDeadHandheldToken({ code: 'messaging/invalid-argument' }), false, 'may be a payload problem → retained');
   assert.strictEqual(P.isDeadHandheldToken({ code: 'messaging/internal-error' }), false);
-  const row = { kind: 'handheld', revoked: false, fcm_token: 'T1', fcm_updated_at: 5, push_epoch: EP };
+  const row = { kind: 'handheld', revoked: false, fcm_token: 'T1', fcm_updated_at: 5, push_epoch: EP, push_seq: 4 };
   assert.deepStrictEqual(P.clearTokenUpdate(row, 'T1'), { kind: 'handheld', revoked: false, push_epoch: EP });
+  assert.deepStrictEqual(P.clearTokenUpdate(row, 'T1', 4), { kind: 'handheld', revoked: false, push_epoch: EP }, 'same claim seq → cleared');
+  assert.strictEqual(P.clearTokenUpdate(row, 'T1', 3), undefined, 'a NEWER claim of the same token (seq 4) is kept');
   assert.strictEqual(P.clearTokenUpdate({ ...row, fcm_token: 'T2' }, 'T1'), undefined, 'the T1→T2 race: a send to T1 failed after re-register to T2 → T2 kept');
   assert.strictEqual(P.clearTokenUpdate(null, 'T1'), null);
 });
@@ -85,4 +89,21 @@ test('pendingOf (S1b): new + unanswered + served at this handheld location; at =
   };
   assert.deepStrictEqual(P.pendingOf(orders, 'tb_norte', 'handheld', { b: { new_at: 30 } }), [{ order_id: 'a', at: 5 }, { order_id: 'b', at: 30 }]);
   assert.deepStrictEqual(P.pendingOf(orders, 'tb_norte', 'kds', {}), [], 'a kds location has no handheld pending');
+});
+
+test('codex r1 P1-1/P1-2: the token index is the owner of record — claim bumps seq; only the exact (rid, uid, seq) owns or clears it', () => {
+  assert.deepStrictEqual(P.claimIndex(null, 'tb_norte', 'hh_a', EP), { rid: 'tb_norte', uid: 'hh_a', epoch: EP, seq: 1 });
+  const e = P.claimIndex({ rid: 'tb_norte', uid: 'hh_a', epoch: EP, seq: 7 }, 'tb_centro', 'hh_c', EP);
+  assert.deepStrictEqual(e, { rid: 'tb_centro', uid: 'hh_c', epoch: EP, seq: 8 });
+  assert.strictEqual(P.claimIndex({ rid: 'x', uid: 'y', seq: 'junk' }, 'tb_norte', 'hh_a', EP).seq, 1, 'a malformed seq restarts at 1');
+  assert.strictEqual(P.ownsIndex(e, 'tb_centro', 'hh_c', 8), true);
+  for (const [r, u, q] of [['tb_norte', 'hh_c', 8], ['tb_centro', 'hh_a', 8], ['tb_centro', 'hh_c', 7], ['tb_centro', 'hh_c', undefined]]) assert.strictEqual(P.ownsIndex(e, r, u, q), false);
+  assert.strictEqual(P.ownsIndex(null, 'tb_centro', 'hh_c', 8), false);
+  assert.strictEqual(P.clearIndexUpdate(e, 'tb_centro', 'hh_c', 8), null);
+  assert.strictEqual(P.clearIndexUpdate(e, 'tb_centro', 'hh_c', 7), undefined, 'an older registration never erases a newer owner');
+  assert.strictEqual(P.clearIndexUpdate({ rid: 'tb_centro', uid: 'hh_c' }, 'tb_centro', 'hh_c', 1), undefined, 'a seq-less entry is never matched');
+  assert.strictEqual(P.clearIndexUpdate(null, 'a', 'b', 1), null);
+  assert.deepStrictEqual(P.registerRowUpdate({ kind: 'handheld', revoked: false }, 'T', EP, 8, 99), { kind: 'handheld', revoked: false, fcm_token: 'T', fcm_updated_at: 99, push_epoch: EP, push_seq: 8 });
+  assert.strictEqual(P.registerRowUpdate(null, 'T', EP, 8, 99), null, 'null-first: a null read proposes null (never an abort that refuses an existing row)');
+  assert.strictEqual(P.registerRowUpdate('junk', 'T', EP, 8, 99), undefined, 'a malformed row aborts');
 });

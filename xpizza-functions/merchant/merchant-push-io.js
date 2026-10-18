@@ -1,11 +1,13 @@
 'use strict';
 // H1c-server (PLAN-H1c r3 + codex r4, APPROVED) — the I/O half of the handheld push. Deps are injected:
 //   {db, resolveBrand, HttpsError, now, messaging: {sendEach(messages)}, queryLocationOrders(db, rid)}
-// S1   registerPush({rid, token, epoch})   device-auth; takes token ownership (index merchant_push_tokens/{sha256} = {rid, uid}, with a
-//      compare-and-clear of the previous owner's row), writes the row's fcm_token / fcm_updated_at / push_epoch; returns the hash
-//      native verifies before it reports push-ready.
+// S1   registerPush({rid, token, epoch})   device-auth; CLAIMS the token in a transaction on its index
+//      merchant_push_tokens/{sha256} = {rid, uid, epoch, seq} (the single owner of record, codex r1 P1-1), compare-and-clears the
+//      previous owner's row, writes the row's fcm_token / fcm_updated_at / push_epoch / push_seq, then re-reads the index: a claim
+//      superseded meanwhile clears its own row and fails 'aborted' (native retries). Returns the hash native verifies.
 //      unregisterPush({rid, epoch})         clears this row's token ONLY while its push_epoch still equals epoch (a stale cleanup can
-//      never unregister a newer pairing), then the index entry if it still names this row.
+//      never unregister a newer pairing), then the index entry only while it names this exact (rid, uid, seq) (codex r1 P1-2).
+//      The fan-out sends to a row only while the index names its exact (rid, uid, seq): a late superseded row write never receives.
 // S1b  pendingOrders({rid})                 device-auth reconcile read: fence F = the server clock BEFORE the read; pending ids with
 //      their transition `at` (merchant_push_log new_at, else created_at).
 // S2/S3 onStatusWritten / onAnsweredWritten: re-read guards, the timestamp-conditional push-log transaction, then a data push to
@@ -30,11 +32,11 @@ async function asDevice({ db, resolveBrand, HttpsError }, auth, rid) {
   if (!a.ok) throw new HttpsError(AUTH_CODE[a.code] || 'permission-denied', a.code);
   return a.uid;
 }
-// the index entry is cleared only while it still names (rid, uid)
-const clearIndexIfOwned = (db, hash, rid, uid) => db.ref(`merchant_push_tokens/${hash}`).transaction((cur) => {
-  if (cur === null) return null;
-  return isObj(cur) && cur.rid === rid && cur.uid === uid ? null : undefined;
-});
+// the index entry is cleared only while it still names this EXACT registration (rid, uid, seq)
+const clearIndexIfOwned = (db, hash, rid, uid, seq) => db.ref(`merchant_push_tokens/${hash}`).transaction((cur) => P.clearIndexUpdate(cur, rid, uid, seq));
+// codex r1 P2-5: structured diagnostics — reason codes and counts, NEVER a token or its hash
+const logOf = (deps) => (deps.log && typeof deps.log.warn === 'function' ? deps.log : console);
+const warn = (deps, fields) => { try { logOf(deps).warn(JSON.stringify({ event: 'merchant_push', ...fields })); } catch (_) { /* logging never breaks a send */ } };
 
 async function registerPush(deps, auth, data) {
   const { db, HttpsError, now } = deps;
@@ -43,12 +45,25 @@ async function registerPush(deps, auth, data) {
   if (!rid || !token || !epoch) throw new HttpsError('invalid-argument', 'bad rid/token/epoch');
   const uid = await asDevice(deps, auth, rid);
   const hash = sha(token);
-  let prev = null;
-  await db.ref(`merchant_push_tokens/${hash}`).transaction((cur) => { prev = cur; return { rid, uid }; });
+  const idx = db.ref(`merchant_push_tokens/${hash}`);
+  let prev = null; let mine = null;
+  await idx.transaction((cur) => { prev = cur; mine = P.claimIndex(cur, rid, uid, epoch); return mine; });   // THE serialization point
   if (isObj(prev) && (prev.rid !== rid || prev.uid !== uid) && V.vRid(prev.rid) && typeof prev.uid === 'string') {
-    await db.ref(`restaurants/${prev.rid}/handhelds/${prev.uid}`).transaction((row) => P.clearTokenUpdate(row, token));   // ownership moves
+    // ownership moves: the previous owner's row loses this token only if it still holds it under ITS claim
+    await db.ref(`restaurants/${prev.rid}/handhelds/${prev.uid}`).transaction((row) => P.clearTokenUpdate(row, token, P.vSeq(prev.seq) || undefined));
   }
-  await db.ref(`restaurants/${rid}/handhelds/${uid}`).update({ fcm_token: token, fcm_updated_at: now(), push_epoch: epoch });
+  const rowRef = db.ref(`restaurants/${rid}/handhelds/${uid}`);
+  let old = null;
+  const w = await rowRef.transaction((row) => {
+    old = isObj(row) && row.fcm_token !== token && P.vToken(row.fcm_token) ? { token: row.fcm_token, seq: row.push_seq } : null;
+    return P.registerRowUpdate(row, token, epoch, mine.seq, now());
+  });
+  if (!w || !w.committed || !isObj(w.snapshot && w.snapshot.val())) throw new HttpsError('permission-denied', 'forbidden');   // the row vanished
+  if (old) await clearIndexIfOwned(db, sha(old.token), rid, uid, old.seq);                                     // this row's previous token
+  if (!P.ownsIndex(await val(db, `merchant_push_tokens/${hash}`), rid, uid, mine.seq)) {
+    await rowRef.transaction((row) => P.clearTokenUpdate(row, token, mine.seq));                               // superseded meanwhile
+    throw new HttpsError('aborted', 'superseded');
+  }
   return { ok: true, registered_token_hash: hash };
 }
 
@@ -58,16 +73,16 @@ async function unregisterPush(deps, auth, data) {
   const rid = V.vRid(data.rid); const epoch = P.vEpoch(data.epoch);
   if (!rid || !epoch) throw new HttpsError('invalid-argument', 'bad rid/epoch');
   const uid = await asDevice(deps, auth, rid);
-  let cleared = null;
+  let cleared = null; let clearedSeq = null;
   await db.ref(`restaurants/${rid}/handhelds/${uid}`).transaction((row) => {
-    cleared = null;
+    cleared = null; clearedSeq = null;
     if (row === null) return null;
     if (!isObj(row) || row.push_epoch !== epoch) return undefined;           // a newer pairing owns the row: never touched
-    const { fcm_token, fcm_updated_at, push_epoch, ...rest } = row; void fcm_updated_at; void push_epoch;
-    cleared = typeof fcm_token === 'string' ? fcm_token : '';
+    const { fcm_token, fcm_updated_at, push_epoch, push_seq, ...rest } = row; void fcm_updated_at; void push_epoch;
+    cleared = typeof fcm_token === 'string' ? fcm_token : ''; clearedSeq = push_seq;
     return rest;
   });
-  if (cleared) await clearIndexIfOwned(db, sha(cleared), rid, uid);
+  if (cleared) await clearIndexIfOwned(db, sha(cleared), rid, uid, clearedSeq);   // never a NEWER claim of the same token
   return { ok: true, cleared: cleared !== null };
 }
 
@@ -83,7 +98,9 @@ async function pendingOrders(deps, auth, data) {
   catch (_) { throw new HttpsError('unavailable', 'orders unreadable'); }
   const ids = P.pendingOf(orders, rid, surface, {}).map((p) => p.order_id);
   const log = {};
-  await Promise.all(ids.map(async (oid) => { try { log[oid] = await val(db, `merchant_push_log/${oid}`); } catch (_) { log[oid] = null; } }));
+  // codex r1 P2-3: only a genuinely ABSENT entry falls back to created_at; an unreadable one fails the call (native retries)
+  try { await Promise.all(ids.map(async (oid) => { log[oid] = await val(db, `merchant_push_log/${oid}`); })); }
+  catch (_) { throw new HttpsError('unavailable', 'push log unreadable'); }
   return { fence, pending: P.pendingOf(orders, rid, surface, log) };
 }
 
@@ -91,10 +108,19 @@ async function pendingOrders(deps, auth, data) {
 async function sendTo(deps, rid, type, orderId, at) {
   const { db, messaging } = deps;
   const rows = await val(db, `restaurants/${rid}/handhelds`);
-  const targets = P.pushTargets(rows);
-  if (!targets.length) return { sent: 0, failed: 0, cleared: 0 };
-  const res = await messaging.sendEach(targets.map((t) => P.buildDataMessage(t, type, orderId, rid, at)));
-  let failed = 0; let cleared = 0;
+  // only rows the token index still names with the same (rid, uid, seq) — a superseded row never receives (codex r1 P1-1)
+  const targets = []; let notOwned = 0; let indexUnreadable = 0;
+  for (const t of P.pushTargets(rows)) {
+    let entry;
+    try { entry = await val(db, `merchant_push_tokens/${sha(t.token)}`); } catch (_) { indexUnreadable++; continue; }
+    if (P.ownsIndex(entry, rid, t.uid, t.seq)) targets.push(t); else notOwned++;
+  }
+  if (indexUnreadable) warn(deps, { reason: 'index_unreadable', rid, order_id: orderId, type, count: indexUnreadable });
+  if (!targets.length) return { sent: 0, failed: 0, cleared: 0, not_owned: notOwned };
+  let res;
+  try { res = await messaging.sendEach(targets.map((t) => P.buildDataMessage(t, type, orderId, rid, at))); }
+  catch (e) { warn(deps, { reason: 'send_threw', rid, order_id: orderId, type, code: String((e && e.code) || 'unknown'), count: targets.length }); throw e; }
+  let failed = 0; let cleared = 0; const codes = {};
   const responses = (res && Array.isArray(res.responses)) ? res.responses : [];
   for (let i = 0; i < targets.length; i++) {
     const r = responses[i];
@@ -102,11 +128,15 @@ async function sendTo(deps, rid, type, orderId, at) {
     failed++;
     if (r && P.isDeadHandheldToken(r.error)) {
       const t = targets[i];
-      const tx = await db.ref(`restaurants/${rid}/handhelds/${t.uid}`).transaction((row) => P.clearTokenUpdate(row, t.token));
-      if (tx && tx.committed) { cleared++; await clearIndexIfOwned(db, sha(t.token), rid, t.uid); }
+      const tx = await db.ref(`restaurants/${rid}/handhelds/${t.uid}`).transaction((row) => P.clearTokenUpdate(row, t.token, t.seq));
+      if (tx && tx.committed) { cleared++; await clearIndexIfOwned(db, sha(t.token), rid, t.uid, t.seq); }
+    } else {
+      const code = String((r && r.error && r.error.code) || 'no_response');                // retained (e.g. invalid-argument)
+      codes[code] = (codes[code] || 0) + 1;
     }
   }
-  return { sent: targets.length - failed, failed, cleared };
+  if (Object.keys(codes).length) warn(deps, { reason: 'send_failed', rid, order_id: orderId, type, codes, retained: failed - cleared, cleared });
+  return { sent: targets.length - failed, failed, cleared, not_owned: notOwned };
 }
 
 const atOf = (event) => { const t = Date.parse(event && event.time); return Number.isFinite(t) ? t : null; };

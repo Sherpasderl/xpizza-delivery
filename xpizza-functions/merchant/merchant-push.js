@@ -18,11 +18,34 @@ const vToken = (t) => (typeof t === 'string' && t.length >= 1 && t.length <= 409
 const vEpoch = (e) => (typeof e === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(e) ? e : null);
 
 // restaurants/{rid}/handhelds → [{uid, token, epoch}] for registered, unrevoked handhelds holding a valid token AND epoch (uid-sorted)
+const vSeq = (v) => (Number.isInteger(v) && v >= 1 ? v : null);
+// candidate rows only: the fan-out sends to a candidate ONLY while the token index still names it with the same seq (ownsIndex)
 function pushTargets(handhelds) {
   if (!isObj(handhelds)) return [];
   return Object.keys(handhelds).sort().map((uid) => ({ uid, row: handhelds[uid] }))
-    .filter(({ row }) => isObj(row) && row.kind === 'handheld' && row.revoked === false && vToken(row.fcm_token) && vEpoch(row.push_epoch))
-    .map(({ uid, row }) => ({ uid, token: row.fcm_token, epoch: row.push_epoch }));
+    .filter(({ row }) => isObj(row) && row.kind === 'handheld' && row.revoked === false && vToken(row.fcm_token) && vEpoch(row.push_epoch) && vSeq(row.push_seq))
+    .map(({ uid, row }) => ({ uid, token: row.fcm_token, epoch: row.push_epoch, seq: row.push_seq }));
+}
+
+// ── token ownership (codex H1c-server r1 P1-1/P1-2): merchant_push_tokens/{sha256(token)} = {rid, uid, epoch, seq} is the ONE owner
+// of record. A claim is a transaction that bumps seq; the row carries the same push_seq; every send and every index clear compares
+// the EXACT (rid, uid, seq), so a superseded registration can neither receive pushes nor erase a newer owner's entry.
+function claimIndex(cur, rid, uid, epoch) {
+  const prevSeq = isObj(cur) && vSeq(cur.seq) ? cur.seq : 0;
+  return { rid, uid, epoch, seq: prevSeq + 1 };
+}
+const ownsIndex = (entry, rid, uid, seq) => isObj(entry) && entry.rid === rid && entry.uid === uid && vSeq(seq) !== null && entry.seq === seq;
+// index compare-and-clear: null when absent (no-op) or owned by exactly (rid, uid, seq); otherwise abort (a newer owner stays)
+function clearIndexUpdate(cur, rid, uid, seq) {
+  if (cur === null) return null;
+  return ownsIndex(cur, rid, uid, seq) ? null : undefined;
+}
+// the row write of a winning claim. null-first safe: a null read proposes null (RTDB re-runs with the real value when the row
+// exists; a truly absent row stays absent and the caller refuses); a malformed row aborts
+function registerRowUpdate(row, token, epoch, seq, at) {
+  if (row === null) return null;
+  if (!isObj(row)) return undefined;
+  return { ...row, fcm_token: token, fcm_updated_at: at, push_epoch: epoch, push_seq: seq };
 }
 
 // S2: the status became 'new' (a fresh intake or a scheduled release)
@@ -60,10 +83,12 @@ function buildDataMessage(target, type, orderId, rid, at) {
 const HANDHELD_DEAD = new Set(['messaging/registration-token-not-registered', 'messaging/invalid-registration-token']);
 const isDeadHandheldToken = (err) => !!(err && HANDHELD_DEAD.has(err.code));
 // compare-and-clear updater on restaurants/{rid}/handhelds/{uid}: clear ONLY if the row still holds the exact token sent
-function clearTokenUpdate(row, sentToken) {
+// clears the row's token only while it is still the token sent AND (when given) the same registration seq
+function clearTokenUpdate(row, sentToken, seq) {
   if (row === null) return null;
   if (!isObj(row) || row.fcm_token !== sentToken) return undefined;
-  const { fcm_token, fcm_updated_at, ...rest } = row; void fcm_token; void fcm_updated_at;
+  if (seq !== undefined && row.push_seq !== seq) return undefined;
+  const { fcm_token, fcm_updated_at, push_seq, ...rest } = row; void fcm_token; void fcm_updated_at; void push_seq;
   return rest;
 }
 
@@ -81,5 +106,5 @@ function pendingOf(orders, rid, surface, log) {
   });
 }
 
-module.exports = { vToken, vEpoch, pushTargets, becameNew, leftNewTo, answeredNow, servedAtHandheld, stillPending, logNewUpdate, logResolveUpdate,
+module.exports = { vToken, vEpoch, vSeq, claimIndex, ownsIndex, clearIndexUpdate, registerRowUpdate, pushTargets, becameNew, leftNewTo, answeredNow, servedAtHandheld, stillPending, logNewUpdate, logResolveUpdate,
   buildDataMessage, isDeadHandheldToken, clearTokenUpdate, pendingOf, PUSH_TTL_MS };
