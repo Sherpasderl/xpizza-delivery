@@ -87,6 +87,23 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   assert.deepStrictEqual(Object.values(r.report.info.history.daily_last_14d.x_pizza), [2]);
   ok('(d) attribution counted, never blocking; (e) non-canonical task keys blocking; (f) history size per rid / per driver / daily');
 
+  // --sections (Q3 gate): only the selected sections gate the exit code; the rest are reported as not_gating; the mapping is
+  // needed only for (c)
+  const sec = (data, sections, mapping) => runAccessCensus({ rtdb: pagedFake(data), mapping, sites: SITES, filters, nowMs: NOW, pageSize: 2, sections });
+  const rosterBad = world({ O1: o('x_pizza') }, { kitchen: { kA: true, kB: true, kZ: true } });
+  r = await sec(rosterBad, ['a', 'b'], MAP());
+  assert.strictEqual(r.code, 0, `a,b: roster findings do not gate (${JSON.stringify(r.report)})`);
+  assert.deepStrictEqual(r.report.blocking, []); assert.ok(r.report.not_gating.includes('kitchen_unmapped:kZ'), 'reported as not_gating');
+  r = await sec(rosterBad, ['a', 'b', 'c'], MAP()); assert.strictEqual(r.code, 1, 'with c selected the roster gates');
+  r = await sec(world({ O1: o('tb_centro') }), ['a', 'b'], undefined);
+  assert.strictEqual(r.code, 1); assert.ok(r.report.blocking.some((b) => b.startsWith('kds_parity:')), 'a,b: a parity break gates — without any mapping');
+  r = await sec(world({ O1: o('x_pizza') }, { tasks: { X_y: { order_id: 'O1', type: 'pickup' } } }), ['a', 'b'], undefined);
+  assert.strictEqual(r.code, 0, 'a,b: a task-key finding (e) does not gate Q3'); assert.ok(r.report.not_gating.some((b) => b.startsWith('task_key_')));
+  r = await sec(world({}), ['a', 'z'], undefined); assert.strictEqual(r.code, 2, 'an unknown section is refused');
+  r = await sec(world({}), ['a', 'c'], undefined); assert.strictEqual(r.code, 2, 'section c needs a mapping');
+  r = await run(rosterBad); assert.strictEqual(r.code, 1, 'default (no --sections): every section gates, as before');
+  ok('--sections: only the selected sections gate (a,b → roster / task-key findings reported as not_gating, a parity break gates, no mapping needed); c needs a mapping; unknown section → 2; default unchanged');
+
   const big = {}; for (let i = 0; i < 9; i++) big[`B${i}`] = o('x_pizza');
   const db = pagedFake(world(big));
   await runAccessCensus({ rtdb: db, mapping: MAP(), sites: SITES, filters, nowMs: NOW, pageSize: 2 });

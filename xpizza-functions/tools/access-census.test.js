@@ -25,4 +25,10 @@ const stated = run(['--project', 'xpizza-delivery', '--mapping', '/nonexistent.j
 assert.ok(!/project_guard_refused/.test(stated.out), `control: with --project the guard lets it through\n${stated.out.slice(0, 400)}`);
 // positive marker: the guard ACCEPTED the explicit flag (it then stops at the nonexistent credential — nothing reachable)
 assert.match(stated.out, /project: xpizza-delivery\s+\(stated explicitly/, `control: the guard accepted --project\n${stated.out.slice(0, 400)}`);
-console.log('access-census: OK (inherited project refused, exit 2; explicit --project accepted by the guard)');
+const noArgs = run(['--project', 'xpizza-delivery']);
+assert.strictEqual(noArgs.code, 2, `no --mapping and no --sections → usage error\n${noArgs.out.slice(0, 300)}`); assert.match(noArgs.out, /usage: access-census/);
+const ab = run(['--project', 'xpizza-delivery', '--sections', 'a,b']);
+assert.ok(!/usage: access-census/.test(ab.out), `--sections a,b needs no mapping (gets past argument parsing)\n${ab.out.slice(0, 300)}`);
+const abc = run(['--project', 'xpizza-delivery', '--sections', 'a,b,c']);
+assert.strictEqual(abc.code, 2, '--sections with c needs --mapping'); assert.match(abc.out, /usage: access-census/);
+console.log('access-census: OK (inherited project refused, exit 2; explicit --project accepted by the guard; --sections a,b needs no mapping, c needs one)');

@@ -75,15 +75,23 @@ async function readWorld(rtdb, pageSize) {
   return { brands, locations, identities, rosters };
 }
 
-async function runAccessCensus({ rtdb, mapping, sites, filters, nowMs, pageSize = PAGE }) {
-  const blocking = []; const info = {};
+// --sections (RUNBOOK-F2-Q3): the sections whose findings GATE the exit code; the others are still reported, as not_gating.
+// a = ownership / membership / KDS deployment location · b = KDS parity · c = kitchen roster (needs a mapping) · e = task keys.
+const SECTIONS = new Set(['a', 'b', 'c', 'e']);
+async function runAccessCensus({ rtdb, mapping, sites, filters, nowMs, pageSize = PAGE, sections = null }) {
+  if (sections !== null && (!Array.isArray(sections) || !sections.length || sections.some((x) => !SECTIONS.has(x)))) return { code: 2, report: { usage_errors: [`--sections must be a non-empty subset of ${[...SECTIONS].join(',')}`] } };
+  const gates = (x) => sections === null || sections.includes(x);
+  const wantRoster = sections === null || sections.includes('c');
+  if (wantRoster && (mapping === undefined || mapping === null)) return { code: 2, report: { usage_errors: ['section c (kitchen roster) needs --mapping'] } };
+  const found = []; const info = {};
+  const blocking = { push: (sec, f) => found.push({ sec, f }) };
   const { brands, locations, identities, rosters } = await readWorld(rtdb, pageSize);
   const kitchenDeps = new Map((sites.deployments || []).filter((d) => d.app === 'kitchen').map((d) => [d.id, d.context]));
-  const mapErrs = validateMapping(mapping, locations, kitchenDeps);
+  const mapErrs = mapping === undefined || mapping === null ? [] : validateMapping(mapping, locations, kitchenDeps);
   if (mapErrs.length) return { code: 2, report: { mapping_errors: mapErrs } };
   // (a) F1 membership contract (brand validity, member|retired, identity.brand_id incl. the legacy exception)
-  for (const f of checkMembership(brands, identities)) blocking.push(`membership:${f.code}:${f.brandId || ''}:${f.rid || ''}`);
-  for (const [dep, rid] of kitchenDeps) if (!locations.has(rid)) blocking.push(`kds_deployment_unknown_location:${dep}:${rid}`);
+  for (const f of checkMembership(brands, identities)) blocking.push('a', `membership:${f.code}:${f.brandId || ''}:${f.rid || ''}`);
+  for (const [dep, rid] of kitchenDeps) if (!locations.has(rid)) blocking.push('a', `kds_deployment_unknown_location:${dep}:${rid}`);
   // ── one paged pass over /orders: (a) order ownership, (b) parity, (d) attribution, (f) history ──
   const exceptions = (mapping && mapping.visibility_exceptions) || {};
   const parity = []; const perRid = {}; const perDriver = {}; const daily = {};
@@ -93,8 +101,8 @@ async function runAccessCensus({ rtdb, mapping, sites, filters, nowMs, pageSize 
   await pageKeys(rtdb, 'orders', pageSize, async (oid, o) => {
     orders += 1;
     const rid = o && o.restaurant_id;
-    if (!isId(rid)) blocking.push(`order_location_absent:${oid}`);
-    else if (!locations.has(rid)) blocking.push(`order_location_unknown:${oid}:${rid}`);
+    if (!isId(rid)) blocking.push('a', `order_location_absent:${oid}`);
+    else if (!locations.has(rid)) blocking.push('a', `order_location_unknown:${oid}:${rid}`);
     const one = { [oid]: o };
     for (const [dep, kr] of kitchenDeps) {
       const todayLive = oid in filters.filterLiveOrders(one, kr); const todaySched = oid in filters.filterScheduledOrders(one, kr);
@@ -119,24 +127,29 @@ async function runAccessCensus({ rtdb, mapping, sites, filters, nowMs, pageSize 
       }
     }
   });
-  for (const p of parity) blocking.push(`kds_parity:${p}`);
+  for (const p of parity) blocking.push('b', `kds_parity:${p}`);
   // (e) task keys
   let tasks = 0;
   await pageKeys(rtdb, 'tasks', pageSize, async (tid, t) => {
     tasks += 1;
-    if (!t || !isId(t.order_id) || !TASK_TYPES.has(t.type) || tid !== `${t.order_id}_${t.type}`) blocking.push(`task_key_noncanonical:${tid}`);
+    if (!t || !isId(t.order_id) || !TASK_TYPES.has(t.type) || tid !== `${t.order_id}_${t.type}`) blocking.push('e', `task_key_noncanonical:${tid}`);
   });
   // (c) roster — structured (rid, uid) pairs over EVERY actual roster
   const globalKitchen = Object.keys((await val(rtdb, 'kitchen')) || {});
-  const mapped = mapping.kitchen;
+  const haveMapping = mapping !== undefined && mapping !== null;
+  const mapped = haveMapping ? mapping.kitchen : {};
   const has = (rid, uid) => (rosters.get(rid) || []).includes(uid);
-  for (const [uid, e] of Object.entries(mapped)) for (const r of e.rids) if (!has(r, uid)) blocking.push(`roster_missing:${uid}@${r}`);
-  for (const [rid, uids] of rosters) for (const uid of uids) if (!(mapped[uid] && mapped[uid].rids.includes(rid))) blocking.push(`roster_extra:${uid}@${rid}${locations.has(rid) ? '' : ' (orphan restaurant)'}`);
-  for (const uid of globalKitchen) if (!mapped[uid]) blocking.push(`kitchen_unmapped:${uid}`);
+  for (const [uid, e] of Object.entries(mapped)) for (const r of e.rids) if (!has(r, uid)) blocking.push('c', `roster_missing:${uid}@${r}`);
+  for (const [rid, uids] of rosters) for (const uid of uids) if (!(mapped[uid] && mapped[uid].rids.includes(rid))) blocking.push('c', `roster_extra:${uid}@${rid}${locations.has(rid) ? '' : ' (orphan restaurant)'}`);
+  for (const uid of globalKitchen) if (!mapped[uid]) blocking.push('c', `kitchen_unmapped:${uid}`);
   info.attribution = { primary_ne_legacy: primaryNeLegacy, legacy_only: legacyOnly };
   info.history = { per_rid: perRid, per_driver: perDriver, daily_last_14d: daily };
   info.scanned = { orders, tasks, locations: locations.size, restaurants_with_roster: rosters.size, kitchen_deployments: kitchenDeps.size, kitchen_uids: globalKitchen.length };
-  return { code: blocking.length ? 1 : 0, report: { blocking, info } };
+  const roster = (f) => f.sec === 'c' && !haveMapping;   // no mapping → the roster cannot be judged → omitted (c is then not selected)
+  const gating = found.filter((f) => !roster(f) && gates(f.sec)).map((f) => f.f);
+  const report = { blocking: gating, info };
+  if (sections !== null) { report.sections = sections; report.not_gating = found.filter((f) => !roster(f) && !gates(f.sec)).map((f) => f.f); }
+  return { code: gating.length ? 1 : 0, report };
 }
 
 module.exports = { runAccessCensus, validateMapping, readWorld, pageKeys, isKey };
