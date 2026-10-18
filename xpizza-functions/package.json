@@ -1,7 +1,7 @@
 {
   "name": "xpizza-functions",
   "version": "1.7.3",
-  "description": "X Pizza Delivery Cloud Functions — Make.com → Firebase + Web Push + KDS sync + Auto-assign + Acceptance timeout + Stacking + WhatsApp inbound/outbound",
+  "description": "X Pizza Delivery Cloud Functions \u2014 Make.com \u2192 Firebase + Web Push + KDS sync + Auto-assign + Acceptance timeout + Stacking + WhatsApp inbound/outbound",
   "main": "index.js",
   "engines": {
     "node": "22"
@@ -156,6 +156,7 @@
     "test:merchant": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant.emulator.test.js\"",
     "test:merchant-rules": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant-rules.emulator.test.js\"",
     "test:merchant-reject": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant-reject.emulator.test.js\"",
-    "test:merchant-assign-hold": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant-assign-hold.emulator.test.js\""
+    "test:merchant-assign-hold": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant-assign-hold.emulator.test.js\"",
+    "test:handheld-client": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/handheld-client.emulator.test.js\""
   }
 }
