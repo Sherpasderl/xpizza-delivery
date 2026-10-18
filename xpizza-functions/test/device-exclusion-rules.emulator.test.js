@@ -129,7 +129,10 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
     '/kitchen/$uid/.write': ['kitchen/zz_new', true],
     '/kds_cancel_acks/$order_id/.write': ['kds_cancel_acks/O1', { at: 2, by: UID }],
     '/driver_cash/$driver_id/$shift_id/cuadre/.write': [`driver_cash/${UID}/s1/cuadre`, { cash_owed: 0, cash_order_count: 0, closed_at: 1 }],
-    // a token ROTATION is one multi-path update (the rule checks the new driver hash and that the uid is not a dispatcher)
+    // a token ROTATION is one multi-path update (the rule checks the new driver hash and that the uid is not a dispatcher).
+    // COMPOSITE: it can only be written together with drivers/{uid}/ingest_token_hash, which carries its own exclusion, so
+    // the device denial here is not attributable to this leaf alone (mutant q0b-m2). This leaf's exclusion is proven
+    // STATICALLY by device-exclusion.guard (every alternative of every leaf).
     '/driver_tokens/$hash/.write': ['', { 'drivers/drv-t/ingest_token_hash': 'h2', 'driver_tokens/h2': { uid: 'drv-t', shift_id: 's1' } }, { svc: true, op: 'update' }],
     '/restaurants/$restaurant_id/identity/.write': [`restaurants/${RID}/identity`, IDENT],
     '/restaurants/$restaurant_id/kitchen_staff/$uid/.write': [`restaurants/${RID}/kitchen_staff/zz_new`, true],
