@@ -1435,11 +1435,13 @@ async function commitUnassign(orderId){
   unassignBusy = true;
   const btn = $('unassign-yes');
   if (btn) { btn.disabled = true; btn.textContent = 'Quitando…'; }
-  // FAIL-SAFE: success ONLY on res.ok === true; the two no-op copies ONLY on an explicit known reason; everything
-  // else (unknown/missing reason, non-boolean ok, null, non-object, throw) falls to the error toast. NOT assignOrder.
-  let res;
+  // FAIL-SAFE: success ONLY on res.ok === true; the no-op copies ONLY on an explicit known reason. On a thrown
+  // non-2xx the wrapper carries err.message = the server's `error` string — map the meaningful codes to calm
+  // copy, default everything else (incl. 503 retryable → retry the SAME opId) to the retry error. NOT assignOrder.
+  let res = null, err = null;
   try { res = await XPD.unassignOrder(orderId, pickerFromDriver, unassignOpId); }
-  catch { res = null; }
+  catch (e) { err = e; }
+  const reEnable = () => { if (btn) { btn.disabled = false; btn.textContent = 'Quitar repartidor'; } };
   try {
     if (res && res.ok === true) {
       toast('Pedido ' + displayLabel(orderId, STORE.orders[orderId] || {}) + ' sin asignar — de vuelta en la cola');
@@ -1449,11 +1451,15 @@ async function commitUnassign(orderId){
     } else if (res && res.ok === false && res.reason === 'not_assigned') {
       toast('Ese pedido ya no estaba asignado'); closeSheet();
     } else if (res && res.ok === false && res.reason === 'picked_up') {
-      // the driver picked up the food between picker-open and confirm — a FINAL state, not retryable (close quietly)
-      toast('El repartidor ya recogió el pedido'); closeSheet();
+      toast('El repartidor ya recogió el pedido'); closeSheet();   // final (copy pending owner)
+    } else if (err && err.message === 'terminal') {
+      toast('El pedido ya se cerró'); closeSheet();                // delivered/cancelled — final
+    } else if (err && err.message === 'state') {
+      toast('No se puede quitar el repartidor ahora mismo'); reEnable();
+    } else if (err && err.message === 'not_found') {
+      toast('No se encontró el pedido'); reEnable();
     } else {
-      toast('No se pudo quitar — reintentá', true);
-      if (btn) { btn.disabled = false; btn.textContent = 'Quitar repartidor'; }
+      toast('No se pudo quitar — reintentá', true); reEnable();    // 503 retryable (same opId), 400/401/403/405/500, malformed
     }
   } finally { unassignBusy = false; }
 }
