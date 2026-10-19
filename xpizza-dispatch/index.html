@@ -1712,8 +1712,8 @@
   /* Styled, keyboard-operable replacement for the native prompt() that collected the operator note the
      server audits. Reuses the .overlay-bg scrim + .picker-panel shell so it matches the assign dialog. */
   /* "Quitar repartidor" (unassign) — a removal action row at the TOP of the reassign picker, + its styled confirm. */
-  .row-remove { display: grid; grid-template-columns: 30px minmax(0,1fr); align-items: center; column-gap: 13px; padding: 11px 13px; border-radius: 9px; border: 1px solid var(--border-soft); background: rgba(255,255,255,0.02); width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; -webkit-appearance: none; appearance: none; margin-bottom: 2px; }
-  .row-remove:hover { background: var(--surface-2); }
+  .row-remove { display: grid; grid-template-columns: 30px minmax(0,1fr); align-items: center; column-gap: 13px; padding: 11px 13px; border-radius: 9px; border: 1px solid var(--border-soft); background: var(--surface-2); width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; -webkit-appearance: none; appearance: none; margin-bottom: 2px; }
+  .row-remove:hover { background: var(--surface-3); }
   .row-remove:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
   .row-remove .ric { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--border); color: var(--text-soft); }
   .row-remove .rl { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 13px; color: var(--text); display: block; }
@@ -5010,12 +5010,17 @@ $('recon-note-overlay').addEventListener('keydown', (e) => {
 // picker's own Esc never also fires — no double dismiss). On cancel, focus returns to the picker's remove row
 // (reattached/visible) or the shared pickerReturnFocusTarget cascade. On success/no-op, close both. FAIL-SAFE
 // result mapping: success ONLY on res.ok===true; the no-op copies ONLY on an exact known reason; everything else
-// → the retry error. One request per confirm (unassignBusy + the button is disabled).
-let unassignOpen = false, unassignBusy = false, unassignOrderId = null, unassignOpener = null, unassignOpId = null;
+// → the retry error. One request per confirm (unassignPending token + the button is disabled); a request's
+// result only closes/toasts if its per-open token is still current, so a stale completion never dismisses a newer confirm.
+// unassignToken: a monotonic per-open token — a request's result only touches the dialog if the token still
+// matches (a newer confirm must not be dismissed by an older request completing). unassignPending = the token
+// of the in-flight request (or null), which is the one-request-per-confirm guard.
+let unassignOpen = false, unassignOrderId = null, unassignOpener = null, unassignOpId = null, unassignToken = 0, unassignPending = null;
 function openUnassignConfirm(orderId) {
   const order = allOrders[orderId];
   if (!order) return;
   unassignOpen = true; unassignOrderId = orderId; unassignOpener = document.activeElement;
+  unassignToken += 1;   // new operation; a prior in-flight request's result will be token-skipped
   // Fresh opId per operation (one confirm = one logical press); doUnassign reuses it so a retry of the SAME
   // press resends the SAME opId (server idempotency + the 503 retryable case). A reopened dialog gets a new one.
   unassignOpId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2);
@@ -5042,14 +5047,16 @@ function closeUnassignConfirm(toRemoveRow) {
   if (el) { if (temp && el.setAttribute && !el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1'); try { el.focus(); } catch (_) {} }
 }
 async function doUnassign() {
-  if (unassignBusy) return;
-  unassignBusy = true;
+  const myToken = unassignToken;
+  if (unassignPending === myToken) return;   // one request per confirm (same dialog)
+  unassignPending = myToken;
   const orderId = unassignOrderId;
   const btn = $('unassign-confirm-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Quitando…'; }
   let res = null, err = null;
   try { res = await XPD.unassignOrder(orderId, pickerFromDriver, unassignOpId); } catch (e) { err = e; }
   const reEnable = () => { if (btn) { btn.disabled = false; btn.textContent = 'Quitar repartidor'; } };
   try {
+    if (unassignToken !== myToken) return;   // a NEWER confirm opened while this was in flight — don't touch it
     // FAIL-SAFE: success ONLY on ok===true; the no-op copies ONLY on an exact known reason. On a thrown non-2xx
     // the wrapper carries err.message = the server's `error` string — map the meaningful codes to calm copy,
     // default everything else (incl. 503 retryable → retry the SAME opId) to the retry error.
@@ -5071,7 +5078,7 @@ async function doUnassign() {
     } else {
       toast('No se pudo quitar — reintentá', 'error'); reEnable();   // 503 retryable (same opId), 400/401/403/405/500, malformed
     }
-  } finally { unassignBusy = false; }
+  } finally { if (unassignPending === myToken) unassignPending = null; }
 }
 $('unassign-cancel-btn').addEventListener('click', () => closeUnassignConfirm(true));
 $('unassign-confirm-btn').addEventListener('click', doUnassign);
@@ -5849,9 +5856,18 @@ function openPicker(orderId, isReassign = false) {
   // driver) AND while the pickup leg is NOT completed (PRE-PICKUP): the server's unassignOrder covers pre-pickup
   // orders only, so it is never offered where the server would refuse (a completed pickup = out for delivery).
   // Rendered even with zero eligible drivers (insertAdjacentHTML, independent of the driver list).
+  // Offer "Quitar repartidor" ONLY where the pre-pickup endpoint (fe6c3753) will accept it: reassign mode with a
+  // captured driver, BOTH legs still owned by that SAME driver, the pickup leg in an assignable pre-pickup state
+  // ({assigned,accepted,in_progress}), and the order non-terminal. Split owners, out_for_delivery / completed
+  // pickup, pending/unknown pickup, and delivered/completed/cancelled orders are all refused by the server → never shown.
   const pickupTask = allTasks[`${orderId}_pickup`];
-  const prePickup = !!pickupTask && pickupTask.status !== 'completed';
-  if (isReassign && pickerFromDriver && prePickup) {
+  const deliveryTask = allTasks[`${orderId}_delivery`];
+  const canUnassign = isReassign && pickerFromDriver
+    && pickupTask && ['assigned', 'accepted', 'in_progress'].includes(pickupTask.status)
+    && pickupTask.assigned_driver_id === pickerFromDriver
+    && deliveryTask && deliveryTask.assigned_driver_id === pickerFromDriver
+    && !['delivered', 'completed', 'cancelled'].includes((allOrders[orderId] || {}).status);
+  if (canUnassign) {
     $('picker-list').insertAdjacentHTML('afterbegin',
       `<button type="button" class="row-remove" id="picker-remove-row" aria-label="Quitar repartidor — dejar este pedido sin asignar">`
       + `<span class="ric" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M17 11h6"/></svg></span>`

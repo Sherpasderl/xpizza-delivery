@@ -32,7 +32,8 @@ const html = readFileSync(join(here, 'index.html'), 'utf8');
 // Ids that legitimately do NOT exist in static markup because the module generates them.
 // Anything else the module reaches for must be in the HTML, or the id test below fails.
 const DYNAMIC_IDS = new Set([
-  'confirm-yes',   // rendered inside the confirm sheet by openConfirm(); commitAssign() guards on it
+  'confirm-yes',    // rendered inside the confirm sheet by openConfirm(); commitAssign() guards on it
+  'unassign-yes',   // rendered inside the "Quitar repartidor" confirm sheet by openUnassignConfirm(); commitUnassign() guards on it
 ]);
 
 // Static ids = ids in the MARKUP only. The script block is stripped first, otherwise an id inside

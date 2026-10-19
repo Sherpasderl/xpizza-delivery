@@ -1114,7 +1114,9 @@ function openSheet(html){
   $('scrim').classList.add('on');
   $('sheet').classList.add('on');
   $('screen-main').setAttribute('aria-hidden', 'false');
-  const f = $('sheet').querySelector('button:not([disabled]), a[href]');
+  // A sheet may name its initial focus with [data-sheet-focus] (e.g. the unassign confirm focuses Cancelar,
+  // not the Atrás nav button); otherwise fall back to the first focusable.
+  const f = $('sheet').querySelector('[data-sheet-focus]:not([disabled])') || $('sheet').querySelector('button:not([disabled]), a[href]');
   if (f) setTimeout(() => f.focus(), 60);
 }
 function closeSheet(){
@@ -1122,15 +1124,20 @@ function closeSheet(){
   $('sheet').classList.remove('on');
   $('sheet-body').innerHTML = '';
   pickerFromDriver = null; pickerIsReassign = false;
-  if (lastFocus && lastFocus.focus) lastFocus.focus();
+  if (lastFocus && lastFocus.focus && document.contains(lastFocus)) lastFocus.focus();   // only if still connected
   lastFocus = null;
 }
 $('scrim').addEventListener('click', closeSheet);
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  if ($('sheet').classList.contains('on')) closeSheet();
+  if (!$('sheet').classList.contains('on')) return;
+  // The "Quitar repartidor" confirm is a step ON TOP of the picker: Esc returns to the picker (like its Atrás),
+  // it does NOT close the whole sheet stack. Detected by its CTA being present.
+  const back = $('unassign-yes') && $('sheet').querySelector('.sh-nav [data-pick][data-back]');
+  if (back) { sheetDir = 'pop'; openPicker(back.dataset.pick); return; }
+  closeSheet();
 });
-// Keep Tab inside the sheet while it is open.
+// Keep Tab inside the sheet while it is open (generic: redirect an escaped focus back in).
 document.addEventListener('focusin', (e) => {
   const sheet = $('sheet');
   if (!sheet.classList.contains('on')) return;
@@ -1138,6 +1145,15 @@ document.addEventListener('focusin', (e) => {
     const f = sheet.querySelector('button:not([disabled]), a[href], input');
     if (f) f.focus();
   }
+});
+// The confirm needs a real two-way wrap (the focusin trap only redirects to the first). Scoped to the confirm.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Tab' || !$('unassign-yes') || !$('sheet').classList.contains('on')) return;
+  const f = [...$('sheet').querySelectorAll('button:not([disabled]), a[href]')];
+  if (f.length < 2) return;
+  const i = f.indexOf(document.activeElement);
+  if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+  else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
 });
 
 let _toastT;
@@ -1320,9 +1336,17 @@ function openPicker(orderId){
   // NOT yet completed (PRE-PICKUP): the server's unassignOrder covers pre-pickup orders only, so never offer it
   // where the server would refuse (a completed pickup = out for delivery). Takes the order off its driver back
   // to the unassigned queue via the callable; stays available even with zero eligible drivers (body === empty).
+  // Parity with desktop: offer "Quitar repartidor" ONLY where the pre-pickup endpoint accepts it — reassign mode
+  // with a captured driver, BOTH legs owned by that SAME driver, pickup in {assigned,accepted,in_progress}, order
+  // non-terminal. Split owners / out_for_delivery / pending-unknown pickup / terminal orders are never shown.
   const pickupTask = STORE.tasks[`${orderId}_pickup`];
-  const prePickup = !!pickupTask && pickupTask.status !== 'completed';   // parity with desktop: require the pickup task AND not completed
-  const removeBlock = (pickerIsReassign && prePickup) ? `
+  const deliveryTask = STORE.tasks[`${orderId}_delivery`];
+  const canUnassign = pickerIsReassign && pickerFromDriver
+    && pickupTask && ['assigned', 'accepted', 'in_progress'].includes(pickupTask.status)
+    && pickupTask.assigned_driver_id === pickerFromDriver
+    && deliveryTask && deliveryTask.assigned_driver_id === pickerFromDriver
+    && !['delivered', 'completed', 'cancelled'].includes((STORE.orders[orderId] || STORE.scheduled[orderId] || {}).status);
+  const removeBlock = canUnassign ? `
     <div class="panel" style="margin-top:14px">
       <button class="row" type="button" data-unassign="${escapeHtml(orderId)}">
         <span class="av empty"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M17 11h6"/></svg></span>
@@ -1406,6 +1430,7 @@ async function commitAssign(orderId, driverId){
 
 // ── "Quitar repartidor" (unassign) — reassign-only; mirrors the reassign confirm flow, destination = Sin asignar ──
 function openUnassignConfirm(orderId){
+  unassignToken += 1;   // new operation; a prior in-flight request's result will be token-skipped
   // fresh opId per operation; commitUnassign reuses it so a retry of the same press resends the SAME opId
   unassignOpId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2);
   const order = STORE.orders[orderId] || STORE.scheduled[orderId] || {};
@@ -1426,14 +1451,15 @@ function openUnassignConfirm(orderId){
     </div>
     <div class="warn"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="var(--lilac-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;margin-top:1px" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg><p>Se quita el pedido <b>${escapeHtml(displayLabel(orderId, order))}</b> de ${fromName} y vuelve a la cola, sin repartidor. Las dos patas quedan sin asignar.</p></div>
     <button class="btn btn-d" id="unassign-yes" type="button" data-unassign-commit="${escapeHtml(orderId)}">Quitar repartidor</button>
-    <button class="btn btn-g" type="button" data-pick="${escapeHtml(orderId)}" data-back="1">Cancelar</button>
+    <button class="btn btn-g" type="button" data-pick="${escapeHtml(orderId)}" data-back="1" data-sheet-focus>Cancelar</button>
   `);
 }
 
-let unassignBusy = false, unassignOpId = null;
+let unassignOpId = null, unassignToken = 0, unassignPending = null;   // per-open token scopes a request's effects to its own dialog
 async function commitUnassign(orderId){
-  if (unassignBusy) return;                         // one request per confirm (defensive; the button is also disabled)
-  unassignBusy = true;
+  const myToken = unassignToken;
+  if (unassignPending === myToken) return;          // one request per confirm (same dialog)
+  unassignPending = myToken;
   const btn = $('unassign-yes');
   if (btn) { btn.disabled = true; btn.textContent = 'Quitando…'; }
   // FAIL-SAFE: success ONLY on res.ok === true; the no-op copies ONLY on an explicit known reason. On a thrown
@@ -1444,6 +1470,7 @@ async function commitUnassign(orderId){
   catch (e) { err = e; }
   const reEnable = () => { if (btn) { btn.disabled = false; btn.textContent = 'Quitar repartidor'; } };
   try {
+    if (unassignToken !== myToken) return;   // a NEWER confirm opened while this was in flight — don't touch it
     if (res && res.ok === true) {
       toast('Pedido ' + displayLabel(orderId, STORE.orders[orderId] || {}) + ' sin asignar — de vuelta en la cola');
       closeSheet();
@@ -1462,7 +1489,7 @@ async function commitUnassign(orderId){
     } else {
       toast('No se pudo quitar — reintentá', true); reEnable();    // 503 retryable (same opId), 400/401/403/405/500, malformed
     }
-  } finally { unassignBusy = false; }
+  } finally { if (unassignPending === myToken) unassignPending = null; }
 }
 
 // ── settings ──

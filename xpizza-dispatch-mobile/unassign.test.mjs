@@ -83,18 +83,93 @@ test('mobile one request per confirm: a second activation while pending makes no
   release(); await tick();
 });
 
-test('mobile render gate: the remove row shows only for reassign + PRE-PICKUP', () => {
+test('mobile delegated events: the REAL document click handler routes unassign + preserves assign/reassign', () => {
+  const start = html.indexOf("document.addEventListener('click', (e) => {");
+  const end = html.indexOf('\n});\n', start) + 3;
+  const stmt = html.slice(start, end);
+  assert.ok(start > -1 && stmt.includes('ds.unassign') && stmt.includes('ds.commit'), 'extracted the real click delegation statement');
+  const rec = [];
+  const stub = (name) => (...a) => rec.push([name, ...a]);
+  const deps = {
+    openPass: null, layoutDecks: () => {}, collapsedDone: false, renderBoard: () => {}, activeChip: null, animateBoard: false,
+    showTab: stub('showTab'), openDetail: stub('openDetail'), openPicker: stub('openPicker'), openConfirm: stub('openConfirm'),
+    commitAssign: stub('commitAssign'), openUnassignConfirm: stub('openUnassignConfirm'), commitUnassign: stub('commitUnassign'),
+    closeSheet: stub('closeSheet'), theme: '', localStorage: { setItem() {} }, applyTheme: () => {}, openSettings: () => {},
+    enableStaffPush: () => {}, XPD: { signOutUser: () => Promise.resolve() }, toast: () => {}, sheetDir: null,
+    $: () => ({ querySelector: () => ({ dataset: { detail: 'o1' } }) }), window: {},
+  };
+  const handlers = [];
+  const documentShim = { addEventListener: (t, fn) => { if (t === 'click') handlers.push(fn); }, querySelectorAll: () => [] };
+  new Function('document', ...Object.keys(deps), stmt)(documentShim, ...Object.values(deps));
+  const handler = handlers[0];
+  assert.ok(handler, 'the delegation handler registered on document click');
+  const click = (dataset) => { rec.length = 0; handler({ target: { closest: () => ({ dataset }) } }); };
+  click({ unassign: 'o1' });        assert.deepEqual(rec, [['openUnassignConfirm', 'o1']], 'data-unassign → openUnassignConfirm');
+  click({ unassignCommit: 'o1' });  assert.deepEqual(rec, [['commitUnassign', 'o1']], 'data-unassign-commit → commitUnassign');
+  click({ choose: 'd1' });          assert.deepEqual(rec, [['openConfirm', 'o1', 'd1']], 'data-choose → openConfirm (assign/reassign pick) UNCHANGED');
+  click({ commit: 'd1', order: 'o1' }); assert.deepEqual(rec, [['commitAssign', 'o1', 'd1']], 'data-commit → commitAssign (the existing mutation) UNCHANGED');
+  click({ pick: 'o1' });            assert.deepEqual(rec, [['openPicker', 'o1']], 'data-pick → openPicker UNCHANGED');
+});
+
+test('mobile stale completion: a request resolving after a newer confirm opened does not close it', async () => {
+  let releaseA; const t = buildEnv(() => new Promise((r) => { releaseA = () => r({ ok: true }); }));
+  t.openUnassignConfirm('o1');          // dialog A (token 1)
+  t.commitUnassign('o1'); await tick(); // A in flight
+  const closesBefore = t.closeSheetCount(), toastsBefore = t.toasts.length;
+  t.openUnassignConfirm('o1');          // newer confirm (token 2)
+  releaseA(); await tick(); await tick();
+  assert.equal(t.closeSheetCount(), closesBefore, 'stale A resolution did not closeSheet the newer confirm');
+  assert.equal(t.toasts.length, toastsBefore, 'stale A resolution produced no toast');
+});
+
+test('mobile confirm a11y lifecycle is wired (focus Cancelar, Esc→picker, Tab wrap, restore-if-connected)', () => {
+  // the confirm's Cancelar carries data-sheet-focus (initial focus, not the Atrás nav button), and both Atrás and
+  // Cancelar return to the picker (data-pick + data-back).
+  const confirm = html.slice(html.indexOf('function openUnassignConfirm(orderId){'), html.indexOf('\n\nlet unassignOpId'));
+  assert.match(confirm, /data-pick="\$\{escapeHtml\(orderId\)\}" data-back="1" data-sheet-focus>Cancelar</, 'Cancelar has data-sheet-focus + returns to the picker');
+  assert.match(confirm, /class="back"[^>]*data-pick="\$\{escapeHtml\(orderId\)\}" data-back="1"/, 'Atrás returns to the picker');
+  // openSheet honors [data-sheet-focus] as the initial focus.
+  assert.match(html, /querySelector\('\[data-sheet-focus\]:not\(\[disabled\]\)'\)\s*\|\|/, 'openSheet focuses [data-sheet-focus] first');
+  // Esc on the confirm returns to the picker (openPicker), not closeSheet.
+  const esc = html.slice(html.indexOf("if (e.key !== 'Escape') return;"), html.indexOf("// Keep Tab inside the sheet"));
+  assert.match(esc, /\$\('unassign-yes'\)\s*&&\s*\$\('sheet'\)\.querySelector\('\.sh-nav \[data-pick\]\[data-back\]'\)/, 'Esc detects the confirm');
+  assert.match(esc, /openPicker\(back\.dataset\.pick\);\s*return;/, 'Esc → openPicker (back to the picker), not closeSheet');
+  // a confirm-scoped Tab handler wraps both directions.
+  const tab = html.slice(html.indexOf("if (e.key !== 'Tab' || !$('unassign-yes')"), html.indexOf("if (e.key !== 'Tab' || !$('unassign-yes')") + 520);
+  assert.match(tab, /e\.shiftKey && i <= 0.*f\[f\.length - 1\]\.focus\(\)/s, 'Shift-Tab from the first wraps to the last');
+  assert.match(tab, /i === f\.length - 1.*f\[0\]\.focus\(\)/s, 'Tab from the last wraps to the first');
+  // closeSheet restores the opener only if still connected.
+  assert.match(html, /lastFocus\.focus && document\.contains\(lastFocus\)/, 'closeSheet restores opener only if connected');
+});
+
+test('mobile render gate: shown only for reassign + same-owner both legs + pickup∈{assigned,accepted,in_progress} + non-terminal (parity with desktop)', () => {
   const gStart = html.indexOf('  const pickupTask = STORE.tasks[');
   const gEnd = html.indexOf('\n\n  openSheet(', gStart);
   const gSrc = html.slice(gStart, gEnd);
   assert.ok(gStart > -1 && gEnd > gStart && gSrc.includes('removeBlock'), 'located mobile gating block');
-  const run = ({ pickerIsReassign, pickupStatus }) => {
-    const STORE = { tasks: pickupStatus === null ? {} : { 'o1_pickup': { status: pickupStatus } } };
-    return new Function('STORE','orderId','pickerIsReassign','escapeHtml', gSrc + '\n; return removeBlock;')(
-      STORE, 'o1', pickerIsReassign, (s) => String(s));
+  const base = { pickerIsReassign: true, pickerFromDriver: 'd1', pickupStatus: 'assigned', pickupOwner: 'd1', deliveryOwner: 'd1', orderStatus: 'preparing' };
+  const run = (over) => {
+    const c = { ...base, ...over };
+    const tasks = {};
+    if (c.pickupStatus !== null) tasks['o1_pickup'] = { status: c.pickupStatus, assigned_driver_id: c.pickupOwner };
+    if (c.deliveryOwner !== null) tasks['o1_delivery'] = { assigned_driver_id: c.deliveryOwner };
+    const STORE = { tasks, orders: { o1: { status: c.orderStatus } }, scheduled: {} };
+    return new Function('STORE','orderId','pickerIsReassign','pickerFromDriver','escapeHtml', gSrc + '\n; return removeBlock;')(
+      STORE, 'o1', c.pickerIsReassign, c.pickerFromDriver, (s) => String(s));
   };
-  assert.match(run({ pickerIsReassign: true, pickupStatus: 'assigned' }), /Quitar repartidor/, 'reassign + pre-pickup → PRESENT');
-  assert.equal(run({ pickerIsReassign: false, pickupStatus: 'assigned' }), '', 'not reassign → ABSENT');
-  assert.equal(run({ pickerIsReassign: true, pickupStatus: 'completed' }), '', 'pickup completed → ABSENT');
-  assert.equal(run({ pickerIsReassign: true, pickupStatus: null }), '', 'no pickup task → ABSENT (parity with desktop: requires the pickup task present)');
+  const shown = (over, why) => assert.match(run(over), /Quitar repartidor/, 'PRESENT: ' + why);
+  const hidden = (over, why) => assert.equal(run(over), '', 'ABSENT: ' + why);
+  shown({}, 'assigned');
+  shown({ pickupStatus: 'accepted' }, 'accepted');
+  shown({ pickupStatus: 'in_progress' }, 'in_progress');
+  hidden({ pickerIsReassign: false }, 'initial-assign');
+  hidden({ pickerFromDriver: null }, 'no captured driver');
+  hidden({ pickupStatus: 'completed' }, 'completed pickup');
+  hidden({ pickupStatus: 'pending' }, 'pending pickup');
+  hidden({ pickupStatus: null }, 'no pickup task');
+  hidden({ deliveryOwner: null }, 'no delivery task');
+  hidden({ pickupOwner: 'dX' }, 'split owners (pickup)');
+  hidden({ deliveryOwner: 'dX' }, 'split owners (delivery ≠ captured)');
+  hidden({ orderStatus: 'delivered' }, 'terminal: delivered');
+  hidden({ orderStatus: 'cancelled' }, 'terminal: cancelled');
 });

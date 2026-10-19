@@ -174,6 +174,20 @@ async function runResult(stub) {
   ok('cancel + Esc: no SDK call, confirm closes, Esc stops propagation');
 }
 
+// ── 5b. stale completion: a request resolving AFTER a newer confirm opened must not dismiss/toast it ──
+{
+  let releaseA; const t = buildEnv(() => new Promise((r) => { releaseA = () => r({ ok: true }); }));
+  t.openUnassignConfirm('o1');                 // dialog A (token 1)
+  t.confirmBtn.dispatch('click', {}); await tick();   // A in flight
+  const toastsBefore = t.toasts.length, closesBefore = t.closePickerCount();
+  t.openUnassignConfirm('o1');                 // a NEWER confirm opens (token 2) — overlay re-shown
+  releaseA(); await tick(); await tick();      // A resolves now, after the newer open
+  assert.strictEqual(t.toasts.length, toastsBefore, 'stale A resolution produced no toast');
+  assert.strictEqual(t.closePickerCount(), closesBefore, 'stale A resolution did NOT close the picker');
+  assert.ok(!t.overlay.classList.contains('hidden'), "the newer confirm stays open");
+  ok('stale completion: a request resolving after a newer confirm opened does not dismiss or toast it');
+}
+
 // ── 6. render gating (the pre-pickup rule): the remove row is inserted into the picker list ONLY when
 //      reassign mode AND the order has a driver AND the pickup leg is not completed. Extracts the REAL
 //      openPicker gating block from index.html. ──
@@ -182,22 +196,42 @@ async function runResult(stub) {
   const gEnd = html.indexOf("  $('picker-overlay').classList.remove('hidden');", gStart);
   assert.ok(gStart > -1 && gEnd > gStart, 'located the openPicker gating block');
   const gSrc = html.slice(gStart, gEnd);
-  const runGate = ({ isReassign, pickerFromDriver, pickupStatus }) => {
-    let inserted = '';
-    const pickerList = { insertAdjacentHTML: (_pos, h) => { inserted += h; } };
-    const removeRow = { addEventListener: () => {} };
-    const $g = (id) => id === 'picker-list' ? pickerList : id === 'picker-remove-row' ? removeRow : null;
-    const allTasks = pickupStatus === null ? {} : { 'o1_pickup': { status: pickupStatus } };
-    new Function('allTasks','orderId','isReassign','pickerFromDriver','$','openUnassignConfirm', gSrc + '\n')(
-      allTasks, 'o1', isReassign, pickerFromDriver, $g, () => {});
-    return inserted;
+  // defaults = a shown row; override one field per case.
+  const base = { isReassign: true, pickerFromDriver: 'd1', pickupStatus: 'assigned', pickupOwner: 'd1', deliveryOwner: 'd1', orderStatus: 'preparing' };
+  const runGate = (over) => {
+    const c = { ...base, ...over };
+    let inserted = '', clickFn = null; const opens = [];
+    const removeRow = { addEventListener: (t, fn) => { if (t === 'click') clickFn = fn; } };
+    const $g = (id) => id === 'picker-list' ? { insertAdjacentHTML: (_p, h) => { inserted += h; } } : id === 'picker-remove-row' ? removeRow : null;
+    const allTasks = {};
+    if (c.pickupStatus !== null) allTasks['o1_pickup'] = { status: c.pickupStatus, assigned_driver_id: c.pickupOwner };
+    if (c.deliveryOwner !== null) allTasks['o1_delivery'] = { assigned_driver_id: c.deliveryOwner };
+    const allOrders = { o1: { status: c.orderStatus } };
+    new Function('allTasks','allOrders','orderId','isReassign','pickerFromDriver','$','openUnassignConfirm', gSrc + '\n')(
+      allTasks, allOrders, 'o1', c.isReassign, c.pickerFromDriver, $g, (oid) => opens.push(oid));
+    return { inserted, click: () => clickFn && clickFn(), opens };
   };
-  assert.ok(/Quitar repartidor/.test(runGate({ isReassign: true, pickerFromDriver: 'd1', pickupStatus: 'assigned' })), 'reassign + driver + pre-pickup → row PRESENT');
-  assert.strictEqual(runGate({ isReassign: false, pickerFromDriver: 'd1', pickupStatus: 'assigned' }), '', 'initial-assign → ABSENT');
-  assert.strictEqual(runGate({ isReassign: true, pickerFromDriver: null, pickupStatus: 'assigned' }), '', 'no driver → ABSENT');
-  assert.strictEqual(runGate({ isReassign: true, pickerFromDriver: 'd1', pickupStatus: 'completed' }), '', 'pickup COMPLETED (out for delivery) → ABSENT');
-  assert.strictEqual(runGate({ isReassign: true, pickerFromDriver: 'd1', pickupStatus: null }), '', 'no pickup task → ABSENT');
-  ok('render gate: remove row present only for reassign + driver + pre-pickup; absent on initial-assign, no-driver, completed-pickup, missing-pickup');
+  const shown = (over, why) => assert.match(runGate(over).inserted, /Quitar repartidor/, 'PRESENT: ' + why);
+  const hidden = (over, why) => assert.strictEqual(runGate(over).inserted, '', 'ABSENT: ' + why);
+  shown({}, 'reassign + same-owner both legs + assigned pre-pickup + non-terminal');
+  shown({ pickupStatus: 'accepted' }, 'pickup accepted');
+  shown({ pickupStatus: 'in_progress' }, 'pickup in_progress');
+  hidden({ isReassign: false }, 'initial-assign');
+  hidden({ pickerFromDriver: null }, 'no captured driver');
+  hidden({ pickupStatus: 'completed' }, 'pickup completed (out for delivery)');
+  hidden({ pickupStatus: 'pending' }, 'pickup pending');
+  hidden({ pickupStatus: 'cancelled' }, 'pickup cancelled');
+  hidden({ pickupStatus: null }, 'no pickup task');
+  hidden({ deliveryOwner: null }, 'no delivery task');
+  hidden({ pickupOwner: 'dX' }, 'split owners: pickup on a different driver');
+  hidden({ deliveryOwner: 'dX' }, 'split owners: delivery owner ≠ captured');
+  hidden({ orderStatus: 'delivered' }, 'terminal order: delivered');
+  hidden({ orderStatus: 'completed' }, 'terminal order: completed');
+  hidden({ orderStatus: 'cancelled' }, 'terminal order: cancelled');
+  // the inserted row's REAL click wiring opens the confirm for that order
+  const g = runGate({}); g.click();
+  assert.deepStrictEqual(g.opens, ['o1'], 'clicking the inserted remove row opens the unassign confirm for that order');
+  ok('render gate: PRESENT only for reassign + same-owner-both-legs + pickup∈{assigned,accepted,in_progress} + non-terminal; ABSENT for every refused shape; the row click opens the confirm');
 }
 
 console.log(`\ndispatch-unassign-confirm: OK (${n})`);
