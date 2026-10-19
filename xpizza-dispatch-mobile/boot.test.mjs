@@ -33,6 +33,11 @@ const html = readFileSync(join(here, 'index.html'), 'utf8');
 // Anything else the module reaches for must be in the HTML, or the id test below fails.
 const DYNAMIC_IDS = new Set([
   'confirm-yes',   // rendered inside the confirm sheet by openConfirm(); commitAssign() guards on it
+  // S1b dispatch-mobile companion — the "Administrar repartidores" (mdra) sheet is rendered entirely by
+  // JS (the admin bar + sheet templates), never static markup, so every id it reaches for is dynamic.
+  'mdra-open', 'mdra-sheet', 'mdra-x', 'mdra-body', 'mdra-retry', 'mdra-inv', 'mdra-cfm', 'mdra-cxl',
+  'mdra-bk', 'mdra-cr', 'mdra-n', 'mdra-p', 'mdra-e', 'mdra-cp', 'mdra-wa', 'mdra-dn', 'mdra-reasignar',
+  'mdra-ck', 'mdra-go',
 ]);
 
 // Static ids = ids in the MARKUP only. The script block is stripped first, otherwise an id inside
@@ -110,7 +115,11 @@ function installDom() {
     isStalePing: () => false, getAuthInstance: () => ({ currentUser: null }), getDb: () => ({}),
     assignOrderToDriver: async () => ({ ok: true }), reassignOrder: async () => ({ ok: true }),
   };
-  globalThis.__FB_STUB__ = { ref: () => ({}), set: async () => {}, onValue() {}, serverTimestamp: () => 0 };
+  globalThis.__FB_STUB__ = {
+    ref: () => ({}), set: async () => {}, onValue() {}, serverTimestamp: () => 0,
+    off() {}, get: async () => ({ exists: () => false, val: () => null }),
+    getFunctions: () => ({}), httpsCallable: () => (async () => ({ data: {} })),
+  };
 }
 
 function moduleSource() {
@@ -118,8 +127,15 @@ function moduleSource() {
   assert.ok(m, 'index.html must carry exactly one <script type="module">');
   return m[1]
     .replace(/import \* as XPD from '\.\/xpizza-delivery\.js';/, 'const XPD = globalThis.__XPD_STUB__;')
-    .replace(/import \{[^}]*\} from 'https:\/\/[^']*';/g,
-      'const { ref, set, onValue, serverTimestamp } = globalThis.__FB_STUB__;')
+    // Each Firebase CDN import becomes a destructuring of its OWN bindings from the stub (`x as y` → `x: y`),
+    // so multiple DISTINCT https imports (firebase-database AND firebase-functions) never collapse into
+    // duplicate `const` declarations. Bindings the stub omits resolve to undefined — harmless, because none
+    // of these are called at module-eval (only inside handlers); the guard is that the module parses + runs.
+    .replace(/import \{([^}]*)\} from 'https:\/\/[^']*';/g, (_, names) => {
+      const destructured = names.split(',').map((s) => s.trim()).filter(Boolean)
+        .map((s) => s.replace(/\s+as\s+/, ': ')).join(', ');
+      return `const { ${destructured} } = globalThis.__FB_STUB__;`;
+    })
     // The six pure modules are imported for real; absolutise them so a data: URL can resolve them.
     .replace(/from '\.\/([\w.-]+\.js)'/g, (_, f) => `from '${pathToFileURL(join(here, f)).href}'`);
 }
