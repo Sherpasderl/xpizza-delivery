@@ -11,7 +11,7 @@ const { execFileSync } = require('child_process');
 const { unapplyS5Index, HUNKS, BASE } = require('./tools/s5-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const real = require('./tools/h1-inverse').unapplyH1Index(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // H1a (newer) is reversed FIRST: this checks S5's own layer
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 assert.notStrictEqual(unapplyS5Index(real), real, 'non-vacuity: the s5 hunks are present and swapped back');
