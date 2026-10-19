@@ -27,10 +27,15 @@ const SEED = {
   'dispatchers/u-disp': true,
   'kitchen/u-kitA': true, [`restaurants/${C}/kitchen_staff/u-kitA`]: true,
   [`restaurants/${C}/identity/brand_id`]: 'tb_brand', [`restaurants/${NO}/identity/brand_id`]: 'tb_brand',
-  'restaurants/tb_brand/owners/u-ownA': true, [`restaurants/${LEG}/owners/u-ownL`]: true,
-  [`restaurants/${C}/owners/u-ownLocal`]: true,   // a location-LOCAL owner on a location whose identity names another brand (codex Q1 r1 P1-1)
+  // PLAN-portal-membership r3 §6.2: owners / managers live in brand_members; the brand's roster must list the location as a member
+  'brands/tb_brand/locations': { [C]: 'member', [NO]: 'member' }, [`brands/${LEG}/locations`]: { [LEG]: 'member' },
+  'brand_members/tb_brand/owners/u-ownA': { granted_at: 1, granted_by: 'cli:op' }, [`brand_members/${LEG}/owners/u-ownL`]: { granted_at: 1, granted_by: 'cli:op' },
+  // an owner of a brand_members node keyed by the LOCATION id, on a location whose identity names another brand (codex Q1 r1 P1-1)
+  [`brand_members/${C}/owners/u-ownLocal`]: { granted_at: 1, granted_by: 'cli:op' }, [`brands/${C}/locations`]: { [C]: 'member' },
+  // a location whose identity names tb_brand but which tb_brand's roster does NOT list (the closed trust gap)
+  'restaurants/tb_rogue/identity/brand_id': 'tb_brand', 'orders/O8': order('O8', 'tb_rogue'),
   [`restaurants/${C}/handhelds/u-devLive`]: { kind: 'handheld', revoked: false },
-  [`restaurants/${C}/managers/u-mgrA`]: true,
+  [`brand_members/tb_brand/managers/${C}/u-mgrA`]: { granted_at: 1, granted_by: 'u-ownA' },
   [`restaurants/${C}/handhelds/u-dev`]: { kind: 'handheld', revoked: false },
   [`restaurants/${C}/handhelds/u-devRev`]: { kind: 'handheld', revoked: true },
   [`restaurants/${C}/handhelds/u-devKind`]: { kind: 'kiosk', revoked: false },
@@ -108,6 +113,8 @@ const ROWS = [
   // the rid-local owners list counts ONLY when the identity names no brand (codex Q1 r1 P1-1)
   ['rid-local owner of a BRANDED location: rid query denied', (db) => byRid(db, C), 'ownLocal', 'ADD'],
   ['rid-local owner of a BRANDED location: order point read denied', (db) => get(db, 'orders/O1'), 'ownLocal', 'ADD'],
+  ['brand owner: identity names own brand but the ROSTER does not list it (query)', (db) => byRid(db, 'tb_rogue'), 'ownA', 'ADD'],
+  ['brand owner: identity names own brand but the ROSTER does not list it (point read)', (db) => get(db, 'orders/O8'), 'ownA', 'ADD'],
   ['manager A: rid-A query', (db) => byRid(db, C), 'mgrA', 'ADA'],
   ['manager A: A point read', (db) => get(db, 'orders/O1'), 'mgrA', 'ADA'],
   ['manager A: rid-B query', (db) => byRid(db, NO), 'mgrA', 'ADD'],

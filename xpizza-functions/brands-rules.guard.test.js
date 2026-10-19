@@ -33,6 +33,13 @@ assert.strictEqual(rules.public['.write'], false, 'FAIL: /public .write must be 
 assert.strictEqual(rules.public.brands['.read'], true, 'FAIL: /public/brands must be publicly readable');
 noGrant(rules.public, 'public', ['brands']);
 assert.ok(!rules['.read'] && !rules['.write'], 'FAIL: a root grant would cascade over /brands and /public');
+// PLAN-portal-membership r3 §6.1 — the membership nodes are explicit server-only denies (Admin SDK only), no grant beneath.
+for (const node of ['brand_members', 'member_of', 'member_invites']) {
+  assert.ok(rules[node], `FAIL: /${node} rule missing (the deny must be explicit, not left to the default)`);
+  assert.strictEqual(rules[node]['.read'], false, `FAIL: /${node} .read must be false`);
+  assert.strictEqual(rules[node]['.write'], false, `FAIL: /${node} .write must be false`);
+  noGrant(rules[node], node);
+}
 
 const id = rules.restaurants.$restaurant_id.identity;
 assert.strictEqual(id.zone.type['.validate'], "newData.val() === 'circle'", 'FAIL: zone must be circle-only');
@@ -46,4 +53,4 @@ for (const f of ['restaurant_id', 'brand_id'])
 assert.ok(ov.startsWith("((root.child('dispatchers').child(auth.uid).exists() && auth.token.customer !== true) || !data.child('delivered_by_driver_uid').exists()"),
   'FAIL: the pre-existing delivered_by_driver_uid clause must be kept (wrapped), not replaced');
 
-console.log('brands-rules.guard: OK (/brands server-only; /public closed except read-only /public/brands; zone circle-only; identity brand_id preserved + branded identity undeletable; order restaurant_id/brand_id immutable; no root cascade)');
+console.log('brands-rules.guard: OK (/brands + /brand_members + /member_of + /member_invites server-only; /public closed except read-only /public/brands; zone circle-only; identity brand_id preserved + branded identity undeletable; order restaurant_id/brand_id immutable; no root cascade)');
