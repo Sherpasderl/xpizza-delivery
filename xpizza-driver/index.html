@@ -1268,6 +1268,7 @@ let allOrders = {};
 // listeners, both delivered-by history queries, the reconnect edge, and the own-driver listener (§7). It
 // publishes allTasks/allOrders/driverState + a CONTINUOUS readiness (feedReady) via emit callbacks.
 let driverFeed = null;
+let authGen = 0;   // codex F2b #7: bumped on every auth transition; a boot continuation bails if superseded
 // Cuadre readiness: the clock-out cash must never be computed before the orders feed AND the money-grade
 // cutover config are ready, or the receipt would show a false L0 (the whole bug). feedReady is CONTINUOUS
 // (replaces the one-shot ordersLoaded): it holds only while every needed source has a current post-connect
@@ -1570,11 +1571,15 @@ async function boot() {
   XPD.initDiag();   // add-only: start the dark-by-default diagnostics subscriptions (config + .info/connected)
 
   XPD.onAuth(async (user) => {
+    const myAuthGen = ++authGen;
+    // codex F2b #7: tear down the previous session's F2 feed + driver identity BEFORE any new-user state, so a
+    // new driver's orders/readiness/cuadre can never coexist with the previous driver's shift (uid change OR logout).
+    disposeDriverFeed();
+    driverState = null;
     currentUser = user;
     companionDraft = null;                              // drop the previous session's in-memory draft on ANY auth transition (logout / uid change) — codex r3 #4
     if (!user) {
       if (companion) companion.invalidateSession();     // a pending submit from the signed-out session must not resurface a screen over login — codex r3 #1
-      disposeDriverFeed();                               // §7: tear down the F2 feed + reset its state on logout
       cleanupShift();
       showScreen('login');
       return;
@@ -1613,8 +1618,9 @@ async function boot() {
         maybeShowOemOnboarding();
       }
 
-      // Subscribe to live state
-      subscribeToFirebase();
+      // Subscribe to live state — but only if this login is still current (a newer auth transition supersedes it,
+      // so a slow boot can't attach the OLD user's feed over the new session — codex F2b #7).
+      if (myAuthGen === authGen && currentUser && currentUser.uid === user.uid) subscribeToFirebase();
     } catch (e) {
       console.error('driver boot continuation failed (companion still reads after settle)', e);
     } finally {
@@ -1640,6 +1646,8 @@ function disposeDriverFeed() {
   feedReady = false;
   allTasks = {};
   allOrders = {};
+  knownTaskIds = new Set();            // codex F2b #8: reset the new-order chime suppression per session
+  initialAssignmentsLoaded = false;
 }
 
 function subscribeToFirebase() {
@@ -1937,7 +1945,7 @@ function showCuadre() {
   // §6/BC1: continuous readiness gate. Hold "cargando" while the feed is not ready (initial load OR a reconnect
   // re-sync) OR the cutover config has not loaded OR a pending-handoff order is awaiting its fresh history
   // reconcile — a just-delivered order mid-handoff must never let the cuadre undercount.
-  if (!feedReady || !cutoverLoaded || (driverFeed && driverFeed.hasPendingHandoff())) {
+  if (!feedReady || !cutoverLoaded || !driverState || (driverFeed && driverFeed.hasPendingHandoff())) {
     screen._ident = null;
     $('cuadre-receipt').innerHTML = `
       <div class="rc-title">Cierre de turno</div>
@@ -2140,7 +2148,7 @@ $('cuadre-screen').addEventListener('click', async (e) => {
   // §6/BC1: re-check COMBINED feed readiness at confirm time. If the feed re-synced (a reconnect dropped it to
   // loading) or a just-delivered order is mid-handoff, the receipt could undercount — do NOT finalize; stay on
   // shift, re-render (→ "cargando"), and leave retry available.
-  if (!feedReady || (driverFeed && driverFeed.hasPendingHandoff())) {
+  if (!feedReady || !driverState || (driverFeed && driverFeed.hasPendingHandoff())) {
     closeInFlight = false;
     toast('Un momento — actualizando el resumen del turno…', '');
     refreshOpenCashSurfaces();

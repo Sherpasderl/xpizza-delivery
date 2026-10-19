@@ -669,18 +669,30 @@ export function createLiveDriverFeed(uid, emit) {
   const env = {
     emit,
     filterLiveOrders,
-    subscribeOwnTasks(cb) { return onValue(ownTasksQuery(uid), (s) => cb(s.val() || {}), () => {}); },
-    subscribeOrder(oid, cb, onRevoked) {
-      return onValue(ref(db, `orders/${oid}`), (s) => cb(s.val()), (err) => { if (isPermissionDenied(err)) onRevoked(); });
+    subscribeOwnTasks(cb, onError) {
+      return onValue(ownTasksQuery(uid), (s) => cb(s.val() || {}), (err) => { if (onError) onError(err); });
+    },
+    subscribeOrder(oid, cb, onRevoked, onError) {
+      // PERMISSION_DENIED = revocation (order left my scope); any other error = a transient point failure → fail
+      // closed via onError (the controller holds readiness + recovers on reconnect re-attach).
+      return onValue(ref(db, `orders/${oid}`), (s) => cb(s.val()),
+        (err) => { if (isPermissionDenied(err)) onRevoked(); else if (onError) onError(err); });
     },
     subscribeHistory(which, cb, onError) {
       return onValue(ordersByDeliveredQuery(which, uid), (s) => cb(s.val() || {}), (err) => onError(err));
     },
-    getHistoryOnce() {
-      return Promise.all([get(ordersByDeliveredQuery('primary', uid)), get(ordersByDeliveredQuery('legacy', uid))])
-        .then(([p, l]) => ({ primary: p.val() || {}, legacy: l.val() || {} }));
+    // BC1 server-fresh reconcile: read the ORDER POINT path (no active listener after the handoff detaches it →
+    // a real network read, NOT the empty history-query cache), then check attribution directly.
+    reconcileOrderOnce(oid) {
+      return get(ref(db, `orders/${oid}`)).then((s) => {
+        const value = s.val();
+        const keep = !!(value && (value.delivered_by_driver_uid === uid || value.delivered_by_uid === uid));
+        return { value, keep };
+      });
     },
-    subscribeOwnDriver(cb) { return onValue(ref(db, `drivers/${uid}`), (s) => cb(s.val()), () => {}); },
+    subscribeOwnDriver(cb, onError) {
+      return onValue(ref(db, `drivers/${uid}`), (s) => cb(s.val()), (err) => { if (onError) onError(err); });
+    },
     onReconnect,
   };
   const feed = makeDriverFeed(env);

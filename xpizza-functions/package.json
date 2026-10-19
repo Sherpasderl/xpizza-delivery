@@ -157,6 +157,7 @@
     "test:extras-eligibility-publish": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/extras-eligibility-publish.emulator.test.js\"",
     "test:driver-assignment-parity": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/driver-assignment-parity.emulator.test.js\"",
     "test:s1b-rules": "node tools/emulator-run.js --only database \"node test/s1b-driver-accounts-rules.emulator.test.js\"",
+    "test:f2-driver-feed-lifecycle": "node tools/emulator-run.js --only database \"node test/f2-driver-feed-lifecycle.emulator.test.js\"",
     "test:merchant": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant.emulator.test.js\"",
     "test:merchant-rules": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant-rules.emulator.test.js\"",
     "test:merchant-reject": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant-reject.emulator.test.js\"",

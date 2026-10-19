@@ -1,49 +1,61 @@
 // Pure driver-feed controller tests — run: `node driver-feed.test.js` (no framework, repo idiom).
-// Exercises the REAL makeDriverFeed controller; fakes exist ONLY at the injected Firebase boundary (the env
-// primitives). Covers the F2 plan §10 + the explicitly-required cases (i)-(iv): membership/value authority
-// (BC2), ongoing readiness, reconnect (BC3), revocation vs read-error, session teardown, BC1 handoff.
+// The fake env is FAITHFUL to real Firebase SDK semantics (codex F2b r1): a listener emits the current value on
+// ATTACH and only re-emits on a value CHANGE — it does NOT re-fire an unchanged subscription on reconnect, so a
+// fix that merely reset flags and waited would hang here. reconcileOrderOnce is a controllable server read.
 import assert from 'node:assert/strict';
 import { makeDriverFeed, READY, LOADING } from './driver-feed.js';
 
 let passed = 0;
 async function t(name, fn) { try { await fn(); } catch (e) { console.error(`✗ ${name}`); throw e; } passed++; }
 const tick = () => new Promise((r) => setTimeout(r, 0));
-const flush = async () => { await tick(); await tick(); };   // drain the BC1 Promise.resolve().then(getHistoryOnce) chain
+const flush = async () => { await tick(); await tick(); };
 
-// Faithful STATUS-ONLY live filter (mirrors xpizza-delivery.js NON_LIVE_ORDER_STATUSES; NO restaurant filter).
 const NON_LIVE = new Set(['pending_payment', 'scheduled', 'releasing']);
-function filterLiveOrders(m) { const out = {}; for (const id in (m || {})) { const o = m[id]; if (o && NON_LIVE.has(o.status)) continue; out[id] = o; } return out; }
+function filterLiveOrders(m) { const o = {}; for (const id in (m || {})) { const v = m[id]; if (v && NON_LIVE.has(v.status)) continue; o[id] = v; } return o; }
 
 function harness() {
   const H = {
-    taskCb: null, orders: new Map(), hist: { primary: null, legacy: null },
-    reconnectCb: null, driverCb: null, historyOnce: { primary: {}, legacy: {} },
-    attachCount: new Map(), out: { orders: null, tasks: null, readiness: [], driver: [] },
+    tasks: undefined, taskL: new Set(),
+    orders: new Map(), orderL: new Map(),           // oid -> value ; oid -> Set of {cb,onRevoked,onError}
+    hist: { primary: undefined, legacy: undefined }, histL: { primary: new Set(), legacy: new Set() },
+    driver: undefined, driverL: new Set(),
+    reconnectCbs: new Set(),
+    reconcileImpl: null,                            // (oid) => Promise<{value,keep}>
+    attachCount: new Map(),
+    out: { orders: null, tasks: null, readiness: [], driver: [] },
   };
+  const emitTo = (set, ...a) => { for (const l of [...set]) try { l.cb(...a); } catch (_) {} };
   H.env = {
     filterLiveOrders,
-    subscribeOwnTasks(cb) { H.taskCb = cb; return () => { H.taskCb = null; }; },
-    subscribeOrder(oid, cb, onRevoked) {
+    subscribeOwnTasks(cb, onError) { const l = { cb, onError }; H.taskL.add(l); if (H.tasks !== undefined) cb(H.tasks); return () => H.taskL.delete(l); },
+    subscribeOrder(oid, cb, onRevoked, onError) {
       H.attachCount.set(oid, (H.attachCount.get(oid) || 0) + 1);
-      H.orders.set(oid, { cb, onRevoked });
-      return () => { H.orders.delete(oid); };
+      const l = { cb, onRevoked, onError };
+      if (!H.orderL.has(oid)) H.orderL.set(oid, new Set());
+      H.orderL.get(oid).add(l);
+      if (H.orders.has(oid)) cb(H.orders.get(oid));          // emit current value on ATTACH (faithful)
+      return () => { const s = H.orderL.get(oid); if (s) s.delete(l); };
     },
-    subscribeHistory(which, cb, onError) { H.hist[which] = { cb, onError }; return () => { H.hist[which] = null; }; },
-    getHistoryOnce() { return Promise.resolve(H.historyOnce); },
-    onReconnect(cb) { H.reconnectCb = cb; return () => { H.reconnectCb = null; }; },
-    subscribeOwnDriver(cb) { H.driverCb = cb; return () => { H.driverCb = null; }; },
+    subscribeHistory(which, cb, onError) { const l = { cb, onError }; H.histL[which].add(l); if (H.hist[which] !== undefined) cb(H.hist[which]); return () => H.histL[which].delete(l); },
+    reconcileOrderOnce(oid) { return H.reconcileImpl ? H.reconcileImpl(oid) : Promise.resolve({ value: null, keep: false }); },
+    subscribeOwnDriver(cb, onError) { const l = { cb, onError }; H.driverL.add(l); if (H.driver !== undefined) cb(H.driver); return () => H.driverL.delete(l); },
+    onReconnect(cb) { const l = { cb }; H.reconnectCbs.add(l); return () => H.reconnectCbs.delete(l); },
     emit: {
       onOrders(o) { H.out.orders = o; }, onTasks(tk) { H.out.tasks = tk; },
       onReadiness(r) { H.out.readiness.push(r); }, onDriver(d) { H.out.driver.push(d); },
     },
   };
-  H.taskSnap = (m) => H.taskCb && H.taskCb(m);
-  H.orderSnap = (oid, v) => { const r = H.orders.get(oid); if (r) r.cb(v); };
-  H.revoke = (oid) => { const r = H.orders.get(oid); if (r) r.onRevoked(); };
-  H.histSnap = (which, m) => { const r = H.hist[which]; if (r) r.cb(m); };
-  H.histErr = (which) => { const r = H.hist[which]; if (r) r.onError(); };
-  H.reconnect = () => H.reconnectCb && H.reconnectCb();
-  H.driverSnap = (d) => H.driverCb && H.driverCb(d);
+  // drivers (set value + emit to current listeners, like a server push)
+  H.setTasks = (m) => { H.tasks = m; emitTo(H.taskL, m); };
+  H.taskError = () => { for (const l of [...H.taskL]) try { l.onError && l.onError(new Error('permission_denied')); } catch (_) {} };
+  H.setOrder = (oid, v) => { H.orders.set(oid, v); const s = H.orderL.get(oid); if (s) for (const l of [...s]) try { l.cb(v); } catch (_) {} };
+  H.revoke = (oid) => { const s = H.orderL.get(oid); if (s) for (const l of [...s]) try { l.onRevoked && l.onRevoked(); } catch (_) {} };
+  H.orderError = (oid) => { const s = H.orderL.get(oid); if (s) for (const l of [...s]) try { l.onError && l.onError(new Error('disconnected')); } catch (_) {} };
+  H.setHist = (which, m) => { H.hist[which] = m; emitTo(H.histL[which], m); };
+  H.histError = (which) => { for (const l of [...H.histL[which]]) try { l.onError && l.onError(new Error('x')); } catch (_) {} };
+  H.setDriver = (d) => { H.driver = d; emitTo(H.driverL, d); };
+  H.driverError = () => { for (const l of [...H.driverL]) try { l.onError && l.onError(new Error('x')); } catch (_) {} };
+  H.reconnect = () => { for (const l of [...H.reconnectCbs]) try { l.cb(); } catch (_) {} };
   return H;
 }
 
@@ -52,177 +64,199 @@ const delivery = (oid, drv = 'me') => ({ order_id: oid, type: 'delivery', assign
 const tasksFor = (...oids) => { const m = {}; for (const oid of oids) { m[`${oid}_pickup`] = pickup(oid); m[`${oid}_delivery`] = delivery(oid); } return m; };
 const ord = (extra = {}) => ({ status: 'out_for_delivery', total: 100, ...extra });
 
-function bringReady(H, oids, histP = {}, histL = {}) {
-  H.taskSnap(tasksFor(...oids));
-  for (const oid of oids) H.orderSnap(oid, ord({ tag: `${oid}-v1` }));
-  H.histSnap('primary', histP);
-  H.histSnap('legacy', histL);
+// bring a feed to READY with the given task oids (emits tasks, each order's point value, both empty histories)
+function bringReady(H, oids) {
+  for (const oid of oids) H.orders.set(oid, ord({ tag: `${oid}` }));   // so the point listener emits on attach
+  H.setTasks(tasksFor(...oids));
+  H.setHist('primary', {}); H.setHist('legacy', {});
 }
 
-const SUITE_DEADLINE = setTimeout(() => { console.error('✗ driver-feed suite hung'); process.exit(1); }, 5000);
+const DEADLINE = setTimeout(() => { console.error('✗ driver-feed suite hung'); process.exit(1); }, 5000);
 
 (async () => {
-  // ---- 1. initial loading → ready; allOrders carries the point value ----
+  // ---- core ----
   await t('loading until tasks + both histories + every order listener emit; then ready', async () => {
-    const H = harness(); const feed = makeDriverFeed(H.env); feed.start();
-    assert.equal(feed.readiness(), LOADING);
-    H.taskSnap(tasksFor('O1'));
-    assert.equal(feed.readiness(), LOADING, 'order listener not emitted yet');
-    H.orderSnap('O1', ord({ tag: 'p' }));
-    assert.equal(feed.readiness(), LOADING, 'histories not emitted yet');
-    H.histSnap('primary', {}); assert.equal(feed.readiness(), LOADING);
-    H.histSnap('legacy', {});
-    assert.equal(feed.readiness(), READY);
-    assert.deepEqual(Object.keys(feed.getOrders()), ['O1']);
-    assert.equal(feed.getOrders().O1.tag, 'p');
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
+    assert.equal(f.readiness(), LOADING);
+    H.orders.set('O1', ord({ tag: 'p' })); H.setTasks(tasksFor('O1'));   // task + its point value on attach
+    assert.equal(f.readiness(), LOADING, 'histories not emitted');
+    H.setHist('primary', {}); assert.equal(f.readiness(), LOADING);
+    H.setHist('legacy', {});
+    assert.equal(f.readiness(), READY);
+    assert.deepEqual(Object.keys(f.getOrders()), ['O1']);
+    assert.equal(f.getOrders().O1.tag, 'p');
   });
-
-  // ---- 2. BC2 value authority: point listener's latest wins over a (stale) legacy history child ----
-  await t('BC2: newer point value then a stale-legacy emission → published value stays the point value', async () => {
-    const H = harness(); const feed = makeDriverFeed(H.env); feed.start();
+  await t('BC2 value authority: point value wins over a stale legacy history child', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
     bringReady(H, ['O1']);
-    H.orderSnap('O1', ord({ tag: 'point-v2' }));                 // fresh point value
-    H.histSnap('legacy', { O1: ord({ tag: 'stale-legacy' }) }); // a later legacy-query emission for the SAME node
-    assert.equal(feed.getOrders().O1.tag, 'point-v2', 'point authority holds over the legacy child');
+    H.setOrder('O1', ord({ tag: 'point-v2' }));
+    H.setHist('legacy', { O1: ord({ tag: 'stale-legacy' }) });
+    assert.equal(f.getOrders().O1.tag, 'point-v2');
+  });
+  await t('presence invariant: a pending_payment value is never published', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
+    H.orders.set('O1', ord({ status: 'pending_payment' })); H.setTasks(tasksFor('O1'));
+    H.setHist('primary', {}); H.setHist('legacy', {});
+    assert.deepEqual(Object.keys(f.getOrders()), []);
+    assert.equal(f.readiness(), READY);
   });
 
-  // ---- presence invariant: a non-live status is filtered out even with membership ----
-  await t('presence invariant: a pending_payment value is never published despite membership', async () => {
-    const H = harness(); const feed = makeDriverFeed(H.env); feed.start();
-    H.taskSnap(tasksFor('O1')); H.histSnap('primary', {}); H.histSnap('legacy', {});
-    H.orderSnap('O1', ord({ status: 'pending_payment' }));
-    assert.deepEqual(Object.keys(feed.getOrders()), []);
-    assert.equal(feed.readiness(), READY, 'its listener emitted — readiness is not held by a filtered order');
-  });
-
-  // ---- 3. assignment add & remove ----
-  await t('assignment add attaches a listener (loading until it emits); removal with live history detaches, no handoff', async () => {
-    const H = harness(); const feed = makeDriverFeed(H.env); feed.start();
+  // ---- #1 reconnect must RE-ATTACH (unchanged subscriptions don't re-emit) ----
+  await t('#1 reconnect: re-attaches sources (unchanged data) → readiness recovers, not stuck loading', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
     bringReady(H, ['O1']);
-    // add O2
-    H.taskSnap(tasksFor('O1', 'O2'));
-    assert.equal(feed.readiness(), LOADING, 'new O2 listener has not emitted');
-    H.orderSnap('O2', ord({ tag: 'o2' }));
-    assert.equal(feed.readiness(), READY);
-    assert.deepEqual(Object.keys(feed.getOrders()).sort(), ['O1', 'O2']);
-    // O2 now also lives in history; remove its task → detach, stays via history, NO handoff
-    H.histSnap('primary', { O2: ord({ tag: 'o2-hist' }) });
-    H.taskSnap(tasksFor('O1'));
-    assert.equal(feed.hasPendingHandoff(), false, 'history present → no BC1 handoff');
-    assert.ok(feed.getOrders().O2, 'O2 stays via history membership');
-    assert.equal(H.orders.has('O2'), false, 'O2 point listener detached');
+    assert.equal(f.readiness(), READY);
+    const before = H.attachCount.get('O1');
+    H.reconnect();                                   // NO data changes — a flag-reset-and-wait fix would hang here
+    assert.equal(f.readiness(), READY, 'reconnect re-attached and the fresh emissions restored readiness');
+    assert.equal(H.attachCount.get('O1'), before + 1, 'the order listener was re-attached (fresh emission)');
+    assert.ok(f.getOrders().O1, 'order still published after reconnect');
   });
 
-  // ---- 4. BC1 handoff: delivery then task deletion; one fresh reconcile keeps it; cash never undercounts ----
-  await t('BC1: last-membership task removal → pending handoff; reconcile finds it → kept via history', async () => {
-    const H = harness(); const feed = makeDriverFeed(H.env); feed.start();
+  // ---- #2 server-fresh reconcile (no cached-empty undercount) ----
+  await t('#2 BC1 handoff reconciles via a SERVER read: attributed delivered order stays counted', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
     bringReady(H, ['O1']);
-    H.orderSnap('O1', ord({ tag: 'delivered', status: 'delivered' }));
-    H.historyOnce = { primary: { O1: ord({ tag: 'delivered-hist', status: 'delivered' }) }, legacy: {} };
-    H.taskSnap({});                         // both legs deleted on delivery; no live history yet
-    assert.equal(feed.hasPendingHandoff(), true, 'finalization blocked until the reconcile resolves');
+    H.setOrder('O1', ord({ status: 'delivered', delivered_by_driver_uid: 'me', tag: 'delivered' }));
+    let reconciled = null;
+    H.reconcileImpl = (oid) => { reconciled = oid; return Promise.resolve({ value: ord({ status: 'delivered', delivered_by_driver_uid: 'me', tag: 'server' }), keep: true }); };
+    H.setTasks({});                                   // both legs deleted; NO live history yet
+    assert.equal(f.hasPendingHandoff(), true);
     await flush();
-    assert.equal(feed.hasPendingHandoff(), false);
-    assert.ok(feed.getOrders().O1, 'kept via the fresh reconcile → cuadre cannot undercount');
+    assert.equal(reconciled, 'O1', 'did a per-oid server reconcile');
+    assert.equal(f.hasPendingHandoff(), false);
+    assert.ok(f.getOrders().O1, 'kept via the server-fresh reconcile — no undercount');
+    assert.equal(f.getOrders().O1.tag, 'server');
   });
-  await t('BC1: reconcile finds NEITHER → the order is genuinely removed', async () => {
-    const H = harness(); const feed = makeDriverFeed(H.env); feed.start();
+  await t('#2b reconcile says not-mine → removed', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
     bringReady(H, ['O1']);
-    H.historyOnce = { primary: {}, legacy: {} };
-    H.taskSnap({});
-    assert.equal(feed.hasPendingHandoff(), true);
-    await flush();
-    assert.equal(feed.hasPendingHandoff(), false);
-    assert.equal(feed.getOrders().O1, undefined, 'removed — no source references it');
+    H.reconcileImpl = () => Promise.resolve({ value: ord({ status: 'delivered', delivered_by_driver_uid: 'other' }), keep: false });
+    H.setTasks({}); await flush();
+    assert.equal(f.getOrders().O1, undefined);
+    assert.equal(f.hasPendingHandoff(), false);
   });
 
-  // ---- 5. reconnect (BC3): readiness→loading until all re-emit; no duplicate listeners ----
-  await t('BC3 reconnect: readiness drops to loading, re-emits restore ready, no duplicate listeners', async () => {
-    const H = harness(); const feed = makeDriverFeed(H.env); feed.start();
+  // ---- #3 rejected handoff recovers ----
+  await t('#3 rejected handoff stays pending (fail closed) and RECOVERS on retry', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
     bringReady(H, ['O1']);
-    assert.equal(feed.readiness(), READY);
-    H.reconnect();
-    assert.equal(feed.readiness(), LOADING, 'reconnect resets readiness');
-    assert.equal(H.attachCount.get('O1'), 1, 'no duplicate order listener added on reconnect');
-    // re-emit everything post-reconnect
-    H.taskSnap(tasksFor('O1')); H.orderSnap('O1', ord()); H.histSnap('primary', {}); H.histSnap('legacy', {});
-    assert.equal(feed.readiness(), READY);
-    assert.equal(H.attachCount.get('O1'), 1);
+    H.setOrder('O1', ord({ status: 'delivered', delivered_by_driver_uid: 'me' }));
+    let calls = 0;
+    H.reconcileImpl = () => { calls++; return calls === 1 ? Promise.reject(new Error('net')) : Promise.resolve({ value: ord({ status: 'delivered', delivered_by_driver_uid: 'me', tag: 'retry' }), keep: true }); };
+    H.setTasks({}); await flush();
+    assert.equal(f.hasPendingHandoff(), true, 'reject keeps it pending (finalize blocked)');
+    assert.ok(f.getOrders().O1, 'still published (fail closed)');
+    H.reconnect(); await flush();                     // retry on reconnect
+    assert.equal(calls, 2, 'retried');
+    assert.equal(f.hasPendingHandoff(), false, 'recovered');
+    assert.ok(f.getOrders().O1);
   });
 
-  // ---- 6. revocation vs read-error (§10 iii) ----
-  await t('revocation: per-order PERMISSION_DENIED removes the oid, readiness NOT held; other orders keep updating', async () => {
-    const H = harness(); const feed = makeDriverFeed(H.env); feed.start();
+  // ---- #4 late result cannot resurrect a removed order ----
+  await t('#4 a live history removal supersedes a pending reconcile — stale result does not resurrect', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
+    bringReady(H, ['O1']);
+    let resolveRec;
+    H.reconcileImpl = () => new Promise((r) => { resolveRec = () => r({ value: ord({ tag: 'STALE' }), keep: true }); });
+    H.setTasks({});                                   // handoff begins (reconcile pending)
+    assert.equal(f.hasPendingHandoff(), true);
+    await tick();                                      // let the reconcile microtask start (resolveRec is now set)
+    assert.ok(resolveRec, 'reconcile started');
+    H.setHist('primary', { O1: ord({ tag: 'hist' }) });  // live history adds it → supersedes the handoff
+    assert.equal(f.hasPendingHandoff(), false);
+    H.setHist('primary', {});                          // then history removes it
+    assert.equal(f.getOrders().O1, undefined, 'gone');
+    resolveRec(); await flush();                       // the STALE reconcile resolves last
+    assert.equal(f.getOrders().O1, undefined, 'NOT resurrected by the stale reconcile');
+  });
+
+  // ---- #5 revocation removes everything published ----
+  await t('#5 revocation removes the order AND its task legs (no stale card), readiness not held', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
     bringReady(H, ['O1', 'O2']);
-    assert.equal(feed.readiness(), READY);
+    assert.equal(f.readiness(), READY);
     H.revoke('O1');
-    assert.equal(feed.getOrders().O1, undefined, 'revoked order removed');
-    assert.ok(feed.getOrders().O2, 'the still-granted order remains');
-    assert.equal(feed.readiness(), READY, 'revocation does not hold readiness');
-    // a stale task snapshot still listing O1 must NOT re-attach a listener (no retry loop)
-    H.taskSnap(tasksFor('O1', 'O2'));
-    assert.equal(H.attachCount.get('O1'), 1, 'revoked oid not re-attached while still task-referenced');
-    // once the task feed drops O1, a genuinely-new future assignment may re-attach
-    H.taskSnap(tasksFor('O2'));
-    H.taskSnap(tasksFor('O1', 'O2'));
-    assert.equal(H.attachCount.get('O1'), 2, 'cleared from the revoked set after the task feed dropped it');
+    assert.equal(f.getOrders().O1, undefined, 'revoked order removed from allOrders');
+    assert.equal(f.getOwnTasks().O1_pickup, undefined, 'revoked order task legs removed from published ownTasks');
+    assert.equal(f.getOwnTasks().O1_delivery, undefined);
+    assert.ok(f.getOwnTasks().O2_pickup, 'the other order keeps its legs');
+    assert.ok(f.getOrders().O2);
+    assert.equal(f.readiness(), READY, 'revocation does not hold readiness');
   });
-  await t('read-error: a history source cancel holds readiness loading (distinct from revocation); re-emit restores', async () => {
-    const H = harness(); const feed = makeDriverFeed(H.env); feed.start();
+  await t('#5b revocation also drops a history-membership contribution for the oid', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
+    H.orders.set('O1', ord()); H.setTasks(tasksFor('O1'));
+    H.setHist('primary', { O1: ord({ tag: 'hist' }) }); H.setHist('legacy', {});
+    assert.ok(f.getOrders().O1);
+    H.revoke('O1');
+    assert.equal(f.getOrders().O1, undefined, 'not kept alive by history after revocation');
+  });
+
+  // ---- #6 source errors fail closed ----
+  await t('#6 task-query error → readiness loading, task-only order dropped, history order survives', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
     bringReady(H, ['O1']);
-    assert.equal(feed.readiness(), READY);
-    H.histErr('primary');
-    assert.equal(feed.readiness(), LOADING, 'source-level error holds loading, no stale publish');
-    H.histSnap('primary', {});
-    assert.equal(feed.readiness(), READY);
+    H.setHist('primary', { O9: ord({ tag: 'h' }) });   // O9 lives only in history
+    assert.equal(f.readiness(), READY);
+    H.taskError();
+    assert.equal(f.readiness(), LOADING, 'fail closed');
+    assert.equal(f.getOrders().O1, undefined, 'task-only order dropped');
+    assert.ok(f.getOrders().O9, 'history order survives');
+    H.setTasks(tasksFor('O1')); H.setOrder('O1', ord());   // recovery
+    assert.equal(f.readiness(), READY);
   });
-
-  // ---- 7. session teardown (logout/login → §10 iv): old-session callbacks rejected; fresh reset ----
-  await t('session teardown: a late callback from the disposed session is rejected; restart is fresh loading', async () => {
-    const H = harness(); const feed = makeDriverFeed(H.env); feed.start();
+  await t('#6b history error → readiness loading and that history map cleared', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
     bringReady(H, ['O1']);
-    const staleOrderCb = H.orders.get('O1').cb;
-    feed.dispose();
-    staleOrderCb(ord({ tag: 'ZOMBIE' }));                 // late callback from the old generation
-    assert.equal(Object.keys(feed.getOrders()).length, 0, 'disposed feed holds no orders; zombie rejected');
-    feed.start();
-    assert.equal(feed.readiness(), LOADING, 'auth change → readiness returns only after the new session emits');
-    assert.equal(H.attachCount.get('O1'), 1, 'no listener re-attached until the new session re-subscribes tasks');
+    H.setHist('legacy', { O8: ord() });
+    assert.ok(f.getOrders().O8);
+    H.histError('legacy');
+    assert.equal(f.readiness(), LOADING);
+    assert.equal(f.getOrders().O8, undefined, 'stale legacy contribution dropped');
+  });
+  await t('#6c point error (non-permission) → readiness loading, recovers on reconnect re-attach', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
+    bringReady(H, ['O1']);
+    H.orderError('O1');
+    assert.equal(f.readiness(), LOADING);
+    H.reconnect();                                     // re-attach → fresh emit clears errored
+    assert.equal(f.readiness(), READY);
+  });
+  await t('#6d own-driver error → onDriver(null)', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
+    H.setDriver({ active: true });
+    assert.ok(f.getDriver());
+    H.driverError();
+    assert.equal(f.getDriver(), null);
+    assert.equal(H.out.driver.at(-1), null);
   });
 
-  // ---- 8. overlapping-source removal (§10 i) ----
-  await t('(i) overlapping sources: an oid supplied by task AND history stays when one source releases it', async () => {
-    const H = harness(); const feed = makeDriverFeed(H.env); feed.start();
-    H.taskSnap(tasksFor('O1')); H.orderSnap('O1', ord({ tag: 'point' }));
-    H.histSnap('primary', { O1: ord({ tag: 'hist' }) }); H.histSnap('legacy', {});
-    assert.ok(feed.getOrders().O1);
-    H.taskSnap({});                                        // task source released; history still supplies it
-    assert.equal(feed.hasPendingHandoff(), false);
-    assert.equal(feed.getOrders().O1.tag, 'hist', 'stays via history; value falls back to the history child');
-    H.histSnap('primary', {});                            // last source released
-    assert.equal(feed.getOrders().O1, undefined, 'now genuinely gone');
+  // ---- #7 uid transition: dispose clears everything; restart is fresh loading ----
+  await t('#7 dispose clears all state; a late old-session callback is rejected; restart is loading', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
+    bringReady(H, ['O1']);
+    f.dispose();
+    assert.equal(Object.keys(f.getOrders()).length, 0);
+    assert.equal(f.getDriver(), null);
+    // new user (uid change): fresh server state, nothing emitted yet
+    H.tasks = undefined; H.hist = { primary: undefined, legacy: undefined }; H.orders.clear(); H.driver = undefined;
+    f.start();
+    assert.equal(f.readiness(), LOADING, 'new session loading until the new user emits');
+    assert.equal(f.getOrders().O1, undefined, 'no old-session order leaked');
+    H.setTasks({}); H.setHist('primary', {}); H.setHist('legacy', {});
+    assert.equal(f.readiness(), READY, 'ready once the new user source set emits');
   });
 
-  // ---- 9. delayed history init (§10 ii) ----
-  await t('(ii) delayed history: task-present order published via point; readiness loading until histories arrive', async () => {
-    const H = harness(); const feed = makeDriverFeed(H.env); feed.start();
-    H.taskSnap(tasksFor('O1')); H.orderSnap('O1', ord({ tag: 'p' }));
-    assert.ok(feed.getOrders().O1, 'published from the point listener');
-    assert.equal(feed.readiness(), LOADING, 'histories have not initialized — never ready, so cuadre never undercounts');
-    H.histSnap('primary', {}); H.histSnap('legacy', {});
-    assert.equal(feed.readiness(), READY);
+  // ---- #8 startup does not publish synthetic empty tasks ----
+  await t('#8 start() does NOT emit onTasks before a real task snapshot', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
+    assert.equal(H.out.tasks, null, 'no synthetic empty onTasks at startup');
+    assert.deepEqual(H.out.readiness, [LOADING], 'readiness still emits LOADING');
+    H.setTasks(tasksFor('O1'));
+    assert.ok(H.out.tasks && H.out.tasks.O1_pickup, 'onTasks emitted only after the real snapshot');
   });
 
-  // ---- own driver record (§8) ----
-  await t('own driver record is surfaced and reset on dispose', async () => {
-    const H = harness(); const feed = makeDriverFeed(H.env); feed.start();
-    H.driverSnap({ active: true, status: 'available' });
-    assert.equal(feed.getDriver().status, 'available');
-    assert.equal(H.out.driver.at(-1).active, true);
-    feed.dispose();
-    assert.equal(feed.getDriver(), null);
-  });
-
-  clearTimeout(SUITE_DEADLINE);
+  clearTimeout(DEADLINE);
   console.log(`✓ driver-feed: ${passed} passed`);
-})().catch((e) => { clearTimeout(SUITE_DEADLINE); console.error(e); process.exit(1); });
+})().catch((e) => { clearTimeout(DEADLINE); console.error(e); process.exit(1); });

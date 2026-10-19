@@ -15260,5 +15260,101 @@
     "from": "companionDraft = d;",
     "to": "companionDraft = companionDraft;",
     "label": "onboarding draft not kept in memory -> a failed storage write blocks checklist ticks / practice progress (codex r3 #4)"
+  },
+  {
+    "id": "f2b-01",
+    "slice": "f2b",
+    "file": "../xpizza-driver/driver-feed.js",
+    "from": "attachTaskAndHistory(myGen);\n    for (const oid of reattachOids) attachOrder(oid);",
+    "to": "for (const oid of reattachOids) attachOrder(oid);",
+    "label": "#1 reconnect no longer re-subscribes task/history -> flags reset but unchanged subs never re-emit, readiness hangs",
+    "command": [
+      "node",
+      "../xpizza-driver/driver-feed.test.js"
+    ]
+  },
+  {
+    "id": "f2b-02",
+    "slice": "f2b",
+    "file": "../xpizza-driver/driver-feed.js",
+    "from": "revokedOids.add(oid);",
+    "to": "revokedOids.delete(oid);",
+    "label": "#5 revoked oid not recorded -> its task legs stay in the published card view",
+    "command": [
+      "node",
+      "../xpizza-driver/driver-feed.test.js"
+    ]
+  },
+  {
+    "id": "f2b-03",
+    "slice": "f2b",
+    "file": "../xpizza-driver/driver-feed.js",
+    "from": "if (t && t.order_id != null && revokedOids.has(String(t.order_id))) continue;",
+    "to": "if (t && t.order_id != null && false) continue;",
+    "label": "#5 publishedOwnTasks no longer strips a revoked order's legs -> stale card",
+    "command": [
+      "node",
+      "../xpizza-driver/driver-feed.test.js"
+    ]
+  },
+  {
+    "id": "f2b-04",
+    "slice": "f2b",
+    "file": "../xpizza-driver/driver-feed.js",
+    "from": "if (res && res.keep && res.value != null) confirmed.set(oid, res.value);",
+    "to": "if (res && res.value != null) confirmed.set(oid, res.value);",
+    "label": "#2 reconcile ignores attribution (keep) -> a not-mine delivered order is counted",
+    "command": [
+      "node",
+      "../xpizza-driver/driver-feed.test.js"
+    ]
+  },
+  {
+    "id": "f2b-05",
+    "slice": "f2b",
+    "file": "../xpizza-driver/driver-feed.js",
+    "from": "handoffRetry.add(oid);",
+    "to": "handoff.delete(oid);",
+    "label": "#3 a rejected handoff is dropped instead of retried -> finalize unblocks with a missing order",
+    "command": [
+      "node",
+      "../xpizza-driver/driver-feed.test.js"
+    ]
+  },
+  {
+    "id": "f2b-06",
+    "slice": "f2b",
+    "file": "../xpizza-driver/driver-feed.js",
+    "from": "if (emit.onTasks && tasksEmitted) emit.onTasks(publishedOwnTasks());",
+    "to": "if (emit.onTasks) emit.onTasks(publishedOwnTasks());",
+    "label": "#8 synthetic empty tasks published at startup -> breaks new-order chime suppression",
+    "command": [
+      "node",
+      "../xpizza-driver/driver-feed.test.js"
+    ]
+  },
+  {
+    "id": "f2b-07",
+    "slice": "f2b",
+    "file": "../xpizza-driver/driver-feed.js",
+    "from": "if (!tasksEmitted || tasksErrored) return LOADING;",
+    "to": "if (!tasksEmitted) return LOADING;",
+    "label": "#6 task-query error no longer holds readiness -> fails open on a dead task feed",
+    "command": [
+      "node",
+      "../xpizza-driver/driver-feed.test.js"
+    ]
+  },
+  {
+    "id": "f2b-08",
+    "slice": "f2b",
+    "file": "../xpizza-driver/driver-feed.js",
+    "from": "if (!handoff.has(oid)) return;                     // fix #4: superseded by task re-add / live hist / revocation",
+    "to": "if (!handoff.has(oid)) ;                     // fix #4: superseded by task re-add / live hist / revocation",
+    "label": "#4 late reconcile not gated on current membership -> stale result resurrects a removed order",
+    "command": [
+      "node",
+      "../xpizza-driver/driver-feed.test.js"
+    ]
   }
 ]
