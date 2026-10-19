@@ -47,6 +47,8 @@
     "visibility-refetch.test.mjs",
     "whole-flow.test.mjs",
     "xp-stage2-summary.test.mjs",
+    "xpizza-functions/access/membership-admin.test.js",
+    "xpizza-functions/access/membership.test.js",
     "xpizza-functions/address-autofill-recheckout.test.js",
     "xpizza-functions/catalog-form-bundle.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
@@ -201,6 +203,7 @@
     "xpizza-functions/test/intake-availability.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
+    "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
     "xpizza-functions/test/merchant-push.emulator.test.js",
     "xpizza-functions/test/order-control.emulator.test.js",
@@ -244,6 +247,8 @@
     "group-picker-golden.test.mjs",
     "group-picker-lamusa.test.mjs",
     "stage-race.test.mjs",
+    "xpizza-functions/access/membership-admin.test.js",
+    "xpizza-functions/access/membership.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/catalog/activation-eligibility.test.js",
     "xpizza-functions/catalog/add-product-groups.test.js",
@@ -367,6 +372,7 @@
     "xpizza-functions/test/intake-availability.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
+    "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
     "xpizza-functions/test/merchant-push.emulator.test.js",
     "xpizza-functions/test/otp-brand.emulator.test.js",
@@ -434,6 +440,8 @@
     "visibility-refetch.test.mjs",
     "whole-flow.test.mjs",
     "xp-stage2-summary.test.mjs",
+    "xpizza-functions/access/membership-admin.test.js",
+    "xpizza-functions/access/membership.test.js",
     "xpizza-functions/address-autofill-recheckout.test.js",
     "xpizza-functions/catalog-form-bundle.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
@@ -587,6 +595,7 @@
     "xpizza-functions/test/intake-availability.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
+    "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
     "xpizza-functions/test/merchant-push.emulator.test.js",
     "xpizza-functions/test/order-control.emulator.test.js",
@@ -626,6 +635,8 @@
     "picker-extras-money.test.mjs",
     "picker-extras.test.mjs",
     "stage-race.test.mjs",
+    "xpizza-functions/access/membership-admin.test.js",
+    "xpizza-functions/access/membership.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/catalog/activation-eligibility.test.js",
     "xpizza-functions/catalog/add-product-groups.test.js",
@@ -754,6 +765,7 @@
     "xpizza-functions/test/intake-availability.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
+    "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
     "xpizza-functions/test/merchant-push.emulator.test.js",
     "xpizza-functions/test/otp-brand.emulator.test.js",
@@ -1098,6 +1110,7 @@
   "form-harness.mjs",
   "xpizza-dispatch-mobile/board-model.js",
   "xpizza-dispatch/dispatch-alert-nav.js",
+  "xpizza-functions/access/membership-admin-core.js",
   "xpizza-functions/catalog/add-product-io.js",
   "xpizza-functions/catalog/candidate-validate.js",
   "xpizza-functions/catalog/catalog-context.js",
@@ -1545,10 +1558,21 @@
  "seed_problems": [],
  "server_modules_edited": [
   "access/access-census-core.js",
+  "access/invites.js",
+  "access/legacy-readers.js",
+  "access/membership-admin-core.js",
+  "access/membership.js",
+  "access/roster.js",
+  "access/team-core.js",
   "account-lib.js",
   "alert-prune.js",
   "catalog/bound-reuse.js",
   "catalog/canonical-binding.js",
+  "catalog/catalog-edit-auth.js",
+  "catalog/edit-catalog-handler.js",
+  "catalog/portal-reads.js",
+  "catalog/publish-edited-handler.js",
+  "catalog/reset-draft.js",
   "catalog/text-version.js",
   "createorder-classify.js",
   "index.js",
@@ -1578,7 +1602,8 @@
   "rewards-redeem-intake.js",
   "rewards-reserve.js",
   "signup-core.js",
-  "signup-endpoints.js"
+  "signup-endpoints.js",
+  "stats/stats-api.js"
  ],
  "server": {
   "access/access-census-core.js": {
@@ -1586,6 +1611,30 @@
    "lifts": [
     "xpizza-functions/access/kds-filter-pre-f2.guard.test.js"
    ]
+  },
+  "access/invites.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "access/legacy-readers.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "access/membership-admin-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "access/membership.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "access/roster.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "access/team-core.js": {
+   "pins": [],
+   "lifts": []
   },
   "account-lib.js": {
    "pins": [],
@@ -1606,6 +1655,28 @@
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js"
    ]
+  },
+  "catalog/catalog-edit-auth.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/edit-catalog-handler.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/portal-reads.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/publish-edited-handler.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/catalog/publish-paths.test.js"
+   ]
+  },
+  "catalog/reset-draft.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/text-version.js": {
    "pins": [],
@@ -2093,6 +2164,10 @@
    "lifts": [
     "xpizza-functions/signup-wiring.guard.test.js"
    ]
+  },
+  "stats/stats-api.js": {
+   "pins": [],
+   "lifts": []
   }
  },
  "unregistered": []
