@@ -1,5 +1,5 @@
 {
- "_doc": "R3 P1-a — DECLARED run expectations (observed once, then declared): the trigger invocation multiset the S1 pay tap fans out to, the declared parked sleepers, and the routed calls that legitimately price nothing. parked: autoAssignOnOrderCreate waits on its reviewed GRACE_PERIOD_MS sleep at LP new (virtual time is not advanced in P1-a). nonPricingCalls: getPublicMenu serves the menu projection (its response carries representation_version, no catalog version id); in P1-a both published versions come from the same source, so the menu epoch cannot change an expectation — differing epochs are S1t-a/b/c (P1-d).",
+ "_doc": "R3 P1-a — DECLARED run expectations (observed once, then declared): the trigger invocation multiset the S1 pay tap fans out to, the declared parked sleepers, and the routed calls that legitimately price nothing. parked: autoAssignOnOrderCreate waits on its reviewed GRACE_PERIOD_MS sleep at LP new (virtual time is not advanced in P1-a). nonPricingCalls: getPublicMenu serves the menu projection (its response carries representation_version, no catalog version id); in P1-a both published versions come from the same source, so the menu epoch cannot change an expectation — differing epochs are S1t-a/b/c (P1-d). merchantPushOnStatus ×1 (H1c-server): the handheld push trigger fires on the order's status write like every /orders/{id}/status subscriber, and is a NO-OP here — the S1 location is not order_surface 'handheld', so it returns not_served before any read of devices, any push-log write or any send (the journey asserts merchant_push_log / merchant_push_tokens stay absent).",
  "form.pay": {
   "allocateDisplayNumberOnSale": 3,
   "allocateFacturaOnSale": 3,
@@ -9,6 +9,7 @@
   "earnRewardsOnCompletion": 1,
   "logOrderLifecycle": 1,
   "materializeOnConfirm": 3,
+  "merchantPushOnStatus": 1,
   "mirrorStatusToHistory": 1,
   "notifyDriverOnAssignment": 2,
   "notifyDriverOnCancellation": 1,

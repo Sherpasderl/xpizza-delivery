@@ -240,6 +240,9 @@ try {
   const ms = invs.reduce((m, k) => ((m[k] = (m[k] || 0) + 1), m), {});
   assert.deepStrictEqual(ms, EXPECTED_INVOCATIONS['form.pay'], FAIL('invocations', `the pay tap's trigger multiset changed:\n  observed ${JSON.stringify(ms)}\n  declared ${JSON.stringify(EXPECTED_INVOCATIONS['form.pay'])}`));
   S.assertClean(EXPECTED_INVOCATIONS.parked);
+  // H1c-server: merchantPushOnStatus is in the multiset but must be a NO-OP for a non-handheld location — no push-log, no token row
+  assert.strictEqual((await rtdb.ref('merchant_push_log').get()).val(), null, FAIL('invocations', 'merchantPushOnStatus wrote a push log for a non-handheld location'));
+  assert.strictEqual((await rtdb.ref('merchant_push_tokens').get()).val(), null, FAIL('invocations', 'merchantPushOnStatus touched the token index'));
   ok(`the pay tap's invocation multiset equals the declared one (${invs.length} invocations: ${Object.entries(ms).map(([k, v]) => `${k}×${v}`).join(', ')}); no invocation error, parked = declared`);
 
   // per-call served version: every PRICING call served exactly {ACTIVE} live; the others are the declared non-pricing calls

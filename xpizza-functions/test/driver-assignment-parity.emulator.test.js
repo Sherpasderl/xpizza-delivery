@@ -79,10 +79,19 @@ const REASSIGN_SEG = liftSegment(
   '    const svcDb = await pickHandle(db);   // S1a §3 (codex r2 P1-2)',
   "await rollbackOrAlert(db, claim, orderId, 'timeout-reassign');  // restore timed-out driver (alert on double-fault; also the fall-back when eligibility can't be established — codex r4 P1)\n    }");
 const reassignBody = [liftFn('buildAssignmentUpdates'), liftFn('expectedIneligibleOrMain'), liftFn('releaseToSinAsignar'), liftFn('releaseAndAlert'), liftFn('rollbackOrAlert'), `return (async () => {\n${REASSIGN_SEG}\n})();`].join('\n');
-const REASSIGN_PARAMS = ['db', 'orderId', 'driverId', 'nextDriver', 'attempts', 'pickHandle', 'svcWriteOrFallback', 'claimDelivery', 'isExpectedEligibilityDenial', 'releaseDeliveryFromDriver', 'ServerValue', 'ACCEPT_TIMEOUT_MS', 'console'];
+// H1a A-R1: the segment calls merchantHooks.holdAfterClaim / releaseHeld (index.js h1 hunk) and reads orderForTimeout on the held
+// path — the REAL module is injected (never a permissive stub) and orderForTimeout is the order as the handler read it before
+// this segment (index.js: `const orderForTimeout = (await db.ref(\`orders/${orderId}\`).once('value')).val()`).
+const merchantHooks = require('../merchant/merchant-hooks');
+const REASSIGN_PARAMS = ['db', 'orderId', 'driverId', 'nextDriver', 'attempts', 'pickHandle', 'svcWriteOrFallback', 'claimDelivery', 'isExpectedEligibilityDenial', 'releaseDeliveryFromDriver', 'ServerValue', 'ACCEPT_TIMEOUT_MS', 'console', 'merchantHooks', 'orderForTimeout'];
 // eslint-disable-next-line no-new-func
 const runReassignFn = new Function(...REASSIGN_PARAMS, reassignBody);
-const runReassign = (o) => runReassignFn(o.db, o.orderId, o.driverId, o.nextDriver, 1, o.pickHandle, o.svcWriteOrFallback || svcHandleLib.svcWriteOrFallback, claimDelivery, o.isExpectedEligibilityDenial, releaseDeliveryFromDriver, { TIMESTAMP: NOW }, 60000, console);
+// the handler reads orderForTimeout with the ADMIN database (index.js top-level db), whatever handle a cell injects as `db`
+let readOrderAsAdmin = null;
+const runReassign = async (o) => {
+  const orderForTimeout = await readOrderAsAdmin(o.orderId);
+  return runReassignFn(o.db, o.orderId, o.driverId, o.nextDriver, 1, o.pickHandle, o.svcWriteOrFallback || svcHandleLib.svcWriteOrFallback, claimDelivery, o.isExpectedEligibilityDenial, releaseDeliveryFromDriver, { TIMESTAMP: NOW }, 60000, console, merchantHooks, orderForTimeout);
+};
 
 // codex r6/r7 P2-2: bind the dispatch CLIENT batch to the ACTUAL shipped code STRUCTURALLY (acorn), tightly:
 //   (a) select the UNIQUE EXPORTED assignOrderToDriver and fail if another declaration of that name exists (decoy);
@@ -195,6 +204,7 @@ async function captureErr(fn) { const logs = []; const orig = console.error; con
   const { buildCompleteTaskUpdates } = await import(pathToFileURL(path.join(__dirname, '..', '..', 'xpizza-driver', 'driver-complete.js')).href);
   const { stackedTasksToAccept } = await import(pathToFileURL(path.join(__dirname, '..', '..', 'xpizza-driver', 'stacking-helpers.js')).href);
   const env = await initializeTestEnvironment({ projectId: 'demo-xpizza', database: { rules: RULES } });
+  readOrderAsAdmin = async (oid) => { let v; await env.withSecurityRulesDisabled(async (c) => { v = (await c.database().ref(`orders/${oid}`).get()).val(); }); return v; };
 
   const svc = env.authenticatedContext('svc-assigner', { svc_assigner: true }).database();   // RULES-ENFORCED as svc-assigner (the restricted handle)
   const drv = env.authenticatedContext(D_EN).database();             // the real driver (D_EN), rules-enforced
@@ -286,6 +296,18 @@ async function captureErr(fn) { const logs = []; const orig = console.error; con
   await seedReassign('oT1');
   await env.withSecurityRulesDisabled((c) => runReassign({ db: c.database(), orderId: 'oT1', driverId: D_EN, nextDriver: { driverId: D_EN2 }, pickHandle: async () => svc, isExpectedEligibilityDenial: svcHandleLib.isExpectedEligibilityDenial }));
   await assertBothLegs('oT1', D_EN2, 'assigned'); ok('TIMEOUT (lifted handler, flag-ON): eligible replacement → claim+finalize land both legs on the next driver (allowed transition)');
+
+  // (A-H) H1a A-R1 — a handheld REJECT held on the order at the claim → the REAL holdAfterClaim says 'held' → releaseHeld returns both
+  //       legs to SIN ASIGNAR + a no_response_takeover alert; the order is never finalized onto the next driver
+  await seedReassign('oTH');
+  await env.withSecurityRulesDisabled((c) => c.database().ref('orders/oTH/handheld_answered').set({ kind: 'rejected', at: NOW, by: 'hh_a', op_id: 'op_oTH' }));
+  await env.withSecurityRulesDisabled((c) => runReassign({ db: c.database(), orderId: 'oTH', driverId: D_EN, nextDriver: { driverId: D_EN2 }, pickHandle: async () => svc, isExpectedEligibilityDenial: svcHandleLib.isExpectedEligibilityDenial }));
+  { const d = await legOf('oTH', 'delivery'), p = await legOf('oTH', 'pickup');
+    assert.equal(d.assigned_driver_id ?? null, null, 'held: delivery not given to the next driver'); assert.equal(d.status, 'pending');
+    assert.equal(p.assigned_driver_id ?? null, null, 'held: pickup released'); assert.equal(p.status, 'pending');
+    let takeover; await env.withSecurityRulesDisabled(async (c) => { takeover = Object.values((await c.database().ref('dispatcher_alerts').get()).val() || {}).some((a) => a && a.type === 'no_response_takeover' && a.order_id === 'oTH'); });
+    assert.ok(takeover, 'a no_response_takeover alert was raised'); }
+  ok('TIMEOUT (lifted handler, H1a A-R1): a handheld-REJECTED order at the claim → the real holdAfterClaim holds it → both legs to SIN ASIGNAR + no_response_takeover, never reassigned');
 
   // (B) flag-ON, replacement SUSPENDED at CLAIM → release to SIN ASIGNAR + alert (never stranded on the timed-out owner)
   await setAcct(D_EN2, { enabled: false });
