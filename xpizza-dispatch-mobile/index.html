@@ -1405,6 +1405,8 @@ async function commitAssign(orderId, driverId){
 
 // ── "Quitar repartidor" (unassign) — reassign-only; mirrors the reassign confirm flow, destination = Sin asignar ──
 function openUnassignConfirm(orderId){
+  // fresh opId per operation; commitUnassign reuses it so a retry of the same press resends the SAME opId
+  unassignOpId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2);
   const order = STORE.orders[orderId] || STORE.scheduled[orderId] || {};
   const fromD = pickerFromDriver ? (STORE.drivers[pickerFromDriver] || {}) : null;
   const initial = (n) => escapeHtml(String(n || '?').charAt(0).toUpperCase());
@@ -1427,7 +1429,7 @@ function openUnassignConfirm(orderId){
   `);
 }
 
-let unassignBusy = false;
+let unassignBusy = false, unassignOpId = null;
 async function commitUnassign(orderId){
   if (unassignBusy) return;                         // one request per confirm (defensive; the button is also disabled)
   unassignBusy = true;
@@ -1436,7 +1438,7 @@ async function commitUnassign(orderId){
   // FAIL-SAFE: success ONLY on res.ok === true; the two no-op copies ONLY on an explicit known reason; everything
   // else (unknown/missing reason, non-boolean ok, null, non-object, throw) falls to the error toast. NOT assignOrder.
   let res;
-  try { res = await XPD.unassignOrder(orderId, pickerFromDriver); }
+  try { res = await XPD.unassignOrder(orderId, pickerFromDriver, unassignOpId); }
   catch { res = null; }
   try {
     if (res && res.ok === true) {

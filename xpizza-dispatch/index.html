@@ -5011,11 +5011,14 @@ $('recon-note-overlay').addEventListener('keydown', (e) => {
 // (reattached/visible) or the shared pickerReturnFocusTarget cascade. On success/no-op, close both. FAIL-SAFE
 // result mapping: success ONLY on res.ok===true; the no-op copies ONLY on an exact known reason; everything else
 // → the retry error. One request per confirm (unassignBusy + the button is disabled).
-let unassignOpen = false, unassignBusy = false, unassignOrderId = null, unassignOpener = null;
+let unassignOpen = false, unassignBusy = false, unassignOrderId = null, unassignOpener = null, unassignOpId = null;
 function openUnassignConfirm(orderId) {
   const order = allOrders[orderId];
   if (!order) return;
   unassignOpen = true; unassignOrderId = orderId; unassignOpener = document.activeElement;
+  // Fresh opId per operation (one confirm = one logical press); doUnassign reuses it so a retry of the SAME
+  // press resends the SAME opId (server idempotency + the 503 retryable case). A reopened dialog gets a new one.
+  unassignOpId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2);
   const fromName = (allDrivers[pickerFromDriver] && allDrivers[pickerFromDriver].name) || 'el repartidor actual';
   $('unassign-confirm-title').textContent = 'Quitar repartidor';
   $('unassign-confirm-sub').textContent = `${displayOrderLabel(orderId)} · ${order.customer_name || '—'}`;
@@ -5043,7 +5046,7 @@ async function doUnassign() {
   unassignBusy = true;
   const orderId = unassignOrderId;
   const btn = $('unassign-confirm-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Quitando…'; }
-  let res; try { res = await XPD.unassignOrder(orderId, pickerFromDriver); } catch (_) { res = null; }
+  let res; try { res = await XPD.unassignOrder(orderId, pickerFromDriver, unassignOpId); } catch (_) { res = null; }
   try {
     if (res && res.ok === true) {
       toast(`Pedido ${displayOrderLabel(orderId)} sin asignar — de vuelta en la cola`, 'success');
