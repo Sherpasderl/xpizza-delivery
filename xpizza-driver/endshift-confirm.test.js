@@ -10,10 +10,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
 import { endShiftPrompt } from './order-helpers.js';
-// jsdom lives in xpizza-functions/node_modules (the suite runs from there); import its ESM entry by path since a bare
-// specifier does not resolve from this directory.
-import { JSDOM } from '../xpizza-functions/node_modules/jsdom/lib/api.js';
+// jsdom is a DECLARED devDependency of xpizza-functions (devDependencies.jsdom ^30.0.1), the repo's established DOM
+// test harness (contract/page-harness.js et al.). A bare specifier does not resolve from this directory, so require
+// it BY NAME, resolved from xpizza-functions/ — no coupling to jsdom's internal file layout or node_modules path.
+const require = createRequire(join(dirname(fileURLToPath(import.meta.url)), '..', 'xpizza-functions', 'package.json'));
+const { JSDOM } = require('jsdom');
 
 const SCRIPT = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.html'), 'utf8')
   .match(/<script type="module">([\s\S]*?)<\/script>/)[1];
