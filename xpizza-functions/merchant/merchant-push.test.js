@@ -13,7 +13,7 @@ test('vToken / vEpoch', () => {
 
 test('targetsOf: entries of THIS rid, valid token / epoch / claim, whose uid is a registered unrevoked handheld; uid then hash order', () => {
   const C = (n) => String(n).repeat(24);
-  const e = (rid, uid, token, over = {}) => ({ rid, uid, epoch: EP, token, claim: C(1), at: 5, ...over });
+  const e = (rid, uid, token, over = {}) => ({ rid, uid, epoch: EP, token, claim: C(1), gen: 5, ...over });
   const entries = {
     h2: e('tb_norte', 'hh_b', 'tb'), h1: e('tb_norte', 'hh_a', 'ta1'), h0: e('tb_norte', 'hh_a', 'ta0', { claim: C(2) }),
     hx: e('tb_centro', 'hh_a', 'tx'), hr: e('tb_norte', 'hh_rev', 'tr'), hn: e('tb_norte', 'hh_none', 'tn'), hh: e('tb_norte', 'human', 'th'),
@@ -87,21 +87,23 @@ test('pendingOf (S1b): new + unanswered + served at this handheld location; at =
   assert.deepStrictEqual(P.pendingOf(orders, 'tb_norte', 'kds', {}), [], 'a kds location has no handheld pending');
 });
 
-test('codex r2: ONE registration record per token — a unique claim per registration; the newer REQUEST wins; clears match the exact claim', () => {
+test('codex r2/r3: ONE registration record per token — a unique claim per registration; the newer PAIRING (server pair_gen) wins; clears match the exact claim', () => {
   const C1 = 'aaaaaaaaaaaaaaaaaaaaaaaa'; const C2 = 'bbbbbbbbbbbbbbbbbbbbbbbb';
-  const old = { rid: 'tb_norte', uid: 'hh_a', epoch: EP, token: 'T', claim: C1, at: 100 };
-  const fresh = { rid: 'tb_centro', uid: 'hh_c', epoch: 'epoch_ZYXWVUTSRQ9876', token: 'T', claim: C2, at: 200 };
+  const old = { rid: 'tb_norte', uid: 'hh_a', epoch: EP, token: 'T', claim: C2, gen: 4 };
+  const fresh = { rid: 'tb_centro', uid: 'hh_c', epoch: 'epoch_ZYXWVUTSRQ9876', token: 'T', claim: C1, gen: 9 };
   assert.deepStrictEqual(P.claimUpdate(null, old), old, 'first registration');
-  assert.deepStrictEqual(P.claimUpdate(old, fresh), fresh, 'a newer request replaces (incl. a move to another device)');
-  assert.strictEqual(P.claimUpdate(fresh, old), undefined, 'a STALE request (began earlier) landing late never overwrites');
-  assert.deepStrictEqual(P.claimUpdate({ ...old, at: 200 }, fresh), fresh, 'same start ms: the claim breaks the tie (C2 > C1)');
-  assert.strictEqual(P.claimUpdate({ ...fresh, at: 200 }, { ...old, at: 200 }), undefined, '…deterministically, both ways');
+  assert.deepStrictEqual(P.claimUpdate(old, fresh), fresh, 'a newer pairing replaces (incl. a move to another device)');
+  assert.strictEqual(P.claimUpdate(fresh, old), undefined, 'an OLDER pairing never replaces a newer one — whatever its claim or timing');
+  assert.deepStrictEqual(P.claimUpdate(old, { ...old, claim: C1 }), { ...old, claim: C1 }, 'the SAME generation (the same device re-registering) replaces');
   assert.deepStrictEqual(P.claimUpdate({ rid: 'x', junk: true }, old), old, 'a malformed stored entry never blocks');
-  assert.strictEqual(P.clearClaimUpdate(old, C1), null, 'the exact registration is cleared');
-  assert.strictEqual(P.clearClaimUpdate(fresh, C1), undefined, 'a delayed cleanup of an OLD registration never clears a new one');
+  assert.deepStrictEqual(P.claimUpdate({ ...fresh, gen: 'nine' }, old), old, 'a malformed stored gen never blocks');
+  assert.strictEqual(P.clearClaimUpdate(old, C2), null, 'the exact registration is cleared');
+  assert.strictEqual(P.clearClaimUpdate(fresh, C2), undefined, 'a delayed cleanup of an OLD registration never clears a new one');
   assert.strictEqual(P.clearClaimUpdate(null, C1), null);
   assert.strictEqual(P.clearClaimUpdate(old, 'nothex'), undefined);
-  assert.deepStrictEqual(P.unregisterMatches({ h1: old, h2: fresh, h3: { ...old, epoch: 'epoch_ZYXWVUTSRQ9876', claim: C2 } }, 'tb_norte', 'hh_a', EP), [{ hash: 'h1', claim: C1 }], 'only this pairing\'s epoch');
+  assert.deepStrictEqual(P.unregisterMatches({ h1: old, h2: fresh, h3: { ...old, epoch: 'epoch_ZYXWVUTSRQ9876', claim: C1 } }, 'tb_norte', 'hh_a', EP), [{ hash: 'h1', claim: C2 }], 'only this pairing\'s epoch');
   assert.strictEqual(P.vClaim(C1), C1);
   for (const bad of ['a'.repeat(23), 'A'.repeat(24), 'g'.repeat(24), null, 5]) assert.strictEqual(P.vClaim(bad), null);
+  assert.strictEqual(P.vGen(3), 3);
+  for (const bad of [0, -1, 1.5, '3', null]) assert.strictEqual(P.vGen(bad), null);
 });

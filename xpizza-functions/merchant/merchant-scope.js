@@ -28,7 +28,7 @@ async function authorizeHandheld(db, auth, rid, { resolveBrand }) {
   let row;
   try { row = await readVal(db, `restaurants/${rid}/handhelds/${auth.uid}`); } catch (_) { return deny('unavailable'); }
   if (!isObj(row) || row.kind !== 'handheld' || row.revoked === true) return deny('forbidden');
-  return { ok: true, uid: auth.uid };
+  return { ok: true, uid: auth.uid, row };                // the registry row as read for THIS decision (H1c reads pair_gen from it)
 }
 
 async function authorizeManager(db, auth, rid, { resolveBrand }) {

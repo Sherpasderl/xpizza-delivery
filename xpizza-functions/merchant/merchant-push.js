@@ -18,22 +18,23 @@ const vToken = (t) => (typeof t === 'string' && t.length >= 1 && t.length <= 409
 const vEpoch = (e) => (typeof e === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(e) ? e : null);
 
 // restaurants/{rid}/handhelds → [{uid, token, epoch}] for registered, unrevoked handhelds holding a valid token AND epoch (uid-sorted)
-// ── registration (codex H1c-server r2): ONE record per token — merchant_push_tokens/{sha256(token)} =
-//    {rid, uid, epoch, token, claim, at}. It is the only registration record (rows carry no token), so every registration change is
+// ── registration (codex H1c-server r2/r3): ONE record per token — merchant_push_tokens/{sha256(token)} =
+//    {rid, uid, epoch, token, claim, gen}. It is the only registration record (rows carry no token), so every registration change is
 //    ONE transaction on ONE path: nothing is ever half-written across paths.
 //      claim  a random id unique per registration (never reused, so a delayed cleanup of an old registration can never match a new one)
-//      at     the server time the registration REQUEST began (before any await): a stale request that lands late loses to a newer one
+//      gen    the device's server-issued pair_gen (pairDevice's counter), read from the registry row by authorization — the
+//             AUTHORITATIVE pairing order. An older pairing's request never replaces a newer pairing's registration, whatever the
+//             clocks or arrival order; the same generation (the same device re-registering) replaces.
 const CLAIM_RE = /^[a-f0-9]{24}$/;
 const vClaim = (v) => (typeof v === 'string' && CLAIM_RE.test(v) ? v : null);
-const vAt = (v) => (Number.isInteger(v) && v > 0 ? v : null);
-// is the stored entry NEWER than a registration that began at `at` with id `claim`? (total order: at, then claim)
-function isNewer(cur, at, claim) {
-  if (!isObj(cur) || vAt(cur.at) === null || vClaim(cur.claim) === null) return false;
-  return cur.at > at || (cur.at === at && cur.claim > claim);
+const vGen = (v) => (Number.isInteger(v) && v >= 1 ? v : null);
+// does the stored entry belong to a NEWER pairing than generation `gen`?
+function isNewer(cur, gen) {
+  return isObj(cur) && vGen(cur.gen) !== null && cur.gen > gen;
 }
-// the register transaction: a newer stored registration wins (abort); otherwise this entry replaces whatever was there
+// the register transaction: a newer pairing's registration stands (abort); otherwise this entry replaces whatever was there
 function claimUpdate(cur, entry) {
-  return isNewer(cur, entry.at, entry.claim) ? undefined : entry;
+  return isNewer(cur, entry.gen) ? undefined : entry;
 }
 // compare-and-clear: only the EXACT registration (its claim) is removed; absent → no-op
 function clearClaimUpdate(cur, claim) {
@@ -106,5 +107,5 @@ function pendingOf(orders, rid, surface, log) {
   });
 }
 
-module.exports = { vToken, vEpoch, vClaim, isNewer, claimUpdate, clearClaimUpdate, targetsOf, unregisterMatches, becameNew, leftNewTo, answeredNow, servedAtHandheld, stillPending, logNewUpdate, logResolveUpdate,
+module.exports = { vToken, vEpoch, vClaim, vGen, isNewer, claimUpdate, clearClaimUpdate, targetsOf, unregisterMatches, becameNew, leftNewTo, answeredNow, servedAtHandheld, stillPending, logNewUpdate, logResolveUpdate,
   buildDataMessage, isDeadHandheldToken, pendingOf, PUSH_TTL_MS };

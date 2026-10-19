@@ -5,9 +5,9 @@
  * brands/ + identity fixtures, the real authorizeHandheld (codex H1c-server r1 P2-4). Messaging is stubbed at the Admin boundary
  * (Messaging.prototype.sendEach) — tests reach loopback only. Run: npm run test:merchant-push
  *   1. production authorization: an unregistered uid, a revoked row, a claim for another rid, a location with no brand membership
- *      → refused by the real callables; a registered device registers (ONE index entry {rid, uid, epoch, token, claim, at})
- *   2. codex r2 P1-2: the SAME row — a stale request (began first, paused at its one transaction) vs a newer one → aborted, never
- *      overwriting; the newer registration keeps receiving
+ *      → refused by the real callables; a registered device registers (ONE index entry {rid, uid, epoch, token, claim, gen})
+ *   2. codex r3 P1: an OLDER pairing (server pair_gen) paused inside authorization vs a NEWER pairing that succeeds → aborted,
+ *      never overwriting; the newer registration keeps receiving
  *   3. codex r2 P1-1: unregister → re-register the same token/uid while an E1 send is in flight → the delayed E1 dead-token response
  *      and a late E1 unregister are no-ops (claims are unique, never reused)
  *   4. reconcile through the real export: the fence before the read; pending + transition at via the indexed location query
@@ -58,6 +58,19 @@ const beforeTxn = new Map();
     return orig.apply(this, a);
   };
 })();
+// …and a one-shot hook awaited BEFORE a read of a path (pauses a request INSIDE authorization: the registry row read)
+const beforeRead = new Map();
+(() => {
+  let o = Object.getPrototypeOf(db.ref('x'));
+  while (o && !Object.prototype.hasOwnProperty.call(o, 'once')) o = Object.getPrototypeOf(o);
+  const orig = o.once;
+  o.once = async function (...a) {
+    const path = decodeURIComponent(new URL(this.toString()).pathname).replace(/^\//, '');
+    const h = beforeRead.get(path);
+    if (h) { beforeRead.delete(path); await h(); }
+    return orig.apply(this, a);
+  };
+})();
 const gate = () => { let open; let reached; const opened = new Promise((r) => { open = r; }); const at = new Promise((r) => { reached = r; }); return { open, at, hook: async () => { reached(); await opened; } }; };
 
 (async () => {
@@ -66,9 +79,9 @@ const gate = () => { let open; let reached; const opened = new Promise((r) => { 
     brands: { tb: { name: 'Marca TB', active: true, locations: { tb_norte: 'member', tb_centro: 'member' }, activation: { state: 'on', since: 1 } } },
     restaurants: {
       tb_norte: { order_surface: 'handheld', identity: { brand_id: 'tb', location_name: 'Norte', prep_default_min: 18 },
-        handhelds: { hh_a: { kind: 'handheld', revoked: false }, hh_b: { kind: 'handheld', revoked: false }, hh_r: { kind: 'handheld', revoked: true } } },
-      tb_centro: { order_surface: 'kds', identity: { brand_id: 'tb', location_name: 'Centro', prep_default_min: 20 }, handhelds: { hh_c: { kind: 'handheld', revoked: false } } },
-      tb_huerfana: { order_surface: 'handheld', identity: { brand_id: 'tb', location_name: 'Huérfana' }, handhelds: { hh_h: { kind: 'handheld', revoked: false } } },
+        handhelds: { hh_a: { kind: 'handheld', revoked: false, pair_gen: 1 }, hh_b: { kind: 'handheld', revoked: false, pair_gen: 2 }, hh_r: { kind: 'handheld', revoked: true, pair_gen: 5 } } },
+      tb_centro: { order_surface: 'kds', identity: { brand_id: 'tb', location_name: 'Centro', prep_default_min: 20 }, handhelds: { hh_c: { kind: 'handheld', revoked: false, pair_gen: 3 } } },
+      tb_huerfana: { order_surface: 'handheld', identity: { brand_id: 'tb', location_name: 'Huérfana' }, handhelds: { hh_h: { kind: 'handheld', revoked: false, pair_gen: 4 } } },
     },
     orders: { o1: order('o1'), o2: order('o2'), o3: order('o3'), oc: order('oc', { restaurant_id: 'tb_centro' }), ol: order('ol', { routing_reason: null }) },
   });
@@ -83,25 +96,27 @@ const gate = () => { let open; let reached; const opened = new Promise((r) => { 
   assert.strictEqual(await val(`merchant_push_tokens/${IO.sha('TOKH')}`), null);
   assert.deepStrictEqual(await reg('hh_a', 'TOKA', EP), { ok: true, registered_token_hash: IO.sha('TOKA') });
   const ea = await val(`merchant_push_tokens/${IO.sha('TOKA')}`);
-  assert.deepStrictEqual({ ...ea, claim: 'x', at: 'x' }, { rid: 'tb_norte', uid: 'hh_a', epoch: EP, token: 'TOKA', claim: 'x', at: 'x' });
-  assert.ok(/^[a-f0-9]{24}$/.test(ea.claim) && Number.isInteger(ea.at), 'a random claim + the request start');
+  assert.deepStrictEqual({ ...ea, claim: 'x' }, { rid: 'tb_norte', uid: 'hh_a', epoch: EP, token: 'TOKA', claim: 'x', gen: 1 }, 'gen = the row\'s server-issued pair_gen');
+  assert.ok(/^[a-f0-9]{24}$/.test(ea.claim), 'a random claim');
   assert.strictEqual(await val('restaurants/tb_norte/handhelds/hh_a/fcm_token'), null, 'the row carries no token');
   ok('production authorization: anonymous / unregistered / revoked / foreign-rid / non-member refused by the real callable; a device registers (ONE index entry)');
 
-  // 2. codex r2 P1-2 — the SAME row: a stale request (began first, paused at its one transaction) vs a newer one that succeeds
+  // 2. codex r3 P1 — an OLDER pairing (hh_a, gen 1) paused INSIDE authorization; the NEWER pairing (hh_b, gen 2) registers the same
+  //    token and succeeds; A is released later (its clock reads later) → aborted, never replacing the newer registration
   const g = gate();
-  beforeTxn.set(`merchant_push_tokens/${IO.sha('TRACE')}`, g.hook);
-  const a = reg('hh_b', 'TRACE', EP);                                                 // began first
+  beforeRead.set('restaurants/tb_norte/handhelds/hh_a', g.hook);
+  const a = reg('hh_a', 'TRACE', EP);
   await g.at;
-  assert.deepStrictEqual(await reg('hh_b', 'TRACE', EP2), { ok: true, registered_token_hash: IO.sha('TRACE') });   // newer, same row
+  assert.deepStrictEqual(await reg('hh_b', 'TRACE', EP2), { ok: true, registered_token_hash: IO.sha('TRACE') });
   g.open();
-  assert.strictEqual(await codeOf(a), 'aborted', 'the stale request never overwrites the newer registration');
+  assert.strictEqual(await codeOf(a), 'aborted', 'the older pairing never replaces the newer registration');
+  assert.strictEqual((await val(`merchant_push_tokens/${IO.sha('TRACE')}`)).uid, 'hh_b');
   assert.strictEqual((await val(`merchant_push_tokens/${IO.sha('TRACE')}`)).epoch, EP2);
   outbox = [];
   await trigger('merchantPushOnStatus', 'o3', null, 'new', T0 + 90);
   assert.deepStrictEqual(outbox.map((m) => [m.token, m.data.epoch]), [['TOKA', EP], ['TRACE', EP2]], 'the newer registration keeps receiving');
   await db.ref('merchant_push_log/o3').remove();
-  ok('codex r2 P1-2 on the real transaction: a stale same-row request landing after a newer one → aborted, the newer one stands and receives');
+  ok('codex r3 P1 on the real path: an older pairing paused in authorization, released after the newer one succeeded → aborted; the newer stands and receives');
 
   // 3. codex r2 P1-1 — unregister → re-register the SAME token/uid while an E1 send is in flight: E1's delayed dead response is a no-op
   failFor = { TOKA: 'messaging/registration-token-not-registered' };

@@ -4,6 +4,9 @@
 //                 a fresh Auth user (server-chosen uid hh_{rid}_{rand}), the registry row, and a custom token carrying ONLY
 //                 {handheld:true, rid}. A request that tries to choose the uid or claims is refused. PRECONDITION (advisor,
 //                 prep base): the location has a valid identity.prep_default_min, so a paired device always has a base.
+//                 H1c (codex H1c-server r3): every pairing takes a server-issued, strictly increasing pair_gen from ONE counter
+//                 transaction (platform_config/handheld_pair_gen) and stores it on the row — the authoritative order of pairings
+//                 that push registration fences on (never a client value, never a clock).
 //   revokeDevice: never gated. The target must ALREADY be a kind:'handheld' row under the authorized rid — otherwise not-found,
 //                 with no Auth call and no row created. Steps in order, each idempotent, so a retry recovers a partial failure:
 //                 revoked:true (immediate denial via the registry + the F2 rule clause) → disable the user → revoke tokens.
@@ -26,6 +29,10 @@ async function asManager({ db, resolveBrand, HttpsError }, auth, rid) {
   return a.uid;
 }
 
+// the next pairing generation. null-first safe: a null read proposes 1 and RTDB re-runs with the real value when the counter exists.
+// A malformed counter is never "repaired" by restarting (that would re-issue generations): it aborts, and pairing is refused.
+const nextPairGen = (cur) => (cur === null ? 1 : Number.isInteger(cur) && cur >= 1 ? cur + 1 : undefined);
+
 async function pairDevice(deps, auth, data) {
   const { db, adminAuth, HttpsError, now, randomId } = deps;
   onlyKeys(data, ['rid', 'label'], HttpsError);
@@ -37,8 +44,12 @@ async function pairDevice(deps, auth, data) {
   try { base = V.vPrepBase((await db.ref(`restaurants/${rid}/identity/prep_default_min`).once('value')).val()); } catch (_) { throw new HttpsError('unavailable', 'identity unreadable'); }
   if (base === null) throw new HttpsError('failed-precondition', 'no_prep_base');
   const uid = `hh_${rid}_${randomId()}`;
+  let pairGen = null; let g;
+  try { g = await db.ref('platform_config/handheld_pair_gen').transaction((cur) => { pairGen = nextPairGen(cur); return pairGen; }); }
+  catch (_) { throw new HttpsError('unavailable', 'pair generation unavailable'); }
+  if (!g || !g.committed || !Number.isInteger(pairGen) || g.snapshot.val() !== pairGen) throw new HttpsError('unavailable', 'pair generation unavailable');
   await adminAuth.createUser({ uid });
-  await db.ref(`restaurants/${rid}/handhelds/${uid}`).set({ kind: 'handheld', label, paired_at: now(), paired_by: by, revoked: false });
+  await db.ref(`restaurants/${rid}/handhelds/${uid}`).set({ kind: 'handheld', label, paired_at: now(), paired_by: by, revoked: false, pair_gen: pairGen });
   const custom_token = await adminAuth.createCustomToken(uid, { handheld: true, rid });
   return { uid, custom_token };
 }

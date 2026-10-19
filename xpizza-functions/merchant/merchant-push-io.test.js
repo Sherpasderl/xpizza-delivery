@@ -14,8 +14,9 @@ const rejectsCode = (p, c) => assert.rejects(p, (e) => e.code === c);
 const order = (oid, over = {}) => ({ order_id: oid, restaurant_id: 'tb_norte', routing_reason: 'nearest', status: 'new', created_at: T0 - 5000, ...over });
 const world = (over = {}) => ({
   restaurants: {
-    tb_norte: { order_surface: 'handheld', handhelds: { hh_n1: { kind: 'handheld', revoked: false }, hh_n2: { kind: 'handheld', revoked: false } } },
-    tb_centro: { order_surface: 'kds', handhelds: { hh_c1: { kind: 'handheld', revoked: false, fcm_token: 'TC', push_epoch: EP } } },
+    tb_norte: { order_surface: 'handheld', handhelds: { hh_n1: { kind: 'handheld', revoked: false, pair_gen: 1 }, hh_n2: { kind: 'handheld', revoked: false, pair_gen: 2 },
+      hh_old: { kind: 'handheld', revoked: false } } },
+    tb_centro: { order_surface: 'kds', handhelds: { hh_c1: { kind: 'handheld', revoked: false, pair_gen: 3 } } },
   },
   orders: { o1: order('o1'), o2: order('o2'), ok: order('ok', { restaurant_id: 'tb_centro' }), ol: order('ol', { routing_reason: undefined }) },
   ...over,
@@ -31,9 +32,11 @@ const deps = (db, extra = {}) => ({ db, resolveBrand, HttpsError, now: () => T0,
 }, ...extra });
 // a registration exactly as registerPush writes it: ONE index entry (rows carry no token)
 const C = (n) => n.toString(16).padStart(24, '0');
-function reg(db, uid, token, epoch, claimN = 1, rid = 'tb_norte', at = T0) {
-  db.put(`merchant_push_tokens/${IO.sha(token)}`, { rid, uid, epoch, token, claim: C(claimN), at });
+function reg(db, uid, token, epoch, claimN = 1, rid = 'tb_norte', gen = 1) {
+  db.put(`merchant_push_tokens/${IO.sha(token)}`, { rid, uid, epoch, token, claim: C(claimN), gen });
 }
+// a db whose read of ONE path first awaits `before()` — pauses a request INSIDE authorization (the registry row read)
+const pauseRead = (db, path, before) => ({ ...db, ref: (p) => { const r = db.ref(p); return p === path ? { ...r, once: async (...x) => { await before(); return r.once(...x); } } : r; } });
 // a db whose transaction on ONE path first awaits `before()` (a controlled interleaving), then runs normally
 const pauseTxn = (db, path, before) => ({ ...db, ref: (p) => { const r = db.ref(p); return p === path ? { ...r, transaction: async (f) => { await before(); return r.transaction(f); } } : r; } });
 const ev = (oid, before, after, time = T0) => ({ params: { orderId: oid }, time: new Date(time).toISOString(), data: { before: { val: () => before }, after: { val: () => after } } });
@@ -52,15 +55,17 @@ test('S1 register: device-auth refusals (anonymous, human, revoked, wrong rid, f
   }
 });
 
-test('S1 register: ONE index entry {rid, uid, epoch, token, claim, at} (rows untouched) + the hash; a re-pair MOVES the token in that same write', async () => {
+test('S1 register: ONE index entry {rid, uid, epoch, token, claim, gen} (rows untouched) + the hash; a re-pair MOVES the token in that same write', async () => {
   const db = createFakeDb(world());
   const rowBefore = db.get('restaurants/tb_norte/handhelds/hh_n1');
   const r = await IO.registerPush(deps(db, { newClaim: () => C(7) }), dev('hh_n1'), { rid: 'tb_norte', token: 'TOK1', epoch: EP });
   assert.deepStrictEqual(r, { ok: true, registered_token_hash: IO.sha('TOK1') });
-  assert.deepStrictEqual(db.get(`merchant_push_tokens/${IO.sha('TOK1')}`), { rid: 'tb_norte', uid: 'hh_n1', epoch: EP, token: 'TOK1', claim: C(7), at: T0 });
+  assert.deepStrictEqual(db.get(`merchant_push_tokens/${IO.sha('TOK1')}`), { rid: 'tb_norte', uid: 'hh_n1', epoch: EP, token: 'TOK1', claim: C(7), gen: 1 }, 'gen = the row\'s server-issued pair_gen');
   assert.deepStrictEqual(db.get('restaurants/tb_norte/handhelds/hh_n1'), rowBefore, 'the row carries no token');
   await IO.registerPush(deps(db, { now: () => T0 + 1, newClaim: () => C(8) }), dev('hh_n2'), { rid: 'tb_norte', token: 'TOK1', epoch: EP2 });
-  assert.deepStrictEqual(db.get(`merchant_push_tokens/${IO.sha('TOK1')}`), { rid: 'tb_norte', uid: 'hh_n2', epoch: EP2, token: 'TOK1', claim: C(8), at: T0 + 1 }, 'moved');
+  assert.deepStrictEqual(db.get(`merchant_push_tokens/${IO.sha('TOK1')}`), { rid: 'tb_norte', uid: 'hh_n2', epoch: EP2, token: 'TOK1', claim: C(8), gen: 2 }, 'moved');
+  await rejectsCode(IO.registerPush(deps(db), dev('hh_old'), { rid: 'tb_norte', token: 'TOK2', epoch: EP }), 'failed-precondition', 'a row without a pair_gen re-pairs');
+  await rejectsCode(IO.registerPush(deps(db), dev('hh_n1'), { rid: 'tb_norte', token: 'T', epoch: EP, gen: 99 }), 'invalid-argument', 'a client-supplied gen is refused');
 });
 test('S1 unregister: removes this device\'s entries under THIS epoch only — another epoch, device or location is never touched', async () => {
   const db = createFakeDb(world());
@@ -165,19 +170,29 @@ test('fan-out targets: only this location\'s entries of registered, unrevoked ro
   await IO.sendTo(d2, 'tb_norte', 'new_order', 'o1', T0);
   assert.deepStrictEqual(d2.messaging.sent.map((m) => m.token), ['TA']);
 });
-test('codex r2 P1-2: a STALE request (began first, paused) landing after a newer one → aborted, never overwriting it; the newer one keeps receiving', async () => {
+test('codex r3 P1: an OLDER pairing paused INSIDE authorization, released after the newer one succeeded and the clock moved on → aborted; the newer stays', async () => {
   const db = createFakeDb(world());
   let release; const gate = new Promise((r) => { release = r; }); let paused; const atGate = new Promise((r) => { paused = r; });
-  const dbA = pauseTxn(db, `merchant_push_tokens/${IO.sha('T')}`, async () => { paused(); await gate; });
-  const a = IO.registerPush(deps(dbA, { now: () => T0 }), dev('hh_n1'), { rid: 'tb_norte', token: 'T', epoch: EP });   // began at T0
+  const dbA = pauseRead(db, 'restaurants/tb_norte/handhelds/hh_n1', async () => { paused(); await gate; });
+  const a = IO.registerPush(deps(dbA, { now: () => T0, newClaim: () => 'f'.repeat(24) }), dev('hh_n1'), { rid: 'tb_norte', token: 'T', epoch: EP });   // gen 1
   await atGate;
-  assert.strictEqual((await IO.registerPush(deps(db, { now: () => T0 + 5 }), dev('hh_n1'), { rid: 'tb_norte', token: 'T', epoch: EP2 })).ok, true);   // same row
-  release();
+  assert.strictEqual((await IO.registerPush(deps(db, { now: () => T0 + 1, newClaim: () => '0'.repeat(24) }), dev('hh_n2'), { rid: 'tb_norte', token: 'T', epoch: EP2 })).ok, true);   // gen 2
+  release();                                                                             // A's clock now reads later, and its claim sorts higher
   await rejectsCode(a, 'aborted');
-  assert.deepStrictEqual([db.get(`merchant_push_tokens/${IO.sha('T')}`).epoch, db.get(`merchant_push_tokens/${IO.sha('T')}`).at], [EP2, T0 + 5], 'the newer registration stands');
+  assert.deepStrictEqual([db.get(`merchant_push_tokens/${IO.sha('T')}`).uid, db.get(`merchant_push_tokens/${IO.sha('T')}`).gen], ['hh_n2', 2], 'the newer pairing stands');
   const d = deps(db);
   await IO.sendTo(d, 'tb_norte', 'new_order', 'o1', T0);
   assert.deepStrictEqual(d.messaging.sent.map((m) => [m.token, m.data.epoch]), [['T', EP2]]);
+});
+
+test('codex r3 P1: equal timestamps — an older pairing landing after a newer one aborts; the SAME device re-registering replaces', async () => {
+  const db = createFakeDb(world());
+  const same = { now: () => T0 };
+  await IO.registerPush(deps(db, { ...same, newClaim: () => '0'.repeat(24) }), dev('hh_n2'), { rid: 'tb_norte', token: 'T', epoch: EP2 });   // gen 2
+  await rejectsCode(IO.registerPush(deps(db, { ...same, newClaim: () => 'f'.repeat(24) }), dev('hh_n1'), { rid: 'tb_norte', token: 'T', epoch: EP }), 'aborted');   // gen 1
+  assert.strictEqual(db.get(`merchant_push_tokens/${IO.sha('T')}`).epoch, EP2);
+  await IO.registerPush(deps(db, { ...same, newClaim: () => '1'.repeat(24) }), dev('hh_n2'), { rid: 'tb_norte', token: 'T', epoch: EP2 });
+  assert.strictEqual(db.get(`merchant_push_tokens/${IO.sha('T')}`).claim, '1'.repeat(24), 'same generation → replaced (a fresh claim)');
 });
 test('codex r2 P1-1: unregister → re-register the SAME token/uid → the delayed old dead-token cleanup and the old unregister are no-ops', async () => {
   const db = createFakeDb(world());

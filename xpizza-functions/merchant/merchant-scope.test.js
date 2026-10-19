@@ -18,7 +18,8 @@ const tok = (uid, rid, extra = {}) => ({ uid, token: { handheld: true, rid, ...e
 
 test('authorizeHandheld: registered, unrevoked device of THAT location only', async () => {
   const db = createFakeDb(base());
-  assert.deepStrictEqual(await S.authorizeHandheld(db, tok('hh_c1', 'tb_centro'), 'tb_centro', { resolveBrand: brandOf }), { ok: true, uid: 'hh_c1' });
+  assert.deepStrictEqual(await S.authorizeHandheld(db, tok('hh_c1', 'tb_centro'), 'tb_centro', { resolveBrand: brandOf }),
+    { ok: true, uid: 'hh_c1', row: { kind: 'handheld', revoked: false } }, 'the registry row read for THIS decision comes back (H1c reads pair_gen from it)');
   assert.strictEqual((await S.authorizeHandheld(db, tok('hh_c1', 'tb_centro'), 'tb_norte', { resolveBrand: brandOf })).code, 'forbidden');       // claim rid ≠ arg rid
   assert.strictEqual((await S.authorizeHandheld(db, tok('hh_c1', 'tb_norte'), 'tb_norte', { resolveBrand: brandOf })).code, 'forbidden');       // not in tb_norte registry
   assert.strictEqual((await S.authorizeHandheld(db, tok('hh_rev', 'tb_centro'), 'tb_centro', { resolveBrand: brandOf })).code, 'forbidden');    // revoked

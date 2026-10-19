@@ -2,9 +2,10 @@
 // H1c-server (PLAN-H1c r3 + codex r4, APPROVED) — the I/O half of the handheld push. Deps are injected:
 //   {db, resolveBrand, HttpsError, now, newClaim, messaging: {sendEach(messages)}, queryLocationOrders(db, rid)}
 // S1   registerPush({rid, token, epoch})   device-auth; ONE transaction on merchant_push_tokens/{sha256(token)} writes the whole
-//      registration {rid, uid, epoch, token, claim, at} (codex r2): `claim` is random and unique per registration; `at` is the server
-//      time the REQUEST began, so a stale request landing late loses to a newer one ('aborted'). A token re-paired to another device
-//      moves in that same transaction. Returns the hash native verifies before it reports push-ready.
+//      registration {rid, uid, epoch, token, claim, gen} (codex r2/r3): `claim` is random and unique per registration; `gen` is the
+//      device's server-issued pair_gen read from the registry row by authorization — an older pairing's request never replaces a
+//      newer pairing's registration ('aborted'). A token re-paired to another device moves in that same transaction. Returns the hash
+//      native verifies before it reports push-ready.
 //      unregisterPush({rid, epoch})         removes this device's entries under THIS pairing's epoch, each by an exact-claim
 //      compare-and-clear (a newer pairing has another epoch / claim and is never touched).
 // S1b  pendingOrders({rid})                 device-auth reconcile read: fence F = the server clock BEFORE the read; pending ids with
@@ -27,11 +28,12 @@ function onlyKeys(data, allowed, HttpsError) {
   const extra = Object.keys(data).filter((k) => !allowed.includes(k));
   if (extra.length) throw new HttpsError('invalid-argument', `unexpected fields: ${extra.sort().join(', ')}`);
 }
-async function asDevice({ db, resolveBrand, HttpsError }, auth, rid) {
+async function authDevice({ db, resolveBrand, HttpsError }, auth, rid) {
   const a = await authorizeHandheld(db, auth, rid, { resolveBrand });
   if (!a.ok) throw new HttpsError(AUTH_CODE[a.code] || 'permission-denied', a.code);
-  return a.uid;
+  return a;
 }
+const asDevice = async (deps, auth, rid) => (await authDevice(deps, auth, rid)).uid;
 const idxRef = (db, hash) => db.ref(`merchant_push_tokens/${hash}`);
 // a location's registrations, by the indexed rid query (".indexOn": "rid" on the server-only node)
 const entriesOf = async (db, rid) => (await db.ref('merchant_push_tokens').orderByChild('rid').equalTo(rid).once('value')).val();
@@ -41,16 +43,17 @@ const logOf = (deps) => (deps.log && typeof deps.log.warn === 'function' ? deps.
 const warn = (deps, fields) => { try { logOf(deps).warn(JSON.stringify({ event: 'merchant_push', ...fields })); } catch (_) { /* logging never breaks a send */ } };
 
 async function registerPush(deps, auth, data) {
-  const { db, HttpsError, now } = deps;
-  const at = now();                                                           // the REQUEST's start — before any await
+  const { db, HttpsError } = deps;
   onlyKeys(data, ['rid', 'token', 'epoch'], HttpsError);
   const rid = V.vRid(data.rid); const token = P.vToken(data.token); const epoch = P.vEpoch(data.epoch);
   if (!rid || !token || !epoch) throw new HttpsError('invalid-argument', 'bad rid/token/epoch');
-  const uid = await asDevice(deps, auth, rid);
+  const a = await authDevice(deps, auth, rid);
+  const gen = P.vGen(a.row && a.row.pair_gen);                                // server-side, from THIS authorization's registry read
+  if (gen === null) throw new HttpsError('failed-precondition', 'no_pair_gen');      // paired before generations existed → re-pair
   const hash = sha(token);
-  const entry = { rid, uid, epoch, token, claim: deps.newClaim(), at };
+  const entry = { rid, uid: a.uid, epoch, token, claim: deps.newClaim(), gen };
   const tx = await idxRef(db, hash).transaction((cur) => P.claimUpdate(cur, entry));   // THE registration: one path, one transaction
-  if (!tx || !tx.committed) throw new HttpsError('aborted', 'superseded');           // a newer registration of this token stands
+  if (!tx || !tx.committed) throw new HttpsError('aborted', 'superseded');           // a newer pairing's registration of this token stands
   return { ok: true, registered_token_hash: hash };
 }
 

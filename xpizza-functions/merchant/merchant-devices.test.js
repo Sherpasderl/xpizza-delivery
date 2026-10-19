@@ -37,7 +37,23 @@ test('pair: manager of the location → device user + registry row + custom toke
   const r = await D.pairDevice(deps(db, a), human('mgr_c'), { rid: 'tb_centro', label: 'Mostrador' });
   assert.strictEqual(r.uid, 'hh_tb_centro_r4nd');
   assert.deepStrictEqual(a.calls.find((c) => c[0] === 'createCustomToken'), ['createCustomToken', 'hh_tb_centro_r4nd', { handheld: true, rid: 'tb_centro' }]);
-  assert.deepStrictEqual(db.get('restaurants/tb_centro/handhelds/hh_tb_centro_r4nd'), { kind: 'handheld', label: 'Mostrador', paired_at: T0, paired_by: 'mgr_c', revoked: false });
+  assert.deepStrictEqual(db.get('restaurants/tb_centro/handhelds/hh_tb_centro_r4nd'), { kind: 'handheld', label: 'Mostrador', paired_at: T0, paired_by: 'mgr_c', revoked: false, pair_gen: 1 });
+});
+
+test('H1c (codex H1c-server r3): every pairing takes the NEXT server-issued pair_gen from one counter; a malformed / unreadable counter refuses', async () => {
+  const db = createFakeDb(world()); let n = 0;
+  const d = { ...deps(db, fakeAuth()), randomId: () => `r${++n}` };
+  await D.pairDevice(d, human('mgr_c'), { rid: 'tb_centro', label: 'A' });
+  await D.pairDevice(d, human('mgr_c'), { rid: 'tb_centro', label: 'B' });
+  assert.deepStrictEqual([db.get('restaurants/tb_centro/handhelds/hh_tb_centro_r1/pair_gen'), db.get('restaurants/tb_centro/handhelds/hh_tb_centro_r2/pair_gen'),
+    db.get('platform_config/handheld_pair_gen')], [1, 2, 2]);
+  db.put('platform_config/handheld_pair_gen', 'junk');
+  await rejectsCode(D.pairDevice(d, human('mgr_c'), { rid: 'tb_centro', label: 'C' }), 'unavailable');
+  assert.strictEqual(db.get('restaurants/tb_centro/handhelds/hh_tb_centro_r3'), null, 'never a re-issued generation');
+  db.put('platform_config/handheld_pair_gen', 2);
+  db.failReads.add('platform_config/handheld_pair_gen');
+  await rejectsCode(D.pairDevice(d, human('mgr_c'), { rid: 'tb_centro', label: 'D' }), 'unavailable');
+  assert.strictEqual(db.get('restaurants/tb_centro/handhelds/hh_tb_centro_r4'), null, 'no generation → no device');
 });
 
 test('pair: refused while the pairing gate is off (even for an owner), across locations, for devices, and with client-supplied uid/claims', async () => {
