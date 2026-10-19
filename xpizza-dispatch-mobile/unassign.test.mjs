@@ -4,63 +4,183 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-// "Quitar repartidor" — MOBILE Torre, REAL wiring (codex P1-2). Extracts the real openUnassignConfirm +
-// commitUnassign (+ the openPicker gating block) from index.html and runs them with XPD.unassignOrder stubbed
-// to the frozen contract. Mirrors the desktop suite so both Torres are covered in parity.
+// "Quitar repartidor" — MOBILE Torre, REAL wiring (codex P1-2). Extracts the real openSheet / closeSheet,
+// the real Esc + Tab keydown handlers, the real openUnassignConfirm + commitUnassign, the real document
+// click DELEGATION, and the real openPicker gating block from index.html, and runs them together in one
+// scope against a DOM shim. Nothing load-bearing is stubbed: the token bump lives in the real openSheet /
+// closeSheet, the delegation's closest() honors its selector, and a rendered remove-row click drives the
+// actual confirm. XPD.unassignOrder is stubbed to the frozen server contract; assign/reassign routing is
+// recorded so the real handler's branch selection stays genuine. No jsdom, no new external harness —
+// buttons are parsed out of the rendered innerHTML so every assertion originates from real rendered markup.
 const html = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.html'), 'utf8');
+
+// ── extract the real source spans ───────────────────────────────────────────
+const sheetSpan = html.slice(html.indexOf('function openSheet(html){'), html.indexOf('\nlet _toastT;'));
+assert.ok(sheetSpan.includes('function closeSheet(){') && sheetSpan.includes("e.key !== 'Tab'"), 'sheet span has openSheet/closeSheet + keydown handlers');
 
 const cStart = html.indexOf('function openUnassignConfirm(orderId){');
 const cEnd = html.indexOf('\n\n// ── settings ──', cStart) > -1 ? html.indexOf('\n\n// ── settings ──', cStart)
           : html.indexOf('\nfunction openSettings(', cStart);
-// commitUnassign ends just before the settings section; slice to there.
 const confirmSrc = html.slice(cStart, cEnd);
 assert.ok(cStart > -1 && confirmSrc.includes('async function commitUnassign'), 'located mobile confirm block');
 
-function buildEnv(stub) {
-  const calls = [], toasts = []; let closeSheetCount = 0, sheetHtml = '';
-  const btn = { disabled: false, textContent: 'Quitar repartidor' };
-  const $m = (id) => id === 'unassign-yes' ? btn : null;
+const dStart = html.indexOf("document.addEventListener('click', (e) => {");
+const dEnd = html.indexOf('\n});\n', dStart) + 3;
+const delegationStmt = html.slice(dStart, dEnd);
+assert.ok(dStart > -1 && delegationStmt.includes('ds.unassign') && delegationStmt.includes('ds.unassignCommit'), 'located the real click delegation');
+
+const gStart = html.indexOf('  const pickupTask = STORE.tasks[');
+const gEnd = html.indexOf('\n\n  openSheet(', gStart);
+const gateSrc = html.slice(gStart, gEnd);
+assert.ok(gStart > -1 && gEnd > gStart && gateSrc.includes('removeBlock'), 'located mobile gating block');
+
+// ── the app harness: real code over a parsed-button DOM shim ─────────────────
+const DEFAULT_STORE = () => ({
+  orders: { o1: { customer_name: 'María', status: 'preparing' } },
+  scheduled: {},
+  drivers: { d1: { name: 'Carlos Mejía' } },
+  tasks: { o1_pickup: { status: 'assigned', assigned_driver_id: 'd1' }, o1_delivery: { assigned_driver_id: 'd1' } },
+});
+
+function buildApp(stub, opts = {}) {
+  const calls = [], toasts = [], picks = [], chooses = [], commits = [];
+  const CONNECTED = new Set();
+  let ACTIVE = opts.opener || null;
+  if (opts.opener) CONNECTED.add(opts.opener);
+
+  // Parse <button> tags out of rendered innerHTML into stable, focusable element stubs. Identity is stable
+  // across lookups (cached on the host element) so disabled/focus mutations by the real code are observable.
+  function parseButtons(src) {
+    const out = [];
+    const re = /<button\b([^>]*)>([\s\S]*?)<\/button>/g;
+    let m;
+    while ((m = re.exec(src))) {
+      const raw = {}, dataset = {};
+      const ar = /([a-zA-Z][a-zA-Z0-9-]*)(?:="([^"]*)")?/g;
+      let a;
+      while ((a = ar.exec(m[1]))) {
+        const name = a[1], val = a[2] === undefined ? '' : a[2];
+        raw[name] = val;
+        if (name.startsWith('data-')) dataset[name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = val;
+      }
+      const inner = m[2].replace(/<[^>]*>/g, '').trim();
+      const b = {
+        tagName: 'BUTTON', dataset, id: raw.id, disabled: 'disabled' in raw, _class: raw.class || '',
+        textContent: inner, getAttribute: (k) => raw[k], hasAttribute: (k) => k in raw,
+        focus() { ACTIVE = b; },
+      };
+      out.push(b);
+    }
+    return out;
+  }
+  const btns = () => sheetBody._btns;
+  function qsel(sel) {
+    const list = btns();
+    if (sel.includes('[data-detail]')) return list.find((b) => 'detail' in b.dataset) || null;
+    if (sel.includes('[data-sheet-focus]')) return list.find((b) => 'sheetFocus' in b.dataset && !b.disabled) || null;
+    if (sel.includes('.sh-nav') && sel.includes('[data-pick]') && sel.includes('[data-back]'))
+      return list.find((b) => 'pick' in b.dataset && 'back' in b.dataset && b._class.split(' ').includes('back')) || null;
+    return list.find((b) => !b.disabled) || null;   // generic "button:not([disabled]), a[href]"
+  }
+  const qall = () => btns().filter((b) => !b.disabled);
+
+  const mkEl = (id) => {
+    const listeners = {};
+    const el = {
+      id, scrollTop: 0, _html: '', _btns: [], _attrs: {},
+      classList: { _s: new Set(), add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); }, contains(c) { return this._s.has(c); } },
+      set innerHTML(v) { this._html = v; this._btns = parseButtons(v); },
+      get innerHTML() { return this._html; },
+      setAttribute(k, v) { this._attrs[k] = v; }, getAttribute(k) { return this._attrs[k]; }, hasAttribute(k) { return k in this._attrs; },
+      addEventListener(t, fn) { (listeners[t] ||= []).push(fn); },
+      dispatch(t, ev) { (listeners[t] || []).forEach((fn) => fn(ev)); },
+      contains(node) { return node === el || el._btns.includes(node); },
+      querySelector(sel) { return qsel(sel); },
+      querySelectorAll() { return qall(); },
+    };
+    return el;
+  };
+  const sheet = mkEl('sheet'), sheetBody = mkEl('sheet-body'), scrim = mkEl('scrim'), screen = mkEl('screen-main'), toastEl = mkEl('toast');
+  const byId = { sheet, 'sheet-body': sheetBody, scrim, 'screen-main': screen, toast: toastEl };
+  const $ = (id) => (id in byId ? byId[id] : (sheetBody._btns.find((b) => b.id === id) || null));
+
+  const docListeners = {};
+  const documentShim = {
+    addEventListener(t, fn) { (docListeners[t] ||= []).push(fn); },
+    querySelector: () => null, querySelectorAll: () => [],
+    contains: (node) => CONNECTED.has(node),
+    get activeElement() { return ACTIVE; },
+    dispatch(t, ev) { (docListeners[t] || []).forEach((fn) => fn(ev)); },
+  };
+
+  const STORE = opts.store || DEFAULT_STORE();
   const win = { crypto: { randomUUID: () => 'uuid-' + (++win._c) }, _c: 0 };
-  const STORE = { orders: { o1: { customer_name: 'María' } }, scheduled: {}, drivers: { d1: { name: 'Carlos Mejía' } }, tasks: {} };
   const XPD = { unassignOrder: (...a) => { calls.push(a); return stub(a); } };
-  const api = new Function(
-    'STORE','pickerFromDriver','escapeHtml','driverColorVar','IC_BACK','IC_PLUS','openSheet','displayLabel','$','XPD','toast','closeSheet','window','crypto',
-    `${confirmSrc}\n; return { openUnassignConfirm, commitUnassign };`
+  const setTimeoutStub = opts.immediateFocus ? (fn) => { fn(); } : () => {};
+
+  // late-bound so openPicker (the real Esc/Cancelar leave target) re-renders a sheet → real openSheet token bump
+  let api = null;
+  const openPicker = (oid) => { picks.push(oid); if (api) api.openSheet('<div class="sh-nav"></div>'); };
+  const openConfirm = (...a) => chooses.push(a);
+  const commitAssign = (...a) => commits.push(a);
+
+  api = new Function(
+    '$', 'STORE', 'escapeHtml', 'driverColorVar', 'IC_BACK', 'IC_PLUS', 'displayLabel', 'XPD', 'toast',
+    'document', 'window', 'crypto', 'setTimeout', 'replay', 'openPicker', 'openConfirm', 'commitAssign',
+    `let lastFocus = null, sheetDir = null, pickerFromDriver = 'd1', pickerIsReassign = true;\n`
+    + `${sheetSpan}\n${confirmSrc}\n${delegationStmt}\n`
+    + `function renderGate(orderId, pickerIsReassign){\n${gateSrc}\n; return removeBlock; }\n`
+    + `; return { openUnassignConfirm, commitUnassign, openSheet, closeSheet, renderGate };`,
   )(
-    STORE, 'd1', (s) => String(s), () => '#000', '<back/>', '<plus/>',
-    (h) => { sheetHtml = h; }, (id) => '#' + id, $m, XPD,
-    (m, isErr) => toasts.push([m, isErr]), () => { closeSheetCount++; }, win, win.crypto,
+    $, STORE, (s) => String(s), () => '#000', '<back/>', '<plus/>', (id) => '#' + id, XPD,
+    (m, bad) => toasts.push([m, !!bad]), documentShim, win, win.crypto, setTimeoutStub, () => {},
+    openPicker, openConfirm, commitAssign,
   );
-  return { ...api, calls, toasts, btn, closeSheetCount: () => closeSheetCount, sheetHtml: () => sheetHtml };
+
+  const makeTarget = (dataset) => ({
+    closest(sel) {
+      const keys = sel.split(',').map((s) => s.trim().replace(/^\[data-/, '').replace(/\]$/, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase()));
+      return keys.some((k) => k in dataset) ? { dataset } : null;
+    },
+  });
+  return {
+    ...api, $, sheet, sheetBody, scrim, calls, toasts, picks, chooses, commits,
+    get active() { return ACTIVE; }, setActive(el) { ACTIVE = el; }, connect(el) { CONNECTED.add(el); },
+    sheetOn: () => sheet.classList.contains('on'),
+    fireClick: (dataset) => documentShim.dispatch('click', { target: makeTarget(dataset) }),
+    keydown: (ev) => documentShim.dispatch('keydown', ev),
+    scrimClick: () => scrim.dispatch('click', {}),
+    clearRecorders() { picks.length = chooses.length = commits.length = calls.length = toasts.length = 0; },
+  };
 }
 const resolved = (v) => () => Promise.resolve(v);
 const thrown = (msg) => () => { const e = new Error(msg); return Promise.reject(e); };
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-test('mobile confirm fail-safe matrix: each response maps to the right copy + open/close', async () => {
-  const run = async (stub) => { const t = buildEnv(stub); t.openUnassignConfirm('o1'); await t.commitUnassign('o1'); await tick(); return t; };
+test('mobile confirm fail-safe matrix: each response maps to the right copy + open/close (REAL openSheet/closeSheet)', async () => {
+  const run = async (stub) => { const t = buildApp(stub); t.openUnassignConfirm('o1'); await t.commitUnassign('o1'); await tick(); return t; };
   let t = await run(resolved({ ok: true }));
-  assert.ok(t.toasts.some(([m]) => /sin asignar — de vuelta en la cola/.test(m)) && t.closeSheetCount() === 1, 'ok:true → success + closeSheet');
+  assert.ok(t.toasts.some(([m]) => /sin asignar — de vuelta en la cola/.test(m)) && !t.sheetOn(), 'ok:true → success + sheet closed');
   t = await run(resolved({ ok: false, reason: 'reassigned' }));
-  assert.ok(t.toasts.some(([m]) => m === 'Ese pedido ya tiene otro repartidor') && t.closeSheetCount() === 1, 'reassigned');
+  assert.ok(t.toasts.some(([m]) => m === 'Ese pedido ya tiene otro repartidor') && !t.sheetOn(), 'reassigned → close');
   t = await run(resolved({ ok: false, reason: 'not_assigned' }));
-  assert.ok(t.toasts.some(([m]) => m === 'Ese pedido ya no estaba asignado') && t.closeSheetCount() === 1, 'not_assigned');
+  assert.ok(t.toasts.some(([m]) => m === 'Ese pedido ya no estaba asignado') && !t.sheetOn(), 'not_assigned → close');
   t = await run(resolved({ ok: false, reason: 'picked_up' }));
-  assert.ok(t.toasts.some(([m]) => m === 'El repartidor ya recogió el pedido') && t.closeSheetCount() === 1, 'picked_up');
+  assert.ok(t.toasts.some(([m]) => m === 'El repartidor ya recogió el pedido') && !t.sheetOn(), 'picked_up → close');
   t = await run(thrown('terminal'));
-  assert.ok(t.toasts.some(([m]) => m === 'El pedido ya se cerró') && t.closeSheetCount() === 1, 'terminal → final close');
+  assert.ok(t.toasts.some(([m]) => m === 'El pedido ya se cerró') && !t.sheetOn(), 'terminal → final close');
   t = await run(thrown('state'));
-  assert.ok(t.toasts.some(([m]) => m === 'No se puede quitar el repartidor ahora mismo') && t.closeSheetCount() === 0 && t.btn.disabled === false, 'state → re-enable');
+  assert.ok(t.toasts.some(([m]) => m === 'No se puede quitar el repartidor ahora mismo') && t.sheetOn() && t.$('unassign-yes').disabled === false, 'state → re-enable, stays open');
   t = await run(thrown('not_found'));
-  assert.ok(t.toasts.some(([m]) => m === 'No se encontró el pedido') && t.closeSheetCount() === 0, 'not_found → re-enable');
-  for (const stub of [thrown('retryable'), thrown('internal'), resolved({}), resolved(null)]) {
+  assert.ok(t.toasts.some(([m]) => m === 'No se encontró el pedido') && t.sheetOn() && t.$('unassign-yes').disabled === false, 'not_found → re-enable, stays open');
+  for (const stub of [thrown('retryable'), thrown('internal'), resolved({}), resolved(null), resolved({ ok: false, reason: 'weird' })]) {
     t = await run(stub);
-    assert.ok(t.toasts.some(([m, e]) => m === 'No se pudo quitar — reintentá' && e === true) && t.closeSheetCount() === 0 && t.btn.disabled === false, 'else/503/malformed → retry error, re-enable');
+    assert.ok(t.toasts.some(([m, bad]) => m === 'No se pudo quitar — reintentá' && bad === true) && t.sheetOn() && t.$('unassign-yes').disabled === false, 'else/503/malformed → retry error, stays open');
   }
 });
 
 test('mobile opId: minted at open, reused on retry, new on reopen; args (orderId, fromDriver, opId)', async () => {
-  const t = buildEnv(thrown('retryable'));
+  const t = buildApp(thrown('retryable'));
   t.openUnassignConfirm('o1');
   await t.commitUnassign('o1'); await tick();
   await t.commitUnassign('o1'); await tick();            // retry same press
@@ -68,13 +188,13 @@ test('mobile opId: minted at open, reused on retry, new on reopen; args (orderId
   assert.equal(t.calls[0][2], t.calls[1][2], 'retry resends the SAME opId');
   assert.deepEqual([t.calls[0][0], t.calls[0][1]], ['o1', 'd1'], 'args orderId, fromDriver');
   const first = t.calls[0][2];
-  t.openUnassignConfirm('o1');                            // reopen
+  t.openUnassignConfirm('o1');                            // reopen (real openSheet) mints a new operation
   await t.commitUnassign('o1'); await tick();
   assert.notEqual(t.calls[2][2], first, 'reopen mints a NEW opId');
 });
 
 test('mobile one request per confirm: a second activation while pending makes no extra call', async () => {
-  let release; const t = buildEnv(() => new Promise((r) => { release = () => r({ ok: true }); }));
+  let release; const t = buildApp(() => new Promise((r) => { release = () => r({ ok: true }); }));
   t.openUnassignConfirm('o1');
   t.commitUnassign('o1');          // in flight
   t.commitUnassign('o1');          // second while pending
@@ -83,70 +203,125 @@ test('mobile one request per confirm: a second activation while pending makes no
   release(); await tick();
 });
 
-test('mobile delegated events: the REAL document click handler routes unassign + preserves assign/reassign', () => {
-  const start = html.indexOf("document.addEventListener('click', (e) => {");
-  const end = html.indexOf('\n});\n', start) + 3;
-  const stmt = html.slice(start, end);
-  assert.ok(start > -1 && stmt.includes('ds.unassign') && stmt.includes('ds.commit'), 'extracted the real click delegation statement');
-  const rec = [];
-  const stub = (name) => (...a) => rec.push([name, ...a]);
-  const deps = {
-    openPass: null, layoutDecks: () => {}, collapsedDone: false, renderBoard: () => {}, activeChip: null, animateBoard: false,
-    showTab: stub('showTab'), openDetail: stub('openDetail'), openPicker: stub('openPicker'), openConfirm: stub('openConfirm'),
-    commitAssign: stub('commitAssign'), openUnassignConfirm: stub('openUnassignConfirm'), commitUnassign: stub('commitUnassign'),
-    closeSheet: stub('closeSheet'), theme: '', localStorage: { setItem() {} }, applyTheme: () => {}, openSettings: () => {},
-    enableStaffPush: () => {}, XPD: { signOutUser: () => Promise.resolve() }, toast: () => {}, sheetDir: null,
-    $: () => ({ querySelector: () => ({ dataset: { detail: 'o1' } }) }), window: {},
-  };
-  const handlers = [];
-  const documentShim = { addEventListener: (t, fn) => { if (t === 'click') handlers.push(fn); }, querySelectorAll: () => [] };
-  new Function('document', ...Object.keys(deps), stmt)(documentShim, ...Object.values(deps));
-  const handler = handlers[0];
-  assert.ok(handler, 'the delegation handler registered on document click');
-  const click = (dataset) => { rec.length = 0; handler({ target: { closest: () => ({ dataset }) } }); };
-  click({ unassign: 'o1' });        assert.deepEqual(rec, [['openUnassignConfirm', 'o1']], 'data-unassign → openUnassignConfirm');
-  click({ unassignCommit: 'o1' });  assert.deepEqual(rec, [['commitUnassign', 'o1']], 'data-unassign-commit → commitUnassign');
-  click({ choose: 'd1' });          assert.deepEqual(rec, [['openConfirm', 'o1', 'd1']], 'data-choose → openConfirm (assign/reassign pick) UNCHANGED');
-  click({ commit: 'd1', order: 'o1' }); assert.deepEqual(rec, [['commitAssign', 'o1', 'd1']], 'data-commit → commitAssign (the existing mutation) UNCHANGED');
-  click({ pick: 'o1' });            assert.deepEqual(rec, [['openPicker', 'o1']], 'data-pick → openPicker UNCHANGED');
+test('mobile delegation: the REAL document click handler routes every case with a selector-honoring closest()', () => {
+  const t = buildApp(resolved({ ok: true }));
+  // closest() honors its selector: a dataset key NOT in the delegation selector list matches nothing → no route.
+  t.fireClick({ bogus: 'x' });
+  assert.deepEqual([t.picks.length, t.chooses.length, t.commits.length, t.calls.length], [0, 0, 0, 0], 'unrelated dataset → closest returns null → no route fires');
+
+  t.fireClick({ pick: 'o1' });
+  assert.deepEqual(t.picks, ['o1'], 'data-pick → openPicker (UNCHANGED)');
+  t.clearRecorders();
+
+  t.sheetBody.innerHTML = '<button data-detail="o1"></button>';   // the open detail sheet the choose reads its order from
+  t.fireClick({ choose: 'd1' });
+  assert.deepEqual(t.chooses, [['o1', 'd1']], 'data-choose → openConfirm(order from the sheet, driver) (assign/reassign pick UNCHANGED)');
+  t.clearRecorders();
+
+  t.fireClick({ commit: 'd1', order: 'o1' });
+  assert.deepEqual(t.commits, [['o1', 'd1']], 'data-commit → commitAssign (the existing mutation UNCHANGED)');
+  t.clearRecorders();
+
+  // data-unassign routes to the REAL openUnassignConfirm → the real confirm renders.
+  t.fireClick({ unassign: 'o1' });
+  assert.ok(t.sheetOn() && /data-unassign-commit="o1"/.test(t.sheetBody.innerHTML) && /Quitar repartidor/.test(t.sheetBody.innerHTML), 'data-unassign → REAL openUnassignConfirm renders the confirm');
+  // data-unassign-commit routes to the REAL commitUnassign → exactly one request.
+  t.clearRecorders();
+  t.fireClick({ unassignCommit: 'o1' });
+  assert.equal(t.calls.length, 1, 'data-unassign-commit → REAL commitUnassign sends exactly one request');
 });
 
-test('mobile stale completion: a request resolving after a newer confirm opened does not close it', async () => {
-  let releaseA; const t = buildEnv(() => new Promise((r) => { releaseA = () => r({ ok: true }); }));
-  t.openUnassignConfirm('o1');          // dialog A (token 1)
+test('mobile end-to-end: a rendered remove row click drives the actual confirm, then confirming sends one request', async () => {
+  const t = buildApp(resolved({ ok: true }), { immediateFocus: true });
+  const removeBlock = t.renderGate('o1', true);
+  assert.match(removeBlock, /data-unassign="o1"/, 'the gate rendered a remove row for o1');
+  const oid = removeBlock.match(/data-unassign="([^"]+)"/)[1];   // originate the click from the REAL rendered markup
+  t.fireClick({ unassign: oid });
+  assert.ok(t.sheetOn(), 'the row click opened the confirm sheet');
+  assert.match(t.sheetBody.innerHTML, /#o1/, 'the real confirm names the order');
+  assert.match(t.sheetBody.innerHTML, /Carlos Mejía|Carlos/, 'the real confirm names the current driver');
+  assert.match(t.sheetBody.innerHTML, /data-unassign-commit="o1"/, 'the confirm carries the commit CTA');
+  assert.ok(t.active && 'sheetFocus' in t.active.dataset && /Cancelar/.test(t.active.textContent), 'initial focus lands on Cancelar (data-sheet-focus)');
+  const commitId = t.sheetBody.innerHTML.match(/data-unassign-commit="([^"]+)"/)[1];
+  t.fireClick({ unassignCommit: commitId });
+  await tick();
+  assert.equal(t.calls.length, 1, 'confirming sends exactly one request');
+  assert.deepEqual([t.calls[0][0], t.calls[0][1]], ['o1', 'd1'], 'the request carries (orderId, fromDriver)');
+});
+
+test('mobile stale completion: a request resolving after a newer confirm opened does not close/toast it (REAL token bump via openSheet)', async () => {
+  let releaseA; const t = buildApp(() => new Promise((r) => { releaseA = () => r({ ok: true }); }));
+  t.openUnassignConfirm('o1');          // dialog A
   t.commitUnassign('o1'); await tick(); // A in flight
-  const closesBefore = t.closeSheetCount(), toastsBefore = t.toasts.length;
-  t.openUnassignConfirm('o1');          // newer confirm (token 2)
+  const closesBefore = t.toasts.length;
+  t.openUnassignConfirm('o1');          // a NEWER confirm opens → real openSheet bumps the token
   releaseA(); await tick(); await tick();
-  assert.equal(t.closeSheetCount(), closesBefore, 'stale A resolution did not closeSheet the newer confirm');
-  assert.equal(t.toasts.length, toastsBefore, 'stale A resolution produced no toast');
+  assert.equal(t.toasts.length, closesBefore, 'stale A resolution produced no toast');
+  assert.ok(t.sheetOn(), 'the newer confirm stays open');
 });
 
-test('mobile confirm a11y lifecycle is wired (focus Cancelar, Esc→picker, Tab wrap, restore-if-connected)', () => {
-  // the confirm's Cancelar carries data-sheet-focus (initial focus, not the Atrás nav button), and both Atrás and
-  // Cancelar return to the picker (data-pick + data-back).
-  const confirm = html.slice(html.indexOf('function openUnassignConfirm(orderId){'), html.indexOf('\n\nlet unassignOpId'));
-  assert.match(confirm, /data-pick="\$\{escapeHtml\(orderId\)\}" data-back="1" data-sheet-focus>Cancelar</, 'Cancelar has data-sheet-focus + returns to the picker');
-  assert.match(confirm, /class="back"[^>]*data-pick="\$\{escapeHtml\(orderId\)\}" data-back="1"/, 'Atrás returns to the picker');
-  // openSheet honors [data-sheet-focus] as the initial focus.
-  assert.match(html, /querySelector\('\[data-sheet-focus\]:not\(\[disabled\]\)'\)\s*\|\|/, 'openSheet focuses [data-sheet-focus] first');
-  // Esc on the confirm returns to the picker (openPicker), not closeSheet.
-  const esc = html.slice(html.indexOf("if (e.key !== 'Escape') return;"), html.indexOf("// Keep Tab inside the sheet"));
-  assert.match(esc, /\$\('unassign-yes'\)\s*&&\s*\$\('sheet'\)\.querySelector\('\.sh-nav \[data-pick\]\[data-back\]'\)/, 'Esc detects the confirm');
-  assert.match(esc, /openPicker\(back\.dataset\.pick\);\s*return;/, 'Esc → openPicker (back to the picker), not closeSheet');
-  // a confirm-scoped Tab handler wraps both directions.
-  const tab = html.slice(html.indexOf("if (e.key !== 'Tab' || !$('unassign-yes')"), html.indexOf("if (e.key !== 'Tab' || !$('unassign-yes')") + 520);
-  assert.match(tab, /e\.shiftKey && i <= 0.*f\[f\.length - 1\]\.focus\(\)/s, 'Shift-Tab from the first wraps to the last');
-  assert.match(tab, /i === f\.length - 1.*f\[0\]\.focus\(\)/s, 'Tab from the last wraps to the first');
-  // closeSheet restores the opener only if still connected.
-  assert.match(html, /lastFocus\.focus && document\.contains\(lastFocus\)/, 'closeSheet restores opener only if connected');
+test('mobile token invalidated on LEAVE: backing out (scrim/Esc) invalidates an in-flight removal (REAL openSheet/closeSheet bump)', async () => {
+  // leave via the scrim → the REAL closeSheet (token bump at close)
+  {
+    let releaseA; const t = buildApp(() => new Promise((r) => { releaseA = () => r({ ok: true }); }));
+    t.openUnassignConfirm('o1');
+    t.commitUnassign('o1'); await tick();            // in flight
+    const toastsBefore = t.toasts.length;
+    t.scrimClick();                                  // real closeSheet → token invalidated
+    assert.ok(!t.sheetOn(), 'scrim closed the sheet');
+    releaseA(); await tick(); await tick();
+    assert.equal(t.toasts.length, toastsBefore, 'scrim: the stale resolution produced no toast');
+  }
+  // leave via Esc → the REAL Esc handler routes back to the picker (openPicker → real openSheet bump), not closeSheet
+  {
+    let releaseA; const t = buildApp(() => new Promise((r) => { releaseA = () => r({ ok: true }); }));
+    t.openUnassignConfirm('o1');
+    t.commitUnassign('o1'); await tick();            // in flight
+    const toastsBefore = t.toasts.length;
+    t.keydown({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
+    assert.deepEqual(t.picks, ['o1'], 'Esc on the confirm returns to the picker (not a whole-sheet close)');
+    releaseA(); await tick(); await tick();
+    assert.equal(t.toasts.length, toastsBefore, 'Esc: the stale resolution produced no toast');
+  }
+});
+
+test('mobile a11y (shim-exercised): Cancelar initial focus, Esc→picker, Tab two-way wrap, restore-if-connected', async () => {
+  // Cancelar is the initial focus (data-sheet-focus wins over the Atrás nav button) — the REAL openSheet focus pick.
+  const opener = { focus() {} };
+  const t = buildApp(resolved({ ok: true }), { immediateFocus: true, opener });
+  t.setActive(opener);
+  t.openUnassignConfirm('o1');
+  assert.ok(t.active && 'sheetFocus' in t.active.dataset, 'initial focus is the Cancelar (data-sheet-focus), not Atrás');
+
+  // Esc → openPicker (back to the picker), proven by routing in the leave test above; here assert it is NOT a closeSheet.
+  t.keydown({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
+  assert.deepEqual(t.picks, ['o1'], 'Esc returns to the picker via openPicker');
+
+  // Tab two-way wrap, run against the real Tab handler over the real rendered button order [Atrás, Quitar, Cancelar].
+  const t2 = buildApp(resolved({ ok: true }), { immediateFocus: true });
+  t2.openUnassignConfirm('o1');                       // ACTIVE = Cancelar (last focusable)
+  t2.keydown({ key: 'Tab', shiftKey: false, preventDefault() {} });
+  assert.equal(t2.active._class.split(' ').includes('back'), true, 'Tab from the last focusable wraps to the first (Atrás)');
+  t2.keydown({ key: 'Tab', shiftKey: true, preventDefault() {} });
+  assert.ok('sheetFocus' in t2.active.dataset, 'Shift-Tab from the first wraps to the last (Cancelar)');
+
+  // closeSheet restores the opener ONLY if it is still connected — exercise the real document.contains guard.
+  const opener2 = { focused: 0, focus() { this.focused++; } };
+  const t3 = buildApp(resolved({ ok: true }), { immediateFocus: true, opener: opener2 });
+  t3.setActive(opener2);
+  t3.openUnassignConfirm('o1');                       // lastFocus = opener2 (connected at open)
+  t3.scrimClick();                                    // real closeSheet
+  assert.ok(opener2.focused > 0, 'connected opener is refocused on close');
+
+  const opener3 = { focused: 0, focus() { this.focused++; } };
+  const t4 = buildApp(resolved({ ok: true }), { immediateFocus: true });
+  t4.setActive(opener3);                              // active, but NOT in the connected set
+  t4.openUnassignConfirm('o1');
+  t4.scrimClick();
+  assert.equal(opener3.focused, 0, 'a disconnected opener is NOT refocused (document.contains guard honored)');
 });
 
 test('mobile render gate: shown only for reassign + same-owner both legs + pickup∈{assigned,accepted,in_progress} + non-terminal (parity with desktop)', () => {
-  const gStart = html.indexOf('  const pickupTask = STORE.tasks[');
-  const gEnd = html.indexOf('\n\n  openSheet(', gStart);
-  const gSrc = html.slice(gStart, gEnd);
-  assert.ok(gStart > -1 && gEnd > gStart && gSrc.includes('removeBlock'), 'located mobile gating block');
   const base = { pickerIsReassign: true, pickerFromDriver: 'd1', pickupStatus: 'assigned', pickupOwner: 'd1', deliveryOwner: 'd1', orderStatus: 'preparing' };
   const run = (over) => {
     const c = { ...base, ...over };
@@ -154,7 +329,7 @@ test('mobile render gate: shown only for reassign + same-owner both legs + picku
     if (c.pickupStatus !== null) tasks['o1_pickup'] = { status: c.pickupStatus, assigned_driver_id: c.pickupOwner };
     if (c.deliveryOwner !== null) tasks['o1_delivery'] = { assigned_driver_id: c.deliveryOwner };
     const STORE = { tasks, orders: { o1: { status: c.orderStatus } }, scheduled: {} };
-    return new Function('STORE','orderId','pickerIsReassign','pickerFromDriver','escapeHtml', gSrc + '\n; return removeBlock;')(
+    return new Function('STORE', 'orderId', 'pickerIsReassign', 'pickerFromDriver', 'escapeHtml', gateSrc + '\n; return removeBlock;')(
       STORE, 'o1', c.pickerIsReassign, c.pickerFromDriver, (s) => String(s));
   };
   const shown = (over, why) => assert.match(run(over), /Quitar repartidor/, 'PRESENT: ' + why);
@@ -172,4 +347,5 @@ test('mobile render gate: shown only for reassign + same-owner both legs + picku
   hidden({ deliveryOwner: 'dX' }, 'split owners (delivery ≠ captured)');
   hidden({ orderStatus: 'delivered' }, 'terminal: delivered');
   hidden({ orderStatus: 'cancelled' }, 'terminal: cancelled');
+  hidden({ orderStatus: 'out_for_delivery' }, 'out_for_delivery (server returns picked_up)');
 });

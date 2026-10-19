@@ -33,6 +33,7 @@ function makeEl(id) {
     setAttribute(k,v){ this._attrs[k]=v; }, hasAttribute(k){ return k in this._attrs; },
     addEventListener(t,fn){ (listeners[t] ||= []).push(fn); },
     dispatch(t,ev){ (listeners[t]||[]).forEach((fn)=>fn(ev)); },
+    insertAdjacentHTML(_pos, h){ this._html += h; },
     focus(){ this.focused++; LAST_FOCUSED = this; },
     querySelectorAll(){ return [GET('unassign-cancel-btn'), GET('unassign-confirm-btn')].filter(Boolean); },
     closest(sel){ return (sel === '.hidden' && this.classList.contains('hidden')) ? this : null; },
@@ -40,7 +41,7 @@ function makeEl(id) {
 }
 let LAST_FOCUSED = null;
 const ELS = {};
-const IDS = ['unassign-confirm-overlay','unassign-confirm-title','unassign-confirm-sub','unassign-confirm-body','unassign-cancel-btn','unassign-confirm-btn','picker-remove-row'];
+const IDS = ['unassign-confirm-overlay','unassign-confirm-title','unassign-confirm-sub','unassign-confirm-body','unassign-cancel-btn','unassign-confirm-btn','picker-remove-row','picker-list'];
 for (const id of IDS) ELS[id] = makeEl(id);
 const GET = (id) => ELS[id] || null;
 
@@ -188,9 +189,36 @@ async function runResult(stub) {
   ok('stale completion: a request resolving after a newer confirm opened does not dismiss or toast it');
 }
 
-// ── 6. render gating (the pre-pickup rule): the remove row is inserted into the picker list ONLY when
-//      reassign mode AND the order has a driver AND the pickup leg is not completed. Extracts the REAL
-//      openPicker gating block from index.html. ──
+// ── 5c. token invalidated on LEAVE (codex P2): backing out of the removal dialog — Cancelar, Escape, or
+//        backdrop — invalidates its completion token while a request is still in flight. So when that request
+//        resolves afterwards it can no longer toast or close anything, even though no NEW unassign confirm
+//        opened in between (the operator may have moved on to a different picker or an assign confirm). This
+//        drives the REAL closeUnassignConfirm token bump, not a second openUnassignConfirm. ──
+{
+  const leaves = [
+    { how: 'Cancelar', act: (t) => t.cancelBtn.dispatch('click', {}) },
+    { how: 'Escape',   act: (t) => t.overlay.dispatch('keydown', { key: 'Escape', preventDefault() {}, stopPropagation() {} }) },
+    { how: 'backdrop', act: (t) => t.overlay.dispatch('click', { target: t.overlay }) },
+  ];
+  for (const leave of leaves) {
+    let releaseA; const t = buildEnv(() => new Promise((r) => { releaseA = () => r({ ok: true }); }));
+    t.openUnassignConfirm('o1');                       // removal dialog A (token 1)
+    t.confirmBtn.dispatch('click', {}); await tick();  // A's request in flight (dialog still open)
+    const toastsBefore = t.toasts.length, closesBefore = t.closePickerCount();
+    leave.act(t);                                      // operator backs out of A → token invalidated on leave
+    assert.ok(t.overlay.classList.contains('hidden'), `${leave.how}: leaving closed the removal dialog`);
+    releaseA(); await tick(); await tick();            // A's request resolves AFTER the leave
+    assert.strictEqual(t.toasts.length, toastsBefore, `${leave.how}: the stale resolution produced no toast`);
+    assert.strictEqual(t.closePickerCount(), closesBefore, `${leave.how}: the stale resolution did not close the picker`);
+  }
+  ok('token invalidated on leave: a removal request resolving after Cancelar/Escape/backdrop cannot toast or close anything');
+}
+
+// ── 6. render gating + REAL end-to-end (codex P2): the remove row is inserted into the picker list ONLY
+//      for reassign + same-owner both legs + pickup∈{assigned,accepted,in_progress} + non-terminal. The
+//      openPicker gating block is extracted and run in the SAME scope as the REAL confirm functions, so a
+//      rendered row's click drives the actual openUnassignConfirm/doUnassign against the shim DOM — no
+//      recorder stand-in replaces either one. ──
 {
   const gStart = html.indexOf('  const pickupTask = allTasks[');
   const gEnd = html.indexOf("  $('picker-overlay').classList.remove('hidden');", gStart);
@@ -198,21 +226,39 @@ async function runResult(stub) {
   const gSrc = html.slice(gStart, gEnd);
   // defaults = a shown row; override one field per case.
   const base = { isReassign: true, pickerFromDriver: 'd1', pickupStatus: 'assigned', pickupOwner: 'd1', deliveryOwner: 'd1', orderStatus: 'preparing' };
-  const runGate = (over) => {
+  // Build a scope that holds BOTH the real confirm block (src) and the real gate block (gSrc, wrapped as
+  // renderRemoveRow). Fresh shim elements each call so confirm listeners never accumulate across runs.
+  function buildGate(stub, over) {
     const c = { ...base, ...over };
-    let inserted = '', clickFn = null; const opens = [];
-    const removeRow = { addEventListener: (t, fn) => { if (t === 'click') clickFn = fn; } };
-    const $g = (id) => id === 'picker-list' ? { insertAdjacentHTML: (_p, h) => { inserted += h; } } : id === 'picker-remove-row' ? removeRow : null;
+    for (const id of IDS) ELS[id] = makeEl(id);
+    LAST_FOCUSED = null;
+    const calls = [], toasts = []; let closePickerCount = 0;
     const allTasks = {};
     if (c.pickupStatus !== null) allTasks['o1_pickup'] = { status: c.pickupStatus, assigned_driver_id: c.pickupOwner };
     if (c.deliveryOwner !== null) allTasks['o1_delivery'] = { assigned_driver_id: c.deliveryOwner };
-    const allOrders = { o1: { status: c.orderStatus } };
-    new Function('allTasks','allOrders','orderId','isReassign','pickerFromDriver','$','openUnassignConfirm', gSrc + '\n')(
-      allTasks, allOrders, 'o1', c.isReassign, c.pickerFromDriver, $g, (oid) => opens.push(oid));
-    return { inserted, click: () => clickFn && clickFn(), opens };
-  };
-  const shown = (over, why) => assert.match(runGate(over).inserted, /Quitar repartidor/, 'PRESENT: ' + why);
-  const hidden = (over, why) => assert.strictEqual(runGate(over).inserted, '', 'ABSENT: ' + why);
+    const allOrders = { o1: { status: c.orderStatus, customer_name: 'María', total: 420 } };
+    const allDrivers = { d1: { name: 'Carlos Mejía' } };
+    const doc = { activeElement: null, contains: () => true, querySelector: () => GET('picker-remove-row') };
+    const win = { matchMedia: () => ({ matches: false }), crypto: { randomUUID: () => 'uuid-' + (++win._c) }, _c: 0 };
+    const XPD = { unassignOrder: (...a) => { calls.push(a); return stub(a); } };
+    const api = new Function(
+      '$','allOrders','allTasks','allDrivers','pickerFromDriver','displayOrderLabel','escapeHtml','XPD','toast','closePicker','pickerReturnFocusTarget','focusTrapTarget','document','window','crypto',
+      `${src}\nfunction renderRemoveRow(orderId, isReassign){\n${gSrc}\n}\n; return { openUnassignConfirm, closeUnassignConfirm, doUnassign, renderRemoveRow };`,
+    )(
+      GET, allOrders, allTasks, allDrivers, c.pickerFromDriver,
+      (id) => '#' + id, (s) => String(s), XPD,
+      (m, t) => toasts.push([m, t]), () => { closePickerCount++; },
+      () => ({ el: GET('picker-remove-row'), temp: false }), (shift, active, f) => f[0],
+      doc, win, win.crypto,
+    );
+    api.renderRemoveRow('o1', c.isReassign);
+    return { ...api, calls, toasts, closePickerCount: () => closePickerCount,
+      inserted: GET('picker-list')._html, removeRow: GET('picker-remove-row'),
+      overlay: GET('unassign-confirm-overlay'), cancelBtn: GET('unassign-cancel-btn'),
+      confirmBtn: GET('unassign-confirm-btn'), sub: GET('unassign-confirm-sub'), body: GET('unassign-confirm-body') };
+  }
+  const shown = (over, why) => assert.match(buildGate(resolved({ ok: true }), over).inserted, /Quitar repartidor/, 'PRESENT: ' + why);
+  const hidden = (over, why) => assert.strictEqual(buildGate(resolved({ ok: true }), over).inserted, '', 'ABSENT: ' + why);
   shown({}, 'reassign + same-owner both legs + assigned pre-pickup + non-terminal');
   shown({ pickupStatus: 'accepted' }, 'pickup accepted');
   shown({ pickupStatus: 'in_progress' }, 'pickup in_progress');
@@ -228,10 +274,21 @@ async function runResult(stub) {
   hidden({ orderStatus: 'delivered' }, 'terminal order: delivered');
   hidden({ orderStatus: 'completed' }, 'terminal order: completed');
   hidden({ orderStatus: 'cancelled' }, 'terminal order: cancelled');
-  // the inserted row's REAL click wiring opens the confirm for that order
-  const g = runGate({}); g.click();
-  assert.deepStrictEqual(g.opens, ['o1'], 'clicking the inserted remove row opens the unassign confirm for that order');
-  ok('render gate: PRESENT only for reassign + same-owner-both-legs + pickup∈{assigned,accepted,in_progress} + non-terminal; ABSENT for every refused shape; the row click opens the confirm');
+  hidden({ orderStatus: 'out_for_delivery' }, 'out_for_delivery (server returns picked_up)');
+
+  // REAL end-to-end: a rendered remove-row click drives the actual confirm (not a recorder), which renders,
+  // names the order, puts focus on Cancelar, and — on confirm — sends exactly one request.
+  const t = buildGate(resolved({ ok: true }), {});
+  assert.match(t.inserted, /Quitar repartidor/, 'the remove row rendered into the picker list');
+  t.removeRow.dispatch('click', {});                       // real wiring → the REAL openUnassignConfirm('o1')
+  assert.ok(!t.overlay.classList.contains('hidden'), 'the row click opened the REAL confirm overlay');
+  assert.ok(/#o1/.test(t.sub._text), 'the real confirm names the order (#o1)');
+  assert.ok(/Carlos Mejía/.test(t.body._html) && /María/.test(t.body._html), 'the real confirm names driver + customer');
+  assert.strictEqual(LAST_FOCUSED, t.cancelBtn, 'initial focus lands on Cancelar');
+  t.confirmBtn.dispatch('click', {}); await tick(); await tick();   // real Quitar repartidor → real doUnassign
+  assert.strictEqual(t.calls.length, 1, 'confirming sends exactly one request');
+  assert.deepStrictEqual(t.calls[0].slice(0, 2), ['o1', 'd1'], 'the request carries (orderId, fromDriver)');
+  ok('render gate + REAL flow: present only for the allowed shape, absent for every refused shape; the rendered row click opens the actual confirm (names order, Cancelar focused) and confirming sends exactly one request');
 }
 
 console.log(`\ndispatch-unassign-confirm: OK (${n})`);

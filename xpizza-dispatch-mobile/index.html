@@ -1104,6 +1104,7 @@ function showTab(which){
 // ── sheet plumbing ──
 let lastFocus = null;
 function openSheet(html){
+  unassignToken += 1;   // any sheet render (incl. navigating away from the "Quitar repartidor" confirm) invalidates an in-flight removal's token
   const wasOpen = $('sheet').classList.contains('on');
   if (!wasOpen) lastFocus = document.activeElement;
   $('sheet-body').innerHTML = html;
@@ -1120,6 +1121,7 @@ function openSheet(html){
   if (f) setTimeout(() => f.focus(), 60);
 }
 function closeSheet(){
+  unassignToken += 1;   // closing the sheet entirely also invalidates an in-flight removal's token
   $('scrim').classList.remove('on');
   $('sheet').classList.remove('on');
   $('sheet-body').innerHTML = '';
@@ -1345,7 +1347,7 @@ function openPicker(orderId){
     && pickupTask && ['assigned', 'accepted', 'in_progress'].includes(pickupTask.status)
     && pickupTask.assigned_driver_id === pickerFromDriver
     && deliveryTask && deliveryTask.assigned_driver_id === pickerFromDriver
-    && !['delivered', 'completed', 'cancelled'].includes((STORE.orders[orderId] || STORE.scheduled[orderId] || {}).status);
+    && !['delivered', 'completed', 'cancelled', 'out_for_delivery'].includes((STORE.orders[orderId] || STORE.scheduled[orderId] || {}).status);
   const removeBlock = canUnassign ? `
     <div class="panel" style="margin-top:14px">
       <button class="row" type="button" data-unassign="${escapeHtml(orderId)}">
@@ -1430,7 +1432,8 @@ async function commitAssign(orderId, driverId){
 
 // ── "Quitar repartidor" (unassign) — reassign-only; mirrors the reassign confirm flow, destination = Sin asignar ──
 function openUnassignConfirm(orderId){
-  unassignToken += 1;   // new operation; a prior in-flight request's result will be token-skipped
+  // the token is bumped by openSheet (below) — and by every other sheet render/close, so leaving this confirm
+  // by ANY path (back, Cancelar, Esc, assign/reassign) invalidates an in-flight removal's result.
   // fresh opId per operation; commitUnassign reuses it so a retry of the same press resends the SAME opId
   unassignOpId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2);
   const order = STORE.orders[orderId] || STORE.scheduled[orderId] || {};

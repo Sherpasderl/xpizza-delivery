@@ -5036,6 +5036,7 @@ function openUnassignConfirm(orderId) {
 function closeUnassignConfirm(toRemoveRow) {
   if (!unassignOpen) return;
   unassignOpen = false;
+  unassignToken += 1;   // leaving this confirm (cancel/Esc/backdrop/success) invalidates any request still in flight for it
   $('unassign-confirm-overlay').classList.add('hidden');
   const opener = unassignOpener, orderId = unassignOrderId;
   unassignOpener = null; unassignOrderId = null;
@@ -5866,7 +5867,7 @@ function openPicker(orderId, isReassign = false) {
     && pickupTask && ['assigned', 'accepted', 'in_progress'].includes(pickupTask.status)
     && pickupTask.assigned_driver_id === pickerFromDriver
     && deliveryTask && deliveryTask.assigned_driver_id === pickerFromDriver
-    && !['delivered', 'completed', 'cancelled'].includes((allOrders[orderId] || {}).status);
+    && !['delivered', 'completed', 'cancelled', 'out_for_delivery'].includes((allOrders[orderId] || {}).status);
   if (canUnassign) {
     $('picker-list').insertAdjacentHTML('afterbegin',
       `<button type="button" class="row-remove" id="picker-remove-row" aria-label="Quitar repartidor — dejar este pedido sin asignar">`
