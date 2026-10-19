@@ -1316,10 +1316,12 @@ function openPicker(orderId){
     ? group(free, 'Disponibles', 'var(--mint-ink)') + group(busy, 'En entrega', 'var(--sky-ink)') + offNote
     : `<div class="empty"><b>No hay repartidores en turno</b><p>${hiddenOff ? `${hiddenOff} está${hiddenOff === 1 ? '' : 'n'} fuera de turno. Alguien tiene que entrar antes de poder asignar.` : 'Nadie está registrado todavía.'}</p></div>`;
 
-  // "Quitar repartidor" — reassign mode only (an order already has a driver). Takes the order off its
-  // driver back to the unassigned queue via the unassignOrder callable. A removal, not a driver pick, so it
-  // sits in its own panel above the lists and stays available even with zero eligible drivers (body === empty).
-  const removeBlock = pickerIsReassign ? `
+  // "Quitar repartidor" — reassign mode only (an order already has a driver), AND only while the pickup leg is
+  // NOT yet completed (PRE-PICKUP): the server's unassignOrder covers pre-pickup orders only, so never offer it
+  // where the server would refuse (a completed pickup = out for delivery). Takes the order off its driver back
+  // to the unassigned queue via the callable; stays available even with zero eligible drivers (body === empty).
+  const pickupCompleted = (STORE.tasks[`${orderId}_pickup`] || {}).status === 'completed';
+  const removeBlock = (pickerIsReassign && !pickupCompleted) ? `
     <div class="panel" style="margin-top:14px">
       <button class="row" type="button" data-unassign="${escapeHtml(orderId)}">
         <span class="av empty"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M17 11h6"/></svg></span>
@@ -1444,6 +1446,9 @@ async function commitUnassign(orderId){
       toast('Ese pedido ya tiene otro repartidor'); closeSheet();
     } else if (res && res.ok === false && res.reason === 'not_assigned') {
       toast('Ese pedido ya no estaba asignado'); closeSheet();
+    } else if (res && res.ok === false && res.reason === 'picked_up') {
+      // the driver picked up the food between picker-open and confirm — a FINAL state, not retryable (close quietly)
+      toast('El repartidor ya recogió el pedido'); closeSheet();
     } else {
       toast('No se pudo quitar — reintentá', true);
       if (btn) { btn.disabled = false; btn.textContent = 'Quitar repartidor'; }
