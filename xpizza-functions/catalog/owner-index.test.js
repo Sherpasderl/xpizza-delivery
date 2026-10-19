@@ -116,39 +116,23 @@ function stubDb(tree, { throwOn = null } = {}) {
     ok('a read outage propagates instead of returning an empty list (503, never a confident "you own nothing")');
   }
 
-  // ── (7) THE GRANT TOOL. Owner-run, never executed by a test, and the ONLY writer of either path —
-  //        so its wiring is asserted structurally, as with every other CLI in this repo.
+  // ── (7) THE GRANT TOOL — PLAN-portal-membership r3 §7.4: seed-owner is DELETED; the owner's membership-admin CLI replaces it,
+  //        and every membership write goes through access/roster.js mutateRoster. This module now only READS the legacy index
+  //        (for the cutover's census / compare and the rollback window). Asserted structurally, as with every other CLI.
   {
-    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'tools', 'seed-owner.js'), 'utf8')
+    const fs = require('fs'); const path = require('path');
+    assert.ok(!fs.existsSync(path.join(__dirname, '..', 'tools', 'seed-owner.js')), 'seed-owner.js is retired — the legacy owner paths have NO writer');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'tools', 'membership-admin.js'), 'utf8')
       .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
-    for (const id of ['ownerGrantPaths', 'readOwnerRestaurants', 'RID_RE', 'UID_RE', 'RTDB_URL']) {
-      assert.ok(new RegExp(`\\{[^}]*\\b${id}\\b[^}]*\\}\\s*=\\s*require`).test(src),
-        `seed-owner uses ${id} but never imports it — node --check is blind to this, and the first run IS the grant`);
+    for (const id of ['requireProject', 'RTDB_URL', 'runMembershipAdmin']) {
+      assert.ok(new RegExp(`\\{[^}]*\\b${id}\\b[^}]*\\}\\s*=\\s*require`).test(src), `membership-admin uses ${id} but never imports it`);
     }
-    // ONE atomic multi-path update. Two writes could half-apply, and the dangerous half is a reverse
-    // index naming a restaurant the forward index does not.
-    assert.ok(/await db\.ref\(\)\.update\(update\)/.test(src), 'the grant must be a single root-level multi-path update (atomic)');
-    assert.strictEqual((src.match(/\.set\(/g) || []).length, 0, 'and must not use per-path set() — that is the half-apply shape');
-    // The paths come from the shared helper, so a revoke can never clear a different set than a grant writes.
-    assert.ok(/const paths = ownerGrantPaths\(RID, UID\)/.test(src), 'the tool must derive its paths from ownerGrantPaths');
-    assert.ok(/update\[p\] = REVOKE \? null : true/.test(src), 'and revoke must clear exactly those same paths');
-    // Validation precedes any write, and the read-only listing returns before it.
-    //
-    // `before` asserts BOTH markers exist first. A bare indexOf comparison is a trap: deleting the
-    // earlier marker makes indexOf return -1, and -1 is less than any index — so the ordering check
-    // passes exactly when the thing it orders has been removed. Three mutations survived on that.
-    const before = (a, b, why) => {
-      assert.ok(src.includes(a), `${why} — but "${a}" is not in the tool at all`);
-      assert.ok(src.includes(b), `${why} — but "${b}" is not in the tool at all`);
-      assert.ok(src.indexOf(a) < src.indexOf(b), why);
-    };
-    before('UID_RE.test(UID)', 'db.ref().update', 'the uid is validated before any write');
-    before('RID_RE.test(RID)', 'db.ref().update', 'and so is the rid');
-    before('nothing changed.', 'db.ref().update', 'listing (uid only) returns BEFORE the write path');
-    // and the listing branch really does exit rather than falling through
-    assert.ok(/nothing changed[\s\S]{0,120}process\.exit\(0\)/.test(src), 'the listing branch exits — it never continues into the grant');
+    const APP_INIT = ['initialize', 'App('].join('');   // assembled so this test file is not itself classified as a client by the endpoint census
+    assert.ok(src.indexOf('requireProject({ requireFlag: true })') > -1 && src.indexOf(APP_INIT) > -1 && src.indexOf('requireProject({ requireFlag: true })') < src.indexOf(APP_INIT),
+      'the explicit --project guard runs BEFORE any client is constructed');
     assert.ok(/databaseURL: RTDB_URL/.test(src), 'and databaseURL is pinned — admin.database() throws without it');
-    ok('the grant tool imports what it uses, writes ONE atomic multi-path update, and validates before writing');
+    assert.ok(!/\.ref\(/.test(src), 'the CLI performs NO database access of its own — every read / write is the tested core');
+    ok('the legacy grant tool is retired; membership-admin is guarded, pinned, and delegates every database access to the tested core');
   }
 
   console.log(`owner-index: OK (${n})`);

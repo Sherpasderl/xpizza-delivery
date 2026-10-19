@@ -138,3 +138,27 @@ test('invites: cancel (owner of the brand only); a cancelled link refuses', asyn
   assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'someone1', token: {} }, c.inviteId), { ok: false, code: 'cancelled' });
   assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'someone1', token: {} }, 'tooShort'), { ok: false, code: 'bad_invite' });
 });
+
+test('team-core: every write refuses while membership_writes_enabled is OFF (the freeze); list is owner-only', async () => {
+  const T = require('./team-core');
+  const db = createFakeDb(base());
+  const d = { ...deps(db), randomToken };
+  const own = { uid: 'ownerA', token: {} };
+  for (const [name, fn, body] of [['invite', T.teamInvite, { kind: 'manager', brandId: 'tb', rid: 'tb_centro' }],
+    ['cancel', T.teamCancelInvite, { inviteId: 'inviteAAAAAAAAAAAAAAAAAAAA' }], ['accept', T.teamAcceptInvite, { inviteId: 'inviteAAAAAAAAAAAAAAAAAAAA' }],
+    ['revoke', T.teamRevoke, { brandId: 'tb', kind: 'owner', uid: 'ownerA' }]]) {
+    assert.deepStrictEqual(await fn(d, own, body), { ok: false, code: 'writes_disabled' }, `${name} refused while the flag is off`);
+  }
+  db.put('platform_config/membership_writes_enabled', 'true');   // not the boolean true → still off
+  assert.strictEqual((await T.teamInvite(d, own, { kind: 'manager', brandId: 'tb', rid: 'tb_centro' })).code, 'writes_disabled');
+  db.put('platform_config/membership_writes_enabled', true);
+  const inv = await T.teamInvite(d, own, { kind: 'manager', brandId: 'tb', rid: 'tb_centro' });
+  assert.ok(inv.ok);
+  assert.deepStrictEqual(await T.teamAcceptInvite(d, { uid: 'mgrT001', token: {} }, { inviteId: inv.inviteId }), { ok: true, outcome: 'granted' });
+  assert.deepStrictEqual(await T.teamRevoke(d, own, { brandId: 'tb', kind: 'manager', uid: 'mgrT001', rid: 'tb_centro' }), { ok: true, outcome: 'applied' });
+  assert.deepStrictEqual(await T.teamRevoke(d, own, { brandId: 'tb', kind: 'owner', uid: 'ownerA' }), { ok: false, code: 'last_owner' });
+  assert.deepStrictEqual(await T.teamRevoke(d, own, { brandId: 'tb', kind: 'bootstrap', uid: 'x' }), { ok: false, code: 'bad_kind' });
+  assert.deepStrictEqual(await T.teamList(d, own, { brandId: 'tb' }), { ok: true, owners: ['ownerA'], managers: {} });
+  assert.deepStrictEqual(await T.teamList(d, { uid: 'mgrT001', token: {} }, { brandId: 'tb' }), { ok: false, code: 'forbidden' });
+  assert.deepStrictEqual(await T.teamList(d, { uid: 'ownerA', token: { handheld: true } }, { brandId: 'tb' }), { ok: false, code: 'forbidden' });
+});
