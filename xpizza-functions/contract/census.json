@@ -218,7 +218,7 @@
   },
   {
    "id": "xpizza-functions/access/membership-admin-core.js#myRestaurants#status#0",
-   "line": 150,
+   "line": 154,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -231,7 +231,7 @@
   },
   {
    "id": "xpizza-functions/access/membership-admin-core.js#myRestaurants#status#1",
-   "line": 150,
+   "line": 154,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -40324,7 +40324,7 @@
    "file": "xpizza-functions/access/membership-admin-core.js",
    "fn": "census",
    "base": "o",
-   "line": 56,
+   "line": 60,
    "how": "Object.keys",
    "rule": "server:access"
   },
@@ -40332,7 +40332,7 @@
    "file": "xpizza-functions/access/membership-admin-core.js",
    "fn": "expectedIndex",
    "base": "o",
-   "line": 74,
+   "line": 78,
    "how": "Object.keys",
    "rule": "server:access"
   },
@@ -41130,7 +41130,7 @@
    "file": "xpizza-functions/access/membership-admin-core.js",
    "alias": "error",
    "field": "status",
-   "line": 150,
+   "line": 154,
    "round": 1
   },
   {
@@ -42332,27 +42332,27 @@
   },
   {
    "key": "xpizza-functions/access/invites.js:createInvite>anon:Date.now()",
-   "line": 30,
+   "line": 32,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/access/invites.js:acceptInvite>anon:Date.now()",
-   "line": 75,
+   "line": 78,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/access/membership-admin-core.js:backfill>anon:Date.now()",
-   "line": 61,
+   "line": 65,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/access/membership-admin-core.js:runMembershipAdmin>anon:Date.now()",
-   "line": 158,
+   "line": 162,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/access/roster.js:mutateRoster>anon:Date.now()",
-   "line": 104,
+   "line": 127,
    "class": "business-sample"
   },
   {
@@ -44609,7 +44609,7 @@
    "file": "xpizza-functions/access/membership-admin-core.js",
    "fn": "reconcile",
    "how": "computed-key-at-root",
-   "line": 101,
+   "line": 105,
    "detail": "p",
    "resolved": []
   },
@@ -44617,7 +44617,7 @@
    "file": "xpizza-functions/access/membership-admin-core.js",
    "fn": "reconcile",
    "how": "computed-key-at-root",
-   "line": 101,
+   "line": 105,
    "detail": "p",
    "resolved": []
   },
@@ -44625,7 +44625,7 @@
    "file": "xpizza-functions/access/membership-admin-core.js",
    "fn": "reconcile",
    "how": "computed-key-at-root",
-   "line": 101,
+   "line": 105,
    "detail": "p",
    "resolved": []
   },

@@ -15645,12 +15645,12 @@
   {
     "id": "membership-06",
     "slice": "membership",
-    "label": "roster: the LAST owner can be revoked",
+    "label": "roster: an OWNER actor may run the CLI-only owner ops (co-owner / self-transfer)",
     "file": "access/roster.js",
-    "from": "        if (Object.keys(owners).length <= 1) return { code: 'last_owner' };\n",
+    "from": "  if (actor.kind !== 'cli' && CLI_ONLY_OPS.includes(op.type)) return { code: 'forbidden' };\n",
     "to": "",
     "kills_with": [
-      "the last owner cannot be revoked"
+      "ONE owner per brand"
     ],
     "command": [
       "node",
@@ -15679,10 +15679,10 @@
     "slice": "membership",
     "label": "roster: bootstrap_owner into a NON-empty roster",
     "file": "access/roster.js",
-    "from": "      if (Object.keys(owners).length) return isObj(owners[op.uid]) ? { outcome: 'noop' } : { code: 'roster_not_empty' };\n",
+    "from": "      if (cur0.length) return cur0.length === 1 && cur0[0] === op.uid ? { outcome: 'noop' } : { code: 'roster_not_empty' };\n",
     "to": "",
     "kills_with": [
-      "bootstrap_owner: CLI only"
+      "ONE owner per brand"
     ],
     "command": [
       "node",
@@ -15698,7 +15698,7 @@
     "from": "  if (actor.kind === 'owner' && !isObj(owners[actor.uid])) return { code: 'forbidden' };\n",
     "to": "",
     "kills_with": [
-      "actor authority re-validated inside the transaction"
+      "actor authority re-validated"
     ],
     "command": [
       "node",
@@ -15815,6 +15815,22 @@
     "command": [
       "node",
       "brands-rules.guard.test.js"
+    ]
+  },
+  {
+    "id": "membership-17",
+    "slice": "membership",
+    "label": "capability table: a manager with «Puede editar el menú y los precios» may give the FISCAL acknowledgement",
+    "file": "access/membership.js",
+    "from": "  'catalog.fiscal_ack':  { owner: true },",
+    "to": "  'catalog.fiscal_ack':  { owner: true, manager_menu: true },",
+    "kills_with": [
+      "the fiscal acknowledgement stays OWNER-only"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
     ]
   }
 ]

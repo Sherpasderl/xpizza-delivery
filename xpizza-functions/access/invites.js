@@ -1,6 +1,8 @@
 'use strict';
-// PLAN-portal-membership r3 §5.2 — one-time invite LINKS (O5, pending owner: shared by WhatsApp, like the driver invite).
-//   member_invites/{inviteId} = { kind: 'owner'|'manager', brandId, rid?, invited_by, created_at, expires_at,
+// PLAN-portal-membership r3 §5.2 + OWNER DECISIONS (2026-10-19) — one-time invite LINKS the OWNER sends by WhatsApp (email
+// later, once there is a domain). Only «Gerente de sucursal» is invited (one or more branches; the owner's «Puede editar el
+// menú y los precios» toggle rides on the invite). There are no owner invites: ONE owner per brand, changed by CLI only.
+//   member_invites/{inviteId} = { kind: 'manager', brandId, rids: [rid…], can_edit_menu, invited_by, created_at, expires_at,
 //                                 state: 'open'|'consuming'|'consumed'|'cancelled'|'expired', consuming?: { by, at } }
 // inviteId is a 128-bit random token: the link IS the secret. Deny-all in rules (Admin only).
 //
@@ -16,7 +18,7 @@
 // touch; absent → expiry re-checked, then step 2.
 const F1 = require('../brands/brand-model');
 const { refuseContext, isUid, resolveLocation } = require('./membership');
-const { mutateRoster, INVITE_ID_RE } = require('./roster');
+const { mutateRoster, INVITE_ID_RE, MAX_BRANCHES } = require('./roster');
 
 const TTL_MS = 72 * 3600 * 1000;
 const INFLIGHT_MS = 30 * 1000;
@@ -26,24 +28,25 @@ const val = async (db, p) => (await db.ref(p).once('value')).val();
 
 async function isOwner(db, brandId, uid) { return isObj(await val(db, `brand_members/${brandId}/owners/${uid}`)); }
 
-async function createInvite(deps, ctx, { kind, brandId, rid }) {
+async function createInvite(deps, ctx, { brandId, rids, can_edit_menu = false }) {
   const { db, now = () => Date.now(), randomToken } = deps;
   const refused = refuseContext(ctx); if (refused) return refused;
   if (!isUid(ctx.uid)) return fail('forbidden');
-  if (kind !== 'owner' && kind !== 'manager') return fail('bad_kind');
   if (!F1.isBrandId(brandId)) return fail('bad_brand');
+  if (!Array.isArray(rids) || !rids.length || rids.length > MAX_BRANCHES || new Set(rids).size !== rids.length) return fail('bad_rids');
+  if (typeof can_edit_menu !== 'boolean') return fail('bad_perms');
   try {
     const rec = await val(db, `brands/${brandId}`);
     if (!rec || !F1.validateBrand(brandId, rec).ok) return fail('brand_invalid');
-    if (!(await isOwner(db, brandId, ctx.uid))) return fail('forbidden');   // O2: only owners invite
-    if (kind === 'manager') {
+    if (!(await isOwner(db, brandId, ctx.uid))) return fail('forbidden');   // only the owner invites
+    for (const rid of rids) {
       const loc = await resolveLocation(db, rid);
       if (loc.brandId !== brandId || loc.state !== 'member') return fail('location_not_member');
-    } else if (rid !== undefined) return fail('bad_rid');                     // an owner invite is brand-level (no rid)
+    }
     const id = randomToken();
     if (!INVITE_ID_RE.test(id)) return fail('unavailable');
     const at = now();
-    const inv = { kind, brandId, invited_by: ctx.uid, created_at: at, expires_at: at + TTL_MS, state: 'open', ...(kind === 'manager' ? { rid } : {}) };
+    const inv = { kind: 'manager', brandId, rids: [...rids].sort(), can_edit_menu, invited_by: ctx.uid, created_at: at, expires_at: at + TTL_MS, state: 'open' };
     await db.ref(`member_invites/${id}`).set(inv);
     return { ok: true, inviteId: id, expires_at: inv.expires_at };
   } catch (_) { return fail('unavailable'); }
@@ -109,8 +112,9 @@ async function acceptInvite(deps, ctx, inviteId) {
       }
       if (!(inv.expires_at > at)) { await setState(db, inviteId, ['consuming'], 'expired'); return fail('expired'); }
     }
+    if (inv.kind !== 'manager' || !Array.isArray(inv.rids)) { await setState(db, inviteId, ['consuming'], 'cancelled'); return fail('invalid'); }
     const r = await mutateRoster({ db, now, log }, inv.brandId, { kind: 'owner', uid: inv.invited_by },
-      { type: inv.kind === 'owner' ? 'grant_owner' : 'grant_manager', uid, rid: inv.rid, inviteId });
+      { type: 'grant_manager', uid, rids: inv.rids, can_edit_menu: inv.can_edit_menu === true, inviteId });
     if (!r.ok) {
       if (r.code === 'forbidden' || r.code === 'location_not_member' || r.code === 'brand_invalid') {
         await setState(db, inviteId, ['consuming'], 'cancelled');   // the inviter lost authority / scope gone: the invite dies

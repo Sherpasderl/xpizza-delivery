@@ -41,7 +41,10 @@ test('capability table: the owner decisions live in ONE place; columns compose b
   assert.ok(M.CAP_NAMES.includes('stats.read') && M.CAP_NAMES.includes('catalog.fiscal_ack'));
   assert.deepStrictEqual(M.capsFor({ owner: true }, 'retired'), ['stats.read'], 'retired owner: history read only');
   assert.deepStrictEqual(M.capsFor({ manager: true }, 'retired'), [], 'a manager of a retired location has nothing');
-  assert.ok(!M.capsFor({ manager: true }, 'member').includes('catalog.publish'), 'O7: managers do not publish');
+  assert.ok(!M.capsFor({ manager: true }, 'member').includes('catalog.publish'), 'a manager WITHOUT the menu permission does not publish');
+  assert.ok(M.capsFor({ manager: true, manager_menu: true }, 'member').includes('catalog.publish'), '«Puede editar el menú y los precios» → publish');
+  assert.ok(!M.capsFor({ manager: true, manager_menu: true }, 'member').includes('catalog.fiscal_ack'), 'never the fiscal ack');
+  assert.deepStrictEqual(M.capsFor({ manager: true, manager_menu: true }, 'retired'), [], 'nothing at a retired branch');
   assert.ok(M.capsFor({ manager: true }, 'member').includes('device.pair'));
   assert.deepStrictEqual(M.capsFor({ dispatcher: true }, 'unknown'), ['catalog.edit', 'catalog.publish'], 'dispatcher = today, brand-independent');
   assert.deepStrictEqual(M.capsFor({ staff: true }, 'unknown'), ['catalog.edit', 'catalog.publish'], 'staff = today, brand-independent');
@@ -65,7 +68,7 @@ test('resolveAccess: verified context — customer AND handheld refused before A
 test('resolveAccess: facts are independent; caps follow the location state', async () => {
   const db = createFakeDb(base());
   const ox = await M.resolveAccess({ db }, ctx('ownerX'), 'x_pizza');
-  assert.deepStrictEqual([ox.ok, ox.brandId, ox.state, ox.tier, ox.facts], [true, 'x_pizza', 'member', 'owner', { owner: true, manager: false, dispatcher: false, staff: false }]);
+  assert.deepStrictEqual([ox.ok, ox.brandId, ox.state, ox.tier, ox.facts], [true, 'x_pizza', 'member', 'owner', { owner: true, manager: false, manager_menu: false, dispatcher: false, staff: false }]);
   assert.ok(ox.caps.includes('catalog.fiscal_ack') && ox.caps.includes('team.invite'));
   const otn = await M.resolveAccess({ db }, ctx('ownerTB'), 'tb_norte');
   assert.deepStrictEqual([otn.state, otn.caps], ['retired', ['stats.read']], 'owner of a retired location: read-only history');
@@ -75,7 +78,7 @@ test('resolveAccess: facts are independent; caps follow the location state', asy
   assert.ok(mc.caps.includes('device.pair') && mc.caps.includes('stats.read') && !mc.caps.includes('catalog.edit'));
   // dispatcher + manager: the UNION, not a single winner
   const dm = await M.resolveAccess({ db }, ctx('dispMgr'), 'tb_centro');
-  assert.deepStrictEqual(dm.facts, { owner: false, manager: true, dispatcher: true, staff: false });
+  assert.deepStrictEqual(dm.facts, { owner: false, manager: true, manager_menu: false, dispatcher: true, staff: false });
   assert.ok(dm.caps.includes('device.pair') && dm.caps.includes('catalog.edit'), 'manager caps AND dispatcher caps');
   assert.strictEqual(dm.tier, 'manager', 'tier is presentation only');
   // the owner of brand X is nobody at brand TB
@@ -151,6 +154,15 @@ test('cores gate on CAPABILITIES with today\'s error bodies: a manager-only call
   // stats: the manager's capability passes the gate (it then fails later on the stubbed keyer — never as not_owner)
   const s = await getSalesStatsCore({ authorize: manager, getKeyer: () => { throw new Error('no keyer'); } }, { method: 'GET', query: { restaurantId: 'tb_centro' } });
   assert.notStrictEqual(s.body && s.body.error, 'not_owner', 'getSalesStats: stats.read admits a manager of the location (O1)');
+  // «Puede editar el menú y los precios»: past the edit / publish gates; for a PLATFORM-FACTURA brand (x_pizza) the publish
+  // still needs the OWNER's fiscal acknowledgement → today's not_owner; for la_musa it passes the gate (fails later on the stubs)
+  const menuMgr = async () => ({ ok: true, uid: 'mgrM', role: 'manager', caps: M.capsFor({ manager: true, manager_menu: true }, 'member') });
+  const ex = await editCatalogCore({ db: { collection: boom }, authorize: menuMgr, readActiveBuilt: boom }, { restaurantId: 'tb_centro', source: 'x' }, {});
+  assert.notStrictEqual(ex.body.error, 'not_authorized', 'a permitted manager passes the editCatalog gate');
+  const { usesPlatformFactura } = require('../factura/eligibility');
+  assert.ok(usesPlatformFactura('x_pizza') && !usesPlatformFactura('la_musa'), 'premise');
+  const fx = await publishEditedCore({ db: { collection: boom }, authorize: menuMgr, readActiveBuilt: boom, readDraft: boom }, { restaurantId: 'x_pizza', token: 't' }, {});
+  assert.notStrictEqual(fx.body.error, 'not_authorized', 'the publish gate admits the permitted manager (the fiscal gate decides later)');
   const disp = async () => ({ ok: true, uid: 'd', role: 'dispatcher' });   // a legacy role-only stub → today's column
   const sd = await getSalesStatsCore({ authorize: disp, getKeyer: boom }, { method: 'GET', query: { restaurantId: 'tb_centro' } });
   assert.deepStrictEqual([sd.status, sd.body.error], [403, 'not_owner'], 'a dispatcher is still refused stats as today');

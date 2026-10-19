@@ -36,6 +36,7 @@ test('census REFUSES every off-shape (a reverse-only entry never becomes an owne
     ['brand_member_manager_present', (w) => { w.brand_members = { x_pizza: { managers: { x_pizza: { mgr00002: { granted_at: 1 } } } } }; }],
     ['unexpected_new_owner', (w) => { w.brand_members = { x_pizza: { owners: { stranger1: { granted_at: 1 } } } }; }],
     ['bad_uid', (w) => { w.restaurants.x_pizza.owners['u_bad'] = true; w.owner_restaurants.u_bad = { x_pizza: true }; }],
+    ['multiple_owners', (w) => { w.restaurants.x_pizza.owners.ownerP2 = true; w.owner_restaurants.ownerP2 = { x_pizza: true }; }],
   ];
   for (const [code, mut] of cases) {
     const w = prod(); mut(w);
@@ -86,4 +87,15 @@ test('reconcile: missing / stale / malformed reported; --apply repairs the INDEX
   assert.strictEqual((await run(db, 'reconcile', true)).code, 0, 'repaired, then re-verified');
   assert.strictEqual(JSON.stringify(db.get('brand_members')), rosterBefore, 'grants untouched');
   assert.strictEqual(db.get('member_of/staleUid1/brands/x_pizza'), null, 'the stale entry is removed (RTDB prunes the empty parent)');
+});
+
+test('transfer-owner: the ONLY way to change a brand\'s single owner — CLI, dry run unless --apply', async () => {
+  const db = createFakeDb(prod());
+  await run(db, 'backfill', true);
+  const logs = []; const go = (apply) => C.runMembershipAdmin({ db, op: 'transfer-owner', args: ['x_pizza', 'newOwner1'], apply, operator: 'op', now: () => 9, log: (l) => logs.push(l) });
+  assert.strictEqual(await go(false), 0);
+  assert.deepStrictEqual(Object.keys(db.get('brand_members/x_pizza/owners')), ['ownerP1'], 'a dry run changes nothing');
+  assert.strictEqual(await go(true), 0);
+  assert.deepStrictEqual(Object.keys(db.get('brand_members/x_pizza/owners')), ['newOwner1'], 'replaced — still exactly one owner');
+  assert.strictEqual(db.get('member_of/ownerP1/brands/x_pizza'), null);
 });

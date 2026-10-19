@@ -39,6 +39,10 @@ async function census(db) {
   for (const p of forward) if (!rset.has(key(p))) findings.push({ code: 'forward_only_owner', uid: p[0], rid: p[1] });
   for (const p of rev) if (!fset.has(key(p))) findings.push({ code: 'reverse_only_owner', uid: p[0], rid: p[1] });
   const owners = [];
+  // OWNER DECISION 2026-10-19: ONE owner per brand (no co-owners) — a legacy location with several owners stops the cutover
+  const perRid = {};
+  for (const [uid, rid] of forward) (perRid[rid] = perRid[rid] || []).push(uid);
+  for (const rid of Object.keys(perRid).sort()) if (perRid[rid].length > 1) findings.push({ code: 'multiple_owners', rid, uids: perRid[rid] });
   for (const [uid, rid] of forward) {
     if (!UID_RE.test(uid)) findings.push({ code: 'bad_uid', uid, rid });
     if (!F1.isBrandId(rid)) { findings.push({ code: 'bad_rid', uid, rid }); continue; }
@@ -155,7 +159,7 @@ function makeNewReaders(db) {
   };
 }
 
-async function runMembershipAdmin({ db, op, apply, operator, now = () => Date.now(), log = console.log }) {
+async function runMembershipAdmin({ db, op, args = [], apply, operator, now = () => Date.now(), log = console.log }) {
   if (op === 'census') {
     const c = await census(db);
     log(JSON.stringify({ ok: c.ok, owners: c.owners, findings: c.findings }, null, 2));
@@ -184,7 +188,13 @@ async function runMembershipAdmin({ db, op, apply, operator, now = () => Date.no
     log(JSON.stringify({ ok: r.ok, compared: { uids: uids.length, rids }, diffs: r.diffs }, null, 2));
     return r.ok ? 0 : 6;
   }
-  log('usage: membership-admin --project <id> census | backfill [--apply] | reconcile [--apply] | compare');
+  if (op === 'transfer-owner') {   // OWNER DECISION 2026-10-19: owner transfer is a PLATFORM CLI operation only
+    const [brandId, uid] = args || [];
+    if (!apply) { log(JSON.stringify({ dry_run: true, would_transfer: { brandId, to: uid } })); return 0; }
+    const r = await mutateRoster({ db, now, log: (k) => log(k) }, brandId, { kind: 'cli', operator }, { type: 'transfer_owner', uid });
+    log(JSON.stringify(r)); return r.ok ? 0 : 4;
+  }
+  log('usage: membership-admin --project <id> census | backfill [--apply] | reconcile [--apply] | compare | transfer-owner <brandId> <uid> [--apply]');
   return 2;
 }
 

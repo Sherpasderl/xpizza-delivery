@@ -16,16 +16,20 @@
 // can(access, '<operation>'); none compares tiers.
 const F1 = require('../brands/brand-model');
 
-// columns: owner (member location) · owner_retired · manager (member location) · dispatcher · staff (kitchen_staff)
+// columns: owner (member location) · owner_retired · manager («Gerente de sucursal», member location) · manager_menu (a
+// manager whose grant carries can_edit_menu: «Puede editar el menú y los precios», toggled by the owner) · dispatcher · staff.
 // Dispatcher and staff columns reproduce TODAY's behaviour exactly (they never depended on the brand record).
+// FISCAL (advisor ruling): catalog.fiscal_ack stays OWNER-only — for a platform-factura brand every publish needs the owner's
+// acknowledgement, so a permitted manager edits and saves a draft and the owner confirms the publish; elsewhere a permitted
+// manager publishes directly.
 const CAPABILITIES = Object.freeze({
-  'catalog.read_editor': { owner: true },
-  'catalog.edit':        { owner: true, dispatcher: true, staff: true },
-  'catalog.add_product': { owner: true },
-  'catalog.reset_draft': { owner: true },
-  'catalog.publish':     { owner: true, dispatcher: true, staff: true },          // O7 (pending owner): managers do not publish
+  'catalog.read_editor': { owner: true, manager_menu: true },
+  'catalog.edit':        { owner: true, dispatcher: true, staff: true, manager_menu: true },
+  'catalog.add_product': { owner: true, manager_menu: true },
+  'catalog.reset_draft': { owner: true, manager_menu: true },
+  'catalog.publish':     { owner: true, dispatcher: true, staff: true, manager_menu: true },
   'catalog.fiscal_ack':  { owner: true },                                         // gate applies when usesPlatformFactura(rid)
-  'stats.read':          { owner: true, owner_retired: true, manager: true },     // O1 manager: own location; O6 retired read-only
+  'stats.read':          { owner: true, owner_retired: true, manager: true },     // the manager's own branch; retired: history read-only
   'availability.set':    { owner: true, manager: true },                          // O1
   'device.pair':         { owner: true, manager: true },
   'device.revoke':       { owner: true, manager: true },
@@ -33,9 +37,9 @@ const CAPABILITIES = Object.freeze({
   'location.hours':      { owner: true, manager: true },                          // O1
   'location.prep':       { owner: true, manager: true },                          // O1
   'location.pause':      { owner: true, manager: true },                          // O1
-  'team.invite':         { owner: true },                                         // O2
-  'team.revoke':         { owner: true },                                         // O2
-  'brand.settings':      { owner: true },                                         // O2
+  'team.invite':         { owner: true },                                         // only the owner invites / revokes / sets roles
+  'team.revoke':         { owner: true },
+  'brand.settings':      { owner: true },
 });
 const CAP_NAMES = Object.freeze(Object.keys(CAPABILITIES));
 
@@ -53,6 +57,7 @@ function capsFor(facts, state) {
   if (facts.owner && state === 'member') cols.push('owner');
   if (facts.owner && state === 'retired') cols.push('owner_retired');
   if (facts.manager && state === 'member') cols.push('manager');
+  if (facts.manager && facts.manager_menu && state === 'member') cols.push('manager_menu');
   if (facts.dispatcher) cols.push('dispatcher');
   if (facts.staff) cols.push('staff');
   return CAP_NAMES.filter((c) => cols.some((col) => CAPABILITIES[c][col] === true));
@@ -60,7 +65,7 @@ function capsFor(facts, state) {
 
 // For an authorization result that carries only a legacy `role` (test stubs, older callers): the role's column at a member
 // location. Keeps every core on can() while a stub still says { ok, role }.
-const ROLE_COLUMN = { owner: 'owner', dispatcher: 'dispatcher', staff: 'staff', manager: 'manager' };
+const ROLE_COLUMN = { owner: 'owner', dispatcher: 'dispatcher', staff: 'staff', manager: 'manager' };   // a role-only stub never implies manager_menu
 function can(auth, cap) {
   if (!auth || !auth.ok) return false;
   if (Array.isArray(auth.caps)) return auth.caps.includes(cap);
@@ -100,7 +105,7 @@ function refuseContext(ctx) {
   return null;
 }
 
-const TIER_ORDER = ['owner', 'manager', 'dispatcher', 'staff'];
+const TIER_ORDER = ['owner', 'manager', 'dispatcher', 'staff'];   // manager_menu is a permission on the manager, not a tier
 
 async function resolveAccess({ db }, ctx, rid) {
   const refused = refuseContext(ctx);
@@ -109,9 +114,11 @@ async function resolveAccess({ db }, ctx, rid) {
   try {
     const loc = await resolveLocation(db, rid);
     const known = loc.brandId !== F1.UNKNOWN;
+    const grant = known ? await val(db, `brand_members/${loc.brandId}/managers/${rid}/${uid}`) : null;
     const facts = {
       owner: known ? (await val(db, `brand_members/${loc.brandId}/owners/${uid}`)) != null : false,
-      manager: known ? (await val(db, `brand_members/${loc.brandId}/managers/${rid}/${uid}`)) != null : false,
+      manager: grant != null,
+      manager_menu: isObj(grant) && grant.can_edit_menu === true,
       dispatcher: (await val(db, `dispatchers/${uid}`)) != null,
       staff: typeof rid === 'string' && rid ? (await val(db, `restaurants/${rid}/kitchen_staff/${uid}`)) != null : false,
     };
@@ -151,10 +158,12 @@ async function myLocations({ db, onStale = () => {} }, ctx) {
     if (!isLoc(rid) || locs[rid] !== 'manager') { onStale({ kind: 'malformed_location_entry', id: rid }); continue; }
     const loc = await resolveLocation(db, rid);
     if (loc.brandId === F1.UNKNOWN) { onStale({ kind: 'roster_mismatch', id: rid }); continue; }
-    if ((await val(db, `brand_members/${loc.brandId}/managers/${rid}/${uid}`)) == null) { onStale({ kind: 'stale_manager', id: rid }); continue; }
+    const grant = await val(db, `brand_members/${loc.brandId}/managers/${rid}/${uid}`);
+    if (grant == null) { onStale({ kind: 'stale_manager', id: rid }); continue; }
     if (out.has(rid)) continue;                       // owner already lists it (dedup; owner wins)
     if (loc.state !== 'member') continue;             // a manager of a retired location has no capability there
-    out.set(rid, { rid, brand_id: loc.brandId, role: 'manager', state: loc.state, caps: capsFor({ manager: true }, loc.state) });
+    out.set(rid, { rid, brand_id: loc.brandId, role: 'manager', state: loc.state,
+      caps: capsFor({ manager: true, manager_menu: isObj(grant) && grant.can_edit_menu === true }, loc.state) });
   }
   return [...out.values()].sort((a, z) => (a.rid < z.rid ? -1 : a.rid > z.rid ? 1 : 0));
 }
