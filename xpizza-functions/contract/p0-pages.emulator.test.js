@@ -85,7 +85,17 @@ const PAGES = [
   ['R1', 'xpizza-kitchen', 'https://xpizzakitchen.netlify.app/', ['orders', 'menus/x_pizza'], [Q('orders', [['orderByChild', 'restaurant_id'], ['equalTo', 'x_pizza']]), Q('orders', [['orderByChild', 'restaurant_id'], ['equalTo', 'x_pizza']])]],
   ['R2', 'xpizza-dispatch', 'https://xpizzadispatch.netlify.app/', ['orders', 'tasks', 'drivers', 'driver_cash'], [Q('drivers'), Q('tasks'), Q('orders'), Q('driver_cash'), Q('orders'), Q('orders', [['orderByChild', 'status'], ['equalTo', 'pending_payment']])]],
   ['R3', 'xpizza-dispatch-mobile', 'https://xpizzadispatchlite.netlify.app/', ['orders', 'tasks', 'drivers'], [Q('orders'), Q('orders'), Q('drivers'), Q('tasks')]],
-  ['R4', 'xpizza-driver', 'https://xpizzadriver.netlify.app/', ['orders', 'tasks', 'drivers'], [Q('drivers'), Q('tasks'), Q('orders')]],
+  // F2(b) driver query-rules (PLAN-F2-query-rules; reviewed with 2e): the driver narrows the whole /tasks, /orders and
+  // /drivers reads to its own-assignment query + the two delivered-by history queries + per-assigned-order point listeners
+  // + its own drivers/{uid} record (no whole-node read, no cross-driver data). STAFF is the page's driver; pg_cash is the
+  // one order assigned to it.
+  ['R4', 'xpizza-driver', 'https://xpizzadriver.netlify.app/', ['orders', 'tasks', `drivers/${STAFF}`], [
+    Q('tasks', [['orderByChild', 'assigned_driver_id'], ['equalTo', STAFF]]),
+    Q('orders', [['orderByChild', 'delivered_by_driver_uid'], ['equalTo', STAFF]]),
+    Q('orders', [['orderByChild', 'delivered_by_uid'], ['equalTo', STAFF]]),
+    Q('orders/pg_cash'),
+    Q(`drivers/${STAFF}`),
+  ]],
   ['R7', 'xpizza-dashboard', 'https://xpizzadashboard.netlify.app/', ['orders', 'tasks', 'drivers'], [Q('orders'), Q('tasks'), Q('drivers')]],
   ['R8', 'xpizza-track', null, null, null],
 ];

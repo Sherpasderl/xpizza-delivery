@@ -191,5 +191,13 @@ function makeEnv(db, uid, emit) {
 
   await testEnv.cleanup();
   if (fails.length) { console.error('f2-driver-feed-lifecycle FAILURES:\n' + fails.map((f) => '  ✗ ' + f).join('\n')); process.exit(1); }
+  // Emit one recognised cell marker per case (count-marks.js tallies ✓ → ##CELLS); reached only when every case passed.
+  [
+    'A: a fresh onValue attach emits the current value even when UNCHANGED',
+    'B: the BC1 reconcile reads SERVER-fresh, never the stale populated cache',
+    'C: the PERMISSION_DENIED cancel DROVE the immediate revocation teardown (O1 in revokedOids)',
+    'D: a real reconnect (goOffline→goOnline, data unchanged) re-attaches → readiness recovers',
+    'E: uid isolation — a new driver never sees the prior driver’s order',
+  ].forEach((l, i) => console.log(`  ✓ ${i + 1} ${l}`));
   console.log('f2-driver-feed-lifecycle(emulator): OK (A fresh-attach, B get() server-fresh vs stale cache, C revocation teardown, D reconnect loading→ready, E uid isolation)');
 })().catch((e) => { console.error(e); process.exit(1); });

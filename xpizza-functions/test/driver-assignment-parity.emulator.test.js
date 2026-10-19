@@ -225,9 +225,11 @@ async function captureErr(fn) { const logs = []; const orig = console.error; con
   }
   // the REAL driver accept-update map (mirrors xpizza-delivery.js acceptTask: status+accepted_at on the task,
   // current_task_id + driver status, PLUS the same-hub stacked cascade via the real stackedTasksToAccept)
-  function acceptUpdates(driverId, taskId, allTasks) {
+  // F2(b) §5 call shape: stackedTasksToAccept derives each order's hub from the ORDER node, so the real production
+  // caller (xpizza-delivery.js acceptTask) passes allOrders. Mirror it here — pass the real orders, not tasks alone.
+  function acceptUpdates(driverId, taskId, allTasks, allOrders) {
     const u = { [`tasks/${taskId}/status`]: 'accepted', [`tasks/${taskId}/accepted_at`]: NOW, [`drivers/${driverId}/current_task_id`]: taskId, [`drivers/${driverId}/status`]: 'assigned' };
-    for (const tid of stackedTasksToAccept(allTasks, driverId, allTasks[taskId] && allTasks[taskId].order_id)) { u[`tasks/${tid}/status`] = 'accepted'; u[`tasks/${tid}/accepted_at`] = NOW; }
+    for (const tid of stackedTasksToAccept(allTasks, allOrders, driverId, allTasks[taskId] && allTasks[taskId].order_id)) { u[`tasks/${tid}/status`] = 'accepted'; u[`tasks/${tid}/accepted_at`] = NOW; }
     return u;
   }
 
@@ -485,17 +487,18 @@ async function captureErr(fn) { const logs = []; const orig = console.error; con
     console.log(`  note: web-SDK accept writers not loadable in node (${String(e && e.code || e.message).slice(0, 40)}); using the rule-path probe instead`);
   }
   async function readAllTasks() { let a; await env.withSecurityRulesDisabled(async (c) => { a = (await c.database().ref('tasks').get()).val() || {}; }); return a; }
+  async function readAllOrders() { let a; await env.withSecurityRulesDisabled(async (c) => { a = (await c.database().ref('orders').get()).val() || {}; }); return a; }
 
   // first accept (lone order): the assigned driver flips their own pickup leg → accepted (+ driver fields)
   await seedOrder('oA1', { ownerDelivery: D_EN, status: 'assigned' });
   await env.withSecurityRulesDisabled(async (c) => { await c.database().ref('tasks/oA1_pickup/assigned_driver_id').set(D_EN); });
-  await assertSucceeds(drv.ref().update(acceptUpdates(D_EN, 'oA1_pickup', await readAllTasks()))); ok(`DRIVER FIRST ACCEPT: the assigned driver accepts a lone order through the real rules [${acceptVia}]`);
+  await assertSucceeds(drv.ref().update(acceptUpdates(D_EN, 'oA1_pickup', await readAllTasks(), await readAllOrders()))); ok(`DRIVER FIRST ACCEPT: the assigned driver accepts a lone order through the real rules [${acceptVia}]`);
 
   // stacked accept: accepting one same-hub order auto-accepts the driver's OTHER assigned same-hub order (real stackedTasksToAccept)
   await seedOrder('oA2', { ownerDelivery: D_EN, status: 'assigned' });
   await seedOrder('oA3', { ownerDelivery: D_EN, status: 'assigned' });
   await env.withSecurityRulesDisabled(async (c) => { const db = c.database(); await db.ref('tasks/oA2_pickup/assigned_driver_id').set(D_EN); await db.ref('tasks/oA3_pickup/assigned_driver_id').set(D_EN); });
-  const stackUpd = acceptUpdates(D_EN, 'oA2_pickup', await readAllTasks());
+  const stackUpd = acceptUpdates(D_EN, 'oA2_pickup', await readAllTasks(), await readAllOrders());
   assert.ok(Object.keys(stackUpd).some((k) => k.startsWith('tasks/oA3_')), 'the real stackedTasksToAccept cascaded the SAME-HUB sibling order into the accept batch');
   await assertSucceeds(drv.ref().update(stackUpd)); await env.withSecurityRulesDisabled(async (c) => { assert.equal((await c.database().ref('tasks/oA3_pickup/status').get()).val(), 'accepted', 'the stacked sibling was auto-accepted'); }); ok('DRIVER STACKED ACCEPT: accepting one order auto-accepts the same-hub sibling (real cascade) through the rules');
 
