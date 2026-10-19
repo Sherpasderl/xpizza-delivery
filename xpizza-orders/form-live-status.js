@@ -200,14 +200,16 @@ function start(opts) {
     const rec = c.rec || { status: 'new', order_type: c.pickup ? 'pickup' : 'delivery' };
     const stage = stageOf(rec, c.pickup);
     if (stage !== c.lastStage) { c.overdueStage = null; c.lastStage = stage; }
-    const v = livePresent({ ...rec, order_type: rec.order_type || (c.pickup ? 'pickup' : 'delivery'), fallback_drive_min: liveDriveMin('ofd'), now: Date.now() });
+    const pres = { ...rec, order_type: rec.order_type || (c.pickup ? 'pickup' : 'delivery'), fallback_drive_min: liveDriveMin('ofd'), now: Date.now() };
+    const v = livePresent({ ...pres, gen2: true });   // F4: the segbar + status line are the tracker's gen2 words (S5 BC2 parity)
+    const vArrival = livePresent(pres);              // …the ARRIVAL line keeps today's decision, unchanged (codex build r1 P2)
     livePaintSeg(els.seg, v);
     if (els.status) els.status.textContent = statusLineOf(v, rec) || '';
     // the arrival line: a window needs the first snapshot AND the public leaf read (or its failure); until then the fallback
     const ready = !!c.rec && c.pubDone;
     let a;
     if (!ready && stage !== 'terminal' && stage !== 'ofd') a = { text: LIVE_COPY.FALLBACK, deadline: null };
-    else a = arrivalFor({ rec, pickup: c.pickup, stage, prep: prepFor(c.pub, c.anchor, Date.now()), driveMin: liveDriveMin(stage), anchorMs: c.anchor, overdue: c.overdueStage === stage, v });
+    else a = arrivalFor({ rec, pickup: c.pickup, stage, prep: prepFor(c.pub, c.anchor, Date.now()), driveMin: liveDriveMin(stage), anchorMs: c.anchor, overdue: c.overdueStage === stage, v: vArrival });
     if (els.arrival) els.arrival.textContent = a.text;
     // deadlineTimer — ONE, re-armed per window paint, at the DISPLAYED end + 1 s; fires even with no new snapshot
     if (c.deadlineTimer != null) { clearTimeout(c.deadlineTimer); c.deadlineTimer = null; }

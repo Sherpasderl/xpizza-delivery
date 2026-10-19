@@ -3,7 +3,8 @@
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -111,14 +112,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "delivery/preparing": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -226,14 +227,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "delivery/ready": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -341,14 +342,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "delivery/out_for_delivery": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -456,14 +457,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "delivery/delivered": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -562,14 +563,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "delivery/completed": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -668,14 +669,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "delivery/cancelled": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -773,14 +774,14 @@
   "claim-btn": {
    "cls": "",
    "text": ""
-  },
-  "computeEta": null
+  }
  },
  "delivery/weird_status": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -888,14 +889,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "delivery/undefined": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -1003,14 +1004,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "delivery/delivered+at": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -1109,14 +1110,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "delivery/completed+at": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -1215,14 +1216,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "delivery/ready+brand": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -1330,14 +1331,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "delivery/ready+blank-brand": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -1445,14 +1446,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "pickup/new": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -1552,14 +1553,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "pickup/preparing": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -1659,14 +1660,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "pickup/ready": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -1757,14 +1758,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "pickup/out_for_delivery": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -1864,14 +1865,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "pickup/delivered": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -1962,14 +1963,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "pickup/completed": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -2060,14 +2061,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "pickup/cancelled": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -2157,14 +2158,14 @@
   "claim-btn": {
    "cls": "",
    "text": ""
-  },
-  "computeEta": null
+  }
  },
  "pickup/weird_status": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -2264,14 +2265,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "pickup/undefined": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -2371,14 +2372,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "pickup/delivered+at": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -2469,14 +2470,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "pickup/completed+at": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -2567,14 +2568,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "pickup/ready+brand": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -2665,14 +2666,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "pickup/ready+blank-brand": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -2763,14 +2764,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "ofd/driver/active": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -2878,14 +2879,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "ofd/driver/active-no-dest": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -2993,14 +2994,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "ofd/driver/active-bad-loc": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -3066,11 +3067,11 @@
   },
   "driver-name": {
    "cls": "stitle",
-   "text": "Carlos está en camino"
+   "text": "Tu pedido va en camino"
   },
   "driver-eta": {
-   "cls": "ssub big",
-   "text": "En ruta a tu dirección"
+   "cls": "ssub",
+   "text": "Con Carlos · pronto llegará a tu dirección"
   },
   "driver-map": {
    "cls": "hidden",
@@ -3108,14 +3109,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "ofd/driver/active-no-loc": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -3181,11 +3182,11 @@
   },
   "driver-name": {
    "cls": "stitle",
-   "text": "Carlos está en camino"
+   "text": "Tu pedido va en camino"
   },
   "driver-eta": {
-   "cls": "ssub big",
-   "text": "En ruta a tu dirección"
+   "cls": "ssub",
+   "text": "Con Carlos · pronto llegará a tu dirección"
   },
   "driver-map": {
    "cls": "hidden",
@@ -3223,14 +3224,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "ofd/driver/stacked": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -3338,14 +3339,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "ofd/driver/unknown": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -3411,11 +3412,11 @@
   },
   "driver-name": {
    "cls": "stitle",
-   "text": "Carlos está en camino"
+   "text": "Tu pedido va en camino"
   },
   "driver-eta": {
-   "cls": "ssub big",
-   "text": "En ruta a tu dirección"
+   "cls": "ssub",
+   "text": "Con Carlos · pronto llegará a tu dirección"
   },
   "driver-map": {
    "cls": "hidden",
@@ -3453,14 +3454,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "ofd/no-driver": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -3568,14 +3569,129 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "ofd/no-driver/stacked": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.35"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Tu repartidor va en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Tu repartidor tiene una parada rápida en camino a la tuya, luego va directo hacia vos."
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  }
+ },
+ "ofd/driver/active/2-snapshots": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -3636,8 +3752,123 @@
    ]
   },
   "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "En ruta a tu dirección"
+  },
+  "driver-map": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  }
+ },
+ "eta/unknown/eta=undefined/ago=undefined": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
+  ],
+  "loading": {
    "cls": "hidden",
    "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
   },
   "driver-name": {
    "cls": "stitle",
@@ -3645,7 +3876,7 @@
   },
   "driver-eta": {
    "cls": "ssub",
-   "text": "Pronto llegará a tu dirección"
+   "text": "Con Carlos · pronto llegará a tu dirección"
   },
   "driver-map": {
    "cls": "hidden",
@@ -3683,244 +3914,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
- },
- "ofd/driver/active/2-snapshots": {
-  "title": "X. Pizza · Sigue tu pedido",
-  "brandVars": {},
-  "path": [
-   "order_tracking/TokAbc12345"
-  ],
-  "loading": {
-   "cls": "hidden",
-   "text": ""
-  },
-  "error": {
-   "cls": "hidden",
-   "text": ""
-  },
-  "error-msg": {
-   "cls": "",
-   "text": ""
-  },
-  "tracking": {
-   "cls": "",
-   "text": ""
-  },
-  "order-id-display": {
-   "cls": "",
-   "text": "Pedido PZX-1"
-  },
-  "segbar": {
-   "cls": "",
-   "text": "",
-   "style": {
-    "opacity": "1"
-   },
-   "kids": [
-    {
-     "cls": "seg done",
-     "text": ""
-    },
-    {
-     "cls": "seg done",
-     "text": ""
-    },
-    {
-     "cls": "seg active",
-     "text": "",
-     "kids": [
-      {
-       "cls": "fill",
-       "text": "",
-       "style": {
-        "--p": "0.5"
-       }
-      }
-     ]
-    },
-    {
-     "cls": "seg",
-     "text": ""
-    },
-    {
-     "cls": "seg",
-     "text": ""
-    }
-   ]
-  },
-  "driver-avatar": {
-   "cls": "",
-   "text": "C"
-  },
-  "driver-name": {
-   "cls": "stitle",
-   "text": "Carlos está en camino"
-  },
-  "driver-eta": {
-   "cls": "ssub big",
-   "text": "En ruta a tu dirección"
-  },
-  "driver-map": {
-   "cls": "",
-   "text": ""
-  },
-  "summary-customer": {
-   "cls": "",
-   "text": "Ana"
-  },
-  "summary-items": {
-   "cls": "summary-line",
-   "text": "1x Pepperoni"
-  },
-  "summary-address": {
-   "cls": "",
-   "text": "Col. Palmira"
-  },
-  "summary-total": {
-   "cls": "",
-   "text": "Total: L340"
-  },
-  "updated-text": {
-   "cls": "",
-   "text": ""
-  },
-  "reward-card": {
-   "cls": "",
-   "text": ""
-  },
-  "claim-card": {
-   "cls": "",
-   "text": ""
-  },
-  "claim-btn": {
-   "cls": "",
-   "text": "",
-   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
- },
- "eta/unknown/eta=undefined/ago=undefined": {
-  "title": "X. Pizza · Sigue tu pedido",
-  "brandVars": {},
-  "path": [
-   "order_tracking/TokAbc12345"
-  ],
-  "loading": {
-   "cls": "hidden",
-   "text": ""
-  },
-  "error": {
-   "cls": "hidden",
-   "text": ""
-  },
-  "error-msg": {
-   "cls": "",
-   "text": ""
-  },
-  "tracking": {
-   "cls": "",
-   "text": ""
-  },
-  "order-id-display": {
-   "cls": "",
-   "text": "Pedido PZX-1"
-  },
-  "segbar": {
-   "cls": "",
-   "text": "",
-   "style": {
-    "opacity": "1"
-   },
-   "kids": [
-    {
-     "cls": "seg done",
-     "text": ""
-    },
-    {
-     "cls": "seg done",
-     "text": ""
-    },
-    {
-     "cls": "seg active",
-     "text": "",
-     "kids": [
-      {
-       "cls": "fill",
-       "text": "",
-       "style": {
-        "--p": "0.5"
-       }
-      }
-     ]
-    },
-    {
-     "cls": "seg",
-     "text": ""
-    },
-    {
-     "cls": "seg",
-     "text": ""
-    }
-   ]
-  },
-  "driver-avatar": {
-   "cls": "",
-   "text": "C"
-  },
-  "driver-name": {
-   "cls": "stitle",
-   "text": "Carlos está en camino"
-  },
-  "driver-eta": {
-   "cls": "ssub big",
-   "text": "En ruta a tu dirección"
-  },
-  "driver-map": {
-   "cls": "hidden",
-   "text": ""
-  },
-  "summary-customer": {
-   "cls": "",
-   "text": "Ana"
-  },
-  "summary-items": {
-   "cls": "summary-line",
-   "text": "1x Pepperoni"
-  },
-  "summary-address": {
-   "cls": "",
-   "text": "Col. Palmira"
-  },
-  "summary-total": {
-   "cls": "",
-   "text": "Total: L340"
-  },
-  "updated-text": {
-   "cls": "",
-   "text": ""
-  },
-  "reward-card": {
-   "cls": "",
-   "text": ""
-  },
-  "claim-card": {
-   "cls": "",
-   "text": ""
-  },
-  "claim-btn": {
-   "cls": "",
-   "text": "",
-   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "eta/active/eta=undefined/ago=undefined": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -4028,14 +4029,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "eta/unknown/eta=undefined/ago=3": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -4101,11 +4102,11 @@
   },
   "driver-name": {
    "cls": "stitle",
-   "text": "Carlos está en camino"
+   "text": "Tu pedido va en camino"
   },
   "driver-eta": {
-   "cls": "ssub big",
-   "text": "Llega en ~9 min"
+   "cls": "ssub",
+   "text": "Con Carlos · pronto llegará a tu dirección"
   },
   "driver-map": {
    "cls": "hidden",
@@ -4143,14 +4144,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": 9
+  }
  },
  "eta/active/eta=undefined/ago=3": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -4220,7 +4221,7 @@
   },
   "driver-eta": {
    "cls": "ssub big",
-   "text": "Llega en ~9 min"
+   "text": "En ruta a tu dirección"
   },
   "driver-map": {
    "cls": "",
@@ -4258,14 +4259,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": 9
+  }
  },
  "eta/unknown/eta=undefined/ago=15": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -4331,11 +4332,11 @@
   },
   "driver-name": {
    "cls": "stitle",
-   "text": "Carlos está en camino"
+   "text": "Tu pedido va en camino"
   },
   "driver-eta": {
-   "cls": "ssub big",
-   "text": "Llega en ~1 min"
+   "cls": "ssub",
+   "text": "Con Carlos · pronto llegará a tu dirección"
   },
   "driver-map": {
    "cls": "hidden",
@@ -4373,14 +4374,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": 1
+  }
  },
  "eta/active/eta=undefined/ago=15": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -4450,7 +4451,7 @@
   },
   "driver-eta": {
    "cls": "ssub big",
-   "text": "Llega en ~1 min"
+   "text": "En ruta a tu dirección"
   },
   "driver-map": {
    "cls": "",
@@ -4488,14 +4489,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": 1
+  }
  },
  "eta/unknown/eta=7/ago=undefined": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -4561,11 +4562,11 @@
   },
   "driver-name": {
    "cls": "stitle",
-   "text": "Carlos está en camino"
+   "text": "Tu pedido va en camino"
   },
   "driver-eta": {
-   "cls": "ssub big",
-   "text": "Llega en ~7 min"
+   "cls": "ssub",
+   "text": "Con Carlos · pronto llegará a tu dirección"
   },
   "driver-map": {
    "cls": "hidden",
@@ -4603,14 +4604,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": 7
+  }
  },
  "eta/active/eta=7/ago=undefined": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -4680,7 +4681,7 @@
   },
   "driver-eta": {
    "cls": "ssub big",
-   "text": "Llega en ~7 min"
+   "text": "En ruta a tu dirección"
   },
   "driver-map": {
    "cls": "",
@@ -4718,14 +4719,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": 7
+  }
  },
  "eta/unknown/eta=7/ago=3": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -4791,11 +4792,11 @@
   },
   "driver-name": {
    "cls": "stitle",
-   "text": "Carlos está en camino"
+   "text": "Tu pedido va en camino"
   },
   "driver-eta": {
-   "cls": "ssub big",
-   "text": "Llega en ~7 min"
+   "cls": "ssub",
+   "text": "Con Carlos · pronto llegará a tu dirección"
   },
   "driver-map": {
    "cls": "hidden",
@@ -4833,14 +4834,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": 7
+  }
  },
  "eta/active/eta=7/ago=3": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -4910,7 +4911,7 @@
   },
   "driver-eta": {
    "cls": "ssub big",
-   "text": "Llega en ~7 min"
+   "text": "En ruta a tu dirección"
   },
   "driver-map": {
    "cls": "",
@@ -4948,14 +4949,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": 7
+  }
  },
  "eta/unknown/eta=7/ago=15": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -5021,11 +5022,11 @@
   },
   "driver-name": {
    "cls": "stitle",
-   "text": "Carlos está en camino"
+   "text": "Tu pedido va en camino"
   },
   "driver-eta": {
-   "cls": "ssub big",
-   "text": "Llega en ~7 min"
+   "cls": "ssub",
+   "text": "Con Carlos · pronto llegará a tu dirección"
   },
   "driver-map": {
    "cls": "hidden",
@@ -5063,14 +5064,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": 7
+  }
  },
  "eta/active/eta=7/ago=15": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -5140,7 +5141,7 @@
   },
   "driver-eta": {
    "cls": "ssub big",
-   "text": "Llega en ~7 min"
+   "text": "En ruta a tu dirección"
   },
   "driver-map": {
    "cls": "",
@@ -5178,14 +5179,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": 7
+  }
  },
  "guest/plain-claim": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -5293,14 +5294,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "guest/punch": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -5408,8 +5409,7 @@
   "claim-btn": {
    "cls": "",
    "text": ""
-  },
-  "computeEta": null
+  }
  },
  "guest/point/la_musa": {
   "title": "La Musa · Sigue tu pedido",
@@ -5419,7 +5419,8 @@
    "--brand-light": "#F4DDDD"
   },
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -5521,14 +5522,14 @@
    "text": ""
   },
   "brandName": "La Musa",
-  "errorIcon": "🥢🍜",
-  "computeEta": null
+  "errorIcon": "🥢🍜"
  },
  "profiled": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -5635,14 +5636,14 @@
   "claim-btn": {
    "cls": "",
    "text": ""
-  },
-  "computeEta": null
+  }
  },
  "summary-lines": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -5766,14 +5767,14 @@
    "cls": "",
    "text": "",
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
-  },
-  "computeEta": null
+  }
  },
  "null-record": {
   "title": "X. Pizza · Sigue tu pedido",
   "brandVars": {},
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -5846,8 +5847,7 @@
   "claim-btn": {
    "cls": "",
    "text": ""
-  },
-  "computeEta": null
+  }
  },
  "la_musa-host": {
   "title": "La Musa · Sigue tu pedido",
@@ -5857,7 +5857,8 @@
    "--brand-light": "#F4DDDD"
   },
   "path": [
-   "order_tracking/TokAbc12345"
+   "order_tracking/TokAbc12345",
+   ".info/serverTimeOffset"
   ],
   "loading": {
    "cls": "hidden",
@@ -5967,7 +5968,6 @@
    "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
   },
   "brandName": "La Musa",
-  "errorIcon": "🥢🍜",
-  "computeEta": null
+  "errorIcon": "🥢🍜"
  }
 }

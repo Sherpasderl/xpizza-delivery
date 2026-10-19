@@ -13,7 +13,16 @@
 //     avatar, barOpacity, updatedHidden, etaEligible, mapEligible, etaMin }
 //   - sub === null when etaEligible: the sub-line is the live ETA, which the caller owns (the tracker's Directions refresh).
 //   - etaMin follows the tracker's computeEta priority: delivery_eta_min (when truthy); else, once picked up,
-//     max(1, round(fallback_drive_min − minutes since picked_up_at)); else null. The tracker passes 12 (its constant).
+//     max(1, round(fallback_drive_min − minutes since picked_up_at)); else null. (The order forms pass their measured drive
+//     minutes; the tracker no longer asks — see gen2.)
+//   - gen2 (F4): the tracker AND the order forms pass it, so the forms' status line stays the tracker's words (S5 BC2 parity).
+//     out_for_delivery is decided
+//     from the record's live-tracking identity (mx, when the server publishes it; else today's is_active_drop / driver_name):
+//     the map and the live headline are no longer gated on the name ('Tu repartidor'), there is never a countdown from pickup
+//     (etaMin null), and every state without a live location says the calm copy ("Tu pedido va en camino" · "Con {name} ·
+//     pronto llegará a tu dirección"). etaMin under gen2 exists only when the caller supplies a finite fallback_drive_min (the
+//     forms' measured drive minutes → their arrival line is unchanged); the tracker supplies none and shows minutes only through
+//     its own eta-gate.js.
 //
 // Same bytes load as a classic browser script AND a Node module (no ESM), like the shared form modules.
 
@@ -40,13 +49,45 @@ function statusEtaMin(r) {
   return null;
 }
 
+// F4 (gen2): out_for_delivery from the live-tracking identity. mx (server flag on) wins; without it, today's legacy fields.
+// mx.name — never driver_name — is the name while mx is present (the server leaves driver_name null in neutral / live-without-
+// location by design).
+function statusOfdGen2(r, v) {
+  const mx = (r.mx && typeof r.mx === 'object') ? r.mx : null;
+  const live = mx ? mx.mode === 'live' : r.is_active_drop === true;
+  const waiting = mx ? mx.mode === 'waiting' : r.is_active_drop === false;
+  const nm = mx ? mx.name : r.driver_name;
+  const name = (typeof nm === 'string' && nm.trim()) ? nm : null;
+  const loc = r.driver_location;
+  const hasLoc = !!(loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lng));
+  if (name) v.avatar = name.charAt(0).toUpperCase();
+  if (waiting) {
+    v.segs = ['done', 'done', { a: .35 }, 'pending', 'pending'];
+    v.headline = (name || 'Tu repartidor') + ' va en camino';
+    v.sub = STATUS_STACKED_COPY;
+  } else if (live && hasLoc) {
+    v.segs = ['done', 'done', { a: .5 }, 'pending', 'pending'];
+    v.headline = (name || 'Tu repartidor') + ' está en camino';
+    v.subClass = 'ssub big';
+    v.sub = null;
+    v.etaEligible = true;
+    v.mapEligible = true;
+  } else {
+    v.segs = ['done', 'done', { a: .5 }, 'pending', 'pending'];
+    v.headline = 'Tu pedido va en camino';
+    v.sub = name ? `Con ${name} · pronto llegará a tu dirección` : 'Pronto llegará a tu dirección';
+  }
+}
+
 function presentStatus(r) {
   r = r || {};
   const status = r.status || 'new';
   const isPickup = r.order_type === 'pickup';
   const n = isPickup ? 3 : 5;
   const brand = (typeof r.restaurant_display_name === 'string' && r.restaurant_display_name.trim()) ? r.restaurant_display_name.trim() : null;
-  const etaMin = statusEtaMin(r);
+  // gen2 (F4): no countdown from pickup unless the CALLER supplies its own drive minutes (the order forms' measured estimate;
+  // the tracker never does, so its etaMin is null). Without gen2: unchanged.
+  const etaMin = r.gen2 === true && !Number.isFinite(r.fallback_drive_min) ? null : statusEtaMin(r);
   const v = { segments: n, segs: null, headline: '', sub: '', titleClass: 'stitle', subClass: 'ssub', avatar: null, barOpacity: '1',
     updatedHidden: false, etaEligible: false, mapEligible: false, etaMin };
   const RECEIVED = () => { v.headline = 'Recibimos tu pedido'; v.sub = 'Estamos por empezar a preparar tu pedido'; };
@@ -86,7 +127,9 @@ function presentStatus(r) {
     v.headline = 'Tu pedido se está preparando';
     v.sub = 'Te avisaremos cuando vaya en camino';
   } else if (status === 'out_for_delivery') {
-    if (r.driver_name) {
+    if (r.gen2 === true) {
+      statusOfdGen2(r, v);
+    } else if (r.driver_name) {
       const driverName = r.driver_name;
       v.avatar = driverName.charAt(0).toUpperCase();
       const loc = r.driver_location;

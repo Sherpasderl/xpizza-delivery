@@ -6,7 +6,9 @@
 // The onValue callback is fed each fixture; everything the render writes is snapshotted:
 //   headline/sub (text + class), the avatar, every segbar segment (class + --p), the bar's opacity, the live-updates
 //   line, the driver map's visibility, the order line, the reward/claim cards, document.title + brand overrides.
-// ETA-INPUT cells: computeEta and the ETA text for delivery_eta_min present/absent × picked_up_at absent / 3 / 15 min ago.
+// ETA-INPUT cells: the ETA text for delivery_eta_min present/absent × picked_up_at absent / 3 / 15 min ago (F4: never a countdown).
+// F4: the page subscribes to TWO paths (the record + .info/serverTimeOffset); the fixture is routed to the record's callback.
+// tracker-status.delta.test.js pins this golden against the frozen pre-F4 copy (tracker-status.golden.pre-f4.json).
 process.env.TZ = 'America/Tegucigalpa';
 const assert = require('assert');
 const fs = require('fs');
@@ -73,7 +75,7 @@ function run(data, { hostname = 'track.xpizza.hn', token = 'TokAbc12345', snapsh
   const reg = {}; const getEl = (id) => (reg[id] || (reg[id] = mkEl(id)));
   SNAP_IDS.forEach(getEl);
   const docStyle = {};
-  let cb = null; const issued = [];
+  const cbs = {}; const issued = [];
   const ctx = {
     console: { log() {}, warn() {}, error() {} },
     Date: class extends Date { constructor(...a) { if (a.length) super(...a); else super(nowMs); } static now() { return nowMs; } },
@@ -85,10 +87,12 @@ function run(data, { hostname = 'track.xpizza.hn', token = 'TokAbc12345', snapsh
       title: 'X. Pizza · Sigue tu pedido',
       getElementById: getEl, createElement: (t) => mkEl(undefined, t), querySelector: (s) => (s === '.brand-name' ? getEl('__brand-name') : s === '.error-icon' ? getEl('__error-icon') : null),
       head: { append() {} }, documentElement: { style: { setProperty: (k, v) => { docStyle[k] = v; } } },
+      visibilityState: 'visible', addEventListener() {},
     },
     initializeApp: () => ({}), getDatabase: () => ({}),
     ref: (_db, p) => { issued.push(p); return { p }; },
-    onValue: (_r, f) => { cb = f; return () => {}; },
+    onValue: (r, f) => { cbs[r.p] = f; return () => {}; },
+    setTimeout: () => 0, clearTimeout() {},
     createGlideEngine: () => ({ update() {}, cancel() {} }),
   };
   ctx.window = ctx; ctx.globalThis = ctx;
@@ -97,15 +101,14 @@ function run(data, { hostname = 'track.xpizza.hn', token = 'TokAbc12345', snapsh
   // a classic local script the page loads before its module (status-view.js after the S5 extraction) runs first, as in a browser
   for (const src of CLASSIC) vm.runInContext(fs.readFileSync(path.join(DIR, src.replace(/^\//, '')), 'utf8'), ctx);
   // a module has its OWN scope (strict): its declarations never collide with a classic script's globals
-  vm.runInContext(`(function () { 'use strict';\n${script}\n;globalThis.__computeEta = computeEta; })();`, ctx);
-  assert.ok(cb, 'the tracker subscribed');
+  vm.runInContext(`(function () { 'use strict';\n${script}\n})();`, ctx);
+  const cb = cbs[`order_tracking/${token}`];
+  assert.ok(cb, 'the tracker subscribed to its record');
   for (let i = 0; i < snapshots; i += 1) cb({ val: () => data });
   const out = { title: ctx.document.title, brandVars: docStyle, path: issued };
   for (const id of SNAP_IDS) out[id] = snapEl(reg[id]);
   if (reg['__brand-name']) out.brandName = reg['__brand-name']._html;
   if (reg['__error-icon']) out.errorIcon = reg['__error-icon'].textContent;
-  // the computeEta result for this record, from the same executed script
-  out.computeEta = ctx.__computeEta(data || {});
   return out;
 }
 
@@ -167,8 +170,9 @@ ok(`the tracker's render reproduces the pre-extraction golden byte-for-byte (${O
 // non-vacuity: the golden really discriminates (a sample of distinct outputs)
 assert.notDeepStrictEqual(want['delivery/new'], want['delivery/preparing']);
 assert.notDeepStrictEqual(want['ofd/driver/active'], want['ofd/driver/stacked']);
-assert.notDeepStrictEqual(want['eta/unknown/eta=undefined/ago=3'], want['eta/unknown/eta=undefined/ago=15']);
-assert.strictEqual(want['eta/unknown/eta=undefined/ago=15']['driver-eta'].text, 'Llega en ~1 min', 'the min-1 floor cell');
-assert.strictEqual(want['eta/unknown/eta=7/ago=15']['driver-eta'].text, 'Llega en ~7 min', 'delivery_eta_min first');
-ok('non-vacuity: distinct states produce distinct goldens; the min-1 floor and delivery_eta_min priority are in the golden');
+// F4 (D1): the pickup time and delivery_eta_min no longer drive any countdown — those cells render identically, in the calm copy
+assert.deepStrictEqual(want['eta/unknown/eta=undefined/ago=3'], want['eta/unknown/eta=undefined/ago=15'], 'no countdown from pickup');
+assert.strictEqual(want['eta/unknown/eta=undefined/ago=15']['driver-eta'].text, 'Con Carlos · pronto llegará a tu dirección', 'the calm copy (option B)');
+assert.strictEqual(want['eta/unknown/eta=7/ago=15']['driver-eta'].text, 'Con Carlos · pronto llegará a tu dirección', 'delivery_eta_min is ignored');
+ok('non-vacuity: distinct states produce distinct goldens; no countdown from pickup or delivery_eta_min (F4 D1), the calm copy instead');
 console.log(`\ntracker-status.golden: OK (${n})`);

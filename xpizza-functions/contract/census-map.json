@@ -1454,6 +1454,7 @@
   "deliveryTask@xpizza-driver/index.html<script@0>#renderIncomingBanners>anon": "NOT an order field: the banner wrapper's task pair",
   "delivery_task_id@xpizza-functions/index.js#sendOrderStatusNotifications": "task routing id — not an amount",
   "has_profile@xpizza-track/index.html<script@0>#render": "tracker guest/profile copy switch — display only",
+  "mx@xpizza-track/index.html<script@0>#render": "NOT an order fact (F4): the server's public live-tracking identity — mode, owner tag, shift, epoch and the sampling identity — only decides the tracker's status copy, whether its ETA / map run, and when a pending route answer is dropped; never an amount, never a money selector",
   "hora@xpizza-kitchen/card-model.js#completedTabVisible": "the KDS card's time anchor for tab visibility — display only",
   "id@xpizza-kitchen/card-model.js#completedTabVisible": "NOT an order field read for money: the KDS card id used for the local completed-tab set",
   "length@xpizza-functions/pixelpay-hosted-webhook.js#handleHostedCallback": "NOT an order field: a string length (orderId.length)",

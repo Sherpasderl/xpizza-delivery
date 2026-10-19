@@ -204,7 +204,7 @@ for (const key of Object.keys(PAGES)) {
     F.push({ status: 'out_for_delivery', order_type: 'delivery', restaurant_id: P.rid, created_at: now - 2 * MIN, ready_at: now - MIN, picked_up_at: now - 3 * MIN, driver_name: 'Carlos' }); await settle();
     assert.strictEqual(F.directions.length, 2, `${key}: never a third request (a repeat ready, a ready→preparing→ready recall, pickup)`);
     assert.strictEqual(arrival(w), 'Llega en ~22 min', `${key}: after pickup the timestamp ETA with the form's own drive: the ready request was malformed → the placement 25 min − 3 min since pickup`);
-    assert.strictEqual(statusLine(w), 'Carlos está en camino');
+    assert.strictEqual(statusLine(w), 'Tu pedido va en camino', 'F4 (BC2 parity): the tracker\'s calm words — a name, no live location');
     assert.strictEqual(F.timers('etaTimer').length, 1, 'the etaTimer re-renders the countdown');
     { const before = steadyS5(w); assert.strictEqual(F.fire('etaTimer'), 1); await settle(); assert.strictEqual(steadyS5(w), before, `${key}: the etaTimer changed an #s5 node OUTSIDE the declared live set (ADVISOR 2026-10-15)`); assert.strictEqual(F.timers('etaTimer').length, 1, 'and re-arms'); }
     F.push({ status: 'delivered', order_type: 'delivery', restaurant_id: P.rid, created_at: now - 2 * MIN, delivered_at: now }); await settle();

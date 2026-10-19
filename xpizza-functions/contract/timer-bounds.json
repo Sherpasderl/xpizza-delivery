@@ -268,7 +268,7 @@
    ],
    "reason": "S5 deadlineTimer (at the DISPLAYED window end + 1 s, minutes to hours away): swaps the arrival line to the owner-approved overdue copy — it reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "c97ef3a39a46adfe6beb8d8dcbb8efe265c24200ef0e5acec0267dad3d3f904a",
-   "ctrlSha": "ed87500d9281e69cb17c685d2fa6949e6d7b5c47adfe0f46468b5bb93330bfca"
+   "ctrlSha": "3d75e9bd981daabfde0ada594d6b9911be44328e7c9459b5f83346c5affba319"
   },
   {
    "key": "xpizza-orders/form-live-status.js#liveRender:setTimeout#1",
@@ -284,7 +284,7 @@
    ],
    "reason": "S5 etaTimer (60 s, after pickup only): re-renders the post-pickup ETA countdown — it reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "d117ffdbe0797c8a7577c53b428f69d9ce43647552297594ab431ad4c9fb6380",
-   "ctrlSha": "27cd11785eb40b877f99ad33593d417b2feff846bad5aaba6674bbebcb064e20"
+   "ctrlSha": "f9643fc184d181aa0fa4c46d77845a42ea1810de524767e3c8486e3e90bbc23e"
   }
  ],
  "chains": [
@@ -757,7 +757,7 @@
    "reachesAsserted": true,
    "reason": "S5 mapsWaitTimer: polls the page's own Maps loader every 250 ms for at most MAPS_WAIT_MS (5 s, ≤ 21 arms), then draws the map / the placement drive — bounded inside the 10 s horizon",
    "sha": "c8107d73fee04750423c4ab900b318f5f1531da17a5d75c712b6e33ad6dc475a",
-   "ctrlSha": "5e48534c50d5b974d8afe3561ed2b9f27985800e3d2cebcbf70a36628713a312"
+   "ctrlSha": "5b6abc6d2e62d063805997471b008e9387f48d00ee8fac1c373519bab34db82d"
   },
   {
    "key": "xpizza-orders/form-live-status.js#liveWhenMaps:setTimeout#0 → xpizza-orders/form-live-status.js#liveTick>anon:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0",
@@ -773,7 +773,7 @@
    ],
    "reason": "S5 live screen: the mapsWait poll hands over to liveRender, which re-arms the deadlineTimer per window paint and the 60 s etaTimer after pickup — every arm reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "9c1f77b6db16839b0324489dd5c850f67e941185988ff2c135b9414678ffb41d",
-   "ctrlSha": "c3b3b2385adebaaebf5cf21d35d35ac362fa163cfb0862f547153aaf4df51fb4"
+   "ctrlSha": "ca87e0459068cec0b3c221c68c1c6ef1b5239e145aa16bfe0d32869a6219490c"
   },
   {
    "key": "xpizza-orders/form-live-status.js#liveWhenMaps:setTimeout#0 → xpizza-orders/form-live-status.js#liveTick>anon:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0",
@@ -789,7 +789,7 @@
    ],
    "reason": "S5 live screen: the mapsWait poll hands over to liveRender, which re-arms the deadlineTimer per window paint and the 60 s etaTimer after pickup — every arm reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "d67f4ea93638eb7f7885fd9416daa84113224fba0b9818f34b1a1e681481537c",
-   "ctrlSha": "a3e93a0ae5ee41f9fd9db193f9de5a3f7bb2c588c56b852f82147a27b0960b3b"
+   "ctrlSha": "3eef426a5f9e688122b4a7d3334c98f917c623248bd9090fadfe6763d672f7c4"
   },
   {
    "key": "xpizza-orders/form-live-status.js#liveWhenMaps:setTimeout#0 → xpizza-orders/form-live-status.js#liveTick>anon:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1",
@@ -805,7 +805,7 @@
    ],
    "reason": "S5 live screen: the mapsWait poll hands over to liveRender, which re-arms the deadlineTimer per window paint and the 60 s etaTimer after pickup — every arm reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "7fd4ad6ff43733f91d1925d9b18c5843757caa756bc8804a322d42ffcaf81580",
-   "ctrlSha": "ad163e59b9f74b33c54f6795698d7a90e6d91c0d6b684ca95ffd03ba6ae52b17"
+   "ctrlSha": "dd2483d20b971c209d04934eb942c73918b82b3c67e6a86652fe41213e96db07"
   },
   {
    "key": "xpizza-orders/form-live-status.js#liveWhenMaps:setTimeout#0 → xpizza-orders/form-live-status.js#liveTick>anon:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0",
@@ -821,7 +821,7 @@
    ],
    "reason": "S5 live screen: the mapsWait poll hands over to liveRender, which re-arms the deadlineTimer per window paint and the 60 s etaTimer after pickup — every arm reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "4845200c8a04029ed34bb1bd3b40669e1b5a18c6d9e0a13dab2212c7a51545cc",
-   "ctrlSha": "3448a17c36a11f815cfe58078812fd249781acb9c2e3209259f93e934f1e8065"
+   "ctrlSha": "2272cd2cac52b3252bc8722b7396884e53dc1939e4a266e5322c9bf1bab01f1c"
   },
   {
    "key": "xpizza-orders/form-live-status.js#liveWhenMaps:setTimeout#0 → xpizza-orders/form-live-status.js#liveTick>anon:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1",
@@ -837,7 +837,7 @@
    ],
    "reason": "S5 live screen: the mapsWait poll hands over to liveRender, which re-arms the deadlineTimer per window paint and the 60 s etaTimer after pickup — every arm reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "929100654fbb93be439e617c9b73a145d14743c904ee9a326fca216412b6f0e8",
-   "ctrlSha": "5a70119b78b1934d333b0e89f06d686a60dea6cf06a8f0e7c9ac32dfc5020caf"
+   "ctrlSha": "0c187a85d38fd3cd97794dbc28e76332b8f4e40a17624d43248a930d3067bc13"
   },
   {
    "key": "xpizza-orders/form-live-status.js#liveWhenMaps:setTimeout#0 → xpizza-orders/form-live-status.js#liveTick>anon:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1",
@@ -853,7 +853,7 @@
    ],
    "reason": "S5 live screen: the mapsWait poll hands over to liveRender, which re-arms the deadlineTimer per window paint and the 60 s etaTimer after pickup — every arm reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "34722227c92c39cfd05556755ab1bba36369e35bef96e76b07724aa8eb9ed436",
-   "ctrlSha": "a035648a227891761b80934d5443da72e48e84d1e98796ae317d7b5a104b1d48"
+   "ctrlSha": "be153cfe0be6644467ffaac7be8b45b206a7ee1e30d1560e5542509ce5244e5a"
   },
   {
    "key": "xpizza-orders/form-live-status.js#liveWhenMaps:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0",
@@ -869,7 +869,7 @@
    ],
    "reason": "S5 live screen: the mapsWait poll hands over to liveRender, which re-arms the deadlineTimer per window paint and the 60 s etaTimer after pickup — every arm reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "078b38a5a8219fbe35d02245656aec90e0390937b73525a82f4edaf4b9237820",
-   "ctrlSha": "7d7e1ae6c96919f6f0bc84e35f33d93f15de51c03c488469599f6f0a7fe74f89"
+   "ctrlSha": "c1de14a03aeca91712c6faeffa096dd391d971a5f10cba21e0b83716bf5cf6c7"
   },
   {
    "key": "xpizza-orders/form-live-status.js#liveWhenMaps:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0",
@@ -885,7 +885,7 @@
    ],
    "reason": "S5 live screen: the mapsWait poll hands over to liveRender, which re-arms the deadlineTimer per window paint and the 60 s etaTimer after pickup — every arm reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "993bf05bfa53040426f40315d81255cc96b235a50453271158b27eb60b02380b",
-   "ctrlSha": "ba988befaa2df6394be66e3b220ab7ba587a7e49a02893c088242042bae92314"
+   "ctrlSha": "56fd7dcf46251313c123581cbaf43405807231b957605eb617281f781af1c1d4"
   },
   {
    "key": "xpizza-orders/form-live-status.js#liveWhenMaps:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1",
@@ -901,7 +901,7 @@
    ],
    "reason": "S5 live screen: the mapsWait poll hands over to liveRender, which re-arms the deadlineTimer per window paint and the 60 s etaTimer after pickup — every arm reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "134d4f57783e08771918d64906c45271ed1ee462fd64dfc84d26c441103f4e0c",
-   "ctrlSha": "bddd43e1c4411c87ef9a9dee3c6341e93718c93968e99e4d640c11b192c13638"
+   "ctrlSha": "e62b00433423fb35074901629d33c9a78f9f90f0400edeed387051b88dd93cb4"
   },
   {
    "key": "xpizza-orders/form-live-status.js#liveWhenMaps:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0",
@@ -917,7 +917,7 @@
    ],
    "reason": "S5 live screen: the mapsWait poll hands over to liveRender, which re-arms the deadlineTimer per window paint and the 60 s etaTimer after pickup — every arm reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "107c92c387d8d06e6a375fd8dd062125f8b0803658599f4fff8abd64f542b440",
-   "ctrlSha": "ea0017602d42ce899b5ffa9d22ee71f353b45b8ad54777ca9fd67e324529da2a"
+   "ctrlSha": "20b7f9e3d39e51a5fa84d7d8a7a5638098f9c0f04d8e3c0da445d53a9fc9752d"
   },
   {
    "key": "xpizza-orders/form-live-status.js#liveWhenMaps:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1 → xpizza-orders/form-live-status.js#liveRender:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1",
@@ -933,7 +933,7 @@
    ],
    "reason": "S5 live screen: the mapsWait poll hands over to liveRender, which re-arms the deadlineTimer per window paint and the 60 s etaTimer after pickup — every arm reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "675183d58970e3a2b79fbe3d4c855ccd3e64806569ef6d8c1c33522f5806d525",
-   "ctrlSha": "ec19c0f128cf44488ead1e6e9523f148760c9eed740f08c12f4e42a5319a9308"
+   "ctrlSha": "74d2db77992397dd8b815a35b4629dbefc90b20d1616dd693f72bac84dc8241c"
   },
   {
    "key": "xpizza-orders/form-live-status.js#liveWhenMaps:setTimeout#0 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1 → xpizza-orders/form-live-status.js#liveRender:setTimeout#1",
@@ -949,7 +949,7 @@
    ],
    "reason": "S5 live screen: the mapsWait poll hands over to liveRender, which re-arms the deadlineTimer per window paint and the 60 s etaTimer after pickup — every arm reaches ONLY #success-sub, #ls-seg, #ls-status, #ls-store-label. ADVISOR 2026-10-15, S5 timers: the live confirmation nodes are NOT asserted for stability — declared mayChange by id and blanked in the journey recapture; every other #s5 node stays byte-stable",
    "sha": "ebb13cbe8bd403bbdedd7e21654882e52e12d41fd8e99f0ac1ce506b17700063",
-   "ctrlSha": "4e3bdd0a771829172effe50d4dce7d7913fd1605915508bddd6f2702e06d7fac"
+   "ctrlSha": "baa123a3d03de583549c2348b4719d18012af2768e4c9adff5acc75513677f9f"
   }
  ],
  "periodic": [

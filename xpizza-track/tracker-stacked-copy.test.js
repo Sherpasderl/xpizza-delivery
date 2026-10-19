@@ -5,6 +5,10 @@
 // state + pickup, asserting the segment model (done/active+fill/pending), the single headline + sub-line, the
 // avatar, and the driver-card copy / no-map / ETA / map LOGIC (the shipped core, unchanged).
 //
+// F4: this is a per-invocation COPY / segment test ONLY. hideDriverMap / updateDriverMap / refreshDriverEta are declared STUBS
+// here (call counters); every map, glide, minutes, timer and continuity property is proven against the REAL functions in the
+// persistent tracker-live.test.js. computeEta no longer exists (no countdown from pickup), so its stub is gone.
+//
 // DYNAMIC-GATE HARDENING: the slice starts at the REAL outer `const status = …` and runs the WHOLE status
 // branch (incl. pickup + the out_for_delivery + data.driver_name gates), so "avatar/map/eta appear ONLY for
 // an OFD order with a driver, and a non-OFD status gets the right segments and NO driver chrome" is proven
@@ -59,18 +63,18 @@ function render(data) {
   const reg = {};
   const getEl = (id) => (reg[id] || (reg[id] = mkEl(id)));
   const document = { getElementById: getEl, createElement: () => mkEl() };
-  const calls = { refreshDriverEta: 0, updateDriverMap: 0, computeEta: 0, hideDriverMap: 0 };
+  const calls = { refreshDriverEta: 0, updateDriverMap: 0, hideDriverMap: 0 };
   const hideDriverMap = () => { calls.hideDriverMap++; };
   const refreshDriverEta = () => { calls.refreshDriverEta++; };
   const updateDriverMap = () => { calls.updateDriverMap++; };
-  const computeEta = (d) => { calls.computeEta++; return d.__eta; };
   const requestAnimationFrame = (fn) => fn();   // run synchronously so fill --p is set when we inspect
   // eslint-disable-next-line no-new-func
   const fn = new Function('data', 'document', 'hideDriverMap', 'refreshDriverEta', 'updateDriverMap',
-    'computeEta', 'requestAnimationFrame', 'presentStatus',
-    `let etaIsActive = false; ${slice}; return etaIsActive;`);
+    'requestAnimationFrame', 'presentStatus',
+    // F4: the slice's map call site is owner-gated behind loadMaps().then — a synchronous thenable keeps the call counts synchronous
+    `let etaIsActive = false; let etaTimer = null; let lastRealOwner = null; let dMap = null; const loadMaps = () => ({ then: (f) => f() }); ${slice}; return etaIsActive;`);
   // Early-return branches (cancelled / pickup) return undefined; normalize to the boolean etaIsActive they left.
-  const etaIsActive = fn(data, document, hideDriverMap, refreshDriverEta, updateDriverMap, computeEta, requestAnimationFrame, presentStatus) ?? false;
+  const etaIsActive = fn(data, document, hideDriverMap, refreshDriverEta, updateDriverMap, requestAnimationFrame, presentStatus) ?? false;
   const segbar = reg['segbar'] || mkEl('segbar');
   const title = reg['driver-name'] || mkEl('driver-name');
   const sub = reg['driver-eta'] || mkEl('driver-eta');
@@ -135,18 +139,26 @@ r = render({ status: 'out_for_delivery', driver_name: 'Elmer', is_active_drop: f
 assert.deepEqual(segClasses(r), ['done', 'done', 'active', 'pending', 'pending']); assert.equal(activeFill(r), .35); ok('OFD stacked: seg3 active(.35) — smaller than active');
 assert.equal(r.title, 'Elmer va en camino'); ok('OFD stacked: "{name} va en camino"');
 assert.equal(r.sub, OWNER_WAITING); assert.ok(!r.subBig); ok('OFD stacked: owner parada copy, not big');
-assert.equal(r.calls.updateDriverMap, 0); assert.equal(r.calls.refreshDriverEta, 0); assert.equal(r.calls.computeEta, 0); assert.equal(r.etaIsActive, false); ok('OFD stacked: NO map, NO ETA, NO countdown');
+assert.equal(r.calls.updateDriverMap, 0); assert.equal(r.calls.refreshDriverEta, 0); assert.equal(r.etaIsActive, false); ok('OFD stacked: NO map, NO ETA, NO countdown');
 assert.ok(r.avatarShown); ok('OFD stacked: avatar shown');
 // ⛔ the bar must NOT advance to Llegando and must NOT reveal the quick stop on the bar
 assert.equal(r.segs[3], 'pending'); assert.equal(r.segs[4], 'pending'); ok('OFD stacked: never advances to Llegando (segs 4-5 pending)');
 
-// OFD NEUTRAL (no is_active_drop) → ETA fallback, no map
-r = render({ status: 'out_for_delivery', driver_name: 'Elmer', delivery_eta_min: 8 });
+// OFD NEUTRAL (no is_active_drop) → F4 (D1): the CALM copy, option B — never a countdown (delivery_eta_min / pickup ignored)
+r = render({ status: 'out_for_delivery', driver_name: 'Elmer', delivery_eta_min: 8, picked_up_at: Date.now() - 3 * 60000 });
 assert.deepEqual(segClasses(r), ['done', 'done', 'active', 'pending', 'pending']); assert.equal(activeFill(r), .5); ok('OFD neutral: seg3 active(.5)');
-assert.equal(r.title, 'Elmer está en camino'); assert.equal(r.sub, 'Llega en ~8 min'); assert.ok(r.subBig); ok('OFD neutral: ETA sub big');
-assert.equal(r.calls.updateDriverMap, 0); ok('OFD neutral: no map yet');
-r = render({ status: 'out_for_delivery', driver_name: 'Elmer' });
-assert.equal(r.sub, 'En ruta a tu dirección'); ok('OFD neutral (no eta): "En ruta a tu dirección"');
+assert.equal(r.title, 'Tu pedido va en camino'); assert.equal(r.sub, 'Con Elmer · pronto llegará a tu dirección'); assert.ok(!r.subBig); ok('OFD neutral: calm copy with the name (B), no countdown');
+assert.ok(r.avatarShown && r.avatarChar === 'E'); assert.equal(r.calls.updateDriverMap, 0); assert.equal(r.calls.refreshDriverEta, 0); ok('OFD neutral: avatar E, no map, no ETA');
+r = render({ status: 'out_for_delivery', driver_name: 'Elmer', is_active_drop: true });
+assert.equal(r.title, 'Tu pedido va en camino'); assert.equal(r.sub, 'Con Elmer · pronto llegará a tu dirección'); ok('OFD live without a location: the calm copy (no map, no minutes)');
+// D4 / O3: a live location with NO name still gets the live headline + the map
+r = render({ status: 'out_for_delivery', is_active_drop: true, driver_location: { lat: 15.5, lng: -88 } });
+assert.equal(r.title, 'Tu repartidor está en camino'); assert.ok(!r.avatarShown); assert.equal(r.calls.updateDriverMap, 1); assert.equal(r.etaIsActive, true); ok('OFD live, no name: "Tu repartidor está en camino", map shown, no avatar (D4)');
+// mx present: mx.name wins over driver_name; mx.name null → the no-name calm copy
+r = render({ status: 'out_for_delivery', driver_name: 'Viejo', mx: { mode: 'neutral', name: 'Carlos' } });
+assert.equal(r.sub, 'Con Carlos · pronto llegará a tu dirección'); ok('mx present: mx.name wins over driver_name');
+r = render({ status: 'out_for_delivery', driver_name: 'Viejo', mx: { mode: 'neutral', name: null } });
+assert.equal(r.sub, 'Pronto llegará a tu dirección'); assert.ok(!r.avatarShown); ok('mx present, mx.name null: the no-name calm copy (driver_name ignored)');
 
 // OFD no driver yet
 r = render({ status: 'out_for_delivery' });

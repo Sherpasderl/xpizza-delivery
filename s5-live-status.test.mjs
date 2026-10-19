@@ -141,7 +141,7 @@ const CONF = (p) => prepFor({ prep_eta_min: p }, 0, 0);
   const LOC = { lat: 15.5, lng: -88.02 };
   let cells = 0;
   const same = (cell, rec, field) => {
-    const form = statusLineOf(SV.presentStatus({ ...rec, fallback_drive_min: 12, now: NOW }), rec);
+    const form = statusLineOf(SV.presentStatus({ ...rec, fallback_drive_min: 12, gen2: true, now: NOW }), rec);   // F4: the form passes gen2, as the tracker does
     assert.strictEqual(form, G[cell][field].text, `🔴 ${cell}: the form says "${form}", the tracker said "${G[cell][field].text}"`); cells += 1;
   };
   for (const type of ['delivery', 'pickup']) for (const status of ['new', 'preparing', 'ready', 'delivered', 'completed', 'cancelled', 'weird_status', undefined]) {
@@ -162,12 +162,14 @@ const CONF = (p) => prepFor({ prep_eta_min: p }, 0, 0);
     const segs = SV.presentStatus({ ...rec, now: NOW }).segs.map((s) => (s === 'done' ? 'seg done' : s === 'pending' ? 'seg' : `seg active:${s.a}`));
     assert.deepStrictEqual(segs, G[cell].segbar.kids.map((k) => k.cls + (k.kids ? ':' + k.kids[0].style['--p'] : '')), cell);
   }
-  // the form's DIFFERENT ETA, in its own cells (BC2): same record, its own drive estimate vs the tracker's 12
+  // the form's OWN ETA, in its own cells (BC2): same record, its own measured drive estimate; the tracker shows NO countdown
+  // from pickup since F4 (its calm copy) — the form still passes gen2, and keeps its minutes because it supplies its drive
   const r3 = { ...ofd, driver_name: 'Carlos', picked_up_at: NOW - 3 * MIN };
-  assert.strictEqual(G['eta/unknown/eta=undefined/ago=3']['driver-eta'].text, 'Llega en ~9 min', 'the tracker: 12 − 3');
-  assert.strictEqual(arrivalFor({ rec: r3, pickup: false, stage: 'ofd', prep: CONF(20), driveMin: 20, anchorMs: 0, overdue: false, v: SV.presentStatus({ ...r3, fallback_drive_min: 20, now: NOW }) }).text, 'Llega en ~17 min', 'the form: its own drive 20 − 3');
-  assert.strictEqual(arrivalFor({ rec: { ...r3, delivery_eta_min: 7 }, pickup: false, stage: 'ofd', prep: CONF(20), driveMin: 20, anchorMs: 0, overdue: false, v: SV.presentStatus({ ...r3, delivery_eta_min: 7, fallback_drive_min: 20, now: NOW }) }).text, G['eta/unknown/eta=7/ago=3']['driver-eta'].text, 'with delivery_eta_min both say the same');
-  ok(`BC2 copy parity: under equal inputs the form's status line is byte-identical to the REAL tracker's rendered text for ${cells} cells (status × type, timestamps, brand / blank brand, every out_for_delivery sub-state) and the segbar matches; the form's own ETA differs only by its drive estimate (17 vs the tracker's 9 for the same record) and agrees once delivery_eta_min exists`);
+  assert.strictEqual(G['eta/unknown/eta=undefined/ago=3']['driver-eta'].text, 'Con Carlos · pronto llegará a tu dirección', 'the tracker (F4): no countdown from pickup — the calm copy');
+  assert.strictEqual(arrivalFor({ rec: r3, pickup: false, stage: 'ofd', prep: CONF(20), driveMin: 20, anchorMs: 0, overdue: false, v: SV.presentStatus({ ...r3, fallback_drive_min: 20, gen2: true, now: NOW }) }).text, 'Llega en ~17 min', 'the form: its own drive 20 − 3');
+  assert.strictEqual(arrivalFor({ rec: { ...r3, delivery_eta_min: 7 }, pickup: false, stage: 'ofd', prep: CONF(20), driveMin: 20, anchorMs: 0, overdue: false, v: SV.presentStatus({ ...r3, delivery_eta_min: 7, fallback_drive_min: 20, gen2: true, now: NOW }) }).text, 'Llega en ~7 min', 'the form keeps its own arrival line (delivery_eta_min first) — unchanged by F4');
+  assert.strictEqual(G['eta/unknown/eta=7/ago=3']['driver-eta'].text, 'Con Carlos · pronto llegará a tu dirección', 'the tracker (F4) ignores delivery_eta_min: the calm copy');
+  ok(`BC2 copy parity: under equal inputs the form's status line is byte-identical to the REAL tracker's rendered text for ${cells} cells (status × type, timestamps, brand / blank brand, every out_for_delivery sub-state) and the segbar matches; the form's own arrival line keeps its measured minutes (17; 7 with delivery_eta_min) while the tracker shows no countdown from pickup (F4)`);
 }
 
 // ── 7. the shared modules ──

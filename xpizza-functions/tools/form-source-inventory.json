@@ -236,7 +236,8 @@
     "xpizza-orders/form-live-menu.test.mjs",
     "xpizza-orders/form-safe-render.test.mjs",
     "xpizza-orders/form-serial-order.copy.test.mjs",
-    "xpizza-orders/form-serial-order.test.mjs"
+    "xpizza-orders/form-serial-order.test.mjs",
+    "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
     "charge-boundary.test.mjs",
@@ -615,7 +616,8 @@
     "xpizza-orders/form-group-picker.copy.test.mjs",
     "xpizza-orders/form-identity-strip.copy.test.mjs",
     "xpizza-orders/form-live-menu.copy.test.mjs",
-    "xpizza-orders/form-serial-order.copy.test.mjs"
+    "xpizza-orders/form-serial-order.copy.test.mjs",
+    "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
     "confirm-quote-wiring.test.mjs",
@@ -879,7 +881,8 @@
     "xpizza-functions/test/driver-cash-subscription.emulator.test.js",
     "xpizza-functions/test/h0-dismiss-rules.emulator.test.js",
     "xpizza-functions/test/superseded-capture.emulator.test.js",
-    "xpizza-functions/tools/registry-writers.test.js"
+    "xpizza-functions/tools/registry-writers.test.js",
+    "xpizza-track/tracker-glide.guard.test.js"
    ],
    "via_helper": [
     "xpizza-dispatch/dispatch-alert-nav.test.js",
@@ -1016,7 +1019,12 @@
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
     "xpizza-functions/pselfupdate-stamp.test.js",
+    "xpizza-track/eta-gate.test.js",
+    "xpizza-track/status-view-forms.test.js",
+    "xpizza-track/tracker-glide.guard.test.js",
+    "xpizza-track/tracker-live.test.js",
     "xpizza-track/tracker-stacked-copy.test.js",
+    "xpizza-track/tracker-status.delta.test.js",
     "xpizza-track/tracker-status.golden.test.js"
    ],
    "via_helper": [
