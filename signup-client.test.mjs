@@ -12,17 +12,24 @@
 //   F  GIS script failure → "Google no está disponible acá"; a stale callback is ignored;
 //   G  (advisor ruling (2)) checkout card, post-rollout nameless: "Guardar y continuar" opens the completion panes, keeps the
 //      typed address, and saves it automatically after completeProfile; a dismissal saves nothing and the card stays;
-//   I  (codex r1 P1-3/P1-4) an unreadable state keeps the panes; a reload derives the pay / Mi cuenta gate from the server;
+//   I  (advisor ruling, train review P1) an unreadable / pending config, or legal_ready:false, is TODAY's flow (no panes, pay
+//      never blocked); (codex r1 P1-3/P1-4) in an AFFIRMATIVELY active rollout a reload derives the pay / Mi cuenta gate from the
+//      server and unreadable terms keep the panes;
 //   K  (codex r2 #2) a linked Google mint ALREADY UNDERWAY when the phone is chosen: undone (signed out, no marker, no
 //      afterLogin); a phone verify meanwhile waits for it and ends as the only session;
 //   L  (codex r3 P1 + owner rulings r4/r7) a mint that NEVER settles doesn't wedge sign-in (bounded wait); one that resolves late
 //      signs out, clears the marker and RELOADS the page (no repair); a logout meanwhile → signed out, no reload;
 //   P  (owner ruling r7) the fresh page after the reload heals a marker left without an auth session; the next sign-in works;
 //   M  (codex r3 P2) a superseded gate read (suSetGate('complete') meanwhile) never routes: no panes, pay proceeds;
-//   I+ (codex r2 #3/#4) legal_ready:false with a rollout and unreadable terms keep the panes; pay during a PENDING restore read
-//      is refused, then the panes open only if the resolved state requires them;
+//   I+ (codex r2 #4) pay during a PENDING restore read is refused only once the config affirmatively reports the rollout active
+//      (a pending CONFIG read never blocks), then the panes open only if the resolved state requires them;
 //   J  (codex r1 P2-7) Mi cuenta "Recibir promociones" → setPromos (a failure reverts);
-//   H  LEGACY DIFFERENTIAL (advisor ruling (3)) vs the slice base's account.js — a legacy account (and no config at all):
+//   Q  (codex cfgfix r1 P1) a config resolving ACTIVE while a started checkout awaits the location pick never aborts it (the
+//      gate captured at processPayment's start); a stalled config BODY is a failed read (bounded, then retried);
+//   H  LEGACY DIFFERENTIAL (advisor ruling (3)) vs the slice base's account.js — a legacy account, and (train review P1 + codex
+//      cfgfix r1) a post-rollout account whose config read FAILS, never answers, stalls its body, or is not affirmatively
+//      active (legal_ready:false, no rollout_at — also with Google configured), on login, the checkout card (incl. whether pay
+//      is permitted) and Mi cuenta (no "Recibir promociones", no setPromos):
 //      the same panes, the same request bodies (bar the one declared getSignupConfig read) and the same database writes, on
 //      the login routes (named / nameless → (d)) and the checkout card (e).
 import assert from 'node:assert';
@@ -77,6 +84,11 @@ async function boot(dir, opts = {}) {
   if (opts.profile !== undefined) st.tree.user_profiles[UID] = opts.profile;
   if (opts.terms) st.tree.user_private[UID] = { consent: { [BRAND[dir].rid]: { terms: { version: 't', privacy_version: 'p', at: 1 }, promos: { value: false, copy_version: 'c', at: 1 } } } };
   w.__FB_FAKE = fakeFirebase(st);
+  if (opts.profileFault) {   // 'once' = the first profile read throws; 'stall' = every profile read hangs
+    const get0 = w.__FB_FAKE.dbMod.get; let n = 0;
+    w.__FB_FAKE.dbMod.get = async (r) => { if (r.path === 'user_profiles/' + UID) { n++; if (opts.profileFault === 'stall') return new Promise(() => {}); if (n === 1) throw new Error('unavailable'); } return get0(r); };
+  }
+  if (opts.termsHold) { const get0 = w.__FB_FAKE.dbMod.get; w.__FB_FAKE.dbMod.get = async (r) => { if (/\/consent\//.test(r.path)) await opts.termsHold; return get0(r); }; }
   await settle();
   await serve(w, envelope(BRAND[dir].rid, BRAND[dir].menu(w)));
   const calls = [];
@@ -85,6 +97,8 @@ async function boot(dir, opts = {}) {
     const headers = (init && init.headers) || {};
     calls.push({ url, body, headers });
     if (/getsignupconfig/.test(url) && opts.cfgHold) return opts.cfgHold.then(() => res(opts.cfg));
+    if (/getsignupconfig/.test(url) && opts.cfg === 'pending') return new Promise(() => {});   // never answers
+    if (/getsignupconfig/.test(url) && opts.cfg === 'stall') return Promise.resolve({ ok: true, status: 200, json: () => new Promise(() => {}) });   // headers, then a body that never arrives
     if (/getsignupconfig/.test(url)) return opts.cfg === 'fail' || opts.cfg === undefined ? Promise.reject(new Error('offline')) : res(opts.cfg);
     if (/requestotp/.test(url)) return res({ ok: true, cooldown: 30 });
     if (/verifyotp/.test(url)) {
@@ -102,14 +116,17 @@ async function boot(dir, opts = {}) {
     if (/claimOrder/.test(url)) return res({ ok: true, credited: true, delta: 2, unit: 'punch' });
     return new Promise(() => {});
   };
-  return { w, st, calls, d: w.document };
+  return { w, st, calls, d: w.document, base: !!opts.base };
 }
 const waitFor = async (pred, label, ms = 4000) => { const t0 = Date.now(); while (!pred()) { if (Date.now() - t0 > ms) throw new Error('timeout: ' + label); await new Promise((r) => setTimeout(r, 15)); } };
 const pane = (d) => { const p = d.querySelector('#acct-overlay .acct-pane.acct-on'); return p ? p.id : null; };
 const type = (w, el, v) => { el.value = v; el.dispatchEvent(new w.Event('input', { bubbles: true })); };
-async function phoneLogin({ w, d }, { claim = null } = {}) {
+async function phoneLogin({ w, d, calls, base }, { claim = null } = {}) {
   if (claim) w.__ACCOUNT.startProfileClaim(claim); else d.querySelector('#acct-chip button').click();
   await waitFor(() => pane(d) === 'acct-pane-phone', 'phone pane');
+  // a customer types the code SECONDS after the sheet opens: the sheet's config read (started with the phone pane) has
+  // landed. (Never waited on by the page — codex cfgfix r1; the slice base reads no config.)
+  if (!base) { await waitFor(() => call(calls, /getsignupconfig/).length >= 1, 'the sheet reads the config'); await settle(); await settle(); }
   type(w, d.getElementById('acct-ph-inp'), '99990000');
   d.getElementById('acct-cont-btn').click();
   await waitFor(() => pane(d) === 'acct-pane-otp', 'otp pane');
@@ -309,47 +326,66 @@ for (const dir of ['xpizza-orders', 'la-musa-orders']) {
   }
   ok(`${dir} K: a linked Google mint already underway when the phone is chosen is undone on resolve (signed out, no marker, no afterLogin); a phone verify meanwhile waits for it and ends as the only session`);
 
-  // ── I. codex r1 P1-3: an unreadable state keeps the panes; P1-4: a reload derives the gate from the server ──
+  // ── I. advisor ruling (train review P1): completion only when the config AFFIRMATIVELY reports the rollout active ──
   {
     const t = await boot(dir, { cfg: 'fail' });   // the config can't be read (twice)
     await phoneLogin(t);
-    await waitFor(() => pane(t.d) === 'acct-pane-su-email', '🔴 an unreadable config must keep the panes');
+    await waitFor(() => pane(t.d) === 'acct-pane-createprofile', '🔴 an unreadable config is today\'s flow (the (d) pane), never the completion panes');
     assert.ok(call(t.calls, /getsignupconfig/).length >= 2, 'the config read is retried, never cached as a failure');
-    // a failed completion (the name saved, completeProfile refused) then a RELOAD: the gate comes from the server again
+    // a signed-in post-rollout account without terms, config unreadable: pay proceeds, Mi cuenta is today's
+    const f = await boot(dir, { cfg: 'fail', signedIn: { name: 'Ana Pérez' }, profile: PROFILE({ name: 'Ana Pérez' }) });
+    await waitFor(() => call(f.calls, /getsignupconfig/).length >= 1, 'the restore read'); await settle(); await new Promise((x) => setTimeout(x, 200));
+    assert.strictEqual(f.w.__ACCOUNT.deliverySubmitBlocked(), false, '🔴 an unreadable config must never block pay');
+    await settle(); assert.notStrictEqual(pane(f.d), 'acct-pane-su-email', 'no completion panes');
+    f.d.querySelector('#acct-chip button').click(); await settle(); await new Promise((x) => setTimeout(x, 150));
+    assert.notStrictEqual(pane(f.d), 'acct-pane-su-email', '🔴 Mi cuenta with an unreadable config is today\'s, no completion panes');
+    // legal_ready:false with a rollout timestamp: not affirmatively active → today's flow
+    const nl = await boot(dir, { cfg: CFG({ legal_ready: false }) });
+    await phoneLogin(nl);
+    await waitFor(() => pane(nl.d) === 'acct-pane-createprofile', '🔴 legal_ready:false is today\'s flow');
+    // AFFIRMATIVE rollout: a failed completion then a RELOAD → the gate comes from the server again (kept: codex r1 P1-3/P1-4)
     const r = await boot(dir, { cfg: CFG(), signedIn: { name: 'Ana Pérez' }, profile: PROFILE({ name: 'Ana Pérez' }) });
     await waitFor(() => call(r.calls, /getsignupconfig/).length >= 1, 'the restored session reads the config');
     await settle(); await settle(); await new Promise((x) => setTimeout(x, 100));
     assert.strictEqual(r.w.__ACCOUNT.deliverySubmitBlocked(), true, '🔴 a named post-rollout account without terms must not pay before completing');
     await waitFor(() => pane(r.d) === 'acct-pane-su-email', 'the completion panes open at pay');
-    // Mi cuenta never skips it either
     const m = await boot(dir, { cfg: CFG(), signedIn: { name: 'Ana Pérez' }, profile: PROFILE({ name: 'Ana Pérez' }) });
+    await waitFor(() => call(m.calls, /getsignupconfig/).length >= 1, 'the load read'); await settle(); await settle();   // the rollout known active (opened before that: today's Mi cuenta — cell H acct-cfgpending)
     m.d.querySelector('#acct-chip button').click();
     await waitFor(() => pane(m.d) === 'acct-pane-su-email', '🔴 Mi cuenta opens the completion panes for an incomplete account');
-    // legacy / complete: never blocked
     const l = await boot(dir, { cfg: CFG(), signedIn: { name: 'Ana Pérez' }, profile: PROFILE({ created_at: ROLL - 1, name: 'Ana Pérez' }) });
     await waitFor(() => call(l.calls, /getsignupconfig/).length >= 1, 'read'); await settle(); await new Promise((x) => setTimeout(x, 100));
     assert.strictEqual(l.w.__ACCOUNT.deliverySubmitBlocked(), false, 'a legacy account is never gated');
-    // codex r2 #3: legal_ready:false with a rollout timestamp, and unreadable terms → never 'off'
-    const nl = await boot(dir, { cfg: CFG({ legal_ready: false }) });
-    await phoneLogin(nl);
-    await waitFor(() => pane(nl.d) === 'acct-pane-su-email', '🔴 legal_ready:false with a rollout must not bypass completion');
+    // AFFIRMATIVE rollout + unreadable terms → the panes (kept)
     const ut = await boot(dir, { cfg: CFG() });
     { const get0 = ut.w.__FB_FAKE.dbMod.get; ut.w.__FB_FAKE.dbMod.get = async (r) => { if (/\/consent\//.test(r.path)) throw new Error('permission'); return get0(r); }; }
     await phoneLogin(ut);
-    await waitFor(() => pane(ut.d) === 'acct-pane-su-email', '🔴 unreadable terms keep the panes');
-    // codex r2 #4: pay during a PENDING restore read → refused; once resolved, the panes open only when required
+    await waitFor(() => pane(ut.d) === 'acct-pane-su-email', '🔴 unreadable terms (rollout active) keep the panes');
+    // a PENDING CONFIG read never blocks pay; once it resolves active, the panes only when required
     for (const [label, profile, terms, panes] of [['incomplete', PROFILE({ name: 'Ana Pérez' }), false, true], ['complete', PROFILE({ name: 'Ana Pérez' }), true, false], ['legacy', PROFILE({ created_at: ROLL - 1, name: 'Ana Pérez' }), false, false]]) {
       let go; const hold = new Promise((x) => { go = x; });
       const pr = await boot(dir, { cfg: CFG(), cfgHold: hold, signedIn: { name: 'Ana Pérez' }, profile, terms });
-      await waitFor(() => call(pr.calls, /getsignupconfig/).length >= 1, 'the restore read is pending'); await settle();
-      assert.strictEqual(pr.w.__ACCOUNT.deliverySubmitBlocked(), true, `🔴 ${label}: pay while the completion read is PENDING must be refused`);
+      await waitFor(() => call(pr.calls, /getsignupconfig/).length >= 1, 'the config read is pending'); await settle();
+      assert.strictEqual(pr.w.__ACCOUNT.deliverySubmitBlocked(), false, `🔴 ${label}: a PENDING config read must never block pay`);
+      assert.notStrictEqual(pane(pr.d), 'acct-pane-su-email', 'no panes before the state is known');
+      go(); await settle(); await settle(); await new Promise((x) => setTimeout(x, 120));
+      assert.strictEqual(pr.w.__ACCOUNT.deliverySubmitBlocked(), panes, `${label}: once resolved, pay gated only when required`);
+      if (panes) await waitFor(() => pane(pr.d) === 'acct-pane-su-email', `${label}: the panes once resolved`);
+      else assert.notStrictEqual(pane(pr.d), 'acct-pane-su-email', `${label}: no panes`);
+    }
+    // codex r2 #4 (kept): the rollout KNOWN active, the terms read PENDING → pay refused, then the panes only when required
+    for (const [label, terms, panes] of [['incomplete', false, true], ['complete', true, false]]) {
+      let go; const hold = new Promise((x) => { go = x; });
+      const pr = await boot(dir, { cfg: CFG(), termsHold: hold, signedIn: { name: 'Ana Pérez' }, profile: PROFILE({ name: 'Ana Pérez' }), terms });
+      await waitFor(() => call(pr.calls, /getsignupconfig/).length >= 1, 'config read'); await settle(); await settle();
+      assert.strictEqual(pr.w.__ACCOUNT.deliverySubmitBlocked(), true, `🔴 ${label}: rollout active, completion read PENDING → pay refused`);
       assert.notStrictEqual(pane(pr.d), 'acct-pane-su-email', 'no panes before the state is known');
       go(); await settle(); await settle(); await new Promise((x) => setTimeout(x, 120));
       if (panes) await waitFor(() => pane(pr.d) === 'acct-pane-su-email', `${label}: the panes once resolved`);
       else { assert.notStrictEqual(pane(pr.d), 'acct-pane-su-email', `${label}: no panes`); assert.strictEqual(pr.w.__ACCOUNT.deliverySubmitBlocked(), false, `${label}: pay proceeds once resolved`); }
     }
   }
-  ok(`${dir} I: an unreadable config keeps the completion panes (read retried, never cached); after a reload a named post-rollout account without terms is gated at pay and in Mi cuenta (state from the server); a legacy account is never gated; legal_ready:false with a rollout and unreadable terms keep the panes; pay during a PENDING restore read is refused, then panes only when required`);
+  ok(`${dir} I: an unreadable config (retried, never cached) or legal_ready:false is today's flow — the (d) pane at login, pay never blocked, Mi cuenta today's; a PENDING config read never blocks pay; in an AFFIRMATIVELY active rollout a reload gates a post-rollout account without terms at pay and in Mi cuenta, unreadable terms keep the panes, a pending terms read refuses pay then panes only when required; a legacy account is never gated`);
 
   // ── L. codex r3 P1 + OWNER ruling (r4): a hung mint never wedges sign-in; a late stale mint signs the customer out fully ──
   //   hang: the phone completes after the bounded wait; late: the Google mint then resolves → signed out, no marker, the chip
@@ -417,8 +453,8 @@ for (const dir of ['xpizza-orders', 'la-musa-orders']) {
   // ── M. codex r3 P2: a superseded gate read never reopens the panes ──
   {
     let go; const hold = new Promise((x) => { go = x; });
-    const t = await boot(dir, { cfg: CFG(), cfgHold: hold, signedIn: { name: 'Ana Pérez' }, profile: PROFILE({ name: 'Ana Pérez' }), exposeGate: true });
-    await waitFor(() => call(t.calls, /getsignupconfig/).length >= 1, 'the restore read is pending'); await settle();
+    const t = await boot(dir, { cfg: CFG(), termsHold: hold, signedIn: { name: 'Ana Pérez' }, profile: PROFILE({ name: 'Ana Pérez' }), exposeGate: true });
+    await waitFor(() => call(t.calls, /getsignupconfig/).length >= 1, 'the restore read is pending'); await settle(); await settle();
     assert.strictEqual(t.w.__ACCOUNT.deliverySubmitBlocked(), true, 'pay waits on the pending read');
     t.w.__suSetGate('complete');   // a completion saved meanwhile
     go(); await settle(); await settle(); await new Promise((x) => setTimeout(x, 150));   // the OLD read resolves 'needed' (no terms on record)
@@ -430,6 +466,7 @@ for (const dir of ['xpizza-orders', 'la-musa-orders']) {
   // ── J. codex r1 P2-7: "Recibir promociones" in Mi cuenta ──
   for (const fail of [false, true]) {
     const t = await boot(dir, { cfg: CFG(), signedIn: { name: 'Ana Pérez' }, profile: PROFILE({ name: 'Ana Pérez' }), terms: true, promos: fail ? { ok: false } : { ok: true } });
+    await waitFor(() => call(t.calls, /getsignupconfig/).length >= 1, 'the load read'); await settle(); await settle();   // the rollout known active
     t.d.querySelector('#acct-chip button').click();
     await waitFor(() => !!t.d.getElementById('acct-su-promos'), 'the promotions row');
     const sw = t.d.getElementById('acct-su-promos');
@@ -447,6 +484,7 @@ for (const dir of ['xpizza-orders', 'la-musa-orders']) {
   // ── G. the checkout card (advisor ruling (2)) ──
   for (const dismiss of [false, true]) {
     const t = await boot(dir, { cfg: CFG(), signedIn: { name: '' }, profile: PROFILE() });
+    await waitFor(() => call(t.calls, /getsignupconfig/).length >= 1, 'the load read'); await settle(); await settle();   // the rollout known active (pending: today's card — cell H cfgpending-checkout)
     t.w.eval("orderType = 'delivery'; lat = 14.08; lng = -87.2;");
     t.w.__ACCOUNT.applyCreateProfileFlow(PROFILE());
     await settle();
@@ -478,12 +516,50 @@ for (const dir of ['xpizza-orders', 'la-musa-orders']) {
   }
   ok(`${dir} G: the checkout card for a post-rollout nameless account opens the completion panes, keeps the typed address and saves it automatically after completeProfile; a dismissal saves nothing and leaves the card as typed`);
 
+  // ── Q. codex cfgfix r1 P1: the gate captured at checkout START; a stalled config body is a bounded, retried read ──
+  {
+    let go; const hold = new Promise((x) => { go = x; });
+    const t = await boot(dir, { cfg: CFG(), cfgHold: hold, signedIn: { name: 'Ana Pérez' }, profile: PROFILE({ name: 'Ana Pérez' }) });
+    await waitFor(() => call(t.calls, /getsignupconfig/).length >= 1, 'the config read is pending'); await settle();
+    const seen = []; const dsb0 = t.w.__ACCOUNT.deliverySubmitBlocked; t.w.__ACCOUNT.deliverySubmitBlocked = () => { const b = dsb0(); seen.push(b); return b; };
+    t.w.eval('__locPickPromise = new Promise(function (r) { __locPickDone = r; });');   // a location pick is resolving
+    assert.ok(t.w.processPayment.__acctWrapped, 'premise: processPayment is wrapped for a signed-in session');
+    const pay = t.w.processPayment();
+    go(); await settle(); await settle(); await new Promise((x) => setTimeout(x, 150));   // the config resolves ACTIVE meanwhile ('needed')
+    t.w.eval('__locPickDone(); __locPickDone = null; __locPickPromise = null;');
+    await pay.catch(() => {}); await settle();
+    assert.deepStrictEqual(seen, [false], '🔴 a config resolving active during the location wait must not abort the started checkout');
+    assert.notStrictEqual(pane(t.d), 'acct-pane-su-email', 'no completion panes for the started checkout');
+    assert.strictEqual(dsb0(), true, 'premise: the live gate DID close (the rollout resolved active, this account needs completion)');
+    // a stalled config BODY (headers arrive, the body never does): the WHOLE read is bounded at 2.5 s → a failed read, never cached.
+    // A GUEST page reads no config at load, so this responder answers the FIRST request (codex cfgfix r2).
+    const s2 = await boot(dir, { cfg: 'stall' });
+    s2.d.querySelector('#acct-chip button').click();   // the phone pane reads the config
+    await waitFor(() => call(s2.calls, /getsignupconfig/).length === 1, 'the first config read (its body stalls)');
+    await new Promise((r) => setTimeout(r, 2800)); await settle();   // past the 2.5 s bound
+    s2.d.getElementById('acct-close').click(); await settle();
+    s2.d.querySelector('#acct-chip button').click();   // reopened: a timed-out read was not cached → a NEW request
+    await waitFor(() => call(s2.calls, /getsignupconfig/).length === 2, '🔴 a stalled config BODY must time out and be read again (the whole read bounded)', 3000);
+    assert.strictEqual(s2.w.__ACCOUNT.deliverySubmitBlocked(), false, 'pay never blocked by a stalled config');
+  }
+  ok(`${dir} Q: a config resolving ACTIVE while a started checkout awaits its location pick does not abort it (the gate captured at processPayment's start); a stalled config BODY (from the first request) is a bounded failed read — not cached, read again — pay never blocked`);
+
   // ── H. the LEGACY differential vs the slice base ──
   {
     const scenario = async (base, variant) => {
-      const legacyCfg = variant === 'rolloutoff' ? CFG({ rollout_at: null }) : CFG();
-      const prof = variant === 'named' ? PROFILE({ created_at: ROLL - 1, name: 'Ana Pérez' }) : PROFILE({ created_at: ROLL - 1 });
-      if (variant === 'checkout') {
+      const k = variant.replace(/^acct-|-checkout$/g, '');
+      const CFGS = { cfgfail: 'fail', cfgpending: 'pending', cfgstall: 'stall', legalfalse: CFG({ legal_ready: false }), rolloutoff: CFG({ rollout_at: null }),
+        googlenorollout: CFG({ rollout_at: null, google_enabled: true, google_client_id: 'cid' }), profflaky: 'fail', profstall: 'fail' };
+      const post = k in CFGS && k !== 'rolloutoff';   // a POST-rollout account (the legacy variants keep created_at < rollout_at)
+      const legacyCfg = k in CFGS ? CFGS[k] : CFG();
+      const prof = variant === 'named' ? PROFILE({ created_at: ROLL - 1, name: 'Ana Pérez' }) : (post ? PROFILE() : PROFILE({ created_at: ROLL - 1 }));
+      if (/^acct-/.test(variant)) {   // Mi cuenta for a signed-in account WITH this brand's terms on record
+        const t = await boot(dir, { base, cfg: legacyCfg, signedIn: { name: 'Ana Pérez' }, profile: PROFILE({ name: 'Ana Pérez' }), terms: true });
+        await settle(); t.d.querySelector('#acct-chip button').click();
+        await new Promise((r) => setTimeout(r, 400)); await settle();
+        return { panes: pane(t.d), promos: !!t.d.getElementById('acct-row-promos'), writes: t.st.writes, calls: t.calls.filter((c) => !/getsignupconfig/.test(c.url)).map((c) => ({ url: c.url, body: c.body })) };
+      }
+      if (/checkout$/.test(variant)) {
         const t = await boot(dir, { base, cfg: legacyCfg, signedIn: { name: '' }, profile: prof });
         t.w.eval("orderType = 'delivery'; lat = 14.08; lng = -87.2;");
         t.w.__ACCOUNT.applyCreateProfileFlow(prof); await settle();
@@ -493,23 +569,31 @@ for (const dir of ['xpizza-orders', 'la-musa-orders']) {
         t.d.getElementById('acct-save-addr-btn').click();
         await waitFor(() => t.st.writes.length >= 2, 'legacy checkout writes');
         await settle(); await settle();
+        // measure pay only once the page's config read has LANDED (the load read can need its bounded retry)
+        if (!base) { await waitFor(() => call(t.calls, /getsignupconfig/).length >= 1, 'the config read', 6000); await settle(); await settle(); await new Promise((r) => setTimeout(r, 100)); }
         // address ids are random per run (newAddrId) and the address timestamps are the clock → normalized; everything else compared as is
         const norm = (v) => JSON.parse(JSON.stringify(v, (k, x) => (k === 'created_at' || k === 'last_used_at' ? undefined : x)).replace(/a_[a-f0-9]{6,32}/g, 'a_ID'));
-        return { writes: norm(t.st.writes), panes: pane(t.d), deliver: (t.d.getElementById('acct-deliver') || {}).textContent, calls: t.calls.filter((c) => !/getsignupconfig/.test(c.url)).map((c) => ({ url: c.url, body: c.body })) };
+        return { writes: norm(t.st.writes), panes: pane(t.d), payBlocked: t.w.__ACCOUNT.deliverySubmitBlocked(), deliver: (t.d.getElementById('acct-deliver') || {}).textContent, calls: t.calls.filter((c) => !/getsignupconfig/.test(c.url)).map((c) => ({ url: c.url, body: c.body })) };
       }
-      const t = await boot(dir, { base, cfg: legacyCfg, profile: prof });
+      const t = await boot(dir, { base, cfg: legacyCfg, profile: prof, profileFault: { profflaky: 'once', profstall: 'stall' }[k] });
       await phoneLogin(t);
-      await waitFor(() => t.calls.some((c) => /verifyotp/.test(c.url)), 'verify'); await new Promise((r) => setTimeout(r, 300)); await settle();
+      // profstall: sampled just after ONE 1.5 s profile timeout — today's flow has left the code pane by then (codex cfgfix r2)
+      await waitFor(() => t.calls.some((c) => /verifyotp/.test(c.url)), 'verify'); await new Promise((r) => setTimeout(r, k === 'profstall' ? 1900 : 300)); await settle();
       return { writes: t.st.writes, panes: pane(t.d), open: t.d.getElementById('acct-overlay').classList.contains('acct-open'), calls: t.calls.filter((c) => !/getsignupconfig/.test(c.url)).map((c) => ({ url: c.url, body: c.body })) };
     };
-    for (const variant of ['nameless', 'named', 'rolloutoff', 'checkout']) {
+    for (const variant of ['nameless', 'named', 'rolloutoff', 'checkout', 'cfgfail', 'legalfalse', 'cfgfail-checkout', 'legalfalse-checkout', 'cfgpending', 'cfgstall', 'cfgpending-checkout', 'cfgstall-checkout',
+      'googlenorollout', 'profflaky', 'profstall', 'acct-cfgfail', 'acct-legalfalse', 'acct-rolloutoff', 'acct-cfgpending']) {
       const a = await scenario(true, variant), b = await scenario(false, variant);
       assert.deepStrictEqual(b, a, `🔴 ${variant}: a legacy account differs from the slice base`);
       if (variant === 'nameless') assert.strictEqual(a.panes, 'acct-pane-createprofile', 'premise: today\'s (d) pane');
-      if (variant === 'checkout') assert.ok(a.writes.some((x) => x.obj && x.obj.name === 'Ana Pérez'), 'premise: today\'s (e) name write');
+      if (/^cfg(fail|pending|stall)$/.test(variant)) assert.strictEqual(a.panes, 'acct-pane-createprofile', 'premise: today\'s (d) pane');
+      if (/^prof(flaky|stall)$/.test(variant)) assert.notStrictEqual(a.panes, 'acct-pane-otp', 'premise: today\'s flow has left the code pane (an unavailable profile read fails open)');
+      if (/checkout$/.test(variant)) assert.strictEqual(a.payBlocked, false, 'premise: today\'s card, once saved, permits pay');
+      if (/^acct-/.test(variant)) assert.ok(a.panes === 'acct-pane-account' && a.promos === false, 'premise: today\'s Mi cuenta, no promos row');
+      if (/checkout/.test(variant)) assert.ok(a.writes.some((x) => x.obj && x.obj.name === 'Ana Pérez'), 'premise: today\'s (e) name write');
     }
   }
-  ok(`${dir} H: LEGACY DIFFERENTIAL vs ${BASE}: a legacy nameless login (today's (d) pane), a legacy named login, a brand the server reports NOT rolled out, and the legacy checkout card (e) — identical panes, request bodies (bar the declared getSignupConfig read) and database writes`);
+  ok(`${dir} H: LEGACY DIFFERENTIAL vs ${BASE}: a legacy nameless login (today's (d) pane), a legacy named login, a brand the server reports NOT rolled out, the legacy checkout card (e), and a POST-ROLLOUT account whose config read fails / never answers / stalls its body (login + checkout card, pay permitted) or is not affirmatively active (legal_ready:false, login + checkout card; no rollout_at with Google configured → no Google button); Mi cuenta under a failed / pending config, legal_ready:false and no rollout_at (no promos row, no setPromos); a profile read that fails once or stalls after login (today's single read — no retry) — identical panes, request bodies (bar the declared getSignupConfig read) and database writes`);
   closeAll(); OPEN.length = 0;
 }
 

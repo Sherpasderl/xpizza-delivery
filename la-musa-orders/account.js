@@ -1568,8 +1568,8 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       const m = marker(); if (m && !m.phone) { m.phone = '+' + String(st.snap.phone).replace(/\D/g, ''); try { localStorage.setItem(CONFIG.MARKER, JSON.stringify(m)); } catch (_) {} }
       if (!_loginPhone) _loginPhone = (marker() || {}).phone || '';
     }
-    if (st.status !== 'ok') { const st2 = await accountSnapshotStatus(); if (st2.status === 'ok') st = st2; }   // retried once
-    const su = await suRefreshGate(st.status === 'ok' ? st.snap : null);
+    if (_su.active && st.status !== 'ok') { const st2 = await accountSnapshotStatus(); if (st2.status === 'ok') st = st2; }   // retried once — ONLY in an affirmatively active rollout (otherwise today's single read; codex cfgfix r2)
+    const su = await suFlowGate(st.status === 'ok' ? st.snap : null);
     if (suMustComplete(su)) {   // codex build r1 P1-3: an unreadable state keeps the panes (never a bypass of completion or the claim)
       const prov = (linkedGoogle && linkedGoogle.email) || '';
       const gName = (linkedGoogle && linkedGoogle.name) || '';
@@ -1657,16 +1657,16 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     googleUnavailable: 'Google no está disponible acá. Seguí con tu número.',
     linkConflict: 'Esa cuenta de Google ya está conectada a otro número. Entraste con tu número.',   // copy pending owner (§7.4)
   };
-  const _su = { cfgP: null, google: null, attempt: 0, gisP: null, flow: null, phoneMode: false, gate: undefined, gateP: null, gateGen: 0, authP: null, authGen: 0 };
+  const _su = { cfgP: null, active: false, payStart: null, google: null, attempt: 0, gisP: null, flow: null, phoneMode: false, gate: undefined, gateP: null, gateGen: 0, authP: null, authGen: 0 };
   const suPhoneFmt = (p) => { const m = /^\+?(\d{3})(\d{4})(\d{4})$/.exec(String(p || '').replace(/[\s-]/g, '')); return m ? '+' + m[1] + ' ' + m[2] + '-' + m[3] : String(p || ''); };   // +504 9999-0000
   const suRand = () => { const b = new Uint8Array(18); crypto.getRandomValues(b); return btoa(String.fromCharCode.apply(null, b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
   function suConfig() {
     if (_su.cfgP) return _su.cfgP;
     _su.cfgP = (async () => {
       try {
-        const res = await Promise.race([sherpaFetch(CONFIG.SIGNUP_CONFIG_URL + '?restaurant_id=' + encodeURIComponent(CONFIG.restaurant_id)), new Promise((r) => setTimeout(() => r(null), 2500))]);
-        const j = res ? await res.json().catch(() => null) : null;
-        if (j && j.ok) return j;
+        // the WHOLE read (fetch AND body) is bounded — a stalled body is a failed read (codex cfgfix r1 P1)
+        const j = await Promise.race([sherpaFetch(CONFIG.SIGNUP_CONFIG_URL + '?restaurant_id=' + encodeURIComponent(CONFIG.restaurant_id)).then((res) => res.json()), new Promise((r) => setTimeout(() => r(null), 2500))]);
+        if (j && j.ok) { _su.active = typeof j.rollout_at === 'number' && j.legal_ready === true; return j; }
       } catch (_) { /* below */ }
       _su.cfgP = null;   // a failed read is never cached (codex build r1 P1-3) — the next decision reads again
       return null;
@@ -1685,17 +1685,18 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       })(), new Promise((r) => setTimeout(() => r(null), 1500))]);
     } catch (_) { return null; }
   }
-  // DERIVED FROM THE SERVER EVERY TIME (codex build r1 P1-3/P1-4 — never a local flag):
-  //   'off'      CONFIRMED by the server config: the brand is not rolled out (no rollout_at — the server withholds it while the
-  //              legal documents aren't ready, codex build r2 #3), or a LEGACY account (created before rollout_at) → today's flow;
+  // DERIVED FROM THE SERVER EVERY TIME (codex build r1 P1-3/P1-4 — never a local flag). Completion is enforced ONLY when a
+  // SUCCESSFUL config read AFFIRMATIVELY reports the rollout active (rollout_at set AND legal_ready) — advisor ruling on the
+  // train runbook review (codex P1): a failed / pending config read is today's checkout, never a block.
+  //   'off'      the config is unreadable (retried once), or the brand is not rolled out (no rollout_at, or legal documents
+  //              not ready), or a LEGACY account (created before rollout_at) → today's flow;
   //   'complete' this brand's terms are on record;
   //   'needed'   a post-rollout account without them;
-  //   'unknown'  a read failed (config / profile / terms), each retried once → treated like 'needed' (never as done).
+  //   'unknown'  the rollout IS active but a profile / terms read failed (each retried once) → treated like 'needed'.
   async function suCompletionState(snap) {
     let cfg = await suConfig(); if (!cfg) cfg = await suConfig();
-    if (!cfg) return 'unknown';
-    if (typeof cfg.rollout_at !== 'number') return 'off';
-    if (!cfg.legal_ready) return 'unknown';   // rolled out without legal documents: inconsistent → never a bypass (codex build r2 #3)
+    if (!cfg) return 'off';
+    if (typeof cfg.rollout_at !== 'number' || cfg.legal_ready !== true) return 'off';
     if (!snap || typeof snap.created_at !== 'number') return 'unknown';
     if (snap.created_at < cfg.rollout_at) return 'off';   // legacy — never routed
     let t = await suHasTerms(); if (t === null) t = await suHasTerms();
@@ -1703,7 +1704,8 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   }
   const suMustComplete = (state) => state === 'needed' || state === 'unknown';
   // the gate the checkout / Mi cuenta consult: the LAST server-derived state (recomputed at login, on load, on Mi cuenta).
-  // codex build r2 #4: while a read is PENDING the gate is undefined + _su.gateP — counted as 'unknown' (never a pass).
+  // codex build r2 #4: while a read is PENDING the gate is undefined + _su.gateP — counted as 'unknown' ONLY once a config read
+  // has affirmatively reported the rollout active (_su.active); before that a pending read never blocks (today's checkout).
   // codex build r3 P2: each read carries a generation; a SUPERSEDED read (a newer read, or suSetGate) never routes — every
   // caller gets the CURRENT state instead (the newer read's result, or the stored gate).
   function suRefreshGate(snap) {
@@ -1711,15 +1713,22 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     const out = (async () => {
       if (snap === undefined) { const t = await accountSnapshotStatus(); snap = t.status === 'ok' ? t.snap : null; }
       return suCompletionState(snap);
-    })().catch(() => 'unknown').then((g) => {
+    })().catch(() => (_su.active ? 'unknown' : 'off')).then((g) => {
       if (gen === _su.gateGen) { _su.gate = g; _su.gateP = null; return g; }
       return _su.gateP || _su.gate;
     });
     _su.gate = undefined; _su.gateP = out;
     return out;
   }
+  // the gate an ORDINARY account flow consults (login routing, Mi cuenta): AWAITED only once a config read has affirmatively
+  // reported the rollout active; otherwise today's flow at once ('off') — the server-derived state still lands in the
+  // background for the pay gate (codex cfgfix r1 P1: nothing ever waits on the config).
+  async function suFlowGate(snap) {
+    if (!_su.active) { suRefreshGate(snap).catch(() => {}); return 'off'; }
+    return suRefreshGate(snap);
+  }
   function suSetGate(g) { _su.gateGen++; _su.gateP = null; _su.gate = g; }   // a newer, definite state (a completion just saved) — a pending read is superseded
-  const suGateOpen = () => !_su.gateP && _su.gate !== undefined && !suMustComplete(_su.gate);
+  const suGateOpen = () => (_su.gateP || _su.gate === undefined ? !_su.active : !suMustComplete(_su.gate));
   // pay was refused on a pending / unknown / needed gate: AWAIT the server-derived state, then open the panes only if it requires them
   async function suGateBlocked() {
     const g = _su.gateP ? await _su.gateP : (_su.gate === undefined ? await suRefreshGate() : _su.gate);
@@ -1777,9 +1786,9 @@ label.acct-row{cursor:pointer;min-height:44px}
   async function suDecoratePhonePane(isClaim) {
     _su.google = null; _su.attempt++; suPhoneMode(false);
     const old = $('acct-su-alts'); if (old) old.remove();
-    if (isClaim) return;
+    if (isClaim) { suConfig().catch(() => {}); return; }   // no Google on a claim — but PREFETCH the config (never awaited), so an active rollout is known by the time the code is verified
     const cfg = await suConfig();
-    if (!cfg || !cfg.google_enabled || !cfg.google_client_id) return;
+    if (!cfg || !_su.active || !cfg.google_enabled || !cfg.google_client_id) return;   // never outside an active rollout (today's phone pane)
     const pane = $('acct-pane-phone'); const guest = pane && pane.querySelector('.acct-guest');
     if (!pane || !guest || $('acct-su-alts')) return;
     injectSignupStyles();
@@ -2026,6 +2035,7 @@ ${phone ? `<div class="acct-su-facts"><div><span>Cuenta</span><b>${escapeHtml(ph
   // "Recibir promociones" in Mi cuenta (plan §3.4 / codex build r1 P2-7): only for an account with this brand's terms on record;
   // the switch calls setPromos; a failure reverts it and says so. Terms are never touched.
   async function suPromosRow() {
+    if (!_su.active) return;   // only in an AFFIRMATIVELY active rollout — otherwise Mi cuenta is today's (codex cfgfix r1 P2)
     const pane = $('acct-pane-account'); if (!pane || $('acct-row-promos')) return;
     const { auth, db, dbMod } = await ensureFirebase();
     await auth.authStateReady();
@@ -2414,7 +2424,7 @@ ${phone ? `<div class="acct-su-facts"><div><span>Cuenta</span><b>${escapeHtml(ph
       const snap = await accountSnapshot();
       if (snap) { _acctData = snap; renderAddressesSection(); }
       // signup (codex build r1 P1-4): Mi cuenta never skips completion — the state is read from the server here
-      if (suMustComplete(await suRefreshGate(snap || undefined))) { await suOpenCompletion(() => openAccountSheet()); return; }
+      if (suMustComplete(await suFlowGate(snap || undefined))) { await suOpenCompletion(() => openAccountSheet()); return; }
       suPromosRow().catch(() => {});   // codex build r1 P2-7: "Recibir promociones" for an account with this brand's terms
     } catch (_) { /* fail-open — leave the marker as-is; sign-out/delete surface any real trouble */ }
   }
@@ -4491,8 +4501,9 @@ ${footer}`;
 
     // signup (advisor ruling 2026-10-17 (2)): a post-rollout account without this brand's terms completes through the sheet
     // FIRST — the typed address stays on this card and is saved automatically once completeProfile succeeds; a dismissal
-    // saves nothing and leaves this card as it is. Legacy accounts / no server config: today's path, unchanged.
-    if (!_su.resume && suMustComplete(await suCompletionState(_acctData || await (async () => { const t = await accountSnapshotStatus(); return t.status === 'ok' ? t.snap : null; })()))) {
+    // saves nothing and leaves this card as it is. Legacy accounts / no server config: today's path, unchanged — and the config
+    // is never awaited unless the rollout is already known active (codex cfgfix r1 P1).
+    if (!_su.resume && _su.active && suMustComplete(await suCompletionState(_acctData || await (async () => { const t = await accountSnapshotStatus(); return t.status === 'ok' ? t.snap : null; })()))) {
       if (btn) btn.disabled = true;
       openOverlay();
       suStartCompletion({ name: (nombre + ' ' + apellido).trim().slice(0, 80), email: '', skipDone: true,
@@ -4716,10 +4727,13 @@ ${footer}`;
   // processPayment().
   function deliverySubmitBlocked() {
     try {
-      // signup (codex build r1 P1-4): a post-rollout account without this brand's terms — or whose state could not be read —
-      // completes before paying, whatever its name / address. The gate is the last SERVER-derived state (_su.gate); a read
-      // still PENDING (a restored session at load) counts as unknown — refused, then the panes once it resolves (codex build r2 #4).
-      if (marker() && !suGateOpen()) { suGateBlocked().catch(() => {}); return true; }
+      // signup (codex build r1 P1-4): in an AFFIRMATIVELY active rollout, a post-rollout account without this brand's terms — or
+      // whose state could not be read — completes before paying, whatever its name / address. The gate is the last SERVER-derived
+      // state (_su.gate); a read still PENDING counts as unknown only once the rollout is known active (codex build r2 #4) —
+      // an unreadable / pending config never blocks (advisor ruling, train review P1). A config resolving active while this
+      // checkout awaits a location pick never aborts it: the gate is the one captured at processPayment's start.
+      const start = _su.payStart; _su.payStart = null;   // the decision captured when this checkout STARTED (codex cfgfix r1 P1)
+      if (marker() && !(start ? start.open : suGateOpen())) { suGateBlocked().catch(() => {}); return true; }
       // Gate ONLY while the create-profile step is genuinely on screen (explicit flag set inside
       // applyCreateProfileFlow via setPaymentVisible(false)). Guest / complete / pickup, OR a failed/slow
       // snapshot that fell back to the normal fillable form (payment shown → flag false), all proceed —
@@ -4993,6 +5007,20 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
         };
         wrapped.__acctWrapped = true;
         window.setOrderType = wrapped;
+      }
+    } catch (_) {}
+    // signup (codex cfgfix r1 P1): capture the completion gate when a checkout STARTS — processPayment awaits a location pick
+    // before its deliverySubmitBlocked() check, and a config resolving active meanwhile must not abort a started checkout.
+    // Only a tap that will run (not a re-tap while a submit is in flight) records; the original runs unchanged.
+    try {
+      if (typeof window.processPayment === 'function' && !window.processPayment.__acctWrapped) {
+        const orig = window.processPayment;
+        const wrapped = function () {
+          if (!window.__paySubmitting) _su.payStart = { open: suGateOpen() };
+          return orig.apply(this, arguments);
+        };
+        wrapped.__acctWrapped = true;
+        window.processPayment = wrapped;
       }
     } catch (_) {}
     try {

@@ -14469,7 +14469,7 @@
     "slice": "signup",
     "label": "codex r1 P1-4: pay is not gated on the server-derived completion state",
     "file": "../xpizza-orders/account.js",
-    "from": "      if (marker() && !suGateOpen()) { suGateBlocked().catch(() => {}); return true; }",
+    "from": "      if (marker() && !(start ? start.open : suGateOpen())) { suGateBlocked().catch(() => {}); return true; }",
     "to": "",
     "kills_with": [
       "a named post-rollout account without terms must not pay before completing"
@@ -14527,12 +14527,13 @@
   {
     "id": "signup-15",
     "slice": "signup",
-    "label": "codex r2 #3 (client): legal_ready:false with a rollout timestamp → 'off' (completion bypassed)",
+    "label": "advisor ruling (train review P1): legal_ready ignored — a rollout timestamp without legal documents enforces completion (blocks checkout)",
     "file": "../xpizza-orders/account.js",
-    "from": "    if (typeof cfg.rollout_at !== 'number') return 'off';\n    if (!cfg.legal_ready) return 'unknown';",
-    "to": "    if (!cfg.legal_ready || typeof cfg.rollout_at !== 'number') return 'off';",
+    "from": " || cfg.legal_ready !== true) return 'off';",
+    "to": ") return 'off';",
     "kills_with": [
-      "legal_ready:false with a rollout must not bypass completion"
+      "legalfalse-checkout: a legacy account differs",
+      "legal_ready:false is today's flow"
     ],
     "command": [
       "node",
@@ -14558,12 +14559,12 @@
   {
     "id": "signup-17",
     "slice": "signup",
-    "label": "codex r2 #4: pay during a PENDING restore read passes (undefined treated as open)",
+    "label": "codex r2 #4: the rollout KNOWN active and the completion read PENDING → pay passes",
     "file": "../xpizza-orders/account.js",
-    "from": "  const suGateOpen = () => !_su.gateP && _su.gate !== undefined && !suMustComplete(_su.gate);",
-    "to": "  const suGateOpen = () => !suMustComplete(_su.gate);",
+    "from": "(_su.gateP || _su.gate === undefined ? !_su.active :",
+    "to": "(_su.gateP || _su.gate === undefined ? true :",
     "kills_with": [
-      "pay while the completion read is PENDING must be refused"
+      "rollout active, completion read PENDING → pay refused"
     ],
     "command": [
       "node",
@@ -14654,6 +14655,174 @@
     "to": "    if (!marker()) return;",
     "kills_with": [
       "also when a heal() drops the marker during its signOut"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-24",
+    "slice": "signup",
+    "label": "advisor ruling (train review P1): an unreadable config → 'unknown' (completion enforced, checkout blocked while dark)",
+    "file": "../xpizza-orders/account.js",
+    "from": "if (!cfg) return 'off';",
+    "to": "if (!cfg) return 'unknown';",
+    "kills_with": [
+      "an unreadable config must never block pay",
+      "an unreadable config is today's flow"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-25",
+    "slice": "signup",
+    "label": "advisor ruling (train review P1): a PENDING config read blocks pay (before the rollout is known active)",
+    "file": "../xpizza-orders/account.js",
+    "from": "(_su.gateP || _su.gate === undefined ? !_su.active :",
+    "to": "(_su.gateP || _su.gate === undefined ? false :",
+    "kills_with": [
+      "a PENDING config read must never block pay"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-26",
+    "slice": "signup",
+    "label": "codex cfgfix r1 P1: 'Guardar y continuar' awaits the config even when the rollout is not known active (zero writes, pay blocked while it is pending)",
+    "file": "../xpizza-orders/account.js",
+    "from": "if (!_su.resume && _su.active && suMustComplete(await suCompletionState(",
+    "to": "if (!_su.resume && suMustComplete(await suCompletionState(",
+    "kills_with": [
+      "legacy checkout writes",
+      "cfgpending-checkout: a legacy account differs"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-27",
+    "slice": "signup",
+    "label": "codex cfgfix r1 P1: login routing / Mi cuenta await the config when the rollout is not known active (the OTP pane hangs on a pending config)",
+    "file": "../xpizza-orders/account.js",
+    "from": "    if (!_su.active) { suRefreshGate(snap).catch(() => {}); return 'off'; }",
+    "to": "    if (false) { suRefreshGate(snap).catch(() => {}); return 'off'; }",
+    "kills_with": [
+      "cfgpending: a legacy account differs"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-28",
+    "slice": "signup",
+    "label": "codex cfgfix r1 P1: the config read is unbounded (a stalled body is awaited forever)",
+    "file": "../xpizza-orders/account.js",
+    "from": "res.json()), new Promise((r) => setTimeout(() => r(null), 2500))]);",
+    "to": "res.json())]);",
+    "kills_with": [
+      "a stalled config BODY must time out and be read again",
+      "the restore read"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-29",
+    "slice": "signup",
+    "label": "codex cfgfix r1 P1: the pay gate is read AFTER the location wait (a config resolving active aborts a started checkout)",
+    "file": "../xpizza-orders/account.js",
+    "from": "const start = _su.payStart; _su.payStart = null;",
+    "to": "const start = null; _su.payStart = null;",
+    "kills_with": [
+      "must not abort the started checkout"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-30",
+    "slice": "signup",
+    "label": "codex cfgfix r1 P2: \"Recibir promociones\" renders outside an affirmatively active rollout",
+    "file": "../xpizza-orders/account.js",
+    "from": "    if (!_su.active) return;   // only in an AFFIRMATIVELY active rollout — otherwise Mi cuenta is today's (codex cfgfix r1 P2)\n",
+    "to": "",
+    "kills_with": [
+      "acct-cfgfail: a legacy account differs"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-31",
+    "slice": "signup",
+    "label": "codex cfgfix r1 (audit): \"Continuar con Google\" shows when Google is configured but the rollout is not active",
+    "file": "../xpizza-orders/account.js",
+    "from": "if (!cfg || !_su.active || !cfg.google_enabled || !cfg.google_client_id) return;",
+    "to": "if (!cfg || !cfg.google_enabled || !cfg.google_client_id) return;",
+    "kills_with": [
+      "googlenorollout: a legacy account differs"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-32",
+    "slice": "signup",
+    "label": "codex cfgfix r1 (audit): a claim sign-in never reads the config before the code is verified (an active rollout's completion is skipped)",
+    "file": "../xpizza-orders/account.js",
+    "from": "    if (isClaim) { suConfig().catch(() => {}); return; }",
+    "to": "    if (isClaim) return;",
+    "kills_with": [
+      "the sheet reads the config"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-33",
+    "slice": "signup",
+    "label": "codex cfgfix r2: only the FETCH is bounded — a stalled config BODY is awaited forever (never read again)",
+    "file": "../xpizza-orders/account.js",
+    "from": ").then((res) => res.json()), new Promise((r) => setTimeout(() => r(null), 2500))]);",
+    "to": "), new Promise((r) => setTimeout(() => r(null), 2500))]).then((res) => res && res.json());",
+    "kills_with": [
+      "a stalled config BODY must time out and be read again"
+    ],
+    "command": [
+      "node",
+      "../signup-client.test.mjs"
+    ]
+  },
+  {
+    "id": "signup-34",
+    "slice": "signup",
+    "label": "codex cfgfix r2: the login profile read is retried outside an active rollout (not today's single read)",
+    "file": "../xpizza-orders/account.js",
+    "from": "    if (_su.active && st.status !== 'ok') { const st2 = await accountSnapshotStatus();",
+    "to": "    if (st.status !== 'ok') { const st2 = await accountSnapshotStatus();",
+    "kills_with": [
+      "prof"
     ],
     "command": [
       "node",
