@@ -1320,8 +1320,9 @@ function openPicker(orderId){
   // NOT yet completed (PRE-PICKUP): the server's unassignOrder covers pre-pickup orders only, so never offer it
   // where the server would refuse (a completed pickup = out for delivery). Takes the order off its driver back
   // to the unassigned queue via the callable; stays available even with zero eligible drivers (body === empty).
-  const pickupCompleted = (STORE.tasks[`${orderId}_pickup`] || {}).status === 'completed';
-  const removeBlock = (pickerIsReassign && !pickupCompleted) ? `
+  const pickupTask = STORE.tasks[`${orderId}_pickup`];
+  const prePickup = !!pickupTask && pickupTask.status !== 'completed';   // parity with desktop: require the pickup task AND not completed
+  const removeBlock = (pickerIsReassign && prePickup) ? `
     <div class="panel" style="margin-top:14px">
       <button class="row" type="button" data-unassign="${escapeHtml(orderId)}">
         <span class="av empty"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M17 11h6"/></svg></span>
