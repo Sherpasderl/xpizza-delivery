@@ -43,6 +43,7 @@
 // is a merchant this can authorize.
 const RID_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
 
+const { resolveAccess, can } = require('../access/membership');
 const deny = (status, error) => ({ ok: false, status, error });
 
 async function authorizeCatalogEdit({ db, verifyIdToken }, req, restaurantId) {
@@ -65,33 +66,26 @@ async function authorizeCatalogEdit({ db, verifyIdToken }, req, restaurantId) {
   // BEFORE any membership read, and the order matters. A customer token must not be able to probe
   // whether some uid is staff, and if this ran after the lookup it would GRANT for any uid that happens
   // to sit in both namespaces. Customers are minted through the OTP path with this claim; they have no
-  // business on a path that moves prices.
-  if (decoded.customer === true) return deny(403, 'not_authorized');
+  // business on a path that moves prices. PLAN-portal-membership r3 §3.1: a HANDHELD device token is
+  // refused here too (it was missing) — a device never edits a catalog.
+  if (decoded.customer === true || decoded.handheld === true) return deny(403, 'not_authorized');
 
-  // A read that THROWS must never fall through to "not a member". That is the shape where an outage
-  // reads as a clean denial — or, one small edit later, as a grant. Denied explicitly, and as 503 rather
-  // than 403 so an outage is not misdiagnosed as a permissions problem.
-  const exists = async (path) => {
-    const snap = await db.ref(path).once('value');
-    return !!(snap && snap.exists());
-  };
-  try {
-    // HIGHEST TIER FIRST, so a uid that is both an owner and a dispatcher resolves to owner — the fiscal
-    // gate must see the higher tier, not whichever was checked first by accident.
-    if (await exists(`restaurants/${restaurantId}/owners/${decoded.uid}`)) {
-      return { ok: true, uid: decoded.uid, role: 'owner', actor: decoded.email || decoded.uid };
+  // PLAN-portal-membership r3 §3: the ONE resolver. Independent facts (owner / manager / dispatcher /
+  // staff) → capabilities from the single table. A read that THROWS is `unavailable` and never falls
+  // through to a lower tier — denied as 503 so an outage is not misdiagnosed as a permissions problem.
+  const a = await resolveAccess({ db }, { uid: decoded.uid, token: decoded }, restaurantId);
+  if (!a.ok) {
+    if (a.code === 'unavailable') {
+      console.warn('catalog_edit_auth_unavailable', JSON.stringify({ restaurantId }));
+      return deny(503, 'authorization_unavailable');
     }
-    if (await exists(`dispatchers/${decoded.uid}`)) {
-      return { ok: true, uid: decoded.uid, role: 'dispatcher', actor: decoded.email || decoded.uid };
-    }
-    if (await exists(`restaurants/${restaurantId}/kitchen_staff/${decoded.uid}`)) {
-      return { ok: true, uid: decoded.uid, role: 'staff', actor: decoded.email || decoded.uid };
-    }
-  } catch (e) {
-    console.warn('catalog_edit_auth_unavailable', JSON.stringify({ restaurantId, error: String((e && e.message) || e).slice(0, 160) }));
-    return deny(503, 'authorization_unavailable');
+    return deny(403, 'not_authorized');
   }
-  return deny(403, 'not_authorized');
+  if (!a.caps.length) return deny(403, 'not_authorized');
+  // `role` is the label the cores log and the legacy stubs speak; every gate asks can(auth, op). HIGHEST TIER FIRST:
+  // a uid that is both an owner and a dispatcher reads as owner (the fiscal classification is owner-first).
+  const role = can(a, 'catalog.fiscal_ack') ? 'owner' : a.facts.dispatcher ? 'dispatcher' : a.facts.staff ? 'staff' : a.tier;
+  return { ok: true, uid: decoded.uid, role, actor: decoded.email || decoded.uid, caps: a.caps };
 }
 
 module.exports = { authorizeCatalogEdit, RID_RE };

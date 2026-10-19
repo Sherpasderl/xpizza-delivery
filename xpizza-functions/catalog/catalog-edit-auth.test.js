@@ -14,23 +14,30 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('catalog-e
 
 // ── stubs ──────────────────────────────────────────────────────────────────────────────────────
 const reqWith = (auth) => ({ get: (h) => (h.toLowerCase() === 'authorization' ? auth : undefined) });
-// RTDB stub that records every path read, so a test can assert what was NOT looked at.
+// RTDB stub that records every path read, so a test can assert what was NOT looked at. `present` lists the membership
+// paths that exist; both brands are seeded as valid legacy singletons (PLAN-portal-membership r3: owners live in
+// brand_members/{brand}/owners and need a resolvable brand).
+const legacyBrand = (rid) => ({ name: rid, active: true, locations: { [rid]: 'member' }, activation: { state: 'legacy', since: 1 } });
+const BASE = { 'brands/x_pizza': legacyBrand('x_pizza'), 'brands/la_musa': legacyBrand('la_musa') };
 function stubDb(present, { throwOn = null } = {}) {
   const reads = [];
+  const vals = { ...BASE };
+  for (const p of present) vals[p] = vals[p] || true;
   return {
     reads,
     ref: (path) => ({
       once: async () => {
         reads.push(path);
         if (throwOn && path.includes(throwOn)) throw new Error('rtdb unavailable');
-        return { exists: () => present.includes(path) };
+        const v = Object.prototype.hasOwnProperty.call(vals, path) ? vals[path] : null;
+        return { exists: () => v !== null, val: () => v };
       },
     }),
   };
 }
 const DISPATCHER = 'dispatchers/u_disp';
 const STAFF = 'restaurants/la_musa/kitchen_staff/u_staff';
-const OWNER = 'restaurants/x_pizza/owners/u_owner';
+const OWNER = 'brand_members/x_pizza/owners/u_owner';
 const verifierFor = (decoded) => async () => decoded;
 
 (async () => {
@@ -74,6 +81,8 @@ const verifierFor = (decoded) => async () => decoded;
 
     // OWNER SUPERSEDES: someone who is both reads as owner, so the higher tier is what the fiscal gate sees.
     const both = await authorizeCatalogEdit({ db: stubDb([OWNER, 'dispatchers/u_owner']), verifyIdToken: verifierFor({ uid: 'u_owner' }) }, reqWith('Bearer tok'), 'x_pizza');
+    // PLAN-portal-membership r3: the result carries the CAPABILITIES (the cores gate on them)
+    assert.ok(both.caps.includes('catalog.fiscal_ack') && both.caps.includes('catalog.edit'), 'owner ∪ dispatcher capabilities');
     assert.strictEqual(both.role, 'owner', 'owner outranks dispatcher when a uid is both');
 
     // ...and the owner tier grants edit access on its own, without needing a dispatcher entry too
@@ -83,11 +92,15 @@ const verifierFor = (decoded) => async () => decoded;
   {
     // The owner node must be a DIFFERENT path from dispatchers — structurally, so the two can never be
     // wired to the same read by a later edit.
-    const src = require('fs').readFileSync(require('path').join(__dirname, 'catalog-edit-auth.js'), 'utf8')
+    // PLAN-portal-membership r3: the reads live in the ONE resolver (access/membership.js); this helper calls it.
+    const strip = (p) => require('fs').readFileSync(p, 'utf8')
       .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
-    assert.ok(/restaurants\/\$\{restaurantId\}\/owners\/\$\{decoded\.uid\}/.test(src), 'the owner read must be restaurants/{rid}/owners/{uid}');
+    const auth = strip(require('path').join(__dirname, 'catalog-edit-auth.js'));
+    assert.ok(/resolveAccess\(/.test(auth), 'catalog-edit-auth must authorize through the membership resolver');
+    const src = strip(require('path').join(__dirname, '..', 'access', 'membership.js'));
+    assert.ok(/brand_members\/\$\{loc\.brandId\}\/owners\/\$\{uid\}/.test(src), 'the owner read must be brand_members/{brand}/owners/{uid}');
     assert.ok(!/owners[^\n]*dispatchers|dispatchers[^\n]*owners/.test(src), 'and must not share a line — or a read — with the dispatchers path');
-    // it is checked FIRST, so a uid in both resolves to the higher tier
+    // the owner fact is read FIRST and the role label is owner-first, so a uid in both resolves to the higher tier
     const owners = src.indexOf('/owners/');
     const disp = src.indexOf('dispatchers/');
     assert.ok(owners > 0 && disp > 0 && owners < disp, 'the owner check must come FIRST (highest tier wins)');
@@ -105,7 +118,13 @@ const verifierFor = (decoded) => async () => decoded;
     // access here, since this uid is present in both membership paths.
     assert.deepStrictEqual(db.reads, [], 'and it must be rejected BEFORE any membership read (no probing, no accidental grant)');
   }
-  ok('a customer-claim token is rejected before any membership lookup (it cannot probe, and cannot slip through)');
+  {
+    // PLAN-portal-membership r3 §3.1: a HANDHELD device token is refused the same way (this check was missing)
+    const db = stubDb([DISPATCHER, STAFF]);
+    const r = await authorizeCatalogEdit({ db, verifyIdToken: verifierFor({ uid: 'u_disp', handheld: true, rid: 'x_pizza' }) }, reqWith('Bearer tok'), 'x_pizza');
+    assert.deepStrictEqual([r.ok, r.status, db.reads], [false, 403, []], 'a device token is refused before any read');
+  }
+  ok('a customer-claim (and a handheld) token is rejected before any membership lookup (it cannot probe, and cannot slip through)');
 
   // ── (3) EVERY NON-AFFIRMATIVE PATH DENIES ────────────────────────────────────────────────────
   {

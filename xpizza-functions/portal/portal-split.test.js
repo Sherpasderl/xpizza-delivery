@@ -43,6 +43,8 @@ const PARENT_INDEX = '711db74576a3fe720c765e7c88af4738eff03fbde1b8d9fd987a2dfcb8
 
 // The REVIEWED application graph of every portal target (identical for all five: they are one isolated group).
 const PORTAL_GRAPH_LOCAL = [
+  'access/membership.js',                  // PLAN-portal-membership r3: the ONE resolver (catalog-edit-auth, portal-reads, stats); pure + RTDB reads
+  'brands/brand-model.js',                  // F1 brandIdOf / validateBrand / checkMembership, via access/membership.js — pure
   'catalog/add-product-io.js',              // 1D add-product A: the profile key mode, high-water mark, registry key reads, KDS sync
   'catalog/add-product.js',                 // 1D add-product A: the pure allocation + structural comparison (editCatalog / publishEdited)
   'catalog/candidate-validate.js', 'catalog/canonical-json.js', 'catalog/catalog-edit-auth.js', 'catalog/catalog-edit.js',
@@ -64,7 +66,6 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/identity-stampmap.js', 'catalog/identity-verdict.js', 'catalog/identity-writer.js',
   'catalog/kds-manifest.js',                // 1D add-product A: the conditional /menus writer, after a successful publish
   'catalog/mirror-rtdb.js',
-  'catalog/owner-index.js',
   'catalog/platform-extras.js',             // per-product extras: the platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/platform-groups.js',             // 1D add-product B: the ONE platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/portal-reads.js', 'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',
@@ -72,7 +73,11 @@ const PORTAL_GRAPH_LOCAL = [
   'factura/eligibility.js',                 // usesPlatformFactura (getEditableCatalog's fiscal capability) — pure
   'index.js',                               // the entry: only its early branch runs
   'lib/admin.js', 'lib/payment-alert.js',   // the shared Admin app + the publish alarm
-  'menu-pricing.js', 'portal/functions.js', 'portal/origins.js', 'portal/preflight-max-age.js', 'price-valid.js', 'restaurant-id.js',
+  'menu-pricing.js',
+  'pickup-label.js',                        // PLAN-portal-membership r3: brandText, via brands/brand-model.js → restaurant-config.js (pure)
+  'portal/functions.js', 'portal/origins.js', 'portal/preflight-max-age.js', 'price-valid.js',
+  'restaurant-config.js',                   // PLAN-portal-membership r3: isRoutingValid, via brands/brand-model.js (pure)
+  'restaurant-id.js',
   'rewards-redeem-config.js', 'scheduled-orders.js',
   'stats/keyer.js', 'stats/stats-api.js', 'stats/stats-build.js', 'stats/stats-classify.js', 'stats/stats-identity.js', 'stats/stats-index.js',
   'stats/stats-indexing.js', 'stats/stats-job.js', 'stats/stats-store.js', 'stats/stats-time.js',

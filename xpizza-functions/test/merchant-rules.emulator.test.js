@@ -32,7 +32,7 @@ const order = (rid, status = 'new') => ({ order_id: 'x', status, payment_method:
       kitchen: { [KITCHEN]: { name: 'K' }, [DUAL]: { name: 'DK' } },
       drivers: { [DRIVER]: { name: 'R' } },
       restaurants: {
-        tb_norte: { order_surface: 'handheld', managers: { [MGR]: true }, handhelds: { [DEVICE]: { kind: 'handheld', revoked: false } } },
+        tb_norte: { order_surface: 'handheld', handhelds: { [DEVICE]: { kind: 'handheld', revoked: false } } },
         tb_centro: { order_surface: 'kds' },
       },
       orders: {
@@ -42,6 +42,7 @@ const order = (rid, status = 'new') => ({ order_id: 'x', status, payment_method:
         o_legacy: order(null),                       // legacy: no restaurant_id
       },
       merchant_reject_notices: { o_norte: { stranded: 1 } },
+      brand_members: { tb: { managers: { tb_norte: { [MGR]: { granted_at: 1, granted_by: 'x' } } } } },   // PLAN-portal-membership r3
     });
   });
   await seed();

@@ -196,7 +196,7 @@ const livePrice = async (key) => (await previewVersion(db, RID, await getActiveV
   //    owner, its fetches served by the REAL exported portal functions (getEditableCatalog / editCatalog / publishEdited);
   //    the merchant types a choice's price in the drawer and presses Revisar → Publicar; then "Mismo precio para todas".
   {
-    await rtdb.ref(`restaurants/${RID}/owners/u_owner`).set(true);
+    await rtdb.ref().update(require('./_membership-seed').ownerSeed(RID, 'u_owner'));   // PLAN-portal-membership r3: the membership model
     const page = await import(pathToFileURL(path.join(__dirname, '_portal-page.mjs')).href);
     const realFetch = globalThis.fetch;
     const srv = express(); srv.use(express.json());

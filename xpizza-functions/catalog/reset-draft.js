@@ -16,13 +16,14 @@ const { validateSource, sourceRefOf, canonicalize, encodeUpdateTime } = require(
 const { candidateSource } = require('./candidate-validate');
 const { isPreconditionFailure } = require('./edit-catalog-handler');
 
+const { can } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
 const reply = (status, body) => ({ status, body });
 
 async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previewVersion, toPrecondition = (v) => v }, body, req) {
   const rid = body && body.restaurantId;
   const auth = await authorize(rid, req);
   if (!auth || !auth.ok) return reply((auth && auth.status) || 403, { error: (auth && auth.error) || 'not_authorized' });
-  if (auth.role !== 'owner') return reply(403, { error: 'not_owner', detail: 'only the restaurant owner can reset the draft' });
+  if (!can(auth, 'catalog.reset_draft')) return reply(403, { error: 'not_owner', detail: 'only the restaurant owner can reset the draft' });
   const expected = body && body.expectedRevision;
   if (typeof expected !== 'string' || !expected) return reply(400, { error: 'bad_request', detail: 'expectedRevision is required (the reset is conditional on it)' });
 

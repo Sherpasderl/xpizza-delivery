@@ -95,7 +95,7 @@ test('resolveAccess: unknown brand → no merchant facts; a rogue identity namin
 });
 
 test('resolveAccess: a read that THROWS is unavailable — never a lower role', async () => {
-  for (const p of ['restaurants/x_pizza/identity', 'brands/x_pizza', 'brand_members/x_pizza', 'dispatchers', 'restaurants/x_pizza/kitchen_staff']) {
+  for (const p of ['restaurants/x_pizza/identity/brand_id', 'brands/x_pizza', 'brand_members/x_pizza', 'dispatchers', 'restaurants/x_pizza/kitchen_staff']) {
     const db = createFakeDb(base());
     db.failReads.add(p);
     assert.strictEqual((await M.resolveAccess({ db }, ctx('ownerX'), 'x_pizza')).code, 'unavailable', p);

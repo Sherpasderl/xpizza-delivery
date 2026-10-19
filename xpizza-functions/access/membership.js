@@ -76,13 +76,15 @@ const val = async (db, p) => (await db.ref(p).once('value')).val();
 // Same derivation as merchant/merchant-brand.js, plus the roster STATE. → { brandId, state: 'member'|'retired'|'unknown', rec }
 async function resolveLocation(db, rid) {
   if (!isLoc(rid)) return { brandId: F1.UNKNOWN, state: 'unknown', rec: null };
-  const identity = await val(db, `restaurants/${rid}/identity`);
+  // least privilege: only the brand_id leaf (never the identity node — it carries the hub, phone and WhatsApp instance)
+  const bid = await val(db, `restaurants/${rid}/identity/brand_id`);
+  const identity = bid === null ? {} : { brand_id: bid };
   const own = await val(db, `brands/${rid}`);
   const b = F1.brandIdOf(rid, identity, own === null ? {} : { [rid]: own });
   if (b === F1.UNKNOWN) return { brandId: F1.UNKNOWN, state: 'unknown', rec: null };
   const rec = b === rid ? own : await val(db, `brands/${b}`);
   if (rec === null) return { brandId: F1.UNKNOWN, state: 'unknown', rec: null };
-  const findings = F1.checkMembership({ [b]: rec }, { [rid]: identity || {} })
+  const findings = F1.checkMembership({ [b]: rec }, { [rid]: identity })
     .filter((f) => f.code === 'brand_invalid' || f.rid === rid);
   if (findings.length) return { brandId: F1.UNKNOWN, state: 'unknown', rec: null };
   const st = isObj(rec.locations) ? rec.locations[rid] : undefined;

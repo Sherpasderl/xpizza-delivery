@@ -6758,7 +6758,7 @@ const { ACCOUNT_ORIGINS } = require('./platform-manifest').PLATFORM;
 //
 // localhost is allowed for development. It is not a meaningful weakening: CORS decides which ORIGIN may
 // read a response, not who is authorized — every portal endpoint still requires a verified ID token
-// whose uid sits in restaurants/{rid}/owners, so a page served from any origin still gets 403 without
+// whose uid holds a membership grant (brand_members), so a page served from any origin still gets 403 without
 // one. What it does allow is a developer running the portal locally against production data, which is
 // exactly how this slice is verified.
 //
