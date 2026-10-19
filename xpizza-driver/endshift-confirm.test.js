@@ -1,19 +1,23 @@
-// O4 end-shift confirmation — HANDLER test. run: `node endshift-confirm.test.js` (no framework, repo idiom).
-// EXECUTES the REAL shipped index.html handlers (handleEndShift + confirmEndShiftIfPendingDeliveries + the real
-// endshift-sheet click handler, all lifted from source via new Function — the onboarding-host.test.js idiom) against
-// a fake DOM + fake feed + the REAL endShiftPrompt. No source-grep assertions; proves the behaviours the advisor listed:
-// N=0 → straight to the cuadre with zero sheet DOM; N≥1 → the sheet (correct copy + list); Cancelar → stay on shift,
-// no cuadre, no close intent; Terminar igual → the existing cuadre path; double-tap Terminar igual → a single cuadre.
+// O4 end-shift confirmation — HANDLER test. run: `node endshift-confirm.test.js` (invoked from xpizza-functions in
+// the npm chain). EXECUTES the REAL shipped index.html handlers (handleEndShift + openEndShiftSheet, lifted from
+// source via new Function — the onboarding-host.test.js idiom) against a REAL jsdom DOM. No source-grep assertions.
+// Proves the behaviours Codex r1 required:
+//   - N=0 → the clock-out runs SYNCHRONOUSLY in the same tick (no await), and NO sheet DOM is created;
+//   - N≥1 → a proper modal: role=dialog/aria-modal/aria-labelledby, initial focus on Cancelar, focus trap,
+//     Esc/backdrop = Cancelar, close REMOVES the sheet (nothing left focusable) and restores focus to the opener;
+//   - Cancelar → no cuadre / no close intent; Terminar igual → the cuadre path; double-tap Terminar igual → one.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { endShiftPrompt } from './order-helpers.js';
+// jsdom lives in xpizza-functions/node_modules (the suite runs from there); import its ESM entry by path since a bare
+// specifier does not resolve from this directory.
+import { JSDOM } from '../xpizza-functions/node_modules/jsdom/lib/api.js';
 
 const SCRIPT = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.html'), 'utf8')
   .match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 
-// Lift a brace-matched `function <name>(` (keeps a leading `async `).
 function liftFn(name) {
   let start = SCRIPT.indexOf(`function ${name}(`);
   assert.notEqual(start, -1, `function ${name} not found`);
@@ -25,80 +29,57 @@ function liftFn(name) {
   }
   throw new Error(`unbalanced ${name}`);
 }
-// Lift the top-level `$('endshift-sheet').addEventListener('click', …);` statement (paren-matched) — the REAL dispatch.
-function liftClickHandler() {
-  const start = SCRIPT.indexOf("$('endshift-sheet').addEventListener('click'");
-  assert.notEqual(start, -1, 'endshift-sheet click handler not found');
-  const parenStart = SCRIPT.indexOf('(', SCRIPT.indexOf('.addEventListener', start));
-  let depth = 0;
-  for (let i = parenStart; i < SCRIPT.length; i++) {
-    if (SCRIPT[i] === '(') depth++;
-    else if (SCRIPT[i] === ')') { depth--; if (depth === 0) { let end = i + 1; if (SCRIPT[end] === ';') end += 1; return SCRIPT.slice(start, end); } }
-  }
-  throw new Error('unbalanced endshift click handler');
-}
 
 const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-// Minimal fake DOM: persistent elements by id, innerHTML, classList('open'), addEventListener('click'), ._finish.
-function makeDom() {
-  const els = {};
-  function makeEl(id) {
-    const el = { id, _html: '', _open: false, _click: null, _finish: null };
-    Object.defineProperty(el, 'innerHTML', { get() { return el._html; }, set(v) { el._html = String(v); } });
-    el.addEventListener = (ev, fn) => { if (ev === 'click') el._click = fn; };
-    el.classList = { add: (c) => { if (c === 'open') el._open = true; }, remove: (c) => { if (c === 'open') el._open = false; }, contains: (c) => (c === 'open' ? el._open : false) };
-    return el;
-  }
-  const $ = (id) => els[id] || (els[id] = makeEl(id));
-  return { $, els };
-}
-
-// Build the REAL handlers in a sandbox with externals injected and closeGen/closeInFlight local.
+// Build the REAL handlers in a sandbox with a real jsdom document + externals injected; closeGen/closeInFlight local.
 function build({ driverOrders, showCuadre }) {
-  const dom = makeDom();
+  const dom = new JSDOM('<!doctype html><html><body><button id="opener">turno</button></body></html>', { pretendToBeVisual: true });
+  const { window } = dom;
+  const { document } = window;
+  document.getElementById('opener').focus();                 // the duty toggle is the opener
   const XPD = { getDriverOrders: () => driverOrders };
   const ICONS = { warn: '<svg data-warn></svg>' };
-  const body = `let closeGen = 0; let closeInFlight = false;\n`
-    + liftFn('handleEndShift') + '\n'
-    + liftFn('confirmEndShiftIfPendingDeliveries') + '\n'
-    + liftClickHandler() + '\n'
-    + 'return { handleEndShift, confirmEndShiftIfPendingDeliveries, getCloseGen: () => closeGen };';
-  const fn = new Function('$', 'escapeHtml', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'ICONS', 'endShiftPrompt', 'showCuadre', body);
-  const api = fn(dom.$, escapeHtml, XPD, { uid: 'drv' }, {}, {}, ICONS, endShiftPrompt, showCuadre);
-  api.dom = dom;
+  const body = 'let closeGen = 0; let closeInFlight = false;\n'
+    + liftFn('handleEndShift') + '\n' + liftFn('openEndShiftSheet') + '\n'
+    + 'return { handleEndShift, getCloseGen: () => closeGen };';
+  const fn = new Function('document', 'escapeHtml', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'ICONS', 'endShiftPrompt', 'showCuadre', body);
+  const api = fn(document, escapeHtml, XPD, { uid: 'drv' }, {}, {}, ICONS, endShiftPrompt, showCuadre);
+  api.document = document; api.window = window;
   return api;
 }
-
 const DO = (phase, order) => ({ orderId: order.order_id, phase, order, deliveryTask: {} });
+const key = (api, k, shiftKey = false) => api.document.dispatchEvent(new api.window.KeyboardEvent('keydown', { key: k, shiftKey, bubbles: true, cancelable: true }));
+
 let passed = 0;
 const _pending = [];
 function t(name, fn) { _pending.push(Promise.resolve().then(fn).then(() => { passed += 1; }, (e) => { console.error(`✗ ${name}`); throw e; })); }
 
-// ── N = 0: straight to the cuadre, zero sheet DOM ──
-t('N=0: handleEndShift goes straight to showCuadre and never opens the sheet', async () => {
+// ── N = 0: synchronous clock-out, NO sheet DOM (Codex r1 #1) ──
+t('N=0: closeGen++ and showCuadre run SYNCHRONOUSLY (same tick, not awaited) and no sheet is created', async () => {
   const cuadre = [];
   const api = build({ driverOrders: [DO('pickup', { order_id: 'oP' })], showCuadre: () => cuadre.push(1) });
-  await api.handleEndShift();
-  assert.equal(cuadre.length, 1, 'showCuadre called once');
-  assert.equal(api.dom.$('endshift-sheet')._open, false, 'sheet never opened');
-  assert.equal(api.dom.els['endshift-sheet-body'], undefined, 'sheet body never rendered (zero sheet DOM)');
-  assert.equal(api.getCloseGen(), 1, 'the normal close intent ran (closeGen bumped)');
+  const ret = api.handleEndShift();                          // do NOT await — assert the synchronous tick
+  assert.equal(cuadre.length, 1, 'showCuadre ran synchronously');
+  assert.equal(api.getCloseGen(), 1, 'closeGen++ ran synchronously');
+  assert.equal(api.document.getElementById('endshift-sheet'), null, 'no sheet DOM created for N=0');
+  await ret;
 });
 
-// ── N = 1 / N = 2: the sheet, correct copy + list ──
-t('N=1: opens the sheet with singular copy + one row; cuadre not yet called', async () => {
-  const cuadre = [];
-  const api = build({ driverOrders: [DO('delivery', { order_id: 'oD1', display_number: 12, customer_name: 'Ana', address_detected: 'Col. Trejo' })], showCuadre: () => cuadre.push(1) });
+// ── N ≥ 1: modal semantics + content ──
+t('N≥1: dialog semantics, initial focus on Cancelar, correct copy + list', async () => {
+  const api = build({ driverOrders: [DO('delivery', { order_id: 'oD1', display_number: 12, customer_name: 'Ana', address_detected: 'Col. Trejo' })], showCuadre: () => {} });
   api.handleEndShift();
-  const html = api.dom.$('endshift-sheet-body').innerHTML;
-  assert.equal(api.dom.$('endshift-sheet')._open, true, 'sheet open');
-  assert.match(html, /Todavía tenés 1 pedido en camino/);
-  assert.match(html, /¿Terminar turno igual\?/);
-  assert.match(html, /#12/); assert.match(html, /Ana/); assert.match(html, /Col\. Trejo/);
-  assert.match(html, /id="endshift-cancel"/); assert.match(html, /id="endshift-confirm"/);
-  assert.equal(cuadre.length, 0, 'no cuadre while the sheet is up');
-  assert.equal(api.getCloseGen(), 0, 'no close intent yet');
+  const sheet = api.document.getElementById('endshift-sheet');
+  assert.ok(sheet, 'sheet created');
+  const dialog = sheet.querySelector('.sheet');
+  assert.equal(dialog.getAttribute('role'), 'dialog');
+  assert.equal(dialog.getAttribute('aria-modal'), 'true');
+  assert.equal(dialog.getAttribute('aria-labelledby'), 'endshift-title');
+  assert.equal(sheet.querySelector('#endshift-title').textContent, 'Todavía tenés 1 pedido en camino');
+  assert.match(sheet.innerHTML, /¿Terminar turno igual\?/);
+  assert.match(sheet.innerHTML, /#12/); assert.match(sheet.innerHTML, /Ana/); assert.match(sheet.innerHTML, /Col\. Trejo/);
+  assert.equal(api.document.activeElement, sheet.querySelector('#endshift-cancel'), 'initial focus on Cancelar');
 });
 
 t('N=2: plural copy + two rows', async () => {
@@ -107,44 +88,65 @@ t('N=2: plural copy + two rows', async () => {
     DO('delivery', { order_id: 'oD2', display_number: 13, customer_name: 'Beto', address_detected: 'A2' }),
   ], showCuadre: () => {} });
   api.handleEndShift();
-  const html = api.dom.$('endshift-sheet-body').innerHTML;
-  assert.match(html, /Todavía tenés 2 pedidos en camino/);
-  assert.equal((html.match(/class="es-row"/g) || []).length, 2, 'two list rows');
-  assert.match(html, /Ana/); assert.match(html, /Beto/);
+  const sheet = api.document.getElementById('endshift-sheet');
+  assert.equal(sheet.querySelector('#endshift-title').textContent, 'Todavía tenés 2 pedidos en camino');
+  assert.equal(sheet.querySelectorAll('.es-row').length, 2);
 });
 
-// ── Cancelar: stay on shift, no cuadre, no close intent ──
-t('Cancelar → no cuadre, no close intent, sheet closed', async () => {
+// ── focus trap ──
+t('focus trap: Tab from Terminar igual wraps to Cancelar; Shift+Tab from Cancelar wraps to Terminar igual', async () => {
+  const api = build({ driverOrders: [DO('delivery', { order_id: 'oD1', customer_name: 'Ana' })], showCuadre: () => {} });
+  api.handleEndShift();
+  const sheet = api.document.getElementById('endshift-sheet');
+  const cancel = sheet.querySelector('#endshift-cancel'), confirm = sheet.querySelector('#endshift-confirm');
+  confirm.focus(); key(api, 'Tab');
+  assert.equal(api.document.activeElement, cancel, 'Tab from last wraps to first');
+  cancel.focus(); key(api, 'Tab', true);
+  assert.equal(api.document.activeElement, confirm, 'Shift+Tab from first wraps to last');
+});
+
+// ── Esc / backdrop = Cancelar: no close-state change, sheet removed, focus restored ──
+t('Esc = Cancelar: no cuadre, no close intent, sheet removed, focus restored to opener', async () => {
   const cuadre = [];
   const api = build({ driverOrders: [DO('delivery', { order_id: 'oD1', customer_name: 'Ana' })], showCuadre: () => cuadre.push(1) });
   const p = api.handleEndShift();
-  api.dom.$('endshift-sheet')._click({ target: { id: 'endshift-cancel' } });
+  key(api, 'Escape');
   await p;
   assert.equal(cuadre.length, 0, 'showCuadre NOT called');
-  assert.equal(api.getCloseGen(), 0, 'no close intent — nothing written');
-  assert.equal(api.dom.$('endshift-sheet')._open, false, 'sheet closed');
+  assert.equal(api.getCloseGen(), 0, 'no close intent');
+  assert.equal(api.document.getElementById('endshift-sheet'), null, 'sheet removed from DOM (not merely hidden)');
+  assert.equal(api.document.activeElement, api.document.getElementById('opener'), 'focus restored to opener');
 });
 
-t('backdrop tap = Cancelar (stay on shift)', async () => {
+t('backdrop tap = Cancelar (stay on shift, sheet removed)', async () => {
   const cuadre = [];
   const api = build({ driverOrders: [DO('delivery', { order_id: 'oD1', customer_name: 'Ana' })], showCuadre: () => cuadre.push(1) });
   const p = api.handleEndShift();
-  api.dom.$('endshift-sheet')._click({ target: { id: 'endshift-sheet' } });
+  api.document.getElementById('endshift-sheet').click();     // click the backdrop itself
   await p;
   assert.equal(cuadre.length, 0);
-  assert.equal(api.dom.$('endshift-sheet')._open, false);
+  assert.equal(api.document.getElementById('endshift-sheet'), null);
 });
 
-// ── Terminar igual → the existing cuadre path, unchanged ──
-t('Terminar igual → showCuadre runs (close intent + cuadre)', async () => {
+// ── Cancelar / Terminar igual buttons ──
+t('Cancelar button → no cuadre, no close intent', async () => {
   const cuadre = [];
   const api = build({ driverOrders: [DO('delivery', { order_id: 'oD1', customer_name: 'Ana' })], showCuadre: () => cuadre.push(1) });
   const p = api.handleEndShift();
-  api.dom.$('endshift-sheet')._click({ target: { id: 'endshift-confirm' } });
+  api.document.getElementById('endshift-cancel').click();
   await p;
-  assert.equal(cuadre.length, 1, 'showCuadre called after Terminar igual');
-  assert.equal(api.getCloseGen(), 1, 'close intent ran');
-  assert.equal(api.dom.$('endshift-sheet')._open, false, 'sheet closed');
+  assert.equal(cuadre.length, 0); assert.equal(api.getCloseGen(), 0);
+  assert.equal(api.document.getElementById('endshift-sheet'), null);
+});
+
+t('Terminar igual → showCuadre runs (close intent + cuadre), sheet removed', async () => {
+  const cuadre = [];
+  const api = build({ driverOrders: [DO('delivery', { order_id: 'oD1', customer_name: 'Ana' })], showCuadre: () => cuadre.push(1) });
+  const p = api.handleEndShift();
+  api.document.getElementById('endshift-confirm').click();
+  await p;
+  assert.equal(cuadre.length, 1); assert.equal(api.getCloseGen(), 1);
+  assert.equal(api.document.getElementById('endshift-sheet'), null);
 });
 
 // ── double-tap Terminar igual → a SINGLE end-shift ──
@@ -152,11 +154,11 @@ t('double-tap Terminar igual → showCuadre runs exactly once', async () => {
   const cuadre = [];
   const api = build({ driverOrders: [DO('delivery', { order_id: 'oD1', customer_name: 'Ana' })], showCuadre: () => cuadre.push(1) });
   const p = api.handleEndShift();
-  api.dom.$('endshift-sheet')._click({ target: { id: 'endshift-confirm' } });
-  api.dom.$('endshift-sheet')._click({ target: { id: 'endshift-confirm' } });
+  const confirm = api.document.getElementById('endshift-confirm');
+  confirm.click(); confirm.click();
   await p;
   assert.equal(cuadre.length, 1, 'a double tap still ends the shift only once');
-  assert.equal(api.getCloseGen(), 1, 'close intent ran once');
+  assert.equal(api.getCloseGen(), 1);
 });
 
 await Promise.all(_pending);

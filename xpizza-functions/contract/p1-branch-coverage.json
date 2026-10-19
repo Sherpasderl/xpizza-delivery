@@ -125184,7 +125184,7 @@
    },
    "exercised": []
   },
-  "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries>anon#address_detected#0": {
+  "xpizza-driver/index.html<script@0>#detectNewAssignments#status#0": {
    "planned": {
     "S13": {
      "la_musa": [
@@ -125315,7 +125315,7 @@
    },
    "exercised": []
   },
-  "xpizza-driver/index.html<script@0>#detectNewAssignments#status#0": {
+  "xpizza-driver/index.html<script@0>#openEndShiftSheet>anon#address_detected#0": {
    "planned": {
     "S13": {
      "la_musa": [

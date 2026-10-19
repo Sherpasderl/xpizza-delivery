@@ -15566,9 +15566,9 @@
     "id": "o4-01",
     "slice": "o4",
     "file": "../xpizza-driver/index.html",
-    "from": "  if (!prompt) return Promise.resolve(true);",
-    "to": "  return Promise.resolve(true);",
-    "label": "O4 end-shift confirm never opens the sheet (always continues) even with orders en camino — the warning is lost",
+    "from": "  if (prompt && !(await openEndShiftSheet(prompt))) return;",
+    "to": "  if (false && !(await openEndShiftSheet(prompt))) return;",
+    "label": "O4 end-shift never opens the sheet even with deliveries en camino — the warning is lost",
     "command": [
       "node",
       "../xpizza-driver/endshift-confirm.test.js"
@@ -15584,6 +15584,18 @@
     "command": [
       "node",
       "../xpizza-driver/order-helpers.test.js"
+    ]
+  },
+  {
+    "id": "o4-03",
+    "slice": "o4",
+    "file": "../xpizza-driver/index.html",
+    "from": "  closeGen++; closeInFlight = false;\n  showCuadre();",
+    "to": "  await Promise.resolve();\n  closeGen++; closeInFlight = false;\n  showCuadre();",
+    "label": "O4 defers the N=0 clock-out behind an await — the base runs closeGen++/showCuadre synchronously",
+    "command": [
+      "node",
+      "../xpizza-driver/endshift-confirm.test.js"
     ]
   }
 ]

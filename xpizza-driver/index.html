@@ -1160,9 +1160,8 @@
 
 <!-- Vuelto sheet (ephemeral) -->
 <div class="sheet-backdrop" id="vuelto-sheet"><div class="sheet" id="vuelto-sheet-body"></div></div>
+<!-- O4 end-shift confirmation: created on demand in openEndShiftSheet() (never in the static DOM), removed on close -->
 
-<!-- O4: end-shift confirmation when orders are still out for delivery -->
-<div class="sheet-backdrop" id="endshift-sheet"><div class="sheet" id="endshift-sheet-body"></div></div>
 <!-- Clock-out cuadre (cash handoff) -->
 <div id="cuadre-screen"><div class="receipt" id="cuadre-receipt"></div></div>
 
@@ -1930,46 +1929,72 @@ async function handleStartShift() {
 // confirm() dialog. handleEndShift just shows it; the buttons drive the rest.
 async function handleEndShift() {
   if (!currentUser) return;
-  // O4: if the driver still has orders OUT FOR DELIVERY ("en camino"), confirm before the cuadre. Cancelar (or a
-  // backdrop tap) stays on shift and writes NOTHING; Terminar igual continues to the cuadre exactly as today.
-  if (!(await confirmEndShiftIfPendingDeliveries())) return;
+  // O4: if the driver still has orders OUT FOR DELIVERY ("en camino"), confirm before the cuadre. N = 0 falls through
+  // with NO await reached → the zero-delivery clock-out runs SYNCHRONOUSLY, byte-for-byte the base path. Cancelar /
+  // Esc / backdrop stays on shift and writes NOTHING; Terminar igual continues to the cuadre exactly as today.
+  const prompt = endShiftPrompt(XPD.getDriverOrders(currentUser.uid, allTasks, allOrders));
+  if (prompt && !(await openEndShiftSheet(prompt))) return;
   // Fresh close intent: supersede any zombie in-flight op and clear the refresh guard before showing.
   closeGen++; closeInFlight = false;
   showCuadre();
 }
 
-// O4 — raise the confirmation sheet when the driver still has delivery-phase orders; resolve true to continue
-// (Terminar igual), false to stay on shift (Cancelar / backdrop). N = 0 → resolve true at once (no sheet, no DOM).
-// Resolves EXACTLY once (the `settled` guard), so a double-tap on Terminar igual continues the shift-end a single time.
-function confirmEndShiftIfPendingDeliveries() {
-  const prompt = endShiftPrompt(XPD.getDriverOrders(currentUser.uid, allTasks, allOrders));
-  if (!prompt) return Promise.resolve(true);
+// O4 — build + raise the end-shift confirmation as a proper modal. Created ONLY when there are deliveries (never in
+// the static DOM); role=dialog / aria-modal / aria-labelledby; initial focus on Cancelar; a focus trap between the two
+// actions; Esc / Android-back / backdrop = Cancelar (no close-state change). On close the WHOLE sheet is REMOVED from
+// the DOM (so nothing is left keyboard-focusable — not merely opacity-hidden) and focus returns to the opener. Resolves
+// EXACTLY once (the `settled` guard), so a double-tap on Terminar igual continues the shift-end a single time.
+function openEndShiftSheet(prompt) {
+  const opener = document.activeElement;
   const rows = prompt.orders.map((o) => `
     <div class="es-row"><div class="es-mid">
       <div class="es-name"><span class="order-num">${escapeHtml(o.label)}</span>${escapeHtml(o.name)}</div>
       <div class="es-addr">${escapeHtml(o.address)}</div>
     </div><span class="phase-pill delivery">Entregar</span></div>`).join('');
-  $('endshift-sheet-body').innerHTML = `
-    <div class="grab"></div>
-    <div class="es-head">
-      <div class="es-caution" aria-hidden="true"><span class="ico">${ICONS.warn}</span></div>
-      <div><div class="es-title">${escapeHtml(prompt.title)}</div><div class="es-q">${escapeHtml(prompt.question)}</div></div>
-    </div>
-    <div class="es-list">${rows}</div>
-    <div class="es-actions">
-      <button class="es-cancel" id="endshift-cancel" type="button">Cancelar</button>
-      <button class="es-confirm" id="endshift-confirm" type="button">Terminar igual</button>
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+  backdrop.id = 'endshift-sheet';
+  backdrop.innerHTML = `
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="endshift-title">
+      <div class="grab"></div>
+      <div class="es-head">
+        <div class="es-caution" aria-hidden="true"><span class="ico">${ICONS.warn}</span></div>
+        <div><div class="es-title" id="endshift-title">${escapeHtml(prompt.title)}</div><div class="es-q">${escapeHtml(prompt.question)}</div></div>
+      </div>
+      <div class="es-list">${rows}</div>
+      <div class="es-actions">
+        <button class="es-cancel" id="endshift-cancel" type="button">Cancelar</button>
+        <button class="es-confirm" id="endshift-confirm" type="button">Terminar igual</button>
+      </div>
     </div>`;
+  document.body.appendChild(backdrop);
+  void backdrop.offsetHeight;              // reflow so the slide-up transitions from the appended translateY(100%)
+  backdrop.classList.add('open');
+  const cancelBtn = backdrop.querySelector('#endshift-cancel');
+  const confirmBtn = backdrop.querySelector('#endshift-confirm');
   return new Promise((resolve) => {
     let settled = false;
-    $('endshift-sheet')._finish = (result) => {
-      if (settled) return;                 // double-tap / repeat: resolve once
+    const close = (result) => {
+      if (settled) return;                 // double-tap / repeat: resolve + tear down once
       settled = true;
-      $('endshift-sheet')._finish = null;
-      $('endshift-sheet').classList.remove('open');
+      document.removeEventListener('keydown', onKey, true);
+      backdrop.remove();                   // leave NO focusable chrome behind
+      if (opener && typeof opener.focus === 'function') opener.focus();   // restore focus to the opener (the toggle)
       resolve(result);
     };
-    $('endshift-sheet').classList.add('open');
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); close(false); return; }   // Esc / Android back = Cancelar
+      if (e.key === 'Tab') {               // focus trap between the two actions
+        if (e.shiftKey && document.activeElement === cancelBtn) { e.preventDefault(); confirmBtn.focus(); }
+        else if (!e.shiftKey && document.activeElement === confirmBtn) { e.preventDefault(); cancelBtn.focus(); }
+      }
+    }
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === confirmBtn) close(true);
+      else if (e.target === cancelBtn || e.target === backdrop) close(false);   // backdrop tap = Cancelar
+    });
+    document.addEventListener('keydown', onKey, true);
+    cancelBtn.focus();                     // initial focus on the safe (stay-on-shift) action
   });
 }
 
@@ -2143,13 +2168,6 @@ $('active-order-slot').addEventListener('click', (e) => {
 });
 $('vuelto-sheet').addEventListener('click', (e) => {
   if (e.target.id === 'vuelto-sheet' || e.target.id === 'vuelto-done') $('vuelto-sheet').classList.remove('open');
-});
-// O4 end-shift sheet: Terminar igual → continue (true); Cancelar or a backdrop tap → stay on shift (false).
-$('endshift-sheet').addEventListener('click', (e) => {
-  const finish = $('endshift-sheet')._finish;
-  if (!finish) return;
-  if (e.target.id === 'endshift-confirm') finish(true);
-  else if (e.target.id === 'endshift-cancel' || e.target.id === 'endshift-sheet') finish(false);
 });
 
 // Clock-out REQUIRES a server-acknowledged cuadre (plan §5). No fire-and-forget, no offline-proceed: the web
