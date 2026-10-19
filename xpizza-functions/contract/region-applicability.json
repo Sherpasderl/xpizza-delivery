@@ -4426,6 +4426,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -4437,7 +4438,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -4697,6 +4699,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -4708,7 +4711,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -4968,6 +4972,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -4979,7 +4984,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -5383,6 +5389,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -5394,7 +5401,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -5638,6 +5646,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -5649,7 +5658,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -5893,6 +5903,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -5904,7 +5915,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -6148,6 +6160,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -6159,7 +6172,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -6382,6 +6396,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -6393,7 +6408,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -6616,6 +6632,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -6627,7 +6644,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -6928,6 +6946,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -6939,7 +6958,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -7146,6 +7166,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -7157,7 +7178,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -7508,6 +7530,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -7519,7 +7542,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -7726,6 +7750,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -7737,7 +7762,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -7913,7 +7939,7 @@
     "site": "$('queue-sheet-body').innerHTML = renderQueueDetail(o, i + 2);",
     "siteSha": "b54fc32960294228c224efedf87b702d3a2f83a43f094e6f90d28486d7dd0ccb",
     "scope": "xpizza-driver/index.html<script@0>#<top>>anon",
-    "scopeSha": "eb6c8d182121e9cb1f494d72ceba8554ec077f3fcd02da9e4f5330ea1641cf30"
+    "scopeSha": "5a84ae44405044bfefa641327f2ae1e72b2a5e085ae8717116562f434fdb2732"
    },
    "guards": [
     {
@@ -7944,6 +7970,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -7955,7 +7982,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -8162,6 +8190,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -8173,7 +8202,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -8398,6 +8428,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -8409,7 +8440,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -8634,6 +8666,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -8645,7 +8678,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -8870,6 +8904,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -8881,7 +8916,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -9106,6 +9142,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -9117,7 +9154,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -9266,7 +9304,7 @@
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 22,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
-      "xpizza-driver/order-helpers.js#xpizza-driver": 1
+      "xpizza-driver/order-helpers.js#xpizza-driver": 2
      }
     }
    ],
@@ -9333,6 +9371,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -9344,7 +9383,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -9493,7 +9533,7 @@
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 22,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
-      "xpizza-driver/order-helpers.js#xpizza-driver": 1
+      "xpizza-driver/order-helpers.js#xpizza-driver": 2
      }
     }
    ],
@@ -9560,6 +9600,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -9571,7 +9612,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -9720,7 +9762,7 @@
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 22,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
-      "xpizza-driver/order-helpers.js#xpizza-driver": 1
+      "xpizza-driver/order-helpers.js#xpizza-driver": 2
      }
     }
    ],
@@ -9787,6 +9829,7 @@
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
     },
@@ -9798,7 +9841,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -9947,7 +9991,7 @@
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 22,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
-      "xpizza-driver/order-helpers.js#xpizza-driver": 1
+      "xpizza-driver/order-helpers.js#xpizza-driver": 2
      }
     }
    ],
@@ -10131,7 +10175,7 @@
     "site": "await XPD.arriveAtRestaurant(currentUser.uid);",
     "siteSha": "0f8cf0137e7d9e23868daa9b056e8ebffe93e608e96f0c33e7a483bde9735f2a",
     "scope": "xpizza-driver/index.html<script@0>#<top>>anon",
-    "scopeSha": "eb6c8d182121e9cb1f494d72ceba8554ec077f3fcd02da9e4f5330ea1641cf30"
+    "scopeSha": "5a84ae44405044bfefa641327f2ae1e72b2a5e085ae8717116562f434fdb2732"
    },
    "guards": [
     {
