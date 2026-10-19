@@ -35,20 +35,29 @@ function liftFn(name) {
 
 const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-// Build the REAL handlers in a sandbox with a real jsdom document + externals injected; closeGen/closeInFlight local.
-function build({ driverOrders, showCuadre }) {
+// Build the REAL handlers in a sandbox with a real jsdom document + window + externals injected.
+// withCapacitorBack installs a fake window.Capacitor.Plugins.App (the native idiom) and records the back callback +
+// listener-removal, so a hardware-back press can be simulated and its teardown asserted.
+function build({ driverOrders, showCuadre, withCapacitorBack = false }) {
   const dom = new JSDOM('<!doctype html><html><body><button id="opener">turno</button></body></html>', { pretendToBeVisual: true });
   const { window } = dom;
   const { document } = window;
   document.getElementById('opener').focus();                 // the duty toggle is the opener
+  const back = { cb: null, removed: 0 };
+  if (withCapacitorBack) {
+    window.Capacitor = { Plugins: { App: { addListener: (ev, cb) => {
+      if (ev === 'backButton') back.cb = cb;
+      return Promise.resolve({ remove: () => { back.removed += 1; } });
+    } } } };
+  }
   const XPD = { getDriverOrders: () => driverOrders };
   const ICONS = { warn: '<svg data-warn></svg>' };
   const body = 'let closeGen = 0; let closeInFlight = false;\n'
     + liftFn('handleEndShift') + '\n' + liftFn('openEndShiftSheet') + '\n'
     + 'return { handleEndShift, getCloseGen: () => closeGen };';
-  const fn = new Function('document', 'escapeHtml', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'ICONS', 'endShiftPrompt', 'showCuadre', body);
-  const api = fn(document, escapeHtml, XPD, { uid: 'drv' }, {}, {}, ICONS, endShiftPrompt, showCuadre);
-  api.document = document; api.window = window;
+  const fn = new Function('document', 'window', 'escapeHtml', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'ICONS', 'endShiftPrompt', 'showCuadre', body);
+  const api = fn(document, window, escapeHtml, XPD, { uid: 'drv' }, {}, {}, ICONS, endShiftPrompt, showCuadre);
+  api.document = document; api.window = window; api.back = back;
   return api;
 }
 const DO = (phase, order) => ({ orderId: order.order_id, phase, order, deliveryTask: {} });
@@ -129,6 +138,21 @@ t('backdrop tap = Cancelar (stay on shift, sheet removed)', async () => {
   await p;
   assert.equal(cuadre.length, 0);
   assert.equal(api.document.getElementById('endshift-sheet'), null);
+});
+
+// ── Android hardware BACK = Cancelar (Codex r2) ──
+t('Android back = Cancelar: listener registered while open + removed on close; no cuadre, sheet removed, focus restored', async () => {
+  const cuadre = [];
+  const api = build({ driverOrders: [DO('delivery', { order_id: 'oD1', customer_name: 'Ana' })], showCuadre: () => cuadre.push(1), withCapacitorBack: true });
+  const p = api.handleEndShift();
+  assert.equal(typeof api.back.cb, 'function', 'a backButton listener is registered while the sheet is open');
+  api.back.cb();                            // simulate the Android hardware back press
+  await p;
+  assert.equal(cuadre.length, 0, 'back did not end the shift (no cuadre)');
+  assert.equal(api.getCloseGen(), 0, 'close state unchanged');
+  assert.equal(api.document.getElementById('endshift-sheet'), null, 'sheet removed on back');
+  assert.equal(api.document.activeElement, api.document.getElementById('opener'), 'focus restored to opener');
+  assert.ok(api.back.removed >= 1, 'the backButton listener was removed on close (no leak past the sheet)');
 });
 
 // ── Cancelar / Terminar igual buttons ──

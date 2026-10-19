@@ -15597,5 +15597,17 @@
       "node",
       "../xpizza-driver/endshift-confirm.test.js"
     ]
+  },
+  {
+    "id": "o4-04",
+    "slice": "o4",
+    "file": "../xpizza-driver/index.html",
+    "from": "  if (capApp) backHandle = capApp.addListener('backButton', () => close(false));",
+    "to": "  if (capApp) backHandle = null;",
+    "label": "O4 end-shift sheet never registers the Android back listener — hardware back cannot cancel",
+    "command": [
+      "node",
+      "../xpizza-driver/endshift-confirm.test.js"
+    ]
   }
 ]

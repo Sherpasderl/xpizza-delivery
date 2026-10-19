@@ -1974,16 +1974,18 @@ function openEndShiftSheet(prompt) {
   const confirmBtn = backdrop.querySelector('#endshift-confirm');
   return new Promise((resolve) => {
     let settled = false;
+    let backHandle = null;
     const close = (result) => {
       if (settled) return;                 // double-tap / repeat: resolve + tear down once
       settled = true;
       document.removeEventListener('keydown', onKey, true);
+      if (backHandle) { Promise.resolve(backHandle).then((h) => { if (h && h.remove) h.remove(); }); backHandle = null; }   // detach the native back listener
       backdrop.remove();                   // leave NO focusable chrome behind
       if (opener && typeof opener.focus === 'function') opener.focus();   // restore focus to the opener (the toggle)
       resolve(result);
     };
     function onKey(e) {
-      if (e.key === 'Escape') { e.preventDefault(); close(false); return; }   // Esc / Android back = Cancelar
+      if (e.key === 'Escape') { e.preventDefault(); close(false); return; }   // keyboard Esc = Cancelar (web)
       if (e.key === 'Tab') {               // focus trap between the two actions
         if (e.shiftKey && document.activeElement === cancelBtn) { e.preventDefault(); confirmBtn.focus(); }
         else if (!e.shiftKey && document.activeElement === confirmBtn) { e.preventDefault(); cancelBtn.focus(); }
@@ -1994,6 +1996,11 @@ function openEndShiftSheet(prompt) {
       else if (e.target === cancelBtn || e.target === backdrop) close(false);   // backdrop tap = Cancelar
     });
     document.addEventListener('keydown', onKey, true);
+    // Android hardware BACK = Cancelar (on web the keyboard Esc above covers it). Uses the app's Capacitor idiom
+    // (window.Capacitor.Plugins.App, like OemSettings); absent off-device → no-op. Removed on close (above) so the
+    // listener never leaks past the sheet and back resumes its normal behaviour once the sheet is gone.
+    const capApp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+    if (capApp) backHandle = capApp.addListener('backButton', () => close(false));
     cancelBtn.focus();                     // initial focus on the safe (stay-on-shift) action
   });
 }
