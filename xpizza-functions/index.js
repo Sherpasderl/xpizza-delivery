@@ -240,14 +240,16 @@ function badRequest(res, msg) {
 // unset. Returns { ok:true, actor } (actor = verified email, or 'recon_secret') or
 // { ok:false, code, msg }. constantTimeEqual is length-safe, so a long JWT presented
 // as the token simply fails path (a) and falls through to verification.
-async function authorizeDispatcherAction(req) {
+// UNASSIGN (PLAN-unassign-prepickup r1.2 §1): the uid-returning sibling. authorizeDispatcherAction below is a thin wrapper that
+// returns EXACTLY its previous shapes ({ok, actor} / {ok:false, code, msg}) — its three existing callers are unchanged.
+async function authorizeDispatcherActionWithUid(req) {
   const authHeader = req.get('authorization') || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
   if (!token) return { ok: false, code: 401, msg: 'missing bearer token' };
 
   const SECRET = process.env.RECON_SECRET;
   if (SECRET && constantTimeEqual(token, SECRET)) {
-    return { ok: true, actor: 'recon_secret' };
+    return { ok: true, actor: 'recon_secret', uid: null, byKind: 'recon_secret' };
   }
 
   let decoded;
@@ -258,7 +260,11 @@ async function authorizeDispatcherAction(req) {
   }
   const snap = await getDatabase().ref(`dispatchers/${decoded.uid}`).once('value');
   if (!snap.exists()) return { ok: false, code: 403, msg: 'not authorized (dispatcher only)' };
-  return { ok: true, actor: decoded.email || decoded.uid };
+  return { ok: true, actor: decoded.email || decoded.uid, uid: decoded.uid, byKind: 'dispatcher' };
+}
+async function authorizeDispatcherAction(req) {
+  const r = await authorizeDispatcherActionWithUid(req);
+  return r.ok ? { ok: true, actor: r.actor } : r;
 }
 
 function isFiniteNumber(n) {
@@ -3485,6 +3491,28 @@ exports.voidFacturaOnCancel = onValueWritten(
       console.log(`[factura] void ${orderId} → ${r.voided ? 'voided' : (r.no_factura ? 'no factura owed' : 'noop')}`);
     } catch (e) {
       console.error(`[factura] void ${orderId} threw:`, e.message);
+    }
+  }
+);
+
+// UNASSIGN — "Quitar repartidor" for PRE-PICKUP orders (PLAN-unassign-prepickup r1.2, APPROVED). Parity with the live timeout
+// release: pre-checks, then the SAME releaseToSinAsignar the timeout path calls, the cancel core's atomic driver release (U1-b)
+// and a create-only audit. Logic in unassign-core.js; this is the HTTP adapter (cors, POST only, dispatcher auth with uid).
+exports.unassignOrder = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 60, memory: '256MiB', maxInstances: 5 },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' }); }
+    const auth = await authorizeDispatcherActionWithUid(req);
+    if (!auth.ok) return res.status(auth.code).json({ error: 'Unauthorized', detail: auth.msg });
+    const body = req.body || {};
+    try {
+      const r = await require('./unassign-core').runUnassign(
+        { db: getDatabase(), release: releaseToSinAsignar, now: () => Date.now(), log: (m) => console.warn(m) },
+        { orderId: body.orderId, expectedFromDriver: body.expectedFromDriver, opId: body.opId, actor: auth.actor, uid: auth.uid, byKind: auth.byKind });
+      return res.status(r.status).json(r.body);
+    } catch (e) {
+      console.error('unassignOrder failed', e && e.message);
+      return res.status(500).json({ error: 'internal' });
     }
   }
 );

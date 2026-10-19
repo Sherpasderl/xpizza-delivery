@@ -121,6 +121,7 @@ const D = {
   [F('contract/scheduler.js')]: 'lib: R3 harness (scheduler) — loaded only by contract suites, after their emulator guard',
   [F('contract/rtdb-adapter.js')]: 'lib: R3 harness (staff-page Firebase adapter on Admin) — loaded only by contract suites, after their emulator guard',
   [F('contract/form-router.js')]: 'lib: R3 harness (in-process HTTP to the real handlers on 127.0.0.1) — loaded only by contract suites, after their emulator guard',
+  [F('test/_web-sdk-loader.mjs')]: 'lib: test-only client-SDK loader — imported only by *.emulator.test.* suites after their emulator guard; makeWebSdkLoader throws without FIREBASE_DATABASE_EMULATOR_HOST and only ever connects to that loopback emulator',
   'scripts/backfill-pickup-completion.mjs': 'prod-only root script, RTDB ONLY: no second service to mix; an inherited RTDB host var can only redirect AWAY from production',
 };
 
