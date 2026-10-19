@@ -214,6 +214,53 @@ async function runResult(stub) {
   ok('token invalidated on leave: a removal request resolving after Cancelar/Escape/backdrop cannot toast or close anything');
 }
 
+// ── 5d. stale completion entering a REAL reassign (codex r3): start a removal (request pending), LEAVE the
+//        confirm, then drive the REAL reassign commit (assignOrder → XPD.reassignOrder — the production path,
+//        no stub). When the stale removal resolves afterward, the token bumped on leave must make it a no-op:
+//        the reassign's own toast stands, and no stale "sin asignar" toast or extra picker-close lands over
+//        it. Mutant: drop the closeUnassignConfirm token bump → the stale removal toasts + re-closes here. ──
+{
+  const aStart = html.indexOf('async function assignOrder(orderId, driverId) {');
+  const aEnd = html.indexOf('\n}', aStart) + 2;
+  const assignSrc = html.slice(aStart, aEnd);
+  assert.ok(aStart > -1 && assignSrc.includes('XPD.reassignOrder'), 'located the real assignOrder (reassign commit)');
+
+  for (const id of IDS) { const e = ELS[id]; e.classList._s = new Set(['hidden']); e.disabled = false; e._text = ''; e._html = ''; e.focused = 0; }
+  LAST_FOCUSED = null;
+  const calls = [], toasts = []; let closePickerCount = 0, releaseRemoval;
+  const doc = { activeElement: null, contains: () => true, querySelector: () => GET('picker-remove-row') };
+  const win = { matchMedia: () => ({ matches: false }), crypto: { randomUUID: () => 'uuid-' + (++win._c) }, _c: 0 };
+  const XPD = {
+    unassignOrder: (...a) => { calls.push(['unassign', ...a]); return new Promise((r) => { releaseRemoval = () => r({ ok: true }); }); },
+    reassignOrder: (...a) => { calls.push(['reassign', ...a]); return Promise.resolve({ ok: true }); },
+  };
+  const api = new Function(
+    '$', 'allOrders', 'allDrivers', 'pickerFromDriver', 'displayOrderLabel', 'escapeHtml', 'XPD', 'toast', 'closePicker', 'pickerReturnFocusTarget', 'focusTrapTarget', 'document', 'window', 'crypto',
+    `let pickerIsReassign = true;\n${src}\n${assignSrc}\n; return { openUnassignConfirm, closeUnassignConfirm, doUnassign, assignOrder };`,
+  )(
+    GET, { o1: { customer_name: 'María', total: 420 } }, { d1: { name: 'Carlos Mejía' }, d2: { name: 'Lucía Fuentes' } }, 'd1',
+    (id) => '#' + id, (s) => String(s), XPD,
+    (m, t) => toasts.push([m, t]), () => { closePickerCount++; },
+    () => ({ el: GET('picker-remove-row'), temp: false }), (shift, active, f) => f[0],
+    doc, win, win.crypto,
+  );
+  const overlay = GET('unassign-confirm-overlay'), confirmBtn = GET('unassign-confirm-btn'), cancelBtn = GET('unassign-cancel-btn');
+  api.openUnassignConfirm('o1');                       // removal confirm (token T1)
+  confirmBtn.dispatch('click', {}); await tick();      // removal request pending
+  const toastsBefore = toasts.length;
+  cancelBtn.dispatch('click', {});                     // LEAVE → closeUnassignConfirm bumps the token (T2)
+  assert.ok(overlay.classList.contains('hidden'), 'left the removal confirm');
+  await api.assignOrder('o1', 'd2');                   // REAL reassign commit (production path)
+  assert.ok(toasts.some(([m]) => /Reasignado a Lucía/.test(m)), 'the real reassign produced its own toast');
+  const closesAfterReassign = closePickerCount;
+  releaseRemoval(); await tick(); await tick();        // the stale removal resolves AFTER the reassign
+  assert.ok(!toasts.some(([m]) => /sin asignar/.test(m)), 'no stale "sin asignar" toast landed over the reassign');
+  assert.strictEqual(toasts.length - toastsBefore, 1, 'the stale resolution added no toast (only the reassign toast)');
+  assert.strictEqual(closePickerCount, closesAfterReassign, 'the stale resolution did not re-close the picker');
+  assert.strictEqual(calls.filter((c) => c[0] === 'unassign').length, 1, 'exactly one removal request was sent');
+  ok('stale completion into a REAL reassign: after leaving removal and reassigning (assignOrder → reassignOrder), the stale removal resolution is a no-op — reassign toast stands, no stale toast, no extra close');
+}
+
 // ── 6. render gating + REAL end-to-end (codex P2): the remove row is inserted into the picker list ONLY
 //      for reassign + same-owner both legs + pickup∈{assigned,accepted,in_progress} + non-terminal. The
 //      openPicker gating block is extracted and run in the SAME scope as the REAL confirm functions, so a

@@ -34,6 +34,11 @@ const gEnd = html.indexOf('\n\n  openSheet(', gStart);
 const gateSrc = html.slice(gStart, gEnd);
 assert.ok(gStart > -1 && gEnd > gStart && gateSrc.includes('removeBlock'), 'located mobile gating block');
 
+const cfStart = html.indexOf('function openConfirm(orderId, driverId){');
+const cfEnd = html.indexOf('\n}', cfStart) + 2;
+const openConfirmSrc = html.slice(cfStart, cfEnd);
+assert.ok(cfStart > -1 && openConfirmSrc.includes('data-commit=') && openConfirmSrc.includes('openSheet('), 'located the real openConfirm (reassign confirm renderer)');
+
 // ── the app harness: real code over a parsed-button DOM shim ─────────────────
 const DEFAULT_STORE = () => ({
   orders: { o1: { customer_name: 'María', status: 'preparing' } },
@@ -115,26 +120,35 @@ function buildApp(stub, opts = {}) {
 
   const STORE = opts.store || DEFAULT_STORE();
   const win = { crypto: { randomUUID: () => 'uuid-' + (++win._c) }, _c: 0 };
-  const XPD = { unassignOrder: (...a) => { calls.push(a); return stub(a); } };
+  const XPD = {
+    unassignOrder: (...a) => { calls.push(a); return stub(a); },
+    isStalePing: () => false, DRIVER_STATUS: { OFF_SHIFT: 'off_shift' },
+  };
   const setTimeoutStub = opts.immediateFocus ? (fn) => { fn(); } : () => {};
+  // deps the REAL openConfirm (reassign confirm renderer) reads — kept minimal; the production navigation it
+  // performs (openSheet → token bump) is what the stale-reassign test exercises, not these values.
+  const HUBS = { x_pizza: {} };
+  const driverPickList = () => [{ id: 'd1', load: 0, distanceM: 900 }, { id: 'd2', load: 0, distanceM: 1200 }];
+  const fmtDist = (m) => Math.round(m) + ' m';
+  const minutesOf = () => 5;
 
   // late-bound so openPicker (the real Esc/Cancelar leave target) re-renders a sheet → real openSheet token bump
   let api = null;
-  const openPicker = (oid) => { picks.push(oid); if (api) api.openSheet('<div class="sh-nav"></div>'); };
-  const openConfirm = (...a) => chooses.push(a);
+  const openPicker = (oid) => { picks.push(oid); if (api) api.openSheet('<div class="sh-nav"><button class="back" data-detail="' + oid + '" data-back="1" aria-label="Atras">x</button></div>'); };
   const commitAssign = (...a) => commits.push(a);
 
   api = new Function(
     '$', 'STORE', 'escapeHtml', 'driverColorVar', 'IC_BACK', 'IC_PLUS', 'displayLabel', 'XPD', 'toast',
-    'document', 'window', 'crypto', 'setTimeout', 'replay', 'openPicker', 'openConfirm', 'commitAssign',
+    'document', 'window', 'crypto', 'setTimeout', 'replay', 'openPicker', 'commitAssign',
+    'HUBS', 'driverPickList', 'fmtDist', 'minutesOf',
     `let lastFocus = null, sheetDir = null, pickerFromDriver = 'd1', pickerIsReassign = true;\n`
-    + `${sheetSpan}\n${confirmSrc}\n${delegationStmt}\n`
+    + `${sheetSpan}\n${confirmSrc}\n${openConfirmSrc}\n${delegationStmt}\n`
     + `function renderGate(orderId, pickerIsReassign){\n${gateSrc}\n; return removeBlock; }\n`
-    + `; return { openUnassignConfirm, commitUnassign, openSheet, closeSheet, renderGate };`,
+    + `; return { openUnassignConfirm, commitUnassign, openConfirm, openSheet, closeSheet, renderGate };`,
   )(
     $, STORE, (s) => String(s), () => '#000', '<back/>', '<plus/>', (id) => '#' + id, XPD,
     (m, bad) => toasts.push([m, !!bad]), documentShim, win, win.crypto, setTimeoutStub, () => {},
-    openPicker, openConfirm, commitAssign,
+    openPicker, commitAssign, HUBS, driverPickList, fmtDist, minutesOf,
   );
 
   const makeTarget = (dataset) => ({
@@ -215,7 +229,7 @@ test('mobile delegation: the REAL document click handler routes every case with 
 
   t.sheetBody.innerHTML = '<button data-detail="o1"></button>';   // the open detail sheet the choose reads its order from
   t.fireClick({ choose: 'd1' });
-  assert.deepEqual(t.chooses, [['o1', 'd1']], 'data-choose → openConfirm(order from the sheet, driver) (assign/reassign pick UNCHANGED)');
+  assert.match(t.sheetBody.innerHTML, /data-commit="d1"/, 'data-choose → the REAL openConfirm renders the reassign confirm for that driver (assign/reassign path real, not a recorder)');
   t.clearRecorders();
 
   t.fireClick({ commit: 'd1', order: 'o1' });
@@ -258,6 +272,19 @@ test('mobile stale completion: a request resolving after a newer confirm opened 
   releaseA(); await tick(); await tick();
   assert.equal(t.toasts.length, closesBefore, 'stale A resolution produced no toast');
   assert.ok(t.sheetOn(), 'the newer confirm stays open');
+});
+
+test('mobile stale completion into a REAL reassign confirm: openConfirm navigates (real openSheet bump), the stale removal no-ops', async () => {
+  let releaseRemoval; const t = buildApp(() => new Promise((r) => { releaseRemoval = () => r({ ok: true }); }));
+  t.openUnassignConfirm('o1');                      // removal confirm (dialog A)
+  t.commitUnassign('o1'); await tick();             // A's removal request pending
+  const toastsBefore = t.toasts.length;
+  t.openConfirm('o1', 'd2');                         // leave → REAL reassign confirm via the REAL openSheet (production navigation, no picker stub)
+  assert.match(t.sheetBody.innerHTML, /data-commit="d2"/, 'the reassign confirm rendered (its commit CTA is present)');
+  assert.match(t.sheetBody.innerHTML, /Reasignar/, 'the reassign confirm is titled Reasignar');
+  releaseRemoval(); await tick(); await tick();      // the stale removal resolves AFTER the reassign confirm opened
+  assert.ok(t.sheetOn() && /data-commit="d2"/.test(t.sheetBody.innerHTML), 'the reassign confirm is still open and intact');
+  assert.equal(t.toasts.length, toastsBefore, 'no stale toast appeared over the reassign confirm');
 });
 
 test('mobile token invalidated on LEAVE: backing out (scrim/Esc) invalidates an in-flight removal (REAL openSheet/closeSheet bump)', async () => {
