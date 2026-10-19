@@ -28,6 +28,12 @@ function createFakeDb(initial = {}) {
   function ref(path = "") {
     return {
       async once() { guard(path); const v = get(path); return { val: () => v, exists: () => v !== null }; },
+      // an equality query over direct children (orderByChild(k).equalTo(v).once()), as the Admin SDK returns it: matches or null
+      orderByChild(k) { return { equalTo(v) { return { async once() {
+        guard(path); const all = get(path) || {};
+        const hit = Object.fromEntries(Object.entries(all).filter(([, c]) => c !== null && typeof c === 'object' && c[k] === v));
+        const out = Object.keys(hit).length ? hit : null; return { val: () => out, exists: () => out !== null };
+      } }; } }; },
       async set(v) { put(path, v); },
       async remove() { put(path, null); },
       async update(obj) { for (const [k, v] of Object.entries(obj)) put(`${path}/${k}`, v); },

@@ -374,7 +374,7 @@
     "otp_ip":       { ".read": false, ".write": false },
     "phone_index":  { ".read": false, ".write": false },
     "merchant_reject_notices": { ".read": false, ".write": false },
-    "merchant_push_tokens": { ".read": false, ".write": false },
+    "merchant_push_tokens": { ".read": false, ".write": false, ".indexOn": ["rid"] },
     "merchant_push_log": { ".read": false, ".write": false },
     "deleted_uids": { ".read": false, ".write": false }
   }

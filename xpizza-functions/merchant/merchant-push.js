@@ -18,34 +18,43 @@ const vToken = (t) => (typeof t === 'string' && t.length >= 1 && t.length <= 409
 const vEpoch = (e) => (typeof e === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(e) ? e : null);
 
 // restaurants/{rid}/handhelds → [{uid, token, epoch}] for registered, unrevoked handhelds holding a valid token AND epoch (uid-sorted)
-const vSeq = (v) => (Number.isInteger(v) && v >= 1 ? v : null);
-// candidate rows only: the fan-out sends to a candidate ONLY while the token index still names it with the same seq (ownsIndex)
-function pushTargets(handhelds) {
-  if (!isObj(handhelds)) return [];
-  return Object.keys(handhelds).sort().map((uid) => ({ uid, row: handhelds[uid] }))
-    .filter(({ row }) => isObj(row) && row.kind === 'handheld' && row.revoked === false && vToken(row.fcm_token) && vEpoch(row.push_epoch) && vSeq(row.push_seq))
-    .map(({ uid, row }) => ({ uid, token: row.fcm_token, epoch: row.push_epoch, seq: row.push_seq }));
+// ── registration (codex H1c-server r2): ONE record per token — merchant_push_tokens/{sha256(token)} =
+//    {rid, uid, epoch, token, claim, at}. It is the only registration record (rows carry no token), so every registration change is
+//    ONE transaction on ONE path: nothing is ever half-written across paths.
+//      claim  a random id unique per registration (never reused, so a delayed cleanup of an old registration can never match a new one)
+//      at     the server time the registration REQUEST began (before any await): a stale request that lands late loses to a newer one
+const CLAIM_RE = /^[a-f0-9]{24}$/;
+const vClaim = (v) => (typeof v === 'string' && CLAIM_RE.test(v) ? v : null);
+const vAt = (v) => (Number.isInteger(v) && v > 0 ? v : null);
+// is the stored entry NEWER than a registration that began at `at` with id `claim`? (total order: at, then claim)
+function isNewer(cur, at, claim) {
+  if (!isObj(cur) || vAt(cur.at) === null || vClaim(cur.claim) === null) return false;
+  return cur.at > at || (cur.at === at && cur.claim > claim);
 }
-
-// ── token ownership (codex H1c-server r1 P1-1/P1-2): merchant_push_tokens/{sha256(token)} = {rid, uid, epoch, seq} is the ONE owner
-// of record. A claim is a transaction that bumps seq; the row carries the same push_seq; every send and every index clear compares
-// the EXACT (rid, uid, seq), so a superseded registration can neither receive pushes nor erase a newer owner's entry.
-function claimIndex(cur, rid, uid, epoch) {
-  const prevSeq = isObj(cur) && vSeq(cur.seq) ? cur.seq : 0;
-  return { rid, uid, epoch, seq: prevSeq + 1 };
+// the register transaction: a newer stored registration wins (abort); otherwise this entry replaces whatever was there
+function claimUpdate(cur, entry) {
+  return isNewer(cur, entry.at, entry.claim) ? undefined : entry;
 }
-const ownsIndex = (entry, rid, uid, seq) => isObj(entry) && entry.rid === rid && entry.uid === uid && vSeq(seq) !== null && entry.seq === seq;
-// index compare-and-clear: null when absent (no-op) or owned by exactly (rid, uid, seq); otherwise abort (a newer owner stays)
-function clearIndexUpdate(cur, rid, uid, seq) {
+// compare-and-clear: only the EXACT registration (its claim) is removed; absent → no-op
+function clearClaimUpdate(cur, claim) {
   if (cur === null) return null;
-  return ownsIndex(cur, rid, uid, seq) ? null : undefined;
+  return isObj(cur) && vClaim(claim) !== null && cur.claim === claim ? null : undefined;
 }
-// the row write of a winning claim. null-first safe: a null read proposes null (RTDB re-runs with the real value when the row
-// exists; a truly absent row stays absent and the caller refuses); a malformed row aborts
-function registerRowUpdate(row, token, epoch, seq, at) {
-  if (row === null) return null;
-  if (!isObj(row)) return undefined;
-  return { ...row, fcm_token: token, fcm_updated_at: at, push_epoch: epoch, push_seq: seq };
+// the fan-out targets of a location: valid entries for this rid whose uid is a registered, unrevoked handheld row; uid then hash order
+function targetsOf(entries, rows, rid) {
+  if (!isObj(entries)) return [];
+  const R = isObj(rows) ? rows : {};
+  return Object.keys(entries).map((hash) => ({ hash, e: entries[hash] }))
+    .filter(({ e }) => isObj(e) && e.rid === rid && typeof e.uid === 'string' && vToken(e.token) && vEpoch(e.epoch) && vClaim(e.claim))
+    .filter(({ e }) => { const row = R[e.uid]; return isObj(row) && row.kind === 'handheld' && row.revoked === false; })
+    .sort((a, b) => (a.e.uid < b.e.uid ? -1 : a.e.uid > b.e.uid ? 1 : a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0))
+    .map(({ hash, e }) => ({ hash, uid: e.uid, token: e.token, epoch: e.epoch, claim: e.claim }));
+}
+// unregister: this device's entries under THIS pairing's epoch (a newer pairing's entry has another epoch and is never matched)
+function unregisterMatches(entries, rid, uid, epoch) {
+  if (!isObj(entries)) return [];
+  return Object.keys(entries).sort().filter((h) => { const e = entries[h]; return isObj(e) && e.rid === rid && e.uid === uid && e.epoch === epoch && vClaim(e.claim); })
+    .map((h) => ({ hash: h, claim: entries[h].claim }));
 }
 
 // S2: the status became 'new' (a fresh intake or a scheduled release)
@@ -83,15 +92,6 @@ function buildDataMessage(target, type, orderId, rid, at) {
 const HANDHELD_DEAD = new Set(['messaging/registration-token-not-registered', 'messaging/invalid-registration-token']);
 const isDeadHandheldToken = (err) => !!(err && HANDHELD_DEAD.has(err.code));
 // compare-and-clear updater on restaurants/{rid}/handhelds/{uid}: clear ONLY if the row still holds the exact token sent
-// clears the row's token only while it is still the token sent AND (when given) the same registration seq
-function clearTokenUpdate(row, sentToken, seq) {
-  if (row === null) return null;
-  if (!isObj(row) || row.fcm_token !== sentToken) return undefined;
-  if (seq !== undefined && row.push_seq !== seq) return undefined;
-  const { fcm_token, fcm_updated_at, push_seq, ...rest } = row; void fcm_token; void fcm_updated_at; void push_seq;
-  return rest;
-}
-
 // reconcile (S1b): the pending view of the location's orders, ids + transition times only
 function pendingOf(orders, rid, surface, log) {
   if (surface !== 'handheld' || !isObj(orders)) return [];
@@ -106,5 +106,5 @@ function pendingOf(orders, rid, surface, log) {
   });
 }
 
-module.exports = { vToken, vEpoch, vSeq, claimIndex, ownsIndex, clearIndexUpdate, registerRowUpdate, pushTargets, becameNew, leftNewTo, answeredNow, servedAtHandheld, stillPending, logNewUpdate, logResolveUpdate,
-  buildDataMessage, isDeadHandheldToken, clearTokenUpdate, pendingOf, PUSH_TTL_MS };
+module.exports = { vToken, vEpoch, vClaim, isNewer, claimUpdate, clearClaimUpdate, targetsOf, unregisterMatches, becameNew, leftNewTo, answeredNow, servedAtHandheld, stillPending, logNewUpdate, logResolveUpdate,
+  buildDataMessage, isDeadHandheldToken, pendingOf, PUSH_TTL_MS };

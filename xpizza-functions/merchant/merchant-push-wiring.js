@@ -11,7 +11,7 @@ const { resolveBrand } = require('./merchant-brand');
 const IO = require('./merchant-push-io');
 
 const REGION = 'us-central1';
-const deps = () => ({ db: getDatabase(), resolveBrand, HttpsError, now: () => Date.now(), messaging: getMessaging(), queryLocationOrders: IO.queryLocationOrders });
+const deps = () => ({ db: getDatabase(), resolveBrand, HttpsError, now: () => Date.now(), newClaim: IO.newClaim, messaging: getMessaging(), queryLocationOrders: IO.queryLocationOrders });
 const call = (fn) => onCall({ region: REGION }, (request) => fn(deps(), request.auth || null, request.data));
 
 module.exports = {

@@ -5,14 +5,15 @@
  * brands/ + identity fixtures, the real authorizeHandheld (codex H1c-server r1 P2-4). Messaging is stubbed at the Admin boundary
  * (Messaging.prototype.sendEach) — tests reach loopback only. Run: npm run test:merchant-push
  *   1. production authorization: an unregistered uid, a revoked row, a claim for another rid, a location with no brand membership
- *      → refused by the real callables; a registered device registers (row + index {rid, uid, epoch, seq}, the hash returned)
- *   2. codex r1 P1-1: the ownership race on REAL transactions — A claims T and pauses before its row write, B claims T → A ends
- *      'aborted', ONE owner; a late superseded row never receives (the real trigger sends only to the index owner)
- *   3. codex r1 P1-2: an E1 unregister whose index cleanup lands after an E2 re-register keeps E2's index
+ *      → refused by the real callables; a registered device registers (ONE index entry {rid, uid, epoch, token, claim, at})
+ *   2. codex r2 P1-2: the SAME row — a stale request (began first, paused at its one transaction) vs a newer one → aborted, never
+ *      overwriting; the newer registration keeps receiving
+ *   3. codex r2 P1-1: unregister → re-register the same token/uid while an E1 send is in flight → the delayed E1 dead-token response
+ *      and a late E1 unregister are no-ops (claims are unique, never reused)
  *   4. reconcile through the real export: the fence before the read; pending + transition at via the indexed location query
  *   5. S2 / S3 through the real triggers: one data message per owning device + the push log; accept → one logical resolution;
  *      a marker-only reject → resolved; codex r4 reorderings; KDS and legacy orders → zero sends and zero writes
- *   6. dead token compare-and-clear on a real row + its index; a retained failure is logged with its code (no token)
+ *   6. a dead token clears exactly its registration; a retained failure is logged with its code (no token)
  */
 require('./_emulator-required')('database');
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
@@ -81,42 +82,41 @@ const gate = () => { let open; let reached; const opened = new Promise((r) => { 
   assert.strictEqual(await codeOf(reg('hh_h', 'TOKH', EP, 'tb_huerfana')), 'permission-denied', 'a location the brand does not list (no membership)');
   assert.strictEqual(await val(`merchant_push_tokens/${IO.sha('TOKH')}`), null);
   assert.deepStrictEqual(await reg('hh_a', 'TOKA', EP), { ok: true, registered_token_hash: IO.sha('TOKA') });
-  assert.deepStrictEqual(await val(`merchant_push_tokens/${IO.sha('TOKA')}`), { rid: 'tb_norte', uid: 'hh_a', epoch: EP, seq: 1 });
-  assert.deepStrictEqual([await val('restaurants/tb_norte/handhelds/hh_a/fcm_token'), await val('restaurants/tb_norte/handhelds/hh_a/push_seq')], ['TOKA', 1]);
-  ok('production authorization: anonymous / unregistered / revoked / foreign-rid / non-member refused by the real callable; a device registers (row + index + seq)');
+  const ea = await val(`merchant_push_tokens/${IO.sha('TOKA')}`);
+  assert.deepStrictEqual({ ...ea, claim: 'x', at: 'x' }, { rid: 'tb_norte', uid: 'hh_a', epoch: EP, token: 'TOKA', claim: 'x', at: 'x' });
+  assert.ok(/^[a-f0-9]{24}$/.test(ea.claim) && Number.isInteger(ea.at), 'a random claim + the request start');
+  assert.strictEqual(await val('restaurants/tb_norte/handhelds/hh_a/fcm_token'), null, 'the row carries no token');
+  ok('production authorization: anonymous / unregistered / revoked / foreign-rid / non-member refused by the real callable; a device registers (ONE index entry)');
 
-  // 2. P1-1 ownership race on real transactions
+  // 2. codex r2 P1-2 — the SAME row: a stale request (began first, paused at its one transaction) vs a newer one that succeeds
   const g = gate();
-  beforeTxn.set('restaurants/tb_norte/handhelds/hh_a', g.hook);                       // A's ROW write waits; its claim already committed
-  const a = reg('hh_a', 'TRACE', EP);
+  beforeTxn.set(`merchant_push_tokens/${IO.sha('TRACE')}`, g.hook);
+  const a = reg('hh_b', 'TRACE', EP);                                                 // began first
   await g.at;
-  assert.deepStrictEqual(await reg('hh_b', 'TRACE', EP2), { ok: true, registered_token_hash: IO.sha('TRACE') });
+  assert.deepStrictEqual(await reg('hh_b', 'TRACE', EP2), { ok: true, registered_token_hash: IO.sha('TRACE') });   // newer, same row
   g.open();
-  assert.strictEqual(await codeOf(a), 'aborted', 'the superseded claim fails (native retries)');
-  assert.strictEqual(await val('restaurants/tb_norte/handhelds/hh_a/fcm_token'), null, 'the superseded row does not keep TRACE (its stale TOKA was replaced; native retries)');
-  assert.strictEqual(await val(`merchant_push_tokens/${IO.sha('TOKA')}`), null, 'A\'s previous token index went with its row write');
-  assert.deepStrictEqual(await val(`merchant_push_tokens/${IO.sha('TRACE')}`), { rid: 'tb_norte', uid: 'hh_b', epoch: EP2, seq: 2 });
-  // a late superseded row write (A holds TRACE under seq 1) never receives: the real trigger sends to the index owner only
-  await db.ref('restaurants/tb_norte/handhelds/hh_a').update({ fcm_token: 'TRACE', push_seq: 1, push_epoch: EP });
+  assert.strictEqual(await codeOf(a), 'aborted', 'the stale request never overwrites the newer registration');
+  assert.strictEqual((await val(`merchant_push_tokens/${IO.sha('TRACE')}`)).epoch, EP2);
   outbox = [];
-  const s0 = await trigger('merchantPushOnStatus', 'o1', null, 'new', T0 + 100);
-  assert.deepStrictEqual(outbox.map((m) => [m.token, m.data.epoch]), [['TRACE', EP2]], 'one message, to hh_b');
-  assert.deepStrictEqual([s0.sent, s0.not_owned], [1, 1]);
-  await reg('hh_a', 'TOKA2', EP);                                                    // A re-registers its own installation
-  ok('codex r1 P1-1 on real transactions: a paused claim superseded by another → aborted, ONE owner; a late superseded row never receives');
+  await trigger('merchantPushOnStatus', 'o3', null, 'new', T0 + 90);
+  assert.deepStrictEqual(outbox.map((m) => [m.token, m.data.epoch]), [['TOKA', EP], ['TRACE', EP2]], 'the newer registration keeps receiving');
+  await db.ref('merchant_push_log/o3').remove();
+  ok('codex r2 P1-2 on the real transaction: a stale same-row request landing after a newer one → aborted, the newer one stands and receives');
 
-  // 3. P1-2: E1 cleanup after an E2 re-register of the same token keeps E2's index
-  const g2 = gate();
-  beforeTxn.set(`merchant_push_tokens/${IO.sha('TOKA2')}`, g2.hook);                 // the unregister's INDEX cleanup waits
-  const u = call('merchantUnregisterPush', dev('hh_a'), { rid: 'tb_norte', epoch: EP });
-  await g2.at;
-  await reg('hh_a', 'TOKA2', EP2);                                                   // the next pairing re-registers the same installation
-  g2.open();
-  assert.deepStrictEqual(await u, { ok: true, cleared: true });
-  assert.deepStrictEqual(await val(`merchant_push_tokens/${IO.sha('TOKA2')}`), { rid: 'tb_norte', uid: 'hh_a', epoch: EP2, seq: 2 }, 'the newer claim survives');
-  assert.deepStrictEqual(await call('merchantUnregisterPush', dev('hh_a'), { rid: 'tb_norte', epoch: EP }), { ok: true, cleared: false }, 'a stale epoch never unregisters');
-  assert.strictEqual(await val('restaurants/tb_norte/handhelds/hh_a/fcm_token'), 'TOKA2');
-  ok('codex r1 P1-2 on real transactions: an E1 index cleanup landing after an E2 re-register keeps E2; a stale epoch unregisters nothing');
+  // 3. codex r2 P1-1 — unregister → re-register the SAME token/uid while an E1 send is in flight: E1's delayed dead response is a no-op
+  failFor = { TOKA: 'messaging/registration-token-not-registered' };
+  onSend = async () => {
+    assert.deepStrictEqual(await call('merchantUnregisterPush', dev('hh_a'), { rid: 'tb_norte', epoch: EP }), { ok: true, cleared: true });
+    await reg('hh_a', 'TOKA', EP2);
+  };
+  const s3 = await trigger('merchantPushOnStatus', 'o1', null, 'new', T0 + 100);
+  failFor = {};
+  assert.strictEqual(s3.cleared, 0, 'the old registration\'s dead-token response matches nothing');
+  const e2 = await val(`merchant_push_tokens/${IO.sha('TOKA')}`);
+  assert.ok(e2 && e2.epoch === EP2 && e2.claim !== ea.claim, 'E2 stands under a new unique claim');
+  assert.deepStrictEqual(await call('merchantUnregisterPush', dev('hh_a'), { rid: 'tb_norte', epoch: EP }), { ok: true, cleared: false }, 'a late E1 unregister is a no-op');
+  assert.ok(await val(`merchant_push_tokens/${IO.sha('TOKA')}`));
+  ok('codex r2 P1-1 on the real path: unregister → re-register the same token/uid mid-send → the old cleanup and a late old unregister are no-ops');
 
   // 4. reconcile through the real export (the real indexed location query)
   await db.ref('merchant_push_log/o2').set({ new_at: T0 + 30 });
@@ -131,7 +131,7 @@ const gate = () => { let open; let reached; const opened = new Promise((r) => { 
   outbox = [];
   const s2 = await trigger('merchantPushOnStatus', 'o3', null, 'new', T0 + 200);
   assert.deepStrictEqual([s2.type, s2.sent], ['new_order', 2]);
-  assert.deepStrictEqual(outbox.map((m) => [m.token, m.data.epoch, m.data.at]).sort(), [['TOKA2', EP2, String(T0 + 200)], ['TRACE', EP2, String(T0 + 200)]]);
+  assert.deepStrictEqual(outbox.map((m) => [m.token, m.data.epoch, m.data.at]).sort(), [['TOKA', EP2, String(T0 + 200)], ['TRACE', EP2, String(T0 + 200)]]);
   assert.deepStrictEqual(await val('merchant_push_log/o3'), { new_at: T0 + 200 });
   await db.ref('orders/o3').update({ status: 'preparing', handheld_answered: { kind: 'accepted' } });
   outbox = [];
@@ -155,18 +155,17 @@ const gate = () => { let open; let reached; const opened = new Promise((r) => { 
   // 6. dead token + retained failure diagnostics on real rows
   const lines = []; const warn0 = console.warn; console.warn = (l) => lines.push(String(l));
   try {
-    failFor = { TRACE: 'messaging/registration-token-not-registered', TOKA2: 'messaging/invalid-argument' };
+    failFor = { TRACE: 'messaging/registration-token-not-registered', TOKA: 'messaging/invalid-argument' };
     await db.ref('orders/o1/status').set('new');
     const sd = await trigger('merchantPushOnStatus', 'o1', 'releasing', 'new', T0 + 700);
     assert.deepStrictEqual([sd.failed, sd.cleared], [2, 1]);
   } finally { console.warn = warn0; failFor = {}; }
-  assert.strictEqual(await val('restaurants/tb_norte/handhelds/hh_b/fcm_token'), null, 'the dead token is cleared');
-  assert.strictEqual(await val(`merchant_push_tokens/${IO.sha('TRACE')}`), null, '…with its index entry');
-  assert.strictEqual(await val('restaurants/tb_norte/handhelds/hh_a/fcm_token'), 'TOKA2', 'invalid-argument retained');
+  assert.strictEqual(await val(`merchant_push_tokens/${IO.sha('TRACE')}`), null, 'the dead token\'s registration is cleared');
+  assert.ok(await val(`merchant_push_tokens/${IO.sha('TOKA')}`), 'invalid-argument retained');
   const diag = lines.map((l) => { try { return JSON.parse(l); } catch (_) { return null; } }).filter((x) => x && x.event === 'merchant_push');
   assert.deepStrictEqual(diag.map((d) => [d.reason, d.codes]), [['send_failed', { 'messaging/invalid-argument': 1 }]]);
-  assert.ok(lines.every((l) => !/TOKA2|TRACE/.test(l) && !l.includes(IO.sha('TOKA2'))), 'no token / hash logged');
-  ok('dead token compare-and-cleared with its index on real rows; a retained failure is logged with its code, never a token');
+  assert.ok(lines.every((l) => !/TOKA|TRACE/.test(l) && !l.includes(IO.sha('TOKA')) && !l.includes(IO.sha('TRACE'))), 'no token / hash logged');
+  ok('a dead token clears exactly its registration; a retained failure is logged with its code, never a token');
 
   console.log(`\nmerchant-push: OK (${n})`);
   process.exit(0);

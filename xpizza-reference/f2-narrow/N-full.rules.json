@@ -724,7 +724,10 @@
     },
     "merchant_push_tokens": {
       ".read": false,
-      ".write": false
+      ".write": false,
+      ".indexOn": [
+        "rid"
+      ]
     },
     "merchant_push_log": {
       ".read": false,

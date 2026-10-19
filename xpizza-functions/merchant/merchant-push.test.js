@@ -11,20 +11,22 @@ test('vToken / vEpoch', () => {
   for (const bad of ['short', 'x'.repeat(65), 'has space here here', null, 7]) assert.strictEqual(P.vEpoch(bad), null);
 });
 
-test('pushTargets: only registered, unrevoked handhelds with a valid token, epoch AND claim seq; uid-sorted', () => {
-  const rows = {
-    hh_b: { kind: 'handheld', revoked: false, fcm_token: 'tb', push_epoch: EP, push_seq: 3 },
-    hh_a: { kind: 'handheld', revoked: false, fcm_token: 'ta', push_epoch: EP, push_seq: 1 },
-    hh_noseq: { kind: 'handheld', revoked: false, fcm_token: 'tq', push_epoch: EP },
-    hh_badseq: { kind: 'handheld', revoked: false, fcm_token: 'tz', push_epoch: EP, push_seq: 0 },
-    hh_noepoch: { kind: 'handheld', revoked: false, fcm_token: 'tn' },
-    hh_rev: { kind: 'handheld', revoked: true, fcm_token: 'tr', push_epoch: EP },
-    hh_none: { kind: 'handheld', revoked: false, push_epoch: EP },
-    human: { kind: 'human', revoked: false, fcm_token: 'th', push_epoch: EP },
-    hh_unk: { kind: 'handheld', fcm_token: 'tu', push_epoch: EP },              // revoked absent → excluded (fail closed)
+test('targetsOf: entries of THIS rid, valid token / epoch / claim, whose uid is a registered unrevoked handheld; uid then hash order', () => {
+  const C = (n) => String(n).repeat(24);
+  const e = (rid, uid, token, over = {}) => ({ rid, uid, epoch: EP, token, claim: C(1), at: 5, ...over });
+  const entries = {
+    h2: e('tb_norte', 'hh_b', 'tb'), h1: e('tb_norte', 'hh_a', 'ta1'), h0: e('tb_norte', 'hh_a', 'ta0', { claim: C(2) }),
+    hx: e('tb_centro', 'hh_a', 'tx'), hr: e('tb_norte', 'hh_rev', 'tr'), hn: e('tb_norte', 'hh_none', 'tn'), hh: e('tb_norte', 'human', 'th'),
+    hbadc: e('tb_norte', 'hh_a', 'tc', { claim: 'nothex' }), hbade: e('tb_norte', 'hh_a', 'te', { epoch: 'short' }), hbadt: e('tb_norte', 'hh_a', 'a b'),
+    hu: e('tb_norte', 'hh_unk', 'tu'),
   };
-  assert.deepStrictEqual(P.pushTargets(rows), [{ uid: 'hh_a', token: 'ta', epoch: EP, seq: 1 }, { uid: 'hh_b', token: 'tb', epoch: EP, seq: 3 }]);
-  assert.deepStrictEqual(P.pushTargets(null), []);
+  const rows = { hh_a: { kind: 'handheld', revoked: false }, hh_b: { kind: 'handheld', revoked: false }, hh_rev: { kind: 'handheld', revoked: true },
+    human: { kind: 'human', revoked: false }, hh_unk: { kind: 'handheld' } };
+  assert.deepStrictEqual(P.targetsOf(entries, rows, 'tb_norte'), [
+    { hash: 'h0', uid: 'hh_a', token: 'ta0', epoch: EP, claim: C(2) }, { hash: 'h1', uid: 'hh_a', token: 'ta1', epoch: EP, claim: C(1) },
+    { hash: 'h2', uid: 'hh_b', token: 'tb', epoch: EP, claim: C(1) }]);
+  assert.deepStrictEqual(P.targetsOf(null, rows, 'tb_norte'), []);
+  assert.deepStrictEqual(P.targetsOf(entries, null, 'tb_norte'), [], 'no rows → no device is registered');
 });
 
 test('decisions: becameNew, leftNewTo (deletion is NOT a resolution push), answeredNow, servedAtHandheld, stillPending', () => {
@@ -65,17 +67,11 @@ test('buildDataMessage: DATA-ONLY, string values incl. at + epoch, high priority
   assert.throws(() => P.buildDataMessage({ token: 't', epoch: EP }, 'resolved', 'o', 'r', NaN), /bad push at/);
 });
 
-test('dead tokens: a HANDHELD-only classifier (invalid-argument retained) + compare-and-clear against the token sent', () => {
+test('dead tokens: a HANDHELD-only classifier (invalid-argument retained)', () => {
   assert.strictEqual(P.isDeadHandheldToken({ code: 'messaging/registration-token-not-registered' }), true);
   assert.strictEqual(P.isDeadHandheldToken({ code: 'messaging/invalid-registration-token' }), true);
   assert.strictEqual(P.isDeadHandheldToken({ code: 'messaging/invalid-argument' }), false, 'may be a payload problem → retained');
   assert.strictEqual(P.isDeadHandheldToken({ code: 'messaging/internal-error' }), false);
-  const row = { kind: 'handheld', revoked: false, fcm_token: 'T1', fcm_updated_at: 5, push_epoch: EP, push_seq: 4 };
-  assert.deepStrictEqual(P.clearTokenUpdate(row, 'T1'), { kind: 'handheld', revoked: false, push_epoch: EP });
-  assert.deepStrictEqual(P.clearTokenUpdate(row, 'T1', 4), { kind: 'handheld', revoked: false, push_epoch: EP }, 'same claim seq → cleared');
-  assert.strictEqual(P.clearTokenUpdate(row, 'T1', 3), undefined, 'a NEWER claim of the same token (seq 4) is kept');
-  assert.strictEqual(P.clearTokenUpdate({ ...row, fcm_token: 'T2' }, 'T1'), undefined, 'the T1→T2 race: a send to T1 failed after re-register to T2 → T2 kept');
-  assert.strictEqual(P.clearTokenUpdate(null, 'T1'), null);
 });
 
 test('pendingOf (S1b): new + unanswered + served at this handheld location; at = the log new_at, else created_at', () => {
@@ -91,19 +87,21 @@ test('pendingOf (S1b): new + unanswered + served at this handheld location; at =
   assert.deepStrictEqual(P.pendingOf(orders, 'tb_norte', 'kds', {}), [], 'a kds location has no handheld pending');
 });
 
-test('codex r1 P1-1/P1-2: the token index is the owner of record — claim bumps seq; only the exact (rid, uid, seq) owns or clears it', () => {
-  assert.deepStrictEqual(P.claimIndex(null, 'tb_norte', 'hh_a', EP), { rid: 'tb_norte', uid: 'hh_a', epoch: EP, seq: 1 });
-  const e = P.claimIndex({ rid: 'tb_norte', uid: 'hh_a', epoch: EP, seq: 7 }, 'tb_centro', 'hh_c', EP);
-  assert.deepStrictEqual(e, { rid: 'tb_centro', uid: 'hh_c', epoch: EP, seq: 8 });
-  assert.strictEqual(P.claimIndex({ rid: 'x', uid: 'y', seq: 'junk' }, 'tb_norte', 'hh_a', EP).seq, 1, 'a malformed seq restarts at 1');
-  assert.strictEqual(P.ownsIndex(e, 'tb_centro', 'hh_c', 8), true);
-  for (const [r, u, q] of [['tb_norte', 'hh_c', 8], ['tb_centro', 'hh_a', 8], ['tb_centro', 'hh_c', 7], ['tb_centro', 'hh_c', undefined]]) assert.strictEqual(P.ownsIndex(e, r, u, q), false);
-  assert.strictEqual(P.ownsIndex(null, 'tb_centro', 'hh_c', 8), false);
-  assert.strictEqual(P.clearIndexUpdate(e, 'tb_centro', 'hh_c', 8), null);
-  assert.strictEqual(P.clearIndexUpdate(e, 'tb_centro', 'hh_c', 7), undefined, 'an older registration never erases a newer owner');
-  assert.strictEqual(P.clearIndexUpdate({ rid: 'tb_centro', uid: 'hh_c' }, 'tb_centro', 'hh_c', 1), undefined, 'a seq-less entry is never matched');
-  assert.strictEqual(P.clearIndexUpdate(null, 'a', 'b', 1), null);
-  assert.deepStrictEqual(P.registerRowUpdate({ kind: 'handheld', revoked: false }, 'T', EP, 8, 99), { kind: 'handheld', revoked: false, fcm_token: 'T', fcm_updated_at: 99, push_epoch: EP, push_seq: 8 });
-  assert.strictEqual(P.registerRowUpdate(null, 'T', EP, 8, 99), null, 'null-first: a null read proposes null (never an abort that refuses an existing row)');
-  assert.strictEqual(P.registerRowUpdate('junk', 'T', EP, 8, 99), undefined, 'a malformed row aborts');
+test('codex r2: ONE registration record per token — a unique claim per registration; the newer REQUEST wins; clears match the exact claim', () => {
+  const C1 = 'aaaaaaaaaaaaaaaaaaaaaaaa'; const C2 = 'bbbbbbbbbbbbbbbbbbbbbbbb';
+  const old = { rid: 'tb_norte', uid: 'hh_a', epoch: EP, token: 'T', claim: C1, at: 100 };
+  const fresh = { rid: 'tb_centro', uid: 'hh_c', epoch: 'epoch_ZYXWVUTSRQ9876', token: 'T', claim: C2, at: 200 };
+  assert.deepStrictEqual(P.claimUpdate(null, old), old, 'first registration');
+  assert.deepStrictEqual(P.claimUpdate(old, fresh), fresh, 'a newer request replaces (incl. a move to another device)');
+  assert.strictEqual(P.claimUpdate(fresh, old), undefined, 'a STALE request (began earlier) landing late never overwrites');
+  assert.deepStrictEqual(P.claimUpdate({ ...old, at: 200 }, fresh), fresh, 'same start ms: the claim breaks the tie (C2 > C1)');
+  assert.strictEqual(P.claimUpdate({ ...fresh, at: 200 }, { ...old, at: 200 }), undefined, '…deterministically, both ways');
+  assert.deepStrictEqual(P.claimUpdate({ rid: 'x', junk: true }, old), old, 'a malformed stored entry never blocks');
+  assert.strictEqual(P.clearClaimUpdate(old, C1), null, 'the exact registration is cleared');
+  assert.strictEqual(P.clearClaimUpdate(fresh, C1), undefined, 'a delayed cleanup of an OLD registration never clears a new one');
+  assert.strictEqual(P.clearClaimUpdate(null, C1), null);
+  assert.strictEqual(P.clearClaimUpdate(old, 'nothex'), undefined);
+  assert.deepStrictEqual(P.unregisterMatches({ h1: old, h2: fresh, h3: { ...old, epoch: 'epoch_ZYXWVUTSRQ9876', claim: C2 } }, 'tb_norte', 'hh_a', EP), [{ hash: 'h1', claim: C1 }], 'only this pairing\'s epoch');
+  assert.strictEqual(P.vClaim(C1), C1);
+  for (const bad of ['a'.repeat(23), 'A'.repeat(24), 'g'.repeat(24), null, 5]) assert.strictEqual(P.vClaim(bad), null);
 });
