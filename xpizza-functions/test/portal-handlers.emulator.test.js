@@ -140,8 +140,8 @@ const shape = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? Object.k
   await sourceRefOf(fs, RID).set(canonicalize(buildSourceFromCode(RID)));
   const { input } = require('../tools/publish-version').buildPublishCandidate(RID, { activeVersionId: null }, { source_sha: 'seed' });
   await publishVersion(fs, RID, input, { expected: { activeVersionId: null } });
-  const { ownerGrantPaths } = require('../catalog/owner-index');
-  await db.ref().update(ownerGrantPaths(RID, OWNER));
+  const { ownerSeed } = require('./_membership-seed');   // PLAN-portal-membership r3: the owner grant in the membership model
+  await db.ref().update(ownerSeed(RID, OWNER));
 
   const T = [];
   const step = (name, rec) => { T.push({ step: name, ...rec }); };
