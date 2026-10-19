@@ -982,10 +982,10 @@
   "xpizza-driver/index.html<script@0>#companionHasHeldWork>anon@self": {
    "status": "pending"
   },
-  "xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries>anon@self": {
+  "xpizza-driver/index.html<script@0>#detectNewAssignments@xpizza-driver/index.html<script@0>#onTasks": {
    "status": "pending"
   },
-  "xpizza-driver/index.html<script@0>#detectNewAssignments@xpizza-driver/index.html<script@0>#onTasks": {
+  "xpizza-driver/index.html<script@0>#openEndShiftSheet>anon@self": {
    "status": "pending"
   },
   "xpizza-driver/index.html<script@0>#renderActiveCard>anon@self": {
@@ -1120,7 +1120,7 @@
   "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon@self": {
    "status": "pending"
   },
-  "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#confirmEndShiftIfPendingDeliveries": {
+  "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#handleEndShift": {
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
