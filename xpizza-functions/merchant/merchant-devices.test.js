@@ -50,6 +50,14 @@ test('H1c (codex H1c-server r3): every pairing takes the NEXT server-issued pair
   db.put('platform_config/handheld_pair_gen', 'junk');
   await rejectsCode(D.pairDevice(d, human('mgr_c'), { rid: 'tb_centro', label: 'C' }), 'unavailable');
   assert.strictEqual(db.get('restaurants/tb_centro/handhelds/hh_tb_centro_r3'), null, 'never a re-issued generation');
+  for (const bad of [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER + 1, 2 ** 60, 1.5]) {
+    db.put('platform_config/handheld_pair_gen', bad);
+    await rejectsCode(D.pairDevice(d, human('mgr_c'), { rid: 'tb_centro', label: 'X' }), 'unavailable');
+  }
+  assert.strictEqual(db.get('platform_config/handheld_pair_gen'), 1.5, 'an exhausted / unsafe counter is never incremented');
+  db.put('platform_config/handheld_pair_gen', Number.MAX_SAFE_INTEGER - 1);
+  await D.pairDevice(d, human('mgr_c'), { rid: 'tb_centro', label: 'Last' });
+  assert.strictEqual(db.get('platform_config/handheld_pair_gen'), Number.MAX_SAFE_INTEGER, 'the last safe generation is issued');
   db.put('platform_config/handheld_pair_gen', 2);
   db.failReads.add('platform_config/handheld_pair_gen');
   await rejectsCode(D.pairDevice(d, human('mgr_c'), { rid: 'tb_centro', label: 'D' }), 'unavailable');

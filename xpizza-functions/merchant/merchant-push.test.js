@@ -105,5 +105,7 @@ test('codex r2/r3: ONE registration record per token — a unique claim per regi
   assert.strictEqual(P.vClaim(C1), C1);
   for (const bad of ['a'.repeat(23), 'A'.repeat(24), 'g'.repeat(24), null, 5]) assert.strictEqual(P.vClaim(bad), null);
   assert.strictEqual(P.vGen(3), 3);
-  for (const bad of [0, -1, 1.5, '3', null]) assert.strictEqual(P.vGen(bad), null);
+  for (const bad of [0, -1, 1.5, '3', null, Number.MAX_SAFE_INTEGER + 1, 2 ** 60]) assert.strictEqual(P.vGen(bad), null);
+  assert.strictEqual(P.vGen(Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER);
+  assert.deepStrictEqual(P.claimUpdate({ rid: 'x', uid: 'y', gen: 2 ** 60, claim: C1 }, old), old, 'an unsafe stored gen never blocks (never compared imprecisely)');
 });

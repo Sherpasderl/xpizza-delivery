@@ -30,8 +30,9 @@ async function asManager({ db, resolveBrand, HttpsError }, auth, rid) {
 }
 
 // the next pairing generation. null-first safe: a null read proposes 1 and RTDB re-runs with the real value when the counter exists.
-// A malformed counter is never "repaired" by restarting (that would re-issue generations): it aborts, and pairing is refused.
-const nextPairGen = (cur) => (cur === null ? 1 : Number.isInteger(cur) && cur >= 1 ? cur + 1 : undefined);
+// A malformed counter is never "repaired" by restarting (that would re-issue generations): it aborts, and pairing is refused. Safe
+// integers only: an exhausted counter (MAX_SAFE_INTEGER) refuses BEFORE incrementing, so a generation is never imprecise or repeated.
+const nextPairGen = (cur) => (cur === null ? 1 : Number.isSafeInteger(cur) && cur >= 1 && cur < Number.MAX_SAFE_INTEGER ? cur + 1 : undefined);
 
 async function pairDevice(deps, auth, data) {
   const { db, adminAuth, HttpsError, now, randomId } = deps;

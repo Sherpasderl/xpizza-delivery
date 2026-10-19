@@ -174,10 +174,12 @@ test('codex r3 P1: an OLDER pairing paused INSIDE authorization, released after 
   const db = createFakeDb(world());
   let release; const gate = new Promise((r) => { release = r; }); let paused; const atGate = new Promise((r) => { paused = r; });
   const dbA = pauseRead(db, 'restaurants/tb_norte/handhelds/hh_n1', async () => { paused(); await gate; });
-  const a = IO.registerPush(deps(dbA, { now: () => T0, newClaim: () => 'f'.repeat(24) }), dev('hh_n1'), { rid: 'tb_norte', token: 'T', epoch: EP });   // gen 1
+  let clockA = T0;
+  const a = IO.registerPush(deps(dbA, { now: () => clockA, newClaim: () => 'f'.repeat(24) }), dev('hh_n1'), { rid: 'tb_norte', token: 'T', epoch: EP });   // gen 1
   await atGate;
   assert.strictEqual((await IO.registerPush(deps(db, { now: () => T0 + 1, newClaim: () => '0'.repeat(24) }), dev('hh_n2'), { rid: 'tb_norte', token: 'T', epoch: EP2 })).ok, true);   // gen 2
-  release();                                                                             // A's clock now reads later, and its claim sorts higher
+  clockA = T0 + 60000;                                                                   // A's clock now reads LATER than B's, and its claim sorts higher
+  release();
   await rejectsCode(a, 'aborted');
   assert.deepStrictEqual([db.get(`merchant_push_tokens/${IO.sha('T')}`).uid, db.get(`merchant_push_tokens/${IO.sha('T')}`).gen], ['hh_n2', 2], 'the newer pairing stands');
   const d = deps(db);

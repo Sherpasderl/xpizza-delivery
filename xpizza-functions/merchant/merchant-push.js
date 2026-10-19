@@ -27,7 +27,7 @@ const vEpoch = (e) => (typeof e === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(e)
 //             clocks or arrival order; the same generation (the same device re-registering) replaces.
 const CLAIM_RE = /^[a-f0-9]{24}$/;
 const vClaim = (v) => (typeof v === 'string' && CLAIM_RE.test(v) ? v : null);
-const vGen = (v) => (Number.isInteger(v) && v >= 1 ? v : null);
+const vGen = (v) => (Number.isSafeInteger(v) && v >= 1 ? v : null);   // safe integers only (codex r4)
 // does the stored entry belong to a NEWER pairing than generation `gen`?
 function isNewer(cur, gen) {
   return isObj(cur) && vGen(cur.gen) !== null && cur.gen > gen;
