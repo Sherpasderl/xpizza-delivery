@@ -74,10 +74,20 @@ function makeEnv(db, uid, emit) {
     await wipe(); await admin(SEED());                             // O2: delivered, total 150, delivered_by_driver_uid=UID
     const db = testEnv.authenticatedContext(UID).database();
     const r = db.ref('orders/O2');
-    await new Promise((res) => { const h = r.on('value', (s) => { if (s.val()) { r.off('value', h); res(); } }); });  // cache O2 @150, then detach
-    await admin({ 'orders/O2/total': 999 });                       // server changes; with NO active listener the client cache is now STALE
-    const g = await r.get();                                       // production uses get() → must hit the server, not return the cached 150
-    ck(g.val() && g.val().total === 999, `B: get() returned a STALE cached value, not the server-fresh one (${g.val() && g.val().total})`);
+    // Keep a listener ACTIVE so the SDK cache for this path stays POPULATED (codex r3 #1: detaching the ONLY
+    // listener evicts the cache, making a later get() hit the server trivially — not a real stale-cache race).
+    let lastSeen = null;
+    const keepAlive = r.on('value', (s) => { lastSeen = s.val() && s.val().total; });
+    await new Promise((res) => { const check = () => (lastSeen === 150 ? res() : setTimeout(check, 20)); check(); });  // cache populated @150
+    db.goOffline();                                                // freeze the client → the populated cache stays 150 and cannot refresh
+    await admin({ 'orders/O2/total': 999 });                       // server now 999 on a separate connection → the client's POPULATED cache is now STALE
+    const stale = await r.get();                                   // offline get() → the stale CACHED value (proves the cache is populated AND stale)
+    ck(stale.val() && stale.val().total === 150, `B: offline get() should return the stale populated cache 150 (${stale.val() && stale.val().total})`);
+    db.goOnline();
+    await sleep(400);                                              // reconnect
+    const fresh = await r.get();                                   // online get() → SERVER-fresh 999, bypassing the still-populated cache
+    ck(fresh.val() && fresh.val().total === 999, `B: online get() must be server-fresh 999, not the populated-but-stale cache (${fresh.val() && fresh.val().total})`);
+    r.off('value', keepAlive);
     const env = makeEnv(db, UID, {});
     const rec = await env.reconcileOrderOnce('O2');
     ck(rec.keep === true && rec.value && rec.value.total === 999, `B: reconcileOrderOnce not fresh+attributed (${JSON.stringify(rec)})`);
@@ -90,19 +100,32 @@ function makeEnv(db, uid, emit) {
   {
     await wipe(); await admin(SEED());
     const db = testEnv.authenticatedContext(UID).database();
-    const out = { orders: {}, tasks: {}, readiness: null };
-    const emit = { onOrders: (o) => { out.orders = o; }, onTasks: (t) => { out.tasks = t; }, onReadiness: (r) => { out.readiness = r; }, onDriver: () => {} };
-    const feed = makeDriverFeed(makeEnv(db, UID, emit));
+    const out = { orders: {}, tasks: {} };
+    let watch = false, snap = null, resolveT;
+    const tornDown = new Promise((r) => { resolveT = r; });
+    let feed;
+    const emit = {
+      onOrders: (o) => {
+        out.orders = o;
+        // Capture the FIRST emission that drops O1 — driven by the PERMISSION_DENIED cancel callback (onRevoked →
+        // publish) — SYNCHRONOUSLY inside that callback, not after a fixed delay (codex r3 #2).
+        if (watch && o && o.O1 === undefined && snap === null) { snap = { orders: o, tasks: feed.getOwnTasks() }; resolveT(); }
+      },
+      onTasks: (t) => { out.tasks = t; }, onReadiness: () => {}, onDriver: () => {},
+    };
+    feed = makeDriverFeed(makeEnv(db, UID, emit));
     feed.start();
     await sleep(800);
     ck(feed.readiness() === 'ready', `C: not ready after start (${feed.readiness()})`);
-    ck(!!out.orders.O1, 'C: O1 not published');
-    ck(!!feed.getOwnTasks().O1_pickup, 'C: O1 task legs not published');
-    // reassign both legs away → the per-order listener is cancelled PERMISSION_DENIED + the task query drops them
+    ck(!!out.orders.O1 && !!feed.getOwnTasks().O1_pickup, 'C: O1 not published before revoke');
+    watch = true;
+    // reassign both legs away → the per-order listener is cancelled PERMISSION_DENIED → onRevoked tears it down
     await admin({ 'tasks/O1_pickup/assigned_driver_id': 'u-d2', 'tasks/O1_delivery/assigned_driver_id': 'u-d2' });
-    await sleep(1200);
-    ck(feed.getOrders().O1 === undefined, `C: revoked O1 still in allOrders (${JSON.stringify(feed.getOrders().O1)})`);
-    ck(feed.getOwnTasks().O1_pickup === undefined, 'C: revoked O1 task legs still published (stale card)');
+    await Promise.race([tornDown, sleep(3000).then(() => { throw new Error('C: teardown never emitted on the cancel callback'); })]);
+    // The snapshot was taken IN the teardown publish (the cancel callback), proving IMMEDIATE teardown: O1 and BOTH
+    // its task legs are gone in that single emission — no stale card, no waiting for eventual settling.
+    ck(snap && snap.orders.O1 === undefined, 'C: revoked O1 not removed from allOrders on the cancel callback');
+    ck(snap && snap.tasks.O1_pickup === undefined && snap.tasks.O1_delivery === undefined, 'C: revoked O1 legs not stripped from ownTasks on the cancel callback');
     feed.dispose();
   }
 
