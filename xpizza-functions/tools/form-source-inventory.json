@@ -1584,7 +1584,8 @@
   "rewards-redeem-intake.js",
   "rewards-reserve.js",
   "signup-core.js",
-  "signup-endpoints.js"
+  "signup-endpoints.js",
+  "unassign-core.js"
  ],
  "server": {
   "access/access-census-core.js": {
@@ -2124,6 +2125,10 @@
    "lifts": [
     "xpizza-functions/signup-wiring.guard.test.js"
    ]
+  },
+  "unassign-core.js": {
+   "pins": [],
+   "lifts": []
   }
  },
  "unregistered": []
