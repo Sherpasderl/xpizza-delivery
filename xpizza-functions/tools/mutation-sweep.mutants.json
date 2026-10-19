@@ -15349,9 +15349,45 @@
     "id": "f2b-08",
     "slice": "f2b",
     "file": "../xpizza-driver/driver-feed.js",
-    "from": "if (!handoff.has(oid)) return;                     // fix #4: superseded by task re-add / live hist / revocation",
-    "to": "if (!handoff.has(oid)) ;                     // fix #4: superseded by task re-add / live hist / revocation",
-    "label": "#4 late reconcile not gated on current membership -> stale result resurrects a removed order",
+    "from": "const stillCurrent = () => isLive(myGen) && handoff.has(oid) && handoffEpoch.get(oid) === myEpoch;",
+    "to": "const stillCurrent = () => isLive(myGen) && handoff.has(oid);",
+    "label": "#1/#4 reconcile not epoch-gated -> an OLDER reconcile consumes a NEWER handoff (undercount)",
+    "command": [
+      "node",
+      "../xpizza-driver/driver-feed.test.js"
+    ]
+  },
+  {
+    "id": "f2b-09",
+    "slice": "f2b",
+    "file": "../xpizza-driver/driver-feed.js",
+    "from": "for (const oid of [...revokedOids]) if (!rOids.has(oid)) revokedOids.delete(oid);",
+    "to": "for (const oid of [...revokedOids]) if (!tOids.has(oid)) revokedOids.delete(oid);",
+    "label": "#2 revocation cleared via the revoked-filtered tOids -> suppression lost on an unrelated task update",
+    "command": [
+      "node",
+      "../xpizza-driver/driver-feed.test.js"
+    ]
+  },
+  {
+    "id": "f2b-10",
+    "slice": "f2b",
+    "file": "../xpizza-driver/driver-feed.js",
+    "from": "if (sub && sub.present && !sub.errored && sub.value != null) return sub.value;",
+    "to": "if (sub && sub.present && sub.value != null) return sub.value;",
+    "label": "#3 errored point retains value authority over independent history",
+    "command": [
+      "node",
+      "../xpizza-driver/driver-feed.test.js"
+    ]
+  },
+  {
+    "id": "f2b-11",
+    "slice": "f2b",
+    "file": "../xpizza-driver/driver-feed.js",
+    "from": "(m) => { if (isLive(myGen)) onTasksSnapshot(m); }",
+    "to": "(m) => { onTasksSnapshot(m); }",
+    "label": "session-gen guard: a stale DISPOSED-session task callback pollutes the next session",
     "command": [
       "node",
       "../xpizza-driver/driver-feed.test.js"

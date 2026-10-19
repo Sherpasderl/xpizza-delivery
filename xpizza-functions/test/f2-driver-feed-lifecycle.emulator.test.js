@@ -34,7 +34,7 @@ function makeEnv(db, uid, emit) {
     subscribeOwnTasks(cb, onError) { const q = db.ref('tasks').orderByChild('assigned_driver_id').equalTo(uid); const h = q.on('value', (s) => cb(s.val() || {}), (e) => onError && onError(e)); return () => q.off('value', h); },
     subscribeOrder(oid, cb, onRevoked, onError) { const r = db.ref('orders/' + oid); const h = r.on('value', (s) => cb(s.val()), (e) => { if (isPermissionDenied(e)) onRevoked(); else onError && onError(e); }); return () => r.off('value', h); },
     subscribeHistory(which, cb, onError) { const field = which === 'primary' ? 'delivered_by_driver_uid' : 'delivered_by_uid'; const q = db.ref('orders').orderByChild(field).equalTo(uid); const h = q.on('value', (s) => cb(s.val() || {}), (e) => onError && onError(e)); return () => q.off('value', h); },
-    reconcileOrderOnce(oid) { return db.ref('orders/' + oid).once('value').then((s) => { const v = s.val(); return { value: v, keep: !!(v && (v.delivered_by_driver_uid === uid || v.delivered_by_uid === uid)) }; }); },
+    reconcileOrderOnce(oid) { return db.ref('orders/' + oid).get().then((s) => { const v = s.val(); return { value: v, keep: !!(v && (v.delivered_by_driver_uid === uid || v.delivered_by_uid === uid)) }; }).catch((e) => { if (isPermissionDenied(e)) return { value: null, keep: false }; throw e; }); },   // get() = production; server-fresh with no active listener (never the cache). A rules-DENY (not mine, no task) = authoritative keep:false; only a transient error rejects.
     subscribeOwnDriver(cb, onError) { const r = db.ref('drivers/' + uid); const h = r.on('value', (s) => cb(s.val()), (e) => onError && onError(e)); return () => r.off('value', h); },
     onReconnect(cb) { let was = null; const r = db.ref('.info/connected'); const h = r.on('value', (s) => { const c = s.val() === true; if (was === false && c) cb(); was = c; }); return () => r.off('value', h); },
   };
@@ -68,12 +68,22 @@ function makeEnv(db, uid, emit) {
     ck(b === 1, `A: re-attach of an unchanged subscription did not emit a fresh value (${b})`);
   }
 
-  // ── B: once() on a point path with no active listener → server read + attribution ──
+  // ── B: get() does a SERVER read even when the client holds a STALE cache (the freshness the BC1 reconcile
+  //       needs — a cache-first get() would undercount). Plus the attribution decision. ──
   {
+    await wipe(); await admin(SEED());                             // O2: delivered, total 150, delivered_by_driver_uid=UID
     const db = testEnv.authenticatedContext(UID).database();
-    const s = await db.ref('orders/O2').once('value');
-    const v = s.val();
-    ck(!!v && v.delivered_by_driver_uid === UID, `B: server read of a delivered+attributed order failed (${JSON.stringify(v)})`);
+    const r = db.ref('orders/O2');
+    await new Promise((res) => { const h = r.on('value', (s) => { if (s.val()) { r.off('value', h); res(); } }); });  // cache O2 @150, then detach
+    await admin({ 'orders/O2/total': 999 });                       // server changes; with NO active listener the client cache is now STALE
+    const g = await r.get();                                       // production uses get() → must hit the server, not return the cached 150
+    ck(g.val() && g.val().total === 999, `B: get() returned a STALE cached value, not the server-fresh one (${g.val() && g.val().total})`);
+    const env = makeEnv(db, UID, {});
+    const rec = await env.reconcileOrderOnce('O2');
+    ck(rec.keep === true && rec.value && rec.value.total === 999, `B: reconcileOrderOnce not fresh+attributed (${JSON.stringify(rec)})`);
+    await admin({ 'orders/O9': { order_id: 'O9', status: 'delivered', total: 50, payment_method: 'cash', delivered_by_driver_uid: 'u-other' } });
+    const rec9 = await env.reconcileOrderOnce('O9');
+    ck(rec9.keep === false, `B: a non-attributed order must be keep:false (${JSON.stringify(rec9)})`);
   }
 
   // ── C: controller through the real env — READY, then revocation tears the order + its tasks down ──
@@ -96,25 +106,43 @@ function makeEnv(db, uid, emit) {
     feed.dispose();
   }
 
-  // ── D: a real reconnect (goOffline→goOnline, data unchanged) → the controller re-attaches → readiness recovers ──
+  // ── D: a real reconnect (goOffline→goOnline, data UNCHANGED) → the controller re-attaches → readiness
+  //       transitions ready → LOADING → ready (asserts the LOADING transition, not merely eventual readiness). ──
   {
     await wipe(); await admin(SEED());
     const db = testEnv.authenticatedContext(UID).database();
-    const emit = { onOrders: () => {}, onTasks: () => {}, onReadiness: () => {}, onDriver: () => {} };
+    const rh = [];
+    const emit = { onOrders: () => {}, onTasks: () => {}, onReadiness: (r) => { rh.push(r); }, onDriver: () => {} };
     const feed = makeDriverFeed(makeEnv(db, UID, emit));
     feed.start();
     await sleep(800);
     ck(feed.readiness() === 'ready', `D: not ready before reconnect (${feed.readiness()})`);
-    db.goOffline();
-    await sleep(400);
-    db.goOnline();                           // NO data changes across the reconnect
-    await sleep(1500);
-    ck(feed.readiness() === 'ready', `D: readiness did not recover after reconnect — controller did not re-attach (${feed.readiness()})`);
+    const mark = rh.length;
+    db.goOffline(); await sleep(400);
+    db.goOnline(); await sleep(1500);        // NO data changes across the reconnect
+    ck(feed.readiness() === 'ready', `D: readiness did not recover — controller did not re-attach (${feed.readiness()})`);
+    ck(rh.slice(mark).includes('loading'), `D: no LOADING transition on reconnect (re-attach not exercised): [${rh.slice(mark)}]`);
     ck(!!feed.getOrders().O1, 'D: O1 lost after reconnect');
     feed.dispose();
   }
 
+  // ── E: a UID transition — a feed for a NEW driver must not carry the previous driver's shift (the controller
+  //       half of fix #7; the host-side dispose-before-new-user + driver-record cash gate are in index.html). ──
+  {
+    await wipe(); await admin(SEED());        // O1 belongs to UID (u-d1)
+    await admin({ 'drivers/u-d2': { active: true, status: 'available' } });
+    const feed1 = makeDriverFeed(makeEnv(testEnv.authenticatedContext(UID).database(), UID, { onOrders: () => {}, onTasks: () => {}, onReadiness: () => {}, onDriver: () => {} }));
+    feed1.start(); await sleep(800);
+    ck(!!feed1.getOrders().O1, 'E: u-d1 feed should see O1');
+    feed1.dispose();                          // auth transition → dispose the prior session
+    const feed2 = makeDriverFeed(makeEnv(testEnv.authenticatedContext('u-d2').database(), 'u-d2', { onOrders: () => {}, onTasks: () => {}, onReadiness: () => {}, onDriver: () => {} }));
+    feed2.start(); await sleep(800);
+    ck(feed2.getOrders().O1 === undefined, `E: new driver u-d2 must NOT see u-d1's order (${JSON.stringify(feed2.getOrders())})`);
+    ck(feed2.readiness() === 'ready', `E: u-d2 feed not ready (${feed2.readiness()})`);
+    feed2.dispose();
+  }
+
   await testEnv.cleanup();
   if (fails.length) { console.error('f2-driver-feed-lifecycle FAILURES:\n' + fails.map((f) => '  ✗ ' + f).join('\n')); process.exit(1); }
-  console.log('f2-driver-feed-lifecycle(emulator): OK (A fresh-attach, B server-reconcile, C revocation teardown, D reconnect recovery)');
+  console.log('f2-driver-feed-lifecycle(emulator): OK (A fresh-attach, B get() server-fresh vs stale cache, C revocation teardown, D reconnect loading→ready, E uid isolation)');
 })().catch((e) => { console.error(e); process.exit(1); });

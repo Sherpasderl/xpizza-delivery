@@ -688,6 +688,12 @@ export function createLiveDriverFeed(uid, emit) {
         const value = s.val();
         const keep = !!(value && (value.delivered_by_driver_uid === uid || value.delivered_by_uid === uid));
         return { value, keep };
+      }).catch((err) => {
+        // Under the narrowed rules, an order with NO task leg AND not attributed to me is DENIED → that denial IS
+        // authoritative "not mine" → keep:false (remove it). Only a TRANSIENT error rejects → the controller then
+        // fails closed + retries the handoff (never undercounts on a transient).
+        if (isPermissionDenied(err)) return { value: null, keep: false };
+        throw err;
       });
     },
     subscribeOwnDriver(cb, onError) {

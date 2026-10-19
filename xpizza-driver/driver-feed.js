@@ -56,6 +56,7 @@ export function makeDriverFeed(env) {
   const handoff = new Set();       // oids awaiting their first BC1 reconcile
   const handoffRetry = new Set();  // oids whose reconcile REJECTED — retried on reconnect / next task snapshot
   const handoffValue = new Map();  // oid -> last-known value kept published (fail-closed) while a handoff is pending
+  const handoffEpoch = new Map();  // oid -> per-ATTEMPT token (codex r2 #1): a reconcile applies only if the oid's epoch is unchanged since it started — a newer handoff / any supersession bumps it, invalidating an older reconcile
   const confirmed = new Map();     // oid -> value, server-reconciled as delivered + attributed to me (persists)
   let lastReadiness = null;
   let lastDriver = undefined;
@@ -69,7 +70,7 @@ export function makeDriverFeed(env) {
     hist = { primary: {}, legacy: {} };
     for (const s of orderSubs.values()) { try { s.unsub && s.unsub(); } catch (_) {} }
     orderSubs.clear(); revokedOids.clear();
-    handoff.clear(); handoffRetry.clear(); handoffValue.clear(); confirmed.clear();
+    handoff.clear(); handoffRetry.clear(); handoffValue.clear(); handoffEpoch.clear(); confirmed.clear();
     lastReadiness = null; lastDriver = undefined;
   }
 
@@ -82,9 +83,18 @@ export function makeDriverFeed(env) {
     }
     return s;
   }
+  // RAW task membership — EVERY oid referenced by own tasks, NOT filtered by revocation. A revocation clears only
+  // when the raw tasks actually drop the oid (codex r2 #2), never on an unrelated task update.
+  function rawTaskOids() {
+    const s = new Set();
+    for (const id in ownTasks) { const t = ownTasks[id]; if (t && t.order_id != null) s.add(String(t.order_id)); }
+    return s;
+  }
   function valueFor(oid) {
     const sub = orderSubs.get(oid);
-    if (sub && sub.present && sub.value != null) return sub.value;   // BC2: point listener's latest wins
+    // BC2: point listener's latest wins — BUT an ERRORED point drops its value authority (codex r2 #3), so an
+    // order with independent history membership publishes the history value, never the stale point value.
+    if (sub && sub.present && !sub.errored && sub.value != null) return sub.value;
     if (hist.primary[oid] != null) return hist.primary[oid];
     if (hist.legacy[oid] != null) return hist.legacy[oid];
     if (confirmed.has(oid)) return confirmed.get(oid);               // server-reconciled attributed delivered order
@@ -145,7 +155,9 @@ export function makeDriverFeed(env) {
   }
 
   // ---- per-order point listeners ----
-  function clearHandoffState(oid) { handoff.delete(oid); handoffRetry.delete(oid); handoffValue.delete(oid); }
+  // Supersession (task re-add / live history / revocation / resolved reconcile) bumps the epoch so any still-pending
+  // reconcile for a PRIOR attempt is invalidated (codex r2 #1).
+  function clearHandoffState(oid) { handoff.delete(oid); handoffRetry.delete(oid); handoffValue.delete(oid); handoffEpoch.set(oid, (handoffEpoch.get(oid) || 0) + 1); }
 
   function attachOrder(oid) {
     if (orderSubs.has(oid) || revokedOids.has(oid)) return;
@@ -190,7 +202,8 @@ export function makeDriverFeed(env) {
     const tOids = taskOids();
     // a task re-adding an oid supersedes any pending handoff / confirmed (membership resumes via the task)
     for (const oid of tOids) { if (handoff.has(oid) || handoffRetry.has(oid)) clearHandoffState(oid); confirmed.delete(oid); }
-    for (const oid of [...revokedOids]) if (!tOids.has(oid)) revokedOids.delete(oid);   // task dropped it → future re-assign may re-attach
+    const rOids = rawTaskOids();   // codex r2 #2: clear a revocation ONLY when the RAW tasks drop the oid (tOids already excludes revoked, so it can't gate this)
+    for (const oid of [...revokedOids]) if (!rOids.has(oid)) revokedOids.delete(oid);
     for (const oid of tOids) attachOrder(oid);
     for (const oid of [...orderSubs.keys()]) {
       if (tOids.has(oid)) continue;
@@ -216,19 +229,22 @@ export function makeDriverFeed(env) {
     handoff.add(oid);
     if (keepVal != null) handoffValue.set(oid, keepVal);   // stay published while reconciling (no undercount)
     const myGen = gen;
+    const myEpoch = (handoffEpoch.get(oid) || 0) + 1;      // codex r2 #1: this attempt's token
+    handoffEpoch.set(oid, myEpoch);
+    // Apply this reconcile ONLY if it is still the current attempt: live session, still pending, and the epoch
+    // unchanged (a newer handoff or any supersession bumps the epoch → an older reconcile is ignored).
+    const stillCurrent = () => isLive(myGen) && handoff.has(oid) && handoffEpoch.get(oid) === myEpoch;
     Promise.resolve()
       .then(() => env.reconcileOrderOnce(oid))
       .then((res) => {
-        if (!isLive(myGen)) return;
-        if (!handoff.has(oid)) return;                     // fix #4: superseded by task re-add / live hist / revocation
+        if (!stillCurrent()) return;                        // fix #1/#4: superseded by a newer attempt / task re-add / live hist / revocation
         handoff.delete(oid); handoffValue.delete(oid);
         if (res && res.keep && res.value != null) confirmed.set(oid, res.value);   // delivered + attributed to me
         else confirmed.delete(oid);                         // genuinely not mine → drop
         publish();
       })
       .catch(() => {
-        if (!isLive(myGen)) return;
-        if (!handoff.has(oid)) return;
+        if (!stillCurrent()) return;
         handoff.delete(oid);
         handoffRetry.add(oid);                              // fix #3: fail closed — stays published + pending; retried later
         publish();

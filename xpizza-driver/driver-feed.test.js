@@ -49,7 +49,9 @@ function harness() {
   H.setTasks = (m) => { H.tasks = m; emitTo(H.taskL, m); };
   H.taskError = () => { for (const l of [...H.taskL]) try { l.onError && l.onError(new Error('permission_denied')); } catch (_) {} };
   H.setOrder = (oid, v) => { H.orders.set(oid, v); const s = H.orderL.get(oid); if (s) for (const l of [...s]) try { l.cb(v); } catch (_) {} };
-  H.revoke = (oid) => { const s = H.orderL.get(oid); if (s) for (const l of [...s]) try { l.onRevoked && l.onRevoked(); } catch (_) {} };
+  // A PERMISSION_DENIED cancel is DEAD at the SDK level — fire onRevoked AND remove the listener (faithful: no
+  // further callbacks reach a cancelled subscription), independent of whether the controller unsubscribes.
+  H.revoke = (oid) => { const s = H.orderL.get(oid); if (s) for (const l of [...s]) { try { l.onRevoked && l.onRevoked(); } catch (_) {} s.delete(l); } };
   H.orderError = (oid) => { const s = H.orderL.get(oid); if (s) for (const l of [...s]) try { l.onError && l.onError(new Error('disconnected')); } catch (_) {} };
   H.setHist = (which, m) => { H.hist[which] = m; emitTo(H.histL[which], m); };
   H.histError = (which) => { for (const l of [...H.histL[which]]) try { l.onError && l.onError(new Error('x')); } catch (_) {} };
@@ -246,6 +248,73 @@ const DEADLINE = setTimeout(() => { console.error('✗ driver-feed suite hung');
     assert.equal(f.getOrders().O1, undefined, 'no old-session order leaked');
     H.setTasks({}); H.setHist('primary', {}); H.setHist('legacy', {});
     assert.equal(f.readiness(), READY, 'ready once the new user source set emits');
+  });
+
+  // ---- r2: session-generation guard (codex r2: removing every gen guard previously SURVIVED). The TASK
+  // callback has no rec-identity check, so only isLive(gen) protects it — fire a stale gen-1 task callback into
+  // a live gen-2 session and assert it cannot pollute it. ----
+  await t('r2 gen-guard: a stale DISPOSED-session task callback cannot pollute the next session', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
+    const genOneTaskCb = [...H.taskL][0].cb;   // the controller's gen-1 task wrapper
+    bringReady(H, ['O1']);
+    f.dispose();
+    H.orders.clear(); H.tasks = undefined; H.hist = { primary: undefined, legacy: undefined };
+    f.start();                                  // gen 2
+    H.setTasks(tasksFor('O2')); H.setOrder('O2', ord()); H.setHist('primary', {}); H.setHist('legacy', {});
+    assert.equal(f.readiness(), READY);
+    genOneTaskCb(tasksFor('O1'));               // STALE gen-1 task callback — must be rejected by isLive(gen)
+    assert.equal(H.out.tasks && H.out.tasks.O1_pickup, undefined, 'stale gen-1 tasks must not enter session 2');
+    assert.equal(f.getOrders().O1, undefined, 'and no gen-1 order leaks in');
+    assert.deepEqual(Object.keys(f.getOrders()), ['O2'], 'session 2 unchanged');
+  });
+
+  // ---- r2#1: an OLDER reconcile must not consume a NEWER handoff of the same oid (per-attempt epoch) ----
+  await t('r2#1: older reconcile (keep:false) resolving LAST cannot drop a re-handed-off delivered order', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
+    bringReady(H, ['O1']);
+    H.setOrder('O1', ord({ status: 'delivered' }));
+    let resolveA, resolveB; let call = 0;
+    H.reconcileImpl = () => (call++ === 0)
+      ? new Promise((r) => { resolveA = () => r({ value: null, keep: false }); })                      // attempt A: not mine
+      : new Promise((r) => { resolveB = () => r({ value: ord({ status: 'delivered' }), keep: true }); }); // attempt B: mine
+    H.setTasks({});                 // remove O1 → handoff A (epoch 1)
+    await flush();
+    H.orders.set('O1', ord({ status: 'delivered' }));
+    H.setTasks(tasksFor('O1'));     // re-add → supersedes A (epoch bumped), re-attaches
+    H.setTasks({});                 // remove again → handoff B (epoch 3)
+    await flush();
+    resolveA();                     // older A resolves LAST, keep:false — must be IGNORED (stale epoch)
+    await flush();
+    resolveB();                     // newer B resolves, keep:true
+    await flush();
+    assert.ok(f.getOrders().O1, 'delivered order stays counted — A ignored, B applied');
+    assert.equal(f.hasPendingHandoff(), false);
+  });
+
+  // ---- r2#2: revocation suppression must persist across an unrelated task update that RETAINS the legs ----
+  await t('r2#2: revocation stays suppressed when an unrelated task update retains the revoked legs', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
+    bringReady(H, ['O1', 'O2']);
+    H.revoke('O1');
+    assert.equal(f.getOrders().O1, undefined);
+    const attachBefore = H.attachCount.get('O1');
+    const m = tasksFor('O1', 'O2'); m.O2_pickup = { ...m.O2_pickup, status: 'in_progress' };   // change O2, keep O1's legs
+    H.setTasks(m);
+    assert.equal(f.getOrders().O1, undefined, 'O1 still suppressed (raw legs retained → revocation persists)');
+    assert.equal(H.out.tasks && H.out.tasks.O1_pickup, undefined, 'O1 legs still excluded from the published card');
+    assert.equal(H.attachCount.get('O1'), attachBefore, 'O1 listener NOT re-attached');
+  });
+
+  // ---- r2#3: an errored point must drop its value authority to independent history ----
+  await t('r2#3: errored point drops value authority → history value is published', async () => {
+    const H = harness(); const f = makeDriverFeed(H.env); f.start();
+    bringReady(H, ['O1']);
+    H.setOrder('O1', ord({ total: 100 }));
+    H.setHist('primary', { O1: ord({ total: 300 }) });     // independent history membership + value
+    assert.equal(f.getOrders().O1.total, 100, 'healthy point wins');
+    H.orderError('O1');                                    // non-permission point error
+    assert.equal(f.readiness(), LOADING, 'readiness fails closed');
+    assert.equal(f.getOrders().O1.total, 300, 'errored point drops its value → history 300 published, not stale 100');
   });
 
   // ---- #8 startup does not publish synthetic empty tasks ----

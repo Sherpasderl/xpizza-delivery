@@ -1661,6 +1661,8 @@ function subscribeToFirebase() {
         optimisticShift = null;
       }
       render();
+      refreshOpenCashSurfaces();   // codex r2 #4: the own-driver record can arrive LAST — re-evaluate an open cuadre's
+                                   // !driverState gate so it doesn't stay stuck on "Cargando" despite a valid identity.
     },
     onTasks: (tasks) => {
       detectNewAssignments(tasks);
