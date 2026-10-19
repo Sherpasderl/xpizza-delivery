@@ -18,3 +18,30 @@ export function displayOrderLabel(o) {
   const id = o.order_id || o.orderId;
   return id ? String(id) : '';
 }
+
+/**
+ * O4 — the end-of-shift confirmation prompt. Given the driver's orders (the getDriverOrders result),
+ * return the confirmation content when the driver still has orders OUT FOR DELIVERY ("en camino"), or
+ * null when there are none (N = 0 → no sheet, the shift ends through the usual cuadre flow unchanged).
+ * Pure: the caller (index.html) renders + escapes. `label`/`name`/`address` mirror the active card and
+ * queue — same fallbacks — so the data is the live feed's, never hardwired.
+ */
+export function endShiftPrompt(driverOrders) {
+  const pending = (driverOrders || []).filter((o) => o && o.phase === 'delivery');
+  if (pending.length === 0) return null;
+  const n = pending.length;
+  return {
+    n,
+    title: `Todavía tenés ${n} ${n === 1 ? 'pedido' : 'pedidos'} en camino`,
+    question: '¿Terminar turno igual?',
+    orders: pending.map((o) => {
+      const order = o.order || {};
+      const dt = o.deliveryTask || {};
+      return {
+        label: displayOrderLabel({ display_number: order.display_number, order_id: order.order_id || o.orderId }),
+        name: order.customer_name || dt.recipient_name || '—',
+        address: order.address_detected || dt.destination_address || '—',
+      };
+    }),
+  };
+}

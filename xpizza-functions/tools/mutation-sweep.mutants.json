@@ -15561,5 +15561,29 @@
       "node",
       "../xpizza-driver/driver-feed.test.js"
     ]
+  },
+  {
+    "id": "o4-01",
+    "slice": "o4",
+    "file": "../xpizza-driver/index.html",
+    "from": "  if (!prompt) return Promise.resolve(true);",
+    "to": "  return Promise.resolve(true);",
+    "label": "O4 end-shift confirm never opens the sheet (always continues) even with orders en camino — the warning is lost",
+    "command": [
+      "node",
+      "../xpizza-driver/endshift-confirm.test.js"
+    ]
+  },
+  {
+    "id": "o4-02",
+    "slice": "o4",
+    "file": "../xpizza-driver/order-helpers.js",
+    "from": "  const pending = (driverOrders || []).filter((o) => o && o.phase === 'delivery');",
+    "to": "  const pending = (driverOrders || []).filter((o) => o && o.phase === 'pickup');",
+    "label": "O4 endShiftPrompt counts the wrong phase (pickup, not delivery) — wrong or empty warning",
+    "command": [
+      "node",
+      "../xpizza-driver/order-helpers.test.js"
+    ]
   }
 ]
