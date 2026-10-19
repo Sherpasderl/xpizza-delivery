@@ -68,8 +68,20 @@ function makeEnv(db, uid, emit) {
     ck(b === 1, `A: re-attach of an unchanged subscription did not emit a fresh value (${b})`);
   }
 
-  // ── B: get() does a SERVER read even when the client holds a STALE cache (the freshness the BC1 reconcile
-  //       needs — a cache-first get() would undercount). Plus the attribution decision. ──
+  // ── B: the BC1 reconcile reads SERVER-fresh, never the stale cache. Plus the attribution decision. ──
+  //   DETERMINISTIC (asserted below): while OFFLINE with the server moved to 999, get() returns the populated
+  //   cache's stale 150 — proof the cache is both populated and stale. ONLINE, get() returns 999, never the
+  //   stale 150 — the property BC1 depends on.
+  //   DOCUMENTED LIMITATION (codex r4 #B): we cannot assert that the online get() bypassed the cache via its OWN
+  //   server round-trip. Holding the cache populated requires an ACTIVE listener, and an active listener ONLINE
+  //   keeps that cache server-synced — so by the time get() runs, 999 may already be IN the cache from the
+  //   listener's resync rather than from get()'s own fetch. The two are indistinguishable here: @firebase/
+  //   rules-unit-testing drives the RTDB websocket protocol and exposes NO request-count or transport hook to
+  //   count round-trips, and the only way to force a cache miss (detach the sole listener) evicts the cache
+  //   (codex r3 #1), destroying the stale-cache precondition. A deterministic "populated-stale cache + online
+  //   get bypasses it" is therefore not constructible against a real client. What IS proven — online get()
+  //   never serves the stale 150 — is the behaviour BC1 relies on; the controller-level freshness is covered
+  //   additionally by driver-feed.test.js (the reconcile reads through env, which the node harness fakes).
   {
     await wipe(); await admin(SEED());                             // O2: delivered, total 150, delivered_by_driver_uid=UID
     const db = testEnv.authenticatedContext(UID).database();
@@ -101,31 +113,43 @@ function makeEnv(db, uid, emit) {
     await wipe(); await admin(SEED());
     const db = testEnv.authenticatedContext(UID).database();
     const out = { orders: {}, tasks: {} };
+    const events = [];                 // codex r4 #C: record the CAUSE (PERMISSION_DENIED cancel) vs the EFFECT (removal)
     let watch = false, snap = null, resolveT;
     const tornDown = new Promise((r) => { resolveT = r; });
     let feed;
     const emit = {
       onOrders: (o) => {
         out.orders = o;
-        // Capture the FIRST emission that drops O1 — driven by the PERMISSION_DENIED cancel callback (onRevoked →
-        // publish) — SYNCHRONOUSLY inside that callback, not after a fixed delay (codex r3 #2).
-        if (watch && o && o.O1 === undefined && snap === null) { snap = { orders: o, tasks: feed.getOwnTasks() }; resolveT(); }
+        // Capture the FIRST emission that drops O1 — the teardown publish — SYNCHRONOUSLY in that callback, not
+        // after a fixed delay (codex r3 #2).
+        if (watch && o && o.O1 === undefined && snap === null) { events.push('removal'); snap = { orders: o, tasks: feed.getOwnTasks() }; resolveT(); }
       },
       onTasks: (t) => { out.tasks = t; }, onReadiness: () => {}, onDriver: () => {},
     };
-    feed = makeDriverFeed(makeEnv(db, UID, emit));
+    const base = makeEnv(db, UID, emit);
+    // Wrap subscribeOrder so the PERMISSION_DENIED cancel is RECORDED (synchronously, before onRevoked runs) — this
+    // lets us assert the cancel is the CAUSE of the teardown (codex r4 #C), not merely that O1 eventually vanished.
+    const env = Object.assign({}, base, {
+      subscribeOrder(oid, cb, onRevoked, onError) {
+        return base.subscribeOrder(oid, cb, () => { if (watch) events.push('cancel:' + oid); onRevoked(); }, onError);
+      },
+    });
+    feed = makeDriverFeed(env);
     feed.start();
     await sleep(800);
     ck(feed.readiness() === 'ready', `C: not ready after start (${feed.readiness()})`);
     ck(!!out.orders.O1 && !!feed.getOwnTasks().O1_pickup, 'C: O1 not published before revoke');
     watch = true;
-    // reassign both legs away → the per-order listener is cancelled PERMISSION_DENIED → onRevoked tears it down
+    // reassign both legs away → the per-order onValue(orders/O1) is cancelled PERMISSION_DENIED → onRevoked tears it down
     await admin({ 'tasks/O1_pickup/assigned_driver_id': 'u-d2', 'tasks/O1_delivery/assigned_driver_id': 'u-d2' });
     await Promise.race([tornDown, sleep(3000).then(() => { throw new Error('C: teardown never emitted on the cancel callback'); })]);
-    // The snapshot was taken IN the teardown publish (the cancel callback), proving IMMEDIATE teardown: O1 and BOTH
-    // its task legs are gone in that single emission — no stale card, no waiting for eventual settling.
+    // Immediate teardown (r3): O1 + BOTH its task legs are gone in that single teardown emission — no stale card.
     ck(snap && snap.orders.O1 === undefined, 'C: revoked O1 not removed from allOrders on the cancel callback');
     ck(snap && snap.tasks.O1_pickup === undefined && snap.tasks.O1_delivery === undefined, 'C: revoked O1 legs not stripped from ownTasks on the cancel callback');
+    // The CANCEL is the CAUSE (codex r4 #C): the PERMISSION_DENIED cancel fired, and its onRevoked executed — proven
+    // because O1 is now in revokedOids, which ONLY the revocation path sets (a plain task-query drop never does).
+    ck(events.indexOf('cancel:O1') !== -1, `C: the PERMISSION_DENIED cancel never fired (events=${events.join(',')})`);
+    ck(feed._state().revokedOids.has('O1'), 'C: O1 not in revokedOids → the PERMISSION_DENIED cancel path did not drive the teardown');
     feed.dispose();
   }
 
