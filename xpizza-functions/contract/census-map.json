@@ -620,7 +620,10 @@
   "signup-endpoints.js#limited": "infra",
   "signup-endpoints.js#getSignupConfig": "infra",
   "signup-endpoints.js#setPromos": "infra",
-  "signup-endpoints.js#completeProfile": "infra"
+  "signup-endpoints.js#completeProfile": "infra",
+  "access/membership-admin-core.js#myRestaurants": "access",
+  "access/membership-admin-core.js#census": "access",
+  "access/membership-admin-core.js#expectedIndex": "access"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
@@ -1340,6 +1343,15 @@
    "fields": [],
    "reason": "F1: plan.row.path is always publicPath(brandId) = public/brands/<brandId> (planPublish is its only producer; brands-admin-core is the only caller) — the derived public brand projection, never /orders, so no order field is written. A new producer of the plan or a new path makes this resolution stale and the census RED until reviewed",
    "count": 1
+  },
+  {
+   "file": "xpizza-functions/access/membership-admin-core.js",
+   "fn": "reconcile",
+   "how": "computed-key-at-root",
+   "detail": "p",
+   "fields": [],
+   "reason": "PLAN-portal-membership r3 §7.2b: every key p is a member_of/{uid}/{brands|locations}/{id} path — expectedIndex builds them from brand_members, and the stale / malformed ones come from reading member_of itself. The discovery index, never /orders, so no order field is written. A new key producer makes this resolution stale and the census RED until reviewed",
+   "count": 3
   }
  ],
  "moneyPathNonFactReads": {

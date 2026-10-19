@@ -131,3 +131,27 @@ test('myLocations: refusals and outages THROW (never an empty list)', async () =
   db2.failReads.add('brand_members/tb');
   await assert.rejects(M.myLocations({ db: db2 }, ctx('ownerTB')));
 });
+
+test('cores gate on CAPABILITIES with today\'s error bodies: a manager-only caller (O1) is refused by every catalog core; stats admits it', async () => {
+  const { editCatalogCore } = require('../catalog/edit-catalog-handler');
+  const { publishEditedCore } = require('../catalog/publish-edited-handler');
+  const { resetDraftToLiveCore } = require('../catalog/reset-draft');
+  const { getEditableCatalogCore } = require('../catalog/portal-reads');
+  const { getSalesStatsCore } = require('../stats/stats-api');
+  const manager = async () => ({ ok: true, uid: 'mgrC', role: 'manager', caps: M.capsFor({ manager: true }, 'member') });
+  const boom = () => { throw new Error('a core read past its capability gate'); };
+  const e = await editCatalogCore({ db: { collection: boom }, authorize: manager, readActiveBuilt: boom }, { restaurantId: 'tb_centro', source: {} }, {});
+  assert.deepStrictEqual([e.status, e.body.error], [403, 'not_authorized'], 'editCatalog: catalog.edit');
+  const p = await publishEditedCore({ db: { collection: boom }, authorize: manager, readActiveBuilt: boom, readDraft: boom }, { restaurantId: 'tb_centro', token: 't' }, {});
+  assert.deepStrictEqual([p.status, p.body.error], [403, 'not_authorized'], 'publishEdited: catalog.publish (O7)');
+  const r = await resetDraftToLiveCore({ db: { collection: boom }, authorize: manager, readActiveVersionId: boom, previewVersion: boom }, { restaurantId: 'tb_centro' }, {});
+  assert.deepStrictEqual([r.status, r.body.error], [403, 'not_owner'], 'resetDraftToLive: catalog.reset_draft — today\'s body');
+  const g = await getEditableCatalogCore({ db: {}, fsdb: { collection: boom }, authorize: manager, readActiveVersionId: boom }, { method: 'GET', query: { restaurantId: 'tb_centro' } });
+  assert.deepStrictEqual([g.status, g.body.error], [403, 'not_owner'], 'getEditableCatalog: catalog.read_editor — today\'s body');
+  // stats: the manager's capability passes the gate (it then fails later on the stubbed keyer — never as not_owner)
+  const s = await getSalesStatsCore({ authorize: manager, getKeyer: () => { throw new Error('no keyer'); } }, { method: 'GET', query: { restaurantId: 'tb_centro' } });
+  assert.notStrictEqual(s.body && s.body.error, 'not_owner', 'getSalesStats: stats.read admits a manager of the location (O1)');
+  const disp = async () => ({ ok: true, uid: 'd', role: 'dispatcher' });   // a legacy role-only stub → today's column
+  const sd = await getSalesStatsCore({ authorize: disp, getKeyer: boom }, { method: 'GET', query: { restaurantId: 'tb_centro' } });
+  assert.deepStrictEqual([sd.status, sd.body.error], [403, 'not_owner'], 'a dispatcher is still refused stats as today');
+});
