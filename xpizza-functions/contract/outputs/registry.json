@@ -964,10 +964,25 @@
   "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates@xpizza-driver/xpizza-delivery.js#completeTask": {
    "status": "pending"
   },
-  "xpizza-driver/index.html<script@0>#detectNewAssignments@xpizza-driver/index.html<script@0>#subscribeToFirebase>anon": {
+  "xpizza-driver/driver-feed.js#publishedOwnTasks@xpizza-driver/driver-feed.js#getOwnTasks": {
+   "status": "pending"
+  },
+  "xpizza-driver/driver-feed.js#publishedOwnTasks@xpizza-driver/driver-feed.js#publish": {
+   "status": "pending"
+  },
+  "xpizza-driver/driver-feed.js#rawTaskOids@xpizza-driver/driver-feed.js#reconcileOrderSubs": {
+   "status": "pending"
+  },
+  "xpizza-driver/driver-feed.js#taskOids@xpizza-driver/driver-feed.js#buildAllOrders": {
+   "status": "pending"
+  },
+  "xpizza-driver/driver-feed.js#taskOids@xpizza-driver/driver-feed.js#reconcileOrderSubs": {
    "status": "pending"
   },
   "xpizza-driver/index.html<script@0>#companionHasHeldWork>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#detectNewAssignments@xpizza-driver/index.html<script@0>#onTasks": {
    "status": "pending"
   },
   "xpizza-driver/index.html<script@0>#renderActiveCard>anon@self": {
@@ -1039,10 +1054,13 @@
   "xpizza-driver/stacking-helpers.js#coordsMatch@xpizza-driver/xpizza-delivery.js#resolvePickupHub~2": {
    "status": "pending"
   },
-  "xpizza-driver/stacking-helpers.js#resolvePickupHub@xpizza-driver/stacking-helpers.js#stackedTasksToAccept": {
+  "xpizza-driver/stacking-helpers.js#resolveOrderHub@xpizza-driver/stacking-helpers.js#stackedTasksToAccept": {
    "status": "pending"
   },
-  "xpizza-driver/stacking-helpers.js#resolvePickupHub@xpizza-driver/stacking-helpers.js#stackedTasksToAccept~2": {
+  "xpizza-driver/stacking-helpers.js#resolveOrderHub@xpizza-driver/stacking-helpers.js#stackedTasksToAccept~2": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacking-helpers.js#resolvePickupHub@xpizza-driver/stacking-helpers.js#resolveOrderHub": {
    "status": "pending"
   },
   "xpizza-driver/stacking-helpers.js#resolvePickupHub@xpizza-driver/xpizza-delivery.js#assignOrderToDriver": {
@@ -1105,10 +1123,10 @@
   "xpizza-driver/xpizza-delivery.js#pickupComplete@xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon": {
    "status": "pending"
   },
-  "xpizza-driver/xpizza-delivery.js#resolvePickupHub@xpizza-driver/stacking-helpers.js#stackedTasksToAccept": {
+  "xpizza-driver/xpizza-delivery.js#reconcileOrderOnce>anon@self": {
    "status": "pending"
   },
-  "xpizza-driver/xpizza-delivery.js#resolvePickupHub@xpizza-driver/stacking-helpers.js#stackedTasksToAccept~2": {
+  "xpizza-driver/xpizza-delivery.js#resolvePickupHub@xpizza-driver/stacking-helpers.js#resolveOrderHub": {
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#resolvePickupHub@xpizza-driver/xpizza-delivery.js#assignOrderToDriver": {
@@ -1117,7 +1135,7 @@
   "xpizza-driver/xpizza-delivery.js#resolvePickupHub@xpizza-driver/xpizza-delivery.js#assignOrderToDriver~2": {
    "status": "pending"
   },
-  "xpizza-driver/xpizza-delivery.js#subscribeToOrders@xpizza-driver/index.html<script@0>#subscribeToFirebase": {
+  "xpizza-driver/xpizza-delivery.js#subscribeToOrders@self": {
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#updateDriverLocation@xpizza-driver/index.html<script@0>#startGpsStream>anon": {
@@ -1980,6 +1998,9 @@
   "xpizza-track/index.html<script@0>#renderSummaryItems@xpizza-track/index.html<script@0>#render": {
    "status": "pending"
   },
+  "xpizza-track/index.html<script@0>#updateDriverMap@xpizza-track/index.html<script@0>#render": {
+   "status": "pending"
+  },
   "xpizza-track/sherpa-client.js#sfetch>anon@self": {
    "status": "pending"
   },
@@ -1987,6 +2008,9 @@
    "status": "pending"
   },
   "xpizza-dispatch/dispatch-h0-dismiss.js#h0DismissUpdate@xpizza-dispatch/xpizza-delivery.js#dismissDispatcherAlert": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/dispatch-h0-dismiss.js#h0DismissUpdate@xpizza-dispatch-mobile/xpizza-delivery.js#dismissDispatcherAlert": {
    "status": "pending"
   },
   "la-musa-orders/index.html<script@2>#clearPendingPayFor@la-musa-orders/index.html<script@2>#applyPollState": {
@@ -2232,6 +2256,11 @@
    "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
    "reason": "S5: which ladder stage the #s5 arrival line shows"
   },
+  "xpizza-kitchen/index.html<script@0>#startOrdersSubscription>anon>anon@self": {
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "F2 Q2: the cancelled-orders-in-view filter (estado) selects the per-order cancel-ack listeners → an archived / recalled cancelado ticket moves between tabs on the live board"
+  },
   "xpizza-orders/status-view.js#statusOfdGen2@xpizza-orders/status-view.js#presentStatus": {
    "status": "via",
    "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
@@ -2247,9 +2276,6 @@
    "status": "pending"
   },
   "xpizza-track/index.html<script@0>#updateDriverMap@xpizza-track/index.html<script@0>#render>anon": {
-   "status": "pending"
-  },
-  "xpizza-track/index.html<script@0>#updateDriverMap@xpizza-track/index.html<script@0>#render": {
    "status": "pending"
   }
  }

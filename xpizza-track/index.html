@@ -317,6 +317,8 @@
 
         <!-- Live driver map (Phase A) — shown only for the ACTIVE out_for_delivery drop; hidden otherwise -->
         <div id="driver-map" class="driver-map hidden" aria-hidden="true"></div>
+        <!-- E1 (Mejora nueva) — before the first live location: the restaurant + destination pins, no driver marker -->
+        <div id="pins-map" class="driver-map hidden" aria-hidden="true"></div>
 
         <!-- Order summary — collapsible "Resumen del pedido" (default collapsed so the reward card leads) -->
         <div class="order-summary">
@@ -427,6 +429,28 @@
       // SNAPS (the point-to-point jump). The engine's target-keyed no-op guard already absorbs redundant
       // same-position updates, and a genuinely-hidden map's glide self-completes (rafId->null) within
       // maxDurationMs. This matches how dispatch drives the same engine (update-only, never cancel-per-render).
+    }
+
+    // ── E1 (Mejora nueva) — before the first live location of a LIVE claim, the map with the restaurant and the customer's
+    //    pins (mx.pins via status-view's v.pins), no driver marker. Its OWN map instance on #pins-map: it never touches dMap,
+    //    the driver marker or the glide; once a location exists the live map (updateDriverMap) takes over exactly as before.
+    //    Load failure is non-fatal: the pins map stays hidden.
+    let pMap = null, pHubMk = null, pDestMk = null;
+    async function updatePinsMap(pins) {
+      const el = document.getElementById('pins-map');
+      if (!el || !pins) return;
+      el.classList.remove('hidden');
+      const lib = await loadMaps();
+      if (!lib || !(window.google && google.maps)) { el.classList.add('hidden'); return; }
+      if (!pMap) pMap = new google.maps.Map(el, { center: pins.dest, zoom: 14, disableDefaultUI: true, gestureHandling: 'greedy', clickableIcons: false });
+      const hubIcon = { ...dotIcon('#FFFFFF'), strokeColor: '#BA7517', strokeWeight: 3 };
+      if (!pHubMk) pHubMk = new google.maps.Marker({ map: pMap, position: pins.hub, title: 'Restaurante', icon: hubIcon }); else pHubMk.setPosition(pins.hub);
+      if (!pDestMk) pDestMk = new google.maps.Marker({ map: pMap, position: pins.dest, title: 'Tu dirección', icon: dotIcon('#111827') }); else pDestMk.setPosition(pins.dest);
+      const b = new google.maps.LatLngBounds(); b.extend(pins.hub); b.extend(pins.dest); pMap.fitBounds(b, 56);
+    }
+    function hidePinsMap() {
+      const el = document.getElementById('pins-map');
+      if (el) el.classList.add('hidden');
     }
 
     // ── Real tightening ETA (Phase B; F4) — client-side, traffic-aware DirectionsService from the live driver_location to
@@ -665,6 +689,7 @@
       const segbarEl = document.getElementById('segbar');
 
       hideDriverMap();         // reset the live map every render; only the active-drop branch re-shows it
+      hidePinsMap();           // E1: likewise the pins map — only the calm state of a live claim with pins re-shows it
       etaIsActive = false;     // Fix C — cleared each render; only the active-drop branch re-arms ETA writes
       avatarEl.classList.add('hidden');  // only an assigned driver gets an avatar — the .hidden CLASS (display:none!important) hides it; the [hidden] attr is defeated by .driver-avatar{display:flex}
       titleEl.className = 'stitle';
@@ -720,6 +745,7 @@
       } else {
         subEl.textContent = v.sub;
         if (etaTimer) { clearTimeout(etaTimer); etaTimer = null; }   // leaving live: no pending ETA expiry (BUILD §3)
+        if (v.pins) updatePinsMap(v.pins);   // E1: the restaurant + destination before the first location
       }
     }
 

@@ -1023,6 +1023,7 @@
     "xpizza-track/status-view-forms.test.js",
     "xpizza-track/tracker-glide.guard.test.js",
     "xpizza-track/tracker-live.test.js",
+    "xpizza-track/tracker-pins.test.js",
     "xpizza-track/tracker-stacked-copy.test.js",
     "xpizza-track/tracker-status.delta.test.js",
     "xpizza-track/tracker-status.golden.test.js"

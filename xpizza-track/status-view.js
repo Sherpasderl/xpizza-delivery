@@ -22,7 +22,8 @@
 //     (etaMin null), and every state without a live location says the calm copy ("Tu pedido va en camino" · "Con {name} ·
 //     pronto llegará a tu dirección"). etaMin under gen2 exists only when the caller supplies a finite fallback_drive_min (the
 //     forms' measured drive minutes → their arrival line is unchanged); the tracker supplies none and shows minutes only through
-//     its own eta-gate.js.
+//     its own eta-gate.js. E1: in the calm state of a LIVE claim with no location yet, v.pins = { hub, dest } when mx.pins has
+//     four finite coordinates (the tracker draws them; the forms ignore the field).
 //
 // Same bytes load as a classic browser script AND a Node module (no ESM), like the shared form modules.
 
@@ -76,6 +77,12 @@ function statusOfdGen2(r, v) {
     v.segs = ['done', 'done', { a: .5 }, 'pending', 'pending'];
     v.headline = 'Tu pedido va en camino';
     v.sub = name ? `Con ${name} · pronto llegará a tu dirección` : 'Pronto llegará a tu dirección';
+    // E1 (Mejora nueva): before the first live location, the restaurant + destination pins (mx.pins, published only while live)
+    const p = mx && mx.mode === 'live' && mx.pins;
+    const h = p && p.hub, d = p && p.dest;
+    if (h && d && Number.isFinite(h.lat) && Number.isFinite(h.lng) && Number.isFinite(d.lat) && Number.isFinite(d.lng)) {
+      v.pins = { hub: { lat: h.lat, lng: h.lng }, dest: { lat: d.lat, lng: d.lng } };
+    }
   }
 }
 

@@ -63,18 +63,20 @@ function render(data) {
   const reg = {};
   const getEl = (id) => (reg[id] || (reg[id] = mkEl(id)));
   const document = { getElementById: getEl, createElement: () => mkEl() };
-  const calls = { refreshDriverEta: 0, updateDriverMap: 0, hideDriverMap: 0 };
+  const calls = { refreshDriverEta: 0, updateDriverMap: 0, hideDriverMap: 0, hidePinsMap: 0, updatePinsMap: 0 };
   const hideDriverMap = () => { calls.hideDriverMap++; };
   const refreshDriverEta = () => { calls.refreshDriverEta++; };
   const updateDriverMap = () => { calls.updateDriverMap++; };
+  const hidePinsMap = () => { calls.hidePinsMap++; };
+  const updatePinsMap = () => { calls.updatePinsMap++; };   // E1 — stubs too; the pins behaviour is proven in tracker-pins.test.js
   const requestAnimationFrame = (fn) => fn();   // run synchronously so fill --p is set when we inspect
   // eslint-disable-next-line no-new-func
   const fn = new Function('data', 'document', 'hideDriverMap', 'refreshDriverEta', 'updateDriverMap',
-    'requestAnimationFrame', 'presentStatus',
+    'requestAnimationFrame', 'presentStatus', 'hidePinsMap', 'updatePinsMap',
     // F4: the slice's map call site is owner-gated behind loadMaps().then — a synchronous thenable keeps the call counts synchronous
     `let etaIsActive = false; let etaTimer = null; let lastRealOwner = null; let dMap = null; const loadMaps = () => ({ then: (f) => f() }); ${slice}; return etaIsActive;`);
   // Early-return branches (cancelled / pickup) return undefined; normalize to the boolean etaIsActive they left.
-  const etaIsActive = fn(data, document, hideDriverMap, refreshDriverEta, updateDriverMap, requestAnimationFrame, presentStatus) ?? false;
+  const etaIsActive = fn(data, document, hideDriverMap, refreshDriverEta, updateDriverMap, requestAnimationFrame, presentStatus, hidePinsMap, updatePinsMap) ?? false;
   const segbar = reg['segbar'] || mkEl('segbar');
   const title = reg['driver-name'] || mkEl('driver-name');
   const sub = reg['driver-eta'] || mkEl('driver-eta');
