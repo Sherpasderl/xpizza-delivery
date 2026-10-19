@@ -975,6 +975,7 @@
     "xpizza-functions/test/driver-assignment-parity.emulator.test.js",
     "xpizza-functions/test/driver-cuadre-rules.emulator.test.js",
     "xpizza-functions/test/driver-eligibility-rules.emulator.test.js",
+    "xpizza-functions/test/f2-driver-feed-lifecycle.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js"
    ],
    "via_helper": [

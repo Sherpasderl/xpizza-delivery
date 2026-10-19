@@ -4436,6 +4436,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -4706,6 +4707,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -4976,6 +4978,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -5390,6 +5393,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -5644,6 +5648,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -5898,6 +5903,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -6152,6 +6158,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -6385,6 +6392,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -6618,6 +6626,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -6808,7 +6817,7 @@
     "site": "const updates = buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now: serverTimestamp() });",
     "siteSha": "ea5be498c842009cffdc67622e06eb876625ea3ab0b2253264a523b8ae4cca76",
     "scope": "xpizza-driver/xpizza-delivery.js#completeTask",
-    "scopeSha": "9eea1d7a6ded8a50b0e8683ff6100b3f931adb6ff2a42cc17883973c903bb0ac"
+    "scopeSha": "774652d969acf0d1e09619c496041b264364771d90031137bab36b4407d8d692"
    },
    "guards": [
     {
@@ -6929,6 +6938,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -7146,6 +7156,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -7507,6 +7518,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -7724,6 +7736,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -7900,7 +7913,7 @@
     "site": "$('queue-sheet-body').innerHTML = renderQueueDetail(o, i + 2);",
     "siteSha": "b54fc32960294228c224efedf87b702d3a2f83a43f094e6f90d28486d7dd0ccb",
     "scope": "xpizza-driver/index.html<script@0>#<top>>anon",
-    "scopeSha": "3f548e5aa89e50086b5c61f823d62b96661f3ca425724f08d0211c0425daa7d9"
+    "scopeSha": "eb6c8d182121e9cb1f494d72ceba8554ec077f3fcd02da9e4f5330ea1641cf30"
    },
    "guards": [
     {
@@ -7941,6 +7954,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -8158,6 +8172,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -8393,6 +8408,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -8628,6 +8644,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -8863,6 +8880,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -9098,6 +9116,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -9324,6 +9343,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -9550,6 +9570,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -9776,6 +9797,7 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
@@ -10080,6 +10102,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
@@ -10108,7 +10131,7 @@
     "site": "await XPD.arriveAtRestaurant(currentUser.uid);",
     "siteSha": "0f8cf0137e7d9e23868daa9b056e8ebffe93e608e96f0c33e7a483bde9735f2a",
     "scope": "xpizza-driver/index.html<script@0>#<top>>anon",
-    "scopeSha": "3f548e5aa89e50086b5c61f823d62b96661f3ca425724f08d0211c0425daa7d9"
+    "scopeSha": "eb6c8d182121e9cb1f494d72ceba8554ec077f3fcd02da9e4f5330ea1641cf30"
    },
    "guards": [
     {
