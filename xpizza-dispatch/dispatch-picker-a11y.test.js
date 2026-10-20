@@ -56,7 +56,7 @@ const pickerJs = html.slice(openIdx, closeEnd);
 {
   assert.match(pickerJs, /pickerOpener\s*=\s*document\.activeElement/, 'captures opener at top of openPicker');
   // focus moves into the list (first row) or the cancel button on open
-  assert.match(pickerJs, /querySelector\('\.picker-row'\)\s*\|\|\s*\$\('picker-cancel-btn'\)/, 'first-focusable = first row else cancel');
+  assert.match(pickerJs, /querySelector\('\.picker-row'\)\s*\|\|\s*\$\('picker-remove-row'\)\s*\|\|\s*\$\('picker-cancel-btn'\)/, 'first-focusable = first row, else the "Quitar repartidor" remove row (reassign+pre-pickup), else cancel');
   assert.match(pickerJs, /firstFocusable\.focus\(/, 'focus() moved into dialog on open');
   // restore in closePicker goes through the stable-identity resolver (NOT a raw stale node)
   assert.match(pickerJs, /const returnOrderId = pickerOrderId;/, 'orderId captured before closePicker resets');

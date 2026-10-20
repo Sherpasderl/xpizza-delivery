@@ -1711,6 +1711,22 @@
   /* ==================== RECONCILIATION NOTE MODAL (C-2) ==================== */
   /* Styled, keyboard-operable replacement for the native prompt() that collected the operator note the
      server audits. Reuses the .overlay-bg scrim + .picker-panel shell so it matches the assign dialog. */
+  /* "Quitar repartidor" (unassign) — a removal action row at the TOP of the reassign picker, + its styled confirm. */
+  .row-remove { display: grid; grid-template-columns: 30px minmax(0,1fr); align-items: center; column-gap: 13px; padding: 11px 13px; border-radius: 9px; border: 1px solid var(--border-soft); background: var(--surface-2); width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; -webkit-appearance: none; appearance: none; margin-bottom: 2px; }
+  .row-remove:hover { background: var(--surface-3); }
+  .row-remove:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .row-remove .ric { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--border); color: var(--text-soft); }
+  .row-remove .rl { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 13px; color: var(--text); display: block; }
+  .row-remove .rs { font-size: 11px; color: var(--text-dim); margin-top: 2px; display: block; }
+  .remove-divider { height: 1px; background: var(--border-soft); margin: 10px 2px; }
+  .unassign-confirm-panel { width: 440px; }
+  .unassign-confirm-body { padding: 16px 20px 6px; font-size: 13px; line-height: 1.55; color: var(--text-soft); }
+  .unassign-confirm-body b { color: var(--text); font-weight: 600; }
+  .unassign-confirm-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px 18px; }
+  .unassign-confirm-actions button { font-size: 12.5px; font-weight: 600; padding: 9px 16px; border-radius: 7px; border: 1px solid var(--border); cursor: pointer; }
+  .ucb-cancel { background: transparent; color: var(--text-soft); }
+  .ucb-do { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-soft); }
+
   .recon-note-panel { width: 440px; }
   .recon-note-warn { color: var(--warn); }
   .recon-note-body { padding: 14px 20px 4px; }
@@ -2563,6 +2579,21 @@
       <button class="dra-kebab" id="dra-close" aria-label="Cerrar"><svg class="ic sm"><use href="#i-close"/></svg></button>
     </div>
     <div class="dra-body" id="dra-body"></div>
+  </div>
+</div>
+
+<!-- "Quitar repartidor / Sin asignar" confirm — styled modal (not window.confirm); opens OVER the reassign picker. -->
+<div class="overlay-bg hidden" id="unassign-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="unassign-confirm-title">
+  <div class="picker-panel unassign-confirm-panel">
+    <div class="picker-header">
+      <div class="picker-title" id="unassign-confirm-title">Quitar repartidor</div>
+      <div class="picker-sub" id="unassign-confirm-sub"></div>
+    </div>
+    <div class="unassign-confirm-body" id="unassign-confirm-body"></div>
+    <div class="unassign-confirm-actions">
+      <button id="unassign-cancel-btn" class="ucb-cancel" type="button">Cancelar</button>
+      <button id="unassign-confirm-btn" class="ucb-do" type="button">Quitar repartidor</button>
+    </div>
   </div>
 </div>
 
@@ -4974,6 +5005,95 @@ $('recon-note-overlay').addEventListener('keydown', (e) => {
   }
 });
 
+// ── "Quitar repartidor / Sin asignar" — styled confirm (NOT window.confirm). Opens OVER the reassign picker.
+// Initial focus on Cancelar; own focus trap (Tab/Shift-Tab wrap both ways); Esc = cancel (stopPropagation so the
+// picker's own Esc never also fires — no double dismiss). On cancel, focus returns to the picker's remove row
+// (reattached/visible) or the shared pickerReturnFocusTarget cascade. On success/no-op, close both. FAIL-SAFE
+// result mapping: success ONLY on res.ok===true; the no-op copies ONLY on an exact known reason; everything else
+// → the retry error. One request per confirm (unassignPending token + the button is disabled); a request's
+// result only closes/toasts if its per-open token is still current, so a stale completion never dismisses a newer confirm.
+// unassignToken: a monotonic per-open token — a request's result only touches the dialog if the token still
+// matches (a newer confirm must not be dismissed by an older request completing). unassignPending = the token
+// of the in-flight request (or null), which is the one-request-per-confirm guard.
+let unassignOpen = false, unassignOrderId = null, unassignOpener = null, unassignOpId = null, unassignToken = 0, unassignPending = null;
+function openUnassignConfirm(orderId) {
+  const order = allOrders[orderId];
+  if (!order) return;
+  unassignOpen = true; unassignOrderId = orderId; unassignOpener = document.activeElement;
+  unassignToken += 1;   // new operation; a prior in-flight request's result will be token-skipped
+  // Fresh opId per operation (one confirm = one logical press); doUnassign reuses it so a retry of the SAME
+  // press resends the SAME opId (server idempotency + the 503 retryable case). A reopened dialog gets a new one.
+  unassignOpId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2);
+  const fromName = (allDrivers[pickerFromDriver] && allDrivers[pickerFromDriver].name) || 'el repartidor actual';
+  $('unassign-confirm-title').textContent = 'Quitar repartidor';
+  $('unassign-confirm-sub').textContent = `${displayOrderLabel(orderId)} · ${order.customer_name || '—'}`;
+  $('unassign-confirm-body').innerHTML = `Quitar el pedido <b>${escapeHtml(displayOrderLabel(orderId))} (${escapeHtml(order.customer_name || '—')})</b> de <b>${escapeHtml(fromName)}</b>. El pedido vuelve a la cola sin repartidor — las dos patas, recoger y entregar, quedan sin asignar. Se registra como una reasignación.`;
+  const btn = $('unassign-confirm-btn'); btn.disabled = false; btn.textContent = 'Quitar repartidor';
+  $('unassign-confirm-overlay').classList.remove('hidden');
+  const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  $('unassign-cancel-btn').focus({ preventScroll: reduceMotion });
+}
+function closeUnassignConfirm(toRemoveRow) {
+  if (!unassignOpen) return;
+  unassignOpen = false;
+  unassignToken += 1;   // leaving this confirm (cancel/Esc/backdrop/success) invalidates any request still in flight for it
+  $('unassign-confirm-overlay').classList.add('hidden');
+  const opener = unassignOpener, orderId = unassignOrderId;
+  unassignOpener = null; unassignOrderId = null;
+  if (toRemoveRow) {
+    const rr = $('picker-remove-row');
+    if (rr && document.contains(rr) && !rr.closest('.hidden')) { try { rr.focus(); } catch (_) {} return; }
+  }
+  const { el, temp } = pickerReturnFocusTarget(opener, orderId, document);
+  if (el) { if (temp && el.setAttribute && !el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1'); try { el.focus(); } catch (_) {} }
+}
+async function doUnassign() {
+  const myToken = unassignToken;
+  if (unassignPending === myToken) return;   // one request per confirm (same dialog)
+  unassignPending = myToken;
+  const orderId = unassignOrderId;
+  const btn = $('unassign-confirm-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Quitando…'; }
+  let res = null, err = null;
+  try { res = await XPD.unassignOrder(orderId, pickerFromDriver, unassignOpId); } catch (e) { err = e; }
+  const reEnable = () => { if (btn) { btn.disabled = false; btn.textContent = 'Quitar repartidor'; } };
+  try {
+    if (unassignToken !== myToken) return;   // a NEWER confirm opened while this was in flight — don't touch it
+    // FAIL-SAFE: success ONLY on ok===true; the no-op copies ONLY on an exact known reason. On a thrown non-2xx
+    // the wrapper carries err.message = the server's `error` string — map the meaningful codes to calm copy,
+    // default everything else (incl. 503 retryable → retry the SAME opId) to the retry error.
+    if (res && res.ok === true) {
+      toast(`Pedido ${displayOrderLabel(orderId)} sin asignar — de vuelta en la cola`, 'success');
+      closeUnassignConfirm(false); closePicker();
+    } else if (res && res.ok === false && res.reason === 'reassigned') {
+      toast('Ese pedido ya tiene otro repartidor'); closeUnassignConfirm(false); closePicker();
+    } else if (res && res.ok === false && res.reason === 'not_assigned') {
+      toast('Ese pedido ya no estaba asignado'); closeUnassignConfirm(false); closePicker();
+    } else if (res && res.ok === false && res.reason === 'picked_up') {
+      toast('El repartidor ya recogió el pedido'); closeUnassignConfirm(false); closePicker();   // final (copy pending owner)
+    } else if (err && err.message === 'terminal') {
+      toast('El pedido ya se cerró'); closeUnassignConfirm(false); closePicker();   // delivered/cancelled — final
+    } else if (err && err.message === 'state') {
+      toast('No se puede quitar el repartidor ahora mismo'); reEnable();
+    } else if (err && err.message === 'not_found') {
+      toast('No se encontró el pedido'); reEnable();
+    } else {
+      toast('No se pudo quitar — reintentá', 'error'); reEnable();   // 503 retryable (same opId), 400/401/403/405/500, malformed
+    }
+  } finally { if (unassignPending === myToken) unassignPending = null; }
+}
+$('unassign-cancel-btn').addEventListener('click', () => closeUnassignConfirm(true));
+$('unassign-confirm-btn').addEventListener('click', doUnassign);
+$('unassign-confirm-overlay').addEventListener('click', (e) => { if (e.target === $('unassign-confirm-overlay')) closeUnassignConfirm(true); });
+$('unassign-confirm-overlay').addEventListener('keydown', (e) => {
+  if (!unassignOpen) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeUnassignConfirm(true); return; }
+  if (e.key === 'Tab') {
+    const focusables = [...$('unassign-confirm-overlay').querySelectorAll('button:not([disabled])')];
+    const target = focusTrapTarget(e.shiftKey, document.activeElement, focusables);
+    if (target) { e.preventDefault(); target.focus(); }
+  }
+});
+
 async function resolveReconciliationAction(orderId, action) {
   const noteRequired = action === 'abandon';
   // Collect the operator note via the styled in-board field (replaces native prompt(); required for abandon —
@@ -5733,12 +5853,36 @@ function openPicker(orderId, isReassign = false) {
     });
   }
 
+  // "Quitar repartidor" — a removal action at the TOP of the list. Shown ONLY in reassign mode (order has a
+  // driver) AND while the pickup leg is NOT completed (PRE-PICKUP): the server's unassignOrder covers pre-pickup
+  // orders only, so it is never offered where the server would refuse (a completed pickup = out for delivery).
+  // Rendered even with zero eligible drivers (insertAdjacentHTML, independent of the driver list).
+  // Offer "Quitar repartidor" ONLY where the pre-pickup endpoint (fe6c3753) will accept it: reassign mode with a
+  // captured driver, BOTH legs still owned by that SAME driver, the pickup leg in an assignable pre-pickup state
+  // ({assigned,accepted,in_progress}), and the order non-terminal. Split owners, out_for_delivery / completed
+  // pickup, pending/unknown pickup, and delivered/completed/cancelled orders are all refused by the server → never shown.
+  const pickupTask = allTasks[`${orderId}_pickup`];
+  const deliveryTask = allTasks[`${orderId}_delivery`];
+  const canUnassign = isReassign && pickerFromDriver
+    && pickupTask && ['assigned', 'accepted', 'in_progress'].includes(pickupTask.status)
+    && pickupTask.assigned_driver_id === pickerFromDriver
+    && deliveryTask && deliveryTask.assigned_driver_id === pickerFromDriver
+    && !['delivered', 'completed', 'cancelled', 'out_for_delivery'].includes((allOrders[orderId] || {}).status);
+  if (canUnassign) {
+    $('picker-list').insertAdjacentHTML('afterbegin',
+      `<button type="button" class="row-remove" id="picker-remove-row" aria-label="Quitar repartidor — dejar este pedido sin asignar">`
+      + `<span class="ric" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M17 11h6"/></svg></span>`
+      + `<span class="pmain"><span class="rl">Quitar repartidor</span><span class="rs">Dejar este pedido sin asignar — vuelve a la cola</span></span>`
+      + `</button><div class="remove-divider" aria-hidden="true"></div>`);
+    $('picker-remove-row').addEventListener('click', () => openUnassignConfirm(orderId));
+  }
+
   $('picker-overlay').classList.remove('hidden');
 
-  // a11y: move focus into the dialog (first/highest-priority driver, else the Cancel button when empty).
+  // a11y: move focus into the dialog (first/highest-priority driver, else the remove row, else Cancel when empty).
   // preventScroll under reduced-motion so no focus-scroll animation runs.
   const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  const firstFocusable = $('picker-list').querySelector('.picker-row') || $('picker-cancel-btn');
+  const firstFocusable = $('picker-list').querySelector('.picker-row') || $('picker-remove-row') || $('picker-cancel-btn');
   if (firstFocusable) firstFocusable.focus({ preventScroll: reduceMotion });
 }
 
@@ -5947,6 +6091,7 @@ const OVERLAYS = [
   { name: 'drawer',      z: 210, modal: true,  transient: false, open: () => { const e = $('order-detail-modal');  return !!(e && e.classList.contains('open')); },      close: () => closeOrderDetailModal() },
   { name: 'picker',      z: 220, modal: true,  transient: false, open: () => { const e = $('picker-overlay');      return !!(e && !e.classList.contains('hidden')); },   close: null /* element-level focus-trapped: self-handles Esc (stopPropagation) → arbiter skips it */ },
   { name: 'recon-note',  z: 220, modal: true,  transient: false, open: () => { const e = $('recon-note-overlay');  return !!(e && !e.classList.contains('hidden')); },   close: null /* element-level focus-trapped MONEY dialog: self-handles Esc (stopPropagation) → arbiter skips it */ },
+  { name: 'unassign-confirm', z: 230, modal: true, transient: false, open: () => { const e = $('unassign-confirm-overlay'); return !!(e && !e.classList.contains('hidden')); }, close: null /* opens OVER the picker; element-level focus-trapped: self-handles Esc (stopPropagation) → arbiter skips it */ },
   { name: 'toast',       z: 240, modal: false, transient: true,  open: () => { const e = $('toast');               return !!(e && e.classList.contains('show')); } },
   { name: 'account-menu',z: 300, modal: false, transient: false, open: () => { const e = $('rail-av-menu');        return !!(e && !e.hidden); },                          close: null /* set by initAvatarMenu */ },
 ];
@@ -6603,7 +6748,7 @@ if ('serviceWorker' in navigator) {
 /* P-SELFUPDATE CP2 §3 — this app's self-update adapter: idle = none of these overlays open, no focused field, no request
    of ours in flight, no tap/key in the last 30 s, online (see SherpaClient.idleAdapter). State reloads from the
    database. Inert (unstamped) pages register nothing. */
-try { var __S = window.SherpaClient; if (__S && !__S.inert) __S.registerAdapter(__S.idleAdapter({ overlays: ["#msg-modal.open", "#comms-sheet.open", "#order-detail-modal.open", "#picker-overlay:not(.hidden)", "#recon-note-overlay:not(.hidden)", "#surface-flyout:not([hidden])", "#action-menu:not(.hidden)"] })); } catch (_) {}
+try { var __S = window.SherpaClient; if (__S && !__S.inert) __S.registerAdapter(__S.idleAdapter({ overlays: ["#msg-modal.open", "#comms-sheet.open", "#order-detail-modal.open", "#picker-overlay:not(.hidden)", "#recon-note-overlay:not(.hidden)", "#unassign-confirm-overlay:not(.hidden)", "#surface-flyout:not([hidden])", "#action-menu:not(.hidden)"] })); } catch (_) {}
 </script>
 </body>
 </html>

@@ -38,6 +38,7 @@ const DYNAMIC_IDS = new Set([
   'mdra-open', 'mdra-sheet', 'mdra-x', 'mdra-body', 'mdra-retry', 'mdra-inv', 'mdra-cfm', 'mdra-cxl',
   'mdra-bk', 'mdra-cr', 'mdra-n', 'mdra-p', 'mdra-e', 'mdra-cp', 'mdra-wa', 'mdra-dn', 'mdra-reasignar',
   'mdra-ck', 'mdra-go',
+  'unassign-yes',   // rendered inside the "Quitar repartidor" confirm sheet by openUnassignConfirm(); commitUnassign() guards on it
 ]);
 
 // Static ids = ids in the MARKUP only. The script block is stripped first, otherwise an id inside

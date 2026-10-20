@@ -978,6 +978,32 @@ export async function cancelOrderRemote(orderId, reason = '') {
 }
 
 /**
+ * Pre-pickup "Quitar repartidor / Sin asignar": take an order off its driver, back to the unassigned queue
+ * (both legs pending). PRE-PICKUP ONLY — the server refuses once the pickup leg is completed. CAS on
+ * expectedFromDriver (the owner captured when the picker opened, as reassignOrder does). opId is a fresh UUID
+ * per button press, RESENT unchanged when retrying that press (the server's audit record is create-only,
+ * keyed by opId, so a reused opId never duplicates). Returns the 200 JSON
+ * { ok:true } | { ok:false, reason:'reassigned'|'not_assigned'|'picked_up' }; THROWS on non-2xx (caller maps to error copy).
+ */
+export async function unassignOrder(orderId, expectedFromDriver, opId) {
+  const user = auth && auth.currentUser;
+  if (!user) throw new Error('No hay sesión de dispatcher');
+  const token = await user.getIdToken();
+  const res = await sherpaFetch(functionUrl('unassignOrder'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ orderId, expectedFromDriver, opId })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    err.httpStatus = res.status;
+    throw err;
+  }
+  return data; // { ok:true } | { ok:false, reason }
+}
+
+/**
  * Driver taps "Recogí pedido" (picked up the bag at the restaurant).
  * Atomically: completes the pickup task, accepts the delivery task,
  * sets driver's current_task to the delivery task, marks order out_for_delivery.
