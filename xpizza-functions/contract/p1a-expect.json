@@ -19,6 +19,8 @@
   "onOrderCancelled": 1,
   "predictReadyTimeOnNew": 1,
   "sendOrderStatusNotifications": 1,
+  "trackerOnOrderStatus": 1,
+  "trackerOnTaskStatus": 2,
   "voidFacturaOnCancel": 3
  },
  "parked": [

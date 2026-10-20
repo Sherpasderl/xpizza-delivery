@@ -140,5 +140,37 @@ const run = (db) => runRetentionSweep(db, { healTerminalStatuses: HEAL_TERMINAL_
     ok('orphan: a task whose order is gone is reclaimed, with no attribution write');
   }
 
+  // 8. TRACKER FIXES T6: the tombstone sweep runs AFTER the task pass in EVERY outcome (dry-run, execute with no candidates,
+  //    execute with candidates), the task pass's result is returned unchanged, and a failing tombstone sweep never affects it.
+  {
+    const OLD = Date.now() - 25 * 3600 * 1000;
+    const tomb = { tracker_claims: { u1: { T9: { seq: 3, gone: true, at: OLD } } }, tracker_claims_owner: { T9: { seq: 3, uid: null, gone: true, at: OLD } } };
+    const state = (mode, withOrder) => ({
+      config: { retention: { tasks_mode: mode } }, ...tomb,
+      orders: { T9: { status: 'delivered' }, ...(withOrder ? { O8: { status: 'delivered' } } : {}) },
+      tasks: withOrder ? { O8_pickup: { order_id: 'O8' }, O8_delivery: { order_id: 'O8', assigned_driver_id: A } } : {},
+    });
+    const shapes = [['dry-run', state('dry_run', true), 'dry_run'], ['execute, no candidates', state('execute', false), 'execute'], ['execute with candidates', state('execute', true), 'execute']];
+    for (const [label, st, mode] of shapes) {
+      const db = makeDb(st);
+      const r = await run(db);
+      assert.strictEqual(r.mode, mode, `${label}: the task pass result is returned`);
+      assert.ok(!('tombstones' in r), `${label}: the result shape is unchanged`);
+      assert.strictEqual(db.get('tracker_claims/u1/T9'), null, `${label}: the expired tombstone was swept`);
+      assert.strictEqual(db.get('tracker_claims_owner/T9'), null, `${label}: the expired owner-hint tombstone was swept`);
+      if (label === 'execute with candidates') assert.strictEqual(db.get('tasks/O8_delivery'), null, 'tasks still deleted');
+      if (label === 'dry-run') assert.ok(db.get('tasks/O8_delivery'), 'dry-run still deletes no task');
+    }
+    const db = makeDb(state('execute', true));
+    db.throwReads.add('tracker_claims');
+    let r;
+    try { r = await run(db); } catch (e) { assert.fail(`the task pass must not throw when the tombstone sweep fails (${e.message})`); }
+    const ref = await run(makeDb((({ tracker_claims, tracker_claims_owner, ...rest }) => rest)(state('execute', true))));
+    assert.deepStrictEqual(r, ref, 'the task pass result equals a run with no tombstones at all — unaffected by the failing sweep');
+    assert.strictEqual(db.get('tasks/O8_delivery'), null);
+    assert.ok(db.get('tracker_claims/u1/T9'), 'the failed sweep deleted nothing');
+    ok('T6: the tracker tombstone sweep runs after the task pass in every outcome (dry-run / no candidates / execute), result unchanged; a failing sweep never affects the task pass');
+  }
+
   console.log(`\nAll ${pass} retention-sweep checks passed.`);
-})().catch((e) => { console.error('\n✗ FAIL:', e && e.message); process.exit(1); });
+})().catch((e) => { console.error('\n✗ FAIL:', e && e.name, e && e.message); process.exit(1); });

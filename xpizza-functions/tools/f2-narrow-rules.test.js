@@ -44,7 +44,8 @@ assert.ok(!JSON.stringify(H).includes("child('managers')") && JSON.stringify(F).
 assert.ok(!JSON.stringify(H).includes('auth.token.handheld === true') && JSON.stringify(F).includes('auth.token.handheld === true'), 'the device clause only in N-full');
 assert.strictEqual(JSON.stringify(N.narrow(BASE, 'R-post')), JSON.stringify(H), 'R-post is an alias of N-human');
 assert.strictEqual(JSON.stringify(N.narrow(BASE, 'R-pre')), JSON.stringify(BASE), 'R-pre is the input (base + Q0 + indexes)');
-assert.deepStrictEqual(BASE.rules.orders['.indexOn'], ['status', 'created_at', 'order_type', 'restaurant_id', 'delivered_by_driver_uid', 'delivered_by_uid'], 'premise: Q1 indexes are in the base');
+// premise: the Q1 indexes are in the base — plus TRACKER FIXES' three terminal-timestamp indexes (tracker-reconcile discovery, codex r2 P2-1)
+assert.deepStrictEqual(BASE.rules.orders['.indexOn'], ['status', 'created_at', 'order_type', 'restaurant_id', 'delivered_by_driver_uid', 'delivered_by_uid', 'delivered_at', 'cancelled_at', 'completed_at'], 'premise: Q1 indexes (+ the tracker terminal-timestamp indexes) are in the base');
 ok('variants: managers + device clause only in N-full; R-post === N-human; R-pre === base (+Q0 +indexes)');
 
 // ── every artifact satisfies the device-exclusion contract (N-full with exactly its pinned device alternative) ──

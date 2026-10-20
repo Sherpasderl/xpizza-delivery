@@ -1,0 +1,49 @@
+{
+ "_doc": "PLAN-tracker-fixes r2.10.1 §8.4 — ceil((ON − OFF) × 1.25), frozen once",
+ "frozenFrom": {
+  "off": "m-off.json",
+  "on": "m-on.json"
+ },
+ "limits": {
+  "lone": {
+   "reads": 357,
+   "readBytes": 111648
+  },
+  "stacked": {
+   "reads": 863,
+   "readBytes": 365809
+  },
+  "reassign": {
+   "reads": 462,
+   "readBytes": 142117
+  },
+  "cancel": {
+   "reads": 344,
+   "readBytes": 119069
+  },
+  "shiftEnd": {
+   "reads": 317,
+   "readBytes": 108889
+  },
+  "duplicates": {
+   "reads": 317,
+   "readBytes": 108812
+  },
+  "retained25": {
+   "reads": 365,
+   "readBytes": 519143
+  },
+  "retained50": {
+   "reads": 365,
+   "readBytes": 927455
+  },
+  "retained100": {
+   "reads": 365,
+   "readBytes": 1744198
+  },
+  "churn": {
+   "reads": 568,
+   "readBytes": 178785
+  }
+ }
+}

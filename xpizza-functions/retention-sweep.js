@@ -17,7 +17,7 @@ const { shouldBackstopAttribution, writeDeliveryAttribution } = require('./drive
 // runRetentionSweep(db, { healTerminalStatuses }) → { mode, candidates, total, confirmed?, skipped? }.
 // healTerminalStatuses is injected (HEAL_TERMINAL_STATUSES — ALL terminal incl. cancelled) so this module stays
 // decoupled + testable.
-async function runRetentionSweep(db, { healTerminalStatuses }) {
+async function runTaskPass(db, { healTerminalStatuses }) {
   // Read /tasks BEFORE /orders (sequential, NOT Promise.all) as defense-in-depth: a task is written atomically
   // WITH its order, so any task in this snapshot has its order committed before this read → the LATER /orders read
   // includes it. (The per-candidate fresh re-read below is the primary, obviously-correct guard.)
@@ -52,6 +52,18 @@ async function runRetentionSweep(db, { healTerminalStatuses }) {
   }
   if (confirmed) await db.ref().update(updates);   // batched multi-path null-update of the CONFIRMED deletes
   return { mode: 'execute', confirmed, skipped, candidates: toDelete, total };
+}
+
+// TRACKER FIXES T6: the claims-index tombstone sweep runs AFTER the task pass — whatever it returned (dry-run, no candidates,
+// execute) — in its own try/catch, so it never affects task deletion or attribution, and regardless of the tracker flag
+// (tombstones from an earlier ON period must still expire). The task pass's result is returned unchanged.
+async function runRetentionSweep(db, opts) {
+  const r = await runTaskPass(db, opts);
+  try {
+    const t = await require('./tracking/tombstones').sweepTrackerTombstones(db, Date.now());
+    if (t.scanned) console.log(`retentionSweepTasks: tracker tombstones — deleted ${t.deleted}, kept ${t.kept} of ${t.scanned}`);
+  } catch (e) { console.warn('retentionSweepTasks: tracker tombstone sweep failed (task pass unaffected)', e && e.message); }
+  return r;
 }
 
 module.exports = { runRetentionSweep };

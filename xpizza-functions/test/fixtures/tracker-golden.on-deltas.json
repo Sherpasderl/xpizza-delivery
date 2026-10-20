@@ -1,0 +1,1824 @@
+[
+ {
+  "journey": "native",
+  "step": "create",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "owner_tag": "none",
+   "seq": 3,
+   "smp": {
+    "owner_tag": "none",
+    "sample_at": 0
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "native",
+  "step": "assign",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 11,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "native",
+  "step": "clock-in u_drv_golden_10000000000",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 13,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "native",
+  "step": "accept",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 16,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "native",
+  "step": "kitchen preparing",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 18,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "native",
+  "step": "kitchen ready",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 20,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "native",
+  "step": "pickup",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "name-live-noloc: live with no location yet → legacy (null, null): no gen-1 countdown with a name and an absent flag (D-defect)"
+ },
+ {
+  "journey": "native",
+  "step": "pickup",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "native",
+  "step": "pickup",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 2,
+   "mode": "live",
+   "name": "Uno",
+   "owner_tag": "5f44abd393e27db0",
+   "pins": {
+    "dest": {
+     "lat": 15.52,
+     "lng": -88.01
+    },
+    "hub": {
+     "lat": 15.5,
+     "lng": -88.03
+    }
+   },
+   "seq": 27,
+   "shift_id": "ID1",
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
+ },
+ {
+  "journey": "native",
+  "step": "pickup",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "native",
+  "step": "ingest 1",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "native",
+  "step": "ingest 1",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 2,
+   "mode": "live",
+   "name": "Uno",
+   "owner_tag": "5f44abd393e27db0",
+   "pins": {
+    "dest": {
+     "lat": 15.52,
+     "lng": -88.01
+    },
+    "hub": {
+     "lat": 15.5,
+     "lng": -88.03
+    }
+   },
+   "seq": 27,
+   "shift_id": "ID1",
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": "T@tracking/driver_location/at",
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
+ },
+ {
+  "journey": "native",
+  "step": "ingest 1",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@tracking/driver_location/at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@tracking/driver_location/at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "native",
+  "step": "ingest 2",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "native",
+  "step": "ingest 2",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 2,
+   "mode": "live",
+   "name": "Uno",
+   "owner_tag": "5f44abd393e27db0",
+   "pins": {
+    "dest": {
+     "lat": 15.52,
+     "lng": -88.01
+    },
+    "hub": {
+     "lat": 15.5,
+     "lng": -88.03
+    }
+   },
+   "seq": 27,
+   "shift_id": "ID1",
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": "T@tracking/driver_location/at",
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
+ },
+ {
+  "journey": "native",
+  "step": "ingest 2",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@tracking/driver_location/at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@tracking/driver_location/at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "native",
+  "step": "ingest 3",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "native",
+  "step": "ingest 3",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 2,
+   "mode": "live",
+   "name": "Uno",
+   "owner_tag": "5f44abd393e27db0",
+   "pins": {
+    "dest": {
+     "lat": 15.52,
+     "lng": -88.01
+    },
+    "hub": {
+     "lat": 15.5,
+     "lng": -88.03
+    }
+   },
+   "seq": 27,
+   "shift_id": "ID1",
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": "T@tracking/driver_location/at",
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
+ },
+ {
+  "journey": "native",
+  "step": "ingest 3",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@tracking/driver_location/at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@tracking/driver_location/at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "native",
+  "step": "complete",
+  "path": "/tracking/delivered_at",
+  "from": "T@tracking/delivered_at",
+  "to": "T@order/delivered_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "native",
+  "step": "complete",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "name-terminal: terminal → legacy name cleared (the delivered/cancelled branches never read driver_name)"
+ },
+ {
+  "journey": "native",
+  "step": "complete",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "native",
+  "step": "complete",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 3,
+   "mode": "terminal",
+   "owner_tag": "none",
+   "seq": 34,
+   "smp": {
+    "owner_tag": "none",
+    "sample_at": 0
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "native",
+  "step": "complete",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@order/delivered_at",
+   "T@tracking/delivered_at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@order/delivered_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "native",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/delivered_at",
+  "from": "T@tracking/delivered_at",
+  "to": "T@order/delivered_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "native",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "name-terminal: terminal → legacy name cleared (the delivered/cancelled branches never read driver_name)"
+ },
+ {
+  "journey": "native",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "native",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 3,
+   "mode": "terminal",
+   "owner_tag": "none",
+   "seq": 34,
+   "smp": {
+    "owner_tag": "none",
+    "sample_at": 0
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "native",
+  "step": "end (background handlers settled)",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@order/delivered_at",
+   "T@tracking/delivered_at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@order/delivered_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "pwa",
+  "step": "create",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "owner_tag": "none",
+   "seq": 3,
+   "smp": {
+    "owner_tag": "none",
+    "sample_at": 0
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "pwa",
+  "step": "assign",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 11,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "pwa",
+  "step": "clock-in u_drv_golden_10000000000",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 13,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "pwa",
+  "step": "accept",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 16,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "pwa",
+  "step": "kitchen preparing",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 18,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "pwa",
+  "step": "kitchen ready",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 20,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "pwa",
+  "step": "pickup",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "name-live-noloc: live with no location yet → legacy (null, null): no gen-1 countdown with a name and an absent flag (D-defect)"
+ },
+ {
+  "journey": "pwa",
+  "step": "pickup",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "pwa",
+  "step": "pickup",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 2,
+   "mode": "live",
+   "name": "Uno",
+   "owner_tag": "5f44abd393e27db0",
+   "pins": {
+    "dest": {
+     "lat": 15.52,
+     "lng": -88.01
+    },
+    "hub": {
+     "lat": 15.5,
+     "lng": -88.03
+    }
+   },
+   "seq": 27,
+   "shift_id": "ID1",
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
+ },
+ {
+  "journey": "pwa",
+  "step": "pickup",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "pwa",
+  "step": "location 1",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "name-live-noloc: live with no location yet → legacy (null, null): no gen-1 countdown with a name and an absent flag (D-defect)"
+ },
+ {
+  "journey": "pwa",
+  "step": "location 1",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "pwa",
+  "step": "location 1",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 2,
+   "mode": "live",
+   "name": "Uno",
+   "owner_tag": "5f44abd393e27db0",
+   "pins": {
+    "dest": {
+     "lat": 15.52,
+     "lng": -88.01
+    },
+    "hub": {
+     "lat": 15.5,
+     "lng": -88.03
+    }
+   },
+   "seq": 27,
+   "shift_id": "ID1",
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
+ },
+ {
+  "journey": "pwa",
+  "step": "location 1",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "pwa",
+  "step": "location 2",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "name-live-noloc: live with no location yet → legacy (null, null): no gen-1 countdown with a name and an absent flag (D-defect)"
+ },
+ {
+  "journey": "pwa",
+  "step": "location 2",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "pwa",
+  "step": "location 2",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 2,
+   "mode": "live",
+   "name": "Uno",
+   "owner_tag": "5f44abd393e27db0",
+   "pins": {
+    "dest": {
+     "lat": 15.52,
+     "lng": -88.01
+    },
+    "hub": {
+     "lat": 15.5,
+     "lng": -88.03
+    }
+   },
+   "seq": 27,
+   "shift_id": "ID1",
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
+ },
+ {
+  "journey": "pwa",
+  "step": "location 2",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "pwa",
+  "step": "location 3",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "name-live-noloc: live with no location yet → legacy (null, null): no gen-1 countdown with a name and an absent flag (D-defect)"
+ },
+ {
+  "journey": "pwa",
+  "step": "location 3",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "pwa",
+  "step": "location 3",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 2,
+   "mode": "live",
+   "name": "Uno",
+   "owner_tag": "5f44abd393e27db0",
+   "pins": {
+    "dest": {
+     "lat": 15.52,
+     "lng": -88.01
+    },
+    "hub": {
+     "lat": 15.5,
+     "lng": -88.03
+    }
+   },
+   "seq": 27,
+   "shift_id": "ID1",
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
+ },
+ {
+  "journey": "pwa",
+  "step": "location 3",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "pwa",
+  "step": "complete",
+  "path": "/tracking/delivered_at",
+  "from": "T@tracking/delivered_at",
+  "to": "T@order/delivered_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "pwa",
+  "step": "complete",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "name-terminal: terminal → legacy name cleared (the delivered/cancelled branches never read driver_name)"
+ },
+ {
+  "journey": "pwa",
+  "step": "complete",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "pwa",
+  "step": "complete",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 3,
+   "mode": "terminal",
+   "owner_tag": "none",
+   "seq": 34,
+   "smp": {
+    "owner_tag": "none",
+    "sample_at": 0
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "pwa",
+  "step": "complete",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@order/delivered_at",
+   "T@tracking/delivered_at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@order/delivered_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "pwa",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/delivered_at",
+  "from": "T@tracking/delivered_at",
+  "to": "T@order/delivered_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "pwa",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "name-terminal: terminal → legacy name cleared (the delivered/cancelled branches never read driver_name)"
+ },
+ {
+  "journey": "pwa",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "pwa",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 3,
+   "mode": "terminal",
+   "owner_tag": "none",
+   "seq": 34,
+   "smp": {
+    "owner_tag": "none",
+    "sample_at": 0
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "pwa",
+  "step": "end (background handlers settled)",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@order/delivered_at",
+   "T@tracking/delivered_at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@order/delivered_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "cancel",
+  "step": "create",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "owner_tag": "none",
+   "seq": 3,
+   "smp": {
+    "owner_tag": "none",
+    "sample_at": 0
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "cancel",
+  "step": "assign",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 11,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "cancel",
+  "step": "clock-in u_drv_golden_10000000000",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 13,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "cancel",
+  "step": "accept",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 16,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "cancel",
+  "step": "kitchen preparing",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 18,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "cancel",
+  "step": "kitchen ready",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 20,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "cancel",
+  "step": "pickup",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "name-live-noloc: live with no location yet → legacy (null, null): no gen-1 countdown with a name and an absent flag (D-defect)"
+ },
+ {
+  "journey": "cancel",
+  "step": "pickup",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "cancel",
+  "step": "pickup",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 2,
+   "mode": "live",
+   "name": "Uno",
+   "owner_tag": "5f44abd393e27db0",
+   "pins": {
+    "dest": {
+     "lat": 15.52,
+     "lng": -88.01
+    },
+    "hub": {
+     "lat": 15.5,
+     "lng": -88.03
+    }
+   },
+   "seq": 27,
+   "shift_id": "ID1",
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
+ },
+ {
+  "journey": "cancel",
+  "step": "pickup",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "cancel",
+  "step": "ingest 1",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "cancel",
+  "step": "ingest 1",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 2,
+   "mode": "live",
+   "name": "Uno",
+   "owner_tag": "5f44abd393e27db0",
+   "pins": {
+    "dest": {
+     "lat": 15.52,
+     "lng": -88.01
+    },
+    "hub": {
+     "lat": 15.5,
+     "lng": -88.03
+    }
+   },
+   "seq": 27,
+   "shift_id": "ID1",
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": "T@tracking/driver_location/at",
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
+ },
+ {
+  "journey": "cancel",
+  "step": "ingest 1",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@tracking/driver_location/at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@tracking/driver_location/at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "cancel",
+  "step": "dispatcher cancel",
+  "path": "/tracking/cancelled_at",
+  "from": "T@tracking/cancelled_at",
+  "to": "T@order/cancelled_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "cancel",
+  "step": "dispatcher cancel",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "name-terminal: terminal → legacy name cleared (the delivered/cancelled branches never read driver_name)"
+ },
+ {
+  "journey": "cancel",
+  "step": "dispatcher cancel",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "cancel",
+  "step": "dispatcher cancel",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 3,
+   "mode": "terminal",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 31,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": "T@tracking/mx/smp/sample_at",
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "cancel",
+  "step": "dispatcher cancel",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@order/cancelled_at",
+   "T@tracking/cancelled_at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@tracking/mx/smp/sample_at",
+   "T@order/picked_up_at",
+   "T@order/cancelled_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "cancel",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/cancelled_at",
+  "from": "T@tracking/cancelled_at",
+  "to": "T@order/cancelled_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "cancel",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "name-terminal: terminal → legacy name cleared (the delivered/cancelled branches never read driver_name)"
+ },
+ {
+  "journey": "cancel",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "cancel",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 3,
+   "mode": "terminal",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 31,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": "T@tracking/mx/smp/sample_at",
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "cancel",
+  "step": "end (background handlers settled)",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@order/cancelled_at",
+   "T@tracking/cancelled_at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@tracking/mx/smp/sample_at",
+   "T@order/picked_up_at",
+   "T@order/cancelled_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "reassign",
+  "step": "create",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "owner_tag": "none",
+   "seq": 3,
+   "smp": {
+    "owner_tag": "none",
+    "sample_at": 0
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "reassign",
+  "step": "assign",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 11,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "reassign",
+  "step": "clock-in u_drv_golden_10000000000",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 13,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "reassign",
+  "step": "accept",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 16,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "reassign",
+  "step": "kitchen preparing",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 18,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "reassign",
+  "step": "kitchen ready",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 1,
+   "mode": "pre",
+   "name": "Uno",
+   "owner_tag": "none",
+   "seq": 20,
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "reassign",
+  "step": "pickup",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "name-live-noloc: live with no location yet → legacy (null, null): no gen-1 countdown with a name and an absent flag (D-defect)"
+ },
+ {
+  "journey": "reassign",
+  "step": "pickup",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "reassign",
+  "step": "pickup",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 2,
+   "mode": "live",
+   "name": "Uno",
+   "owner_tag": "5f44abd393e27db0",
+   "pins": {
+    "dest": {
+     "lat": 15.52,
+     "lng": -88.01
+    },
+    "hub": {
+     "lat": 15.5,
+     "lng": -88.03
+    }
+   },
+   "seq": 27,
+   "shift_id": "ID1",
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": 0,
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
+ },
+ {
+  "journey": "reassign",
+  "step": "pickup",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "reassign",
+  "step": "ingest 1",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "reassign",
+  "step": "ingest 1",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 2,
+   "mode": "live",
+   "name": "Uno",
+   "owner_tag": "5f44abd393e27db0",
+   "pins": {
+    "dest": {
+     "lat": 15.52,
+     "lng": -88.01
+    },
+    "hub": {
+     "lat": 15.5,
+     "lng": -88.03
+    }
+   },
+   "seq": 27,
+   "shift_id": "ID1",
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": "T@tracking/driver_location/at",
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
+ },
+ {
+  "journey": "reassign",
+  "step": "ingest 1",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@tracking/driver_location/at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@tracking/driver_location/at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "reassign",
+  "step": "clock-in u_drv_golden_20000000000",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "reassign",
+  "step": "clock-in u_drv_golden_20000000000",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 2,
+   "mode": "live",
+   "name": "Uno",
+   "owner_tag": "5f44abd393e27db0",
+   "pins": {
+    "dest": {
+     "lat": 15.52,
+     "lng": -88.01
+    },
+    "hub": {
+     "lat": 15.5,
+     "lng": -88.03
+    }
+   },
+   "seq": 27,
+   "shift_id": "ID1",
+   "smp": {
+    "owner_tag": "5f44abd393e27db0",
+    "sample_at": "T@tracking/driver_location/at",
+    "shift_id": "ID1"
+   }
+  },
+  "reason": "mx+E1: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — E1: mx.pins present while live"
+ },
+ {
+  "journey": "reassign",
+  "step": "clock-in u_drv_golden_20000000000",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@tracking/driver_location/at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@tracking/driver_location/at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "reassign",
+  "step": "reassign to D2",
+  "path": "/tracking/dest_lat",
+  "from": 15.52,
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "reassign to D2",
+  "path": "/tracking/dest_lng",
+  "from": -88.01,
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "reassign to D2",
+  "path": "/tracking/driver_location",
+  "from": {
+   "at": "T@tracking/driver_location/at",
+   "lat": 15.504,
+   "lng": -88.026
+  },
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "reassign to D2",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "reassign to D2",
+  "path": "/tracking/is_active_drop",
+  "from": true,
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "reassign to D2",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "reassign",
+  "step": "reassign to D2",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 3,
+   "mode": "neutral",
+   "name": "Dos",
+   "owner_tag": "none",
+   "seq": 35,
+   "smp": {
+    "owner_tag": "fb449faafc0234ef",
+    "sample_at": 0,
+    "shift_id": "ID2"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "reassign",
+  "step": "reassign to D2",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@tracking/driver_location/at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "reassign",
+  "step": "D2 accept",
+  "path": "/tracking/dest_lat",
+  "from": 15.52,
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "D2 accept",
+  "path": "/tracking/dest_lng",
+  "from": -88.01,
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "D2 accept",
+  "path": "/tracking/driver_location",
+  "from": {
+   "at": "T@tracking/driver_location/at",
+   "lat": 15.504,
+   "lng": -88.026
+  },
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "D2 accept",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "D2 accept",
+  "path": "/tracking/is_active_drop",
+  "from": true,
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "D2 accept",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "reassign",
+  "step": "D2 accept",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 3,
+   "mode": "neutral",
+   "name": "Dos",
+   "owner_tag": "none",
+   "seq": 38,
+   "smp": {
+    "owner_tag": "fb449faafc0234ef",
+    "sample_at": 0,
+    "shift_id": "ID2"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "reassign",
+  "step": "D2 accept",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@tracking/driver_location/at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ },
+ {
+  "journey": "reassign",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/dest_lat",
+  "from": 15.52,
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/dest_lng",
+  "from": -88.01,
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/driver_location",
+  "from": {
+   "at": "T@tracking/driver_location/at",
+   "lat": 15.504,
+   "lng": -88.026
+  },
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/driver_name",
+  "from": "Uno",
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/is_active_drop",
+  "from": true,
+  "to": "(absent)",
+  "reason": "reassign-clear: reassigned away: the old driver's name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)"
+ },
+ {
+  "journey": "reassign",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/picked_up_at",
+  "from": "T@tracking/picked_up_at",
+  "to": "T@order/picked_up_at",
+  "reason": "ts-from-order: the tracker timestamp is copied from the order (one source of truth) instead of a separate server stamp"
+ },
+ {
+  "journey": "reassign",
+  "step": "end (background handlers settled)",
+  "path": "/tracking/mx",
+  "from": "(absent)",
+  "to": {
+   "epoch": 3,
+   "mode": "neutral",
+   "name": "Dos",
+   "owner_tag": "none",
+   "seq": 38,
+   "smp": {
+    "owner_tag": "fb449faafc0234ef",
+    "sample_at": 0,
+    "shift_id": "ID2"
+   }
+  },
+  "reason": "mx: gen-2 derived mirror mx (additive; the gen-1 page never reads it) — no pins outside live"
+ },
+ {
+  "journey": "reassign",
+  "step": "end (background handlers settled)",
+  "path": "/_ts_order",
+  "from": [
+   "T@order/created_at",
+   "T@order/picked_up_at",
+   "T@tracking/picked_up_at",
+   "T@tracking/driver_location/at"
+  ],
+  "to": [
+   "T@order/created_at",
+   "T@order/picked_up_at"
+  ],
+  "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
+ }
+]

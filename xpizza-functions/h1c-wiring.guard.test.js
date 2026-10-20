@@ -12,7 +12,7 @@ const { execFileSync } = require('child_process');
 const { unapplyH1cIndex, BEGIN, END } = require('./tools/h1c-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = require('./tools/signup-inverse').unapplySignupIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // the signup slice (newer) is reversed FIRST
+const real = require('./tools/signup-inverse').unapplySignupIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')));   // the signup slice (newer) is reversed FIRST
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 const introducing = git(['log', '--format=%H', '-S', BEGIN, '--', 'index.js']).trim().split('\n').filter(Boolean).pop();
 const base = introducing ? git(['show', `${introducing}^:xpizza-functions/index.js`]) : git(['show', 'HEAD:xpizza-functions/index.js']);

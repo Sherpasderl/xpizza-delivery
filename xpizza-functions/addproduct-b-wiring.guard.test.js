@@ -22,13 +22,13 @@ const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 // D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed
 // after the WhatsApp-cancel block (tools/wacancel-inverse.js unapplyWaCancelIndex), which is reversed after the per-product extras blocks
 // (tools/extras-inverse.js unapplyExtrasIndex — the newest, reversed FIRST).
-const idx = unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(require('./tools/wacancel-inverse').unapplyWaCancelIndex(require('./tools/extras-inverse').unapplyExtrasIndex(require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(read('index.js')))))))))))))));
+const idx = unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(require('./tools/wacancel-inverse').unapplyWaCancelIndex(require('./tools/extras-inverse').unapplyExtrasIndex(require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(read('index.js'))))))))))))))));
 const BASE = execFileSync('git', ['show', '4e2a710:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 // ── (i) ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 assert.strictEqual(unapplyAddProductB(idx), BASE, '🔴 index.js minus the add-product B hunks is not 4e2a710:index.js — something beyond the stated seams changed');
 assert.ok(INDEX_HUNKS.length >= 6, `the hunks are enumerated (${INDEX_HUNKS.length})`);
-{ let folds; try { folds = unapplyAddProductB(read('index.js')) === BASE; } catch (_) { folds = false; }
+{ let folds; try { folds = unapplyAddProductB(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(read('index.js'))) === BASE; } catch (_) { folds = false; }
   assert.ok(!folds, 'non-vacuity: without the D4-c2b inverse the real index.js does NOT fold back (its block is present)'); }
 {
   const [now] = INDEX_HUNKS[2];

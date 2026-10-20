@@ -22,7 +22,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 // own delta back to BASE. S1a's hunks are disjoint from every serial3 block (reversal order is immaterial).
 const { unapplyS1aIndex } = require('./tools/s1a-inverse');
 {
-  const real = require('./tools/h0-inverse').unapplyH0Index(unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(read('index.js')))))))));   // S1a (newest) reverses FIRST, then PLAN-H0 — leaving the serial3 layer
+  const real = require('./tools/h0-inverse').unapplyH0Index(unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(read('index.js'))))))))));   // S1a (newest) reverses FIRST, then PLAN-H0 — leaving the serial3 layer
   const base = baseOf('index.js');
   assert.notStrictEqual(unapplySerial3Index(real), real, 'non-vacuity: the blocks are present and swapped back');
   assert.strictEqual(unapplySerial3Index(real), base, `🔴 index.js minus the serial3 blocks (after the S1a + H0 layers are reversed first) is not ${BASE}:index.js`);

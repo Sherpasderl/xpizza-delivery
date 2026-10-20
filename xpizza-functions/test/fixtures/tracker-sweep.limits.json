@@ -1,0 +1,18 @@
+{
+ "_doc": "tracker validation sweep (codex build r2 P2-3) — ceil(measured × 1.25) per populated scenario, frozen once",
+ "frozenFrom": "m-on.json",
+ "limits": {
+  "sweep24": {
+   "reads": 94,
+   "readBytes": 11394,
+   "tx": 15,
+   "writes": 15
+  },
+  "sweep100": {
+   "reads": 379,
+   "readBytes": 47685,
+   "tx": 63,
+   "writes": 63
+  }
+ }
+}
