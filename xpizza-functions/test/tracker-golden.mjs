@@ -194,7 +194,11 @@ function canonical(steps) {
       if (TS(v)) { if (!first.has(v)) first.set(v, `T@${p}`); return; }
       if (v && typeof v === 'object') for (const k of Object.keys(v).sort()) walk(v[k], p ? `${p}/${k}` : k);
     })(st, '');
-    const byVal = [...first.entries()].sort((a, b) => a[0] - b[0]);
+    // ORDERING is over SERVER timestamps only. The ingest sample times (driver_location.at, mx.smp.sample_at) are SCRIPT-chosen
+    // (now − the journey's sample age): ranking them against server stamps is a timing race (they flip under load — first exposed by
+    // S5's ready_at on e8e77e24). Their labels stay on their fields; BUILD §3.3: those deltas are compared where the script sets them.
+    const SAMPLE = /(^|\/)(driver_location\/at|mx\/smp\/sample_at)$/;
+    const byVal = [...first.entries()].filter(([, label]) => !SAMPLE.test(label)).sort((a, b) => a[0] - b[0]);
     const order = [];
     for (let i = 0; i < byVal.length; i += 1) {
       if (i && byVal[i][0] === byVal[i - 1][0]) order[order.length - 1] += `=${byVal[i][1]}`; else order.push(byVal[i][1]);
