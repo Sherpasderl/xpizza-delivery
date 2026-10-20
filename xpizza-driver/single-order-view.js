@@ -24,8 +24,13 @@ export function itemLines(order) {
   for (const l of sl) {
     if (!l || typeof l.name !== 'string') return null;          // malformed → fall back to items_text
     const qty = Number(l.qty);
-    if (!Number.isInteger(qty)) return null;                    // malformed
-    if (qty > 0 && Number(l.cents) >= 0) out.push({ name: l.name, qty });   // article (reward cents===0 counts; discount cents<0 skipped)
+    if (!Number.isInteger(qty)) return null;                    // malformed qty → fallback
+    // Validate cents on EVERY line BEFORE any filtering: a line missing/garbled cents makes the whole
+    // summary untrustworthy, so fall back to items_text rather than silently dropping that line and
+    // showing a wrong article count. (null/undefined, NaN-producing, or non-integer cents → fallback.)
+    const cents = Number(l.cents);
+    if (l.cents == null || !Number.isInteger(cents)) return null;
+    if (qty > 0 && cents >= 0) out.push({ name: l.name, qty });   // article (reward cents===0 counts; discount cents<0 skipped)
   }
   return out.length ? out : null;
 }
@@ -95,6 +100,7 @@ export { brandLabel };
 //     RESTAURANT    { lat, lng } hub fallback (XPD.RESTAURANT)            arrived       within geofence of the current stop
 //     atRestaurant  pickup REVIEW mode (the "Ya estoy en el restaurante" tap latched it; client-only, no server write)
 //     navPref       'Waze' | 'Maps' preferred nav app (default 'Waze'; the SETTER is slice 4 — here it only picks primary)
+//     nowMs         the call site's Date.now() (offer ring only) — the clock arrives as DATA so this stays pure
 // The slide/tap element IDs match index.html's attachActiveCardHandlers EXACTLY: btn-accept (offer),
 // btn-at-restaurant (client-only review toggle), btn-pickup (server pickup), btn-delivered (server deliver).
 
@@ -103,6 +109,12 @@ const PHASE_PILL = {
   pickup: { cls: 'p', label: 'Recoger' },
   delivery: { cls: 'p', label: 'En camino' },
 };
+
+// The offer acceptance window (server assignment_deadline allows ~60 s). The ring is a DISPLAY proxy:
+// the authoritative seconds-left is the frozen `.accept-countdown` tick reading [data-deadline]. We size
+// the ring's drain to this window and resume it from the real elapsed fraction via a negative
+// animation-delay, so a re-render continues the drain instead of restarting a fresh animation.
+const OFFER_RING_SECS = 60;
 
 /** The brand chip — brandMeta(order) → {label, cls}; outlined, tinted only by the known-brand class. */
 function svChip(order, esc) {
@@ -205,8 +217,17 @@ export function singleOrderCardHtml(o, deps) {
   // ── OFFER (awaiting_acceptance): ring countdown + slide-accept + no-reject footnote. NO earnings (slice 4). ──
   if (phase === 'awaiting_acceptance') {
     const dl = o.pickupTask && o.pickupTask.assignment_deadline;
+    // Resume the drain from the real elapsed fraction: remaining = (deadline - now), clamped to the
+    // window; animation-duration = the window, animation-delay = -(elapsed). A later re-render passes a
+    // fresh nowMs → a larger negative delay → the ring picks up where it was, never restarting at full.
+    // nowMs is injected by the (impure) call site; absent or non-positive (tests / no clock) → full ring.
+    const nowMs = Number(d.nowMs);
+    const remaining = (Number.isFinite(nowMs) && nowMs > 0)
+      ? Math.max(0, Math.min(OFFER_RING_SECS, (Number(dl) - nowMs) / 1000))
+      : OFFER_RING_SECS;
+    const ringStyle = ` style="animation-duration:${OFFER_RING_SECS}s;animation-delay:-${(OFFER_RING_SECS - remaining).toFixed(3)}s"`;
     const ring = dl
-      ? `<div class="sv-ring" data-deadline="${dl}"><svg viewBox="0 0 128 128"><circle class="sv-ring-trk" cx="64" cy="64" r="56"/><circle class="sv-ring-run" cx="64" cy="64" r="56"/></svg><span class="accept-countdown sv-ring-num" data-deadline="${dl}">--s</span></div>`
+      ? `<div class="sv-ring" data-deadline="${dl}"><svg viewBox="0 0 128 128"><circle class="sv-ring-trk" cx="64" cy="64" r="56"/><circle class="sv-ring-run" cx="64" cy="64" r="56"${ringStyle}/></svg><span class="accept-countdown sv-ring-num" data-deadline="${dl}">--s</span></div>`
       : '';
     return `<div class="sv-card sv-offer">
       <div class="sv-offer-head">${svChip(order, esc)}<span class="sv-onum">${label}</span>${ring}</div>

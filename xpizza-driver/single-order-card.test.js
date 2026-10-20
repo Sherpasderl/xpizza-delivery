@@ -63,6 +63,28 @@ t('to-customer (delivery): #btn-delivered, customer name, promoted reference, NO
   assert.equal([...doc.querySelectorAll('*')].some((e) => /Llegué|Problema con/.test(e.textContent || '')), false);
 });
 
+// ---------- offer ring tracks assignment_deadline (codex r1 P2-2): resume, don't restart ----------
+t('ring: animation resumes from elapsed (negative animation-delay) — a re-render mid-way continues, not restarts', () => {
+  const base = 1_000_000_000_000;
+  const o60 = { ...offer, pickupTask: { ...offer.pickupTask, assignment_deadline: base + 60000 } };
+  const run = o60.pickupTask.assignment_deadline;
+  // at t0 (full 60 s left): duration = window, delay ≈ -0s
+  const s0 = build(o60, { nowMs: base }).querySelector('.sv-ring-run').getAttribute('style');
+  assert.match(s0, /animation-duration:60s/);
+  assert.match(s0, /animation-delay:-0\.000s/);
+  // re-render at +30 s: the ring has drained 30 s → delay ≈ -30s (RESUMES; it does not restart at -0s)
+  const s30 = build(o60, { nowMs: base + 30000 }).querySelector('.sv-ring-run').getAttribute('style');
+  assert.match(s30, /animation-duration:60s/);
+  assert.match(s30, /animation-delay:-30\.000s/);
+  // deadline passed → fully drained (elapsed clamped to the window)
+  const sEnd = build(o60, { nowMs: run + 5000 }).querySelector('.sv-ring-run').getAttribute('style');
+  assert.match(sEnd, /animation-delay:-60\.000s/);
+  // no clock supplied → full ring (delay -0s), never NaN
+  const sNo = build(o60).querySelector('.sv-ring-run').getAttribute('style');
+  assert.match(sNo, /animation-delay:-0\.000s/);
+  assert.ok(!/NaN/.test(s0 + s30 + sEnd + sNo), 'no NaN in any ring style');
+});
+
 // ---------- items from summary_lines (discount excluded), items_text fallback — shown on offer + review ----------
 t('items: summary_lines → qty× articles, discount line excluded, count = Σqty', () => {
   const doc = build(offer);

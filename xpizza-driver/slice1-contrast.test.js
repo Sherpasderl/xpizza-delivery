@@ -69,4 +69,33 @@ for (const [label, fgE, bgE, px, w] of PAIRS) {
   else fails.push(`${label}: ${cr}:1 < ${thr} (${fg} on ${bg}, ${px}px/${w})`);
 }
 assert.deepEqual(fails, [], `AA contrast failure(s):\n  ${fails.join('\n  ')}`);
-console.log(`✓ slice1-contrast: ${passed}/${PAIRS.length} fg/bg pairs meet WCAG AA`);
+
+// ---- slide-label SHEEN gradients (codex r1 P2-4) ----
+// The slide label text IS a moving linear-gradient on the white track. As the sheen passes, its brightest
+// (highest-luminance) stop is momentarily the whole label, so THAT stop sets the worst-case contrast. Read
+// every hex stop from the rule and assert the gradient MINIMUM clears AA for this 14 px/800 label (→ 4.5).
+function gradientStops(selector) {
+  const i = html.indexOf(selector + ' {');
+  assert.notEqual(i, -1, `rule ${selector} not found`);
+  const block = html.slice(i, html.indexOf('}', i));
+  const m = block.match(/background-image:\s*linear-gradient\(([^;]*)\)/);
+  assert.ok(m, `${selector}: no linear-gradient background-image`);
+  return [...m[1].matchAll(/#[0-9A-Fa-f]{3,6}/g)].map((x) => x[0]);
+}
+const SHEEN = [
+  ['.sv-slide.accept .slide-text, .sv-slide.pickup .slide-text', 14, 800],
+  ['.sv-slide.at-restaurant .slide-text', 14, 800],
+];
+let gpassed = 0;
+const gfails = [];
+for (const [sel, px, w] of SHEEN) {
+  const stops = gradientStops(sel);
+  assert.ok(stops.length >= 2, `${sel}: expected ≥2 gradient stops`);
+  const thr = need(px, w);
+  const worst = Math.round(Math.min(...stops.map((s) => ratio(s, '#FFFFFF'))) * 100) / 100;   // #FFFFFF = the lightest track colour
+  if (worst >= thr) gpassed += 1;
+  else gfails.push(`${sel}: gradient min ${worst}:1 < ${thr} (stops ${stops.join(',')})`);
+}
+assert.deepEqual(gfails, [], `sheen-gradient AA failure(s):\n  ${gfails.join('\n  ')}`);
+
+console.log(`✓ slice1-contrast: ${passed}/${PAIRS.length} fg/bg pairs + ${gpassed}/${SHEEN.length} sheen-gradient minima meet WCAG AA`);

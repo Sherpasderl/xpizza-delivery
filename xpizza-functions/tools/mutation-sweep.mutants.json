@@ -15614,8 +15614,8 @@
     "id": "drv1-01",
     "slice": "drv1",
     "file": "../xpizza-driver/single-order-view.js",
-    "from": "Number(l.cents) >= 0) out.push",
-    "to": "Number(l.cents) > 0) out.push",
+    "from": "cents >= 0) out.push",
+    "to": "cents > 0) out.push",
     "label": "itemLines drops zero-priced reward items (cents===0) — rewards vanish from the card",
     "command": [
       "node",
@@ -15626,8 +15626,8 @@
     "id": "drv1-02",
     "slice": "drv1",
     "file": "../xpizza-driver/single-order-view.js",
-    "from": "if (qty > 0 && Number(l.cents)",
-    "to": "if (qty >= 0 && Number(l.cents)",
+    "from": "if (qty > 0 && cents",
+    "to": "if (qty >= 0 && cents",
     "label": "itemLines counts qty:0 lines as articles — phantom zero-qty items",
     "command": [
       "node",
@@ -15758,8 +15758,8 @@
     "id": "drv1-13",
     "slice": "drv1",
     "file": "../xpizza-driver/index.html",
-    "from": "slice1ReviewLatchOrderId = soloOrder.orderId;",
-    "to": "slice1ReviewLatchOrderId = null;",
+    "from": "slice1ReviewLatchKey = authGen + ':' + soloOrder.orderId;",
+    "to": "slice1ReviewLatchKey = null;",
     "label": "review latch never set on tap — Ya estoy en el restaurante no longer opens the review card",
     "command": [
       "node",
@@ -15773,6 +15773,54 @@
     "from": ".sv-chip.ok { color:var(--success-hover);",
     "to": ".sv-chip.ok { color:var(--sv-ok);",
     "label": "success chip reverts to --sv-ok (#15803D) → 4.40:1 on the green tint, below WCAG AA",
+    "command": [
+      "node",
+      "../xpizza-driver/slice1-contrast.test.js"
+    ]
+  },
+  {
+    "id": "drv1-15",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "l.cents == null || !Number.isInteger(cents)",
+    "to": "false",
+    "label": "itemLines skips cents validation (P2-5) — a line with missing/garbled cents no longer forces the items_text fallback, so the article count is silently wrong",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-view.test.js"
+    ]
+  },
+  {
+    "id": "drv1-16",
+    "slice": "drv1",
+    "file": "../xpizza-driver/index.html",
+    "from": "slice1ReviewLatchKey !== spLatchKey || soloOrder.phase !== 'pickup'",
+    "to": "false",
+    "label": "review latch never reset (P2-3) — a stale 'Ya estoy en el restaurante' re-opens review for a later order/phase/session",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv1-17",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "OFFER_RING_SECS - remaining",
+    "to": "0",
+    "label": "offer ring ignores elapsed (P2-2) — a re-render restarts the drain at full instead of resuming from the deadline",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-card.test.js"
+    ]
+  },
+  {
+    "id": "drv1-18",
+    "slice": "drv1",
+    "file": "../xpizza-driver/index.html",
+    "from": "#4471BF 50%,#2F5FB8",
+    "to": "#A8C6F2 50%,#2F5FB8",
+    "label": "slide sheen reverts to the low-contrast highlight (P2-4) — #A8C6F2 = 1.75:1 on white, fails WCAG AA",
     "command": [
       "node",
       "../xpizza-driver/slice1-contrast.test.js"

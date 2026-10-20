@@ -22,6 +22,16 @@ t('itemLines: items kept; discount (cents<0) excluded; reward (cents===0) kept',
   assert.deepEqual(r, [{ name: 'Pizza', qty: 2 }, { name: 'Coca-Cola gratis', qty: 1 }]);
 });
 t('itemLines: all discounts → null (no articles)', () => assert.equal(itemLines({ summary_lines: [{ name: 'd', qty: 1, cents: -1 }] }), null));
+// codex r1 P2-5: cents is validated on EVERY line BEFORE filtering — one bad line fails the whole summary
+// (→ items_text fallback), never silently dropping that line and under-counting the articles.
+t('itemLines: a valid pizza + a drink MISSING cents → null (whole-summary items_text fallback, not just the pizza)', () =>
+  assert.equal(itemLines({ summary_lines: [{ name: 'Pizza', qty: 1, cents: 38500 }, { name: 'Coca-Cola', qty: 1 }] }), null));
+t('itemLines: null cents on any line → null', () =>
+  assert.equal(itemLines({ summary_lines: [{ name: 'Pizza', qty: 1, cents: 38500 }, { name: 'Agua', qty: 1, cents: null }] }), null));
+t('itemLines: non-numeric cents on any line → null', () =>
+  assert.equal(itemLines({ summary_lines: [{ name: 'Pizza', qty: 1, cents: 38500 }, { name: 'Agua', qty: 1, cents: 'x' }] }), null));
+t('itemLines: non-integer cents on any line → null', () =>
+  assert.equal(itemLines({ summary_lines: [{ name: 'Pizza', qty: 1, cents: 1.5 }] }), null));
 
 // ---------- navTarget: baseline precedence EXACTLY (?? for pickup, || for delivery), zero on BOTH axes ----------
 const R = { lat: 15.5, lng: -88.03 };

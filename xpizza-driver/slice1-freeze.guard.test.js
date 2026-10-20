@@ -221,4 +221,68 @@ t('single-order-view.js: no DOM / Firebase / global / IO / nondeterminism token 
   assert.deepEqual(hits, [], `impurity token(s) found in single-order-view.js code:\n  ${hits.join('\n  ')}`);
 });
 
+// ---------- 6, 7, 8. region LOCATION is pinned (codex r1 P2-1) ----------
+// Strip-to-baseline (check 2) proves the regions are pure insertions, but NOT that they sit in the right
+// place: moving the whole SINGLE-ORDER-BRANCH above `const orders = …` still strips back to baseline while
+// breaking at runtime (the branch reads `orders` before it exists). Pin each region to its exact baseline
+// neighbours (the line just before its START and just after its END — both baseline lines), add a relocation
+// negative, and assert each region carries only its declared kind of content.
+const REGION_ANCHORS = {
+  'PRESENTATION': { before: '}', after: '</style>' },
+  'IMPORT': { before: "import { makeCompanionController } from './onboarding-helpers.js';   // controller owns companion state + the pure decision", after: '' },
+  'SINGLE-ORDER-BRANCH': { before: '', after: '  const [active, ...rest] = orders;' },
+};
+function regionRanges(lines) {
+  const marks = scanMarkers(lines);
+  const out = {};
+  for (const name of KNOWN_REGIONS) {
+    const s = marks.find((x) => x.name === name && x.kind === 'START');
+    const e = marks.find((x) => x.name === name && x.kind === 'END');
+    assert.ok(s && e && e.i >= s.i, `region ${name}: missing or mis-ordered markers`);
+    out[name] = [s.i, e.i];
+  }
+  return out;
+}
+function checkAnchors(lines) {
+  const ranges = regionRanges(lines);
+  for (const name of KNOWN_REGIONS) {
+    const [s, e] = ranges[name];
+    const exp = REGION_ANCHORS[name];
+    assert.equal(lines[s - 1], exp.before, `region ${name}: the line BEFORE its START is not the pinned baseline anchor (relocated?)`);
+    assert.equal(lines[e + 1], exp.after, `region ${name}: the line AFTER its END is not the pinned baseline anchor (relocated?)`);
+  }
+}
+
+t('regions: each region is pinned at its exact baseline location (before/after anchors)', () => {
+  checkAnchors(readFileSync(join(__dir, 'index.html'), 'utf8').split('\n'));
+});
+
+t('relocation NEGATIVE: moving SINGLE-ORDER-BRANCH above `const orders` is rejected by the anchors', () => {
+  const lines = readFileSync(join(__dir, 'index.html'), 'utf8').split('\n');
+  const [s, e] = regionRanges(lines)['SINGLE-ORDER-BRANCH'];
+  const block = lines.slice(s, e + 1);
+  const without = [...lines.slice(0, s), ...lines.slice(e + 1)];
+  const ordersIdx = without.findIndex((l) => /const orders = XPD\.getDriverOrders/.test(l));
+  assert.ok(ordersIdx > 0, 'found the `const orders` declaration to relocate the branch above');
+  const moved = [...without.slice(0, ordersIdx), ...block, ...without.slice(ordersIdx)];
+  assert.throws(() => checkAnchors(moved), /SINGLE-ORDER-BRANCH: the line AFTER its END/,
+    'a branch moved above `const orders` MUST fail the anchor check (it would read orders before declaration)');
+});
+
+t('content: each region carries only its declared kind (presentation CSS / import / branch logic)', () => {
+  const lines = readFileSync(join(__dir, 'index.html'), 'utf8').split('\n');
+  const ranges = regionRanges(lines);
+  const bodyOf = (name) => { const [s, e] = ranges[name]; return lines.slice(s + 1, e).join('\n'); };   // strictly between the markers
+  const P = bodyOf('PRESENTATION'), I = bodyOf('IMPORT'), B = bodyOf('SINGLE-ORDER-BRANCH');
+  // PRESENTATION = Cuadra/Red Hat CSS only — no JS logic.
+  assert.ok(/\.sv-card\b/.test(P) && /@font-face/.test(P), 'PRESENTATION must be the slice CSS (.sv-card + @font-face)');
+  assert.ok(!/\bimport\s/.test(P) && !/\bfunction\b/.test(P) && !/singleOrderCardHtml\s*\(/.test(P), 'PRESENTATION must carry NO JS logic');
+  // IMPORT = the view import + the latch binding only.
+  assert.ok(/import\s*\{[^}]*\}\s*from\s*'\.\/single-order-view\.js'/.test(I) && /slice1ReviewLatch/.test(I), 'IMPORT must import the view + declare the latch');
+  assert.ok(!/@font-face/.test(I) && !/\bfunction\s/.test(I) && !/renderActiveAndQueue\s*\(/.test(I), 'IMPORT must carry no CSS / function / branch call');
+  // SINGLE-ORDER-BRANCH = the gate logic only.
+  assert.ok(/orders\.length === 1/.test(B) && /singleOrderCardHtml\s*\(/.test(B), 'BRANCH must be the single-order gate');
+  assert.ok(!/@font-face/.test(B) && !/\bimport\s/.test(B), 'BRANCH must carry no CSS / import');
+});
+
 console.log(`✓ slice1-freeze.guard: ${passed} checks passed (baseline ${baseSha.slice(0, 10)})`);

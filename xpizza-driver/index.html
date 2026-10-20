@@ -1150,10 +1150,13 @@
    Each selector matches the frozen per-phase specificity (0,3,0) and wins by source order. The white
    track, the arrow (white on the coloured thumb) and the delivered-green stay as the frozen base.
    accept/pickup → azul-acero; at-restaurant → marino; delivered → the frozen green (≈ Cuadra --ok). */
+/* Sheen gradient: the brightest (50%) stop is the WEAKEST contrast as the sheen passes, so it must still
+   clear WCAG AA 4.5:1 on the white track for this 14 px/800 label. #4471BF = 4.82:1 on #FFFFFF (and the
+   slide-label stops are asserted in slice1-contrast.test.js). Base stays the Cuadra azul / marino. */
 .sv-slide.accept .slide-text, .sv-slide.pickup .slide-text {
-  background-image:linear-gradient(100deg,#2F5FB8 0%,#2F5FB8 42%,#A8C6F2 50%,#2F5FB8 58%,#2F5FB8 100%); }
+  background-image:linear-gradient(100deg,#2F5FB8 0%,#2F5FB8 42%,#4471BF 50%,#2F5FB8 58%,#2F5FB8 100%); }
 .sv-slide.at-restaurant .slide-text {
-  background-image:linear-gradient(100deg,#14306B 0%,#14306B 42%,#8EA8D8 50%,#14306B 58%,#14306B 100%); }
+  background-image:linear-gradient(100deg,#14306B 0%,#14306B 42%,#4471BF 50%,#14306B 58%,#14306B 100%); }
 .sv-slide.accept .slide-fill, .sv-slide.pickup .slide-fill, .sv-slide.at-restaurant .slide-fill { background:var(--accent); }
 .sv-slide.at-restaurant .slide-fill { background:var(--marino); }
 .sv-slide.accept .slide-thumb, .sv-slide.pickup .slide-thumb {
@@ -1374,10 +1377,11 @@ import { displayOrderLabel, endShiftPrompt } from './order-helpers.js';
 import { makeCompanionController } from './onboarding-helpers.js';   // controller owns companion state + the pure decision
 /* ===== SLICE1:IMPORT:START — single-active-order view (slice 1); pure markup builder in single-order-view.js ===== */
 import { singleOrderCardHtml } from './single-order-view.js';
-// The one module binding the slice owns: the orderId the driver tapped "Ya estoy en el restaurante" for — a
-// client-only pickup-REVIEW latch (no server write). Read + reset in the SINGLE-ORDER-BRANCH region below; it
-// clears by itself when the single active order's id or phase changes.
-let slice1ReviewLatchOrderId = null;
+// The one module binding the slice owns: the client-only pickup-REVIEW latch (no server write) the driver
+// armed by tapping "Ya estoy en el restaurante". It holds a COMPOSITE key `${authGen}:${orderId}` so the
+// SINGLE-ORDER-BRANCH region below can clear it on ANY discontinuity — a different order/assignment, a phase
+// change away from pickup, or an auth/session change (authGen bumps) — never forcing a stale review.
+let slice1ReviewLatchKey = null;
 /* ===== SLICE1:IMPORT:END ===== */
 
 // ============================================================
@@ -2846,8 +2850,15 @@ function renderActiveAndQueue() {
     const spLng = spIsPickup ? (soloOrder.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng) : (spOrder.lng || soloOrder.deliveryTask.destination_lng);
     const spArrived = !!(driverState && driverState.lat != null && driverState.lng != null
       && XPD.haversineDistance(driverState.lat, driverState.lng, spLat, spLng) < 50);
-    // client-only review latch, scoped to THIS order + pickup phase (auto-resets on order / phase change)
-    const spAtRestaurant = soloOrder.phase === 'pickup' && slice1ReviewLatchOrderId === soloOrder.orderId;
+    // Client-only review latch. Reset it on ANY discontinuity BEFORE reading it, so a stale "Ya estoy en el
+    // restaurante" tap can never re-open review for a later visit: a different order/assignment or auth
+    // session (the composite key changes), or a phase change away from pickup. The key pins the current
+    // pickup visit; when it no longer matches, the latch is dropped and only a live geofence can open review.
+    const spLatchKey = authGen + ':' + soloOrder.orderId;
+    if (slice1ReviewLatchKey !== null && (slice1ReviewLatchKey !== spLatchKey || soloOrder.phase !== 'pickup')) {
+      slice1ReviewLatchKey = null;
+    }
+    const spAtRestaurant = soloOrder.phase === 'pickup' && slice1ReviewLatchKey === spLatchKey;
 
     activeSlot.classList.add('solo');
     bannerSlot.innerHTML = '';
@@ -2855,11 +2866,12 @@ function renderActiveAndQueue() {
     activeSlot.innerHTML = singleOrderCardHtml(soloOrder, {
       ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,
       RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: undefined,
+      nowMs: Date.now(),   // offer ring: elapsed drives the resume (negative animation-delay); display-only
     });
     attachActiveCardHandlers(soloOrder);   // binds whichever server slide this phase renders
     if ($('btn-at-restaurant')) {
       attachSlideConfirm('btn-at-restaurant', async () => {
-        slice1ReviewLatchOrderId = soloOrder.orderId;   // latch pickup-review mode; client-only, no server write
+        slice1ReviewLatchKey = authGen + ':' + soloOrder.orderId;   // latch pickup-review for THIS visit; client-only, no server write
         renderActiveAndQueue();                          // defers under the active drag, replays into the review card
       });
     }
