@@ -11,22 +11,31 @@
   "auth-errors.js",
   "auth-errors.test.mjs",
   "auth.js",
+  "availability.js",
   "boot.js",
+  "branch-logic.js",
+  "branch-logic.test.mjs",
+  "branches-view.js",
   "editor.js",
   "editor.test.mjs",
   "firebase.js",
   "index.html",
   "netlify.toml",
+  "ops-dom.js",
   "package-lock.json",
   "package.json",
+  "pausas.js",
   "portal-logic.js",
   "portal-look.test.mjs",
   "portal-site-freeze.golden.json",
   "portal-wiring.test.mjs",
+  "portalui-guards.test.mjs",
   "render.js",
   "render.test.mjs",
   "review.js",
   "review.test.mjs",
+  "shell.js",
+  "shell.test.mjs",
   "sherpa-client.js",
   "styles.css",
   "ventas-harness.mjs",
@@ -46,8 +55,8 @@
    "bytes": 4451
   },
   "index.html": {
-   "sha256": "f8125429518f9b94afbe35bc7665d2e34aeadf5c39be7904620104f1a67ed419",
-   "bytes": 6055
+   "sha256": "b12141c19a18969cdcab02dd476e2736cad730bea6784eff09b49141abd6697f",
+   "bytes": 9409
   },
   "netlify.toml": {
    "sha256": "fe3ef565e42ad144919fa416dd111b322958d83486746116dd07c228faed22ee",
@@ -62,8 +71,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "257a8c0760f86b5e4addb79dd2d9b215e7f5627567632b2557ef70eca1c07f63",
-   "bytes": 67248
+   "sha256": "7f84fcf1a0739fd50b31867e008e6c19059aa5eb76381915f0a50f03c921cdcf",
+   "bytes": 81221
   }
  },
  "diff_aid": {
@@ -110,6 +119,54 @@
   "declarations": [
    [
     "",
+    "#availstrip .bchip .n",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    "#availstrip .bchip .n.nout",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    "#availstrip .bchip",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    "#availstrip .bchip",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#availstrip .bchip.on",
+    "background",
+    "var(--tint)"
+   ],
+   [
+    "",
+    "#availstrip .bchip.on",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    "#availstrip .sl",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    "#pausemodal .plab",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".ack",
     "background",
     "var(--amber-soft)"
@@ -149,6 +206,54 @@
     ".addrow:hover",
     "background",
     "var(--tint)"
+   ],
+   [
+    "",
+    ".apill i",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".apill",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".apill",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".apill.out i",
+    "background",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".apill.out",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".apill.out",
+    "border-color",
+    "var(--red-line)"
+   ],
+   [
+    "",
+    ".apill.out",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".apill:hover",
+    "border-color",
+    "var(--mute2)"
    ],
    [
     "",
@@ -293,6 +398,48 @@
     ".btn.accent[data-busy] .spin",
     "color",
     "var(--card)"
+   ],
+   [
+    "",
+    ".btn.danger",
+    "border-color",
+    "var(--red-line)"
+   ],
+   [
+    "",
+    ".btn.danger",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".btn.danger.solid",
+    "background",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".btn.danger.solid",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".btn.danger.solid",
+    "color",
+    "var(--accent-ink)"
+   ],
+   [
+    "",
+    ".btn.danger:hover",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".btn.danger:hover",
+    "border-color",
+    "var(--red-text)"
    ],
    [
     "",
@@ -521,6 +668,30 @@
     ".drawer",
     "background",
     "var(--card)"
+   ],
+   [
+    "",
+    ".drawer.ops .adwx",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".drawer.ops .adwx",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".drawer.ops .bt span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".drawer.ops .fnote",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",
@@ -944,6 +1115,12 @@
    ],
    [
     "",
+    ".lock",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".mgadd",
     "background",
     "none"
@@ -1244,6 +1421,18 @@
    ],
    [
     "",
+    ".ncount",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".ncount",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".newtag",
     "background",
     "var(--green-soft)"
@@ -1376,6 +1565,234 @@
    ],
    [
     "",
+    ".ops .callout b",
+    "color",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".ops .callout",
+    "background",
+    "var(--amber-soft)"
+   ],
+   [
+    "",
+    ".ops .callout",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .card",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".ops .card",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .card.clk:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".ops .cmeta b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .cmeta",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .crumb",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".ops .crumb",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .crumb:hover",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".ops .errbox b,#detail .errbox b",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".ops .errbox p,#detail .errbox p",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .errbox,#detail .errbox",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".ops .fld .lab",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".ops .fnote",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".ops .hrow .d",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .inval",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".ops .inval",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .inval.inro",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".ops .inval.inro",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .map .mz",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".ops .map .mz",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .map",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".ops .sec h3 .hint",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".ops .sec p.help",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .sec",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".ops .status .sub",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .status",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".ops .status.stopen",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
+    ".ops .status.stopen",
+    "border-color",
+    "var(--green-line)"
+   ],
+   [
+    "",
+    ".ops .status.stpaused",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".ops .status.stpaused",
+    "border-color",
+    "var(--red-line)"
+   ],
+   [
+    "",
+    ".ops .step .val span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .step .val.miss",
+    "color",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".ops .stepb",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".ops .stepb",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .stepb:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".optrow .ogsub",
     "color",
     "var(--mute2)"
@@ -1395,6 +1812,42 @@
    [
     "",
     ".optrow:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".pchip",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".pchip",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".pchip.pchipon",
+    "background",
+    "var(--amber-soft)"
+   ],
+   [
+    "",
+    ".pchip.pchipon",
+    "border-color",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".pchip.pchipon",
+    "color",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".pchip:hover",
     "border-color",
     "var(--mute2)"
    ],
@@ -1421,6 +1874,84 @@
     ".pdelta.up",
     "color",
     "var(--amber)"
+   ],
+   [
+    "",
+    ".pill i",
+    "background",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".pill",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".pill",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".pill.closed,.pill.off",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".pill.closed,.pill.off",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".pill.open i",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".pill.open",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
+    ".pill.open",
+    "border-color",
+    "var(--green-line)"
+   ],
+   [
+    "",
+    ".pill.open",
+    "color",
+    "var(--green-text)"
+   ],
+   [
+    "",
+    ".pill.paused i",
+    "background",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".pill.paused",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".pill.paused",
+    "border-color",
+    "var(--red-line)"
+   ],
+   [
+    "",
+    ".pill.paused",
+    "color",
+    "var(--red-text)"
    ],
    [
     "",
@@ -1748,6 +2279,12 @@
    ],
    [
     "",
+    ".rwarn",
+    "background",
+    "var(--red)"
+   ],
+   [
+    "",
     ".sched",
     "background",
     "var(--card)"
@@ -1757,6 +2294,66 @@
     ".schednote",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".scope .lk",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".scope .scchev",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".scope .scdot",
+    "background",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".scope .scdot.st-open",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".scope .scdot.st-paused",
+    "background",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".scope",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".scope",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".scope.locked",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".scope:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".scopenote",
+    "color",
+    "var(--amber)"
    ],
    [
     "",
@@ -1868,6 +2465,12 @@
    ],
    [
     "",
+    ".skel i",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
     ".switch .chev",
     "color",
     "var(--mute2)"
@@ -1901,6 +2504,12 @@
     ".switchmenu",
     "background",
     "var(--card)"
+   ],
+   [
+    "",
+    ".switchmenu-item span",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -2564,6 +3173,36 @@
    ],
    [
     "@media(max-width:920px)",
+    ".mscopemenu .msi",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "@media(max-width:920px)",
+    ".mscopemenu .msi",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "@media(max-width:920px)",
+    ".mscopemenu .msi.msion",
+    "background",
+    "var(--tint2)"
+   ],
+   [
+    "@media(max-width:920px)",
+    ".mscopemenu .msi.msion",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "@media(max-width:920px)",
+    ".mscopemenu .msi.msion",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "@media(max-width:920px)",
     ".mtop .miconbtn",
     "background",
     "var(--card)"
@@ -2579,6 +3218,12 @@
     ".mtop .mswitch .chev",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "@media(max-width:920px)",
+    ".mtop .mswitch .mcv",
+    "color",
+    "var(--mute)"
    ],
    [
     "@media(max-width:920px)",

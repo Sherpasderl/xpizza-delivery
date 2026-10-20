@@ -1284,10 +1284,7 @@ function syncRow(surface, key, value) {
   markChanged(surface, key);
 }
 
-document.addEventListener('portal:signed-in', () => { loadRestaurants(); });
 document.addEventListener('portal:restaurant', (e) => { loadMenu(e.detail && e.detail.rid); });
-$('switcher').addEventListener('click', (e) => { e.stopPropagation(); openSwitch(); });
-document.addEventListener('click', (e) => { if (!e.target.closest('.switchwrap')) openSwitch(false); });
 
 // The review bar's own controls. Wired here, not inline: the CSP has no 'unsafe-inline', so an
 // onclick attribute would be inert and the button would look enabled while doing nothing.
@@ -1784,3 +1781,16 @@ try {
   const S = window.SherpaClient;
   if (S && !S.inert) S.registerAdapter({ canReload: () => portalCanReload(portalReloadFacts()), blockedNotice: 'Nueva versión: guardá tus cambios para actualizar' });
 } catch (_) { /* the module never breaks the portal */ }
+
+// ── PORTAL-UI 1a (PLAN-portal-ui-slice1-sucursales r5 §5.2) — shell.js owns discovery, the brand/branch switcher and the ONE
+// selection per page load. These are the only two additions to this module; everything above is unchanged.
+// openEditor: the selected branch holds catalog.read_editor → the editor opens on it, ONCE per page. It mirrors
+// loadRestaurants' tail (state.currentRid, then the restaurant event) without the switcher render or the localStorage write.
+// `sales` rides on the event for ventas.js (§11 A3: Ventas is owner-only in 1a); a detail without it behaves as today.
+export function openEditor(rid, { name = rid, sales } = {}) {
+  state.restaurants = [{ rid, name }];
+  state.currentRid = rid;
+  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid, sales } }));
+}
+// The self-update guard, reused verbatim to block a branch switch while the merchant has unsaved work or an operation open.
+export const editorCanLeave = () => portalCanReload(portalReloadFacts());

@@ -16,7 +16,11 @@ export const DIR = dirname(fileURLToPath(import.meta.url));
 export const IDS = ['switcher', 'switchmenu', 'discard', 'review', 'pubback', 'pubbtn', 'scrim', 'mbody',
   'revSub', 'revFoot', 'revTitle', 'drawer', 'rail', 'detail', 'rbar', 'rbtxt', 'shopname', 'shopsub',
   'whoami', 'avatar', 'logout', 'detailempty',
-  'navprod', 'navbiz', 'navventas', 'mnav', 'mnprod', 'mnventas', 'viewmenu', 'viewventas', 'app'];
+  'navprod', 'navbiz', 'navventas', 'mnav', 'mnprod', 'mnventas', 'viewmenu', 'viewventas', 'app',
+  // PORTAL-UI 1a: the shell's (shell.js) and the branch screens' hosts — the page loads shell.js after ventas.js
+  'scopewrap', 'scopebtn', 'scopemenu', 'scopenote', 'navopslabel', 'navsuc', 'navsuctext', 'navsuccount', 'navpausas',
+  'mtop', 'mswitch', 'mbrand', 'mscope', 'mchev', 'mscopemenu', 'mnsuc', 'mnpausas', 'menulede', 'menulock', 'availstrip',
+  'viewsuc', 'viewpausas', 'sucbar', 'sucbartxt', 'sucdiscard', 'sucsave', 'pausescrim', 'pausemodal', 'availdrawer', 'availscrim', 'opstoast', 'whorole'];
 // the classes index.html gives them, so `hidden` / `on` start where the real page starts
 const INITIAL_CLASS = {
   navprod: 'nav on', navbiz: 'nlabel hidden', navventas: 'nav hidden', mnav: 'mnav', mnprod: 'mn on', mnventas: 'mn',
@@ -108,12 +112,36 @@ export function captureDownloads() {
   return { saved, read, restore: () => { URL.createObjectURL = real; } };
 }
 
+// PORTAL-UI 1a: discovery is getMyBranches (shell.js). A suite's fixture still says WHICH restaurants the person owns the way it
+// always did — as a getMyRestaurants answer — and this translates that SAME answer into the getMyBranches shape a legacy
+// singleton owner gets (owner caps, operational fields). An error answer passes through unchanged. The branch screens'
+// availability read gets an empty list (these suites assert Ventas, not agotados).
+const OWNER_CAPS = ['catalog.read_editor', 'catalog.edit', 'catalog.add_product', 'catalog.reset_draft', 'catalog.publish', 'catalog.fiscal_ack',
+  'stats.read', 'availability.set', 'device.pair', 'device.revoke', 'device.list', 'location.hours', 'location.prep', 'location.pause',
+  'team.invite', 'team.revoke', 'brand.settings'];
+export function branchesFromRestaurants(body) {
+  const list = (body && Array.isArray(body.restaurants)) ? body.restaurants : [];
+  return {
+    brands: list.map((r) => ({ brand_id: r.rid, name: r.name })),
+    branches: list.map((r) => ({ rid: r.rid, brand_id: r.rid, role: 'owner', state: 'member', caps: OWNER_CAPS.slice(), name: r.name,
+      identity_version: 1, editable: { prep_default_min: null }, readonly: { active: true, radius_km: 7, hours: null, phone: null },
+      control: { state: 'open', paused_until: null, pause_reason: null, pause_since: null }, devices: 0, last_order_today: null })),
+  };
+}
 export function installFetch(handler) {
   const calls = [];
   globalThis.fetch = async (url, opts) => {
     const u = new URL(String(url));
     const fn = u.pathname.split('/').pop();
-    calls.push({ fn, url: String(url), query: Object.fromEntries(u.searchParams), auth: opts && opts.headers && opts.headers.Authorization });
+    calls.push({ fn, url: String(url), query: Object.fromEntries(u.searchParams), auth: opts && opts.headers && opts.headers.Authorization, body: opts && typeof opts.body === 'string' ? JSON.parse(opts.body) : null });
+    if (fn === 'getMyBranches') {
+      if (globalThis.__branchesDirect) return handler('getMyBranches', Object.fromEntries(u.searchParams), calls.length);   // a suite that answers it itself (opt-in)
+      const r = await handler('getMyRestaurants', Object.fromEntries(u.searchParams), calls.length);
+      if (!r || !r.ok) return r;
+      const body = branchesFromRestaurants(await r.json());
+      return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body), headers: { get: () => null } };
+    }
+    if (fn === 'getBranchAvailability' && !globalThis.__branchesDirect) { const body = { branches: [] }; return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body), headers: { get: () => null } }; }
     return handler(fn, Object.fromEntries(u.searchParams), calls.length);
   };
   return calls;
@@ -126,7 +154,7 @@ export const okCsv = (text, { filename = null, next = null } = {}) => ({
 });
 
 // Load the REAL modules (auth stubbed). `which`: ['app', 'ventas'] in that order — boot.js's order.
-export async function loadModules(which = ['app', 'ventas'], transforms = {}) {
+export async function loadModules(which = ['app', 'ventas', 'shell'], transforms = {}) {
   const tag = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
   const stub = join(DIR, `__ventas-auth-stub.${tag}.mjs`);
   // token() can be HELD by a test (globalThis.__tokenHold = a promise) to land a context change inside the
@@ -141,7 +169,8 @@ export async function loadModules(which = ['app', 'ventas'], transforms = {}) {
       const tmp = join(DIR, `__ventas-under-test.${name}.${tag}.mjs`);
       tmps.push(tmp);
       const src = (transforms[name] || ((s) => s))(readFileSync(join(DIR, `${name}.js`), 'utf8'))
-        .replace(/from '\.\/auth\.js'/g, `from './__ventas-auth-stub.${tag}.mjs'`);
+        .replace(/from '\.\/auth\.js'/g, `from './__ventas-auth-stub.${tag}.mjs'`)
+        .replace(/from '\.\/app\.js'/g, `from './__ventas-under-test.app.${tag}.mjs?t=${tag}'`);   // shell.js → the SAME app module instance under test
       writeFileSync(tmp, src);
       mods[name] = await import(`${pathToFileURL(tmp).href}?t=${tag}`);
     }

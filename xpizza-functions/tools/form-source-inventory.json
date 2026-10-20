@@ -151,7 +151,10 @@
     "xpizza-functions/order-form-location-escape.test.js",
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
+    "xpizza-functions/portal/ops-core.test.js",
+    "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/portalui-wiring.guard.test.js",
     "xpizza-functions/profile-named.test.js",
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
     "xpizza-functions/quote-order.test.js",
@@ -218,6 +221,7 @@
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
     "xpizza-functions/test/portal-handlers.emulator.test.js",
+    "xpizza-functions/test/portal-ops.emulator.test.js",
     "xpizza-functions/test/preparing-ready.emulator.test.js",
     "xpizza-functions/test/pselfupdate-createorder-trace.emulator.test.js",
     "xpizza-functions/test/pselfupdate-mirror-trace.emulator.test.js",
@@ -333,7 +337,10 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
+    "xpizza-functions/portal/ops-core.test.js",
+    "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/portalui-wiring.guard.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
@@ -391,6 +398,7 @@
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
     "xpizza-functions/test/portal-handlers.emulator.test.js",
+    "xpizza-functions/test/portal-ops.emulator.test.js",
     "xpizza-functions/test/preparing-ready.emulator.test.js",
     "xpizza-functions/test/pselfupdate-createorder-trace.emulator.test.js",
     "xpizza-functions/test/pselfupdate-mirror-trace.emulator.test.js",
@@ -556,7 +564,10 @@
     "xpizza-functions/order-form-location-escape.test.js",
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
+    "xpizza-functions/portal/ops-core.test.js",
+    "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/portalui-wiring.guard.test.js",
     "xpizza-functions/profile-named.test.js",
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
     "xpizza-functions/quote-order.test.js",
@@ -622,6 +633,7 @@
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
     "xpizza-functions/test/portal-handlers.emulator.test.js",
+    "xpizza-functions/test/portal-ops.emulator.test.js",
     "xpizza-functions/test/preparing-ready.emulator.test.js",
     "xpizza-functions/test/pselfupdate-createorder-trace.emulator.test.js",
     "xpizza-functions/test/pselfupdate-mirror-trace.emulator.test.js",
@@ -738,7 +750,10 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
+    "xpizza-functions/portal/ops-core.test.js",
+    "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/portalui-wiring.guard.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
@@ -796,6 +811,7 @@
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
     "xpizza-functions/test/portal-handlers.emulator.test.js",
+    "xpizza-functions/test/portal-ops.emulator.test.js",
     "xpizza-functions/test/preparing-ready.emulator.test.js",
     "xpizza-functions/test/pselfupdate-createorder-trace.emulator.test.js",
     "xpizza-functions/test/pselfupdate-mirror-trace.emulator.test.js",
@@ -914,6 +930,7 @@
     "xpizza-functions/test/driver-assignment-parity.emulator.test.js",
     "xpizza-functions/test/driver-cash-subscription.emulator.test.js",
     "xpizza-functions/test/h0-dismiss-rules.emulator.test.js",
+    "xpizza-functions/test/portal-ops.emulator.test.js",
     "xpizza-functions/test/superseded-capture.emulator.test.js",
     "xpizza-functions/tools/registry-writers.test.js"
    ],
@@ -1181,6 +1198,8 @@
   "xpizza-functions/index.js",
   "xpizza-functions/menu-extract.mjs",
   "xpizza-functions/portal/functions.js",
+  "xpizza-functions/portal/ops-core.js",
+  "xpizza-functions/portal/ops-functions.js",
   "xpizza-functions/seed-kitchen-staff.mjs",
   "xpizza-functions/test/_c2b-fixture.js",
   "xpizza-functions/test/_kds-sdk-loader.mjs",
@@ -1610,6 +1629,7 @@
   "index.js",
   "lib/driver-admin-ops.js",
   "lib/driver-callable-guard.js",
+  "lib/hn-date.js",
   "merchant/_fake-db.js",
   "merchant/merchant-brand.js",
   "merchant/merchant-control.js",
@@ -1630,6 +1650,11 @@
   "merchant/merchant-wiring.js",
   "pixelpay-charge.js",
   "pixelpay-hosted-charge.js",
+  "portal/location-name.js",
+  "portal/ops-core.js",
+  "portal/ops-functions.js",
+  "portal/pause-reasons.js",
+  "portal/reset-list.js",
   "prep-stats.js",
   "rewards-redeem-intake.js",
   "rewards-reserve.js",
@@ -1714,7 +1739,9 @@
   },
   "catalog/portal-reads.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/portal/ops-helpers.guard.test.js"
+   ]
   },
   "catalog/publish-edited-handler.js": {
    "pins": [],
@@ -1768,6 +1795,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js"
@@ -1784,6 +1812,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1804,6 +1833,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1826,6 +1856,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1844,6 +1875,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1861,6 +1893,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1876,6 +1909,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1888,6 +1922,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/signup-inverse.js"
      ]
     },
@@ -1896,13 +1931,15 @@
      "inverses": [
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/signup-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/membership-wiring.guard.test.js",
      "inverses": [
-      "tools/membership-inverse.js"
+      "tools/membership-inverse.js",
+      "tools/portalui-inverse.js"
      ]
     },
     {
@@ -1918,6 +1955,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1940,6 +1978,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1949,12 +1988,19 @@
      ]
     },
     {
+     "file": "xpizza-functions/portalui-wiring.guard.test.js",
+     "inverses": [
+      "tools/portalui-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/s1a-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1968,6 +2014,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1980,6 +2027,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js"
      ]
@@ -1992,6 +2040,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -2003,6 +2052,7 @@
      "file": "xpizza-functions/signup-wiring.guard.test.js",
      "inverses": [
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/signup-inverse.js"
      ]
     },
@@ -2017,6 +2067,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -2058,6 +2109,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/portalui-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -2093,6 +2145,8 @@
     "xpizza-functions/order-creators.guard.test.js",
     "xpizza-functions/order-exists-census.guard.test.js",
     "xpizza-functions/platform-sync.guard.test.js",
+    "xpizza-functions/portal/ops-helpers.guard.test.js",
+    "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/prod-ladder-wiring.test.js",
     "xpizza-functions/pselfupdate-client.test.js",
     "xpizza-functions/quote-order.test.js",
@@ -2119,6 +2173,12 @@
   "lib/driver-callable-guard.js": {
    "pins": [],
    "lifts": []
+  },
+  "lib/hn-date.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/portal/ops-helpers.guard.test.js"
+   ]
   },
   "merchant/_fake-db.js": {
    "pins": [],
@@ -2202,6 +2262,30 @@
     "xpizza-functions/addproduct-b-wiring.guard.test.js",
     "xpizza-functions/addproduct-wiring.guard.test.js",
     "xpizza-functions/extras-wiring.guard.test.js"
+   ]
+  },
+  "portal/location-name.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/portal/ops-helpers.guard.test.js"
+   ]
+  },
+  "portal/ops-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "portal/ops-functions.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "portal/pause-reasons.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "portal/reset-list.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/portal/ops-helpers.guard.test.js"
    ]
   },
   "prep-stats.js": {

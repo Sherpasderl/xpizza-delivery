@@ -629,7 +629,11 @@
   "catalog/publish-request.js#readActiveBuiltFrom": "catalog",
   "access/membership-admin-core.js#publishFixture>anon": "catalog",
   "access/team-http-core.js#handle": "infra",
-  "access/team-http.js#endpoint>anon": "infra"
+  "access/team-http.js#endpoint>anon": "infra",
+  "portal/ops-core.js#projectMenu": "catalog",
+  "portal/ops-core.js#getBranchAvailabilityCore>anon": "catalog",
+  "portal/ops-core.js#setBranchAvailabilityCore>anon": "catalog",
+  "portal/ops-functions.js#handler>anon": "catalog"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
@@ -802,7 +806,13 @@
   "la-musa-orders/account.js#renderOrdersPane": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
   "la-musa-orders/account.js#canonicalRecipeToLegacy>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
   "la-musa-orders/index.html<script@2>#pizzaExtrasTotal": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
-  "xpizza-portal/ventas-harness.mjs#constructor": "portal TEST harness (ventas-harness.mjs) — not production"
+  "xpizza-portal/ventas-harness.mjs#constructor": "portal TEST harness (ventas-harness.mjs) — not production",
+  "xpizza-portal/availability.js#decorate": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders",
+  "xpizza-portal/availability.js#paintReadOnly": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders",
+  "xpizza-portal/availability.js#paintDrawer": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders",
+  "xpizza-portal/branch-logic.js#availabilityUnion": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders",
+  "xpizza-portal/pausas.js#send": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders",
+  "xpizza-portal/shell.js#showBootError": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders"
  },
  "writtenFields": {
   "payment_fingerprint_text_version": {

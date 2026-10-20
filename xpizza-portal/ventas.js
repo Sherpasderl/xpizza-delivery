@@ -101,6 +101,7 @@ document.addEventListener('portal:auth', (e) => {
 document.addEventListener('portal:restaurant', (e) => {
   const rid = e && e.detail ? e.detail.rid : null;
   if (!rid) return;
+  if (e.detail.sales === false) return;   // PORTAL-UI 1a §11 A3: Ventas is owner-only in 1a — shell.js says so per page
   S.rid = rid; S.epoch += 1;
   S.body = null; S.err = null; S.shown = null; S.csvBusy = null; S.note = ''; S.refused = false;
   setGate(true);

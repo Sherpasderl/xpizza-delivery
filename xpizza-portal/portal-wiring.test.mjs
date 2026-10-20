@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { stateViolations, writerFunctions } from './wiring-ast.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
+const OPS_TOAST_OK = new Set(['shell.js', 'branches-view.js', 'pausas.js', 'availability.js']);   // PORTAL-UI 1a: success toasts only (see the write-path rule)
 const JS = readdirSync(DIR).filter((f) => f.endsWith('.js'));
 const codeOf = (f) => readFileSync(join(DIR, f), 'utf8')
   .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
@@ -811,6 +812,13 @@ test('no server error on the write path escapes the designed panels', () => {
     const c = codeOf(f);
     assert.ok(!/\balert\s*\(/.test(c), `${f} must not use alert() — the mock does, for its Historial stub`);
     assert.ok(!/\bconfirm\s*\(/.test(c), `${f} must not use confirm() — a browser dialog is not a designed state`);
+    // PORTAL-UI 1a ruling: the branch screens show the prototype's SUCCESS confirmations («X guardada», «X pausada») as a
+    // toast; their FAILURES are panels like every other state. So in the ops modules a toast may appear, but never inside a
+    // catch block; everywhere else the original rule stands unchanged.
+    if (OPS_TOAST_OK.has(f)) {
+      for (const m of c.matchAll(/\bcatch\s*\([^)]*\)\s*\{([\s\S]*?)\n\s{0,6}\}/g)) assert.ok(!/\btoast\s*\(/.test(m[1]), `${f}: a failure must be a panel, never a toast`);
+      continue;
+    }
     assert.ok(!/\btoast\s*\(/.test(c), `${f} has no toast fallback — every state is a panel`);
   }
 });
@@ -947,7 +955,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.review':              [2, 'guarded', '🔴 DOWN FROM 9, THEN FROM 5. The record is now minted in one call and is IMMUTABLE afterwards — the four writes that assembled it field by field (rid, attestation, acknowledged twice) are gone, and `acknowledged` is an accessor with no setter, so it cannot be written at all. What remains is ONE mint and ONE clear: every path that drops a review goes through clearReview(), which also retires it as the live one — so a retained record cannot be reinstalled and replayed. 🔴 RESIDUAL #4 IS CLOSED: whole-record replacement — including restoring a genuine prior minted record — is refused at publish admission, so no fiscal path leans on the analyzer.'],
     'state.publishGen':          [2, 'guarded', 'set only on genuine admission inside runPublish, cleared by the ender'],
     'state.reviewLock':          [8, 'guarded', 'ticket bookkeeping; every write pairs with a take/release on a generation-checked path — the 7th releases a ticket acquired by a publish that was then refused, the 8th is endWrite handing back a ticket whose request settled into a world that had ended'],
-    'state.currentRid':          [3, 'ender',   'the tenant switch and the auth handler — the two things that end a world'],
+    'state.currentRid':          [4, 'ender',   '[PORTAL-UI 1a: + openEditor — the ONE selection of a page load (shell.js), made once at boot before any request; a different selection is a full page reload] the tenant switch and the auth handler — the two things that end a world'],
     'state.groups':              [3, 'guarded', 'the rendered menu, written only after the generation check on both settle paths'],
     'state.usesPlatformFactura': [3, 'guarded', '[1D add-product A: + the post-publish reload, same guard] 🔴 the fiscal capability — load path, behind the generation check'],
     'state.sourceUpdateTime':    [4, 'guarded', '[1D add-product A: + the post-publish reload — a certified publish writes stamps back, so the revision moves] 🔴 the CAS baseline — load path and the save settle path, both generation-checked, plus the tenant-switch clear that stops one tenant\u2019s baseline being used to write another\u2019s document'],
@@ -956,7 +964,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.selectedCat':         [5, 'view',    '[1D add-product A: + the add drawer\u2019s section change and the FIX action, both presentational] which category the rail highlights — a stale write repaints, it cannot mis-price'],
     'state.openGroups':          [6, 'view',    '[1D add-product B: + the same three for the "Elección requerida" chevron, keyed choice::<id>] which option groups are expanded in the drawer — one assignment plus the add/delete of the toggle; presentational only'],
     'state.drawerKey':           [6, 'view',    '[1D add-product A: + the add drawer\u2019s Cerrar and Listo] [1D add-product B: + renderDrawer redirecting a new product\u2019s OPTION to its product] which dish the drawer shows; the fields inside it are canEdit-guarded'],
-    'state.restaurants':         [1, 'guarded', 'the switcher list, written by loadRestaurants behind its generation check'],
+    'state.restaurants':         [2, 'guarded', '[PORTAL-UI 1a: + openEditor, once per page at boot — the page\u2019s single selected restaurant] the switcher list, written by loadRestaurants behind its generation check'],
     'editLockHolder':            [4, 'guarded', 'the declaration, take, release, and the ender — which no longer clears it unconditionally: a ticket with a request on the wire is not the ender\u2019s to reclaim'],
     'writeSeq':                  [2, 'guarded', 'the monotonic source of request ids — declared once, incremented once, never reused, which is what makes a request id an identity rather than a label'],
     'pendingWrite':              [3, 'guarded', '🔴 SERVER-WRITE ADMISSION. The declaration, beginWrite and endWrite — set when a request is genuinely ADMITTED and cleared when THAT request settles, keyed on a per-request id rather than the reusable ticket, so a refused duplicate can neither claim nor surrender ownership of the wire'],
@@ -1080,7 +1088,7 @@ const spanFrom = (masked, open) => {
 // `onPrice` writes exactly as much as one that calls it, and passing the identifier is precisely how
 // the inline price cells stayed unbound while every call-shaped check looked clean.
 const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo', 'onPrice',
-                 'loadMenu', 'loadRestaurants', 'openReviewFlow', 'runPublish', 'closeReview',
+                 'loadMenu', 'loadRestaurants', 'openEditor', 'openReviewFlow', 'runPublish', 'closeReview',
                  'invalidateReview', 'switchTo', 'bumpGeneration', 'takeEditLock', 'releaseEditLock',
                  'openDrawer', 'closeDrawer', 'toggle',
                  // 🔴 Added because the tree said so, not because anyone noticed. endWrite,
@@ -1152,10 +1160,7 @@ const LISTENERS = {
   "main::click":                  ['view', ['toggle'], 'expands an option group'],
   "chev::click":                  ['view', ['toggle'], 'expands an option group'],
   "pi::input":                    ['bound', [], 'the option price field'],
-  "document::portal:signed-in":   ['singleton', ['loadRestaurants'], 'boot'],
   "document::portal:restaurant":  ['singleton', ['loadMenu'], 'the tenant switch, dispatched by switchTo which has already revalidated'],
-  "$('switcher')::click":         ['view', [], 'opens the tenant menu'],
-  "document::click":              ['view', [], 'closes the tenant menu on an outside click'],
   "$('discard')::click":          ['singleton', ['discard', 'closeDrawer', 'repaintFromDraft'], 'throws away local edits — a DRAFT write, refused by the canEdit boundary whenever an operation owns the draft'],
   "$('review')::click":           ['singleton', ['openReviewFlow'], 'admission-controlled: it acquires the edit lock or returns'],
   "$('pubback')::click":          ['singleton', ['closeReview'], 'closing is refused while this world has a publish in flight'],

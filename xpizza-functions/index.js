@@ -3,7 +3,7 @@
 // portal/functions.js (the five handlers + their dependencies) and this file stops here. Unset (deploy / emulator
 // discovery, tests), unknown, or wrong-case → the FULL load below, exactly as before. Exact, case-sensitive Set.has —
 // no lowercasing, prefixes, K_SERVICE or object-property lookup.
-const PORTAL_ISOLATED_TARGETS = Object.freeze(new Set(['getMyRestaurants', 'getEditableCatalog', 'editCatalog', 'publishEdited', 'getSalesStats']));
+const PORTAL_ISOLATED_TARGETS = Object.freeze(new Set(['getMyRestaurants', 'getEditableCatalog', 'editCatalog', 'publishEdited', 'getSalesStats'])); const PORTAL_OPS_TARGETS = Object.freeze(new Set(['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability'])); if (PORTAL_OPS_TARGETS.has(process.env.FUNCTION_TARGET)) { console.log('portal_ops_entry', process.env.FUNCTION_TARGET); module.exports = require('./portal/ops-functions'); return; }   // PORTAL-UI 1a: the five branch-ops functions, isolated the same way (portal/ops-functions.js)
 if (PORTAL_ISOLATED_TARGETS.has(process.env.FUNCTION_TARGET)) {
   console.log('portal_isolated_entry', process.env.FUNCTION_TARGET);   // §8 deploy check: the isolated branch ran
   module.exports = require('./portal/functions');
@@ -7203,7 +7203,7 @@ module.exports.sendPaidAfterCloseRefund = sendPaidAfterCloseRefund;   /* members
 const portalFunctions = require('./portal/functions');
 exports.editCatalog = portalFunctions.editCatalog;
 exports.publishEdited = portalFunctions.publishEdited;
-exports.resetDraftToLive = require('./portal/reset-draft').resetDraftToLive;   // 1D add-product A §0.1: "Volver al menú publicado" (full load; not an isolated portal fn)
+exports.resetDraftToLive = require('./portal/reset-draft').resetDraftToLive; exports.getMyBranches = require('./portal/ops-functions').getMyBranches; exports.updateBranch = require('./portal/ops-functions').updateBranch; exports.setBranchPause = require('./portal/ops-functions').setBranchPause; exports.getBranchAvailability = require('./portal/ops-functions').getBranchAvailability; exports.setBranchAvailability = require('./portal/ops-functions').setBranchAvailability;   // PORTAL-UI 1a: + the five branch-ops endpoints (portal/ops-functions.js, full load) · 1D add-product A §0.1: "Volver al menú publicado" (full load; not an isolated portal fn)
 
 // PORTAL SPEED P1: the Portal 2b-2a block (getMyRestaurants, getEditableCatalog) moved verbatim to portal/functions.js.
 exports.getMyRestaurants = portalFunctions.getMyRestaurants;

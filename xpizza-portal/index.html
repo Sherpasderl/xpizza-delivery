@@ -45,30 +45,52 @@
       </button>
       <div class="switchmenu hidden" id="switchmenu"></div>
     </div>
+    <!-- PORTAL-UI 1a: the branch scope (shell.js). Owner: «Todas las sucursales» or one; a single-branch manager: locked. -->
+    <div class="switchwrap hidden" id="scopewrap">
+      <button class="scope" id="scopebtn" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+      <div class="switchmenu hidden" id="scopemenu" role="listbox"></div>
+      <p class="scopenote hidden" id="scopenote" role="status" aria-live="polite"></p>
+    </div>
     <div class="nlabel">Menú</div>
     <button class="nav on" id="navprod" type="button" aria-current="page"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Productos</button>
+    <!-- PORTAL-UI 1a: Operación (shell.js shows these only to a holder of the location capabilities) -->
+    <div class="nlabel hidden" id="navopslabel">Operación</div>
+    <button class="nav hidden" id="navsuc" type="button"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg><span class="nt" id="navsuctext">Sucursales</span><span class="ncount hidden" id="navsuccount"></span></button>
+    <button class="nav hidden" id="navpausas" type="button"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg><span class="nt">Pausar pedidos</span></button>
     <!-- Stats S2: OWNER-ONLY. Hidden until app.js announces an owned restaurant (ventas.js); a non-owner never sees it. -->
     <div class="nlabel hidden" id="navbiz">Negocio</div>
     <button class="nav hidden" id="navventas" type="button"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15l4-5 3 3 5-6"/></svg>Ventas</button>
     <div class="sfoot">
       <div class="av" id="avatar">·</div>
-      <div class="sinfo"><b id="whoami">—</b><span class="cv">Dueño</span></div>
+      <div class="sinfo"><b id="whoami">—</b><span class="cv" id="whorole">Dueño</span></div>
       <button class="btn ghost tbtn" id="logout" type="button" title="Cerrar sesión">
         <svg viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 3H5v18h7"/></svg>
       </button>
     </div>
   </aside>
 
+  <!-- PORTAL-UI 1a: the mobile top bar (≤920px): brand + scope, opening the scope menu (shell.js) -->
+  <div class="mtop hidden" id="mtop">
+    <div class="bmark">S</div>
+    <button class="mswitch" id="mswitch" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="sinfo"><b id="mbrand">—</b><span class="mcv" id="mscope"></span></span><span class="chev" id="mchev">▾</span></button>
+  </div>
+  <div class="mscopemenu hidden" id="mscopemenu" role="listbox"></div>
+
   <!-- mobile (≤920px, where the sidebar is hidden): the Productos/Ventas pair, shown to owners only -->
   <nav class="mnav" id="mnav" aria-label="Secciones">
     <button class="mn on" id="mnprod" type="button" aria-current="page">Productos</button>
+    <button class="mn hidden" id="mnsuc" type="button">Sucursales</button>
+    <button class="mn hidden" id="mnpausas" type="button">Pausar pedidos</button>
     <button class="mn" id="mnventas" type="button">Ventas</button>
   </nav>
 
   <main class="main" id="viewmenu">
     <div class="top">
-      <div><h1>Productos</h1><p class="lede">Tu menú, como lo ven tus clientes.</p></div>
+      <div><h1>Productos</h1><p class="lede" id="menulede">Tu menú, como lo ven tus clientes.</p></div>
+      <div class="topact ops hidden" id="menulock"><span class="lock"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Solo lectura · agotados sí</span></div>
     </div>
+    <!-- PORTAL-UI 1a: «Agotados ahora» per branch (availability.js) -->
+    <div class="ops hidden" id="availstrip"></div>
     <div class="split">
       <div class="rail" id="rail"></div>
       <div class="detail" id="detail">
@@ -79,6 +101,18 @@
 
   <!-- Stats S2: the Ventas page, built by ventas.js (owner-only; empty until opened) -->
   <main class="main vmain hidden" id="viewventas" aria-labelledby="vtitle"></main>
+
+  <!-- PORTAL-UI 1a: Sucursales (list + detail) and Pausar pedidos, built by branches-view.js / pausas.js -->
+  <main class="main ops hidden" id="viewsuc" aria-label="Sucursales"></main>
+  <main class="main ops hidden" id="viewpausas" aria-label="Pausar pedidos"></main>
+  <!-- the branch detail's save bar (prep) — its own bar, never the editor's #rbar -->
+  <div class="rbar ops" id="sucbar"><span class="rb-dot"></span><span class="rb-t" id="sucbartxt"></span><div class="rb-sp"><button class="btn ghost" id="sucdiscard" type="button">Descartar</button><button class="btn accent" id="sucsave" type="button">Guardar</button></div></div>
+  <!-- the pause modal (pausas.js) -->
+  <div class="scrim pausescrim" id="pausescrim"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="pausetitle" id="pausemodal"></div></div>
+  <!-- «Disponibilidad por sucursal» (availability.js; the read-only menu only — the editor's chevron keeps opening #drawer) -->
+  <aside class="drawer ops" id="availdrawer" aria-label="Disponibilidad por sucursal"></aside>
+  <div class="ops opsscrim hidden" id="availscrim"></div>
+  <div class="toast" id="opstoast" role="status" aria-live="polite"></div>
 
   <!-- THE REVIEW BAR. Appears only when the draft differs from what is published; app.js toggles
        `.show`. No inline handlers: the CSP has no 'unsafe-inline', so an onclick here would be inert
