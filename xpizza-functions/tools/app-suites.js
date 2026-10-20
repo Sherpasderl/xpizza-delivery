@@ -56,7 +56,9 @@ const KNOWN_RED = {};
 
 /* A file that legitimately asserts nothing, with the reason. Empty by design; an entry whose file now
    asserts something fails the run, as does one naming no planned file. */
-const ZERO_CELL_OK = {};
+const ZERO_CELL_OK = {
+  'xpizza-track/tracker-live-harness.test.cjs': 'shared harness module; asserts premises only; exercised by tracker-live/tracker-pins',
+};
 
 const TEST_RE = /\.test\.(?:js|mjs|cjs)$/;
 const GLOB_CHARS = /[*?[{]/;
