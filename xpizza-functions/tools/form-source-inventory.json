@@ -1554,6 +1554,7 @@
   "index.js",
   "lib/driver-admin-ops.js",
   "lib/driver-callable-guard.js",
+  "lib/emulator-endpoint.js",
   "merchant/_fake-db.js",
   "merchant/merchant-brand.js",
   "merchant/merchant-control.js",
@@ -1964,6 +1965,10 @@
    "lifts": []
   },
   "lib/driver-callable-guard.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "lib/emulator-endpoint.js": {
    "pins": [],
    "lifts": []
   },
