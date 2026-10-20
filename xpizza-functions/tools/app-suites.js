@@ -52,23 +52,7 @@ const ROOT = path.join(FUNCTIONS, '..');
 
 /* Each entry RUNS; its failure is reported and excused. Passing, or naming a file that is not in the
    plan, fails the run. */
-const KNOWN_RED = {
-  'xpizza-dispatch-mobile/boot.test.mjs': {
-    reason: 'mdra-* element ids used by the module are in neither the markup nor DYNAMIC_IDS, and the index.html module throws on evaluation (S1b companion, cc298e59)',
-    owner: 'dispatch exec — test-only fix in flight on fix/dispatch-boot-mdra (ba56a2fa)',
-    since: '2026-10-18',
-  },
-  'xpizza-dispatch/dispatch-recon-note.test.js': {
-    reason: "ReferenceError: reconciliationOrders is not defined in the eval sandbox (reconNotePrompt → resolveReconciliationAction); the page line came with bcf5ff06, the harness was last touched by 08ea1e16",
-    owner: 'dispatch exec (money-adjacent: verify the live page too)',
-    since: '2026-09-26',
-  },
-  'xpizza-kitchen/avail-write.test.mjs': {
-    reason: 'the KDS module invokes SDK writers beyond the allowed set: removeCancelAck, writeCancelAck (cancel-ack work a6254102 / F2 Q2 8f30280d)',
-    owner: 'downloads-5f (F2 Q2 owner)',
-    since: '2026-10-12',
-  },
-};
+const KNOWN_RED = {};
 
 /* A file that legitimately asserts nothing, with the reason. Empty by design; an entry whose file now
    asserts something fails the run, as does one naming no planned file. */
