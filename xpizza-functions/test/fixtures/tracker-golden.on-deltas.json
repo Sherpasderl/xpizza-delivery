@@ -219,12 +219,10 @@
    "T@order/created_at",
    "T@tracking/ready_at",
    "T@order/picked_up_at",
-   "T@tracking/picked_up_at",
-   "T@tracking/driver_location/at"
+   "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
-   "T@tracking/driver_location/at",
    "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
@@ -276,12 +274,10 @@
    "T@order/created_at",
    "T@tracking/ready_at",
    "T@order/picked_up_at",
-   "T@tracking/picked_up_at",
-   "T@tracking/driver_location/at"
+   "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
-   "T@tracking/driver_location/at",
    "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
@@ -333,12 +329,10 @@
    "T@order/created_at",
    "T@tracking/ready_at",
    "T@order/picked_up_at",
-   "T@tracking/picked_up_at",
-   "T@tracking/driver_location/at"
+   "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
-   "T@tracking/driver_location/at",
    "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
@@ -1171,12 +1165,10 @@
    "T@order/created_at",
    "T@tracking/ready_at",
    "T@order/picked_up_at",
-   "T@tracking/picked_up_at",
-   "T@tracking/driver_location/at"
+   "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
-   "T@tracking/driver_location/at",
    "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
@@ -1239,7 +1231,6 @@
   ],
   "to": [
    "T@order/created_at",
-   "T@tracking/mx/smp/sample_at",
    "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@order/cancelled_at"
@@ -1303,7 +1294,6 @@
   ],
   "to": [
    "T@order/created_at",
-   "T@tracking/mx/smp/sample_at",
    "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@order/cancelled_at"
@@ -1530,12 +1520,10 @@
    "T@order/created_at",
    "T@tracking/ready_at",
    "T@order/picked_up_at",
-   "T@tracking/picked_up_at",
-   "T@tracking/driver_location/at"
+   "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
-   "T@tracking/driver_location/at",
    "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
@@ -1587,12 +1575,10 @@
    "T@order/created_at",
    "T@tracking/ready_at",
    "T@order/picked_up_at",
-   "T@tracking/picked_up_at",
-   "T@tracking/driver_location/at"
+   "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
-   "T@tracking/driver_location/at",
    "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
@@ -1677,8 +1663,7 @@
    "T@order/created_at",
    "T@tracking/ready_at",
    "T@order/picked_up_at",
-   "T@tracking/picked_up_at",
-   "T@tracking/driver_location/at"
+   "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
@@ -1766,8 +1751,7 @@
    "T@order/created_at",
    "T@tracking/ready_at",
    "T@order/picked_up_at",
-   "T@tracking/picked_up_at",
-   "T@tracking/driver_location/at"
+   "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
@@ -1855,8 +1839,7 @@
    "T@order/created_at",
    "T@tracking/ready_at",
    "T@order/picked_up_at",
-   "T@tracking/picked_up_at",
-   "T@tracking/driver_location/at"
+   "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",

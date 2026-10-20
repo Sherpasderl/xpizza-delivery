@@ -431,8 +431,7 @@
      "T@order/created_at",
      "T@tracking/ready_at",
      "T@order/picked_up_at",
-     "T@tracking/picked_up_at",
-     "T@tracking/driver_location/at"
+     "T@tracking/picked_up_at"
     ]
    },
    {
@@ -497,8 +496,7 @@
      "T@order/created_at",
      "T@tracking/ready_at",
      "T@order/picked_up_at",
-     "T@tracking/picked_up_at",
-     "T@tracking/driver_location/at"
+     "T@tracking/picked_up_at"
     ]
    },
    {
@@ -563,8 +561,7 @@
      "T@order/created_at",
      "T@tracking/ready_at",
      "T@order/picked_up_at",
-     "T@tracking/picked_up_at",
-     "T@tracking/driver_location/at"
+     "T@tracking/picked_up_at"
     ]
    },
    {
@@ -1806,8 +1803,7 @@
      "T@order/created_at",
      "T@tracking/ready_at",
      "T@order/picked_up_at",
-     "T@tracking/picked_up_at",
-     "T@tracking/driver_location/at"
+     "T@tracking/picked_up_at"
     ]
    },
    {
@@ -2373,8 +2369,7 @@
      "T@order/created_at",
      "T@tracking/ready_at",
      "T@order/picked_up_at",
-     "T@tracking/picked_up_at",
-     "T@tracking/driver_location/at"
+     "T@tracking/picked_up_at"
     ]
    },
    {
@@ -2439,8 +2434,7 @@
      "T@order/created_at",
      "T@tracking/ready_at",
      "T@order/picked_up_at",
-     "T@tracking/picked_up_at",
-     "T@tracking/driver_location/at"
+     "T@tracking/picked_up_at"
     ]
    },
    {
@@ -2505,8 +2499,7 @@
      "T@order/created_at",
      "T@tracking/ready_at",
      "T@order/picked_up_at",
-     "T@tracking/picked_up_at",
-     "T@tracking/driver_location/at"
+     "T@tracking/picked_up_at"
     ]
    },
    {
@@ -2571,8 +2564,7 @@
      "T@order/created_at",
      "T@tracking/ready_at",
      "T@order/picked_up_at",
-     "T@tracking/picked_up_at",
-     "T@tracking/driver_location/at"
+     "T@tracking/picked_up_at"
     ]
    },
    {
@@ -2637,8 +2629,7 @@
      "T@order/created_at",
      "T@tracking/ready_at",
      "T@order/picked_up_at",
-     "T@tracking/picked_up_at",
-     "T@tracking/driver_location/at"
+     "T@tracking/picked_up_at"
     ]
    }
   ]
