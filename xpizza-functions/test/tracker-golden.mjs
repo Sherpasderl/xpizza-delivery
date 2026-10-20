@@ -125,8 +125,28 @@ async function journey(kind) {
   const capture = async (label, { awaitBackground = false } = {}) => {
     await R.quiesce({ awaitBackground });
     const read = async (p) => (await db.ref(p).once('value')).val();
-    steps.push({ step: label, tracking: await read(`order_tracking/${TOK}`), order: await read(`orders/${OID}`), alerts: await read('dispatcher_alerts'), side_effects: sideEffects.splice(0) , failures: R.failures.splice(0).map((f) => f.label) });
+    const st = { step: label, tracking: await read(`order_tracking/${TOK}`), order: await read(`orders/${OID}`), alerts: await read('dispatcher_alerts'), side_effects: sideEffects.splice(0) , failures: R.failures.splice(0).map((f) => f.label) };
+    assertLocationAt(st, label, Date.now());
+    steps.push(st);
   };
+  // driver_location.at PROVENANCE / FRESHNESS (codex restack P2): `_ts_order` does not rank it (a script-chosen sample time under ON
+  // races server stamps), so it is asserted HERE, on the raw value before canonicalization: it is never before the order was created
+  // nor before the first location sample was sent, never after this capture; OFF (native) it is a SERVER Date.now (≥ the POST start,
+  // never a sample time we sent); ON (native) it IS one of the sample times we sent (ingest-txn: sample.measured_at).
+  const sent = { firstStart: null, samples: [], starts: [] };
+  function assertLocationAt(st, label, capturedAt) {
+    const at = st.tracking && st.tracking.driver_location ? st.tracking.driver_location.at : undefined;
+    if (at === undefined || at === null) return;
+    const where = `golden: ${kind} step '${label}' tracking.driver_location.at=${at}`;
+    if (!(typeof at === 'number' && sent.firstStart !== null)) throw new Error(`${where} — present before any location was sent`);
+    if (!(st.order && typeof st.order.created_at === 'number' && at >= st.order.created_at)) throw new Error(`${where} — before the order was created (${st.order && st.order.created_at})`);
+    if (!(at >= sent.firstStart - 2000 - 1)) throw new Error(`${where} — older than the first sample sent (${sent.firstStart})`);
+    if (!(at <= capturedAt)) throw new Error(`${where} — after the capture (${capturedAt})`);
+    if (kind !== 'pwa') {
+      if (FLAG_MODE === 'on') { if (!sent.samples.includes(at)) throw new Error(`${where} — ON: not one of the sample times sent (${sent.samples})`); }
+      else if (sent.samples.includes(at) || !sent.starts.some((s0) => at >= s0)) throw new Error(`${where} — OFF: not a server Date.now at/after an ingest POST (${sent.starts})`);
+    }
+  }
   const doStep = async (label, fn) => { await R.step(label, fn); await capture(label); };
   let token = null;
   const clockIn = async (X, uid) => {
@@ -139,8 +159,9 @@ async function journey(kind) {
   };
   const ingest = async (i, ageMs) => {
     const p = { lat: HUB.lat + 0.004 * i, lng: HUB.lng + 0.004 * i };
+    const start = Date.now(); if (sent.firstStart === null) sent.firstStart = start; sent.starts.push(start);
     if (kind === 'pwa') await doStep(`location ${i}`, () => X1.updateDriverLocation(D1, { ...p, accuracy: 10, heading: 0, speed: 5 }));
-    else await doStep(`ingest ${i}`, () => post(app.ingestDriverLocation, { headers: { 'x-driver-token': token }, body: { locations: [{ ts: Date.now() - ageMs, ...p, accuracy: 10 }] } }));
+    else await doStep(`ingest ${i}`, () => { const ts = Date.now() - ageMs; sent.samples.push(ts); return post(app.ingestDriverLocation, { headers: { 'x-driver-token': token }, body: { locations: [{ ts, ...p, accuracy: 10 }] } }); });
   };
 
   await doStep('create', () => db.ref().update(createUpdates));
@@ -195,8 +216,9 @@ function canonical(steps) {
       if (v && typeof v === 'object') for (const k of Object.keys(v).sort()) walk(v[k], p ? `${p}/${k}` : k);
     })(st, '');
     // ORDERING is over SERVER timestamps only. The ingest sample times (driver_location.at, mx.smp.sample_at) are SCRIPT-chosen
-    // (now − the journey's sample age): ranking them against server stamps is a timing race (they flip under load — first exposed by
-    // S5's ready_at on e8e77e24). Their labels stay on their fields; BUILD §3.3: those deltas are compared where the script sets them.
+    // under ON (now − the journey's sample age): ranking them against server stamps is a timing race (they flip under load — first
+    // exposed by S5's ready_at on e8e77e24). Their labels stay on their fields; driver_location.at (a server Date.now under OFF) is
+    // instead pinned by explicit provenance / freshness asserts at capture (assertLocationAt).
     const SAMPLE = /(^|\/)(driver_location\/at|mx\/smp\/sample_at)$/;
     const byVal = [...first.entries()].filter(([, label]) => !SAMPLE.test(label)).sort((a, b) => a[0] - b[0]);
     const order = [];
