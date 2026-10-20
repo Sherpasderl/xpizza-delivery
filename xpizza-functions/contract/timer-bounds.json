@@ -220,7 +220,7 @@
    "reachesAsserted": true,
    "reason": "the createOrder retry BACKOFF (attempt*1500 with attempt ≤ MAX_TRIES − 1 = 2 → ≤ 3000 ms): ON the asserted submit path, only after a failed attempt (S1’s first createOrder answers 200); bound 3000 ms is within the 10 s horizon",
    "sha": "de6c6db54ecf5d11861a4f726e1404d6942127f9803bb48080293b05be0098f3",
-   "ctrlSha": "4c2cf2dfe5a0cdcb57b2bacc9f20665631a080e0f2967b83df31e540e55e7c32"
+   "ctrlSha": "da840dcfd005673190e7dc30f2d1edfe94eefbe5269f0fd898d0564b7f3bd60c"
   },
   {
    "key": "xpizza-orders/form-order-number.js#next:setTimeout#0",
@@ -556,7 +556,7 @@
    "reachesAsserted": false,
    "reason": "account.js rewards-key debounce re-armed on each keystroke of the reward/claim flow; no order output",
    "sha": "bf487578908ef92771f568ad76efbde6b15f80d1d8fe926d80b69f234282816e",
-   "ctrlSha": "6902a9a185a74ceb125679e982734685d6e5a9bc2df6e494ec7b0f608927cae5"
+   "ctrlSha": "f48b67fbbfa6ff2cdc0569332b53998789e66257571676aee4ff8d10a9bd9e8e"
   },
   {
    "key": "xpizza-orders/account.js#startResendCountdown:setInterval#0 → xpizza-orders/account.js#startResendCountdown:setInterval#0",
@@ -566,7 +566,7 @@
    "reachesAsserted": false,
    "reason": "the OTP resend countdown (1 s ticks, stops at 0 / 60 s): profile sign-in only — not in S1 (guest checkout, precondition no-otp)",
    "sha": "2918ed1daf9d7c8e2109079da11d777c06d6eb7314817ce55042db589df5bdc8",
-   "ctrlSha": "6902a9a185a74ceb125679e982734685d6e5a9bc2df6e494ec7b0f608927cae5"
+   "ctrlSha": "f48b67fbbfa6ff2cdc0569332b53998789e66257571676aee4ff8d10a9bd9e8e"
   },
   {
    "key": "xpizza-orders/account.js#openAcctFullscreenMap:setTimeout#0 → xpizza-orders/account.js#openAcctFullscreenMap:setTimeout#0",
@@ -576,7 +576,7 @@
    "reachesAsserted": false,
    "reason": "account address map preview retries until Maps is ready; it touches only the account map preview",
    "sha": "fc8f59810c1d44ea2173db0a9712d02f7ee1af634b5d972cbdd789b6c2ad600f",
-   "ctrlSha": "6902a9a185a74ceb125679e982734685d6e5a9bc2df6e494ec7b0f608927cae5"
+   "ctrlSha": "f48b67fbbfa6ff2cdc0569332b53998789e66257571676aee4ff8d10a9bd9e8e"
   },
   {
    "key": "xpizza-orders/account.js#openAcctFullscreenMap:setTimeout#0 → xpizza-orders/account.js#initAcctPreviewMap:setTimeout#0 → xpizza-orders/account.js#initAcctPreviewMap:setTimeout#0",
@@ -586,7 +586,7 @@
    "reachesAsserted": false,
    "reason": "account address map preview retries until Maps is ready; it touches only the account map preview",
    "sha": "87e80d87e79634ce994c8c6bbaaf4b43df24f0e36757acfb3d9a45a3908db02f",
-   "ctrlSha": "04626e26d97563346437591d5c7ef2d294175d43ca5a1c0ca11432e317767210"
+   "ctrlSha": "e823d55915e56c9785f6da4ddf7636700eeb7a4cd6c8163cb1a5df4a69ff8f32"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#scheduleBeat:setT#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#0",
@@ -676,7 +676,7 @@
    "reachesAsserted": false,
    "reason": "the order-form map init retries until Maps is ready (the maps boundary double is ready at boot); it touches only the map preview / pin, whose coordinates are asserted from persisted lat/lng",
    "sha": "1c45c6c6d5dec9666e24f73fc6b232091513ce646f1fafdc29ef84f4ae445a01",
-   "ctrlSha": "6a9dadfd6739a9fd176d69925d1c67ab8dde7bea0e80a21abc614a0c707033f8"
+   "ctrlSha": "10eea5602c231dee38aa3ab75ce8630596f72de56a492766c096dec6180591cd"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#locSearchInput:setTimeout#0 → xpizza-orders/index.html<script@2>#locPickPred>anon:setTimeout#0",
@@ -706,10 +706,10 @@
    "reachesAsserted": false,
    "reason": "the order-form map init retries until Maps is ready (the maps boundary double is ready at boot); it touches only the map preview / pin, whose coordinates are asserted from persisted lat/lng",
    "sha": "1c45c6c6d5dec9666e24f73fc6b232091513ce646f1fafdc29ef84f4ae445a01",
-   "ctrlSha": "0453a2c9cf8cada40927563b358f554d78246349dab44756e347ee8902ddac53"
+   "ctrlSha": "3803554306278a538cc2fe88785d1361948bcbe34d77472e7e99c470599efd0c"
   },
   {
-   "key": "await@xpizza-orders/index.html<script@2>:4066 → xpizza-orders/index.html<script@2>#processPayment>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#processPixelPay>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0",
+   "key": "await@xpizza-orders/index.html<script@2>:4121 → xpizza-orders/index.html<script@2>#processPayment>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#processPixelPay>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0",
    "cumulativeBoundMs": 7500,
    "repeats": false,
    "repeatLimit": 3,
@@ -719,7 +719,7 @@
    "ctrlSha": "6dfed26d789a106620a11850cc44016e3c7c8f2992090dd5f63d7a65247d7df4"
   },
   {
-   "key": "await@xpizza-orders/index.html<script@2>:4597 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#1",
+   "key": "await@xpizza-orders/index.html<script@2>:4652 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#1",
    "cumulativeBoundMs": null,
    "repeats": true,
    "repeatLimit": "unbounded",
@@ -729,14 +729,14 @@
    "ctrlSha": "0a3b0926492cc65898d2532911013ba652c3ed66df7ed01763a7d4e0a8d7dc2e"
   },
   {
-   "key": "await@xpizza-orders/index.html<script@2>:4779 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#1 → xpizza-orders/index.html<script@2>#confirmTokenOf>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
+   "key": "await@xpizza-orders/index.html<script@2>:4835 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#1 → xpizza-orders/index.html<script@2>#confirmTokenOf>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
    "cumulativeBoundMs": 7500,
    "repeats": true,
    "repeatLimit": 3,
    "reachesAsserted": true,
    "reason": "submitOrder's awaited steps on the real submit: the ID-token race (≤ 1500 ms), the retry backoff (1500, 3000 ms; MAX_TRIES 3) and — 6f353ed — the tracking-token race on the createOrder 200 body (confirmTokenOf, ≤ 1500 ms, once) before showSuccess; the 1500 ms demo sleep is the unconfigured-endpoint branch only. Bound 7500 ms ≤ the horizon; S1's first attempt succeeds",
    "sha": "87eca4668459cc1fd137eb3ec8c0421e93df3f9c91ad0fce86b9abfd60ace384",
-   "ctrlSha": "57a473cfde1f945ddb111f0f20653286ca512ba2feef2b92e24e112c61c2caa8"
+   "ctrlSha": "963bff57553b6b97099921e99e5b8ba2cd38fde5026a9d42230f0ffb33ff608b"
   },
   {
    "key": "xpizza-orders/form-order-number.js#next:setTimeout#0 → xpizza-orders/form-order-number.js#next:setTimeout#0",
@@ -992,7 +992,7 @@
    "mayChangeSelectors": [],
    "changesAsserted": false,
    "sha": "425dce5f41ee83fc2ec0297889164ec4cb18849ae35bd517aa50be582b0255e8",
-   "ctrlSha": "6fb1f4dbfabc0bd310e2bcadaffc0b0e7dfc84daf3a73fb7b324fc0ddb298eff"
+   "ctrlSha": "921cd7cb7fcb7200ae05d77c9c2285a6b70830ff18e076c89663f439fa45f925"
   }
  ]
 }
