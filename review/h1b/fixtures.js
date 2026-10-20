@@ -39,7 +39,7 @@ export function fixture(state, { online: onlineOverride } = {}) {
   };
   (FIX[state] || noop)();
   if (onlineOverride !== undefined) online = onlineOverride;
-  const act = new Proxy({}, { get: (t, k) => (k === 'phoneOf' ? M.phoneOf : noop) });
+  const act = new Proxy({}, { get: () => noop });
   const ctx = { now, online, orders: S.feed.orders, base, sess: { uid: 'hh_tb_norte_r', rid: 'tb_norte', brand_id: 'tb', location_name: 'Norte', prep_default_min: 18 },
     driverOf: () => M.driverInfo(null), set: noop, act };
   return { S, ctx };

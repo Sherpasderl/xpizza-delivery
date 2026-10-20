@@ -61,7 +61,6 @@
   .icb{width:48px;height:48px;border-radius:12px;background:#fff;border:1px solid #E6E3DD;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
   .pr{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid #EEEBE5}
   .av{width:36px;height:36px;border-radius:50%;background:#EEF0F2;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#3A4250;flex:0 0 auto}
-  .wa{height:48px;padding:0 14px;border-radius:12px;background:#E3F2E9;color:#17633D;border:none;font-weight:800;font-size:14px;display:flex;align-items:center;gap:6px}
   .info{font-size:14.5px;font-weight:700;color:#2B3340;line-height:1.4;background:#EAE7E1;border-radius:12px;padding:10px 12px}
   .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px}
   .scrim{position:absolute;inset:0;background:rgba(21,24,30,.45);display:flex;flex-direction:column;justify-content:flex-end;z-index:5}
@@ -128,14 +127,14 @@
   .spin{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;display:inline-block;margin-right:6px;animation:spin .9s linear infinite}
   .cring .arc{transition:stroke-dashoffset 200ms ease-out,stroke 200ms ease-out}
   .pring .arc{transition:stroke-dashoffset 200ms ease-out}
-  .btn,.tchip,.oc,.opt,.key,.tab,.pill,.rchip,.st,.wa,.bq,.undo{transition:transform 100ms ease-out,background-color 150ms ease-out,border-color 150ms ease-out}
-  .btn:active,.tchip:active,.oc:active,.opt:active,.key:active,.tab:active,.pill:active,.rchip:active,.st:active,.wa:active,.bq:active,.undo:active{transform:scale(.98)}
+  .btn,.tchip,.oc,.opt,.key,.tab,.pill,.rchip,.st,.bq,.undo{transition:transform 100ms ease-out,background-color 150ms ease-out,border-color 150ms ease-out}
+  .btn:active,.tchip:active,.oc:active,.opt:active,.key:active,.tab:active,.pill:active,.rchip:active,.st:active,.bq:active,.undo:active{transform:scale(.98)}
   .ladder{font-size:13.5px;font-weight:700;color:#4F5968}
   @media (prefers-reduced-motion: reduce){
     .bell,.ripple,.enter,.scrim,.sh,.banner,.pop,.drain,.spin{animation:none !important}
     .alert.fast{animation-duration:1s}
-    .cring .arc,.pring .arc,.btn,.tchip,.oc,.opt,.key,.tab,.pill,.rchip,.st,.wa,.bq,.undo{transition:none !important}
-    .btn:active,.tchip:active,.oc:active,.opt:active,.key:active,.tab:active,.pill:active,.rchip:active,.st:active,.wa:active,.bq:active,.undo:active{transform:none}
+    .cring .arc,.pring .arc,.btn,.tchip,.oc,.opt,.key,.tab,.pill,.rchip,.st,.bq,.undo{transition:none !important}
+    .btn:active,.tchip:active,.oc:active,.opt:active,.key:active,.tab:active,.pill:active,.rchip:active,.st:active,.bq:active,.undo:active{transform:none}
     .spin{border-right-color:currentColor;opacity:.6}
   }
 

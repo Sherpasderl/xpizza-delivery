@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { COPY, BOARD, ADVISOR } from './copy.js';
+import { COPY, BOARD, ADVISOR, KIOSK } from './copy.js';
 import { C1_NO_LOCATIONS } from './setup.js';
 import { C2_BROWSER_NOTE } from './bridge.js';
 
@@ -22,7 +22,7 @@ const specText = (f) => {
 };
 const corpus = fs.readdirSync(here('./spec/')).filter((f) => f.endsWith('.html')).map(specText).join(' \n ');
 const approved = [...Object.values(COPY).filter((v) => typeof v === 'string'), COPY.reconnected(1), 'Conexión restablecida ·', 'acciones enviadas',
-  ...Object.values(BOARD), ...Object.values(ADVISOR), C1_NO_LOCATIONS, C2_BROWSER_NOTE];
+  ...Object.values(BOARD), ...Object.values(ADVISOR), ...Object.values(KIOSK), C1_NO_LOCATIONS, C2_BROWSER_NOTE];
 const known = (s) => corpus.includes(s) || approved.some((a) => a.includes(s));
 
 const template = (() => { const h = read('./index.html'); return h.slice(h.indexOf('<template id="screen">') + 22, h.indexOf('</template>')); })();
@@ -118,10 +118,37 @@ test('vendor + font checksums: SHA256SUMS verified (a mismatch is red)', () => {
   for (const f of ['firebase-auth.js', 'firebase-database.js', 'firebase-functions.js']) assert.ok(!/gstatic\.com/.test(read(`./vendor/${f}`)), `${f} loads nothing remote`);
 });
 
+// OWNER DECISION 2026-10-19 (kiosk k9, PLAN-H1c-kiosk-addendum §4): the handheld runs in lock task, so NO path may leave the app —
+// the WhatsApp action was removed (option c; the restaurant contacts the customer through Despacho). Every shipped source (raw
+// text, comments included — stricter) is scanned for any way to open another app, the browser or Settings.
+test('kiosk k9: no external-launch path — no wa.me / window.open / location navigation / intent: / tel: / mailto: / target=_blank', () => {
+  const files = fs.readdirSync(here('./')).filter((f) => /\.(js|html)$/.test(f) && !/\.test\.js$|^test-/.test(f));
+  assert.ok(files.includes('app.js') && files.includes('index.html') && files.includes('view.js'), 'non-vacuity: the shipped sources are scanned');
+  // one detector per prohibited form, whitespace- and case-tolerant (codex nowa r1 P2)
+  const DETECTORS = {
+    'wa.me link':          { re: /wa\s*\.\s*me\b/i, hits: ['https://wa.me/504', 'WA.ME/x', 'wa .me/1'] },
+    'api.whatsapp link':   { re: /api\s*\.\s*whatsapp\b/i, hits: ['https://api.whatsapp.com/send?phone=1', 'API.WhatsApp.com'] },
+    'whatsapp: scheme':    { re: /\bwhatsapp\s*:/i, hits: ['whatsapp://send?text=x', 'WhatsApp://send'] },
+    'window.open':         { re: /\bwindow\s*\.\s*open\s*\(|\bwindow\s*\[\s*['"`]open['"`]\s*\]/i, hits: ['window.open(u)', 'window .open(u)', 'window. open (u)', 'WINDOW.OPEN(u)', "window['open'](u)"] },
+    'location navigation': { re: /\blocation\s*\.\s*(href|assign|replace)\b/i, hits: ['location.href = u', 'location .assign(u)', 'window.location.replace(u)', 'LOCATION.HREF=u'] },
+    'intent: scheme':      { re: /\bintent\s*:/i, hits: ['intent://scan/#Intent;end', 'INTENT:x'] },
+    'tel: link':           { re: /\btel\s*:/i, hits: ['tel:+504', 'TEL:1', 'href="tel :1"'] },
+    'mailto: link':        { re: /\bmailto\s*:/i, hits: ['mailto:a@b.c', 'MAILTO:x'] },
+    'sms: link':           { re: /\bsms\s*:/i, hits: ['sms:+504', 'SMS:1'] },
+    'target=_blank':       { re: /\btarget\s*=\s*["']?\s*_blank/i, hits: ['target="_blank"', "target='_blank'", 'target=_blank', 'TARGET="_blank"', 'target = "_blank"'] },
+  };
+  // sensitivity, PER detector: each must catch every form it names on its own (one broken detector cannot hide behind another)
+  for (const [name, d] of Object.entries(DETECTORS)) for (const h of d.hits) assert.ok(d.re.test(h), `non-vacuity: the ${name} detector must catch ${JSON.stringify(h)}`);
+  for (const f of files) {
+    const src = read(`./${f}`);
+    for (const [name, d] of Object.entries(DETECTORS)) assert.ok(!d.re.test(src), `🔴 ${f} contains an external-launch path (${name}) — kiosk k9 forbids leaving the app`);
+  }
+});
+
 test('the app imports Firebase ONLY from vendor/ (no CDN at runtime); the one remote script is Maps, only when a key is configured', () => {
   const src = read('./app.js');
   const urls = [...src.matchAll(/https?:\/\/[^\s'"`$]+/g)].map((m) => m[0]);
-  assert.deepEqual([...new Set(urls)].sort(), ['https://maps.googleapis.com/maps/api/js?key=', 'https://wa.me/'], 'only the Maps loader and the WhatsApp deep link');
+  assert.deepEqual([...new Set(urls)].sort(), ['https://maps.googleapis.com/maps/api/js?key='], 'only the Maps loader (loaded INSIDE the WebView)');
   assert.match(src, /if \(!MAPS_KEY \|\| mapsRequested/, 'Maps loads only behind MAPS_KEY');
   for (const m of src.matchAll(/from '([^']+)'/g)) assert.ok(m[1].startsWith('./'), m[1]);
 });

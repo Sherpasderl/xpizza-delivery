@@ -24,3 +24,8 @@ export const ADVISOR = Object.freeze({
   driverNameless: 'El repartidor',
   cashDelivery: 'paga en efectivo al recibir',
 });
+// OWNER DECISION 2026-10-19 (kiosk, WhatsApp removed — option c): board F5's offline detail line minus its now-false
+// «ni escribirle al cliente» clause; nothing else changed. Pending the advisor's confirmation of the trimmed wording.
+export const KIOSK = Object.freeze({
+  offlineDetail: 'Sin conexión no se puede pedir más tiempo. «Listo» se guarda y se envía al volver.',
+});

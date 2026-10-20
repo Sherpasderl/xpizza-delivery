@@ -14,7 +14,7 @@ function baseState(over = {}) {
   return { phase: 'main', loginErr: '', working: false, pairing: null, sel: null, pairErr: '', status: { notifications: true, alarmVolumeMax: true, batteryExempt: true, blocked: false, note: '' },
     pinEntry: '', pinFirst: null, pinErr: '', view: 'list', tab: 'n', sheet: null, cur: null,
     feed: { orders: {}, loaded: true, control: null, brand: { name: 'Marca TB' }, menu: [{ key: 'Plato', label: 'Plato' }], availability: {}, offset: 0, connected: true, sessionLost: false },
-    opened: {}, driver: {}, eta: {}, delta: 0, reason: null, gone: {}, moreSel: 5, busyAdd: 15, busyDur: 60, pauseDur: 30, pauseReason: 'Cocina llena', waSel: 'agotado', toast: null, entered: null, rejecting: {}, ...over };
+    opened: {}, driver: {}, eta: {}, delta: 0, reason: null, gone: {}, moreSel: 5, busyAdd: 15, busyDur: 60, pauseDur: 30, pauseReason: 'Cocina llena', toast: null, entered: null, rejecting: {}, ...over };
 }
 function ctxFor(S) {
   const calls = [];
@@ -67,4 +67,18 @@ test('the offline banner shows until the FIRST snapshot, even while connected (c
   assert.equal(v.emptyN, false);
   const L = baseState();
   assert.equal(buildVM(L, ctxFor(L).ctx).bannerOff, false, 'loaded + connected → no banner');
+});
+
+test('«Entregado» (handed): a ready PICKUP card hands the exact order id to act.handed; a ready delivery card is not a pickup', () => {
+  const ready = (over) => order({ status: 'ready', prep: { ...fullPrep(T, 18), ready_marked_at: T + 18 * MIN }, ...over });
+  const S = baseState({ tab: 'l', feed: { ...baseState().feed, orders: { o1: ready({ order_type: 'pickup' }), o2: ready({ id: 'o2', order_id: 'o2' }) } } });
+  const handed = [];
+  const { ctx } = ctxFor(S);
+  ctx.act = new Proxy({}, { get: (_t, k) => (...a) => { if (k === 'handed') handed.push(a); } });
+  const vm = buildVM(S, { ...ctx, orders: S.feed.orders });
+  const pick = vm.readyCards.find((c) => c.id === 'o1'); const del = vm.readyCards.find((c) => c.id === 'o2');
+  assert.ok(pick && del, 'both ready orders are listed');
+  assert.deepEqual([pick.isPickup, del.isPickup], [true, false]);
+  pick.handed();
+  assert.deepEqual(handed, [['o1']], 'act.handed receives exactly the pickup order id');
 });

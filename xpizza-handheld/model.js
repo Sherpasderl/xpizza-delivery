@@ -224,11 +224,11 @@ export function driverInfo(state, etaMs = null) {
     etaMs: isNum(etaMs) ? etaMs : null };
 }
 
-// the detail's info line (why Más tiempo / WhatsApp are unavailable)
+// the detail's info line (why Más tiempo is unavailable)
 export function detailInfo(o, { offline = false, driver = null } = {}) {
   const d = driver || {};
   if (o && o.status === 'preparing') {
-    if (offline) return 'Sin conexión no se puede pedir más tiempo ni escribirle al cliente. «Listo» se guarda y se envía al volver.';
+    if (offline) return 'Sin conexión no se puede pedir más tiempo. «Listo» se guarda y se envía al volver.';
     if (d.assigned) return `${who(d) || 'El repartidor'} ya va en camino: la hora ya no se puede mover. Si te atrasás, avisale a Despacho.`;
     const p = fullPrep(o.prep);
     if (p && p.extra_min >= 30) return 'Ya sumaste 30 min. Para más tiempo, hablá con Despacho.';
@@ -326,8 +326,3 @@ export function applyPending(orders, items, undoReadies = []) {
   return out;
 }
 
-// the customer's WhatsApp number from the order (8 local digits → Honduras +504; longer = already international); '' = none
-export function phoneOf(o) {
-  const d = String((o && o.customer_phone) || '').replace(/\D/g, '');
-  return d.length === 8 ? `504${d}` : (d.length >= 10 && d.length <= 15 ? d : '');
-}

@@ -6,8 +6,6 @@ import { COPY } from './copy.js';
 
 const MIN = 60000;
 const REASONS = [['agotado', 'Se acabó un producto'], ['saturada', 'Cocina saturada'], ['cerrando', 'Estamos por cerrar'], ['otro', 'Otro motivo']];
-const WA = [['agotado', 'Se acabó un producto'], ['pregunta', 'Tenemos una pregunta'], ['propio', 'Escribir mi propio mensaje']];
-export const WA_TEXT = { agotado: 'Se nos acabó un producto: ¿te lo podemos cambiar por otro?', pregunta: 'Tenemos una pregunta sobre tu pedido.', propio: '' };
 
 // ── the view model (the prototype's renderVals, on real data) ─────────────────────────────────────────────────────────────────
 export function buildVM(S, ctx) {
@@ -75,7 +73,7 @@ export function buildVM(S, ctx) {
     acceptLabel: chosen ? M.acceptLabel(chosen.value) : 'Aceptar',
     busyExplain: busyOn && b !== null, busyExplainText: busyOn && b !== null ? M.busyExplain(b - pill.busyAdd, pill.busyAdd) : '',
     openReject: () => ctx.set({ sheet: 'reject' }),
-    shReject: S.sheet === 'reject', shItems: S.sheet === 'items', shMore: S.sheet === 'more', shWA: S.sheet === 'wa', shStatus: S.sheet === 'status',
+    shReject: S.sheet === 'reject', shItems: S.sheet === 'items', shMore: S.sheet === 'more', shStatus: S.sheet === 'status',
     shBusy: S.sheet === 'busy', shPause: S.sheet === 'pause', shBranch: false, shLogout: S.sheet === 'logout',
     reasons: REASONS.map(([k, l]) => ({ label: l, cls: S.reason === k ? 'on' : '', pick: () => ctx.set({ reason: k }) })),
     isOtro: S.reason === 'otro', isAgotadoReason: S.reason === 'agotado', isOtherReason: S.reason !== 'agotado',
@@ -87,11 +85,7 @@ export function buildVM(S, ctx) {
     moreChips: cur ? M.moreChips(cur).map((c) => ({ label: c.label, cls: (S.moreSel === c.value ? 'on' : '') + (c.dis ? ' dis' : ''), pick: () => { if (!c.dis) ctx.set({ moreSel: c.value }); } })) : [],
     newReadyAt: cur && cur.prep && Number.isFinite(cur.prep.ready_at) ? M.fmt(cur.prep.ready_at + S.moreSel * MIN) : '',
     moveLabel: cur && cur.prep && Number.isFinite(cur.prep.ready_at) ? `Mover a las ${M.fmt(cur.prep.ready_at + S.moreSel * MIN)}` : '',
-    confirmMore: ctx.act.doMore, openWA: () => ctx.set({ sheet: 'wa', waSel: 'agotado' }),
-    waTitle: curView ? `Escribile a ${curView.cust.split(' ')[0]}` : '',
-    waOpts: WA.map(([k, l]) => ({ label: l, cls: S.waSel === k ? 'on' : '', pick: () => ctx.set({ waSel: k }) })),
-    waText: curView ? `Hola ${curView.cust.split(' ')[0]}, te escribimos de ${brandName} por tu pedido #${curView.num}. ${WA_TEXT[S.waSel]}` : '',
-    sendWA: () => ctx.act.openWhatsApp(cur, curView, brandName),
+    confirmMore: ctx.act.doMore,
     statusTitle: `Estado de ${loc}`, stOpenCls: pill.mode === 'open' ? 'on' : '', stBusyCls: busyOn ? 'on' : '', stPauseCls: pausedOn ? 'on' : '',
     setOpen: () => { if (busyOn) ctx.act.control('merchantSetBusy', { clear: true }); if (pausedOn) ctx.act.control('merchantSetPause', { op: 'resume' }); ctx.set({ sheet: null }); },
     toBusy: () => ctx.set({ sheet: 'busy' }), toPause: () => ctx.set({ sheet: 'pause' }),
@@ -145,7 +139,7 @@ function detail(S, ctx, cur, t, off, b) {
     timeLine: isReady ? `Listo a las ${M.fmt(realAt)}` : `Listo a las ${M.fmt(rm)}`,
     tag: isReady ? (realAt !== null && rm !== null ? (realAt <= rm ? 'A tiempo' : `Con ${Math.ceil((realAt - rm) / MIN)} min de atraso`) : '') : lt.label,
     tagCls: isReady ? '' : lt.cls, driverName: dv.name, driverSub: dv.sub,
-    showWA: !off && !!M.phoneOf(cur), canMore: M.canMore(cur, drv.assigned, off) && !cur._pending, info, hasInfo: !!info,
+    canMore: M.canMore(cur, drv.assigned, off) && !cur._pending, info, hasInfo: !!info,
     accept: () => ctx.act.doAccept(cur, b), ready: () => ctx.act.doReady(cur),
   };
 }
