@@ -903,6 +903,7 @@
   .rwarn{width:8px;height:8px;border-radius:50%;background:var(--red);flex:none}
   .nm .pill{margin-left:2px}
   .drawer.ops{z-index:22}
+  .drawer:not(.show){box-shadow:none}   /* a parked drawer sits ~9px past the edge; its shadow would bleed a fade into view */
   .opsscrim{position:fixed;inset:0;z-index:21}
   .drawer.ops .dwh{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line2)}
   .drawer.ops .dwt{font-family:var(--disp);font-size:18px;font-weight:800;letter-spacing:-.03em}
