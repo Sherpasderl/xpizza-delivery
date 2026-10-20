@@ -197,6 +197,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     const isOpen = () => true, weekendOnlyBlocked = () => false;
     let isWithinDeliveryZone = true;
     let __restorePos = null, currentOrder = {};
+    let __geoGen = 0, __geoResult = null;   // the page globals restoreOrderForm now invalidates (GPS cycle, PLAN-orderform-geoloc-safari)
     const RESTAURANT_ID = ctx.rid, MIN_ORDER = 0, LA_MUSA_FALLBACK_EMAIL = 'pedidos@lamusa.test';
     const CREATEORDER_URL = 'http://test/createOrder', CHARGEORDER_URL = 'http://test/chargeOnlineOrder';
     const location = { href: '' };

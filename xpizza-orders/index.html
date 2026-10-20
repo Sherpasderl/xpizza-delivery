@@ -3653,9 +3653,69 @@ function goToLocation(){
   }
   err.style.display='none';
   if(orderType==='delivery' && cartHasPickupOnly()){ showPickupConflictModal(); return; }
+  startGeoCycle();   // SYNCHRONOUS, inside the tap — independent of the Maps SDK (PLAN-orderform-geoloc-safari)
   showStage('s2',50);
   refreshTimeSelector();
   setTimeout(initMap, 100);
+}
+
+/* ── GPS auto-detect (PLAN-orderform-geoloc-safari r2) ──
+   The request starts INSIDE the Continuar tap (startGeoCycle from goToLocation), never behind the Maps SDK.
+   ONE apply-time predicate decides whether GPS may place the pin: only while the location is still
+   unestablished (nothing set, or only the automatic default). Every writer of real coordinates (a confirmed
+   address, the fullscreen editor, a dragged pin, a search pick, a restore) therefore wins without any hook.
+   Each tap is a new cycle (__geoGen); a callback from an older cycle is dropped before it records or retries.
+   Budget = today's 10 s: high accuracy 6 s, then (timeout/unavailable only — never after a denial) low
+   accuracy 4 s; a fix up to 60 s old is accepted. window.__geoDiag is page-only diagnostics (nothing is sent). */
+const GEO_DEFAULT = { lat: 15.5003, lng: -88.025 };
+let __geoGen = 0;
+let __geoResult = null;
+window.__geoDiag = null;
+function geoLocationUnestablished(){
+  if (__restorePos) return false;
+  if (typeof lat !== 'number' || typeof lng !== 'number') return true;
+  return lat === GEO_DEFAULT.lat && lng === GEO_DEFAULT.lng;
+}
+function startGeoCycle(){
+  if (!navigator.geolocation || !geoLocationUnestablished()) return;
+  const gen = ++__geoGen;
+  __geoResult = null;
+  const diag = window.__geoDiag = { gen: gen, attempts: [], outcome: 'pending' };
+  const LADDER = [
+    { enableHighAccuracy: true,  timeout: 6000, maximumAge: 60000 },
+    { enableHighAccuracy: false, timeout: 4000, maximumAge: 60000 },
+  ];
+  const attempt = (i) => {
+    const t0 = Date.now();
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (gen !== __geoGen) return;
+        diag.attempts.push({ opts: LADDER[i], code: null, ms: Date.now() - t0 });
+        settleGeo(diag, { gen: gen, ok: true, lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
+      (err) => {
+        if (gen !== __geoGen) return;
+        const code = err && err.code;
+        diag.attempts.push({ opts: LADDER[i], code: code, ms: Date.now() - t0 });
+        if (code !== 1 && i + 1 < LADDER.length) return attempt(i + 1);
+        settleGeo(diag, { gen: gen, ok: false });
+      },
+      LADDER[i]);
+  };
+  attempt(0);
+}
+function settleGeo(diag, r){
+  __geoResult = r;
+  diag.outcome = r.ok ? 'ok' : 'error';
+  applyGeoWhenReady();
+}
+function applyGeoWhenReady(){
+  const r = __geoResult;
+  if (!r || r.gen !== __geoGen || !gmap) return;
+  __geoResult = null;
+  if (!geoLocationUnestablished()) return;
+  if (r.ok) placePin(r.lat, r.lng, false);
+  else if (!gmarker) placePin(GEO_DEFAULT.lat, GEO_DEFAULT.lng, true);
 }
 
 function googleMapsReady(){
@@ -3678,14 +3738,9 @@ function initMap(){
     streetViewControl:false,
     fullscreenControl:false,
   });
-  if(__restorePos){ placePin(__restorePos.lat, __restorePos.lng, false); __restorePos=null; return; }  // restore the saved pin after a cancelled-payment retry
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(
-      pos=>placePin(pos.coords.latitude,pos.coords.longitude,false),
-      ()=>placePin(15.5003,-88.025,true),
-      {timeout:10000,enableHighAccuracy:true,maximumAge:0}
-    );
-  } else { placePin(15.5003,-88.025,true); }
+  if(__restorePos){ __geoGen++; __geoResult = null; placePin(__restorePos.lat, __restorePos.lng, false); __restorePos=null; return; }  // restore the saved pin after a cancelled-payment retry
+  if(navigator.geolocation){ applyGeoWhenReady(); }   // the request was started in the tap (startGeoCycle); placed once both are ready
+  else { placePin(15.5003,-88.025,true); }
 }
 
 function placePin(la,ln,fallback){
@@ -3772,9 +3827,9 @@ function closeFullscreenMap() {
   const c = fsMap.getCenter();
   lat = c.lat(); lng = c.lng();
   if (gmap) gmap.setCenter({lat, lng});
-  if (gmarker) gmarker.setPosition({lat, lng});
-  reverseGeocode(lat, lng);
-  updateLocInfo(lat, lng, false);
+  if (gmarker) { gmarker.setPosition({lat, lng}); reverseGeocode(lat, lng); updateLocInfo(lat, lng, false); }
+  else if (gmap) { placePin(lat, lng, false); }   // no preview pin yet (GPS still pending) → create it; placePin = marker + updateLocInfo + ONE reverseGeocode
+  else { reverseGeocode(lat, lng); updateLocInfo(lat, lng, false); }
   document.getElementById('btnConfirm') && (document.getElementById('btnConfirm').disabled = false);
 
   // Hide tap hint after first use
@@ -4663,6 +4718,7 @@ function snapshotForm(){
   };
 }
 function restoreOrderForm(){
+  __geoGen++; __geoResult = null;   // a GPS request pending from before the restore never applies, retries or records
   let snap = null;
   try { const s = JSON.parse(localStorage.getItem('xpizza_pending_pay')||'null'); snap = s && s.form; if(s && s.ts && (Date.now()-s.ts) > 3600000){ snap=null; try{ localStorage.removeItem('xpizza_pending_pay'); }catch(_){} }   /* D/#6/#11(revise): CLEAR a STALE stash (>1h > hosted TTL), don't just ignore it — never restore a day-old order/reservation */ else if(s&&s.order_id){ window.__resumeOrderId = s.order_id;   /* D: a resumed retry REUSES the original order_id → the server reuses the ONE reservation (no double-reserve) */ } } catch(_){}
   if(!snap){ location.href='/'; return; }
@@ -4704,7 +4760,8 @@ function restoreOrderForm(){
     if(snap.orderType !== 'pickup'){
       lat = snap.lat; lng = snap.lng;
       if(snap.lat && snap.lng) __restorePos = { lat: snap.lat, lng: snap.lng }; // initMap places this instead of geolocating
-      setTimeout(initMap, 100);
+      if (gmap && __restorePos) { const rp = __restorePos; __restorePos = null; placePin(rp.lat, rp.lng, false); }   // the map already exists (initMap would return early): restore the pin onto it, as initMap does on a fresh map
+      else setTimeout(initMap, 100);
     }
     if(snap.payment) selectPay(snap.payment);
     const amt=document.getElementById('pixelpay-amount'); if(amt) amt.textContent='L '+redeemAdjustedTotal().toFixed(2);
@@ -4987,6 +5044,7 @@ function startAnotherOrder(){
 
   // Reset address + map state
   lat = null; lng = null;
+  __geoGen++; __geoResult = null; __restorePos = null;   // the finished order's GPS cycle / restore point can never apply to the next one
   isWithinDeliveryZone = true;
   const addrDetected = document.getElementById('address-detected');
   if (addrDetected) addrDetected.value = '';
