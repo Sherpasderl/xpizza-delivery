@@ -5248,8 +5248,8 @@
     "slice": "d2",
     "label": "🔴 restoreOrderForm does nothing — a resumed order silently mints a NEW order_id and double-reserves",
     "file": "../xpizza-orders/index.html",
-    "from": "function restoreOrderForm(){\n  let snap = null;",
-    "to": "function restoreOrderForm(){\n  if (true) return;\n  let snap = null;",
+    "from": "never applies, retries or records\n  let snap = null;",
+    "to": "never applies, retries or records\n  if (true) return;\n  let snap = null;",
     "command": [
       "node",
       "../cart-identity-order.test.mjs"
@@ -15560,6 +15560,342 @@
     "command": [
       "node",
       "../xpizza-driver/driver-feed.test.js"
+    ]
+  },
+  {
+    "id": "geoloc-xp-01",
+    "slice": "geoloc",
+    "label": "x_pizza: the request is deferred out of the tap (a microtask) instead of synchronous",
+    "file": "../xpizza-orders/index.html",
+    "from": "  startGeoCycle();   // SYNCHRONOUS",
+    "to": "  Promise.resolve().then(startGeoCycle);   // SYNCHRONOUS",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-01",
+    "slice": "geoloc",
+    "label": "la_musa: the request is deferred out of the tap (a microtask) instead of synchronous",
+    "file": "../la-musa-orders/index.html",
+    "from": "  startGeoCycle();   // SYNCHRONOUS",
+    "to": "  Promise.resolve().then(startGeoCycle);   // SYNCHRONOUS",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-02",
+    "slice": "geoloc",
+    "label": "x_pizza: attempt 1 rejects cached fixes again (maximumAge: 0)",
+    "file": "../xpizza-orders/index.html",
+    "from": "{ enableHighAccuracy: true,  timeout: 6000, maximumAge: 60000 },",
+    "to": "{ enableHighAccuracy: true,  timeout: 6000, maximumAge: 0 },",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-02",
+    "slice": "geoloc",
+    "label": "la_musa: attempt 1 rejects cached fixes again (maximumAge: 0)",
+    "file": "../la-musa-orders/index.html",
+    "from": "{ enableHighAccuracy: true,  timeout: 6000, maximumAge: 60000 },",
+    "to": "{ enableHighAccuracy: true,  timeout: 6000, maximumAge: 0 },",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-03",
+    "slice": "geoloc",
+    "label": "x_pizza: the low-accuracy retry is removed",
+    "file": "../xpizza-orders/index.html",
+    "from": "if (code !== 1 && i + 1 < LADDER.length) return attempt(i + 1);",
+    "to": "if (false && i + 1 < LADDER.length) return attempt(i + 1);",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-03",
+    "slice": "geoloc",
+    "label": "la_musa: the low-accuracy retry is removed",
+    "file": "../la-musa-orders/index.html",
+    "from": "if (code !== 1 && i + 1 < LADDER.length) return attempt(i + 1);",
+    "to": "if (false && i + 1 < LADDER.length) return attempt(i + 1);",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-04",
+    "slice": "geoloc",
+    "label": "x_pizza: a denial is retried",
+    "file": "../xpizza-orders/index.html",
+    "from": "if (code !== 1 && i + 1 < LADDER.length) return attempt(i + 1);",
+    "to": "if (i + 1 < LADDER.length) return attempt(i + 1);",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-04",
+    "slice": "geoloc",
+    "label": "la_musa: a denial is retried",
+    "file": "../la-musa-orders/index.html",
+    "from": "if (code !== 1 && i + 1 < LADDER.length) return attempt(i + 1);",
+    "to": "if (i + 1 < LADDER.length) return attempt(i + 1);",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-05",
+    "slice": "geoloc",
+    "label": "x_pizza: the apply-time predicate is removed (a late GPS overrides a real choice)",
+    "file": "../xpizza-orders/index.html",
+    "from": "  __geoResult = null;\n  if (!geoLocationUnestablished()) return;\n",
+    "to": "  __geoResult = null;\n",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-05",
+    "slice": "geoloc",
+    "label": "la_musa: the apply-time predicate is removed (a late GPS overrides a real choice)",
+    "file": "../la-musa-orders/index.html",
+    "from": "  __geoResult = null;\n  if (!geoLocationUnestablished()) return;\n",
+    "to": "  __geoResult = null;\n",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-06",
+    "slice": "geoloc",
+    "label": "x_pizza: the __restorePos clause is dropped from the predicate",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if (__restorePos) return false;\n  if (typeof lat !== 'number'",
+    "to": "  if (typeof lat !== 'number'",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-06",
+    "slice": "geoloc",
+    "label": "la_musa: the __restorePos clause is dropped from the predicate",
+    "file": "../la-musa-orders/index.html",
+    "from": "  if (__restorePos) return false;\n  if (typeof lat !== 'number'",
+    "to": "  if (typeof lat !== 'number'",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-07",
+    "slice": "geoloc",
+    "label": "x_pizza: the default-only clause is dropped (a fallback is mistaken for a customer choice)",
+    "file": "../xpizza-orders/index.html",
+    "from": "  return lat === GEO_DEFAULT.lat && lng === GEO_DEFAULT.lng;",
+    "to": "  return false;",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-07",
+    "slice": "geoloc",
+    "label": "la_musa: the default-only clause is dropped (a fallback is mistaken for a customer choice)",
+    "file": "../la-musa-orders/index.html",
+    "from": "  return lat === GEO_DEFAULT.lat && lng === GEO_DEFAULT.lng;",
+    "to": "  return false;",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-08",
+    "slice": "geoloc",
+    "label": "x_pizza: the success callback skips the generation check (stale success applies)",
+    "file": "../xpizza-orders/index.html",
+    "from": "      (pos) => {\n        if (gen !== __geoGen) return;\n",
+    "to": "      (pos) => {\n",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-08",
+    "slice": "geoloc",
+    "label": "la_musa: the success callback skips the generation check (stale success applies)",
+    "file": "../la-musa-orders/index.html",
+    "from": "      (pos) => {\n        if (gen !== __geoGen) return;\n",
+    "to": "      (pos) => {\n",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-09",
+    "slice": "geoloc",
+    "label": "x_pizza: the error callback records/retries before the generation check (stale error retries)",
+    "file": "../xpizza-orders/index.html",
+    "from": "      (err) => {\n        if (gen !== __geoGen) return;\n",
+    "to": "      (err) => {\n",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-09",
+    "slice": "geoloc",
+    "label": "la_musa: the error callback records/retries before the generation check (stale error retries)",
+    "file": "../la-musa-orders/index.html",
+    "from": "      (err) => {\n        if (gen !== __geoGen) return;\n",
+    "to": "      (err) => {\n",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-10",
+    "slice": "geoloc",
+    "label": "x_pizza: the cycle starts even when the location is established",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if (!navigator.geolocation || !geoLocationUnestablished()) return;",
+    "to": "  if (!navigator.geolocation) return;",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-10",
+    "slice": "geoloc",
+    "label": "la_musa: the cycle starts even when the location is established",
+    "file": "../la-musa-orders/index.html",
+    "from": "  if (!navigator.geolocation || !geoLocationUnestablished()) return;",
+    "to": "  if (!navigator.geolocation) return;",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-11",
+    "slice": "geoloc",
+    "label": "x_pizza: startAnotherOrder no longer resets the GPS cycle / restore point",
+    "file": "../xpizza-orders/index.html",
+    "from": "  __geoGen++; __geoResult = null; __restorePos = null;",
+    "to": "  ;",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-11",
+    "slice": "geoloc",
+    "label": "la_musa: startAnotherOrder no longer resets the GPS cycle / restore point",
+    "file": "../la-musa-orders/index.html",
+    "from": "  __geoGen++; __geoResult = null; __restorePos = null;",
+    "to": "  ;",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-12",
+    "slice": "geoloc",
+    "label": "x_pizza: restoreOrderForm no longer invalidates a pending GPS cycle",
+    "file": "../xpizza-orders/index.html",
+    "from": "function restoreOrderForm(){\n  __geoGen++; __geoResult = null;",
+    "to": "function restoreOrderForm(){\n  ;",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-12",
+    "slice": "geoloc",
+    "label": "la_musa: restoreOrderForm no longer invalidates a pending GPS cycle",
+    "file": "../la-musa-orders/index.html",
+    "from": "function restoreOrderForm(){\n  __geoGen++; __geoResult = null;",
+    "to": "function restoreOrderForm(){\n  ;",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-13",
+    "slice": "geoloc",
+    "label": "x_pizza: fullscreen confirm no longer creates the missing preview marker",
+    "file": "../xpizza-orders/index.html",
+    "from": "  else if (gmap) { placePin(lat, lng, false); }",
+    "to": "  else if (false) { placePin(lat, lng, false); }",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-13",
+    "slice": "geoloc",
+    "label": "la_musa: fullscreen confirm no longer creates the missing preview marker",
+    "file": "../la-musa-orders/index.html",
+    "from": "  else if (gmap) { placePin(lat, lng, false); }",
+    "to": "  else if (false) { placePin(lat, lng, false); }",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-14",
+    "slice": "geoloc",
+    "label": "x_pizza: the PositionError code is not recorded",
+    "file": "../xpizza-orders/index.html",
+    "from": "diag.attempts.push({ opts: LADDER[i], code: code, ms: Date.now() - t0 });",
+    "to": "diag.attempts.push({ opts: LADDER[i], code: null, ms: Date.now() - t0 });",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-14",
+    "slice": "geoloc",
+    "label": "la_musa: the PositionError code is not recorded",
+    "file": "../la-musa-orders/index.html",
+    "from": "diag.attempts.push({ opts: LADDER[i], code: code, ms: Date.now() - t0 });",
+    "to": "diag.attempts.push({ opts: LADDER[i], code: null, ms: Date.now() - t0 });",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
     ]
   }
 ]

@@ -5101,6 +5101,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.renderRecognizedDeliveryEntry = renderRecognizedDeliveryEntry;   // fast-follow — recognized seamless delivery entry (identity carried, payment visible)
   window.__ACCOUNT.shouldRecoverDeliveryStep = shouldRecoverDeliveryStep;   // pure fail-open-recovery decision (diagnostic + unit-test hook)
   window.__ACCOUNT.deleteAddress = deleteAddress;
+  window.__ACCOUNT.establishCheckoutFromAddress = establishCheckoutFromAddress;   // geoloc test hook — the REAL direct lat/lng + __restorePos writer (saved + one-off)
   window.__ACCOUNT.onOrderConfirmed = onOrderConfirmed;
   window.__ACCOUNT.renderCartEarn = renderCartEarn;   // B2 Task 3 — index.html updateCart() fills the cart earn line
   window.__ACCOUNT.renderRedeem = renderRedeem;       // B2 Task 4 — checkout redeem affordance + review (server-authoritative)
