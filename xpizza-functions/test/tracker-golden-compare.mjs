@@ -4,6 +4,8 @@
 // Exit 0 = equal (journeys/steps/fields), 1 = a difference (listed per journey/step/path), 2 = usage.
 // --allow: a reviewed field-level delta list [{journey, step, path, from, to, reason}] — EXACTLY those changes must occur and nothing else may differ (flag-ON proof; codex build r1 P2-4).
 // --self-test: proves the comparator FAILS on a changed field and on an extra side effect (BUILD §3.3 comparator self-test).
+// --report <file.json>: also write the PER-JOURNEY result (steps compared, differences, allowed, unexpected, missing) so the gate
+//   can emit one truthful ✓ per journey it actually compared (gate-all counts ✓ marks; one summary line counted as 0 cells).
 import fs from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
 
@@ -45,25 +47,34 @@ export function missingExpected(allow, diffs) {
 function main() {
   const argv = process.argv.slice(2);
   if (argv[0] === '--self-test') {
+    const mark = (l) => console.log(`  ✓ self-test: ${l}`);   // printed only AFTER the check above it passed
     const base = { journeys: { native: [{ step: 'pickup', tracking: { status: 'out_for_delivery', driver_name: 'Uno' }, side_effects: [['whatsapp', '+504', 'x', 'tb_centro']] }] } };
     const same = JSON.parse(JSON.stringify(base));
     if (diffCaptures(base, same).length !== 0) throw new Error('self-test: identical captures reported different');
+    mark('identical captures → no difference');
     const changed = JSON.parse(JSON.stringify(base)); changed.journeys.native[0].tracking.driver_name = 'Dos';
     const d1 = diffCaptures(base, changed);
     if (!(d1.length === 1 && d1[0].path === '/tracking/driver_name')) throw new Error(`self-test: a changed field was not detected exactly (${JSON.stringify(d1)})`);
+    mark('a changed field → exactly that path');
     const extra = JSON.parse(JSON.stringify(base)); extra.journeys.native[0].side_effects.push(['webpush', 'e', 'p']);
     const d2 = diffCaptures(base, extra);
     if (d2.length < 1 || !d2.some((d) => d.path.startsWith('/side_effects'))) throw new Error(`self-test: an extra side effect was not detected (${JSON.stringify(d2)})`);
+    mark('an extra side effect → detected');
     // a reviewed delta is pinned to its exact journey + step + path + from + to: the SAME path with a DIFFERENT value is not allowed
     const pinned = [{ journey: 'native', step: 'pickup', path: '/tracking/driver_name', from: 'Uno', to: 'Dos', reason: 't' }];
     if (!isAllowed(pinned, d1[0])) throw new Error('self-test: the exact reviewed delta was not allowed');
+    mark('the exact reviewed delta (journey/step/path/from/to) → allowed');
     const other = JSON.parse(JSON.stringify(base)); other.journeys.native[0].tracking.driver_name = 'Tres';
     if (isAllowed(pinned, diffCaptures(base, other)[0])) throw new Error('self-test: a reviewed path with a DIFFERENT value was allowed');
+    mark('the reviewed path with a DIFFERENT value → not allowed');
     if (isAllowed([{ path: '/tracking/driver_name', reason: 't' }], d1[0])) throw new Error('self-test: an unpinned (path-only) entry was accepted');
+    mark('an unpinned (path-only) entry → refused');
     // codex build r1 P2-4: with a reviewed delta list, EVERY listed change must occur — a missing expected change is RED
     const expectAll = [{ journey: 'native', step: 'pickup', path: '/tracking/driver_name', from: 'Uno', to: 'Dos', reason: 't' }];
     if (missingExpected(expectAll, diffCaptures(base, changed)).length !== 0) throw new Error('self-test: a present expected change was reported missing');
+    mark('a present expected change → not reported missing');
     if (missingExpected(expectAll, diffCaptures(base, same)).length !== 1) throw new Error('self-test: a MISSING expected change was not detected (baseline vs itself must fail under the list)');
+    mark('a MISSING expected change → detected');
     console.log('tracker-golden-compare self-test: OK (identical → equal; changed field → exactly that path; extra side effect → detected; reviewed deltas pinned to journey/step/path/from/to)');
     return 0;
   }
@@ -78,6 +89,16 @@ function main() {
   for (const d of unexpected) console.log(`DIFF ${d.journey} · ${d.step} · ${d.path}: ${JSON.stringify(d.a)} → ${JSON.stringify(d.b)}`);
   for (const x of missing) console.log(`MISSING expected delta ${x.journey} · ${x.step} · ${x.path}: ${JSON.stringify(x.from)} → ${JSON.stringify(x.to)} (${x.reason})`);
   const bad = unexpected.length + missing.length;
+  const ri = argv.indexOf('--report');
+  if (ri >= 0) {
+    const per = {};
+    for (const j of new Set([...Object.keys(ea.journeys || {}), ...Object.keys(eb.journeys || {})])) {
+      const mine = (xs) => xs.filter((d) => d.journey === j).length;
+      per[j] = { steps_expected: ((ea.journeys || {})[j] || []).length, steps_actual: ((eb.journeys || {})[j] || []).length,
+        differences: mine(diffs), allowed: mine(diffs) - mine(unexpected), unexpected: mine(unexpected), missing: mine(missing) };
+    }
+    fs.writeFileSync(argv[ri + 1], JSON.stringify({ equal: !bad, journeys: per }, null, 1));
+  }
   console.log(`tracker-golden-compare: ${bad ? 'DIFFERENT' : 'EQUAL'} (${diffs.length} difference(s), ${diffs.length - unexpected.length} allowed by the reviewed delta list, ${missing.length} expected delta(s) missing)`);
   return bad ? 1 : 0;
 }
