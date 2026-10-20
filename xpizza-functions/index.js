@@ -4894,6 +4894,16 @@ exports.sendOrderStatusNotifications = onValueWritten(
     // which is the status string — this trigger watches /orders/{orderId}/status). Legacy-normalized.
     const restaurantId = order?.restaurant_id || 'x_pizza';
 
+    // TRACKER FIXES × S5 (restack onto e8e77e24): with the flag ON the status mirror below is skipped (the recompute publishes the
+    // tracker), but S5's ready-stage stamp is NOT recompute truth (orders carry no ready_at) — so it is written here: the SAME leaf,
+    // the SAME trigger-time value, the SAME "a recall overwrites: the latest ready" semantics as the OFF mirror.
+    if (tf && trackingToken && after === 'ready') {
+      try {
+        await db.ref(`order_tracking/${trackingToken}/ready_at`).set(ServerValue.TIMESTAMP);
+      } catch (e) {
+        console.warn(`sendOrderStatusNotifications: tracking ready_at stamp failed`, e.message);
+      }
+    }
     if (!tf && trackingToken) {   // TRACKER FIXES H1: ON → the tracker is published by trackerOnOrderStatus (retry:true) instead
       const trackingUpdates = { [`order_tracking/${trackingToken}/status`]: after };
       if (after === 'out_for_delivery') {
