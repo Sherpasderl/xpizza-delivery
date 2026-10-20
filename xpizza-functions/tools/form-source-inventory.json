@@ -218,6 +218,9 @@
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
+    "xpizza-functions/test/tracker-reconcile.emulator.test.js",
+    "xpizza-functions/test/tracker-schedules.emulator.test.js",
+    "xpizza-functions/test/trigger-runner.emulator.test.mjs",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -382,6 +385,9 @@
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
+    "xpizza-functions/test/tracker-reconcile.emulator.test.js",
+    "xpizza-functions/test/tracker-schedules.emulator.test.js",
+    "xpizza-functions/test/trigger-runner.emulator.test.mjs",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -604,6 +610,9 @@
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
+    "xpizza-functions/test/tracker-reconcile.emulator.test.js",
+    "xpizza-functions/test/tracker-schedules.emulator.test.js",
+    "xpizza-functions/test/trigger-runner.emulator.test.mjs",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -769,6 +778,9 @@
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
+    "xpizza-functions/test/tracker-reconcile.emulator.test.js",
+    "xpizza-functions/test/tracker-schedules.emulator.test.js",
+    "xpizza-functions/test/trigger-runner.emulator.test.mjs",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -976,7 +988,9 @@
     "xpizza-functions/test/driver-cuadre-rules.emulator.test.js",
     "xpizza-functions/test/driver-eligibility-rules.emulator.test.js",
     "xpizza-functions/test/f2-driver-feed-lifecycle.emulator.test.js",
-    "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js"
+    "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/web-sdk-loader.emulator.test.mjs",
+    "xpizza-functions/tracking/driver-orders.guard.test.js"
    ],
    "via_helper": [
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -1575,10 +1589,25 @@
   "pixelpay-charge.js",
   "pixelpay-hosted-charge.js",
   "prep-stats.js",
+  "retention-sweep.js",
   "rewards-redeem-intake.js",
   "rewards-reserve.js",
   "signup-core.js",
-  "signup-endpoints.js"
+  "signup-endpoints.js",
+  "tracking/claims-txn.js",
+  "tracking/derive.js",
+  "tracking/driver-name.js",
+  "tracking/driver-orders.js",
+  "tracking/fanout.js",
+  "tracking/flag.js",
+  "tracking/hold.js",
+  "tracking/ingest-txn.js",
+  "tracking/legacy-encode.js",
+  "tracking/mx-txn.js",
+  "tracking/recompute.js",
+  "tracking/reconcile-core.js",
+  "tracking/tag.js",
+  "tracking/tombstones.js"
  ],
  "server": {
   "access/access-census-core.js": {
@@ -1646,7 +1675,8 @@
       "tools/h1c-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
-      "tools/signup-inverse.js"
+      "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js"
      ]
     },
     {
@@ -1664,6 +1694,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1683,6 +1714,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1704,6 +1736,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1721,6 +1754,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1736,7 +1770,8 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
-      "tools/signup-inverse.js"
+      "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js"
      ]
     },
     {
@@ -1749,7 +1784,8 @@
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
-      "tools/signup-inverse.js"
+      "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js"
      ]
     },
     {
@@ -1757,14 +1793,16 @@
      "inverses": [
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
-      "tools/signup-inverse.js"
+      "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/h1c-wiring.guard.test.js",
      "inverses": [
       "tools/h1c-inverse.js",
-      "tools/signup-inverse.js"
+      "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js"
      ]
     },
     {
@@ -1784,6 +1822,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1805,6 +1844,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1817,7 +1857,8 @@
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
-      "tools/signup-inverse.js"
+      "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js"
      ]
     },
     {
@@ -1829,7 +1870,8 @@
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
-      "tools/signup-inverse.js"
+      "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js"
      ]
     },
     {
@@ -1838,7 +1880,8 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/s5-inverse.js",
-      "tools/signup-inverse.js"
+      "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js"
      ]
     },
     {
@@ -1852,13 +1895,15 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
-      "tools/signup-inverse.js"
+      "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/signup-wiring.guard.test.js",
      "inverses": [
-      "tools/signup-inverse.js"
+      "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js"
      ]
     },
     {
@@ -1876,6 +1921,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1898,6 +1944,12 @@
      ]
     },
     {
+     "file": "xpizza-functions/tracker-fixes-wiring.guard.test.js",
+     "inverses": [
+      "tools/tracker-fixes-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/wacancel-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
@@ -1910,6 +1962,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/tracker-fixes-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     }
@@ -1956,6 +2009,7 @@
     "xpizza-functions/test/order-exists.emulator.test.js",
     "xpizza-functions/test/resolve-manual.emulator.test.js",
     "xpizza-functions/tools/portal-split.js",
+    "xpizza-functions/tracker-hold-inertness.guard.test.js",
     "xpizza-functions/whatsapp-brand.test.js"
    ]
   },
@@ -2058,6 +2112,19 @@
     "xpizza-functions/test/s5-backend.emulator.test.js"
    ]
   },
+  "retention-sweep.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/tracker-retention-wiring.guard.test.js",
+     "inverses": [
+      "tools/tracker-retention-inverse.js"
+     ]
+    }
+   ],
+   "lifts": [
+    "xpizza-functions/tasks-retention.test.js"
+   ]
+  },
   "rewards-redeem-intake.js": {
    "pins": [
     {
@@ -2093,6 +2160,64 @@
    "lifts": [
     "xpizza-functions/signup-wiring.guard.test.js"
    ]
+  },
+  "tracking/claims-txn.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "tracking/derive.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "tracking/driver-name.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "tracking/driver-orders.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/tracking/driver-orders.guard.test.js"
+   ]
+  },
+  "tracking/fanout.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "tracking/flag.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "tracking/hold.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "tracking/ingest-txn.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "tracking/legacy-encode.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "tracking/mx-txn.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "tracking/recompute.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "tracking/reconcile-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "tracking/tag.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "tracking/tombstones.js": {
+   "pins": [],
+   "lifts": []
   }
  },
  "unregistered": []
