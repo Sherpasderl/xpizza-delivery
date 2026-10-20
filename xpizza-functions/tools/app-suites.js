@@ -25,8 +25,18 @@
  * An excused file that PASSES fails the run, and so does an entry whose file is gone: an excuse that
  * outlives its defect re-hides the next regression in that file.
  *
- * ##CELLS: gate-all preloads tools/count-marks.js through NODE_OPTIONS; every child here inherits the
- * environment, so each `node --test` process emits its own trailer exactly as test:portal's does.
+ * 🔴 A FILE THAT ASSERTS NOTHING IS NOT A PASS (codex app-suites r1 P1). Exit status alone let an EMPTY
+ * test file pass, and a run-wide ##CELLS sum hid it among 700 other cells. So each file is MEASURED on
+ * its own: it runs under `--test-reporter=tap`, and its cells are its LEAF test results (node:test
+ * tests, never the suites that group them, never SKIP/TODO) plus the assertion marks its own output
+ * prints (the ✓ / ✔ / `ok n` lines tools/count-marks.js counts) — EXCLUDING the automatic result line
+ * node --test adds for a file that is not itself a node:test suite (that wrapper is the line an empty
+ * file still gets). A zero-cell file is RED unless ZERO_CELL_OK names it with a reason.
+ *
+ * ##CELLS: the children run WITHOUT the count-marks preload (their TAP would count the wrapper and
+ * the TAP framing), and this runner emits each file's MEASURED count as its own `##CELLS n` trailer,
+ * which gate-all sums with the runner's own (0: the echoed child output is prefixed so nothing in it
+ * reads as a mark). The gate's number is therefore exactly the per-file measurement below.
  *
  * 🔴 xpizza-handheld/guards.test.js resolves 'acorn' through createRequire(xpizza-functions/package.json)
  * — a deliberate borrow of the functions install (handheld declares no dependencies and has no
@@ -60,8 +70,54 @@ const KNOWN_RED = {
   },
 };
 
+/* A file that legitimately asserts nothing, with the reason. Empty by design; an entry whose file now
+   asserts something fails the run, as does one naming no planned file. */
+const ZERO_CELL_OK = {};
+
 const TEST_RE = /\.test\.(?:js|mjs|cjs)$/;
 const GLOB_CHARS = /[*?[{]/;
+const MARK = /^\s*(?:✓|✔|ok \d)/;   // tools/count-marks.js's mark — kept identical so the two measures agree
+const TAP_SUMMARY = /^(?:tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) /;
+
+/* cells of ONE file's `node --test --test-reporter=tap <rel>` output — see the header. Pure. */
+function measureTap(out, rel) {
+  let cells = 0;
+  let inYaml = false;
+  const hadChild = {};                     // indent → a result line has appeared deeper since this level's last header
+  for (const line of String(out || '').split('\n')) {
+    const ind = line.length - line.trimStart().length;
+    const t = line.trim();
+    if (inYaml) { if (t === '...') inYaml = false; continue; }
+    if (t === '---') { inYaml = true; continue; }
+    let m;
+    if ((m = /^# Subtest: /.exec(t))) { hadChild[ind] = false; continue; }
+    if ((m = /^(not )?ok \d+ - (.*?)(?:\s+#\s+(SKIP|TODO)\b.*)?$/i.exec(t))) {
+      const leaf = !hadChild[ind];
+      hadChild[ind] = false;
+      if (ind >= 4) hadChild[ind - 4] = true;
+      const wrapper = ind === 0 && leaf && m[2] === rel;
+      if (leaf && !wrapper && !m[3]) cells += 1;
+      continue;
+    }
+    if ((m = /^#\s?(.*)$/.exec(t)) && !(ind === 0 && TAP_SUMMARY.test(m[1])) && MARK.test(m[1])) cells += 1;
+  }
+  return cells;
+}
+
+/* the env a measured child runs in: the caller's, minus the count-marks preload (see the header) */
+function childEnv(base, extra) {
+  const env = { ...base, ...extra };
+  if (env.NODE_OPTIONS) env.NODE_OPTIONS = env.NODE_OPTIONS.replace(/--require[= ]\S*count-marks\.js/g, '').replace(/\s+/g, ' ').trim();
+  if (!env.NODE_OPTIONS) delete env.NODE_OPTIONS;
+  return env;
+}
+
+/* run ONE planned file and measure it — the function the guard's executable controls drive */
+function runFile(e, root = ROOT, base = process.env) {
+  const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...e.flags, e.rel], { cwd: path.join(root, e.cwd), env: childEnv(base, e.env), encoding: 'utf8', maxBuffer: 256 << 20 });
+  const out = `${r.stdout || ''}${r.stderr || ''}`;
+  return { file: e.file, ok: r.status === 0, cells: measureTap(r.stdout || '', e.rel), out };
+}
 
 function trackedFiles(root = ROOT) {
   return execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8', maxBuffer: 64 << 20 }).split('\n').filter(Boolean);
@@ -148,13 +204,20 @@ function plan({ files, manifests, reached, glob = (cwd, pattern) => globIn(cwd, 
   return { tests, entries, problems };
 }
 
-/* THE VERDICT — pure. pass | fail | excused | stale-excuse, plus excuses naming a file that is not planned */
-function classify(results, knownRed, plannedFiles) {
-  const rows = results.map((r) => ({ file: r.file, state: r.ok ? (knownRed[r.file] ? 'stale-excuse' : 'pass') : (knownRed[r.file] ? 'excused' : 'fail') }));
-  const orphans = Object.keys(knownRed).filter((f) => !plannedFiles.includes(f));
+/* THE VERDICT — pure. pass | fail | excused | stale-excuse | zero-cell | zero-excused | zero-stale, plus
+   excuses (either list) naming a file that is not planned. A failing file is judged by KNOWN_RED whatever its
+   count; a passing file must ALSO have measured at least one cell, unless ZERO_CELL_OK names it. */
+function classify(results, knownRed, plannedFiles, zeroOk = ZERO_CELL_OK) {
+  const rows = results.map((r) => {
+    if (!r.ok) return { file: r.file, cells: r.cells, state: knownRed[r.file] ? 'excused' : 'fail' };
+    if (knownRed[r.file]) return { file: r.file, cells: r.cells, state: 'stale-excuse' };
+    if (!(r.cells > 0)) return { file: r.file, cells: r.cells, state: zeroOk[r.file] ? 'zero-excused' : 'zero-cell' };
+    return { file: r.file, cells: r.cells, state: zeroOk[r.file] ? 'zero-stale' : 'pass' };
+  });
+  const orphans = [...Object.keys(knownRed), ...Object.keys(zeroOk)].filter((f) => !plannedFiles.includes(f));
   const n = (s) => rows.filter((x) => x.state === s).length;
-  const bad = n('fail') + n('stale-excuse') + orphans.length;
-  return { rows, orphans, passed: n('pass'), failed: n('fail'), excused: n('excused'), stale: n('stale-excuse'), exitCode: bad ? 1 : 0 };
+  const bad = n('fail') + n('stale-excuse') + n('zero-cell') + n('zero-stale') + orphans.length;
+  return { rows, orphans, passed: n('pass') + n('zero-excused'), failed: n('fail'), excused: n('excused'), stale: n('stale-excuse') + n('zero-stale'), zero: n('zero-cell'), cells: rows.reduce((a, r) => a + (r.cells || 0), 0), exitCode: bad ? 1 : 0 };
 }
 
 function currentPlan() {
@@ -179,11 +242,14 @@ function main() {
   const results = [];
   for (const e of p.entries) {
     console.log(`\n── ${e.file} ─────────────────────────────`);
-    const r = spawnSync(process.execPath, ['--test', ...e.flags, e.rel], { cwd: path.join(ROOT, e.cwd), env: { ...process.env, ...e.env }, stdio: 'inherit' });
-    results.push({ file: e.file, ok: r.status === 0 });
+    const r = runFile(e);
+    process.stdout.write(r.out.split('\n').map((l) => `  │ ${l}`).join('\n') + '\n');   // prefixed: nothing echoed reads as a mark or a trailer
+    console.log(`  ${r.ok ? 'exit 0' : '🔴 exit ≠ 0'} · ${r.cells} cells measured`);
+    console.log(`##CELLS ${r.cells}`);   // this file's measured count, summed by gate-all
+    results.push(r);
   }
   const v = classify(results, KNOWN_RED, p.entries.map((e) => e.file));
-  const TAG = { pass: 'pass', fail: '🔴 FAIL', excused: 'KNOWN-RED (excused)', 'stale-excuse': '🔴 KNOWN-RED BUT PASSING' };
+  const TAG = { pass: 'pass', fail: '🔴 FAIL', excused: 'KNOWN-RED (excused)', 'stale-excuse': '🔴 KNOWN-RED BUT PASSING', 'zero-cell': '🔴 PASSED, 0 ASSERTIONS', 'zero-excused': 'ZERO-CELL (excused)', 'zero-stale': '🔴 ZERO-CELL-OK BUT ASSERTS' };
   console.log('');
   for (const r of v.rows) if (r.state !== 'pass') console.log(`  ${TAG[r.state].padEnd(26)} ${r.file}`);
   for (const f of v.orphans) console.log(`  ${'🔴 EXCUSE WITHOUT A FILE'.padEnd(26)} ${f}`);
@@ -191,10 +257,11 @@ function main() {
     console.log('\nEXCUSED — these RAN and FAILED:');
     for (const r of v.rows) if (r.state === 'excused') { const k = KNOWN_RED[r.file]; console.log(`  ${r.file}\n    ${k.reason}\n    owner: ${k.owner} · since ${k.since}`); }
   }
-  if (v.stale) console.log('\n🔴 A KNOWN-RED FILE PASSED — delete its KNOWN_RED entry.');
-  console.log(`\napp-suites: ${v.passed}/${results.length} passing, ${v.failed} failing, ${v.excused} excused, ${v.stale} stale-excuse, ${v.orphans.length} orphan excuse(s)`);
+  if (v.stale) console.log('\n🔴 AN EXCUSE OUTLIVED ITS CAUSE — delete its KNOWN_RED / ZERO_CELL_OK entry.');
+  if (v.zero) console.log('\n🔴 A FILE EXITED 0 WHILE ASSERTING NOTHING — fix it, or add it to ZERO_CELL_OK with a reason.');
+  console.log(`\napp-suites: ${v.passed}/${results.length} passing, ${v.failed} failing, ${v.excused} excused, ${v.stale} stale-excuse, ${v.zero} zero-assertion, ${v.orphans.length} orphan excuse(s) — ${v.cells} cells measured per file`);
   process.exit(v.exitCode);
 }
 
-module.exports = { KNOWN_RED, TEST_RE, testFiles, functionsReach, parseManifest, plan, classify, currentPlan, trackedFiles, topOf };
+module.exports = { KNOWN_RED, ZERO_CELL_OK, MARK, measureTap, childEnv, runFile, TEST_RE, testFiles, functionsReach, parseManifest, plan, classify, currentPlan, trackedFiles, topOf };
 if (require.main === module) main();

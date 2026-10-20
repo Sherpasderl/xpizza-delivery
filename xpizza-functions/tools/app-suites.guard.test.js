@@ -80,13 +80,59 @@ ok('negative controls: an unmatched manifest file and an unparseable manifest ar
 
 // 7. the verdict: plain fail, excused fail, stale excuse, orphan excuse
 const KR = { 'x/a.test.js': { reason: 'r', owner: 'o', since: '2026-10-19' } };
-const v = (results, planned2) => A.classify(results, KR, planned2);
-assert.strictEqual(v([{ file: 'x/b.test.js', ok: true }, { file: 'x/a.test.js', ok: false }], ['x/a.test.js', 'x/b.test.js']).exitCode, 0, FAIL('an excused failure must not fail the run'));
+const v = (results, planned2) => A.classify(results, KR, planned2, {});
+assert.strictEqual(v([{ file: 'x/b.test.js', ok: true, cells: 2 }, { file: 'x/a.test.js', ok: false }], ['x/a.test.js', 'x/b.test.js']).exitCode, 0, FAIL('an excused failure must not fail the run'));
 assert.strictEqual(v([{ file: 'x/b.test.js', ok: false }, { file: 'x/a.test.js', ok: false }], ['x/a.test.js', 'x/b.test.js']).exitCode, 1, FAIL('a plain failure must fail the run'));
-const stale = v([{ file: 'x/a.test.js', ok: true }], ['x/a.test.js']);
+const stale = v([{ file: 'x/a.test.js', ok: true, cells: 2 }], ['x/a.test.js']);
 assert.ok(stale.exitCode === 1 && stale.stale === 1, FAIL('a KNOWN_RED file that PASSES must fail the run'));
-const orphan = v([{ file: 'x/b.test.js', ok: true }], ['x/b.test.js']);
+const orphan = v([{ file: 'x/b.test.js', ok: true, cells: 2 }], ['x/b.test.js']);
 assert.ok(orphan.exitCode === 1 && orphan.orphans.length === 1, FAIL('a KNOWN_RED entry with no planned file must fail the run'));
 ok('verdict: plain failure RED, excused failure green, KNOWN_RED-but-passing RED, excuse-without-a-file RED');
+
+// 8. PER-FILE MEASUREMENT (codex app-suites r1 P1) — EXECUTABLE: real files in a temp dir, run through the
+//    runner's own runFile (node --test --test-reporter=tap, count-marks stripped from the child), so the
+//    controls prove the real measurement, not a copy of it. The empty file is the one Codex reproduced.
+{
+  const os = require('os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'app-suites-cells-'));
+  try {
+    const put = (f, src) => fs.writeFileSync(path.join(dir, f), src);
+    put('empty.test.mjs', '');
+    put('exit-only.test.js', 'process.exit(0);\n');
+    put('skip-only.test.js', "const t = require('node:test'); t.test('s', { skip: true }, () => {}); t.test('t', { todo: true }, () => {});\n");
+    put('marks.test.js', "console.log('  ✓ 1 a'); console.log('  ✓ 2 b'); console.log('ok 3 c'); console.log('marks: OK (3)');\n");
+    put('suite.test.js', "const t = require('node:test'); t.test('one', () => {}); t.describe('grp', () => { t.it('two', () => {}); t.it('three', () => {}); });\n");
+    put('red.test.js', "require('assert').strictEqual(1, 2);\n");
+    const counter = path.join(__dirname, 'count-marks.js');
+    const run = (f) => A.runFile({ file: `fx/${f}`, cwd: '.', rel: f, env: {}, flags: [] }, dir, { ...process.env, NODE_OPTIONS: `--require ${counter}` });
+    const got = Object.fromEntries(['empty.test.mjs', 'exit-only.test.js', 'skip-only.test.js', 'marks.test.js', 'suite.test.js', 'red.test.js'].map((f) => { const r = run(f); return [f, [r.ok, r.cells]]; }));
+    assert.deepStrictEqual(got, {
+      'empty.test.mjs': [true, 0], 'exit-only.test.js': [true, 0], 'skip-only.test.js': [true, 0],
+      'marks.test.js': [true, 3], 'suite.test.js': [true, 3], 'red.test.js': [false, 0],
+    }, FAIL(`per-file measurement (exit ok, cells): ${JSON.stringify(got)}`));
+    // and the verdict turns each zero into RED — the empty file included — with no excuse
+    const files = Object.keys(got).map((f) => `fx/${f}`);
+    const v = A.classify(Object.entries(got).map(([f, [ok2, cells]]) => ({ file: `fx/${f}`, ok: ok2, cells })), {}, files, {});
+    const st = Object.fromEntries(v.rows.map((r) => [r.file.slice(3), r.state]));
+    assert.deepStrictEqual(st, { 'empty.test.mjs': 'zero-cell', 'exit-only.test.js': 'zero-cell', 'skip-only.test.js': 'zero-cell', 'marks.test.js': 'pass', 'suite.test.js': 'pass', 'red.test.js': 'fail' }, FAIL(`verdict: ${JSON.stringify(st)}`));
+    assert.strictEqual(v.exitCode, 1, FAIL('zero-assertion files must fail the run'));
+    assert.strictEqual(v.cells, 6, FAIL(`the run's measured total is the per-file sum (${v.cells})`));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+ok('EXECUTABLE per-file measurement: an empty file, an exit-only file and a skip/todo-only file measure 0 and are RED; ✓/ok marks and node:test LEAF tests count (suites and the file wrapper never)');
+
+// 9. zero-cell excuses: excused zero passes; an excuse whose file asserts, or that names no planned file, is RED;
+//    the child env drops ONLY the count-marks preload; and the real ZERO_CELL_OK entries are well-formed
+{
+  const zr = { 'x/z.test.js': 'reason' };
+  assert.strictEqual(A.classify([{ file: 'x/z.test.js', ok: true, cells: 0 }], {}, ['x/z.test.js'], zr).exitCode, 0, FAIL('an excused zero-cell file must not fail the run'));
+  const stale = A.classify([{ file: 'x/z.test.js', ok: true, cells: 4 }], {}, ['x/z.test.js'], zr);
+  assert.ok(stale.exitCode === 1 && stale.rows[0].state === 'zero-stale', FAIL('a ZERO_CELL_OK file that now asserts must fail the run'));
+  assert.strictEqual(A.classify([{ file: 'x/y.test.js', ok: true, cells: 2 }], {}, ['x/y.test.js'], zr).exitCode, 1, FAIL('a ZERO_CELL_OK entry with no planned file must fail the run'));
+  assert.strictEqual(A.childEnv({ NODE_OPTIONS: '--max-old-space-size=4096 --require /a/b/tools/count-marks.js --enable-source-maps' }, { TZ: 'UTC' }).NODE_OPTIONS, '--max-old-space-size=4096 --enable-source-maps');
+  assert.ok(!('NODE_OPTIONS' in A.childEnv({ NODE_OPTIONS: '--require /x/count-marks.js' }, {})), FAIL('an emptied NODE_OPTIONS must be dropped'));
+  for (const [f, why] of Object.entries(A.ZERO_CELL_OK)) assert.ok(planned.has(f) && String(why || '').trim(), FAIL(`ZERO_CELL_OK ${f} needs a planned file and a reason`));
+}
+ok(`zero-cell excuses: excused-zero green, excuse-that-asserts RED, orphan RED; child env drops only the count-marks preload; ${Object.keys(A.ZERO_CELL_OK).length} ZERO_CELL_OK entries`);
 
 console.log(`app-suites.guard: OK (${n} groups)`);
