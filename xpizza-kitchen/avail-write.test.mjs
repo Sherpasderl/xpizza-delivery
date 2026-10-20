@@ -161,11 +161,23 @@ for (let i = 0; i < marks.length; i++) {
 assert.ok(writers.has('setOrderStatus') && writers.has('setItemAvailability'), 'sanity: the two allowed helpers are genuine writers');
 assert.ok(writers.has('cancelOrder') && writers.has('assignOrderToDriver'), 'sanity: the writer-detector finds the OTHER SDK writers too (so the scan is real)');
 
+// The KDS's ALLOWED SDK writers. The two cancel-ack writers are INTENDED (KDS cancel-ack, a6254102 + F2 Q2 8f30280d): an archived
+// cancelled order is acknowledged at kds_cancel_acks/{orderId} = {at, by} (writeCancelAck) and recalled by removing it
+// (removeCancelAck) — a dedicated node the rules grant ONLY to kitchen staff (non-handheld), with a closed {at, by} schema, covered by
+// test:kds-cancel-acks. Any OTHER SDK writer reachable from the KDS module still fails this check.
+const ALLOWED_WRITERS = new Set(['setOrderStatus', 'setItemAvailability', 'writeCancelAck', 'removeCancelAck']);
+const usedOf = (text) => new Set([...text.matchAll(/XPD\.(\w+)\s*\(/g)].map(m => m[1]));
+const forbiddenIn = (used) => [...used].filter(m => writers.has(m) && !ALLOWED_WRITERS.has(m)).sort();
+assert.ok(writers.has('writeCancelAck') && writers.has('removeCancelAck'), 'sanity: the two cancel-ack helpers are genuine writers');
 const modText = readFileSync(new URL('./index.html', import.meta.url), 'utf8').match(/<script type="module">([\s\S]*?)<\/script>/)[1];
-const usedXpd = new Set([...modText.matchAll(/XPD\.(\w+)\s*\(/g)].map(m => m[1]));
-const forbiddenWritersUsed = [...usedXpd].filter(m => writers.has(m) && m !== 'setOrderStatus' && m !== 'setItemAvailability');
-assert.deepEqual(forbiddenWritersUsed, [], `the KDS module invokes NO SDK writer beyond the two allowed (found: ${forbiddenWritersUsed.join(', ') || 'none'})`);
-assert.ok(usedXpd.has('setOrderStatus') && usedXpd.has('setItemAvailability'), 'the KDS module DOES wire both allowed write helpers (panel + status path present)');
-ok('source carve-out: KDS module calls ONLY setOrderStatus + setItemAvailability among ALL SDK writers (a 4th writer would fail)');
+const usedXpd = usedOf(modText);
+const forbiddenWritersUsed = forbiddenIn(usedXpd);
+assert.deepEqual(forbiddenWritersUsed, [], `the KDS module invokes NO SDK writer beyond the allowed four (found: ${forbiddenWritersUsed.join(', ') || 'none'})`);
+assert.ok(usedXpd.has('setOrderStatus') && usedXpd.has('setItemAvailability'), 'the KDS module DOES wire both availability/status write helpers (panel + status path present)');
+assert.ok(usedXpd.has('writeCancelAck') && usedXpd.has('removeCancelAck'), 'the KDS module DOES wire the cancel-ack pair (archive + recall)');
+// sensitivity: the SAME check fails on a module that also reaches a third, non-allowed SDK writer
+assert.deepEqual(forbiddenIn(usedOf(modText + '\nXPD.cancelOrder(id);')), ['cancelOrder'], 'a module that also calls cancelOrder is caught');
+assert.deepEqual(forbiddenIn(usedOf(modText + '\nXPD.assignOrderToDriver(id, d);')), ['assignOrderToDriver'], 'a module that also calls assignOrderToDriver is caught');
+ok('source carve-out: the KDS module calls ONLY the allowed SDK writers (setOrderStatus + setItemAvailability + the intended cancel-ack pair writeCancelAck / removeCancelAck); a module reaching any other writer (cancelOrder, assignOrderToDriver) fails');
 
 console.log(`avail-write: OK (${n} cases)`);
