@@ -14,4 +14,4 @@ const orders = {
 };
 const ids = selectBackfillCandidates(orders).map(o => o.order_id).sort();
 assert.deepEqual(ids, ['a', 'e', 'f']);
-console.log('ok: selectBackfillCandidates = live-kitchen pickups only (excludes terminal, unpaid, held, delivery)');
+console.log('  ✓ 1 selectBackfillCandidates = live-kitchen pickups only (excludes terminal, unpaid, held, delivery)');
