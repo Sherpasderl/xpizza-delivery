@@ -138,15 +138,19 @@ try {
         "function other(rid) { return rid === 'x_pizza'; }",                                 // 2 another function
         "exports.ALSO = { x_pizza: 1 };",                                                    // 3 another declaration
         "function sneaky(rid) { const ONLY_THESE = rid === 'x_pizza'; return ONLY_THESE; }", // 4 shadowed same name
+        "{ const ONLY_THESE = ['x_pizza']; use(ONLY_THESE); }",                               // 5 block-scoped at top level
+        "other.ONLY_THESE = ['x_pizza'];",                                                   // 6 member assignment of the same name
       ].join('\n') + '\n' });
       const cls = (line) => (r.rows.find((x) => x.line === line && x.kind === 'rid') || {}).class;
       assert.strictEqual(cls(1), 'AUTHORITY', FAIL('the module-scope authority declaration must be AUTHORITY'));
       assert.strictEqual(cls(2), 'BEHAVIOUR', FAIL('another function of the authority file must NOT be exempt'));
       assert.notStrictEqual(cls(3), 'AUTHORITY', FAIL('another declaration of the authority file must NOT be exempt'));
       assert.strictEqual(cls(4), 'BEHAVIOUR', FAIL('a SHADOWED same-name const inside a function must NOT be exempt'));
+      assert.notStrictEqual(cls(5), 'AUTHORITY', FAIL('a BLOCK-SCOPED same-name const at top level must NOT be exempt'));
+      assert.notStrictEqual(cls(6), 'AUTHORITY', FAIL('a MEMBER ASSIGNMENT of the same name must NOT be exempt'));
     } finally { BC.AUTHORITY.pop(); }
   }
-  ok('AUTHORITY binds to the module-scope declaration only: other functions, other declarations and a shadowed same-name const are not exempt');
+  ok('AUTHORITY = a declaration directly in Program.body: another function / declaration, a shadowed const, a block-scoped const and a member assignment of the same name are not exempt');
 
   // DISPLAY needs presentation EVIDENCE — one independent fixture per DOM sink (each its own file, so each rule can die alone)
   {
@@ -154,6 +158,9 @@ try {
       'app/sink-classname.js': "el.className = 'chip-' + 'x_pizza';\n",
       'app/sink-classlist.js': "el.classList.add('x_pizza');\n",
       'app/sink-style.js': "el.style.setProperty('--brand', 'x_pizza');\n",
+      'app/sink-style-prop.js': "el.style.background = 'x_pizza';\n",
+      'app/sink-title.js': "el.title = 'x_pizza';\n",
+      'app/sink-setattr.js': "el.setAttribute('data-brand', 'x_pizza');\n",
       'app/sink-text.js': "el.textContent = 'x_pizza';\n",
       'app/sink-html.js': "el.innerHTML = 'x_pizza';\n",
     };
@@ -163,7 +170,7 @@ try {
       assert.ok(row && row.class === 'DISPLAY', FAIL(`${f}: a brand value reaching a DOM sink must be DISPLAY (got ${row && row.class})`));
     }
   }
-  ok('DISPLAY by evidence, one fixture per sink: className, classList, style, textContent, innerHTML');
+  ok('DISPLAY by evidence, one fixture per sink WRITE: className, classList.add, style.setProperty, style.*, title, setAttribute, textContent, innerHTML');
 
   // NAMES ARE NOT EVIDENCE — codex's negatives, each independent
   {
@@ -174,6 +181,14 @@ try {
     assert.strictEqual(one("function brandLabel(o) { return o.rid === 'x_pizza' ? 'x_pizza' : 'brand_c'; }\n", 1, 'x_pizza'), 'UNCLASSIFIED', FAIL('brandLabel returning brand IDS is uncertain → UNCLASSIFIED, not DISPLAY'));
     assert.strictEqual(one("const name = o.rid === 'brand_c' ? 'Casa Cero' : 'X. Pizza';\n", 1, 'brand_c'), 'BEHAVIOUR', FAIL('a name-pick ternary without a DOM sink is not proven DISPLAY'));
   }
+  {
+    const one = (src, kind) => { const r = scanFixture({ 'app/neg2.js': src }); return (r.rows.find((x) => !kind || x.kind === kind) || {}).class; };
+    assert.notStrictEqual(one("if (el.classList.contains('x_pizza')) charge();\n", 'rid'), 'DISPLAY', FAIL('classList.contains is a READ, not a sink'));
+    assert.notStrictEqual(one("charge('X Pizza');\n", 'name'), 'DISPLAY', FAIL('a brand name with no sink is not DISPLAY'));
+    assert.notStrictEqual(one("fetch('/api', { body: '#b8860b' });\n", 'colour'), 'DISPLAY', FAIL('a brand colour with no sink is not DISPLAY'));
+  }
+  ok('sink READS and bare literals are not evidence: classList.contains predicate, charge("X Pizza"), a fetch body "#b8860b" are not DISPLAY');
+
   ok('names are not evidence: PRICE_LABEL used by charge(), a charge in applyBadgeDiscount(), a routing fetch ternary stay BEHAVIOUR; brandLabel returning ids is UNCLASSIFIED; an un-sunk name pick is not DISPLAY');
 
   // the report states that unparsed rule languages were not parsed (its own fixture, so removing the warning dies)

@@ -40,7 +40,7 @@ const acorn = require('acorn');
 const FUNCTIONS = path.join(__dirname, '..');
 const ROOT = path.join(FUNCTIONS, '..');
 const VOCAB_FILE = path.join(__dirname, 'brand-vocabulary.json');
-const SCANNER_VERSION = 'phase-a.4';
+const SCANNER_VERSION = 'phase-a.5';
 const COORD_TOL = 1e-4;   // degrees ≈ 11 m: tighter than any two venues, looser than float re-spellings (15.50414 vs 15.504137854…)
 
 /* ── ROOTS & FILE RULES ──────────────────────────────────────────────────────────────────────────── */
@@ -269,9 +269,11 @@ function collectJs(src, file, scopePrefix = '', lineOffset = 0, colOffset = 0) {
       let d = decl;
       let dt = declTop;
       // declTop: the declaration is at MODULE scope (no enclosing function) — AUTHORITY binds only to that identity
-      if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && k === 'init') { d = n.id.name; dt = !sc; }
-      else if (n.type === 'AssignmentExpression' && k === 'right' && n.left.type === 'MemberExpression' && !n.left.computed) { d = n.left.property.name; dt = !sc; }
-      else if (n.type === 'AssignmentExpression' && k === 'right' && n.left.type === 'Identifier') { d = n.left.name; dt = !sc; }
+      // declTop (codex census r3): ONLY a declarator of a VariableDeclaration DIRECTLY in Program.body (or an exported one)
+      // is a module-scope declaration identity — not a block-scoped const at top level, not a member assignment
+      if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && k === 'init') { d = n.id.name; dt = topDecls.has(n); }
+      else if (n.type === 'AssignmentExpression' && k === 'right' && n.left.type === 'MemberExpression' && !n.left.computed) { d = n.left.property.name; dt = false; }
+      else if (n.type === 'AssignmentExpression' && k === 'right' && n.left.type === 'Identifier') { d = n.left.name; dt = false; }
       // a brand test that only PICKS between two constant strings (`rid === 'la_musa' ? 'La Musa' : 'X. Pizza'`) carries the
       // branches, so classify() can call it a presentation pick (or, when the branches are brand ids, uncertain)
       let pk = /Function/.test(n.type) ? null : pick;
@@ -281,6 +283,8 @@ function collectJs(src, file, scopePrefix = '', lineOffset = 0, colOffset = 0) {
       else if (c && typeof c.type === 'string') walk(c, sc, n, k, n.type === 'Property' ? pairId : undefined, d, pk, dt);
     }
   };
+  const topDecls = new Set();
+  for (const st of ast.body) { const vd = st.type === 'VariableDeclaration' ? st : (st.type === 'ExportNamedDeclaration' && st.declaration && st.declaration.type === 'VariableDeclaration' ? st.declaration : null); if (vd) for (const dd of vd.declarations) topDecls.add(dd); }
   walk(ast, '', null, null, undefined, null, null, false);
   // structural: declarations + fallbacks whose value folds/points to a brand value are decided in classify()
   for (const o of out) if (o.kind === 'ident' && o.decl) { const init = o.decl.init; o.declInit = init ? (fold(init) || { type: init.type }) : null; if (init) o.declRange = [init.loc.start.line + lineOffset, init.loc.end.line + lineOffset]; }
@@ -300,9 +304,21 @@ function ctxOf(n, parent, pkey) {
   if (parent.type === 'ConditionalExpression' && pkey !== 'test') return 'ternary-branch';
   if (parent.type === 'CallExpression' && pkey === 'arguments' && parent.callee.type === 'MemberExpression' && /^(includes|indexOf|startsWith|endsWith|has|get|test|match)$/.test(parent.callee.property.name || '')) return 'lookup-call';
   if (parent.type === 'CallExpression' && pkey === 'arguments' && parent.callee.type === 'MemberExpression' && /^(ref|child|doc|collection)$/.test(parent.callee.property.name || '')) return 'db-path';
-  if (parent.type === 'AssignmentExpression' && parent.left.type === 'MemberExpression' && /^(className|style)$/.test(parent.left.property.name || '')) return 'dom-class';
-  if (parent.type === 'CallExpression' && pkey === 'arguments' && parent.callee.type === 'MemberExpression' && parent.callee.object.type === 'MemberExpression' && (parent.callee.object.property.name === 'classList' || parent.callee.object.property.name === 'style')) return 'dom-class';
-  if (parent.type === 'AssignmentExpression' && parent.left.type === 'MemberExpression' && /^(textContent|innerHTML|innerText|title|placeholder|alt)$/.test(parent.left.property.name || '')) return 'dom-text';
+  // DOM SINK WRITES only (codex census r3): an assignment to className / style / style.* / title / textContent /
+  // innerHTML, setAttribute(...), classList.add / remove / toggle. Reads (classList.contains, getAttribute, …) are NOT sinks.
+  if (parent.type === 'AssignmentExpression' && pkey === 'right' && parent.left.type === 'MemberExpression') {
+    const prop = parent.left.property.name || '';
+    if (/^(className|style)$/.test(prop)) return 'dom-class';
+    if (parent.left.object.type === 'MemberExpression' && (parent.left.object.property.name || '') === 'style') return 'dom-class';
+    if (/^(title|textContent|innerHTML)$/.test(prop)) return 'dom-text';
+  }
+  if (parent.type === 'CallExpression' && pkey === 'arguments' && parent.callee.type === 'MemberExpression') {
+    const m = parent.callee.property.name || '';
+    const on = parent.callee.object.type === 'MemberExpression' ? (parent.callee.object.property.name || '') : '';
+    if (on === 'classList' && /^(add|remove|toggle)$/.test(m)) return 'dom-class';
+    if (on === 'style' && m === 'setProperty') return 'dom-class';
+    if (m === 'setAttribute') return 'dom-text';
+  }
   if (parent.type === 'VariableDeclarator' && pkey === 'init') return 'const-init';
   if (parent.type === 'Property' && pkey === 'value') return 'object-value';
   if (parent.type === 'ArrayExpression') return 'array-item';
@@ -523,8 +539,6 @@ function classify(row) {
   if (c === 'member-access' && row.kind === 'rid') return ['BEHAVIOUR', 'selects a per-brand entry'];
   if (row.kind === 'coord' && row.match === 'coord-pair') return ['BEHAVIOUR', 'a fixed brand location'];
   if (/^(html-text|html-attr|css-|dom-text|config$)/.test(c) || /^css-/.test(c) || c.startsWith('html-attr')) return ['DISPLAY', `shown or styled (${c})`];
-  if (row.kind === 'colour') return ['DISPLAY', 'a brand colour'];
-  if (row.kind === 'name' && /\s/.test(String(row.value))) return ['DISPLAY', 'brand name in copy'];
   if (c === 'json-key' || c === 'json-value') return ['UNCLASSIFIED', 'config data — lane to confirm'];
   return ['UNCLASSIFIED', `role ${c || '?'} — lane to confirm`];
 }
