@@ -13,7 +13,7 @@ const { unapplyH1Index, BEGIN, END, INDEX_HUNKS } = require('./tools/h1-inverse'
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 // H1c-server (newer) is reversed first: this guard checks H1a's own layer
-const real = require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))));
+const real = require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('./tools/release-race-inverse').unapplyReleaseRaceIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))));
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 // The commit that introduced the block (oldest commit whose index.js contains BEGIN); its parent's index.js is the base.

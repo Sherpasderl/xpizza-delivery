@@ -16693,5 +16693,110 @@
       "demo-xpizza",
       "node test/trigger-runner.emulator.test.mjs"
     ]
+  },
+  {
+    "slice": "relrace",
+    "id": "rr-mark",
+    "label": "the alert raised on the FIRST (mark) pass — a transient false positive",
+    "file": "index.js",
+    "from": "      if (st === 'mark') { await db.ref(`tasks/${orderId}_delivery/half_claim_since`).set(now); continue; }",
+    "to": "      if (st === 'mark') { await alertAssignmentConflict(db, { orderId, now }); await db.ref(`tasks/${orderId}_delivery/half_claim_since`).set(now); continue; }",
+    "kills_with": [
+      "m1: no alert"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/release-race-heal.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "relrace",
+    "id": "rr-terminal",
+    "label": "the alert raised for a terminal order",
+    "file": "index.js",
+    "from": "      if (HEAL_TERMINAL_STATUSES.has(orders[orderId]?.status)) continue;",
+    "to": "      if (HEAL_TERMINAL_STATUSES.has(orders[orderId]?.status)) { await alertAssignmentConflict(db, { orderId, now }); continue; }",
+    "kills_with": [
+      "t1: no alert"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/release-race-heal.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "relrace",
+    "id": "rr-aborted",
+    "label": "the alert raised on an ABORTED heal",
+    "file": "index.js",
+    "from": "      const { healed: didHeal } = await healStrandedOrder(db, orderId, strandedDel, strandedPick);",
+    "to": "      const { healed: didHeal } = await healStrandedOrder(db, orderId, strandedDel, strandedPick);\n      if (!didHeal) await alertAssignmentConflict(db, { orderId, deliveryDriverId: strandedDel, pickupDriverId: strandedPick, now });",
+    "kills_with": [
+      "an aborted heal raises no alert"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/release-race-heal.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "relrace",
+    "id": "rr-dedup",
+    "label": "the alert overwrites an existing one (no create-only)",
+    "file": "assignment-conflict.js",
+    "from": "    } : undefined), undefined, false))",
+    "to": "    } : { ...cur, created_at: now }), undefined, false))",
+    "kills_with": [
+      "never overwritten"
+    ],
+    "command": [
+      "node",
+      "assignment-conflict.test.js"
+    ]
+  },
+  {
+    "slice": "relrace",
+    "id": "rr-orderid",
+    "label": "the alert omits order_id (no Torre click-through)",
+    "file": "assignment-conflict.js",
+    "from": "      type: 'assignment_conflict', order_id: orderId,",
+    "to": "      type: 'assignment_conflict',",
+    "kills_with": [
+      "carries order_id"
+    ],
+    "command": [
+      "node",
+      "assignment-conflict.test.js"
+    ]
+  },
+  {
+    "slice": "relrace",
+    "id": "rr-bound",
+    "label": "the alert write effectively unbounded (the timeout stretched ×1000)",
+    "file": "assignment-conflict.js",
+    "from": "  const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve('timeout'), timeoutMs); });",
+    "to": "  const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve('timeout'), timeoutMs * 1000); });",
+    "kills_with": [
+      "bounded"
+    ],
+    "command": [
+      "node",
+      "assignment-conflict.test.js"
+    ]
   }
 ]

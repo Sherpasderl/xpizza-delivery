@@ -217,6 +217,7 @@
     "xpizza-functions/test/pselfupdate-quote-trace.emulator.test.js",
     "xpizza-functions/test/public-menu.emulator.test.js",
     "xpizza-functions/test/published-choice-price.emulator.test.js",
+    "xpizza-functions/test/release-race-heal.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/tracker-reconcile.emulator.test.js",
@@ -386,6 +387,7 @@
     "xpizza-functions/test/pselfupdate-quote-trace.emulator.test.js",
     "xpizza-functions/test/public-menu.emulator.test.js",
     "xpizza-functions/test/published-choice-price.emulator.test.js",
+    "xpizza-functions/test/release-race-heal.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/tracker-reconcile.emulator.test.js",
@@ -613,6 +615,7 @@
     "xpizza-functions/test/pselfupdate-quote-trace.emulator.test.js",
     "xpizza-functions/test/public-menu.emulator.test.js",
     "xpizza-functions/test/published-choice-price.emulator.test.js",
+    "xpizza-functions/test/release-race-heal.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/tracker-reconcile.emulator.test.js",
@@ -783,6 +786,7 @@
     "xpizza-functions/test/pselfupdate-quote-trace.emulator.test.js",
     "xpizza-functions/test/public-menu.emulator.test.js",
     "xpizza-functions/test/published-choice-price.emulator.test.js",
+    "xpizza-functions/test/release-race-heal.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/tracker-reconcile.emulator.test.js",
@@ -1581,6 +1585,7 @@
   "access/access-census-core.js",
   "account-lib.js",
   "alert-prune.js",
+  "assignment-conflict.js",
   "catalog/bound-reuse.js",
   "catalog/canonical-binding.js",
   "catalog/text-version.js",
@@ -1645,6 +1650,10 @@
    "pins": [],
    "lifts": []
   },
+  "assignment-conflict.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/bound-reuse.js": {
    "pins": [],
    "lifts": [
@@ -1694,6 +1703,7 @@
       "tools/a1-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js",
@@ -1711,6 +1721,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1732,6 +1743,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1755,6 +1767,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1774,6 +1787,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1792,6 +1806,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1808,6 +1823,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1821,6 +1837,7 @@
      "inverses": [
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
@@ -1830,6 +1847,7 @@
      "file": "xpizza-functions/h1c-wiring.guard.test.js",
      "inverses": [
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
@@ -1847,6 +1865,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1870,6 +1889,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1881,11 +1901,18 @@
      ]
     },
     {
+     "file": "xpizza-functions/release-race-wiring.guard.test.js",
+     "inverses": [
+      "tools/release-race-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/s1a-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1900,6 +1927,7 @@
       "tools/a1-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1913,6 +1941,7 @@
      "inverses": [
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -1926,6 +1955,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1938,6 +1968,7 @@
     {
      "file": "xpizza-functions/signup-wiring.guard.test.js",
      "inverses": [
+      "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
@@ -1953,6 +1984,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1984,12 +2016,14 @@
     {
      "file": "xpizza-functions/tracker-fixes-wiring.guard.test.js",
      "inverses": [
+      "tools/release-race-inverse.js",
       "tools/tracker-fixes-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/unassign-wiring.guard.test.js",
      "inverses": [
+      "tools/release-race-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
      ]
@@ -2002,6 +2036,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",

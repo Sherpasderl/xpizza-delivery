@@ -163,6 +163,7 @@ const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-rete
 const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');   // shared driver-name cascade + durable delivered_by_* attribution at the terminal edge (real-time trigger)
 const { runRetentionSweep } = require('./retention-sweep');   // extracted retentionSweepTasks execute body (delete + attribution backstop) — testable
 const { claimDelivery, healStrandedOrder, releaseDeliveryFromDriver } = require('./claim-delivery');
+const { alertAssignmentConflict } = require('./assignment-conflict');   // release race: the healer's conflict alert
 const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineStampKey } = require('./order-lifecycle');
 const { computeFreshnessAlerts } = require('./driver-freshness');   // Driver Tracking C1: freshness-alarm reconcile core
 const MR = require('./manual-resolve');   // atomic-claim money state machine (RECON_ATOMIC_CLAIM_PLAN rev-5)
@@ -6644,6 +6645,9 @@ exports.sweepPendingOrders = onSchedule(
       if (didHeal) {
         healed++;
         console.warn(`sweepPending: self-healed strand ${orderId} (delivery ${strandedDel}, pickup ${strandedPick})`);
+        // RELEASE RACE (owner edge-case rule): a CONFIRMED (≥ HALF_CLAIM_STALE_MS persisted) and committed heal → ONE create-only
+        // dispatcher alert carrying order_id (Torre click-through). Bounded (3 s) and best-effort: never blocks the sweep.
+        await alertAssignmentConflict(db, { orderId, deliveryDriverId: strandedDel, pickupDriverId: strandedPick, now });
       }
     }
 
