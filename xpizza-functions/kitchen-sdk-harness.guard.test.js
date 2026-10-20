@@ -40,7 +40,9 @@ for (const k of known) assert.ok(files.map(rel).includes(k), `discovery finds th
 const bad = [];
 for (const f of files) {
   const s = fs.readFileSync(f, 'utf8');
-  const generic = s.includes("from '\\.\\/([\\w-]+\\.js)'");
+  // a GENERIC sibling rewrite: the kitchen harnesses' `from './x.js'` regex, OR _web-sdk-loader.mjs's recursive copyModule SIBLING
+  // regex (it rewrites every `./<name>.js` import of any site SDK, incl. dotted names)
+  const generic = s.includes("from '\\.\\/([\\w-]+\\.js)'") || s.includes("(\\.\\/[\\w.-]+\\.js)");
   for (const sib of siblings) {
     if (!generic && !s.includes(`from '\\.\\/${sib.replace(/\./g, '\\.')}'`)) bad.push(`${rel(f)}: does not resolve the SDK's sibling './${sib}'`);
   }
@@ -49,4 +51,10 @@ for (const f of files) {
   for (const n of cdnNames) if (!exported.has(n)) bad.push(`${rel(f)}: its Firebase shim does not export '${n}' (the SDK imports it)`);
 }
 assert.deepStrictEqual(bad, [], `kitchen SDK harnesses out of step with the SDK's imports:\n  ${bad.join('\n  ')}`);
+// sensitivity: a harness that rewrites the CDN imports but resolves NEITHER generically NOR per sibling is still caught
+{
+  const fake = "import x from 'xpizza-delivery.js'; const CDN = /gstatic.com\\/firebasejs/; src.replace(CDN, 'x');";
+  const genericFake = fake.includes("from '\\.\\/([\\w-]+\\.js)'") || fake.includes("(\\.\\/[\\w.-]+\\.js)");
+  assert.ok(!genericFake && siblings.some((sib) => !fake.includes(`from '\\.\\/${sib.replace(/\./g, '\\.')}'`)), 'a harness with no sibling resolution would be flagged');
+}
 console.log(`kitchen-sdk-harness.guard: OK (${files.length} harnesses × ${siblings.length} siblings + ${cdnNames.length} Firebase names)`);
