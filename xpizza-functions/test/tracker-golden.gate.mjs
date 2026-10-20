@@ -17,7 +17,18 @@ try {
   for (const [mode, extra] of [['off', []], ['on', ['--allow', path.join(here, 'fixtures', 'tracker-golden.on-deltas.json')]]]) {
     const out = path.join(tmp, `${mode}.json`);
     run([path.join(here, 'tracker-golden.mjs'), '--root', ROOT, '--out', out, '--flag', mode]);
-    run([path.join(here, 'tracker-golden-compare.mjs'), path.join(here, 'fixtures', 'tracker-golden.baseline.json'), out, ...extra]);
+    const report = path.join(tmp, `${mode}.report.json`);
+    run([path.join(here, 'tracker-golden-compare.mjs'), path.join(here, 'fixtures', 'tracker-golden.baseline.json'), out, ...extra, '--report', report]);
+    // one ✓ per journey ACTUALLY compared — printed only after the comparison passed, from its per-journey report (a journey with
+    // a step-count change, an unexpected difference or a missing reviewed delta can never reach this line: run() exits first)
+    const rep = JSON.parse(fs.readFileSync(report, 'utf8'));
+    const names = Object.keys(rep.journeys);
+    if (!rep.equal || names.length === 0) { console.error(`tracker-golden gate: FAIL — ${mode} report not equal / empty`); process.exit(1); }
+    for (const j of names) {
+      const r = rep.journeys[j];
+      if (r.unexpected || r.missing || r.steps_expected !== r.steps_actual || r.steps_expected === 0) { console.error(`tracker-golden gate: FAIL — ${mode} journey ${j} ${JSON.stringify(r)}`); process.exit(1); }
+      console.log(`  ✓ ${mode}: journey ${j} — ${r.steps_actual} step capture(s) equal to the baseline${r.allowed ? ` (${r.allowed} reviewed delta(s), all present)` : ''}`);
+    }
   }
   console.log('tracker-golden gate: OK (OFF == baseline; ON == baseline + the reviewed deltas)');
 } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
