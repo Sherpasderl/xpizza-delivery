@@ -163,7 +163,7 @@
     "site": "renderMenu(); updateCart(); updateTotal();",
     "siteSha": "6630cac25bc5d73a9f0919210f5db616a6418b072f19b1e4a3b640416f9d2b7e",
     "scope": "la-musa-orders/index.html<script@2>#restoreOrderForm",
-    "scopeSha": "03fd13b711501b713c8978c9f988bdafee0b5fe3b5ec7bcb4443c209fb14a639"
+    "scopeSha": "bb960af7d051e19ef5db74ff93f5f0bd8d148e8cddca6aa04eac91ec980a9866"
    },
    "guards": [
     {
@@ -14448,7 +14448,7 @@
     "site": "renderMenu(); updateCart(); updateTotal();",
     "siteSha": "6630cac25bc5d73a9f0919210f5db616a6418b072f19b1e4a3b640416f9d2b7e",
     "scope": "xpizza-orders/index.html<script@2>#restoreOrderForm",
-    "scopeSha": "75db11308448ff32c651bdddde1f814de5b36405775ee88eee3215bd1c9f49df"
+    "scopeSha": "cfb2766314b4ccf1efe1141e6a86bc0ce3bcc96319b3dfd2d351c6107dd69962"
    },
    "guards": [
     {

@@ -676,7 +676,7 @@
    "reachesAsserted": false,
    "reason": "the order-form map init retries until Maps is ready (the maps boundary double is ready at boot); it touches only the map preview / pin, whose coordinates are asserted from persisted lat/lng",
    "sha": "1c45c6c6d5dec9666e24f73fc6b232091513ce646f1fafdc29ef84f4ae445a01",
-   "ctrlSha": "10eea5602c231dee38aa3ab75ce8630596f72de56a492766c096dec6180591cd"
+   "ctrlSha": "a9b2987740a6dfd4f91d9240b81c09bdad825533306392374418ee6001fd6789"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#locSearchInput:setTimeout#0 → xpizza-orders/index.html<script@2>#locPickPred>anon:setTimeout#0",
@@ -706,7 +706,7 @@
    "reachesAsserted": false,
    "reason": "the order-form map init retries until Maps is ready (the maps boundary double is ready at boot); it touches only the map preview / pin, whose coordinates are asserted from persisted lat/lng",
    "sha": "1c45c6c6d5dec9666e24f73fc6b232091513ce646f1fafdc29ef84f4ae445a01",
-   "ctrlSha": "3803554306278a538cc2fe88785d1361948bcbe34d77472e7e99c470599efd0c"
+   "ctrlSha": "1be5c986deadcd10a8f8d626091e365b7aa0eaddbcf45721261e326bb05f2efe"
   },
   {
    "key": "await@xpizza-orders/index.html<script@2>:4121 → xpizza-orders/index.html<script@2>#processPayment>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#processPixelPay>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0",
@@ -729,7 +729,7 @@
    "ctrlSha": "0a3b0926492cc65898d2532911013ba652c3ed66df7ed01763a7d4e0a8d7dc2e"
   },
   {
-   "key": "await@xpizza-orders/index.html<script@2>:4835 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#1 → xpizza-orders/index.html<script@2>#confirmTokenOf>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
+   "key": "await@xpizza-orders/index.html<script@2>:4836 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#1 → xpizza-orders/index.html<script@2>#confirmTokenOf>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
    "cumulativeBoundMs": 7500,
    "repeats": true,
    "repeatLimit": 3,
