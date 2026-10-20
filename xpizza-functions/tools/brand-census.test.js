@@ -128,40 +128,62 @@ try {
   }
   ok('coverage: unsupported files LISTED, excluded files carry their rule; GEO_DEFAULT is SENTINEL (owner ruling)');
 
-  // 10. AUTHORITY binds to the EXACT enclosing declaration — the authority symbol is exempt, the same token elsewhere in the file is not
+  // AUTHORITY = the MODULE-SCOPE declaration identity (codex census r2): exempt at top level; a same-named const
+  // shadowed inside a function, another function, or another declaration of that file is NOT exempt
   {
     BC.AUTHORITY.push({ file: 'app/elig.js', symbol: 'ONLY_THESE', why: 'fixture authority' });
     try {
-      const r = scanFixture({ 'app/elig.js': "const ONLY_THESE = ['x_pizza'];\nfunction other(rid) { return rid === 'x_pizza'; }\nexports.ALSO = { x_pizza: 1 };\n" });
-      assert.ok(has(r, (x) => x.line === 1 && x.class === 'AUTHORITY'), FAIL('the authority declaration must be AUTHORITY'));
-      assert.ok(has(r, (x) => x.line === 2 && x.class === 'BEHAVIOUR'), FAIL('the same token in another function of the authority FILE must NOT be exempt'));
-      assert.ok(has(r, (x) => x.line === 3 && x.class !== 'AUTHORITY'), FAIL('another declaration in the authority file must NOT be exempt'));
+      const r = scanFixture({ 'app/elig.js': [
+        "const ONLY_THESE = ['x_pizza'];",                                                  // 1 the authority
+        "function other(rid) { return rid === 'x_pizza'; }",                                 // 2 another function
+        "exports.ALSO = { x_pizza: 1 };",                                                    // 3 another declaration
+        "function sneaky(rid) { const ONLY_THESE = rid === 'x_pizza'; return ONLY_THESE; }", // 4 shadowed same name
+      ].join('\n') + '\n' });
+      const cls = (line) => (r.rows.find((x) => x.line === line && x.kind === 'rid') || {}).class;
+      assert.strictEqual(cls(1), 'AUTHORITY', FAIL('the module-scope authority declaration must be AUTHORITY'));
+      assert.strictEqual(cls(2), 'BEHAVIOUR', FAIL('another function of the authority file must NOT be exempt'));
+      assert.notStrictEqual(cls(3), 'AUTHORITY', FAIL('another declaration of the authority file must NOT be exempt'));
+      assert.strictEqual(cls(4), 'BEHAVIOUR', FAIL('a SHADOWED same-name const inside a function must NOT be exempt'));
     } finally { BC.AUTHORITY.pop(); }
   }
-  ok('AUTHORITY binds to the exact declaration: the authority symbol is exempt; the same token in another function / declaration of that file is not');
+  ok('AUTHORITY binds to the module-scope declaration only: other functions, other declarations and a shadowed same-name const are not exempt');
 
-  // 11. presentation-only selections are DISPLAY (class / chip tables, DOM class sinks, chip renderers, name picks);
-  //     a real branch stays BEHAVIOUR, a pick between two brand ids is UNCLASSIFIED (uncertain)
+  // DISPLAY needs presentation EVIDENCE — one independent fixture per DOM sink (each its own file, so each rule can die alone)
   {
-    const r = scanFixture({ 'app/disp.js': [
-      "const BRAND_CLASS = { x_pizza: 'xp', brand_c: 'bc' };",                                   // 1 class table key
-      "el.classList.add('chip-' + 'x_pizza');",                                                    // 2 DOM class sink
-      "function brandLabel(o) { return o.rid === 'brand_c' ? 'c' : 'x'; }",                        // 3 renderer compare
-      "const name = (o.rid || 'x_pizza') === 'brand_c' ? 'Casa Cero' : 'X. Pizza';",              // 4 name pick (fallback + compare)
-      "if (o.rid === 'x_pizza') charge(o);",                                                       // 5 real branch
-      "const rid = o.rid === 'brand_c' ? 'brand_c' : 'x_pizza';",                                 // 6 pick between ids
-      "const PRICES = { x_pizza: 10 };",                                                          // 7 behavioural table
-    ].join('\n') + '\n' });
-    const cls = (line, tok) => (r.rows.find((x) => x.line === line && (!tok || x.token === tok)) || {}).class;
-    assert.strictEqual(cls(1, 'x_pizza'), 'DISPLAY', FAIL('a class table key must be DISPLAY'));
-    assert.strictEqual(cls(2), 'DISPLAY', FAIL('a classList sink must be DISPLAY'));
-    assert.strictEqual(cls(3, 'brand_c'), 'DISPLAY', FAIL('a compare inside a label renderer must be DISPLAY'));
-    assert.ok(r.rows.filter((x) => x.line === 4 && x.kind === 'rid').every((x) => x.class === 'DISPLAY'), FAIL('a fallback + compare that only picks a display name must be DISPLAY'));
-    assert.strictEqual(cls(5, 'x_pizza'), 'BEHAVIOUR', FAIL('a real branch must stay BEHAVIOUR'));
-    assert.strictEqual(cls(6, 'brand_c'), 'UNCLASSIFIED', FAIL('a pick between two brand ids is uncertain → UNCLASSIFIED'));
-    assert.strictEqual(cls(7, 'x_pizza'), 'BEHAVIOUR', FAIL('a non-presentation per-brand table stays BEHAVIOUR'));
+    const sinks = {
+      'app/sink-classname.js': "el.className = 'chip-' + 'x_pizza';\n",
+      'app/sink-classlist.js': "el.classList.add('x_pizza');\n",
+      'app/sink-style.js': "el.style.setProperty('--brand', 'x_pizza');\n",
+      'app/sink-text.js': "el.textContent = 'x_pizza';\n",
+      'app/sink-html.js': "el.innerHTML = 'x_pizza';\n",
+    };
+    for (const [f, src] of Object.entries(sinks)) {
+      const r = scanFixture({ [f]: src });
+      const row = r.rows.find((x) => x.kind === 'rid');
+      assert.ok(row && row.class === 'DISPLAY', FAIL(`${f}: a brand value reaching a DOM sink must be DISPLAY (got ${row && row.class})`));
+    }
   }
-  ok('presentation picks are DISPLAY (class table, classList, label renderer, display-name ternary); a real branch and a price table stay BEHAVIOUR; an id↔id pick is UNCLASSIFIED');
+  ok('DISPLAY by evidence, one fixture per sink: className, classList, style, textContent, innerHTML');
+
+  // NAMES ARE NOT EVIDENCE — codex's negatives, each independent
+  {
+    const one = (src, line, tok) => { const r = scanFixture({ 'app/neg.js': src }); return (r.rows.find((x) => x.line === line && x.kind === 'rid' && (!tok || x.token === tok)) || {}).class; };
+    assert.strictEqual(one("const PRICE_LABEL = { x_pizza: 100 };\ncharge(PRICE_LABEL.x_pizza);\n", 1, 'x_pizza'), 'BEHAVIOUR', FAIL('a *_LABEL table used by charge() must stay BEHAVIOUR'));
+    assert.strictEqual(one("function applyBadgeDiscount(o) { if (o.rid === 'x_pizza') charge(o, 5); }\n", 1), 'BEHAVIOUR', FAIL('a charging branch inside a badge-named function must stay BEHAVIOUR'));
+    assert.strictEqual(one("fetch(o.rid === 'x_pizza' ? '/pizza/orders' : '/musa/orders');\n", 1, 'x_pizza'), 'BEHAVIOUR', FAIL('a routing ternary on constant strings must stay BEHAVIOUR'));
+    assert.strictEqual(one("function brandLabel(o) { return o.rid === 'x_pizza' ? 'x_pizza' : 'brand_c'; }\n", 1, 'x_pizza'), 'UNCLASSIFIED', FAIL('brandLabel returning brand IDS is uncertain → UNCLASSIFIED, not DISPLAY'));
+    assert.strictEqual(one("const name = o.rid === 'brand_c' ? 'Casa Cero' : 'X. Pizza';\n", 1, 'brand_c'), 'BEHAVIOUR', FAIL('a name-pick ternary without a DOM sink is not proven DISPLAY'));
+  }
+  ok('names are not evidence: PRICE_LABEL used by charge(), a charge in applyBadgeDiscount(), a routing fetch ternary stay BEHAVIOUR; brandLabel returning ids is UNCLASSIFIED; an un-sunk name pick is not DISPLAY');
+
+  // the report states that unparsed rule languages were not parsed (its own fixture, so removing the warning dies)
+  {
+    const r = scanFixture({ 'app/firestore.rules': "rules_version = '2';\n", 'app/ok.js': "const a = 1;\n" });
+    assert.ok(r.unsupported.includes('app/firestore.rules'), FAIL('a rules file must be listed as unsupported'));
+    const md = BC.report({ ...r, drift: [] }, {});
+    assert.ok(/among COLLECTED formats only[\s\S]*deployed rule languages: `app\/firestore\.rules`/.test(md), FAIL('the report must warn that the unparsed rules file was not parsed'));
+  }
+  ok('the report warns that an unparsed deployed rules file (firestore.rules) was not parsed — "0 parse errors" covers collected formats only');
 
   // 9. matcher normalisers
   assert.strictEqual(BC.normColour('#B8860B'), '#b8860b');

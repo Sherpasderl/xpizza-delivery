@@ -40,7 +40,7 @@ const acorn = require('acorn');
 const FUNCTIONS = path.join(__dirname, '..');
 const ROOT = path.join(FUNCTIONS, '..');
 const VOCAB_FILE = path.join(__dirname, 'brand-vocabulary.json');
-const SCANNER_VERSION = 'phase-a.3';
+const SCANNER_VERSION = 'phase-a.4';
 const COORD_TOL = 1e-4;   // degrees ≈ 11 m: tighter than any two venues, looser than float re-spellings (15.50414 vs 15.504137854…)
 
 /* ── ROOTS & FILE RULES ──────────────────────────────────────────────────────────────────────────── */
@@ -226,9 +226,9 @@ function collectJs(src, file, scopePrefix = '', lineOffset = 0, colOffset = 0) {
   const num = (n) => (n && n.type === 'Literal' && typeof n.value === 'number' ? n.value : (n && n.type === 'UnaryExpression' && n.operator === '-' && n.argument.type === 'Literal' && typeof n.argument.value === 'number' ? -n.argument.value : null));
   const at = (n) => ({ line: n.loc.start.line + lineOffset, col: (n.loc.start.line === 1 ? colOffset : 0) + n.loc.start.column + 1 });
   let pairSeq = 0;
-  const walk = (n, scope, parent, pkey, pairId, decl, pick) => {
+  const walk = (n, scope, parent, pkey, pairId, decl, pick, declTop) => {
     if (!n || typeof n.type !== 'string') return;
-    const push = (o) => out.push({ ...o, declName: decl || null, pick: pick || null });
+    const push = (o) => out.push({ ...o, declName: decl || null, declTop: !!declTop, pick: pick || null });
     let sc = scope;
     if (/Function/.test(n.type)) {
       let name = n.id && n.id.name;
@@ -267,19 +267,21 @@ function collectJs(src, file, scopePrefix = '', lineOffset = 0, colOffset = 0) {
       const c = n[k];
       // the ENCLOSING DECLARATION a node belongs to (codex Phase A P2): `const NAME = …`, `X.NAME = …`, `exports.NAME = …`
       let d = decl;
-      if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && k === 'init') d = n.id.name;
-      else if (n.type === 'AssignmentExpression' && k === 'right' && n.left.type === 'MemberExpression' && !n.left.computed) d = n.left.property.name;
-      else if (n.type === 'AssignmentExpression' && k === 'right' && n.left.type === 'Identifier') d = n.left.name;
+      let dt = declTop;
+      // declTop: the declaration is at MODULE scope (no enclosing function) — AUTHORITY binds only to that identity
+      if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && k === 'init') { d = n.id.name; dt = !sc; }
+      else if (n.type === 'AssignmentExpression' && k === 'right' && n.left.type === 'MemberExpression' && !n.left.computed) { d = n.left.property.name; dt = !sc; }
+      else if (n.type === 'AssignmentExpression' && k === 'right' && n.left.type === 'Identifier') { d = n.left.name; dt = !sc; }
       // a brand test that only PICKS between two constant strings (`rid === 'la_musa' ? 'La Musa' : 'X. Pizza'`) carries the
       // branches, so classify() can call it a presentation pick (or, when the branches are brand ids, uncertain)
       let pk = /Function/.test(n.type) ? null : pick;
       if (n.type === 'ConditionalExpression' && k === 'test') { const a = fold(n.consequent); const b = fold(n.alternate); pk = a && b ? [a.v, b.v] : null; }
       else if (n.type === 'ConditionalExpression') pk = null;
-      if (Array.isArray(c)) c.forEach((x) => walk(x, sc, n, k, (n.type === 'CallExpression' || n.type === 'NewExpression') && k === 'arguments' ? myPair : (n.type === 'ObjectExpression' || n.type === 'ArrayExpression' ? myPair : (x && (x.type === 'Property') ? myPair : undefined)), d, pk));
-      else if (c && typeof c.type === 'string') walk(c, sc, n, k, n.type === 'Property' ? pairId : undefined, d, pk);
+      if (Array.isArray(c)) c.forEach((x) => walk(x, sc, n, k, (n.type === 'CallExpression' || n.type === 'NewExpression') && k === 'arguments' ? myPair : (n.type === 'ObjectExpression' || n.type === 'ArrayExpression' ? myPair : (x && (x.type === 'Property') ? myPair : undefined)), d, pk, dt));
+      else if (c && typeof c.type === 'string') walk(c, sc, n, k, n.type === 'Property' ? pairId : undefined, d, pk, dt);
     }
   };
-  walk(ast, '', null, null, undefined, null, null);
+  walk(ast, '', null, null, undefined, null, null, false);
   // structural: declarations + fallbacks whose value folds/points to a brand value are decided in classify()
   for (const o of out) if (o.kind === 'ident' && o.decl) { const init = o.decl.init; o.declInit = init ? (fold(init) || { type: init.type }) : null; if (init) o.declRange = [init.loc.start.line + lineOffset, init.loc.end.line + lineOffset]; }
   // unresolved: a multiply-declared name with at least one const init that folds to a string (filtered against the vocabulary by scan())
@@ -503,18 +505,15 @@ function classify(row) {
   if (row.kind === 'sentinel') return ['SENTINEL', row.sentinelWhy || 'platform sentinel'];
   if (row.kind === 'infra') return ['INFRA', `platform infrastructure named after a brand (${row.infra}) — one platform-level rename item`];
   // AUTHORITY binds to the EXACT enclosing declaration (codex Phase A P2), never to the file or every reference
-  for (const a of AUTHORITY) if (f === a.file && (a.symbol === '*' || row.declName === a.symbol)) return ['AUTHORITY', a.why];
+  for (const a of AUTHORITY) if (f === a.file && (a.symbol === '*' || (row.declName === a.symbol && row.declTop))) return ['AUTHORITY', a.why];
   if (SEED_PATHS.some((re) => re.test(f))) return ['SEED', 'seed / bootstrap source'];
   if (OPS_PATHS.some((re) => re.test(f))) return ['OPS', 'operator CLI / deploy tooling (report-only)'];
   const c = row.ctx || '';
-  // PRESENTATION-ONLY selections (codex Phase A P2): a brand chosen only to pick a class / colour / label / chip is
-  // DISPLAY — recognised by the table it indexes, the renderer it sits in, or a DOM class/style sink
-  if (c === 'dom-class') return ['DISPLAY', 'a DOM class / style sink'];
-  const table = (c === 'object-key' ? row.declName : (c === 'member-access' ? row.objName : null)) || '';
-  if (table && DISPLAY_TABLE.test(table)) return ['DISPLAY', `a presentation table (${table})`];
-  const fn = String(row.scope || '').split(/[>#]/).pop();
-  if (/^(compare|switch-case|lookup-call|fallback|default-param|ternary-branch|member-access|object-key)$/.test(c) && DISPLAY_FN.test(fn) && row.kind === 'rid') return ['DISPLAY', `a presentation-only selection inside ${fn}`];
-  if (row.pick === 'display' && row.kind === 'rid') return ['DISPLAY', 'a brand test that only picks between two constant display strings'];
+  // DISPLAY needs PRESENTATION EVIDENCE (codex census r2): the value itself reaches a DOM class / style / text sink.
+  // Names (of tables or renderers) and constant-string ternaries are NOT evidence. A brand test that only picks
+  // between two brand IDS is uncertain → UNCLASSIFIED. Everything unproven keeps its structural / behavioural class.
+  if (c === 'dom-class') return ['DISPLAY', 'reaches a DOM class / style sink'];
+  if (c === 'dom-text') return ['DISPLAY', 'reaches a DOM text sink'];
   if (row.pick === 'rid' && row.kind === 'rid' && /^(compare|fallback)$/.test(c)) return ['UNCLASSIFIED', 'a brand test that picks between two brand ids — presentation or behaviour, lane to confirm'];
   if (row.structural) return ['STRUCTURAL', row.structural];
   if (/^(compare|switch-case|lookup-call)$/.test(c)) return ['BEHAVIOUR', `a ${c} decides on it`];
@@ -530,12 +529,10 @@ function classify(row) {
   return ['UNCLASSIFIED', `role ${c || '?'} — lane to confirm`];
 }
 
-const DISPLAY_TABLE = /(class|chip|label|badge|pill|colou?r|style|theme|tag|icon|emoji|copy|title|text|names?)(es|s)?$/i;
-const DISPLAY_FN = /(label|chip|badge|pill|className|colou?r|style|theme|tag|icon|title|displayName|brandName|brandText|brandLabel|render\w*(Name|Label|Chip|Badge|Brand|Tag))/i;
 const ROOT_BY_KIND = { coord: 'hub-coords', colour: 'brand-colour', name: 'brand-name', phone: 'brand-phone', host: 'brand-url' };
 function rootOf(row) {
   if (row.class === 'STRUCTURAL') return 'fixed-selection';
-  if (row.class === 'DISPLAY' && /presentation|DOM class/.test(row.why || '')) return 'presentation-selection';
+  if (row.class === 'DISPLAY' && /DOM (class|text)/.test(row.why || '')) return 'presentation-sink';
   if (ROOT_BY_KIND[row.kind]) return ROOT_BY_KIND[row.kind];
   if (row.match === 'url') return 'brand-url';
   if (row.ctx === 'object-key' || row.ctx === 'member-access') return 'rid-table';
@@ -601,7 +598,7 @@ function scan({ root = ROOT, vocab, files } = {}) {
       if (o.kind === 'ident' && structNames.has(o.value) && !(o.decl)) hits = hits.concat([{ brand: '*', kind: 'structural-use', match: 'ident', strength: 'medium' }]);
       if (o.kind === 'ident' && o.decl && structNames.has(o.value)) hits = hits.concat([{ brand: '*', kind: 'structural-decl', match: 'ident', strength: 'strong' }]);
       for (const h of hits) {
-        const row = { file: f, line: o.line, col: o.col, scope: o.scope, token: String(o.value).length > 80 ? String(o.value).slice(0, 77) + '…' : String(o.value), value: o.value, kind: h.kind, brand: h.brand, match: h.match, strength: h.strength, ctx: o.ctx, alias: o.alias || h.alias || null, lane: laneOf(f), declName: o.declName || null, objName: o.objName || null, pick: o.pick ? (o.pick.some((v) => match({ kind: 'string', value: v, ctx: 'pick' }).some((x) => x.kind === 'rid' && x.match === 'exact')) ? 'rid' : 'display') : null };
+        const row = { file: f, line: o.line, col: o.col, scope: o.scope, token: String(o.value).length > 80 ? String(o.value).slice(0, 77) + '…' : String(o.value), value: o.value, kind: h.kind, brand: h.brand, match: h.match, strength: h.strength, ctx: o.ctx, alias: o.alias || h.alias || null, lane: laneOf(f), declName: o.declName || null, declTop: !!o.declTop, objName: o.objName || null, pick: o.pick ? (o.pick.some((v) => match({ kind: 'string', value: v, ctx: 'pick' }).some((x) => x.kind === 'rid' && x.match === 'exact')) ? 'rid' : 'display') : null };
         if (h.kind === 'infra') row.infra = h.infra;
         if (h.kind === 'sentinel') row.sentinelWhy = `${h.sentinel.name}: ${h.sentinel.why}`;
         if (h.kind === 'structural-decl') row.structural = `fixed selection: const ${o.value}`;
