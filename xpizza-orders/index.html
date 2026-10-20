@@ -3738,7 +3738,7 @@ function initMap(){
     streetViewControl:false,
     fullscreenControl:false,
   });
-  if(__restorePos){ placePin(__restorePos.lat, __restorePos.lng, false); __restorePos=null; return; }  // restore the saved pin after a cancelled-payment retry
+  if(__restorePos){ __geoGen++; __geoResult = null; placePin(__restorePos.lat, __restorePos.lng, false); __restorePos=null; return; }  // restore the saved pin after a cancelled-payment retry
   if(navigator.geolocation){ applyGeoWhenReady(); }   // the request was started in the tap (startGeoCycle); placed once both are ready
   else { placePin(15.5003,-88.025,true); }
 }
@@ -4760,7 +4760,8 @@ function restoreOrderForm(){
     if(snap.orderType !== 'pickup'){
       lat = snap.lat; lng = snap.lng;
       if(snap.lat && snap.lng) __restorePos = { lat: snap.lat, lng: snap.lng }; // initMap places this instead of geolocating
-      setTimeout(initMap, 100);
+      if (gmap && __restorePos) { const rp = __restorePos; __restorePos = null; placePin(rp.lat, rp.lng, false); }   // the map already exists (initMap would return early): restore the pin onto it, as initMap does on a fresh map
+      else setTimeout(initMap, 100);
     }
     if(snap.payment) selectPay(snap.payment);
     const amt=document.getElementById('pixelpay-amount'); if(amt) amt.textContent='L '+redeemAdjustedTotal().toFixed(2);

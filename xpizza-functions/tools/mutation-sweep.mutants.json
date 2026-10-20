@@ -15897,5 +15897,77 @@
       "node",
       "../order-form-geoloc.test.mjs"
     ]
+  },
+  {
+    "id": "geoloc-xp-15",
+    "slice": "geoloc",
+    "label": "x_pizza: consuming a confirmed restore no longer invalidates the pending GPS cycle (SDK-late overwrite)",
+    "file": "../xpizza-orders/index.html",
+    "from": "  if(__restorePos){ __geoGen++; __geoResult = null; placePin(",
+    "to": "  if(__restorePos){ placePin(",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-15",
+    "slice": "geoloc",
+    "label": "la_musa: consuming a confirmed restore no longer invalidates the pending GPS cycle (SDK-late overwrite)",
+    "file": "../la-musa-orders/index.html",
+    "from": "    const rp=__restorePos; __restorePos=null; __geoGen++; __geoResult = null;\n",
+    "to": "    const rp=__restorePos; __restorePos=null;\n",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-16",
+    "slice": "geoloc",
+    "label": "x_pizza: a restore onto an existing map shows no pin (initMap returns early)",
+    "file": "../xpizza-orders/index.html",
+    "from": "      if (gmap && __restorePos) { const rp",
+    "to": "      if (false && __restorePos) { const rp",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-16",
+    "slice": "geoloc",
+    "label": "la_musa: a restore onto an existing map shows no pin (initMap returns early)",
+    "file": "../la-musa-orders/index.html",
+    "from": "      if (gmap && __restorePos) { const rp",
+    "to": "      if (false && __restorePos) { const rp",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-xp-17",
+    "slice": "geoloc",
+    "label": "x_pizza: the submitted detected address is blanked (codex build r1 P2-3 repro)",
+    "file": "../xpizza-orders/index.html",
+    "from": "    address_detected: document.getElementById('address-detected')?.value||'',",
+    "to": "    address_detected: '',",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
+  },
+  {
+    "id": "geoloc-lm-17",
+    "slice": "geoloc",
+    "label": "la_musa: the submitted detected address is blanked (codex build r1 P2-3 repro)",
+    "file": "../la-musa-orders/index.html",
+    "from": "    address_detected: document.getElementById('address-detected')?.value||'',",
+    "to": "    address_detected: '',",
+    "command": [
+      "node",
+      "../order-form-geoloc.test.mjs"
+    ]
   }
 ]

@@ -184,21 +184,28 @@ async function run(dir) {
     assert.ok(at(S(c.w), R) && at(live(c.log)[0].pos, R), tag('the restored pin is placed'));
     ok(tag('#8 __restorePos → zero requests; restored pin placed')); }
 
-  // 8b — a request pending across restoreOrderForm() is dead: late success (A) and late error (B)
-  for (const late of ['success', 'error']) {
-    const c = await prep(dir);
+  // 8b — a request pending across restoreOrderForm() is dead: late success (cash) and late error (card); the restored pin SHOWS
+  for (const [late, card] of [['success', false], ['error', true]]) {
+    const c = await prep(dir, { card });
     c.w.goToLocation(); await mapUp();
+    c.w.document.getElementById('address-details').value = 'Restaurada 12, portón azul';   // customer-typed; the restore carries it back
     const snap = c.w.snapshotForm(); snap.lat = R.lat; snap.lng = R.lng;
     c.w.localStorage.setItem(dir === 'xpizza-orders' ? 'xpizza_pending_pay' : 'lamusa_pending_pay', JSON.stringify({ ts: Date.now(), form: snap }));
     const before = diag(c.w);
     c.w.restoreOrderForm(); await wait(160); await settle();
     if (late === 'success') c.calls[0].ok(GPS); else c.calls[0].err(3);
     await settle(); await wait(20);
+    const kind = card ? 'card' : 'cash';
     assert.strictEqual(c.calls.length, 1, tag(`🔴 restore → late ${late}: no retry, still one request`));
     assert.deepStrictEqual(diag(c.w), before, tag(`restore → late ${late}: diagnostics untouched`));
     assert.ok(at(S(c.w), R), tag(`restore → late ${late}: coordinates = the restored snapshot`));
-    assert.ok(at(await pay(c), R), tag(`restore → late ${late}: payload = the restored snapshot`));
-    ok(tag(`#8b pending → restoreOrderForm → late ${late}: inert (count, diag, coords, payload)`));
+    assert.strictEqual(live(c.log).length, 1, tag(`🔴 restore onto the EXISTING map shows the restored pin`));
+    assert.ok(at(live(c.log)[0].pos, R), tag('the restored pin is at the snapshot'));
+    const body = await pay(c);
+    assert.ok(at(body, R), tag(`restore → late ${late}: ${kind} payload coordinates = the restored snapshot`));
+    assert.strictEqual(body.address_details, 'Restaurada 12, portón azul', tag(`🔴 restore → ${kind} payload carries the restored address details`));
+    assert.strictEqual(body.address_detected, c.w.document.getElementById('address-detected').value, tag('the transmitted detected address is the one the page shows (placePin geocodes it, as a fresh-map restore does)'));
+    ok(tag(`#8b pending → restoreOrderForm → late ${late}: inert (count, diag), restored pin shown, ${kind} payload = snapshot`));
   }
 
   // 9 — the REAL account writer confirms an address while GPS is pending (saved and one-off); late success / late error
@@ -215,7 +222,10 @@ async function run(dir) {
     assert.strictEqual(c.log.markers.length, mk0, tag(`${kind} + late ${late}: GPS placed no pin`));
     assert.strictEqual(c.log.geocodes, geo0, tag(`${kind} + late ${late}: no extra reverse-geocode`));
     assert.strictEqual(c.w.document.getElementById('address-detected').value, 'Casa — Col. Trejo', tag('confirmed address text unchanged'));
-    assert.ok(at(await pay(c), SAVED), tag(`${kind} + late ${late}: ${c.card ? 'card' : 'cash'} payload = the confirmed address`));
+    const body = await pay(c);
+    assert.ok(at(body, SAVED), tag(`${kind} + late ${late}: ${c.card ? 'card' : 'cash'} payload = the confirmed address`));
+    assert.strictEqual(body.address_detected, 'Casa — Col. Trejo', tag(`🔴 ${kind} + late ${late}: the transmitted address text is the confirmed one`));
+    assert.strictEqual(body.address_details, 'Col. Palmira, portón negro', tag('the transmitted address details are unchanged'));
     ok(tag(`#9 account confirm (${kind}) while pending → late ${late} is inert; payload = confirmed`));
   }
 
@@ -226,6 +236,21 @@ async function run(dir) {
     c.calls[0].ok(GPS); await settle();
     assert.ok(at(S(c.w), DEF) && c.log.markers.length === 0, tag('🔴 an address confirmed at the default coordinate is not overwritten'));
     ok(tag('#9b confirmed address at exactly the default coordinate (__restorePos set) → late GPS refused')); }
+
+  // 9c — the same, with the SDK LATE: initMap consumes the confirmed restore before GPS succeeds — the cycle dies with it
+  for (const card of [false, true]) {
+    const c = await prep(dir, { maps: 'late', card });
+    c.w.goToLocation(); await wait(50);
+    c.w.__ACCOUNT.establishCheckoutFromAddress({ id: 'a2', lat: DEF.lat, lng: DEF.lng });
+    c.w.document.getElementById('address-detected').value = 'Casa — Centro';
+    await mapsLate(c.w, c.log);                                   // initMap places the confirmed pin and clears __restorePos
+    assert.strictEqual(S(c.w).restore, null, tag('premise: the restore was consumed'));
+    c.calls[0].ok(GPS); await settle();
+    assert.ok(at(S(c.w), DEF) && c.log.markers.length === 1 && at(live(c.log)[0].pos, DEF), tag('🔴 SDK-late: GPS never replaces a confirmed address at the default coordinate'));
+    const body = await pay(c);
+    assert.ok(at(body, DEF), tag(`SDK-late: ${card ? 'card' : 'cash'} payload = the confirmed address`));
+    ok(tag(`#9c confirmed address at the default + SDK late → restore consumed → late GPS inert (${card ? 'card' : 'cash'})`));
+  }
 
   // 10 / 18A — fullscreen drag + confirm while pending → the preview marker is CREATED; late success / late error inert
   for (const late of ['success', 'error']) {
