@@ -16038,8 +16038,8 @@
     "slice": "membership",
     "label": "T-a G1: a direct owner grant may write a profile (forgeable names)",
     "file": "access/roster.js",
-    "from": "  if (op.profile !== undefined && (op.type !== 'grant_manager' || !op.inviteId || !isProfile(op.profile))) return fail('bad_profile');",
-    "to": "  if (op.profile !== undefined && (op.type !== 'grant_manager' || !isProfile(op.profile))) return fail('bad_profile');",
+    "from": "  if (op.profile !== undefined && !((op.type === 'grant_manager' && op.inviteId) || op.type === 'bootstrap_owner' || op.type === 'transfer_owner' || op.type === 'set_owner_profile')) return fail('bad_profile');",
+    "to": "  if (op.profile !== undefined && !(op.type === 'grant_manager' || op.type === 'bootstrap_owner' || op.type === 'transfer_owner' || op.type === 'set_owner_profile')) return fail('bad_profile');",
     "kills_with": [
       "bad_profile"
     ],
@@ -16301,6 +16301,380 @@
       "--test",
       "access/team-ui-server.test.js",
       "access/team-http.test.js"
+    ]
+  },
+  {
+    "id": "aceptar-01",
+    "slice": "aceptar",
+    "label": "T-c: the email link's one-time code stays in the address bar after it is consumed",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "  const stripLink = () => { if (!stripped && params && inviteId && [...params.keys()].some((k) => k !== 'invite')) { stripped = true; history.replaceState(null, '', cleanUrl(href, inviteId)); } };",
+    "to": "  const stripLink = () => {};",
+    "kills_with": [
+      "the URL keeps ONLY ?invite="
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-02",
+    "slice": "aceptar",
+    "label": "T-c: A2 is skipped for every account (new invitees never create a password)",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      if (r.password_set === true) return goPortal();",
+    "to": "      if (r.ok) return goPortal();",
+    "kills_with": [
+      "password_set:false → A2"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-03",
+    "slice": "aceptar",
+    "label": "T-c: pending never retries automatically (the invitee is stranded on the spinner)",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      st.retryTimer = later(() => { st.retryTimer = null; if (gen === st.gen) accept(); }, RETRY_MS);\n",
+    "to": "",
+    "kills_with": [
+      "ONE auto-retry scheduled"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-04",
+    "slice": "aceptar",
+    "label": "T-c: a restored session re-consumes the email link instead of resuming",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (user) return accept();\n",
+    "to": "",
+    "kills_with": [
+      "the link is never re-consumed"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-05",
+    "slice": "aceptar",
+    "label": "T-c: email_unverified is shown as a failure instead of returning to the link stage",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (code === 'email_unverified') {",
+    "to": "    if (false) {",
+    "kills_with": [
+      "email_unverified"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "membership-46",
+    "slice": "membership",
+    "label": "T-c: the invite preview answers a flag-off request (an existence oracle)",
+    "file": "access/team-core.js",
+    "from": "const teamInvitePreview = async (deps, _ctx, b) => ((await writesEnabled(deps.db)) ? invitePreview(deps, b && b.inviteId) : fail('not_found'));",
+    "to": "const teamInvitePreview = async (deps, _ctx, b) => invitePreview(deps, b && b.inviteId);",
+    "kills_with": [
+      "flag off → the same not-found"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/membership-admin.test.js"
+    ]
+  },
+  {
+    "id": "membership-47",
+    "slice": "membership",
+    "label": "T-c: the invite preview leaks timestamps",
+    "file": "access/invites.js",
+    "from": "    return { ok: true, state, brand_name, branch_names, inviter_name };",
+    "to": "    return { ok: true, state, brand_name, branch_names, inviter_name, expires_at: inv.expires_at };",
+    "kills_with": [
+      "T-c memberInvitePreview"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/membership-admin.test.js"
+    ]
+  },
+  {
+    "id": "membership-48",
+    "slice": "membership",
+    "label": "owner ruling: transfer-owner accepted without a name",
+    "file": "access/membership-admin-core.js",
+    "from": "    if (!nm) return { error: 'name_required' };",
+    "to": "    if (!nm) return { profile_name_missing: true, profile: { name: 'x', email: 'x@x.hn' } };",
+    "kills_with": [
+      "refused"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/membership-admin.test.js"
+    ]
+  },
+  {
+    "id": "membership-49",
+    "slice": "membership",
+    "label": "owner ruling: the owner-names read-back passes with a nameless owner",
+    "file": "access/membership-admin-core.js",
+    "from": "    return missing.length ? 5 : 0;",
+    "to": "    return 0;",
+    "kills_with": [
+      "read-back fails"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/membership-admin.test.js"
+    ]
+  },
+  {
+    "id": "aceptar-06",
+    "slice": "aceptar",
+    "label": "T-c r1: a password is set for whatever account is signed in (not the accepting one)",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (!st.acceptUid || auth.uid() !== st.acceptUid) { clearPersonal(); return init(); }\n",
+    "to": "",
+    "kills_with": [
+      "never changed from A"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-07",
+    "slice": "aceptar",
+    "label": "T-c r1: an auth change keeps the previous account's personal data on screen",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (st.acceptUid && uid !== st.acceptUid) { clearPersonal(); init(); }",
+    "to": "    if (st.acceptUid && uid !== st.acceptUid) { init(); }",
+    "kills_with": [
+      "gone from the DOM"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-08",
+    "slice": "aceptar",
+    "label": "T-c r1: concurrent acceptances are not serialized",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (st.accepting) return;   // serialized: one acceptance in flight (codex T-c build r1 P2)\n",
+    "to": "",
+    "kills_with": [
+      "one acceptance in flight (guard)"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-09",
+    "slice": "aceptar",
+    "label": "T-c r1: not_found at acceptance is retried as a failure",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (code === 'not_found') return invalid();   // never retried\n",
+    "to": "",
+    "kills_with": [
+      "st-invalid"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-10",
+    "slice": "aceptar",
+    "label": "T-c r1: a signed-in visit without an invite shows the invalid page instead of the portal",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (inviteId == null) return user ? goPortal() : invalid();   // a signed-in visit without an invite → the portal",
+    "to": "    if (inviteId == null) return invalid();",
+    "kills_with": [
+      "portal"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-11",
+    "slice": "aceptar",
+    "label": "T-c r2: the link parameters are stripped at load (a reload at A1 lands on A4)",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "  const stripLink = () => { if (!stripped && params && inviteId && [...params.keys()].some((k) => k !== 'invite')) { stripped = true; history.replaceState(null, '', cleanUrl(href, inviteId)); } };",
+    "to": "  const stripLink = () => { if (!stripped && params && inviteId && [...params.keys()].some((k) => k !== 'invite')) { stripped = true; history.replaceState(null, '', cleanUrl(href, inviteId)); } };\n  stripLink();",
+    "kills_with": [
+      "nothing stripped at load"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-12",
+    "slice": "aceptar",
+    "label": "T-c r2: no re-check after updatePassword (the flag call runs once the live account is B)",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      await auth.updatePassword(pw, who);\n      if (!stillA()) return reenter();\n",
+    "to": "      await auth.updatePassword(pw, who);\n",
+    "kills_with": [
+      "memberPasswordSet never runs"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-13",
+    "slice": "aceptar",
+    "label": "T-c r2: no re-check after the flag call (the portal opens as B)",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      await api.passwordSet(who);   // with the ACCEPTING user's own ID token: the server records it for that account only\n      if (!stillA()) return reenter();\n",
+    "to": "      await api.passwordSet(who);   // with the ACCEPTING user's own ID token: the server records it for that account only\n",
+    "kills_with": [
+      "never the portal"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-14",
+    "slice": "aceptar",
+    "label": "T-c r2: the flag call uses whoever is current instead of the captured accepting user",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      await api.passwordSet(who);",
+    "to": "      await api.passwordSet();",
+    "kills_with": [
+      "authenticated as A"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-15",
+    "slice": "aceptar",
+    "label": "T-c r2: a restored session's acceptance keeps the one-time code in the address bar",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      stripLink();   // a restored session's acceptance: the link parameters are no longer needed\n",
+    "to": "",
+    "kills_with": [
+      "a restored acceptance strips"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-16",
+    "slice": "aceptar",
+    "label": "T-c r2: a flipped session in the catch path sends a reset email for B",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      if (!stillA() || (err && err.code === 'account_changed')) return reenter();\n",
+    "to": "",
+    "kills_with": [
+      "no reset email once the live account is B"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-17",
+    "slice": "aceptar",
+    "label": "T-c r2: the updater's account_changed refusal shows the could-not-complete card instead of re-entering",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      if (!stillA() || (err && err.code === 'account_changed')) return reenter();",
+    "to": "      if (!stillA()) return reenter();",
+    "kills_with": [
+      "account_changed re-enters"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "membership-50",
+    "slice": "membership",
+    "label": "T-c r1: revoking an owner's last manager branch deletes their profile",
+    "file": "access/roster.js",
+    "from": "        if (isObj(profiles[op.uid]) && !isObj(owners[op.uid])) { delete profiles[op.uid]; changed = true; }",
+    "to": "        if (isObj(profiles[op.uid])) { delete profiles[op.uid]; changed = true; }",
+    "kills_with": [
+      "the owner keeps their name"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-51",
+    "slice": "membership",
+    "label": "T-c r1: bootstrap_owner accepted without a profile (a nameless owner)",
+    "file": "access/roster.js",
+    "from": "  if ((op.type === 'bootstrap_owner' || op.type === 'transfer_owner' || op.type === 'set_owner_profile') && op.profile === undefined) return fail('bad_profile');",
+    "to": "  if ((op.type === 'transfer_owner' || op.type === 'set_owner_profile') && op.profile === undefined) return fail('bad_profile');",
+    "kills_with": [
+      "without a name is refused"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/roster.test.js"
     ]
   }
 ]

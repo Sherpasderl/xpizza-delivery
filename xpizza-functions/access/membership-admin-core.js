@@ -13,6 +13,7 @@ const F1 = require('../brands/brand-model');
 const { UID_RE, resolveAccess, myLocations } = require('./membership');
 const { mutateRoster } = require('./roster');
 const OLD = require('./legacy-readers');
+const { normName } = require('./invites');
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const val = async (db, p) => (await db.ref(p).once('value')).val();
@@ -62,10 +63,11 @@ async function census(db) {
   return { ok: findings.length === 0, findings, owners, dispatchers, kitchen: kitchen.map(([uid, rid]) => ({ uid, rid })) };
 }
 
-async function backfill(db, owners, { operator, now = () => Date.now(), log = () => {}, getUser = null }) {
+async function backfill(db, owners, { operator, now = () => Date.now(), log = () => {}, getUser = null, profiles = {} }) {
   const results = [];
   for (const { uid, rid } of owners) {
-    const r = await mutateRoster({ db, now, log }, rid, { kind: 'cli', operator }, { type: 'bootstrap_owner', uid });
+    // every ownership grant carries the owner's name + email in the SAME transaction (codex T-c build r1; owner ruling)
+    const r = await mutateRoster({ db, now, log }, rid, { kind: 'cli', operator }, { type: 'bootstrap_owner', uid, profile: profiles[uid] });
     // today's owners sign in to the portal with a password: record it, so /aceptar never asks them to create one — but ONLY for a
     // Firebase account whose email is VERIFIED (codex plan r3): consuming an email link on an UNVERIFIED account removes its
     // existing password, so a flag there would be false evidence. Unverified / unknown → no flag (they simply see A2).
@@ -290,7 +292,17 @@ function makeNewReaders(db) {
   };
 }
 
-async function runMembershipAdmin({ db, op, args = [], apply, operator, now = () => Date.now(), log = console.log, writeFile = null, getUser = null }) {
+async function runMembershipAdmin({ db, op, args = [], apply, operator, now = () => Date.now(), log = console.log, writeFile = null, getUser = null, name = null }) {
+  // OWNER RULING 2026-10-20: every owner has a profile NAME («{Dueño} te invitó…»). transfer-owner REQUIRES --name; set-owner-name
+  // names the CURRENT owner (the cutover backfill step); owner-names is the read-back that FAILS while any owner lacks one.
+  const profileFor = async (uid) => {
+    const nm = normName(name);
+    if (!nm) return { error: 'name_required' };
+    let email = null;
+    try { email = typeof getUser === 'function' ? (await getUser(uid)).email : null; } catch (_) { email = null; }
+    if (typeof email !== 'string' || !email) return { error: 'owner_email_unavailable' };
+    return { profile: { name: nm, email: email.trim().toLowerCase() } };
+  };
   if (op === 'census') {
     const c = await census(db);
     log(JSON.stringify({ ok: c.ok, owners: c.owners, findings: c.findings }, null, 2));
@@ -299,8 +311,14 @@ async function runMembershipAdmin({ db, op, args = [], apply, operator, now = ()
   if (op === 'backfill') {
     const c = await census(db);
     if (!c.ok) { log(JSON.stringify({ refused: 'census_not_clean', findings: c.findings })); return 3; }
-    if (!apply) { log(JSON.stringify({ dry_run: true, would_bootstrap: c.owners })); return 0; }
-    const r = await backfill(db, c.owners, { operator, now, log: (k) => log(k), getUser });
+    // the owner's NAME is required (owner ruling 2026-10-20): ONE --name for the census owner (today: one human owner of every
+    // legacy brand); several distinct owner uids → refused (each is named separately with set-owner-name after a manual decision)
+    const uids = [...new Set(c.owners.map((o) => o.uid))];
+    if (uids.length !== 1) { log(JSON.stringify({ refused: 'one_owner_expected', owners: uids.length })); return 2; }
+    const p = await profileFor(uids[0]);
+    if (p.error) { log(JSON.stringify({ refused: p.error, hint: '--name="Nombre Apellido" is required (1–80 chars)' })); return 2; }
+    if (!apply) { log(JSON.stringify({ dry_run: true, would_bootstrap: c.owners, name: p.profile.name })); return 0; }
+    const r = await backfill(db, c.owners, { operator, now, log: (k) => log(k), getUser, profiles: { [uids[0]]: p.profile } });
     log(JSON.stringify(r)); return r.ok ? 0 : 4;
   }
   if (op === 'reconcile') {
@@ -329,13 +347,26 @@ async function runMembershipAdmin({ db, op, args = [], apply, operator, now = ()
     if (typeof writeFile === 'function' && args[0]) writeFile(args[0], `${JSON.stringify(fx, null, 1)}\n`); else log(JSON.stringify(fx));
     return 0;
   }
-  if (op === 'transfer-owner') {   // OWNER DECISION 2026-10-19: owner transfer is a PLATFORM CLI operation only
+  if (op === 'transfer-owner' || op === 'set-owner-name') {   // OWNER DECISION 2026-10-19: owner changes are PLATFORM CLI only
     const [brandId, uid] = args || [];
-    if (!apply) { log(JSON.stringify({ dry_run: true, would_transfer: { brandId, to: uid } })); return 0; }
-    const r = await mutateRoster({ db, now, log: (k) => log(k) }, brandId, { kind: 'cli', operator }, { type: 'transfer_owner', uid });
+    const p = await profileFor(uid);
+    if (p.error) { log(JSON.stringify({ refused: p.error, hint: '--name="Nombre Apellido" is required (1–80 chars)' })); return 2; }
+    const type = op === 'transfer-owner' ? 'transfer_owner' : 'set_owner_profile';
+    if (!apply) { log(JSON.stringify({ dry_run: true, would: type, brandId, uid, name: p.profile.name })); return 0; }
+    const r = await mutateRoster({ db, now, log: (k) => log(k) }, brandId, { kind: 'cli', operator }, { type, uid, profile: p.profile });
     log(JSON.stringify(r)); return r.ok ? 0 : 4;
   }
-  log('usage: membership-admin --project <id> census | backfill [--apply] | reconcile [--apply] | compare | rules-fixture <out.json> | transfer-owner <brandId> <uid> [--apply]');
+  if (op === 'owner-names') {   // the read-back: every brand's owner must have a profile name
+    const bm = (await val(db, 'brand_members')) || {};
+    const missing = [];
+    for (const b of Object.keys(bm).sort()) {
+      const owners = isObj(bm[b]) && isObj(bm[b].owners) ? Object.keys(bm[b].owners) : [];
+      for (const u of owners) { const pr = isObj(bm[b].profiles) ? bm[b].profiles[u] : null; if (!(isObj(pr) && typeof pr.name === 'string' && pr.name.trim())) missing.push({ brandId: b, uid: u }); }
+    }
+    log(JSON.stringify({ ok: missing.length === 0, missing }, null, 2));
+    return missing.length ? 5 : 0;
+  }
+  log('usage: membership-admin --project <id> census | backfill [--apply] | reconcile [--apply] | compare | rules-fixture <out.json> | owner-names | set-owner-name <brandId> <uid> --name="…" [--apply] | transfer-owner <brandId> <uid> --name="…" [--apply]');
   return 2;
 }
 

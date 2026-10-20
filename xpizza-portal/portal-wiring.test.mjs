@@ -41,7 +41,9 @@ test('every function a module calls is one it defines or imports', () => {
     // keywords that precede a parenthesis and are not calls
     'async', 'else', 'do', 'try', 'yield', 'delete', 'void', 'in', 'of', 'instanceof', 'WeakSet',
     // Stats S2: the CSV export hands the merchant a file through a Blob URL
-    'Blob']);
+    'Blob',
+    // T-c /aceptar: the WHATWG URL parser (strips the email link's one-time code from the address bar)
+    'URL']);
   for (const f of JS) {
     const c = codeOf(f);
     const defined = new Set([
@@ -68,8 +70,9 @@ test('every function a module calls is one it defines or imports', () => {
   }
 });
 
-test('every module the portal ships is reachable from index.html', () => {
-  const html = readFileSync(join(DIR, 'index.html'), 'utf8');
+test('every module the portal ships is reachable from an entry page (index.html, aceptar.html)', () => {
+  // T-c: the invitee's /aceptar is a SECOND entry page with its own boot script; every module must be reachable from one of them
+  const html = ['index.html', 'aceptar.html'].map((p) => readFileSync(join(DIR, p), 'utf8')).join('\n');
   const seen = new Set();
   const walk = (f) => {
     if (seen.has(f)) return;
@@ -466,8 +469,8 @@ test('every clickable element actually gets a pointer cursor', () => {
 
   // Every selector that sets cursor:pointer, reduced to its LAST compound (the element the rule
   // actually lands on), with pseudo-classes stripped so `:hover` variants still count.
-  const pointerSelectors = [];
-  for (const line of css.split('\n')) {
+  const pointersOf = (cssText) => { const pointerSelectors = [];
+  for (const line of cssText.split('\n')) {
     const i = line.indexOf('{');
     if (i === -1 || !line.includes('}')) continue;
     const decls = line.slice(i + 1, line.lastIndexOf('}'));
@@ -484,6 +487,12 @@ test('every clickable element actually gets a pointer cursor', () => {
       if (only) pointerSelectors.push(only);
     }
   }
+  return pointerSelectors; };
+  const pointerSelectors = pointersOf(css);
+  // T-c: the /aceptar page is its own document with its own stylesheet — its handlers resolve against THOSE
+  const ACEPTAR = { html: readFileSync(join(DIR, 'aceptar.html'), 'utf8'),
+    pointers: pointersOf(readFileSync(join(DIR, 'aceptar.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\}/g, '}\n')) };
+  const pageOf = (f) => (/^aceptar/.test(f) ? ACEPTAR : { html, pointers: pointerSelectors });
   assert.ok(pointerSelectors.length > 10, `non-vacuity: the stylesheet must define pointer cursors (${pointerSelectors.length})`);
 
   const bound = (name) => `(?<![\\w$])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w$])`;
@@ -507,7 +516,7 @@ test('every clickable element actually gets a pointer cursor', () => {
       const byId = idExpr.match(/^\$\('([^']+)'\)$/);
       if (byId) {
         // resolved through the markup: $('id') is only meaningful together with index.html
-        const seg = html.match(new RegExp(`<(\\w+)([^>]*\\bid="${byId[1]}"[^>]*)>`));
+        const seg = pageOf(f).html.match(new RegExp(`<(\\w+)([^>]*\\bid="${byId[1]}"[^>]*)>`));
         if (seg) { tag = seg[1]; const c = seg[2].match(/class="([^"]*)"/); if (c) c[1].split(/\s+/).forEach((x) => x && cls.add(x)); }
       } else {
         // el(tag, 'cls') and el(tag, `cls${…}`) — the template form is how .railitem is built
@@ -523,7 +532,7 @@ test('every clickable element actually gets a pointer cursor', () => {
       // a mismatch would hide, and a guard that quietly ignores what it cannot read proves nothing.
       assert.ok(cls.size > 0 || tag, `${f}: could not resolve what \`${expr}\` is — the guard must be taught this shape rather than skip it`);
       checked++;
-      const covered = pointerSelectors.some((p) => {
+      const covered = pageOf(f).pointers.some((p) => {
         const pc = classesOf(p);
         return pc.size ? [...pc].every((c2) => cls.has(c2)) : tagOf(p) === tag;
       });

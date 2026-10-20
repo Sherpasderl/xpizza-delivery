@@ -7,7 +7,9 @@
 //   node tools/membership-admin.js --project <id> reconcile [--apply]   ← member_of vs the forward rosters; --apply repairs the INDEX only
 //   node tools/membership-admin.js --project <id> compare               ← old vs new decisions + lists; refuses (exit 6) on any difference
 //   node tools/membership-admin.js --project <id> rules-fixture <out.json>   ← the census-shaped fixture for test:membership-cutover-rules (no orders / customer data)
-//   node tools/membership-admin.js --project <id> transfer-owner <brandId> <uid> [--apply]  ← the ONLY way to change a brand's single owner
+//   node tools/membership-admin.js --project <id> transfer-owner <brandId> <uid> --name="…" [--apply]  ← the ONLY way to change a brand's single owner
+//   node tools/membership-admin.js --project <id> set-owner-name <brandId> <uid> --name="…" [--apply]  ← name the CURRENT owner (cutover)
+//   node tools/membership-admin.js --project <id> owner-names            ← READ-BACK: exits 5 while any owner lacks a profile name
 //
 // The runbook (PLAN §7): freeze on → census → backfill → reconcile → compare → deploy → rules verify → smoke → owner acceptance → freeze off.
 // --project must be the explicit flag: an inherited GOOGLE_CLOUD_PROJECT is refused. RTDB only. No brand literal: everything is read.
@@ -28,6 +30,7 @@ admin.initializeApp({ projectId: PROJECT_ID, databaseURL: RTDB_URL });
   console.log(`membership-admin — project ${PROJECT_ID}`);
   const code = await runMembershipAdmin({ db: admin.database(), op, args: opArgs, apply: args.includes('--apply'), operator: os.userInfo().username || 'operator',
     now: () => Date.now(), log: (l) => console.log(l), writeFile: (p, d) => fs.writeFileSync(p, d),
-    getUser: (uid) => admin.auth().getUser(uid) });   // backfill: password_set only for a VERIFIED email (codex plan r3)
+    getUser: (uid) => admin.auth().getUser(uid),
+    name: (args.find((a) => a.startsWith('--name=')) || '').slice('--name='.length) || null });   // owner ruling: --name required for owner ops   // backfill: password_set only for a VERIFIED email (codex plan r3)
   process.exit(code);
 })().catch((e) => { console.error('membership-admin FAILED:', e && e.message); process.exit(1); });

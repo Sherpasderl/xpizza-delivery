@@ -2,6 +2,11 @@
  "files": [
   "DESIGN.md",
   "PRODUCT.md",
+  "aceptar-boot.js",
+  "aceptar.css",
+  "aceptar.html",
+  "aceptar.js",
+  "aceptar.test.mjs",
   "api-assert-live.test.mjs",
   "api.js",
   "api.test.mjs",
@@ -44,6 +49,14 @@
   "PRODUCT.md": {
    "sha256": "0ed62e18511ebfce83552da61da7909334cc699f586725e3cc59a5eafe048739",
    "bytes": 4451
+  },
+  "aceptar.css": {
+   "sha256": "c5df89a31e488e51996092bffc2314381b65f40620e15f6d9bf252b9f0568b66",
+   "bytes": 5852
+  },
+  "aceptar.html": {
+   "sha256": "61969eab310869f106e327c6c807f696d6f3fd0a365575ad19be2987b810c9d0",
+   "bytes": 5819
   },
   "index.html": {
    "sha256": "f8125429518f9b94afbe35bc7665d2e34aeadf5c39be7904620104f1a67ed419",

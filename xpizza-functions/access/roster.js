@@ -23,12 +23,12 @@ const { resolveLocation, isUid } = require('./membership');
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const clone = (v) => JSON.parse(JSON.stringify(v));
-const OPS = Object.freeze(['bootstrap_owner', 'transfer_owner', 'grant_manager', 'revoke_manager', 'set_manager_perms', 'update_manager', 'set_invite_current', 'clear_invite_current']);
+const OPS = Object.freeze(['bootstrap_owner', 'transfer_owner', 'set_owner_profile', 'grant_manager', 'revoke_manager', 'set_manager_perms', 'update_manager', 'set_invite_current', 'clear_invite_current']);
 const EMAIL_KEY_RE = /^[0-9a-f]{64}$/;
 const INVITE_OPS = Object.freeze(['set_invite_current', 'clear_invite_current']);   // built by invites.js only (owner actor)
 // What the team cores (the portal) may ever ask for. bootstrap_owner / transfer_owner are platform CLI only and NOT here.
 const CALLABLE_OPS = Object.freeze(['grant_manager', 'revoke_manager', 'set_manager_perms', 'update_manager']);
-const CLI_ONLY_OPS = Object.freeze(['bootstrap_owner', 'transfer_owner']);
+const CLI_ONLY_OPS = Object.freeze(['bootstrap_owner', 'transfer_owner', 'set_owner_profile']);
 const INVITE_ID_RE = /^[A-Za-z0-9_-]{22,64}$/;
 const MAX_BRANCHES = 50;
 // a member's display profile {name, email} (PLAN-portal-team-invites G1): written ONLY from an accepted invite, inside the grant
@@ -49,7 +49,11 @@ async function validateTarget(db, brandId, op) {
   if (op.inviteId !== undefined && !INVITE_ID_RE.test(String(op.inviteId))) return fail('bad_invite');
   const rec = (await db.ref(`brands/${brandId}`).once('value')).val();
   if (!rec || !F1.validateBrand(brandId, rec).ok) return fail('brand_invalid');
-  if (op.profile !== undefined && (op.type !== 'grant_manager' || !op.inviteId || !isProfile(op.profile))) return fail('bad_profile');
+  // a profile rides ONLY on an accepted invite's grant, a transfer, or the CLI's set_owner_profile (owner ruling 2026-10-20: the
+  // owner's NAME is required — «{Dueño} te invitó…»); transfer / set_owner_profile REQUIRE it
+  if (op.profile !== undefined && !((op.type === 'grant_manager' && op.inviteId) || op.type === 'bootstrap_owner' || op.type === 'transfer_owner' || op.type === 'set_owner_profile')) return fail('bad_profile');
+  if (op.profile !== undefined && !isProfile(op.profile)) return fail('bad_profile');
+  if ((op.type === 'bootstrap_owner' || op.type === 'transfer_owner' || op.type === 'set_owner_profile') && op.profile === undefined) return fail('bad_profile');   // every ownership grant carries the owner's name (codex T-c build r1)
   if (op.type === 'update_manager') {   // the owner's «Editar»: the FULL new branch set + the menu permission, one transaction
     if (!Array.isArray(op.rids) || !op.rids.length || op.rids.length > MAX_BRANCHES || new Set(op.rids).size !== op.rids.length) return fail('bad_rids');
     if (typeof op.can_edit_menu !== 'boolean') return fail('bad_perms');
@@ -101,14 +105,19 @@ function applyOp(cur, actor, op, now) {
     case 'bootstrap_owner': {
       const cur0 = Object.keys(owners);
       if (cur0.length) return cur0.length === 1 && cur0[0] === op.uid ? { outcome: 'noop' } : { code: 'roster_not_empty' };
-      owners[op.uid] = { granted_at: now, granted_by: by }; changed = true; break;
+      owners[op.uid] = { granted_at: now, granted_by: by }; profiles[op.uid] = { name: op.profile.name, email: op.profile.email }; changed = true; break;
     }
     case 'transfer_owner': {
       const cur0 = Object.keys(owners);
       if (cur0.length === 1 && cur0[0] === op.uid) return { outcome: 'noop' };
       touched.prevOwner = cur0.length === 1 ? cur0[0] : null;
-      for (const k of cur0) delete owners[k];
-      owners[op.uid] = { granted_at: now, granted_by: by }; changed = true; break;
+      for (const k of cur0) { delete owners[k]; if (k !== op.uid && !Object.values(managers).some((m) => isObj(m) && isObj(m[k]))) delete profiles[k]; }
+      owners[op.uid] = { granted_at: now, granted_by: by }; profiles[op.uid] = { name: op.profile.name, email: op.profile.email }; changed = true; break;
+    }
+    case 'set_owner_profile': {   // the CLI names the CURRENT owner (cutover backfill / correction); same txn as the roster
+      if (!isObj(owners[op.uid])) return { code: 'not_owner' };
+      if (JSON.stringify(profiles[op.uid]) !== JSON.stringify(op.profile)) { profiles[op.uid] = { name: op.profile.name, email: op.profile.email }; changed = true; }
+      break;
     }
     case 'grant_manager':
       for (const rid of op.rids) {
@@ -128,7 +137,7 @@ function applyOp(cur, actor, op, now) {
       // no branch left → the per-manager setting goes too (a later invite seeds a fresh one)
       if (!Object.values(managers).some((m) => isObj(m) && isObj(m[op.uid]))) {
         if (isObj(perms[op.uid])) { delete perms[op.uid]; changed = true; }
-        if (isObj(profiles[op.uid])) { delete profiles[op.uid]; changed = true; }   // the profile leaves with the last branch
+        if (isObj(profiles[op.uid]) && !isObj(owners[op.uid])) { delete profiles[op.uid]; changed = true; }   // the profile leaves with the last branch — unless the uid still OWNS the brand
       }
       break;
     case 'update_manager': {
