@@ -2,7 +2,12 @@
 // PLAN-portal-membership r3 §5.1 + OWNER DECISIONS (2026-10-19) — the ONE membership writer.
 //   ONE owner per brand (no co-owners). The owner is set by the cutover's bootstrap_owner and changed only by the platform's
 //   transfer_owner — both CLI-only. The owner invites «Gerente de sucursal» users (one or more branches each; several managers
-//   per branch allowed), revokes them, and toggles their «Puede editar el menú y los precios» (can_edit_menu on the grant).
+//   per branch allowed), revokes them, and toggles their «Puede editar el menú y los precios» — ONE per-manager setting at
+//   brand_members/{b}/manager_perms/{uid} (codex build r1 P2-3: never per branch; an acceptance applies the CURRENT setting,
+//   the invite's value only seeds a manager who has none).
+// SUPERSESSION (codex build r1 P1-2): brand_members/{b}/invites_current/{sha256(email)} names the ONE current invite for that
+//   email; creating / reissuing an invite moves it, and an invite grant applies only while it is current — checked INSIDE the
+//   same transaction as the grant, so a superseded invite can never (re)grant.
 // Every write (CLI, the team cores, invite acceptance) is ONE transaction on brand_members/{brandId}:
 //   - the actor's authority is re-validated INSIDE the transaction (the brand's owner for team ops; the CLI operator trusted);
 //   - an invite's application marker invite_applied/{inviteId} is read INSIDE every grant transaction: present → NO mutation
@@ -18,7 +23,9 @@ const { resolveLocation, isUid } = require('./membership');
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const clone = (v) => JSON.parse(JSON.stringify(v));
-const OPS = Object.freeze(['bootstrap_owner', 'transfer_owner', 'grant_manager', 'revoke_manager', 'set_manager_perms']);
+const OPS = Object.freeze(['bootstrap_owner', 'transfer_owner', 'grant_manager', 'revoke_manager', 'set_manager_perms', 'set_invite_current', 'clear_invite_current']);
+const EMAIL_KEY_RE = /^[0-9a-f]{64}$/;
+const INVITE_OPS = Object.freeze(['set_invite_current', 'clear_invite_current']);   // built by invites.js only (owner actor)
 // What the team cores (the portal) may ever ask for. bootstrap_owner / transfer_owner are platform CLI only and NOT here.
 const CALLABLE_OPS = Object.freeze(['grant_manager', 'revoke_manager', 'set_manager_perms']);
 const CLI_ONLY_OPS = Object.freeze(['bootstrap_owner', 'transfer_owner']);
@@ -31,7 +38,10 @@ const fail = (code) => ({ ok: false, code });
 async function validateTarget(db, brandId, op) {
   if (!F1.isBrandId(brandId)) return fail('bad_brand');
   if (!OPS.includes(op.type)) return fail('bad_op');
-  if (!isUid(op.uid)) return fail('bad_uid');
+  if (INVITE_OPS.includes(op.type)) {
+    if (!EMAIL_KEY_RE.test(String(op.emailKey)) || !INVITE_ID_RE.test(String(op.inviteId))) return fail('bad_invite');
+  } else if (!isUid(op.uid)) return fail('bad_uid');
+  if (op.type === 'grant_manager' && op.inviteId !== undefined && !EMAIL_KEY_RE.test(String(op.emailKey))) return fail('bad_invite');
   if (op.inviteId !== undefined && !INVITE_ID_RE.test(String(op.inviteId))) return fail('bad_invite');
   const rec = (await db.ref(`brands/${brandId}`).once('value')).val();
   if (!rec || !F1.validateBrand(brandId, rec).ok) return fail('brand_invalid');
@@ -53,10 +63,15 @@ function applyOp(cur, actor, op, now) {
   const r = isObj(cur) ? clone(cur) : {};
   const owners = isObj(r.owners) ? r.owners : {};
   const managers = isObj(r.managers) ? r.managers : {};
+  const perms = isObj(r.manager_perms) ? r.manager_perms : {};
+  const current = isObj(r.invites_current) ? r.invites_current : {};
   if (actor.kind !== 'owner' && actor.kind !== 'cli') return { code: 'forbidden' };
   if (actor.kind === 'owner' && !isObj(owners[actor.uid])) return { code: 'forbidden' };
   if (actor.kind !== 'cli' && CLI_ONLY_OPS.includes(op.type)) return { code: 'forbidden' };
-  if (op.inviteId && isObj(r.invite_applied) && r.invite_applied[op.inviteId]) return { outcome: 'already_applied' };
+  if (op.type === 'grant_manager' && op.inviteId) {
+    if (isObj(r.invite_applied) && r.invite_applied[op.inviteId]) return { outcome: 'already_applied' };
+    if (current[op.emailKey] !== op.inviteId) return { code: 'superseded' };   // only the CURRENT invite for that email grants
+  }
   const by = actor.kind === 'cli' ? `cli:${actor.operator}` : actor.uid;
   let changed = false; const touched = { added: [], removed: [], prevOwner: null };
   switch (op.type) {
@@ -75,9 +90,10 @@ function applyOp(cur, actor, op, now) {
     case 'grant_manager':
       for (const rid of op.rids) {
         const m = isObj(managers[rid]) ? managers[rid] : {};
-        const want = { granted_at: now, granted_by: by, can_edit_menu: op.can_edit_menu === true };
-        if (!isObj(m[op.uid])) { m[op.uid] = want; managers[rid] = m; touched.added.push(rid); changed = true; }
+        if (!isObj(m[op.uid])) { m[op.uid] = { granted_at: now, granted_by: by }; managers[rid] = m; touched.added.push(rid); changed = true; }
       }
+      // ONE per-manager setting: an existing one is the CURRENT owner decision and wins; the op's value only seeds a new manager
+      if (!isObj(perms[op.uid])) { perms[op.uid] = { can_edit_menu: op.can_edit_menu === true }; changed = true; }
       break;
     case 'revoke_manager':
       for (const rid of Object.keys(managers)) {
@@ -85,21 +101,23 @@ function applyOp(cur, actor, op, now) {
         const m = isObj(managers[rid]) ? managers[rid] : {};
         if (isObj(m[op.uid])) { delete m[op.uid]; touched.removed.push(rid); changed = true; if (Object.keys(m).length) managers[rid] = m; else delete managers[rid]; }
       }
+      // no branch left → the per-manager setting goes too (a later invite seeds a fresh one)
+      if (!Object.values(managers).some((m) => isObj(m) && isObj(m[op.uid])) && isObj(perms[op.uid])) { delete perms[op.uid]; changed = true; }
       break;
     case 'set_manager_perms': {
-      let any = false;
-      for (const rid of Object.keys(managers)) {
-        const g = isObj(managers[rid]) ? managers[rid][op.uid] : undefined;
-        if (!isObj(g)) continue;
-        any = true;
-        if (g.can_edit_menu !== op.can_edit_menu) { g.can_edit_menu = op.can_edit_menu; changed = true; }
-      }
-      if (!any) return { code: 'not_a_manager' };
+      if (!Object.values(managers).some((m) => isObj(m) && isObj(m[op.uid]))) return { code: 'not_a_manager' };
+      if (!isObj(perms[op.uid]) || perms[op.uid].can_edit_menu !== op.can_edit_menu) { perms[op.uid] = { can_edit_menu: op.can_edit_menu }; changed = true; }
       break;
     }
+    case 'set_invite_current':   // a new / reissued invite becomes THE current one for that email (any predecessor is superseded)
+      if (current[op.emailKey] !== op.inviteId) { current[op.emailKey] = op.inviteId; changed = true; }
+      break;
+    case 'clear_invite_current':   // a cancel: only if it is still the current one
+      if (current[op.emailKey] === op.inviteId) { delete current[op.emailKey]; changed = true; }
+      break;
     default: return { code: 'bad_op' };
   }
-  if (op.inviteId) {   // the application marker lands in the SAME transaction as the grant (kept forever)
+  if (op.type === 'grant_manager' && op.inviteId) {   // the application marker lands in the SAME transaction as the grant (kept forever)
     r.invite_applied = isObj(r.invite_applied) ? r.invite_applied : {};
     r.invite_applied[op.inviteId] = { uid: op.uid, at: now };
     changed = true;
@@ -108,6 +126,8 @@ function applyOp(cur, actor, op, now) {
   if (Object.keys(owners).length !== 1) return { code: 'owner_count' };   // exactly ONE owner, always
   r.owners = owners;
   if (Object.keys(managers).length) r.managers = managers; else delete r.managers;
+  if (Object.keys(perms).length) r.manager_perms = perms; else delete r.manager_perms;
+  if (Object.keys(current).length) r.invites_current = current; else delete r.invites_current;
   return { next: r, outcome: 'applied', touched };
 }
 
@@ -149,4 +169,4 @@ async function mutateRoster(deps, brandId, actor, op) {
   return { ok: true, outcome: res.outcome };
 }
 
-module.exports = { mutateRoster, applyOp, validateTarget, indexUpdate, OPS, CALLABLE_OPS, CLI_ONLY_OPS, INVITE_ID_RE, MAX_BRANCHES };
+module.exports = { mutateRoster, applyOp, validateTarget, indexUpdate, OPS, CALLABLE_OPS, CLI_ONLY_OPS, INVITE_OPS, INVITE_ID_RE, EMAIL_KEY_RE, MAX_BRANCHES };

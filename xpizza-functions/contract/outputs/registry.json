@@ -1366,6 +1366,9 @@
   "xpizza-functions/stats/stats-api.js#getSalesStatsCore@xpizza-functions/portal/functions.js#getSalesStats": {
    "status": "pending"
   },
+  "xpizza-functions/stats/stats-api.js#getSalesStatsCore@xpizza-functions/access/membership-admin-core.js#operationResults>anon": {
+   "status": "pending"
+  },
   "xpizza-functions/stats/stats-api.js#orderRow@xpizza-functions/stats/stats-api.js#ordersCsv>anon": {
    "status": "pending"
   },

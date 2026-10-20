@@ -71,7 +71,8 @@ test('«Puede editar el menú y los precios»: a toggle on the manager\'s grant,
   const before = await resolveAccess({ db }, { uid: 'mgr010', token: {} }, 'tb_centro');
   assert.ok(!before.caps.includes('catalog.edit') && before.caps.includes('availability.set'), 'off by default');
   assert.deepStrictEqual(await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'set_manager_perms', uid: 'mgr010', can_edit_menu: true }), { ok: true, outcome: 'applied' });
-  assert.strictEqual(db.get('brand_members/tb/managers/tb_sur/mgr010/can_edit_menu'), true, 'all of the manager\'s branches');
+  assert.deepStrictEqual(db.get('brand_members/tb/manager_perms/mgr010'), { can_edit_menu: true }, 'ONE per-manager setting (not per branch)');
+  assert.strictEqual(db.get('brand_members/tb/managers/tb_sur/mgr010/can_edit_menu'), null, 'the branch grant carries no copy');
   const after = await resolveAccess({ db }, { uid: 'mgr010', token: {} }, 'tb_centro');
   for (const c of ['catalog.read_editor', 'catalog.edit', 'catalog.add_product', 'catalog.reset_draft', 'catalog.publish']) assert.ok(after.caps.includes(c), c);
   assert.ok(!after.caps.includes('catalog.fiscal_ack'), '🔴 the fiscal acknowledgement stays OWNER-only');
@@ -103,7 +104,9 @@ test('member_of failure after commit is swallowed (reconcile repairs it); the gr
 
 test('invite marker is checked INSIDE every grant: overlapping recoveries + a revoke between them → no re-grant', async () => {
   const db = createFakeDb(base());
-  const op = { type: 'grant_manager', uid: 'mgr040', rids: ['tb_centro'], inviteId: 'inviteAAAAAAAAAAAAAAAAAAAA' };
+  const K = I.emailKey('mgr040@m.hn');
+  await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'set_invite_current', emailKey: K, inviteId: 'inviteAAAAAAAAAAAAAAAAAAAA' });
+  const op = { type: 'grant_manager', uid: 'mgr040', rids: ['tb_centro'], inviteId: 'inviteAAAAAAAAAAAAAAAAAAAA', emailKey: K };
   assert.deepStrictEqual(await R.mutateRoster(deps(db), 'tb', owner('ownerA'), op), { ok: true, outcome: 'applied' }, 'recovery 1 applies');
   await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'revoke_manager', uid: 'mgr040' });
   assert.deepStrictEqual(await R.mutateRoster(deps(db), 'tb', owner('ownerA'), op), { ok: true, outcome: 'already_applied' }, 'recovery 2 (read "absent" earlier) runs now');
@@ -122,7 +125,7 @@ test('invites: owner-only, «Gerente de sucursal» with branches + toggle, bound
   assert.deepStrictEqual(db.get(`member_invites/${c.inviteId}/rids`), ['tb_centro', 'tb_sur']);
   assert.deepStrictEqual(await I.acceptInvite(d, acc('newMgr1', { customer: true }), c.inviteId), { ok: false, code: 'forbidden' });
   assert.deepStrictEqual(await I.acceptInvite(d, acc('newMgr1'), c.inviteId), { ok: true, outcome: 'granted' });
-  assert.strictEqual(db.get('brand_members/tb/managers/tb_sur/newMgr1/can_edit_menu'), true, 'the toggle rides on the invite');
+  assert.deepStrictEqual(db.get('brand_members/tb/manager_perms/newMgr1'), { can_edit_menu: true }, 'the invite seeds the new manager\'s setting');
   assert.deepStrictEqual(await I.acceptInvite(d, acc('newMgr1'), c.inviteId), { ok: true, outcome: 'consumed' });
   assert.deepStrictEqual(await I.acceptInvite(d, acc('otherU1'), c.inviteId), { ok: false, code: 'email_mismatch' }, 'another account never reaches the invite');
   // RECIPIENT BINDING (email invites): another verified mailbox, or an unverified token, cannot accept — the invite stays open
@@ -142,7 +145,7 @@ test('invites: crash → revoke → retry never re-grants; in-flight retry → p
   const c = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'], email: mail('mgrX01') });
   db.put(`member_invites/${c.inviteId}/state`, 'consuming');
   db.put(`member_invites/${c.inviteId}/consuming`, { by: 'mgrX01', at: clock });
-  await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'grant_manager', uid: 'mgrX01', rids: ['tb_centro'], inviteId: c.inviteId });
+  await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'grant_manager', uid: 'mgrX01', rids: ['tb_centro'], inviteId: c.inviteId, emailKey: I.emailKey(mail('mgrX01')) });
   assert.deepStrictEqual(await I.acceptInvite(d, acc('mgrX01'), c.inviteId), { ok: false, code: 'pending' }, 'inside the in-flight window');
   await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'revoke_manager', uid: 'mgrX01' });
   clock += I.INFLIGHT_MS + 1;
@@ -190,4 +193,60 @@ test('team-core: every write refuses while membership_writes_enabled is OFF (the
   assert.deepStrictEqual(await T.teamRevoke(d, own, { brandId: 'tb', uid: 'mgrT001', rid: 'tb_sur' }), { ok: true, outcome: 'applied' });
   assert.deepStrictEqual(await T.teamList(d, { uid: 'mgrT001', token: {} }, { brandId: 'tb' }), { ok: false, code: 'forbidden' });
   assert.deepStrictEqual(await T.teamList(d, { uid: 'ownerA', token: { handheld: true } }, { brandId: 'tb' }), { ok: false, code: 'forbidden' });
+});
+
+test('SUPERSESSION (codex build r1 P1-2): A, then B for the same email; accept B; revoke; accept A → refused (A is not current)', async () => {
+  const db = createFakeDb(base());
+  const d = { ...deps(db), randomToken };
+  const A = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'], email: mail('mgrS01') });
+  const B = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro', 'tb_sur'], email: mail('mgrS01') });
+  assert.strictEqual(db.get(`member_invites/${A.inviteId}/state`), 'superseded', 'the predecessor is marked superseded');
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('mgrS01'), B.inviteId), { ok: true, outcome: 'granted' });
+  await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'revoke_manager', uid: 'mgrS01' });
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('mgrS01'), A.inviteId), { ok: false, code: 'superseded' });
+  assert.strictEqual(db.get('brand_members/tb/managers'), null, '🔴 the revoked manager is not re-granted by an older invite');
+  // even if A's record were still "open" (a lost state write), the roster pointer refuses it inside the grant transaction
+  const A2 = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'], email: mail('mgrS02') });
+  await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'], email: mail('mgrS02') });
+  db.put(`member_invites/${A2.inviteId}/state`, 'open');
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('mgrS02'), A2.inviteId), { ok: false, code: 'superseded' });
+  assert.strictEqual(db.get(`member_invites/${A2.inviteId}/state`), 'superseded');
+});
+
+test('reissue: a fresh link for the same scope; the old link is superseded; cancel clears the current pointer', async () => {
+  const db = createFakeDb(base());
+  const d = { ...deps(db), randomToken };
+  const A = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_sur'], email: mail('mgrR01'), can_edit_menu: true });
+  assert.deepStrictEqual(await I.reissueInvite(d, { uid: 'nobody1', token: {} }, A.inviteId), { ok: false, code: 'forbidden' });
+  const B = await I.reissueInvite(d, { uid: 'ownerA', token: {} }, A.inviteId);
+  assert.ok(B.ok && B.inviteId !== A.inviteId);
+  assert.deepStrictEqual([db.get(`member_invites/${A.inviteId}/state`), db.get(`member_invites/${B.inviteId}/rids`), db.get(`member_invites/${B.inviteId}/can_edit_menu`)], ['superseded', ['tb_sur'], true]);
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('mgrR01'), A.inviteId), { ok: false, code: 'superseded' });
+  assert.deepStrictEqual(await I.cancelInvite(d, { uid: 'ownerA', token: {} }, B.inviteId), { ok: true });
+  assert.strictEqual(db.get(`brand_members/tb/invites_current/${I.emailKey(mail('mgrR01'))}`), null, 'a cancel clears the pointer');
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('mgrR01'), B.inviteId), { ok: false, code: 'cancelled' });
+});
+
+test('PER-MANAGER permission (codex build r1 P2-3): branches never diverge; an invite cannot re-enable what the owner disabled', async () => {
+  const db = createFakeDb(base());
+  const d = { ...deps(db), randomToken };
+  const T = require('./team-core');
+  db.put('platform_config/membership_writes_enabled', true);
+  // branch A with the toggle OFF; then an invite to branch B with it ON → the CURRENT (off) setting stands for BOTH branches
+  await grantMgr(db, 'mgrP01', ['tb_centro'], { can_edit_menu: false });
+  const inv = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_sur'], email: mail('mgrP01'), can_edit_menu: true });
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('mgrP01'), inv.inviteId), { ok: true, outcome: 'granted' });
+  for (const rid of ['tb_centro', 'tb_sur']) assert.ok(!(await resolveAccess({ db }, acc('mgrP01'), rid)).caps.includes('catalog.edit'), `${rid}: off`);
+  // the owner turns it ON → both branches; then OFF; a pending invite (created while ON) cannot turn it back on
+  await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'set_manager_perms', uid: 'mgrP01', can_edit_menu: true });
+  for (const rid of ['tb_centro', 'tb_sur']) assert.ok((await resolveAccess({ db }, acc('mgrP01'), rid)).caps.includes('catalog.edit'), `${rid}: on`);
+  await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'revoke_manager', uid: 'mgrP01', rid: 'tb_sur' });
+  const pending = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_sur'], email: mail('mgrP01'), can_edit_menu: true });
+  await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'set_manager_perms', uid: 'mgrP01', can_edit_menu: false });
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('mgrP01'), pending.inviteId), { ok: true, outcome: 'granted' });
+  assert.deepStrictEqual(db.get('brand_members/tb/manager_perms/mgrP01'), { can_edit_menu: false }, 'acceptance applies the CURRENT setting');
+  assert.deepStrictEqual((await T.teamList(d, { uid: 'ownerA', token: {} }, { brandId: 'tb' })).managers.mgrP01, { rids: ['tb_centro', 'tb_sur'], can_edit_menu: false }, 'teamList: the one real value');
+  // losing the last branch drops the setting; a new invite seeds a fresh one
+  await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'revoke_manager', uid: 'mgrP01' });
+  assert.strictEqual(db.get('brand_members/tb/manager_perms/mgrP01'), null);
 });

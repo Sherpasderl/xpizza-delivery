@@ -99,3 +99,30 @@ test('transfer-owner: the ONLY way to change a brand\'s single owner — CLI, dr
   assert.deepStrictEqual(Object.keys(db.get('brand_members/x_pizza/owners')), ['newOwner1'], 'replaced — still exactly one owner');
   assert.strictEqual(db.get('member_of/ownerP1/brands/x_pizza'), null);
 });
+
+test('compare REFUSES (exit 3) when the census is not clean — e.g. a legacy manager appears after the backfill (codex build r1 P2-5)', async () => {
+  const db = createFakeDb(prod());
+  await run(db, 'backfill', true);
+  db.put('restaurants/la_musa/managers/mgrLegacy1', true);
+  assert.strictEqual((await run(db, 'census')).code, 3);
+  assert.strictEqual((await run(db, 'compare')).code, 3, 'compare refuses before comparing anything');
+});
+
+test('compare runs the ACTUAL operations (codex build r1 P2-6): outcomes are role-distinct, and identical old vs new on the prod shape', async () => {
+  const db = createFakeDb(prod());
+  await run(db, 'backfill', true);
+  const { authorizeCatalogEdit } = require('../catalog/catalog-edit-auth');
+  const L = require('./legacy-readers');
+  const owner = await C.operationResults(db, 'ownerP1', 'x_pizza', authorizeCatalogEdit);
+  const disp = await C.operationResults(db, 'dispatch01', 'x_pizza', authorizeCatalogEdit);
+  const none = await C.operationResults(db, 'nobody0001', 'x_pizza', authorizeCatalogEdit);
+  assert.notDeepStrictEqual(owner.getEditableCatalog, disp.getEditableCatalog, 'non-vacuous: the owner passes the editor gate, a dispatcher does not');
+  assert.deepStrictEqual(disp.getEditableCatalog, { status: 403, error: 'not_owner' });
+  assert.deepStrictEqual(owner.fiscalPublish_noAck.body.error, 'fiscal_ack_required', 'x_pizza: the owner still needs the ack');
+  assert.deepStrictEqual(owner.fiscalPublish_ack, null, 'the owner with the ack passes the fiscal gate');
+  assert.deepStrictEqual(disp.fiscalPublish_ack.body.error, 'not_owner', 'a dispatcher never passes it');
+  assert.deepStrictEqual(none.editCatalog, { status: 403, error: 'not_authorized' });
+  for (const [u, r] of [['ownerP1', 'x_pizza'], ['ownerP1', 'la_musa'], ['dispatch01', 'la_musa'], ['kitchenA1', 'x_pizza']]) {
+    assert.deepStrictEqual(await C.operationResults(db, u, r, authorizeCatalogEdit), await C.operationResults(db, u, r, L.authorizeCatalogEditLegacy), `${u}@${r}: old === new`);
+  }
+});

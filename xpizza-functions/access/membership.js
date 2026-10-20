@@ -17,7 +17,8 @@
 const F1 = require('../brands/brand-model');
 
 // columns: owner (member location) · owner_retired · manager («Gerente de sucursal», member location) · manager_menu (a
-// manager whose grant carries can_edit_menu: «Puede editar el menú y los precios», toggled by the owner) · dispatcher · staff.
+// manager whose per-manager setting brand_members/{b}/manager_perms/{uid}.can_edit_menu is on: «Puede editar el menú y los
+// precios», toggled by the owner) · dispatcher · staff.
 // Dispatcher and staff columns reproduce TODAY's behaviour exactly (they never depended on the brand record).
 // FISCAL (advisor ruling): catalog.fiscal_ack stays OWNER-only — for a platform-factura brand every publish needs the owner's
 // acknowledgement, so a permitted manager edits and saves a draft and the owner confirms the publish; elsewhere a permitted
@@ -37,6 +38,8 @@ const CAPABILITIES = Object.freeze({
   'location.hours':      { owner: true, manager: true },                          // O1
   'location.prep':       { owner: true, manager: true },                          // O1
   'location.pause':      { owner: true, manager: true },                          // O1
+  'location.contact':    { owner: true, manager: true },                          // the branch WhatsApp (portal-ui, additive)
+  'location.profile':    { owner: true },                                         // branch address / zone / name (portal-ui, additive)
   'team.invite':         { owner: true },                                         // only the owner invites / revokes / sets roles
   'team.revoke':         { owner: true },
   'brand.settings':      { owner: true },
@@ -115,10 +118,12 @@ async function resolveAccess({ db }, ctx, rid) {
     const loc = await resolveLocation(db, rid);
     const known = loc.brandId !== F1.UNKNOWN;
     const grant = known ? await val(db, `brand_members/${loc.brandId}/managers/${rid}/${uid}`) : null;
+    // «Puede editar el menú y los precios» is ONE per-manager setting (codex build r1 P2-3), never per branch grant
+    const perms = grant != null ? await val(db, `brand_members/${loc.brandId}/manager_perms/${uid}`) : null;
     const facts = {
       owner: known ? (await val(db, `brand_members/${loc.brandId}/owners/${uid}`)) != null : false,
       manager: grant != null,
-      manager_menu: isObj(grant) && grant.can_edit_menu === true,
+      manager_menu: isObj(perms) && perms.can_edit_menu === true,
       dispatcher: (await val(db, `dispatchers/${uid}`)) != null,
       staff: typeof rid === 'string' && rid ? (await val(db, `restaurants/${rid}/kitchen_staff/${uid}`)) != null : false,
     };
@@ -162,8 +167,9 @@ async function myLocations({ db, onStale = () => {} }, ctx) {
     if (grant == null) { onStale({ kind: 'stale_manager', id: rid }); continue; }
     if (out.has(rid)) continue;                       // owner already lists it (dedup; owner wins)
     if (loc.state !== 'member') continue;             // a manager of a retired location has no capability there
+    const perms = await val(db, `brand_members/${loc.brandId}/manager_perms/${uid}`);
     out.set(rid, { rid, brand_id: loc.brandId, role: 'manager', state: loc.state,
-      caps: capsFor({ manager: true, manager_menu: isObj(grant) && grant.can_edit_menu === true }, loc.state) });
+      caps: capsFor({ manager: true, manager_menu: isObj(perms) && perms.can_edit_menu === true }, loc.state) });
   }
   return [...out.values()].sort((a, z) => (a.rid < z.rid ? -1 : a.rid > z.rid ? 1 : 0));
 }

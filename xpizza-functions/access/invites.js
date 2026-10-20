@@ -20,11 +20,12 @@
 // RECOVERY (a crash between steps): a retry by the same uid of a `consuming` invite — inside the in-flight window
 // (< INFLIGHT_MS since consuming.at) → explicit `pending`; otherwise the marker decides: present → consumed, no roster
 // touch; absent → expiry re-checked, then step 2.
+const crypto = require('crypto');
 const F1 = require('../brands/brand-model');
 const { refuseContext, isUid, resolveLocation } = require('./membership');
 const { mutateRoster, INVITE_ID_RE, MAX_BRANCHES } = require('./roster');
 
-const TTL_MS = 72 * 3600 * 1000;
+const TTL_MS = 7 * 24 * 3600 * 1000;   // advisor ruling: single-use + 7-day expiry + owner revoke (the email-link mitigation)
 const INFLIGHT_MS = 30 * 1000;
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const normEmail = (e) => (typeof e === 'string' ? e.trim().toLowerCase() : '');
@@ -32,6 +33,8 @@ const EMAIL_RE = /^[^@\s]{1,64}@[^@\s]{1,189}\.[^@\s.]{2,}$/;
 // the acceptor's verified email, or null — never a claim the client could write itself (Firebase sets both from the email link)
 const verifiedEmail = (ctx) => (ctx && ctx.token && ctx.token.email_verified === true && typeof ctx.token.email === 'string' ? normEmail(ctx.token.email) : null);
 const fail = (code) => ({ ok: false, code });
+// the supersession key: one CURRENT invite per (brand, email) — sha256 so the roster node never stores the address itself
+const emailKey = (email) => crypto.createHash('sha256').update(normEmail(email)).digest('hex');
 const val = async (db, p) => (await db.ref(p).once('value')).val();
 
 async function isOwner(db, brandId, uid) { return isObj(await val(db, `brand_members/${brandId}/owners/${uid}`)); }
@@ -58,6 +61,12 @@ async function createInvite(deps, ctx, { brandId, rids, can_edit_menu = false, e
     const at = now();
     const inv = { kind: 'manager', brandId, rids: [...rids].sort(), can_edit_menu, email: to, invited_by: ctx.uid, created_at: at, expires_at: at + TTL_MS, state: 'open' };
     await db.ref(`member_invites/${id}`).set(inv);
+    // SUPERSESSION (codex build r1 P1-2): this invite becomes THE current one for that email — any predecessor stops granting
+    const key = emailKey(to);
+    const prev = await val(db, `brand_members/${brandId}/invites_current/${key}`);
+    const cur = await mutateRoster({ db, now }, brandId, { kind: 'owner', uid: ctx.uid }, { type: 'set_invite_current', emailKey: key, inviteId: id });
+    if (!cur.ok) { await setState(db, id, ['open'], 'cancelled'); return fail(cur.code); }
+    if (typeof prev === 'string' && prev !== id && INVITE_ID_RE.test(prev)) { try { await setState(db, prev, ['open'], 'superseded'); } catch (_) { /* the pointer is authoritative */ } }
     return { ok: true, inviteId: id, expires_at: inv.expires_at, email: to };
   } catch (_) { return fail('unavailable'); }
 }
@@ -72,8 +81,24 @@ async function cancelInvite(deps, ctx, inviteId) {
     if (!(await isOwner(db, inv.brandId, ctx.uid))) return fail('forbidden');
     let st = null;
     await db.ref(`member_invites/${inviteId}/state`).transaction((cur) => { st = cur; if (cur === 'open') return 'cancelled'; return cur === null ? null : undefined; });
-    return st === 'open' ? { ok: true } : fail(`not_open:${st}`);
+    if (st !== 'open') return fail(`not_open:${st}`);
+    await mutateRoster({ db }, inv.brandId, { kind: 'owner', uid: ctx.uid }, { type: 'clear_invite_current', emailKey: emailKey(inv.email), inviteId });
+    return { ok: true };
   } catch (_) { return fail('unavailable'); }
+}
+
+// REISSUE (codex build r1 P1-2): the same scope to the same email under a NEW link; the predecessor is superseded.
+async function reissueInvite(deps, ctx, inviteId) {
+  const { db } = deps;
+  const refused = refuseContext(ctx); if (refused) return refused;
+  if (!INVITE_ID_RE.test(String(inviteId))) return fail('bad_invite');
+  let inv;
+  try { inv = await val(db, `member_invites/${inviteId}`); } catch (_) { return fail('unavailable'); }
+  if (!isObj(inv)) return fail('not_found');
+  if (inv.state === 'consumed' || inv.state === 'consuming') return fail(`not_reissuable:${inv.state}`);
+  const r = await createInvite(deps, ctx, { brandId: inv.brandId, rids: inv.rids, can_edit_menu: inv.can_edit_menu === true, email: inv.email });
+  if (r.ok) { try { await setState(db, inviteId, ['open', 'expired', 'cancelled'], 'superseded'); } catch (_) { /* the pointer is authoritative */ } }
+  return r;
 }
 
 async function setState(db, inviteId, from, to) {
@@ -127,8 +152,9 @@ async function acceptInvite(deps, ctx, inviteId) {
     }
     if (inv.kind !== 'manager' || !Array.isArray(inv.rids)) { await setState(db, inviteId, ['consuming'], 'cancelled'); return fail('invalid'); }
     const r = await mutateRoster({ db, now, log }, inv.brandId, { kind: 'owner', uid: inv.invited_by },
-      { type: 'grant_manager', uid, rids: inv.rids, can_edit_menu: inv.can_edit_menu === true, inviteId });
+      { type: 'grant_manager', uid, rids: inv.rids, can_edit_menu: inv.can_edit_menu === true, inviteId, emailKey: emailKey(inv.email) });
     if (!r.ok) {
+      if (r.code === 'superseded') { await setState(db, inviteId, ['consuming'], 'superseded'); return fail('superseded'); }   // a newer invite is current
       if (r.code === 'forbidden' || r.code === 'location_not_member' || r.code === 'brand_invalid') {
         await setState(db, inviteId, ['consuming'], 'cancelled');   // the inviter lost authority / scope gone: the invite dies
         return fail(r.code === 'forbidden' ? 'inviter_not_authorized' : r.code);
@@ -140,4 +166,4 @@ async function acceptInvite(deps, ctx, inviteId) {
   } catch (_) { return fail('unavailable'); }
 }
 
-module.exports = { createInvite, cancelInvite, acceptInvite, TTL_MS, INFLIGHT_MS };
+module.exports = { createInvite, cancelInvite, reissueInvite, acceptInvite, emailKey, TTL_MS, INFLIGHT_MS };

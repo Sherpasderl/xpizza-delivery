@@ -98,38 +98,73 @@ async function reconcile(db, { apply = false } = {}) {
   const missing = Object.keys(exp).filter((p) => have[p] !== exp[p]).sort();
   const stale = Object.keys(have).filter((p) => !(p in exp)).sort();
   if (apply && (missing.length || stale.length || malformed.length)) {
+    // codex build r1 P2-4: ONE non-overlapping replacement per affected uid — member_of/{uid} = the expected object (or null).
+    // A descendant set next to an ancestor delete (malformed member_of/{uid} + an expected entry under it) is rejected by RTDB.
+    const uidOf = (p) => p.split('/')[1];
+    const affected = new Set([...missing, ...stale, ...malformed].map(uidOf));
     const u = {};
-    for (const p of missing) u[p] = exp[p];
-    for (const p of stale) u[p] = null;
-    for (const p of malformed) u[p] = null;
+    for (const uid of affected) {
+      const want = {};
+      for (const p of Object.keys(exp)) {
+        const [, pu, kind, id] = p.split('/');
+        if (pu === uid) { want[kind] = want[kind] || {}; want[kind][id] = exp[p]; }
+      }
+      u[`member_of/${uid}`] = Object.keys(want).length ? want : null;
+    }
     await db.ref().update(u);
   }
   return { ok: !missing.length && !stale.length && !malformed.length, missing, stale, malformed };
 }
 
-// The operations whose decision must be identical (r3 §7.3). Old decisions derive from today's role / authorizeManager.
-const CATALOG_OPS = ['catalog.read_editor', 'catalog.edit', 'catalog.add_product', 'catalog.reset_draft', 'catalog.publish', 'catalog.fiscal_ack', 'stats.read'];
-const OLD_ROLE_CAPS = {
-  owner: CATALOG_OPS,
-  dispatcher: ['catalog.edit', 'catalog.publish'],
-  staff: ['catalog.edit', 'catalog.publish'],
-};
+// codex build r1 P2-6: the ACTUAL operation results, old vs new. Every core runs through the OLD front door
+// (legacy-readers.authorizeCatalogEditLegacy, reading the legacy paths) and through the NEW one (catalog-edit-auth.js, reading
+// only the new paths) with dependencies that THROW past each gate — so the outcome is exactly the gate's decision: a refusal
+// (status + error) or 'passed_gate'. The fiscal publish decision is the handler's own fiscalPublishGate (publishEditedCore itself is
+// not invoked: it statically reaches the catalog registry writers — tools/registry-writers.test — and its auth / publish-cap gate
+// is the same authorizer + can() table exercised above). Device pair / revoke /
+// list share one gate (H1 authorizeManager): the old and the new are both invoked.
+const SENTINEL = 'membership-compare-sentinel';
+const boom = () => { const e = new Error(SENTINEL); e.sentinel = true; throw e; };
+async function outcome(fn) {
+  try {
+    const r = await fn();
+    return r && typeof r.status === 'number' ? { status: r.status, error: (r.body && r.body.error) || null } : r;
+  } catch (e) { return e && e.sentinel ? 'passed_gate' : { threw: String((e && e.message) || e).slice(0, 80) }; }
+}
+async function operationResults(db, uid, rid, authorizeFn) {
+  const { getEditableCatalogCore } = require('../catalog/portal-reads');
+  const { resetDraftToLiveCore } = require('../catalog/reset-draft');
+  const { editCatalogCore } = require('../catalog/edit-catalog-handler');
+  const { fiscalPublishGate } = require('../catalog/publish-edited-handler');
+  const { getSalesStatsCore } = require('../stats/stats-api');
+  const get = (h) => (h.toLowerCase() === 'authorization' ? 'Bearer cmp' : undefined);
+  const req = { method: 'GET', query: { restaurantId: rid }, get };
+  const authorize = (r) => authorizeFn({ db, verifyIdToken: async () => ({ uid }) }, req, r);
+  const fsBoom = { collection: boom, doc: boom };
+  const out = {
+    getEditableCatalog: await outcome(() => getEditableCatalogCore({ db: {}, fsdb: fsBoom, authorize, readActiveVersionId: boom, readActiveBuilt: boom, _sourceRefOf: boom }, req)),
+    resetDraftToLive: await outcome(() => resetDraftToLiveCore({ db: fsBoom, authorize, readActiveVersionId: boom, previewVersion: boom }, { restaurantId: rid }, req)),
+    editCatalog: await outcome(() => editCatalogCore({ db: fsBoom, authorize, readActiveBuilt: boom }, { restaurantId: rid, source: 'cmp' }, req)),
+    salesStats: await outcome(() => getSalesStatsCore({ authorize, getKeyer: boom }, req)),
+  };
+  const a = await authorize(rid);
+  out.fiscalPublish_noAck = a && a.ok ? fiscalPublishGate(rid, a, {}) : 'unauthorized';
+  out.fiscalPublish_ack = a && a.ok ? fiscalPublishGate(rid, a, { fiscalAck: true }) : 'unauthorized';
+  return out;
+}
 async function compare(db, { uids, rids, newReaders }) {
+  const { authorizeCatalogEdit } = require('../catalog/catalog-edit-auth');
+  const { authorizeManager } = require('../merchant/merchant-scope');
+  const { resolveBrand } = require('../merchant/merchant-brand');
   const diffs = [];
   for (const uid of uids) {
-    const ctx = { uid, token: {} };
     for (const rid of rids) {
-      const role = await OLD.catalogRole(db, uid, rid);
-      const a = await resolveAccess({ db }, ctx, rid);
-      const newCaps = a.ok ? a.caps : [];
-      for (const op of CATALOG_OPS) {
-        const was = !!(role && OLD_ROLE_CAPS[role].includes(op));
-        const now = newCaps.includes(op);
-        if (was !== now) diffs.push({ uid, rid, op, old: was, new: now });
-      }
+      const was = await operationResults(db, uid, rid, OLD.authorizeCatalogEditLegacy);
+      const now = await operationResults(db, uid, rid, authorizeCatalogEdit);
+      for (const op of Object.keys(was)) if (JSON.stringify(was[op]) !== JSON.stringify(now[op])) diffs.push({ uid, rid, op, old: was[op], new: now[op] });
       const wasDev = await OLD.authorizeManager(db, uid, rid);
-      const nowDev = newCaps.includes('device.pair');
-      if (wasDev !== nowDev) diffs.push({ uid, rid, op: 'device.pair', old: wasDev, new: nowDev });
+      const nowDev = (await authorizeManager(db, { uid, token: {} }, rid, { resolveBrand })).ok === true;
+      if (wasDev !== nowDev) diffs.push({ uid, rid, op: 'device.pair|revoke|list', old: wasDev, new: nowDev });
     }
     const oldList = await OLD.myRestaurants(db, uid);
     const newList = await newReaders.myRestaurants(uid);
@@ -139,6 +174,19 @@ async function compare(db, { uids, rids, newReaders }) {
     if (JSON.stringify(oldLocs) !== JSON.stringify(newLocs)) diffs.push({ uid, op: 'merchantMyLocations', old: oldLocs, new: newLocs });
   }
   return { ok: diffs.length === 0, diffs };
+}
+
+// The snapshot-shaped fixture the rules-emulator comparison runs on (test/membership-cutover-rules.emulator.test.js):
+// the census population only — uids, rids, brand records and identity brand_ids. No order, no customer data.
+async function rulesFixture(db) {
+  const c = await census(db);
+  const brands = (await val(db, 'brands')) || {};
+  const rids = [...new Set([...c.owners.map((o) => o.rid), ...c.kitchen.map((k) => k.rid)])].sort();
+  const identities = {};
+  for (const rid of rids) identities[rid] = { brand_id: await val(db, `restaurants/${rid}/identity/brand_id`) };
+  return { census_ok: c.ok, owners: c.owners, dispatchers: c.dispatchers, kitchen: c.kitchen,
+    kitchen_global: Object.keys((await val(db, 'kitchen')) || {}).sort(),
+    brands: Object.fromEntries(rids.filter((r) => brands[r]).map((r) => [r, brands[r]])), identities };
 }
 
 // The new readers, as the deployed endpoints run them (cores, not re-implementations).
@@ -159,7 +207,7 @@ function makeNewReaders(db) {
   };
 }
 
-async function runMembershipAdmin({ db, op, args = [], apply, operator, now = () => Date.now(), log = console.log }) {
+async function runMembershipAdmin({ db, op, args = [], apply, operator, now = () => Date.now(), log = console.log, writeFile = null }) {
   if (op === 'census') {
     const c = await census(db);
     log(JSON.stringify({ ok: c.ok, owners: c.owners, findings: c.findings }, null, 2));
@@ -182,11 +230,21 @@ async function runMembershipAdmin({ db, op, args = [], apply, operator, now = ()
   }
   if (op === 'compare') {
     const c = await census(db);
-    const uids = [...new Set([...c.owners.map((o) => o.uid), ...c.dispatchers, ...c.kitchen.map((k) => k.uid), 'cmpNobody01'])].sort();
-    const rids = [...new Set([...c.owners.map((o) => o.rid), ...c.kitchen.map((k) => k.rid)])].sort();
+    if (!c.ok) { log(JSON.stringify({ refused: 'census_not_clean', findings: c.findings })); return 3; }   // codex build r1 P2-5
+    const bm = (await val(db, 'brand_members')) || {};
+    const managerUids = [];
+    for (const b of Object.keys(bm)) { const m = isObj(bm[b]) && isObj(bm[b].managers) ? bm[b].managers : {}; for (const rid of Object.keys(m)) managerUids.push(...Object.keys(isObj(m[rid]) ? m[rid] : {})); }
+    const uids = [...new Set([...c.owners.map((o) => o.uid), ...c.dispatchers, ...c.kitchen.map((k) => k.uid), ...managerUids, 'cmpNobody01'])].sort();
+    const rids = [...new Set([...c.owners.map((o) => o.rid), ...c.kitchen.map((k) => k.rid), ...Object.keys(bm)])].sort();
     const r = await compare(db, { uids, rids, newReaders: makeNewReaders(db) });
     log(JSON.stringify({ ok: r.ok, compared: { uids: uids.length, rids }, diffs: r.diffs }, null, 2));
     return r.ok ? 0 : 6;
+  }
+  if (op === 'rules-fixture') {   // → stdout / the CLI writes it to the path given; consumed by test:membership-cutover-rules
+    const fx = await rulesFixture(db);
+    if (!fx.census_ok) { log(JSON.stringify({ refused: 'census_not_clean' })); return 3; }
+    if (typeof writeFile === 'function' && args[0]) writeFile(args[0], `${JSON.stringify(fx, null, 1)}\n`); else log(JSON.stringify(fx));
+    return 0;
   }
   if (op === 'transfer-owner') {   // OWNER DECISION 2026-10-19: owner transfer is a PLATFORM CLI operation only
     const [brandId, uid] = args || [];
@@ -194,8 +252,8 @@ async function runMembershipAdmin({ db, op, args = [], apply, operator, now = ()
     const r = await mutateRoster({ db, now, log: (k) => log(k) }, brandId, { kind: 'cli', operator }, { type: 'transfer_owner', uid });
     log(JSON.stringify(r)); return r.ok ? 0 : 4;
   }
-  log('usage: membership-admin --project <id> census | backfill [--apply] | reconcile [--apply] | compare | transfer-owner <brandId> <uid> [--apply]');
+  log('usage: membership-admin --project <id> census | backfill [--apply] | reconcile [--apply] | compare | rules-fixture <out.json> | transfer-owner <brandId> <uid> [--apply]');
   return 2;
 }
 
-module.exports = { census, backfill, reconcile, compare, expectedIndex, makeNewReaders, runMembershipAdmin, CATALOG_OPS, OLD_ROLE_CAPS };
+module.exports = { census, backfill, reconcile, compare, operationResults, rulesFixture, expectedIndex, makeNewReaders, runMembershipAdmin };

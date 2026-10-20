@@ -7,7 +7,7 @@
 const F1 = require('../brands/brand-model');
 const { refuseContext, isUid } = require('./membership');
 const { mutateRoster, CALLABLE_OPS } = require('./roster');
-const { createInvite, cancelInvite, acceptInvite } = require('./invites');
+const { createInvite, cancelInvite, reissueInvite, acceptInvite } = require('./invites');
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const fail = (code) => ({ ok: false, code });
@@ -20,6 +20,7 @@ const gated = (fn) => async (deps, ctx, body) => ((await writesEnabled(deps.db))
 
 const teamInvite = gated((deps, ctx, b) => createInvite(deps, ctx, { brandId: b.brandId, rids: b.rids, email: b.email, can_edit_menu: b.can_edit_menu === undefined ? false : b.can_edit_menu }));
 const teamCancelInvite = gated((deps, ctx, b) => cancelInvite(deps, ctx, b.inviteId));
+const teamReissueInvite = gated((deps, ctx, b) => reissueInvite(deps, ctx, b.inviteId));   // a fresh link; the old one is superseded
 const teamAcceptInvite = gated((deps, ctx, b) => acceptInvite(deps, ctx, b.inviteId));
 const asOwner = (fn) => gated(async (deps, ctx, b) => {
   const refused = refuseContext(ctx); if (refused) return refused;
@@ -44,15 +45,16 @@ async function teamList(deps, ctx, body) {
     if (!isObj(roster.owners) || !isObj(roster.owners[ctx.uid])) return fail('forbidden');
     const managers = {};
     const m = isObj(roster.managers) ? roster.managers : {};
+    const perms = isObj(roster.manager_perms) ? roster.manager_perms : {};
     for (const rid of Object.keys(m).sort()) {
       for (const uid of Object.keys(isObj(m[rid]) ? m[rid] : {}).sort()) {
-        managers[uid] = managers[uid] || { rids: [], can_edit_menu: false };
+        // the ONE per-manager setting (codex build r1 P2-3) — never an OR over branch grants
+        managers[uid] = managers[uid] || { rids: [], can_edit_menu: isObj(perms[uid]) && perms[uid].can_edit_menu === true };
         managers[uid].rids.push(rid);
-        if (m[rid][uid] && m[rid][uid].can_edit_menu === true) managers[uid].can_edit_menu = true;
       }
     }
     return { ok: true, owner: Object.keys(roster.owners)[0], managers };
   } catch (_) { return fail('unavailable'); }
 }
 
-module.exports = { writesEnabled, teamInvite, teamCancelInvite, teamAcceptInvite, teamRevoke, teamSetMenuPermission, teamList };
+module.exports = { writesEnabled, teamInvite, teamCancelInvite, teamReissueInvite, teamAcceptInvite, teamRevoke, teamSetMenuPermission, teamList };

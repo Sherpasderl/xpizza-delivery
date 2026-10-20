@@ -15663,7 +15663,7 @@
     "slice": "membership",
     "label": "roster: the invite_applied marker is not checked inside the grant transaction (an applied-then-revoked member is re-granted)",
     "file": "access/roster.js",
-    "from": "  if (op.inviteId && isObj(r.invite_applied) && r.invite_applied[op.inviteId]) return { outcome: 'already_applied' };\n",
+    "from": "    if (isObj(r.invite_applied) && r.invite_applied[op.inviteId]) return { outcome: 'already_applied' };\n",
     "to": "",
     "kills_with": [
       "invite marker is checked INSIDE every grant"
@@ -15847,6 +15847,86 @@
       "node",
       "--test",
       "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-19",
+    "slice": "membership",
+    "label": "roster: an invite grant applies even when it is NOT the current invite for that email (supersession dropped)",
+    "file": "access/roster.js",
+    "from": "    if (current[op.emailKey] !== op.inviteId) return { code: 'superseded' };   // only the CURRENT invite for that email grants\n",
+    "to": "",
+    "kills_with": [
+      "SUPERSESSION"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-20",
+    "slice": "membership",
+    "label": "roster: an invite's menu value OVERWRITES the current per-manager setting (re-enables what the owner disabled)",
+    "file": "access/roster.js",
+    "from": "      if (!isObj(perms[op.uid])) { perms[op.uid] = { can_edit_menu: op.can_edit_menu === true }; changed = true; }",
+    "to": "      perms[op.uid] = { can_edit_menu: op.can_edit_menu === true }; changed = true;",
+    "kills_with": [
+      "PER-MANAGER permission"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-21",
+    "slice": "membership",
+    "label": "cutover compare: proceeds despite a failed census",
+    "file": "access/membership-admin-core.js",
+    "from": "    if (!c.ok) { log(JSON.stringify({ refused: 'census_not_clean', findings: c.findings })); return 3; }   // codex build r1 P2-5\n",
+    "to": "",
+    "kills_with": [
+      "compare REFUSES (exit 3)"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership-admin.test.js"
+    ]
+  },
+  {
+    "id": "membership-22",
+    "slice": "membership",
+    "label": "team endpoints: the can(team.*) gate is skipped (any verified user reaches the owner ops)",
+    "file": "access/team-http-core.js",
+    "from": "      if (!g.ok) return reply(g.status, { error: g.error });\n",
+    "to": "",
+    "kills_with": [
+      "can() gate through the resolver"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-http.test.js"
+    ]
+  },
+  {
+    "id": "membership-23",
+    "slice": "membership",
+    "label": "cutover reconcile: the repair writes an ancestor delete next to descendant sets (rejected by the real SDK)",
+    "file": "access/membership-admin-core.js",
+    "from": "      u[`member_of/${uid}`] = Object.keys(want).length ? want : null;",
+    "to": "      u[`member_of/${uid}`] = null; for (const k of Object.keys(want)) for (const id of Object.keys(want[k])) u[`member_of/${uid}/${k}/${id}`] = want[k][id];",
+    "kills_with": [
+      "that is ancestor of another path"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:membership"
     ]
   }
 ]

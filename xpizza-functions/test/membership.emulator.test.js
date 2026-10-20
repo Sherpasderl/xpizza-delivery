@@ -8,6 +8,7 @@
  *   3. The platform transfers the brand's ONE owner CONCURRENTLY with an invite acceptance (real transactions) → exactly one
  *      owner; the acceptance either committed first (its grant stands) or found its inviter no longer authorized.
  *   4. Invite: crash after the grant → owner revokes → retry → consumed, NO re-grant.
+ *   5. reconcile --apply repairs a malformed member_of ancestor through the REAL SDK (no overlapping paths).
  */
 require('./_emulator-required')('database');
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
@@ -87,12 +88,23 @@ let n = 0; const ok = (l) => console.log(`  ok ${++n} ${l}`);
   assert.ok(inv2.ok, JSON.stringify(inv2));
   const t0 = Date.now();
   await seeder.ref(`member_invites/${inv2.inviteId}`).update({ state: 'consuming', consuming: { by: 'newOwn001', at: t0 - 60000 } });   // crashed long ago
-  await R.mutateRoster({ db }, 'la_musa', { kind: 'owner', uid: laOwner }, { type: 'grant_manager', uid: 'newOwn001', rids: ['la_musa'], inviteId: inv2.inviteId });   // the grant had committed
+  await R.mutateRoster({ db }, 'la_musa', { kind: 'owner', uid: laOwner }, { type: 'grant_manager', uid: 'newOwn001', rids: ['la_musa'], inviteId: inv2.inviteId, emailKey: I.emailKey('newown001@m.hn') });   // the grant had committed
   await R.mutateRoster({ db }, 'la_musa', { kind: 'owner', uid: laOwner }, { type: 'revoke_manager', uid: 'newOwn001' });                                            // the owner revokes
   const retry = await I.acceptInvite({ db }, { uid: 'newOwn001', token: { email: 'newown001@m.hn', email_verified: true } }, inv2.inviteId);
   assert.deepStrictEqual(retry, { ok: true, outcome: 'consumed' });
   assert.strictEqual((await seeder.ref('brand_members/la_musa/managers/la_musa/newOwn001').once('value')).exists(), false, '🔴 never re-granted');
   ok('invite crash → owner revokes → retry: consumed, the revoked member is NOT re-granted (real transactions)');
+
+  // ── 5. reconcile repairs a MALFORMED ancestor through the REAL SDK (codex build r1 P2-4): member_of/{uid} is a string while the
+  //       roster expects entries under it — one non-overlapping replacement per uid (an ancestor delete + a descendant set in
+  //       one update() is rejected by RTDB) ──
+  await seeder.ref('member_of/ownerP1').set('malformed');
+  log.length = 0;
+  assert.strictEqual(await run('reconcile'), 5, 'blocking while malformed');
+  assert.strictEqual(await run('reconcile', true), 0, `the real SDK accepts the repair: ${log.join('\n')}`);
+  const want = A.expectedIndex((await seeder.ref('brand_members').once('value')).val());
+  for (const [p, v] of Object.entries(want)) if (p.startsWith('member_of/ownerP1/')) assert.strictEqual((await seeder.ref(p).once('value')).val(), v, p);
+  ok('reconcile --apply repairs a malformed member_of ancestor through the real SDK (non-overlapping replacement)');
 
   console.log(`membership.emulator: OK (${n})`);
   process.exit(0);

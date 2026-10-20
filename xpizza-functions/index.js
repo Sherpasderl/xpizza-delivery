@@ -7197,7 +7197,7 @@ module.exports.checkRateLimit = checkRateLimit;
 module.exports.RATE_LIMIT_BUCKETS = RATE_LIMIT_BUCKETS;
 // paid-after-close refund-notify composition test drives the REAL sender directly (finalize-path call) alongside
 // app.refundReconciler.run() (the sweep) against the RTDB emulator + a mocked provider.
-module.exports.sendPaidAfterCloseRefund = sendPaidAfterCloseRefund;
+module.exports.sendPaidAfterCloseRefund = sendPaidAfterCloseRefund;   /* membership:begin team — PLAN-portal-membership (codex build r1 P1-1): the team endpoints, DARK behind platform_config/membership_writes_enabled */ const MEMBERSHIP_TEAM = require('./access/team-http'); exports.memberInvite = MEMBERSHIP_TEAM.memberInvite; exports.memberAcceptInvite = MEMBERSHIP_TEAM.memberAcceptInvite; exports.memberCancelInvite = MEMBERSHIP_TEAM.memberCancelInvite; exports.memberReissueInvite = MEMBERSHIP_TEAM.memberReissueInvite; exports.memberRevoke = MEMBERSHIP_TEAM.memberRevoke; exports.memberSetMenuPermission = MEMBERSHIP_TEAM.memberSetMenuPermission; exports.memberList = MEMBERSHIP_TEAM.memberList;   /* membership:end team */
 
 // PORTAL SPEED P1: the Portal 2b-1 block (editCatalog, publishEdited) moved verbatim to portal/functions.js.
 const portalFunctions = require('./portal/functions');

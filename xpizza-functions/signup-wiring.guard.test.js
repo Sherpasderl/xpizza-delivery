@@ -16,7 +16,7 @@ const { HUNKS, BASE, unapplySignupIndex } = require('./tools/signup-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const real = read('index.js');
+const real = require('./tools/membership-inverse').unapplyMembershipIndex(read('index.js'));   // the membership slice landed on top: stripped first
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // ── 1. the inverse ──

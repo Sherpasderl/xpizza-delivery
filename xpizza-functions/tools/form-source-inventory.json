@@ -49,6 +49,7 @@
     "xp-stage2-summary.test.mjs",
     "xpizza-functions/access/membership-admin.test.js",
     "xpizza-functions/access/membership.test.js",
+    "xpizza-functions/access/third-brand.test.js",
     "xpizza-functions/address-autofill-recheckout.test.js",
     "xpizza-functions/catalog-form-bundle.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
@@ -249,6 +250,7 @@
     "stage-race.test.mjs",
     "xpizza-functions/access/membership-admin.test.js",
     "xpizza-functions/access/membership.test.js",
+    "xpizza-functions/access/third-brand.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/catalog/activation-eligibility.test.js",
     "xpizza-functions/catalog/add-product-groups.test.js",
@@ -442,6 +444,7 @@
     "xp-stage2-summary.test.mjs",
     "xpizza-functions/access/membership-admin.test.js",
     "xpizza-functions/access/membership.test.js",
+    "xpizza-functions/access/third-brand.test.js",
     "xpizza-functions/address-autofill-recheckout.test.js",
     "xpizza-functions/catalog-form-bundle.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
@@ -637,6 +640,7 @@
     "stage-race.test.mjs",
     "xpizza-functions/access/membership-admin.test.js",
     "xpizza-functions/access/membership.test.js",
+    "xpizza-functions/access/third-brand.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/catalog/activation-eligibility.test.js",
     "xpizza-functions/catalog/add-product-groups.test.js",
@@ -1715,6 +1719,7 @@
       "tools/a1-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js"
@@ -1730,6 +1735,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1749,6 +1755,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1770,6 +1777,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1787,6 +1795,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1803,6 +1812,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1817,6 +1827,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1828,6 +1839,7 @@
      "inverses": [
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/signup-inverse.js"
      ]
     },
@@ -1835,7 +1847,14 @@
      "file": "xpizza-functions/h1c-wiring.guard.test.js",
      "inverses": [
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/signup-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/membership-wiring.guard.test.js",
+     "inverses": [
+      "tools/membership-inverse.js"
      ]
     },
     {
@@ -1850,6 +1869,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1871,6 +1891,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1885,6 +1906,7 @@
       "tools/a1-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1897,6 +1919,7 @@
       "tools/a1-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1908,6 +1931,7 @@
      "inverses": [
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js"
      ]
@@ -1919,6 +1943,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1929,6 +1954,7 @@
     {
      "file": "xpizza-functions/signup-wiring.guard.test.js",
      "inverses": [
+      "tools/membership-inverse.js",
       "tools/signup-inverse.js"
      ]
     },
@@ -1942,6 +1968,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
@@ -1954,6 +1981,12 @@
      "file": "xpizza-functions/tools/a1-inverse.js",
      "inverses": [
       "tools/a1-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/tools/membership-inverse.js",
+     "inverses": [
+      "tools/membership-inverse.js"
      ]
     },
     {
@@ -1976,6 +2009,7 @@
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
+      "tools/membership-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
