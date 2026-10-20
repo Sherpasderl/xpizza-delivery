@@ -42,7 +42,7 @@ const promptBlock = html.slice(promptStart, resolveStart);
 const resolveSrc = html.slice(resolveStart, resolveEnd);
 
 // ---- DOM shim with REAL event registration + dispatch (no stubbed addEventListener) ----
-function buildEnv() {
+function buildEnv(reconOrders = {}) {
   let lastFocused = null;
   const mkEl = (id) => ({
     id, textContent: '', value: '', _l: {}, offsetParent: {}, isConnected: true,
@@ -65,12 +65,13 @@ function buildEnv() {
   };
   const win = { matchMedia: () => ({ matches: false }), CSS: { escape: (s) => s } };
   const XPD = { resolveReconciliation: (...a) => { resolveCalls.push(a); return new Promise((res, rej) => { xpd = { res, rej }; }); } };
-  const api = new Function('$', 'document', 'window', 'CSS', 'toast', 'XPD', 'displayOrderLabel', 'focusTrapTarget',
+  const api = new Function('$', 'document', 'window', 'CSS', 'toast', 'XPD', 'displayOrderLabel', 'focusTrapTarget', 'reconciliationOrders',
     `${reconSuccessLine}\n${pickerFocusSrc}\n${promptBlock}\n${resolveSrc}\n; return { resolveReconciliationAction, reconNotePrompt };`
-  )(getEl, doc, win, win.CSS, (m, t) => toasts.push([m, t]), XPD, (x) => String(x), () => null);
+  )(getEl, doc, win, win.CSS, (m, t) => toasts.push([m, t]), XPD, (x) => String(x), () => null, reconOrders);
   const ov = getEl('recon-note-overlay'), input = getEl('recon-note-input');
   return {
     ...api, toasts, resolveCalls, opener,
+    warnText: () => getEl('recon-note-warn').textContent,
     setButtons: (k) => (queryButtons = Array.from({ length: k }, () => { let d = false; return { get disabled() { return d; }, set disabled(v) { if (v) this.everDisabled = true; d = v; }, everDisabled: false }; })),
     buttons: () => queryButtons,
     setNote: (v) => { input.value = v; },
@@ -248,6 +249,37 @@ function buildEnv() {
   assert.match(html, /id="recon-note-confirm"/, 'confirm button present');
   assert.match(html, /id="recon-note-cancel"/, 'cancel button present');
   ok('outcome/finally byte-identical to base; native prompt() gone; focus cascade reused; dialog surface present');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. close_fulfilled SAR-factura warning is BRAND-AWARE (money-adjacent, bcf5ff06). Closing a delivered
+//    platform-factura order (X. Pizza) emits a real SAR factura, so the dispatcher is warned; a La Musa
+//    (external POS) order emits none, so the warning must NOT claim one. Drives the REAL reconNotePrompt
+//    against a POPULATED reconciliationOrders fixture — the exact field whose absence (injected as {}) both
+//    (a) made the extracted resolver throw ReferenceError for ~3 weeks unseen, and (b) would otherwise let
+//    this brand split go untested. Reverting emitsFactura's `!== 'la_musa'` (or dropping the SAR append) → RED.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const SAR = 'Se emitirá la factura SAR de este pedido.';
+  const reconOrders = {
+    'xp-1': { order_id: 'xp-1', restaurant_id: 'x_pizza' },   // platform factura → warns
+    'lm-1': { order_id: 'lm-1', restaurant_id: 'la_musa' },   // external POS → no factura
+  };
+  const t = buildEnv(reconOrders);
+
+  t.reconNotePrompt('close_fulfilled', 'xp-1'); await tick();
+  const xpWarn = t.warnText();
+  assert.match(xpWarn, /Conserva el pago y cierra el pedido sin despacharlo\./, 'X. Pizza: base close warning present');
+  assert.ok(xpWarn.includes(SAR), 'X. Pizza (platform factura): the SAR factura line IS shown');
+  t.pressEsc(); await tick();                                 // settle so the next dialog opens fresh
+
+  t.reconNotePrompt('close_fulfilled', 'lm-1'); await tick();
+  const lmWarn = t.warnText();
+  assert.match(lmWarn, /Conserva el pago y cierra el pedido sin despacharlo\./, 'La Musa: base close warning present');
+  assert.ok(!lmWarn.includes(SAR), 'La Musa (external POS): the SAR factura line is NOT shown');
+  t.pressEsc(); await tick();
+
+  ok('close_fulfilled SAR warning is brand-aware: shown for X. Pizza (factura), hidden for La Musa (non-factura)');
 }
 
 console.log(`\ndispatch-recon-note: OK (${n} groups)`);
