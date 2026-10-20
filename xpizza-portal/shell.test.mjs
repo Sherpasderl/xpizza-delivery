@@ -439,3 +439,113 @@ test('codex r2 P2: no cache + a partial reply whose degraded row IS the stored s
   await signIn('uOwner0304');
   assert.equal(Q.count('getEditableCatalog'), 1, 'the healthy selected branch opens');
 });
+
+// ── registerView / setNavBadge (PLAN-portal-team-invites §4.1) ─────────────────────────────────────────────────────────
+function teamView(log, { leave = () => true } = {}) {
+  return { id: 'equipo', group: 'Negocio', label: 'Equipo de trabajo',
+    visible: (sel) => { log.push(['visible', sel]); return sel.role === 'owner' && sel.membership_writes_enabled === true; },
+    mount: (elm, sel) => log.push(['mount', elm, sel]), unmount: () => log.push(['unmount']), canLeave: () => leave() };
+}
+
+test('registerView: hidden while membership_writes_enabled is off; shown (Negocio) when on, with a frozen brand-level sel', async () => {
+  installStorage();
+  const P = page({ e1: { ...E1([branch('r_a'), branch('r_b', { caps: MGR_CAPS })]), membership_writes_enabled: false } });
+  const mods = await loadModules();
+  const log = [];
+  mods.shell.registerView(teamView(log));
+  await signIn('uOwner0201');
+  const [r] = mods.shell._registered;
+  assert.ok(hasClass(r.nav, 'hidden') && hasClass(r.mn, 'hidden'), 'flag off → no nav item');
+  const sel = log.find((x) => x[0] === 'visible')[1];
+  assert.ok(Object.isFrozen(sel) && Object.isFrozen(sel.caps));
+  assert.deepEqual({ ...sel, caps: [...sel.caps] }, { brandId: 'marca_s', role: 'owner', caps: [...new Set([...OWNER_CAPS, ...MGR_CAPS])].sort(), membership_writes_enabled: false, scope: null });
+  mods.shell.goto('equipo');
+  assert.ok(!log.some((x) => x[0] === 'mount'), 'a hidden view never mounts');
+  assert.ok(P.byId.get('navprod').clicks >= 1, '…and a direct goto falls back to Productos');
+
+  installStorage();
+  const Q = page({ e1: { ...E1([branch('r_a')]), membership_writes_enabled: true } });
+  const m2 = await loadModules();
+  const log2 = [];
+  m2.shell.registerView(teamView(log2));
+  await signIn('uOwner0202');
+  const [r2] = m2.shell._registered;
+  assert.ok(!hasClass(r2.nav, 'hidden') && !hasClass(r2.mn, 'hidden'), 'flag on → nav item, desktop + mobile');
+  assert.ok(!hasClass(Q.byId.get('navbiz'), 'hidden'), 'the Negocio label shows');
+  assert.equal(textOf(r2.nav), 'Equipo de trabajo');
+});
+
+test('registerView: an optional icon (one SVG path d) is drawn like the built-ins; absent → label only; anything else refused', async () => {
+  installStorage();
+  page({ e1: { ...E1([branch('r_a')]), membership_writes_enabled: true } });
+  const mods = await loadModules();
+  const D = 'M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0zM4 21a8 8 0 0 1 16 0';
+  mods.shell.registerView({ ...teamView([]), icon: D });
+  mods.shell.registerView({ ...teamView([]), id: 'sin-icono' });
+  for (const bad of ['<script>', 'M0 0" onload="x', 42, 'M'.repeat(513)]) assert.throws(() => mods.shell.registerView({ ...teamView([]), id: 'malo', icon: bad }), /icon/);
+  const [withIcon, without] = mods.shell._registered;
+  const s = withIcon.nav.children[0];
+  assert.equal(s.tag, 'svg');
+  assert.equal(s.attrs.viewBox, '0 0 24 24');
+  assert.equal(s.children[0].tag, 'path');
+  assert.equal(s.children[0].attrs.d, D);
+  assert.equal(without.nav.children[0].tag, 'span', 'no icon → the label first');
+});
+
+test('registerView: goto mounts it (others hidden), leaving unmounts it; its canLeave() blocks a selection change only while mounted', async () => {
+  installStorage();
+  let dirty = true;
+  const P = page({ e1: { ...E1([branch('r_a'), branch('r_b')]), membership_writes_enabled: true } });
+  const mods = await loadModules();
+  const log = [];
+  mods.shell.registerView(teamView(log, { leave: () => !dirty }));
+  await signIn('uOwner0203');
+  const [r] = mods.shell._registered;
+  assert.equal(mods.shell.canLeave(), true, 'not mounted → not consulted');
+  r.nav.click();
+  const mount = log.find((x) => x[0] === 'mount');
+  assert.ok(mount && mount[1] === r.main && !hasClass(r.main, 'hidden'), 'mounted into its own main');
+  assert.ok(hasClass(P.byId.get('viewsuc'), 'hidden') && hasClass(P.byId.get('viewmenu'), 'hidden'));
+  assert.ok(hasClass(r.nav, 'on') && r.nav.attrs['aria-current'] === 'page');
+  assert.equal(mods.shell.select({ brand_id: 'marca_s', scope: 'r_b' }), false, 'its unsaved state blocks the reload');
+  assert.equal(P.reloads.n, 0);
+  dirty = false;
+  assert.equal(mods.shell.canLeave(), true);
+  dirty = true;
+  P.byId.get('navprod').click();
+  assert.deepEqual(log.filter((x) => x[0] === 'unmount').length, 1, 'leaving unmounts');
+  assert.ok(hasClass(r.main, 'hidden'));
+  assert.equal(mods.shell.canLeave(), true, 'unmounted → no longer consulted');
+});
+
+test('registerView refuses a bad shape and any registration after the nav is drawn', async () => {
+  installStorage();
+  page({ e1: E1([branch('r_a')]) });
+  const mods = await loadModules();
+  const ok = teamView([]);
+  for (const bad of [{ ...ok, id: 'suc' }, { ...ok, id: 'Bad Id' }, { ...ok, group: 'Otro' }, { ...ok, label: ' ' }, { ...ok, mount: null }, null]) {
+    assert.throws(() => mods.shell.registerView(bad), /registerView/);
+  }
+  mods.shell.registerView(ok);
+  assert.throws(() => mods.shell.registerView(ok), /duplicate/, 'one id once');
+  await signIn('uOwner0204');
+  assert.throws(() => mods.shell.registerView({ ...ok, id: 'tarde' }), /before the nav is first drawn/);
+});
+
+test('setNavBadge: text on Productos (desktop + mobile) through textContent; null removes it; an unknown id is a no-op', async () => {
+  installStorage();
+  const P = page({ e1: { ...E1([branch('r_a')]), membership_writes_enabled: true } });
+  const mods = await loadModules();
+  mods.shell.registerView(teamView([]));
+  await signIn('uOwner0205');
+  const badgeOf = (n) => (n.children || []).find((c) => c && c.dataset && c.dataset.navbadge === '1');
+  mods.shell.setNavBadge('menu', 1);
+  for (const id of ['navprod', 'mnprod']) { const b = badgeOf(P.byId.get(id)); assert.ok(b && b.textContent === '1' && !hasClass(b, 'hidden'), id); }
+  mods.shell.setNavBadge('menu', '<b>x</b>');
+  assert.equal(badgeOf(P.byId.get('navprod')).textContent, '<b>x</b>', 'set as text, never parsed');
+  mods.shell.setNavBadge('menu', null);
+  assert.ok(hasClass(badgeOf(P.byId.get('navprod')), 'hidden'), 'null hides it');
+  mods.shell.setNavBadge('equipo', '2');
+  assert.equal(badgeOf(mods.shell._registered[0].nav).textContent, '2', 'a registered view takes a badge too');
+  assert.doesNotThrow(() => mods.shell.setNavBadge('nada', '3'));
+});

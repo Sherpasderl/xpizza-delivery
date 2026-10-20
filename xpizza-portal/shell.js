@@ -13,7 +13,7 @@ import { getMyBranches } from './api.js';
 import { token } from './auth.js';
 import { openEditor, editorCanLeave } from './app.js';
 import * as L from './branch-logic.js';
-import { $, el, icon, errBox, OFFLINE } from './ops-dom.js';
+import { $, el, icon, svg, errBox, OFFLINE } from './ops-dom.js';
 import { mountBranches } from './branches-view.js';
 import { mountPausas } from './pausas.js';
 import { mountAvailability } from './availability.js';
@@ -51,7 +51,7 @@ function clearPersisted(uid) {
 export function canLeave() {
   let editorOk = true;
   try { editorOk = editorCanLeave() === true; } catch (_) { editorOk = false; }
-  return editorOk && S.busy.size === 0 && S.dirty.size === 0;
+  return editorOk && S.busy.size === 0 && S.dirty.size === 0 && registeredCanLeave();
 }
 // codex 1a r1 P1-2: the self-update coordinator must ask the SAME composite question. app.js registered the editor-only
 // adapter at import (above); registering here replaces it with one whose canReload is the editor's guard AND the ops
@@ -197,6 +197,7 @@ function hideOpsChrome() {
   for (const id of ['scopewrap', 'navopslabel', 'navsuc', 'navpausas', 'mnsuc', 'mnpausas', 'mtop', 'mscopemenu', 'availstrip', 'menulock']) { const n = $(id); if (n) n.classList.add('hidden'); }
   for (const id of ['viewsuc', 'viewpausas']) { const n = $(id); if (n) { n.classList.add('hidden'); n.replaceChildren(); } }
   const app = $('app'); if (app) app.classList.remove('opsview');
+  hideRegistered();
 }
 
 function renderChrome() {
@@ -257,6 +258,8 @@ function renderChrome() {
   $('mnpausas').classList.toggle('hidden', !nav.pause);
   $('mnav').classList.add('show');
   $('mnventas').classList.toggle('hidden', !S.sales);
+  renderRegistered();
+  for (const id of badges.keys()) paintBadge(id);   // codex follow-up r1: a label rewrite above (mnsuc) drops its badge → re-apply
 }
 function spanIcon(name) { const s = el('span', 'lk'); s.append(icon(name)); return s; }
 function dotFor(b) {
@@ -318,8 +321,9 @@ document.addEventListener('click', (e) => { if (!e.target.closest || (!e.target.
 // ── views ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const NAV = [['navprod', 'menu'], ['navventas', 'ventas'], ['navsuc', 'suc'], ['navpausas', 'pausas'], ['mnprod', 'menu'], ['mnventas', 'ventas'], ['mnsuc', 'suc'], ['mnpausas', 'pausas']];
 function markNav(view) {
-  for (const [id, v] of NAV) {
-    const n = $(id); if (!n) continue;
+  const pairs = [...NAV.map(([id, v]) => [$(id), v]), ...REG.flatMap((r) => [[r.nav, r.id], [r.mn, r.id]])];
+  for (const [n, v] of pairs) {
+    if (!n) continue;
     const on = v === view;
     n.classList.toggle('on', on);
     if (on) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
@@ -327,12 +331,17 @@ function markNav(view) {
 }
 export function goto(view, opts = {}) {
   if (view === 'menu' || view === 'ventas') { $(view === 'menu' ? 'navprod' : 'navventas').click(); return; }   // ventas.js owns those two
+  const reg = REG.find((r) => r.id === view);
+  if (reg && !(S.sel && isVisible(reg))) { $('navprod').click(); return; }   // not offered on this page → the default view
+  if (reg && reg.mounted) return;   // codex follow-up r1: already showing → no second mount
+  leaveRegistered(view);
   S.view = view;
   $('viewmenu').classList.add('hidden');
   $('viewventas').classList.add('hidden');
   const isSuc = view === 'suc', isPausas = view === 'pausas';
   $('viewsuc').classList.toggle('hidden', !isSuc);
   $('viewpausas').classList.toggle('hidden', !isPausas);
+  if (reg) { reg.main.classList.remove('hidden'); try { reg.mount(reg.main, viewSel()); } catch (e) { console.error('portal view mount', view, e && e.message); } }
   const app = $('app');
   app.classList.remove('vview');
   app.classList.add('opsview');
@@ -343,6 +352,7 @@ export function goto(view, opts = {}) {
 }
 // ventas.js's own nav handlers run first (they were registered at import); these hide the ops views behind them
 function leaveOps(v) {
+  leaveRegistered(v);
   S.view = v;
   $('viewsuc').classList.add('hidden'); $('viewpausas').classList.add('hidden');
   $('app').classList.remove('opsview');
@@ -357,6 +367,116 @@ $('navprod').addEventListener('click', () => leaveOps('menu'));
 $('mnprod').addEventListener('click', () => leaveOps('menu'));
 $('navventas').addEventListener('click', () => leaveOps('ventas'));
 $('mnventas').addEventListener('click', () => leaveOps('ventas'));
+
+// ── registered views (PLAN-portal-team-invites §4.1): another lane's view layers on the shell with zero shell edits ──────
+// registerView({ id, group, label, icon?, visible(sel), mount(el, sel), unmount(), canLeave() }) — called at module top level, before
+// the nav is first drawn — later throws. The shell renders the nav item (desktop + mobile) at the END of its group, owns
+// routing, scope and the persisted selection, calls unmount() whenever the view is left, and ANDs the view's canLeave() into
+// its own (the selection reload and the self-update; a nav switch is never blocked — ventas.js's handlers run first).
+// `sel` is frozen: { brandId, role, caps, membership_writes_enabled, scope } — caps = the union over the brand's
+// operational branches; scope = the selected branch rid, or null for «Todas».
+const GROUPS = Object.freeze({ 'Menú': 'navprod', 'Operación': 'navpausas', 'Negocio': 'navventas' });
+const MGROUPS = Object.freeze({ 'Menú': 'mnprod', 'Operación': 'mnpausas', 'Negocio': 'mnventas' });
+const BUILTIN = Object.freeze({ menu: ['navprod', 'mnprod'], ventas: ['navventas', 'mnventas'], suc: ['navsuc', 'mnsuc'], pausas: ['navpausas', 'mnpausas'] });
+const REG = [];
+const badges = new Map();   // viewId → text | null
+let navRendered = false;
+const placeAfter = (ref, node) => { if (ref && typeof ref.after === 'function') ref.after(node); };
+
+export function registerView(def) {
+  if (navRendered) throw new Error('registerView: register at module top level, before the nav is first drawn');
+  const d = def || {};
+  const fns = ['visible', 'mount', 'unmount', 'canLeave'];
+  if (typeof d.id !== 'string' || !/^[a-z][a-z0-9-]{0,31}$/.test(d.id) || BUILTIN[d.id] || REG.some((r) => r.id === d.id)) throw new Error(`registerView: bad or duplicate id ${d.id}`);
+  if (!Object.prototype.hasOwnProperty.call(GROUPS, d.group)) throw new Error(`registerView: unknown group ${d.group}`);
+  if (typeof d.label !== 'string' || !d.label.trim()) throw new Error('registerView: label');
+  for (const f of fns) if (typeof d[f] !== 'function') throw new Error(`registerView: ${f} must be a function`);
+  // optional icon: ONE SVG path `d` (path commands + numbers only), drawn like the built-in nav icons; absent → label only
+  if (d.icon !== undefined && (typeof d.icon !== 'string' || d.icon.length > 512 || !/^[MmLlHhVvCcSsQqTtAaZz0-9 ,.\-]+$/.test(d.icon))) throw new Error('registerView: icon must be an SVG path d string');
+  const nav = el('button', 'nav hidden');
+  nav.type = 'button';
+  if (d.icon !== undefined) nav.append(svg(d.icon));
+  nav.append(el('span', 'nt', d.label));
+  const mn = el('button', 'mn hidden', d.label);
+  mn.type = 'button';
+  const main = el('main', 'main ops hidden');
+  main.setAttribute('aria-label', d.label);
+  const anchor = () => { const same = REG.filter((r) => r.group === d.group); return same.length ? same[same.length - 1] : null; };
+  const last = anchor();
+  placeAfter(last ? last.nav : $(GROUPS[d.group]), nav);
+  placeAfter(last ? last.mn : $(MGROUPS[d.group]), mn);
+  placeAfter(REG.length ? REG[REG.length - 1].main : $('viewpausas'), main);
+  const r = { id: d.id, group: d.group, label: d.label, visible: d.visible, mount: d.mount, unmount: d.unmount, canLeave: d.canLeave, nav, mn, main, mounted: false };
+  const wrapMount = r.mount;
+  r.mount = (elm, sel) => { r.mounted = true; return wrapMount(elm, sel); };
+  nav.addEventListener('click', () => goto(r.id));
+  mn.addEventListener('click', () => goto(r.id));
+  REG.push(r);
+  paintBadge(r.id);
+}
+
+const knownView = (viewId) => Object.prototype.hasOwnProperty.call(BUILTIN, viewId) || REG.some((r) => r.id === viewId);
+export function setNavBadge(viewId, text) {
+  if (!knownView(viewId)) return;   // codex follow-up r1: an unknown id (incl. constructor / __proto__ / toString) is a no-op
+  badges.set(viewId, text === null || text === undefined || text === '' ? null : String(text));
+  paintBadge(viewId);
+}
+function paintBadge(viewId) {
+  const reg = REG.find((r) => r.id === viewId);
+  const targets = reg ? [reg.nav, reg.mn] : (Object.prototype.hasOwnProperty.call(BUILTIN, viewId) ? BUILTIN[viewId] : []).map((id) => $(id));
+  const text = badges.has(viewId) ? badges.get(viewId) : null;
+  for (const n of targets) {
+    if (!n) continue;
+    let b = Array.from(n.children || []).find((c) => c && c.dataset && c.dataset.navbadge === '1');   // children is an HTMLCollection
+    if (!b && text === null) continue;
+    if (!b) { b = el('span', 'ncount'); b.dataset.navbadge = '1'; n.append(b); }
+    b.textContent = text === null ? '' : text;   // textContent only
+    b.classList.toggle('hidden', text === null);
+  }
+}
+
+function viewSel() {
+  const sel = S.sel;
+  if (!sel) return null;
+  const caps = [...new Set(sel.brand.branches.flatMap((b) => (Array.isArray(b.caps) ? b.caps : [])))].sort();
+  return Object.freeze({ brandId: sel.brand_id, role: sel.owner ? 'owner' : 'manager', caps: Object.freeze(caps),
+    membership_writes_enabled: !!(S.e1 && S.e1.membership_writes_enabled === true), scope: sel.scope === 'all' ? null : sel.scope });
+}
+function isVisible(r) { try { return r.visible(viewSel()) === true; } catch (e) { console.error('portal view visible', r.id, e && e.message); return false; } }
+function renderRegistered() {
+  navRendered = true;
+  let biz = false;
+  for (const r of REG) {
+    const on = !!S.sel && isVisible(r);
+    r.nav.classList.toggle('hidden', !on);
+    r.mn.classList.toggle('hidden', !on);
+    if (on && r.group === 'Negocio') biz = true;
+    if (!on && S.view === r.id) goto('menu');
+  }
+  if (biz) $('navbiz').classList.remove('hidden');
+}
+function hideRegistered() {
+  for (const r of REG) {
+    if (S.view === r.id) leaveRegistered('menu');
+    r.nav.classList.add('hidden'); r.mn.classList.add('hidden'); r.main.classList.add('hidden');
+  }
+}
+function leaveRegistered(next) {
+  for (const r of REG) {
+    if (r.id === next) continue;
+    r.main.classList.add('hidden');
+    if (r.mounted) { r.mounted = false; try { r.unmount(); } catch (e) { console.error('portal view unmount', r.id, e && e.message); } }
+  }
+}
+function registeredCanLeave() {
+  for (const r of REG) {
+    if (!r.mounted) continue;
+    let okv = false;
+    try { okv = r.canLeave() === true; } catch (_) { okv = false; }
+    if (!okv) return false;
+  }
+  return true;
+}
 
 const ctx = {
   get sel() { return S.sel; },
@@ -397,3 +517,5 @@ function renderViews() {
 
 // test-only view of the shell's state (never read by the page)
 export const _shellState = S;
+// test-only view of the registered views (never read by the page)
+export const _registered = REG;

@@ -53,3 +53,15 @@ test('E1: a failed operational read of an AUTHORIZED branch degrades that row al
   assert.deepStrictEqual(sur, { rid: 'tb_sur', brand_id: 'tb', degraded: true });
   assert.ok(out.body.branches.find((b) => b.rid === 'tb_centro' && !b.degraded), 'the other branch is intact');
 });
+
+test('E1: membership_writes_enabled mirrors access/writes-flag — strict true only; missing / other / read error → false (still 200)', async () => {
+  const fake = await setup();
+  assert.strictEqual((await e1(fake)).body.membership_writes_enabled, false, 'missing → false');
+  fake.put('platform_config/membership_writes_enabled', 'true');
+  assert.strictEqual((await e1(fake)).body.membership_writes_enabled, false, 'a non-boolean → false');
+  fake.put('platform_config/membership_writes_enabled', true);
+  assert.strictEqual((await e1(fake)).body.membership_writes_enabled, true, 'strict true → true');
+  fake.failReads.add('platform_config/');
+  const out = await e1(fake);
+  assert.deepStrictEqual([out.status, out.body.membership_writes_enabled, out.body.branches.length], [200, false, 2], 'a read error → false, discovery unaffected');
+});

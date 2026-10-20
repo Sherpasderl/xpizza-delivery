@@ -77,7 +77,7 @@ ok('unset / empty / wrong-case / padded / prefix / unknown / Object.prototype na
 const EXPECTED = [
   'portal/ops-functions.js', 'portal/ops-core.js', 'portal/origins.js', 'portal/preflight-max-age.js', 'portal/pause-reasons.js', 'portal/location-name.js', 'portal/reset-list.js',
   'lib/admin.js', 'lib/hn-date.js', 'lib/emulator-endpoint.js',
-  'access/membership.js', 'brands/brand-model.js', 'restaurant-config.js', 'pickup-label.js',
+  'access/membership.js', 'access/writes-flag.js', 'brands/brand-model.js', 'restaurant-config.js', 'pickup-label.js',
   'merchant/merchant-control.js', 'tools/order-control-core.js', 'order-control-state.js', 'scheduled-orders.js', 'avail-key.js', 'availability-reset.js',
   'catalog/catalog-firestore.js', 'catalog/catalog-menu.js', 'catalog/catalog-transform.js', 'catalog/catalog-integrity.js', 'catalog/content-hash.js', 'catalog/canonical-json.js',
   'catalog/form-menu-source.js', 'catalog/redeem-source.js', 'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'menu-pricing.js', 'price-valid.js', 'rewards-redeem-config.js',

@@ -188,7 +188,15 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
     assert.ok(m.json.branches[0].caps.includes('location.pause') && !m.json.branches[0].caps.includes('catalog.read_editor'));
     const mm = await call(ops.getMyBranches, { uid: MGR_MENU });
     assert.ok(mm.json.branches[0].caps.includes('catalog.read_editor'), 'the menu-permitted manager carries catalog.read_editor');
-    assert.deepStrictEqual((await call(ops.getMyBranches, { uid: STRANGER })).json, { brands: [], branches: [] });
+    assert.deepStrictEqual((await call(ops.getMyBranches, { uid: STRANGER })).json, { brands: [], branches: [], membership_writes_enabled: false });
+    // membership_writes_enabled: the REAL access/writes-flag over the emulator — strict true only, else false
+    assert.strictEqual((await db.ref('platform_config/membership_writes_enabled').get()).val(), null, 'precondition: the flag is absent');
+    assert.strictEqual(t.json.membership_writes_enabled, false, 'absent → false');
+    await db.ref('platform_config/membership_writes_enabled').set('true');
+    assert.strictEqual((await call(ops.getMyBranches, { uid: OWNER_T })).json.membership_writes_enabled, false, "the string 'true' → false");
+    await db.ref('platform_config/membership_writes_enabled').set(true);
+    assert.strictEqual((await call(ops.getMyBranches, { uid: OWNER_T })).json.membership_writes_enabled, true, 'strict true → true');
+    await db.ref('platform_config/membership_writes_enabled').remove();
     assert.deepStrictEqual((await call(ops.getMyBranches, { uid: DISP })).json.branches, [], 'a dispatcher alone discovers no branch');
     assert.strictEqual((await call(ops.getMyBranches, {})).status, 401);
     assert.strictEqual((await call(ops.getMyBranches, { uid: OWNER, claims: { customer: true } })).status, 403);

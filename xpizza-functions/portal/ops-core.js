@@ -25,6 +25,7 @@ const { hnDateISO } = require('../lib/hn-date');
 const { displayName } = require('./location-name');
 const { PAUSE_REASONS } = require('./pause-reasons');
 const { effectiveResetList } = require('./reset-list');
+const { writesEnabled } = require('../access/writes-flag');   // the SAME source of truth as the team writes (PLAN-portal-team-invites §4.1)
 
 const reply = (status, body) => ({ status, body });
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -125,6 +126,9 @@ async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), lo
     return reply(503, { error: 'read_unavailable', retryable: true });
   }
   const nowMs = now();
+  // the membership write freeze, for the shell's nav visibility only (the team endpoints enforce it themselves). Read in
+  // parallel; writesEnabled never throws (missing / non-true / read error → false).
+  const writesFlag = writesEnabled(db);
   // An AUTHORIZATION outage (resolveAccess 'unavailable' or a throw) is the whole reply's 503 — never a 200 that silently
   // drops a branch the caller may hold (codex 1a r1 P2-4). Only a failed read of an ALREADY-authorized branch's operational
   // fields degrades that one row.
@@ -159,7 +163,7 @@ async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), lo
   } catch (e) {
     return reply(503, { error: 'read_unavailable', retryable: true });
   }
-  return reply(200, { brands, branches });
+  return reply(200, { brands, branches, membership_writes_enabled: (await writesFlag) === true });
 }
 
 // ── E2 updateBranch (prep_default_min only) ───────────────────────────────────────────────────────────────────────────────
