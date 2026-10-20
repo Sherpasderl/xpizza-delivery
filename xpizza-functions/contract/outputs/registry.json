@@ -985,6 +985,9 @@
   "xpizza-driver/index.html<script@0>#detectNewAssignments@xpizza-driver/index.html<script@0>#onTasks": {
    "status": "pending"
   },
+  "xpizza-driver/index.html<script@0>#openEndShiftSheet>anon@self": {
+   "status": "pending"
+  },
   "xpizza-driver/index.html<script@0>#renderActiveCard>anon@self": {
    "status": "pending"
   },
@@ -1040,6 +1043,12 @@
    "status": "pending"
   },
   "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/index.html<script@0>#renderQueueDetail": {
+   "status": "pending"
+  },
+  "xpizza-driver/order-helpers.js#displayOrderLabel@xpizza-driver/order-helpers.js#endShiftPrompt>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/order-helpers.js#endShiftPrompt>anon@self": {
    "status": "pending"
   },
   "xpizza-driver/stacking-helpers.js#coordsMatch@xpizza-driver/stacking-helpers.js#resolvePickupHub": {
@@ -1109,6 +1118,9 @@
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#handleEndShift": {
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {

@@ -612,6 +612,22 @@
   .locked{ display:flex; align-items:center; gap:9px; background:#F7F9FB; border:1px solid var(--line); border-radius:12px; padding:11px 13px; margin:13px 0; font-size:12px; font-weight:600; color:var(--text-dim); }
   .locked .ico{ width:15px; height:15px; color:var(--text-dim); flex-shrink:0; }
   .sheet-close{ width:100%; padding:14px; border-radius:14px; background:var(--surface-2); color:var(--text); font-weight:800; font-size:14px; border:none; font-family:inherit; cursor:pointer; }
+  /* O4 end-shift confirmation sheet (caution, not error — amber only in the triangle) */
+  .es-head{ display:flex; align-items:flex-start; gap:12px; margin:4px 0 14px; }
+  .es-caution{ width:40px; height:40px; border-radius:12px; background:#FEF3E2; color:var(--warn); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .es-caution .ico, .es-caution svg{ width:22px; height:22px; }
+  .es-title{ font-size:19px; font-weight:800; color:var(--text); letter-spacing:-.02em; line-height:1.2; margin:2px 0 4px; }
+  .es-q{ font-size:13.5px; color:var(--text-soft); font-weight:600; line-height:1.4; }
+  .es-list{ background:#F7F9FB; border:1px solid var(--line); border-radius:13px; padding:0 13px; margin-bottom:16px; }
+  .es-row{ display:flex; align-items:center; gap:10px; padding:11px 0; }
+  .es-row + .es-row{ border-top:1px solid var(--line); }
+  .es-mid{ flex:1; min-width:0; }
+  .es-name{ font-size:14px; font-weight:800; color:var(--text); letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .es-name .order-num{ font-size:12.5px; margin-right:7px; }
+  .es-addr{ font-size:12px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+  .es-actions{ display:flex; gap:10px; }
+  .es-cancel{ flex:1; padding:15px; border-radius:15px; background:var(--surface-2); color:var(--text); font-weight:800; font-size:14.5px; border:none; font-family:inherit; cursor:pointer; }
+  .es-confirm{ flex:1; padding:15px; border-radius:15px; background:linear-gradient(180deg,#FB5616,#F23E00); color:#fff; font-weight:800; font-size:14.5px; border:none; font-family:inherit; box-shadow:0 6px 16px rgba(242,62,0,.32); cursor:pointer; }
   /* C2 OEM onboarding sheet */
   .oem-title{ font-size:19px; font-weight:800; color:var(--text); margin:2px 0 4px; }
   .oem-sub{ font-size:13.5px; color:var(--text-soft); line-height:1.4; margin-bottom:16px; }
@@ -1144,6 +1160,8 @@
 
 <!-- Vuelto sheet (ephemeral) -->
 <div class="sheet-backdrop" id="vuelto-sheet"><div class="sheet" id="vuelto-sheet-body"></div></div>
+<!-- O4 end-shift confirmation: created on demand in openEndShiftSheet() (never in the static DOM), removed on close -->
+
 <!-- Clock-out cuadre (cash handoff) -->
 <div id="cuadre-screen"><div class="receipt" id="cuadre-receipt"></div></div>
 
@@ -1182,7 +1200,7 @@ import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotificat
 import { startNativeTracking, stopNativeTracking, pingNativeLocation, disableLingeringTransistorsoft } from './native-location.js';
 import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, collectionFor, paymentRowHtml, queuePayHtml, BLOCKED_CLOSE_TEXT, resolveCompleteErrorMessage } from './cash-helpers.js';
 import { brandMeta, driverGreeting } from './brand-helpers.js';
-import { displayOrderLabel } from './order-helpers.js';
+import { displayOrderLabel, endShiftPrompt } from './order-helpers.js';
 import { makeCompanionController } from './onboarding-helpers.js';   // controller owns companion state + the pure decision
 
 // ============================================================
@@ -1911,9 +1929,80 @@ async function handleStartShift() {
 // confirm() dialog. handleEndShift just shows it; the buttons drive the rest.
 async function handleEndShift() {
   if (!currentUser) return;
+  // O4: if the driver still has orders OUT FOR DELIVERY ("en camino"), confirm before the cuadre. N = 0 falls through
+  // with NO await reached → the zero-delivery clock-out runs SYNCHRONOUSLY, byte-for-byte the base path. Cancelar /
+  // Esc / backdrop stays on shift and writes NOTHING; Terminar igual continues to the cuadre exactly as today.
+  const prompt = endShiftPrompt(XPD.getDriverOrders(currentUser.uid, allTasks, allOrders));
+  if (prompt && !(await openEndShiftSheet(prompt))) return;
   // Fresh close intent: supersede any zombie in-flight op and clear the refresh guard before showing.
   closeGen++; closeInFlight = false;
   showCuadre();
+}
+
+// O4 — build + raise the end-shift confirmation as a proper modal. Created ONLY when there are deliveries (never in
+// the static DOM); role=dialog / aria-modal / aria-labelledby; initial focus on Cancelar; a focus trap between the two
+// actions; Esc / Android-back / backdrop = Cancelar (no close-state change). On close the WHOLE sheet is REMOVED from
+// the DOM (so nothing is left keyboard-focusable — not merely opacity-hidden) and focus returns to the opener. Resolves
+// EXACTLY once (the `settled` guard), so a double-tap on Terminar igual continues the shift-end a single time.
+function openEndShiftSheet(prompt) {
+  const opener = document.activeElement;
+  const rows = prompt.orders.map((o) => `
+    <div class="es-row"><div class="es-mid">
+      <div class="es-name"><span class="order-num">${escapeHtml(o.label)}</span>${escapeHtml(o.name)}</div>
+      <div class="es-addr">${escapeHtml(o.address)}</div>
+    </div><span class="phase-pill delivery">Entregar</span></div>`).join('');
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+  backdrop.id = 'endshift-sheet';
+  backdrop.innerHTML = `
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="endshift-title">
+      <div class="grab"></div>
+      <div class="es-head">
+        <div class="es-caution" aria-hidden="true"><span class="ico">${ICONS.warn}</span></div>
+        <div><div class="es-title" id="endshift-title">${escapeHtml(prompt.title)}</div><div class="es-q">${escapeHtml(prompt.question)}</div></div>
+      </div>
+      <div class="es-list">${rows}</div>
+      <div class="es-actions">
+        <button class="es-cancel" id="endshift-cancel" type="button">Cancelar</button>
+        <button class="es-confirm" id="endshift-confirm" type="button">Terminar igual</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  void backdrop.offsetHeight;              // reflow so the slide-up transitions from the appended translateY(100%)
+  backdrop.classList.add('open');
+  const cancelBtn = backdrop.querySelector('#endshift-cancel');
+  const confirmBtn = backdrop.querySelector('#endshift-confirm');
+  return new Promise((resolve) => {
+    let settled = false;
+    let backHandle = null;
+    const close = (result) => {
+      if (settled) return;                 // double-tap / repeat: resolve + tear down once
+      settled = true;
+      document.removeEventListener('keydown', onKey, true);
+      if (backHandle) { Promise.resolve(backHandle).then((h) => { if (h && h.remove) h.remove(); }); backHandle = null; }   // detach the native back listener
+      backdrop.remove();                   // leave NO focusable chrome behind
+      if (opener && typeof opener.focus === 'function') opener.focus();   // restore focus to the opener (the toggle)
+      resolve(result);
+    };
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); close(false); return; }   // keyboard Esc = Cancelar (web)
+      if (e.key === 'Tab') {               // focus trap between the two actions
+        if (e.shiftKey && document.activeElement === cancelBtn) { e.preventDefault(); confirmBtn.focus(); }
+        else if (!e.shiftKey && document.activeElement === confirmBtn) { e.preventDefault(); cancelBtn.focus(); }
+      }
+    }
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === confirmBtn) close(true);
+      else if (e.target === cancelBtn || e.target === backdrop) close(false);   // backdrop tap = Cancelar
+    });
+    document.addEventListener('keydown', onKey, true);
+    // Android hardware BACK = Cancelar (on web the keyboard Esc above covers it). Uses the app's Capacitor idiom
+    // (window.Capacitor.Plugins.App, like OemSettings); absent off-device → no-op. Removed on close (above) so the
+    // listener never leaks past the sheet and back resumes its normal behaviour once the sheet is gone.
+    const capApp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+    if (capApp) backHandle = capApp.addListener('backButton', () => close(false));
+    cancelBtn.focus();                     // initial focus on the safe (stay-on-shift) action
+  });
 }
 
 // The current shift's money-grade identity for the cuadre. A web shift now mints current_shift_id via the

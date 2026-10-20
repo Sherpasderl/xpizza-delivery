@@ -964,6 +964,7 @@
    "tests": [
     "xpizza-driver/brand-helpers.test.js",
     "xpizza-driver/cash-helpers.test.js",
+    "xpizza-driver/endshift-confirm.test.js",
     "xpizza-driver/onboarding-host.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",

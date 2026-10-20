@@ -15563,6 +15563,54 @@
     ]
   },
   {
+    "id": "o4-01",
+    "slice": "o4",
+    "file": "../xpizza-driver/index.html",
+    "from": "  if (prompt && !(await openEndShiftSheet(prompt))) return;",
+    "to": "  if (false && !(await openEndShiftSheet(prompt))) return;",
+    "label": "O4 end-shift never opens the sheet even with deliveries en camino — the warning is lost",
+    "command": [
+      "node",
+      "../xpizza-driver/endshift-confirm.test.js"
+    ]
+  },
+  {
+    "id": "o4-02",
+    "slice": "o4",
+    "file": "../xpizza-driver/order-helpers.js",
+    "from": "  const pending = (driverOrders || []).filter((o) => o && o.phase === 'delivery');",
+    "to": "  const pending = (driverOrders || []).filter((o) => o && o.phase === 'pickup');",
+    "label": "O4 endShiftPrompt counts the wrong phase (pickup, not delivery) — wrong or empty warning",
+    "command": [
+      "node",
+      "../xpizza-driver/order-helpers.test.js"
+    ]
+  },
+  {
+    "id": "o4-03",
+    "slice": "o4",
+    "file": "../xpizza-driver/index.html",
+    "from": "  closeGen++; closeInFlight = false;\n  showCuadre();",
+    "to": "  await Promise.resolve();\n  closeGen++; closeInFlight = false;\n  showCuadre();",
+    "label": "O4 defers the N=0 clock-out behind an await — the base runs closeGen++/showCuadre synchronously",
+    "command": [
+      "node",
+      "../xpizza-driver/endshift-confirm.test.js"
+    ]
+  },
+  {
+    "id": "o4-04",
+    "slice": "o4",
+    "file": "../xpizza-driver/index.html",
+    "from": "  if (capApp) backHandle = capApp.addListener('backButton', () => close(false));",
+    "to": "  if (capApp) backHandle = null;",
+    "label": "O4 end-shift sheet never registers the Android back listener — hardware back cannot cancel",
+    "command": [
+      "node",
+      "../xpizza-driver/endshift-confirm.test.js"
+    ]
+  },
+  {
     "id": "geoloc-xp-01",
     "slice": "geoloc",
     "label": "x_pizza: the request is deferred out of the tap (a microtask) instead of synchronous",
