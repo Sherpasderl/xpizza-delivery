@@ -103,23 +103,28 @@ ok('verdict: plain failure RED, excused failure green, KNOWN_RED-but-passing RED
     put('marks.test.js', "console.log('  ✓ 1 a'); console.log('  ✓ 2 b'); console.log('ok 3 c'); console.log('marks: OK (3)');\n");
     put('suite.test.js', "const t = require('node:test'); t.test('one', () => {}); t.describe('grp', () => { t.it('two', () => {}); t.it('three', () => {}); });\n");
     put('red.test.js', "require('assert').strictEqual(1, 2);\n");
+    // codex app-suites r2: a describe() is a SUITE, not an assertion — empty, or wrapping only an empty suite, is 0
+    put('empty-describe.test.js', "const t = require('node:test'); t.describe('nothing here', () => {});\n");
+    put('nested-empty-describe.test.js', "const t = require('node:test'); t.describe('outer', () => { t.describe('inner', () => {}); });\n");
+    put('subtest.test.js', "const t = require('node:test'); t.test('parent', async (c) => { await c.test('child', () => {}); }); t.describe('grp', () => { t.describe('empty', () => {}); });\n");
     const counter = path.join(__dirname, 'count-marks.js');
     const run = (f) => A.runFile({ file: `fx/${f}`, cwd: '.', rel: f, env: {}, flags: [] }, dir, { ...process.env, NODE_OPTIONS: `--require ${counter}` });
-    const got = Object.fromEntries(['empty.test.mjs', 'exit-only.test.js', 'skip-only.test.js', 'marks.test.js', 'suite.test.js', 'red.test.js'].map((f) => { const r = run(f); return [f, [r.ok, r.cells]]; }));
+    const got = Object.fromEntries(['empty.test.mjs', 'exit-only.test.js', 'skip-only.test.js', 'marks.test.js', 'suite.test.js', 'red.test.js', 'empty-describe.test.js', 'nested-empty-describe.test.js', 'subtest.test.js'].map((f) => { const r = run(f); return [f, [r.ok, r.cells]]; }));
     assert.deepStrictEqual(got, {
       'empty.test.mjs': [true, 0], 'exit-only.test.js': [true, 0], 'skip-only.test.js': [true, 0],
       'marks.test.js': [true, 3], 'suite.test.js': [true, 3], 'red.test.js': [false, 0],
+      'empty-describe.test.js': [true, 0], 'nested-empty-describe.test.js': [true, 0], 'subtest.test.js': [true, 1],
     }, FAIL(`per-file measurement (exit ok, cells): ${JSON.stringify(got)}`));
     // and the verdict turns each zero into RED — the empty file included — with no excuse
     const files = Object.keys(got).map((f) => `fx/${f}`);
     const v = A.classify(Object.entries(got).map(([f, [ok2, cells]]) => ({ file: `fx/${f}`, ok: ok2, cells })), {}, files, {});
     const st = Object.fromEntries(v.rows.map((r) => [r.file.slice(3), r.state]));
-    assert.deepStrictEqual(st, { 'empty.test.mjs': 'zero-cell', 'exit-only.test.js': 'zero-cell', 'skip-only.test.js': 'zero-cell', 'marks.test.js': 'pass', 'suite.test.js': 'pass', 'red.test.js': 'fail' }, FAIL(`verdict: ${JSON.stringify(st)}`));
+    assert.deepStrictEqual(st, { 'empty.test.mjs': 'zero-cell', 'exit-only.test.js': 'zero-cell', 'skip-only.test.js': 'zero-cell', 'marks.test.js': 'pass', 'suite.test.js': 'pass', 'red.test.js': 'fail', 'empty-describe.test.js': 'zero-cell', 'nested-empty-describe.test.js': 'zero-cell', 'subtest.test.js': 'pass' }, FAIL(`verdict: ${JSON.stringify(st)}`));
     assert.strictEqual(v.exitCode, 1, FAIL('zero-assertion files must fail the run'));
-    assert.strictEqual(v.cells, 6, FAIL(`the run's measured total is the per-file sum (${v.cells})`));
+    assert.strictEqual(v.cells, 7, FAIL(`the run's measured total is the per-file sum (${v.cells})`));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
-ok('EXECUTABLE per-file measurement: an empty file, an exit-only file and a skip/todo-only file measure 0 and are RED; ✓/ok marks and node:test LEAF tests count (suites and the file wrapper never)');
+ok('EXECUTABLE per-file measurement: an empty file, an exit-only file, a skip/todo-only file and an EMPTY describe() (also nested) measure 0 and are RED; ✓/ok marks and node:test LEAF tests count (a TAP type:suite, a parent test with subtests and the file wrapper never)');
 
 // 9. zero-cell excuses: excused zero passes; an excuse whose file asserts, or that names no planned file, is RED;
 //    the child env drops ONLY the count-marks preload; and the real ZERO_CELL_OK entries are well-formed

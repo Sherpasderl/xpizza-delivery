@@ -28,7 +28,7 @@
  * 🔴 A FILE THAT ASSERTS NOTHING IS NOT A PASS (codex app-suites r1 P1). Exit status alone let an EMPTY
  * test file pass, and a run-wide ##CELLS sum hid it among 700 other cells. So each file is MEASURED on
  * its own: it runs under `--test-reporter=tap`, and its cells are its LEAF test results (node:test
- * tests, never the suites that group them, never SKIP/TODO) plus the assertion marks its own output
+ * tests — never a suite, i.e. TAP `type: 'suite'`, however empty or nested — never SKIP/TODO) plus the assertion marks its own output
  * prints (the ✓ / ✔ / `ok n` lines tools/count-marks.js counts) — EXCLUDING the automatic result line
  * node --test adds for a file that is not itself a node:test suite (that wrapper is the line an empty
  * file still gets). A zero-cell file is RED unless ZERO_CELL_OK names it with a reason.
@@ -79,28 +79,41 @@ const GLOB_CHARS = /[*?[{]/;
 const MARK = /^\s*(?:✓|✔|ok \d)/;   // tools/count-marks.js's mark — kept identical so the two measures agree
 const TAP_SUMMARY = /^(?:tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) /;
 
-/* cells of ONE file's `node --test --test-reporter=tap <rel>` output — see the header. Pure. */
+/* cells of ONE file's `node --test --test-reporter=tap <rel>` output — see the header. Pure.
+   A result line is COUNTED only once its YAML block has been read (codex app-suites r2): it must be a
+   leaf (no result line nested under it), not a SUITE (`type: 'suite'` — a describe(), however empty
+   or nested, is grouping, not an assertion), not SKIP/TODO, and not the file wrapper. A result with no
+   YAML type keeps the leaf rule. */
 function measureTap(out, rel) {
   let cells = 0;
   let inYaml = false;
+  let pending = null;                      // the last result line, awaiting its YAML `type`
   const hadChild = {};                     // indent → a result line has appeared deeper since this level's last header
+  const settle = () => { if (pending && pending.countable && pending.type !== 'suite') cells += 1; pending = null; };
   for (const line of String(out || '').split('\n')) {
     const ind = line.length - line.trimStart().length;
     const t = line.trim();
-    if (inYaml) { if (t === '...') inYaml = false; continue; }
+    if (inYaml) {
+      if (t === '...') inYaml = false;
+      else if (pending && ind === pending.ind + 2) { const m = /^type:\s*'?([a-z]+)'?\s*$/.exec(t); if (m) pending.type = m[1]; }
+      continue;
+    }
     if (t === '---') { inYaml = true; continue; }
     let m;
-    if ((m = /^# Subtest: /.exec(t))) { hadChild[ind] = false; continue; }
+    if ((m = /^# Subtest: /.exec(t))) { settle(); hadChild[ind] = false; continue; }
     if ((m = /^(not )?ok \d+ - (.*?)(?:\s+#\s+(SKIP|TODO)\b.*)?$/i.exec(t))) {
+      settle();
       const leaf = !hadChild[ind];
       hadChild[ind] = false;
       if (ind >= 4) hadChild[ind - 4] = true;
       const wrapper = ind === 0 && leaf && m[2] === rel;
-      if (leaf && !wrapper && !m[3]) cells += 1;
+      pending = { ind, countable: leaf && !wrapper && !m[3], type: null };
       continue;
     }
+    settle();
     if ((m = /^#\s?(.*)$/.exec(t)) && !(ind === 0 && TAP_SUMMARY.test(m[1])) && MARK.test(m[1])) cells += 1;
   }
+  settle();
   return cells;
 }
 
