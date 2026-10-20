@@ -124,13 +124,25 @@ test('vendor + font checksums: SHA256SUMS verified (a mismatch is red)', () => {
 test('kiosk k9: no external-launch path — no wa.me / window.open / location navigation / intent: / tel: / mailto: / target=_blank', () => {
   const files = fs.readdirSync(here('./')).filter((f) => /\.(js|html)$/.test(f) && !/\.test\.js$|^test-/.test(f));
   assert.ok(files.includes('app.js') && files.includes('index.html') && files.includes('view.js'), 'non-vacuity: the shipped sources are scanned');
-  const forbidden = [/wa\.me/i, /api\.whatsapp/i, /whatsapp:/i, /window\.open\s*\(/, /\blocation\.(href|assign|replace)\b/, /\bintent:/, /\btel:/, /\bmailto:/, /target\s*=\s*["']_blank/, /\bsms:/];
+  // one detector per prohibited form, whitespace- and case-tolerant (codex nowa r1 P2)
+  const DETECTORS = {
+    'wa.me link':          { re: /wa\s*\.\s*me\b/i, hits: ['https://wa.me/504', 'WA.ME/x', 'wa .me/1'] },
+    'api.whatsapp link':   { re: /api\s*\.\s*whatsapp\b/i, hits: ['https://api.whatsapp.com/send?phone=1', 'API.WhatsApp.com'] },
+    'whatsapp: scheme':    { re: /\bwhatsapp\s*:/i, hits: ['whatsapp://send?text=x', 'WhatsApp://send'] },
+    'window.open':         { re: /\bwindow\s*\.\s*open\s*\(|\bwindow\s*\[\s*['"`]open['"`]\s*\]/i, hits: ['window.open(u)', 'window .open(u)', 'window. open (u)', 'WINDOW.OPEN(u)', "window['open'](u)"] },
+    'location navigation': { re: /\blocation\s*\.\s*(href|assign|replace)\b/i, hits: ['location.href = u', 'location .assign(u)', 'window.location.replace(u)', 'LOCATION.HREF=u'] },
+    'intent: scheme':      { re: /\bintent\s*:/i, hits: ['intent://scan/#Intent;end', 'INTENT:x'] },
+    'tel: link':           { re: /\btel\s*:/i, hits: ['tel:+504', 'TEL:1', 'href="tel :1"'] },
+    'mailto: link':        { re: /\bmailto\s*:/i, hits: ['mailto:a@b.c', 'MAILTO:x'] },
+    'sms: link':           { re: /\bsms\s*:/i, hits: ['sms:+504', 'SMS:1'] },
+    'target=_blank':       { re: /\btarget\s*=\s*["']?\s*_blank/i, hits: ['target="_blank"', "target='_blank'", 'target=_blank', 'TARGET="_blank"', 'target = "_blank"'] },
+  };
+  // sensitivity, PER detector: each must catch every form it names on its own (one broken detector cannot hide behind another)
+  for (const [name, d] of Object.entries(DETECTORS)) for (const h of d.hits) assert.ok(d.re.test(h), `non-vacuity: the ${name} detector must catch ${JSON.stringify(h)}`);
   for (const f of files) {
     const src = read(`./${f}`);
-    for (const re of forbidden) assert.ok(!re.test(src), `🔴 ${f} contains an external-launch path (${re}) — kiosk k9 forbids leaving the app`);
+    for (const [name, d] of Object.entries(DETECTORS)) assert.ok(!d.re.test(src), `🔴 ${f} contains an external-launch path (${name}) — kiosk k9 forbids leaving the app`);
   }
-  // sensitivity: the scan catches the removed action's exact shape
-  assert.ok(forbidden.some((re) => re.test("window.open(`https://wa.me/${p}`, '_blank')")), 'non-vacuity: the old WhatsApp launch would be caught');
 });
 
 test('the app imports Firebase ONLY from vendor/ (no CDN at runtime); the one remote script is Maps, only when a key is configured', () => {
