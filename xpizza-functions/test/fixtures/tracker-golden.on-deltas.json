@@ -162,11 +162,13 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -215,6 +217,7 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@tracking/driver_location/at"
@@ -222,6 +225,7 @@
   "to": [
    "T@order/created_at",
    "T@tracking/driver_location/at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -270,6 +274,7 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@tracking/driver_location/at"
@@ -277,6 +282,7 @@
   "to": [
    "T@order/created_at",
    "T@tracking/driver_location/at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -325,6 +331,7 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@tracking/driver_location/at"
@@ -332,6 +339,7 @@
   "to": [
    "T@order/created_at",
    "T@tracking/driver_location/at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -383,6 +391,7 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@order/delivered_at",
@@ -390,6 +399,7 @@
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@order/delivered_at"
   ],
@@ -442,6 +452,7 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@order/delivered_at",
@@ -449,6 +460,7 @@
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@order/delivered_at"
   ],
@@ -617,11 +629,13 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -678,11 +692,13 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -739,11 +755,13 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -800,11 +818,13 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -856,6 +876,7 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@order/delivered_at",
@@ -863,6 +884,7 @@
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@order/delivered_at"
   ],
@@ -915,6 +937,7 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@order/delivered_at",
@@ -922,6 +945,7 @@
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@order/delivered_at"
   ],
@@ -1090,11 +1114,13 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -1143,6 +1169,7 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@tracking/driver_location/at"
@@ -1150,6 +1177,7 @@
   "to": [
    "T@order/created_at",
    "T@tracking/driver_location/at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -1203,6 +1231,7 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@order/cancelled_at",
@@ -1211,6 +1240,7 @@
   "to": [
    "T@order/created_at",
    "T@tracking/mx/smp/sample_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@order/cancelled_at"
   ],
@@ -1265,6 +1295,7 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@order/cancelled_at",
@@ -1273,6 +1304,7 @@
   "to": [
    "T@order/created_at",
    "T@tracking/mx/smp/sample_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@order/cancelled_at"
   ],
@@ -1441,11 +1473,13 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at"
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -1494,6 +1528,7 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@tracking/driver_location/at"
@@ -1501,6 +1536,7 @@
   "to": [
    "T@order/created_at",
    "T@tracking/driver_location/at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -1549,6 +1585,7 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@tracking/driver_location/at"
@@ -1556,6 +1593,7 @@
   "to": [
    "T@order/created_at",
    "T@tracking/driver_location/at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -1637,12 +1675,14 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@tracking/driver_location/at"
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -1724,12 +1764,14 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@tracking/driver_location/at"
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"
@@ -1811,12 +1853,14 @@
   "path": "/_ts_order",
   "from": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at",
    "T@tracking/picked_up_at",
    "T@tracking/driver_location/at"
   ],
   "to": [
    "T@order/created_at",
+   "T@tracking/ready_at",
    "T@order/picked_up_at"
   ],
   "reason": "ts-order-labels: canonical timestamp ordering — follows from the tracker timestamps now equalling the order's (and the new mx sample_at)"

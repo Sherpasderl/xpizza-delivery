@@ -1,5 +1,5 @@
 {
- "root_head": "d88dcdf1da167da4d35b11799cc1ba109b8297aa",
+ "root_head": "e8e77e24eb8fde1b95d668a45be193065e37c46a",
  "flag": "off",
  "journeys": {
   "native": [
@@ -294,13 +294,15 @@
      "items_text": "1x Margherita",
      "order_id": "o_golden_1",
      "order_type": "delivery",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "ready",
      "total": 250
     },
     "_ts_order": [
-     "T@order/created_at"
+     "T@order/created_at",
+     "T@tracking/ready_at"
     ]
    },
    {
@@ -354,6 +356,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -361,6 +364,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at"
     ]
@@ -417,6 +421,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -424,6 +429,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@tracking/driver_location/at"
@@ -481,6 +487,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -488,6 +495,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@tracking/driver_location/at"
@@ -545,6 +553,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -552,6 +561,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@tracking/driver_location/at"
@@ -613,6 +623,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "delivered",
@@ -620,6 +631,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@order/delivered_at",
@@ -675,6 +687,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "delivered",
@@ -682,6 +695,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@order/delivered_at",
@@ -981,13 +995,15 @@
      "items_text": "1x Margherita",
      "order_id": "o_golden_1",
      "order_type": "delivery",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "ready",
      "total": 250
     },
     "_ts_order": [
-     "T@order/created_at"
+     "T@order/created_at",
+     "T@tracking/ready_at"
     ]
    },
    {
@@ -1041,6 +1057,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -1048,6 +1065,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at"
     ]
@@ -1096,6 +1114,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -1103,6 +1122,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at"
     ]
@@ -1151,6 +1171,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -1158,6 +1179,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at"
     ]
@@ -1206,6 +1228,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -1213,6 +1236,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at"
     ]
@@ -1273,6 +1297,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "delivered",
@@ -1280,6 +1305,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@order/delivered_at",
@@ -1335,6 +1361,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "delivered",
@@ -1342,6 +1369,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@order/delivered_at",
@@ -1641,13 +1669,15 @@
      "items_text": "1x Margherita",
      "order_id": "o_golden_1",
      "order_type": "delivery",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "ready",
      "total": 250
     },
     "_ts_order": [
-     "T@order/created_at"
+     "T@order/created_at",
+     "T@tracking/ready_at"
     ]
    },
    {
@@ -1701,6 +1731,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -1708,6 +1739,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at"
     ]
@@ -1764,6 +1796,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -1771,6 +1804,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@tracking/driver_location/at"
@@ -1831,6 +1865,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "cancelled",
@@ -1838,6 +1873,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@order/cancelled_at",
@@ -1892,6 +1928,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "cancelled",
@@ -1899,6 +1936,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@order/cancelled_at",
@@ -2198,13 +2236,15 @@
      "items_text": "1x Margherita",
      "order_id": "o_golden_1",
      "order_type": "delivery",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "ready",
      "total": 250
     },
     "_ts_order": [
-     "T@order/created_at"
+     "T@order/created_at",
+     "T@tracking/ready_at"
     ]
    },
    {
@@ -2258,6 +2298,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -2265,6 +2306,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at"
     ]
@@ -2321,6 +2363,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -2328,6 +2371,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@tracking/driver_location/at"
@@ -2385,6 +2429,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -2392,6 +2437,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@tracking/driver_location/at"
@@ -2449,6 +2495,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -2456,6 +2503,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@tracking/driver_location/at"
@@ -2513,6 +2561,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -2520,6 +2569,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@tracking/driver_location/at"
@@ -2577,6 +2627,7 @@
      "order_id": "o_golden_1",
      "order_type": "delivery",
      "picked_up_at": "T@tracking/picked_up_at",
+     "ready_at": "T@tracking/ready_at",
      "restaurant_display_name": "TB Centro",
      "restaurant_id": "tb_centro",
      "status": "out_for_delivery",
@@ -2584,6 +2635,7 @@
     },
     "_ts_order": [
      "T@order/created_at",
+     "T@tracking/ready_at",
      "T@order/picked_up_at",
      "T@tracking/picked_up_at",
      "T@tracking/driver_location/at"
