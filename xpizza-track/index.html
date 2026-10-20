@@ -317,6 +317,8 @@
 
         <!-- Live driver map (Phase A) — shown only for the ACTIVE out_for_delivery drop; hidden otherwise -->
         <div id="driver-map" class="driver-map hidden" aria-hidden="true"></div>
+        <!-- E1 (Mejora nueva) — before the first live location: the restaurant + destination pins, no driver marker -->
+        <div id="pins-map" class="driver-map hidden" aria-hidden="true"></div>
 
         <!-- Order summary — collapsible "Resumen del pedido" (default collapsed so the reward card leads) -->
         <div class="order-summary">
@@ -355,6 +357,7 @@
   </div>
 
   <script src="/status-view.js"></script>
+  <script src="/eta-gate.js"></script>
   <script type="module">
     // X Pizza tracking — version: 1.0.0
     //
@@ -428,47 +431,81 @@
       // maxDurationMs. This matches how dispatch drives the same engine (update-only, never cancel-per-render).
     }
 
-    // ── Real tightening ETA (Phase B) — client-side, traffic-aware DirectionsService from the live
-    //    driver_location to the customer pin, throttled. ANY failure falls back to the 12-min computeEta;
-    //    never throws into the render, never blanks, never touches the glide. (No server / no server key.)
-    const ETA_INTERVAL_MS = 60000, ETA_MOVE_M = 200, ETA_DWELL_SEC = 120;
-    let dSvc = null, etaLastAt = null, etaLastPos = null, etaLastText = null, etaIsActive = false;
+    // ── E1 (Mejora nueva) — before the first live location of a LIVE claim, the map with the restaurant and the customer's
+    //    pins (mx.pins via status-view's v.pins), no driver marker. Its OWN map instance on #pins-map: it never touches dMap,
+    //    the driver marker or the glide; once a location exists the live map (updateDriverMap) takes over exactly as before.
+    //    Load failure is non-fatal: the pins map stays hidden.
+    let pMap = null, pHubMk = null, pDestMk = null;
+    async function updatePinsMap(pins) {
+      const el = document.getElementById('pins-map');
+      if (!el || !pins) return;
+      el.classList.remove('hidden');
+      const lib = await loadMaps();
+      if (!lib || !(window.google && google.maps)) { el.classList.add('hidden'); return; }
+      if (!pMap) pMap = new google.maps.Map(el, { center: pins.dest, zoom: 14, disableDefaultUI: true, gestureHandling: 'greedy', clickableIcons: false });
+      const hubIcon = { ...dotIcon('#FFFFFF'), strokeColor: '#BA7517', strokeWeight: 3 };
+      if (!pHubMk) pHubMk = new google.maps.Marker({ map: pMap, position: pins.hub, title: 'Restaurante', icon: hubIcon }); else pHubMk.setPosition(pins.hub);
+      if (!pDestMk) pDestMk = new google.maps.Marker({ map: pMap, position: pins.dest, title: 'Tu dirección', icon: dotIcon('#111827') }); else pDestMk.setPosition(pins.dest);
+      const b = new google.maps.LatLngBounds(); b.extend(pins.hub); b.extend(pins.dest); pMap.fitBounds(b, 56);
+    }
+    function hidePinsMap() {
+      const el = document.getElementById('pins-map');
+      if (el) el.classList.add('hidden');
+    }
+
+    // ── Real tightening ETA (Phase B; F4) — client-side, traffic-aware DirectionsService from the live driver_location to
+    //    the customer pin, throttled as before. The MINUTES appear only when eta-gate.js allows them (a measured location
+    //    under 90 s old by server time, the LATEST request's answer under 120 s old, the same destination, within 200 m);
+    //    otherwise the live calm copy. A late or superseded answer is dropped; one timer re-checks at the first expiry, and the
+    //    server-offset subscription / a return to the tab re-check too — each touches ONLY the sub-line. Never throws into
+    //    the render, never touches the map or the glide. (No server / no server key.)
+    const ETA_INTERVAL_MS = 60000, ETA_MOVE_M = 200;
+    const ETA_CALM = 'En ruta a tu dirección';
+    let dSvc = null, etaLastAt = null, etaLastPos = null, etaIsActive = false;
+    let etaReqId = 0, etaResult = null, etaData = null, etaTimer = null, serverOffset;
+    let etaClaim, lastRealOwner = null;
     function setEtaText(t) { const el = document.getElementById('driver-eta'); if (el && t) el.textContent = t; }
-    function fallbackEta(data) {
-      const eta = computeEta(data);
-      setEtaText(etaLastText || (eta ? `Llega en ~${eta} min` : 'En ruta a tu dirección'));
+    function renderEtaLine() {
+      if (etaTimer) { clearTimeout(etaTimer); etaTimer = null; }
+      if (!etaIsActive || !etaData) return;
+      const g = window.EtaGate.etaGate({
+        active: etaIsActive, loc: etaData.driver_location, dest: { lat: etaData.dest_lat, lng: etaData.dest_lng },
+        result: etaResult, latestReqId: etaReqId, nowLocal: Date.now(), serverOffset, dist: distanceMeters,
+      });
+      setEtaText(g.show ? g.text : ETA_CALM);
+      if (g.show) etaTimer = setTimeout(renderEtaLine, Math.max(0, g.remainingMs));   // strict limits: at the deadline it hides
     }
     function refreshDriverEta(data) {
+      etaData = data;
       const loc = data.driver_location;
       if (!loc || !Number.isFinite(loc.lat) || !Number.isFinite(loc.lng)
-          || !Number.isFinite(data.dest_lat) || !Number.isFinite(data.dest_lng)) { fallbackEta(data); return; }
-      if (!(window.google && google.maps && google.maps.DirectionsService)) { fallbackEta(data); return; }
+          || !Number.isFinite(data.dest_lat) || !Number.isFinite(data.dest_lng)) { renderEtaLine(); return; }
+      if (!(window.google && google.maps && google.maps.DirectionsService)) { renderEtaLine(); return; }
       const now = Date.now();
       const moved = etaLastPos ? distanceMeters(etaLastPos, { lat: loc.lat, lng: loc.lng }) : Infinity;
-      if (!dueForRefresh(etaLastAt, now, ETA_INTERVAL_MS, moved, ETA_MOVE_M)) { if (etaLastText) setEtaText(etaLastText); return; }
+      if (!dueForRefresh(etaLastAt, now, ETA_INTERVAL_MS, moved, ETA_MOVE_M)) { renderEtaLine(); return; }
       etaLastAt = now; etaLastPos = { lat: loc.lat, lng: loc.lng };
+      const id = ++etaReqId;
+      const origin = { lat: loc.lat, lng: loc.lng }, dest = { lat: data.dest_lat, lng: data.dest_lng };
       try {
         if (!dSvc) dSvc = new google.maps.DirectionsService();
         dSvc.route({
-          origin: { lat: loc.lat, lng: loc.lng },
-          destination: { lat: data.dest_lat, lng: data.dest_lng },
+          origin,
+          destination: dest,
           travelMode: google.maps.TravelMode.DRIVING,
           drivingOptions: { departureTime: new Date() },   // traffic-aware (duration_in_traffic)
         }, (res, status) => {
-          if (!etaIsActive) return;                          // Fix C — drop a stale callback after an active→waiting flip
+          if (!etaIsActive || id !== etaReqId) return;      // a stale or superseded answer is dropped
           try {
-            if (status !== 'OK' || !res || !res.routes[0]) { fallbackEta(data); return; }
+            if (status !== 'OK' || !res || !res.routes[0]) { renderEtaLine(); return; }
             const leg = res.routes[0].legs[0];
             const travelSec = (leg.duration_in_traffic && leg.duration_in_traffic.value) || leg.duration.value;
-            const mins = Math.round((travelSec + ETA_DWELL_SEC) / 60);
-            // Fix B — near-arrival keys on TRAVEL time (the 120s dwell floors the numeric ETA at 2 min, so
-            // mins<=1 was unreachable). Driver essentially at the door (travel ≤45s) → "está llegando".
-            etaLastText = travelSec <= 45 ? 'Tu pedido está llegando' : `Llega en ~${mins} min`;
-            setEtaText(etaLastText);
-          } catch (_) { fallbackEta(data); }
+            etaResult = { reqId: id, atLocal: Date.now(), origin, dest, travelSec };
+            renderEtaLine();
+          } catch (_) { renderEtaLine(); }
         });
-      } catch (_) { fallbackEta(data); return; }             // Fix A — a synchronous throw from route()/ctor falls back
-      if (etaLastText) setEtaText(etaLastText); else fallbackEta(data);   // Fix D — never leave the slot at '—'
+      } catch (_) { renderEtaLine(); return; }              // a synchronous throw from route()/ctor → the calm copy
+      renderEtaLine();
     }
 
     // Token = path segment. URL is /<token>, possibly with trailing slash.
@@ -500,15 +537,9 @@
       return 'L' + Math.round(n).toLocaleString('en-US');
     }
 
-    // Compute simple ETA when driver is en route. We don't have GPS in
-    // /order_tracking (privacy), so we use the picked_up_at timestamp + a
-    // 12-min default for typical SPS distances. Refines if delivery_eta_min
-    // ever gets written by the cloud function. The decision lives in status-view.js (shared with the order forms, which
-    // also own the 12-hour clock formatter for delivered / collected times).
+    // The status DECISIONS live in status-view.js (shared with the order forms, which also own the 12-hour clock formatter for
+    // delivered / collected times). The tracker asks with gen2 (F4): no countdown from pickup — minutes only via eta-gate.js.
     const { presentStatus } = window.StatusView;
-    function computeEta(data) {
-      return presentStatus({ ...data, fallback_drive_min: 12, now: Date.now() }).etaMin;
-    }
 
     // Per-restaurant branding (D2 mechanism, E2 real palette). x_pizza / legacy / absent restaurant_id
     // → NO override (the static X. Pizza branding stays byte-identical, zero risk). la_musa → its name +
@@ -637,12 +668,28 @@
       // (inner scaleX fill + shimmer, both off under prefers-reduced-motion). The driver-card copy / no-map /
       // ETA / map LOGIC is the shipped core — only its DOM home moved into the unified headline (#driver-name /
       // #driver-eta are reused, so refreshDriverEta / setEtaText / the map plumbing are untouched).
+      // F4 — two identities from the server's live-tracking record (mx; absent while the server flag is off):
+      //   (a) the ETA claim — any change of mode / owner / shift / epoch drops a pending or held route answer;
+      //   (b) the SAMPLING owner (mx.smp, kept across the same driver's live → neutral → live; 'none' = no owner) — only a REAL
+      //       owner or shift replacement restarts the marker, so the new driver appears at their own first sample instead of
+      //       gliding from the previous driver's last point. Same-owner changes keep the glide.
+      const mx = (data.mx && typeof data.mx === 'object') ? data.mx : null;
+      const claim = mx ? `${mx.mode}|${mx.owner_tag}|${mx.shift_id}|${mx.epoch}` : null;
+      if (claim !== etaClaim) { etaClaim = claim; etaReqId++; etaResult = null; }
+      const smp = (mx && mx.smp && typeof mx.smp === 'object') ? mx.smp : null;
+      const owner = (smp && typeof smp.owner_tag === 'string' && smp.owner_tag && smp.owner_tag !== 'none') ? `${smp.owner_tag}|${smp.shift_id}` : null;
+      if (owner !== null) {
+        if (lastRealOwner !== null && owner !== lastRealOwner && dGlide) dGlide.cancel(DRV);
+        lastRealOwner = owner;
+      }
+
       const titleEl = document.getElementById('driver-name');    // the one big headline
       const subEl = document.getElementById('driver-eta');       // the one sub-line (also the live-ETA slot)
       const avatarEl = document.getElementById('driver-avatar');
       const segbarEl = document.getElementById('segbar');
 
       hideDriverMap();         // reset the live map every render; only the active-drop branch re-shows it
+      hidePinsMap();           // E1: likewise the pins map — only the calm state of a live claim with pins re-shows it
       etaIsActive = false;     // Fix C — cleared each render; only the active-drop branch re-arms ETA writes
       avatarEl.classList.add('hidden');  // only an assigned driver gets an avatar — the .hidden CLASS (display:none!important) hides it; the [hidden] attr is defeated by .driver-avatar{display:flex}
       titleEl.className = 'stitle';
@@ -670,9 +717,9 @@
       // function the order forms' confirmation uses; the brand in the pickup copy is the record's restaurant_display_name
       // (never a per-brand literal). The EFFECTS stay here: the DOM, the live map, the Directions ETA. CANCELLED dims the
       // bar; terminal states hide the live-updates line. An ACTIVE drop (server-gated is_active_drop + a mirrored location)
-      // gets the live map + the throttled traffic-aware ETA (falls back to the 12-min computeEta); an explicit stacked
-      // waiting drop gets the locked copy, no map and no countdown.
-      const v = presentStatus({ ...data, fallback_drive_min: 12, now: Date.now() });
+      // gets the live map + the throttled traffic-aware ETA (minutes only through eta-gate.js); an explicit stacked waiting
+      // drop gets the locked copy, no map and no countdown; with no live location, the calm copy (F4 gen2).
+      const v = presentStatus({ ...data, gen2: true, now: Date.now() });
       paintSegbar(v.segs);
       segbarEl.style.opacity = v.barOpacity;
       titleEl.className = v.titleClass;
@@ -682,10 +729,23 @@
       if (v.updatedHidden) document.getElementById('updated-text').classList.add('hidden');
       if (v.etaEligible) {
         etaIsActive = true;       // Fix C — arm ETA writes; a route callback that resolves after a flip is dropped
-        refreshDriverEta(data);   // throttled traffic-aware Directions ETA; falls back to 12-min on any failure
-        if (v.mapEligible) updateDriverMap(data);
+        refreshDriverEta(data);   // throttled traffic-aware Directions ETA; minutes only through eta-gate.js, else the calm copy
+        if (v.mapEligible) {
+          if (dMap) updateDriverMap(data);   // the live map exists (Maps loaded): today's synchronous call, unchanged timing
+          else {
+            // F4 (codex build r1 P1): while Maps is still loading (no map yet) the box shows at once, as before, and the map work
+            // waits for Maps — ONLY for this render's sampling owner: a sample queued before a REAL reassign is dropped, so the new
+            // driver's marker starts at their own first sample. (Accepted, codex build r2: an initial mx arriving mid-load may drop
+            // an earlier queued null-owner sample; the latest still proceeds.) updateDriverMap is unchanged.
+            const mapEl = document.getElementById('driver-map'); if (mapEl) mapEl.classList.remove('hidden');
+            const mapOwner = lastRealOwner;
+            loadMaps().then(() => { if (mapOwner === lastRealOwner) updateDriverMap(data); });
+          }
+        }
       } else {
         subEl.textContent = v.sub;
+        if (etaTimer) { clearTimeout(etaTimer); etaTimer = null; }   // leaving live: no pending ETA expiry (BUILD §3)
+        if (v.pins) updatePinsMap(v.pins);   // E1: the restaurant + destination before the first location
       }
     }
 
@@ -714,6 +774,14 @@
         console.error('Tracking subscription error:', err);
         showError('No pudimos cargar tu pedido. Intenta más tarde.');
       });
+      // F4 — the minutes are judged by SERVER time (the measured sample age); the offset arrives once and on reconnects.
+      // A change, and a return to the tab, re-check the minutes (the sub-line only).
+      onValue(ref(db, '.info/serverTimeOffset'), (snap) => {
+        const o = snap.val();
+        serverOffset = Number.isFinite(o) ? o : undefined;
+        renderEtaLine();
+      });
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderEtaLine(); });
     }
   </script>
 <script>

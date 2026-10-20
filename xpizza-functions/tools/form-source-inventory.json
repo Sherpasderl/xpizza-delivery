@@ -218,7 +218,6 @@
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
-    "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -237,7 +236,8 @@
     "xpizza-orders/form-live-menu.test.mjs",
     "xpizza-orders/form-safe-render.test.mjs",
     "xpizza-orders/form-serial-order.copy.test.mjs",
-    "xpizza-orders/form-serial-order.test.mjs"
+    "xpizza-orders/form-serial-order.test.mjs",
+    "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
     "charge-boundary.test.mjs",
@@ -383,7 +383,6 @@
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
-    "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -606,7 +605,6 @@
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
-    "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -618,7 +616,8 @@
     "xpizza-orders/form-group-picker.copy.test.mjs",
     "xpizza-orders/form-identity-strip.copy.test.mjs",
     "xpizza-orders/form-live-menu.copy.test.mjs",
-    "xpizza-orders/form-serial-order.copy.test.mjs"
+    "xpizza-orders/form-serial-order.copy.test.mjs",
+    "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
     "confirm-quote-wiring.test.mjs",
@@ -772,7 +771,6 @@
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
-    "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -883,8 +881,8 @@
     "xpizza-functions/test/driver-cash-subscription.emulator.test.js",
     "xpizza-functions/test/h0-dismiss-rules.emulator.test.js",
     "xpizza-functions/test/superseded-capture.emulator.test.js",
-    "xpizza-functions/test/unassign.emulator.test.js",
-    "xpizza-functions/tools/registry-writers.test.js"
+    "xpizza-functions/tools/registry-writers.test.js",
+    "xpizza-track/tracker-glide.guard.test.js"
    ],
    "via_helper": [
     "xpizza-dispatch/dispatch-alert-nav.test.js",
@@ -933,8 +931,7 @@
     "xpizza-functions/contract/token.guard.test.js",
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
-    "xpizza-functions/test/driver-assignment-parity.emulator.test.js",
-    "xpizza-functions/test/unassign.emulator.test.js"
+    "xpizza-functions/test/driver-assignment-parity.emulator.test.js"
    ],
    "via_helper": [
     "xpizza-dispatch-mobile/board-model.test.mjs",
@@ -1022,7 +1019,13 @@
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
     "xpizza-functions/pselfupdate-stamp.test.js",
+    "xpizza-track/eta-gate.test.js",
+    "xpizza-track/status-view-forms.test.js",
+    "xpizza-track/tracker-glide.guard.test.js",
+    "xpizza-track/tracker-live.test.js",
+    "xpizza-track/tracker-pins.test.js",
     "xpizza-track/tracker-stacked-copy.test.js",
+    "xpizza-track/tracker-status.delta.test.js",
     "xpizza-track/tracker-status.golden.test.js"
    ],
    "via_helper": [
@@ -1584,8 +1587,7 @@
   "rewards-redeem-intake.js",
   "rewards-reserve.js",
   "signup-core.js",
-  "signup-endpoints.js",
-  "unassign-core.js"
+  "signup-endpoints.js"
  ],
  "server": {
   "access/access-census-core.js": {
@@ -1653,8 +1655,7 @@
       "tools/h1c-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
-      "tools/signup-inverse.js",
-      "tools/unassign-inverse.js"
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1672,7 +1673,6 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
-      "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1692,7 +1692,6 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
-      "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1714,7 +1713,6 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
-      "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1732,7 +1730,6 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
-      "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1748,8 +1745,7 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
-      "tools/signup-inverse.js",
-      "tools/unassign-inverse.js"
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1762,8 +1758,7 @@
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
-      "tools/signup-inverse.js",
-      "tools/unassign-inverse.js"
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1771,16 +1766,14 @@
      "inverses": [
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
-      "tools/signup-inverse.js",
-      "tools/unassign-inverse.js"
+      "tools/signup-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/h1c-wiring.guard.test.js",
      "inverses": [
       "tools/h1c-inverse.js",
-      "tools/signup-inverse.js",
-      "tools/unassign-inverse.js"
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1800,7 +1793,6 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
-      "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1822,7 +1814,6 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
-      "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1835,8 +1826,7 @@
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
-      "tools/signup-inverse.js",
-      "tools/unassign-inverse.js"
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1848,8 +1838,7 @@
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
-      "tools/signup-inverse.js",
-      "tools/unassign-inverse.js"
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1858,8 +1847,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/s5-inverse.js",
-      "tools/signup-inverse.js",
-      "tools/unassign-inverse.js"
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1873,15 +1861,13 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
-      "tools/signup-inverse.js",
-      "tools/unassign-inverse.js"
+      "tools/signup-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/signup-wiring.guard.test.js",
      "inverses": [
-      "tools/signup-inverse.js",
-      "tools/unassign-inverse.js"
+      "tools/signup-inverse.js"
      ]
     },
     {
@@ -1899,7 +1885,6 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
-      "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     },
@@ -1922,12 +1907,6 @@
      ]
     },
     {
-     "file": "xpizza-functions/unassign-wiring.guard.test.js",
-     "inverses": [
-      "tools/unassign-inverse.js"
-     ]
-    },
-    {
      "file": "xpizza-functions/wacancel-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
@@ -1940,7 +1919,6 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
-      "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
      ]
     }
@@ -1986,7 +1964,6 @@
     "xpizza-functions/test/driver-assignment-parity.emulator.test.js",
     "xpizza-functions/test/order-exists.emulator.test.js",
     "xpizza-functions/test/resolve-manual.emulator.test.js",
-    "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/tools/portal-split.js",
     "xpizza-functions/whatsapp-brand.test.js"
    ]
@@ -2125,10 +2102,6 @@
    "lifts": [
     "xpizza-functions/signup-wiring.guard.test.js"
    ]
-  },
-  "unassign-core.js": {
-   "pins": [],
-   "lifts": []
   }
  },
  "unregistered": []

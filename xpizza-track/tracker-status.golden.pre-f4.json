@@ -1,0 +1,5973 @@
+{
+ "delivery/new": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Recibimos tu pedido"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Estamos por empezar a preparar tu pedido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "delivery/preparing": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.55"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Tu pedido se está preparando"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Te avisaremos cuando vaya en camino"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "delivery/ready": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.55"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Tu pedido se está preparando"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Te avisaremos cuando vaya en camino"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "delivery/out_for_delivery": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Tu pedido va en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Pronto llegará a tu dirección"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "delivery/delivered": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle success",
+   "text": "¡Pedido entregado!"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "¡Buen provecho!"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "delivery/completed": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle success",
+   "text": "¡Pedido entregado!"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "¡Buen provecho!"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "delivery/cancelled": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "0.4"
+   },
+   "kids": [
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle danger",
+   "text": "Pedido cancelado"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Si pagaste por adelantado, te contactaremos sobre el reembolso"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": ""
+  },
+  "computeEta": null
+ },
+ "delivery/weird_status": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Recibimos tu pedido"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Estamos por empezar a preparar tu pedido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "delivery/undefined": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Recibimos tu pedido"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Estamos por empezar a preparar tu pedido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "delivery/delivered+at": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle success",
+   "text": "¡Pedido entregado!"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "¡Buen provecho! · Entregado 7:25 pm"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "delivery/completed+at": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle success",
+   "text": "¡Pedido entregado!"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "¡Buen provecho! · Entregado 6:29 pm"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "delivery/ready+brand": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.55"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Tu pedido se está preparando"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Te avisaremos cuando vaya en camino"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "delivery/ready+blank-brand": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.55"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Tu pedido se está preparando"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Te avisaremos cuando vaya en camino"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "pickup/new": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Recibimos tu pedido"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Estamos por empezar a preparar tu pedido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "pickup/preparing": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.55"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Tu pedido se está preparando"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Te avisaremos cuando esté listo"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "pickup/ready": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle success",
+   "text": "¡Tu pedido está listo para recoger!"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Pasá por el restaurante a recogerlo"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "pickup/out_for_delivery": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Recibimos tu pedido"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Estamos por empezar a preparar tu pedido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "pickup/delivered": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle success",
+   "text": "¡Gracias por tu compra!"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Recogido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "pickup/completed": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle success",
+   "text": "¡Gracias por tu compra!"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Recogido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "pickup/cancelled": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "0.4"
+   },
+   "kids": [
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle danger",
+   "text": "Pedido cancelado"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Si pagaste por adelantado, te contactaremos sobre el reembolso"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": ""
+  },
+  "computeEta": null
+ },
+ "pickup/weird_status": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Recibimos tu pedido"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Estamos por empezar a preparar tu pedido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "pickup/undefined": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Recibimos tu pedido"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Estamos por empezar a preparar tu pedido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "pickup/delivered+at": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle success",
+   "text": "¡Gracias por tu compra!"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Recogido a las 7:25 PM"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "pickup/completed+at": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle success",
+   "text": "¡Gracias por tu compra!"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Recogido a las 6:29 PM"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "pickup/ready+brand": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle success",
+   "text": "¡Tu pedido está listo para recoger!"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Pasá por La Musa a recogerlo"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "pickup/ready+blank-brand": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle success",
+   "text": "¡Tu pedido está listo para recoger!"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Pasá por el restaurante a recogerlo"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "ofd/driver/active": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "En ruta a tu dirección"
+  },
+  "driver-map": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "ofd/driver/active-no-dest": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "En ruta a tu dirección"
+  },
+  "driver-map": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "ofd/driver/active-bad-loc": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "En ruta a tu dirección"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "ofd/driver/active-no-loc": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "En ruta a tu dirección"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "ofd/driver/stacked": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.35"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos va en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Tu repartidor tiene una parada rápida en camino a la tuya, luego va directo hacia vos."
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "ofd/driver/unknown": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "En ruta a tu dirección"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "ofd/no-driver": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Tu pedido va en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Pronto llegará a tu dirección"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "ofd/no-driver/stacked": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Tu pedido va en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Pronto llegará a tu dirección"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "ofd/driver/active/2-snapshots": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "En ruta a tu dirección"
+  },
+  "driver-map": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "eta/unknown/eta=undefined/ago=undefined": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "En ruta a tu dirección"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "eta/active/eta=undefined/ago=undefined": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "En ruta a tu dirección"
+  },
+  "driver-map": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "eta/unknown/eta=undefined/ago=3": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "Llega en ~9 min"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": 9
+ },
+ "eta/active/eta=undefined/ago=3": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "Llega en ~9 min"
+  },
+  "driver-map": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": 9
+ },
+ "eta/unknown/eta=undefined/ago=15": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "Llega en ~1 min"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": 1
+ },
+ "eta/active/eta=undefined/ago=15": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "Llega en ~1 min"
+  },
+  "driver-map": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": 1
+ },
+ "eta/unknown/eta=7/ago=undefined": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "Llega en ~7 min"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": 7
+ },
+ "eta/active/eta=7/ago=undefined": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "Llega en ~7 min"
+  },
+  "driver-map": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": 7
+ },
+ "eta/unknown/eta=7/ago=3": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "Llega en ~7 min"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": 7
+ },
+ "eta/active/eta=7/ago=3": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "Llega en ~7 min"
+  },
+  "driver-map": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": 7
+ },
+ "eta/unknown/eta=7/ago=15": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "Llega en ~7 min"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": 7
+ },
+ "eta/active/eta=7/ago=15": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": "C"
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Carlos está en camino"
+  },
+  "driver-eta": {
+   "cls": "ssub big",
+   "text": "Llega en ~7 min"
+  },
+  "driver-map": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": 7
+ },
+ "guest/plain-claim": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Recibimos tu pedido"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Estamos por empezar a preparar tu pedido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "guest/punch": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Recibimos tu pedido"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Estamos por empezar a preparar tu pedido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": "",
+   "html": "<div class=\"rw\"><div class=\"rw-label\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polyline points=\"20 12 20 22 4 22 4 12\"/><rect x=\"2\" y=\"7\" width=\"20\" height=\"5\"/><line x1=\"12\" y1=\"22\" x2=\"12\" y2=\"7\"/><path d=\"M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z\"/><path d=\"M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z\"/></svg> Tu recompensa</div><h3 class=\"rw-h3\">Empezá a llenar tu tarjeta de pizza gratis</h3><p class=\"rw-math\">Este pedido suma <b>2 sellos</b> + <b>1 de bienvenida</b> al crear tu perfil.</p><div class=\"rw-slots\"><span class=\"rw-slot rw-slot--on\"><svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12.5l4.5 4.5L19 7\"/></svg></span><span class=\"rw-slot rw-slot--on\"><svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12.5l4.5 4.5L19 7\"/></svg></span><span class=\"rw-slot rw-slot--on\"><svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12.5l4.5 4.5L19 7\"/></svg></span><span class=\"rw-slot\"></span><span class=\"rw-slot\"></span><span class=\"rw-slot\"></span><span class=\"rw-slot\"></span><span class=\"rw-slot rw-slot--goal\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polyline points=\"20 12 20 22 4 22 4 12\"/><rect x=\"2\" y=\"7\" width=\"20\" height=\"5\"/><line x1=\"12\" y1=\"22\" x2=\"12\" y2=\"7\"/><path d=\"M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z\"/><path d=\"M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z\"/></svg></span></div><div class=\"rw-slotcap\"><b>3 / 8</b> — 5 pizzas más para tu pizza gratis.</div><a class=\"rwcta\" href=\"https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345&n=2&u=punch\" rel=\"noopener\">Crear mi perfil y guardar mis sellos</a><p class=\"rw-sub\">Guardá tus sellos y reordená este pedido en un toque.</p></div>"
+  },
+  "claim-card": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": ""
+  },
+  "computeEta": null
+ },
+ "guest/point/la_musa": {
+  "title": "La Musa · Sigue tu pedido",
+  "brandVars": {
+   "--brand": "#B61218",
+   "--brand-dark": "#7A0A10",
+   "--brand-light": "#F4DDDD"
+  },
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg done",
+     "text": ""
+    },
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.55"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Tu pedido se está preparando"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Te avisaremos cuando esté listo"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": "",
+   "html": "<div class=\"rw\"><div class=\"rw-label\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polyline points=\"20 12 20 22 4 22 4 12\"/><rect x=\"2\" y=\"7\" width=\"20\" height=\"5\"/><line x1=\"12\" y1=\"22\" x2=\"12\" y2=\"7\"/><path d=\"M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z\"/><path d=\"M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z\"/></svg> Tu recompensa</div><h3 class=\"rw-h3\">Vas <b>107 pts</b>, a solo <b>93</b> de tu primer premio</h3><p class=\"rw-math\">Este pedido suma <b>57 pts</b> + <b>50 de bienvenida</b> al crear tu perfil.</p><div class=\"rw-ptrow\"><span class=\"rw-bignum\">107</span><span class=\"rw-bigunit\">pts</span></div><div class=\"rw-bar\"><i style=\"width:54%\"></i></div><div class=\"rw-barcap\"><span>0</span><span class=\"rw-goal\">faltan 93</span></div><a class=\"rwcta\" href=\"https://orders.lamusa.hn/?claim=PZX-1#t=TokAbc12345&n=57&u=point\" rel=\"noopener\">Crear mi perfil y reclamarlo</a><p class=\"rw-sub\">Guardá tus puntos y reordená este pedido en un toque.</p></div>"
+  },
+  "claim-card": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": ""
+  },
+  "brandName": "La Musa",
+  "errorIcon": "🥢🍜",
+  "computeEta": null
+ },
+ "profiled": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido #47"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Recibimos tu pedido"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Estamos por empezar a preparar tu pedido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": ""
+  },
+  "computeEta": null
+ },
+ "summary-lines": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Recibimos tu pedido"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Estamos por empezar a preparar tu pedido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-lines",
+   "text": "",
+   "kids": [
+    {
+     "cls": "summary-row",
+     "text": "",
+     "kids": [
+      {
+       "cls": "",
+       "text": "2× Pepperoni"
+      },
+      {
+       "cls": "summary-row-p",
+       "text": "L680"
+      }
+     ]
+    }
+   ]
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "computeEta": null
+ },
+ "null-record": {
+  "title": "X. Pizza · Sigue tu pedido",
+  "brandVars": {},
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": ""
+  },
+  "segbar": {
+   "cls": "",
+   "text": ""
+  },
+  "driver-avatar": {
+   "cls": "",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "",
+   "text": ""
+  },
+  "driver-eta": {
+   "cls": "",
+   "text": ""
+  },
+  "driver-map": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-items": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-address": {
+   "cls": "",
+   "text": ""
+  },
+  "summary-total": {
+   "cls": "",
+   "text": ""
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": ""
+  },
+  "computeEta": null
+ },
+ "la_musa-host": {
+  "title": "La Musa · Sigue tu pedido",
+  "brandVars": {
+   "--brand": "#B61218",
+   "--brand-dark": "#7A0A10",
+   "--brand-light": "#F4DDDD"
+  },
+  "path": [
+   "order_tracking/TokAbc12345"
+  ],
+  "loading": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "error-msg": {
+   "cls": "",
+   "text": ""
+  },
+  "tracking": {
+   "cls": "",
+   "text": ""
+  },
+  "order-id-display": {
+   "cls": "",
+   "text": "Pedido PZX-1"
+  },
+  "segbar": {
+   "cls": "",
+   "text": "",
+   "style": {
+    "opacity": "1"
+   },
+   "kids": [
+    {
+     "cls": "seg active",
+     "text": "",
+     "kids": [
+      {
+       "cls": "fill",
+       "text": "",
+       "style": {
+        "--p": "0.5"
+       }
+      }
+     ]
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    },
+    {
+     "cls": "seg",
+     "text": ""
+    }
+   ]
+  },
+  "driver-avatar": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "driver-name": {
+   "cls": "stitle",
+   "text": "Recibimos tu pedido"
+  },
+  "driver-eta": {
+   "cls": "ssub",
+   "text": "Estamos por empezar a preparar tu pedido"
+  },
+  "driver-map": {
+   "cls": "hidden",
+   "text": ""
+  },
+  "summary-customer": {
+   "cls": "",
+   "text": "Ana"
+  },
+  "summary-items": {
+   "cls": "summary-line",
+   "text": "1x Pepperoni"
+  },
+  "summary-address": {
+   "cls": "",
+   "text": "Col. Palmira"
+  },
+  "summary-total": {
+   "cls": "",
+   "text": "Total: L340"
+  },
+  "updated-text": {
+   "cls": "",
+   "text": ""
+  },
+  "reward-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-card": {
+   "cls": "",
+   "text": ""
+  },
+  "claim-btn": {
+   "cls": "",
+   "text": "",
+   "href": "https://orders.xpizza.hn/?claim=PZX-1#t=TokAbc12345"
+  },
+  "brandName": "La Musa",
+  "errorIcon": "🥢🍜",
+  "computeEta": null
+ }
+}

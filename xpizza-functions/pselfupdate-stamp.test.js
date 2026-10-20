@@ -143,7 +143,7 @@ ok(`all ${SITES.deployments.length} manifest deployments stamp from their netlif
   assert.strictEqual(res2.status, 0); assert.ok(/SHERPA STAMP FAILED/.test(out), 'the build log carries a loud error');
   assert.ok(!fs.existsSync(path.join(d2, 'version.json')));
   const res3 = require('child_process').spawnSync(process.execPath, [cli], { cwd: d2, env: { ...process.env, SITE_NAME: 'xpizzatrack', COMMIT_REF: 'abc', CONTEXT: 'production' }, encoding: 'utf8', timeout: 60000 });
-  assert.strictEqual(res3.status, 0); assert.ok(/sherpa-stamp: track-xpizza build [0-9a-f]{20} compat 1/.test(res3.stdout));
+  assert.strictEqual(res3.status, 0); assert.ok(new RegExp(`sherpa-stamp: track-xpizza build [0-9a-f]{20} compat ${COMPAT.generations.track}\\b`).test(res3.stdout));   // the compat.json value (F4 raised track to 2)
   ok('stamp failure (unknown/no SITE_NAME, wrong folder, unwritable file, and success → failed / partial re-stamp) → clean UNSTAMPED output; an uncleanable file is reported; CLI exits 0 with "SHERPA STAMP FAILED"');
 }
 

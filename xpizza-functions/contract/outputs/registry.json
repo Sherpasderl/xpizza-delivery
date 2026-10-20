@@ -2217,9 +2217,6 @@
    "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
    "reason": "S5: status-view.js decides the #s5 segbar + status copy (the tracker's decisions, same bytes)"
   },
-  "xpizza-track/status-view.js#presentStatus@xpizza-track/index.html<script@0>#computeEta": {
-   "status": "pending"
-  },
   "xpizza-track/status-view.js#presentStatus@xpizza-track/index.html<script@0>#render": {
    "status": "pending"
   },
@@ -2275,6 +2272,23 @@
    "status": "via",
    "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
    "reason": "F2 Q2: the cancelled-orders-in-view filter (estado) selects the per-order cancel-ack listeners → an archived / recalled cancelado ticket moves between tabs on the live board"
+  },
+  "xpizza-orders/status-view.js#statusOfdGen2@xpizza-orders/status-view.js#presentStatus": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "F4: the gen2 out_for_delivery decision inside presentStatus — the #s5 status line, the same copy as the tracker (BC2 parity)"
+  },
+  "la-musa-orders/status-view.js#statusOfdGen2@la-musa-orders/status-view.js#presentStatus": {
+   "status": "pending"
+  },
+  "xpizza-track/status-view.js#statusOfdGen2@xpizza-track/status-view.js#presentStatus": {
+   "status": "pending"
+  },
+  "xpizza-track/eta-gate.js#etaGate@xpizza-track/index.html<script@0>#renderEtaLine": {
+   "status": "pending"
+  },
+  "xpizza-track/index.html<script@0>#updateDriverMap@xpizza-track/index.html<script@0>#render>anon": {
+   "status": "pending"
   }
  }
 }
