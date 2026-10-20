@@ -128,6 +128,41 @@ try {
   }
   ok('coverage: unsupported files LISTED, excluded files carry their rule; GEO_DEFAULT is SENTINEL (owner ruling)');
 
+  // 10. AUTHORITY binds to the EXACT enclosing declaration — the authority symbol is exempt, the same token elsewhere in the file is not
+  {
+    BC.AUTHORITY.push({ file: 'app/elig.js', symbol: 'ONLY_THESE', why: 'fixture authority' });
+    try {
+      const r = scanFixture({ 'app/elig.js': "const ONLY_THESE = ['x_pizza'];\nfunction other(rid) { return rid === 'x_pizza'; }\nexports.ALSO = { x_pizza: 1 };\n" });
+      assert.ok(has(r, (x) => x.line === 1 && x.class === 'AUTHORITY'), FAIL('the authority declaration must be AUTHORITY'));
+      assert.ok(has(r, (x) => x.line === 2 && x.class === 'BEHAVIOUR'), FAIL('the same token in another function of the authority FILE must NOT be exempt'));
+      assert.ok(has(r, (x) => x.line === 3 && x.class !== 'AUTHORITY'), FAIL('another declaration in the authority file must NOT be exempt'));
+    } finally { BC.AUTHORITY.pop(); }
+  }
+  ok('AUTHORITY binds to the exact declaration: the authority symbol is exempt; the same token in another function / declaration of that file is not');
+
+  // 11. presentation-only selections are DISPLAY (class / chip tables, DOM class sinks, chip renderers, name picks);
+  //     a real branch stays BEHAVIOUR, a pick between two brand ids is UNCLASSIFIED (uncertain)
+  {
+    const r = scanFixture({ 'app/disp.js': [
+      "const BRAND_CLASS = { x_pizza: 'xp', brand_c: 'bc' };",                                   // 1 class table key
+      "el.classList.add('chip-' + 'x_pizza');",                                                    // 2 DOM class sink
+      "function brandLabel(o) { return o.rid === 'brand_c' ? 'c' : 'x'; }",                        // 3 renderer compare
+      "const name = (o.rid || 'x_pizza') === 'brand_c' ? 'Casa Cero' : 'X. Pizza';",              // 4 name pick (fallback + compare)
+      "if (o.rid === 'x_pizza') charge(o);",                                                       // 5 real branch
+      "const rid = o.rid === 'brand_c' ? 'brand_c' : 'x_pizza';",                                 // 6 pick between ids
+      "const PRICES = { x_pizza: 10 };",                                                          // 7 behavioural table
+    ].join('\n') + '\n' });
+    const cls = (line, tok) => (r.rows.find((x) => x.line === line && (!tok || x.token === tok)) || {}).class;
+    assert.strictEqual(cls(1, 'x_pizza'), 'DISPLAY', FAIL('a class table key must be DISPLAY'));
+    assert.strictEqual(cls(2), 'DISPLAY', FAIL('a classList sink must be DISPLAY'));
+    assert.strictEqual(cls(3, 'brand_c'), 'DISPLAY', FAIL('a compare inside a label renderer must be DISPLAY'));
+    assert.ok(r.rows.filter((x) => x.line === 4 && x.kind === 'rid').every((x) => x.class === 'DISPLAY'), FAIL('a fallback + compare that only picks a display name must be DISPLAY'));
+    assert.strictEqual(cls(5, 'x_pizza'), 'BEHAVIOUR', FAIL('a real branch must stay BEHAVIOUR'));
+    assert.strictEqual(cls(6, 'brand_c'), 'UNCLASSIFIED', FAIL('a pick between two brand ids is uncertain → UNCLASSIFIED'));
+    assert.strictEqual(cls(7, 'x_pizza'), 'BEHAVIOUR', FAIL('a non-presentation per-brand table stays BEHAVIOUR'));
+  }
+  ok('presentation picks are DISPLAY (class table, classList, label renderer, display-name ternary); a real branch and a price table stay BEHAVIOUR; an id↔id pick is UNCLASSIFIED');
+
   // 9. matcher normalisers
   assert.strictEqual(BC.normColour('#B8860B'), '#b8860b');
   assert.strictEqual(BC.normColour('#abc'), '#aabbcc');
