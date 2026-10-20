@@ -89,6 +89,20 @@ test('G1 teamList: the owner from the caller token, named managers, and ONLY cur
   clock = 1000;
 });
 
+test('T-b teamList: uses_platform_factura is the SERVER fact for the brand\'s own locations — false for a non-factura brand, true when a listed location issues facturas', async () => {
+  const db = createFakeDb(base());
+  const L = await T.teamList(deps(db), own, { brandId: 'tb' });
+  assert.strictEqual(L.uses_platform_factura, false, 'a brand none of whose locations is a platform-factura one');
+  const fx = base();
+  fx.brands.tb.locations.x_pizza = 'member';   // the platform-factura rid (factura/eligibility.js), listed under this brand
+  const L2 = await T.teamList(deps(createFakeDb(fx)), own, { brandId: 'tb' });
+  assert.strictEqual(L2.uses_platform_factura, true, 'a listed platform-factura location → true');
+  const gone = base(); gone.brands.tb.locations.x_pizza = 'removed';
+  assert.strictEqual((await T.teamList(deps(createFakeDb(gone)), own, { brandId: 'tb' })).uses_platform_factura, false, 'only member / retired locations count');
+  const fr = createFakeDb(base()); fr.failReads.add('brands');
+  assert.deepStrictEqual(await T.teamList(deps(fr), own, { brandId: 'tb' }), { ok: false, code: 'unavailable' }, 'a failed brand read is unavailable, never a guess');
+});
+
 test('G2 update_manager / memberUpdate: the full branch set + permiso in ONE transaction; only an existing manager; member branches only', async () => {
   const db = createFakeDb(base());
   const d = deps(db);

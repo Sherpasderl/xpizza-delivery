@@ -191,7 +191,7 @@ test('team-core: every write refuses while membership_writes_enabled is OFF (the
   assert.deepStrictEqual(await T.teamAcceptInvite(d, acc('mgrT001'), { inviteId: inv.inviteId }), { ok: true, outcome: 'granted', password_set: false });
   assert.deepStrictEqual(await T.teamSetMenuPermission(d, own, { brandId: 'tb', uid: 'mgrT001', can_edit_menu: true }), { ok: true, outcome: 'applied' });
   assert.deepStrictEqual(await T.teamList(d, own, { brandId: 'tb' }), { ok: true, owner: { uid: 'ownerA', name: null, email: null },
-    managers: [{ uid: 'mgrT001', name: 'Gerente Prueba', email: mail('mgrT001').toLowerCase(), rids: ['tb_centro', 'tb_sur'], can_edit_menu: true }], pending: [] });
+    managers: [{ uid: 'mgrT001', name: 'Gerente Prueba', email: mail('mgrT001').toLowerCase(), rids: ['tb_centro', 'tb_sur'], can_edit_menu: true }], pending: [], uses_platform_factura: false });
   assert.deepStrictEqual(await T.teamSetMenuPermission(d, { uid: 'mgrT001', token: {} }, { brandId: 'tb', uid: 'mgrT001', can_edit_menu: false }), { ok: false, code: 'forbidden' }, 'a manager cannot change roles');
   assert.deepStrictEqual(await T.teamRevoke(d, own, { brandId: 'tb', uid: 'mgrT001', rid: 'tb_sur' }), { ok: true, outcome: 'applied' });
   assert.deepStrictEqual(await T.teamList(d, { uid: 'mgrT001', token: {} }, { brandId: 'tb' }), { ok: false, code: 'forbidden' });

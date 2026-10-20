@@ -25,6 +25,7 @@
   "editor.test.mjs",
   "firebase.js",
   "index.html",
+  "invite-mail.js",
   "netlify.toml",
   "ops-dom.js",
   "package-lock.json",
@@ -35,6 +36,8 @@
   "portal-site-freeze.golden.json",
   "portal-wiring.test.mjs",
   "portalui-guards.test.mjs",
+  "pubreq.js",
+  "pubreq.test.mjs",
   "render.js",
   "render.test.mjs",
   "review.js",
@@ -44,6 +47,9 @@
   "shell.test.mjs",
   "sherpa-client.js",
   "styles.css",
+  "team-logic.js",
+  "team.js",
+  "team.test.mjs",
   "ventas-harness.mjs",
   "ventas-logic.js",
   "ventas-logic.test.mjs",
@@ -69,8 +75,8 @@
    "bytes": 5819
   },
   "index.html": {
-   "sha256": "b12141c19a18969cdcab02dd476e2736cad730bea6784eff09b49141abd6697f",
-   "bytes": 9409
+   "sha256": "2231430d96ea562721364960bd69e1990feea541cc6b2830c16c249090bad72f",
+   "bytes": 9565
   },
   "netlify.toml": {
    "sha256": "fe3ef565e42ad144919fa416dd111b322958d83486746116dd07c228faed22ee",
@@ -85,8 +91,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "0e8c516dfc6e475aff17124c708685709a3cb01c23da86813528930659a9501b",
-   "bytes": 81348
+   "sha256": "8e81f2459e5debbcbfddd797ac264a7ff8b64139b19ae4e150a56c390f850421",
+   "bytes": 86644
   }
  },
  "diff_aid": {
@@ -459,6 +465,36 @@
     "",
     ".btn.ghost",
     "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".btn.ptext",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".btn.ptext",
+    "border-color",
+    "transparent"
+   ],
+   [
+    "",
+    ".btn.ptext",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".btn.ptext:hover",
+    "background",
+    "var(--tint)"
+   ],
+   [
+    "",
+    ".btn.ptext:hover",
+    "border-color",
     "transparent"
    ],
    [
@@ -1831,6 +1867,48 @@
    ],
    [
     "",
+    ".pbanner .pbi",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
+    ".pbanner .pbi",
+    "color",
+    "var(--green-text)"
+   ],
+   [
+    "",
+    ".pbanner .pbis",
+    "background",
+    "var(--amber-soft)"
+   ],
+   [
+    "",
+    ".pbanner .pbis",
+    "border-color",
+    "var(--amber-line)"
+   ],
+   [
+    "",
+    ".pbanner .pbis",
+    "color",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".pbanner .pwhen",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".pbanner",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
     ".pchip",
     "background",
     "var(--card)"
@@ -1966,6 +2044,54 @@
     ".pill.paused",
     "color",
     "var(--red-text)"
+   ],
+   [
+    "",
+    ".pill.tok i",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".pill.tok",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
+    ".pill.tok",
+    "border-color",
+    "var(--green-line)"
+   ],
+   [
+    "",
+    ".pill.tok",
+    "color",
+    "var(--green-text)"
+   ],
+   [
+    "",
+    ".pill.twarn i",
+    "background",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".pill.twarn",
+    "background",
+    "var(--amber-soft)"
+   ],
+   [
+    "",
+    ".pill.twarn",
+    "border-color",
+    "var(--amber-line)"
+   ],
+   [
+    "",
+    ".pill.twarn",
+    "color",
+    "var(--amber)"
    ],
    [
     "",
@@ -2617,6 +2743,90 @@
    ],
    [
     "",
+    ".tcbon",
+    "background",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".tcbon",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".tdot",
+    "background",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".teamv .fld.err .tin",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".teamv .mf .left",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".teamv .quiet",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".teamv .tbl",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".teamv .tnsub",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".teamv .togrow .bt span",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".teamv .tsent b",
+    "color",
+    "var(--green-text)"
+   ],
+   [
+    "",
+    ".teamv .tsent",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
+    ".teamv .tsent",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".teamv td .tsub",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".teamv th",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".thumb .cam",
     "background",
     "rgba(0,0,0,.5)"
@@ -2683,6 +2893,24 @@
    ],
    [
     "",
+    ".tin",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".tin",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".tin:focus",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
     ".tlabel",
     "color",
     "var(--mute2)"
@@ -2716,6 +2944,30 @@
     ".tog.off",
     "background",
     "var(--line)"
+   ],
+   [
+    "",
+    ".topt",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".topt",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".topt.sel",
+    "background",
+    "var(--tint)"
+   ],
+   [
+    "",
+    ".topt.sel",
+    "border-color",
+    "var(--accent)"
    ],
    [
     "",

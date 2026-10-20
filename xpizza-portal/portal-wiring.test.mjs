@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { stateViolations, writerFunctions } from './wiring-ast.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const OPS_TOAST_OK = new Set(['shell.js', 'branches-view.js', 'pausas.js', 'availability.js']);   // PORTAL-UI 1a: success toasts only (see the write-path rule)
+const OPS_TOAST_OK = new Set(['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'team.js', 'pubreq.js']);   // PORTAL-UI 1a: success toasts only (see the write-path rule)
 const JS = readdirSync(DIR).filter((f) => f.endsWith('.js'));
 const codeOf = (f) => readFileSync(join(DIR, f), 'utf8')
   .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
@@ -814,7 +814,8 @@ test('no server error on the write path escapes the designed panels', () => {
   const writeCatches = catches.filter((c) => /outcomeFor|showEmpty/.test(c));
   assert.ok(writeCatches.length >= 3, 'every catch resolves to a designed surface');
   const routed = catches.filter((c) => /showOutcome\(outcomeFor\(e, '(edit|publish)'\)\)/.test(c));
-  assert.strictEqual(routed.length, 2, 'BOTH write calls — editCatalog and publishEdited — route to the panels');
+  // T-d (3a): the THIRD is sendToOwnerFlow (editCatalog + catalogRequestPublish), routed to the SAME panels as the review's save
+  assert.strictEqual(routed.length, 3, 'ALL write calls — editCatalog, publishEdited and the manager\'s send — route to the panels');
 
   // and nothing anywhere reaches for an undesigned sink
   for (const f of JS) {
@@ -967,7 +968,8 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.currentRid':          [4, 'ender',   '[PORTAL-UI 1a: + openEditor — the ONE selection of a page load (shell.js), made once at boot before any request; a different selection is a full page reload] the tenant switch and the auth handler — the two things that end a world'],
     'state.groups':              [3, 'guarded', 'the rendered menu, written only after the generation check on both settle paths'],
     'state.usesPlatformFactura': [3, 'guarded', '[1D add-product A: + the post-publish reload, same guard] 🔴 the fiscal capability — load path, behind the generation check'],
-    'state.sourceUpdateTime':    [4, 'guarded', '[1D add-product A: + the post-publish reload — a certified publish writes stamps back, so the revision moves] 🔴 the CAS baseline — load path and the save settle path, both generation-checked, plus the tenant-switch clear that stops one tenant\u2019s baseline being used to write another\u2019s document'],
+    'state.sourceUpdateTime':    [5, 'guarded', '[T-d (3a): + sendToOwnerFlow\u2019s save settle path, behind its generation check, exactly as the review\u2019s] [1D add-product A: + the post-publish reload — a certified publish writes stamps back, so the revision moves] 🔴 the CAS baseline — load path and the save settle path, both generation-checked, plus the tenant-switch clear that stops one tenant\u2019s baseline being used to write another\u2019s document'],
+    'state.publishViaRequest':   [1, 'guarded', 'T-d (3a) — the server\u2019s publish_via_request, written ONLY in applyPublishRequestFacts: reset at the start of a load (fail closed: today\u2019s path) and set on the load / post-publish settle paths behind the generation check; it only chooses the review-bar CTA, and the server re-checks every request'],
     'state.uid':                 [1, 'ender',   'the auth handler itself — the identity change that ENDS the previous world'],
     'state.extras':              [1, 'guarded', 'the flat extras list, written by the load path behind the generation check'],
     'state.selectedCat':         [5, 'view',    '[1D add-product A: + the add drawer\u2019s section change and the FIX action, both presentational] which category the rail highlights — a stale write repaints, it cannot mis-price'],
@@ -980,7 +982,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.draftRid':            [2, 'guarded', '🔴 WHICH TENANT THE DRAFT IS. Written on the load settle path behind the generation check and cleared at the start of a switch; it is what the write path names, so a review can never carry one tenant\u2019s rid with another\u2019s source'],
     'state.menuLoading':         [3, 'guarded', 'loading represented explicitly rather than inferred from a null draft: set at the start of a switch, cleared on BOTH settle paths behind the generation check, and read by review admission'],
     // ── 1D add-product A ──
-    'state.additionKeys':        [3, 'guarded', 'which rows are NEW (server-said pendingAdditions + the keys a save allocated) — reset at the start of a load, set on the load settle path and on the save settle path, both behind the generation check'],
+    'state.additionKeys':        [4, 'guarded', 'which rows are NEW (server-said pendingAdditions + the keys a save allocated) — reset at the start of a load, set on the load settle path, on the review save settle path and on the T-d send-to-owner save settle path, each behind the generation check'],
     'state.renderedCategories':  [2, 'guarded', 'the sections a product may be added to (the renderer contract via getEditableCatalog) — load path, behind the generation check'],
     'state.restaurantName':      [2, 'guarded', 'the fiscal note\u2019s restaurant name from data — load path, behind the generation check'],
     'state.draftUnpublishable':  [2, 'guarded', 'whether the saved draft can publish (getEditableCatalog) — load path, behind the generation check; it only OFFERS the reset'],
@@ -1118,7 +1120,10 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo
                  'renderDrawer', 'renderAddDrawer', 'choiceBlock',
                  // portal A — a PUBLISHED group's price-only block: its handlers are bound() (generation-checked) and write
                  // the draft only through onPrice → setItemPrice (canEdit-guarded), the list price boxes' own write
-                 'publishedChoiceBlock'];
+                 'publishedChoiceBlock',
+                 // PLAN-portal-team-invites T-d (3a) — the per-load publish-request facts (load + post-publish settle paths, behind
+                 // the generation check) and the manager's send (the review's admission / lock / generation discipline)
+                 'applyPublishRequestFacts', 'sendToOwnerFlow'];
 function writesIn(code) {
   const m = maskLiterals(code);
   const found = new Set();

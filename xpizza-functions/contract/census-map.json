@@ -784,6 +784,8 @@
   "xpizza-portal/aceptar-boot.js#accept": "portal /aceptar (PLAN-portal-team-invites T-c) — the invitee page reads only HTTP response statuses and invite-preview / acceptance fields; no persisted order, no money",
   "xpizza-portal/aceptar-boot.js#passwordSet": "portal /aceptar (PLAN-portal-team-invites T-c) — the invitee page reads only HTTP response statuses and invite-preview / acceptance fields; no persisted order, no money",
   "xpizza-portal/aceptar.js#init": "portal /aceptar (PLAN-portal-team-invites T-c) — the invitee page reads only HTTP response statuses and invite-preview / acceptance fields; no persisted order, no money",
+  "xpizza-portal/team.js#inviteBtn": "portal «Equipo de trabajo» (PLAN-portal-team-invites T-b, codex r1 P2) — reads only the view's OWN load state (S.status === 'ready') to keep «Invitar gerente» disabled until the team data is here; no persisted order, no money",
+  "xpizza-portal/team.js#render": "portal «Equipo de trabajo» (PLAN-portal-team-invites T-b) — reads only the view's OWN load state (S.status: idle / loading / error / ready) and the owner-only team list (names, emails, branches); no persisted order, no money",
   "xpizza-portal/api.js#readResponse": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
   "xpizza-portal/api.js#readTextResponse": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
   "xpizza-portal/app.js#repaintFromDraft>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders",

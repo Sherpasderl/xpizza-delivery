@@ -25,6 +25,15 @@ const requestRefOf = (fs, rid) => fs.collection('restaurants').doc(rid).collecti
 const reply = (status, body) => ({ status, body });
 const STALE = 'publish_request_stale';
 
+// THE ONE PREDICATE (PLAN-portal-team-invites T-d): may this resolved caller SEND the draft to the owner instead of publishing?
+// A manager (the grant) with the per-manager menu permission, at a member location of a platform-factura brand, who is not the
+// brand's owner. requestPublishCore refuses everyone else; getEditableCatalog's publish_via_request offers the «Enviar al dueño»
+// CTA from this same function, so the button exists exactly when the endpoint accepts.
+function canRequestPublish(a, rid) {
+  const f = (a && a.facts) || {};
+  return !!(a && a.ok === true) && f.owner !== true && usesPlatformFactura(rid) && f.manager === true && f.manager_menu === true && a.state === 'member';
+}
+
 // → { status, body }. deps: { fs, db, now, readActiveBuilt(rid), readDraft(rid) }; ctx = the VERIFIED caller { uid, token }.
 async function requestPublishCore(deps, ctx, body) {
   const { fs, db, now = () => Date.now(), readActiveBuilt, readDraft } = deps;
@@ -39,7 +48,7 @@ async function requestPublishCore(deps, ctx, body) {
   const f = a.facts || {};
   if (f.owner === true) return reply(409, { error: 'not_applicable', detail: 'the owner publishes directly' });
   if (!usesPlatformFactura(rid)) return reply(409, { error: 'not_applicable', detail: 'this brand publishes without the owner' });
-  if (!(f.manager === true && f.manager_menu === true && a.state === 'member')) return reply(403, { error: 'forbidden' });
+  if (!canRequestPublish(a, rid)) return reply(403, { error: 'forbidden' });
 
   // the SAME freshness check publishEditedCore runs (token bound to base active version + draft revision + hash + diff)
   let live, baseActiveVersionId, draft, sourceUpdateTime;
@@ -130,4 +139,4 @@ async function readDraftFrom(fs, rid) {
   return { source: snap.data(), updateTime: snap.updateTime ? encodeUpdateTime(snap.updateTime) : null };
 }
 
-module.exports = { requestPublishCore, requestState, readRequestForOwner, requestRefOf, readActiveBuiltFrom, readDraftFrom, MAX_AGE_MS };
+module.exports = { requestPublishCore, canRequestPublish, requestState, readRequestForOwner, requestRefOf, readActiveBuiltFrom, readDraftFrom, MAX_AGE_MS };

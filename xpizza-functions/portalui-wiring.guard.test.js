@@ -15,8 +15,14 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
+// 3a T-c (merged onto this slice in feat/portal-team) appended ONE export to the membership line after BASE — a same-line hunk,
+// folded out here so this pin keeps judging portal-ui's own two hunks against BASE (the membership inverse covers T-c's line)
+const TC_NOW = 'exports.memberPasswordSet = MEMBERSHIP_TEAM.memberPasswordSet; exports.memberInvitePreview = MEMBERSHIP_TEAM.memberInvitePreview;   /* membership:end team */';
+const TC_WAS = 'exports.memberPasswordSet = MEMBERSHIP_TEAM.memberPasswordSet;   /* membership:end team */';
+const unapplyTc = (src) => { assert.strictEqual(src.split(TC_NOW).length - 1, 1, 'the T-c same-line hunk occurs exactly once'); return src.replace(TC_NOW, () => TC_WAS); };
+
 // ── 1. the inverse ──
-assert.strictEqual(unapplyPortalUiIndex(real), baseIdx, `🔴 index.js minus the portal-ui hunks is not ${BASE}:index.js`);
+assert.strictEqual(unapplyTc(unapplyPortalUiIndex(real)), baseIdx, `🔴 index.js minus the portal-ui hunks is not ${BASE}:index.js`);
 assert.notStrictEqual(real, baseIdx, 'non-vacuity: the slice is present');
 assert.strictEqual(HUNKS.length, 2);
 for (const h of HUNKS) {
@@ -36,7 +42,7 @@ for (const h of HUNKS) {
 ok(`PROOF: unapplyPortalUiIndex(index.js) === ${BASE}:index.js byte-for-byte (${HUNKS.length} hunks, each once); inside / outside / duplicated / missing each detected`);
 
 // ── 2. same-line hunks ──
-const rl = real.split('\n'), bl = baseIdx.split('\n');
+const rl = unapplyTc(real).split('\n'), bl = baseIdx.split('\n');   // T-c's same-line hunk folded (see section 1)
 assert.strictEqual(rl.length, bl.length, '🔴 index.js gained or lost a line — the hunks must be SAME-LINE (R3 binds call sites by line)');
 const differing = rl.map((l, i) => (l === bl[i] ? null : i)).filter((i) => i !== null);
 assert.deepStrictEqual(differing.map((i) => `${rl[i]}\n`), HUNKS.map((h) => h.now), 'exactly the two hunk lines differ, in order');

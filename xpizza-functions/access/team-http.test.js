@@ -51,7 +51,7 @@ test('round trip: invite → (stranger refused) → accept → list → toggle �
   assert.deepStrictEqual(await H.handle('memberAcceptInvite', deps(db), req('invitee', { inviteId: inv.body.inviteId })), { status: 200, body: { ok: true, outcome: 'granted', password_set: false } });
   assert.deepStrictEqual(await H.handle('memberAcceptInvite', deps(db), req('invitee', { inviteId: inv.body.inviteId })), { status: 200, body: { ok: true, outcome: 'consumed', password_set: false } });
   assert.deepStrictEqual((await H.handle('memberList', deps(db), req('owner', { brandId: 'tb' }))).body, { ok: true, owner: { uid: 'ownerA', name: null, email: null },
-    managers: [{ uid: 'mgrH001', name: 'Gerente Prueba', email: 'mgr.h@m.hn', rids: ['tb_centro', 'tb_sur'], can_edit_menu: false }], pending: [] });
+    managers: [{ uid: 'mgrH001', name: 'Gerente Prueba', email: 'mgr.h@m.hn', rids: ['tb_centro', 'tb_sur'], can_edit_menu: false }], pending: [], uses_platform_factura: false });
   assert.strictEqual((await H.handle('memberSetMenuPermission', deps(db), req('owner', { brandId: 'tb', uid: 'mgrH001', can_edit_menu: true }))).status, 200);
   // a second invite, reissued then cancelled — the brand comes from the invite record
   const i2 = await H.handle('memberInvite', deps(db), req('owner', { name: 'Gerente Prueba', brandId: 'tb', rids: ['tb_sur'], email: 'x2@m.hn' }));

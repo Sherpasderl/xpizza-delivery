@@ -172,6 +172,9 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
         assert.deepStrictEqual(body.choiceBadges, [...require('../catalog/source-store').rendererContract(rid).choiceBadges], `${c.name}: choiceBadges = the brand's contract`);
       }
       delete body.groupAuthoring; delete body.choiceBadges;
+      // T-d (declared): publish_via_request — every golden caller is the owner, so its VALUE is asserted false, then dropped
+      if (c.status === 200) assert.strictEqual(body.publish_via_request, false, `${c.name}: the owner never gets the send-to-owner path`);
+      delete body.publish_via_request;
     }
     assert.deepStrictEqual(body, g.body, `${c.name}: body (beyond the declared fields)`);
     // calls: golden ⊆ candidate (as a multiset), and every EXTRA call is a declared read
@@ -185,6 +188,13 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
     const isEligibilityCreate = (x) => /^batch\.create restaurants\/[^/]+\/versions\/<v>\/meta\/extras_eligibility$/.test(x);
     if (/publish/.test(c.name) && c.status === 200) assert.strictEqual(left.filter(isEligibilityCreate).length, 1, `${c.name}: exactly one eligibility-document create per publish`);
     else assert.strictEqual(left.filter(isEligibilityCreate).length, 0, `${c.name}: no eligibility-document write without a publish`);
+    // T-a G3 (DECLARED, exact): the OWNER's getEditableCatalog on a platform-factura brand reads the publish-request slot ONCE
+    // (its pointer reads are the declared active-version reads above); never on any other call or brand
+    const isPublishRequestRead = (x) => /^get restaurants\/[^/]+\/meta\/publish_request$/.test(x);
+    const rqRid = c.name.split(':')[0];
+    const rqExpected = /getEditableCatalog \(owner\)/.test(c.name) && c.status === 200 && require('../factura/eligibility').usesPlatformFactura(rqRid) ? 1 : 0;
+    assert.strictEqual(left.filter(isPublishRequestRead).length, rqExpected, `${c.name}: publish-request slot reads`);
+    for (let k = left.length - 1; k >= 0; k -= 1) if (isPublishRequestRead(left[k])) left.splice(k, 1);
     const allowExtra = (/publish/.test(c.name) && c.status === 200) ? left.every((x) => isKdsSyncRead(x) || isOverlapBaselineRead(x) || isEligibilityCreate(x))
       : /getEditableCatalog|stale save/.test(c.name) ? left.every(isKdsSyncRead)
       : /invalid source/.test(c.name) ? left.every((x) => isKdsSyncRead(x) || isSourceRead(x)) : left.length === 0;

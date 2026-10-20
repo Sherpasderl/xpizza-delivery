@@ -14,6 +14,7 @@ const fail = (code) => ({ ok: false, code });
 const val = async (db, p) => (await db.ref(p).once('value')).val();
 
 const { writesEnabled } = require('./writes-flag');
+const { usesPlatformFactura } = require('../factura/eligibility');   // T-b: the server-owned fiscal fact (never a brand literal)
 const PA = require('./portal-account');   // re-exported below (behaviour unchanged)
 const gated = (fn) => async (deps, ctx, body) => ((await writesEnabled(deps.db)) ? fn(deps, ctx, body || {}) : fail('writes_disabled'));
 
@@ -70,6 +71,8 @@ const teamUpdateManager = asOwner((b) => ({ type: 'update_manager', uid: b.uid, 
 //   managers [{uid, name, email, rids, can_edit_menu}]   name / email from the profile written at acceptance (null if none)
 //   pending  [{inviteId, name, email, rids, can_edit_menu, created_at, expires_at}]   each CURRENT invite that is still open and
 //            unexpired, read by id through invites_current (never a scan of member_invites)
+//   uses_platform_factura  boolean: any of the brand's listed locations issues facturas through the platform (T-b: the
+//            «Puede editar el menú» note and the «Edita · el dueño publica» label; the client never guesses from a name)
 // Any read failure → unavailable (never a partial list).
 async function teamList(deps, ctx, body) {
   const { db, now = () => Date.now() } = deps;
@@ -79,6 +82,9 @@ async function teamList(deps, ctx, body) {
   try {
     const roster = (await val(db, `brand_members/${brandId}`)) || {};
     if (!isObj(roster.owners) || !isObj(roster.owners[ctx.uid])) return fail('forbidden');
+    const brandRec = await val(db, `brands/${brandId}`);
+    const locs = isObj(brandRec) && isObj(brandRec.locations) ? brandRec.locations : {};
+    const usesFactura = Object.keys(locs).some((rid) => (locs[rid] === 'member' || locs[rid] === 'retired') && usesPlatformFactura(rid));
     const tok = (ctx && ctx.token) || {};
     // the owner row: the SERVER profile (owner ruling 2026-10-20: the name is required, set by the CLI); the token only as a fallback
     const op = isObj(roster.profiles) && isObj(roster.profiles[ctx.uid]) ? roster.profiles[ctx.uid] : {};
@@ -110,7 +116,7 @@ async function teamList(deps, ctx, body) {
         can_edit_menu: inv.can_edit_menu === true, created_at: inv.created_at, expires_at: inv.expires_at });
     }
     pending.sort((a, b) => (b.created_at || 0) - (a.created_at || 0) || a.inviteId.localeCompare(b.inviteId));
-    return { ok: true, owner, managers, pending };
+    return { ok: true, owner, managers, pending, uses_platform_factura: usesFactura };
   } catch (_) { return fail('unavailable'); }
 }
 

@@ -1988,12 +1988,6 @@
      ]
     },
     {
-     "file": "xpizza-functions/portalui-wiring.guard.test.js",
-     "inverses": [
-      "tools/portalui-inverse.js"
-     ]
-    },
-    {
      "file": "xpizza-functions/s1a-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
@@ -2147,6 +2141,7 @@
     "xpizza-functions/platform-sync.guard.test.js",
     "xpizza-functions/portal/ops-helpers.guard.test.js",
     "xpizza-functions/portal/ops-split.test.js",
+    "xpizza-functions/portalui-wiring.guard.test.js",
     "xpizza-functions/prod-ladder-wiring.test.js",
     "xpizza-functions/pselfupdate-client.test.js",
     "xpizza-functions/quote-order.test.js",
