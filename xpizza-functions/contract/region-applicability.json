@@ -4420,7 +4420,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -4440,6 +4440,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -4546,7 +4547,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -4587,7 +4588,8 @@
      "output": "xpizza-driver/brand-helpers.js#brandLabel",
      "callers": [
       "xpizza-driver/brand-helpers.js#brandMeta",
-      "xpizza-driver/brand-helpers.js#driverGreeting"
+      "xpizza-driver/brand-helpers.js#driverGreeting",
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
      ]
     },
     {
@@ -4595,6 +4597,7 @@
      "name": "brandLabel",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 4,
       "xpizza-functions/staff-push.js#functions": 3
      }
     },
@@ -4602,7 +4605,8 @@
      "kind": "C",
      "output": "xpizza-driver/brand-helpers.js#brandMeta",
      "callers": [
-      "xpizza-driver/index.html<script@0>#restaurantMeta"
+      "xpizza-driver/index.html<script@0>#restaurantMeta",
+      "xpizza-driver/single-order-view.js#svChip"
      ]
     },
     {
@@ -4610,7 +4614,8 @@
      "name": "brandMeta",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 3
      }
     },
     {
@@ -4618,7 +4623,8 @@
      "name": "driverGreeting",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 4
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 4,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 4
      }
     },
     {
@@ -4693,7 +4699,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -4713,6 +4719,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -4819,7 +4826,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -4860,7 +4867,8 @@
      "output": "xpizza-driver/brand-helpers.js#brandLabel",
      "callers": [
       "xpizza-driver/brand-helpers.js#brandMeta",
-      "xpizza-driver/brand-helpers.js#driverGreeting"
+      "xpizza-driver/brand-helpers.js#driverGreeting",
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
      ]
     },
     {
@@ -4868,6 +4876,7 @@
      "name": "brandLabel",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 4,
       "xpizza-functions/staff-push.js#functions": 3
      }
     },
@@ -4875,7 +4884,8 @@
      "kind": "C",
      "output": "xpizza-driver/brand-helpers.js#brandMeta",
      "callers": [
-      "xpizza-driver/index.html<script@0>#restaurantMeta"
+      "xpizza-driver/index.html<script@0>#restaurantMeta",
+      "xpizza-driver/single-order-view.js#svChip"
      ]
     },
     {
@@ -4883,7 +4893,8 @@
      "name": "brandMeta",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 3
      }
     },
     {
@@ -4891,7 +4902,8 @@
      "name": "driverGreeting",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 4
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 4,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 4
      }
     },
     {
@@ -4966,7 +4978,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -4986,6 +4998,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -5092,7 +5105,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -5133,7 +5146,8 @@
      "output": "xpizza-driver/brand-helpers.js#brandLabel",
      "callers": [
       "xpizza-driver/brand-helpers.js#brandMeta",
-      "xpizza-driver/brand-helpers.js#driverGreeting"
+      "xpizza-driver/brand-helpers.js#driverGreeting",
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
      ]
     },
     {
@@ -5141,6 +5155,7 @@
      "name": "brandLabel",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 4,
       "xpizza-functions/staff-push.js#functions": 3
      }
     },
@@ -5148,7 +5163,8 @@
      "kind": "C",
      "output": "xpizza-driver/brand-helpers.js#brandMeta",
      "callers": [
-      "xpizza-driver/index.html<script@0>#restaurantMeta"
+      "xpizza-driver/index.html<script@0>#restaurantMeta",
+      "xpizza-driver/single-order-view.js#svChip"
      ]
     },
     {
@@ -5156,7 +5172,8 @@
      "name": "brandMeta",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 3
      }
     },
     {
@@ -5164,7 +5181,8 @@
      "name": "driverGreeting",
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 4
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 4,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 4
      }
     },
     {
@@ -5383,7 +5401,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -5403,6 +5421,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -5509,7 +5528,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -5640,7 +5659,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -5660,6 +5679,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -5766,7 +5786,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -5897,7 +5917,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -5917,6 +5937,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -6023,7 +6044,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -6154,7 +6175,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -6174,6 +6195,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -6280,7 +6302,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -6390,7 +6412,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -6410,6 +6432,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -6516,7 +6539,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -6626,7 +6649,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -6646,6 +6669,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -6752,7 +6776,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -6940,7 +6964,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -6960,6 +6984,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -7066,7 +7091,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -7135,7 +7160,7 @@
     "site": "activeSlot.innerHTML = renderActiveCard(active, solo);",
     "siteSha": "bc320b81debf0e4fe71c8b56a5f2b835d981b0bc8f8452896081c5c49c20fc6d",
     "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
-    "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+    "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
    },
    "guards": [
     {
@@ -7160,7 +7185,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -7180,6 +7205,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -7286,7 +7312,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -7524,7 +7550,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -7544,6 +7570,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -7650,7 +7677,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -7744,7 +7771,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -7764,6 +7791,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -7870,7 +7898,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -7964,7 +7992,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -7984,6 +8012,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -8090,7 +8119,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -8184,7 +8213,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -8204,6 +8233,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -8310,7 +8340,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -8353,7 +8383,8 @@
       "xpizza-driver/index.html<script@0>#renderActiveCard",
       "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon",
       "xpizza-driver/index.html<script@0>#renderQueue>anon",
-      "xpizza-driver/index.html<script@0>#renderQueueDetail"
+      "xpizza-driver/index.html<script@0>#renderQueueDetail",
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
      ]
     },
     {
@@ -8361,7 +8392,8 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 8
      }
     }
    ],
@@ -8422,7 +8454,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -8442,6 +8474,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -8548,7 +8581,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -8591,7 +8624,8 @@
       "xpizza-driver/index.html<script@0>#renderActiveCard",
       "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon",
       "xpizza-driver/index.html<script@0>#renderQueue>anon",
-      "xpizza-driver/index.html<script@0>#renderQueueDetail"
+      "xpizza-driver/index.html<script@0>#renderQueueDetail",
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
      ]
     },
     {
@@ -8599,7 +8633,8 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 8
      }
     }
    ],
@@ -8660,7 +8695,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -8680,6 +8715,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -8786,7 +8822,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -8829,7 +8865,8 @@
       "xpizza-driver/index.html<script@0>#renderActiveCard",
       "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon",
       "xpizza-driver/index.html<script@0>#renderQueue>anon",
-      "xpizza-driver/index.html<script@0>#renderQueueDetail"
+      "xpizza-driver/index.html<script@0>#renderQueueDetail",
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
      ]
     },
     {
@@ -8837,7 +8874,8 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 8
      }
     }
    ],
@@ -8898,7 +8936,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -8918,6 +8956,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -9024,7 +9063,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -9067,7 +9106,8 @@
       "xpizza-driver/index.html<script@0>#renderActiveCard",
       "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon",
       "xpizza-driver/index.html<script@0>#renderQueue>anon",
-      "xpizza-driver/index.html<script@0>#renderQueueDetail"
+      "xpizza-driver/index.html<script@0>#renderQueueDetail",
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
      ]
     },
     {
@@ -9075,7 +9115,8 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 8
      }
     }
    ],
@@ -9136,7 +9177,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -9156,6 +9197,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -9262,7 +9304,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -9304,7 +9346,8 @@
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 22,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
-      "xpizza-driver/order-helpers.js#xpizza-driver": 2
+      "xpizza-driver/order-helpers.js#xpizza-driver": 2,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 2
      }
     }
    ],
@@ -9365,7 +9408,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -9385,6 +9428,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -9491,7 +9535,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -9533,7 +9577,8 @@
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 22,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
-      "xpizza-driver/order-helpers.js#xpizza-driver": 2
+      "xpizza-driver/order-helpers.js#xpizza-driver": 2,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 2
      }
     }
    ],
@@ -9594,7 +9639,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -9614,6 +9659,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -9720,7 +9766,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -9762,7 +9808,8 @@
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 22,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
-      "xpizza-driver/order-helpers.js#xpizza-driver": 2
+      "xpizza-driver/order-helpers.js#xpizza-driver": 2,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 2
      }
     }
    ],
@@ -9823,7 +9870,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
+     "scopeSha": "3c3a55421092637cbb25d359a8771575a3ed5d7d25bcf2d0860bcfcf104dad8f"
     },
     {
      "kind": "C",
@@ -9843,6 +9890,7 @@
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
@@ -9949,7 +9997,7 @@
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
     },
     {
@@ -9991,7 +10039,8 @@
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 22,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
-      "xpizza-driver/order-helpers.js#xpizza-driver": 2
+      "xpizza-driver/order-helpers.js#xpizza-driver": 2,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 2
      }
     }
    ],

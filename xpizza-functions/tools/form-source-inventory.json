@@ -954,6 +954,12 @@
     "xpizza-driver/cash-helpers.test.js",
     "xpizza-driver/endshift-confirm.test.js",
     "xpizza-driver/onboarding-host.test.js",
+    "xpizza-driver/single-order-branch.test.js",
+    "xpizza-driver/single-order-card.test.js",
+    "xpizza-driver/single-order-view.test.js",
+    "xpizza-driver/slice1-contrast.test.js",
+    "xpizza-driver/slice1-font-resolution.test.js",
+    "xpizza-driver/slice1-freeze.guard.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -980,6 +986,7 @@
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js"
    ],
    "via_helper": [
+    "xpizza-driver/single-order-view.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
     "xpizza-functions/contract/execution.guard.test.js",
@@ -1099,6 +1106,7 @@
   "form-harness.mjs",
   "xpizza-dispatch-mobile/board-model.js",
   "xpizza-dispatch/dispatch-alert-nav.js",
+  "xpizza-driver/single-order-view.js",
   "xpizza-functions/catalog/add-product-io.js",
   "xpizza-functions/catalog/candidate-validate.js",
   "xpizza-functions/catalog/catalog-context.js",
