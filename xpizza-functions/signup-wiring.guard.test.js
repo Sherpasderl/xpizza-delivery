@@ -16,7 +16,7 @@ const { HUNKS, BASE, unapplySignupIndex } = require('./tools/signup-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const real = require('./tools/unassign-inverse').unapplyUnassignIndex(read('index.js'));   // UNASSIGN (newest) is reversed innermost
+const real = require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(read('index.js')));   // TRACKER FIXES (newest) reversed innermost, then UNASSIGN
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // ── 1. the inverse ──

@@ -191,6 +191,13 @@
   "whatsapp_inbound.js": "R9",
   "staff-push.js": "R6",
   "tracking-mirror.js": "R8",
+  "tracking/derive.js": "R8",
+  "tracking/driver-orders.js": "R8",
+  "tracking/fanout.js": "R8",
+  "tracking/ingest-txn.js": "R8",
+  "tracking/mx-txn.js": "R8",
+  "tracking/reconcile-core.js": "R8",
+  "tracking/tombstones.js": "R8",
   "payment-poll-state.js": "R16",
   "claim-order.js": "R17",
   "claim-prefill.js": "R17",
@@ -226,7 +233,8 @@
   "index.js#claimOrder": "R17",
   "index.js#claimPrefill": "R17",
   "index.js#mirrorStatusToHistory": "R17",
-  "index.js#clearTrackerMirrorOnDone": "R8"
+  "index.js#clearTrackerMirrorOnDone": "R8",
+  "index.js#trackerOnOrderStatus": "R8"
  },
  "serverCategories": {
   "intake": "order INTAKE writer / validator (createOrder, chargeOnlineOrder, quotes, pricing, classification, display number) — produces the persisted evidence (§1) the readers are asserted against; its outputs are covered as writers",
@@ -505,7 +513,7 @@
   "resolve-manual.js#resolveManualReconciliationCore>anon": "payment",
   "restaurant-config.js#hubSnapshot": "infra",
   "restaurant-config.js#isRoutingValid": "infra",
-  "retention-sweep.js#runRetentionSweep": "dispatch",
+  "retention-sweep.js#runTaskPass": "dispatch",
   "rewards-core.js#computeEarn": "rewards",
   "rewards-core.js#earnPreview": "rewards",
   "rewards-earn.js#creditEarnForOrder": "rewards",
@@ -1350,6 +1358,8 @@
   }
  ],
  "moneyPathNonFactReads": {
+  "cancelled_at@xpizza-functions/tracking/reconcile-core.js#windowOrders": "the order's terminal TIMESTAMP — selects the reconcile window (terminal within 24 h); never an amount, a collector or a selector of money",
+  "completed_at@xpizza-functions/tracking/reconcile-core.js#windowOrders": "the order's terminal TIMESTAMP — selects the reconcile window (terminal within 24 h); never an amount, a collector or a selector of money",
   "_doc": "codex rebase-r1/r2 P1: every NON-FIELD_FACTS read on an order-ish object (dot, literal bracket, optional, destructuring) INSIDE A FUNCTION THAT READS MONEY / CASH / COLLECT is either a registered fact (census FIELD_FACTS) or reviewed HERE, per SITE (field@file#fn) — a review never extends to another function. A read that SELECTS which orders enter a displayed / collected amount names the agreement cells that would fail on a wrong selector. Reviewed at the rebase onto 239632b.",
   "content_key@xpizza-functions/materialize-guard.js#newPathSibling": "NOT a fact (§3 r3, codex r3 P1): the order-independent content key chargeOnlineOrder PERSISTED on the pending order at intake. It only SELECTS which content stamp the duplicate-hold guard reads — never an amount, a collection or a display — and is trusted only when equal to the key recomputed from this order's own fields (else today's keys, logged). A wrong selector would miss / mis-find a cash sibling: f3-duplicate-decision §3 r3 + serial3-confirm-cold cells.",
   "content_legacy_order@xpizza-functions/materialize-guard.js#newPathSibling": "NOT a fact (§3 r4, codex r4 P1): the MENU-ORDER PERMUTATION of this order's own client lines, persisted at chargeOnlineOrder intake (warm catalog snapshot). The guard REBUILDS the pre-§3 legacy key from the order's OWN items_text + this permutation and accepts only a true permutation of its lines (else today's keys, logged) — it can name only this cart's own lines, never another order's content. Selects the second content-stamp read only; never an amount, a collection or a display. Cells: f3-duplicate-decision §3 r4 (b), serial3-confirm-cold, order-exists §3 r4 END TO END.",

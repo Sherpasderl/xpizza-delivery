@@ -4441,6 +4441,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -4714,6 +4716,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -4987,6 +4991,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -5270,6 +5276,8 @@
       "xpizza-functions/ready-time-quality-run.js#functions": 1,
       "xpizza-functions/stats/stats-build.js#functions": 1,
       "xpizza-functions/stats/stats-fixtures.js#functions": 2,
+      "xpizza-functions/tracking/mx-txn.js#functions": 1,
+      "xpizza-functions/tracking/reconcile-core.js#functions": 7,
       "xpizza-kitchen/card-model.js#xpizza-kitchen": 1,
       "xpizza-kitchen/index.html<script@0>#xpizza-kitchen": 1,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1,
@@ -5404,6 +5412,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -5661,6 +5671,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -5918,6 +5930,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -6175,6 +6189,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -6411,6 +6427,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -6647,6 +6665,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -6961,6 +6981,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -7181,6 +7203,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -7411,6 +7435,8 @@
       "xpizza-functions/ready-time-quality-run.js#functions": 1,
       "xpizza-functions/stats/stats-build.js#functions": 1,
       "xpizza-functions/stats/stats-fixtures.js#functions": 2,
+      "xpizza-functions/tracking/mx-txn.js#functions": 1,
+      "xpizza-functions/tracking/reconcile-core.js#functions": 7,
       "xpizza-kitchen/card-model.js#xpizza-kitchen": 1,
       "xpizza-kitchen/index.html<script@0>#xpizza-kitchen": 1,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1,
@@ -7545,6 +7571,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -7765,6 +7793,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -7985,6 +8015,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -8205,6 +8237,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -8443,6 +8477,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -8681,6 +8717,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -8919,6 +8957,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -9157,6 +9197,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -9386,6 +9428,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -9615,6 +9659,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -9844,6 +9890,8 @@
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/tracking/derive.js#functions": 3,
+      "xpizza-functions/tracking/driver-orders.js#functions": 5,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
      }
     },
@@ -12206,7 +12254,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'cancelled') {",
-     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
+     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
     },
     {
      "kind": "F",
@@ -12257,7 +12305,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'delivered') {",
-     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
+     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
     },
     {
      "kind": "F",
@@ -12620,32 +12668,32 @@
     "site": "await whatsapp.sendMessage(order.customer_phone, body, restaurantId);",
     "siteSha": "de950982ac799734df60e476f575dc87f00303c69c8a3c049a2867439b7394c8",
     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
-    "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
+    "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
+     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'delivered') {",
-     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
+     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'cancelled') {",
-     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
+     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (!body) return;",
-     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
+     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
     }
    ],
    "cases": {
@@ -12772,7 +12820,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
+     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
     }
    ],
    "cases": {
@@ -12803,14 +12851,14 @@
     "site": "body = whatsapp.tplOutForDelivery({",
     "siteSha": "915ce8b4ba6ac92e28a0e2b083d95cc51ba0dd093677945be0e7d82b7b2aa9ee",
     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
-    "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
+    "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
+     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
     }
    ],
    "cases": {

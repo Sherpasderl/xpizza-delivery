@@ -16017,5 +16017,681 @@
       "node",
       "../order-form-geoloc.test.mjs"
     ]
+  },
+  {
+    "id": "trk-t1-m1-derive-ignore-pointer",
+    "slice": "tracker",
+    "label": "derive ignore pointer",
+    "file": "tracking/derive.js",
+    "from": "  if (!tie && pointsAtFirst && first.orderId === orderId) return",
+    "to": "  if (!tie && first && first.orderId === orderId) return",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t1-m2-derive-ignore-tie",
+    "slice": "tracker",
+    "label": "derive ignore tie",
+    "file": "tracking/derive.js",
+    "from": "  const tie = first && D.some(",
+    "to": "  const tie = false && D.some(",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t1-m3-derive-offshift-live",
+    "slice": "tracker",
+    "label": "derive offshift live",
+    "file": "tracking/derive.js",
+    "from": "  if (owner.active !== true) return { mode: 'neutral', owner: O, shift_id: shift };",
+    "to": "  if (false) return { mode: 'neutral', owner: O, shift_id: shift };",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t1-m4-derive-split-legs",
+    "slice": "tracker",
+    "label": "derive split legs",
+    "file": "tracking/derive.js",
+    "from": "  return a && a === b ? a : null;",
+    "to": "  return a || b || null;",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t1-m5-legacy-live-noloc",
+    "slice": "tracker",
+    "label": "legacy live noloc",
+    "file": "tracking/legacy-encode.js",
+    "from": "  if (mode === 'live' && hasLocation) return",
+    "to": "  if (mode === 'live') return",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t1-m6-mx-seq-guard",
+    "slice": "tracker",
+    "label": "mx seq guard",
+    "file": "tracking/mx-txn.js",
+    "from": "    if (typeof mx0.seq === 'number' && mx0.seq > s) return undefined;",
+    "to": "    if (false) return undefined;",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t1-m7-mx-terminal-guard",
+    "slice": "tracker",
+    "label": "mx terminal guard",
+    "file": "tracking/mx-txn.js",
+    "from": "    if (mx0.mode === 'terminal' && derived.mode !== 'terminal') return undefined;",
+    "to": "    if (false) return undefined;",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t1-m8-mx-smp-reset-on-mode",
+    "slice": "tracker",
+    "label": "mx smp reset on mode",
+    "file": "tracking/mx-txn.js",
+    "from": "sample_at: sameSmp ? (prevSmp.sample_at || 0) : 0 }",
+    "to": "sample_at: sameSmp && derived.mode === 'live' ? (prevSmp.sample_at || 0) : 0 }",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t1-m9-mx-no-clear-on-owner",
+    "slice": "tracker",
+    "label": "mx no clear on owner",
+    "file": "tracking/mx-txn.js",
+    "from": "    const clearLoc = derived.mode !== 'live' || !sameSmp;",
+    "to": "    const clearLoc = derived.mode !== 'live';",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t1-m10-mx-epoch-ignores-shift",
+    "slice": "tracker",
+    "label": "mx epoch ignores shift",
+    "file": "tracking/mx-txn.js",
+    "from": " || (mx0.shift_id || null) !== (derived.shift_id || null);",
+    "to": ";",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t1-m11-claims-ge",
+    "slice": "tracker",
+    "label": "claims ge",
+    "file": "tracking/claims-txn.js",
+    "from": "s > cur.seq;",
+    "to": "s >= cur.seq;",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t1-m12-ingest-no-shift",
+    "slice": "tracker",
+    "label": "ingest no shift",
+    "file": "tracking/ingest-txn.js",
+    "from": "mx.owner_tag !== uidTag || mx.shift_id !== shiftId || mx.epoch !== epoch",
+    "to": "mx.owner_tag !== uidTag || mx.epoch !== epoch",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t1-m13-ingest-no-watermark",
+    "slice": "tracker",
+    "label": "ingest no watermark",
+    "file": "tracking/ingest-txn.js",
+    "from": "    if (!(sample.measured_at > (smp.sample_at || 0))) return undefined;",
+    "to": "    if (false) return undefined;",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t1-m14-ingest-future-window",
+    "slice": "tracker",
+    "label": "ingest future window",
+    "file": "tracking/ingest-txn.js",
+    "from": "measuredAt <= now + 2000 &&",
+    "to": "true &&",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t3-m1-seq-after-read",
+    "slice": "tracker",
+    "label": "seq after read",
+    "file": "tracking/recompute.js",
+    "from": "  const seqTx = await db.ref(`tracker_seq/${orderId}`).transaction((c) => (typeof c === 'number' ? c : 0) + 1);\n  const s = seqTx.snapshot.val();\n  await hold('seq', { orderId, s });\n\n  // 2. current truth\n  const order = await val(db, `orders/${orderId}`);\n  await hold('read:order', { orderId, s });",
+    "to": "  // 2. current truth (MUTANT: read BEFORE the sequence)\n  const order = await val(db, `orders/${orderId}`);\n  await hold('read:order', { orderId });\n  const seqTx = await db.ref(`tracker_seq/${orderId}`).transaction((c) => (typeof c === 'number' ? c : 0) + 1);\n  const s = seqTx.snapshot.val();\n  await hold('seq', { orderId, s });",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/tracker-recompute.emulator.test.js"
+    ]
+  },
+  {
+    "id": "trk-t3-m3-no-tombstone",
+    "slice": "tracker",
+    "label": "no tombstone",
+    "file": "tracking/recompute.js",
+    "from": "    for (const u of stale) await db.ref(`tracker_claims/${u}/${orderId}`).transaction(tombstoneUpdater(s, at));",
+    "to": "    void stale;",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/tracker-recompute.emulator.test.js"
+    ]
+  },
+  {
+    "id": "trk-t3-m4-fanout-no-hints",
+    "slice": "tracker",
+    "label": "fanout no hints",
+    "file": "tracking/fanout.js",
+    "from": "  for (const [oid, c] of Object.entries(claims)) if (c && c.gone !== true) ids.add(oid);",
+    "to": "  void claims;",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/tracker-recompute.emulator.test.js"
+    ]
+  },
+  {
+    "id": "trk-t3-m5-name-from-anyone",
+    "slice": "tracker",
+    "label": "name from anyone",
+    "file": "tracking/recompute.js",
+    "from": "  const name = !O ? null : (deps.resolveName ? await deps.resolveName(db, O) : driverNameFrom(O, driverRecord));",
+    "to": "  const name = 'Uno';",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/tracker-recompute.emulator.test.js"
+    ]
+  },
+  {
+    "id": "trk-t6-m1-no-ttl",
+    "slice": "tracker",
+    "label": "no ttl",
+    "file": "tracking/tombstones.js",
+    "from": "const expired = (e, cutoff) => !!(e && e.gone === true && typeof e.seq === 'number' && typeof e.at === 'number' && e.at < cutoff);",
+    "to": "const expired = (e, cutoff) => !!(e && e.gone === true && typeof e.seq === 'number');",
+    "command": [
+      "npm",
+      "run",
+      "-s",
+      "test:tracker-tombstones"
+    ]
+  },
+  {
+    "id": "trk-t6-m2-no-terminal",
+    "slice": "tracker",
+    "label": "no terminal",
+    "file": "tracking/tombstones.js",
+    "from": "    if (!TERMINAL.has(statusOf.get(c.orderId))) { kept += 1; continue; }",
+    "to": "",
+    "command": [
+      "npm",
+      "run",
+      "-s",
+      "test:tracker-tombstones"
+    ]
+  },
+  {
+    "id": "trk-t6-m3-no-seq-recheck",
+    "slice": "tracker",
+    "label": "no seq recheck",
+    "file": "tracking/tombstones.js",
+    "from": "  return cur.gone === true && cur.seq === seq && typeof cur.at",
+    "to": "  return cur.gone === true && typeof cur.at",
+    "command": [
+      "npm",
+      "run",
+      "-s",
+      "test:tracker-tombstones"
+    ]
+  },
+  {
+    "id": "trk-t6-m4-delete-grants",
+    "slice": "tracker",
+    "label": "delete grants",
+    "file": "tracking/tombstones.js",
+    "from": "const expired = (e, cutoff) => !!(e && e.gone === true && ",
+    "to": "const expired = (e, cutoff) => !!(e && ",
+    "command": [
+      "npm",
+      "run",
+      "-s",
+      "test:tracker-tombstones"
+    ]
+  },
+  {
+    "id": "trk-t6-m5-no-callsite",
+    "slice": "tracker",
+    "label": "no callsite",
+    "file": "retention-sweep.js",
+    "from": "    const t = await require('./tracking/tombstones').sweepTrackerTombstones(db, Date.now());",
+    "to": "    const t = { scanned: 0 };",
+    "command": [
+      "node",
+      "retention-sweep.test.js"
+    ]
+  },
+  {
+    "id": "trk-t6-m6-no-trycatch",
+    "slice": "tracker",
+    "label": "no trycatch",
+    "file": "retention-sweep.js",
+    "from": "  } catch (e) { console.warn('retentionSweepTasks: tracker tombstone sweep failed (task pass unaffected)', e && e.message); }",
+    "to": "  } finally {}",
+    "command": [
+      "node",
+      "retention-sweep.test.js"
+    ]
+  },
+  {
+    "id": "trk-t7-m4-no-watermark",
+    "slice": "tracker",
+    "label": "no watermark",
+    "file": "tracking/ingest-txn.js",
+    "from": "    if (!(sample.measured_at > (smp.sample_at || 0))) return undefined;\n",
+    "to": "",
+    "command": [
+      "npm",
+      "run",
+      "-s",
+      "test:tracker-schedules"
+    ]
+  },
+  {
+    "id": "trk-t7-m6-no-seq-guard",
+    "slice": "tracker",
+    "label": "no seq guard",
+    "file": "tracking/mx-txn.js",
+    "from": "    if (typeof mx0.seq === 'number' && mx0.seq > s) return undefined;\n",
+    "to": "",
+    "command": [
+      "npm",
+      "run",
+      "-s",
+      "test:tracker-schedules"
+    ]
+  },
+  {
+    "id": "trk-t7-m8-no-loc-clear",
+    "slice": "tracker",
+    "label": "no loc clear",
+    "file": "tracking/mx-txn.js",
+    "from": "    if (clearLoc) { next.driver_location = null; next.dest_lat = null; next.dest_lng = null; }\n",
+    "to": "",
+    "command": [
+      "npm",
+      "run",
+      "-s",
+      "test:tracker-schedules"
+    ]
+  },
+  {
+    "id": "trk-t7-m9-no-future-window",
+    "slice": "tracker",
+    "label": "no future window",
+    "file": "tracking/ingest-txn.js",
+    "from": "const sampleInWindow = (measuredAt, now) => measuredAt <= now + 2000 && now - measuredAt <= 90000;",
+    "to": "const sampleInWindow = (measuredAt, now) => now - measuredAt <= 90000;",
+    "command": [
+      "npm",
+      "run",
+      "-s",
+      "test:tracker-schedules"
+    ]
+  },
+  {
+    "id": "trk-t7u-m1-no-epoch-fence",
+    "slice": "tracker",
+    "label": "no epoch fence",
+    "file": "tracking/ingest-txn.js",
+    "from": "mx.shift_id !== shiftId || mx.epoch !== epoch) return undefined;",
+    "to": "mx.shift_id !== shiftId) return undefined;",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t7u-m2-no-shift-fence",
+    "slice": "tracker",
+    "label": "no shift fence",
+    "file": "tracking/ingest-txn.js",
+    "from": "mx.owner_tag !== uidTag || mx.shift_id !== shiftId || mx.epoch",
+    "to": "mx.owner_tag !== uidTag || mx.epoch",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t7u-m3-no-status-fence",
+    "slice": "tracker",
+    "label": "no status fence",
+    "file": "tracking/ingest-txn.js",
+    "from": "    if (cur.status !== 'out_for_delivery') return undefined;\n",
+    "to": "",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t7u-m4-no-watermark",
+    "slice": "tracker",
+    "label": "no watermark",
+    "file": "tracking/ingest-txn.js",
+    "from": "    if (!(sample.measured_at > (smp.sample_at || 0))) return undefined;\n",
+    "to": "",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t7u-m5-no-mode-fence",
+    "slice": "tracker",
+    "label": "no mode fence",
+    "file": "tracking/ingest-txn.js",
+    "from": "if (mx.mode !== 'live' || mx.owner_tag",
+    "to": "if (mx.owner_tag",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-t7u-m7-no-terminal-guard",
+    "slice": "tracker",
+    "label": "no terminal guard",
+    "file": "tracking/mx-txn.js",
+    "from": "    if (mx0.mode === 'terminal' && derived.mode !== 'terminal') return undefined;\n",
+    "to": "",
+    "command": [
+      "node",
+      "tracking/tracking-core.test.js"
+    ]
+  },
+  {
+    "id": "trk-r10-fanout-no-stale-tombstone",
+    "slice": "tracker",
+    "label": "fan-out skips its stale-hint tombstone (the load-bearing step codex r2.9 P1-1 protects)",
+    "file": "tracking/fanout.js",
+    "from": "    if (r && r.committed && r.claimOwner !== uid) {",
+    "to": "    if (false) {",
+    "command": [
+      "npm",
+      "run",
+      "-s",
+      "test:tracker-schedules"
+    ]
+  },
+  {
+    "id": "trk-r10-b-no-terminal-filter",
+    "slice": "tracker",
+    "label": "fan-out recomputes terminal-only orders again (B removed)",
+    "file": "tracking/fanout.js",
+    "from": "if (t && t.order_id && !TERMINAL_TASK.has(t.status)) ids.add(t.order_id);",
+    "to": "if (t && t.order_id) ids.add(t.order_id);",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/tracker-recompute.emulator.test.js"
+    ]
+  },
+  {
+    "id": "trk-r10-b-drop-live-hint",
+    "slice": "tracker",
+    "label": "fan-out drops a terminal order even with a live hint",
+    "file": "tracking/fanout.js",
+    "from": "  for (const [oid, c] of Object.entries(claims)) if (c && c.gone !== true) ids.add(oid);",
+    "to": "",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/tracker-recompute.emulator.test.js"
+    ]
+  },
+  {
+    "id": "trk-r10-c-m1-trim",
+    "slice": "tracker",
+    "label": "trim",
+    "file": "tracking/driver-name.js",
+    "from": "  if (dn && typeof dn === 'string') return dn;",
+    "to": "  if (dn && typeof dn === 'string' && dn.trim()) return dn;",
+    "command": [
+      "node",
+      "tracking/driver-name.test.js"
+    ]
+  },
+  {
+    "id": "trk-r10-c-m2-no-lowercase",
+    "slice": "tracker",
+    "label": "no lowercase",
+    "file": "tracking/driver-name.js",
+    "from": "raw.slice(1).toLowerCase()",
+    "to": "raw.slice(1)",
+    "command": [
+      "node",
+      "tracking/driver-name.test.js"
+    ]
+  },
+  {
+    "id": "trk-r10-c-m3-no-canonical",
+    "slice": "tracker",
+    "label": "no canonical",
+    "file": "tracking/driver-name.js",
+    "from": "  if (DRIVER_DISPLAY_NAMES[uid]) return DRIVER_DISPLAY_NAMES[uid];\n",
+    "to": "",
+    "command": [
+      "node",
+      "tracking/driver-name.test.js"
+    ]
+  },
+  {
+    "id": "trk-r10-c-m4-non-string-display",
+    "slice": "tracker",
+    "label": "non string display",
+    "file": "tracking/driver-name.js",
+    "from": "  if (dn && typeof dn === 'string') return dn;",
+    "to": "  if (dn) return String(dn);",
+    "command": [
+      "node",
+      "tracking/driver-name.test.js"
+    ]
+  },
+  {
+    "id": "trk-r10-c-m6-name-before-display",
+    "slice": "tracker",
+    "label": "name before display",
+    "file": "tracking/driver-name.js",
+    "from": "  const dn = r.display_name;",
+    "to": "  const dn = r.name && 0;",
+    "command": [
+      "node",
+      "tracking/driver-name.test.js"
+    ]
+  },
+  {
+    "slice": "tracker",
+    "id": "trk-r11-val-no-owner",
+    "label": "validation drops the node-owner rule",
+    "file": "tracking/tombstones.js",
+    "from": "  if (secret && node.mx.owner_tag !== tagOf(secret, uid)) return 'node owned by someone else';\n",
+    "to": "",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/tracker-tombstones.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "tracker",
+    "id": "trk-r11-val-no-exact-seq",
+    "label": "validation tombstones without the exact-seq condition",
+    "file": "tracking/tombstones.js",
+    "from": "  return cur.gone === false && cur.seq === seq ? { seq: seq + 0.5, gone: true, at } : undefined;",
+    "to": "  return cur.gone === false ? { seq: seq + 0.5, gone: true, at } : undefined;",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/tracker-tombstones.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "tracker",
+    "id": "trk-r11-val-no-assignee",
+    "label": "validation drops the assignee rule",
+    "file": "tracking/tombstones.js",
+    "from": "  if (deliveryOwner !== uid) return 'not the current assignee';\n",
+    "to": "",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/tracker-tombstones.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "tracker",
+    "id": "trk-r11-val-no-terminal",
+    "label": "validation drops the order-terminal rule",
+    "file": "tracking/tombstones.js",
+    "from": "  if (!order || TERMINAL.has(order.status)) return 'order terminal or missing';\n",
+    "to": "  if (!order) return 'order terminal or missing';\n",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/tracker-tombstones.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "tracker",
+    "id": "trk-r11-recon-off-removes-node",
+    "label": "reconcile OFF deletes the whole node instead of mx",
+    "file": "tracking/reconcile-core.js",
+    "from": "      await db.ref(`order_tracking/${token}/mx`).remove();",
+    "to": "      await db.ref(`order_tracking/${token}`).remove();",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/tracker-reconcile.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "tracker",
+    "id": "trk-r11-recon-on-no-recompute",
+    "label": "reconcile ON does not recompute",
+    "file": "tracking/reconcile-core.js",
+    "from": "      await recompute(db, orderId);",
+    "to": "",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/tracker-reconcile.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "tracker",
+    "id": "trk-r11-recon-no-24h",
+    "label": "reconcile window query ignores the 24 h bound",
+    "file": "tracking/reconcile-core.js",
+    "from": "    const hits = (await db.ref('orders').orderByChild(f).startAt(now - WINDOW_MS).once('value')).val() || {};",
+    "to": "    const hits = (await db.ref('orders').orderByChild(f).startAt(0).once('value')).val() || {};",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/tracker-reconcile.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "tracker",
+    "id": "trk-r11-runner-step-image",
+    "label": "runner captures per step again (the A→B→C loss)",
+    "file": "test/_trigger-runner.mjs",
+    "from": "        record(label, pre, await image());",
+    "to": "        lastImage = lastImage || pre;",
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/trigger-runner.emulator.test.mjs"
+    ]
   }
 ]

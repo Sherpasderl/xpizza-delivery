@@ -56,6 +56,8 @@ const D = {
   [F('deploy/check-seed-readiness.js')]: 'harness', [F('deploy/emu-seed.js')]: 'harness', [F('tools/menus-identity-publish.js')]: 'harness',
   [F('test/portal-emulator-workers.probe.js')]: 'harness', [F('test/_kds-writer-worker.js')]: 'harness', [F('test/emu-isolation.proof.js')]: 'harness',
   [F('test/measure-identity-fence.js')]: 'harness',
+  // TRACKER FIXES T9: the cost harness — `_emulator-required('database')` before index.js is loaded (driven below like every harness)
+  [F('test/tracker-measure.mjs')]: 'harness',
   // H1a gate G-1: the handheld isolation ACCEPTANCE check A1 runs before enabling pairing (expected red until F2(c)) —
   // `_emulator-required('database')` is its first statement, so it is driven like every harness; it is not in the gate chain
   [F('test/merchant-isolation.g1.js')]: 'harness',
@@ -82,7 +84,9 @@ const D = {
     'extras-export-live',
     // H1c step 0 — the owner-run hardware-gate sender (ONE data-only FCM message; no database read or write):
     // requireProject({ requireFlag: true }) before any client
-    'handheld-push-probe'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
+    'handheld-push-probe',
+    // TRACKER FIXES — the owner-run flag-transition tool: requireProject({ requireFlag: true }) before any client
+    'tracker-reconcile'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/set-driver-enforcement-mode.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
@@ -172,6 +176,7 @@ const FOREIGN = { FIRESTORE_EMULATOR_HOST: 'evil.example:8080', FIREBASE_DATABAS
     [F('test/_kds-writer-worker.js')]: { __args: ['/nonexistent-args.json'] },
     [F('test/emu-isolation.proof.js')]: { __args: ['inside', os.tmpdir(), 'X'] },
     [F('tools/menus-identity-publish.js')]: { __args: ['--project', 'xpizza-delivery'] },
+    [F('test/tracker-measure.mjs')]: { __args: ['--flag', 'off', '--out', path.join(os.tmpdir(), 'tracker-measure-census.json')] },
   };
   let driven = 0;
   for (const [f, kind] of Object.entries(D).filter(([, k]) => k === 'harness' || k === 'harness-selflaunch')) {

@@ -152,6 +152,12 @@ const {
   coerceTs
 } = require('./driver-ingest');
 const { activeDropOrderId, shouldMirror, shouldMarkStackedWaiting, stackedWaitingTxn } = require('./tracking-mirror');   // stacked-tracker: shouldMarkStackedWaiting (the OFD stacked-WAITING is_active_drop:false decision) + stackedWaitingTxn (its atomic no-downgrade write)
+const { trackerFixesEnabled } = require('./tracking/flag');   // TRACKER FIXES (PLAN-tracker-fixes): the dark flag; OFF = today's code verbatim
+const { recomputeOrderTracker } = require('./tracking/recompute');
+const { driverFanout } = require('./tracking/fanout');
+const { makeIngestUpdater, sampleInWindow } = require('./tracking/ingest-txn');
+const { tagOf } = require('./tracking/tag');
+const { trackerHold } = require('./tracking/hold');   // TRACKER FIXES: test-only hold seam (inert unless a test installs it)
 const { sweepDecision, activeOrderCount, assignmentStrandState, HEAL_TERMINAL_STATUSES } = require('./sweep-pending');
 const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');   // RTDB egress Stage 1 — /tasks retention (tasksToDelete/confirmTaskDelete now used by retention-sweep.js)
 const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');   // shared driver-name cascade + durable delivered_by_* attribution at the terminal edge (real-time trigger)
@@ -4610,7 +4616,32 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
   // the driver's current task AND status === 'out_for_delivery'. A stacked driver's WAITING order is never
   // mirrored (no is_active_drop → the tracker shows the locked "finishing another delivery" copy, then
   // auto-upgrades to the map when this driver becomes its active drop).
-  try {
+  const tf = await trackerFixesEnabled(db);   // TRACKER FIXES H4: ONE flag decision for this request
+  if (tf) {
+    // ON: live location ONLY, fenced at commit by mode / owner / the AUTHENTICATED shift / epoch / status / watermark (P§2)
+    try {
+      await trackerHold('ingest:auth', { uid, shift_id: tokenRec.shift_id });   // test seam (inert in production)
+      const oid = activeDropOrderId(driver.current_task_id);
+      const nowMs = Date.now();
+      if (oid && Number.isFinite(final.lat) && Number.isFinite(final.lng) && Number.isFinite(final.ts) && sampleInWindow(final.ts, nowMs)) {
+        const ord = (await db.ref(`orders/${oid}`).once('value')).val() || {};
+        const token = ord.tracking_token;
+        if (token) {
+          const node = (await db.ref(`order_tracking/${token}`).once('value')).val();
+          const mx = node && node.mx;
+          await trackerHold('ingest:epoch', { uid, orderId: oid, epoch: mx && mx.epoch });
+          if (mx && shouldMirror(node.driver_location || null, { lat: final.lat, lng: final.lng }, nowMs, { throttleMs: 12000, minMoveMeters: 40 })) {
+            await trackerHold('ingest:commit', { uid, orderId: oid, epoch: mx.epoch });
+            await db.ref(`order_tracking/${token}`).transaction(makeIngestUpdater({
+              uidTag: tagOf(process.env.MAKE_SECRET, uid), shiftId: tokenRec.shift_id, epoch: mx.epoch,
+              sample: { lat: final.lat, lng: final.lng, measured_at: final.ts },
+              dest: { lat: ord.lat, lng: ord.lng },
+            }));
+          }
+        }
+      }
+    } catch (e) { console.warn('ingestDriverLocation: tracker mirror (fenced) failed', e && e.message); }
+  } else try {
     const oid = activeDropOrderId(driver.current_task_id);
     if (oid && Number.isFinite(final.lat) && Number.isFinite(final.lng)) {
       const [token, ordStatus, destLat, destLng] = await Promise.all([
@@ -4653,9 +4684,16 @@ exports.clearTrackerMirrorOnDone = onValueWritten(
   async (event) => {
     const before = event.data.before.val();
     const after = event.data.after.val();
+    const db = getDatabase();
+    if (await trackerFixesEnabled(db)) {   // TRACKER FIXES H3: ON → recompute from CURRENT truth (+ the fan-out); throws → retry
+      if (before !== 'out_for_delivery' || after === 'out_for_delivery') return;
+      const r = await recomputeOrderTracker(db, event.params.orderId);
+      const ord = (await db.ref(`orders/${event.params.orderId}`).once('value')).val() || {};
+      for (const uid of new Set([r && r.owner, ord.delivered_by_driver_uid].filter(Boolean))) await driverFanout(db, uid);
+      return;
+    }
     if (before !== 'out_for_delivery' || after === 'out_for_delivery') return;   // only the leaving edge
     const orderId = event.params.orderId;
-    const db = getDatabase();
     const token = (await db.ref(`orders/${orderId}/tracking_token`).once('value')).val();
     if (!token) return;   // permanent (no token) — nothing to clear; return so it does NOT retry forever
     // No try/catch: a transient read/write error throws → platform retries (idempotent null update).
@@ -4676,6 +4714,51 @@ exports.clearTrackerMirrorOnDone = onValueWritten(
 // notified, no retry there). Cancelled tasks are reclaimed by the periodic retentionSweepTasks instead, which
 // runs long after that notify. delivered/completed edges have NO task reader (verified) → race-free here.
 // Runs alongside clearTrackerMirrorOnDone on the same /status leaf (Firebase allows multiple triggers).
+// ── TRACKER FIXES H1b + H5 (PLAN-tracker-fixes §1.1): the order-side and driver-side recompute triggers. All retry:true; each
+// reads the flag ONCE and returns when OFF. Event payloads only pick WHOM to recompute; decisions are current truth (recompute).
+exports.trackerOnOrderStatus = onValueWritten(
+  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true },
+  async (event) => {
+    const db = getDatabase();
+    if (!(await trackerFixesEnabled(db))) return;
+    const r = await recomputeOrderTracker(db, event.params.orderId);
+    if (r && r.owner) await driverFanout(db, r.owner);
+  }
+);
+async function trackerOnTask(event) {
+  const db = getDatabase();
+  if (!(await trackerFixesEnabled(db))) return;
+  const taskId = event.params.taskId;
+  const m = /^(.+)_(pickup|delivery)$/.exec(taskId);
+  if (!m) return;
+  const orderId = m[1];
+  await recomputeOrderTracker(db, orderId);
+  const owners = new Set();
+  const b = event.data.before.val(), a = event.data.after.val();
+  for (const v of [b, a]) if (typeof v === 'string' && v) owners.add(v);
+  const t = (await db.ref(`tasks/${orderId}_delivery/assigned_driver_id`).once('value')).val();
+  if (t) owners.add(t);
+  for (const uid of owners) await driverFanout(db, uid);
+}
+exports.trackerOnTaskOwner = onValueWritten({ ref: '/tasks/{taskId}/assigned_driver_id', region: 'us-central1', retry: true }, trackerOnTask);
+exports.trackerOnTaskStatus = onValueWritten({ ref: '/tasks/{taskId}/status', region: 'us-central1', retry: true }, async (event) => {
+  const db = getDatabase();
+  if (!(await trackerFixesEnabled(db))) return;
+  const m = /^(.+)_(pickup|delivery)$/.exec(event.params.taskId);
+  if (!m) return;
+  await recomputeOrderTracker(db, m[1]);
+  const owner = (await db.ref(`tasks/${event.params.taskId}/assigned_driver_id`).once('value')).val();
+  if (owner) await driverFanout(db, owner);
+});
+async function trackerOnDriver(event) {
+  const db = getDatabase();
+  if (!(await trackerFixesEnabled(db))) return;
+  await driverFanout(db, event.params.uid);
+}
+exports.trackerOnDriverPointer = onValueWritten({ ref: '/drivers/{uid}/current_task_id', region: 'us-central1', retry: true }, trackerOnDriver);
+exports.trackerOnDriverActive = onValueWritten({ ref: '/drivers/{uid}/active', region: 'us-central1', retry: true }, trackerOnDriver);
+exports.trackerOnDriverShiftId = onValueWritten({ ref: '/drivers/{uid}/current_shift_id', region: 'us-central1', retry: true }, trackerOnDriver);
+
 exports.deleteTasksOnOrderTerminal = onValueWritten(
   // retry: true + idempotent null-update → a transient failure retries safely (never strands a bloated node).
   { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true },
@@ -4816,6 +4899,7 @@ exports.sendOrderStatusNotifications = onValueWritten(
     if (before === after) return;          // no actual change
 
     const db = getDatabase();
+    const tf = await trackerFixesEnabled(db);   // TRACKER FIXES H1: ONE flag decision for this invocation (H1 + H2)
 
     // Always mirror the new status into the tracking record (regardless of
     // whatsapp_enabled flag — the tracking site needs the live status, and
@@ -4838,7 +4922,17 @@ exports.sendOrderStatusNotifications = onValueWritten(
     // which is the status string — this trigger watches /orders/{orderId}/status). Legacy-normalized.
     const restaurantId = order?.restaurant_id || 'x_pizza';
 
-    if (trackingToken) {
+    // TRACKER FIXES × S5 (restack onto e8e77e24): with the flag ON the status mirror below is skipped (the recompute publishes the
+    // tracker), but S5's ready-stage stamp is NOT recompute truth (orders carry no ready_at) — so it is written here: the SAME leaf,
+    // the SAME trigger-time value, the SAME "a recall overwrites: the latest ready" semantics as the OFF mirror.
+    if (tf && trackingToken && after === 'ready') {
+      try {
+        await db.ref(`order_tracking/${trackingToken}/ready_at`).set(ServerValue.TIMESTAMP);
+      } catch (e) {
+        console.warn(`sendOrderStatusNotifications: tracking ready_at stamp failed`, e.message);
+      }
+    }
+    if (!tf && trackingToken) {   // TRACKER FIXES H1: ON → the tracker is published by trackerOnOrderStatus (retry:true) instead
       const trackingUpdates = { [`order_tracking/${trackingToken}/status`]: after };
       if (after === 'out_for_delivery') {
         trackingUpdates[`order_tracking/${trackingToken}/picked_up_at`] = ServerValue.TIMESTAMP;
@@ -4969,7 +5063,7 @@ exports.sendOrderStatusNotifications = onValueWritten(
           console.warn(`sendOrderStatusNotifications: couldn't read driver name`, e.message);
         }
         // Mirror driver_name into the tracking record (for the public site)
-        if (driverName && trackingToken) {
+        if (!tf && driverName && trackingToken) {   // TRACKER FIXES H2: ON → the recompute is the single name writer (O3)
           try {
             await db.ref(`order_tracking/${trackingToken}/driver_name`).set(driverName);
           } catch (e) {

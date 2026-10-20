@@ -133,7 +133,10 @@
         "order_type",
         "restaurant_id",
         "delivered_by_driver_uid",
-        "delivered_by_uid"
+        "delivered_by_uid",
+        "delivered_at",
+        "cancelled_at",
+        "completed_at"
       ],
       "$order_id": {
         ".write": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()",
@@ -501,6 +504,18 @@
       ".write": false
     },
     "counters": {
+      ".read": false,
+      ".write": false
+    },
+    "tracker_seq": {
+      ".read": false,
+      ".write": false
+    },
+    "tracker_claims": {
+      ".read": false,
+      ".write": false
+    },
+    "tracker_claims_owner": {
       ".read": false,
       ".write": false
     },

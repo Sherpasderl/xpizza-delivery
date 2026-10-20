@@ -175,6 +175,34 @@ function mutant(edit) {
     ok('ready_at: stamped on →ready only (server clock), never on preparing / out_for_delivery / delivered; a ready→preparing→ready recall keeps then overwrites it with the LATER ready; picked_up_at / delivered_at as today');
   }
 
+  // ═══ A-ON. ready_at with the TRACKER FIXES flag ON (restack onto S5): the status mirror is skipped (the recompute publishes the
+  // tracker), and sendOrderStatusNotifications stamps the SAME leaf with the SAME semantics ═══
+  {
+    const flag = require('../tracking/flag');
+    await db.ref('/').set(null);
+    await db.ref('config/whatsapp_enabled').set(false);
+    await db.ref('config/tracker_fixes_enabled').set(true); flag._resetForTest();
+    await db.ref('orders/RA2').set({ order_type: 'delivery', restaurant_id: 'merch_a', tracking_token: 'TokReadyOn123', status: 'new', customer_phone: '99990000' });
+    await db.ref('order_tracking/TokReadyOn123').set({ status: 'new', created_at: 1 });
+    const ev = (b, a) => ({ data: { before: { val: () => b }, after: { val: () => a } }, params: { orderId: 'RA2' } });
+    const step = async (b, a) => { await db.ref('orders/RA2/status').set(a); await app.sendOrderStatusNotifications.run(ev(b, a)); return val('order_tracking/TokReadyOn123'); };
+    let t = await step('new', 'preparing');
+    assert.ok(!('ready_at' in t), 'ON: preparing → no ready_at');
+    const t0 = Date.now();
+    t = await step('preparing', 'ready');
+    assert.ok(Number.isFinite(t.ready_at) && t.ready_at >= t0 - 5000, 'ON: →ready stamps ready_at (server clock)');
+    assert.strictEqual(t.status, 'new', 'ON: the status mirror is NOT written here (the recompute publishes status)');
+    const first = t.ready_at;
+    await new Promise((r) => setTimeout(r, 25));
+    t = await step('ready', 'preparing'); assert.strictEqual(t.ready_at, first, 'ON: a recall to preparing leaves ready_at');
+    t = await step('preparing', 'ready'); assert.ok(t.ready_at > first, 'ON: the second ready overwrites: the LATEST ready');
+    const second = t.ready_at;
+    t = await step('ready', 'out_for_delivery'); assert.strictEqual(t.ready_at, second, 'ON: ready_at kept through pickup');
+    t = await step('out_for_delivery', 'delivered'); assert.strictEqual(t.ready_at, second, 'ON: ready_at kept at delivered');
+    await db.ref('config/tracker_fixes_enabled').set(null); flag._resetForTest();
+    ok('ready_at with the tracker flag ON: the same leaf, server clock, →ready only, recall keeps then the LATER ready overwrites, kept through pickup / delivered (the status mirror is the recompute\'s, not written here)');
+  }
+
   await loadCanonicalRules();
   indexWarnings = 0;
   // ═══ B1. BC1 paging ═══

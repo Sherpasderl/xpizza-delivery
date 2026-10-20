@@ -5,7 +5,7 @@
 //     gstatic CDN imports rewritten to local shims and its sibling imports rewritten to the copied files.
 //   - firebase-database → the npm Web SDK, connected to the emulator with mockUserToken auth: REAL reads, queries, transactions
 //     and atomic multi-path updates; rules enforced. Writers are INSTRUMENTED: hooks.beforeWrite(op) runs before the write is
-//     issued and hooks.afterWrite(op, result) after it is acknowledged (the runner uses these for write-sourced event capture).
+//     issued and hooks.afterWrite(op, result) after it is acknowledged — or hooks.onWriteError(op, error) if it fails (the runner uses these for write-sourced event capture).
 //   - firebase-auth → a signed-in stub whose currentUser.uid equals the emulator auth uid (no auth emulator needed).
 //   - firebase-functions → httpsCallable routed to opts.callables[name]({data, auth}) (the runner supplies real handlers).
 // Each load() is an independent client (its own app → its own connection).
@@ -41,7 +41,8 @@ const R = globalThis['${reg}'];
 const op = async (kind, r, value, run) => {
   const o = { kind, path: r.toString().replace(/^[a-z]+:\\/\\/[^/]+\\/?/, '').split('?')[0], value };
   if (R.hooks.beforeWrite) await R.hooks.beforeWrite(o);
-  const res = await run();
+  let res;
+  try { res = await run(); } catch (e) { if (R.hooks.onWriteError) await R.hooks.onWriteError(o, e); throw e; }   // a failed (e.g. denied) write still closes its bracket
   if (R.hooks.afterWrite) await R.hooks.afterWrite(o, res);
   return res;
 };

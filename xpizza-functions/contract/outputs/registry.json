@@ -2289,6 +2289,54 @@
   },
   "xpizza-track/index.html<script@0>#updateDriverMap@xpizza-track/index.html<script@0>#render>anon": {
    "status": "pending"
+  },
+  "xpizza-functions/index.js#trackerOnOrderStatus@self": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking-mirror.js#shouldMirror@xpizza-functions/index.js#ingestDriverLocation~2": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/derive.js#deriveOrderTracker@xpizza-functions/tracking/recompute.js#recomputeOrderTracker": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/driver-orders.js#getDriverOrders@xpizza-functions/tracking/derive.js#deriveOrderTracker": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/driver-orders.js#getDriverOrders>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/fanout.js#driverOrderIds@xpizza-functions/tracking/fanout.js#driverFanout": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/ingest-txn.js#makeIngestUpdater>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/mx-txn.js#makeNodeUpdater>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/mx-txn.js#pinsFor@xpizza-functions/tracking/mx-txn.js#makeNodeUpdater>anon": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/reconcile-core.js#runReconcile>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/reconcile-core.js#visible@xpizza-functions/tracking/reconcile-core.js#runReconcile": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/reconcile-core.js#visible@xpizza-functions/tracking/reconcile-core.js#runReconcile~2": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/reconcile-core.js#visible@xpizza-functions/tracking/reconcile-core.js#runReconcile~3": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/reconcile-core.js#visible@xpizza-functions/tracking/reconcile-core.js#runReconcile~4": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/reconcile-core.js#windowOrders@xpizza-functions/tracking/reconcile-core.js#runReconcile": {
+   "status": "pending"
+  },
+  "xpizza-functions/tracking/tombstones.js#staleVerdict@xpizza-functions/tracking/tombstones.js#validateLiveClaims": {
+   "status": "pending"
   }
  }
 }
