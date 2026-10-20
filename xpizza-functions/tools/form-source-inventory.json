@@ -1021,6 +1021,7 @@
   "xpizza-track": {
    "tests": [
     "s5-live-status.test.mjs",
+    "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
@@ -1040,6 +1041,7 @@
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
     "xpizza-functions/pselfupdate-stamp.test.js",
+    "xpizza-functions/tools/app-suites.guard.test.js",
     "xpizza-track/eta-gate.test.js",
     "xpizza-track/status-view-forms.test.js",
     "xpizza-track/tracker-glide.guard.test.js",
@@ -1050,6 +1052,7 @@
     "xpizza-track/tracker-status.golden.test.js"
    ],
    "via_helper": [
+    "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
@@ -1064,7 +1067,8 @@
     "xpizza-functions/contract/scenario-state.guard.test.js",
     "xpizza-functions/contract/timer-bounds.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
-    "xpizza-functions/contract/tracer.test.js"
+    "xpizza-functions/contract/tracer.test.js",
+    "xpizza-functions/tools/app-suites.guard.test.js"
    ]
   },
   "xpizza-dashboard": {
@@ -1177,6 +1181,7 @@
   "xpizza-functions/test/d4b-legacy-fixtures.js",
   "xpizza-functions/test/kds-writer-capture.mjs",
   "xpizza-functions/tools/ack-identity-finding.js",
+  "xpizza-functions/tools/app-suites.js",
   "xpizza-functions/tools/draft-drift-report.js",
   "xpizza-functions/tools/extras-baseline-audit.js",
   "xpizza-functions/tools/menus-divergence-report.js",
