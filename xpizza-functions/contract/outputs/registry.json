@@ -325,6 +325,9 @@
   "xpizza-dispatch-mobile/index.html<script@0>#displayDriverId@xpizza-dispatch-mobile/index.html<script@0>#timelineHTML": {
    "status": "pending"
   },
+  "xpizza-dispatch-mobile/index.html<script@0>#displayLabel@xpizza-dispatch-mobile/index.html<script@0>#commitUnassign": {
+   "status": "pending"
+  },
   "xpizza-dispatch-mobile/index.html<script@0>#displayLabel@xpizza-dispatch-mobile/index.html<script@0>#driverRow": {
    "status": "pending"
   },
@@ -337,6 +340,9 @@
   "xpizza-dispatch-mobile/index.html<script@0>#displayLabel@xpizza-dispatch-mobile/index.html<script@0>#openDriverInfo": {
    "status": "pending"
   },
+  "xpizza-dispatch-mobile/index.html<script@0>#displayLabel@xpizza-dispatch-mobile/index.html<script@0>#openUnassignConfirm": {
+   "status": "pending"
+  },
   "xpizza-dispatch-mobile/index.html<script@0>#displayLabel@xpizza-dispatch-mobile/index.html<script@0>#passHTML": {
    "status": "pending"
   },
@@ -347,6 +353,9 @@
    "status": "pending"
   },
   "xpizza-dispatch-mobile/index.html<script@0>#driverColorVar@xpizza-dispatch-mobile/index.html<script@0>#openDetail": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#driverColorVar@xpizza-dispatch-mobile/index.html<script@0>#openUnassignConfirm": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/index.html<script@0>#driverColorVar@xpizza-dispatch-mobile/index.html<script@0>#rowOf": {
@@ -386,6 +395,9 @@
    "status": "pending"
   },
   "xpizza-dispatch-mobile/index.html<script@0>#openPicker@xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openPicker@xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener~2": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/index.html<script@0>#passHTML@xpizza-dispatch-mobile/index.html<script@0>#deckHTML>anon": {
@@ -484,6 +496,9 @@
   "xpizza-dispatch-mobile/xpizza-delivery.js#subscribeToScheduledOrders>anon@self": {
    "status": "pending"
   },
+  "xpizza-dispatch-mobile/xpizza-delivery.js#unassignOrder@xpizza-dispatch-mobile/index.html<script@0>#commitUnassign": {
+   "status": "pending"
+  },
   "xpizza-dispatch/dispatch-alert-nav.js#alertNavTarget@xpizza-dispatch/index.html<script@0>#renderDispatcherAlerts>anon>anon": {
    "status": "pending"
   },
@@ -563,6 +578,15 @@
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#agedOrd@xpizza-dispatch/index.html<script@0>#renderPedidosTab>anon~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#doUnassign": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#openUnassignConfirm": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#openUnassignConfirm~2": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#draRenderDeactivate@xpizza-dispatch/index.html<script@0>#draRender": {
@@ -914,6 +938,9 @@
    "status": "pending"
   },
   "xpizza-dispatch/xpizza-delivery.js#subscribeToScheduledOrders>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/xpizza-delivery.js#unassignOrder@xpizza-dispatch/index.html<script@0>#doUnassign": {
    "status": "pending"
   },
   "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/brand-helpers.js#brandMeta": {

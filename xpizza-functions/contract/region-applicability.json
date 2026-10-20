@@ -411,14 +411,14 @@
     "site": "if (ds.drvfocus){ showTab('mapa'); window.__focusDriverOnMap?.(ds.drvfocus); return; }",
     "siteSha": "deb368c93927903c91e1fd367f3d1f71393515740bfe1cd564fd2666a573fd37",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
@@ -456,14 +456,14 @@
     "site": "if (ds.map){ closeSheet(); showTab('mapa'); window.__focusOrderOnMap?.(ds.map); return; }",
     "siteSha": "575ce555a92ed3dbdf778f78f4b7493fa185c4883d5a2104cab06c522ec37d1d",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
@@ -507,20 +507,20 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+     "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
     },
     {
      "kind": "C",
@@ -533,7 +533,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -573,20 +573,20 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+     "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
     },
     {
      "kind": "C",
@@ -599,7 +599,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -639,8 +639,8 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
@@ -684,8 +684,8 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
@@ -729,20 +729,20 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+     "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
     },
     {
      "kind": "C",
@@ -755,7 +755,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -789,14 +789,14 @@
     "site": "if (oid) { sheetDir = 'push'; openConfirm(oid, ds.choose); }",
     "siteSha": "40f2a5db66dbdcd1f9742f459d4d41493ab90987dbee4228e68dc69ab0805d3a",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
@@ -834,14 +834,14 @@
     "site": "if (ds.detail){ sheetDir = ds.back ? 'pop' : 'push'; openDetail(ds.detail); return; }",
     "siteSha": "64b313060d187928487b1eec1898c5494f904aa8e13126b09961a9a20336c4e0",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     }
    ],
    "cases": {
@@ -872,8 +872,8 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
@@ -917,20 +917,20 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+     "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
     },
     {
      "kind": "C",
@@ -943,73 +943,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
-     }
-    },
-    {
-     "kind": "R",
-     "name": "bucketOf",
-     "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3
-     }
-    }
-   ],
-   "cases": {
-    "required": [],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned"
-    ],
-    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-pick): excluded only when the context is established; required otherwise"
-   }
-  },
-  "xpizza-dispatch-mobile/index.html<script@0>#openPicker@xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener": {
-   "group": "dispatch-lite-ui",
-   "appliesWhenAny": [],
-   "context": [
-    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#openPicker"
-   ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker, so a trace that probed openPicker and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
-   "whyFalseExcludes": "openPicker was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
-   "bind": {
-    "site": "if (ds.pick){ sheetDir = ds.back ? 'pop' : 'push'; openPicker(ds.pick); return; }",
-    "siteSha": "2c7a34ed8e87ad0bb25f580acafe86379543e814d234b1f342b6ccdadf863a18",
-    "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
-   },
-   "guards": [
-    {
-     "kind": "S",
-     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
-    },
-    {
-     "kind": "K",
-     "file": "xpizza-dispatch-mobile/index.html",
-     "text": "openPicker(",
-     "count": 3
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
-     "text": "const rowOf = (r) => {",
-     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-dispatch-mobile/index.html<script@0>#bucketOf",
-     "callers": [
-      "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "openPicker",
-     "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -1049,20 +983,20 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+     "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
     },
     {
      "kind": "C",
@@ -1075,7 +1009,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -1124,7 +1058,7 @@
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "K",
@@ -1144,7 +1078,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -1184,8 +1118,8 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
@@ -1223,26 +1157,26 @@
     "site": "const list = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing });",
     "siteSha": "c7158f71157aa2dde3c65c614284780e24504ff7c55605ff7ebfd1959d72eeb5",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
-    "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+    "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+     "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
     },
     {
      "kind": "C",
@@ -1255,7 +1189,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -1304,7 +1238,7 @@
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "K",
@@ -1324,7 +1258,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -1364,8 +1298,8 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
@@ -1432,10 +1366,10 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 4,
       "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/sweep-pending.js#functions": 1,
@@ -1496,8 +1430,8 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
@@ -1564,10 +1498,10 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 4,
       "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/sweep-pending.js#functions": 1,
@@ -1628,8 +1562,8 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
@@ -1696,10 +1630,10 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 4,
       "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/sweep-pending.js#functions": 1,
@@ -1760,8 +1694,8 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
@@ -1828,10 +1762,10 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 4,
       "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/sweep-pending.js#functions": 1,
@@ -1892,8 +1826,8 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
@@ -1960,10 +1894,10 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 4,
       "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/sweep-pending.js#functions": 1,
@@ -2024,8 +1958,8 @@
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
-     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
+     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
     },
     {
      "kind": "K",
@@ -2092,10 +2026,10 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 4,
       "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/sweep-pending.js#functions": 1,
@@ -2427,7 +2361,7 @@
     "site": "$('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;",
     "siteSha": "7e94fc97ed4c1c7b15c26081c72c68e7fea1759391ef31d1a1d98cfaccf50a82",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker",
-    "scopeSha": "c587bc33894754189cc264d54bb6b92b845562854a6e26cdb98e57ad69895c33"
+    "scopeSha": "59d86688258467c89590c3ea58a69b47460af6e9cbca0f44c1d34effbb840c86"
    },
    "guards": [
     {
@@ -2451,7 +2385,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     }
@@ -2478,7 +2412,7 @@
     "site": "$('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;",
     "siteSha": "7e94fc97ed4c1c7b15c26081c72c68e7fea1759391ef31d1a1d98cfaccf50a82",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker",
-    "scopeSha": "c587bc33894754189cc264d54bb6b92b845562854a6e26cdb98e57ad69895c33"
+    "scopeSha": "59d86688258467c89590c3ea58a69b47460af6e9cbca0f44c1d34effbb840c86"
    },
    "guards": [
     {
@@ -2502,7 +2436,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     }
@@ -2858,7 +2792,7 @@
     "site": "<span class=\"status-dot ${getDotClass(driver)}\"></span>",
     "siteSha": "5851274d23204dba9aac8ff9505daa0284424e99c0a4f6068ffbb65165cb4c30",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker>anon",
-    "scopeSha": "47339492dd25e74f07333173177a504c46a43dc1fd94454d516433f126db1326"
+    "scopeSha": "d1038692f3065226a213187c0b0920cda5c857b0c7a01ca7227c103dfbcd2a27"
    },
    "guards": [
     {
@@ -2882,7 +2816,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     }
@@ -2909,7 +2843,7 @@
     "site": "([uid, d]) => {",
     "siteSha": "7d4d62a78a65131448eb29b3717839d563bd4e92a487b5130941cd62caa93622",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker>anon",
-    "scopeSha": "47339492dd25e74f07333173177a504c46a43dc1fd94454d516433f126db1326"
+    "scopeSha": "d1038692f3065226a213187c0b0920cda5c857b0c7a01ca7227c103dfbcd2a27"
    },
    "guards": [
     {
@@ -2933,7 +2867,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     }
@@ -3702,7 +3636,7 @@
      "kind": "K",
      "file": "xpizza-dispatch/index.html",
      "text": "assignOrder(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "C",
@@ -3715,6 +3649,7 @@
      "kind": "R",
      "name": "assignOrder",
      "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
      }
     },
@@ -3725,10 +3660,10 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 4,
       "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/sweep-pending.js#functions": 1,
@@ -3873,7 +3808,7 @@
      "kind": "K",
      "file": "xpizza-dispatch/index.html",
      "text": "assignOrder(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "R",
@@ -3921,6 +3856,7 @@
      "kind": "R",
      "name": "assignOrder",
      "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
      }
     }
@@ -3976,7 +3912,7 @@
      "kind": "K",
      "file": "xpizza-dispatch/index.html",
      "text": "assignOrder(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "R",
@@ -4024,6 +3960,7 @@
      "kind": "R",
      "name": "assignOrder",
      "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
      }
     }
@@ -4057,7 +3994,7 @@
      "kind": "K",
      "file": "xpizza-dispatch/index.html",
      "text": "assignOrder(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "C",
@@ -4070,6 +4007,7 @@
      "kind": "R",
      "name": "assignOrder",
      "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
      }
     },
@@ -4080,10 +4018,10 @@
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 4,
       "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/sweep-pending.js#functions": 1,
@@ -4142,7 +4080,7 @@
      "kind": "K",
      "file": "xpizza-dispatch/index.html",
      "text": "assignOrder(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "R",
@@ -4190,6 +4128,7 @@
      "kind": "R",
      "name": "assignOrder",
      "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
      }
     }
@@ -4245,7 +4184,7 @@
      "kind": "K",
      "file": "xpizza-dispatch/index.html",
      "text": "assignOrder(",
-     "count": 3
+     "count": 4
     },
     {
      "kind": "R",
@@ -4293,6 +4232,7 @@
      "kind": "R",
      "name": "assignOrder",
      "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 1,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
      }
     }
@@ -9344,7 +9284,7 @@
      "kind": "R",
      "name": "displayOrderLabel",
      "counts": {
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 22,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2
      }
@@ -9575,7 +9515,7 @@
      "kind": "R",
      "name": "displayOrderLabel",
      "counts": {
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 22,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2
      }
@@ -9806,7 +9746,7 @@
      "kind": "R",
      "name": "displayOrderLabel",
      "counts": {
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 22,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2
      }
@@ -10037,7 +9977,7 @@
      "kind": "R",
      "name": "displayOrderLabel",
      "counts": {
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 22,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2
      }

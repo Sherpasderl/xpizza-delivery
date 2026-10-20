@@ -313,7 +313,14 @@ window.__timer = () => setTimeout(() => openOrderDetailModal('o9'), 0);`;
   }
   const n = Object.values(doc.regions).filter((e) => /^dispatch(-lite)?-ui$/.test(e.group)).length;
   const noUi = Object.entries(doc.regions).filter(([, e]) => (e.context || []).some((c) => /^no-ui:/.test(c))).map(([id]) => id);
-  assert.ok(n === 61 && noUi.length === 0, FAIL(`dispatch entries ${n} (expected 61); entries still decided on UI events: ${noUi.slice(0, 3)}`));
+  /* 61 → 60 (train after e8e77e24, b5820e51; the same ADVISOR RULING 2026-10-20 as the dispatch chores: an entry whose
+     region id now names DIFFERENT code is DROPPED, never re-keyed): the Quitar UI added the confirm sheet's back button
+     `if (back) { … openPicker(back.dataset.pick); … }` ahead of the reviewed `if (ds.pick){ … openPicker(ds.pick); … }` in the
+     mobile delegated click handler, so the positional region
+       xpizza-dispatch-mobile/index.html<script@0>#openPicker@xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener
+     now binds the back button and the reviewed call moved to …~2. Both regions are now REQUIRED (stricter). A further drop
+     must lower this count again under a reviewed ruling; it never moves silently. */
+  assert.ok(n === 60 && noUi.length === 0, FAIL(`dispatch entries ${n} (expected 60); entries still decided on UI events: ${noUi.slice(0, 3)}`));
 }
 ok('dispatch on EXECUTION (codex b3 r1): the real dispatch unit is probed line-preservingly; a detached .click(), a value= rewiring and a timer each ENTER the handler → required; probed + never entered → excluded; UI evidence alone never excludes; no entry is decided on UI events');
 { // P1-c c1 (R4 driver board + R5 assignment push): the board entries are decided on getDriverOrders' filter, the
