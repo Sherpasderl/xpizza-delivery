@@ -15832,5 +15832,21 @@
       "--test",
       "access/roster.test.js"
     ]
+  },
+  {
+    "id": "membership-18",
+    "slice": "membership",
+    "label": "invites: the recipient binding (verified email === invite.email) is dropped — a forwarded link grants another account",
+    "file": "access/invites.js",
+    "from": "      if (cur.email !== mail) { step = 'email_mismatch'; return undefined; }   // the recipient binding — the invite stays as it is\n",
+    "to": "",
+    "kills_with": [
+      "email_mismatch"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
   }
 ]

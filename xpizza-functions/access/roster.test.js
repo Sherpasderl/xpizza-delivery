@@ -22,6 +22,8 @@ let clock = 1000;
 const deps = (db) => ({ db, now: () => clock });
 let tok = 0;
 const randomToken = () => `tok${String(++tok).padStart(4, '0')}AAAAAAAAAAAAAAAAAAAAAAA`;
+const acc = (uid, extra = {}) => ({ uid, token: { email: `${uid.toLowerCase()}@m.hn`, email_verified: true, ...extra } });   // email-link sign-in
+const mail = (uid) => `${uid.toLowerCase()}@m.hn`;
 const grantMgr = (db, uid, rids, extra = {}) => R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'grant_manager', uid, rids, ...extra });
 
 test('ONE owner per brand: bootstrap (CLI, empty roster, idempotent) and transfer (CLI) are the only owner ops — never callable', async () => {
@@ -109,40 +111,49 @@ test('invite marker is checked INSIDE every grant: overlapping recoveries + a re
   assert.ok(db.get('brand_members/tb/invite_applied/inviteAAAAAAAAAAAAAAAAAAAA'), 'the marker is kept after the revoke');
 });
 
-test('invites: owner-only, «Gerente de sucursal» with branches + toggle; accept → granted; replay → consumed; a used link refuses another uid', async () => {
+test('invites: owner-only, «Gerente de sucursal» with branches + toggle, bound to the invitee\'s VERIFIED email; accept → granted; replay → consumed', async () => {
   const db = createFakeDb(base());
   const d = { ...deps(db), randomToken };
-  assert.deepStrictEqual(await I.createInvite(d, { uid: 'nobody1', token: {} }, { brandId: 'tb', rids: ['tb_centro'] }), { ok: false, code: 'forbidden' });
-  assert.strictEqual((await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_norte'] })).code, 'location_not_member');
-  assert.strictEqual((await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: [] })).code, 'bad_rids');
-  const c = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_sur', 'tb_centro'], can_edit_menu: true });
+  assert.deepStrictEqual(await I.createInvite(d, { uid: 'nobody1', token: {} }, { brandId: 'tb', rids: ['tb_centro'], email: mail('x') }), { ok: false, code: 'forbidden' });
+  assert.strictEqual((await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_norte'], email: mail('x') })).code, 'location_not_member');
+  assert.strictEqual((await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: [], email: mail('x') })).code, 'bad_rids');
+  const c = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_sur', 'tb_centro'], email: mail('newMgr1'), can_edit_menu: true });
   assert.ok(c.ok && c.expires_at === clock + I.TTL_MS);
   assert.deepStrictEqual(db.get(`member_invites/${c.inviteId}/rids`), ['tb_centro', 'tb_sur']);
-  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'newMgr1', token: { customer: true } }, c.inviteId), { ok: false, code: 'forbidden' });
-  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'newMgr1', token: {} }, c.inviteId), { ok: true, outcome: 'granted' });
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('newMgr1', { customer: true }), c.inviteId), { ok: false, code: 'forbidden' });
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('newMgr1'), c.inviteId), { ok: true, outcome: 'granted' });
   assert.strictEqual(db.get('brand_members/tb/managers/tb_sur/newMgr1/can_edit_menu'), true, 'the toggle rides on the invite');
-  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'newMgr1', token: {} }, c.inviteId), { ok: true, outcome: 'consumed' });
-  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'otherU1', token: {} }, c.inviteId), { ok: false, code: 'already_used' });
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('newMgr1'), c.inviteId), { ok: true, outcome: 'consumed' });
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('otherU1'), c.inviteId), { ok: false, code: 'email_mismatch' }, 'another account never reaches the invite');
+  // RECIPIENT BINDING (email invites): another verified mailbox, or an unverified token, cannot accept — the invite stays open
+  const b2 = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'], email: ' Real.Mgr@M.hn ' });
+  assert.strictEqual(db.get(`member_invites/${b2.inviteId}/email`), 'real.mgr@m.hn', 'normalized');
+  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'thief001', token: { email: 'thief@m.hn', email_verified: true } }, b2.inviteId), { ok: false, code: 'email_mismatch' });
+  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'thief001', token: { email: 'real.mgr@m.hn', email_verified: false } }, b2.inviteId), { ok: false, code: 'email_unverified' });
+  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'thief001', token: { email: 'real.mgr@m.hn' } }, b2.inviteId), { ok: false, code: 'email_unverified' });
+  assert.strictEqual(db.get(`member_invites/${b2.inviteId}/state`), 'open', 'still open for its real recipient');
+  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'realMgr1', token: { email: 'REAL.mgr@m.hn', email_verified: true } }, b2.inviteId), { ok: true, outcome: 'granted' });
+  assert.strictEqual((await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'], email: 'not-an-email' })).code, 'bad_email');
 });
 
 test('invites: crash → revoke → retry never re-grants; in-flight retry → pending; expired; inviter lost authority (transfer) → cancelled', async () => {
   const db = createFakeDb(base());
   const d = { ...deps(db), randomToken };
-  const c = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'] });
+  const c = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'], email: mail('mgrX01') });
   db.put(`member_invites/${c.inviteId}/state`, 'consuming');
   db.put(`member_invites/${c.inviteId}/consuming`, { by: 'mgrX01', at: clock });
   await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'grant_manager', uid: 'mgrX01', rids: ['tb_centro'], inviteId: c.inviteId });
-  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'mgrX01', token: {} }, c.inviteId), { ok: false, code: 'pending' }, 'inside the in-flight window');
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('mgrX01'), c.inviteId), { ok: false, code: 'pending' }, 'inside the in-flight window');
   await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'revoke_manager', uid: 'mgrX01' });
   clock += I.INFLIGHT_MS + 1;
-  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'mgrX01', token: {} }, c.inviteId), { ok: true, outcome: 'consumed' });
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('mgrX01'), c.inviteId), { ok: true, outcome: 'consumed' });
   assert.strictEqual(db.get('brand_members/tb/managers'), null, '🔴 the revoked manager is NOT re-granted');
-  const e = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'] });
+  const e = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'], email: mail('late001') });
   clock += I.TTL_MS + 1;
-  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'late001', token: {} }, e.inviteId), { ok: false, code: 'expired' });
-  const g = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'] });
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('late001'), e.inviteId), { ok: false, code: 'expired' });
+  const g = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'], email: mail('wouldBe1') });
   await R.mutateRoster(deps(db), 'tb', CLI, { type: 'transfer_owner', uid: 'ownerB' });   // the platform transfers the brand
-  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'wouldBe1', token: {} }, g.inviteId), { ok: false, code: 'inviter_not_authorized' });
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('wouldBe1'), g.inviteId), { ok: false, code: 'inviter_not_authorized' });
   assert.strictEqual(db.get(`member_invites/${g.inviteId}/state`), 'cancelled', 'an outstanding invite dies with its issuer\'s authority');
   assert.strictEqual(db.get('brand_members/tb/managers/tb_centro/wouldBe1'), null);
 });
@@ -150,11 +161,11 @@ test('invites: crash → revoke → retry never re-grants; in-flight retry → p
 test('invites: cancel (the brand\'s owner only); a cancelled link refuses', async () => {
   const db = createFakeDb(base());
   const d = { ...deps(db), randomToken };
-  const c = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'] });
+  const c = await I.createInvite(d, { uid: 'ownerA', token: {} }, { brandId: 'tb', rids: ['tb_centro'], email: mail('someone1') });
   assert.deepStrictEqual(await I.cancelInvite(d, { uid: 'nobody1', token: {} }, c.inviteId), { ok: false, code: 'forbidden' });
   assert.deepStrictEqual(await I.cancelInvite(d, { uid: 'ownerA', token: {} }, c.inviteId), { ok: true });
-  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'someone1', token: {} }, c.inviteId), { ok: false, code: 'cancelled' });
-  assert.deepStrictEqual(await I.acceptInvite(d, { uid: 'someone1', token: {} }, 'tooShort'), { ok: false, code: 'bad_invite' });
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('someone1'), c.inviteId), { ok: false, code: 'cancelled' });
+  assert.deepStrictEqual(await I.acceptInvite(d, acc('someone1'), 'tooShort'), { ok: false, code: 'bad_invite' });
 });
 
 test('team-core: every write refuses while membership_writes_enabled is OFF (the freeze); owner-only; list shows branches + toggle', async () => {
@@ -168,11 +179,11 @@ test('team-core: every write refuses while membership_writes_enabled is OFF (the
     assert.deepStrictEqual(await fn(d, own, body), { ok: false, code: 'writes_disabled' }, `${name} refused while the flag is off`);
   }
   db.put('platform_config/membership_writes_enabled', 'true');   // not the boolean true → still off
-  assert.strictEqual((await T.teamInvite(d, own, { brandId: 'tb', rids: ['tb_centro'] })).code, 'writes_disabled');
+  assert.strictEqual((await T.teamInvite(d, own, { brandId: 'tb', rids: ['tb_centro'], email: mail('mgrT001') })).code, 'writes_disabled');
   db.put('platform_config/membership_writes_enabled', true);
-  const inv = await T.teamInvite(d, own, { brandId: 'tb', rids: ['tb_centro', 'tb_sur'] });
+  const inv = await T.teamInvite(d, own, { brandId: 'tb', rids: ['tb_centro', 'tb_sur'], email: mail('mgrT001') });
   assert.ok(inv.ok);
-  assert.deepStrictEqual(await T.teamAcceptInvite(d, { uid: 'mgrT001', token: {} }, { inviteId: inv.inviteId }), { ok: true, outcome: 'granted' });
+  assert.deepStrictEqual(await T.teamAcceptInvite(d, acc('mgrT001'), { inviteId: inv.inviteId }), { ok: true, outcome: 'granted' });
   assert.deepStrictEqual(await T.teamSetMenuPermission(d, own, { brandId: 'tb', uid: 'mgrT001', can_edit_menu: true }), { ok: true, outcome: 'applied' });
   assert.deepStrictEqual(await T.teamList(d, own, { brandId: 'tb' }), { ok: true, owner: 'ownerA', managers: { mgrT001: { rids: ['tb_centro', 'tb_sur'], can_edit_menu: true } } });
   assert.deepStrictEqual(await T.teamSetMenuPermission(d, { uid: 'mgrT001', token: {} }, { brandId: 'tb', uid: 'mgrT001', can_edit_menu: false }), { ok: false, code: 'forbidden' }, 'a manager cannot change roles');

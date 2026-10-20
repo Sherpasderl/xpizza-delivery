@@ -69,11 +69,11 @@ let n = 0; const ok = (l) => console.log(`  ok ${++n} ${l}`);
   ok('real readers after the real writer: getMyRestaurants / authorizeCatalogEdit / merchantMyLocations');
 
   // ── 3. the platform transfer racing an invite acceptance (real transactions) ──
-  const inv = await I.createInvite({ db, randomToken }, { uid: 'ownerP1', token: {} }, { brandId: 'x_pizza', rids: ['x_pizza'] });
+  const inv = await I.createInvite({ db, randomToken }, { uid: 'ownerP1', token: {} }, { brandId: 'x_pizza', rids: ['x_pizza'], email: 'mgrrace01@m.hn' });
   assert.ok(inv.ok, JSON.stringify(inv));
   const [t, acc] = await Promise.all([
     R.mutateRoster({ db: cold2 }, 'x_pizza', { kind: 'cli', operator: 'emu' }, { type: 'transfer_owner', uid: 'ownerNew1' }),
-    I.acceptInvite({ db }, { uid: 'mgrRace01', token: {} }, inv.inviteId),
+    I.acceptInvite({ db }, { uid: 'mgrRace01', token: { email: 'mgrrace01@m.hn', email_verified: true } }, inv.inviteId),
   ]);
   const owners = Object.keys((await seeder.ref('brand_members/x_pizza/owners').once('value')).val() || {});
   assert.deepStrictEqual(owners, ['ownerNew1'], `exactly ONE owner after the transfer (${JSON.stringify([t, acc])})`);
@@ -83,13 +83,13 @@ let n = 0; const ok = (l) => console.log(`  ok ${++n} ${l}`);
 
   // ── 4. invite crash → revoke → retry (real transactions) ──
   const laOwner = 'ownerP1';   // la_musa's owner since the backfill (untouched by the x_pizza transfer)
-  const inv2 = await I.createInvite({ db, randomToken }, { uid: laOwner, token: {} }, { brandId: 'la_musa', rids: ['la_musa'] });
+  const inv2 = await I.createInvite({ db, randomToken }, { uid: laOwner, token: {} }, { brandId: 'la_musa', rids: ['la_musa'], email: 'newown001@m.hn' });
   assert.ok(inv2.ok, JSON.stringify(inv2));
   const t0 = Date.now();
   await seeder.ref(`member_invites/${inv2.inviteId}`).update({ state: 'consuming', consuming: { by: 'newOwn001', at: t0 - 60000 } });   // crashed long ago
   await R.mutateRoster({ db }, 'la_musa', { kind: 'owner', uid: laOwner }, { type: 'grant_manager', uid: 'newOwn001', rids: ['la_musa'], inviteId: inv2.inviteId });   // the grant had committed
   await R.mutateRoster({ db }, 'la_musa', { kind: 'owner', uid: laOwner }, { type: 'revoke_manager', uid: 'newOwn001' });                                            // the owner revokes
-  const retry = await I.acceptInvite({ db }, { uid: 'newOwn001', token: {} }, inv2.inviteId);
+  const retry = await I.acceptInvite({ db }, { uid: 'newOwn001', token: { email: 'newown001@m.hn', email_verified: true } }, inv2.inviteId);
   assert.deepStrictEqual(retry, { ok: true, outcome: 'consumed' });
   assert.strictEqual((await seeder.ref('brand_members/la_musa/managers/la_musa/newOwn001').once('value')).exists(), false, '🔴 never re-granted');
   ok('invite crash → owner revokes → retry: consumed, the revoked member is NOT re-granted (real transactions)');

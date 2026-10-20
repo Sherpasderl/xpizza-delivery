@@ -18,7 +18,7 @@ async function writesEnabled(db) {
 }
 const gated = (fn) => async (deps, ctx, body) => ((await writesEnabled(deps.db)) ? fn(deps, ctx, body || {}) : fail('writes_disabled'));
 
-const teamInvite = gated((deps, ctx, b) => createInvite(deps, ctx, { brandId: b.brandId, rids: b.rids, can_edit_menu: b.can_edit_menu === undefined ? false : b.can_edit_menu }));
+const teamInvite = gated((deps, ctx, b) => createInvite(deps, ctx, { brandId: b.brandId, rids: b.rids, email: b.email, can_edit_menu: b.can_edit_menu === undefined ? false : b.can_edit_menu }));
 const teamCancelInvite = gated((deps, ctx, b) => cancelInvite(deps, ctx, b.inviteId));
 const teamAcceptInvite = gated((deps, ctx, b) => acceptInvite(deps, ctx, b.inviteId));
 const asOwner = (fn) => gated(async (deps, ctx, b) => {

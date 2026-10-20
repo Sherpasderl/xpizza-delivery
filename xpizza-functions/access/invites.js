@@ -2,8 +2,12 @@
 // PLAN-portal-membership r3 §5.2 + OWNER DECISIONS (2026-10-19) — one-time invite LINKS the OWNER sends by WhatsApp (email
 // later, once there is a domain). Only «Gerente de sucursal» is invited (one or more branches; the owner's «Puede editar el
 // menú y los precios» toggle rides on the invite). There are no owner invites: ONE owner per brand, changed by CLI only.
-//   member_invites/{inviteId} = { kind: 'manager', brandId, rids: [rid…], can_edit_menu, invited_by, created_at, expires_at,
+//   member_invites/{inviteId} = { kind: 'manager', brandId, rids: [rid…], can_edit_menu, email, invited_by, created_at, expires_at,
 //                                 state: 'open'|'consuming'|'consumed'|'cancelled'|'expired', consuming?: { by, at } }
+// DELIVERY (owner change 2026-10-19): by EMAIL through Firebase Auth's built-in mailer — the owner's portal calls the client
+// SDK's sendSignInLinkToEmail(invitee, { url: …/aceptar?invite=<inviteId>, handleCodeInApp: true }). RECIPIENT BINDING: the
+// acceptor's VERIFIED token must carry email === invite.email and email_verified === true (email-link sign-in sets both), so a
+// forwarded link is useless to any other account; a mismatch leaves the invite open (PLAN-portal-membership delta).
 // inviteId is a 128-bit random token: the link IS the secret. Deny-all in rules (Admin only).
 //
 // ACCEPT:
@@ -23,18 +27,24 @@ const { mutateRoster, INVITE_ID_RE, MAX_BRANCHES } = require('./roster');
 const TTL_MS = 72 * 3600 * 1000;
 const INFLIGHT_MS = 30 * 1000;
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const normEmail = (e) => (typeof e === 'string' ? e.trim().toLowerCase() : '');
+const EMAIL_RE = /^[^@\s]{1,64}@[^@\s]{1,189}\.[^@\s.]{2,}$/;
+// the acceptor's verified email, or null — never a claim the client could write itself (Firebase sets both from the email link)
+const verifiedEmail = (ctx) => (ctx && ctx.token && ctx.token.email_verified === true && typeof ctx.token.email === 'string' ? normEmail(ctx.token.email) : null);
 const fail = (code) => ({ ok: false, code });
 const val = async (db, p) => (await db.ref(p).once('value')).val();
 
 async function isOwner(db, brandId, uid) { return isObj(await val(db, `brand_members/${brandId}/owners/${uid}`)); }
 
-async function createInvite(deps, ctx, { brandId, rids, can_edit_menu = false }) {
+async function createInvite(deps, ctx, { brandId, rids, can_edit_menu = false, email }) {
   const { db, now = () => Date.now(), randomToken } = deps;
   const refused = refuseContext(ctx); if (refused) return refused;
   if (!isUid(ctx.uid)) return fail('forbidden');
   if (!F1.isBrandId(brandId)) return fail('bad_brand');
   if (!Array.isArray(rids) || !rids.length || rids.length > MAX_BRANCHES || new Set(rids).size !== rids.length) return fail('bad_rids');
   if (typeof can_edit_menu !== 'boolean') return fail('bad_perms');
+  const to = normEmail(email);
+  if (!EMAIL_RE.test(to) || to.length > 254) return fail('bad_email');
   try {
     const rec = await val(db, `brands/${brandId}`);
     if (!rec || !F1.validateBrand(brandId, rec).ok) return fail('brand_invalid');
@@ -46,9 +56,9 @@ async function createInvite(deps, ctx, { brandId, rids, can_edit_menu = false })
     const id = randomToken();
     if (!INVITE_ID_RE.test(id)) return fail('unavailable');
     const at = now();
-    const inv = { kind: 'manager', brandId, rids: [...rids].sort(), can_edit_menu, invited_by: ctx.uid, created_at: at, expires_at: at + TTL_MS, state: 'open' };
+    const inv = { kind: 'manager', brandId, rids: [...rids].sort(), can_edit_menu, email: to, invited_by: ctx.uid, created_at: at, expires_at: at + TTL_MS, state: 'open' };
     await db.ref(`member_invites/${id}`).set(inv);
-    return { ok: true, inviteId: id, expires_at: inv.expires_at };
+    return { ok: true, inviteId: id, expires_at: inv.expires_at, email: to };
   } catch (_) { return fail('unavailable'); }
 }
 
@@ -80,6 +90,8 @@ async function acceptInvite(deps, ctx, inviteId) {
   if (!isUid(ctx.uid)) return fail('forbidden');
   if (!INVITE_ID_RE.test(String(inviteId))) return fail('bad_invite');
   const uid = ctx.uid;
+  const mail = verifiedEmail(ctx);
+  if (!mail) return fail('email_unverified');
   const at = now();
   let step = null; let inv = null;
   try {
@@ -87,6 +99,7 @@ async function acceptInvite(deps, ctx, inviteId) {
       inv = cur; step = null;
       if (cur === null) return null;   // null-first: never abort on a possibly stale null
       if (!isObj(cur)) { step = 'invalid'; return undefined; }
+      if (cur.email !== mail) { step = 'email_mismatch'; return undefined; }   // the recipient binding — the invite stays as it is
       if (cur.state === 'consumed') { step = cur.consuming && cur.consuming.by === uid ? 'done' : 'used'; return undefined; }
       if (cur.state === 'consuming') {
         if (!cur.consuming || cur.consuming.by !== uid) { step = 'used'; return undefined; }

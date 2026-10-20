@@ -42332,12 +42332,12 @@
   },
   {
    "key": "xpizza-functions/access/invites.js:createInvite>anon:Date.now()",
-   "line": 32,
+   "line": 40,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/access/invites.js:acceptInvite>anon:Date.now()",
-   "line": 78,
+   "line": 88,
    "class": "business-sample"
   },
   {
