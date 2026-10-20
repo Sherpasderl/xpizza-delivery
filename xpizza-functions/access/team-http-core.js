@@ -18,11 +18,11 @@ const val = async (db, p) => (await db.ref(p).once('value')).val();
 
 const ROUTES = Object.freeze({
   memberInvite:            { method: 'POST', cap: 'team.invite', brand: 'body', fn: T.teamInvite },
-  memberCancelInvite:      { method: 'POST', cap: 'team.invite', brand: 'invite', fn: T.teamCancelInvite },
+  memberCancelInvite:      { method: 'POST', cap: 'team.revoke', brand: 'invite', fn: T.teamCancelInvite },   // cleanup
   memberReissueInvite:     { method: 'POST', cap: 'team.invite', brand: 'invite', fn: T.teamReissueInvite },
   memberRevoke:            { method: 'POST', cap: 'team.revoke', brand: 'body', fn: T.teamRevoke },
   memberSetMenuPermission: { method: 'POST', cap: 'team.invite', brand: 'body', fn: T.teamSetMenuPermission },
-  memberList:              { method: 'POST', cap: 'team.invite', brand: 'body', fn: T.teamList },
+  memberList:              { method: 'POST', cap: 'team.revoke', brand: 'body', fn: T.teamList },             // cleanup needs the list
   memberAcceptInvite:      { method: 'POST', cap: null, brand: null, fn: T.teamAcceptInvite },   // the invitee: bound to their verified email
 });
 
@@ -34,13 +34,15 @@ const CODE_STATUS = {
 };
 const statusOf = (code) => CODE_STATUS[code] || (/^(bad_|not_open|not_reissuable)/.test(String(code)) ? (String(code).startsWith('bad_') ? 400 : 409) : 400);
 
-// can(cap) for this caller at ANY member branch of the brand (team.* is a brand-owner capability, granted per member branch)
+// can(cap) for this caller at ANY listed branch of the brand, member OR retired (codex build r2 P2-2): team.invite is granted
+// only at a member branch; team.revoke (revoke / cancel / list — the cleanup) also at a retired one, so an owner whose last
+// location retired can still remove its managers and invites.
 async function canAtBrand(db, ctx, brandId, cap) {
   if (!F1.isBrandId(brandId)) return { ok: false, status: 400, error: 'bad_brand' };
   const rec = await val(db, `brands/${brandId}`);
   if (!rec || !isObj(rec.locations)) return { ok: false, status: 403, error: 'forbidden' };
   for (const rid of Object.keys(rec.locations).sort()) {
-    if (rec.locations[rid] !== 'member') continue;
+    if (rec.locations[rid] !== 'member' && rec.locations[rid] !== 'retired') continue;
     const a = await resolveAccess({ db }, ctx, rid);
     if (!a.ok) return a.code === 'unavailable' ? { ok: false, status: 503, error: 'unavailable' } : { ok: false, status: 403, error: 'forbidden' };
     if (a.brandId === brandId && can(a, cap)) return { ok: true };

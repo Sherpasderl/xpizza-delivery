@@ -62,3 +62,18 @@ test('round trip: invite → (stranger refused) → accept → list → toggle �
   assert.deepStrictEqual(await H.handle('memberRevoke', deps(db), req('owner', { brandId: 'tb', uid: 'mgrH001' })), { status: 200, body: { ok: true, outcome: 'applied' } });
   assert.strictEqual(db.get('brand_members/tb/managers'), null);
 });
+
+test('cleanup survives the last location retiring (codex build r2 P2-2): the owner of a retired-only brand revokes / cancels / lists; inviting stays member-only', async () => {
+  const db = createFakeDb(base());
+  db.put('platform_config/membership_writes_enabled', true);
+  const inv = await H.handle('memberInvite', deps(db), req('owner', { brandId: 'tb', rids: ['tb_centro'], email: 'mgr.h@m.hn' }));
+  assert.strictEqual((await H.handle('memberAcceptInvite', deps(db), req('invitee', { inviteId: inv.body.inviteId }))).status, 200);
+  const pending = await H.handle('memberInvite', deps(db), req('owner', { brandId: 'tb', rids: ['tb_sur'], email: 'x3@m.hn' }));
+  db.put('brands/tb/locations', { tb_centro: 'retired', tb_sur: 'retired' });   // the brand's LAST locations retire
+  assert.deepStrictEqual(await H.handle('memberInvite', deps(db), req('owner', { brandId: 'tb', rids: ['tb_centro'], email: 'n@m.hn' })), { status: 403, body: { error: 'forbidden' } }, 'no new invite into a retired brand');
+  assert.deepStrictEqual(await H.handle('memberRevoke', deps(db), req('disp', { brandId: 'tb', uid: 'mgrH001' })), { status: 403, body: { error: 'forbidden' } }, 'a non-owner still cannot');
+  assert.strictEqual((await H.handle('memberList', deps(db), req('owner', { brandId: 'tb' }))).status, 200, '🔴 the owner still lists the team');
+  assert.deepStrictEqual(await H.handle('memberCancelInvite', deps(db), req('owner', { inviteId: pending.body.inviteId })), { status: 200, body: { ok: true } }, '🔴 the owner still cancels a pending invite');
+  assert.deepStrictEqual(await H.handle('memberRevoke', deps(db), req('owner', { brandId: 'tb', uid: 'mgrH001' })), { status: 200, body: { ok: true, outcome: 'applied' } }, '🔴 the owner still revokes the manager');
+  assert.strictEqual(db.get('brand_members/tb/managers'), null);
+});

@@ -116,55 +116,129 @@ async function reconcile(db, { apply = false } = {}) {
   return { ok: !missing.length && !stale.length && !malformed.length, missing, stale, malformed };
 }
 
-// codex build r1 P2-6: the ACTUAL operation results, old vs new. Every core runs through the OLD front door
-// (legacy-readers.authorizeCatalogEditLegacy, reading the legacy paths) and through the NEW one (catalog-edit-auth.js, reading
-// only the new paths) with dependencies that THROW past each gate — so the outcome is exactly the gate's decision: a refusal
-// (status + error) or 'passed_gate'. The fiscal publish decision is the handler's own fiscalPublishGate (publishEditedCore itself is
-// not invoked: it statically reaches the catalog registry writers — tools/registry-writers.test — and its auth / publish-cap gate
-// is the same authorizer + can() table exercised above). Device pair / revoke /
-// list share one gate (H1 authorizeManager): the old and the new are both invoked.
+// codex build r1 P2-6 + r2 P2-1: the ACTUAL operation results, old vs new. Every core runs through the OLD front door
+// (legacy-readers.authorizeCatalogEditLegacy / legacy authorizeManager, reading the legacy paths) and through the NEW one
+// (catalog-edit-auth.js / merchant-scope authorizeManager, reading only the new paths), with dependencies that THROW a sentinel
+// past each gate — so the outcome is exactly the gates' decision: a refusal (status + error) or 'passed_gate'. Nothing is written.
+//   · publishEditedCore runs for real on a VALID in-memory catalog fixture (the code seed): a modest price edit without and
+//     with the fiscal ack, and an edit that ADDS a product (the add_product gate). Its publishVersion is the sentinel, so a run
+//     that clears every gate ends at "publish_failed: <sentinel>" with no write. It statically reaches the registry writers
+//     (named in tools/registry-writers.test); at runtime it never gets past the sentinel.
+//   · device pair and revoke run their actual cores (merchant-devices) over a READ-ONLY view of the db whose writes throw the
+//     sentinel; pairing is read as enabled so the manager gate is always reached.
 const SENTINEL = 'membership-compare-sentinel';
 const boom = () => { const e = new Error(SENTINEL); e.sentinel = true; throw e; };
 async function outcome(fn) {
   try {
     const r = await fn();
+    if (r && r.status === 500 && r.body && r.body.detail === SENTINEL) return 'passed_gate';
     return r && typeof r.status === 'number' ? { status: r.status, error: (r.body && r.body.error) || null } : r;
-  } catch (e) { return e && e.sentinel ? 'passed_gate' : { threw: String((e && e.message) || e).slice(0, 80) }; }
+  } catch (e) {
+    if (e && (e.sentinel || e.message === SENTINEL)) return 'passed_gate';
+    return e && e.code ? { code: e.code, message: String(e.message || '').slice(0, 60) } : { threw: String((e && e.message) || e).slice(0, 80) };
+  }
+}
+// The publish fixture: the location's own code seed when it has one, else the first code seed (the catalog is a fixture; the
+// AUTHORIZATION always runs for the real uid × location). Built once per fixture.
+const FIXTURES = new Map();
+function publishFixture(rid) {
+  const { buildSourceFromCode, seededRestaurantIds } = require('../tools/seed-source-store');
+  const seeded = seededRestaurantIds();
+  const frid = seeded.includes(rid) ? rid : seeded[0];
+  if (FIXTURES.has(frid)) return FIXTURES.get(frid);
+  // the fixture tokens are signed AND verified inside this process only; when the CLI has no secret, a random one for this run
+  if (!process.env.EDIT_TOKEN_SECRET || process.env.EDIT_TOKEN_SECRET.length < 32) process.env.EDIT_TOKEN_SECRET = require('crypto').randomBytes(32).toString('hex');
+  const { catalogDiff, issueEditToken, sha256 } = require('../catalog/catalog-edit');
+  const { sourceToBuildInputs } = require('../catalog/source-store');
+  const { buildCatalogV2 } = require('../catalog/form-menu-source');
+  const builtOf = (src) => { const i = sourceToBuildInputs(src); return { ...buildCatalogV2(frid, { formData: i.formData, priceTable: i.priceTable }), extras: i.extras }; };
+  const live = buildSourceFromCode(frid);
+  const copy = (mut) => { const x = JSON.parse(JSON.stringify(live)); mut(x); return x; };
+  const byName = live.items.every((it) => it.key === it.display.name);
+  const modify = copy((x) => { x.items[0].price += 1; x.items[0].display.price = x.items[0].price; });
+  const add = copy((x) => {
+    const it = JSON.parse(JSON.stringify(x.items[x.items.length - 1]));
+    it.display.name = 'Cmp Nuevo';
+    if (byName) { it.key = it.display.name; if (Number.isInteger(it.display.id)) it.display.id = Math.max(...x.items.map((y) => Number(y.display.id) || 0)) + 1; }
+    else { it.display.id = 'cmp_nuevo'; it.key = 'cmp_nuevo'; }
+    x.items.push(it); x.structure.item_order.push(it.key);
+  });
+  const T = '2026-01-01T00:00:00.000000Z'; const V = 'cmp-active';
+  const liveBuilt = builtOf(live);
+  const li = sourceToBuildInputs(live);
+  const liveExtraRecords = buildCatalogV2(frid, { formData: li.formData, priceTable: li.priceTable }).extras;
+  const variant = (draft) => {
+    const diff = catalogDiff(liveBuilt, builtOf(draft));
+    return { draft, token: issueEditToken({ rid: frid, baseActiveVersionId: V, sourceUpdateTime: T, sourceHash: sha256(draft), diff }),
+      ack: diff.largeChangeSet.map((l) => ({ key: l.key, surface: l.surface })) };
+  };
+  const f = { frid, T, V, liveBuilt, liveExtraRecords, keyMode: byName ? 'name' : 'id', modify: variant(modify), add: variant(add) };
+  FIXTURES.set(frid, f);
+  return f;
+}
+function publishRun(f, v, authorize, fiscalAck) {
+  const { publishEditedCore } = require('../catalog/publish-edited-handler');
+  const deps = {
+    db: {}, authorize, sourceSha: 'membership-compare', mirror: null, alarm: null,
+    readActiveBuilt: async () => ({ built: f.liveBuilt, versionId: f.V, extraRecords: f.liveExtraRecords }),
+    readDraft: async () => ({ source: v.draft, updateTime: f.T }),
+    publishVersion: boom,
+    addProduct: { readKeyMode: async () => f.keyMode, registryKeysTaken: async () => new Set(), syncKds: boom },
+  };
+  const body = { restaurantId: f.frid, token: v.token, acknowledgedChanges: v.ack, ...(fiscalAck ? { fiscalAck: true } : {}) };
+  return outcome(() => publishEditedCore(deps, body, {}));
 }
 async function operationResults(db, uid, rid, authorizeFn) {
   const { getEditableCatalogCore } = require('../catalog/portal-reads');
   const { resetDraftToLiveCore } = require('../catalog/reset-draft');
   const { editCatalogCore } = require('../catalog/edit-catalog-handler');
-  const { fiscalPublishGate } = require('../catalog/publish-edited-handler');
   const { getSalesStatsCore } = require('../stats/stats-api');
   const get = (h) => (h.toLowerCase() === 'authorization' ? 'Bearer cmp' : undefined);
   const req = { method: 'GET', query: { restaurantId: rid }, get };
-  const authorize = (r) => authorizeFn({ db, verifyIdToken: async () => ({ uid }) }, req, r);
+  const authorize = () => authorizeFn({ db, verifyIdToken: async () => ({ uid }) }, req, rid);   // always the REAL uid × location
   const fsBoom = { collection: boom, doc: boom };
-  const out = {
+  const f = publishFixture(rid);
+  return {
     getEditableCatalog: await outcome(() => getEditableCatalogCore({ db: {}, fsdb: fsBoom, authorize, readActiveVersionId: boom, readActiveBuilt: boom, _sourceRefOf: boom }, req)),
     resetDraftToLive: await outcome(() => resetDraftToLiveCore({ db: fsBoom, authorize, readActiveVersionId: boom, previewVersion: boom }, { restaurantId: rid }, req)),
     editCatalog: await outcome(() => editCatalogCore({ db: fsBoom, authorize, readActiveBuilt: boom }, { restaurantId: rid, source: 'cmp' }, req)),
     salesStats: await outcome(() => getSalesStatsCore({ authorize, getKeyer: boom }, req)),
+    publish_noAck: await publishRun(f, f.modify, authorize, false),
+    publish_ack: await publishRun(f, f.modify, authorize, true),
+    publish_addProduct: await publishRun(f, f.add, authorize, true),
   };
-  const a = await authorize(rid);
-  out.fiscalPublish_noAck = a && a.ok ? fiscalPublishGate(rid, a, {}) : 'unauthorized';
-  out.fiscalPublish_ack = a && a.ok ? fiscalPublishGate(rid, a, { fiscalAck: true }) : 'unauthorized';
-  return out;
 }
-async function compare(db, { uids, rids, newReaders }) {
+// a READ-ONLY view of the db for the device cores: reads pass through (pairing reads as enabled), every write is the sentinel
+function readOnlyDb(db) {
+  return { ref: (p) => {
+    const r = db.ref(p);
+    return { once: (e) => (p === 'platform_config/handheld_pairing_enabled' ? Promise.resolve({ val: () => true, exists: () => true }) : r.once(e)),
+      get: () => r.once('value'), set: boom, update: boom, remove: boom, transaction: boom, push: boom };
+  } };
+}
+async function deviceResults(db, uid, rid, authz) {
+  const D = require('../merchant/merchant-devices');
+  const { resolveBrand } = require('../merchant/merchant-brand');
+  class HttpsError extends Error { constructor(code, msg) { super(msg); this.code = code; } }
+  const deps = { db: readOnlyDb(db), resolveBrand, HttpsError, authorizeManager: authz, now: () => 0, randomId: () => 'cmp',
+    adminAuth: { createUser: boom, createCustomToken: boom, updateUser: boom, revokeRefreshTokens: boom } };
+  const auth = { uid, token: {} };
+  return {
+    devicePair: await outcome(() => D.pairDevice(deps, auth, { rid, label: 'Cmp' })),
+    deviceRevoke: await outcome(() => D.revokeDevice(deps, auth, { rid, uid: 'hh_cmp_none' })),
+  };
+}
+// the legacy device gate, shaped as merchant-scope's: { ok, uid } | { ok: false, code }
+const legacyDeviceGate = async (db, auth, rid) => ((await OLD.authorizeManager(db, auth.uid, rid)) ? { ok: true, uid: auth.uid } : { ok: false, code: 'forbidden' });
+async function compareCutover(db, { uids, rids, newReaders }) {   // not named `compare`: the registry walk matches callees by NAME (Buffer.compare)
   const { authorizeCatalogEdit } = require('../catalog/catalog-edit-auth');
   const { authorizeManager } = require('../merchant/merchant-scope');
-  const { resolveBrand } = require('../merchant/merchant-brand');
   const diffs = [];
   for (const uid of uids) {
     for (const rid of rids) {
-      const was = await operationResults(db, uid, rid, OLD.authorizeCatalogEditLegacy);
-      const now = await operationResults(db, uid, rid, authorizeCatalogEdit);
+      const was = { ...(await operationResults(db, uid, rid, OLD.authorizeCatalogEditLegacy)), ...(await deviceResults(db, uid, rid, legacyDeviceGate)) };
+      const now = { ...(await operationResults(db, uid, rid, authorizeCatalogEdit)), ...(await deviceResults(db, uid, rid, authorizeManager)) };
       for (const op of Object.keys(was)) if (JSON.stringify(was[op]) !== JSON.stringify(now[op])) diffs.push({ uid, rid, op, old: was[op], new: now[op] });
-      const wasDev = await OLD.authorizeManager(db, uid, rid);
-      const nowDev = (await authorizeManager(db, { uid, token: {} }, rid, { resolveBrand })).ok === true;
-      if (wasDev !== nowDev) diffs.push({ uid, rid, op: 'device.pair|revoke|list', old: wasDev, new: nowDev });
     }
     const oldList = await OLD.myRestaurants(db, uid);
     const newList = await newReaders.myRestaurants(uid);
@@ -236,7 +310,7 @@ async function runMembershipAdmin({ db, op, args = [], apply, operator, now = ()
     for (const b of Object.keys(bm)) { const m = isObj(bm[b]) && isObj(bm[b].managers) ? bm[b].managers : {}; for (const rid of Object.keys(m)) managerUids.push(...Object.keys(isObj(m[rid]) ? m[rid] : {})); }
     const uids = [...new Set([...c.owners.map((o) => o.uid), ...c.dispatchers, ...c.kitchen.map((k) => k.uid), ...managerUids, 'cmpNobody01'])].sort();
     const rids = [...new Set([...c.owners.map((o) => o.rid), ...c.kitchen.map((k) => k.rid), ...Object.keys(bm)])].sort();
-    const r = await compare(db, { uids, rids, newReaders: makeNewReaders(db) });
+    const r = await compareCutover(db, { uids, rids, newReaders: makeNewReaders(db) });
     log(JSON.stringify({ ok: r.ok, compared: { uids: uids.length, rids }, diffs: r.diffs }, null, 2));
     return r.ok ? 0 : 6;
   }
@@ -256,4 +330,4 @@ async function runMembershipAdmin({ db, op, args = [], apply, operator, now = ()
   return 2;
 }
 
-module.exports = { census, backfill, reconcile, compare, operationResults, rulesFixture, expectedIndex, makeNewReaders, runMembershipAdmin };
+module.exports = { census, backfill, reconcile, compare: compareCutover, operationResults, deviceResults, legacyDeviceGate, rulesFixture, expectedIndex, makeNewReaders, runMembershipAdmin };

@@ -625,6 +625,8 @@
   "access/membership-admin-core.js#census": "access",
   "access/membership-admin-core.js#expectedIndex": "access",
   "access/membership-admin-core.js#outcome": "access",
+  "access/membership-admin-core.js#publishFixture": "catalog",
+  "access/membership-admin-core.js#publishFixture>anon": "catalog",
   "access/team-http-core.js#handle": "infra",
   "access/team-http.js#endpoint>anon": "infra"
  },

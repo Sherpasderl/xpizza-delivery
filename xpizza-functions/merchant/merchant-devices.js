@@ -24,8 +24,8 @@ function onlyKeys(data, allowed, HttpsError) {
   const extra = Object.keys(data).filter((k) => !allowed.includes(k));
   if (extra.length) throw new HttpsError('invalid-argument', `unexpected fields: ${extra.sort().join(', ')}`);
 }
-async function asManager({ db, resolveBrand, HttpsError }, auth, rid) {
-  const a = await authorizeManager(db, auth, rid, { resolveBrand });
+async function asManager({ db, resolveBrand, HttpsError, authorizeManager: authz = authorizeManager }, auth, rid) {   // authz: the membership cutover compare runs the legacy gate through the SAME core
+  const a = await authz(db, auth, rid, { resolveBrand });
   if (!a.ok) throw new HttpsError(AUTH_CODE[a.code] || 'permission-denied', a.code);
   return a.uid;
 }

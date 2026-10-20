@@ -83,6 +83,14 @@ const r = enumerate();
        writes moved INSIDE the activation transaction. It needs no fence of its own — it IS the
        fenced transaction, having captured and re-verified {version, generation} before calling the
        writer. rollbackVersion appears for the same reason, through flipPointer. */
+    /* 🔴 THE MEMBERSHIP CUTOVER COMPARE (codex build r2 P2-1) runs the REAL publishEditedCore — edit, fiscal ack, add product —
+       so a new authorizer that loses catalog.publish / add_product makes the cutover refuse. It reaches the writer STATICALLY
+       only: its publishVersion / syncKds dependencies are a sentinel that throws, its catalog is an in-memory fixture, so at
+       runtime it never gets past the first write. Named here so it is a decision rather than a diff. */
+    'access/membership-admin-core.js::compareCutover',
+    'access/membership-admin-core.js::operationResults',
+    'access/membership-admin-core.js::publishRun',
+    'access/membership-admin-core.js::runMembershipAdmin',
     'catalog/catalog-publish.js::flipPointer',
     'catalog/catalog-publish.js::publishVersion',
     'catalog/catalog-publish.js::rollbackVersion',
@@ -103,6 +111,7 @@ const r = enumerate();
        renames are enabled, and both functions it calls carry their own fencing (the stamping pass is
        transactional against the pointer it read; retireOrphanFenced is fenced by name). */
     'tools/bootstrap-identity.js::(module scope)',
+    'tools/membership-admin.js::(module scope)',   // the cutover CLI → compare (above): static reach only, sentinel at runtime
     'tools/migrate-catalog-display.js::(module scope)',
     'tools/publish-version.js::(module scope)',
     /* 🔴 ROLLBACK REACHES A REGISTRY WRITER NOW, AND THIS CELL IS WHERE THAT SURFACED — the third time

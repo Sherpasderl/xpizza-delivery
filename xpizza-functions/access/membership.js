@@ -41,7 +41,7 @@ const CAPABILITIES = Object.freeze({
   'location.contact':    { owner: true, manager: true },                          // the branch WhatsApp (portal-ui, additive)
   'location.profile':    { owner: true },                                         // branch address / zone / name (portal-ui, additive)
   'team.invite':         { owner: true },                                         // only the owner invites / revokes / sets roles
-  'team.revoke':         { owner: true },
+  'team.revoke':         { owner: true, owner_retired: true },                   // cleanup (revoke / cancel an invite / list) survives the last location retiring
   'brand.settings':      { owner: true },
 });
 const CAP_NAMES = Object.freeze(Object.keys(CAPABILITIES));

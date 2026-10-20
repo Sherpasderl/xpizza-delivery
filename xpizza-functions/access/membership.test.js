@@ -39,7 +39,7 @@ const ctx = (uid, token = {}) => ({ uid, token });
 
 test('capability table: the owner decisions live in ONE place; columns compose by fact + state', () => {
   assert.ok(M.CAP_NAMES.includes('stats.read') && M.CAP_NAMES.includes('catalog.fiscal_ack'));
-  assert.deepStrictEqual(M.capsFor({ owner: true }, 'retired'), ['stats.read'], 'retired owner: history read only');
+  assert.deepStrictEqual(M.capsFor({ owner: true }, 'retired'), ['stats.read', 'team.revoke'], 'retired owner: history read only + team cleanup (codex build r2 P2-2)');
   assert.deepStrictEqual(M.capsFor({ manager: true }, 'retired'), [], 'a manager of a retired location has nothing');
   assert.ok(!M.capsFor({ manager: true }, 'member').includes('catalog.publish'), 'a manager WITHOUT the menu permission does not publish');
   assert.ok(M.capsFor({ manager: true, manager_menu: true }, 'member').includes('catalog.publish'), '«Puede editar el menú y los precios» → publish');
@@ -71,7 +71,7 @@ test('resolveAccess: facts are independent; caps follow the location state', asy
   assert.deepStrictEqual([ox.ok, ox.brandId, ox.state, ox.tier, ox.facts], [true, 'x_pizza', 'member', 'owner', { owner: true, manager: false, manager_menu: false, dispatcher: false, staff: false }]);
   assert.ok(ox.caps.includes('catalog.fiscal_ack') && ox.caps.includes('team.invite'));
   const otn = await M.resolveAccess({ db }, ctx('ownerTB'), 'tb_norte');
-  assert.deepStrictEqual([otn.state, otn.caps], ['retired', ['stats.read']], 'owner of a retired location: read-only history');
+  assert.deepStrictEqual([otn.state, otn.caps], ['retired', ['stats.read', 'team.revoke']], 'owner of a retired location: read-only history + team cleanup');
   const mn = await M.resolveAccess({ db }, ctx('mgrN'), 'tb_norte');
   assert.deepStrictEqual([mn.facts.manager, mn.caps], [true, []], 'manager of a retired location: no capability (still revocable)');
   const mc = await M.resolveAccess({ db }, ctx('mgrC'), 'tb_centro');

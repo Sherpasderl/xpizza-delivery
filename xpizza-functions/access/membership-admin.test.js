@@ -108,21 +108,58 @@ test('compare REFUSES (exit 3) when the census is not clean — e.g. a legacy ma
   assert.strictEqual((await run(db, 'compare')).code, 3, 'compare refuses before comparing anything');
 });
 
-test('compare runs the ACTUAL operations (codex build r1 P2-6): outcomes are role-distinct, and identical old vs new on the prod shape', async () => {
+test('compare runs the ACTUAL operations (codex build r1 P2-6 + r2 P2-1): the real publish (edit, fiscal ack, add product) and device cores, role-distinct, identical old vs new', async () => {
   const db = createFakeDb(prod());
   await run(db, 'backfill', true);
   const { authorizeCatalogEdit } = require('../catalog/catalog-edit-auth');
   const L = require('./legacy-readers');
   const owner = await C.operationResults(db, 'ownerP1', 'x_pizza', authorizeCatalogEdit);
+  const ownerLm = await C.operationResults(db, 'ownerP1', 'la_musa', authorizeCatalogEdit);
   const disp = await C.operationResults(db, 'dispatch01', 'x_pizza', authorizeCatalogEdit);
   const none = await C.operationResults(db, 'nobody0001', 'x_pizza', authorizeCatalogEdit);
   assert.notDeepStrictEqual(owner.getEditableCatalog, disp.getEditableCatalog, 'non-vacuous: the owner passes the editor gate, a dispatcher does not');
   assert.deepStrictEqual(disp.getEditableCatalog, { status: 403, error: 'not_owner' });
-  assert.deepStrictEqual(owner.fiscalPublish_noAck.body.error, 'fiscal_ack_required', 'x_pizza: the owner still needs the ack');
-  assert.deepStrictEqual(owner.fiscalPublish_ack, null, 'the owner with the ack passes the fiscal gate');
-  assert.deepStrictEqual(disp.fiscalPublish_ack.body.error, 'not_owner', 'a dispatcher never passes it');
+  assert.deepStrictEqual(owner.publish_noAck, { status: 403, error: 'fiscal_ack_required' }, 'x_pizza: the real publish still needs the owner ack');
+  assert.strictEqual(owner.publish_ack, 'passed_gate', 'the owner with the ack clears EVERY publish gate (ends at the sentinel publishVersion)');
+  assert.strictEqual(owner.publish_addProduct, 'passed_gate', 'the owner clears the add_product gate on a valid addition');
+  assert.strictEqual(ownerLm.publish_noAck, 'passed_gate', 'la_musa: no fiscal gate');
+  assert.deepStrictEqual(disp.publish_ack, { status: 403, error: 'not_owner' }, 'a dispatcher never publishes');
   assert.deepStrictEqual(none.editCatalog, { status: 403, error: 'not_authorized' });
+  db.put('restaurants/x_pizza/identity/prep_default_min', 20);   // a pairable location: past the gate, pairing reaches its first write
+  const dOwner = await C.deviceResults(db, 'ownerP1', 'x_pizza', require('../merchant/merchant-scope').authorizeManager);
+  const dDisp = await C.deviceResults(db, 'dispatch01', 'x_pizza', require('../merchant/merchant-scope').authorizeManager);
+  assert.deepStrictEqual(dOwner.devicePair, { code: 'unavailable', message: 'pair generation unavailable' }, 'the owner passes the real pair core\'s manager gate and stops at its FIRST write (the read-only view refuses the generation transaction)');
+  assert.deepStrictEqual(dOwner.deviceRevoke.code, 'not-found', 'revoke passes the gate and finds no such handheld (read-only)');
+  assert.deepStrictEqual(dDisp.devicePair.code, 'permission-denied', 'a dispatcher is refused at the gate');
   for (const [u, r] of [['ownerP1', 'x_pizza'], ['ownerP1', 'la_musa'], ['dispatch01', 'la_musa'], ['kitchenA1', 'x_pizza']]) {
     assert.deepStrictEqual(await C.operationResults(db, u, r, authorizeCatalogEdit), await C.operationResults(db, u, r, L.authorizeCatalogEditLegacy), `${u}@${r}: old === new`);
+    assert.deepStrictEqual(await C.deviceResults(db, u, r, require('../merchant/merchant-scope').authorizeManager), await C.deviceResults(db, u, r, C.legacyDeviceGate), `${u}@${r}: devices old === new`);
   }
+  assert.strictEqual(db.get('platform_config/handheld_pair_gen'), null, 'nothing was written (no pairing generation)');
+  assert.strictEqual(db.get('restaurants/x_pizza/handhelds'), null, 'no handheld was paired');
+});
+
+test('compare CATCHES a new authorizer that drops catalog.publish / catalog.add_product, and a new device gate that refuses (codex build r2 P2-1 repro)', async () => {
+  const strip = (drop) => async () => {
+    const db = createFakeDb(prod());
+    await run(db, 'backfill', true);
+    const M = require('../catalog/catalog-edit-auth');
+    const orig = M.authorizeCatalogEdit;
+    M.authorizeCatalogEdit = async (...a) => { const r = await orig(...a); return r && r.ok ? { ...r, caps: (r.caps || []).filter((c) => !drop.includes(c)) } : r; };
+    try { return await run(db, 'compare'); } finally { M.authorizeCatalogEdit = orig; }
+  };
+  const both = await strip(['catalog.publish', 'catalog.add_product'])();
+  assert.strictEqual(both.code, 6, `🔴 compare must exit non-zero when the new authorizer loses catalog.publish + add_product: ${both.logs.join('\n').slice(0, 400)}`);
+  assert.ok(/publish_ack/.test(both.logs.join('\n')), 'the difference names the publish operation');
+  const addOnly = await strip(['catalog.add_product'])();
+  assert.strictEqual(addOnly.code, 6, '🔴 losing ONLY catalog.add_product is caught (the real add-product gate runs)');
+  assert.ok(/publish_addProduct/.test(addOnly.logs.join('\n')));
+  const db = createFakeDb(prod());
+  await run(db, 'backfill', true);
+  const S = require('../merchant/merchant-scope');
+  const orig = S.authorizeManager;
+  S.authorizeManager = async () => ({ ok: false, code: 'forbidden' });
+  let dev; try { dev = await run(db, 'compare'); } finally { S.authorizeManager = orig; }
+  assert.strictEqual(dev.code, 6, '🔴 a new device gate that refuses the owner is caught by the real pair / revoke cores');
+  assert.ok(/devicePair/.test(dev.logs.join('\n')) && /deviceRevoke/.test(dev.logs.join('\n')));
 });

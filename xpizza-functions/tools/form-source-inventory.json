@@ -1568,6 +1568,8 @@
   "access/membership.js",
   "access/roster.js",
   "access/team-core.js",
+  "access/team-http-core.js",
+  "access/team-http.js",
   "account-lib.js",
   "alert-prune.js",
   "catalog/bound-reuse.js",
@@ -1637,6 +1639,14 @@
    "lifts": []
   },
   "access/team-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "access/team-http-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "access/team-http.js": {
    "pins": [],
    "lifts": []
   },

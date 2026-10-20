@@ -15928,5 +15928,73 @@
       "run",
       "test:membership"
     ]
+  },
+  {
+    "id": "membership-24",
+    "slice": "membership",
+    "label": "cutover compare: the add-product publish run is dropped (a new authorizer losing catalog.add_product passes)",
+    "file": "access/membership-admin-core.js",
+    "from": "    publish_addProduct: await publishRun(f, f.add, authorize, true),\n",
+    "to": "",
+    "kills_with": [
+      "losing ONLY catalog.add_product is caught"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership-admin.test.js",
+      "access/team-http.test.js"
+    ]
+  },
+  {
+    "id": "membership-25",
+    "slice": "membership",
+    "label": "cutover compare: the device cores are not compared (a refusing new device gate passes)",
+    "file": "access/membership-admin-core.js",
+    "from": "...(await deviceResults(db, uid, rid, authorizeManager)) };",
+    "to": "...(await deviceResults(db, uid, rid, legacyDeviceGate)) };",
+    "kills_with": [
+      "a new device gate that refuses the owner is caught"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership-admin.test.js",
+      "access/team-http.test.js"
+    ]
+  },
+  {
+    "id": "membership-26",
+    "slice": "membership",
+    "label": "team endpoints: the cleanup ops skip retired locations again (the owner of a retired-only brand cannot revoke)",
+    "file": "access/team-http-core.js",
+    "from": "    if (rec.locations[rid] !== 'member' && rec.locations[rid] !== 'retired') continue;",
+    "to": "    if (rec.locations[rid] !== 'member') continue;",
+    "kills_with": [
+      "the owner still lists the team"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership-admin.test.js",
+      "access/team-http.test.js"
+    ]
+  },
+  {
+    "id": "membership-27",
+    "slice": "membership",
+    "label": "capabilities: a retired owner loses team.revoke (cleanup impossible after the last location retires)",
+    "file": "access/membership.js",
+    "from": "  'team.revoke':         { owner: true, owner_retired: true },",
+    "to": "  'team.revoke':         { owner: true },",
+    "kills_with": [
+      "the owner still lists the team"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership-admin.test.js",
+      "access/team-http.test.js"
+    ]
   }
 ]
