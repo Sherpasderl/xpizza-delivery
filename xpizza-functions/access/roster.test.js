@@ -29,15 +29,17 @@ const grantMgr = (db, uid, rids, extra = {}) => R.mutateRoster(deps(db), 'tb', o
 test('ONE owner per brand: bootstrap (CLI, empty roster, idempotent) and transfer (CLI) are the only owner ops — never callable', async () => {
   const db = createFakeDb(base());
   assert.deepStrictEqual(R.CALLABLE_OPS, ['grant_manager', 'revoke_manager', 'set_manager_perms', 'update_manager'], 'no owner op is callable');
-  assert.deepStrictEqual(await R.mutateRoster(deps(db), 'x_pizza', CLI, { type: 'bootstrap_owner', uid: 'ownerX1' }), { ok: true, outcome: 'applied' });
+  assert.deepStrictEqual(await R.mutateRoster(deps(db), 'x_pizza', CLI, { type: 'bootstrap_owner', uid: 'ownerX1' }), { ok: false, code: 'bad_profile' }, 'an ownership grant without a name is refused (codex T-c build r1)');
+  assert.deepStrictEqual(await R.mutateRoster(deps(db), 'x_pizza', CLI, { type: 'bootstrap_owner', uid: 'ownerX1', profile: { name: 'Dueña Uno', email: 'd1@x.hn' } }), { ok: true, outcome: 'applied' });
+  assert.deepStrictEqual(db.get('brand_members/x_pizza/profiles/ownerX1'), { name: 'Dueña Uno', email: 'd1@x.hn' }, 'the profile lands in the SAME transaction');
   assert.strictEqual(db.get('member_of/ownerX1/brands/x_pizza'), 'owner');
-  assert.deepStrictEqual(await R.mutateRoster(deps(db), 'x_pizza', CLI, { type: 'bootstrap_owner', uid: 'ownerX1' }), { ok: true, outcome: 'noop' }, 'idempotent');
-  assert.deepStrictEqual(await R.mutateRoster(deps(db), 'x_pizza', CLI, { type: 'bootstrap_owner', uid: 'otherX9' }), { ok: false, code: 'roster_not_empty' });
+  assert.deepStrictEqual(await R.mutateRoster(deps(db), 'x_pizza', CLI, { type: 'bootstrap_owner', uid: 'ownerX1', profile: { name: 'Dueña Uno', email: 'd1@x.hn' } }), { ok: true, outcome: 'noop' }, 'idempotent');
+  assert.deepStrictEqual(await R.mutateRoster(deps(db), 'x_pizza', CLI, { type: 'bootstrap_owner', uid: 'otherX9', profile: { name: 'Dueña Uno', email: 'd1@x.hn' } }), { ok: false, code: 'roster_not_empty' });
   // an OWNER actor can never run an owner op (no co-owners, no self-transfer)
-  assert.deepStrictEqual(await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'transfer_owner', uid: 'ownerZ9' }), { ok: false, code: 'forbidden' });
-  assert.deepStrictEqual(await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'bootstrap_owner', uid: 'ownerZ9' }), { ok: false, code: 'forbidden' });
+  assert.deepStrictEqual(await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'transfer_owner', uid: 'ownerZ9', profile: { name: 'Dueña Nueva', email: 'd@x.hn' } }), { ok: false, code: 'forbidden' });
+  assert.deepStrictEqual(await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'bootstrap_owner', uid: 'ownerZ9', profile: { name: 'Dueña Uno', email: 'd1@x.hn' } }), { ok: false, code: 'forbidden' });
   // the platform transfer: the old owner is REPLACED (exactly one), index follows
-  assert.deepStrictEqual(await R.mutateRoster(deps(db), 'tb', CLI, { type: 'transfer_owner', uid: 'ownerB' }), { ok: true, outcome: 'applied' });
+  assert.deepStrictEqual(await R.mutateRoster(deps(db), 'tb', CLI, { type: 'transfer_owner', uid: 'ownerB', profile: { name: 'Dueña Nueva', email: 'd@x.hn' } }), { ok: true, outcome: 'applied' });
   assert.deepStrictEqual(Object.keys(db.get('brand_members/tb/owners')), ['ownerB']);
   assert.deepStrictEqual([db.get('member_of/ownerB/brands/tb'), db.get('member_of/ownerA/brands/tb')], ['owner', null]);
   assert.deepStrictEqual(await R.mutateRoster(deps(db), 'tb', owner('ownerA'), { type: 'grant_manager', uid: 'mgr001', rids: ['tb_centro'] }), { ok: false, code: 'forbidden' }, 'the former owner has no authority');
@@ -86,7 +88,7 @@ test('«Puede editar el menú y los precios»: a toggle on the manager\'s grant,
 
 test('actor authority re-validated INSIDE the transaction: a transfer lands between the read and the commit → the old owner is refused', async () => {
   const db = createFakeDb(base());
-  db.hooks.onTxn = async () => { await R.mutateRoster(deps(db), 'tb', CLI, { type: 'transfer_owner', uid: 'ownerB' }); };
+  db.hooks.onTxn = async () => { await R.mutateRoster(deps(db), 'tb', CLI, { type: 'transfer_owner', uid: 'ownerB', profile: { name: 'Dueña Nueva', email: 'd@x.hn' } }); };
   assert.deepStrictEqual(await grantMgr(db, 'mgr020', ['tb_centro']), { ok: false, code: 'forbidden' });
   assert.strictEqual(db.get('brand_members/tb/managers'), null);
 });
@@ -155,7 +157,7 @@ test('invites: crash → revoke → retry never re-grants; in-flight retry → p
   clock += I.TTL_MS + 1;
   assert.deepStrictEqual(await I.acceptInvite(d, acc('late001'), e.inviteId), { ok: false, code: 'expired' });
   const g = await I.createInvite(d, { uid: 'ownerA', token: {} }, { name: 'Gerente Prueba', brandId: 'tb', rids: ['tb_centro'], email: mail('wouldBe1') });
-  await R.mutateRoster(deps(db), 'tb', CLI, { type: 'transfer_owner', uid: 'ownerB' });   // the platform transfers the brand
+  await R.mutateRoster(deps(db), 'tb', CLI, { type: 'transfer_owner', uid: 'ownerB', profile: { name: 'Dueña Nueva', email: 'd@x.hn' } });   // the platform transfers the brand
   assert.deepStrictEqual(await I.acceptInvite(d, acc('wouldBe1'), g.inviteId), { ok: false, code: 'inviter_not_authorized' });
   assert.strictEqual(db.get(`member_invites/${g.inviteId}/state`), 'cancelled', 'an outstanding invite dies with its issuer\'s authority');
   assert.strictEqual(db.get('brand_members/tb/managers/tb_centro/wouldBe1'), null);

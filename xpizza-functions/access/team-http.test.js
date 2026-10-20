@@ -28,7 +28,7 @@ test('auth order: method → bearer → verified token → customer / handheld r
   assert.deepStrictEqual(await H.handle('memberInvite', deps(db), req('cust', { brandId: 'tb' })), { status: 403, body: { error: 'forbidden' } });
   assert.deepStrictEqual(await H.handle('memberInvite', deps(db), req('dev', { brandId: 'tb' })), { status: 403, body: { error: 'forbidden' } });
   assert.strictEqual((await H.handle('nope', deps(db), req('owner', {}))).status, 404);
-  assert.deepStrictEqual(Object.keys(H.ROUTES).sort(), ['catalogRequestPublish', 'memberAcceptInvite', 'memberCancelInvite', 'memberInvite', 'memberList', 'memberPasswordSet', 'memberReissueInvite', 'memberRevoke', 'memberSetMenuPermission', 'memberUpdate']);
+  assert.deepStrictEqual(Object.keys(H.ROUTES).sort(), ['catalogRequestPublish', 'memberAcceptInvite', 'memberCancelInvite', 'memberInvite', 'memberInvitePreview', 'memberList', 'memberPasswordSet', 'memberReissueInvite', 'memberRevoke', 'memberSetMenuPermission', 'memberUpdate']);
 });
 
 test('can() gate through the resolver: only the brand\'s owner reaches the team ops (a dispatcher does not); writes DARK while the flag is off', async () => {

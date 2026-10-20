@@ -16,7 +16,8 @@ const prod = () => ({
   brands: { x_pizza: legacy('x_pizza'), la_musa: legacy('la_musa') },
   dispatchers: { dispatch01: true },
 });
-const run = async (db, op, apply = false) => { const logs = []; const code = await C.runMembershipAdmin({ db, op, apply, operator: 'op', now: () => 5, log: (l) => logs.push(l) }); return { code, logs }; };
+// the cutover names the census owner (owner ruling): --name + the Firebase user's email
+const run = async (db, op, apply = false) => { const logs = []; const code = await C.runMembershipAdmin({ db, op, apply, operator: 'op', now: () => 5, log: (l) => logs.push(l), name: 'Marcela Pineda', getUser: async (u) => ({ email: `${u.toLowerCase()}@x.hn`, emailVerified: true }) }); return { code, logs }; };
 
 test('census: the prod shape is clean and yields exactly the verified owners', async () => {
   const c = await C.census(createFakeDb(prod()));
@@ -92,11 +93,31 @@ test('reconcile: missing / stale / malformed reported; --apply repairs the INDEX
 test('transfer-owner: the ONLY way to change a brand\'s single owner — CLI, dry run unless --apply', async () => {
   const db = createFakeDb(prod());
   await run(db, 'backfill', true);
-  const logs = []; const go = (apply) => C.runMembershipAdmin({ db, op: 'transfer-owner', args: ['x_pizza', 'newOwner1'], apply, operator: 'op', now: () => 9, log: (l) => logs.push(l) });
+  const logs = []; const users = { newOwner1: { email: 'Nuevo@X.hn', emailVerified: true }, ownerP1: { email: 'owner@x.hn', emailVerified: true }, notOwner1: { email: 'n@x.hn' } };
+  const go = (apply, name = 'Ana Dueña', o = 'transfer-owner', uid = 'newOwner1') => C.runMembershipAdmin({ db, op: o, args: ['x_pizza', uid], apply, operator: 'op', now: () => 9, log: (l) => logs.push(l), name, getUser: async (u) => users[u] });
+  // OWNER RULING 2026-10-20: the owner NAME is required — refused when missing or blank, nothing written
+  for (const bad of [null, '', '   ', 'x'.repeat(81)]) assert.strictEqual(await go(true, bad), 2, `--name ${JSON.stringify(bad)} refused`);
+  assert.deepStrictEqual(Object.keys(db.get('brand_members/x_pizza/owners')), ['ownerP1'], 'nothing changed by a refused transfer');
+  // the read-back FAILS while an owner lacks a name; set-owner-name names the current owner (the cutover step)
+  assert.strictEqual(await C.runMembershipAdmin({ db, op: 'owner-names', log: () => {} }), 0, 'the backfill NAMED the owner in the same transaction');
+  db.put('brand_members/x_pizza/profiles/ownerP1', null);   // an owner without a name (e.g. a state from before the ruling)
+  assert.strictEqual(await C.runMembershipAdmin({ db, op: 'owner-names', log: () => {} }), 5, 'read-back fails while any owner lacks a name');
+  assert.strictEqual(await go(true, 'Marcela Pineda', 'set-owner-name', 'ownerP1'), 0);
+  assert.strictEqual(await C.runMembershipAdmin({ db, op: 'set-owner-name', args: ['la_musa', 'ownerP1'], apply: true, operator: 'op', now: () => 9, log: () => {}, name: 'Marcela Pineda', getUser: async (u) => users[u] }), 0);
+  assert.deepStrictEqual(db.get('brand_members/x_pizza/profiles/ownerP1'), { name: 'Marcela Pineda', email: 'owner@x.hn' });
+  assert.strictEqual(await C.runMembershipAdmin({ db, op: 'owner-names', log: () => {} }), 0, 'read-back passes once every owner is named');
+  assert.strictEqual(await go(true, 'X', 'set-owner-name', 'notOwner1'), 4, 'set-owner-name names only the CURRENT owner');
+  // owner ruling item 3: after the backfill + set-owner-name, an invite's preview names its inviter (the expected path)
+  db.put('platform_config/membership_writes_enabled', true);
+  const I = require('./invites');
+  const inv = await I.createInvite({ db, now: () => 10, randomToken: () => 'prevTok00000000000000000001' }, { uid: 'ownerP1', token: {} }, { brandId: 'x_pizza', rids: ['x_pizza'], email: 'g@m.hn', name: 'Gerente Uno' });
+  assert.ok(inv.ok, JSON.stringify(inv));
+  assert.strictEqual((await I.invitePreview({ db, now: () => 11 }, inv.inviteId)).inviter_name, 'Marcela Pineda', 'the inviter is named from the owner profile');
   assert.strictEqual(await go(false), 0);
   assert.deepStrictEqual(Object.keys(db.get('brand_members/x_pizza/owners')), ['ownerP1'], 'a dry run changes nothing');
   assert.strictEqual(await go(true), 0);
   assert.deepStrictEqual(Object.keys(db.get('brand_members/x_pizza/owners')), ['newOwner1'], 'replaced — still exactly one owner');
+  assert.deepStrictEqual(db.get('brand_members/x_pizza/profiles'), { newOwner1: { name: 'Ana Dueña', email: 'nuevo@x.hn' } }, 'the new owner is named in the SAME txn; the old owner\'s profile left with the ownership');
   assert.strictEqual(db.get('member_of/ownerP1/brands/x_pizza'), null);
 });
 

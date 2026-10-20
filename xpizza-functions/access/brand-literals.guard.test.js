@@ -11,7 +11,7 @@ const files = [];
 for (const f of fs.readdirSync(__dirname)) if (/\.js$/.test(f) && !/\.test\.js$|^_/.test(f)) files.push(path.join('xpizza-functions', 'access', f));
 // the team / invite UI (portal): any team*, invite*, aceptar* source, now or later
 const portal = path.join(ROOT, 'xpizza-portal');
-if (fs.existsSync(portal)) for (const f of fs.readdirSync(portal)) if (/^(team|equipo|invite|aceptar)/i.test(f) && /\.(js|mjs|html)$/.test(f)) files.push(path.join('xpizza-portal', f));
+if (fs.existsSync(portal)) for (const f of fs.readdirSync(portal)) if (/^(team|equipo|invite|aceptar)/i.test(f) && /\.(js|mjs|html|css)$/.test(f) && !/\.test\./.test(f)) files.push(path.join('xpizza-portal', f));   // tests may name brands (header)
 const hits = [];
 for (const rel of files) {
   const src = fs.readFileSync(path.join(ROOT, rel), 'utf8').split('\n');

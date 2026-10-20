@@ -176,4 +176,31 @@ async function acceptInvite(deps, ctx, inviteId) {
   } catch (_) { return fail('unavailable'); }
 }
 
-module.exports = { createInvite, cancelInvite, reissueInvite, acceptInvite, emailKey, normName, TTL_MS, INFLIGHT_MS };
+// PREVIEW (PLAN-portal-team-invites T-c, advisor ruling) — what the /aceptar page shows BEFORE sign-in: «{Dueño} te invitó a
+// {Marca} como Gerente de sucursal ({sucursales})». Unauthenticated, bound to the 128-bit inviteId (the link IS the secret),
+// READ-ONLY. It returns EXACTLY { state, brand_name, branch_names, inviter_name } — no email, uid or timestamp. Every unknown /
+// malformed / nonexistent id, and the write flag being off, give ONE uniform not-found (no existence oracle). Display names
+// come from identity only (restaurants/{rid}/identity/name); a missing one is null.
+const identityName = async (db, rid) => { const v = (await db.ref(`restaurants/${rid}/identity/name`).once('value')).val(); return typeof v === 'string' && v.trim() ? v.trim() : null; };
+async function invitePreview(deps, inviteId) {
+  const { db, now = () => Date.now() } = deps;
+  const NOT_FOUND = fail('not_found');
+  if (typeof inviteId !== 'string' || !INVITE_ID_RE.test(inviteId)) return NOT_FOUND;
+  let inv;
+  try { inv = await val(db, `member_invites/${inviteId}`); } catch (_) { return fail('unavailable'); }
+  if (!isObj(inv) || inv.kind !== 'manager' || !F1.isBrandId(inv.brandId) || !Array.isArray(inv.rids)) return NOT_FOUND;
+  const t = now();
+  const state = inv.state === 'open' ? (inv.expires_at > t ? 'open' : 'expired')
+    : inv.state === 'consuming' || inv.state === 'consumed' ? 'used'
+      : ['expired', 'cancelled', 'superseded'].includes(inv.state) ? inv.state : null;
+  if (!state) return NOT_FOUND;
+  try {
+    const brand_name = await identityName(db, inv.brandId);
+    const branch_names = (await Promise.all(inv.rids.filter((r) => F1.isBrandId(r)).map((r) => identityName(db, r)))).filter(Boolean);
+    const prof = isUid(inv.invited_by) ? await val(db, `brand_members/${inv.brandId}/profiles/${inv.invited_by}`) : null;
+    const inviter_name = isObj(prof) && typeof prof.name === 'string' && prof.name.trim() ? prof.name.trim() : null;
+    return { ok: true, state, brand_name, branch_names, inviter_name };
+  } catch (_) { return fail('unavailable'); }
+}
+
+module.exports = { createInvite, cancelInvite, reissueInvite, acceptInvite, invitePreview, emailKey, normName, TTL_MS, INFLIGHT_MS };
