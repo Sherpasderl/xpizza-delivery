@@ -214,9 +214,18 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
       }
     }
   }
+  /* 🔴 A MANIFEST SCRIPT IS NOT A GATE. The shapes above say a file is reached by SOME script in SOME
+     manifest — but gate-all runs only xpizza-functions' scripts, so xpizza-dispatch-mobile's and
+     xpizza-handheld's own `node --test` counted as "reached" here while no gate ran them (that is how
+     a companion slice landed a red mobile boot test on main). tools/app-suites.js (`test:apps`, a
+     gate-enumerated script) now RUNS every app test file outside xpizza-functions that no functions
+     script names, from its own folder under its own manifest; a file in its plan is reached by the
+     gate, and tools/app-suites.guard.test.js proves reached ∪ planned covers every such file. */
+  const appSuitesPlanned = new Set(require('../tools/app-suites').currentPlan().entries.map((e) => resolve(REPO, e.file)));
   const isReachable = (abs) => exactPaths.has(abs)
     || globPatterns.some((g) => g.test(abs))
-    || bareTestDirs.some((d) => abs.startsWith(`${d}/`));
+    || bareTestDirs.some((d) => abs.startsWith(`${d}/`))
+    || appSuitesPlanned.has(abs);
 
   /* 🔴 TWENTY-FOUR TEST FILES THAT NOTHING RUNS — found the moment the walk widened, and NOT
      excused so much as finally written down. Every one was invisible before: xpizza-dispatch and
@@ -230,69 +239,13 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
      shrink, never grow: the loop below fails the moment an entry becomes reachable, so an exception
      cannot outlive its cause — the same rule that forced claim-order and claim-prefill off this
      list, and the same rule the gate runner applies to KNOWN_RED. */
-  const KNOWN_UNWIRED = [
-    'agotado-failopen.test.mjs',
-    'avail-key.test.mjs',
-    'scripts/backfill-pickup-completion.test.mjs',
-    'xpizza-dispatch/dispatch-aging.test.js',
-    'xpizza-dispatch/dispatch-alert-nav.test.js',
-    'xpizza-dispatch/dispatch-alerts.test.js',
-    /* Arrived from main with the park fix. It is NOT uncovered: the mutation sweep reaches it —
-       pah-06 mutates ../xpizza-dispatch/index.html and scores through
-       `node ../xpizza-dispatch/dispatch-paid-after-close.test.js` — which is a real gate. What it
-       lacks is an npm script, which is what this census measures, because that directory has no
-       package.json at all. Recorded with that distinction rather than as plain "uncovered", since
-       being wrong in the safe direction still costs the claim its value. */
-    'xpizza-dispatch/dispatch-paid-after-close.test.js',
-    'xpizza-dispatch/dispatch-comms-thread.test.js',
-    'xpizza-dispatch/dispatch-delivery-risk.test.js',
-    'xpizza-dispatch/dispatch-eta-snapshot.test.js',
-    'xpizza-dispatch/dispatch-stalled.test.js',
-    'xpizza-dispatch/driver-eta.test.js',
-    'xpizza-dispatch/driver-glide.test.js',
-    /* 🔴 NINE MORE ARRIVED FROM main AT d86d254, IN THIS MERGE. Same cause as the ten above —
-       `xpizza-dispatch/` has no package.json at all, so no npm script in any manifest can reach them —
-       and this census is our guard catching main's new work, not main breaking us.
-       🔴 AND UNLIKE dispatch-paid-after-close ABOVE, THESE ARE REACHED BY NOTHING AT ALL. I checked the
-       mutation corpus for each of the nine: zero references, so there is no sweep covering them the way
-       pah-06 covers the park fix. So the honest word for these really is UNCOVERED, not merely
-       "no npm script" — that distinction is the one the note above insists on, and it falls the other
-       way here. Recorded with the accurate word rather than the reassuring one.
-       🔴 SEPARATE ITEM, NOT OURS TO CLOSE: nine test files in main run in no automated gate. That is a
-       real coverage gap in main, surfaced by this merge, and it belongs to whoever owns dispatch.
-       The shrink-never-grow rule below still applies: each becomes a failure the moment a script
-       reaches it. */
-    'xpizza-dispatch/dispatch-cash-recon.test.js',
-    'xpizza-dispatch/dispatch-cola.test.js',
-    'xpizza-dispatch/dispatch-drawer.test.js',
-    'xpizza-dispatch/dispatch-heartbeat-alerts.test.js',
-    'xpizza-dispatch/dispatch-nav-rail.test.js',
-    'xpizza-dispatch/dispatch-picker-a11y.test.js',
-    'xpizza-dispatch/dispatch-recon-close-fulfilled.test.js',
-    'xpizza-dispatch/dispatch-recon-note.test.js',
-    'xpizza-dispatch/dispatch-theme.test.js',
-    /* 🔴 ARRIVED FROM main AT b55513e, in the second merge — the dashboard read half of the durable
-       driver→order attribution work. `xpizza-dashboard/` has NO package.json, exactly like xpizza-dispatch,
-       so no npm script in any manifest can reach it.
-       And like the nine dispatch tests above it, the mutation corpus has ZERO references to this file
-       (checked, not assumed), so the accurate word is UNCOVERED rather than merely "no npm script" — the
-       distinction the note at the head of this list insists on, falling the same way again.
-       Main's three NEW xpizza-functions tests from the same commits (driver-attribution, retention-sweep,
-       attribution-refire) are NOT here: they are in main's own `test` chain and came through the union, so
-       they are reached. Only the dashboard one has no manifest that could reach it.
-       🔴 SEPARATE ITEM FOR WHOEVER OWNS THE DASHBOARD, as with dispatch: this file runs in no automated
-       gate. That is a coverage gap in main surfaced by the merge, and it is not ours to close. */
-    /* WIRED 2026-10-13 (S0 branch): cash-helpers (88 money-grade cuadre cells), order-helpers, stacking
-       and the new brand-helpers are now reached by xpizza-functions `test` via `node ../xpizza-driver/<x>.test.js`.
-       Removed from this list per the shrink-never-grow rule (the loop below fails if a listed entry is reachable). */
-    'xpizza-factura/src/print-recovery.test.js',
-    'xpizza-kitchen/avail-write.test.mjs',
-    'xpizza-kitchen/order-filter.test.mjs',
-    'xpizza-kitchen/rail-count.test.mjs',
-    'xpizza-kitchen/ready-nudge.test.mjs',
-    'xpizza-kitchen/scheduled-view.test.mjs',
-    'xpizza-track/driver-eta.test.js',
-  ];
+  /* 🔴 EMPTIED, NOT RELAXED (2026-10-19). Every one of the 29 files this list recorded — the repo-root and
+     scripts/ files, xpizza-dispatch's 19, xpizza-kitchen's 5, xpizza-track's driver-eta and xpizza-factura's
+     src/print-recovery (now in factura's own glob) — is RUN by `test:apps`, so each became reachable and the
+     shrink-never-grow loop below required its removal. Three of them were red on main the first time they
+     ran; they are excused in tools/app-suites.js KNOWN_RED with a reason, an owner and a date, under the
+     same rule: an excuse whose file passes fails the run. */
+  const KNOWN_UNWIRED = [];
   const everyTest = walkTestFiles(REPO);
 
   const missing = everyTest.filter((f) => !isReachable(f))
