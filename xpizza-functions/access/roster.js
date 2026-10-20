@@ -23,14 +23,18 @@ const { resolveLocation, isUid } = require('./membership');
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const clone = (v) => JSON.parse(JSON.stringify(v));
-const OPS = Object.freeze(['bootstrap_owner', 'transfer_owner', 'grant_manager', 'revoke_manager', 'set_manager_perms', 'set_invite_current', 'clear_invite_current']);
+const OPS = Object.freeze(['bootstrap_owner', 'transfer_owner', 'grant_manager', 'revoke_manager', 'set_manager_perms', 'update_manager', 'set_invite_current', 'clear_invite_current']);
 const EMAIL_KEY_RE = /^[0-9a-f]{64}$/;
 const INVITE_OPS = Object.freeze(['set_invite_current', 'clear_invite_current']);   // built by invites.js only (owner actor)
 // What the team cores (the portal) may ever ask for. bootstrap_owner / transfer_owner are platform CLI only and NOT here.
-const CALLABLE_OPS = Object.freeze(['grant_manager', 'revoke_manager', 'set_manager_perms']);
+const CALLABLE_OPS = Object.freeze(['grant_manager', 'revoke_manager', 'set_manager_perms', 'update_manager']);
 const CLI_ONLY_OPS = Object.freeze(['bootstrap_owner', 'transfer_owner']);
 const INVITE_ID_RE = /^[A-Za-z0-9_-]{22,64}$/;
 const MAX_BRANCHES = 50;
+// a member's display profile {name, email} (PLAN-portal-team-invites G1): written ONLY from an accepted invite, inside the grant
+const NAME_MAX = 80;
+const isProfile = (p) => isObj(p) && typeof p.name === 'string' && p.name.length >= 1 && p.name.length <= NAME_MAX
+  && typeof p.email === 'string' && p.email.length >= 3 && p.email.length <= 254 && Object.keys(p).length === 2;
 
 const fail = (code) => ({ ok: false, code });
 
@@ -45,6 +49,24 @@ async function validateTarget(db, brandId, op) {
   if (op.inviteId !== undefined && !INVITE_ID_RE.test(String(op.inviteId))) return fail('bad_invite');
   const rec = (await db.ref(`brands/${brandId}`).once('value')).val();
   if (!rec || !F1.validateBrand(brandId, rec).ok) return fail('brand_invalid');
+  if (op.profile !== undefined && (op.type !== 'grant_manager' || !op.inviteId || !isProfile(op.profile))) return fail('bad_profile');
+  if (op.type === 'update_manager') {   // the owner's «Editar»: the FULL new branch set + the menu permission, one transaction
+    if (!Array.isArray(op.rids) || !op.rids.length || op.rids.length > MAX_BRANCHES || new Set(op.rids).size !== op.rids.length) return fail('bad_rids');
+    if (typeof op.can_edit_menu !== 'boolean') return fail('bad_perms');
+    // codex build r1 P2: only the branches being ADDED must be current members; a RETAINED grant (even of a since-retired
+    // branch) passes, so a menu-permission-only change never fails on a retired branch. The added set is re-checked against
+    // the roster INSIDE the transaction (applyOp: an add that was not validated here → location_not_member).
+    const managers = (await db.ref(`brand_members/${brandId}/managers`).once('value')).val() || {};
+    const held = new Set(Object.keys(managers).filter((rid) => isObj(managers[rid]) && isObj(managers[rid][op.uid])));
+    const validated = [];
+    for (const rid of op.rids) {
+      if (held.has(rid)) continue;
+      const loc = await resolveLocation(db, rid);
+      if (loc.brandId !== brandId || loc.state !== 'member') return fail('location_not_member');   // an ADDED branch: a CURRENT member
+      validated.push(rid);
+    }
+    return { ok: true, validatedAdds: validated };
+  }
   if (op.type === 'grant_manager') {
     if (!Array.isArray(op.rids) || !op.rids.length || op.rids.length > MAX_BRANCHES || new Set(op.rids).size !== op.rids.length) return fail('bad_rids');
     if (op.can_edit_menu !== undefined && typeof op.can_edit_menu !== 'boolean') return fail('bad_perms');
@@ -65,6 +87,7 @@ function applyOp(cur, actor, op, now) {
   const managers = isObj(r.managers) ? r.managers : {};
   const perms = isObj(r.manager_perms) ? r.manager_perms : {};
   const current = isObj(r.invites_current) ? r.invites_current : {};
+  const profiles = isObj(r.profiles) ? r.profiles : {};
   if (actor.kind !== 'owner' && actor.kind !== 'cli') return { code: 'forbidden' };
   if (actor.kind === 'owner' && !isObj(owners[actor.uid])) return { code: 'forbidden' };
   if (actor.kind !== 'cli' && CLI_ONLY_OPS.includes(op.type)) return { code: 'forbidden' };
@@ -94,6 +117,7 @@ function applyOp(cur, actor, op, now) {
       }
       // ONE per-manager setting: an existing one is the CURRENT owner decision and wins; the op's value only seeds a new manager
       if (!isObj(perms[op.uid])) { perms[op.uid] = { can_edit_menu: op.can_edit_menu === true }; changed = true; }
+      if (op.profile && JSON.stringify(profiles[op.uid]) !== JSON.stringify(op.profile)) { profiles[op.uid] = { name: op.profile.name, email: op.profile.email }; changed = true; }
       break;
     case 'revoke_manager':
       for (const rid of Object.keys(managers)) {
@@ -102,8 +126,28 @@ function applyOp(cur, actor, op, now) {
         if (isObj(m[op.uid])) { delete m[op.uid]; touched.removed.push(rid); changed = true; if (Object.keys(m).length) managers[rid] = m; else delete managers[rid]; }
       }
       // no branch left → the per-manager setting goes too (a later invite seeds a fresh one)
-      if (!Object.values(managers).some((m) => isObj(m) && isObj(m[op.uid])) && isObj(perms[op.uid])) { delete perms[op.uid]; changed = true; }
+      if (!Object.values(managers).some((m) => isObj(m) && isObj(m[op.uid]))) {
+        if (isObj(perms[op.uid])) { delete perms[op.uid]; changed = true; }
+        if (isObj(profiles[op.uid])) { delete profiles[op.uid]; changed = true; }   // the profile leaves with the last branch
+      }
       break;
+    case 'update_manager': {
+      if (!Object.values(managers).some((m) => isObj(m) && isObj(m[op.uid]))) return { code: 'not_a_manager' };
+      const want = new Set(op.rids);
+      for (const rid of Object.keys(managers)) {
+        const m = isObj(managers[rid]) ? managers[rid] : {};
+        if (isObj(m[op.uid]) && !want.has(rid)) { delete m[op.uid]; touched.removed.push(rid); changed = true; if (Object.keys(m).length) managers[rid] = m; else delete managers[rid]; }
+      }
+      for (const rid of op.rids) {
+        const m = isObj(managers[rid]) ? managers[rid] : {};
+        if (!isObj(m[op.uid])) {
+          if (!(op._validatedAdds || []).includes(rid)) return { code: 'location_not_member' };   // added since the pre-check: not validated
+          m[op.uid] = { granted_at: now, granted_by: by }; managers[rid] = m; touched.added.push(rid); changed = true;
+        }
+      }
+      if (!isObj(perms[op.uid]) || perms[op.uid].can_edit_menu !== op.can_edit_menu) { perms[op.uid] = { can_edit_menu: op.can_edit_menu }; changed = true; }
+      break;
+    }
     case 'set_manager_perms': {
       if (!Object.values(managers).some((m) => isObj(m) && isObj(m[op.uid]))) return { code: 'not_a_manager' };
       if (!isObj(perms[op.uid]) || perms[op.uid].can_edit_menu !== op.can_edit_menu) { perms[op.uid] = { can_edit_menu: op.can_edit_menu }; changed = true; }
@@ -128,6 +172,7 @@ function applyOp(cur, actor, op, now) {
   if (Object.keys(managers).length) r.managers = managers; else delete r.managers;
   if (Object.keys(perms).length) r.manager_perms = perms; else delete r.manager_perms;
   if (Object.keys(current).length) r.invites_current = current; else delete r.invites_current;
+  if (Object.keys(profiles).length) r.profiles = profiles; else delete r.profiles;
   return { next: r, outcome: 'applied', touched };
 }
 
@@ -154,7 +199,7 @@ async function mutateRoster(deps, brandId, actor, op) {
   let tx;
   try {
     tx = await db.ref(`brand_members/${brandId}`).transaction((cur) => {
-      res = applyOp(cur, actor, op, at);
+      res = applyOp(cur, actor, v.validatedAdds ? { ...op, _validatedAdds: v.validatedAdds } : op, at);
       if (res.next) return res.next;
       return cur === null ? null : undefined;   // never abort on a (possibly stale) null — propose null, RTDB re-runs if needed
     });
@@ -169,4 +214,4 @@ async function mutateRoster(deps, brandId, actor, op) {
   return { ok: true, outcome: res.outcome };
 }
 
-module.exports = { mutateRoster, applyOp, validateTarget, indexUpdate, OPS, CALLABLE_OPS, CLI_ONLY_OPS, INVITE_OPS, INVITE_ID_RE, EMAIL_KEY_RE, MAX_BRANCHES };
+module.exports = { mutateRoster, applyOp, validateTarget, indexUpdate, isProfile, OPS, CALLABLE_OPS, CLI_ONLY_OPS, INVITE_OPS, INVITE_ID_RE, EMAIL_KEY_RE, MAX_BRANCHES, NAME_MAX };

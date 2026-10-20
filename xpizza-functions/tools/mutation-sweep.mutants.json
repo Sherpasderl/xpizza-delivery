@@ -15996,5 +15996,311 @@
       "access/membership-admin.test.js",
       "access/team-http.test.js"
     ]
+  },
+  {
+    "id": "membership-28",
+    "slice": "membership",
+    "label": "T-a G1: the invite name is not required (an unnamed invite is created)",
+    "file": "access/invites.js",
+    "from": "  if (!who) return fail('bad_name');\n",
+    "to": "",
+    "kills_with": [
+      "bad_name"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/team-http.test.js",
+      "access/writes-flag.test.js"
+    ]
+  },
+  {
+    "id": "membership-29",
+    "slice": "membership",
+    "label": "T-a G1: the profile is not written in the grant (team rows lose name / email)",
+    "file": "access/roster.js",
+    "from": "      if (op.profile && JSON.stringify(profiles[op.uid]) !== JSON.stringify(op.profile)) { profiles[op.uid]",
+    "to": "      if (false && op.profile && JSON.stringify(profiles[op.uid]) !== JSON.stringify(op.profile)) { profiles[op.uid]",
+    "kills_with": [
+      "the grant and the profile are ONE state"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/team-http.test.js",
+      "access/writes-flag.test.js"
+    ]
+  },
+  {
+    "id": "membership-30",
+    "slice": "membership",
+    "label": "T-a G1: a direct owner grant may write a profile (forgeable names)",
+    "file": "access/roster.js",
+    "from": "  if (op.profile !== undefined && (op.type !== 'grant_manager' || !op.inviteId || !isProfile(op.profile))) return fail('bad_profile');",
+    "to": "  if (op.profile !== undefined && (op.type !== 'grant_manager' || !isProfile(op.profile))) return fail('bad_profile');",
+    "kills_with": [
+      "bad_profile"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/team-http.test.js",
+      "access/writes-flag.test.js"
+    ]
+  },
+  {
+    "id": "membership-31",
+    "slice": "membership",
+    "label": "T-a G1: teamList lists superseded / expired invites as pending",
+    "file": "access/team-core.js",
+    "from": "      if (!isObj(inv) || inv.brandId !== brandId || inv.state !== 'open' || !(inv.expires_at > t)) continue;",
+    "to": "      if (!isObj(inv) || inv.brandId !== brandId) continue;",
+    "kills_with": [
+      "only the fresh one is pending"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/team-http.test.js",
+      "access/writes-flag.test.js"
+    ]
+  },
+  {
+    "id": "membership-32",
+    "slice": "membership",
+    "label": "T-a G2: update_manager may target a non-manager (grants a stranger)",
+    "file": "access/roster.js",
+    "from": "    case 'update_manager': {\n      if (!Object.values(managers).some((m) => isObj(m) && isObj(m[op.uid]))) return { code: 'not_a_manager' };",
+    "to": "    case 'update_manager': {",
+    "kills_with": [
+      "not_a_manager"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/team-http.test.js",
+      "access/writes-flag.test.js"
+    ]
+  },
+  {
+    "id": "membership-33",
+    "slice": "membership",
+    "label": "T-a G2: update_manager may add a non-member branch",
+    "file": "access/roster.js",
+    "from": "      if (loc.brandId !== brandId || loc.state !== 'member') return fail('location_not_member');   // an ADDED branch: a CURRENT member",
+    "to": "      if (loc.brandId !== brandId) return fail('location_not_member');   // an ADDED branch: a CURRENT member",
+    "kills_with": [
+      "ADDING a retired branch is refused"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/team-http.test.js",
+      "access/writes-flag.test.js"
+    ]
+  },
+  {
+    "id": "membership-34",
+    "slice": "membership",
+    "label": "T-a: the write flag accepts any truthy value",
+    "file": "access/writes-flag.js",
+    "from": "once('value')).val() === true;",
+    "to": "once('value')).val() == true;",
+    "kills_with": [
+      "true only for the strict boolean"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/team-http.test.js",
+      "access/writes-flag.test.js"
+    ]
+  },
+  {
+    "id": "membership-35",
+    "slice": "membership",
+    "label": "T-a G3: catalog.publish holders (dispatcher / staff) may send a publish request",
+    "file": "catalog/publish-request.js",
+    "from": "  if (!(f.manager === true && f.manager_menu === true && a.state === 'member')) return reply(403, { error: 'forbidden' });",
+    "to": "  if (!(a.caps || []).includes('catalog.publish')) return reply(403, { error: 'forbidden' });",
+    "kills_with": [
+      "catalog.publish alone is never enough"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "catalog/publish-request.test.js"
+    ]
+  },
+  {
+    "id": "membership-36",
+    "slice": "membership",
+    "label": "T-a G3: the slot is written without the in-transaction re-check (a raced draft is recorded)",
+    "file": "catalog/publish-request.js",
+    "from": "      if (ut !== sourceUpdateTime || version !== baseActiveVersionId) throw new Error(STALE);   // moved since the verify",
+    "to": "      void ut; void version;",
+    "kills_with": [
+      "raced"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "catalog/publish-request.test.js"
+    ]
+  },
+  {
+    "id": "membership-37",
+    "slice": "membership",
+    "label": "T-a G3: freshness ignores the pointer generation (the flip-back ABA)",
+    "file": "catalog/publish-request.js",
+    "from": "  if (slot.base_active_version !== activeVersionId || slot.base_generation !== generation) return 'published';",
+    "to": "  if (slot.base_active_version !== activeVersionId) return 'published';",
+    "kills_with": [
+      "ABA"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "catalog/publish-request.test.js"
+    ]
+  },
+  {
+    "id": "membership-38",
+    "slice": "membership",
+    "label": "T-a G3: a non-owner editor also receives the publish request",
+    "file": "catalog/portal-reads.js",
+    "from": "  if (can(auth, 'catalog.fiscal_ack') && usesPlatformFactura(rid)) {",
+    "to": "  if (usesPlatformFactura(rid)) {",
+    "kills_with": [
+      "the manager never receives it"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "catalog/publish-request.test.js"
+    ]
+  },
+  {
+    "id": "membership-39",
+    "slice": "membership",
+    "label": "T-a G3: a request may be sent when the draft equals the active version (nothing to publish)",
+    "file": "catalog/publish-request.js",
+    "from": "  if (!diff.added.length && !diff.removed.length && !diff.renamed.length && !diff.changed.length && sameStructure) {",
+    "to": "  if (false && sameStructure) {",
+    "kills_with": [
+      "nothing_to_publish"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "catalog/publish-request.test.js"
+    ]
+  },
+  {
+    "id": "membership-40",
+    "slice": "membership",
+    "label": "T-a password_set: an UNVERIFIED caller may mark a password as set",
+    "file": "access/team-core.js",
+    "from": "  if (!isUid(ctx.uid) || !(ctx.token && ctx.token.email_verified === true)) return fail('forbidden');",
+    "to": "  if (!isUid(ctx.uid)) return fail('forbidden');",
+    "kills_with": [
+      "an unverified token is refused"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/team-http.test.js"
+    ]
+  },
+  {
+    "id": "membership-41",
+    "slice": "membership",
+    "label": "T-a password_set: acceptance reports a password for every account (new invitees never create one)",
+    "file": "access/team-core.js",
+    "from": "  try { password_set = await PA.passwordSet(deps.db, ctx.uid); } catch (_) { password_set = false; }",
+    "to": "  password_set = true;",
+    "kills_with": [
+      "A2 is shown"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/team-http.test.js"
+    ]
+  },
+  {
+    "id": "membership-42",
+    "slice": "membership",
+    "label": "T-a backfill: password_set recorded for an UNVERIFIED owner (false evidence after the email link)",
+    "file": "access/membership-admin-core.js",
+    "from": "      try { verified = typeof getUser === 'function' && (await getUser(uid)).emailVerified === true; } catch (_) { verified = false; }",
+    "to": "      verified = true;",
+    "kills_with": [
+      "unverified → no password_set"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js"
+    ]
+  },
+  {
+    "id": "membership-43",
+    "slice": "membership",
+    "label": "T-a: catalogRequestPublish runs while the write flag is off",
+    "file": "access/team-http-core.js",
+    "from": "fn: async (deps, ctx, body) => ((await writesEnabled(deps.db))",
+    "to": "fn: async (deps, ctx, body) => ((true)",
+    "kills_with": [
+      "the core never ran"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/team-http.test.js"
+    ]
+  },
+  {
+    "id": "membership-44",
+    "slice": "membership",
+    "label": "T-a G3: the request slot names the sender from the token (spoofable) instead of the server profile",
+    "file": "catalog/publish-request.js",
+    "from": "name = p && typeof p.name === 'string' ? p.name : null; }",
+    "to": "name = (ctx.token && ctx.token.name) || null; }",
+    "kills_with": [
+      "never the token"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "catalog/publish-request.test.js"
+    ]
+  },
+  {
+    "id": "membership-45",
+    "slice": "membership",
+    "label": "T-a G2: «Editar» re-validates RETAINED grants (a menu-only change fails on a retired branch)",
+    "file": "access/roster.js",
+    "from": "      if (held.has(rid)) continue;\n",
+    "to": "",
+    "kills_with": [
+      "menu-only change with a retained retired grant"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/team-http.test.js"
+    ]
   }
 ]

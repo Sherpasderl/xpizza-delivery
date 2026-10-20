@@ -62,10 +62,19 @@ async function census(db) {
   return { ok: findings.length === 0, findings, owners, dispatchers, kitchen: kitchen.map(([uid, rid]) => ({ uid, rid })) };
 }
 
-async function backfill(db, owners, { operator, now = () => Date.now(), log = () => {} }) {
+async function backfill(db, owners, { operator, now = () => Date.now(), log = () => {}, getUser = null }) {
   const results = [];
   for (const { uid, rid } of owners) {
     const r = await mutateRoster({ db, now, log }, rid, { kind: 'cli', operator }, { type: 'bootstrap_owner', uid });
+    // today's owners sign in to the portal with a password: record it, so /aceptar never asks them to create one — but ONLY for a
+    // Firebase account whose email is VERIFIED (codex plan r3): consuming an email link on an UNVERIFIED account removes its
+    // existing password, so a flag there would be false evidence. Unverified / unknown → no flag (they simply see A2).
+    if (r.ok) {
+      let verified = false;
+      try { verified = typeof getUser === 'function' && (await getUser(uid)).emailVerified === true; } catch (_) { verified = false; }
+      if (verified) { try { await require('./portal-account').markPasswordSet(db, uid, now()); r.password_flag = 'set'; } catch (_) { r.password_flag = 'failed'; } }
+      else r.password_flag = 'skipped_unverified';
+    }
     results.push({ uid, rid, ...r });
   }
   return { ok: results.every((r) => r.ok), results };
@@ -281,7 +290,7 @@ function makeNewReaders(db) {
   };
 }
 
-async function runMembershipAdmin({ db, op, args = [], apply, operator, now = () => Date.now(), log = console.log, writeFile = null }) {
+async function runMembershipAdmin({ db, op, args = [], apply, operator, now = () => Date.now(), log = console.log, writeFile = null, getUser = null }) {
   if (op === 'census') {
     const c = await census(db);
     log(JSON.stringify({ ok: c.ok, owners: c.owners, findings: c.findings }, null, 2));
@@ -291,7 +300,7 @@ async function runMembershipAdmin({ db, op, args = [], apply, operator, now = ()
     const c = await census(db);
     if (!c.ok) { log(JSON.stringify({ refused: 'census_not_clean', findings: c.findings })); return 3; }
     if (!apply) { log(JSON.stringify({ dry_run: true, would_bootstrap: c.owners })); return 0; }
-    const r = await backfill(db, c.owners, { operator, now, log: (k) => log(k) });
+    const r = await backfill(db, c.owners, { operator, now, log: (k) => log(k), getUser });
     log(JSON.stringify(r)); return r.ok ? 0 : 4;
   }
   if (op === 'reconcile') {
