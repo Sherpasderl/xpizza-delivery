@@ -13,7 +13,7 @@ import { createEta, googleRoute } from './eta.js';
 import { startPairing, createSessionStore, hashPin, createPinGate, signOut } from './setup.js';
 import { createBridge, webAudioSound, NATIVE_PLUGIN } from './bridge.js';
 import { COPY, BOARD } from './copy.js';
-import { buildVM, WA_TEXT } from './view.js';
+import { buildVM } from './view.js';
 import { createAuthWatch, runBoot, runPair, signedOutPatch } from './boot.js';
 import { FIREBASE_CONFIG, FUNCTIONS_REGION, MAPS_KEY } from './config.js';
 import { initializeApp } from './vendor/firebase-app.js';
@@ -65,7 +65,7 @@ const S = {
   view: 'list', tab: 'n', sheet: null, cur: null,
   feed: { orders: {}, loaded: false, control: null, brand: null, menu: null, availability: null, offset: null, connected: false, sessionLost: false },
   opened: {}, driver: {}, eta: {}, delta: 0, reason: null, gone: {}, moreSel: 5, busyAdd: 15, busyDur: 60, pauseDur: 30, pauseReason: 'Cocina llena',
-  waSel: 'agotado', toast: null, entered: null, rejecting: {},
+  toast: null, entered: null, rejecting: {},
 };
 let sess = null;                                      // {uid, rid, brand_id, location_name, prep_default_min}
 const gen = { n: 1 };
@@ -133,7 +133,7 @@ const driverOf = (oid) => M.driverInfo(S.driver[oid], S.eta[oid]);
 function vm() {
   return buildVM(S, {
     now: now(), online: online(), orders: viewOrders(), base: base(), sess, driverOf, set,
-    act: { doLogin, doPair, refreshStatus, pinPress, doSignOut, control, openOrder, handed, doReject, doMore, openWhatsApp, undoReady, doAccept, doReady,
+    act: { doLogin, doPair, refreshStatus, pinPress, doSignOut, control, openOrder, handed, doReject, doMore, undoReady, doAccept, doReady,
       stopEta: () => stopEta(), checksContinue,
       testAlert: () => { sound.unlock(); bridge.alarm.start(['__prueba__']); setTimeout(() => bridge.alarm.stop(), 2500); toast('Sonando la alerta de prueba a todo volumen…'); } },
   });
@@ -203,12 +203,6 @@ async function doReject(goneNames) {
     if (it) act('merchantSetAvailability', { item_key_raw: String(it.key), available: false });
   }
   set({ sheet: next });
-}
-function openWhatsApp(cur, v, brandName) {
-  const p = M.phoneOf(cur); if (!p || !v) return;
-  const text = `Hola ${v.cust.split(' ')[0]}, te escribimos de ${brandName} por tu pedido #${v.num}. ${WA_TEXT[S.waSel]}`;
-  window.open(`https://wa.me/${p}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
-  set({ sheet: null }); toast('Abriendo WhatsApp con el mensaje listo…');
 }
 
 // ── setup flow ────────────────────────────────────────────────────────────────────────────────────────────────────────────────

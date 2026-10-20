@@ -14,7 +14,7 @@ function baseState(over = {}) {
   return { phase: 'main', loginErr: '', working: false, pairing: null, sel: null, pairErr: '', status: { notifications: true, alarmVolumeMax: true, batteryExempt: true, blocked: false, note: '' },
     pinEntry: '', pinFirst: null, pinErr: '', view: 'list', tab: 'n', sheet: null, cur: null,
     feed: { orders: {}, loaded: true, control: null, brand: { name: 'Marca TB' }, menu: [{ key: 'Plato', label: 'Plato' }], availability: {}, offset: 0, connected: true, sessionLost: false },
-    opened: {}, driver: {}, eta: {}, delta: 0, reason: null, gone: {}, moreSel: 5, busyAdd: 15, busyDur: 60, pauseDur: 30, pauseReason: 'Cocina llena', waSel: 'agotado', toast: null, entered: null, rejecting: {}, ...over };
+    opened: {}, driver: {}, eta: {}, delta: 0, reason: null, gone: {}, moreSel: 5, busyAdd: 15, busyDur: 60, pauseDur: 30, pauseReason: 'Cocina llena', toast: null, entered: null, rejecting: {}, ...over };
 }
 function ctxFor(S) {
   const calls = [];

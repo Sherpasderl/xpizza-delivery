@@ -200,7 +200,7 @@ test('prepCard / readyCard / driverView: real first name or a nameless fallback;
   const prepO = order('o', { status: 'preparing', prep: fullPrep(T, 20, 0) });
   assert.equal(M.detailInfo(prepO, { offline: false, driver: named }), 'Ana ya va en camino: la hora ya no se puede mover. Si te atrasás, avisale a Despacho.');
   assert.equal(M.detailInfo(prepO, { offline: false, driver: { ...nameless, etaMs: null } }), 'El repartidor ya va en camino: la hora ya no se puede mover. Si te atrasás, avisale a Despacho.');
-  assert.equal(M.detailInfo(prepO, { offline: true, driver: none }), 'Sin conexión no se puede pedir más tiempo ni escribirle al cliente. «Listo» se guarda y se envía al volver.');
+  assert.equal(M.detailInfo(prepO, { offline: true, driver: none }), 'Sin conexión no se puede pedir más tiempo. «Listo» se guarda y se envía al volver.');
   assert.equal(M.detailInfo(order('o', { status: 'preparing', prep: fullPrep(T, 20, 30) }), { offline: false, driver: none }), 'Ya sumaste 30 min. Para más tiempo, hablá con Despacho.');
   assert.equal(M.detailInfo(order('o', { status: 'ready' }), { offline: true, driver: none }), 'Sin conexión. Se envía al volver.');
   assert.equal(M.detailInfo(prepO, { offline: false, driver: none }), '');
@@ -244,10 +244,3 @@ test('applyPending: queued accept / more / ready (and an undo-window Listo) over
   assert.equal(moved.a.status, 'cancelled');
 });
 
-test('phoneOf: 8 local digits → +504; international kept; junk → none', () => {
-  assert.equal(M.phoneOf({ customer_phone: '9999-0000' }), '50499990000');
-  assert.equal(M.phoneOf({ customer_phone: '+504 9999 0000' }), '50499990000');
-  assert.equal(M.phoneOf({ customer_phone: '123' }), '');
-  assert.equal(M.phoneOf({}), '');
-  assert.equal(M.phoneOf(null), '');
-});
