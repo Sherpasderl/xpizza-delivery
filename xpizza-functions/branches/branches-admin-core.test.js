@@ -72,6 +72,18 @@ const run = async (db, op, id, opts = {}, apply = false) => {
   }
   ok('set-location: the live-order guard refuses in the dry run too (nothing written); --expected-version required; apply moves the pin (version +1) and republishes');
 
+  // a write whose projection is REFUSED afterwards is never reported as success (exit 1, named)
+  {
+    const offId = { ...NORTE, active: false, active_changed_at: NOW - 11 * 60_000 };
+    const db = fakeRtdb(state({ brands: { tb_brand: { name: 'Third', active: true, locations: { tb_norte: 'member', tb_mal: 'member' }, activation: { state: 'on', since: 1 } } },
+      restaurants: { tb_norte: { identity: offId }, tb_mal: { identity: { name: 'Third', brand_id: 'tb_brand' } } } }));
+    const r = await run(db, 'set-location', 'tb_norte', { lat: 15.62, lng: -88.01, expectedVersion: 3 }, true);
+    assert.strictEqual(r.code, 1, 'a refused projection after the write exits 1');
+    assert.match(r.out, /written; projection NOT published — refused/, 'and says the write landed but the projection did not');
+    assert.strictEqual(db.get('restaurants/tb_norte/identity/hub_lat'), 15.62, 'the write itself stands');
+  }
+  ok('a write whose projection is refused afterwards exits 1, named ("written; projection NOT published")');
+
   // enrich-legacy: a legacy brand's projection refusal after the write is surfaced (exit 1), never silent
   {
     const leg = { ...NORTE, brand_id: undefined, location_name: undefined, zone: undefined, prep_default_min: undefined, version: 1 };

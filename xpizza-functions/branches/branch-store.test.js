@@ -59,7 +59,8 @@ const NOW = 1_800_000_000_000;
     assert.deepStrictEqual(await S.createDraft(db, { input: { ...INPUT, location_name: 'Plaza Comercial Norte' }, opId: 'A', callerUid: 'own1', now: NOW }), { ok: true, rid: 'tb_brand_plaza_comercial' });
     // B (a different name with the SAME 15-char slug) persists candidate=…_2, reserves it, then crashes before recording its rid
     db.failAfter['rid_reservations/tb_brand_plaza_comercial_2'] = true;
-    await assert.rejects(S.createDraft(db, { input: { ...INPUT, location_name: 'Plaza Comercial Sur' }, opId: 'B', callerUid: 'own1', now: NOW }), /crash after rid_reservations\/tb_brand_plaza_comercial_2/);
+    await assert.rejects(S.createDraft(db, { input: { ...INPUT, location_name: 'Plaza Comercial Sur' }, opId: 'B', callerUid: 'own1', now: NOW }), /crash after rid_reservations\/tb_brand_plaza_comercial_2/,
+      'B must skip A\'s reservation and crash right after reserving the NEXT candidate');
     assert.strictEqual(db.get('branch_op_ids/tb_brand/B').candidate, 'tb_brand_plaza_comercial_2', 'B persisted its candidate BEFORE reserving it');
     assert.strictEqual(db.get('branch_op_ids/tb_brand/B').rid, undefined);
     assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_brand_plaza_comercial', brandId: 'tb_brand' }), { ok: true }, 'A deletes its draft (frees the base rid)');

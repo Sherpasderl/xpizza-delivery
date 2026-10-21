@@ -55,7 +55,7 @@ const ident = (over = {}) => ({ name: 'Leg', display_name: 'Leg. Brand', hub_lat
   assert.strictEqual(S.planPublish({ brandId: 'tb_brand', brand: TB, identities: { tb_centro: br }, current: pp.row.to }).changed, false, 'unchanged → changed:false');
   assert.strictEqual(S.planPublish({ brandId: 'tb_brand', brand: TB, identities: {}, current: null }).ok, false, 'builder refusal propagates');
   db = fakeRtdb({});
-  assert.deepStrictEqual(await S.applyPublish(db, pp), { ok: true });
+  assert.deepStrictEqual(await S.applyPublish(db, pp), { ok: true }, 'the first publish over an ABSENT projection writes');
   assert.deepStrictEqual(db.data.public.brands.tb_brand, pp.row.to);
   ok('planPublish / applyPublish: changed flag, refusal propagates, written and read back');
 
@@ -79,7 +79,7 @@ const ident = (over = {}) => ({ name: 'Leg', display_name: 'Leg. Brand', hub_lat
   const v = (ver, over = {}) => ({ brand: TB, identities: { tb_centro: { ...br, version: ver, ...over } } });
   const planOf = (st) => S.planPublish({ brandId: 'tb_brand', ...st, current: null });
   db = fakeRtdb({ public: { brands: { tb_brand: { name: 'Third' } } } });   // a pre-v2 projection
-  assert.deepStrictEqual(await S.applyPublish(db, planOf(v(2))), { ok: true });
+  assert.deepStrictEqual(await S.applyPublish(db, planOf(v(2))), { ok: true }, 'a stamped publish supersedes a pre-v2 projection');
   assert.deepStrictEqual(db.data.public.brands.tb_brand.source, { gen: 0, versions: { tb_centro: 2 } });
   const sets0 = db.sets;
   assert.deepStrictEqual(await S.applyPublish(db, planOf(v(1, { location_name: 'Viejo' }))), { ok: false, error: 'superseded' }, 'a late OLDER publisher never overwrites');
@@ -87,18 +87,19 @@ const ident = (over = {}) => ({ name: 'Leg', display_name: 'Leg. Brand', hub_lat
   assert.deepStrictEqual(await S.applyPublish(db, planOf(v(2))), { ok: true, unchanged: true }, 'equal source → no write');
   assert.strictEqual(db.sets, sets0, 'publication never uses a plain set');
   assert.deepStrictEqual(await S.applyPublish(db, S.planPublish({ brandId: 'tb_brand', brand: { ...TB, projection_gen: 1 }, identities: { tb_centro: { ...br, version: 1 } }, current: null })),
-    { ok: false, error: 'incomparable' });
+    { ok: false, error: 'incomparable' }, 'an incomparable source is refused');
+  assert.deepStrictEqual(db.data.public.brands.tb_brand.source, { gen: 0, versions: { tb_centro: 2 } }, 'incomparable → nothing written');
   ok('applyPublish (fenced transaction): older → superseded untouched; equal → no write; incomparable → refused; read-back compares source');
 
   // publishBrandProjection: read → plan → fenced apply; an incomparable mixed read re-reads (≤ 3), then ONE admin alert
   db = fakeRtdb({ brands: { tb_brand: TB }, restaurants: { tb_centro: { identity: { ...br, version: 3 } } } });
-  assert.deepStrictEqual(await S.publishBrandProjection(db, 'tb_brand', { now: 50 }), { ok: true, source: { gen: 0, versions: { tb_centro: 3 } } });
-  assert.deepStrictEqual(await S.publishBrandProjection(db, 'tb_brand', { now: 51 }), { ok: true, unchanged: true, source: { gen: 0, versions: { tb_centro: 3 } } });
+  assert.deepStrictEqual(await S.publishBrandProjection(db, 'tb_brand', { now: 50 }), { ok: true, source: { gen: 0, versions: { tb_centro: 3 } } }, 'publishBrandProjection publishes and reads back');
+  assert.deepStrictEqual(await S.publishBrandProjection(db, 'tb_brand', { now: 51 }), { ok: true, unchanged: true, source: { gen: 0, versions: { tb_centro: 3 } } }, 'a repeat publish is unchanged');
   let flips = 0;   // every read sees a newer brand gen than the stored projection's but an OLDER identity version → incomparable each time
   db.data.public.brands.tb_brand.source = { gen: 0, versions: { tb_centro: 9 } };
   db.data.brands.tb_brand.projection_gen = 1;
   db.beforeTxn = function again() { flips += 1; db.beforeTxn = again; };
-  assert.deepStrictEqual(await S.publishBrandProjection(db, 'tb_brand', { now: 52 }), { ok: false, error: 'projection_unfenced' });
+  assert.deepStrictEqual(await S.publishBrandProjection(db, 'tb_brand', { now: 52 }), { ok: false, error: 'projection_unfenced' }, 'projection_unfenced after 3 incomparable reads');
   assert.strictEqual(flips, 4, '3 fenced attempts + the create-only alert');
   assert.deepStrictEqual(db.data.dispatcher_alerts.projection_unfenced_tb_brand, { type: 'projection_unfenced', brand_id: 'tb_brand', created_at: 52 });
   db.beforeTxn = null;
