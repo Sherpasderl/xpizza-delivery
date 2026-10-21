@@ -31,7 +31,7 @@ ok(`PROOF: unapplyMembershipIndex(index.js) === ${BASE}:index.js byte-for-byte; 
 
 assert.notStrictEqual(real, baseIdx, 'the live index.js carries the membership block');
 const names = Object.keys(ROUTES).sort();
-assert.strictEqual(names.length, 10);   // + memberUpdate, catalogRequestPublish (PLAN-portal-team-invites T-a)
+assert.strictEqual(names.length, 11);   // + memberUpdate, catalogRequestPublish (PLAN-portal-team-invites T-a)
 for (const nm of names) assert.ok(h.now.includes(`exports.${nm} = MEMBERSHIP_TEAM.${nm};`), `index.js exports ${nm}`);
 assert.ok(h.now.includes("const MEMBERSHIP_TEAM = require('./access/team-http');"));
 assert.deepStrictEqual(Object.keys(require('./access/team-http')).sort(), names, 'team-http.js builds exactly the core ROUTES');

@@ -7,6 +7,8 @@
   import './app.js';   // listens for portal:signed-in and resolves the restaurant list
   import './ventas.js';   // Stats S2: the owner-only Ventas page (listens for portal:auth / portal:restaurant)
   import './shell.js';    // PORTAL-UI 1a: discovery + the brand/branch switcher + the branch screens (after ventas.js: its nav handlers run first)
+  import './team.js';     // PLAN-portal-team-invites T-b: «Equipo de trabajo», registered on the shell (after shell.js, before the first nav render)
+  import './pubreq.js';   // PLAN-portal-team-invites T-d: the owner's publish-request banner + Productos badge, and the manager's «Enviado» toast
 
   const $ = (id) => document.getElementById(id);
   const gate = $('gate'), app = $('app'), err = $('loginerr'), btn = $('loginbtn');

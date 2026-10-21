@@ -89,6 +89,20 @@ test('G1 teamList: the owner from the caller token, named managers, and ONLY cur
   clock = 1000;
 });
 
+test('T-b teamList: uses_platform_factura is the SERVER fact for the brand\'s own locations — false for a non-factura brand, true when a listed location issues facturas', async () => {
+  const db = createFakeDb(base());
+  const L = await T.teamList(deps(db), own, { brandId: 'tb' });
+  assert.strictEqual(L.uses_platform_factura, false, 'a brand none of whose locations is a platform-factura one');
+  const fx = base();
+  fx.brands.tb.locations.x_pizza = 'member';   // the platform-factura rid (factura/eligibility.js), listed under this brand
+  const L2 = await T.teamList(deps(createFakeDb(fx)), own, { brandId: 'tb' });
+  assert.strictEqual(L2.uses_platform_factura, true, 'a listed platform-factura location → true');
+  const gone = base(); gone.brands.tb.locations.x_pizza = 'removed';
+  assert.strictEqual((await T.teamList(deps(createFakeDb(gone)), own, { brandId: 'tb' })).uses_platform_factura, false, 'only member / retired locations count');
+  const fr = createFakeDb(base()); fr.failReads.add('brands');
+  assert.deepStrictEqual(await T.teamList(deps(fr), own, { brandId: 'tb' }), { ok: false, code: 'unavailable' }, 'a failed brand read is unavailable, never a guess');
+});
+
 test('G2 update_manager / memberUpdate: the full branch set + permiso in ONE transaction; only an existing manager; member branches only', async () => {
   const db = createFakeDb(base());
   const d = deps(db);
@@ -172,16 +186,17 @@ test('password_set (codex plan r2 P1-2): acceptance reports it; memberPasswordSe
   const legacy = (rid) => ({ name: rid, active: true, locations: { [rid]: 'member' }, activation: { state: 'legacy', since: 1 } });
   const prod = createFakeDb({ restaurants: { lb: { identity: { name: 'L' }, owners: { ownerL1: true } } }, owner_restaurants: { ownerL1: { lb: true } }, brands: { lb: legacy('lb') } });
   const users = { ownerL1: { emailVerified: true } };
-  assert.strictEqual(await C.runMembershipAdmin({ db: prod, op: 'backfill', apply: true, operator: 'op', now: () => 7, log: () => {}, getUser: async (u) => users[u] }), 0);
+  assert.strictEqual(await C.runMembershipAdmin({ db: prod, op: 'backfill', apply: true, operator: 'op', now: () => 7, log: () => {}, name: 'Lía Dueña', getUser: async (u) => ({ email: `${u.toLowerCase()}@x.hn`, ...users[u] }) }), 0);
   assert.deepStrictEqual(prod.get('portal_accounts/ownerL1'), { password_set: true, at: 7 }, 'a VERIFIED owner account is recorded');
   // codex plan r3: an UNVERIFIED owner gets NO flag (the email link would remove its password) → acceptance reports false → A2 shown
   const prod2 = createFakeDb({ restaurants: { lb: { identity: { name: 'L' }, owners: { ownerL2: true } } }, owner_restaurants: { ownerL2: { lb: true } }, brands: { lb: legacy('lb') } });
-  assert.strictEqual(await C.runMembershipAdmin({ db: prod2, op: 'backfill', apply: true, operator: 'op', now: () => 7, log: () => {}, getUser: async () => ({ emailVerified: false }) }), 0);
+  assert.strictEqual(await C.runMembershipAdmin({ db: prod2, op: 'backfill', apply: true, operator: 'op', now: () => 7, log: () => {}, name: 'Lía Dueña', getUser: async () => ({ email: 'l2@x.hn', emailVerified: false }) }), 0);
   assert.strictEqual(prod2.get('portal_accounts'), null, 'unverified → no password_set');
   assert.ok(prod2.get('brand_members/lb/owners/ownerL2'), 'the ownership itself is still backfilled');
   const prod3 = createFakeDb({ restaurants: { lb: { identity: { name: 'L' }, owners: { ownerL3: true } } }, owner_restaurants: { ownerL3: { lb: true } }, brands: { lb: legacy('lb') } });
-  assert.strictEqual(await C.runMembershipAdmin({ db: prod3, op: 'backfill', apply: true, operator: 'op', now: () => 7, log: () => {}, getUser: async () => { throw new Error('auth down'); } }), 0);
+  assert.strictEqual(await C.runMembershipAdmin({ db: prod3, op: 'backfill', apply: true, operator: 'op', now: () => 7, log: () => {}, name: 'Lía Dueña', getUser: async () => { throw new Error('auth down'); } }), 2, 'Auth unreachable → the owner cannot be named → the backfill refuses');
   assert.strictEqual(prod3.get('portal_accounts'), null, 'an Auth lookup failure → no flag (fail safe)');
+  assert.strictEqual(prod3.get('brand_members'), null, 'and nothing was granted without a name');
   assert.strictEqual(await require('./portal-account').passwordSet(prod2, 'ownerL2'), false, 'so acceptance reports password_set:false and A2 is shown');
 });
 
@@ -210,4 +225,53 @@ test('codex build r1 P1: catalogRequestPublish is DARK behind the shared write f
     assert.deepStrictEqual(r, { status: 503, body: { error: 'writes_disabled' } }, `${label}: 503 writes_disabled — the core never ran`);
     assert.strictEqual(touched, false, `${label}: the core never ran`);
   }
+});
+
+test('T-c memberInvitePreview: public, read-only, EXACT shape, every state; ONE uniform 404 for unknown / malformed / nonexistent / flag off', async () => {
+  const db = createFakeDb({ ...base(), restaurants: { ...base().restaurants, tb: { identity: { name: 'Pizzería Del Valle' } },
+    tb_centro: { identity: { brand_id: 'tb', name: 'Bulevar del Norte' } }, tb_sur: { identity: { brand_id: 'tb', name: 'Col. Trejo' } } } });
+  const d = deps(db);
+  const pv = (inviteId, extraDeps = {}) => H.handle('memberInvitePreview', { ...d, verifyIdToken: async () => { throw new Error('never called'); }, ...extraDeps },
+    { method: 'POST', body: { inviteId }, get: () => undefined });   // NO Authorization header at all
+  const inv = await invite(db, 'mgrV01', { rids: ['tb_centro', 'tb_sur'] });
+  const open = await pv(inv.inviteId);
+  assert.deepStrictEqual(open, { status: 200, body: { state: 'open', brand_name: 'Pizzería Del Valle', branch_names: ['Bulevar del Norte', 'Col. Trejo'], inviter_name: null } });
+  assert.ok(!/@|mgrV01|ownerA|created_at|expires_at/.test(JSON.stringify(open.body)), 'no email, uid or timestamp');
+  // the inviter variant when the owner HAS a profile name
+  db.put('brand_members/tb/profiles/ownerA', { name: 'Marcela Pineda', email: 'm@tb.hn' });
+  assert.strictEqual((await pv(inv.inviteId)).body.inviter_name, 'Marcela Pineda');
+  // every state
+  const used = await invite(db, 'mgrV02'); await T.teamAcceptInvite(d, acc('mgrV02'), { inviteId: used.inviteId });
+  assert.strictEqual((await pv(used.inviteId)).body.state, 'used');
+  const c = await invite(db, 'mgrV03'); await T.teamCancelInvite(d, own, { inviteId: c.inviteId });
+  assert.strictEqual((await pv(c.inviteId)).body.state, 'cancelled');
+  const s1 = await invite(db, 'mgrV04'); await T.teamReissueInvite(d, own, { inviteId: s1.inviteId });
+  assert.strictEqual((await pv(s1.inviteId)).body.state, 'superseded');
+  const e = await invite(db, 'mgrV05'); clock += I.TTL_MS + 1;
+  assert.strictEqual((await pv(e.inviteId)).body.state, 'expired', 'open but past expiry → expired');
+  clock = 1000;
+  // ONE uniform not-found: malformed, unknown, a nonexistent well-formed id, and the flag off — byte-identical answers
+  const NF = { status: 404, body: { error: 'not_found' } };
+  for (const id of [undefined, 'short', 'x'.repeat(70), 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz']) assert.deepStrictEqual(await pv(id), NF, String(id));
+  db.put('platform_config/membership_writes_enabled', false);
+  assert.deepStrictEqual(await pv(inv.inviteId), NF, 'flag off → the same not-found (no oracle)');
+  db.put('platform_config/membership_writes_enabled', true);
+  // read-only: nothing changed by any preview
+  const before = JSON.stringify(db.get('member_invites'));
+  await pv(inv.inviteId); await pv(used.inviteId);
+  assert.strictEqual(JSON.stringify(db.get('member_invites')), before, 'read-only');
+  // the acceptance's display fields are opt-in and the CALLER's own
+  const x = await invite(db, 'mgrV06');
+  const a = await T.teamAcceptInvite(d, acc('mgrV06'), { inviteId: x.inviteId, want_display: true });
+  assert.deepStrictEqual({ brand_name: a.brand_name, member: a.member }, { brand_name: 'Pizzería Del Valle', member: { name: 'Ana Gerente', email: mail('mgrV06') } });
+  const plain = await T.teamAcceptInvite(d, acc('mgrV06'), { inviteId: x.inviteId });
+  assert.ok(!('member' in plain) && !('brand_name' in plain), 'without want_display the response is unchanged');
+});
+
+test('codex T-c build r1 P2: revoking the last branch of a manager who also OWNS the brand keeps the profile', () => {
+  const cur = { owners: { ownerA: { granted_at: 1 } }, managers: { tb_centro: { ownerA: { granted_at: 1 } } }, manager_perms: { ownerA: { can_edit_menu: true } },
+    profiles: { ownerA: { name: 'Marcela Pineda', email: 'm@tb.hn' } } };
+  const r = R.applyOp(cur, { kind: 'owner', uid: 'ownerA' }, { type: 'revoke_manager', uid: 'ownerA' }, 9);
+  assert.deepStrictEqual(r.next.profiles, { ownerA: { name: 'Marcela Pineda', email: 'm@tb.hn' } }, 'the owner keeps their name');
+  assert.ok(!r.next.managers && !r.next.manager_perms, 'the manager grant itself is gone');
 });

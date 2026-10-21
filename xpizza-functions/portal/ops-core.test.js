@@ -25,7 +25,7 @@ const quiet = { warn() {}, log() {}, error() {} };
 
 async function setup() {
   const fake = createFakeDb(seed());
-  assert.deepStrictEqual(await R.mutateRoster({ db: fake, now: () => 1 }, 'tb', { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: 'ownerT1' }), { ok: true, outcome: 'applied' });
+  assert.deepStrictEqual(await R.mutateRoster({ db: fake, now: () => 1 }, 'tb', { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: 'ownerT1', profile: { name: 'Dueña Prueba', email: 'duena@tb.hn' } }   /* an ownership grant carries a name (owner-name ruling, 3a T-c) */), { ok: true, outcome: 'applied' });
   return fake;
 }
 const e1 = (fake) => C.getMyBranchesCore({ db: adminOf(fake), verifyIdToken, now: () => Date.UTC(2026, 9, 20, 15), log: quiet }, req);

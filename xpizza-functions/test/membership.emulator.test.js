@@ -44,7 +44,7 @@ let n = 0; const ok = (l) => console.log(`  ok ${++n} ${l}`);
   });
 
   // ── 1 + 2. the runbook through the REAL writer on a cold cache, then the REAL readers ──
-  const log = []; const run = (op, apply) => A.runMembershipAdmin({ db, op, apply, operator: 'emu', log: (l) => log.push(l) });
+  const log = []; const run = (op, apply) => A.runMembershipAdmin({ db, op, apply, operator: 'emu', log: (l) => log.push(l), name: 'Marcela Pineda', getUser: async (u) => ({ email: `${u.toLowerCase()}@x.hn`, emailVerified: true }) });
   assert.strictEqual(await run('census'), 0, log.join('\n'));
   assert.strictEqual(await run('backfill', true), 0, `cold-cache backfill: ${log.join('\n')}`);
   assert.ok((await seeder.ref('brand_members/x_pizza/owners/ownerP1').once('value')).exists(), 'the bootstrap committed on the server');
@@ -73,7 +73,7 @@ let n = 0; const ok = (l) => console.log(`  ok ${++n} ${l}`);
   const inv = await I.createInvite({ db, randomToken }, { uid: 'ownerP1', token: {} }, { name: 'Gerente Prueba', brandId: 'x_pizza', rids: ['x_pizza'], email: 'mgrrace01@m.hn' });
   assert.ok(inv.ok, JSON.stringify(inv));
   const [t, acc] = await Promise.all([
-    R.mutateRoster({ db: cold2 }, 'x_pizza', { kind: 'cli', operator: 'emu' }, { type: 'transfer_owner', uid: 'ownerNew1' }),
+    R.mutateRoster({ db: cold2 }, 'x_pizza', { kind: 'cli', operator: 'emu' }, { type: 'transfer_owner', uid: 'ownerNew1', profile: { name: 'Dueña Nueva', email: 'd@x.hn' } }),
     I.acceptInvite({ db }, { uid: 'mgrRace01', token: { email: 'mgrrace01@m.hn', email_verified: true } }, inv.inviteId),
   ]);
   const owners = Object.keys((await seeder.ref('brand_members/x_pizza/owners').once('value')).val() || {});

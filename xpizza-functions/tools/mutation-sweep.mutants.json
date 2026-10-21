@@ -17913,8 +17913,8 @@
     "slice": "membership",
     "label": "T-a G1: a direct owner grant may write a profile (forgeable names)",
     "file": "access/roster.js",
-    "from": "  if (op.profile !== undefined && (op.type !== 'grant_manager' || !op.inviteId || !isProfile(op.profile))) return fail('bad_profile');",
-    "to": "  if (op.profile !== undefined && (op.type !== 'grant_manager' || !isProfile(op.profile))) return fail('bad_profile');",
+    "from": "  if (op.profile !== undefined && !((op.type === 'grant_manager' && op.inviteId) || op.type === 'bootstrap_owner' || op.type === 'transfer_owner' || op.type === 'set_owner_profile')) return fail('bad_profile');",
+    "to": "  if (op.profile !== undefined && !(op.type === 'grant_manager' || op.type === 'bootstrap_owner' || op.type === 'transfer_owner' || op.type === 'set_owner_profile')) return fail('bad_profile');",
     "kills_with": [
       "bad_profile"
     ],
@@ -18003,7 +18003,7 @@
     "slice": "membership",
     "label": "T-a G3: catalog.publish holders (dispatcher / staff) may send a publish request",
     "file": "catalog/publish-request.js",
-    "from": "  if (!(f.manager === true && f.manager_menu === true && a.state === 'member')) return reply(403, { error: 'forbidden' });",
+    "from": "  if (!canRequestPublish(a, rid)) return reply(403, { error: 'forbidden' });",
     "to": "  if (!(a.caps || []).includes('catalog.publish')) return reply(403, { error: 'forbidden' });",
     "kills_with": [
       "catalog.publish alone is never enough"
@@ -18176,6 +18176,858 @@
       "--test",
       "access/team-ui-server.test.js",
       "access/team-http.test.js"
+    ]
+  },
+  {
+    "id": "aceptar-01",
+    "slice": "aceptar",
+    "label": "T-c: the email link's one-time code stays in the address bar after it is consumed",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "  const stripLink = () => { if (!stripped && params && inviteId && [...params.keys()].some((k) => k !== 'invite')) { stripped = true; history.replaceState(null, '', cleanUrl(href, inviteId)); } };",
+    "to": "  const stripLink = () => {};",
+    "kills_with": [
+      "the URL keeps ONLY ?invite="
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-02",
+    "slice": "aceptar",
+    "label": "T-c: A2 is skipped for every account (new invitees never create a password)",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      if (r.password_set === true) return goPortal();",
+    "to": "      if (r.ok) return goPortal();",
+    "kills_with": [
+      "password_set:false → A2"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-03",
+    "slice": "aceptar",
+    "label": "T-c: pending never retries automatically (the invitee is stranded on the spinner)",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      st.retryTimer = later(() => { st.retryTimer = null; if (gen === st.gen) accept(); }, RETRY_MS);\n",
+    "to": "",
+    "kills_with": [
+      "ONE auto-retry scheduled"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-04",
+    "slice": "aceptar",
+    "label": "T-c: a restored session re-consumes the email link instead of resuming",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (user) return accept();\n",
+    "to": "",
+    "kills_with": [
+      "the link is never re-consumed"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-05",
+    "slice": "aceptar",
+    "label": "T-c: email_unverified is shown as a failure instead of returning to the link stage",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (code === 'email_unverified') {",
+    "to": "    if (false) {",
+    "kills_with": [
+      "email_unverified"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "membership-46",
+    "slice": "membership",
+    "label": "T-c: the invite preview answers a flag-off request (an existence oracle)",
+    "file": "access/team-core.js",
+    "from": "const teamInvitePreview = async (deps, _ctx, b) => ((await writesEnabled(deps.db)) ? invitePreview(deps, b && b.inviteId) : fail('not_found'));",
+    "to": "const teamInvitePreview = async (deps, _ctx, b) => invitePreview(deps, b && b.inviteId);",
+    "kills_with": [
+      "flag off → the same not-found"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/membership-admin.test.js"
+    ]
+  },
+  {
+    "id": "membership-47",
+    "slice": "membership",
+    "label": "T-c: the invite preview leaks timestamps",
+    "file": "access/invites.js",
+    "from": "    return { ok: true, state, brand_name, branch_names, inviter_name };",
+    "to": "    return { ok: true, state, brand_name, branch_names, inviter_name, expires_at: inv.expires_at };",
+    "kills_with": [
+      "T-c memberInvitePreview"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/membership-admin.test.js"
+    ]
+  },
+  {
+    "id": "membership-48",
+    "slice": "membership",
+    "label": "owner ruling: transfer-owner accepted without a name",
+    "file": "access/membership-admin-core.js",
+    "from": "    if (!nm) return { error: 'name_required' };",
+    "to": "    if (!nm) return { profile_name_missing: true, profile: { name: 'x', email: 'x@x.hn' } };",
+    "kills_with": [
+      "refused"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/membership-admin.test.js"
+    ]
+  },
+  {
+    "id": "membership-49",
+    "slice": "membership",
+    "label": "owner ruling: the owner-names read-back passes with a nameless owner",
+    "file": "access/membership-admin-core.js",
+    "from": "    return missing.length ? 5 : 0;",
+    "to": "    return 0;",
+    "kills_with": [
+      "read-back fails"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/membership-admin.test.js"
+    ]
+  },
+  {
+    "id": "aceptar-06",
+    "slice": "aceptar",
+    "label": "T-c r1: a password is set for whatever account is signed in (not the accepting one)",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (!st.acceptUid || auth.uid() !== st.acceptUid) { clearPersonal(); return init(); }\n",
+    "to": "",
+    "kills_with": [
+      "never changed from A"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-07",
+    "slice": "aceptar",
+    "label": "T-c r1: an auth change keeps the previous account's personal data on screen",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (st.acceptUid && uid !== st.acceptUid) { clearPersonal(); init(); }",
+    "to": "    if (st.acceptUid && uid !== st.acceptUid) { init(); }",
+    "kills_with": [
+      "gone from the DOM"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-08",
+    "slice": "aceptar",
+    "label": "T-c r1: concurrent acceptances are not serialized",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (st.accepting) return;   // serialized: one acceptance in flight (codex T-c build r1 P2)\n",
+    "to": "",
+    "kills_with": [
+      "one acceptance in flight (guard)"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-09",
+    "slice": "aceptar",
+    "label": "T-c r1: not_found at acceptance is retried as a failure",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (code === 'not_found') return invalid();   // never retried\n",
+    "to": "",
+    "kills_with": [
+      "st-invalid"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-10",
+    "slice": "aceptar",
+    "label": "T-c r1: a signed-in visit without an invite shows the invalid page instead of the portal",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "    if (inviteId == null) return user ? goPortal() : invalid();   // a signed-in visit without an invite → the portal",
+    "to": "    if (inviteId == null) return invalid();",
+    "kills_with": [
+      "portal"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-11",
+    "slice": "aceptar",
+    "label": "T-c r2: the link parameters are stripped at load (a reload at A1 lands on A4)",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "  const stripLink = () => { if (!stripped && params && inviteId && [...params.keys()].some((k) => k !== 'invite')) { stripped = true; history.replaceState(null, '', cleanUrl(href, inviteId)); } };",
+    "to": "  const stripLink = () => { if (!stripped && params && inviteId && [...params.keys()].some((k) => k !== 'invite')) { stripped = true; history.replaceState(null, '', cleanUrl(href, inviteId)); } };\n  stripLink();",
+    "kills_with": [
+      "nothing stripped at load"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-12",
+    "slice": "aceptar",
+    "label": "T-c r2: no re-check after updatePassword (the flag call runs once the live account is B)",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      await auth.updatePassword(pw, who);\n      if (!stillA()) return reenter();\n",
+    "to": "      await auth.updatePassword(pw, who);\n",
+    "kills_with": [
+      "memberPasswordSet never runs"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-13",
+    "slice": "aceptar",
+    "label": "T-c r2: no re-check after the flag call (the portal opens as B)",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      await api.passwordSet(who);   // with the ACCEPTING user's own ID token: the server records it for that account only\n      if (!stillA()) return reenter();\n",
+    "to": "      await api.passwordSet(who);   // with the ACCEPTING user's own ID token: the server records it for that account only\n",
+    "kills_with": [
+      "never the portal"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-14",
+    "slice": "aceptar",
+    "label": "T-c r2: the flag call uses whoever is current instead of the captured accepting user",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      await api.passwordSet(who);",
+    "to": "      await api.passwordSet();",
+    "kills_with": [
+      "authenticated as A"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-15",
+    "slice": "aceptar",
+    "label": "T-c r2: a restored session's acceptance keeps the one-time code in the address bar",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      stripLink();   // a restored session's acceptance: the link parameters are no longer needed\n",
+    "to": "",
+    "kills_with": [
+      "a restored acceptance strips"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-16",
+    "slice": "aceptar",
+    "label": "T-c r2: a flipped session in the catch path sends a reset email for B",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      if (!stillA() || (err && err.code === 'account_changed')) return reenter();\n",
+    "to": "",
+    "kills_with": [
+      "no reset email once the live account is B"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "aceptar-17",
+    "slice": "aceptar",
+    "label": "T-c r2: the updater's account_changed refusal shows the could-not-complete card instead of re-entering",
+    "file": "../xpizza-portal/aceptar.js",
+    "from": "      if (!stillA() || (err && err.code === 'account_changed')) return reenter();",
+    "to": "      if (!stillA()) return reenter();",
+    "kills_with": [
+      "account_changed re-enters"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/aceptar.test.mjs"
+    ]
+  },
+  {
+    "id": "membership-50",
+    "slice": "membership",
+    "label": "T-c r1: revoking an owner's last manager branch deletes their profile",
+    "file": "access/roster.js",
+    "from": "        if (isObj(profiles[op.uid]) && !isObj(owners[op.uid])) { delete profiles[op.uid]; changed = true; }",
+    "to": "        if (isObj(profiles[op.uid])) { delete profiles[op.uid]; changed = true; }",
+    "kills_with": [
+      "the owner keeps their name"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-51",
+    "slice": "membership",
+    "label": "T-c r1: bootstrap_owner accepted without a profile (a nameless owner)",
+    "file": "access/roster.js",
+    "from": "  if ((op.type === 'bootstrap_owner' || op.type === 'transfer_owner' || op.type === 'set_owner_profile') && op.profile === undefined) return fail('bad_profile');",
+    "to": "  if ((op.type === 'transfer_owner' || op.type === 'set_owner_profile') && op.profile === undefined) return fail('bad_profile');",
+    "kills_with": [
+      "without a name is refused"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "team-01",
+    "slice": "team",
+    "label": "T-b: the Equipo nav ignores the writes flag (shown while invites are off)",
+    "file": "../xpizza-portal/team.js",
+    "from": "  visible: (sel) => !!sel && sel.caps.includes('team.revoke') && sel.membership_writes_enabled === true,",
+    "to": "  visible: (sel) => !!sel && sel.caps.includes('team.revoke'),",
+    "kills_with": [
+      "flag off → absent"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-02",
+    "slice": "team",
+    "label": "T-b: an invite answering after the view / account changed is still mailed",
+    "file": "../xpizza-portal/team.js",
+    "from": "  if (!g.alive()) return;   // 🔴 a stale invite never reaches the mail send\n",
+    "to": "",
+    "kills_with": [
+      "never mailed from a dead generation"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-03",
+    "slice": "team",
+    "label": "T-b: a reissue answering after the account changed is still mailed",
+    "file": "../xpizza-portal/team.js",
+    "from": "  if (!g.alive()) return;   // 🔴 a reissue that answers after the account / view changed is never mailed\n",
+    "to": "",
+    "kills_with": [
+      "a reissue that answers after the account changed is never mailed"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-04",
+    "slice": "team",
+    "label": "T-b: a sign-out / account change leaves the previous owner's names / emails in the DOM",
+    "file": "../xpizza-portal/team.js",
+    "from": "  if (S.body) S.body.replaceChildren();\n  clearToast();\n}\n\ndocument.addEventListener('portal:auth'",
+    "to": "  clearToast();\n}\n\ndocument.addEventListener('portal:auth'",
+    "kills_with": [
+      "removed immediately on the generation bump"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-05",
+    "slice": "team",
+    "label": "T-b: a late memberList renders after a sign-out",
+    "file": "../xpizza-portal/team.js",
+    "from": "    if (!g.alive()) return;\n    S.list = list;",
+    "to": "    S.list = list;",
+    "kills_with": [
+      "the late list is dropped from memory too"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-06",
+    "slice": "team",
+    "label": "T-b: the invite draft is not retained across a nav switch",
+    "file": "../xpizza-portal/team.js",
+    "from": "    if (S.kept && S.kept.key === key) { S.modal = S.kept.modal; }",
+    "to": "    if (false) { S.modal = S.kept.modal; }",
+    "kills_with": [
+      "the modal is open again"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-07",
+    "slice": "team",
+    "label": "T-b: a draft whose submit was in flight is retained (a duplicate invite on return)",
+    "file": "../xpizza-portal/team.js",
+    "from": "S.modal.draft.mode !== 'sent' && S.busy !== S.modal ?",
+    "to": "S.modal.draft.mode !== 'sent' ?",
+    "kills_with": [
+      "its draft was not retained"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-08",
+    "slice": "team",
+    "label": "T-b: an account change keeps the retained draft",
+    "file": "../xpizza-portal/team.js",
+    "from": "  S.list = null; S.branches = []; S.modal = null; S.kept = null; S.inviteError = false;",
+    "to": "  S.list = null; S.branches = []; S.modal = null; S.inviteError = false;",
+    "kills_with": [
+      "an account change clears the retained draft"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-09",
+    "slice": "team",
+    "label": "T-b: the invite CTA accepts an invalid email",
+    "file": "../xpizza-portal/team-logic.js",
+    "from": "    disabled: (!edit && (!nameOk(d.name) || !emailOk(email))) || d.rids.length === 0,",
+    "to": "    disabled: (!edit && !nameOk(d.name)) || d.rids.length === 0,",
+    "kills_with": [
+      "an invalid email: refused locally"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-10",
+    "slice": "team",
+    "label": "T-b: «Editar» sends a revoke + set-permission pair instead of one memberUpdate",
+    "file": "../xpizza-portal/team.js",
+    "from": "    try { await memberUpdate({ brandId: g.brandId, uid: d.uid, rids: d.rids.slice(), canEditMenu: d.canEdit, token, assertLive: g.assertLive }); } catch (err) {",
+    "to": "    try { await memberRevoke({ brandId: g.brandId, uid: d.uid, token, assertLive: g.assertLive }); } catch (err) {",
+    "kills_with": [
+      "ONE memberUpdate with the full branch set"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-11",
+    "slice": "team",
+    "label": "T-b: the factura label is guessed false instead of read from the server flag",
+    "file": "../xpizza-portal/team-logic.js",
+    "from": "  const factura = list.uses_platform_factura === true;",
+    "to": "  const factura = false;",
+    "kills_with": [
+      "factura comes from the server flag"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-12",
+    "slice": "team",
+    "label": "T-b server: memberList reports no platform factura for a factura brand",
+    "file": "access/team-core.js",
+    "from": "    const usesFactura = Object.keys(locs).some((rid) => (locs[rid] === 'member' || locs[rid] === 'retired') && usesPlatformFactura(rid));",
+    "to": "    const usesFactura = false;",
+    "kills_with": [
+      "a listed platform-factura location → true"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-ui-server.test.js"
+    ]
+  },
+  {
+    "id": "team-13",
+    "slice": "team",
+    "label": "T-b: a stale write shows the error panel instead of reloading quietly",
+    "file": "../xpizza-portal/team.js",
+    "from": "      if (TL.isStale(e && e.code)) { if (S.modal === mine) closeModal(); load(); return; }",
+    "to": "",
+    "kills_with": [
+      "stale → the modal closes"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-14",
+    "slice": "team",
+    "label": "T-b r1: an account change leaves a team toast (with an email) in the shared toast",
+    "file": "../xpizza-portal/team.js",
+    "from": "  if (S.body) S.body.replaceChildren();\n  clearToast();\n}",
+    "to": "  if (S.body) S.body.replaceChildren();\n}",
+    "kills_with": [
+      "gone from the visible toast"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-15",
+    "slice": "team",
+    "label": "T-b r1: leaving the view leaves a team toast in the shared toast",
+    "file": "../xpizza-portal/team.js",
+    "from": "    bump();\n    clearToast();\n",
+    "to": "    bump();\n",
+    "kills_with": [
+      "unmount clears it too"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-16",
+    "slice": "team",
+    "label": "T-b r1: «Invitar gerente» opens a form before the team data is here",
+    "file": "../xpizza-portal/team.js",
+    "from": "  b.disabled = S.status !== 'ready';\n",
+    "to": "",
+    "kills_with": [
+      "a click while loading opens nothing"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-17",
+    "slice": "team",
+    "label": "T-b r1: a late invite response replaces the newer draft",
+    "file": "../xpizza-portal/team.js",
+    "from": "  if (open()) {\n    S.modal = { kind: 'invite', draft: { ...d, mode: 'sent', email: r.email, name: r.name || d.name } };",
+    "to": "  {\n    S.modal = { kind: 'invite', draft: { ...d, mode: 'sent', email: r.email, name: r.name || d.name } };",
+    "kills_with": [
+      "the new draft is still the open form"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-18",
+    "slice": "team",
+    "label": "T-b r1: closing the modal frees the submission lock",
+    "file": "../xpizza-portal/team.js",
+    "from": "function closeModal() { S.modal = null; S.resync = null;",
+    "to": "function closeModal() { S.modal = null; S.busy = null; S.resync = null;",
+    "kills_with": [
+      "the first write still holds the lock after its modal closed"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-19",
+    "slice": "team",
+    "label": "T-b r1: a freed lock leaves the open form's CTA disabled",
+    "file": "../xpizza-portal/team.js",
+    "from": "function release(mine) { if (S.busy === mine) { S.busy = null; if (S.resync) S.resync(); } }",
+    "to": "function release(mine) { if (S.busy === mine) { S.busy = null; } }",
+    "kills_with": [
+      "the lock freed when the first write settled"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-20",
+    "slice": "team",
+    "label": "T-b r1: Editar hides an existing retired-branch grant (it is sent but cannot be removed)",
+    "file": "../xpizza-portal/team.js",
+    "from": "    for (const rid of (d.held || []).filter((x) => !member.has(x) && d.rids.includes(x))) {",
+    "to": "    for (const rid of [].filter((x) => !member.has(x) && d.rids.includes(x))) {",
+    "kills_with": [
+      "the retired assignment is shown, selected"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "team-21",
+    "slice": "team",
+    "label": "T-b r1: removing a retired chip leaves its id in the submitted draft",
+    "file": "../xpizza-portal/team.js",
+    "from": "      btn.addEventListener('click', () => { d.rids = d.rids.filter((x) => x !== rid); btn.remove(); sync(); });",
+    "to": "      btn.addEventListener('click', () => { btn.remove(); sync(); });",
+    "kills_with": [
+      "only Trejo"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/team.test.mjs"
+    ]
+  },
+  {
+    "id": "td-01",
+    "slice": "td",
+    "label": "T-d: the manager's entry opens the review / publish path instead of sending",
+    "file": "../xpizza-portal/app.js",
+    "from": "  if (state.publishViaRequest) return sendToOwnerFlow();   // T-d: this caller sends; the owner's path below is untouched\n",
+    "to": "",
+    "kills_with": [
+      "the request carries the token THAT save returned"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/pubreq.test.mjs"
+    ]
+  },
+  {
+    "id": "td-02",
+    "slice": "td",
+    "label": "T-d: the request is sent without the token the save returned",
+    "file": "../xpizza-portal/app.js",
+    "from": "    await requestPublish({ rid, editToken: res && res.token, token });",
+    "to": "    await requestPublish({ rid, editToken: null, token });",
+    "kills_with": [
+      "the request carries the token THAT save returned"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/pubreq.test.mjs"
+    ]
+  },
+  {
+    "id": "td-03",
+    "slice": "td",
+    "label": "T-d: a publish does not retire the owner's badge / banner",
+    "file": "../xpizza-portal/app.js",
+    "from": "  applyPublishRequestFacts(fresh);          // T-d — a publish retires the owner's banner / badge (the request is no longer fresh)\n",
+    "to": "",
+    "kills_with": [
+      "the badge is retired by the publish"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/pubreq.test.mjs"
+    ]
+  },
+  {
+    "id": "td-04",
+    "slice": "td",
+    "label": "T-d: the client decides «send» itself (every caller gets the manager CTA)",
+    "file": "../xpizza-portal/app.js",
+    "from": "  state.publishViaRequest = !!(data && data.publish_via_request === true);",
+    "to": "  state.publishViaRequest = true;",
+    "kills_with": [
+      "the owner keeps today's CTA"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/pubreq.test.mjs"
+    ]
+  },
+  {
+    "id": "td-05",
+    "slice": "td",
+    "label": "T-d: a stale (draft_changed) request still shows the «1» badge",
+    "file": "../xpizza-portal/pubreq.js",
+    "from": "  setNavBadge('menu', req && req.state === 'fresh' ? '1' : null);",
+    "to": "  setNavBadge('menu', req ? '1' : null);",
+    "kills_with": [
+      "a stale request is not a «1»"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/pubreq.test.mjs"
+    ]
+  },
+  {
+    "id": "td-06",
+    "slice": "td",
+    "label": "T-d server: the send predicate ignores the per-manager menu permission",
+    "file": "catalog/publish-request.js",
+    "from": "f.manager === true && f.manager_menu === true && a.state === 'member';",
+    "to": "f.manager === true && a.state === 'member';",
+    "kills_with": [
+      "no menu permission → no send"
+    ],
+    "command": [
+      "node",
+      "catalog/portal-reads.test.js"
+    ]
+  },
+  {
+    "id": "td-07",
+    "slice": "td",
+    "label": "T-d server: the owner pays the extra access resolve on every editor load",
+    "file": "catalog/portal-reads.js",
+    "from": "  if (usesPlatformFactura(rid) && !can(auth, 'catalog.fiscal_ack') && typeof auth.uid === 'string') {",
+    "to": "  if (usesPlatformFactura(rid) && typeof auth.uid === 'string') {",
+    "kills_with": [
+      "the owner: no extra read at all"
+    ],
+    "command": [
+      "node",
+      "catalog/portal-reads.test.js"
+    ]
+  },
+  {
+    "id": "td-08",
+    "slice": "td",
+    "label": "T-d: a sign-out leaves the owner's banner / badge up",
+    "file": "../xpizza-portal/pubreq.js",
+    "from": "document.addEventListener('portal:auth', () => paint(null));\n",
+    "to": "",
+    "kills_with": [
+      "gone on sign-out"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/pubreq.test.mjs"
+    ]
+  },
+  {
+    "id": "td-09",
+    "slice": "td",
+    "label": "T-d r1: a product sent to the owner loses its unpublished-addition status",
+    "file": "../xpizza-portal/app.js",
+    "from": "      for (const a of ((res.diff && res.diff.added) || [])) if (a && a.surface === 'item' && typeof a.key === 'string') state.additionKeys.add(a.key);\n",
+    "to": "",
+    "kills_with": [
+      "the sent product is still known as an unpublished addition"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/pubreq.test.mjs"
     ]
   }
 ]

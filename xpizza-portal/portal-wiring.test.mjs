@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { stateViolations, writerFunctions } from './wiring-ast.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const OPS_TOAST_OK = new Set(['shell.js', 'branches-view.js', 'pausas.js', 'availability.js']);   // PORTAL-UI 1a: success toasts only (see the write-path rule)
+const OPS_TOAST_OK = new Set(['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'team.js', 'pubreq.js']);   // PORTAL-UI 1a: success toasts only (see the write-path rule)
 const JS = readdirSync(DIR).filter((f) => f.endsWith('.js'));
 const codeOf = (f) => readFileSync(join(DIR, f), 'utf8')
   .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
@@ -42,7 +42,9 @@ test('every function a module calls is one it defines or imports', () => {
     // keywords that precede a parenthesis and are not calls
     'async', 'else', 'do', 'try', 'yield', 'delete', 'void', 'in', 'of', 'instanceof', 'WeakSet',
     // Stats S2: the CSV export hands the merchant a file through a Blob URL
-    'Blob']);
+    'Blob',
+    // T-c /aceptar: the WHATWG URL parser (strips the email link's one-time code from the address bar)
+    'URL']);
   for (const f of JS) {
     const c = codeOf(f);
     const defined = new Set([
@@ -69,8 +71,9 @@ test('every function a module calls is one it defines or imports', () => {
   }
 });
 
-test('every module the portal ships is reachable from index.html', () => {
-  const html = readFileSync(join(DIR, 'index.html'), 'utf8');
+test('every module the portal ships is reachable from an entry page (index.html, aceptar.html)', () => {
+  // T-c: the invitee's /aceptar is a SECOND entry page with its own boot script; every module must be reachable from one of them
+  const html = ['index.html', 'aceptar.html'].map((p) => readFileSync(join(DIR, p), 'utf8')).join('\n');
   const seen = new Set();
   const walk = (f) => {
     if (seen.has(f)) return;
@@ -467,8 +470,8 @@ test('every clickable element actually gets a pointer cursor', () => {
 
   // Every selector that sets cursor:pointer, reduced to its LAST compound (the element the rule
   // actually lands on), with pseudo-classes stripped so `:hover` variants still count.
-  const pointerSelectors = [];
-  for (const line of css.split('\n')) {
+  const pointersOf = (cssText) => { const pointerSelectors = [];
+  for (const line of cssText.split('\n')) {
     const i = line.indexOf('{');
     if (i === -1 || !line.includes('}')) continue;
     const decls = line.slice(i + 1, line.lastIndexOf('}'));
@@ -485,6 +488,12 @@ test('every clickable element actually gets a pointer cursor', () => {
       if (only) pointerSelectors.push(only);
     }
   }
+  return pointerSelectors; };
+  const pointerSelectors = pointersOf(css);
+  // T-c: the /aceptar page is its own document with its own stylesheet — its handlers resolve against THOSE
+  const ACEPTAR = { html: readFileSync(join(DIR, 'aceptar.html'), 'utf8'),
+    pointers: pointersOf(readFileSync(join(DIR, 'aceptar.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\}/g, '}\n')) };
+  const pageOf = (f) => (/^aceptar/.test(f) ? ACEPTAR : { html, pointers: pointerSelectors });
   assert.ok(pointerSelectors.length > 10, `non-vacuity: the stylesheet must define pointer cursors (${pointerSelectors.length})`);
 
   const bound = (name) => `(?<![\\w$])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w$])`;
@@ -508,7 +517,7 @@ test('every clickable element actually gets a pointer cursor', () => {
       const byId = idExpr.match(/^\$\('([^']+)'\)$/);
       if (byId) {
         // resolved through the markup: $('id') is only meaningful together with index.html
-        const seg = html.match(new RegExp(`<(\\w+)([^>]*\\bid="${byId[1]}"[^>]*)>`));
+        const seg = pageOf(f).html.match(new RegExp(`<(\\w+)([^>]*\\bid="${byId[1]}"[^>]*)>`));
         if (seg) { tag = seg[1]; const c = seg[2].match(/class="([^"]*)"/); if (c) c[1].split(/\s+/).forEach((x) => x && cls.add(x)); }
       } else {
         // el(tag, 'cls') and el(tag, `cls${…}`) — the template form is how .railitem is built
@@ -524,7 +533,7 @@ test('every clickable element actually gets a pointer cursor', () => {
       // a mismatch would hide, and a guard that quietly ignores what it cannot read proves nothing.
       assert.ok(cls.size > 0 || tag, `${f}: could not resolve what \`${expr}\` is — the guard must be taught this shape rather than skip it`);
       checked++;
-      const covered = pointerSelectors.some((p) => {
+      const covered = pageOf(f).pointers.some((p) => {
         const pc = classesOf(p);
         return pc.size ? [...pc].every((c2) => cls.has(c2)) : tagOf(p) === tag;
       });
@@ -805,7 +814,8 @@ test('no server error on the write path escapes the designed panels', () => {
   const writeCatches = catches.filter((c) => /outcomeFor|showEmpty/.test(c));
   assert.ok(writeCatches.length >= 3, 'every catch resolves to a designed surface');
   const routed = catches.filter((c) => /showOutcome\(outcomeFor\(e, '(edit|publish)'\)\)/.test(c));
-  assert.strictEqual(routed.length, 2, 'BOTH write calls — editCatalog and publishEdited — route to the panels');
+  // T-d (3a): the THIRD is sendToOwnerFlow (editCatalog + catalogRequestPublish), routed to the SAME panels as the review's save
+  assert.strictEqual(routed.length, 3, 'ALL write calls — editCatalog, publishEdited and the manager\'s send — route to the panels');
 
   // and nothing anywhere reaches for an undesigned sink
   for (const f of JS) {
@@ -958,7 +968,8 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.currentRid':          [4, 'ender',   '[PORTAL-UI 1a: + openEditor — the ONE selection of a page load (shell.js), made once at boot before any request; a different selection is a full page reload] the tenant switch and the auth handler — the two things that end a world'],
     'state.groups':              [3, 'guarded', 'the rendered menu, written only after the generation check on both settle paths'],
     'state.usesPlatformFactura': [3, 'guarded', '[1D add-product A: + the post-publish reload, same guard] 🔴 the fiscal capability — load path, behind the generation check'],
-    'state.sourceUpdateTime':    [4, 'guarded', '[1D add-product A: + the post-publish reload — a certified publish writes stamps back, so the revision moves] 🔴 the CAS baseline — load path and the save settle path, both generation-checked, plus the tenant-switch clear that stops one tenant\u2019s baseline being used to write another\u2019s document'],
+    'state.sourceUpdateTime':    [5, 'guarded', '[T-d (3a): + sendToOwnerFlow\u2019s save settle path, behind its generation check, exactly as the review\u2019s] [1D add-product A: + the post-publish reload — a certified publish writes stamps back, so the revision moves] 🔴 the CAS baseline — load path and the save settle path, both generation-checked, plus the tenant-switch clear that stops one tenant\u2019s baseline being used to write another\u2019s document'],
+    'state.publishViaRequest':   [1, 'guarded', 'T-d (3a) — the server\u2019s publish_via_request, written ONLY in applyPublishRequestFacts: reset at the start of a load (fail closed: today\u2019s path) and set on the load / post-publish settle paths behind the generation check; it only chooses the review-bar CTA, and the server re-checks every request'],
     'state.uid':                 [1, 'ender',   'the auth handler itself — the identity change that ENDS the previous world'],
     'state.extras':              [1, 'guarded', 'the flat extras list, written by the load path behind the generation check'],
     'state.selectedCat':         [5, 'view',    '[1D add-product A: + the add drawer\u2019s section change and the FIX action, both presentational] which category the rail highlights — a stale write repaints, it cannot mis-price'],
@@ -971,7 +982,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.draftRid':            [2, 'guarded', '🔴 WHICH TENANT THE DRAFT IS. Written on the load settle path behind the generation check and cleared at the start of a switch; it is what the write path names, so a review can never carry one tenant\u2019s rid with another\u2019s source'],
     'state.menuLoading':         [3, 'guarded', 'loading represented explicitly rather than inferred from a null draft: set at the start of a switch, cleared on BOTH settle paths behind the generation check, and read by review admission'],
     // ── 1D add-product A ──
-    'state.additionKeys':        [3, 'guarded', 'which rows are NEW (server-said pendingAdditions + the keys a save allocated) — reset at the start of a load, set on the load settle path and on the save settle path, both behind the generation check'],
+    'state.additionKeys':        [4, 'guarded', 'which rows are NEW (server-said pendingAdditions + the keys a save allocated) — reset at the start of a load, set on the load settle path, on the review save settle path and on the T-d send-to-owner save settle path, each behind the generation check'],
     'state.renderedCategories':  [2, 'guarded', 'the sections a product may be added to (the renderer contract via getEditableCatalog) — load path, behind the generation check'],
     'state.restaurantName':      [2, 'guarded', 'the fiscal note\u2019s restaurant name from data — load path, behind the generation check'],
     'state.draftUnpublishable':  [2, 'guarded', 'whether the saved draft can publish (getEditableCatalog) — load path, behind the generation check; it only OFFERS the reset'],
@@ -1109,7 +1120,10 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo
                  'renderDrawer', 'renderAddDrawer', 'choiceBlock',
                  // portal A — a PUBLISHED group's price-only block: its handlers are bound() (generation-checked) and write
                  // the draft only through onPrice → setItemPrice (canEdit-guarded), the list price boxes' own write
-                 'publishedChoiceBlock'];
+                 'publishedChoiceBlock',
+                 // PLAN-portal-team-invites T-d (3a) — the per-load publish-request facts (load + post-publish settle paths, behind
+                 // the generation check) and the manager's send (the review's admission / lock / generation discipline)
+                 'applyPublishRequestFacts', 'sendToOwnerFlow'];
 function writesIn(code) {
   const m = maskLiterals(code);
   const found = new Set();

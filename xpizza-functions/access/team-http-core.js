@@ -27,6 +27,8 @@ const ROUTES = Object.freeze({
   memberList:              { method: 'POST', cap: 'team.revoke', brand: 'body', fn: T.teamList },             // cleanup needs the list
   memberAcceptInvite:      { method: 'POST', cap: null, brand: null, fn: T.teamAcceptInvite },   // the invitee: bound to their verified email
   memberPasswordSet:       { method: 'POST', cap: null, brand: null, fn: T.teamPasswordSet },     // /aceptar A2 done: the caller's own flag
+  // /aceptar BEFORE sign-in (T-c): NO auth — bound to the 128-bit inviteId; read-only; ONE uniform 404 for anything unknown
+  memberInvitePreview:     { method: 'POST', cap: null, brand: null, public: true, fn: T.teamInvitePreview },
   // «Enviar al dueño para publicar» (PLAN-portal-team-invites G3): its own facts check (manager + menu permission on a factura
   // brand) inside the core, which answers {status, body} itself. A WRITE, so it is DARK behind the shared membership write flag
   // like every other team write (codex build r1 P1).
@@ -63,6 +65,13 @@ async function handle(name, deps, req) {
   if (!route) return reply(404, { error: 'not_found' });
   const { db, verifyIdToken } = deps;
   if (!req || req.method !== route.method) return reply(405, { error: 'method_not_allowed' });
+  if (route.public) {   // no caller identity at all: the route's own secret (the inviteId) is the only key
+    try {
+      const r = await route.fn(deps, null, isObj(req.body) ? req.body : {});
+      if (r && r.ok) { const { ok, ...rest } = r; return reply(200, rest); }
+      return r && r.code === 'unavailable' ? reply(503, { error: 'unavailable' }) : reply(404, { error: 'not_found' });
+    } catch (_) { return reply(503, { error: 'unavailable' }); }
+  }
   const header = (typeof req.get === 'function' && req.get('authorization')) || '';
   const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
   if (!token) return reply(401, { error: 'missing_bearer_token' });

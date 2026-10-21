@@ -202,3 +202,31 @@ export async function getBranchAvailability({ rid, brandId, token, assertLive })
 export async function setBranchAvailability({ rids, key, available, token }) {
   return apiFetch('setBranchAvailability', { token, body: { rids, key, available } });
 }
+
+// ── PLAN-portal-team-invites T-b — the owner's «Equipo de trabajo» (access/team-http-core.js). Each goes through apiFetch: the
+// Bearer in a header, typed failures, the optional assertLive (the view's generation check, the last moment before fetch).
+// Additions only; nothing above changed.
+export async function memberList({ brandId, token, assertLive }) {
+  return apiFetch('memberList', { token, assertLive, body: { brandId } });
+}
+export async function memberInvite({ brandId, name, email, rids, canEditMenu, token, assertLive }) {
+  return apiFetch('memberInvite', { token, assertLive, body: { brandId, name, email, rids, can_edit_menu: canEditMenu === true } });
+}
+export async function memberReissueInvite({ inviteId, token, assertLive }) {
+  return apiFetch('memberReissueInvite', { token, assertLive, body: { inviteId } });
+}
+export async function memberCancelInvite({ inviteId, token, assertLive }) {
+  return apiFetch('memberCancelInvite', { token, assertLive, body: { inviteId } });
+}
+export async function memberRevoke({ brandId, uid, token, assertLive }) {   // every branch of the brand (no rid): «Quitar acceso»
+  return apiFetch('memberRevoke', { token, assertLive, body: { brandId, uid } });
+}
+export async function memberUpdate({ brandId, uid, rids, canEditMenu, token, assertLive }) {   // «Editar»: ONE call, one transaction
+  return apiFetch('memberUpdate', { token, assertLive, body: { brandId, uid, rids, can_edit_menu: canEditMenu === true } });
+}
+// T-d — «Enviar al dueño para publicar»: records the manager's request against the edit token editCatalog just returned (the
+// server verifies the token against the current draft + pointer; it never publishes). The rid travels in the body, as the
+// write calls above do.
+export async function requestPublish({ rid, editToken, token }) {
+  return apiFetch('catalogRequestPublish', { rid, token, body: { restaurantId: rid, token: editToken } });
+}

@@ -28,7 +28,7 @@ const { usesPlatformFactura } = require('../factura/eligibility');   // 2b-2b: t
 // would make every save fail the CAS — the exact bug the emulator e2e caught one layer down.
 const { encodeUpdateTime } = require('./edit-catalog-handler');
 
-const { can, myLocations } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
+const { can, myLocations, resolveAccess } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
 const reply = (status, body) => ({ status, body });
 
 // The display name only.
@@ -100,7 +100,7 @@ async function getMyRestaurantsCore({ db, verifyIdToken }, req) {
 //
 // READ-ONLY. Nothing in this module writes.
 // ---------------------------------------------------------------------------
-async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource, _readPublishRequest = null, now = () => Date.now() }, req) {
+async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource, _readPublishRequest = null, _resolveAccess = resolveAccess, now = () => Date.now() }, req) {
   if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
   const rid = req.query && req.query.restaurantId;
 
@@ -193,10 +193,22 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     }
   }
 
+  /* T-d — «Enviar al dueño para publicar»: does THIS caller send instead of publish? Decided by the SAME predicate
+     catalogRequestPublish enforces (publish-request.js canRequestPublish), never guessed by the client from caps (dispatchers
+     and staff also hold catalog.publish). Only a non-owner on a platform-factura brand can qualify, so only that caller pays
+     the one extra resolve (the caller was verified and context-checked by authorize above). Fail CLOSED (false): the editor
+     then shows today's path, and the server's fiscal gate still decides any publish. */
+  let publishViaRequest = false;
+  if (usesPlatformFactura(rid) && !can(auth, 'catalog.fiscal_ack') && typeof auth.uid === 'string') {
+    try { publishViaRequest = require('./publish-request').canRequestPublish(await _resolveAccess({ db }, { uid: auth.uid, token: {} }, rid), rid); }
+    catch (_) { publishViaRequest = false; }
+  }
+
   return reply(200, {
     renderedCategories,
     groupAuthoring,
     ...(publishRequest ? { publish_request: publishRequest } : {}),
+    publish_via_request: publishViaRequest,
     choiceBadges,
     restaurantName,
     ...(draftUnpublishable ? { draft_unpublishable: draftUnpublishable } : {}),

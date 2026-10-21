@@ -42,5 +42,5 @@ test('third brand «sabor»: owner invites → manager accepts → acts per capa
   assert.strictEqual(fiscalPublishGate(facturaRid, auth, { fiscalAck: true }).body.error, 'not_owner', 'flag on → the owner must confirm');
 
   assert.deepStrictEqual((await H.handle('memberList', deps, req('owner', { brandId: 'sabor' }))).body,
-    { ok: true, owner: { uid: 'ownerS1', name: null, email: null }, managers: [{ uid: 'mgrSab01', name: 'Gerente Prueba', email: 'gerente@sabor.test', rids: ['sb_centro'], can_edit_menu: true }], pending: [] });
+    { ok: true, owner: { uid: 'ownerS1', name: null, email: null }, managers: [{ uid: 'mgrSab01', name: 'Gerente Prueba', email: 'gerente@sabor.test', rids: ['sb_centro'], can_edit_menu: true }], pending: [], uses_platform_factura: false });   // «sabor» has no platform factura
 });

@@ -120,7 +120,7 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
   const { mutateRoster } = require('../access/roster');
   const cli = { kind: 'cli', operator: 'portal-ops-test' };
   for (const [b, uid] of [['x_pizza', OWNER], ['la_musa', OWNER], ['tencha', OWNER_T], ['solo', OWNER_S], ['ghost', OWNER_S]]) {
-    const r = await mutateRoster({ db }, b, cli, { type: 'bootstrap_owner', uid });
+    const r = await mutateRoster({ db }, b, cli, { type: 'bootstrap_owner', uid, profile: { name: 'Dueña Prueba', email: `${uid.toLowerCase()}@portal.test` } });   // an ownership grant carries a name (owner-name ruling, 3a T-c)
     assert.ok(r.ok, `bootstrap ${b}: ${JSON.stringify(r)}`);
   }
   assert.ok((await mutateRoster({ db }, 'tencha', { kind: 'owner', uid: OWNER_T }, { type: 'grant_manager', uid: MGR, rids: ['tencha_norte'], can_edit_menu: false })).ok);

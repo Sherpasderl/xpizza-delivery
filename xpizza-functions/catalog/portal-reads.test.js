@@ -497,8 +497,10 @@ const TWO = {
     }, gq);
     // 1D add-product A adds renderedCategories + restaurantName (always present); draft_unpublishable appears only
     // when the saved draft cannot publish (asserted in its own cell below).
-    assert.deepStrictEqual(Object.keys(r.body).sort(), ['activeVersionId', 'choiceBadges', 'groupAuthoring', 'renderedCategories', 'restaurantName', 'source', 'sourceUpdateTime', 'usesPlatformFactura'],
-      'the four existing fields plus add-product A\'s two and add-product B\'s two — nothing else appeared');
+    // T-d adds publish_via_request (always present, a boolean; false for the owner — asserted in its own test)
+    assert.deepStrictEqual(Object.keys(r.body).sort(), ['activeVersionId', 'choiceBadges', 'groupAuthoring', 'publish_via_request', 'renderedCategories', 'restaurantName', 'source', 'sourceUpdateTime', 'usesPlatformFactura'],
+      'the four existing fields plus add-product A\'s two, add-product B\'s two and T-d\'s one — nothing else appeared');
+    assert.strictEqual(r.body.publish_via_request, false, 'the owner publishes: never offered the send-to-owner path');
     assert.deepStrictEqual(r.body.source, src, 'the source is untouched');
     assert.strictEqual(r.body.sourceUpdateTime, '1788754374.634000000', 'the CAS baseline is byte-identical to before');
     assert.strictEqual(r.body.activeVersionId, 'v-9', 'and the live version id');
@@ -510,6 +512,33 @@ const TWO = {
     assert.ok(!('usesPlatformFactura' in denied.body), 'and the refusal leaks no capability flag');
     assert.ok(!('groupAuthoring' in denied.body) && !('choiceBadges' in denied.body), 'nor the group facts');
     ok('the new field is purely additive: the three existing fields are byte-identical and a refusal carries nothing new');
+  }
+
+  {
+    // T-d — publish_via_request is the SHARED canRequestPublish over the CALLER's resolved facts: the same predicate
+    // catalogRequestPublish enforces, so the «Enviar al dueño» CTA exists exactly when the endpoint accepts.
+    const PR = require('./publish-request');
+    const gq = { method: 'GET', query: { restaurantId: 'x_pizza' }, get: () => 'Bearer tok' };
+    const asMgr = async () => ({ ok: true, uid: 'mgr1', role: 'manager', actor: 'm@m.hn', caps: ['catalog.read_editor', 'catalog.edit', 'catalog.publish'] });
+    const asOwnerCaps = async () => ({ ok: true, uid: 'o1', role: 'owner', actor: 'o@m.hn', caps: ['catalog.read_editor', 'catalog.publish', 'catalog.fiscal_ack'] });
+    const facts = (f, state = 'member') => ({ ok: true, facts: f, state, caps: [] });
+    const run = async (resolved, authorize = asMgr) => {
+      let calls = 0;
+      const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize, readActiveVersionId: async () => 'v-9', ...mkFs(realSource('x_pizza')),
+        _resolveAccess: async () => { calls += 1; if (resolved instanceof Error) throw resolved; return resolved; } }, gq);
+      return { v: r.body.publish_via_request, calls };
+    };
+    assert.deepStrictEqual(await run(facts({ manager: true, manager_menu: true })), { v: true, calls: 1 }, 'a manager with the menu permission on a factura brand SENDS');
+    assert.strictEqual((await run(facts({ manager: true, manager_menu: false }))).v, false, 'no menu permission → no send');
+    assert.strictEqual((await run(facts({ dispatcher: true }))).v, false, 'a dispatcher (who holds catalog.publish) never sends');
+    assert.strictEqual((await run(facts({ manager: true, manager_menu: true }, 'retired'))).v, false, 'a retired location → no send');
+    assert.strictEqual((await run(facts({ manager: true, manager_menu: true, owner: true }))).v, false, 'the owner (also a manager) publishes');
+    assert.strictEqual((await run(new Error('rtdb down'))).v, false, 'a failed resolve fails CLOSED');
+    assert.deepStrictEqual(await run(facts({ owner: true }), asOwnerCaps), { v: false, calls: 0 }, 'the owner: no extra read at all');
+    assert.strictEqual(PR.canRequestPublish(facts({ manager: true, manager_menu: true }), 'la_musa'), false, 'a non-factura brand: the manager publishes directly');
+    assert.ok(/if \(!canRequestPublish\(a, rid\)\) return reply\(403/.test(require('fs').readFileSync(require('path').join(__dirname, 'publish-request.js'), 'utf8')),
+      'premise: requestPublishCore enforces the SAME function');
+    ok('T-d publish_via_request: the shared canRequestPublish — manager + menu permission on a factura brand only; fail closed; no extra read for the owner');
   }
 
   {

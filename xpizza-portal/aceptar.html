@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="es" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Sherpa — Aceptá tu invitación</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./aceptar.css">
+<script src="sherpa-client.js"></script>
+</head>
+<body>
+<!-- PLAN-portal-team-invites T-c — the invitee's page, to the OWNER-APPROVED mockup v8. One stage visible at a time
+     (aceptar.js decides from the restored state on every load). No inline script or style: the portal's CSP forbids both. -->
+<header class="actop">
+  <div class="bmark"><svg viewBox="0 0 48 48" role="img" aria-label="Sherpa"><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#F4F4F2" stroke-width="4.4" fill="none"></path><path d="M24 12.4 L28 24 L20 24 Z" fill="#8EC0FF"></path><path d="M28 24 L24 31.8 L20 24 Z" fill="#F4F4F2"></path><circle cx="24" cy="24" r="2.1" fill="#0A0A0B"></circle></svg></div>
+  <div class="bname">Sherpa</div>
+  <span class="sep" id="restsep" hidden></span>
+  <span class="rest" id="restname" hidden></span>
+</header>
+
+<div class="page">
+  <!-- A1 · Aceptá tu invitación -->
+  <main class="acmain" id="st-email" hidden>
+    <div>
+      <h1>Aceptá tu invitación</h1>
+      <p class="lede" id="invite-lede"></p>
+    </div>
+    <form class="acform" id="emailform" novalidate>
+      <div class="fld" id="correo-fld">
+        <label for="correo">Correo</label>
+        <input id="correo" name="correo" type="email" inputmode="email" autocomplete="email" placeholder="nombre@correo.com" required>
+        <span class="fnote">Escribí el correo donde recibiste la invitación.</span>
+      </div>
+      <button class="btn accent full" id="emailbtn" type="submit">Continuar</button>
+    </form>
+    <p class="acfoot">Si no esperabas esta invitación, podés cerrar esta página.</p>
+  </main>
+
+  <!-- A2b · Terminando de activar tu acceso (the server's in-flight window: auto-retry, then the fallback) -->
+  <main class="acmain" id="st-busy" hidden>
+    <div id="busy-live">
+      <div class="spin" aria-hidden="true"></div>
+      <h1>Terminando de activar tu acceso…</h1>
+      <p class="lede">Esto puede tardar unos segundos.</p>
+    </div>
+    <div class="retry" id="busy-retry">
+      <span class="fnote">Si no responde, reintentamos solos en 30 s.</span>
+      <button class="btn" id="retry1" type="button">Reintentar</button>
+    </div>
+    <div class="errbox neutral" id="busy-fallback" role="alert" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>
+      <div class="et"><b>Todavía no pudimos activar tu acceso</b><p>Tu invitación sigue reservada para vos. Intentá de nuevo en un momento.</p></div>
+      <div class="acts"><button class="btn" id="retry2" type="button">Reintentar</button><a class="tlink" href="./">Ir al portal</a></div>
+    </div>
+  </main>
+
+  <!-- A2 · Creá tu contraseña -->
+  <main class="acmain" id="st-password" hidden>
+    <div class="callout green" role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg><div><b>Listo:</b> <span id="welcome-text"></span></div></div>
+    <div><h1>Creá tu contraseña</h1></div>
+    <form class="acform" id="pwform" novalidate>
+      <div class="fld" id="pw-fld">
+        <label for="pw">Contraseña</label>
+        <div class="pw">
+          <input id="pw" name="pw" type="password" minlength="8" autocomplete="new-password" required>
+          <button class="eye" id="eye" type="button" aria-pressed="false" aria-controls="pw">Mostrar</button>
+        </div>
+        <span class="fnote" id="pw-note">Mínimo 8 caracteres. La vas a usar para entrar al portal.</span>
+      </div>
+      <button class="btn accent full" id="pwbtn" type="submit">Entrar al portal</button>
+    </form>
+    <div id="reset-sent" hidden>
+      <div class="callout green" role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg><div><b>Te enviamos un enlace</b> <span id="reset-text"></span></div></div>
+      <a class="btn full" href="./">Ir al portal</a>
+    </div>
+    <p class="acfoot" id="whoami" hidden></p>
+  </main>
+
+  <!-- A3 · one error card at a time -->
+  <main class="acmain" id="st-error" hidden>
+    <div><h1>Aceptá tu invitación</h1></div>
+    <div class="errbox" id="err-card" role="alert">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>
+      <div class="et"><b id="err-title"></b><p id="err-text"></p></div>
+      <div class="acts"><a class="btn" id="err-portal" href="./" hidden>Ir al portal</a><button class="btn" id="err-action" type="button" hidden></button></div>
+    </div>
+  </main>
+
+  <!-- A4 · Este enlace no es válido -->
+  <main class="acmain" id="st-invalid" hidden>
+    <div>
+      <div class="linkmark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l2.8-2.8a5 5 0 0 0-7.1-7.1L11.5 4.4"></path><path d="M14 11a5 5 0 0 0-7.1 0l-2.8 2.8a5 5 0 0 0 7.1 7.1l1.3-1.3"></path><path d="M4 4l16 16"></path></svg></div>
+      <h1>Este enlace no es válido</h1>
+      <p class="lede">Abrí esta página desde el enlace del correo de invitación.</p>
+    </div>
+    <a class="btn full" href="./">Ir al portal</a>
+    <p class="acfoot">Si el enlace no funciona, pedile al dueño que te reenvíe la invitación.</p>
+  </main>
+</div>
+
+<script type="module" src="./aceptar-boot.js"></script>
+</body>
+</html>
