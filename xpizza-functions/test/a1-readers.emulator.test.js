@@ -78,7 +78,8 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('a1-reader
 const DIR = path.join(__dirname, '..');
 
 // ── the BASE handlers, compiled from git in memory; the A-1-changed modules resolve to their BASE twins ──
-const BASE_FILES = ['index.js', 'createorder-classify.js', 'rewards-redeem-intake.js', 'rewards-reserve.js', 'pixelpay-hosted-charge.js', 'pixelpay-charge.js', 'catalog/canonical-binding.js'];
+// + assign-hub.js: the brand-agnostic server removed its X_PIZZA_HUB export, which the BASE index.js reads at load (base :5582)
+const BASE_FILES = ['index.js', 'createorder-classify.js', 'rewards-redeem-intake.js', 'rewards-reserve.js', 'pixelpay-hosted-charge.js', 'pixelpay-charge.js', 'catalog/canonical-binding.js', 'assign-hub.js'];
 const baseMods = {};
 function resolveBaseId(fromFile, id) {
   if (!id.startsWith('.')) return null;
