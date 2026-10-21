@@ -24,9 +24,16 @@ const TODAY = '2026-10-20';
 const at = (date, h, m = 0) => T.dayStartMs(date) + h * 3600000 + m * 60000;
 
 // Membership double: RTDB paths that exist. `throwAll` simulates an outage.
+// PLAN-portal-membership r3: an owner entry written as restaurants/{rid}/owners/{uid} seeds the membership model instead
+// (brand_members/{rid}/owners/{uid} + a valid legacy /brands/{rid}); every other path exists as written.
+const legacyBrand = (rid) => ({ name: rid, active: true, locations: { [rid]: 'member' }, activation: { state: 'legacy', since: 1 } });
 function members(paths, { throwAll = false } = {}) {
-  const set = new Set(paths);
-  return { ref: (p) => ({ once: async () => { if (throwAll) throw new Error('down'); return { exists: () => set.has(p) }; } }) };
+  const vals = new Map();
+  for (const p of paths) {
+    const m = /^restaurants\/([^/]+)\/owners\/(.+)$/.exec(p);
+    if (m) { vals.set(`brand_members/${m[1]}/owners/${m[2]}`, { granted_at: 1, granted_by: 'x' }); vals.set(`brands/${m[1]}`, legacyBrand(m[1])); } else vals.set(p, true);
+  }
+  return { ref: (p) => ({ once: async () => { if (throwAll) throw new Error('down'); const v = vals.has(p) ? vals.get(p) : null; return { exists: () => v !== null, val: () => v }; } }) };
 }
 const TOKENS = {
   ownerA: { uid: 'uA' }, ownerB: { uid: 'uB' }, staffA: { uid: 'sA' }, disp: { uid: 'd1' }, cust: { uid: 'c1', customer: true },

@@ -24,21 +24,27 @@ function mkDb(map, { throwOn = null } = {}) {
   const reads = [];
   return {
     reads,
-    ref: (p) => ({
-      get: async () => {
+    ref: (p) => {
+      const read = async () => {
         reads.push(p);
         if (throwOn && p.includes(throwOn)) throw new Error('rtdb down');
         return { val: () => (Object.prototype.hasOwnProperty.call(map, p) ? map[p] : null) };
-      },
-    }),
+      };
+      return { get: read, once: read };
+    },
   };
 }
+// PLAN-portal-membership r3: ownership is brand_members/{brand}/owners (forward, authoritative) + member_of (discovery), each
+// location a valid legacy-singleton brand here.
+const legacy = (rid) => ({ name: rid, active: true, locations: { [rid]: 'member' }, activation: { state: 'legacy', since: 1 } });
+const owns = (uid, rids) => Object.assign({ [`member_of/${uid}`]: { brands: Object.fromEntries(rids.map((r) => [r, 'owner'])) } },
+  ...rids.map((r) => ({ [`brand_members/${r}/owners/${uid}`]: { granted_at: 1, granted_by: 'cli:op' }, [`brands/${r}`]: legacy(r) })));
 const req = (over = {}) => ({ method: 'GET', get: (h) => (h.toLowerCase() === 'authorization' ? 'Bearer tok' : undefined), ...over });
 const asUid = (uid, extra = {}) => async () => ({ uid, ...extra });
 
 // Brand-agnostic throughout: nothing here knows our restaurants exist.
 const TWO = {
-  'owner_restaurants/uidOwner001': { merch_b: true, merch_a: true },
+  ...owns('uidOwner001', ['merch_b', 'merch_a']),
   'restaurants/merch_a/identity/name': 'Merchant A',
   'restaurants/merch_b/identity/name': 'Merchant B',
 };
@@ -60,7 +66,7 @@ const TWO = {
   }
   {
     // A third merchant that did not exist when this was written works unchanged — no code knows it.
-    const db = mkDb({ 'owner_restaurants/uidThird0001': { any_merchant_3: true }, 'restaurants/any_merchant_3/identity/name': 'Pupusería Lupe' });
+    const db = mkDb({ ...owns('uidThird0001', ['any_merchant_3']), 'restaurants/any_merchant_3/identity/name': 'Pupusería Lupe' });
     const r = await getMyRestaurantsCore({ db, verifyIdToken: asUid('uidThird0001') }, req());
     assert.deepStrictEqual(r.body.restaurants, [{ rid: 'any_merchant_3', name: 'Pupusería Lupe' }], 'a config-only third merchant resolves identically');
     ok('brand-agnostic: a merchant that did not exist when this was written needs no code change');
@@ -68,7 +74,7 @@ const TWO = {
   {
     // A restaurant with no name yet is still THEIRS — it must appear, labelled by its id. Falling back
     // is right; dropping it would hide a restaurant from the person who owns it.
-    const db = mkDb({ 'owner_restaurants/uidOwner001': { merch_a: true, merch_b: true, merch_c: true },
+    const db = mkDb({ ...owns('uidOwner001', ['merch_a', 'merch_b', 'merch_c']),
       'restaurants/merch_a/identity/name': '', 'restaurants/merch_b/identity/name': '   ', 'restaurants/merch_c/identity/name': { not: 'a string' } });
     const r = await getMyRestaurantsCore({ db, verifyIdToken: asUid('uidOwner001') }, req());
     assert.deepStrictEqual(r.body.restaurants.map((x) => x.name), ['merch_a', 'merch_b', 'merch_c'],
@@ -125,11 +131,30 @@ const TWO = {
     assert.ok(!JSON.stringify(r.body).includes('merch_'), 'and learns nothing about what that uid owns');
     ok('a customer-claim token is refused before the lookup, using a uid that WOULD have resolved');
   }
+  {
+    // PLAN-portal-membership r3 §3.1: a handheld device token is refused before the lookup too
+    const db = mkDb(TWO);
+    const r = await getMyRestaurantsCore({ db, verifyIdToken: asUid('uidOwner001', { handheld: true, rid: 'merch_a' }) }, req());
+    assert.deepStrictEqual([r.status, db.reads], [403, []], 'a device token is a 403 before any read');
+    ok('a handheld-claim token is refused before the lookup');
+  }
+  {
+    // PLAN-portal-membership r3 §4.1: member_of only DISCOVERS — an index entry without a forward grant never lists
+    const db = mkDb({ 'member_of/uidStale0001': { brands: { merch_a: 'owner' } }, 'brands/merch_a': legacy('merch_a'), 'restaurants/merch_a/identity/name': 'A' });
+    const r = await getMyRestaurantsCore({ db, verifyIdToken: asUid('uidStale0001') }, req());
+    assert.deepStrictEqual([r.status, r.body.restaurants], [200, []], 'a stale index entry (grant revoked) lists nothing');
+    // a manager of a member location lists it (O1 capabilities), through the brand's roster
+    const mdb = mkDb({ 'member_of/uidMgr00001': { locations: { merch_a: 'manager' } }, 'brands/merch_a': legacy('merch_a'),
+      'brand_members/merch_a/managers/merch_a/uidMgr00001': { granted_at: 1, granted_by: 'x' }, 'restaurants/merch_a/identity/name': 'A' });
+    const m = await getMyRestaurantsCore({ db: mdb, verifyIdToken: asUid('uidMgr00001') }, req());
+    assert.deepStrictEqual(m.body.restaurants, [{ rid: 'merch_a', name: 'A' }], 'a manager sees the location they manage');
+    ok('discovery is not authority: a stale index entry lists nothing; a manager lists their location');
+  }
 
   // ── (4) AN OUTAGE IS A 503 — never a 403, never a partial list ───────────────────────────────
   {
     // The reverse index is down.
-    const r = await getMyRestaurantsCore({ db: mkDb(TWO, { throwOn: 'owner_restaurants' }), verifyIdToken: asUid('uidOwner001') }, req());
+    const r = await getMyRestaurantsCore({ db: mkDb(TWO, { throwOn: 'member_of' }), verifyIdToken: asUid('uidOwner001') }, req());
     assert.strictEqual(r.status, 503, 'a reverse-index outage is a 503');
     assert.strictEqual(r.body.error, 'read_unavailable', 'typed');
     assert.ok(r.body.retryable, 'and marked retryable — the caller should try again, not re-authenticate');
@@ -144,7 +169,7 @@ const TWO = {
   {
     // 403 is a statement about the caller; 503 is a statement about us. Confusing them sends a merchant
     // to re-authenticate over an outage, or makes a real permissions problem look transient.
-    const outage = await getMyRestaurantsCore({ db: mkDb(TWO, { throwOn: 'owner_restaurants' }), verifyIdToken: asUid('uidOwner001') }, req());
+    const outage = await getMyRestaurantsCore({ db: mkDb(TWO, { throwOn: 'member_of' }), verifyIdToken: asUid('uidOwner001') }, req());
     const forbidden = await getMyRestaurantsCore({ db: mkDb(TWO), verifyIdToken: asUid('uidOwner001', { customer: true }) }, req());
     assert.notStrictEqual(outage.status, forbidden.status, 'an outage and a refusal must not share a status code');
     assert.strictEqual(outage.status, 503, 'outage → 503');

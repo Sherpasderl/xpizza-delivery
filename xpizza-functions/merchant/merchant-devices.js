@@ -14,6 +14,7 @@
 const V = require('./merchant-validate');
 const { pairingEnabled } = require('./merchant-gate');
 const { authorizeHandheld, authorizeManager } = require('./merchant-scope');
+const M = require('../access/membership');
 
 const AUTH_CODE = { unauthenticated: 'unauthenticated', forbidden: 'permission-denied', unavailable: 'unavailable' };
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -23,8 +24,8 @@ function onlyKeys(data, allowed, HttpsError) {
   const extra = Object.keys(data).filter((k) => !allowed.includes(k));
   if (extra.length) throw new HttpsError('invalid-argument', `unexpected fields: ${extra.sort().join(', ')}`);
 }
-async function asManager({ db, resolveBrand, HttpsError }, auth, rid) {
-  const a = await authorizeManager(db, auth, rid, { resolveBrand });
+async function asManager({ db, resolveBrand, HttpsError, authorizeManager: authz = authorizeManager }, auth, rid) {   // authz: the membership cutover compare runs the legacy gate through the SAME core
+  const a = await authz(db, auth, rid, { resolveBrand });
   if (!a.ok) throw new HttpsError(AUTH_CODE[a.code] || 'permission-denied', a.code);
   return a.uid;
 }
@@ -81,9 +82,10 @@ async function heartbeat(deps, auth, data) {
   return { ok: true };
 }
 
-// merchantMyLocations (advisor O-2): the locations a HUMAN may pair a device for — every member location of a brand they own,
-// plus each member location they manage. Retired locations are excluded. Reads /brands (small) and per-candidate owner /
-// manager / location_name / prep_default_min nodes; never /orders. Devices and customers are refused; a read failure is `unavailable`.
+// merchantMyLocations (advisor O-2; PLAN-portal-membership r3 §4.2) — the EXACT H1 array over the ONE "my locations": the
+// PAIRING-ELIGIBLE locations (state member + device.pair capability) — retired locations never enter the picker. Ordered by
+// brand then rid (today's order). member_of discovers, the forward grants authorize. Devices and customers are refused; a read
+// failure is `unavailable`.
 async function myLocations(deps, auth, _data) {
   const { db, HttpsError } = deps;
   if (!auth || !auth.uid) throw new HttpsError('unauthenticated', 'sign in');
@@ -92,21 +94,15 @@ async function myLocations(deps, auth, _data) {
   const val = async (p) => (await db.ref(p).once('value')).val();
   const out = [];
   try {
-    const brands = (await val('brands')) || {};
-    for (const b of Object.keys(brands).sort()) {
-      const locs = isObj(brands[b]) && isObj(brands[b].locations) ? brands[b].locations : {};
-      const members = Object.keys(locs).filter((rid) => locs[rid] === 'member' && V.vRid(rid)).sort();
-      if (!members.length) continue;
-      const owner = (await val(`restaurants/${b}/owners/${auth.uid}`)) != null;
-      for (const rid of members) {
-        if (!owner && (await val(`restaurants/${rid}/managers/${auth.uid}`)) == null) continue;
-        const name = await val(`restaurants/${rid}/identity/location_name`);
-        const base = V.vPrepBase(await val(`restaurants/${rid}/identity/prep_default_min`));
-        out.push({ rid, brand_id: b, location_name: typeof name === 'string' ? name : null, prep_default_min: base });
-      }
+    const locs = await M.myLocations({ db }, { uid: auth.uid, token: t });
+    for (const l of locs) {
+      if (l.state !== 'member' || !l.caps.includes('device.pair')) continue;
+      const name = await val(`restaurants/${l.rid}/identity/location_name`);
+      const base = V.vPrepBase(await val(`restaurants/${l.rid}/identity/prep_default_min`));
+      out.push({ rid: l.rid, brand_id: l.brand_id, location_name: typeof name === 'string' ? name : null, prep_default_min: base });
     }
   } catch (_) { throw new HttpsError('unavailable', 'locations unreadable'); }
-  return out;
+  return out.sort((a, z) => (a.brand_id < z.brand_id ? -1 : a.brand_id > z.brand_id ? 1 : a.rid < z.rid ? -1 : a.rid > z.rid ? 1 : 0));
 }
 
 module.exports = { pairDevice, revokeDevice, heartbeat, myLocations };

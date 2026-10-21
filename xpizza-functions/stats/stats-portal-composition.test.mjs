@@ -59,8 +59,11 @@ const rtdb = makeRtdb(orders);
 await J.runStatsRollup({ rtdb, fsdb, keyer, listRestaurants: async () => ['r_a', 'r_b'], log: () => {} }, { nowMs: NOW, mode: 'range', from: '2026-10-01', to: '2026-10-19', commit: true });
 
 // ── the server, wrapped exactly as index.js exports.getSalesStats does ──────────────────────────
-const MEMBERS = new Set(['restaurants/r_a/owners/uA', 'restaurants/r_b/owners/uB']);
-const memberDb = { ref: (p) => ({ once: async () => ({ exists: () => MEMBERS.has(p) }) }) };
+// PLAN-portal-membership r3: owners in the membership model (brand_members + a valid legacy brand record)
+const legacyBrand = (rid) => ({ name: rid, active: true, locations: { [rid]: 'member' }, activation: { state: 'legacy', since: 1 } });
+const MEMBERS = new Map([['brands/r_a', legacyBrand('r_a')], ['brands/r_b', legacyBrand('r_b')],
+  ['brand_members/r_a/owners/uA', { granted_at: 1, granted_by: 'x' }], ['brand_members/r_b/owners/uB', { granted_at: 1, granted_by: 'x' }]]);
+const memberDb = { ref: (p) => ({ once: async () => { const v = MEMBERS.has(p) ? MEMBERS.get(p) : null; return { exists: () => v !== null, val: () => v }; } }) };
 const TOKENS = { 'TK-test': { uid: 'uA' } };
 const liveCache = A.makeLiveCache();
 const served = [];
@@ -165,7 +168,7 @@ await H.settle(30);
 
 // 3. a REAL non-owner answer (the server's 403 not_owner, staff token) renders the owner-only message
 {
-  MEMBERS.add('restaurants/r_a/kitchen_staff/sA');
+  MEMBERS.set('restaurants/r_a/kitchen_staff/sA', true);
   TOKENS['TK-staff'] = { uid: 'sA' };
   const res = await serve('https://x/getSalesStats?restaurantId=r_a&from=2026-10-14&to=2026-10-20', { headers: { Authorization: 'Bearer TK-staff' } });
   assert.strictEqual(res.status, 403);

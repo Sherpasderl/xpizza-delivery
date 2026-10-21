@@ -112,6 +112,9 @@
     },
 
     "brands": { ".read": false, ".write": false },
+    "brand_members": { ".read": false, ".write": false },
+    "member_of": { ".read": false, ".write": false },
+    "member_invites": { ".read": false, ".write": false },
     "public": { ".read": false, ".write": false, "brands": { ".read": true } },
 
     "dispatcher_alerts": {

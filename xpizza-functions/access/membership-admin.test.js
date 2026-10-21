@@ -1,0 +1,165 @@
+'use strict';
+// PLAN-portal-membership r3 §7 / §10 — the one-time cutover, over a PROD-SHAPED fixture (one human owner of two legacy
+// single-location brands, zero managers, one kitchen staff each, a dispatcher) and every off-shape the census must refuse.
+const test = require('node:test');
+const assert = require('node:assert');
+const { createFakeDb } = require('../merchant/_fake-db');
+const C = require('./membership-admin-core');
+
+const legacy = (rid) => ({ name: rid, active: true, locations: { [rid]: 'member' }, activation: { state: 'legacy', since: 1 } });
+const prod = () => ({
+  restaurants: {
+    x_pizza: { identity: { name: 'X. Pizza' }, owners: { ownerP1: true }, kitchen_staff: { kitchenA1: true } },
+    la_musa: { identity: { name: 'La Musa' }, owners: { ownerP1: true }, kitchen_staff: { kitchenB1: true } },
+  },
+  owner_restaurants: { ownerP1: { x_pizza: true, la_musa: true } },
+  brands: { x_pizza: legacy('x_pizza'), la_musa: legacy('la_musa') },
+  dispatchers: { dispatch01: true },
+});
+const run = async (db, op, apply = false) => { const logs = []; const code = await C.runMembershipAdmin({ db, op, apply, operator: 'op', now: () => 5, log: (l) => logs.push(l) }); return { code, logs }; };
+
+test('census: the prod shape is clean and yields exactly the verified owners', async () => {
+  const c = await C.census(createFakeDb(prod()));
+  assert.strictEqual(c.ok, true, JSON.stringify(c.findings));
+  assert.deepStrictEqual(c.owners, [{ uid: 'ownerP1', rid: 'la_musa' }, { uid: 'ownerP1', rid: 'x_pizza' }]);
+  assert.deepStrictEqual(c.dispatchers, ['dispatch01']);
+});
+
+test('census REFUSES every off-shape (a reverse-only entry never becomes an owner)', async () => {
+  const cases = [
+    ['reverse_only_owner', (w) => { w.owner_restaurants.ghost001 = { x_pizza: true }; }],
+    ['forward_only_owner', (w) => { w.restaurants.x_pizza.owners.fwdOnly01 = true; }],
+    ['not_validated_legacy_singleton', (w) => { w.brands.x_pizza.activation.state = 'on'; }],
+    ['not_validated_legacy_singleton', (w) => { delete w.brands.la_musa; }],
+    ['not_validated_legacy_singleton', (w) => { w.restaurants.x_pizza.identity.brand_id = 'other_b'; }],
+    ['legacy_manager_present', (w) => { w.restaurants.la_musa.managers = { mgr00001: true }; }],
+    ['brand_member_manager_present', (w) => { w.brand_members = { x_pizza: { managers: { x_pizza: { mgr00002: { granted_at: 1 } } } } }; }],
+    ['unexpected_new_owner', (w) => { w.brand_members = { x_pizza: { owners: { stranger1: { granted_at: 1 } } } }; }],
+    ['bad_uid', (w) => { w.restaurants.x_pizza.owners['u_bad'] = true; w.owner_restaurants.u_bad = { x_pizza: true }; }],
+    ['multiple_owners', (w) => { w.restaurants.x_pizza.owners.ownerP2 = true; w.owner_restaurants.ownerP2 = { x_pizza: true }; }],
+  ];
+  for (const [code, mut] of cases) {
+    const w = prod(); mut(w);
+    const c = await C.census(createFakeDb(w));
+    assert.strictEqual(c.ok, false, `${code} must refuse`);
+    assert.ok(c.findings.some((f) => f.code === code), `${code} reported: ${JSON.stringify(c.findings)}`);
+    assert.ok(!c.owners.some((o) => o.uid === 'ghost001'), 'a reverse-only entry is never an owner');
+    assert.strictEqual((await run(createFakeDb(w), 'census')).code, 3, 'the CLI exits non-zero');
+    assert.strictEqual((await run(createFakeDb(w), 'backfill', true)).code, 3, 'and backfill refuses on an unclean census');
+  }
+});
+
+test('runbook: compare refuses BEFORE the backfill; backfill (idempotent) → reconcile clean → compare identical', async () => {
+  const db = createFakeDb(prod());
+  const before = await run(db, 'compare');
+  assert.strictEqual(before.code, 6, 'the new readers see nothing yet — a difference, so the cutover cannot proceed');
+  assert.strictEqual((await run(db, 'backfill')).code, 0, 'dry run');
+  assert.strictEqual(db.get('brand_members'), null, 'a dry run writes nothing');
+  assert.strictEqual((await run(db, 'backfill', true)).code, 0);
+  assert.deepStrictEqual(Object.keys(db.get('brand_members')).sort(), ['la_musa', 'x_pizza']);
+  assert.deepStrictEqual(db.get('member_of/ownerP1'), { brands: { x_pizza: 'owner', la_musa: 'owner' } });
+  assert.strictEqual(db.get('restaurants/x_pizza/owners/ownerP1'), true, 'legacy nodes untouched (the rollback source)');
+  assert.strictEqual((await run(db, 'backfill', true)).code, 0, 'idempotent re-run');
+  assert.strictEqual((await run(db, 'reconcile')).code, 0, 'the index matches the rosters');
+  const after = await run(db, 'compare');
+  assert.strictEqual(after.code, 0, `compare must be identical: ${after.logs.join('\n')}`);
+});
+
+test('compare DETECTS an injected difference (new-source-only, no legacy fallback masks it)', async () => {
+  const db = createFakeDb(prod());
+  await run(db, 'backfill', true);
+  db.put('brand_members/la_musa/owners/ownerP1', null);   // the new grant missing for one brand
+  const r = await run(db, 'compare');
+  assert.strictEqual(r.code, 6);
+  assert.ok(/getMyRestaurants|catalog\.fiscal_ack/.test(r.logs.join('\n')), 'the diff names the operation');
+});
+
+test('reconcile: missing / stale / malformed reported; --apply repairs the INDEX only (never a grant)', async () => {
+  const db = createFakeDb(prod());
+  await run(db, 'backfill', true);
+  db.put('member_of/ownerP1/brands/la_musa', null);             // missing
+  db.put('member_of/staleUid1', { brands: { x_pizza: 'owner' } });   // stale (no forward grant)
+  db.put('member_of/junkUid01', 'nonsense');                    // malformed
+  const r = await C.reconcile(db);
+  assert.deepStrictEqual([r.ok, r.missing, r.stale, r.malformed], [false, ['member_of/ownerP1/brands/la_musa'], ['member_of/staleUid1/brands/x_pizza'], ['member_of/junkUid01']]);
+  assert.strictEqual((await run(db, 'reconcile')).code, 5, 'blocking until clean');
+  const rosterBefore = JSON.stringify(db.get('brand_members'));
+  assert.strictEqual((await run(db, 'reconcile', true)).code, 0, 'repaired, then re-verified');
+  assert.strictEqual(JSON.stringify(db.get('brand_members')), rosterBefore, 'grants untouched');
+  assert.strictEqual(db.get('member_of/staleUid1/brands/x_pizza'), null, 'the stale entry is removed (RTDB prunes the empty parent)');
+});
+
+test('transfer-owner: the ONLY way to change a brand\'s single owner — CLI, dry run unless --apply', async () => {
+  const db = createFakeDb(prod());
+  await run(db, 'backfill', true);
+  const logs = []; const go = (apply) => C.runMembershipAdmin({ db, op: 'transfer-owner', args: ['x_pizza', 'newOwner1'], apply, operator: 'op', now: () => 9, log: (l) => logs.push(l) });
+  assert.strictEqual(await go(false), 0);
+  assert.deepStrictEqual(Object.keys(db.get('brand_members/x_pizza/owners')), ['ownerP1'], 'a dry run changes nothing');
+  assert.strictEqual(await go(true), 0);
+  assert.deepStrictEqual(Object.keys(db.get('brand_members/x_pizza/owners')), ['newOwner1'], 'replaced — still exactly one owner');
+  assert.strictEqual(db.get('member_of/ownerP1/brands/x_pizza'), null);
+});
+
+test('compare REFUSES (exit 3) when the census is not clean — e.g. a legacy manager appears after the backfill (codex build r1 P2-5)', async () => {
+  const db = createFakeDb(prod());
+  await run(db, 'backfill', true);
+  db.put('restaurants/la_musa/managers/mgrLegacy1', true);
+  assert.strictEqual((await run(db, 'census')).code, 3);
+  assert.strictEqual((await run(db, 'compare')).code, 3, 'compare refuses before comparing anything');
+});
+
+test('compare runs the ACTUAL operations (codex build r1 P2-6 + r2 P2-1): the real publish (edit, fiscal ack, add product) and device cores, role-distinct, identical old vs new', async () => {
+  const db = createFakeDb(prod());
+  await run(db, 'backfill', true);
+  const { authorizeCatalogEdit } = require('../catalog/catalog-edit-auth');
+  const L = require('./legacy-readers');
+  const owner = await C.operationResults(db, 'ownerP1', 'x_pizza', authorizeCatalogEdit);
+  const ownerLm = await C.operationResults(db, 'ownerP1', 'la_musa', authorizeCatalogEdit);
+  const disp = await C.operationResults(db, 'dispatch01', 'x_pizza', authorizeCatalogEdit);
+  const none = await C.operationResults(db, 'nobody0001', 'x_pizza', authorizeCatalogEdit);
+  assert.notDeepStrictEqual(owner.getEditableCatalog, disp.getEditableCatalog, 'non-vacuous: the owner passes the editor gate, a dispatcher does not');
+  assert.deepStrictEqual(disp.getEditableCatalog, { status: 403, error: 'not_owner' });
+  assert.deepStrictEqual(owner.publish_noAck, { status: 403, error: 'fiscal_ack_required' }, 'x_pizza: the real publish still needs the owner ack');
+  assert.strictEqual(owner.publish_ack, 'passed_gate', 'the owner with the ack clears EVERY publish gate (ends at the sentinel publishVersion)');
+  assert.strictEqual(owner.publish_addProduct, 'passed_gate', 'the owner clears the add_product gate on a valid addition');
+  assert.strictEqual(ownerLm.publish_noAck, 'passed_gate', 'la_musa: no fiscal gate');
+  assert.deepStrictEqual(disp.publish_ack, { status: 403, error: 'not_owner' }, 'a dispatcher never publishes');
+  assert.deepStrictEqual(none.editCatalog, { status: 403, error: 'not_authorized' });
+  db.put('restaurants/x_pizza/identity/prep_default_min', 20);   // a pairable location: past the gate, pairing reaches its first write
+  const dOwner = await C.deviceResults(db, 'ownerP1', 'x_pizza', require('../merchant/merchant-scope').authorizeManager);
+  const dDisp = await C.deviceResults(db, 'dispatch01', 'x_pizza', require('../merchant/merchant-scope').authorizeManager);
+  assert.deepStrictEqual(dOwner.devicePair, { code: 'unavailable', message: 'pair generation unavailable' }, 'the owner passes the real pair core\'s manager gate and stops at its FIRST write (the read-only view refuses the generation transaction)');
+  assert.deepStrictEqual(dOwner.deviceRevoke.code, 'not-found', 'revoke passes the gate and finds no such handheld (read-only)');
+  assert.deepStrictEqual(dDisp.devicePair.code, 'permission-denied', 'a dispatcher is refused at the gate');
+  for (const [u, r] of [['ownerP1', 'x_pizza'], ['ownerP1', 'la_musa'], ['dispatch01', 'la_musa'], ['kitchenA1', 'x_pizza']]) {
+    assert.deepStrictEqual(await C.operationResults(db, u, r, authorizeCatalogEdit), await C.operationResults(db, u, r, L.authorizeCatalogEditLegacy), `${u}@${r}: old === new`);
+    assert.deepStrictEqual(await C.deviceResults(db, u, r, require('../merchant/merchant-scope').authorizeManager), await C.deviceResults(db, u, r, C.legacyDeviceGate), `${u}@${r}: devices old === new`);
+  }
+  assert.strictEqual(db.get('platform_config/handheld_pair_gen'), null, 'nothing was written (no pairing generation)');
+  assert.strictEqual(db.get('restaurants/x_pizza/handhelds'), null, 'no handheld was paired');
+});
+
+test('compare CATCHES a new authorizer that drops catalog.publish / catalog.add_product, and a new device gate that refuses (codex build r2 P2-1 repro)', async () => {
+  const strip = (drop) => async () => {
+    const db = createFakeDb(prod());
+    await run(db, 'backfill', true);
+    const M = require('../catalog/catalog-edit-auth');
+    const orig = M.authorizeCatalogEdit;
+    M.authorizeCatalogEdit = async (...a) => { const r = await orig(...a); return r && r.ok ? { ...r, caps: (r.caps || []).filter((c) => !drop.includes(c)) } : r; };
+    try { return await run(db, 'compare'); } finally { M.authorizeCatalogEdit = orig; }
+  };
+  const both = await strip(['catalog.publish', 'catalog.add_product'])();
+  assert.strictEqual(both.code, 6, `🔴 compare must exit non-zero when the new authorizer loses catalog.publish + add_product: ${both.logs.join('\n').slice(0, 400)}`);
+  assert.ok(/publish_ack/.test(both.logs.join('\n')), 'the difference names the publish operation');
+  const addOnly = await strip(['catalog.add_product'])();
+  assert.strictEqual(addOnly.code, 6, '🔴 losing ONLY catalog.add_product is caught (the real add-product gate runs)');
+  assert.ok(/publish_addProduct/.test(addOnly.logs.join('\n')));
+  const db = createFakeDb(prod());
+  await run(db, 'backfill', true);
+  const S = require('../merchant/merchant-scope');
+  const orig = S.authorizeManager;
+  S.authorizeManager = async () => ({ ok: false, code: 'forbidden' });
+  let dev; try { dev = await run(db, 'compare'); } finally { S.authorizeManager = orig; }
+  assert.strictEqual(dev.code, 6, '🔴 a new device gate that refuses the owner is caught by the real pair / revoke cores');
+  assert.ok(/devicePair/.test(dev.logs.join('\n')) && /deviceRevoke/.test(dev.logs.join('\n')));
+});

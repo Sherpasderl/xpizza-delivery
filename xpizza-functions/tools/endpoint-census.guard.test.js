@@ -73,7 +73,9 @@ const D = {
   // operator CLIs — tools/require-project.js runs the mixed-signal guard (driven: mixed ⇒ refuse)
   ...Object.fromEntries(['backfill-identities', 'backfill-snapshot', 'bootstrap-identity', 'client-floor', 'client-version-report',
     'draft-drift-report', 'identity-display-name', 'verify-first-group', 'menus-divergence-report', 'migrate-catalog-display', 'order-control', 'preflight-pointers', 'publish-version',
-    'rollback-version', 'seed-catalog', 'seed-owner', 'seed-source-store', 'stats-rollup', 'verify-catalog',
+    'rollback-version', 'seed-catalog', 'seed-source-store', 'stats-rollup', 'verify-catalog',
+    // PLAN-portal-membership r3 §7 — the owner's one-time membership cutover CLI (replaces seed-owner): requireProject({ requireFlag: true }) first
+    'membership-admin',
     // PLATFORM F1 — the brands owner CLI: requireProject({ requireFlag: true }) before any client
     'brands-admin',
     // PLATFORM F2 Q1 — the access census + kitchen roster owner CLIs: requireProject({ requireFlag: true }) before any client

@@ -32,6 +32,7 @@ const LIVE_BUDGET = Object.freeze({ maxRecords: 20000, maxBytes: 32 * 1024 * 102
 const GRANULARITIES = new Set(['day', 'week', 'month']);
 const COMPARES = new Set(['previous', 'previous_week', 'none']);
 
+const { can } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
 const reply = (status, body) => ({ status, body });
 const bad = (error, detail) => reply(400, { error, ...(detail ? { detail } : {}) });
 
@@ -216,7 +217,7 @@ async function getSalesStatsCore(deps, req) {
   // OWNER RULING 2026-10-05 (supersedes the plan's "complete existing policy"): sales stats are
   // OWNER-ONLY — kitchen staff and dispatchers are refused, in every form (JSON, daily CSV, orders CSV).
   // Same shape as catalog/portal-reads.js getEditableCatalogCore.
-  if (auth.role !== 'owner') return reply(403, { error: 'not_owner', detail: 'sales stats are visible to restaurant owners' });
+  if (!can(auth, 'stats.read')) return reply(403, { error: 'not_owner', detail: 'sales stats are visible to restaurant owners' });
 
   const { p, error } = parseParams(q, nowMs);
   if (error) return error;

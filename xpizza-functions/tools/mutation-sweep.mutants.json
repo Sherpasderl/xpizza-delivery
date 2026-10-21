@@ -10296,7 +10296,7 @@
     "slice": "stats",
     "label": "🔴 OWNER-ONLY role check dropped: staff / dispatchers read sales stats (owner ruling 2026-10-05)",
     "file": "stats/stats-api.js",
-    "from": "  if (auth.role !== 'owner') return reply(403, { error: 'not_owner', detail: 'sales stats are visible to restaurant owners' });",
+    "from": "  if (!can(auth, 'stats.read')) return reply(403, { error: 'not_owner', detail: 'sales stats are visible to restaurant owners' });\n",
     "to": "",
     "command": [
       "node",
@@ -17435,6 +17435,441 @@
     "command": [
       "node",
       "assignment-conflict.test.js"
+    ]
+  },
+  {
+    "id": "membership-01",
+    "slice": "membership",
+    "label": "resolver: a HANDHELD token is no longer refused before reads",
+    "file": "access/membership.js",
+    "from": "  if (t.customer === true || t.handheld === true) return deny('forbidden');\n  return null;",
+    "to": "  if (t.customer === true) return deny('forbidden');\n  return null;",
+    "kills_with": [
+      "customer AND handheld refused before ANY read"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership.test.js"
+    ]
+  },
+  {
+    "id": "membership-02",
+    "slice": "membership",
+    "label": "capability table: an owner keeps full powers at a RETIRED location",
+    "file": "access/membership.js",
+    "from": "  if (facts.owner && state === 'member') cols.push('owner');",
+    "to": "  if (facts.owner && state !== 'unknown') cols.push('owner');",
+    "kills_with": [
+      "retired owner: history read only"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership.test.js"
+    ]
+  },
+  {
+    "id": "membership-03",
+    "slice": "membership",
+    "label": "myLocations: a stale member_of owner entry (grant revoked) still lists the brand",
+    "file": "access/membership.js",
+    "from": "    if ((await val(db, `brand_members/${b}/owners/${uid}`)) == null) { onStale({ kind: 'stale_owner', id: b }); continue; }\n",
+    "to": "",
+    "kills_with": [
+      "a stale index entry NEVER authorizes"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership.test.js"
+    ]
+  },
+  {
+    "id": "membership-04",
+    "slice": "membership",
+    "label": "resolveLocation: a rogue identity naming a brand that does not list it resolves to that brand",
+    "file": "access/membership.js",
+    "from": "  if (findings.length) return { brandId: F1.UNKNOWN, state: 'unknown', rec: null };",
+    "to": "  if (false) return { brandId: F1.UNKNOWN, state: 'unknown', rec: null };",
+    "kills_with": [
+      "a rogue identity naming a brand that does not list it is unknown"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership.test.js"
+    ]
+  },
+  {
+    "id": "membership-05",
+    "slice": "membership",
+    "label": "cores: editCatalog no longer gates on catalog.edit (a manager edits drafts)",
+    "file": "catalog/edit-catalog-handler.js",
+    "from": "  if (!can(auth, 'catalog.edit')) return reply(403, { error: 'not_authorized' });   // membership r3: capability, not tier\n",
+    "to": "",
+    "kills_with": [
+      "cores gate on CAPABILITIES"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership.test.js"
+    ]
+  },
+  {
+    "id": "membership-06",
+    "slice": "membership",
+    "label": "roster: an OWNER actor may run the CLI-only owner ops (co-owner / self-transfer)",
+    "file": "access/roster.js",
+    "from": "  if (actor.kind !== 'cli' && CLI_ONLY_OPS.includes(op.type)) return { code: 'forbidden' };\n",
+    "to": "",
+    "kills_with": [
+      "ONE owner per brand"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-07",
+    "slice": "membership",
+    "label": "roster: the invite_applied marker is not checked inside the grant transaction (an applied-then-revoked member is re-granted)",
+    "file": "access/roster.js",
+    "from": "    if (isObj(r.invite_applied) && r.invite_applied[op.inviteId]) return { outcome: 'already_applied' };\n",
+    "to": "",
+    "kills_with": [
+      "invite marker is checked INSIDE every grant"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-08",
+    "slice": "membership",
+    "label": "roster: bootstrap_owner into a NON-empty roster",
+    "file": "access/roster.js",
+    "from": "      if (cur0.length) return cur0.length === 1 && cur0[0] === op.uid ? { outcome: 'noop' } : { code: 'roster_not_empty' };\n",
+    "to": "",
+    "kills_with": [
+      "ONE owner per brand"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-09",
+    "slice": "membership",
+    "label": "roster: the actor's authority is not re-validated inside the transaction",
+    "file": "access/roster.js",
+    "from": "  if (actor.kind === 'owner' && !isObj(owners[actor.uid])) return { code: 'forbidden' };\n",
+    "to": "",
+    "kills_with": [
+      "actor authority re-validated"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-10",
+    "slice": "membership",
+    "label": "roster: a denial on a (possibly stale) null ABORTS the transaction (false forbidden on a cold cache)",
+    "file": "access/roster.js",
+    "from": "      return cur === null ? null : undefined;   // never abort on a (possibly stale) null — propose null, RTDB re-runs if needed",
+    "to": "      return undefined;",
+    "kills_with": [
+      "a stale null never reads as"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:membership"
+    ]
+  },
+  {
+    "id": "membership-11",
+    "slice": "membership",
+    "label": "invites: an in-flight retry is treated as a recovery, not pending",
+    "file": "access/invites.js",
+    "from": "        step = at - cur.consuming.at < INFLIGHT_MS ? 'pending' : 'recover';",
+    "to": "        step = 'recover';",
+    "kills_with": [
+      "inside the in-flight window"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-12",
+    "slice": "membership",
+    "label": "invites: acceptance grants as a trusted CLI actor instead of re-validating the inviter",
+    "file": "access/invites.js",
+    "from": "    const r = await mutateRoster({ db, now, log }, inv.brandId, { kind: 'owner', uid: inv.invited_by },",
+    "to": "    const r = await mutateRoster({ db, now, log }, inv.brandId, { kind: 'cli', operator: 'invite' },",
+    "kills_with": [
+      "inviter lost authority"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-13",
+    "slice": "membership",
+    "label": "team-core: writes are not gated on membership_writes_enabled (no freeze)",
+    "file": "access/team-core.js",
+    "from": "const gated = (fn) => async (deps, ctx, body) => ((await writesEnabled(deps.db)) ? fn(deps, ctx, body || {}) : fail('writes_disabled'));",
+    "to": "const gated = (fn) => async (deps, ctx, body) => (true ? fn(deps, ctx, body || {}) : fail('writes_disabled'));",
+    "kills_with": [
+      "refused while the flag is off"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-14",
+    "slice": "membership",
+    "label": "cutover census: a REVERSE-only owner entry is not reported",
+    "file": "access/membership-admin-core.js",
+    "from": "  for (const p of rev) if (!fset.has(key(p))) findings.push({ code: 'reverse_only_owner', uid: p[0], rid: p[1] });\n",
+    "to": "",
+    "kills_with": [
+      "census REFUSES every off-shape"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership-admin.test.js"
+    ]
+  },
+  {
+    "id": "membership-15",
+    "slice": "membership",
+    "label": "cutover compare: differences are ignored (always ok)",
+    "file": "access/membership-admin-core.js",
+    "from": "  return { ok: diffs.length === 0, diffs };",
+    "to": "  return { ok: true, diffs };",
+    "kills_with": [
+      "compare DETECTS an injected difference"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership-admin.test.js"
+    ]
+  },
+  {
+    "id": "membership-16",
+    "slice": "membership",
+    "label": "rules: /brand_members readable by clients",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "    \"brand_members\": { \".read\": false, \".write\": false },",
+    "to": "    \"brand_members\": { \".read\": true, \".write\": false },",
+    "kills_with": [
+      "/brand_members .read must be false"
+    ],
+    "command": [
+      "node",
+      "brands-rules.guard.test.js"
+    ]
+  },
+  {
+    "id": "membership-17",
+    "slice": "membership",
+    "label": "capability table: a manager with «Puede editar el menú y los precios» may give the FISCAL acknowledgement",
+    "file": "access/membership.js",
+    "from": "  'catalog.fiscal_ack':  { owner: true },",
+    "to": "  'catalog.fiscal_ack':  { owner: true, manager_menu: true },",
+    "kills_with": [
+      "the fiscal acknowledgement stays OWNER-only"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-18",
+    "slice": "membership",
+    "label": "invites: the recipient binding (verified email === invite.email) is dropped — a forwarded link grants another account",
+    "file": "access/invites.js",
+    "from": "      if (cur.email !== mail) { step = 'email_mismatch'; return undefined; }   // the recipient binding — the invite stays as it is\n",
+    "to": "",
+    "kills_with": [
+      "email_mismatch"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-19",
+    "slice": "membership",
+    "label": "roster: an invite grant applies even when it is NOT the current invite for that email (supersession dropped)",
+    "file": "access/roster.js",
+    "from": "    if (current[op.emailKey] !== op.inviteId) return { code: 'superseded' };   // only the CURRENT invite for that email grants\n",
+    "to": "",
+    "kills_with": [
+      "SUPERSESSION"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-20",
+    "slice": "membership",
+    "label": "roster: an invite's menu value OVERWRITES the current per-manager setting (re-enables what the owner disabled)",
+    "file": "access/roster.js",
+    "from": "      if (!isObj(perms[op.uid])) { perms[op.uid] = { can_edit_menu: op.can_edit_menu === true }; changed = true; }",
+    "to": "      perms[op.uid] = { can_edit_menu: op.can_edit_menu === true }; changed = true;",
+    "kills_with": [
+      "PER-MANAGER permission"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/roster.test.js"
+    ]
+  },
+  {
+    "id": "membership-21",
+    "slice": "membership",
+    "label": "cutover compare: proceeds despite a failed census",
+    "file": "access/membership-admin-core.js",
+    "from": "    if (!c.ok) { log(JSON.stringify({ refused: 'census_not_clean', findings: c.findings })); return 3; }   // codex build r1 P2-5\n",
+    "to": "",
+    "kills_with": [
+      "compare REFUSES (exit 3)"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership-admin.test.js"
+    ]
+  },
+  {
+    "id": "membership-22",
+    "slice": "membership",
+    "label": "team endpoints: the can(team.*) gate is skipped (any verified user reaches the owner ops)",
+    "file": "access/team-http-core.js",
+    "from": "      if (!g.ok) return reply(g.status, { error: g.error });\n",
+    "to": "",
+    "kills_with": [
+      "can() gate through the resolver"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/team-http.test.js"
+    ]
+  },
+  {
+    "id": "membership-23",
+    "slice": "membership",
+    "label": "cutover reconcile: the repair writes an ancestor delete next to descendant sets (rejected by the real SDK)",
+    "file": "access/membership-admin-core.js",
+    "from": "      u[`member_of/${uid}`] = Object.keys(want).length ? want : null;",
+    "to": "      u[`member_of/${uid}`] = null; for (const k of Object.keys(want)) for (const id of Object.keys(want[k])) u[`member_of/${uid}/${k}/${id}`] = want[k][id];",
+    "kills_with": [
+      "that is ancestor of another path"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:membership"
+    ]
+  },
+  {
+    "id": "membership-24",
+    "slice": "membership",
+    "label": "cutover compare: the add-product publish run is dropped (a new authorizer losing catalog.add_product passes)",
+    "file": "access/membership-admin-core.js",
+    "from": "    publish_addProduct: await publishRun(f, f.add, authorize, true),\n",
+    "to": "",
+    "kills_with": [
+      "losing ONLY catalog.add_product is caught"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership-admin.test.js",
+      "access/team-http.test.js"
+    ]
+  },
+  {
+    "id": "membership-25",
+    "slice": "membership",
+    "label": "cutover compare: the device cores are not compared (a refusing new device gate passes)",
+    "file": "access/membership-admin-core.js",
+    "from": "...(await deviceResults(db, uid, rid, authorizeManager)) };",
+    "to": "...(await deviceResults(db, uid, rid, legacyDeviceGate)) };",
+    "kills_with": [
+      "a new device gate that refuses the owner is caught"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership-admin.test.js",
+      "access/team-http.test.js"
+    ]
+  },
+  {
+    "id": "membership-26",
+    "slice": "membership",
+    "label": "team endpoints: the cleanup ops skip retired locations again (the owner of a retired-only brand cannot revoke)",
+    "file": "access/team-http-core.js",
+    "from": "    if (rec.locations[rid] !== 'member' && rec.locations[rid] !== 'retired') continue;",
+    "to": "    if (rec.locations[rid] !== 'member') continue;",
+    "kills_with": [
+      "the owner still lists the team"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership-admin.test.js",
+      "access/team-http.test.js"
+    ]
+  },
+  {
+    "id": "membership-27",
+    "slice": "membership",
+    "label": "capabilities: a retired owner loses team.revoke (cleanup impossible after the last location retires)",
+    "file": "access/membership.js",
+    "from": "  'team.revoke':         { owner: true, owner_retired: true },",
+    "to": "  'team.revoke':         { owner: true },",
+    "kills_with": [
+      "the owner still lists the team"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "access/membership-admin.test.js",
+      "access/team-http.test.js"
     ]
   }
 ]

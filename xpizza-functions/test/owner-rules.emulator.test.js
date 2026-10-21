@@ -100,6 +100,31 @@ const RID2 = 'merch_b';
   await no('D: an anonymous client cannot read the owners node', get(anonDb, `restaurants/${RID}/owners`));
   await no('D: nor can a customer', get(custDb, `owner_restaurants/${OWNER}`));
 
+  // ── F. PLAN-portal-membership r3 §6.1 — the membership nodes (brand_members / member_of / member_invites) are Admin-only:
+  //       every client role is denied READ and WRITE, including a handheld device and ancestor / root multi-path updates.
+  const hhDb = asUid('hhmerchadev1', { handheld: true, rid: RID });
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const d = ctx.database();
+    await d.ref(`brands/${RID}`).set({ name: 'A', active: true, locations: { [RID]: 'member' }, activation: { state: 'legacy', since: 1 } });
+    await d.ref(`brand_members/${RID}/owners/${OWNER}`).set({ granted_at: 1, granted_by: 'cli:op' });
+    await d.ref(`member_of/${OWNER}/brands/${RID}`).set('owner');
+    await d.ref('member_invites/inviteAAAAAAAAAAAAAAAAAAAA').set({ kind: 'owner', brandId: RID, invited_by: OWNER, created_at: 1, expires_at: 2, state: 'open' });
+  });
+  const roles = [['dispatcher', dispDb], ['kitchen staff', staffDb], ['owner', ownerDb], ['other tenant', otherDb], ['random user', randoDb], ['customer', custDb], ['handheld', hhDb], ['anonymous', anonDb]];
+  for (const [who, db] of roles) {
+    await no(`F: a ${who} cannot READ brand_members`, get(db, `brand_members/${RID}`));
+    await no(`F: a ${who} cannot READ member_of`, get(db, `member_of/${OWNER}`));
+    await no(`F: a ${who} cannot READ member_invites`, get(db, 'member_invites/inviteAAAAAAAAAAAAAAAAAAAA'));
+    await no(`F: a ${who} cannot grant an owner`, set(db, `brand_members/${RID}/owners/${RANDO}`, { granted_at: 1, granted_by: 'x' }));
+    await no(`F: a ${who} cannot grant a manager`, set(db, `brand_members/${RID}/managers/${RID}/${RANDO}`, { granted_at: 1, granted_by: 'x' }));
+    await no(`F: a ${who} cannot write member_of`, set(db, `member_of/${RANDO}/brands/${RID}`, 'owner'));
+    await no(`F: a ${who} cannot consume an invite`, set(db, 'member_invites/inviteAAAAAAAAAAAAAAAAAAAA/state', 'consumed'));
+  }
+  await no('F: nor via a multi-path update at the ROOT', upd(dispDb, '/', { [`brand_members/${RID}/owners/${RANDO}`]: { granted_at: 1, granted_by: 'x' } }));
+  await no('F: nor by replacing the whole brand roster', set(ownerDb, `brand_members/${RID}`, { owners: { [OWNER]: { granted_at: 1, granted_by: 'x' }, [RANDO]: { granted_at: 1, granted_by: 'x' } } }));
+  await no('F: nor the whole member_of root', set(dispDb, 'member_of', { [RANDO]: { brands: { [RID]: 'owner' } } }));
+  await no('F: an owner cannot revoke their co-owner directly', set(ownerDb, `brand_members/${RID}/owners/${OWNER}`, null));
+
   // ── E. NON-VACUITY. The suite must be able to see a SUCCESS, or "everything is denied" would
   //       also pass against a totally broken environment where every operation fails.
   await ok('E: non-vacuity — an authenticated client CAN read something the rules do allow', get(dispDb, `restaurants/${RID}/identity/name`));
