@@ -44,15 +44,32 @@ async function liveOrders(db, rid) {
 
 // ── draft creation (§2.2 ordering, §2.3 allocation) ──────────────────────────────────────────────────────────────────────────
 
-async function createDraft(db, { input, opId, callerUid, now }) {
+const createDraft = (db, args) => draftFlow(db, args, null);
+
+// Sherpa admin (advisor ruling): a NEW brand is seeded TOGETHER with its first draft branch — ONE payload-bound op (the same
+// mapping / name / persisted-candidate / reservation steps), then ONE create-only brand transaction {name, active, locations:
+// {rid:'staged'}, activation off, projection_gen 1}, then the draft. The brand is never empty; a re-run resumes.
+async function createBrandWithDraft(db, { brandId, brandName, input, opId, callerUid, now }) {
+  if (typeof brandName !== 'string' || brandName.length < 1 || brandName.length > 80 || brandName.trim() !== brandName) return { ok: false, error: 'bad_brand_name' };
+  return draftFlow(db, { input: { ...(isObj(input) ? input : {}), brand_id: brandId }, opId, callerUid, now }, { brandName });
+}
+const onlyStaged = (brand, rid) => isObj(brand) && isObj(brand.locations) && Object.keys(brand.locations).length === 1 && brand.locations[rid] === 'staged';
+
+async function draftFlow(db, { input, opId, callerUid, now }, newBrand) {
   const errors = P.draftErrors(input);
   if (errors.length) return { ok: false, error: 'bad_draft', errors };
   if (typeof opId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(opId)) return { ok: false, error: 'bad_op_id' };
   const draft = {}; for (const k of DRAFT_KEYS) draft[k] = input[k];
   const brandId = draft.brand_id;
-  if (!isObj(await val(db, `brands/${brandId}`))) return { ok: false, error: 'brand_not_found' };
-  const hash = hashOf(draft);
+  const hash = hashOf(newBrand ? { ...draft, brand_name: newBrand.brandName } : draft);
   const mapPath = `branch_op_ids/${brandId}/${opId}`;
+  const brand0 = await val(db, `brands/${brandId}`);
+  if (!newBrand && !isObj(brand0)) return { ok: false, error: 'brand_not_found' };
+  if (newBrand && brand0 != null) {
+    const m0 = await val(db, mapPath);
+    if (isObj(m0) && m0.payload_hash !== hash) return { ok: false, error: 'op_conflict' };
+    if (!(isObj(m0) && m0.rid && onlyStaged(brand0, m0.rid))) return { ok: false, error: 'brand_exists' };
+  }
 
   // (1) the op-id mapping, create-only and payload-bound
   const m = await txn(db, mapPath, (cur, stop) => (cur == null ? { payload_hash: hash } : (cur.payload_hash === hash ? undefined : stop('op_conflict'))));
@@ -93,6 +110,19 @@ async function createDraft(db, { input, opId, callerUid, now }) {
   const sr = await txn(db, mapPath, (cur, stop) => (cur && cur.payload_hash === hash ? (cur.rid == null ? { ...cur, rid } : (cur.rid === rid ? undefined : stop('op_lost'))) : stop('op_lost')));
   if (sr.stop) return { ok: false, error: sr.stop };
 
+  // (4b) a NEW brand: its record, create-only, born OFF and listing this first branch (already matching → done)
+  if (newBrand) {
+    const rec = { name: newBrand.brandName, active: true, locations: { [rid]: 'staged' }, activation: { state: 'off', since: now }, projection_gen: 1 };
+    if (!validateBrand(brandId, rec).ok) return { ok: false, error: 'brand_invalid' };
+    const b = await txn(db, `brands/${brandId}`, (cur, stop) => (cur == null ? rec : (onlyStaged(cur, rid) ? undefined : stop('brand_exists'))));
+    if (b.stop) {   // lost the brand id to another op: release what this op holds, then refuse
+      await txn(db, `rid_reservations/${rid}`, (cur) => (cur && cur.op_id === opId ? null : undefined));
+      await txn(db, `brand_branch_names/${brandId}/${nk}`, (cur) => (cur && cur.op_id === opId ? null : undefined));
+      await txn(db, mapPath, (cur) => (cur && cur.payload_hash === hash ? null : undefined));
+      return { ok: false, error: b.stop };
+    }
+  }
+
   // (5) the draft, create-only; an already-materialized branch of this op is done
   if ((await val(db, `restaurants/${rid}/identity`)) != null) return { ok: true, rid };
   const dw = await txn(db, `restaurants/${rid}/draft`, (cur, stop) => (cur == null ? { ...draft, created_at: now, created_by: callerUid, op_id: opId } : (cur.op_id === opId ? undefined : stop('draft_conflict'))));
@@ -111,6 +141,9 @@ async function deleteBranchDraft(db, { rid, brandId }) {
   if (res && res.op_id === d.op_id) u[`rid_reservations/${rid}`] = null;
   if (nm && nm.op_id === d.op_id) u[`brand_branch_names/${brandId}/${nk}`] = null;
   if (typeof d.op_id === 'string') u[`branch_op_ids/${brandId}/${d.op_id}`] = null;
+  // a NEW brand whose only (never-opened) branch is this draft is abandoned whole — no empty-brand state
+  const brand = await val(db, `brands/${brandId}`);
+  if (onlyStaged(brand, rid) && isObj(brand.activation) && brand.activation.state === 'off') u[`brands/${brandId}`] = null;
   await db.ref().update(u);
   return { ok: true };
 }
@@ -330,4 +363,4 @@ async function deactivateBrand(db, { brandId, now }) {
 // projection resync (advisor ruling): a version-only identity bump, so the fenced publish carries an unversioned earlier write
 const bumpIdentityVersion = (db, { rid, expectedVersion }) => casIdentity(db, rid, expectedVersion, { version: expectedVersion + 1 });
 
-module.exports = { liveOrders, activateBrand, deactivateBrand, bumpIdentityVersion, createDraft, deleteBranchDraft, materializeBranch, resumeBranchOp, setBranchLocation, setBranchActive, enrichLegacyIdentity, LEASE_MS };
+module.exports = { createBrandWithDraft, liveOrders, activateBrand, deactivateBrand, bumpIdentityVersion, createDraft, deleteBranchDraft, materializeBranch, resumeBranchOp, setBranchLocation, setBranchActive, enrichLegacyIdentity, LEASE_MS };

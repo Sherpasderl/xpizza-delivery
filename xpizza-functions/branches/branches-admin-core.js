@@ -8,14 +8,16 @@
 const P = require('./branch-ops');
 const S = require('./branch-store');
 const B = require('../brands/brand-store');
+const { ridCandidates } = require('./rid-alloc');
 
-const USAGE = 'usage: branches-admin.js --project <id> (status <brandId> | materialize <rid> --lat N --lng N --address S [--reference S] [--radius KM]'
+const USAGE = 'usage: branches-admin.js --project <id> (status <brandId> | create-brand <brandId> --name S --first-branch S --phone S --prep MIN --hours JSON | materialize <rid> --lat N --lng N --address S [--reference S] [--radius KM]'
   + ' | set-location <rid> --expected-version N [--lat N --lng N] [--address S] [--reference S] [--radius KM]'
   + ' | enrich-legacy <rid> --expected-version N --location-name S --prep MIN [--address S] | resume <rid> | delete-draft <rid>'
   + ' | activate-brand <brandId> [--open rid,rid] | deactivate-brand <brandId> | resync-projection <rid>) [--apply]';
 
 const FLAGS = { '--lat': ['lat', 'num'], '--lng': ['lng', 'num'], '--address': ['address', 'str'], '--reference': ['reference', 'str'], '--radius': ['radius', 'num'],
-  '--expected-version': ['expectedVersion', 'num'], '--location-name': ['locationName', 'str'], '--prep': ['prep', 'num'], '--open': ['open', 'list'] };
+  '--expected-version': ['expectedVersion', 'num'], '--location-name': ['locationName', 'str'], '--prep': ['prep', 'num'], '--open': ['open', 'list'],
+  '--name': ['name', 'str'], '--first-branch': ['firstBranch', 'str'], '--phone': ['phone', 'str'], '--hours': ['hours', 'json'] };
 
 // argv (after <op> <id>) → opts; an unknown, valueless or non-numeric flag (or a stray argument) is an error — never ignored
 function parseOpts(argv) {
@@ -28,6 +30,7 @@ function parseOpts(argv) {
     i += 1;
     if (f[1] === 'num') { const x = Number(v); if (v.trim() === '' || !Number.isFinite(x)) return { error: `${argv[i - 1]} must be a number` }; out[f[0]] = x; }
     else if (f[1] === 'list') out[f[0]] = v.split(',').filter(Boolean);
+    else if (f[1] === 'json') { try { out[f[0]] = JSON.parse(v); } catch (_) { return { error: `${argv[i - 1]} must be JSON` }; } }
     else out[f[0]] = v;
   }
   return out;
@@ -69,6 +72,22 @@ async function runBranchesAdmin({ rtdb, op, id, opts = {}, apply, nowMs: now, ca
     }
     const ops = Object.keys((await read('branch_ops')) || {}).filter((rid) => rid in branches).sort();
     log(JSON.stringify({ brand: id, activation: brand.activation || null, branches: Object.fromEntries(Object.keys(branches).sort().map((k) => [k, branches[k]])), unfinished_ops: ops }, null, 2));
+    return 0;
+  }
+
+  if (op === 'create-brand') {
+    if ([opts.name, opts.firstBranch, opts.phone, opts.prep, opts.hours].some((x) => x === undefined)) { log(`branches-admin: create-brand needs --name --first-branch --phone --prep --hours\n${USAGE}`); return 2; }
+    const input = { location_name: opts.firstBranch, phone: opts.phone, prep_default_min: opts.prep, hours: opts.hours };
+    if ((await read(`brands/${id}`)) !== null && !apply) { log(refusedLine({ error: 'brand_exists' })); return 1; }
+    const errors = P.draftErrors({ ...input, brand_id: id });
+    if (errors.length) { log(refusedLine({ error: 'bad_draft', errors })); return 1; }
+    log(show(`create-brand ${id}`, apply, { brand: { name: opts.name, active: true, locations: { [`${ridCandidates(id, opts.firstBranch, 1)[0]} (first free candidate at --apply)`]: 'staged' }, activation: { state: 'off' } }, first_branch_draft: input }));
+    if (!apply) { log('(dry run — nothing written; add --apply)'); return 0; }
+    const r = await S.createBrandWithDraft(rtdb, { brandId: id, brandName: opts.name, input, opId: `create_${id}`, callerUid: 'sherpa_admin_cli', now });
+    if (!r.ok) { log(refusedLine(r)); return 1; }
+    const [brand, draft] = [await read(`brands/${id}`), await read(`restaurants/${r.rid}/draft`)];
+    if (!brand || !brand.locations || brand.locations[r.rid] !== 'staged' || !(draft || await read(`restaurants/${r.rid}/identity`))) { log(`branches-admin: READ-BACK MISMATCH — ${JSON.stringify({ brand, draft })}`); return 1; }
+    log(`branches-admin: brand ${id} (off) + first branch ${r.rid} created and read back — next: materialize ${r.rid}`);
     return 0;
   }
 

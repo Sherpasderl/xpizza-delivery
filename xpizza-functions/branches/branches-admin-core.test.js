@@ -140,6 +140,30 @@ const run = async (db, op, id, opts = {}, apply = false) => {
   }
   ok('activate-brand: the dry run runs every readiness check (no team reader → not_ready, nothing written); deactivate-brand dry/apply; resync-projection bumps version only and the fenced publish lands the stale content');
 
+  // create-brand (advisor ruling): the brand + its first draft in ONE op — dry run ZERO writes; apply + read-back; re-run resumes
+  {
+    const db = fakeRtdb(state());
+    const o = { name: 'Nueva', firstBranch: 'Centro', phone: '+50499990000', prep: 20, hours: H7 };
+    let r = await run(db, 'create-brand', 'tb_nueva', o);
+    assert.strictEqual(r.code, 0, r.out); assert.match(r.out, /"state": "off"/); assert.match(r.out, /tb_nueva_centro/); assert.deepStrictEqual(db.writes, [], 'create-brand dry run: ZERO writes');
+    r = await run(db, 'create-brand', 'tb_brand', o);
+    assert.strictEqual(r.code, 1); assert.match(r.out, /REFUSED — brand_exists/);
+    r = await run(db, 'create-brand', 'tb_nueva', { ...o, hours: { mon: DAY } });
+    assert.strictEqual(r.code, 1); assert.match(r.out, /REFUSED — bad_draft: bad_hours/);
+    r = await run(db, 'create-brand', 'tb_nueva', { name: 'Nueva' });
+    assert.strictEqual(r.code, 2, 'every first-branch field is required');
+    r = await run(db, 'create-brand', 'tb_nueva', o, true);
+    assert.strictEqual(r.code, 0, r.out); assert.match(r.out, /created and read back/);
+    assert.deepStrictEqual(db.get('brands/tb_nueva/locations'), { tb_nueva_centro: 'staged' });
+    assert.strictEqual(db.get('restaurants/tb_nueva_centro/draft/location_name'), 'Centro');
+    const n0 = db.writes.length;
+    assert.strictEqual((await run(db, 'create-brand', 'tb_nueva', o, true)).code, 0, 'a re-run resumes / is a no-op');
+    assert.strictEqual(db.writes.length, n0, 'and writes nothing');
+  }
+  assert.deepStrictEqual(parseOpts(['--hours', '{bad']), { error: '--hours must be JSON' });
+  assert.deepStrictEqual(parseOpts(['--name', 'Nueva', '--first-branch', 'Centro', '--phone', '+504', '--hours', '{"mon":{"open":false}}']).hours, { mon: { open: false } });
+  ok('create-brand: the brand (OFF) + its first draft in ONE op; dry run ZERO writes; existing brand / bad hours refused; every field required; apply reads back; re-run writes nothing');
+
   // status is read-only
   {
     const db = fakeRtdb(state({ brands: { tb_brand: { name: 'Third', active: true, locations: { tb_norte: 'member', tb_sur: 'staged' }, activation: { state: 'on', since: 1 } } },

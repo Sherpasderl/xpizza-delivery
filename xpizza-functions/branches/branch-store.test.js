@@ -238,5 +238,42 @@ const NOW = 1_800_000_000_000;
   }
   ok('bumpIdentityVersion (projection resync): version + 1 only, CAS on the expected version; absent identity refused');
 
+  // ── createBrandWithDraft (advisor ruling): a NEW brand is seeded together with its first draft — never an empty brand ──
+  {
+    const { checkMembership } = require('../brands/brand-model');
+    const db = fakeRtdb({ platform_config: { service_bounds: BOUNDS }, brands: { tb_brand: BRAND } });
+    const first = { location_name: 'Centro', phone: '+50499990000', hours: H7, prep_default_min: 20 };
+    const args = { brandId: 'tb_nueva', brandName: 'Nueva', input: first, opId: 'create_tb_nueva', callerUid: 'sherpa', now: NOW };
+    assert.deepStrictEqual(await S.createBrandWithDraft(db, { ...args, brandId: 'tb_brand' }), { ok: false, error: 'brand_exists' }, 'an existing brand is refused');
+    assert.strictEqual(db.get('branch_op_ids/tb_brand'), null, 'before any allocation');
+    assert.deepStrictEqual(await S.createBrandWithDraft(db, { ...args, brandName: ' Nueva' }), { ok: false, error: 'bad_brand_name' });
+    db.failAfter['rid_reservations/tb_nueva_centro'] = true;   // crash after the reservation, before the brand record
+    await assert.rejects(S.createBrandWithDraft(db, args));
+    assert.strictEqual(db.get('brands/tb_nueva'), null, 'no brand yet');
+    assert.deepStrictEqual(await S.createBrandWithDraft(db, args), { ok: true, rid: 'tb_nueva_centro' }, 'a re-run resumes the same op');
+    assert.deepStrictEqual(db.get('brands/tb_nueva'), { name: 'Nueva', active: true, locations: { tb_nueva_centro: 'staged' }, activation: { state: 'off', since: NOW }, projection_gen: 1 },
+      'the brand is born OFF, listing its first branch — never empty');
+    assert.deepStrictEqual(db.get('restaurants/tb_nueva_centro/draft'), { ...first, brand_id: 'tb_nueva', created_at: NOW, created_by: 'sherpa', op_id: 'create_tb_nueva' });
+    const n0 = db.writes.length;
+    assert.deepStrictEqual(await S.createBrandWithDraft(db, { ...args, now: NOW + 9 }), { ok: true, rid: 'tb_nueva_centro' }, 'idempotent');
+    assert.strictEqual(db.writes.length, n0, 'a completed re-run writes nothing');
+    assert.deepStrictEqual(await S.createBrandWithDraft(db, { ...args, brandName: 'Otra' }), { ok: false, error: 'op_conflict' }, 'same op id, different payload');
+    assert.deepStrictEqual(await S.createBrandWithDraft(db, { ...args, opId: 'other_op' }), { ok: false, error: 'brand_exists' }, 'another op cannot claim the new brand');
+    assert.deepStrictEqual(checkMembership({ tb_nueva: db.get('brands/tb_nueva') }, {}).map((f) => f.code), ['identity_missing'], 'until materialized the draft rid has no identity (honest finding)');
+    const m = await S.materializeBranch(db, { rid: 'tb_nueva_centro', location: { hub: { lat: 15.51, lng: -88.03 }, address_line: 'Blvd 1' }, now: NOW, callId: 'c1' });
+    assert.deepStrictEqual(m, { ok: true, rid: 'tb_nueva_centro', state: 'staged' }, 'materialize: the brand step is already matching');
+    assert.strictEqual(db.get('brands/tb_nueva/projection_gen'), 1, 'no second bump (already staged)');
+    assert.deepStrictEqual(checkMembership({ tb_nueva: db.get('brands/tb_nueva') }, { tb_nueva_centro: db.get('restaurants/tb_nueva_centro/identity') }), [], 'consistent once materialized');
+  }
+  {
+    const db = fakeRtdb({ brands: { tb_brand: BRAND } });
+    const first = { location_name: 'Centro', phone: '+50499990000', hours: H7, prep_default_min: 20 };
+    await S.createBrandWithDraft(db, { brandId: 'tb_nueva', brandName: 'Nueva', input: first, opId: 'create_tb_nueva', callerUid: 'sherpa', now: NOW });
+    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_nueva_centro', brandId: 'tb_nueva' }), { ok: true });
+    for (const p of ['brands/tb_nueva', 'restaurants/tb_nueva_centro', 'rid_reservations/tb_nueva_centro', 'brand_branch_names/tb_nueva', 'branch_op_ids/tb_nueva']) assert.strictEqual(db.get(p), null, `${p} removed (the never-opened brand is abandoned whole)`);
+    assert.deepStrictEqual(db.get('brands/tb_brand'), BRAND, 'other brands untouched');
+  }
+  ok('createBrandWithDraft: one op seeds the brand OFF with its first branch listed (never an empty brand); crash → resume; idempotent; foreign op / existing brand refused; materialize already matching; abandoning its draft removes the never-opened brand whole');
+
   console.log(`\nbranch-store: OK (${n})`);
 })().catch((e) => { console.error('branch-store FAILED:', e); process.exit(1); });
