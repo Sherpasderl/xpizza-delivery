@@ -19029,5 +19029,245 @@
       "--test",
       "../xpizza-portal/pubreq.test.mjs"
     ]
+  },
+  {
+    "id": "drv1-01",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "cents >= 0) out.push",
+    "to": "cents > 0) out.push",
+    "label": "itemLines drops zero-priced reward items (cents===0) — rewards vanish from the card",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-view.test.js"
+    ]
+  },
+  {
+    "id": "drv1-02",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "if (qty > 0 && cents",
+    "to": "if (qty >= 0 && cents",
+    "label": "itemLines counts qty:0 lines as articles — phantom zero-qty items",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-view.test.js"
+    ]
+  },
+  {
+    "id": "drv1-03",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "pt.destination_lat ?? restaurant.lat",
+    "to": "pt.destination_lat || restaurant.lat",
+    "label": "navTarget pickup uses || not ?? — a real lat:0 pickup coord wrongly falls back to the hub",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-view.test.js"
+    ]
+  },
+  {
+    "id": "drv1-04",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "order.lat || dt.destination_lat",
+    "to": "order.lat ?? dt.destination_lat",
+    "label": "navTarget delivery uses ?? not || — a 0 order coord no longer falls back to the delivery task",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-view.test.js"
+    ]
+  },
+  {
+    "id": "drv1-05",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "if (d.length === 8) return '504' + d;",
+    "to": "if (d.length === 9) return '504' + d;",
+    "label": "waPhone never prefixes 504 on 8-digit HN locals — broken wa.me number",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-view.test.js"
+    ]
+  },
+  {
+    "id": "drv1-06",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "?text=${encodeURIComponent(waMessage(order, phase))}",
+    "to": "?text=${waMessage(order, phase)}",
+    "label": "waHref skips encoding — raw spaces/accents in the wa.me text (not encoded exactly once)",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-view.test.js"
+    ]
+  },
+  {
+    "id": "drv1-07",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "const greet = driverGreeting(order);",
+    "to": "const greet = 'Hola, soy tu repartidor de X. Pizza.';",
+    "label": "waMessage hardcodes the X. Pizza brand instead of deriving it from the order (brand leak)",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-view.test.js"
+    ]
+  },
+  {
+    "id": "drv1-08",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "phase === 'pickup' && (d.atRestaurant === true || d.arrived === true)",
+    "to": "phase === 'pickup' && (d.atRestaurant === true && d.arrived === true)",
+    "label": "review mode requires BOTH tap AND geofence — arrival alone (or tap alone) no longer opens review",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-card.test.js"
+    ]
+  },
+  {
+    "id": "drv1-09",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "<span class=\"sv-chip ok\">Efectivo</span>",
+    "to": "<span class=\"sv-chip ok\">Tarjeta</span>",
+    "label": "cash payment chip mislabeled Tarjeta — wrong collection-method cue on the card",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-card.test.js"
+    ]
+  },
+  {
+    "id": "drv1-10",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "if (c.kind === 'cash') {",
+    "to": "if (c.kind === 'cash' && false) {",
+    "label": "cash vuelto line suppressed — driver loses the declared-tender/change display",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-card.test.js"
+    ]
+  },
+  {
+    "id": "drv1-11",
+    "slice": "drv1",
+    "file": "../xpizza-driver/index.html",
+    "from": "if (orders.length === 1) {",
+    "to": "if (orders.length >= 1) {",
+    "label": "single-order gate ===1 -> >=1 HIJACKS the stacked flow (2+ orders wrongly render the single view)",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv1-12",
+    "slice": "drv1",
+    "file": "../xpizza-driver/index.html",
+    "from": ", spLat, spLng) < 50)",
+    "to": ", spLat, spLng) < 40)",
+    "label": "arrived geofence threshold shrunk (<50m -> <40m) — a driver at 49m no longer enters pickup review",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv1-13",
+    "slice": "drv1",
+    "file": "../xpizza-driver/index.html",
+    "from": "slice1ReviewLatchKey = authGen + ':' + soloOrder.orderId;",
+    "to": "slice1ReviewLatchKey = null;",
+    "label": "review latch never set on tap — Ya estoy en el restaurante no longer opens the review card",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv1-14",
+    "slice": "drv1",
+    "file": "../xpizza-driver/index.html",
+    "from": ".sv-chip.ok { color:var(--success-hover);",
+    "to": ".sv-chip.ok { color:var(--sv-ok);",
+    "label": "success chip reverts to --sv-ok (#15803D) → 4.40:1 on the green tint, below WCAG AA",
+    "command": [
+      "node",
+      "../xpizza-driver/slice1-contrast.test.js"
+    ]
+  },
+  {
+    "id": "drv1-15",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "l.cents == null || !Number.isInteger(cents)",
+    "to": "false",
+    "label": "itemLines skips cents validation (P2-5) — a line with missing/garbled cents no longer forces the items_text fallback, so the article count is silently wrong",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-view.test.js"
+    ]
+  },
+  {
+    "id": "drv1-16",
+    "slice": "drv1",
+    "file": "../xpizza-driver/index.html",
+    "from": "slice1ReviewLatchKey !== spLatchKey || soloOrder.phase !== 'pickup'",
+    "to": "false",
+    "label": "review latch never reset (P2-3) — a stale 'Ya estoy en el restaurante' re-opens review for a later order/phase/session",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv1-17",
+    "slice": "drv1",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "OFFER_RING_SECS - remaining",
+    "to": "0",
+    "label": "offer ring ignores elapsed (P2-2) — a re-render restarts the drain at full instead of resuming from the deadline",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-card.test.js"
+    ]
+  },
+  {
+    "id": "drv1-18",
+    "slice": "drv1",
+    "file": "../xpizza-driver/index.html",
+    "from": "#4471BF 50%,#2F5FB8",
+    "to": "#A8C6F2 50%,#2F5FB8",
+    "label": "slide sheen reverts to the low-contrast highlight (P2-4) — #A8C6F2 = 1.75:1 on white, fails WCAG AA",
+    "command": [
+      "node",
+      "../xpizza-driver/slice1-contrast.test.js"
+    ]
+  },
+  {
+    "id": "drv1-19",
+    "slice": "drv1",
+    "file": "../xpizza-driver/index.html",
+    "from": "orders.length !== 1 ||",
+    "to": "false ||",
+    "label": "review latch not cleared on a STACKED board (P2-3 r2) — a stale tap re-opens review after 2+ orders → 1 again",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv1-20",
+    "slice": "drv1",
+    "file": "../xpizza-driver/index.html",
+    "from": "activeSlot.innerHTML === ''",
+    "to": "false",
+    "label": "review latch not cleared after the board EMPTIED (P2-3 r2) — a stale tap re-opens review after idle → same order again",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-branch.test.js"
+    ]
   }
 ]
