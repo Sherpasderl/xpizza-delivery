@@ -17436,5 +17436,547 @@
       "node",
       "assignment-conflict.test.js"
     ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-cand-rescan",
+    "label": "T4: the candidate walk re-scans from the first candidate (persisted candidate ignored)",
+    "file": "branches/branch-store.js",
+    "from": "(cur.candidate ? undefined : { ...cur, candidate: seq[0] })",
+    "to": "({ ...cur, candidate: seq[0] })",
+    "kills_with": [
+      "an existing identity / brand at the first candidate → next"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-cand-noadvance",
+    "label": "T4: a taken candidate never advances",
+    "file": "branches/branch-store.js",
+    "from": "(cur.candidate === cand ? { ...cur, candidate: seq[i + 1] } : undefined)",
+    "to": "undefined",
+    "kills_with": [
+      "an existing identity / brand at the first candidate → next"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-foreign-owned",
+    "label": "T4: another op's reservation is treated as owned",
+    "file": "branches/branch-store.js",
+    "from": "held && held.op_id === opId",
+    "to": "held",
+    "kills_with": [
+      "B must skip A's reservation and crash right after reserving the NEXT candidate"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-identity-overwrite",
+    "label": "T4: materialize overwrites a different identity",
+    "file": "branches/branch-store.js",
+    "from": "(stable(cur) === stable(identity) ? undefined : stop('identity_conflict'))",
+    "to": "identity",
+    "kills_with": [
+      "never overwrites a different identity"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-lease-ignored",
+    "label": "T4: an unexpired lease of another call is taken over",
+    "file": "branches/branch-store.js",
+    "from": "Number.isFinite(cur.lease.until) && cur.lease.until > now",
+    "to": "false",
+    "kills_with": [
+      "another call cannot take an unexpired lease"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-live-status",
+    "label": "T4: pending_payment / scheduled orders are not live",
+    "file": "branches/branch-store.js",
+    "from": "!HEAL_TERMINAL_STATUSES.has(o.status)",
+    "to": "!['scheduled','pending_payment','cancelled','delivered','completed'].includes(o.status)",
+    "kills_with": [
+      "a pending-payment card order is live"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-name-unique",
+    "label": "T4: a taken branch name is accepted",
+    "file": "branches/branch-store.js",
+    "from": "if (nm.stop) {",
+    "to": "if (false) {",
+    "kills_with": [
+      "name unique within the brand"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-gen-materialize",
+    "label": "T5: the staged membership change does not bump projection_gen",
+    "file": "branches/branch-store.js",
+    "from": "[rid]: 'staged' }, projection_gen: (cur.projection_gen || 0) + 1 }",
+    "to": "[rid]: 'staged' } }",
+    "kills_with": [
+      "the membership change bumps projection_gen"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-gen-activate",
+    "label": "T5: staged → member does not bump projection_gen",
+    "file": "branches/branch-store.js",
+    "from": "[rid]: 'member' }, projection_gen: (cur.projection_gen || 0) + 1 }",
+    "to": "[rid]: 'member' } }",
+    "kills_with": [
+      "staged → member bumps projection_gen"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-null-first",
+    "label": "T4: the txn helper aborts on the SDK's cached-null first pass",
+    "file": "branches/branch-store.js",
+    "from": "if (stop || out === undefined) return cur === null ? null : undefined;",
+    "to": "if (stop || out === undefined) return undefined;",
+    "kills_with": [
+      "branch-store FAILED"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-revoked-devices",
+    "label": "T4: deactivate counts revoked handhelds",
+    "file": "branches/branch-store.js",
+    "from": "(h) => isObj(h) && h.revoked !== true",
+    "to": "(h) => isObj(h)",
+    "kills_with": [
+      "deactivate: counts for the portal"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-delete-foreign",
+    "label": "T4: deleteBranchDraft frees a reservation another op owns",
+    "file": "branches/branch-store.js",
+    "from": "if (res && res.op_id === d.op_id) u",
+    "to": "if (res) u",
+    "kills_with": [
+      "never frees a reservation another op owns"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-legacy-cutover",
+    "label": "T8: activateBrand runs the LEGACY cutover (O3)",
+    "file": "branches/branch-store.js",
+    "from": "  if (isObj(brand.activation) && brand.activation.state === 'legacy') return { ok: false, error: 'legacy_cutover_is_o3' };\n",
+    "to": "",
+    "kills_with": [
+      "the legacy cutover is O3"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-activate-readiness",
+    "label": "T8: activateBrand skips per-branch readiness",
+    "file": "branches/branch-store.js",
+    "from": "  if (Object.keys(unmet).length) return { ok: false, error: 'not_ready', unmet };\n",
+    "to": "",
+    "kills_with": [
+      "no team reader → fail closed"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-cas-version",
+    "label": "T4: identity CAS ignores the expected version",
+    "file": "branches/branch-store.js",
+    "from": "if (!isObj(cur) || cur.version !== expectedVersion) return stop('stale_branch');",
+    "to": "if (!isObj(cur)) return stop('stale_branch');",
+    "kills_with": [
+      "stale_branch"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-src-memberset",
+    "label": "T5: same gen with different member sets is comparable",
+    "file": "brands/brand-store.js",
+    "from": "  if (a.gen === b.gen && !isDeepStrictEqual(ka, kb)) return 'incomparable';\n",
+    "to": "",
+    "kills_with": [
+      "same gen, different member sets"
+    ],
+    "command": [
+      "node",
+      "brands/brand-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-pub-equal",
+    "label": "T5: the fenced publish writes on an equal / incomparable source",
+    "file": "brands/brand-store.js",
+    "from": "return verdict === 'newer' ? plan.row.to : undefined;",
+    "to": "return verdict !== 'older' ? plan.row.to : undefined;",
+    "kills_with": [
+      "incomparable → nothing written"
+    ],
+    "command": [
+      "node",
+      "brands/brand-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-pub-noretry",
+    "label": "T5: an incomparable read is not re-read",
+    "file": "brands/brand-store.js",
+    "from": "    if (r.error === 'incomparable') continue;   // a mixed-timing read: re-read\n",
+    "to": "",
+    "kills_with": [
+      "projection_unfenced after 3 incomparable reads"
+    ],
+    "command": [
+      "node",
+      "brands/brand-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-pub-unstamped",
+    "label": "T5: a pre-v2 projection counts as equal",
+    "file": "brands/brand-store.js",
+    "from": "if (!cur || typeof cur !== 'object') return 'newer';",
+    "to": "if (!cur || typeof cur !== 'object') return 'equal';",
+    "kills_with": [
+      "the first publish over an ABSENT projection writes",
+      "a pre-v2 projection (no source) is always superseded"
+    ],
+    "command": [
+      "node",
+      "brands/brand-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-src-staged",
+    "label": "T5: staged branches enter the source vector",
+    "file": "brands/brand-store.js",
+    "from": "if (st === 'member') versions",
+    "to": "if (st !== 'retired') versions",
+    "kills_with": [
+      "members only"
+    ],
+    "command": [
+      "node",
+      "brands/brand-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-gen-negative",
+    "label": "T5: a negative projection_gen validates",
+    "file": "brands/brand-model.js",
+    "from": "rec.projection_gen >= 0",
+    "to": "rec.projection_gen >= -5",
+    "kills_with": [
+      "projection_gen -1"
+    ],
+    "command": [
+      "node",
+      "brands/brand-model.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-hold-absent",
+    "label": "T7: the inactive hold fires on an absent / malformed active",
+    "file": "scheduled-release-core.js",
+    "from": "if (active === false) {",
+    "to": "if (active !== true) {",
+    "kills_with": [
+      "active absent / open / control undefined: result"
+    ],
+    "command": [
+      "node",
+      "scheduled-inactive-hold.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-hold-block",
+    "label": "T7: the inactive hold sets scheduled_blocked",
+    "file": "scheduled-release-core.js",
+    "from": "    await rollbackClaim(db, orderId, {});\n",
+    "to": "    await rollbackClaim(db, orderId, { scheduled_blocked: true });\n",
+    "kills_with": [
+      "no scheduled_blocked (even with bad hours)"
+    ],
+    "command": [
+      "node",
+      "scheduled-inactive-hold.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-hold-alert-overwrite",
+    "label": "T7: the inactive alert is overwritten on a repeat hold",
+    "file": "scheduled-release-core.js",
+    "from": "(cur == null ? { type: 'scheduled_inactive'",
+    "to": "(true ? { type: 'scheduled_inactive'",
+    "kills_with": [
+      "create-only: a repeat hold keeps the first alert"
+    ],
+    "command": [
+      "node",
+      "scheduled-inactive-hold.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-hold-none",
+    "label": "T7: no inactive hold",
+    "file": "scheduled-release-core.js",
+    "from": "if (active === false) {",
+    "to": "if (active === false && false) {",
+    "kills_with": [
+      "inactive"
+    ],
+    "command": [
+      "node",
+      "scheduled-inactive-hold.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-rollback-ownership",
+    "label": "T7: the shared rollback keeps the release ownership",
+    "file": "scheduled-release-core.js",
+    "from": "release_claim_id: null, releasing_since: null, ...extra });",
+    "to": "release_claim_id: null, ...extra });",
+    "kills_with": [
+      "final state"
+    ],
+    "command": [
+      "node",
+      "scheduled-inactive-hold.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-hold-read-throw",
+    "label": "T7: an unreadable active fails the release",
+    "file": "scheduled-release-core.js",
+    "from": "} catch (_) { active = undefined; }",
+    "to": "} catch (e) { throw e; }",
+    "kills_with": [
+      "read failed"
+    ],
+    "command": [
+      "node",
+      "scheduled-inactive-hold.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-mylocs-staged",
+    "label": "T9: myLocations omits staged branches",
+    "file": "merchant/merchant-devices.js",
+    "from": "(locs[rid] === 'member' || locs[rid] === 'staged')",
+    "to": "locs[rid] === 'member'",
+    "kills_with": [
+      "O1a: myLocations lists a STAGED branch"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "merchant/merchant-devices.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-dn-bump",
+    "label": "ruling: the display-name CLI writes without the version bump",
+    "file": "tools/identity-display-name-admin.js",
+    "from": "    const next = { ...cur, version: cur.version + 1 };\n",
+    "to": "    const next = { ...cur };\n",
+    "kills_with": [
+      "the field + version + 1"
+    ],
+    "command": [
+      "node",
+      "tools/identity-display-name.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-dn-unversioned",
+    "label": "ruling: the display-name CLI writes into an unversioned identity",
+    "file": "tools/identity-display-name-admin.js",
+    "from": "    if (!Number.isFinite(cur.version)) { unversioned = true; return undefined; }\n",
+    "to": "",
+    "kills_with": [
+      "an identity without a numeric version at COMMIT is refused"
+    ],
+    "command": [
+      "node",
+      "tools/identity-display-name.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-ff-bump",
+    "label": "ruling: the factura-flag CLI writes without the version bump",
+    "file": "tools/identity-factura-flag-core.js",
+    "from": "      const next = { ...cur, version: cur.version + 1 };\n",
+    "to": "      const next = { ...cur };\n",
+    "kills_with": [
+      "bumped by exactly 1"
+    ],
+    "command": [
+      "node",
+      "tools/identity-factura-flag.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-ff-recheck",
+    "label": "ruling: the factura-flag CLI skips the commit-time recheck",
+    "file": "tools/identity-factura-flag-core.js",
+    "from": "      if (from === r.to) return undefined;\n",
+    "to": "",
+    "kills_with": [
+      "no second bump"
+    ],
+    "command": [
+      "node",
+      "tools/identity-factura-flag.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-cli-dryrun-materialize",
+    "label": "T8: materialize writes in a dry run",
+    "file": "branches/branches-admin-core.js",
+    "from": "    log(show(`materialize ${id}`, apply, plan.identity));\n    if (!apply) { log('(dry run — nothing written; add --apply)'); return 0; }\n",
+    "to": "    log(show(`materialize ${id}`, apply, plan.identity));\n",
+    "kills_with": [
+      "dry run: ZERO writes"
+    ],
+    "command": [
+      "node",
+      "branches/branches-admin-core.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-cli-publish-silent",
+    "label": "T8: a refused projection after a write exits 0",
+    "file": "branches/branches-admin-core.js",
+    "from": "  log(`branches-admin: written; projection NOT published — ${p.error}${p.errors ? `: ${p.errors.join('; ')}` : ''}`);\n  return 1;\n",
+    "to": "  return 0;\n",
+    "kills_with": [
+      "a refused projection after the write exits 1"
+    ],
+    "command": [
+      "node",
+      "branches/branches-admin-core.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-cli-unknown-flag",
+    "label": "T8: an unknown flag is ignored",
+    "file": "branches/branches-admin-core.js",
+    "from": "    if (!f) return { error: argv[i].startsWith('--') ? `unknown flag ${argv[i]}` : `unexpected argument ${JSON.stringify(argv[i])}` };\n",
+    "to": "    if (!f) continue;\n",
+    "kills_with": [
+      "unknown flag --bogus"
+    ],
+    "command": [
+      "node",
+      "branches/branches-admin-core.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-cli-ev-required",
+    "label": "T8: set-location runs without --expected-version",
+    "file": "branches/branches-admin-core.js",
+    "from": "    if (!Number.isFinite(ev)) { log(",
+    "to": "    if (false) { log(",
+    "kills_with": [
+      "--expected-version is required"
+    ],
+    "command": [
+      "node",
+      "branches/branches-admin-core.test.js"
+    ]
   }
 ]
