@@ -132,9 +132,14 @@ const NOW = 1_800_000_000_000;
     for (const p of ['restaurants/tb_brand_centro', 'rid_reservations/tb_brand_centro', 'branch_op_ids/tb_brand/op1']) assert.strictEqual(db.get(p), null, `${p} removed`);
     assert.deepStrictEqual(db.get('brand_branch_names/tb_brand'), null, 'name reservation released');
     assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_norte', brandId: 'tb_brand' }), { ok: false, error: 'not_a_draft' });
+    await S.createDraft(db, { input: { ...INPUT, location_name: 'Este' }, opId: 'op5', callerUid: 'own1', now: NOW });
+    db.root.rid_reservations.tb_brand_este = { op_id: 'other', brand_id: 'tb_brand' };   // a reservation this draft's op does not own
+    db.root.brand_branch_names.tb_brand.este = { op_id: 'other' };
+    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_brand_este', brandId: 'tb_brand' }), { ok: true });
+    assert.deepStrictEqual([db.get('rid_reservations/tb_brand_este'), db.get('brand_branch_names/tb_brand/este')], [{ op_id: 'other', brand_id: 'tb_brand' }, { op_id: 'other' }], 'never frees a reservation another op owns');
     assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_brand_centro', brandId: 'other' }), { ok: false, error: 'not_a_draft' });
   }
-  ok('deleteBranchDraft: removes the draft + its rid / name reservations + op-id mapping; refuses a non-draft or another brand');
+  ok('deleteBranchDraft: removes the draft + its rid / name reservations + op-id mapping; refuses a non-draft or another brand; never frees a reservation another op owns');
 
   // ── materialize: durable inputs, lease, match-existing steps, resume, identity_conflict ──
   const LOC = { hub: { lat: 15.51, lng: -88.03 }, address_line: 'Blvd 1' };
