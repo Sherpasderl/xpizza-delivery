@@ -1,6 +1,6 @@
 'use strict';
 // PLATFORM F1 — the brand / location model (PLAN-multi-location §1.2, §3.4, §3.5). PURE: no I/O, no clock, no brand literal.
-//   /brands/{brandId}            { name, active, locations: {rid: 'member'|'retired'|'staged'}, activation: {state, since} }   (C1 extends)
+//   /brands/{brandId}            { name, active, locations: {rid: 'member'|'retired'|'staged'}, activation: {state, since}, projection_gen? }   (C1 extends)
 //   'staged' (orchestration r3.1 §3, P-B): materialized by Sherpa but not yet open — listed (membership both ways), never routed /
 //   projected; a legacy brand stays legacy while its only MEMBER is itself (staged siblings wait for the activation cutover).
 //   /restaurants/{rid}/identity  + brand_id, location_name, zone {type:'circle', radius_km}, prep_default_min
@@ -13,7 +13,7 @@ const ID = /^[a-z0-9_]{1,40}$/;
 const STATES = new Set(['legacy', 'off', 'on']);
 const LOCATION_STATES = ['member', 'retired', 'staged'];
 const LOC_STATES = new Set(LOCATION_STATES);
-const BRAND_KEYS = ['activation', 'active', 'locations', 'name'];
+const BRAND_KEYS = ['activation', 'active', 'locations', 'name', 'projection_gen'];
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -34,6 +34,7 @@ function validateBrand(brandId, rec) {
   if (extra.length) e.push(`unknown keys: ${extra.sort().join(', ')}`);
   if (!isText(rec.name, 80)) e.push('name must be 1–80 chars, unpadded');
   if (typeof rec.active !== 'boolean') e.push('active must be boolean');
+  if (own(rec, 'projection_gen') && !(Number.isInteger(rec.projection_gen) && rec.projection_gen >= 0)) e.push('projection_gen must be a non-negative integer');
   const locs = rec.locations;
   if (!isObj(locs) || !Object.keys(locs).length) e.push('locations must be a non-empty object');
   else for (const [rid, st] of Object.entries(locs)) {

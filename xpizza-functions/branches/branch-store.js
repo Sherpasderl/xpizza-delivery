@@ -140,7 +140,7 @@ const STEPS = {
       const st = isObj(cur.locations) ? cur.locations[rid] : undefined;
       if (st === 'staged' || st === 'member') return undefined;
       if (st !== undefined) return stop('membership_conflict');
-      const next = { ...cur, locations: { ...cur.locations, [rid]: 'staged' } };
+      const next = { ...cur, locations: { ...cur.locations, [rid]: 'staged' }, projection_gen: (cur.projection_gen || 0) + 1 };
       return validateBrand(brandId, next).ok ? next : stop('brand_invalid');
     });
     if (b.stop) return fail(db, rid, b.stop, now);
@@ -156,7 +156,7 @@ const STEPS = {
         const st = isObj(cur) && isObj(cur.locations) ? cur.locations[rid] : undefined;
         if (st === 'member') return undefined;
         if (st !== 'staged') return stop('membership_conflict');
-        const next = { ...cur, locations: { ...cur.locations, [rid]: 'member' } };
+        const next = { ...cur, locations: { ...cur.locations, [rid]: 'member' }, projection_gen: (cur.projection_gen || 0) + 1 };
         return validateBrand(brandId, next).ok ? next : stop('brand_invalid');
       });
       if (b.stop) return fail(db, rid, b.stop, now);

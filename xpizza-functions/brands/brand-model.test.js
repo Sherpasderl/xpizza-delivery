@@ -32,6 +32,12 @@ for (const [id, rec, why] of [
 ]) assert.strictEqual(M.validateBrand(id, rec).ok, false, why);
 ok('validateBrand: third brand + legacy valid; legacy shape exact; strict keys; types; reserved id');
 
+// orchestration §6: projection_gen — optional non-negative integer, bumped in every membership / activation brand transaction
+assert.deepStrictEqual(M.validateBrand('tb_brand', { ...TB, projection_gen: 0 }), { ok: true });
+assert.deepStrictEqual(M.validateBrand('tb_brand', { ...TB, projection_gen: 7 }), { ok: true });
+for (const g of [-1, 1.5, '2', null, true]) assert.strictEqual(M.validateBrand('tb_brand', { ...TB, projection_gen: g }).ok, false, `projection_gen ${JSON.stringify(g)}`);
+ok('validateBrand: projection_gen optional, a non-negative integer');
+
 // ── validateZone ──
 assert.deepStrictEqual(M.validateZone({ type: 'circle', radius_km: 5 }), []);
 for (const z of [{ type: 'polygon', radius_km: 5 }, { type: 'circle', radius_km: 0 }, { type: 'circle', radius_km: -1 }, { type: 'circle', radius_km: 51 },
