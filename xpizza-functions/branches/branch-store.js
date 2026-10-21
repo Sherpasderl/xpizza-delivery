@@ -23,10 +23,17 @@ const stable = (v) => (Array.isArray(v) ? `[${v.map(stable).join(',')}]`
 const hashOf = (v) => crypto.createHash('sha256').update(stable(v)).digest('hex');
 const val = async (db, path) => (await db.ref(path).once('value')).val();
 
-// a transaction whose update fn may stop with a reason: returns {committed, value, stop}
+// a transaction whose update fn may stop with a reason: returns {committed, value, stop}. NULL-FIRST SAFE: the Admin SDK first
+// runs fn on the CACHED value (null for an uncached node), and an undefined there aborts without consulting the server — so a
+// stop / no-change on null answers null instead (null over null writes nothing; a non-null server value re-runs fn on it).
 async function txn(db, path, fn) {
   let stop = null;
-  const r = await db.ref(path).transaction((cur) => { stop = null; const out = fn(cur, (why) => { stop = why; }); return stop ? undefined : out; });
+  const r = await db.ref(path).transaction((cur) => {
+    stop = null;
+    const out = fn(cur, (why) => { stop = why; });
+    if (stop || out === undefined) return cur === null ? null : undefined;
+    return out;
+  });
   return { committed: r.committed, value: r.snapshot.val(), stop };
 }
 
@@ -56,7 +63,7 @@ async function createDraft(db, { input, opId, callerUid, now }) {
   const nk = nameKey(draft.location_name);
   const nm = await txn(db, `brand_branch_names/${brandId}/${nk}`, (cur, stop) => (cur == null ? { op_id: opId } : (cur.op_id === opId ? undefined : stop('name_taken'))));
   if (nm.stop) {
-    if (!mapping.candidate) await txn(db, mapPath, (cur) => (cur && cur.payload_hash === hash && !cur.candidate ? null : undefined));
+    if (!mapping.candidate) await txn(db, mapPath, (cur) => (cur && cur.payload_hash === hash && !cur.candidate ? null : undefined));   // release a candidate-less mapping
     return { ok: false, error: 'name_taken' };
   }
 

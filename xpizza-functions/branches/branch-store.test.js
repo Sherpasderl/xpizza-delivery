@@ -37,9 +37,10 @@ function fakeRtdb(init = {}) {
     async transaction(fn) {
       if (hooks[p]) { const h = hooks[p]; delete hooks[p]; await h(); }
       const real = clone(get(p));
-      let next = fn(null);                                   // the Admin SDK's speculative first pass on an uncached node
-      if (real !== null) next = fn(clone(real));
-      else if (next !== undefined && next !== null) { /* committed on null */ }
+      // the Admin SDK's speculative first pass on an UNCACHED node: fn(null); undefined there ABORTS without consulting the server
+      let next = fn(null);
+      if (next === undefined) return { committed: false, snapshot: snap(null) };
+      if (real !== null) next = fn(clone(real));   // the server disagreed with null → re-run on the real value
       if (next === undefined) return { committed: false, snapshot: snap(real) };
       set(p, next);
       if (crash(p)) throw new Error(`crash after ${p}`);
