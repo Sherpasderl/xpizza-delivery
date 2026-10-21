@@ -63,7 +63,8 @@ async function createDraft(db, { input, opId, callerUid, now }) {
   // (3) persist the candidate, then reserve exactly it; advance only forward from the persisted value
   const seq = ridCandidates(brandId, draft.location_name);
   let rid = mapping.rid || null;
-  while (!rid) {
+  for (let guard = 0; !rid; guard += 1) {
+    if (guard > seq.length) return { ok: false, error: 'rid_exhausted' };   // fail closed: the walk only ever moves forward
     const pc = await txn(db, mapPath, (cur, stop) => (cur == null || cur.payload_hash !== hash ? stop('op_lost') : (cur.candidate ? undefined : { ...cur, candidate: seq[0] })));
     if (pc.stop) return { ok: false, error: pc.stop };
     mapping = pc.value; const cand = mapping.candidate;
