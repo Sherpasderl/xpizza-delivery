@@ -198,5 +198,44 @@ const NOW = 1_800_000_000_000;
   }
   ok('enrichLegacyIdentity: additive CAS write on the legacy branch (foreign fields kept); a second run refused');
 
+  // ── brand activation (off → on, chosen staged → member + identity active) / deactivation (on → off) / version-only bump ──
+  {
+    const off = { ...NORTE, active: false, version: 3 };
+    const init = () => fakeRtdb({ brands: { tb_brand: { ...BRAND, activation: { state: 'off', since: 1 }, locations: { tb_norte: 'staged' } } },
+      restaurants: { tb_norte: { identity: off, handhelds: { h1: { revoked: false, last_seen: 5 } } } }, menus: { tb_brand: { v: 1 } } });
+    const readers = { teamCount: async () => 1 };
+    let db = init();
+    assert.deepStrictEqual(await S.activateBrand(db, { brandId: 'tb_brand', open: ['tb_norte'], now: NOW }), { ok: false, error: 'not_ready', unmet: { tb_norte: ['no_owner_or_manager'] } }, 'no team reader → fail closed, nothing written');
+    assert.deepStrictEqual(db.writes, []);
+    assert.deepStrictEqual(await S.activateBrand(db, { brandId: 'tb_brand', open: ['tb_otro'], now: NOW, readers }), { ok: false, error: 'not_staged', rids: ['tb_otro'] });
+    db.failAfter['brands/tb_brand'] = true;   // crash after the brand transaction
+    await assert.rejects(S.activateBrand(db, { brandId: 'tb_brand', open: ['tb_norte'], now: NOW, readers }));
+    assert.deepStrictEqual([db.get('brands/tb_brand/activation'), db.get('brands/tb_brand/locations/tb_norte'), db.get('brands/tb_brand/projection_gen')], [{ state: 'on', since: NOW }, 'member', 1]);
+    assert.strictEqual(db.get('restaurants/tb_norte/identity/active'), false);
+    const again = await S.activateBrand(db, { brandId: 'tb_brand', open: ['tb_norte'], now: NOW + 9, readers });
+    assert.deepStrictEqual(again, { ok: true, opened: ['tb_norte'] }, 're-run resumes: brand step already matching, identity CAS completes');
+    assert.deepStrictEqual([db.get('brands/tb_brand/activation/since'), db.get('brands/tb_brand/projection_gen')], [NOW, 1], 'no second brand write');
+    assert.deepStrictEqual([db.get('restaurants/tb_norte/identity/active'), db.get('restaurants/tb_norte/identity/version')], [true, 4]);
+    const n0 = db.writes.length;
+    assert.deepStrictEqual(await S.activateBrand(db, { brandId: 'tb_brand', open: ['tb_norte'], now: NOW + 20, readers }), { ok: true, opened: ['tb_norte'] }, 'a third run is a no-op');
+    assert.strictEqual(db.writes.length, n0, 'and writes nothing');
+    assert.deepStrictEqual(await S.deactivateBrand(db, { brandId: 'tb_brand', now: NOW + 30 }), { ok: true });
+    assert.deepStrictEqual([db.get('brands/tb_brand/activation'), db.get('brands/tb_brand/projection_gen'), db.get('brands/tb_brand/locations/tb_norte')], [{ state: 'off', since: NOW + 30 }, 2, 'member']);
+    assert.deepStrictEqual(await S.deactivateBrand(db, { brandId: 'tb_brand', now: NOW + 40 }), { ok: false, error: 'not_on' });
+    db = fakeRtdb({ brands: { tb_leg: { name: 'L', active: true, locations: { tb_leg: 'member', tb_leg_2: 'staged' }, activation: { state: 'legacy', since: 1 } } } });
+    assert.deepStrictEqual(await S.activateBrand(db, { brandId: 'tb_leg', open: ['tb_leg_2'], now: NOW, readers }), { ok: false, error: 'legacy_cutover_is_o3' }, 'the legacy cutover is O3 (plan phasing)');
+    assert.deepStrictEqual(await S.activateBrand(db, { brandId: 'tb_none', open: [], now: NOW }), { ok: false, error: 'brand_not_found' });
+  }
+  ok('activateBrand: off → on + chosen staged → member (one brand txn, projection_gen +1) then identity CAS per branch; readiness per branch (no team reader → fail closed, nothing written); resumable + idempotent; deactivateBrand on → off; legacy cutover refused (O3)');
+  {
+    const db = fakeRtdb({ restaurants: { tb_norte: { identity: { ...NORTE } } } });
+    assert.deepStrictEqual(await S.bumpIdentityVersion(db, { rid: 'tb_norte', expectedVersion: 3 }), { ok: true, version: 4 });
+    const { version, ...rest } = db.get('restaurants/tb_norte/identity'); const { version: v0, ...rest0 } = NORTE;
+    assert.deepStrictEqual([version, rest], [4, rest0], 'only version changes');
+    assert.deepStrictEqual(await S.bumpIdentityVersion(db, { rid: 'tb_norte', expectedVersion: 3 }), { ok: false, error: 'stale_branch' });
+    assert.deepStrictEqual(await S.bumpIdentityVersion(db, { rid: 'tb_none', expectedVersion: 1 }), { ok: false, error: 'stale_branch' });
+  }
+  ok('bumpIdentityVersion (projection resync): version + 1 only, CAS on the expected version; absent identity refused');
+
   console.log(`\nbranch-store: OK (${n})`);
 })().catch((e) => { console.error('branch-store FAILED:', e); process.exit(1); });

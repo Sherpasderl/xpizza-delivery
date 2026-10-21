@@ -244,22 +244,24 @@ async function enrichLegacyIdentity(db, { rid, input, expectedVersion }) {
 // readers: { teamCount(rid) → number, menuPublished(brandId) → boolean } — the team store arrives with O1b (membership); an
 // absent teamCount reader fails closed (no_owner_or_manager). menuPublished defaults to the brand menu node menus/{brand_id}.
 
+async function readinessFacts(db, rid, brandId, brand, devices, readers) {
+  const teamCount = typeof readers.teamCount === 'function' ? await readers.teamCount(rid) : 0;
+  const menuPublished = typeof readers.menuPublished === 'function' ? (await readers.menuPublished(brandId)) === true : (await val(db, `menus/${brandId}`)) != null;
+  return {
+    membership: isObj(brand) && isObj(brand.locations) ? brand.locations[rid] : undefined,
+    brandState: isObj(brand) && isObj(brand.activation) ? brand.activation.state : undefined,
+    handheldSeen: devices.some((h) => Number.isFinite(h.last_seen)), teamCount, menuPublished,
+  };
+}
+const unrevoked = (handhelds) => Object.values(isObj(handhelds) ? handhelds : {}).filter((h) => isObj(h) && h.revoked !== true);
+
 async function setBranchActive(db, { rid, active, expectedVersion, now, callId, readers = {} }) {
   const identity = await val(db, `restaurants/${rid}/identity`);
   if (!isObj(identity)) return { ok: false, error: 'not_a_branch' };
   const brandId = identity.brand_id;
   const [brand, handhelds] = [await val(db, `brands/${brandId}`), await val(db, `restaurants/${rid}/handhelds`)];
-  const devices = Object.values(isObj(handhelds) ? handhelds : {}).filter((h) => isObj(h) && h.revoked !== true);
-  let facts = {};
-  if (active === true) {
-    const teamCount = typeof readers.teamCount === 'function' ? await readers.teamCount(rid) : 0;
-    const menuPublished = typeof readers.menuPublished === 'function' ? (await readers.menuPublished(brandId)) === true : (await val(db, `menus/${brandId}`)) != null;
-    facts = {
-      membership: isObj(brand) && isObj(brand.locations) ? brand.locations[rid] : undefined,
-      brandState: isObj(brand) && isObj(brand.activation) ? brand.activation.state : undefined,
-      handheldSeen: devices.some((h) => Number.isFinite(h.last_seen)), teamCount, menuPublished,
-    };
-  }
+  const devices = unrevoked(handhelds);
+  const facts = active === true ? await readinessFacts(db, rid, brandId, brand, devices, readers) : {};
   const plan = P.planSetActive({ identity, active, facts, now, expectedVersion });
   if (!plan.ok) return plan.unmet ? { ok: false, error: plan.error, unmet: plan.unmet } : { ok: false, error: plan.error };
   if (active === true) {
@@ -271,4 +273,60 @@ async function setBranchActive(db, { rid, active, expectedVersion, now, callId, 
   return { ok: true, state: 'inactive', consequences: { live_orders: live.length, scheduled_bound: live.filter((o) => o.status === 'scheduled').length, devices: devices.length } };
 }
 
-module.exports = { createDraft, deleteBranchDraft, materializeBranch, resumeBranchOp, setBranchLocation, setBranchActive, enrichLegacyIdentity, LEASE_MS };
+// ── Sherpa admin: brand activation (§3 for a NEW brand: off → on; the LEGACY cutover is O3) / deactivation (on → off) ──────────
+// One brand transaction (state + the chosen staged → member + projection_gen + 1, re-validated), then each opened branch's identity
+// active:true (+ version + 1). Every step succeeds if already matching, so a re-run resumes a crashed activation.
+async function activateBrand(db, { brandId, open = [], now, readers = {} }) {
+  const brand = await val(db, `brands/${brandId}`);
+  if (!isObj(brand)) return { ok: false, error: 'brand_not_found' };
+  if (isObj(brand.activation) && brand.activation.state === 'legacy') return { ok: false, error: 'legacy_cutover_is_o3' };
+  const locs = isObj(brand.locations) ? brand.locations : {};
+  const bad = open.filter((rid) => locs[rid] !== 'staged' && locs[rid] !== 'member');
+  if (bad.length) return { ok: false, error: 'not_staged', rids: bad };
+  const unmet = {};
+  for (const rid of open) {
+    const identity = await val(db, `restaurants/${rid}/identity`);
+    if (isObj(identity) && identity.active === true) continue;
+    const facts = await readinessFacts(db, rid, brandId, brand, unrevoked(await val(db, `restaurants/${rid}/handhelds`)), readers);
+    const plan = P.planSetActive({ identity, active: true, facts: { ...facts, brandState: 'on' }, now, expectedVersion: isObj(identity) ? identity.version : undefined });
+    if (!plan.ok) unmet[rid] = plan.unmet || [plan.error];
+  }
+  if (Object.keys(unmet).length) return { ok: false, error: 'not_ready', unmet };
+  const b = await txn(db, `brands/${brandId}`, (cur, stop) => {
+    if (!isObj(cur)) return stop('brand_not_found');
+    if (isObj(cur.activation) && cur.activation.state === 'legacy') return stop('legacy_cutover_is_o3');
+    const next = { ...cur, locations: { ...cur.locations } }; let changed = false;
+    if (!(isObj(cur.activation) && cur.activation.state === 'on')) { next.activation = { state: 'on', since: now }; changed = true; }
+    for (const rid of open) {
+      if (next.locations[rid] === 'staged') { next.locations[rid] = 'member'; changed = true; } else if (next.locations[rid] !== 'member') return stop('not_staged');
+    }
+    if (!changed) return undefined;
+    next.projection_gen = (cur.projection_gen || 0) + 1;
+    return validateBrand(brandId, next).ok ? next : stop('brand_invalid');
+  });
+  if (b.stop) return { ok: false, error: b.stop };
+  for (const rid of open) {
+    const id = await txn(db, `restaurants/${rid}/identity`, (cur, stop) => {
+      if (!isObj(cur) || !Number.isFinite(cur.version)) return stop('identity_invalid');
+      if (cur.active === true) return undefined;
+      return { ...cur, active: true, active_changed_at: now, version: cur.version + 1 };
+    });
+    if (id.stop) return { ok: false, error: id.stop, rid };
+  }
+  return { ok: true, opened: open };
+}
+
+async function deactivateBrand(db, { brandId, now }) {
+  const b = await txn(db, `brands/${brandId}`, (cur, stop) => {
+    if (!isObj(cur)) return stop('brand_not_found');
+    if (!(isObj(cur.activation) && cur.activation.state === 'on')) return stop('not_on');
+    const next = { ...cur, activation: { state: 'off', since: now }, projection_gen: (cur.projection_gen || 0) + 1 };
+    return validateBrand(brandId, next).ok ? next : stop('brand_invalid');
+  });
+  return b.stop ? { ok: false, error: b.stop } : { ok: true };
+}
+
+// projection resync (advisor ruling): a version-only identity bump, so the fenced publish carries an unversioned earlier write
+const bumpIdentityVersion = (db, { rid, expectedVersion }) => casIdentity(db, rid, expectedVersion, { version: expectedVersion + 1 });
+
+module.exports = { activateBrand, deactivateBrand, bumpIdentityVersion, createDraft, deleteBranchDraft, materializeBranch, resumeBranchOp, setBranchLocation, setBranchActive, enrichLegacyIdentity, LEASE_MS };
