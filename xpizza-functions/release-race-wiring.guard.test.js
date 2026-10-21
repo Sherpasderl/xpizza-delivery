@@ -30,4 +30,21 @@ assert.notStrictEqual(idx, BASE, '🔴 the live index.js equals 32f6f17e — the
 const all = INDEX_HUNKS.map(([now]) => now).join('\n');
 for (const must of ["require('./assignment-conflict')", 'await alertAssignmentConflict(db, { orderId, deliveryDriverId: strandedDel, pickupDriverId: strandedPick, now });']) assert.ok(all.includes(must), `the hunks carry ${must}`);
 ok('PROOF (ii): the live index.js differs from 32f6f17e; the hunks carry the require and the post-heal alert call (inside the committed-heal branch)');
+// (iii) codex build r1 P2: the alert call is anchored to its CONTROL FLOW — the only call site, inside `if (didHeal) {` right after
+//      the committed heal (healStrandedOrder → healed:true), after the existing healed++ / warn — and a relocation is caught.
+const ANCHOR = /const \{ healed: didHeal \} = await healStrandedOrder\(db, orderId, strandedDel, strandedPick\);\n {6}if \(didHeal\) \{\n {8}healed\+\+;\n {8}console\.warn\(`sweepPending: self-healed strand [^\n]*\n(?: {8}\/\/[^\n]*\n)* {8}await alertAssignmentConflict\(db, \{ orderId, deliveryDriverId: strandedDel, pickupDriverId: strandedPick, now \}\);\n {6}\}\n/;
+const inFlow = (src) => ANCHOR.test(src) && src.split('alertAssignmentConflict(db,').length - 1 === 1;
+assert.ok(inFlow(idx), '🔴 the alert call is not (only) inside `if (didHeal)` after the committed heal');
+const CALL = '        await alertAssignmentConflict(db, { orderId, deliveryDriverId: strandedDel, pickupDriverId: strandedPick, now });\n';
+assert.strictEqual(idx.split(CALL).length - 1, 1, 'premise: the call line is present once');
+const without = idx.replace(CALL, '');
+const movedBefore = without.replace('      if (didHeal) {\n        healed++;', `${CALL.replace(/^ {8}/, '      ')}      if (didHeal) {\n        healed++;`);
+assert.notStrictEqual(movedBefore, idx, 'premise: relocation applied');
+assert.strictEqual(movedBefore.split('alertAssignmentConflict(db,').length - 1, 1, 'premise: the BEFORE relocation kept the call');
+assert.strictEqual(inFlow(movedBefore), false, 'relocated BEFORE `if (didHeal)` (an aborted heal would alert) → red');
+const movedAfter = without.replace('      if (didHeal) {\n        healed++;', '      if (didHeal) {\n        healed++;').replace('\n      }\n    }\n\n    // S1a §5', `\n      }\n${CALL.replace(/^ {8}/, '      ')}    }\n\n    // S1a §5`);
+assert.strictEqual(movedAfter.split('alertAssignmentConflict(db,').length - 1, 1, 'premise: the AFTER relocation kept the call (moved, not dropped)');
+assert.strictEqual(inFlow(movedAfter), false, 'relocated AFTER the `if (didHeal)` block → red');
+assert.strictEqual(inFlow(idx + '\nalertAssignmentConflict(db, {});\n'), false, 'a second call site → red');
+ok('PROOF (iii): the alert call is anchored inside `if (didHeal)` after the committed heal, as the only call site; relocations before / after the block and a second call site are each red');
 console.log(`release-race-wiring.guard: OK (${n} cases)`);

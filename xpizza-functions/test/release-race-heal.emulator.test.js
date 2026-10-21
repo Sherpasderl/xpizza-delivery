@@ -31,6 +31,9 @@ const legs = (oid, del, pick, delOver = {}, pickOver = {}) => ({
 });
 const healedShape = (t) => { const c = clone(t); delete c.assigned_driver_id; delete c.half_claim_since; return c; };
 const conflict = (oid) => val(`dispatcher_alerts/assignment_conflict_${oid}`);
+// codex build r1 P2: the EXACT tasks tree after each sweep (marker timestamps normalized to 'MARK') — the healer's writes unchanged
+const norm = (tree) => { const c = clone(tree || {}); for (const t of Object.values(c)) if (t && typeof t.half_claim_since === 'number') t.half_claim_since = 'MARK'; return c; };
+const assertTree = async (expected, label) => assert.deepStrictEqual(norm(await val('tasks')), norm(expected), `${label}: the ENTIRE tasks tree equals the expected baseline`);
 const allAlerts = async () => (await val('dispatcher_alerts')) || {};
 
 // one-shot hooks on a transaction PATH: 'reclaim' (re-own the delivery just before the heal CAS), 'reject', 'hang'
@@ -72,6 +75,11 @@ const hooks = new Map();
   hooks.set('tasks/r1_delivery/assigned_driver_id', async () => { await db.ref('tasks/r1_delivery/assigned_driver_id').set('dC'); });
   await fns.sweepPendingOrders.run({});
 
+  const EXP1 = clone(T);
+  for (const oid of ['s1', 'p1', 'a1']) for (const leg of ['delivery', 'pickup']) EXP1[`${oid}_${leg}`] = healedShape(T[`${oid}_${leg}`]);
+  EXP1.m1_delivery.half_claim_since = 1;                                                       // marked (pass one)
+  EXP1.r1_delivery = { ...healedShape(T.r1_delivery), assigned_driver_id: 'dC' };              // marker cleared first, heal CAS aborted
+  await assertTree(EXP1, 'sweep 1');
   for (const [oid, d, p] of [['s1', 'dB', 'dA'], ['p1', null, 'dA'], ['a1', 'dB', null]]) {
     assert.deepStrictEqual(await val(`tasks/${oid}_delivery`), healedShape(T[`${oid}_delivery`]), `${oid}: the delivery healed exactly as today`);
     assert.deepStrictEqual(await val(`tasks/${oid}_pickup`), healedShape(T[`${oid}_pickup`]), `${oid}: the pickup healed exactly as today`);
@@ -97,6 +105,8 @@ const hooks = new Map();
   await fns.sweepPendingOrders.run({});
   await fns.sweepPendingOrders.run({});
   const snap2 = await allAlerts();
+  const EXP3 = clone(EXP1); EXP3.r1_delivery.half_claim_since = 1;                            // r1 (dC vs dA) is now a fresh mismatch: marked, then waits
+  await assertTree(EXP3, 're-sweeps ×2');
   for (const oid of ['s1', 'p1', 'a1']) assert.deepStrictEqual(snap2[`assignment_conflict_${oid}`], snap1[`assignment_conflict_${oid}`], `${oid}: re-sweeps leave the alert byte-identical`);
   assert.strictEqual(Object.keys(snap2).filter((k) => k.startsWith('assignment_conflict_')).length, 3, 'still exactly three conflict alerts');
   assert.ok(snap2.assignment_conflict_m1 === undefined && snap2.assignment_conflict_w1 === undefined, 'the transient ones still raise none on re-sweep (now inside their window)');
@@ -111,6 +121,8 @@ const hooks = new Map();
     const took = Date.now() - t0;
     assert.ok(took < 15000, `${mode}: the sweep finished within the bound (${took} ms)`);
     for (const oid of ['f1', 'f2']) assert.strictEqual((await val(`tasks/${oid}_delivery/assigned_driver_id`)) ?? null, null, `${mode}: ${oid} healed`);
+    const seeded = { ...legs('f1', 'dB', 'dA', { half_claim_since: 1 }), ...legs('f2', 'dB', 'dA', { half_claim_since: 1 }) };
+    await assertTree(Object.fromEntries(Object.entries(seeded).map(([k, t]) => [k, healedShape(t)])), `${mode}`);
     assert.strictEqual(await conflict('f1'), null, `${mode}: f1's alert write failed / stalled — none written`);
     assert.ok(await conflict('f2'), `${mode}: the NEXT order (f2) is still healed AND alerted`);
   }
@@ -122,6 +134,7 @@ const hooks = new Map();
   await fns.sweepPendingOrders.run({});
   assert.strictEqual((await val('tasks/d1_delivery/assigned_driver_id')) ?? null, null, 'd1 healed');
   assert.deepStrictEqual(await conflict('d1'), PRE, 'the pre-seeded alert is byte-identical (create-only: never overwritten)');
+  await assertTree(Object.fromEntries(Object.entries(legs('d1', 'dB', 'dA', { half_claim_since: 1 })).map(([k, t]) => [k, healedShape(t)])), 'dedup');
   ok('dedup that can SEE an overwrite: a pre-seeded distinguishable alert survives a heal of the same order byte-identical');
 
   await db.ref().set(null);
