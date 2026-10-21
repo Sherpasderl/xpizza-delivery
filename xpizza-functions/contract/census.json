@@ -616,7 +616,7 @@
   },
   {
    "id": "xpizza-functions/branches/branch-store.js#setBranchActive>anon#status#0",
-   "line": 273,
+   "line": 306,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -629,7 +629,7 @@
   },
   {
    "id": "xpizza-functions/branches/branches-admin-core.js#locationInput#lat#0",
-   "line": 48,
+   "line": 51,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -639,7 +639,7 @@
   },
   {
    "id": "xpizza-functions/branches/branches-admin-core.js#locationInput#lng#0",
-   "line": 48,
+   "line": 51,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -649,7 +649,7 @@
   },
   {
    "id": "xpizza-functions/branches/branches-admin-core.js#locationInput#lat#1",
-   "line": 48,
+   "line": 51,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -659,7 +659,7 @@
   },
   {
    "id": "xpizza-functions/branches/branches-admin-core.js#locationInput#lng#1",
-   "line": 48,
+   "line": 51,
    "kind": "member",
    "facts": [
     "PLACE"

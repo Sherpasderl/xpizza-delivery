@@ -18086,5 +18086,51 @@
       "database",
       "node test/branches-rules.emulator.test.js"
     ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-newbrand-foreign",
+    "label": "create-brand: another op can claim an existing brand",
+    "file": "branches/branch-store.js",
+    "from": "    if (!(isObj(m0) && m0.rid && onlyStaged(brand0, m0.rid))) return { ok: false, error: 'brand_exists' };\n",
+    "to": "",
+    "kills_with": [
+      "another op cannot claim the new brand",
+      "an existing brand is refused"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-newbrand-abandon",
+    "label": "create-brand: abandoning the first draft leaves an orphan brand",
+    "file": "branches/branch-store.js",
+    "from": "  if (onlyStaged(brand, rid) && isObj(brand.activation) && brand.activation.state === 'off') u[`brands/${brandId}`] = null;\n",
+    "to": "",
+    "kills_with": [
+      "the never-opened brand is abandoned whole"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-cli-create-dryrun",
+    "label": "create-brand writes in a dry run",
+    "file": "branches/branches-admin-core.js",
+    "from": "    if (!apply) { log('(dry run — nothing written; add --apply)'); return 0; }\n    const r = await S.createBrandWithDraft",
+    "to": "    const r = await S.createBrandWithDraft",
+    "kills_with": [
+      "create-brand dry run: ZERO writes"
+    ],
+    "command": [
+      "node",
+      "branches/branches-admin-core.test.js"
+    ]
   }
 ]
