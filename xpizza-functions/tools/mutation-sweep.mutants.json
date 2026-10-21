@@ -16699,8 +16699,8 @@
     "id": "bsrv-b1-pin",
     "label": "B1: the identity .validate uses_platform_factura pin removed",
     "file": "../xpizza-reference/database.rules.json",
-    "from": " && newData.child('uses_platform_factura').val() === data.child('uses_platform_factura').val()\"",
-    "to": "\"",
+    "from": " && newData.child('uses_platform_factura').val() === data.child('uses_platform_factura').val() && (!data.exists()",
+    "to": " && (!data.exists()",
     "kills_with": [
       "Expected request to fail"
     ],
@@ -16717,8 +16717,8 @@
     "id": "bsrv-b1-del",
     "label": "B1: the identity delete guard for a flagged identity removed",
     "file": "../xpizza-reference/database.rules.json",
-    "from": " && (newData.exists() || !data.child('uses_platform_factura').exists())\",",
-    "to": "\",",
+    "from": " && (newData.exists() || !data.child('uses_platform_factura').exists()) && (!data.child('brand_id')",
+    "to": " && (!data.child('brand_id')",
     "kills_with": [
       "Expected request to fail"
     ],
