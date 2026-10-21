@@ -108,6 +108,8 @@ const RID2 = 'merch_b';
     await d.ref(`brands/${RID}`).set({ name: 'A', active: true, locations: { [RID]: 'member' }, activation: { state: 'legacy', since: 1 } });
     await d.ref(`brand_members/${RID}/owners/${OWNER}`).set({ granted_at: 1, granted_by: 'cli:op' });
     await d.ref(`member_of/${OWNER}/brands/${RID}`).set('owner');
+    await d.ref(`brand_members/${RID}/profiles/mgrPrf001`).set({ name: 'Ana Gerente', email: 'ana@m.hn' });   // PLAN-portal-team-invites G1
+    await d.ref(`portal_accounts/${OWNER}`).set({ password_set: true, at: 1 });   // PLAN-portal-team-invites r2
     await d.ref('member_invites/inviteAAAAAAAAAAAAAAAAAAAA').set({ kind: 'owner', brandId: RID, invited_by: OWNER, created_at: 1, expires_at: 2, state: 'open' });
   });
   const roles = [['dispatcher', dispDb], ['kitchen staff', staffDb], ['owner', ownerDb], ['other tenant', otherDb], ['random user', randoDb], ['customer', custDb], ['handheld', hhDb], ['anonymous', anonDb]];
@@ -119,6 +121,10 @@ const RID2 = 'merch_b';
     await no(`F: a ${who} cannot grant a manager`, set(db, `brand_members/${RID}/managers/${RID}/${RANDO}`, { granted_at: 1, granted_by: 'x' }));
     await no(`F: a ${who} cannot write member_of`, set(db, `member_of/${RANDO}/brands/${RID}`, 'owner'));
     await no(`F: a ${who} cannot consume an invite`, set(db, 'member_invites/inviteAAAAAAAAAAAAAAAAAAAA/state', 'consumed'));
+    await no(`F: a ${who} cannot READ a member profile (names / emails)`, get(db, `brand_members/${RID}/profiles/mgrPrf001`));
+    await no(`F: a ${who} cannot WRITE a member profile`, set(db, `brand_members/${RID}/profiles/${RANDO}`, { name: 'x', email: 'x@y.hn' }));
+    await no(`F: a ${who} cannot READ portal_accounts`, get(db, `portal_accounts/${OWNER}`));
+    await no(`F: a ${who} cannot WRITE portal_accounts (password_set)`, set(db, `portal_accounts/${RANDO}`, { password_set: true, at: 1 }));
   }
   await no('F: nor via a multi-path update at the ROOT', upd(dispDb, '/', { [`brand_members/${RID}/owners/${RANDO}`]: { granted_at: 1, granted_by: 'x' } }));
   await no('F: nor by replacing the whole brand roster', set(ownerDb, `brand_members/${RID}`, { owners: { [OWNER]: { granted_at: 1, granted_by: 'x' }, [RANDO]: { granted_at: 1, granted_by: 'x' } } }));

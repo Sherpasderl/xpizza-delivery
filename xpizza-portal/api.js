@@ -126,7 +126,7 @@ export async function editCatalog({ rid, source, baseSourceUpdateTime, token }) 
 // objects would fail the publish. An OMITTED empty array is worse still: ackMatches refuses a
 // non-array outright, so dropping `[]` turns a valid publish into a 400.
 export async function publishEdited({ rid, editToken, acknowledgedChanges, fiscalAck, token }) {
-  return apiFetch('publishEdited', {
+  const out = await apiFetch('publishEdited', {
     rid,
     token,
     body: {
@@ -136,6 +136,10 @@ export async function publishEdited({ rid, editToken, acknowledgedChanges, fisca
       fiscalAck: fiscalAck === true,       // the server checks `!== true`, so a truthy value is not enough
     },
   });
+  // PORTAL-UI 1a (codex 1a r1 P2-7): a settled publish moves the branch's PUBLISHED key set; availability.js re-reads it.
+  // Notification only, after the response — the request, its body and its result are unchanged.
+  try { document.dispatchEvent(new CustomEvent('portal:published', { detail: { rid } })); } catch (_) { /* never breaks a publish */ }
+  return out;
 }
 
 // 1D add-product A §0.1 — "Volver al menú publicado": replace the saved draft with the published menu, conditional on the
@@ -179,4 +183,22 @@ export async function fetchSalesCsv({ rid, from, to, kind = 'daily', cursor, tok
   let res;
   try { res = await sherpaFetch(url, options); } catch (e) { throw new ApiError('Unavailable', 0, null); }
   return readTextResponse(res);
+}
+
+// ── PORTAL-UI 1a — the branch-operations endpoints (portal/ops-functions.js). Each goes through apiFetch: the Bearer in a
+// header, typed failures, the optional assertLive. Additions only; nothing above changed.
+export async function getMyBranches({ token, assertLive }) {
+  return apiFetch('getMyBranches', { token, assertLive });
+}
+export async function updateBranch({ rid, expectedVersion, patch, token }) {
+  return apiFetch('updateBranch', { token, body: { rid, expectedVersion, patch } });
+}
+export async function setBranchPause({ rid, op, dur_min, reason, token }) {
+  return apiFetch('setBranchPause', { token, body: op === 'resume' ? { rid, op } : { rid, op, dur_min, reason } });
+}
+export async function getBranchAvailability({ rid, brandId, token, assertLive }) {
+  return apiFetch('getBranchAvailability', rid ? { rid, token, assertLive } : { token, assertLive, params: { brandId } });
+}
+export async function setBranchAvailability({ rids, key, available, token }) {
+  return apiFetch('setBranchAvailability', { token, body: { rids, key, available } });
 }

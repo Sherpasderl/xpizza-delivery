@@ -70,7 +70,7 @@ let n = 0; const ok = (l) => console.log(`  ok ${++n} ${l}`);
   ok('real readers after the real writer: getMyRestaurants / authorizeCatalogEdit / merchantMyLocations');
 
   // ── 3. the platform transfer racing an invite acceptance (real transactions) ──
-  const inv = await I.createInvite({ db, randomToken }, { uid: 'ownerP1', token: {} }, { brandId: 'x_pizza', rids: ['x_pizza'], email: 'mgrrace01@m.hn' });
+  const inv = await I.createInvite({ db, randomToken }, { uid: 'ownerP1', token: {} }, { name: 'Gerente Prueba', brandId: 'x_pizza', rids: ['x_pizza'], email: 'mgrrace01@m.hn' });
   assert.ok(inv.ok, JSON.stringify(inv));
   const [t, acc] = await Promise.all([
     R.mutateRoster({ db: cold2 }, 'x_pizza', { kind: 'cli', operator: 'emu' }, { type: 'transfer_owner', uid: 'ownerNew1' }),
@@ -84,7 +84,7 @@ let n = 0; const ok = (l) => console.log(`  ok ${++n} ${l}`);
 
   // ── 4. invite crash → revoke → retry (real transactions) ──
   const laOwner = 'ownerP1';   // la_musa's owner since the backfill (untouched by the x_pizza transfer)
-  const inv2 = await I.createInvite({ db, randomToken }, { uid: laOwner, token: {} }, { brandId: 'la_musa', rids: ['la_musa'], email: 'newown001@m.hn' });
+  const inv2 = await I.createInvite({ db, randomToken }, { uid: laOwner, token: {} }, { name: 'Gerente Prueba', brandId: 'la_musa', rids: ['la_musa'], email: 'newown001@m.hn' });
   assert.ok(inv2.ok, JSON.stringify(inv2));
   const t0 = Date.now();
   await seeder.ref(`member_invites/${inv2.inviteId}`).update({ state: 'consuming', consuming: { by: 'newOwn001', at: t0 - 60000 } });   // crashed long ago

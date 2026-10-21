@@ -11,6 +11,10 @@ const { handle, ROUTES } = require('./team-http-core');
 
 const deps = () => ({
   db: getDatabase(),
+  // catalogRequestPublish (G3): the catalog store + the two reads its edit token is bound to (lazy: only that route uses them)
+  get fs() { return require('firebase-admin/firestore').getFirestore(); },
+  readActiveBuilt: (rid) => require('../catalog/publish-request').readActiveBuiltFrom(require('firebase-admin/firestore').getFirestore(), rid),
+  readDraft: (rid) => require('../catalog/publish-request').readDraftFrom(require('firebase-admin/firestore').getFirestore(), rid),
   verifyIdToken: (t) => getAuth().verifyIdToken(t),
   now: () => Date.now(),
   randomToken: () => crypto.randomBytes(16).toString('base64url'),   // 128-bit invite id (22 chars)

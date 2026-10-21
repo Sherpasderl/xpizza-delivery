@@ -24,9 +24,9 @@ test('third brand «sabor»: owner invites → manager accepts → acts per capa
   const req = (who, body) => ({ method: 'POST', body, get: (h) => (h.toLowerCase() === 'authorization' ? `Bearer ${who}` : undefined) });
   assert.ok(!usesPlatformFactura('sb_centro'), 'premise: the third brand issues no platform factura');
 
-  const inv = await H.handle('memberInvite', deps, req('owner', { brandId: 'sabor', rids: ['sb_centro'], email: 'Gerente@Sabor.test' }));
+  const inv = await H.handle('memberInvite', deps, req('owner', { name: 'Gerente Prueba', brandId: 'sabor', rids: ['sb_centro'], email: 'Gerente@Sabor.test' }));
   assert.strictEqual(inv.status, 200, JSON.stringify(inv));
-  assert.deepStrictEqual((await H.handle('memberAcceptInvite', deps, req('mgr', { inviteId: inv.body.inviteId }))).body, { ok: true, outcome: 'granted' });
+  assert.deepStrictEqual((await H.handle('memberAcceptInvite', deps, req('mgr', { inviteId: inv.body.inviteId }))).body, { ok: true, outcome: 'granted', password_set: false });
 
   const a = await resolveAccess({ db }, { uid: 'mgrSab01', token: TOK.mgr }, 'sb_centro');
   for (const c of ['availability.set', 'location.hours', 'location.pause', 'stats.read', 'device.list']) assert.ok(a.caps.includes(c), c);
@@ -42,5 +42,5 @@ test('third brand «sabor»: owner invites → manager accepts → acts per capa
   assert.strictEqual(fiscalPublishGate(facturaRid, auth, { fiscalAck: true }).body.error, 'not_owner', 'flag on → the owner must confirm');
 
   assert.deepStrictEqual((await H.handle('memberList', deps, req('owner', { brandId: 'sabor' }))).body,
-    { ok: true, owner: 'ownerS1', managers: { mgrSab01: { rids: ['sb_centro'], can_edit_menu: true } } });
+    { ok: true, owner: { uid: 'ownerS1', name: null, email: null }, managers: [{ uid: 'mgrSab01', name: 'Gerente Prueba', email: 'gerente@sabor.test', rids: ['sb_centro'], can_edit_menu: true }], pending: [] });
 });

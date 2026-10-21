@@ -2,7 +2,7 @@
 // PLAN-portal-membership r3 §5.2 + OWNER DECISIONS (2026-10-19) — one-time invite LINKS the OWNER sends by WhatsApp (email
 // later, once there is a domain). Only «Gerente de sucursal» is invited (one or more branches; the owner's «Puede editar el
 // menú y los precios» toggle rides on the invite). There are no owner invites: ONE owner per brand, changed by CLI only.
-//   member_invites/{inviteId} = { kind: 'manager', brandId, rids: [rid…], can_edit_menu, email, invited_by, created_at, expires_at,
+//   member_invites/{inviteId} = { kind: 'manager', brandId, rids: [rid…], can_edit_menu, name, email, invited_by, created_at, expires_at,
 //                                 state: 'open'|'consuming'|'consumed'|'cancelled'|'expired', consuming?: { by, at } }
 // DELIVERY (owner change 2026-10-19): by EMAIL through Firebase Auth's built-in mailer — the owner's portal calls the client
 // SDK's sendSignInLinkToEmail(invitee, { url: …/aceptar?invite=<inviteId>, handleCodeInApp: true }). RECIPIENT BINDING: the
@@ -23,13 +23,20 @@
 const crypto = require('crypto');
 const F1 = require('../brands/brand-model');
 const { refuseContext, isUid, resolveLocation } = require('./membership');
-const { mutateRoster, INVITE_ID_RE, MAX_BRANCHES } = require('./roster');
+const { mutateRoster, INVITE_ID_RE, MAX_BRANCHES, NAME_MAX } = require('./roster');
 
 const TTL_MS = 7 * 24 * 3600 * 1000;   // advisor ruling: single-use + 7-day expiry + owner revoke (the email-link mitigation)
 const INFLIGHT_MS = 30 * 1000;
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const normEmail = (e) => (typeof e === 'string' ? e.trim().toLowerCase() : '');
 const EMAIL_RE = /^[^@\s]{1,64}@[^@\s]{1,189}\.[^@\s.]{2,}$/;
+// the invitee's display name as the owner typed it (PLAN-portal-team-invites G1): control / format characters (incl. zero-width
+// and bidi) removed, whitespace collapsed, trimmed, 1–80 chars; anything else → null. Rendered only as text by the portal.
+const normName = (n) => {
+  if (typeof n !== 'string') return null;
+  const s = n.replace(/[\p{Cc}\p{Cf}]/gu, '').replace(/\s+/g, ' ').trim();
+  return s.length >= 1 && s.length <= NAME_MAX ? s : null;
+};
 // the acceptor's verified email, or null — never a claim the client could write itself (Firebase sets both from the email link)
 const verifiedEmail = (ctx) => (ctx && ctx.token && ctx.token.email_verified === true && typeof ctx.token.email === 'string' ? normEmail(ctx.token.email) : null);
 const fail = (code) => ({ ok: false, code });
@@ -39,7 +46,7 @@ const val = async (db, p) => (await db.ref(p).once('value')).val();
 
 async function isOwner(db, brandId, uid) { return isObj(await val(db, `brand_members/${brandId}/owners/${uid}`)); }
 
-async function createInvite(deps, ctx, { brandId, rids, can_edit_menu = false, email }) {
+async function createInvite(deps, ctx, { brandId, rids, can_edit_menu = false, email, name }) {
   const { db, now = () => Date.now(), randomToken } = deps;
   const refused = refuseContext(ctx); if (refused) return refused;
   if (!isUid(ctx.uid)) return fail('forbidden');
@@ -48,6 +55,8 @@ async function createInvite(deps, ctx, { brandId, rids, can_edit_menu = false, e
   if (typeof can_edit_menu !== 'boolean') return fail('bad_perms');
   const to = normEmail(email);
   if (!EMAIL_RE.test(to) || to.length > 254) return fail('bad_email');
+  const who = normName(name);
+  if (!who) return fail('bad_name');
   try {
     const rec = await val(db, `brands/${brandId}`);
     if (!rec || !F1.validateBrand(brandId, rec).ok) return fail('brand_invalid');
@@ -59,7 +68,7 @@ async function createInvite(deps, ctx, { brandId, rids, can_edit_menu = false, e
     const id = randomToken();
     if (!INVITE_ID_RE.test(id)) return fail('unavailable');
     const at = now();
-    const inv = { kind: 'manager', brandId, rids: [...rids].sort(), can_edit_menu, email: to, invited_by: ctx.uid, created_at: at, expires_at: at + TTL_MS, state: 'open' };
+    const inv = { kind: 'manager', brandId, rids: [...rids].sort(), can_edit_menu, name: who, email: to, invited_by: ctx.uid, created_at: at, expires_at: at + TTL_MS, state: 'open' };
     await db.ref(`member_invites/${id}`).set(inv);
     // SUPERSESSION (codex build r1 P1-2): this invite becomes THE current one for that email — any predecessor stops granting
     const key = emailKey(to);
@@ -67,7 +76,7 @@ async function createInvite(deps, ctx, { brandId, rids, can_edit_menu = false, e
     const cur = await mutateRoster({ db, now }, brandId, { kind: 'owner', uid: ctx.uid }, { type: 'set_invite_current', emailKey: key, inviteId: id });
     if (!cur.ok) { await setState(db, id, ['open'], 'cancelled'); return fail(cur.code); }
     if (typeof prev === 'string' && prev !== id && INVITE_ID_RE.test(prev)) { try { await setState(db, prev, ['open'], 'superseded'); } catch (_) { /* the pointer is authoritative */ } }
-    return { ok: true, inviteId: id, expires_at: inv.expires_at, email: to };
+    return { ok: true, inviteId: id, expires_at: inv.expires_at, email: to, name: who };
   } catch (_) { return fail('unavailable'); }
 }
 
@@ -96,7 +105,7 @@ async function reissueInvite(deps, ctx, inviteId) {
   try { inv = await val(db, `member_invites/${inviteId}`); } catch (_) { return fail('unavailable'); }
   if (!isObj(inv)) return fail('not_found');
   if (inv.state === 'consumed' || inv.state === 'consuming') return fail(`not_reissuable:${inv.state}`);
-  const r = await createInvite(deps, ctx, { brandId: inv.brandId, rids: inv.rids, can_edit_menu: inv.can_edit_menu === true, email: inv.email });
+  const r = await createInvite(deps, ctx, { brandId: inv.brandId, rids: inv.rids, can_edit_menu: inv.can_edit_menu === true, email: inv.email, name: inv.name });
   if (r.ok) { try { await setState(db, inviteId, ['open', 'expired', 'cancelled'], 'superseded'); } catch (_) { /* the pointer is authoritative */ } }
   return r;
 }
@@ -152,7 +161,8 @@ async function acceptInvite(deps, ctx, inviteId) {
     }
     if (inv.kind !== 'manager' || !Array.isArray(inv.rids)) { await setState(db, inviteId, ['consuming'], 'cancelled'); return fail('invalid'); }
     const r = await mutateRoster({ db, now, log }, inv.brandId, { kind: 'owner', uid: inv.invited_by },
-      { type: 'grant_manager', uid, rids: inv.rids, can_edit_menu: inv.can_edit_menu === true, inviteId, emailKey: emailKey(inv.email) });
+      { type: 'grant_manager', uid, rids: inv.rids, can_edit_menu: inv.can_edit_menu === true, inviteId, emailKey: emailKey(inv.email),
+        ...(normName(inv.name) ? { profile: { name: normName(inv.name), email: inv.email } } : {}) });
     if (!r.ok) {
       if (r.code === 'superseded') { await setState(db, inviteId, ['consuming'], 'superseded'); return fail('superseded'); }   // a newer invite is current
       if (r.code === 'forbidden' || r.code === 'location_not_member' || r.code === 'brand_invalid') {
@@ -166,4 +176,4 @@ async function acceptInvite(deps, ctx, inviteId) {
   } catch (_) { return fail('unavailable'); }
 }
 
-module.exports = { createInvite, cancelInvite, reissueInvite, acceptInvite, emailKey, TTL_MS, INFLIGHT_MS };
+module.exports = { createInvite, cancelInvite, reissueInvite, acceptInvite, emailKey, normName, TTL_MS, INFLIGHT_MS };

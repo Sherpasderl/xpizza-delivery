@@ -27,6 +27,7 @@ admin.initializeApp({ projectId: PROJECT_ID, databaseURL: RTDB_URL });
 (async () => {
   console.log(`membership-admin — project ${PROJECT_ID}`);
   const code = await runMembershipAdmin({ db: admin.database(), op, args: opArgs, apply: args.includes('--apply'), operator: os.userInfo().username || 'operator',
-    now: () => Date.now(), log: (l) => console.log(l), writeFile: (p, d) => fs.writeFileSync(p, d) });
+    now: () => Date.now(), log: (l) => console.log(l), writeFile: (p, d) => fs.writeFileSync(p, d),
+    getUser: (uid) => admin.auth().getUser(uid) });   // backfill: password_set only for a VERIFIED email (codex plan r3)
   process.exit(code);
 })().catch((e) => { console.error('membership-admin FAILED:', e && e.message); process.exit(1); });

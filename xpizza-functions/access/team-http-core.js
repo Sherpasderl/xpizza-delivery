@@ -1,7 +1,7 @@
 'use strict';
 // PLAN-portal-membership r3 + OWNER DECISIONS (codex build r1 P1-1) — the team operations as HTTP endpoints. Transport-free
 // core: handle(name, deps, req) → { status, body }; access/team-http.js wraps each in onRequest (CORS = the portal origins).
-//   memberInvite · memberCancelInvite · memberReissueInvite · memberRevoke · memberSetMenuPermission · memberList  (the OWNER)
+//   memberInvite · memberCancelInvite · memberReissueInvite · memberRevoke · memberSetMenuPermission · memberUpdate · memberList  (the OWNER)
 //   memberAcceptInvite                                                                               (the invitee)
 // Order, every endpoint: method → Bearer → verifyIdToken (an unverifiable token is never a caller) → verified context
 // (customer / handheld refused) → the brand (from the body, or the invite record) → can(<capability>) at the brand's member
@@ -10,6 +10,7 @@
 const F1 = require('../brands/brand-model');
 const { resolveAccess, can, refuseContext } = require('./membership');
 const T = require('./team-core');
+const { writesEnabled } = require('./writes-flag');
 const { INVITE_ID_RE } = require('./roster');
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -22,8 +23,15 @@ const ROUTES = Object.freeze({
   memberReissueInvite:     { method: 'POST', cap: 'team.invite', brand: 'invite', fn: T.teamReissueInvite },
   memberRevoke:            { method: 'POST', cap: 'team.revoke', brand: 'body', fn: T.teamRevoke },
   memberSetMenuPermission: { method: 'POST', cap: 'team.invite', brand: 'body', fn: T.teamSetMenuPermission },
+  memberUpdate:            { method: 'POST', cap: 'team.invite', brand: 'body', fn: T.teamUpdateManager },     // «Editar»: branches + permiso, one txn
   memberList:              { method: 'POST', cap: 'team.revoke', brand: 'body', fn: T.teamList },             // cleanup needs the list
   memberAcceptInvite:      { method: 'POST', cap: null, brand: null, fn: T.teamAcceptInvite },   // the invitee: bound to their verified email
+  memberPasswordSet:       { method: 'POST', cap: null, brand: null, fn: T.teamPasswordSet },     // /aceptar A2 done: the caller's own flag
+  // «Enviar al dueño para publicar» (PLAN-portal-team-invites G3): its own facts check (manager + menu permission on a factura
+  // brand) inside the core, which answers {status, body} itself. A WRITE, so it is DARK behind the shared membership write flag
+  // like every other team write (codex build r1 P1).
+  catalogRequestPublish:   { method: 'POST', cap: null, brand: null, raw: true, fn: async (deps, ctx, body) => ((await writesEnabled(deps.db))
+    ? require('../catalog/publish-request').requestPublishCore(deps, ctx, body) : { status: 503, body: { error: 'writes_disabled' } }) },
 });
 
 const CODE_STATUS = {
@@ -77,6 +85,7 @@ async function handle(name, deps, req) {
       const g = await canAtBrand(db, ctx, brandId, route.cap);
       if (!g.ok) return reply(g.status, { error: g.error });
     }
+    if (route.raw) return await route.fn(deps, ctx, body);
     const r = await route.fn(deps, ctx, body);
     if (r && r.ok) { const { ok, ...rest } = r; return reply(200, { ok: true, ...rest }); }
     return reply(statusOf(r && r.code), { error: (r && r.code) || 'error' });

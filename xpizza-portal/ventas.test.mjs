@@ -50,7 +50,8 @@ test('both modules EVALUATE together and wire the shell (nav + mobile pair)', as
   const byId = installDom();
   installFetch(routes());
   await loadModules();
-  for (const id of ['navprod', 'navventas', 'mnprod', 'mnventas']) assert.strictEqual((byId.get(id).listeners.click || []).length, 1, `#${id} has its one click listener`);
+  // PORTAL-UI 1a: two each — ventas.js's own (first, registered at import) and shell.js's, which hides the branch screens
+  for (const id of ['navprod', 'navventas', 'mnprod', 'mnventas']) assert.strictEqual((byId.get(id).listeners.click || []).length, 2, `#${id} has ventas.js's and shell.js's click listener`);
   assert.ok(gateShut(byId), 'before anyone signs in, the Ventas nav is hidden');
 });
 
@@ -59,7 +60,7 @@ test('🔴 NON-OWNER (owns nothing): no nav, cannot open the page, getSalesStats
   const calls = installFetch(routes({ getMyRestaurants: () => okJson({ restaurants: [] }) }));
   await loadModules();
   await signIn('staff_uid');
-  assert.ok(calls.some((c) => c.fn === 'getMyRestaurants'), 'non-vacuity: the real restaurant lookup ran');
+  assert.ok(calls.some((c) => c.fn === 'getMyBranches'), 'non-vacuity: the real restaurant lookup ran (PORTAL-UI 1a: discovery is getMyBranches)');
   assert.ok(gateShut(byId), 'the Ventas nav, its group label and the mobile pair stay hidden');
   await forceOpen(byId);
   assert.ok(hasClass(byId.get('viewventas'), 'hidden') && !hasClass(byId.get('viewmenu'), 'hidden'), 'firing the hidden button does not open the page');

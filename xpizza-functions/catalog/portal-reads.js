@@ -100,7 +100,7 @@ async function getMyRestaurantsCore({ db, verifyIdToken }, req) {
 //
 // READ-ONLY. Nothing in this module writes.
 // ---------------------------------------------------------------------------
-async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource }, req) {
+async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource, _readPublishRequest = null, now = () => Date.now() }, req) {
   if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
   const rid = req.query && req.query.restaurantId;
 
@@ -178,9 +178,25 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     }
   }
 
+  /* PLAN-portal-team-invites G3 — «Enviar al dueño para publicar»: on a platform-factura brand the OWNER (the one who holds
+     catalog.fiscal_ack) also receives the manager's pending request, its state DERIVED against this very draft + pointer
+     (fresh / draft_changed; a published or stale one is never sent). Nobody else ever receives the field. Best effort: a
+     failed read omits it and the editor still loads. */
+  let publishRequest = null;
+  if (can(auth, 'catalog.fiscal_ack') && usesPlatformFactura(rid)) {
+    try {
+      publishRequest = await (_readPublishRequest || require('./publish-request').readRequestForOwner)(fsdb, rid, {
+        sourceUpdateTime: doc.updateTime ? encodeUpdateTime(doc.updateTime) : null, sourceHash: require('./catalog-edit').sha256(source),
+        activeVersionId: activeVersionId == null ? null : activeVersionId, now: now() });
+    } catch (e) {
+      console.warn('portal_publish_request_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
+    }
+  }
+
   return reply(200, {
     renderedCategories,
     groupAuthoring,
+    ...(publishRequest ? { publish_request: publishRequest } : {}),
     choiceBadges,
     restaurantName,
     ...(draftUnpublishable ? { draft_unpublishable: draftUnpublishable } : {}),

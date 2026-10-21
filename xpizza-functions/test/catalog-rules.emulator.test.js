@@ -63,6 +63,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     await setDoc(doc(db, 'restaurants/x_pizza/versions/v-1'), { version: 'v-1', item_count: 1 });
     await setDoc(doc(db, 'restaurants/x_pizza/meta/active_version'), { version: 'v-1' });
     await setDoc(doc(db, 'restaurants/x_pizza/meta/publish_lock'), { owner_token: 't' });
+    await setDoc(doc(db, 'restaurants/x_pizza/meta/publish_request'), { by: 'mgr', name: 'Dania', at: 1 });   // PLAN-portal-team-invites G3
   });
 
   const anon = env.unauthenticatedContext().firestore();
@@ -107,6 +108,13 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   ok('unauth GET meta/active_version (the pointer) DENIED');
   await assertFails(getDoc(doc(anon, 'restaurants/x_pizza/meta/publish_lock')));
   ok('unauth GET meta/publish_lock DENIED (readers never touch the lock)');
+  // PLAN-portal-team-invites G3: the manager's publish request is server-only (who sent it, when) — any client, signed in or not
+  const signed = env.authenticatedContext('mgr', { email: 'm@x.hn', email_verified: true }).firestore();
+  for (const [who, c] of [['unauth', anon], ['a signed-in user', signed]]) {
+    await assertFails(getDoc(doc(c, 'restaurants/x_pizza/meta/publish_request')));
+    await assertFails(setDoc(doc(c, 'restaurants/x_pizza/meta/publish_request'), { by: 'forged' }));
+    ok(`${who} GET / SET meta/publish_request DENIED (Admin-only)`);
+  }
   await assertFails(setDoc(doc(anon, 'restaurants/x_pizza/meta/active_version'), { version: 'pwned' }));
   ok('client SET meta/active_version DENIED (only the Admin SDK flips the pointer)');
 
