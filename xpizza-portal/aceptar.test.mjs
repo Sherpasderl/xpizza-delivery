@@ -83,7 +83,7 @@ test('A1 → link sign-in → the one-time code is stripped → accept → A2 (a
   assert.strictEqual(r.$('welcome-text').textContent, 'ya sos parte del equipo de Pizzería Del Valle.');
   assert.strictEqual(r.$('whoami').textContent, 'Entrás como Jorge Ayala · jorge@m.hn');
   r.$('pw').value = 'corta'; await r.submit('pwform');
-  assert.ok(r.$('pw-fld').classList.contains('err') && r.calls.pwSet === 0, 'under 8 chars: refused locally');
+  assert.ok(r.$('pw-fld').classList.contains('invalid') && r.calls.pwSet === 0, 'under 8 chars: refused locally');
   r.$('pw').value = 'contrasena-larga'; await r.submit('pwform');
   assert.strictEqual(r.calls.pw, 'contrasena-larga'); assert.strictEqual(r.calls.pwSet, 1); assert.strictEqual(r.calls.portal, 1);
 });

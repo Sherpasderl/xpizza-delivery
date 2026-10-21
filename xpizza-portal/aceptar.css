@@ -30,9 +30,9 @@ h1{font-family:var(--disp);font-size:32px;font-weight:800;letter-spacing:-.045em
 .fld label{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute2)}
 .fld input{background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:16px;color:var(--ink);width:100%;min-height:46px}
 .fld input:focus{border-color:var(--accent);box-shadow:none}
-.fld.err input{border-color:var(--red)}
+.fld.invalid input{border-color:var(--red)}
 .fnote{font-size:12px;color:var(--mute2);line-height:1.45}
-.fnote.err{color:var(--red-text)}
+.fnote.invalid{color:var(--red-text)}
 .acform{display:flex;flex-direction:column;gap:16px;margin-top:6px}
 .acfoot{margin-top:auto;font-size:12px;color:var(--mute2);text-align:center;line-height:1.5}
 .callout{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:12px;font-size:13px;line-height:1.5}

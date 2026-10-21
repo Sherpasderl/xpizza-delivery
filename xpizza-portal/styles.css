@@ -12,6 +12,7 @@
   :root, :root[data-theme="light"]{
     --board:#FFFFFF; --board-2:#F6F6F2; --panel:#FFFFFF; --line:#E7E7E1; --line2:#F0F0EB;
     --card:#FFFFFF; --card-2:#F6F6F2; --ink:#0A0A0B; --on-dark:#0A0A0B; --mute:#6C6C70; --mute2:#6E6E72;
+    --tmute:#6E6E72;   /* team view secondary text (T-b): = --mute2 in light; brighter in dark for AA on --card / --tint */
     --accent:#0A6E3E; --accent-2:#095C34; --accent-ink:#fff; --accent-line:#BEE6CE;
     --gold:#8A6A12; --gold-line:#E3D2A0; --gold-soft:#FBF4E1;
     --green:#0E9F5B; --green-soft:#E7F5EC; --green-line:#BEE6CE;
@@ -29,6 +30,7 @@
   :root[data-theme="dark"]{
     --board:#0B0B0C; --board-2:#141416; --panel:#0E0E10; --line:#26262A; --line2:#1C1C1F;
     --card:#131315; --card-2:#1B1B1E; --ink:#F4F4F2; --on-dark:#F4F4F2; --mute:#A2A2A6; --mute2:#7C7C80;
+    --tmute:#939398;
     --accent:#3FD98A; --accent-2:#33C77B; --accent-ink:#06130C; --accent-line:rgba(63,217,138,.32);
     --gold:#E3B54A; --gold-line:#4E4126; --gold-soft:#241D0E;
     --green:#3FD98A; --green-soft:#122419; --green-line:#274A34;
@@ -41,6 +43,7 @@
   @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
     --board:#0B0B0C; --board-2:#141416; --panel:#0E0E10; --line:#26262A; --line2:#1C1C1F;
     --card:#131315; --card-2:#1B1B1E; --ink:#F4F4F2; --on-dark:#F4F4F2; --mute:#A2A2A6; --mute2:#7C7C80;
+    --tmute:#939398;
     --accent:#3FD98A; --accent-2:#33C77B; --accent-ink:#06130C; --accent-line:rgba(63,217,138,.32);
     --gold:#E3B54A; --gold-line:#4E4126; --gold-soft:#241D0E;
     --green:#3FD98A; --green-soft:#122419; --green-line:#274A34;
@@ -936,14 +939,15 @@
   #whorole{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .tpick{cursor:pointer}
   /* ── PLAN-portal-team-invites T-b · «Equipo de trabajo» (team.js), ported from prototype v3.1 (sEquipo / mInvite / mRemove) ── */
+  .teamv{contain:inline-size}   /* the 640px table scrolls inside .sc instead of widening the 1fr .app column (phone), like #viewequipos */
   .teamv .tbl{margin-top:24px;background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
   .teamv .tbl .sc{overflow-x:auto}
   .teamv table{border-collapse:collapse;width:100%;min-width:640px}
-  .teamv th{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute2);font-weight:750;text-align:left;padding:12px 16px;border-bottom:1px solid var(--line2);white-space:nowrap}
+  .teamv th{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--tmute);font-weight:750;text-align:left;padding:12px 16px;border-bottom:1px solid var(--line2);white-space:nowrap}
   .teamv td{padding:13px 16px;border-bottom:1px solid var(--line2);font-size:13.5px;vertical-align:middle}
   .teamv tr:last-child td{border-bottom:none}
   .teamv td b{font-family:var(--disp);font-weight:750;font-size:14.5px;letter-spacing:-.02em}
-  .teamv td .tsub{display:block;color:var(--mute2);font-size:12px;margin-top:1px}
+  .teamv td .tsub{display:block;color:var(--tmute);font-size:12px;margin-top:1px}
   .teamv td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;align-items:center}
   .teamv td .acts .btn{min-height:44px}
   .pill.tok{color:var(--green-text);background:var(--green-soft);border-color:var(--green-line)}.pill.tok i{background:var(--green)}
@@ -954,16 +958,16 @@
   .teamv .errbox .btn{margin-left:auto;flex:none}
   .teamv .mb{display:flex;flex-direction:column;gap:14px}
   .teamv .mf{flex-wrap:wrap}
-  .teamv .mf .left{margin-right:auto;color:var(--mute2);font-size:12.5px;align-self:center}
+  .teamv .mf .left{margin-right:auto;color:var(--tmute);font-size:12.5px;align-self:center}
   .teamv .mf .btn{min-height:44px}
   .teamv .frow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
   .tin{background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:14px;color:var(--ink);width:100%;font-family:inherit;min-height:44px}
   .tin:focus{outline:none;border-color:var(--accent)}
-  .teamv .fld.err .tin{border-color:var(--red)}
+  .teamv .fld.invalid .tin{border-color:var(--red)}
   .topt{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line2);border-radius:11px;text-align:left;background:var(--card);width:100%;min-height:44px;font:inherit;color:var(--ink)}
   .topt.sel{border-color:var(--accent);background:var(--tint)}
   .teamv .tname{font-weight:650;font-size:13.5px;flex:1}
-  .teamv .tnsub{font-size:12px;color:var(--mute2);display:block;font-weight:400}
+  .teamv .tnsub{font-size:12px;color:var(--tmute);display:block;font-weight:400}
   .teamv .tradio{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--accent);flex:none;display:flex;align-items:center;justify-content:center}
   .tdot{width:9px;height:9px;border-radius:50%;background:var(--accent);display:block}
   .tcb{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--mute2);flex:none;display:flex;align-items:center;justify-content:center}
@@ -972,7 +976,7 @@
   .teamv .togrow{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line2);border-radius:11px}
   .teamv .togrow .bt{flex:1;min-width:0}
   .teamv .togrow .bt b{display:block;font-weight:650;font-size:13.5px}
-  .teamv .togrow .bt span{font-size:12px;color:var(--mute2);line-height:1.45;display:block;margin-top:2px}
+  .teamv .togrow .bt span{font-size:12px;color:var(--tmute);line-height:1.45;display:block;margin-top:2px}
   .teamv .togrow .tog{border:none;padding:0;outline-offset:11px}
   .teamv .togrow .tog::before{content:'';position:absolute;inset:-11px -2px}
   .teamv .tsent{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:12px;border:1px solid var(--green-line);background:var(--green-soft);font-size:13px;line-height:1.5;color:var(--ink)}

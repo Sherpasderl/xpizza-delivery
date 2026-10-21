@@ -99,7 +99,7 @@ export function startAceptar(deps) {
   async function onEmail(e) {
     e.preventDefault();
     const email = String($('correo').value || '').trim();
-    if (!email) { $('correo-fld').classList.add('err'); return; }
+    if (!email) { $('correo-fld').classList.add('invalid'); return; }
     $('emailbtn').disabled = true;
     const gen = st.gen;
     try {
@@ -167,7 +167,7 @@ export function startAceptar(deps) {
     // A2 belongs to the ACCEPTING account: another tab switching the session must never set a different user's password
     if (!st.acceptUid || auth.uid() !== st.acceptUid) { clearPersonal(); return init(); }
     const pw = String($('pw').value || '');
-    if (pw.length < 8) { $('pw-fld').classList.add('err'); $('pw-note').classList.add('err'); return; }
+    if (pw.length < 8) { $('pw-fld').classList.add('invalid'); $('pw-note').classList.add('invalid'); return; }
     $('pwbtn').disabled = true;
     const gen = st.gen; const uid = st.acceptUid; const who = st.acceptUser; const email = auth.email();   // read while uid is verified
     // the live account must STILL be the accepting one after every await (a session switch may land before its notification)
@@ -217,7 +217,7 @@ export function startAceptar(deps) {
   $('retry2').addEventListener('click', () => { st.autoRetried = false; accept(); });
   $('err-action').addEventListener('click', () => { if (st.cardAction) st.cardAction(); });
   $('eye').addEventListener('click', () => { const on = $('pw').type === 'password'; $('pw').type = on ? 'text' : 'password'; $('eye').textContent = on ? 'Ocultar' : 'Mostrar'; $('eye').setAttribute('aria-pressed', String(on)); });
-  $('correo').addEventListener('input', () => $('correo-fld').classList.remove('err'));
-  $('pw').addEventListener('input', () => { $('pw-fld').classList.remove('err'); $('pw-note').classList.remove('err'); });
+  $('correo').addEventListener('input', () => $('correo-fld').classList.remove('invalid'));
+  $('pw').addEventListener('input', () => { $('pw-fld').classList.remove('invalid'); $('pw-note').classList.remove('invalid'); });
   return init();
 }

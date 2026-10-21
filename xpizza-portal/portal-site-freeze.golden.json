@@ -68,8 +68,8 @@
    "bytes": 4451
   },
   "aceptar.css": {
-   "sha256": "c5df89a31e488e51996092bffc2314381b65f40620e15f6d9bf252b9f0568b66",
-   "bytes": 5852
+   "sha256": "b2741774106fa57757c3cfa54f4a724c001031cc1dbff23af8c7b67f0328a841",
+   "bytes": 5860
   },
   "aceptar.html": {
    "sha256": "61969eab310869f106e327c6c807f696d6f3fd0a365575ad19be2987b810c9d0",
@@ -92,8 +92,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "89dec9b674223584fd896843786f0ae8b861f49169219ce0da37a326abd85eb5",
-   "bytes": 89118
+   "sha256": "1a4d7e42a883700ca7134468023650a3c1c9c0d19a3fa16f42bbc1162e660361",
+   "bytes": 89428
   }
  },
  "diff_aid": {
@@ -109,6 +109,7 @@
    "--on-dark": "#0A0A0B",
    "--mute": "#6C6C70",
    "--mute2": "#6E6E72",
+   "--tmute": "#6E6E72",
    "--accent": "#0A6E3E",
    "--accent-2": "#095C34",
    "--accent-ink": "#fff",
@@ -2828,7 +2829,7 @@
    ],
    [
     "",
-    ".teamv .fld.err .tin",
+    ".teamv .fld.invalid .tin",
     "border-color",
     "var(--red)"
    ],
@@ -2836,7 +2837,7 @@
     "",
     ".teamv .mf .left",
     "color",
-    "var(--mute2)"
+    "var(--tmute)"
    ],
    [
     "",
@@ -2854,13 +2855,13 @@
     "",
     ".teamv .tnsub",
     "color",
-    "var(--mute2)"
+    "var(--tmute)"
    ],
    [
     "",
     ".teamv .togrow .bt span",
     "color",
-    "var(--mute2)"
+    "var(--tmute)"
    ],
    [
     "",
@@ -2884,13 +2885,13 @@
     "",
     ".teamv td .tsub",
     "color",
-    "var(--mute2)"
+    "var(--tmute)"
    ],
    [
     "",
     ".teamv th",
     "color",
-    "var(--mute2)"
+    "var(--tmute)"
    ],
    [
     "",

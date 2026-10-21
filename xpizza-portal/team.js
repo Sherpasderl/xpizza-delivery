@@ -293,7 +293,7 @@ function paintModal(focus) {
       const w = TL.inviteView(d, S.branches, factura());
       foot.textContent = w.foot;
       submit.disabled = w.disabled || S.busy !== null;
-      if (refs.fe) { refs.fe.classList.toggle('err', w.emailBad); refs.bad.classList.toggle('hidden', !w.emailBad); }
+      if (refs.fe) { refs.fe.classList.toggle('invalid', w.emailBad); refs.bad.classList.toggle('hidden', !w.emailBad); }
       for (const x of brBtns) {
         const on = d.rids.includes(x.rid);
         x.btn.classList.toggle('sel', on); x.btn.setAttribute('aria-pressed', on ? 'true' : 'false');
