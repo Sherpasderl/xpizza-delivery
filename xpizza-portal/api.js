@@ -202,3 +202,10 @@ export async function getBranchAvailability({ rid, brandId, token, assertLive })
 export async function setBranchAvailability({ rids, key, available, token }) {
   return apiFetch('setBranchAvailability', { token, body: { rids, key, available } });
 }
+// PORTAL-UI slice 2 (PLAN-portal-ui-slice2-equipos r1.1 §3): Equipos — list the linked handhelds; revoke one.
+export async function getBranchDevices({ rid, brandId, token, assertLive }) {
+  return apiFetch('getBranchDevices', rid ? { rid, token, assertLive } : { token, assertLive, params: { brandId } });
+}
+export async function revokeBranchDevice({ rid, uid, token }) {
+  return apiFetch('revokeBranchDevice', { token, body: { rid, uid } });
+}

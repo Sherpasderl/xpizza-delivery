@@ -16,7 +16,7 @@ const net = require('net');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const { planPorts, SLOTS, SERVICE_LISTENERS, ALL_HOST_ENV, childEnv, DISCOVERY_PREFIX } = require('./emulator-run.js');
+const { planPorts, SLOTS, SERVICE_LISTENERS, ALL_HOST_ENV, HOST_ENV, childEnv, servicesFor, DISCOVERY_PREFIX } = require('./emulator-run.js');
 const os = require('os');
 
 /* ═══ 🔴 DID THE SUITE REFUSE? KEYED TO THE PROPERTY, NOT TO ONE SUITE'S SPELLING ═══════════════
@@ -289,7 +289,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     for (const f of fs.readdirSync(path.join(ROOT, 'test')).filter((f) => f.endsWith('.js') || f.endsWith('.mjs'))) {
       const src = fs.readFileSync(path.join(ROOT, 'test', f), 'utf8');
       for (const m of src.matchAll(/port:\s*(\d{4})/g)) {
-        if (['8080', '9000', '4400', '4000', '9150', '5001'].includes(m[1])) offenders.push(`${f} → port: ${m[1]}`);
+        if (['8080', '9000', '4400', '4000', '9150', '5001', '9099'].includes(m[1])) offenders.push(`${f} → port: ${m[1]}`);
       }
     }
     assert.deepStrictEqual(offenders, [],
@@ -369,10 +369,10 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   // ── 6. AN UNKNOWN SERVICE REFUSES RATHER THAN TAKING A SHARED DEFAULT ───────────────────────
   /* 🔴 THE HOLE THAT WAS ACTUALLY THERE. An --only the runner had no band for fell straight through:
      nothing preflighted, nothing pinned in the generated config, so firebase started that emulator on
-     its own shared default (auth 9099, storage 9199, pubsub 8085). Adding one emulator service would
+     its own shared default (storage 9199, pubsub 8085; auth 9099 before it got its band). Adding one emulator service would
      have quietly reintroduced the cross-checkout collision this whole tool removes. */
   {
-    const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'auth', 'node -e "process.exit(0)"'],
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'storage', 'node -e "process.exit(0)"'],
       { cwd: ROOT, encoding: 'utf8' });
     assert.strictEqual(r.status, 2, '🔴 an unknown --only service did not refuse — its emulator would take an unpreflighted default port');
     assert.match(r.stderr, /no port band for/, 'the refusal says why');
@@ -394,7 +394,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
        and cell 7 did not catch it because it only drove the unknown-service path. Both refusals are
        driven here now, and any future early exit should be added to this list. */
     const REFUSALS = [
-      [['--only', 'auth', 'node -e "process.exit(0)"'], {}, 'unknown --only service'],
+      [['--only', 'storage', 'node -e "process.exit(0)"'], {}, 'unknown --only service'],
       [['--only', 'firestore', 'node -e "process.exit(0)"'], { XPIZZA_EMU_PORT_OFFSET: '7' }, 'malformed port offset'],
       [['--only', 'firestore', '--ui', 'node -e "process.exit(0)"'], {}, 'a rejected argument'],
     ];
@@ -418,13 +418,14 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
   // ── 8. 🔴 ARGUMENTS CANNOT BYPASS THE PREFLIGHT ─────────────────────────────────────────────
   /* Each of these once got through. `--only firestore --only auth`: this runner read the FIRST value
-     and Firebase's parser the LAST, so firestore was validated and an unbanded auth emulator started.
+     and Firebase's parser the LAST, so firestore was validated and an unbanded auth emulator started
+     (auth has a band now; storage, still unbanded, takes its place below).
      `--config firebase.json`: re-points the CLI at the committed config, restoring the DEFAULT ports
      AFTER different ones were preflighted. `--ui`: overrides enabled:false and starts the UI plus
      logging. `--inspect-functions`: opens an unchecked debug listener. */
   {
     const cases = [
-      [['--only', 'firestore', '--only', 'auth'], 'a repeated --only (CLI takes the last, we took the first)'],
+      [['--only', 'firestore', '--only', 'storage'], 'a repeated --only (CLI takes the last, we took the first)'],
       [['--only', 'firestore', '--config', 'firebase.json'], 'a --config that would restore default ports after preflight'],
       [['--only', 'firestore', '--ui'], 'a --ui that would start the UI despite enabled:false'],
       [['--only', 'functions', '--inspect-functions'], 'an --inspect-functions debug listener'],
@@ -452,6 +453,32 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       assert.match(r.stderr, new RegExp(`${svc} \\d+`), `🔴 ${svc} is not in the preflight set — it would take a shared default port`);
     }
     ok('a functions run preflights hub, logging, functions, eventarc and tasks — every listener it opens');
+  }
+
+  // ── 9b. AUTH IS AN OPT-IN SERVICE: banded, preflighted, its host var kept only when started ──────────
+  /* For a suite that needs the REAL Auth emulator (`--only firestore,database,auth`). It is never a default and never
+     implied by functions, so every existing script keeps exactly the services it had. An inherited host var pointing
+     anywhere (a production host, say) is cleared unless this run starts auth; when it does, the CLI exports this run's
+     own address and lib/emulator-endpoint.js holds it to this run's auth port (tools/emulator-endpoint.test.js). */
+  {
+    assert.deepStrictEqual(SERVICE_LISTENERS.auth, ['auth'], '🔴 auth must declare exactly its one listener');
+    assert.deepStrictEqual(HOST_ENV.auth, ['FIREBASE_AUTH_EMULATOR_HOST'], '🔴 auth must own exactly its host var');
+    assert.deepStrictEqual(servicesFor(undefined), ['firestore', 'database', 'functions'], '🔴 a bare run (no --only) changed its services — auth must stay opt-in');
+    assert.deepStrictEqual(servicesFor('functions'), ['functions', 'firestore', 'database'], '🔴 functions must not imply auth');
+    assert.deepStrictEqual(servicesFor('firestore,database,auth'), ['firestore', 'database', 'auth']);
+    const stray = { FIREBASE_AUTH_EMULATOR_HOST: 'identitytoolkit.googleapis.com:443' };
+    assert.ok(!('FIREBASE_AUTH_EMULATOR_HOST' in childEnv(['firestore', 'database'], stray)), '🔴 an inherited auth host survived a run that does not start auth');
+    assert.strictEqual(childEnv(['firestore', 'database', 'auth'], stray).FIREBASE_AUTH_EMULATOR_HOST, stray.FIREBASE_AUTH_EMULATOR_HOST,
+      'premise — like every started service, the var is left for the CLI to overwrite with this run\'s address');
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const users = Object.entries(pkg.scripts || {}).filter(([, v]) => /emulator-run\.js/.test(v) && /--only[= ]\S*\bauth\b/.test(v)).map(([k]) => k);
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'firestore,database,auth', '--project', 'demo-xpizza', 'node test/emu-isolation.proof.js noop'],
+      { cwd: ROOT, encoding: 'utf8', env: { ...process.env, XPIZZA_EMU_PORT_OFFSET: '0', PATH: '/nonexistent' } });
+    for (const svc of ['hub', 'logging', 'firestore', 'database', 'auth']) {
+      assert.match(r.stderr, new RegExp(`${svc} \\d+`), `🔴 ${svc} is not in the preflight set of an auth run`);
+    }
+    assert.match(r.stderr, /auth 9400\b/, '🔴 auth did not take its own band at offset 0');
+    ok(`auth is opt-in (bare run and functions unchanged), banded at ${planPorts(0).auth} and preflighted; an inherited auth host is cleared unless auth is started (${users.length} script(s) start it)`);
   }
 
   // ── 10. THE GENERATED CONFIG CANNOT RIDE INTO A DEPLOY ARCHIVE ──────────────────────────────

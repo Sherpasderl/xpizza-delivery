@@ -17,6 +17,7 @@ import { $, el, icon, svg, errBox, OFFLINE } from './ops-dom.js';
 import { mountBranches } from './branches-view.js';
 import { mountPausas } from './pausas.js';
 import { mountAvailability } from './availability.js';
+import { mountEquipos } from './equipos.js';
 
 const SEL_KEY = (uid) => `sherpa.portal.sel.${uid}`;
 const CACHE_KEY = (uid) => `sherpa.portal.branches.${uid}`;
@@ -194,8 +195,8 @@ function showNoBranches() {
 
 // ── chrome: switcher, scope, nav ──────────────────────────────────────────────────────────────────────────────────────
 function hideOpsChrome() {
-  for (const id of ['scopewrap', 'navopslabel', 'navsuc', 'navpausas', 'mnsuc', 'mnpausas', 'mtop', 'mscopemenu', 'availstrip', 'menulock']) { const n = $(id); if (n) n.classList.add('hidden'); }
-  for (const id of ['viewsuc', 'viewpausas']) { const n = $(id); if (n) { n.classList.add('hidden'); n.replaceChildren(); } }
+  for (const id of ['scopewrap', 'navopslabel', 'navsuc', 'navpausas', 'navequipos', 'mnsuc', 'mnpausas', 'mnequipos', 'mtop', 'mscopemenu', 'availstrip', 'menulock']) { const n = $(id); if (n) n.classList.add('hidden'); }
+  for (const id of ['viewsuc', 'viewpausas', 'viewequipos']) { const n = $(id); if (n) { n.classList.add('hidden'); n.replaceChildren(); } }
   const app = $('app'); if (app) app.classList.remove('opsview');
   hideRegistered();
 }
@@ -256,6 +257,13 @@ function renderChrome() {
   $('mnsuc').classList.remove('hidden');
   $('mnsuc').textContent = nav.sucLabel;
   $('mnpausas').classList.toggle('hidden', !nav.pause);
+  // slice 2: «Equipos» — any in-scope branch holding device.list; the count is E1's linked devices in the selection
+  $('navequipos').classList.toggle('hidden', !nav.devices);
+  $('mnequipos').classList.toggle('hidden', !nav.devices);
+  const ecnt = $('navequiposcount');
+  const linked = L.scopeBranches(sel).filter((b) => L.can(b, 'device.list')).reduce((n, b) => n + (Number.isInteger(b.devices) ? b.devices : 0), 0);
+  ecnt.classList.toggle('hidden', !nav.devices);
+  ecnt.textContent = nav.devices ? String(linked) : '';
   $('mnav').classList.add('show');
   $('mnventas').classList.toggle('hidden', !S.sales);
   renderRegistered();
@@ -319,7 +327,7 @@ $('mswitch').addEventListener('click', (e) => { e.stopPropagation(); if (S.sel) 
 document.addEventListener('click', (e) => { if (!e.target.closest || (!e.target.closest('.switchwrap') && !e.target.closest('#mtop') && !e.target.closest('#mscopemenu'))) closeMenus(); });
 
 // ── views ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-const NAV = [['navprod', 'menu'], ['navventas', 'ventas'], ['navsuc', 'suc'], ['navpausas', 'pausas'], ['mnprod', 'menu'], ['mnventas', 'ventas'], ['mnsuc', 'suc'], ['mnpausas', 'pausas']];
+const NAV = [['navprod', 'menu'], ['navventas', 'ventas'], ['navsuc', 'suc'], ['navpausas', 'pausas'], ['navequipos', 'equipos'], ['mnprod', 'menu'], ['mnventas', 'ventas'], ['mnsuc', 'suc'], ['mnpausas', 'pausas'], ['mnequipos', 'equipos']];
 function markNav(view) {
   const pairs = [...NAV.map(([id, v]) => [$(id), v]), ...REG.flatMap((r) => [[r.nav, r.id], [r.mn, r.id]])];
   for (const [n, v] of pairs) {
@@ -341,6 +349,8 @@ export function goto(view, opts = {}) {
   const isSuc = view === 'suc', isPausas = view === 'pausas';
   $('viewsuc').classList.toggle('hidden', !isSuc);
   $('viewpausas').classList.toggle('hidden', !isPausas);
+  const isEquipos = view === 'equipos';
+  $('viewequipos').classList.toggle('hidden', !isEquipos);
   if (reg) { reg.main.classList.remove('hidden'); try { reg.mount(reg.main, viewSel()); } catch (e) { console.error('portal view mount', view, e && e.message); } }
   const app = $('app');
   app.classList.remove('vview');
@@ -348,13 +358,14 @@ export function goto(view, opts = {}) {
   markNav(view);
   if (view === 'suc') S.views.suc && S.views.suc.show(opts);
   if (view === 'pausas') S.views.pausas && S.views.pausas.show(opts);
+  if (view === 'equipos') S.views.equipos && S.views.equipos.show(opts);
   if (typeof window !== 'undefined' && window.scrollTo) { try { window.scrollTo(0, 0); } catch (_) { /* jsdom-free harness */ } }
 }
 // ventas.js's own nav handlers run first (they were registered at import); these hide the ops views behind them
 function leaveOps(v) {
   leaveRegistered(v);
   S.view = v;
-  $('viewsuc').classList.add('hidden'); $('viewpausas').classList.add('hidden');
+  $('viewsuc').classList.add('hidden'); $('viewpausas').classList.add('hidden'); $('viewequipos').classList.add('hidden');
   $('app').classList.remove('opsview');
   $('sucbar').classList.remove('show');
   markNav(v);
@@ -363,6 +374,8 @@ $('navsuc').addEventListener('click', () => goto('suc'));
 $('navpausas').addEventListener('click', () => goto('pausas'));
 $('mnsuc').addEventListener('click', () => goto('suc'));
 $('mnpausas').addEventListener('click', () => goto('pausas'));
+$('navequipos').addEventListener('click', () => goto('equipos'));
+$('mnequipos').addEventListener('click', () => goto('equipos'));
 $('navprod').addEventListener('click', () => leaveOps('menu'));
 $('mnprod').addEventListener('click', () => leaveOps('menu'));
 $('navventas').addEventListener('click', () => leaveOps('ventas'));
@@ -510,9 +523,11 @@ function renderViews() {
   if (!S.views.suc) S.views.suc = mountBranches($('viewsuc'), ctx);
   if (!S.views.pausas) S.views.pausas = mountPausas($('viewpausas'), ctx);
   if (!S.views.avail) S.views.avail = mountAvailability(ctx);
+  if (!S.views.equipos) S.views.equipos = mountEquipos($('viewequipos'), ctx);
   S.views.suc.render();
   S.views.pausas.render();
   S.views.avail.render();
+  S.views.equipos.render();   // a no-op while hidden; entry (goto) fetches
 }
 
 // test-only view of the shell's state (never read by the page)

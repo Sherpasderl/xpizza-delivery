@@ -177,6 +177,38 @@ const refuses = (env, re, label) => {
     ok('NULL for a started service refuses; XPIZZA_EMU_DEAD accepts ONLY the exact "firestore" (8 other values fail closed) and must match a NULL endpoint; a real endpoint for an unstarted service refuses');
   }
 
+  // ── 6b. AUTH: optional, never a signal; when set it is strict loopback, and this run's band iff the run started auth ──
+  {
+    const AU = 'FIREBASE_AUTH_EMULATOR_HOST';
+    const run = (services) => ({ FIRESTORE_EMULATOR_HOST: lo(P.firestore), FIREBASE_DATABASE_EMULATOR_HOST: lo(P.database), XPIZZA_EMU_OFFSET: String(OFF), XPIZZA_EMU_SERVICES: services });
+    const withAuth = run('firestore,database,auth');
+    const without = run('firestore,database');
+    assert.strictEqual(EE.BANDS.auth, 9400, 'premise — auth has its own band');
+    assert.strictEqual(validateEmulatorEnv({ ...withAuth, [AU]: lo(P.auth) }).auth, lo(P.auth), 'a run that started auth validates its own auth port');
+    assert.strictEqual(validateEmulatorEnv(without).auth, null, 'no auth var, auth not started: unchanged (null)');
+    // the stand-in shape (test/portal-handlers.emulator.test.js): an off-band loopback port on a run that did NOT start auth
+    assert.strictEqual(validateEmulatorEnv({ ...without, [AU]: lo(51234) }).auth, lo(51234), '🔴 the in-process loopback Auth stand-in was refused');
+    // 🔴 a stray value pointing OFF this machine refuses, whether or not the run started auth — and in the lenient (CLI) form too
+    const STRAY = ['identitytoolkit.googleapis.com:443', 'securetoken.googleapis.com:443', '10.0.0.5:' + P.auth, '0.0.0.0:' + P.auth, '127.0.0.1.example.test:' + P.auth, 'localhost', `127.0.0.1:0${P.auth}`];
+    for (const v of STRAY) {
+      for (const [env, which] of [[without, 'auth not started'], [withAuth, 'auth started']]) refuses({ ...env, [AU]: v }, /strict loopback/, `stray ${AU}=${v} (${which})`);
+      assert.throws(() => validateEmulatorEnv({ ...without, [AU]: v }, { lenient: true }), EmulatorEndpointError, `🔴 lenient (operator CLI) form accepted stray ${AU}=${v}`);
+    }
+    refuses({ ...withAuth, [AU]: lo(P.auth + 10) }, /not this run's auth port/, 'another slot\'s auth on a run that started auth');
+    refuses({ ...withAuth, [AU]: lo(51234) }, /not this run's auth port/, 'an off-band port on a run that started auth');
+    refuses(withAuth, /STARTED auth/, 'auth started but the var is absent (Auth would go to production)');
+    refuses({ ...without, [AU]: lo(P.auth) }, /did NOT start/, 'an auth-band endpoint on a run that did not start auth (someone else\'s)');
+    refuses({ ...without, [AU]: NULL_ENDPOINT }, /no NULL endpoint/, 'auth has no NULL endpoint');
+    // 🔴 NOT a signal: a stray auth var alone leaves the production path exactly as before (lib/admin.js's list is unchanged)
+    assert.ok(!hasEmulatorSignal({ [AU]: lo(P.auth) }), '🔴 the auth var became an emulator signal — lib/admin.js and the operator CLIs would change behaviour');
+    // and through the REAL lib/admin.js: a suite-shaped process with a stray production Auth host is refused before any app
+    const r = node(`try { require('./lib/admin'); } catch (e) { console.log('THREW', e.name); }
+      console.log('APPS', require('firebase-admin/app').getApps().length);`, { ...without, [AU]: 'identitytoolkit.googleapis.com:443' });
+    assert.match(r.stdout, /THREW EmulatorEndpointError/, `🔴 lib/admin.js did not refuse a stray production Auth host\n${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /APPS 0/, '🔴 lib/admin.js created an app despite refusing the stray Auth host');
+    ok(`auth: own-band on a started run and the off-band loopback stand-in validate; ${STRAY.length} stray off-machine values refuse (started, unstarted, lenient), plus foreign slot / off-band-when-started / absent-when-started / on-band-when-unstarted / NULL; the var alone is NOT a signal; the real lib/admin.js refuses a stray production Auth host before any app`);
+  }
+
   // ── 7. ACCIDENTAL NULL USE FAILS FAST — bounded and asserted, through the REAL lib/admin.js ─────────────
   {
     const BOUND_MS = 3000;

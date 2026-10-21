@@ -62,7 +62,7 @@ test('the editor, review, render, auth and logic modules are byte-identical to t
 // ── brand-agnostic ──
 const LITERALS = [/x_pizza/i, /la_musa/i, /\bX\.? ?Pizza\b/i, /\bLa Musa\b/i, /15\.5074/, /-88\.0398/, /15\.50414/, /-88\.03848/, /97952893/, /93736607/];
 const hits = (src) => LITERALS.reduce((n, re) => n + (src.match(new RegExp(re.source, `${re.flags.replace('g', '')}g`)) || []).length, 0);
-const NEW_PORTAL = ['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'branch-logic.js', 'ops-dom.js'];
+const NEW_PORTAL = ['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'branch-logic.js', 'ops-dom.js', 'equipos.js'];
 const NEW_SERVER = ['portal/ops-core.js', 'portal/ops-functions.js', 'portal/location-name.js', 'portal/pause-reasons.js', 'portal/reset-list.js', 'lib/hn-date.js'];
 const EXISTING = ['index.html', 'styles.css', 'app.js', 'api.js', 'boot.js', 'ventas.js', 'render.js', 'editor.js', 'review.js', 'portal-logic.js', 'ventas-logic.js'];
 
@@ -75,4 +75,14 @@ test('BRAND-AGNOSTIC: zero restaurant / brand literals in every new portal and o
 
 test('BRAND-AGNOSTIC: the pre-existing portal files gain no literal (counts frozen against the base)', () => {
   for (const f of EXISTING) assert.ok(hits(read(f)) <= hits(base(f)), `${f}: ${hits(base(f))} → ${hits(read(f))} brand literals`);
+});
+
+// ── slice 2 (PLAN-portal-ui-slice2-equipos r1.1 §5, codex plan r1 P2-4): app.js / ventas.js are BYTE-EQUAL to the approved stack
+// tip the slice is built on. The historical 1a proofs above stay pinned to their own base (BASE).
+const SLICE2_BASE = 'ea8d9727';
+test('slice 2: app.js and ventas.js are byte-identical to the approved stack tip', () => {
+  for (const f of ['app.js', 'ventas.js']) {
+    const was = execFileSync('git', ['show', `${SLICE2_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.equal(read(f), was, `${f} changed since ${SLICE2_BASE}`);
+  }
 });

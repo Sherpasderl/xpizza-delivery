@@ -17,7 +17,10 @@ const assert = require('assert');
 const path = require('path');
 const http = require('http');
 
-require('./_emulator-required')('firestore', 'database');   // BEFORE any Admin import — refuses a production target
+require('./_emulator-required')('firestore', 'database', 'auth');   // BEFORE any Admin import — refuses a production target
+// slice 2 (codex plan r1 P2-3): the REAL Auth emulator (FIREBASE_AUTH_EMULATOR_HOST from the runner) — no stand-in. Users are
+// created there; device users come from the REAL pairDevice core; revoke disables them and revokes their refresh tokens.
+if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) { console.error('🔴 REFUSED — FIREBASE_AUTH_EMULATOR_HOST not set (run via npm run test:branch-ops)'); process.exit(2); }
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 const PROJECT = process.env.GCLOUD_PROJECT;
 const ORIGIN = 'https://sherpa-portal.netlify.app';
@@ -32,27 +35,28 @@ const STAFF = 'uOpsStaff0001';
 const STRANGER = 'uOpsStranger1';
 const USERS = new Set([OWNER, OWNER_T, OWNER_S, MGR, MGR_MENU, DISP, STAFF, STRANGER]);
 
-function startAuthStandIn() {
-  return new Promise((resolve) => {
-    const srv = http.createServer((req, res) => {
-      let raw = ''; req.on('data', (c) => { raw += c; });
-      req.on('end', () => {
-        if (req.method === 'POST' && /\/accounts:lookup$/.test(req.url)) {
-          const ids = (JSON.parse(raw || '{}').localId) || [];
-          const users = ids.filter((u) => USERS.has(u)).map((u) => ({ localId: u, email: `${u}@example.test`, disabled: false, providerUserInfo: [] }));
-          res.writeHead(users.length ? 200 : 400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify(users.length ? { kind: 'identitytoolkit#GetAccountInfoResponse', users } : { error: { code: 400, message: 'USER_NOT_FOUND' } }));
-        }
-        res.writeHead(404); res.end();
-      });
-    }).listen(0, '127.0.0.1', () => resolve(srv));
-  });
+// codex build r1 P2: EMULATOR-ISSUED tokens — an Admin custom token exchanged at the Auth emulator (signInWithCustomToken),
+// verified by the REAL verifyIdToken against that emulator; nothing hand-forged. Cached per uid + claims.
+const AUTH_HOST = () => process.env.FIREBASE_AUTH_EMULATOR_HOST;
+const TOK = new Map();
+async function signIn(uid, claims = {}) {
+  const { getAuth } = require('firebase-admin/auth');
+  const custom = await getAuth().createCustomToken(uid, Object.keys(claims).length ? claims : undefined);
+  const r = await fetch(`http://${AUTH_HOST()}/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=demo-key`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: custom, returnSecureToken: true }) });
+  const j = await r.json();
+  assert.ok(r.ok && j.idToken && j.refreshToken, `the Auth emulator signs ${uid} in (${r.status})`);
+  return j;
 }
-const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
-const idToken = (uid, claims = {}) => {
-  const now = Math.floor(Date.now() / 1000);
-  return `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ iss: `https://securetoken.google.com/${PROJECT}`, aud: PROJECT, auth_time: now, user_id: uid, sub: uid, iat: now, exp: now + 3600, email: `${uid}@example.test`, firebase: { identities: {}, sign_in_provider: 'password' }, ...claims })}.`;
-};
+async function tokenOf(uid, claims = {}) {
+  const k = `${uid}|${JSON.stringify(claims)}`;
+  if (!TOK.has(k)) TOK.set(k, await signIn(uid, claims));
+  return TOK.get(k).idToken;
+}
+const idToken = (uid) => { const t = TOK.get(`${uid}|{}`); assert.ok(t, `a token was issued for ${uid}`); return t.idToken; };
+const refreshAt = (refreshToken) => fetch(`http://${AUTH_HOST()}/securetoken.googleapis.com/v1/token?key=demo-key`,
+  { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}` });
+const iatOf = (jwt) => JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString()).iat;
 async function call(fn, { method = 'GET', query = '', body, uid, claims, origin = ORIGIN } = {}) {
   const express = require('express');
   const srv = http.createServer((req, res) => { const a = express(); a.use(express.json()); a.all('*', (rq, rs) => fn(rq, rs)); a(req, res); });
@@ -60,7 +64,7 @@ async function call(fn, { method = 'GET', query = '', body, uid, claims, origin 
   try {
     const h = {};
     if (origin) h.Origin = origin;
-    if (uid) h.Authorization = `Bearer ${idToken(uid, claims)}`;
+    if (uid) h.Authorization = `Bearer ${await tokenOf(uid, claims)}`;
     if (body !== undefined) h['Content-Type'] = 'application/json';
     const r = await fetch(`http://127.0.0.1:${srv.address().port}/${query}`, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
     const text = await r.text();
@@ -73,9 +77,11 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 (async () => {
-  const authSrv = await startAuthStandIn();
-  process.env.FIREBASE_AUTH_EMULATOR_HOST = `127.0.0.1:${authSrv.address().port}`;
   const ops = require('../portal/ops-functions');
+  const { getAuth } = require('firebase-admin/auth');
+  await fetch(`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/emulator/v1/projects/${PROJECT}/accounts`, { method: 'DELETE' });
+  for (const u of USERS) await getAuth().createUser({ uid: u, email: `${u.toLowerCase()}@example.test` });
+  for (const u of USERS) await tokenOf(u);   // one emulator-issued token per human, used by the direct-core cells
   const { getFirestore } = require('firebase-admin/firestore');
   const { getDatabase, ServerValue } = require('firebase-admin/database');
   const fs = getFirestore();
@@ -157,7 +163,11 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
   {
     const { hnDateISO } = require('../lib/hn-date');
     await db.ref(`counters/order_display_seq/x_pizza/${hnDateISO(Date.now())}`).set({ last: 417, by_order: { o1: 417 } });
-    await db.ref('restaurants/x_pizza/handhelds').set({ hh_x_pizza_a: { label: 'a' }, hh_x_pizza_b: { label: 'b' } });
+    // pairDevice's exact row shape (merchant-devices.js:54; the real writer needs a prep base this fixture lacks), plus one
+    // REVOKED row (revokeDevice's shape, :69): E1 counts LINKED handhelds only (slice 2, F5)
+    const hrow = (label, gen, extra = {}) => ({ kind: 'handheld', label, paired_at: 1, paired_by: OWNER, revoked: false, pair_gen: gen, ...extra });
+    await db.ref('restaurants/x_pizza/handhelds').set({ hh_x_pizza_a: hrow('Equipo de la sucursal', 1), hh_x_pizza_b: hrow('Equipo de la sucursal', 2),
+      hh_x_pizza_c: hrow('Equipo de la sucursal', 3, { revoked: true, revoked_at: 2, revoked_by: OWNER }) });
     const r = await call(ops.getMyBranches, { uid: OWNER });
     assert.strictEqual(r.status, 200, r.text);
     const by = Object.fromEntries(r.json.branches.map((b) => [b.rid, b]));
@@ -497,6 +507,197 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
     ok('E4: a deleted item doc, an emptied version, a tampered display field and a pointer failure each fail ONLY that branch (menu_unavailable, code logged not sent); all failing → 503');
   }
 
+  // ── slice 2: E6 getBranchDevices / E7 revokeBranchDevice (PLAN-portal-ui-slice2-equipos r1.1 §5) ─────────────────────
+  // Real writers: devices from the REAL H1 pairDevice core on the REAL Auth emulator, last_seen from the REAL heartbeat core,
+  // push registration from the REAL registerPush; the pause (owner ruling b) through the REAL writePause inside E7.
+  {
+    const D = require('../merchant/merchant-devices');
+    const PIO = require('../merchant/merchant-push-io');
+    const O = require('../merchant/merchant-orders');
+    const { resolveBrand } = require('../merchant/merchant-brand');
+    const C = require('../portal/ops-core');
+    const crypto = require('crypto');
+    class HttpsError extends Error { constructor(code, msg) { super(msg); this.code = code; } }
+    const hdeps = () => ({ db, adminAuth: getAuth(), resolveBrand, HttpsError, now: () => Date.now(), timestamp: () => ServerValue.TIMESTAMP,
+      newOpId: () => `oc_${Date.now().toString(36)}_${crypto.randomBytes(5).toString('hex')}`, randomId: () => crypto.randomBytes(6).toString('hex'), newClaim: PIO.newClaim });   // the REAL claim minter (a UUID fails vClaim → no push target)
+    const human = (uid) => ({ uid, token: {} });
+    const device = (uid, rid) => ({ uid, token: { handheld: true, rid } });
+    const within = (p, what, ms = 15000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${what} not reached within ${ms} ms`)), ms).unref())]);
+    await db.ref('restaurants/tencha_centro/order_surface').set('handheld');   // A1-set config (no other writer)
+    await db.ref('platform_config/handheld_pairing_enabled').set(true);
+    const pair = async (who, rid) => (await D.pairDevice(hdeps(), human(who), { rid, label: 'Equipo de la sucursal' })).uid;
+    const c1 = await pair(OWNER_T, 'tencha_centro');
+    const c2 = await pair(MGR_MENU, 'tencha_centro');
+    const n1 = await pair(MGR, 'tencha_norte');
+    await D.heartbeat(hdeps(), device(c2, 'tencha_centro'), { rid: 'tencha_centro' });
+    const reg = await PIO.registerPush(hdeps(), device(c1, 'tencha_centro'), { rid: 'tencha_centro', token: `fcm-${'x'.repeat(140)}`, epoch: 'epochSlice2Test0001' });
+    assert.ok(reg.ok);
+
+    // E6
+    const all = await call(ops.getBranchDevices, { query: '?brandId=tencha', uid: OWNER_T });
+    assert.strictEqual(all.status, 200, all.text);
+    assert.deepStrictEqual(all.json.branches.map((b) => b.rid).sort(), ['tencha_centro', 'tencha_norte'], 'the retired branch is absent');
+    const cen = all.json.branches.find((b) => b.rid === 'tencha_centro');
+    assert.deepStrictEqual([cen.order_surface, cen.prep_ok, all.json.pairing_enabled], ['handheld', true, true]);
+    assert.deepStrictEqual(cen.devices.map((d) => [d.uid, d.n]), [[c2, 2], [c1, 1]], 'heartbeat first; n by pairing order');
+    assert.deepStrictEqual([cen.devices.find((d) => d.uid === c1).paired_by_owner, cen.devices.find((d) => d.uid === c2).paired_by_owner], [true, false]);
+    for (const d of cen.devices) assert.deepStrictEqual(Object.keys(d).sort(), ['last_seen', 'n', 'paired_at', 'paired_by_name', 'paired_by_owner', 'uid']);
+    for (const bad of ['fcm-x', 'Equipo de la sucursal', OWNER_T, MGR_MENU, '@example.test', 'pair_gen', 'revoked']) assert.ok(!all.text.includes(bad), `E6 never sends ${bad}`);
+    const mine = await call(ops.getBranchDevices, { query: '?brandId=tencha', uid: MGR });
+    assert.deepStrictEqual(mine.json.branches.map((b) => b.rid), ['tencha_norte'], 'a manager sees only their branch');
+    assert.strictEqual((await call(ops.getBranchDevices, { query: '?restaurantId=tencha_centro', uid: MGR })).status, 403, 'A-not-B');
+    assert.strictEqual((await call(ops.getBranchDevices, { query: '?restaurantId=tencha_viejo', uid: OWNER_T })).status, 403, 'retired → absent / refused');
+    assert.strictEqual((await call(ops.getBranchDevices, { query: '?brandId=tencha', uid: STRANGER })).status, 403);
+    assert.strictEqual((await call(ops.getBranchDevices, { query: '?brandId=tencha', uid: OWNER_T, claims: { customer: true } })).status, 403);
+    assert.strictEqual((await call(ops.getBranchDevices, { query: '?brandId=tencha', uid: c1, claims: { handheld: true, rid: 'tencha_centro' } })).status, 403);
+    ok('E6: owner (both live branches; retired absent) vs manager (own only, A-not-B); primitives only — no push token, label, uid of the pairer, email, pair_gen or revoked*; n by pairing order; sort by last contact; refusals');
+
+    // freshness: a later heartbeat / a later pairing appear on the next fetch; prep via the REAL E2 flips prep_ok
+    const before = (await call(ops.getBranchDevices, { query: '?restaurantId=tencha_norte', uid: OWNER_T })).json.branches[0];
+    assert.strictEqual(before.devices[0].last_seen, null);
+    await D.heartbeat(hdeps(), device(n1, 'tencha_norte'), { rid: 'tencha_norte' });
+    const n2 = await pair(OWNER_T, 'tencha_norte');
+    const after = (await call(ops.getBranchDevices, { query: '?restaurantId=tencha_norte', uid: OWNER_T })).json;
+    assert.ok(Number.isFinite(after.branches[0].devices.find((d) => d.uid === n1).last_seen) && after.fetched_at - after.branches[0].devices.find((d) => d.uid === n1).last_seen <= 180000, 'now «En línea»');
+    assert.ok(after.branches[0].devices.some((d) => d.uid === n2), 'a newly paired device appears');
+    ok('freshness: the REAL heartbeat moves last_seen and a new pairing appears on the next fetch (no page cache)');
+
+    // E1 counts linked rows only
+    const e1a = (await call(ops.getMyBranches, { uid: OWNER_T })).json.branches.find((b) => b.rid === 'tencha_norte').devices;
+    assert.strictEqual(e1a, 2);
+
+    // E7 basics on the REAL Auth emulator
+    assert.strictEqual((await call(ops.revokeBranchDevice, { method: 'POST', uid: MGR, body: { rid: 'tencha_centro', uid: c1 } })).status, 403, 'manager → other branch');
+    assert.strictEqual((await db.ref(`restaurants/tencha_centro/handhelds/${c1}/revoked`).get()).val(), false, 'nothing written');
+    assert.strictEqual((await call(ops.revokeBranchDevice, { method: 'POST', uid: OWNER_T, body: { rid: 'tencha_centro', uid: 'hh_nope' } })).status, 404);
+    assert.strictEqual((await call(ops.revokeBranchDevice, { method: 'POST', uid: OWNER_T, body: { rid: 'tencha_viejo', uid: c1 } })).status, 403, 'retired');
+    // a REAL device session issued BEFORE the revoke (custom token → emulator exchange), then > 1 s (the field is in seconds)
+    const pre = await signIn(n2, { handheld: true, rid: 'tencha_norte' });
+    assert.strictEqual((await getAuth().verifyIdToken(pre.idToken, true)).uid, n2, 'non-vacuity: the pre-revoke session is valid');
+    assert.strictEqual((await refreshAt(pre.refreshToken)).status, 200, 'non-vacuity: its refresh token works before the revoke');
+    const v0 = (await getAuth().getUser(n2)).tokensValidAfterTime;
+    await new Promise((res) => setTimeout(res, 1100));
+    const rv = await call(ops.revokeBranchDevice, { method: 'POST', uid: MGR, body: { rid: 'tencha_norte', uid: n2 } });
+    assert.deepStrictEqual(rv.json, { ok: true, uid: n2, paused: false }, 'a manager on their own (kds) branch; one device remains');
+    const u = await getAuth().getUser(n2);
+    const validAfter = Date.parse(u.tokensValidAfterTime);
+    assert.strictEqual(u.disabled, true, 'Auth user disabled');
+    assert.ok(validAfter / 1000 > iatOf(pre.idToken), `tokensValidAfterTime ADVANCED past the pre-revoke session (${u.tokensValidAfterTime} vs iat ${iatOf(pre.idToken)})`);
+    assert.ok(v0 === undefined || validAfter > Date.parse(v0), `and past its earlier value (${v0})`);
+    await assert.rejects(getAuth().verifyIdToken(pre.idToken, true), (e) => /revoked|disabled/.test(e.code || ''), 'the pre-revoke ID token is rejected');
+    assert.notStrictEqual((await refreshAt(pre.refreshToken)).status, 200, 'the pre-revoke refresh token is rejected');
+    const hs = await require('../merchant/merchant-scope').authorizeHandheld(db, device(n2, 'tencha_norte'), 'tencha_norte', { resolveBrand });
+    assert.strictEqual(hs.ok, false, 'the REAL handheld authorization now denies');
+    assert.strictEqual((await call(ops.getMyBranches, { uid: OWNER_T })).json.branches.find((b) => b.rid === 'tencha_norte').devices, 1, 'E1 linked count');
+    const meta = (await db.ref(`restaurants/tencha_norte/handhelds/${n2}`).get()).val();
+    assert.strictEqual((await call(ops.revokeBranchDevice, { method: 'POST', uid: OWNER_T, body: { rid: 'tencha_norte', uid: n2 } })).status, 200, 'idempotent');
+    assert.deepStrictEqual((await db.ref(`restaurants/tencha_norte/handhelds/${n2}`).get()).val(), meta, 'metadata unchanged');
+    ok('E7: on the REAL Auth emulator — disabled + tokens revoked, REAL authorizeHandheld denies, E1 count drops; 403 other branch / retired (nothing written), 404, idempotent repeat');
+
+    // partial failure: registry written, Auth fails once → error; the retry completes Auth with the ORIGINAL metadata
+    const flaky = (() => { const real = getAuth(); let once = true; return { updateUser: async (...a) => { if (once) { once = false; throw new Error('auth down'); } return real.updateUser(...a); }, revokeRefreshTokens: (x) => real.revokeRefreshTokens(x) }; })();
+    const pdeps = { ...hdeps(), verifyIdToken: (t) => getAuth().verifyIdToken(t), adminAuth: flaky, log: { log() {}, warn() {} } };
+    const preq = { method: 'POST', body: { rid: 'tencha_norte', uid: n1 }, get: (h) => (h === 'authorization' ? `Bearer ${idToken(OWNER_T)}` : undefined) };
+    assert.strictEqual((await C.revokeBranchDeviceCore(pdeps, preq)).status, 500);
+    const m1 = (await db.ref(`restaurants/tencha_norte/handhelds/${n1}`).get()).val();
+    assert.strictEqual(m1.revoked, true, 'the registry write happened first');
+    assert.strictEqual((await getAuth().getUser(n1)).disabled, false, 'non-vacuity: Auth not done yet');
+    assert.strictEqual((await C.revokeBranchDeviceCore(pdeps, preq)).status, 200);
+    assert.strictEqual((await getAuth().getUser(n1)).disabled, true);
+    assert.deepStrictEqual((await db.ref(`restaurants/tencha_norte/handhelds/${n1}`).get()).val(), m1, 'revoked_at / revoked_by unchanged');
+    ok('E7 partial failure: Auth fails after the registry write → error; the retry completes the REAL Auth cleanup with the original metadata');
+
+    // the revocation boundary (codex plan r1 P1) — unmodified cores
+    await db.ref('orders/ord_s2_a').set({ order_id: 'ord_s2_a', restaurant_id: 'tencha_centro', routing_reason: 'nearest', status: 'new', order_type: 'pickup' });
+    await db.ref('orders/ord_s2_b').set({ order_id: 'ord_s2_b', restaurant_id: 'tencha_centro', routing_reason: 'nearest', status: 'new', order_type: 'pickup' });
+    // (a) an accept already AUTHORIZED, held before its order transaction, commits after the revoke; a new action is denied
+    let release; const gate = new Promise((r) => { release = r; }); let reached;
+    const atTx = new Promise((r) => { reached = r; });
+    const heldDb = { ref: (p) => { const r = db.ref(p); if (p !== 'orders/ord_s2_a') return r;
+      return new Proxy(r, { get: (t, k) => (k === 'transaction' ? async (...a) => { reached(); await gate; return t.transaction(...a); } : (typeof t[k] === 'function' ? t[k].bind(t) : t[k])) }); } };
+    const accept = O.runOrderActionDetailed({ ...hdeps(), db: heldDb }, device(c2, 'tencha_centro'), 'accept', { rid: 'tencha_centro', oid: 'ord_s2_a', prep_min: 20, op_id: 'op_s2_held1' });
+    await within(atTx, "the held accept's order transaction");
+    const ordersBefore = (await db.ref('orders').get()).val();
+    assert.strictEqual((await call(ops.revokeBranchDevice, { method: 'POST', uid: OWNER_T, body: { rid: 'tencha_centro', uid: c2 } })).json.paused, false, 'c1 remains');
+    assert.deepStrictEqual((await db.ref('orders').get()).val(), ordersBefore, 'the revoke changed no order');
+    release();
+    const held = await accept;
+    assert.deepStrictEqual([held.outcome.ok, held.outcome.status], [true, 'preparing'], 'the already-authorized accept COMMITS');
+    await assert.rejects(O.runOrderActionDetailed(hdeps(), device(c2, 'tencha_centro'), 'accept', { rid: 'tencha_centro', oid: 'ord_s2_b', prep_min: 20, op_id: 'op_s2_new01' }), (e) => e.code === 'permission-denied', 'a NEW action is denied');
+    // (b) a push whose targets were already read is still delivered; the next send excludes the device
+    let sendGate; const sendHeld = new Promise((r) => { sendGate = r; }); let sendReached; const sendAt = new Promise((r) => { sendReached = r; });
+    const sent = [];
+    const holdMessaging = { sendEach: async (msgs) => { sendReached(); await sendHeld; sent.push(...msgs); return { responses: msgs.map(() => ({ success: true })) }; } };
+    const push = PIO.sendTo({ ...hdeps(), messaging: holdMessaging }, 'tencha_centro', 'new_order', 'ord_s2_b', Date.now());
+    await within(sendAt, "the held push's sendEach (no target selected?)");
+    const rlast = await call(ops.revokeBranchDevice, { method: 'POST', uid: OWNER_T, body: { rid: 'tencha_centro', uid: c1 } });
+    sendGate();
+    await push;
+    assert.ok(sent.some((m) => m.token.startsWith('fcm-')), 'the already-selected message to the revoked device was still sent');
+    const sent2 = []; await PIO.sendTo({ ...hdeps(), messaging: { sendEach: async (msgs) => { sent2.push(...msgs); return { responses: [] }; } } }, 'tencha_centro', 'new_order', 'ord_s2_b', Date.now());
+    assert.strictEqual(sent2.length, 0, 'the next send excludes it');
+    ok('revocation boundary: an already-authorized accept commits and an already-selected push is delivered after the revoke; NEW actions / sends are refused; no order changed by the revoke');
+
+    // owner ruling (b): that was tencha_centro's LAST device on a handheld branch → paused by the REAL writer
+    assert.deepStrictEqual(rlast.json, { ok: true, uid: c1, paused: true });
+    const cur = (await db.ref('order_control/tencha_centro/current').get()).val();
+    assert.deepStrictEqual([cur.paused, cur.reason, cur.by, cur.until === undefined || cur.until === null], [true, 'Otro', `portal:${OWNER_T}`, true]);
+    const OC = require('../order-control'); OC._resetForTests();
+    assert.strictEqual(await OC.orderControlFor(db, 'tencha_centro'), 'paused', 'the REAL intake reader sees the pause (→ 423)');
+    // a repeat revoke never re-pauses after the owner reopens
+    assert.strictEqual((await call(ops.setBranchPause, { method: 'POST', uid: OWNER_T, body: { rid: 'tencha_centro', op: 'resume' } })).status, 200);
+    assert.strictEqual((await call(ops.revokeBranchDevice, { method: 'POST', uid: OWNER_T, body: { rid: 'tencha_centro', uid: c1 } })).json.paused, false);
+    assert.strictEqual((await db.ref('order_control/tencha_centro/current/paused').get()).val(), false);
+    // a kds branch's last device → no pause, order_control untouched
+    const oc0 = (await db.ref('order_control/tencha_norte').get()).val();
+    const lastNorte = await pair(MGR, 'tencha_norte');   // tencha_norte's earlier devices are revoked above: this is its only linked one
+    assert.deepStrictEqual((await call(ops.revokeBranchDevice, { method: 'POST', uid: OWNER_T, body: { rid: 'tencha_norte', uid: lastNorte } })).json.paused, false);
+    assert.deepStrictEqual((await db.ref('order_control/tencha_norte').get()).val(), oc0, 'kds: untouched');
+    // concurrent last-two revokes on a handheld branch → paused exactly once
+    const d1 = await pair(OWNER_T, 'tencha_centro'); const d2 = await pair(OWNER_T, 'tencha_centro');
+    const ev0 = Object.keys((await db.ref('order_control/tencha_centro/events').get()).val() || {}).length;
+    const both = await Promise.all([d1, d2].map((x) => call(ops.revokeBranchDevice, { method: 'POST', uid: OWNER_T, body: { rid: 'tencha_centro', uid: x } })));
+    assert.ok(both.every((r) => r.status === 200) && both.some((r) => r.json.paused === true));
+    const ev1 = Object.keys((await db.ref('order_control/tencha_centro/events').get()).val() || {}).length;
+    assert.strictEqual(ev1 - ev0, 1, 'exactly one pause event');
+    ok('owner ruling (b): a handheld branch\'s last device → revoked + paused via the REAL writePause («Otro», no expiry; orderControlFor → paused); a repeat never re-pauses; a kds branch untouched; concurrent last-two → one pause');
+
+    // codex build r1 P1 — the EXACT repro on the emulator: Auth fails after the unlink → 500, the pause OWED in the unlink
+    // transaction → the retry pauses, exactly once; and a branch the owner reopened in between is never re-paused
+    const pauses = async () => Object.values((await db.ref('order_control/tencha_centro/events').get()).val() || {}).filter((e) => e.to && e.to.paused === true).length;
+    const flakyAuth = () => { const real = getAuth(); let once = true; return { updateUser: async (...a) => { if (once) { once = false; throw new Error('auth down'); } return real.updateUser(...a); }, revokeRefreshTokens: (x) => real.revokeRefreshTokens(x) }; };
+    const direct = (x, a) => C.revokeBranchDeviceCore({ ...hdeps(), verifyIdToken: (t) => getAuth().verifyIdToken(t), adminAuth: a, log: { log() {}, warn() {} } },
+      { method: 'POST', body: { rid: 'tencha_centro', uid: x }, get: (h) => (h === 'authorization' ? `Bearer ${idToken(OWNER_T)}` : undefined) });
+    const e3 = async (body) => assert.strictEqual((await call(ops.setBranchPause, { method: 'POST', uid: OWNER_T, body: { rid: 'tencha_centro', ...body } })).status, 200);
+    await e3({ op: 'resume' });
+    const d3 = await pair(OWNER_T, 'tencha_centro');
+    const fa = flakyAuth();
+    const p0 = await pauses();
+    assert.strictEqual((await direct(d3, fa)).status, 500);
+    const owed = (await db.ref(`restaurants/tencha_centro/handhelds/${d3}`).get()).val();
+    assert.deepStrictEqual([owed.revoked, owed.pause_owed], [true, true], 'unlinked + pause owed in ONE transaction');
+    assert.strictEqual((await db.ref('order_control/tencha_centro/current/paused').get()).val(), false, 'non-vacuity: not paused yet');
+    const r3 = await direct(d3, fa);
+    assert.deepStrictEqual([r3.status, r3.body], [200, { ok: true, uid: d3, paused: true }], 'the retry runs the owed pause');
+    assert.strictEqual(await pauses(), p0 + 1, 'exactly one pause');
+    assert.strictEqual((await getAuth().getUser(d3)).disabled, true, 'and the REAL Auth cleanup completed');
+    assert.strictEqual((await db.ref(`restaurants/tencha_centro/handhelds/${d3}/pause_owed`).get()).val(), null, 'debt cleared');
+    assert.deepStrictEqual((await direct(d3, getAuth())).body, { ok: true, uid: d3, paused: false }, 'a further repeat owes nothing');
+    assert.strictEqual(await pauses(), p0 + 1);
+    // reopen-then-retry
+    await e3({ op: 'resume' });
+    const d4 = await pair(OWNER_T, 'tencha_centro');
+    const fb = flakyAuth();
+    assert.strictEqual((await direct(d4, fb)).status, 500);
+    await e3({ op: 'pause', reason: 'Otro', dur_min: null }); await e3({ op: 'resume' });   // the owner pauses and reopens by hand
+    const p1 = await pauses();
+    assert.deepStrictEqual((await direct(d4, fb)).body, { ok: true, uid: d4, paused: false }, 'never re-pauses a reopened branch');
+    assert.strictEqual((await db.ref('order_control/tencha_centro/current/paused').get()).val(), false);
+    assert.strictEqual(await pauses(), p1, 'no new pause');
+    assert.strictEqual((await db.ref(`restaurants/tencha_centro/handhelds/${d4}/pause_owed`).get()).val(), null, 'the debt is voided');
+    ok('E7 retry (codex build r1 P1): Auth fails → 500 with the pause owed → the retry pauses exactly once (REAL Auth + writePause); reopened in between → the retry never re-pauses');
+  }
+
   // ── speed (§5.3): warm E1 vs warm getMyRestaurants for the same owner, through the real handlers ───────────────────
   {
     const portal = require('../portal/functions');
@@ -518,11 +719,10 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
       console.log('KEYS ' + JSON.stringify(Object.keys(m).sort()));`], { env: process.env, encoding: 'utf8', timeout: 120000 });
     assert.strictEqual(r.status, 0, r.stderr.slice(-400));
     assert.ok(r.stdout.includes('portal_ops_entry getMyBranches'));
-    assert.deepStrictEqual(JSON.parse(r.stdout.split('\n').find((l) => l.startsWith('KEYS ')).slice(5)), ['getBranchAvailability', 'getMyBranches', 'setBranchAvailability', 'setBranchPause', 'updateBranch']);
+    assert.deepStrictEqual(JSON.parse(r.stdout.split('\n').find((l) => l.startsWith('KEYS ')).slice(5)), ['getBranchAvailability', 'getBranchDevices', 'getMyBranches', 'revokeBranchDevice', 'setBranchAvailability', 'setBranchPause', 'updateBranch']);
     ok('isolated load: FUNCTION_TARGET=getMyBranches loads only the ops group (marker printed) under the emulator env');
   }
 
   console.log(`\nportal-ops(emulator): OK (${n})`);
-  authSrv.close();
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

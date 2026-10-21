@@ -812,6 +812,7 @@
   "xpizza-portal/availability.js#paintDrawer": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders",
   "xpizza-portal/branch-logic.js#availabilityUnion": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders",
   "xpizza-portal/pausas.js#send": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders",
+  "xpizza-portal/equipos.js#doRevoke": "portal device operations (PORTAL-UI slice 2) — the revoke reply's HTTP status (404 → refetch), not persisted orders",
   "xpizza-portal/shell.js#showBootError": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders"
  },
  "writtenFields": {

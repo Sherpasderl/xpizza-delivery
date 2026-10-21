@@ -152,6 +152,7 @@
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
     "xpizza-functions/portal/ops-core.test.js",
+    "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
@@ -338,6 +339,7 @@
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
     "xpizza-functions/portal/ops-core.test.js",
+    "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
@@ -565,6 +567,7 @@
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
     "xpizza-functions/portal/ops-core.test.js",
+    "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
@@ -751,6 +754,7 @@
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
     "xpizza-functions/portal/ops-core.test.js",
+    "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
@@ -1629,6 +1633,7 @@
   "index.js",
   "lib/driver-admin-ops.js",
   "lib/driver-callable-guard.js",
+  "lib/emulator-endpoint.js",
   "lib/hn-date.js",
   "merchant/_fake-db.js",
   "merchant/merchant-brand.js",
@@ -2171,6 +2176,10 @@
    "lifts": []
   },
   "lib/driver-callable-guard.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "lib/emulator-endpoint.js": {
    "pins": [],
    "lifts": []
   },

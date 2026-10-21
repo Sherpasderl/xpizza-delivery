@@ -18,6 +18,7 @@
   "branches-view.js",
   "editor.js",
   "editor.test.mjs",
+  "equipos.js",
   "firebase.js",
   "index.html",
   "netlify.toml",
@@ -56,8 +57,8 @@
    "bytes": 4451
   },
   "index.html": {
-   "sha256": "b12141c19a18969cdcab02dd476e2736cad730bea6784eff09b49141abd6697f",
-   "bytes": 9409
+   "sha256": "fb913a295e3d0d54c6ff31b7e5c7f608d27758492f496b2ae04d76da7517f3e4",
+   "bytes": 10120
   },
   "netlify.toml": {
    "sha256": "fe3ef565e42ad144919fa416dd111b322958d83486746116dd07c228faed22ee",
@@ -72,8 +73,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "0e8c516dfc6e475aff17124c708685709a3cb01c23da86813528930659a9501b",
-   "bytes": 81348
+   "sha256": "6391be1042b6358bcc43bb57809193b0c380b9c1d5e2a07734cf090686d6b8da",
+   "bytes": 83822
   }
  },
  "diff_aid": {
@@ -807,6 +808,48 @@
     ".empty",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".eqat",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".eqcall b",
+    "color",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".eqcall",
+    "background",
+    "var(--amber-soft)"
+   ],
+   [
+    "",
+    ".eqcall",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".eqsc td .eqsub",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".eqsc th",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".eqtbl",
+    "background",
+    "var(--card)"
    ],
    [
     "",
@@ -1905,6 +1948,30 @@
     ".pill.closed,.pill.off",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".pill.eqwarn i",
+    "background",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".pill.eqwarn",
+    "background",
+    "var(--amber-soft)"
+   ],
+   [
+    "",
+    ".pill.eqwarn",
+    "border-color",
+    "var(--amber-line)"
+   ],
+   [
+    "",
+    ".pill.eqwarn",
+    "color",
+    "var(--ink)"
    ],
    [
     "",
@@ -3141,6 +3208,12 @@
     "body",
     "color",
     "var(--ink)"
+   ],
+   [
+    "@media(max-width:920px)",
+    ".eqsc td:nth-child(2),.eqsc td:nth-child(3)",
+    "color",
+    "var(--mute)"
    ],
    [
     "@media(max-width:920px)",

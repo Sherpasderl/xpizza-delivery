@@ -549,3 +549,320 @@ test('setNavBadge: text on Productos (desktop + mobile) through textContent; nul
   assert.equal(badgeOf(mods.shell._registered[0].nav).textContent, '2', 'a registered view takes a badge too');
   assert.doesNotThrow(() => mods.shell.setNavBadge('nada', '3'));
 });
+
+// ── slice 2 «Equipos» (PLAN-portal-ui-slice2-equipos r1.1 §4–§5) ───────────────────────────────────────────────────────
+const DEV_CAPS = [...OWNER_CAPS, 'device.pair', 'device.list', 'device.revoke'];
+const ebranch = (rid, extra = {}) => branch(rid, { caps: DEV_CAPS, devices: 1, ...extra });
+const T0 = Date.UTC(2026, 9, 20, 18, 0);
+const dev = (uid, n, extra = {}) => ({ uid, n, paired_at: T0 - 86400000 * 10, last_seen: T0 - 60000, paired_by_name: null, paired_by_owner: true, ...extra });
+const e6 = (branches, extra = {}) => okJson({ fetched_at: T0, pairing_enabled: true, branches, ...extra });
+const btnText = (root, t) => all(root).find((n) => n.tag === 'button' && textOf(n) === t);
+
+test('Equipos: nav shown with the linked count; EVERY entry re-fetches; «Actualizar» re-fetches; rows labelled «Equipo N»', async () => {
+  installStorage();
+  let k = 0;
+  const P = page({ e1: E1([ebranch('r_a', { devices: 2 }), ebranch('r_b', { devices: 1 })]), extra: (fn, q) => {
+    if (fn !== 'getBranchDevices') return undefined;
+    k += 1;
+    assert.deepEqual(q, { brandId: 'marca_s' }, 'the brand query for «Todas»');
+    return e6([{ rid: 'r_a', prep_ok: true, order_surface: 'handheld', devices: [dev('hh_1', 1), dev('hh_2', 2, { last_seen: T0 - 3600000 })] },
+      { rid: 'r_b', prep_ok: true, order_surface: 'kds', devices: [dev('hh_3', 1, { last_seen: null })] }]);
+  } });
+  const mods = await loadModules();
+  await signIn('uOwner0401');
+  assert.ok(!hasClass(P.byId.get('navequipos'), 'hidden') && !hasClass(P.byId.get('mnequipos'), 'hidden'));
+  assert.equal(textOf(P.byId.get('navequiposcount')), '3');
+  assert.equal(k, 0, 'nothing fetched before the screen is opened');
+  P.byId.get('navequipos').click();
+  await settle(10);
+  assert.equal(k, 1);
+  const v = P.byId.get('viewequipos');
+  const t = textOf(v);
+  for (const s of ['Equipo 1', 'Equipo 2', 'Vinculado el 10 oct por el dueño', 'hace 1 min', 'hace 1 h', 'Nunca', 'En línea', 'Sin señal', 'Actualizado 12:00', '3 equipos']) assert.ok(t.includes(s), `shows ${s}`);
+  btnText(v, 'Actualizar').click();
+  await settle(10);
+  assert.equal(k, 2, '«Actualizar» re-fetches');
+  P.byId.get('navprod').click();
+  P.byId.get('navequipos').click();
+  await settle(10);
+  assert.equal(k, 3, 're-entry re-fetches (no page-lifetime cache)');
+  void mods;
+});
+
+test('Equipos: an OBSOLETE reply is dropped (a newer fetch owns the screen); a per-branch failure is an error, never «Ningún equipo»', async () => {
+  installStorage();
+  const first = hold();
+  let k = 0;
+  const P = page({ e1: E1([ebranch('r_a'), ebranch('r_b')]), extra: (fn) => {
+    if (fn !== 'getBranchDevices') return undefined;
+    k += 1;
+    if (k === 1) return first.p;
+    return e6([{ rid: 'r_a', prep_ok: true, order_surface: 'kds', devices: [dev('hh_new', 1)] }, { rid: 'r_b', error: 'devices_unavailable' }]);
+  } });
+  await loadModules();
+  await signIn('uOwner0402');
+  P.byId.get('navequipos').click();
+  await settle(5);
+  P.byId.get('navprod').click();
+  P.byId.get('navequipos').click();
+  await settle(10);
+  first.release(e6([{ rid: 'r_a', prep_ok: true, order_surface: 'kds', devices: [dev('hh_old', 1), dev('hh_old2', 2)] }, { rid: 'r_b', prep_ok: true, order_surface: 'kds', devices: [] }]));
+  await settle(10);
+  const t = textOf(P.byId.get('viewequipos'));
+  assert.ok(t.includes('1 equipo') && !t.includes('2 equipos'), 'the newer reply stays');
+  assert.ok(t.includes('No pudimos cargar los equipos de R_B'), 'the failed branch is named');
+  assert.ok(!t.includes('Ningún equipo vinculado'), 'never rendered as empty');
+});
+
+test('Equipos: pairing off → one line instead of «Lista»; a branch without prep gets the warning + «Definirlo»', async () => {
+  installStorage();
+  const P = page({ e1: E1([ebranch('r_a', { devices: 0 })]), extra: (fn) => (fn === 'getBranchDevices'
+    ? e6([{ rid: 'r_a', prep_ok: false, order_surface: 'handheld', devices: [] }], { pairing_enabled: false }) : undefined) });
+  const mods = await loadModules();
+  await signIn('uOwner0403');
+  P.byId.get('navequipos').click();
+  await settle(10);
+  const v = P.byId.get('viewequipos');
+  const t = textOf(v);
+  assert.ok(t.includes('La vinculación de equipos todavía no está habilitada en Sherpa.') && !t.includes('Lista'));
+  assert.ok(t.includes('R_A no puede vincular equipos todavía.') && t.includes('Ningún equipo vinculado en R_A'));
+  assert.ok(!t.includes('kiosco') && !t.includes('Caja'), 'the dropped claims (E-D1 / E-D2) are gone');
+  btnText(v, 'Definirlo').click();
+  assert.equal(mods.shell._shellState.view, 'suc', '«Definirlo» opens the branch (prep)');
+});
+
+test('Equipos: «Desvincular» → E7 → row gone, count patched, toast; the modal says the TRUE boundary', async () => {
+  installStorage();
+  let gone = false;   // the stub server: after E7, E6 no longer lists the device
+  const P = page({ e1: E1([ebranch('r_a', { devices: 2 })]), extra: (fn) => {
+    if (fn === 'getBranchDevices') return e6([{ rid: 'r_a', prep_ok: true, order_surface: 'handheld', devices: [dev('hh_1', 1), ...(gone ? [] : [dev('hh_2', 2)])] }]);
+    if (fn === 'revokeBranchDevice') { gone = true; return okJson({ ok: true, uid: 'hh_2', paused: false }); }
+    return undefined;
+  } });
+  await loadModules();
+  await signIn('uOwner0404');
+  P.byId.get('navequipos').click();
+  await settle(10);
+  const v = P.byId.get('viewequipos');
+  all(v).filter((n) => n.tag === 'button' && textOf(n) === 'Desvincular')[1].click();
+  const m = P.byId.get('devmodal');
+  const mt = textOf(m);
+  assert.ok(mt.includes('¿Desvincular «Equipo 2»?') && mt.includes('Una acción que ya estaba en proceso puede completarse') && mt.includes('los siguen atendiendo los otros equipos'));
+  assert.ok(!mt.includes('Es el único equipo'), 'not the last one');
+  btnText(m, 'Desvincular').click();
+  await settle(10);
+  assert.deepEqual(P.calls.find((c) => c.fn === 'revokeBranchDevice').body, { rid: 'r_a', uid: 'hh_2' });
+  const t = textOf(v);
+  assert.ok(t.includes('Equipo 1') && !t.includes('Equipo 2'), 'the row is gone');
+  assert.equal(P.count('getBranchDevices'), 2, 'a successful revoke reconciles with a fresh list');
+  assert.equal(textOf(P.byId.get('navequiposcount')), '1', 'E1 count patched');
+  assert.ok(textOf(P.byId.get('opstoast')).includes('«Equipo 2» desvinculado'));
+});
+
+test('Equipos owner ruling (b): a handheld branch\'s ONLY device → «Desvincular y pausar sucursal»; paused → branch patched', async () => {
+  installStorage();
+  const P = page({ e1: E1([ebranch('r_a')]), extra: (fn) => {
+    if (fn === 'getBranchDevices') return e6([{ rid: 'r_a', prep_ok: true, order_surface: 'handheld', devices: [dev('hh_1', 1)] }]);
+    if (fn === 'revokeBranchDevice') return okJson({ ok: true, uid: 'hh_1', paused: true });
+    return undefined;
+  } });
+  const mods = await loadModules();
+  await signIn('uOwner0405');
+  P.byId.get('navequipos').click();
+  await settle(10);
+  btnText(P.byId.get('viewequipos'), 'Desvincular').click();
+  const m = P.byId.get('devmodal');
+  assert.ok(textOf(m).includes('Es el único equipo de esta sucursal. Al desvincularlo, la sucursal se pausa para que ningún pedido quede sin atender.'));
+  btnText(m, 'Desvincular y pausar sucursal').click();
+  await settle(10);
+  assert.equal(mods.shell._shellState.e1.branches[0].control.state, 'paused', 'the branch shows paused (as Pausar would)');
+  assert.ok(textOf(P.byId.get('opstoast')).includes('«Equipo 1» desvinculado · R_A pausada'));
+});
+
+test('Equipos: the pause FAILED after the revoke → a panel with «Pausar sucursal» (E3 «Otro», until resumed), never a toast', async () => {
+  installStorage();
+  const P = page({ e1: E1([ebranch('r_a')]), extra: (fn) => {
+    if (fn === 'getBranchDevices') return e6([{ rid: 'r_a', prep_ok: true, order_surface: 'handheld', devices: [dev('hh_1', 1)] }]);
+    if (fn === 'revokeBranchDevice') return okJson({ ok: true, uid: 'hh_1', paused: false, pause_error: 'unavailable' });
+    if (fn === 'setBranchPause') return okJson({ ok: true, noop: false, control: { state: 'paused', paused_until: null, pause_reason: 'Otro', pause_since: T0 } });
+    return undefined;
+  } });
+  const mods = await loadModules();
+  await signIn('uOwner0406');
+  P.byId.get('navequipos').click();
+  await settle(10);
+  const v = P.byId.get('viewequipos');
+  btnText(v, 'Desvincular').click();
+  btnText(P.byId.get('devmodal'), 'Desvincular y pausar sucursal').click();
+  await settle(10);
+  assert.ok(textOf(v).includes('Desvinculamos el equipo, pero no pudimos pausar R_A.'));
+  btnText(v, 'Pausar sucursal').click();
+  await settle(10);
+  assert.deepEqual(P.calls.find((c) => c.fn === 'setBranchPause').body, { rid: 'r_a', op: 'pause', dur_min: null, reason: 'Otro' });
+  assert.equal(mods.shell._shellState.e1.branches[0].control.state, 'paused');
+  assert.ok(!textOf(v).includes('no pudimos pausar'), 'the panel clears once paused');
+});
+
+test('Equipos: a kds branch\'s only device → plain «Desvincular» (no pause wording); an E7 failure is a panel, not a toast', async () => {
+  installStorage();
+  const P = page({ e1: E1([ebranch('r_a')]), extra: (fn) => {
+    if (fn === 'getBranchDevices') return e6([{ rid: 'r_a', prep_ok: true, order_surface: 'kds', devices: [dev('hh_1', 1)] }]);
+    if (fn === 'revokeBranchDevice') return errJson(503, { error: 'unavailable', retryable: true });
+    return undefined;
+  } });
+  await loadModules();
+  await signIn('uOwner0407');
+  P.byId.get('navequipos').click();
+  await settle(10);
+  const v = P.byId.get('viewequipos');
+  btnText(v, 'Desvincular').click();
+  const m = P.byId.get('devmodal');
+  assert.ok(!textOf(m).includes('Es el único equipo') && !btnText(m, 'Desvincular y pausar sucursal'));
+  const toastBefore = textOf(P.byId.get('opstoast'));
+  btnText(m, 'Desvincular').click();
+  await settle(10);
+  assert.ok(textOf(v).includes('No se pudo desvincular el equipo') || textOf(v).includes('Sin conexión con Sherpa'));
+  assert.equal(textOf(P.byId.get('opstoast')), toastBefore, 'no toast on failure');
+  assert.ok(textOf(v).includes('Equipo 1'), 'the row stays');
+});
+
+test('Equipos: S2\'s «Equipos · N» opens Equipos for THAT branch (rid query)', async () => {
+  installStorage();
+  let q = null;
+  const P = page({ e1: E1([ebranch('r_a', { devices: 3 }), ebranch('r_b')]), extra: (fn, query) => {
+    if (fn === 'getBranchDevices') { q = query; return e6([{ rid: 'r_b', prep_ok: true, order_surface: 'kds', devices: [] }]); }
+    return undefined;
+  } });
+  const mods = await loadModules();
+  await signIn('uOwner0408');
+  mods.shell.goto('suc', { rid: 'r_b' });
+  btnText(P.byId.get('viewsuc'), 'Equipos · 1').click();
+  await settle(10);
+  assert.deepEqual(q, { restaurantId: 'r_b' });
+  assert.ok(textOf(P.byId.get('viewequipos')).includes('Ningún equipo vinculado en R_B'));
+});
+
+// ── codex build r1 (Equipos): server-decided recovery, retained retry, visible refresh errors, fetch generations, empty header ──
+test('Equipos (r1 P1): a STALE two-device list + the server says pause_error → the recovery panel still shows', async () => {
+  installStorage();
+  const P = page({ e1: E1([ebranch('r_a', { devices: 2 })]), extra: (fn) => {
+    if (fn === 'getBranchDevices') return e6([{ rid: 'r_a', prep_ok: true, order_surface: 'handheld', devices: [dev('hh_1', 1), dev('hh_2', 2)] }]);
+    // meanwhile another session revoked hh_1, so THIS revoke was the last device and its auto-pause failed
+    if (fn === 'revokeBranchDevice') return okJson({ ok: true, uid: 'hh_2', paused: false, pause_error: 'unavailable' });
+    return undefined;
+  } });
+  await loadModules();
+  await signIn('uOwner0410');
+  P.byId.get('navequipos').click();
+  await settle(10);
+  const v = P.byId.get('viewequipos');
+  all(v).filter((n) => n.tag === 'button' && textOf(n) === 'Desvincular')[1].click();
+  const m = P.byId.get('devmodal');
+  assert.ok(!textOf(m).includes('Es el único equipo'), 'non-vacuity: the stale list predicted no pause');
+  btnText(m, 'Desvincular').click();
+  await settle(10);
+  assert.ok(textOf(v).includes('Desvinculamos el equipo, pero no pudimos pausar R_A.'), 'the server result decides');
+  assert.ok(btnText(v, 'Pausar sucursal'));
+});
+
+test('Equipos (r1 P2): an E7 failure keeps the operation — «Reintentar» re-sends the SAME rid + uid, and survives «Actualizar»', async () => {
+  installStorage();
+  let fail = true;
+  const P = page({ e1: E1([ebranch('r_a', { devices: 2 })]), extra: (fn) => {
+    if (fn === 'getBranchDevices') return e6([{ rid: 'r_a', prep_ok: true, order_surface: 'handheld', devices: [dev('hh_1', 1), dev('hh_2', 2)] }]);
+    if (fn === 'revokeBranchDevice') return fail ? errJson(503, { error: 'unavailable', retryable: true }) : okJson({ ok: true, uid: 'hh_2', paused: false });
+    return undefined;
+  } });
+  await loadModules();
+  await signIn('uOwner0411');
+  P.byId.get('navequipos').click();
+  await settle(10);
+  const v = P.byId.get('viewequipos');
+  all(v).filter((n) => n.tag === 'button' && textOf(n) === 'Desvincular')[1].click();
+  btnText(P.byId.get('devmodal'), 'Desvincular').click();
+  await settle(10);
+  assert.ok(btnText(v, 'Reintentar'), 'the failure offers «Reintentar»');
+  btnText(v, 'Actualizar').click();
+  await settle(10);
+  assert.equal(P.count('getBranchDevices'), 2);
+  assert.ok(btnText(v, 'Reintentar'), 'a list refresh never drops the failed operation');
+  fail = false;
+  btnText(v, 'Reintentar').click();
+  await settle(10);
+  const sent = P.calls.filter((c) => c.fn === 'revokeBranchDevice').map((c) => c.body);
+  assert.deepEqual(sent, [{ rid: 'r_a', uid: 'hh_2' }, { rid: 'r_a', uid: 'hh_2' }], 'the SAME operation re-sent');
+  assert.ok(textOf(P.byId.get('opstoast')).includes('«Equipo 2» desvinculado'));
+  assert.ok(!btnText(v, 'Reintentar'), 'the panel clears on success');
+});
+
+test('Equipos (r1 P2): a failed REFRESH is shown above the retained list with «Reintentar» (outage and 403 alike)', async () => {
+  installStorage();
+  let mode = 'ok';
+  const P = page({ e1: E1([ebranch('r_a')]), extra: (fn) => {
+    if (fn !== 'getBranchDevices') return undefined;
+    if (mode === '503') return errJson(503, { error: 'unavailable' });
+    if (mode === '403') return errJson(403, { error: 'not_authorized' });
+    return e6([{ rid: 'r_a', prep_ok: true, order_surface: 'handheld', devices: [dev('hh_1', 1)] }]);
+  } });
+  await loadModules();
+  await signIn('uOwner0412');
+  P.byId.get('navequipos').click();
+  await settle(10);
+  const v = P.byId.get('viewequipos');
+  mode = '503';
+  btnText(v, 'Actualizar').click();
+  await settle(10);
+  assert.ok(textOf(v).includes('Equipo 1'), 'the last good list is kept');
+  assert.ok(btnText(v, 'Reintentar'), 'the outage is said, with its retry');
+  mode = '403';
+  btnText(v, 'Reintentar').click();
+  await settle(10);
+  assert.ok(textOf(v).includes('No tenés acceso a estos equipos') && btnText(v, 'Reintentar'), 'an authorization failure too');
+  mode = 'ok';
+  btnText(v, 'Reintentar').click();
+  await settle(10);
+  assert.ok(!btnText(v, 'Reintentar') && !textOf(v).includes('No tenés acceso'), 'cleared by a good refresh');
+});
+
+test('Equipos (r1 P2): a list fetch begun BEFORE a successful revoke can never restore the revoked row', async () => {
+  installStorage();
+  const old = hold();
+  let k = 0; let gone = false;
+  const P = page({ e1: E1([ebranch('r_a', { devices: 2 })]), extra: (fn) => {
+    const both = () => e6([{ rid: 'r_a', prep_ok: true, order_surface: 'handheld', devices: [dev('hh_1', 1), ...(gone ? [] : [dev('hh_2', 2)])] }]);
+    if (fn === 'getBranchDevices') { k += 1; return k === 2 ? old.p : both(); }
+    if (fn === 'revokeBranchDevice') { gone = true; return okJson({ ok: true, uid: 'hh_2', paused: false }); }
+    return undefined;
+  } });
+  await loadModules();
+  await signIn('uOwner0413');
+  P.byId.get('navequipos').click();
+  await settle(10);
+  const v = P.byId.get('viewequipos');
+  btnText(v, 'Actualizar').click();                       // fetch #2: held (its snapshot predates the revoke)
+  await settle(5);
+  all(v).filter((n) => n.tag === 'button' && textOf(n) === 'Desvincular')[1].click();
+  btnText(P.byId.get('devmodal'), 'Desvincular').click();
+  await settle(10);
+  old.release(e6([{ rid: 'r_a', prep_ok: true, order_surface: 'handheld', devices: [dev('hh_1', 1), dev('hh_2', 2)] }]));
+  await settle(10);
+  assert.equal(k, 3, 'non-vacuity: the held fetch AND the reconcile fetch both ran');
+  assert.ok(!textOf(v).includes('Equipo 2'), 'the pre-revoke snapshot is discarded');
+  assert.equal(textOf(P.byId.get('navequiposcount')), '1');
+});
+
+test('Equipos (r1 P3): an empty list keeps «Actualizar» and the fetch time', async () => {
+  installStorage();
+  const P = page({ e1: E1([ebranch('r_a', { devices: 0 })]), extra: (fn) => (fn === 'getBranchDevices'
+    ? e6([{ rid: 'r_a', prep_ok: true, order_surface: 'handheld', devices: [] }]) : undefined) });
+  await loadModules();
+  await signIn('uOwner0414');
+  P.byId.get('navequipos').click();
+  await settle(10);
+  const v = P.byId.get('viewequipos');
+  const t = textOf(v);
+  assert.ok(t.includes('Ningún equipo vinculado') && t.includes('Actualizado 12:00') && t.includes('0 equipos'));
+  btnText(v, 'Actualizar').click();
+  await settle(10);
+  assert.equal(P.count('getBranchDevices'), 2);
+});

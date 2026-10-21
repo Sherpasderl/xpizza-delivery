@@ -20,7 +20,9 @@ export const IDS = ['switcher', 'switchmenu', 'discard', 'review', 'pubback', 'p
   // PORTAL-UI 1a: the shell's (shell.js) and the branch screens' hosts — the page loads shell.js after ventas.js
   'scopewrap', 'scopebtn', 'scopemenu', 'scopenote', 'navopslabel', 'navsuc', 'navsuctext', 'navsuccount', 'navpausas',
   'mtop', 'mswitch', 'mbrand', 'mscope', 'mchev', 'mscopemenu', 'mnsuc', 'mnpausas', 'menulede', 'menulock', 'availstrip',
-  'viewsuc', 'viewpausas', 'sucbar', 'sucbartxt', 'sucdiscard', 'sucsave', 'pausescrim', 'pausemodal', 'availdrawer', 'availscrim', 'opstoast', 'whorole'];
+  'viewsuc', 'viewpausas', 'sucbar', 'sucbartxt', 'sucdiscard', 'sucsave', 'pausescrim', 'pausemodal', 'availdrawer', 'availscrim', 'opstoast', 'whorole',
+  // PORTAL-UI slice 2: Equipos
+  'navequipos', 'navequiposcount', 'mnequipos', 'viewequipos', 'devscrim', 'devmodal'];
 // the classes index.html gives them, so `hidden` / `on` start where the real page starts
 const INITIAL_CLASS = {
   navprod: 'nav on', navbiz: 'nlabel hidden', navventas: 'nav hidden', mnav: 'mnav', mnprod: 'mn on', mnventas: 'mn',
