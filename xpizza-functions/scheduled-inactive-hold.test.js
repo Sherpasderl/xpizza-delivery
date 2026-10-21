@@ -2,7 +2,7 @@
 // ORCHESTRATION O1a (PLAN-multi-location-orchestration r3.1 §5) — the scheduled-release INACTIVE hold. Run: node scheduled-inactive-hold.test.js
 //   1. PARITY: for every branch that is NOT `identity.active === false` (active true, field absent, identity absent, malformed,
 //      read failure) every path — open → release, bad hours → scheduled_blocked + alert, paused / unavailable → control hold —
-//      produces byte-identical writes, final state and alerts to the BASE module (this file's source with the O1a inverse
+//      produces byte-identical writes, final state and alerts to the BASE module (the COMMITTED source with the O1a inverse
 //      applied, compiled in place), for cash and a captured card.
 //   2. INACTIVE → hold: the claim rolled back by the SAME function the pause hold uses (releasing → scheduled, ownership
 //      cleared), no materialization, no scheduled_blocked even with bad hours, ONE create-only dispatcher alert
@@ -18,7 +18,10 @@ const { unapplyOrchO1aModule } = require('./tools/orch-o1a-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const FILE = path.join(__dirname, 'scheduled-release-core.js');
 const compile = (src) => { const m = new Module(FILE, module); m.filename = FILE; m.paths = Module._nodeModulePaths(__dirname); m._compile(src, FILE); return m.exports; };
-const BASE = compile(unapplyOrchO1aModule('scheduled-release-core.js', fs.readFileSync(FILE, 'utf8')));
+// the BASE is derived from the COMMITTED file (git HEAD), so a working-tree mutant is judged against the genuine base, not itself
+const { execFileSync } = require('child_process');
+const committed = (() => { try { return execFileSync('git', ['show', 'HEAD:./scheduled-release-core.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 }); } catch (_) { return fs.readFileSync(FILE, 'utf8'); } })();
+const BASE = compile(unapplyOrchO1aModule('scheduled-release-core.js', committed));
 
 function makeDb(initial = {}, { throwOn = null } = {}) {
   const root = JSON.parse(JSON.stringify(initial));
