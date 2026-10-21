@@ -276,7 +276,7 @@ async function setBranchActive(db, { rid, active, expectedVersion, now, callId, 
 // ── Sherpa admin: brand activation (§3 for a NEW brand: off → on; the LEGACY cutover is O3) / deactivation (on → off) ──────────
 // One brand transaction (state + the chosen staged → member + projection_gen + 1, re-validated), then each opened branch's identity
 // active:true (+ version + 1). Every step succeeds if already matching, so a re-run resumes a crashed activation.
-async function activateBrand(db, { brandId, open = [], now, readers = {} }) {
+async function activateBrand(db, { brandId, open = [], now, readers = {}, checkOnly = false }) {
   const brand = await val(db, `brands/${brandId}`);
   if (!isObj(brand)) return { ok: false, error: 'brand_not_found' };
   if (isObj(brand.activation) && brand.activation.state === 'legacy') return { ok: false, error: 'legacy_cutover_is_o3' };
@@ -292,6 +292,7 @@ async function activateBrand(db, { brandId, open = [], now, readers = {} }) {
     if (!plan.ok) unmet[rid] = plan.unmet || [plan.error];
   }
   if (Object.keys(unmet).length) return { ok: false, error: 'not_ready', unmet };
+  if (checkOnly) return { ok: true, ready: open };   // the CLI's dry run: every check, no write
   const b = await txn(db, `brands/${brandId}`, (cur, stop) => {
     if (!isObj(cur)) return stop('brand_not_found');
     if (isObj(cur.activation) && cur.activation.state === 'legacy') return stop('legacy_cutover_is_o3');
@@ -329,4 +330,4 @@ async function deactivateBrand(db, { brandId, now }) {
 // projection resync (advisor ruling): a version-only identity bump, so the fenced publish carries an unversioned earlier write
 const bumpIdentityVersion = (db, { rid, expectedVersion }) => casIdentity(db, rid, expectedVersion, { version: expectedVersion + 1 });
 
-module.exports = { activateBrand, deactivateBrand, bumpIdentityVersion, createDraft, deleteBranchDraft, materializeBranch, resumeBranchOp, setBranchLocation, setBranchActive, enrichLegacyIdentity, LEASE_MS };
+module.exports = { liveOrders, activateBrand, deactivateBrand, bumpIdentityVersion, createDraft, deleteBranchDraft, materializeBranch, resumeBranchOp, setBranchLocation, setBranchActive, enrichLegacyIdentity, LEASE_MS };
