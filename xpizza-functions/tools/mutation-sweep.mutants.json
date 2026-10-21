@@ -17978,5 +17978,113 @@
       "node",
       "branches/branches-admin-core.test.js"
     ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r-legacy-guard",
+    "label": "T6: a client may write a branch of a NON-legacy brand",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "&& (!data.child('brand_id').exists() || root.child('brands').child($restaurant_id).child('activation').child('state').val() === 'legacy')\",",
+    "to": "\",",
+    "kills_with": [
+      "Expected request to fail"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/brands-rules.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r-version-bump",
+    "label": "T6: a non-admin identity write need not bump version",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": " && (!data.exists() || newData.child('version').val() === data.child('version').val() + 1)\",",
+    "to": "\",",
+    "kills_with": [
+      "Expected request to fail"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/brands-rules.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r-hours-sameday",
+    "label": "T6: hours need not be same-day (start < end)",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": " && newData.child('start').val() < newData.child('end').val()))\",",
+    "to": "))\",",
+    "kills_with": [
+      "Expected request to fail"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/branches-rules.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r-hours-closed",
+    "label": "T6: a closed day may carry times",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "(newData.child('open').val() === false ? !newData.hasChildren(['start']) && !newData.hasChildren(['end']) : (",
+    "to": "(newData.child('open').val() === false ? true : (",
+    "kills_with": [
+      "Expected request to fail"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/branches-rules.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r-hub-lat",
+    "label": "T6: identity hub_lat range dropped",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "\"hub_lat\":  { \".validate\": \"newData.isNumber() && newData.val() >= -90 && newData.val() <= 90\" },",
+    "to": "\"hub_lat\":  { \".validate\": \"newData.isNumber()\" },",
+    "kills_with": [
+      "Expected request to fail"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/branches-rules.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r-address-cap",
+    "label": "T6: address_line length cap dropped",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "\"address_line\":      { \".validate\": \"newData.isString() && newData.val().length >= 1 && newData.val().length <= 120\" },",
+    "to": "\"address_line\":      { \".validate\": \"newData.isString() && newData.val().length >= 1\" },",
+    "kills_with": [
+      "Expected request to fail"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/branches-rules.emulator.test.js"
+    ]
   }
 ]
