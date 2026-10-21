@@ -250,7 +250,8 @@
   "seed": "operator seed / publish script — not an order reader",
   "access": "owner ACCESS-CENSUS / kitchen-roster CLI (PLATFORM F2 Q1) — read-only audit of order ownership, KDS parity, attribution counts and history size; no customer or staff surface, never a writer of /orders",
   "prepstats": "S5 daily prep summary (prepStatsDaily) — reads order_timelines + exactly two order leaves per candidate (restaurant_id, customer_phone) for ATTRIBUTION and the ready-time EXCLUSIONS only; publishes per restaurant × bucket aggregates {median_min, p80_min, n} — never an order fact, an amount or a phone",
-  "merchant": "merchant HANDHELD writer (H1a, PLAN-H1a r2 + amendment A-R1) — device-scoped order transitions on orders/{oid} (status CAS + prep + handheld_answered + handheld_ops receipts + reject_intent in ONE transaction), the reject executor (the EXISTING cancelOrderCore, injected) and its op-matched reject_outcome, the reject repair pass (reads persisted reject/cancel/payment state only to decide a dispatch notice — never displays or moves money), busy / pause / agotado; its reads only GATE its own writes — no customer display; persisted outputs covered as writer evidence (census writtenFields / opaqueWriteResolutions). PROPOSED by the handheld session for 2e review (D6)."
+  "merchant": "merchant HANDHELD writer (H1a, PLAN-H1a r2 + amendment A-R1) — device-scoped order transitions on orders/{oid} (status CAS + prep + handheld_answered + handheld_ops receipts + reject_intent in ONE transaction), the reject executor (the EXISTING cancelOrderCore, injected) and its op-matched reject_outcome, the reject repair pass (reads persisted reject/cancel/payment state only to decide a dispatch notice — never displays or moves money), busy / pause / agotado; its reads only GATE its own writes — no customer display; persisted outputs covered as writer evidence (census writtenFields / opaqueWriteResolutions). PROPOSED by the handheld session for 2e review (D6).",
+  "branches": "branch LIFECYCLE writer + Sherpa-admin CLI (ORCHESTRATION O1a) — identity / brand membership / reservations / op records; reads an order's STATUS only to COUNT live orders (the pin-move guard and the deactivation consequences) — never displayed as an order fact, never a writer of /orders"
  },
  "serverFunctions": {
   "alert-prune.js#alertOrderIds": "infra",
@@ -272,6 +273,13 @@
   "cancel-order.js#shouldVoid": "payment",
   "brands/brand-model.js#validateBranchIdentity": "catalog",
   "brands/brand-projection.js#buildPublicBrand": "catalog",
+  "branches/branch-ops.js#boundsErrors": "branches",
+  "branches/branch-ops.js#hubErrors": "branches",
+  "branches/branch-ops.js#planMaterialize": "branches",
+  "branches/branch-ops.js#planSetLocation": "branches",
+  "branches/branch-store.js#liveOrders>anon": "branches",
+  "branches/branch-store.js#setBranchActive>anon": "branches",
+  "branches/branches-admin-core.js#locationInput": "branches",
   "catalog/add-product-io.js#syncKds": "catalog",
   "catalog/add-product.js#allocateAdditions": "catalog",
   "catalog/add-product.js#classifyItems": "catalog",
@@ -1354,15 +1362,6 @@
    "detail": "pendingOrderRecord",
    "fields": [],
    "reason": "B4 r1 (provenance): the PARAMETER pendingOrderRecord has NO production call site (the direct-charge path is retired; only test/d4b-callseq calls it) — so no field is written in production. A new caller makes this write resolve at its call site, this resolution goes stale and the census is RED until reviewed",
-   "count": 1
-  },
-  {
-   "file": "xpizza-functions/brands/brand-store.js",
-   "fn": "applyPublish",
-   "how": "dynamic-root-path",
-   "detail": "*",
-   "fields": [],
-   "reason": "F1: plan.row.path is always publicPath(brandId) = public/brands/<brandId> (planPublish is its only producer; brands-admin-core is the only caller) — the derived public brand projection, never /orders, so no order field is written. A new producer of the plan or a new path makes this resolution stale and the census RED until reviewed",
    "count": 1
   }
  ],

@@ -49,6 +49,7 @@
     "whole-flow.test.mjs",
     "xp-stage2-summary.test.mjs",
     "xpizza-functions/address-autofill-recheckout.test.js",
+    "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/catalog-form-bundle.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/catalog-schemav2.test.js",
@@ -452,6 +453,7 @@
     "whole-flow.test.mjs",
     "xp-stage2-summary.test.mjs",
     "xpizza-functions/address-autofill-recheckout.test.js",
+    "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/catalog-form-bundle.test.js",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/catalog-schemav2.test.js",
@@ -813,6 +815,7 @@
    "tests": [
     "avail-key.test.mjs",
     "d4b-availability.test.mjs",
+    "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
@@ -887,6 +890,7 @@
     "xpizza-dispatch/dispatch-recon-note.test.js",
     "xpizza-dispatch/dispatch-theme.test.js",
     "xpizza-dispatch/dispatch-unassign-confirm.test.js",
+    "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/catalog/identity-sweep.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -946,6 +950,7 @@
     "xpizza-dispatch-mobile/sw-precache.test.mjs",
     "xpizza-dispatch-mobile/unassign.test.mjs",
     "xpizza-dispatch/dispatch-driver-admin-panel.test.js",
+    "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
@@ -991,6 +996,7 @@
     "xpizza-driver/cash-helpers.test.js",
     "xpizza-driver/endshift-confirm.test.js",
     "xpizza-driver/onboarding-host.test.js",
+    "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
@@ -1035,6 +1041,7 @@
   "xpizza-track": {
    "tests": [
     "s5-live-status.test.mjs",
+    "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -1088,6 +1095,7 @@
   "xpizza-dashboard": {
    "tests": [
     "xpizza-dashboard/get-driver-for-order.test.js",
+    "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
@@ -1597,6 +1605,14 @@
   "alert-prune.js",
   "assign-hub.js",
   "assignment-conflict.js",
+  "branches/branch-ops.js",
+  "branches/branch-store.js",
+  "branches/branches-admin-core.js",
+  "branches/rid-alloc.js",
+  "brands/brand-model.js",
+  "brands/brand-projection.js",
+  "brands/brand-store.js",
+  "brands/brands-admin-core.js",
   "catalog/bound-reuse.js",
   "catalog/canonical-binding.js",
   "catalog/text-version.js",
@@ -1632,6 +1648,7 @@
   "retention-sweep.js",
   "rewards-redeem-intake.js",
   "rewards-reserve.js",
+  "scheduled-release-core.js",
   "signup-core.js",
   "signup-endpoints.js",
   "staff-push.js",
@@ -1672,6 +1689,38 @@
    "lifts": []
   },
   "assignment-conflict.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "branches/branch-ops.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "branches/branch-store.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "branches/branches-admin-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "branches/rid-alloc.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "brands/brand-model.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "brands/brand-projection.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "brands/brand-store.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "brands/brands-admin-core.js": {
    "pins": [],
    "lifts": []
   },
@@ -2376,6 +2425,26 @@
   "rewards-reserve.js": {
    "pins": [],
    "lifts": []
+  },
+  "scheduled-release-core.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/d12-wiring.guard.test.js",
+     "inverses": [
+      "tools/d12-inverse.js",
+      "tools/orch-o1a-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/scheduled-inactive-hold.test.js",
+     "inverses": [
+      "tools/orch-o1a-inverse.js"
+     ]
+    }
+   ],
+   "lifts": [
+    "xpizza-functions/a1-wiring.guard.test.js"
+   ]
   },
   "signup-core.js": {
    "pins": [],
