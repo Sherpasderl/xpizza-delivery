@@ -14,7 +14,7 @@ const { execFileSync } = require('child_process');
 const { unapplyBrandServerIndex, unapplyBrandServerModule, INDEX_HUNKS, MODULE_HUNKS, FILES } = require('./tools/brand-server-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const idx = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const idx = require('./tools/dlite-push-inverse').unapplyDlitePushIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // DISPATCH-LITE PUSH (newer layer) reversed first
 const BASE = execFileSync('git', ['show', 'df4a1bdb:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.strictEqual(unapplyBrandServerIndex(idx), BASE, '🔴 index.js minus the brand-server hunks is not df4a1bdb:index.js');

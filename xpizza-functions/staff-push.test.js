@@ -4,7 +4,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { coalesceDecision, formatNewOrder, formatGrouped, pushWithCleanup, isStuck, stuckDedupe, formatStuck } = require('./staff-push.js');
+const { coalesceDecision, formatNewOrder, formatGrouped, pushWithCleanup, staffPushCleanupUpdater, isStuck, stuckDedupe, formatStuck } = require('./staff-push.js');
 
 const isTerminal = (e) => !!(e && (e.statusCode === 404 || e.statusCode === 410));
 const terminalErr = () => { const e = new Error('gone'); e.statusCode = 410; return e; };
@@ -92,6 +92,33 @@ test('pushWithCleanup: non-terminal (500) error → does NOT remove the sub', as
     { send: async () => { const e = new Error('boom'); e.statusCode = 500; throw e; }, removeSub: async () => { removed = true; }, isTerminal },
     { endpoint: 'x' }, {});
   assert.equal(r.sent, false); assert.equal(removed, false);
+});
+
+// ---- staffPushCleanupUpdater (P1-2: dead-sub cleanup is a compare-and-delete, never unconditional) ----
+// The updater runs inside the staff_push/<uid> transaction. It deletes ONLY when the node still holds the
+// exact endpoint we sent to; a concurrent rotation to a fresh endpoint must survive the cleanup.
+test('cleanup updater: node still holds the sent endpoint → delete (null)', () => {
+  const upd = staffPushCleanupUpdater('https://push/A');
+  assert.equal(upd({ subscription: { endpoint: 'https://push/A' }, updated_at: 1 }), null);
+});
+test('cleanup updater: node was ROTATED to a new endpoint (B) → abort (undefined), B survives', () => {
+  const upd = staffPushCleanupUpdater('https://push/A');   // we sent to the now-dead A
+  assert.equal(upd({ subscription: { endpoint: 'https://push/B' }, updated_at: 2 }), undefined);
+});
+test('cleanup updater: initial cache-miss (null) PROCEEDS, then the real dead sub is removed', () => {
+  // RTDB runs the updater first with the cached value (null for an uncached record); returning undefined there
+  // would abort before the server data arrives, leaving the dead sub forever. Null-case returns null → retry.
+  const upd = staffPushCleanupUpdater('https://push/A');
+  assert.equal(upd(null), null, 'null cache → proceed (not abort) so the txn re-runs with real data');
+  assert.equal(upd({ subscription: { endpoint: 'https://push/A' } }), null, 're-run with the real dead sub → delete');
+});
+test('cleanup updater: cache-miss then a replacement arrives → abort, replacement survives', () => {
+  const upd = staffPushCleanupUpdater('https://push/A');
+  assert.equal(upd(null), null);                                              // proceed
+  assert.equal(upd({ subscription: { endpoint: 'https://push/B' } }), undefined); // real value is B → keep it
+});
+test('cleanup updater: no sent endpoint (defensive) → abort, never a blind delete', () => {
+  assert.equal(staffPushCleanupUpdater(null)({ subscription: { endpoint: 'https://push/A' } }), undefined);
 });
 
 // ---- isStuck (Phase 2c) ----

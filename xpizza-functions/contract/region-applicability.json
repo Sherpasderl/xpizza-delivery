@@ -411,14 +411,14 @@
     "site": "if (ds.drvfocus){ showTab('mapa'); window.__focusDriverOnMap?.(ds.drvfocus); return; }",
     "siteSha": "deb368c93927903c91e1fd367f3d1f71393515740bfe1cd564fd2666a573fd37",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+    "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -456,14 +456,14 @@
     "site": "if (ds.map){ closeSheet(); showTab('mapa'); window.__focusOrderOnMap?.(ds.map); return; }",
     "siteSha": "575ce555a92ed3dbdf778f78f4b7493fa185c4883d5a2104cab06c522ec37d1d",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+    "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -508,7 +508,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -574,7 +574,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -640,7 +640,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -685,7 +685,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -730,7 +730,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -789,14 +789,14 @@
     "site": "if (oid) { sheetDir = 'push'; openConfirm(oid, ds.choose); }",
     "siteSha": "40f2a5db66dbdcd1f9742f459d4d41493ab90987dbee4228e68dc69ab0805d3a",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+    "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -834,14 +834,14 @@
     "site": "if (ds.detail){ sheetDir = ds.back ? 'pop' : 'push'; openDetail(ds.detail); return; }",
     "siteSha": "64b313060d187928487b1eec1898c5494f904aa8e13126b09961a9a20336c4e0",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+    "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     }
    ],
    "cases": {
@@ -873,7 +873,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -918,7 +918,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -984,7 +984,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -1119,7 +1119,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -1164,7 +1164,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -1299,7 +1299,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -1431,7 +1431,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -1563,7 +1563,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -1695,7 +1695,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -1827,7 +1827,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",
@@ -1959,7 +1959,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "8369fa150f08e75172f88e3c1cd983d71325d7e2911e1289b73c92e788906b67"
+     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
     },
     {
      "kind": "K",

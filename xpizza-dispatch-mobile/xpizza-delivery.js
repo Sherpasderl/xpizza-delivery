@@ -1004,6 +1004,31 @@ export async function unassignOrder(orderId, expectedFromDriver, opId) {
 }
 
 /**
+ * Dispatcher self-test: send ONE web-push to the CALLER's own staff_push subscription, so a dispatcher can
+ * confirm the phone actually DISPLAYS it (a 2xx only means Apple accepted it — iOS can accept a rotted sub and
+ * still show nothing). Server (sendTestStaffPush) sends only to the verified caller's uid; the body is fixed
+ * server-side. Returns { httpStatus } on any outcome (never throws) so the UI can map 200 / 409 / 429 / 5xx to
+ * the mockup's success/error states; a transport failure surfaces as httpStatus 0.
+ */
+export async function sendTestPush() {
+  const user = auth && auth.currentUser;
+  if (!user) return { httpStatus: 0, reason: 'no_session' };
+  let res;
+  try {
+    const token = await user.getIdToken();
+    res = await sherpaFetch(functionUrl('sendTestStaffPush'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: '{}',
+    });
+  } catch (_) {
+    return { httpStatus: 0, reason: 'network' };   // offline / DNS / CORS preflight — treated as a send error by the UI
+  }
+  const data = await res.json().catch(() => ({}));
+  return { httpStatus: res.status, reason: data && data.error, retryAfterSec: data && data.retryAfterSec };
+}
+
+/**
  * Driver taps "Recogí pedido" (picked up the bag at the restaurant).
  * Atomically: completes the pickup task, accepts the delivery task,
  * sets driver's current_task to the delivery task, marks order out_for_delivery.

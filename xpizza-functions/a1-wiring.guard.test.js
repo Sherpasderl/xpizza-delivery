@@ -21,7 +21,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 
 // ── 1. the inverse ──
 {
-  const idx = require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('./tools/release-race-inverse').unapplyReleaseRaceIndex(require('./tools/brand-server-inverse').unapplyBrandServerIndex(read('index.js')))))))));   // H1a (newest), then PLAN-S5, are reversed FIRST
+  const idx = require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('./tools/release-race-inverse').unapplyReleaseRaceIndex(require('./tools/brand-server-inverse').unapplyBrandServerIndex(require('./tools/dlite-push-inverse').unapplyDlitePushIndex(read('index.js'))))))))));   // H1a (newest), then PLAN-S5, are reversed FIRST
   // S1b restacks on top of A-1 (S1b innermost): strip the S1b blocks first to reach the A-1 index.js layer,
   // then verify a1-inverse turns THAT into the base byte-for-byte (both inverses proven byte-exact in s1b-wiring).
   const a1layer = unapplyS1bIndex(idx);

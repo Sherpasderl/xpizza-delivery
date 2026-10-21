@@ -39,6 +39,7 @@ const DYNAMIC_IDS = new Set([
   'mdra-bk', 'mdra-cr', 'mdra-n', 'mdra-p', 'mdra-e', 'mdra-cp', 'mdra-wa', 'mdra-dn', 'mdra-reasignar',
   'mdra-ck', 'mdra-go',
   'unassign-yes',   // rendered inside the "Quitar repartidor" confirm sheet by openUnassignConfirm(); commitUnassign() guards on it
+  'testpush-slot',  // rendered inside the settings sheet by openSettings() when push is on; runTestPush()/reactivateTestPush() swap its contents
 ]);
 
 // Static ids = ids in the MARKUP only. The script block is stripped first, otherwise an id inside

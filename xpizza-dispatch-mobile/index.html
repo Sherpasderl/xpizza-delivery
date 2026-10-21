@@ -321,6 +321,14 @@
   .btn-g{ background:var(--card); color:var(--violet); box-shadow:inset 0 0 0 1px var(--ring) }
   .btn-d{ background:var(--card); color:var(--rose-ink); box-shadow:inset 0 0 0 1px var(--ring) }
   .btn:disabled{ opacity:.55; cursor:default }
+  /* «Probar notificación» inline result panels (dispatcher push self-test) */
+  .pn-result{ margin-top:12px; border-radius:18px; padding:15px 16px; font-size:15px; letter-spacing:-.2px }
+  .pn-result b{ display:block; font-weight:600; font-size:15.5px; letter-spacing:-.25px }
+  .pn-result s{ display:block; text-decoration:none; font-size:13.5px; margin-top:4px; opacity:.85 }
+  .pn-ok{ background:var(--mint-bg); color:var(--mint-ink) }
+  .pn-err{ background:var(--rose-bg); color:var(--rose-ink) }
+  .pn-link{ display:inline-block; margin-top:10px; padding:0; border:none; background:transparent; font:inherit;
+    font-size:14.5px; font-weight:600; letter-spacing:-.2px; color:var(--violet); cursor:pointer }
   .call{ flex:0 0 auto; width:50px; height:50px; border-radius:50%; display:grid; place-items:center;
     background:var(--violet-solid); color:#fff; text-decoration:none; box-shadow:var(--lift-accent) }
 
@@ -554,9 +562,14 @@ window.__startApp = () => {
     });
   } catch { /* liveness is auxiliary: the board still works */ }
   setInterval(() => { renderLive(); if (tab === 'pedidos') renderBoard(); else if (tab === 'drivers') renderDriversTab(); }, 20000);
+  refreshStaffPushIfStale();   // self-heal a rotted iOS push subscription on launch (granted-only, no prompt)
 };
 
-// ── Staff web push (opt-in, the SECOND and ONLY other RTDB write) ──
+// ── Staff web push (opt-in) + silent self-healing re-registration ──
+// iOS silently drops a rotted APNs subscription while web.push.apple.com still returns 2xx, so pushes stop
+// arriving with no error. We periodically ROTATE to a fresh endpoint on app open/foreground. Every write routes
+// through writeStaffPushSub, so index.html keeps EXACTLY ONE staff_push set() (readonly.test), and the client
+// NEVER removes the record — a failure just retries next open, so the uid always keeps a subscription.
 const VAPID_PUBLIC_KEY_B64 = "BE5fD1EXpWBalKvLopadT1n7ffCE0o0vBDB-JCRIB9Lrn7AyrA953IWLyIqy1-_24wSZ_TKas1gWC-08NecHxWQ";
 const urlB64ToU8 = (b64) => { const pad='='.repeat((4-b64.length%4)%4); const s=(b64+pad).replace(/-/g,'+').replace(/_/g,'/'); const raw=atob(s); return Uint8Array.from([...raw].map(c=>c.charCodeAt(0))); };
 const iosVer = () => { const m=navigator.userAgent.match(/OS (\d+)_(\d+)/); return m ? parseFloat(`${m[1]}.${m[2]}`) : null; };
@@ -572,6 +585,74 @@ function currentPushSupport(){
     permission: (window.Notification && Notification.permission) || 'default',
   });
 }
+
+// <<push-refresh:start>> — extracted verbatim by dispatch-lite-push-refresh.test.mjs; keep self-contained.
+const PUSH_REFRESH_MS = 12 * 60 * 60 * 1000;      // at most one silent refresh attempt per 12 h (plus on launch)
+const PUSH_STALE_MS   = 3 * 24 * 60 * 60 * 1000;  // rotate a subscription older than 3 days (local per-device age)
+const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+let pushRefreshing = false;                        // single in-flight guard: launch + visibility must not double-run
+
+// THE single sanctioned staff_push write — every path (enable / silent refresh / forced repair) routes here, so
+// index.html keeps exactly one textual staff_push set() (readonly.test). Stamps the LOCAL per-device age on success.
+async function writeStaffPushSub(uid, sub){
+  await sherpaTracked(set(ref(XPD.getDb(), `staff_push/${uid}`), { subscription: sub.toJSON(), updated_at: serverTimestamp() }));
+  lsSet('dl-push-at', String(Date.now()));
+}
+
+// Drop this device's current subscription (if any) and create a fresh one, then write it. Push API: subscribe()
+// with the same options RETURNS the existing subscription, so a NEW endpoint REQUIRES unsubscribe() first. The
+// old RTDB record is left intact until the new sub is written; the brief gap between unsubscribe and subscribe is
+// inherent to one-subscription-per-registration.
+async function rotateStaffPushSub(uid){
+  const reg = await navigator.serviceWorker.ready;
+  const existing = await reg.pushManager.getSubscription();
+  if (existing) await existing.unsubscribe();
+  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToU8(VAPID_PUBLIC_KEY_B64) });
+  await writeStaffPushSub(uid, sub);
+  return sub;
+}
+
+// Silent, no-UI self-heal: on launch and when the app returns to the foreground, rotate if the subscription is
+// absent or older than PUSH_STALE_MS. Never prompts (granted-only). Staleness uses the LOCAL stamp dl-push-at,
+// never the server updated_at, so another device signed into the same uid can't make this device look fresh. On
+// any failure: swallow, DON'T stamp the throttle (retry next open), reconcile pushOn from the real subscription.
+async function refreshStaffPushIfStale(){
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  if (!(window.Notification && Notification.permission === 'granted')) return;
+  if (pushRefreshing) return;
+  const uid = XPD.getAuthInstance?.()?.currentUser?.uid;
+  if (!uid) return;
+  const now = Date.now();
+  const ck = parseInt(lsGet('dl-push-ck') || '0', 10);
+  if (ck && now - ck < PUSH_REFRESH_MS) return;
+  pushRefreshing = true;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    const at = parseInt(lsGet('dl-push-at') || '0', 10);
+    if (!sub || !at || now - at >= PUSH_STALE_MS) { await rotateStaffPushSub(uid); pushOn = true; }
+    lsSet('dl-push-ck', String(now));   // success / no-op only; a throw skips this so the next open retries
+  } catch (e) {
+    console.warn('staff push refresh failed — retrying next open', e && e.message);
+    try { pushOn = !!(await (await navigator.serviceWorker.ready).pushManager.getSubscription()); } catch {}
+  } finally {
+    pushRefreshing = false;
+  }
+}
+
+// User-initiated repair ("Volver a activar" / "¿No apareció?"): FORCE a rotation to a brand-new endpoint, through
+// the shared write helper — never enableStaffPush's reuse (whose subscribe() returns the stale sub and only
+// refreshes its timestamp, masking a rotted sub). Throws on failure so the caller shows the error state.
+async function forceRepairStaffPush(){
+  const uid = XPD.getAuthInstance?.()?.currentUser?.uid;
+  if (!uid) throw new Error('no-uid');
+  await rotateStaffPushSub(uid);
+  pushOn = true;
+  lsSet('dl-push-ck', String(Date.now()));
+}
+// <<push-refresh:end>>
+
 async function enableStaffPush(){
   const sup = currentPushSupport();
   if (!sup.ok) { toast(PUSH_MSG[sup.reason] || 'No disponible', true); return; }
@@ -582,8 +663,7 @@ async function enableStaffPush(){
     const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToU8(VAPID_PUBLIC_KEY_B64) });
     const uid = XPD.getAuthInstance().currentUser?.uid;
     if (!uid) { toast('Iniciá sesión', true); return; }
-    // THE SECOND (and only other) WRITE — the user's OWN push subscription.
-    await sherpaTracked(set(ref(XPD.getDb(), `staff_push/${uid}`), { subscription: sub.toJSON(), updated_at: serverTimestamp() }));
+    await writeStaffPushSub(uid, sub);   // THE single staff_push write (shared with the silent refresh + repair)
     pushOn = true; toast('Notificaciones activadas'); openSettings();
   } catch (e) { toast('No se pudo activar', true); }
 }
@@ -592,6 +672,8 @@ if ('serviceWorker' in navigator && 'PushManager' in window) {
     .then((reg) => reg.pushManager.getSubscription())
     .then((s) => { if (s) pushOn = true; })
     .catch(() => {});
+  // Self-heal when the app returns to the foreground (launch is covered in __startApp).
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshStaffPushIfStale(); });
 }
 
 // A notification tap (SW postMessage) or a cold "#order=<id>" open → open that order's detail.
@@ -1495,6 +1577,48 @@ async function commitUnassign(orderId){
   } finally { if (unassignPending === myToken) unassignPending = null; }
 }
 
+// ── «Probar notificación»: dispatcher push self-test (lives in the settings sheet when push is on) ──
+// Sends a test push to THIS account's registered subscription (the server targets the verified caller's uid).
+// A 2xx only means Apple ACCEPTED it, so the success copy asks the dispatcher to CONFIRM it appeared; a
+// non-appearance (or an error) routes to forced re-registration. States swap in place in #testpush-slot.
+function testPushIdleHtml(){
+  return `<button class="btn btn-g" type="button" data-testpush="1" style="margin-top:12px">Probar notificación</button>`;
+}
+function renderTestPush(html){ const s = $('testpush-slot'); if (s) s.innerHTML = html; }
+function testPushErrHtml(detail, reactivate){
+  return `<div class="pn-result pn-err" role="alert"><b>No se pudo enviar la prueba</b><s>${escapeHtml(detail)}</s></div>`
+    + (reactivate
+      ? `<button class="btn btn-g" type="button" data-reactivate="1">Volver a activar notificaciones</button>`
+      : `<button class="btn btn-g" type="button" data-testpush="1">Probar de nuevo</button>`);
+}
+async function runTestPush(){
+  renderTestPush(`<button class="btn btn-g" type="button" disabled style="margin-top:12px">Enviando…</button>`);
+  const r = await XPD.sendTestPush();
+  if (r.httpStatus === 200){
+    renderTestPush(
+      `<div class="pn-result pn-ok" role="status"><b>Enviada, revisá tu teléfono</b><s>Debería aparecer en unos segundos.</s>`
+      + `<button type="button" class="pn-link" data-reactivate="1">¿No apareció? Volver a activar</button></div>`
+      + `<button class="btn btn-g" type="button" data-testpush="1">Probar de nuevo</button>`);
+  } else if (r.httpStatus === 429){
+    renderTestPush(testPushErrHtml('Esperá unos segundos antes de probar de nuevo.', false));
+  } else if (r.httpStatus === 409){
+    renderTestPush(testPushErrHtml('Este teléfono ya no tiene una suscripción válida.', true));
+  } else {
+    renderTestPush(testPushErrHtml('Revisá tu conexión e intentá de nuevo.', true));
+  }
+}
+async function reactivateTestPush(){
+  renderTestPush(`<button class="btn btn-g" type="button" disabled style="margin-top:12px">Reactivando…</button>`);
+  try {
+    await forceRepairStaffPush();
+    renderTestPush(
+      `<div class="pn-result pn-ok" role="status"><b>Notificaciones reactivadas</b><s>Probá de nuevo para confirmar que llega.</s></div>`
+      + `<button class="btn btn-g" type="button" data-testpush="1">Probar notificación</button>`);
+  } catch (e) {
+    renderTestPush(testPushErrHtml('No se pudo reactivar. Revisá los permisos en Ajustes del teléfono.', false));
+  }
+}
+
 // ── settings ──
 function openSettings(){
   const sup = currentPushSupport();
@@ -1507,7 +1631,8 @@ function openSettings(){
     </div>
     <div class="lbl">Notificaciones</div>
     ${pushOn
-      ? `<div class="panel pad" style="font-size:15px;color:var(--ink2)">Activadas en este teléfono.</div>`
+      ? `<div class="panel pad" style="font-size:15px;color:var(--ink2)">Activadas en este teléfono.</div>
+         <div id="testpush-slot">${testPushIdleHtml()}</div>`
       : sup.ok
         ? `<button class="btn btn-g" type="button" data-push="1" style="margin-top:0">Activar notificaciones</button>`
         : `<div class="panel pad" style="font-size:15px;color:var(--ink2)">${escapeHtml(PUSH_MSG[sup.reason] || 'No disponible en este teléfono')}</div>`}
@@ -1519,7 +1644,7 @@ function openSettings(){
 
 // ── delegated events ──
 document.addEventListener('click', (e) => {
-  const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],[data-chip],[data-tab],[data-settheme],[data-push],[data-signout],[data-drvfocus],[data-donetoggle],[data-map],[data-back]');
+  const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],[data-chip],[data-tab],[data-settheme],[data-push],[data-testpush],[data-reactivate],[data-signout],[data-drvfocus],[data-donetoggle],[data-map],[data-back]');
   if (!el) return;
   const ds = el.dataset;
 
@@ -1554,6 +1679,8 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (ds.push){ enableStaffPush(); return; }
+  if (ds.testpush){ runTestPush(); return; }
+  if (ds.reactivate){ reactivateTestPush(); return; }
   if (ds.signout){
     closeSheet();
     XPD.signOutUser().catch(() => toast('No se pudo cerrar sesión', true));

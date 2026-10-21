@@ -83,6 +83,26 @@ async function pushWithCleanup({ send, removeSub, isTerminal }, sub, payload) {
   }
 }
 
+/**
+ * Compare-and-delete updater for a dead-subscription cleanup, run inside an RTDB transaction on
+ * `staff_push/<uid>`. Dead-sub cleanup must NOT unconditionally remove the node: a concurrent client
+ * refresh may have ROTATED to a fresh endpoint between the send's read and this cleanup, and that
+ * replacement must survive. So delete (return null) ONLY when the node still holds the exact
+ * subscription we sent to (same endpoint); otherwise abort the transaction (return undefined), leaving
+ * whatever is there — a replacement, or an already-removed node — intact.
+ */
+function staffPushCleanupUpdater(sentEndpoint) {
+  return (cur) => {
+    // RTDB runs the updater FIRST with the locally-CACHED value, which is null for an existing-but-uncached
+    // record. Returning undefined there ABORTS the transaction (no retry), so a dead sub would never be cleaned.
+    // Return null on the null case so the transaction proceeds and re-runs against the REAL server value, where
+    // the endpoint check below decides. (A genuinely-absent record commits a harmless no-op null.)
+    if (cur == null) return null;
+    if (cur.subscription && sentEndpoint && cur.subscription.endpoint === sentEndpoint) return null; // dead → delete
+    return undefined;   // a populated record with a DIFFERENT endpoint = a concurrent replacement → abort, keep it
+  };
+}
+
 // Statuses that count as an active, on-the-board order for stuck detection (mirrors dispatch's
 // board-model sectionForOrder: excludes pending_payment/scheduled/releasing pre-live AND the
 // delivered/completed/cancelled terminals). Only these can be "aging" or "unassigned"-stuck.
@@ -151,6 +171,6 @@ function formatStuck(order, result) {
 }
 
 module.exports = {
-  coalesceDecision, formatNewOrder, formatGrouped, brandLabel, pushWithCleanup,
+  coalesceDecision, formatNewOrder, formatGrouped, brandLabel, pushWithCleanup, staffPushCleanupUpdater,
   isStuck, stuckDedupe, formatStuck,
 };

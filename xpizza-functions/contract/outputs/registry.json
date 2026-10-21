@@ -427,6 +427,9 @@
   "xpizza-dispatch-mobile/index.html<script@0>#rowOf@self": {
    "status": "pending"
   },
+  "xpizza-dispatch-mobile/index.html<script@0>#runTestPush@xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener": {
+   "status": "pending"
+  },
   "xpizza-dispatch-mobile/index.html<script@0>#stateParts@xpizza-dispatch-mobile/index.html<script@0>#passHTML": {
    "status": "pending"
   },
@@ -488,6 +491,9 @@
    "status": "pending"
   },
   "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub@xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/xpizza-delivery.js#sendTestPush@xpizza-dispatch-mobile/index.html<script@0>#runTestPush": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/xpizza-delivery.js#subscribeToOrders@xpizza-dispatch-mobile/index.html<script@0>#__startApp": {
@@ -1344,6 +1350,9 @@
   "xpizza-functions/index.js#send@xpizza-functions/staff-push.js#pushWithCleanup": {
    "status": "pending"
   },
+  "xpizza-functions/index.js#send@xpizza-functions/test-push-core.js#runTestStaffPush": {
+   "status": "pending"
+  },
   "xpizza-functions/index.js#sendDriverPush@xpizza-functions/index.js#notifyDriverOnAssignment": {
    "status": "pending"
   },
@@ -1368,6 +1377,12 @@
    "status": "pending"
   },
   "xpizza-functions/index.js#sendStaffPush@xpizza-functions/index.js#fanoutStaffPush>anon": {
+   "status": "pending"
+  },
+  "xpizza-functions/index.js#sendStaffPush@xpizza-functions/index.js#send": {
+   "status": "pending"
+  },
+  "xpizza-functions/index.js#sendTestStaffPush@self": {
    "status": "pending"
   },
   "xpizza-functions/index.js#voidFacturaOnCancel@self": {

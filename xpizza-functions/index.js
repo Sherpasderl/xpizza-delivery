@@ -140,7 +140,8 @@ const {
   PUSH_TTL_SECONDS
 } = require('./driver-push');
 // Staff web-push lane (Phase 2b) — pure coalesce/format helpers. Additive; the driver lane above is untouched.
-const { coalesceDecision, formatNewOrder, formatGrouped, pushWithCleanup, isStuck, stuckDedupe, formatStuck } = require('./staff-push');
+const { coalesceDecision, formatNewOrder, formatGrouped, pushWithCleanup, staffPushCleanupUpdater, isStuck, stuckDedupe, formatStuck } = require('./staff-push');
+const { runTestStaffPush, testPushRateUpdater, TEST_PUSH_MIN_INTERVAL_MS } = require('./test-push-core');
 const {
   geofenceTransition,
   isHubResolvable,
@@ -3881,7 +3882,10 @@ async function sendStaffPush(db, uid, payload) {
         JSON.stringify({ title: payload.title, body: payload.body, tag: payload.tag, data: payload.data || {} }),
         { urgency: 'high', TTL: PUSH_TTL_SECONDS }
       ),
-      removeSub: () => db.ref(`staff_push/${uid}`).remove(),
+      // Compare-and-delete: only drop the node if it STILL holds the subscription we just sent to. A concurrent
+      // client refresh may have rotated to a fresh endpoint between our read and this cleanup — never delete that
+      // replacement. Transaction is atomic across instances; a rejection is swallowed by pushWithCleanup.
+      removeSub: () => db.ref(`staff_push/${uid}`).transaction(staffPushCleanupUpdater(sub && sub.endpoint)),
       isTerminal: isTerminalWebPushError,
     },
     sub, payload);
@@ -3900,6 +3904,36 @@ async function fanoutStaffPush(db, payload) {
   console.log(`fanoutStaffPush: ${sent}/${settled.length} sent (${payload.tag})`);
   return { sent, total: settled.length };
 }
+
+// sendTestStaffPush — dispatcher self-test: send ONE push to the CALLER's own staff_push subscription so a
+// dispatcher can confirm the phone actually DISPLAYS it (a 2xx only means Apple accepted it). Dispatcher ID
+// token ONLY (never the RECON_SECRET path, never a target from the request); per-uid limit of 1 per 30 s,
+// failing closed. The pure auth/limit/result logic lives in test-push-core.js; this wires the real RTDB
+// transaction + sendStaffPush into it.
+exports.sendTestStaffPush = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 30, memory: '256MiB', maxInstances: 3 },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' }); }
+    const auth = await authorizeDispatcherActionWithUid(req);
+    const db = getDatabase();
+    const out = await runTestStaffPush({
+      auth,
+      rateLimit: async (uid) => {
+        const now = Date.now();
+        const txn = await db.ref(`staff_push_test/${uid}/last_test_at`).transaction(testPushRateUpdater(now, TEST_PUSH_MIN_INTERVAL_MS));
+        if (txn.committed) return { allowed: true, retryAfterSec: 0 };
+        const last = txn.snapshot.val();
+        const retryAfterSec = (typeof last === 'number')
+          ? Math.max(1, Math.ceil((last + TEST_PUSH_MIN_INTERVAL_MS - now) / 1000))
+          : Math.ceil(TEST_PUSH_MIN_INTERVAL_MS / 1000);
+        return { allowed: false, retryAfterSec };
+      },
+      send: (uid, payload) => sendStaffPush(db, uid, payload),
+    });
+    if (out.retryAfterSec) res.set('Retry-After', String(out.retryAfterSec));
+    return res.status(out.httpStatus).json(out.body);
+  }
+);
 
 // notifyStaffOnNewOrder — ping dispatch staff when an order first becomes a LIVE PAID order.
 // Transition guard mirrors allocateDisplayNumberOnSale: reuses displayNumberEligible (status:'new'
