@@ -103,6 +103,7 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
     '/drivers/$driver_id/current_hub_lat/.write': [`drivers/${UID}/current_hub_lat`, 15.5, SVC],
     '/drivers/$driver_id/current_hub_lng/.write': [`drivers/${UID}/current_hub_lng`, -88, SVC],
     '/drivers/$driver_id/current_restaurant_id/.write': [`drivers/${UID}/current_restaurant_id`, RID, SVC],
+    '/drivers/$driver_id/return_restaurant_id/.write': [`drivers/${UID}/return_restaurant_id`, RID, SVC],   // brand-agnostic server §A
     '/drivers/$driver_id/current_hub_task_id/.write': [`drivers/${UID}/current_hub_task_id`, 'O1_pickup', SVC],
     '/drivers/$driver_id/ingest_token_hash/.write': [`drivers/${UID}/ingest_token_hash`, 'h1', SVC],
     '/staff_push/$uid/.write': [`staff_push/${UID}/t2`, { token: 'y' }, { descendant: true }],

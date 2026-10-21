@@ -78,6 +78,8 @@ const D = {
     'brands-admin',
     // PLATFORM F2 Q1 — the access census + kitchen roster owner CLIs: requireProject({ requireFlag: true }) before any client
     'access-census', 'kitchen-roster',
+    // BRAND-AGNOSTIC SERVER — the B1 factura-flag projection owner CLI: requireProject({ requireFlag: true }) before any client
+    'identity-factura-flag', 'driver-return-backfill',
     // D4-c2b operator CLIs — requireProject({ requireFlag: true }): --project mandatory, an inherited project variable alone refuses
     'ack-identity-finding', 'record-evidence-boundary',
     // per-product extras gate 0: the READ-ONLY live export (active version + public menu) for the advisor's parity run
@@ -113,6 +115,8 @@ const D = {
   [F('tools/brands-admin.test.js')]: 'unit: drives the brands CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/access-census.test.js')]: 'unit: drives the access-census CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/kitchen-roster.test.js')]: 'unit: drives the kitchen-roster CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
+  [F('tools/driver-return-backfill.test.js')]: 'unit: drives the return-backfill CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
+  [F('tools/identity-factura-flag.test.js')]: 'unit: drives the factura-flag CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/identity-display-name.test.js')]: 'unit: drives the CLI\'s require-project refusals (no data I/O); its spawned CLI is pointed at a dead loopback RTDB port with void credentials',
   [F('catalog/identity-integrity-guards.test.js')]: 'unit: drives the two c2b prod CLIs into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/verify-first-group.test.js')]: 'unit: drives the CLI\'s require-project + argument refusals before any client (no data I/O); its spawned CLI points at a dead loopback RTDB port with void credentials',

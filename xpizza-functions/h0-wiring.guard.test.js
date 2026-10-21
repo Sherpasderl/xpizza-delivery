@@ -20,8 +20,8 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 
 // ── 1a. index.js ──
 {
-  const real = unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('./tools/release-race-inverse').unapplyReleaseRaceIndex(read('index.js')))))))))));   // the H0-layer index.js (S1a's edits removed; it is the newest layer, reversed first)
-  assert.notStrictEqual(unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('./tools/release-race-inverse').unapplyReleaseRaceIndex(read('index.js'))))))))))), read('index.js'), 'non-vacuity: S1a sits on top and is stripped before the H0 check');
+  const real = unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('./tools/release-race-inverse').unapplyReleaseRaceIndex(require('./tools/brand-server-inverse').unapplyBrandServerIndex(read('index.js'))))))))))));   // the H0-layer index.js (S1a's edits removed; it is the newest layer, reversed first)
+  assert.notStrictEqual(unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('./tools/release-race-inverse').unapplyReleaseRaceIndex(require('./tools/brand-server-inverse').unapplyBrandServerIndex(read('index.js')))))))))))), read('index.js'), 'non-vacuity: S1a sits on top and is stripped before the H0 check');
   const base = baseOf('index.js');
   assert.notStrictEqual(unapplyH0Index(real), real, 'non-vacuity: the blocks are present and removed');
   assert.strictEqual(unapplyH0Index(real), base, `🔴 index.js minus the h0 blocks is not ${BASE}:index.js`);
@@ -37,7 +37,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 {
   assert.deepStrictEqual([...FILES].sort(), ['cancel-order-core.js', 'pixelpay-hosted-webhook.js', 'resolve-manual.js']);
   for (const f of FILES) {
-    const src = read(f);
+    const src = require('./tools/brand-server-inverse').unapplyBrandServerModule(f, read(f));   // BRAND-AGNOSTIC SERVER (r3 §E; newest — resolve-manual.js) reversed first
     assert.notStrictEqual(unapplyH0Module(f, src), src, `non-vacuity: ${f} carries h0 hunks`);
     assert.strictEqual(unapplyH0Module(f, src), baseOf(f), `🔴 ${f} minus the h0 hunks is not ${BASE}:${f}`);
     const h = HUNKS.find((x) => x.file === f && /H0/.test(x.now));

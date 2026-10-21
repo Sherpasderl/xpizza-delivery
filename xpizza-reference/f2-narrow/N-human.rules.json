@@ -9,8 +9,8 @@
     "drivers": {
       ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true",
       "$driver_id": {
-        ".write": "auth != null && auth.token.handheld !== true && ((auth.uid === $driver_id && auth.uid !== 'svc-assigner') || root.child('dispatchers').child(auth.uid).exists()) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true",
-        ".validate": "newData.hasChildren(['name']) && (!((newData.child('active').val() === true && data.child('active').val() !== true) || (newData.child('current_shift_id').exists() && newData.child('current_shift_id').val() !== data.child('current_shift_id').val())) || (root.child('driver_accounts').child($driver_id).child('deactivated').val() !== true && (root.child('driver_accounts').child($driver_id).child('enabled').val() === true || (root.child('platform_config').child('driver_enforcement_mode').val() !== 'closed' && !root.child('driver_accounts').child($driver_id).exists()))))",
+        ".write": "auth != null && auth.token.handheld !== true && ((auth.uid === $driver_id && auth.uid !== 'svc-assigner') || root.child('dispatchers').child(auth.uid).exists()) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && newData.exists()",
+        ".validate": "newData.hasChildren(['name']) && (!((newData.child('active').val() === true && data.child('active').val() !== true) || (newData.child('current_shift_id').exists() && newData.child('current_shift_id').val() !== data.child('current_shift_id').val())) || (root.child('driver_accounts').child($driver_id).child('deactivated').val() !== true && (root.child('driver_accounts').child($driver_id).child('enabled').val() === true || (root.child('platform_config').child('driver_enforcement_mode').val() !== 'closed' && !root.child('driver_accounts').child($driver_id).exists())))) && (auth.uid === 'svc-assigner' || newData.child('return_restaurant_id').val() === data.child('return_restaurant_id').val())",
         "status": {
           ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
           ".validate": "newData.val() === 'off_shift' || newData.val() === 'available' || newData.val() === 'assigned' || newData.val() === 'at_restaurant' || newData.val() === 'en_route_delivery' || newData.val() === 'returning' || newData.val() === 'on_break'"
@@ -55,6 +55,10 @@
         "current_restaurant_id": {
           ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
           ".validate": "root.child('dispatchers').child(auth.uid).exists() || auth.uid === 'svc-assigner'"
+        },
+        "return_restaurant_id": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
+          ".validate": "auth.uid === 'svc-assigner' && newData.isString()"
         },
         "current_hub_task_id": {
           ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'",
@@ -531,8 +535,11 @@
         },
         "identity": {
           ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true",
-          ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists() && (newData.exists() || !data.child('brand_id').exists())",
-          ".validate": "newData.hasChildren(['name','hub_lat','hub_lng','phone','whatsapp_instance','whatsapp_enabled','delivery_radius_km','hours','active','version']) && newData.child('brand_id').val() === data.child('brand_id').val()",
+          ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists() && (newData.exists() || !data.child('brand_id').exists()) && (newData.exists() || !data.child('uses_platform_factura').exists())",
+          ".validate": "newData.hasChildren(['name','hub_lat','hub_lng','phone','whatsapp_instance','whatsapp_enabled','delivery_radius_km','hours','active','version']) && newData.child('brand_id').val() === data.child('brand_id').val() && newData.child('uses_platform_factura').val() === data.child('uses_platform_factura').val()",
+          "display_mark": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 2"
+          },
           "hub_lat": {
             ".validate": "newData.isNumber()"
           },

@@ -11,7 +11,8 @@
  *   db,                    // admin database()
  *   client,               // pixelpay-client (voidTransaction)
  *   buildMaterializeUpdates,
- *   restaurant,           // x_pizza hub fallback for buildMaterializeUpdates
+ *   restaurant,           // name/phone fallback for buildMaterializeUpdates (the hub of a pre-snapshot order comes from hubFor)
+ *   hubFor(rid),          // brand-agnostic server r3 §E — the pre-snapshot order's restaurant identity hub
  *   genToken,             // () => tracking token
  *   alert,                // (kind, detail) => paymentAlert
  *   sanitizeText,
@@ -22,6 +23,7 @@ const MR = require('./manual-resolve');
 const MG = require('./materialize-guard');
 const H0 = require('./superseded-capture');   // PLAN-H0 §4 — abandon never closes over money recorded on another attempt
 const { readLiveBrand } = require('./pickup-label');   // R3-FIX D12
+const { materializeRestaurant } = require('./materialize');   // brand-agnostic server r3 §E — the pre-snapshot hub fallback
 const { holdIfClosedAtMaterialize } = MG;   // paid-after-close re-check (Codex-on-diff)
 const { reverseRedemptionForOrder, settleRedemptionAtConfirm } = require('./rewards-reserve');   // Phase B1 — redemption reversal/settle on manual resolve (single helper, no-op for non-redeemed)
 const { usesPlatformFactura } = require('./factura/eligibility');   // fiscal-brand gate: X.Pizza owes a SAR factura, La Musa does not
@@ -31,7 +33,7 @@ const { allocateFacturaNumber } = require('./factura/factura-helpers');   // SPL
 // on the claim_id (NO transient 'pending', NO materialized_at yet), then materialize atomically. A crash after
 // the confirm-flip but before materialize → confirmed + no materialized_at → materializeOnConfirm recovers.
 async function confirmAndMaterializeFromManualClaim(deps, { orderId, attemptId, claimId, now, trackingToken }) {
-  const { db, buildMaterializeUpdates, restaurant } = deps;
+  const { db, buildMaterializeUpdates } = deps;
   const orderRef = db.ref(`orders/${orderId}`);
   if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ status: 'captured', capture_verified: true, manual_verified: true });
   const tx = await orderRef.transaction((cur) => {
@@ -63,6 +65,7 @@ async function confirmAndMaterializeFromManualClaim(deps, { orderId, attemptId, 
   }
   // R3-FIX D12: an order without a display-name snapshot (created before it existed) names its brand from the LIVE identity
   const liveIdentity = order.order_type === 'pickup' && !order.restaurant_display_name ? await readLiveBrand(db, order.restaurant_id || 'x_pizza') : null;
+  const restaurant = await materializeRestaurant(deps, order);   // brand-agnostic server r3 §E: a pre-snapshot order → its own identity hub
   const updates = buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentReference: attemptId, paymentMethod: 'online', liveIdentity });
   await db.ref().update(updates);
   return { outcome: 'materialized' };

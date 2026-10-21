@@ -145,7 +145,11 @@ const {
   geofenceTransition,
   isHubResolvable,
   syncDriverHubUpdate,
+  withReturnCopy,   // brand-agnostic server r3 §A — the shift callables' return-base copy
   driverHasSameHubAccepted,
+  sameHubRids,      // brand-agnostic X1 r3 §D — the restaurants reassertAssignable preloads before its final reads
+  ingestHubRid,     // brand-agnostic X1 r3 §D — the ingest geofence's restaurant
+  ingestHubFor,
   selectIngestPoints,
   hashToken,
   validateIngestToken,
@@ -204,8 +208,8 @@ const RESTAURANT = {
   name: 'X Pizza',
   phone: '+50497952893'
 };
-// RESTAURANT is retained ONLY as the materialize snapshot-fallback for in-flight pre-3b
-// pending orders (see confirmDeps -> buildMaterializeUpdates). Live intake reads the config
+// RESTAURANT is retained ONLY as the materialize name/phone fallback for in-flight pre-3b pending
+// orders (see confirmDeps -> buildMaterializeUpdates); their hub comes from the order's own identity (hubFor, r3 §E). Live intake reads the config
 // plane (restaurant-config); the delivery radius now comes from identity.delivery_radius_km.
 
 // hubSnapshot (the ADR-0002 allowlist mapping identity -> immutable per-order snapshot) is
@@ -556,7 +560,8 @@ function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonica
 }
 const { resolveRestaurantId, sameRestaurant } = require('./restaurant-id');
 const { resolveReturnBase } = require('./pixelpay-return-url');
-const { resolveAssignHub, X_PIZZA_HUB } = require('./assign-hub');
+const { resolveAssignHub, hubForFresh, makeHubPeek } = require('./assign-hub');   // brand-agnostic X1: hubs from each restaurant's identity
+const hubForPeek = makeHubPeek();   // X1 r3 §D: per-instance identity-hub cache for the high-frequency ingest geofence
 
 // Strip HTML-significant + control chars and cap length. Defense-in-depth vs
 // stored XSS: even if a downstream HTML sink forgets to escape, no tag can be
@@ -2511,6 +2516,7 @@ function confirmDeps(db) {
     db,
     client: pixelpayClient,
     restaurant: RESTAURANT,
+    hubFor: (rid) => hubForFresh(db, rid),   // brand-agnostic server r3 §E: a pre-snapshot order's hub = its own identity's
     buildMaterializeUpdates,
     getIdentity: getRestaurantIdentity,   // 3c: confirm-time active-recheck (plan 10b)
     getGraceMinutes,   // paid-after-close: post-close materialize grace window
@@ -3187,6 +3193,7 @@ function resolveDeps(db) {
     client: pixelpayClient,
     buildMaterializeUpdates,
     restaurant: RESTAURANT,
+    hubFor: (rid) => hubForFresh(db, rid),   // brand-agnostic server r3 §E: a pre-snapshot order's hub = its own identity's
     genToken: generateTrackingToken,
     getIdentity: getRestaurantIdentity,   // paid-after-close re-check at manual materialize (Codex-on-diff)
     /* 🔴 THE SAME GRACE READER THE CONFIRM PATH USES. materialize-guard falls back to a hardcoded 15
@@ -4366,6 +4373,8 @@ exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) => 
   const deviceId = request.data?.device_id || null;
   const now = Date.now();
   const shiftId = crypto.randomUUID();
+  // brand-agnostic server r3 §A: the clock-in clears current_restaurant_id below — record a non-null prior as the return base
+  const priorRid = (await db.ref(`drivers/${uid}/current_restaurant_id`).once('value')).val();
 
   const updates = {
     [`drivers/${uid}/active`]: true,
@@ -4397,7 +4406,8 @@ exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) => 
     updates[`drivers/${uid}/ingest_token_hash`] = hash;
   }
 
-  await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'startDriverShift', target: uid });   // S1a §3 — rules-bound shift-open (new-shift transition requires the target eligible)
+  const shiftOpen = withReturnCopy(updates, priorRid, `drivers/${uid}/`);   // r3 §A
+  await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(shiftOpen), { site: 'startDriverShift', target: uid });   // S1a §3 — rules-bound shift-open (new-shift transition requires the target eligible)
   console.log(`startDriverShift: ${uid} on shift ${shiftId} (source=${isNativeClient ? 'native' : 'pwa'})`);
   return { ok: true, shift_id: shiftId, location_source: isNativeClient ? 'native' : 'pwa', ingest_token: ingestToken };
 });
@@ -4409,7 +4419,8 @@ exports.endDriverShift = onCall({ region: 'us-central1' }, async (request) => {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
   await assertDriverCallerActive(uid, request.auth?.token, { db: getDatabase(), auth: getAuth(), HttpsError });   // S1a §6
   const db = getDatabase();
-  const hash = (await db.ref(`drivers/${uid}/ingest_token_hash`).once('value')).val();
+  // brand-agnostic server r3 §A: current_restaurant_id read together with the token hash — the clock-out clears it below
+  const [hash, priorRid] = (await Promise.all([db.ref(`drivers/${uid}/ingest_token_hash`).once('value'), db.ref(`drivers/${uid}/current_restaurant_id`).once('value')])).map((sn) => sn.val());
   const updates = {
     [`drivers/${uid}/active`]: false,
     [`drivers/${uid}/status`]: 'off_shift',
@@ -4423,7 +4434,7 @@ exports.endDriverShift = onCall({ region: 'us-central1' }, async (request) => {
     [`drivers/${uid}/ingest_token_hash`]: null
   };
   if (hash) updates[`driver_tokens/${hash}`] = null;
-  await db.ref().update(updates);
+  await db.ref().update(withReturnCopy(updates, priorRid, `drivers/${uid}/`));   // r3 §A
   console.log(`endDriverShift: ${uid} off shift`);
   return { ok: true };
 });
@@ -4574,20 +4585,16 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
   // Server geofence — native drivers only, fail-closed on an unresolvable/mismatched hub.
   let status = driver.status;
   const hasTask = !!driver.current_task_id;
-  const hubLat = driver.current_hub_lat ?? RESTAURANT_LAT;
-  const hubLng = driver.current_hub_lng ?? RESTAURANT_LNG;
-  // S1 E4: resolvable iff the restaurant_id is allow-listed AND the coords match its pinned hub
-  // (a legacy null restaurant_id resolves as X. Pizza when the coords are the fallback). This is the
-  // atomic partner of the syncDriverHub trigger writing current_hub_*; passing the coords defends
-  // against a stale/corrupt snapshot.
-  // S1 version stamp: trust the hub only while it is stamped for the LIVE task
-  // (current_hub_task_id === current_task_id). A versioned-but-stale snapshot — the residual
-  // syncDriverHub recheck window — self-detects here and fail-closes. current_hub_task_id == null is
-  // the legacy / in-flight-at-deploy + sub-second accept-lag case (driver far from any hub) → lenient,
-  // preserving X. Pizza behaviour.
-  const hubVersionCurrent = driver.current_hub_task_id == null
-    || driver.current_hub_task_id === driver.current_task_id;
-  const hubOk = hubVersionCurrent && isHubResolvable(driver.current_restaurant_id, hubLat, hubLng);
+  // brand-agnostic X1 (r3 §D): the hub comes from the restaurant's OWN identity (per-instance peek cache), AWAITED before the
+  // transition is computed. Restaurant: current_restaurant_id's snapshot (S1 E4: the coords must match that identity hub; the
+  // S1 version stamp — current_hub_task_id null or === current_task_id — gates it exactly as before), or an idle driver's
+  // return_restaurant_id (the restaurant they last served); otherwise none — a null rid never maps to any brand.
+  const ingestRid = ingestHubRid(driver);
+  await trackerHold('ingest:hub', { uid, rid: ingestRid });   // test seam (inert in production)
+  const ingestHub = ingestHubFor(driver, ingestRid == null ? {} : { [ingestRid]: await hubForPeek(db, ingestRid) });
+  const hubOk = !!ingestHub;
+  const hubLat = hubOk ? ingestHub.hubLat : null;
+  const hubLng = hubOk ? ingestHub.hubLng : null;
   let arrived = false;
   if (driver.location_source === 'native' && hubOk) {
     for (const p of accepted) {
@@ -4595,7 +4602,7 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
       if (t) { status = t.status; if (t.arrivedAtRestaurant) arrived = true; }
     }
   } else if (!hubOk) {
-    console.warn(`ingestDriverLocation: hub not resolvable for ${uid} (restaurant_id=${driver.current_restaurant_id}) — geofence skipped`);
+    console.warn(`ingestDriverLocation: hub not resolvable for ${uid} (restaurant_id=${driver.current_restaurant_id}, hub rid=${ingestRid}) — geofence skipped`);
   }
 
   const final = accepted[accepted.length - 1];
@@ -4608,9 +4615,21 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
     [`drivers/${uid}/last_location_ts`]: final.ts,
     [`drivers/${uid}/last_ping`]: ServerValue.TIMESTAMP
   };
-  if (status !== driver.status) updates[`drivers/${uid}/status`] = status;
-  if (arrived) updates[`drivers/${uid}/arrived_at_restaurant_at`] = ServerValue.TIMESTAMP;
   await db.ref().update(updates);
+  // brand-agnostic X1 (r3 §D): the geofence TRANSITION commits through a transaction that aborts unless the state the decision
+  // used still holds (task / shift / status / restaurant) — a hub lookup that waited cannot apply a stale transition. An abort
+  // drops only the transition; the location above went through as today.
+  if (status !== driver.status || arrived) {
+    const same = (a, b) => (a ?? null) === (b ?? null);
+    await db.ref(`drivers/${uid}`).transaction((cur) => {
+      if (cur === null) return null;   // the first local pass may see no cache — retried with the server value
+      if (!same(cur.current_task_id, driver.current_task_id) || !same(cur.current_shift_id, driver.current_shift_id)
+        || !same(cur.status, driver.status) || !same(cur.current_restaurant_id, driver.current_restaurant_id)) return undefined;   // moved on → abort
+      if (status !== driver.status) cur.status = status;
+      if (arrived) cur.arrived_at_restaurant_at = ServerValue.TIMESTAMP;
+      return cur;
+    }, undefined, false);
+  }
 
   // Live-tracker mirror (Phase A): push the ACTIVE drop's driver location to that order's public tracking
   // node — throttled + best-effort (must NEVER fail the ingest). Gated to the order whose _delivery leg is
@@ -5839,8 +5858,8 @@ exports.onIncomingWhatsApp = onRequest(
 //   off the radar and skipped, even if their status says "available". Matches
 //   the SDK's STALE_PING_THRESHOLD_S (90 sec) — keep them in sync.
 //
-// - RESTAURANT_LAT/LNG: hardcoded for now. Could read from /config later if
-//   we ever support multiple stores.
+// - The hub an order is ranked FROM comes from the order's stamped snapshot, else its restaurant's
+//   identity (assign-hub.js resolveAssignHub — brand-agnostic X1; no per-brand constant).
 //
 // - STACKING_RULES (max 2 orders/driver; a 2nd order may be stacked only while
 //   the driver is still in the PRE-DEPARTURE window for their 1st order — i.e.
@@ -5856,8 +5875,6 @@ exports.onIncomingWhatsApp = onRequest(
 
 const GRACE_PERIOD_MS = 30 * 1000;
 const STALE_PING_MS = 90 * 1000;
-const RESTAURANT_LAT = X_PIZZA_HUB.lat;   // x_pizza hub (single source: assign-hub.js) — geofence + auto-assign fallback
-const RESTAURANT_LNG = X_PIZZA_HUB.lng;
 
 // Acceptance timeout: how long a driver has to swipe-to-accept after assignment
 // before the system reassigns to someone else. Same value used by driver UI
@@ -5951,7 +5968,10 @@ const STATUS_PRIORITY = {
  * Shared by autoAssignOnOrderCreate and monitorAssignmentTimeout to avoid
  * drift between initial-assign and reassign behavior.
  */
-async function pickEligibleDriver(db, excludeDriverIds = [], hubLat = RESTAURANT_LAT, hubLng = RESTAURANT_LNG) {
+async function pickEligibleDriver(db, excludeDriverIds, hubLat, hubLng) {
+  // brand-agnostic X1: the hub is REQUIRED (no x_pizza default) — a caller without one has nothing to rank from
+  if (!Number.isFinite(hubLat) || !Number.isFinite(hubLng)) { console.error('pickEligibleDriver: no hub — refusing to rank'); return null; }
+  excludeDriverIds = excludeDriverIds || [];
   const [driversSnap, tasksSnap] = await Promise.all([
     db.ref('drivers').once('value'),
     db.ref('tasks').once('value')
@@ -6114,7 +6134,26 @@ function buildAssignmentUpdates(orderId, driverId, attempts, isAutoAssigned, isS
 // off, or been stacked by a concurrent trigger). Mirrors the eligibility + cap
 // logic in pickEligibleDriver. Pilot-tier guard; a per-driver capacity lease is
 // the harden-before-scale form (see SHERPA_DRIVER_PLAN.md).
+// brand-agnostic X1 (r3 §E): an order with no hub (no stamped snapshot, no restaurant identity hub) is NEVER auto-assigned —
+// ONE keyed dispatcher alert per order, written set-if-absent (the sweep / monitor re-passes raise no duplicate). The order
+// stays in SIN ASIGNAR for the dispatcher.
+async function alertHubUnresolved(db, orderId, order, site) {
+  try {
+    await db.ref(`dispatcher_alerts/hub_unresolved_${orderId}`).transaction((cur) => (cur == null
+      ? { type: 'hub_unresolved', order_id: orderId, restaurant_id: (order && order.restaurant_id) || null, created_at: Date.now() }
+      : undefined), undefined, false);
+  } catch (e) { console.error(`${site}: hub_unresolved alert failed for ${orderId}`, e && e.message); }
+}
+
 async function reassertAssignable(db, driverId, newOrderId = null) {
+  // brand-agnostic X1 (r3 §D): the identity I/O happens BEFORE the final state reads — a PRELOAD of tasks (stale is fine) names
+  // the restaurants the same-hub decision needs, their hubs are read fresh, THEN the final reads below, then a synchronous
+  // decision. Nothing is awaited between the final read and the returned decision; a restaurant that appears only in the final
+  // read is missing from `hubs` → no force-accept (fail closed).
+  const preTasks = (await db.ref('tasks').once('value')).val() || {};
+  const hubRids = sameHubRids(preTasks, driverId, newOrderId);
+  await trackerHold('assign:hub', { driverId, newOrderId });   // test seam (inert in production)
+  const hubs = Object.fromEntries(await Promise.all(hubRids.map(async (rid) => [rid, await hubForFresh(db, rid)])));
   const [dSnap, tSnap] = await Promise.all([
     db.ref(`drivers/${driverId}`).once('value'),
     db.ref('tasks').once('value')
@@ -6139,7 +6178,7 @@ async function reassertAssignable(db, driverId, newOrderId = null) {
   if (orderCount >= cap) return { ok: false, reason: `at_cap(${orderCount})` };
   // S2 (TOCTOU-safe): recompute same-hub from THIS fresh read so the force-accept gate uses the state
   // as of right-before-write, not the stale pick-time value.
-  const hasAcceptedSameHubOrder = driverHasSameHubAccepted(tasks, driverId, newOrderId);
+  const hasAcceptedSameHubOrder = driverHasSameHubAccepted(tasks, driverId, newOrderId, hubs);
   return { ok: true, orderCount, hasAcceptedSameHubOrder };
 }
 
@@ -6307,7 +6346,15 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       return;
     }
 
-    const { hubLat, hubLng } = resolveAssignHub(orderNow);   // C1: assign against the order's restaurant hub
+    // C1 + brand-agnostic X1: assign against the order's restaurant hub (stamped snapshot, else its identity). No hub → never
+    // auto-assigned (one keyed alert; it stays in SIN ASIGNAR); a failed identity read → skipped now, the sweep retries.
+    const assignHub = await resolveAssignHub(db, orderNow);
+    if (assignHub.unresolved) {
+      console.warn(`autoAssign: ${orderId} has no resolvable hub (${assignHub.unresolved}) — not auto-assigned`);
+      if (assignHub.unresolved === 'no_hub') await alertHubUnresolved(db, orderId, orderNow, 'autoAssign');
+      return;
+    }
+    const { hubLat, hubLng } = assignHub;
     const chosen = await pickEligibleDriver(db, [], hubLat, hubLng);
     if (!chosen) {
       console.warn(`autoAssign: no eligible drivers for ${orderId}, alerting dispatcher`);
@@ -6473,6 +6520,17 @@ exports.monitorAssignmentTimeout = onValueWritten(
     const cooldownUntil = Date.now() + TIMEOUT_COOLDOWN_MS;
     await db.ref(`drivers/${driverId}/timeout_until`).set(cooldownUntil);
 
+    // brand-agnostic X1 (r3 §E): a hub-less order reaches this monitor only through a MANUAL dispatcher assignment (it is never
+    // auto-assigned). The guard sits BEFORE BOTH branches: no reassign, no takeover release, no attempt write — the dispatcher's
+    // assignment is left untouched and the keyed hub_unresolved alert is set-if-absent. An order WITH a hub follows both
+    // branches exactly as before (the hub is resolved once, here).
+    const timeoutHub = await resolveAssignHub(db, orderForTimeout);
+    if (timeoutHub.unresolved) {
+      console.warn(`timeout-monitor: ${orderId} has no resolvable hub (${timeoutHub.unresolved}) — assignment left to the dispatcher`);
+      await alertHubUnresolved(db, orderId, orderForTimeout, 'timeout-monitor');
+      return;
+    }
+
     // Decide: try one more driver, or escalate to dispatcher?
     const attempts = task.assignment_attempts || 1;
 
@@ -6499,7 +6557,7 @@ exports.monitorAssignmentTimeout = onValueWritten(
     }
 
     // First-strike timeout → try one more driver, excluding the timed-out one
-    const { hubLat, hubLng } = resolveAssignHub(orderForTimeout);   // C1: reassign against the order's restaurant hub
+    const { hubLat, hubLng } = timeoutHub;   // C1: reassign against the order's restaurant hub (resolved above)
     const nextDriver = await pickEligibleDriver(db, [driverId], hubLat, hubLng);
     if (!nextDriver) {
       console.warn(`timeout-monitor: no eligible drivers after ${driverId} timeout on ${orderId}, escalating`);
@@ -6703,7 +6761,11 @@ exports.sweepPendingOrders = onSchedule(
       if (!sweepDecision(order, tasks, now, opts).sweep || merchantHooks.heldByReject(order)) continue;   // h1 A-R1
 
       // Best currently-eligible driver — normal ranking (fewest orders → priority → nearest), no dibs.
-      const { hubLat, hubLng } = resolveAssignHub(order);
+      // brand-agnostic X1 (r3 §E): no hub → skip (no claim, no retry state; the keyed alert is set-if-absent, so no re-alert);
+      // a failed identity read → skip this pass (retried next sweep, not alerted)
+      const sweepHub = await resolveAssignHub(db, order);
+      if (sweepHub.unresolved) { if (sweepHub.unresolved === 'no_hub') await alertHubUnresolved(db, orderId, order, 'sweepPending'); continue; }
+      const { hubLat, hubLng } = sweepHub;
       const chosen = await pickEligibleDriver(db, [], hubLat, hubLng);
       if (!chosen) { waiting++; continue; }   // no taker this cycle — leave pending, keep waiting (no throttle bump)
 

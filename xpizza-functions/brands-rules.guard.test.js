@@ -40,6 +40,17 @@ assert.strictEqual(id.zone.$other['.validate'], false, 'FAIL: zone must deny ext
 assert.ok(id['.write'].includes("(newData.exists() || !data.child('brand_id').exists())"), 'FAIL: identity .write must forbid deleting a branded identity');
 assert.ok(id['.validate'].includes("newData.child('brand_id').val() === data.child('brand_id').val()"), 'FAIL: identity .validate must preserve brand_id (no client create / change / remove)');
 
+// BRAND-AGNOSTIC SERVER (PLAN-brand-agnostic-server r3 §A / §F / r0 §1.1): the B1 flag is Admin-only, the chip mark is 1–2 chars,
+// and drivers/{uid}/return_restaurant_id is server-only with no client delete of a driver node. Appended terms; the substrings
+// above stay verbatim.
+assert.ok(id['.validate'].includes("newData.child('uses_platform_factura').val() === data.child('uses_platform_factura').val()"), 'FAIL: identity .validate must pin uses_platform_factura (no client create / change / remove)');
+assert.ok(id['.write'].includes("(newData.exists() || !data.child('uses_platform_factura').exists())"), 'FAIL: identity .write must forbid deleting an identity carrying uses_platform_factura');
+assert.strictEqual(id.display_mark['.validate'], 'newData.isString() && newData.val().length >= 1 && newData.val().length <= 2', 'FAIL: identity.display_mark must be a 1–2 character string');
+const drv = rules.drivers.$driver_id;
+assert.ok(drv['.write'].endsWith(' && newData.exists()'), 'FAIL: drivers/$driver_id .write must deny a client delete of the whole driver node');
+assert.ok(drv['.validate'].endsWith(" && (auth.uid === 'svc-assigner' || newData.child('return_restaurant_id').val() === data.child('return_restaurant_id').val())"), 'FAIL: drivers/$driver_id .validate must pin return_restaurant_id for every client');
+assert.strictEqual(drv.return_restaurant_id['.validate'], "auth.uid === 'svc-assigner' && newData.isString()", 'FAIL: drivers/$driver_id/return_restaurant_id must be svc-assigner-only');
+
 const ov = rules.orders.$order_id['.validate'];
 for (const f of ['restaurant_id', 'brand_id'])
   assert.ok(ov.includes(`(!data.child('${f}').exists() || newData.child('${f}').val() === data.child('${f}').val())`), `FAIL: orders.$order_id .validate lacks the ${f} immutability clause`);

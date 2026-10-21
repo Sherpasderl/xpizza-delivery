@@ -22,6 +22,7 @@
 
 const TERMINAL_ATTEMPT = ['declined', 'voided', 'abandoned', 'converted', 'refunded', 'voided_inactive'];
 const SCHED = require('./scheduled-orders');   // Scheduled Orders — confirm-time slot re-validation (§F)
+const { materializeRestaurant } = require('./materialize');   // brand-agnostic server r3 §E — the pre-snapshot hub fallback
 const { holdIfClosedAtMaterialize, holdIfDuplicateSibling } = require('./materialize-guard');   // paid-after-close re-check (Codex-on-diff) + F3 duplicate-sibling hold
 const { settleRedemptionAtConfirm, holdRedemptionForManual } = require('./rewards-reserve');     // Phase B1 — consume/hold the redemption at materialize; [B] hold-or-alert at a manual-reconciliation entry
 
@@ -228,7 +229,7 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
 // Claim payment_status pending→confirmed (CAS on the order) then materialize atomically.
 // Idempotent: safe to re-enter for an already-confirmed-but-unmaterialized order.
 async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingToken, paymentReference = null }) {
-  const { db, restaurant, buildMaterializeUpdates } = deps;
+  const { db, buildMaterializeUpdates } = deps;
   const orderRef = db.ref(`orders/${orderId}`);
 
   // Pre-read to avoid the Admin SDK first-call-null transaction abort (see §1).
@@ -329,6 +330,7 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
   }
 
   const token = order.tracking_token || trackingToken;
+  const restaurant = await materializeRestaurant(deps, order);   // brand-agnostic server r3 §E: a pre-snapshot order → its own identity hub
   const updates = buildMaterializeUpdates({
     orderId,
     order,

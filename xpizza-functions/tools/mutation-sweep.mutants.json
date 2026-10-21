@@ -16695,6 +16695,644 @@
     ]
   },
   {
+    "slice": "brandsrv",
+    "id": "bsrv-b1-pin",
+    "label": "B1: the identity .validate uses_platform_factura pin removed",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": " && newData.child('uses_platform_factura').val() === data.child('uses_platform_factura').val()\"",
+    "to": "\"",
+    "kills_with": [
+      "Expected request to fail"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/brand-server-rules.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-b1-del",
+    "label": "B1: the identity delete guard for a flagged identity removed",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": " && (newData.exists() || !data.child('uses_platform_factura').exists())\",",
+    "to": "\",",
+    "kills_with": [
+      "Expected request to fail"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/brand-server-rules.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-ret-pin",
+    "label": "§A: the drivers parent .validate return_restaurant_id pin removed",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": " && (auth.uid === 'svc-assigner' || newData.child('return_restaurant_id').val() === data.child('return_restaurant_id').val())\",",
+    "to": "\",",
+    "kills_with": [
+      "Expected request to fail"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/brand-server-rules.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-drv-del",
+    "label": "§A: the drivers parent .write delete guard (newData.exists()) removed",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "child('deactivated').val() !== true && newData.exists()\",",
+    "to": "child('deactivated').val() !== true\",",
+    "kills_with": [
+      "Expected request to fail"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/brand-server-rules.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-mark-len",
+    "label": "§F: the display_mark rule length bound removed",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "\"display_mark\": { \".validate\": \"newData.isString() && newData.val().length >= 1 && newData.val().length <= 2\" }",
+    "to": "\"display_mark\": { \".validate\": \"newData.isString() && newData.val().length >= 1\" }",
+    "kills_with": [
+      "Expected request to fail"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "database",
+      "node test/brand-server-rules.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-copy-all",
+    "label": "§A: the return copy dropped from every syncDriverHubUpdate result (the clear)",
+    "file": "driver-ingest.js",
+    "from": "  return withReturnCopy(hubUpdateFor(eventAfterTaskId, freshCurrentTaskId, allTasks, existingHub), (existingHub || {}).current_restaurant_id ?? null);",
+    "to": "  return hubUpdateFor(eventAfterTaskId, freshCurrentTaskId, allTasks, existingHub);",
+    "kills_with": [
+      "the null-out records the prior rid"
+    ],
+    "command": [
+      "node",
+      "driver-return-copy.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-copy-setbf",
+    "label": "§A: withReturnCopy skipped on 'set' / 'backfill' (applied to the clear only)",
+    "file": "driver-ingest.js",
+    "from": "  return withReturnCopy(hubUpdateFor(eventAfterTaskId, freshCurrentTaskId, allTasks, existingHub), (existingHub || {}).current_restaurant_id ?? null);",
+    "to": "  const u = hubUpdateFor(eventAfterTaskId, freshCurrentTaskId, allTasks, existingHub); return (u && u.current_hub_lat == null) ? withReturnCopy(u, (existingHub || {}).current_restaurant_id ?? null) : u;",
+    "kills_with": [
+      "with NO restaurant_id"
+    ],
+    "command": [
+      "node",
+      "driver-return-copy.test.js"
+    ],
+    "repointed": "drift fix: the first version also skipped the unknown-task clear"
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-copy-null",
+    "label": "§A: a null prior overwrites the stored return value with null",
+    "file": "driver-ingest.js",
+    "from": "|| update[key] != null || existingRid == null) return update;",
+    "to": "|| update[key] != null) return update;",
+    "kills_with": [
+      "a null prior writes nothing"
+    ],
+    "command": [
+      "node",
+      "driver-return-copy.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-copy-out",
+    "label": "§A: the clock-out (endDriverShift) return copy dropped",
+    "file": "index.js",
+    "from": "  await db.ref().update(withReturnCopy(updates, priorRid, `drivers/${uid}/`));   // r3 §A",
+    "to": "  await db.ref().update(updates);",
+    "kills_with": [
+      "clock-out records the rid it clears"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/driver-return-shift.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-copy-in",
+    "label": "§A: the clock-in (startDriverShift) return copy dropped",
+    "file": "index.js",
+    "from": "  const shiftOpen = withReturnCopy(updates, priorRid, `drivers/${uid}/`);   // r3 §A",
+    "to": "  const shiftOpen = updates;",
+    "kills_with": [
+      "clock-in records the rid it clears"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/driver-return-shift.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-bf-overwrite",
+    "label": "§B: the backfill overwrites a present value",
+    "file": "tools/driver-return-backfill-core.js",
+    "from": "transaction((cur) => (cur == null ? r.rid : undefined))",
+    "to": "transaction(() => r.rid)",
+    "kills_with": [
+      "never overwrites a value written meanwhile"
+    ],
+    "command": [
+      "node",
+      "tools/driver-return-backfill.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-bf-xpizza",
+    "label": "§B: the backfill defaults a restaurant-less order to x_pizza",
+    "file": "tools/driver-return-backfill-core.js",
+    "from": "    const rid = last.order.restaurant_id;",
+    "to": "    const rid = last.order.restaurant_id || 'x_pizza';",
+    "kills_with": [
+      "NO x_pizza default"
+    ],
+    "command": [
+      "node",
+      "tools/driver-return-backfill.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-bf-legacy",
+    "label": "§B: the backfill ignores the legacy delivered_by_uid attribution",
+    "file": "tools/driver-return-backfill-core.js",
+    "from": "for (const f of ['delivered_by_driver_uid', 'delivered_by_uid'])",
+    "to": "for (const f of ['delivered_by_driver_uid'])",
+    "kills_with": [
+      "legacy delivered_by_uid counts"
+    ],
+    "command": [
+      "node",
+      "tools/driver-return-backfill.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-bf-readback",
+    "label": "§B: the read-back passes with unresolved drivers",
+    "file": "tools/driver-return-backfill-core.js",
+    "from": "    if (u) { problems.push(",
+    "to": "    if (u) { continue; problems.push(",
+    "kills_with": [
+      "and unresolved",
+      "every unresolved driver is a problem"
+    ],
+    "command": [
+      "node",
+      "tools/driver-return-backfill.test.js"
+    ],
+    "repointed": "codex build r1 P1: readBack rewritten (persisted-value based)"
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-peek-renew",
+    "label": "§D: a failed peek read renews the cache timestamp",
+    "file": "assign-hub.js",
+    "from": "    return fresh(cur) ? cur.hub : null;",
+    "to": "    if (cur) cur.at = t0;\n    return fresh(cur) ? cur.hub : null;",
+    "kills_with": [
+      "NEVER renews"
+    ],
+    "command": [
+      "node",
+      "assign-hub.test.js"
+    ],
+    "repointed": "codex build r1 P2: cache rewritten to sequence ordering"
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-peek-ttl",
+    "label": "§D: a stale cache entry is served past the TTL",
+    "file": "assign-hub.js",
+    "from": "  const fresh = (e) => !!e && now() - e.at < ttlMs;",
+    "to": "  const fresh = (e) => !!e;",
+    "kills_with": [
+      "PAST the TTL"
+    ],
+    "command": [
+      "node",
+      "assign-hub.test.js"
+    ],
+    "repointed": "codex build r1 P2: cache rewritten to sequence ordering"
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-acc-null",
+    "label": "X1: the accessor maps a null / malformed rid to x_pizza",
+    "file": "assign-hub.js",
+    "from": "  if (!validRid(rid)) return { ok: true, hub: null };",
+    "to": "  if (!validRid(rid)) rid = 'x_pizza';",
+    "kills_with": [
+      "no hub for null"
+    ],
+    "command": [
+      "node",
+      "assign-hub.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-pk-coords",
+    "label": "§C: resolvePickupHub without the coords match",
+    "file": "driver-ingest.js",
+    "from": "  return coordsMatchHub(canon, lat, lng) ? { lat, lng } : null;",
+    "to": "  return { lat, lng };",
+    "kills_with": [
+      "coord/rid mismatch"
+    ],
+    "command": [
+      "node",
+      "driver-ingest.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-hub-null",
+    "label": "X1: a null restaurant_id is resolvable (the old x_pizza special case)",
+    "file": "driver-ingest.js",
+    "from": "  if (restaurantId == null) return false;",
+    "to": "  if (restaurantId == null) return true;",
+    "kills_with": [
+      "a null restaurant_id is never resolvable"
+    ],
+    "command": [
+      "node",
+      "driver-ingest.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-ret-none",
+    "label": "§D: a returning driver without return_restaurant_id (no return base)",
+    "file": "driver-ingest.js",
+    "from": "  if (!d.current_task_id && typeof d.return_restaurant_id === 'string') return d.return_restaurant_id;\n",
+    "to": "",
+    "kills_with": [
+      "hub rid is return_restaurant_id"
+    ],
+    "command": [
+      "node",
+      "driver-ingest.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-ret-version",
+    "label": "§D: the version stamp no longer gates the return path",
+    "file": "driver-ingest.js",
+    "from": "  if (!versionCurrent) return null;\n",
+    "to": "",
+    "kills_with": [
+      "UNCHANGED-LIVE"
+    ],
+    "command": [
+      "node",
+      "brand-hub-golden.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-ingest-guard",
+    "label": "§D: the ingest transition guard removed (a stale transition commits)",
+    "file": "index.js",
+    "from": "|| !same(cur.status, driver.status) || !same(cur.current_restaurant_id, driver.current_restaurant_id)) return undefined;   // moved on → abort",
+    "to": "|| !same(cur.status, driver.status) || !same(cur.current_restaurant_id, driver.current_restaurant_id)) { /* guard removed */ }",
+    "kills_with": [
+      "transition is DROPPED"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/brand-hub-assign.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-sweep-retry",
+    "label": "§E: the hub-less sweep path offers the order (an x_pizza-like guess)",
+    "file": "index.js",
+    "from": "      if (sweepHub.unresolved) { if (sweepHub.unresolved === 'no_hub') await alertHubUnresolved(db, orderId, order, 'sweepPending'); continue; }",
+    "to": "      if (sweepHub.unresolved) { sweepHub.hubLat = 15.5; sweepHub.hubLng = -88; }",
+    "kills_with": [
+      "E2: never offered"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/brand-hub-assign.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-to-after",
+    "label": "§E: the hub-less timeout guard moved after the takeover branch (held / two-strike release)",
+    "file": "index.js",
+    "from": "    if (timeoutHub.unresolved) {",
+    "to": "    if (timeoutHub.unresolved && !((task.assignment_attempts || 1) >= MAX_ATTEMPTS_BEFORE_TAKEOVER || merchantHooks.heldByReject(orderForTimeout))) {",
+    "kills_with": [
+      "the manual assignment is unchanged"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/brand-hub-assign.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-to-first",
+    "label": "§E: a hub-less first strike reaches pickEligibleDriver / release (guard removed)",
+    "file": "index.js",
+    "from": "    if (timeoutHub.unresolved) {",
+    "to": "    if (false) {",
+    "kills_with": [
+      "the manual assignment is unchanged"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/brand-hub-assign.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-alert-dedup",
+    "label": "§E: the hub_unresolved alert is written unconditionally (no dedup)",
+    "file": "index.js",
+    "from": "      : undefined), undefined, false);",
+    "to": "      : { ...cur, created_at: Date.now() }), undefined, false);",
+    "kills_with": [
+      "no re-alert"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/brand-hub-assign.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-auto-guard",
+    "label": "§E: autoAssign ignores a hub-less order (no keyed alert / skip)",
+    "file": "index.js",
+    "from": "    if (assignHub.unresolved) {",
+    "to": "    if (false) {",
+    "kills_with": [
+      "exactly ONE keyed alert"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/brand-hub-assign.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-preload-after",
+    "label": "§D: reassertAssignable awaits identity AFTER its final read",
+    "file": "index.js",
+    "from": "  const preTasks = (await db.ref('tasks').once('value')).val() || {};\n  const hubRids = sameHubRids(preTasks, driverId, newOrderId);\n  await trackerHold('assign:hub', { driverId, newOrderId });   // test seam (inert in production)\n  const hubs = Object.fromEntries(await Promise.all(hubRids.map(async (rid) => [rid, await hubForFresh(db, rid)])));\n  const [dSnap, tSnap] = await Promise.all([\n    db.ref(`drivers/${driverId}`).once('value'),\n    db.ref('tasks').once('value')\n  ]);",
+    "to": "  const [dSnap, tSnap] = await Promise.all([\n    db.ref(`drivers/${driverId}`).once('value'),\n    db.ref('tasks').once('value')\n  ]);\n  const preTasks = tSnap.val() || {};\n  const hubRids = sameHubRids(preTasks, driverId, newOrderId);\n  await trackerHold('assign:hub', { driverId, newOrderId });   // test seam (inert in production)\n  const hubs = Object.fromEntries(await Promise.all(hubRids.map(async (rid) => [rid, await hubForFresh(db, rid)])));",
+    "kills_with": [
+      "final read AFTER the delayed lookup"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-run.js",
+      "--only",
+      "firestore,database",
+      "--project",
+      "demo-xpizza",
+      "node test/brand-hub-assign.emulator.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-mat-hub",
+    "label": "§E: a pre-snapshot order keeps the deps (x_pizza) hub instead of its identity",
+    "file": "materialize.js",
+    "from": "  if (Number.isFinite(o.hub_lat) && Number.isFinite(o.hub_lng)) return base;",
+    "to": "  return base;",
+    "kills_with": [
+      "ITS restaurant identity hub"
+    ],
+    "command": [
+      "node",
+      "materialize-hub.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-mark-fill",
+    "label": "§F: set-mark overwrites a conflicting display_mark",
+    "file": "tools/identity-display-name-admin.js",
+    "from": "  const fill = absentFill('display_mark', rid, from, value);",
+    "to": "  const fill = null;",
+    "kills_with": [
+      "an equal mark is a no-op",
+      "a different existing mark is a conflict"
+    ],
+    "command": [
+      "node",
+      "tools/identity-display-name.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-name-fill",
+    "label": "§F: the display migration (set) overwrites a conflicting display_name",
+    "file": "tools/identity-display-name-admin.js",
+    "from": "  const fill = op === 'set' ? absentFill('display_name', rid, from, to) : null;",
+    "to": "  const fill = null;",
+    "kills_with": [
+      "an equal display_name is a no-op"
+    ],
+    "command": [
+      "node",
+      "tools/identity-display-name.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-auth-loose",
+    "label": "B1: the factura authority set loosened (a second member)",
+    "file": "factura/eligibility.js",
+    "from": "const FACTURA_PLATFORM_RESTAURANTS = new Set(['x_pizza']);",
+    "to": "const FACTURA_PLATFORM_RESTAURANTS = new Set(['x_pizza', 'la_musa']);",
+    "kills_with": [
+      "OWNER STANDING RULE"
+    ],
+    "command": [
+      "node",
+      "factura/factura-authority.guard.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-proj-all",
+    "label": "B1: the projection flags every restaurant",
+    "file": "tools/identity-factura-flag-core.js",
+    "from": "const desired = (rid) => (usesPlatformFactura(rid) ? true : null);",
+    "to": "const desired = () => true;",
+    "kills_with": [
+      "gets ABSENT"
+    ],
+    "command": [
+      "node",
+      "tools/identity-factura-flag.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-confirm-hub",
+    "label": "money path: confirmAndMaterialize ignores the identity hub for a pre-snapshot order (lat dropped)",
+    "file": "pixelpay-confirm.js",
+    "from": "  const restaurant = await materializeRestaurant(deps, order);",
+    "to": "  const restaurant = { ...(await materializeRestaurant(deps, order)), lat: null };",
+    "kills_with": [
+      "unstamped x_pizza: entire database byte-identical"
+    ],
+    "command": [
+      "node",
+      "confirm-materialize-parity.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-peek-seq",
+    "label": "§D: cache ordering by ms timestamp (an older same-ms request overwrites the newer)",
+    "file": "assign-hub.js",
+    "from": "    if (r.ok && (!cur || cur.seq < mine)) {",
+    "to": "    if (r.ok && (!cur || cur.at <= t0)) {",
+    "kills_with": [
+      "same-millisecond"
+    ],
+    "command": [
+      "node",
+      "assign-hub.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-peek-ttl-retained",
+    "label": "§D: the retained newer entry is returned past its TTL",
+    "file": "assign-hub.js",
+    "from": "    return fresh(cur) ? cur.hub : null;   // a newer",
+    "to": "    return cur ? cur.hub : null;   // a newer",
+    "kills_with": [
+      "PAST the TTL",
+      "EXPIRED retained entry"
+    ],
+    "command": [
+      "node",
+      "assign-hub.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-mark-commit",
+    "label": "§F: apply writes unconditionally (absent-fill only at plan time)",
+    "file": "tools/identity-display-name-admin.js",
+    "from": "  await rtdb.ref(path).transaction((cur) => (cur == null ? to : undefined));",
+    "to": "  await rtdb.ref().update({ [path]: to });",
+    "kills_with": [
+      "a no-op writes nothing",
+      "written meanwhile is preserved"
+    ],
+    "command": [
+      "node",
+      "tools/identity-display-name.test.js"
+    ]
+  },
+  {
+    "slice": "brandsrv",
+    "id": "bsrv-bf-fillable",
+    "label": "§B: the read-back passes a fillable driver with no persisted value",
+    "file": "tools/driver-return-backfill-core.js",
+    "from": "    problems.push(v == null\n",
+    "to": "    if (v != null) problems.push(v == null\n",
+    "kills_with": [
+      "read-back before apply names fillable"
+    ],
+    "command": [
+      "node",
+      "tools/driver-return-backfill.test.js"
+    ]
+  },
+  {
     "slice": "relrace",
     "id": "rr-mark",
     "label": "the alert raised on the FIRST (mark) pass — a transient false positive",

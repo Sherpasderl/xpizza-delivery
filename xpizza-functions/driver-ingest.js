@@ -7,12 +7,11 @@
  */
 
 const crypto = require('crypto');
-const { ALLOWED_HUBS, X_PIZZA_HUB } = require('./assign-hub');
 
 const EARTH_RADIUS_M = 6371000;
-// Coords are copied verbatim from the seeded identity hub into the order/task and then the driver
+// Coords are copied verbatim from the restaurant identity's hub into the order/task and then the driver
 // snapshot, so an exact match is expected; a tiny epsilon (~0.11m) tolerates any float-representation
-// noise while staying far below the ~400m gap between the X. Pizza and La Musa hubs.
+// noise while staying far below the gap between any two restaurant hubs (the closest pair is ~400m apart).
 const HUB_MATCH_EPS = 1e-6;
 
 /** Great-circle distance between two lat/lng points, in metres. */
@@ -62,22 +61,61 @@ function coordsMatchHub(hub, lat, lng) {
 }
 
 /**
- * Fail-closed hub guard (S1 E4). A driver's persisted current_hub snapshot is trusted ONLY when its
- * restaurant_id is in ALLOWED_HUBS AND its coords match that hub. Multi-restaurant safe: la_musa is
- * resolvable once its hub is written, but a snapshot that is mismatched (coords ≠ the pinned hub),
- * unknown (rid not in the allowlist), or — for a known rid — missing coords is REFUSED (the caller
- * skips the geofence + logs), defending against a stale/corrupt hub rather than stamping a wrong one.
- * Legacy single-Restaurant path preserved: restaurant_id == null resolves as X. Pizza only when coords
- * are absent (pre-snapshot, today's orders) or exactly the X. Pizza hub.
+ * Fail-closed hub guard (S1 E4; BRAND-AGNOSTIC SERVER X1, PLAN r0 §2.2). A driver's hub snapshot is trusted ONLY when its
+ * restaurant_id is non-null, that restaurant's identity resolves to a hub (`hubs[rid]`, preloaded by the caller from the
+ * identity — no static table) AND the snapshot coords match it. A null restaurant_id is NEVER resolvable (it never maps to
+ * any brand); an unknown rid, a hub-less identity, or mismatched / absent coords are refused (the caller skips the geofence).
  */
-function isHubResolvable(restaurantId, hubLat, hubLng) {
-  if (restaurantId == null) {
-    if (hubLat == null && hubLng == null) return true;          // legacy/today: no snapshot → x_pizza
-    return coordsMatchHub(X_PIZZA_HUB, hubLat, hubLng);         // present coords must BE x_pizza
+function isHubResolvable(restaurantId, hubLat, hubLng, hubs) {
+  if (restaurantId == null) return false;
+  const hub = hubs && hubs[restaurantId];
+  if (!hub) return false;
+  return coordsMatchHub(hub, hubLat, hubLng);
+}
+
+/**
+ * BRAND-AGNOSTIC SERVER (PLAN r3 §D) — which restaurant's hub the ingest geofence uses: current_restaurant_id when non-null
+ * (the task's snapshot, versioned exactly as today); when it is null and the driver has NO task → return_restaurant_id (the
+ * restaurant they last served — a returning driver); otherwise null (no geofence — a null rid never maps to any brand).
+ */
+function ingestHubRid(driver) {
+  const d = driver || {};
+  if (d.current_restaurant_id != null) return d.current_restaurant_id;
+  if (!d.current_task_id && typeof d.return_restaurant_id === 'string') return d.return_restaurant_id;
+  return null;
+}
+
+/**
+ * The ingest geofence hub → { hubLat, hubLng } | null, given `hubs` (the caller's peek of ingestHubRid's restaurant). The
+ * version stamp gates both paths exactly as today (current_hub_task_id null — legacy / accept-lag leniency — or ===
+ * current_task_id). The snapshot path then trusts the snapshot coords only when isHubResolvable (absent coords → null); the
+ * return path uses the return restaurant's own identity hub. Pure.
+ */
+function ingestHubFor(driver, hubs) {
+  const d = driver || {};
+  const rid = ingestHubRid(d);
+  if (rid == null) return null;
+  // the S1 version stamp gates BOTH paths, exactly as today (a versioned-but-stale snapshot self-detects and fail-closes)
+  const versionCurrent = d.current_hub_task_id == null || d.current_hub_task_id === d.current_task_id;
+  if (!versionCurrent) return null;
+  if (d.current_restaurant_id != null) {
+    return isHubResolvable(rid, d.current_hub_lat, d.current_hub_lng, hubs) ? { hubLat: d.current_hub_lat, hubLng: d.current_hub_lng } : null;
   }
-  const hub = ALLOWED_HUBS[restaurantId];
-  if (!hub) return false;                                       // unknown restaurant_id → fail-closed
-  return coordsMatchHub(hub, hubLat, hubLng);                   // mismatched/absent coords → fail-closed
+  const hub = hubs && hubs[rid];
+  return hub ? { hubLat: hub.lat, hubLng: hub.lng } : null;
+}
+
+/**
+ * BRAND-AGNOSTIC SERVER (PLAN r3 §A) — the return-base invariant. Any update that leaves `current_restaurant_id` null while
+ * the driver's prior value was non-null ALSO records that prior value as `return_restaurant_id`, in the same update — so a
+ * returning driver geofences at the restaurant they last served. A null prior writes nothing, so the history survives empty,
+ * duplicate and repeated clears. `prefix` is the multi-path prefix (`drivers/${uid}/`) for the shift callables. Pure.
+ */
+function withReturnCopy(update, existingRid, prefix = '') {
+  if (!update || typeof update !== 'object') return update;
+  const key = `${prefix}current_restaurant_id`;
+  if (!Object.prototype.hasOwnProperty.call(update, key) || update[key] != null || existingRid == null) return update;
+  return { ...update, [`${prefix}return_restaurant_id`]: existingRid };
 }
 
 /** The current_hub snapshot fields for a pickup task's stamped hub. */
@@ -88,11 +126,11 @@ function hubFromPickupTask(t) {
 /**
  * Pure core of the `syncDriverHub` trigger (S1 E3). Given the driver's NEW current_task_id, the task
  * map, and the driver's existing hub snapshot, decide the hub action:
- *   - null / unknown task          → 'clear'   (returning to base → X. Pizza fallback)
+ *   - null / unknown task          → 'clear'   (returning: the ingest geofences at return_restaurant_id — r3 §A)
  *   - pickup task                  → 'set'     (the pickup-approach hub)
  *   - delivery task, hub correct   → 'noop'    (preserve → keeps the at_restaurant→en_route exit-backstop)
  *   - delivery task, hub stale/absent → 'backfill' from the linked pickup (self-heals a lagged/failed
- *     pickup write so a la_musa delivery never inherits the X. Pizza fallback)
+ *     pickup write so a delivery never runs on another restaurant's hub)
  * The trigger wraps this with an idempotent re-read of current_task_id before writing (the residual
  * out-of-order guard); this function makes no I/O and is unit-tested in isolation.
  */
@@ -125,6 +163,11 @@ function resolveHubFromTask(afterTaskId, allTasks, existingHub) {
  * supplies the fresh read + the minimal task map + the existing hub, then applies the returned update.
  */
 function syncDriverHubUpdate(eventAfterTaskId, freshCurrentTaskId, allTasks, existingHub) {
+  // r3 §A: EVERY resulting update passes through the return copy — 'clear', and also 'set' / 'backfill' from a pickup with no
+  // restaurant_id (hubFromPickupTask's `|| null`), which would otherwise null a known restaurant without recording it
+  return withReturnCopy(hubUpdateFor(eventAfterTaskId, freshCurrentTaskId, allTasks, existingHub), (existingHub || {}).current_restaurant_id ?? null);
+}
+function hubUpdateFor(eventAfterTaskId, freshCurrentTaskId, allTasks, existingHub) {
   if (freshCurrentTaskId !== eventAfterTaskId) return null;   // diverged → a newer event handles it
   const r = resolveHubFromTask(eventAfterTaskId, allTasks, existingHub);
   if (r.action === 'noop') return null;
@@ -141,44 +184,33 @@ function syncDriverHubUpdate(eventAfterTaskId, freshCurrentTaskId, allTasks, exi
 }
 
 /**
- * Resolve a pickup task's hub for the same-hub stacking decision (S2). Mirrors resolveAssignHub's
- * X. Pizza fallback so a LEGACY x_pizza order with no stamped hub still resolves to X. Pizza (and thus
- * stays same-hub / force-accepted, unchanged) — but adds a fail-closed branch: a KNOWN non-x_pizza order
- * with a bad/missing hub returns null (excluded) rather than being mis-treated as X. Pizza.
+ * Resolve a pickup task's hub for the same-hub stacking decision (S2; BRAND-AGNOSTIC SERVER r3 §C). `hubs` is the caller's
+ * preloaded map { rid → {lat,lng} | null } from each restaurant's identity (reassertAssignable reads it BEFORE its final
+ * state reads, so this stays pure and synchronous). The pickup's stamped coords must be present AND match its restaurant's
+ * hub; absent coords, a null rid, an unknown / hub-less restaurant or a mismatch → null (no stack), for EVERY brand alike.
  */
-function resolvePickupHub(pk) {
+function resolvePickupHub(pk, hubs) {
   if (!pk) return null;
   const rid = pk.restaurant_id;
+  if (rid == null) return null;
+  const canon = hubs && hubs[rid];
   const lat = pk.destination_lat;
   const lng = pk.destination_lng;
-  const numeric = typeof lat === 'number' && typeof lng === 'number';
-  if (rid == null || rid === 'x_pizza') {
-    // legacy / x_pizza: numeric coords must actually BE X. Pizza (reject a corrupted stamp); a legacy
-    // order with no stamped coords falls back to X. Pizza (unchanged force-accept for legacy x_pizza).
-    if (numeric) return coordsMatchHub(X_PIZZA_HUB, lat, lng) ? { lat, lng } : null;
-    return { lat: X_PIZZA_HUB.lat, lng: X_PIZZA_HUB.lng };
-  }
-  // known non-x_pizza: coords must be present AND match the restaurant's canonical hub (same policy as
-  // S1 isHubResolvable) — a la_musa pickup stamped with x_pizza coords fails closed rather than being
-  // mis-treated as x_pizza. Unknown restaurant_id → null.
-  const canon = ALLOWED_HUBS[rid];
-  return (canon && numeric && coordsMatchHub(canon, lat, lng)) ? { lat, lng } : null;
+  if (!canon || typeof lat !== 'number' || typeof lng !== 'number') return null;
+  return coordsMatchHub(canon, lat, lng) ? { lat, lng } : null;
 }
 
 /**
- * Does the driver have an ACCEPTED (or in_progress) order whose hub matches (hubLat,hubLng)? — the
- * same-hub gate for stacking force-accept (S2). Reads each accepted order's hub from its pickup task
- * (`${order_id}_pickup`, which persists with the stamped hub even after the pickup flips to completed).
- * Uses the same coordsMatchHub/EPS as S1's isHubResolvable so the geofence and stacking gates agree.
- * Pure: the caller (pickEligibleDriver / reassertAssignable) passes a FRESH task map, so it reflects
- * the state at read time (closes the TOCTOU force-accept hole when re-run in the recheck).
+ * Does the driver have an ACCEPTED (or in_progress) order whose hub matches the NEW order's? — the same-hub gate for stacking
+ * force-accept (S2). Reads each accepted order's hub from its pickup task (`${order_id}_pickup`, which persists with the
+ * stamped hub even after the pickup flips to completed). Uses the same coordsMatchHub/EPS as isHubResolvable so the geofence
+ * and stacking gates agree. Pure: the caller passes a FRESH task map plus the preloaded `hubs`; an order whose restaurant is
+ * missing from `hubs` (it appeared after the preload) resolves null → no force-accept (fail closed).
  */
-function driverHasSameHubAccepted(tasks, driverId, newOrderId) {
+function driverHasSameHubAccepted(tasks, driverId, newOrderId, hubs) {
   const all = tasks || {};
-  // Resolve the NEW order's hub FAIL-CLOSED (via resolvePickupHub, NOT resolveAssignHub — which would
-  // x_pizza-fallback a malformed la_musa order and force-accept it onto an x_pizza driver). Unresolvable
-  // new hub → no force-accept.
-  const newHub = resolvePickupHub(all[`${newOrderId}_pickup`]);
+  // Resolve the NEW order's hub FAIL-CLOSED. Unresolvable new hub → no force-accept.
+  const newHub = resolvePickupHub(all[`${newOrderId}_pickup`], hubs);
   if (!newHub) return false;
   const acceptedOrderIds = new Set();
   for (const t of Object.values(all)) {
@@ -186,10 +218,27 @@ function driverHasSameHubAccepted(tasks, driverId, newOrderId) {
     if ((t.status === 'accepted' || t.status === 'in_progress') && t.order_id) acceptedOrderIds.add(t.order_id);
   }
   for (const oid of acceptedOrderIds) {
-    const hub = resolvePickupHub(all[`${oid}_pickup`]);
+    const hub = resolvePickupHub(all[`${oid}_pickup`], hubs);
     if (hub && coordsMatchHub(hub, newHub.lat, newHub.lng)) return true;
   }
   return false;
+}
+
+/**
+ * The restaurant ids whose hubs a same-hub decision for (driverId, newOrderId) needs — the new order's pickup and the driver's
+ * accepted / in-progress pickups, from a (possibly stale) PRELOAD task map. reassertAssignable reads these hubs before its
+ * final reads. Pure.
+ */
+function sameHubRids(tasks, driverId, newOrderId) {
+  const all = tasks || {};
+  const rids = new Set();
+  const add = (pk) => { if (pk && typeof pk.restaurant_id === 'string') rids.add(pk.restaurant_id); };
+  add(all[`${newOrderId}_pickup`]);
+  for (const t of Object.values(all)) {
+    if (!t || t.assigned_driver_id !== driverId || !t.order_id) continue;
+    if (t.status === 'accepted' || t.status === 'in_progress') add(all[`${t.order_id}_pickup`]);
+  }
+  return [...rids].sort();
 }
 
 /**
@@ -262,10 +311,14 @@ module.exports = {
   haversineMeters,
   geofenceTransition,
   isHubResolvable,
+  withReturnCopy,
   resolveHubFromTask,
   syncDriverHubUpdate,
   resolvePickupHub,
   driverHasSameHubAccepted,
+  sameHubRids,
+  ingestHubRid,
+  ingestHubFor,
   selectIngestPoints,
   hashToken,
   validateIngestToken,

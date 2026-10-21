@@ -141,4 +141,17 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
   return updates;
 }
 
-module.exports = { buildMaterializeUpdates };
+// BRAND-AGNOSTIC SERVER (PLAN-brand-agnostic-server r3 §E) — the `restaurant` a materialize caller passes in. A stamped order
+// (charge-time hub snapshot) gets the deps object unchanged, with no read — byte-identical to today. A PRE-SNAPSHOT order gets
+// ITS restaurant's identity hub via the injected deps.hubFor(rid) (never the x_pizza constant); unresolved → null coords, so
+// the task materializes hub-less and the order takes the hub_unresolved intake path. The only I/O is the injected hubFor.
+async function materializeRestaurant(deps, order) {
+  const base = (deps && deps.restaurant) || {};
+  const o = order || {};
+  if (Number.isFinite(o.hub_lat) && Number.isFinite(o.hub_lng)) return base;
+  let hub = null;
+  try { hub = deps && typeof deps.hubFor === 'function' ? await deps.hubFor(o.restaurant_id || null) : null; } catch (_) { hub = null; }
+  return { ...base, lat: hub ? hub.lat : null, lng: hub ? hub.lng : null };
+}
+
+module.exports = { buildMaterializeUpdates, materializeRestaurant };

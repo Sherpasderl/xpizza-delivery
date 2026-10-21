@@ -13,7 +13,7 @@ const { execFileSync } = require('child_process');
 const { unapplyTrackerFixesIndex, INDEX_HUNKS } = require('./tools/tracker-fixes-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const idx = require('./tools/release-race-inverse').unapplyReleaseRaceIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // RELEASE RACE (newest layer) reversed first
+const idx = require('./tools/release-race-inverse').unapplyReleaseRaceIndex(require('./tools/brand-server-inverse').unapplyBrandServerIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')));   // BRAND-AGNOSTIC SERVER (newest) then RELEASE RACE reversed first
 const BASE = execFileSync('git', ['show', '09fb9705:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.strictEqual(unapplyTrackerFixesIndex(idx), BASE, '🔴 index.js minus the tracker-fixes hunks is not 09fb9705:index.js');

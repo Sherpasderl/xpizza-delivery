@@ -21,7 +21,9 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 
 // ── 1. the inverse ──
 assert.deepStrictEqual([...FILES].sort(), ['create-order-build.js', 'materialize.js']);
-for (const f of FILES) assert.strictEqual(unapplyD12b(f, read(f)), baseOf(f), `🔴 ${f} minus the D12b hunks is not ${BASE}:${f}`);
+// BRAND-AGNOSTIC SERVER (r3 §E; newest — materialize.js) is reversed first
+const bsRead = (f) => require('./tools/brand-server-inverse').unapplyBrandServerModule(f, read(f));
+for (const f of FILES) assert.strictEqual(unapplyD12b(f, bsRead(f)), baseOf(f), `🔴 ${f} minus the D12b hunks is not ${BASE}:${f}`);
 {
   const f = 'create-order-build.js'; const src = read(f);
   const outside = src.replace("'use strict';", "'use strict'; ");
@@ -36,7 +38,7 @@ ok(`PROOF: unapplyD12b → ${BASE} byte-for-byte for ${FILES.length} modules (${
 // ── 1b. index.js (codex D12b r1 P2-2): ONE delimited, byte-pinned block — requestOtp's message ──
 {
   // the per-product extras blocks (the newest index.js slice), then the WhatsApp-cancel block, are reversed first, as in every fold guard
-  const real = require('./tools/wacancel-inverse').unapplyWaCancelIndex(require('./tools/extras-inverse').unapplyExtrasIndex(require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('./tools/release-race-inverse').unapplyReleaseRaceIndex(read('index.js')))))))))))))));
+  const real = require('./tools/wacancel-inverse').unapplyWaCancelIndex(require('./tools/extras-inverse').unapplyExtrasIndex(require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('./tools/release-race-inverse').unapplyReleaseRaceIndex(require('./tools/brand-server-inverse').unapplyBrandServerIndex(read('index.js'))))))))))))))));
   const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(unapplyD12bIndex(real), real, 'non-vacuity: the d12b block is present and swapped back');
   assert.strictEqual(unapplyD12bIndex(real), baseIdx, `🔴 index.js minus the d12b block is not ${BASE}:index.js`);

@@ -1385,7 +1385,7 @@
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
-      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-functions/driver-ingest.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -1517,7 +1517,7 @@
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
-      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-functions/driver-ingest.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -1649,7 +1649,7 @@
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
-      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-functions/driver-ingest.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -1781,7 +1781,7 @@
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
-      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-functions/driver-ingest.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -1913,7 +1913,7 @@
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
-      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-functions/driver-ingest.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -2045,7 +2045,7 @@
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
-      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-functions/driver-ingest.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -3836,7 +3836,7 @@
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
-      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-functions/driver-ingest.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -3940,7 +3940,7 @@
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
-      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-functions/driver-ingest.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -4108,7 +4108,7 @@
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
-      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-functions/driver-ingest.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -4212,7 +4212,7 @@
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
-      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-functions/driver-ingest.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -11856,14 +11856,14 @@
     "site": "if (didNotify && deps.sendScheduledSlotClosed) { try { await deps.sendScheduledSlotClosed(db, { orderId, order }); } catch (_) {} }",
     "siteSha": "893a10464deb4f02f240ce89d6f56ab6620dde110064ea556d8b8a8617438fb9",
     "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
-    "scopeSha": "3c1d4305bf10885c4080a36ea24e4064239a8d99df11cf10d3bfbe2dec89c6f7"
+    "scopeSha": "625e4e2596ed2a59060449e50a2a61636b06851431986896ea68efb03e66d066"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
      "text": "if (Number.isFinite(Number(order.scheduled_for))) {",
-     "scopeSha": "3c1d4305bf10885c4080a36ea24e4064239a8d99df11cf10d3bfbe2dec89c6f7"
+     "scopeSha": "625e4e2596ed2a59060449e50a2a61636b06851431986896ea68efb03e66d066"
     }
    ],
    "cases": {
@@ -12724,7 +12724,7 @@
      "kind": "S",
      "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
      "text": "if (Number.isFinite(Number(order.scheduled_for))) {",
-     "scopeSha": "3c1d4305bf10885c4080a36ea24e4064239a8d99df11cf10d3bfbe2dec89c6f7"
+     "scopeSha": "625e4e2596ed2a59060449e50a2a61636b06851431986896ea68efb03e66d066"
     }
    ],
    "cases": {

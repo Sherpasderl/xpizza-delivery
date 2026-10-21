@@ -91,7 +91,9 @@ const ambiguousCard = (oid) => ({ payment_method: 'online', payment_status: 'con
     config: { auto_assign_enabled: true },
     drivers: { dA: driver('A'), dB: driver('B'), dM1: { ...driver('M1') }, dM2: { ...driver('M2') }, dE: driver('E'), dF: driver('F'),
       dM3: driver('M3'), dM4: driver('M4'), dG: driver('G'), dH: driver('H'), dM5: driver('M5'), dI: driver('I') },
-    restaurants: { tb_norte: { order_surface: 'handheld', handhelds: { hh_a: { kind: 'handheld', revoked: false } } } },
+    // brand-agnostic X1: an order is ranked from its restaurant's identity hub (no x_pizza fallback) — the restaurant has one
+    restaurants: { tb_norte: { order_surface: 'handheld', handhelds: { hh_a: { kind: 'handheld', revoked: false } },
+      identity: { name: 'Norte', hub_lat: 15.53, hub_lng: -88.01, phone: '+504', whatsapp_instance: 'i', whatsapp_enabled: false, delivery_radius_km: 9, hours: { sun: { open: true, start: '00:00', end: '23:59' } }, active: true, version: 1 } } },
     payment_attempts: { att_m5: { order_id: 'm5', hosted_order_id: 'm5-att_m5', hosted_state: 'paid', payment_uuid: 'S-m5', capture_verified: true }, att_a2: { order_id: 'a2', hosted_order_id: 'a2-att_a2', hosted_state: 'paid' }, att_m4: { order_id: 'm4', hosted_order_id: 'm4-att_m4', hosted_state: 'paid' } },
     orders: {
       h1: order('h1'), c1: order('c1'),
