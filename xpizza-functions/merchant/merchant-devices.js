@@ -82,7 +82,7 @@ async function heartbeat(deps, auth, data) {
 }
 
 // merchantMyLocations (advisor O-2): the locations a HUMAN may pair a device for — every member location of a brand they own,
-// plus each member location they manage. Retired locations are excluded. Reads /brands (small) and per-candidate owner /
+// plus each member location they manage (ORCHESTRATION O1a: STAGED locations count as members here). Retired locations are excluded. Reads /brands (small) and per-candidate owner /
 // manager / location_name / prep_default_min nodes; never /orders. Devices and customers are refused; a read failure is `unavailable`.
 async function myLocations(deps, auth, _data) {
   const { db, HttpsError } = deps;
@@ -95,7 +95,7 @@ async function myLocations(deps, auth, _data) {
     const brands = (await val('brands')) || {};
     for (const b of Object.keys(brands).sort()) {
       const locs = isObj(brands[b]) && isObj(brands[b].locations) ? brands[b].locations : {};
-      const members = Object.keys(locs).filter((rid) => locs[rid] === 'member' && V.vRid(rid)).sort();
+      const members = Object.keys(locs).filter((rid) => (locs[rid] === 'member' || locs[rid] === 'staged') && V.vRid(rid)).sort();   // O1a T9: staged too (pair + managers before opening)
       if (!members.length) continue;
       const owner = (await val(`restaurants/${b}/owners/${auth.uid}`)) != null;
       for (const rid of members) {

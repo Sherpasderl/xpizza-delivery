@@ -139,3 +139,16 @@ test('myLocations: owner → every member location of their brand; manager → o
   const broken = createFakeDb({}); broken.failReads.add('brands');
   await rejectsCode(D.myLocations(deps(broken, fakeAuth()), human('own_tb'), {}), 'unavailable');
 });
+
+// ORCHESTRATION O1a T9 (plan r3.1 §3, P-B): STAGED branches are listed too (pairing + managers before opening); retired still excluded
+test('O1a: myLocations lists a STAGED branch (owner + its manager); retired still excluded', async () => {
+  const db = createFakeDb({
+    brands: { tb: { name: 'TB', active: true, locations: { tb_centro: 'member', tb_sur: 'staged', tb_viejo: 'retired' } } },
+    restaurants: { tb: { owners: { own_tb: true } }, tb_centro: { identity: { location_name: 'Centro', prep_default_min: 18 } },
+      tb_sur: { managers: { mgr_s: true }, identity: { location_name: 'Sur', prep_default_min: 20 } }, tb_viejo: { identity: { location_name: 'Viejo' } } },
+  });
+  const d = deps(db, fakeAuth());
+  assert.deepStrictEqual(await D.myLocations(d, human('own_tb'), {}), [
+    { rid: 'tb_centro', brand_id: 'tb', location_name: 'Centro', prep_default_min: 18 }, { rid: 'tb_sur', brand_id: 'tb', location_name: 'Sur', prep_default_min: 20 }]);
+  assert.deepStrictEqual(await D.myLocations(d, human('mgr_s'), {}), [{ rid: 'tb_sur', brand_id: 'tb', location_name: 'Sur', prep_default_min: 20 }]);
+});
