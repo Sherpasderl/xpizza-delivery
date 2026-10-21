@@ -1,6 +1,8 @@
 'use strict';
 // PLATFORM F1 — the brand / location model (PLAN-multi-location §1.2, §3.4, §3.5). PURE: no I/O, no clock, no brand literal.
-//   /brands/{brandId}            { name, active, locations: {rid: 'member'|'retired'}, activation: {state, since} }   (C1 extends)
+//   /brands/{brandId}            { name, active, locations: {rid: 'member'|'retired'|'staged'}, activation: {state, since} }   (C1 extends)
+//   'staged' (orchestration r3.1 §3, P-B): materialized by Sherpa but not yet open — listed (membership both ways), never routed /
+//   projected; a legacy brand stays legacy while its only MEMBER is itself (staged siblings wait for the activation cutover).
 //   /restaurants/{rid}/identity  + brand_id, location_name, zone {type:'circle', radius_km}, prep_default_min
 // brandIdOf is NOT pickup-label.js's brandOf (that one resolves a display name). 'unknown' is a value AND a reserved id.
 const { isRoutingValid } = require('../restaurant-config');
@@ -9,7 +11,8 @@ const UNKNOWN = 'unknown';
 const ZONE_MAX_KM = 50;
 const ID = /^[a-z0-9_]{1,40}$/;
 const STATES = new Set(['legacy', 'off', 'on']);
-const LOC_STATES = new Set(['member', 'retired']);
+const LOCATION_STATES = ['member', 'retired', 'staged'];
+const LOC_STATES = new Set(LOCATION_STATES);
 const BRAND_KEYS = ['activation', 'active', 'locations', 'name'];
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -35,14 +38,19 @@ function validateBrand(brandId, rec) {
   if (!isObj(locs) || !Object.keys(locs).length) e.push('locations must be a non-empty object');
   else for (const [rid, st] of Object.entries(locs)) {
     if (!isBrandId(rid)) e.push(`bad location id ${JSON.stringify(rid)}`);
-    if (!LOC_STATES.has(st)) e.push(`location ${rid}: state must be member|retired`);
+    if (!LOC_STATES.has(st)) e.push(`location ${rid}: state must be member|retired|staged`);
   }
   const a = rec.activation;
   if (!isObj(a) || Object.keys(a).some((k) => k !== 'state' && k !== 'since')) e.push('activation must be exactly {state, since}');
   else {
     if (!STATES.has(a.state)) e.push('activation.state must be legacy|off|on');
     if (!Number.isFinite(a.since)) e.push('activation.since must be a finite number');
-    if (a.state === 'legacy' && isObj(locs) && !(Object.keys(locs).length === 1 && locs[brandId] === 'member')) e.push('legacy requires locations === {brandId: member}');
+    if (a.state === 'legacy' && isObj(locs)) {
+      // the MEMBER entries are exactly {brandId}; staged siblings allowed (they wait for the cutover); nothing retired
+      const states = Object.entries(locs);
+      const members = states.filter(([, st]) => st === 'member').map(([rid]) => rid);
+      if (!(members.length === 1 && members[0] === brandId) || states.some(([, st]) => st === 'retired')) e.push('legacy requires the member entries === {brandId} (staged siblings allowed, none retired)');
+    }
   }
   return res(e);
 }
@@ -120,4 +128,4 @@ function checkMembership(brands, identities) {
   return out.sort((x, y) => (key(x) < key(y) ? -1 : key(x) > key(y) ? 1 : 0));
 }
 
-module.exports = { UNKNOWN, ZONE_MAX_KM, isBrandId, validateBrand, validateZone, validateBranchIdentity, brandIdOf, checkMembership };
+module.exports = { LOCATION_STATES, UNKNOWN, ZONE_MAX_KM, isBrandId, validateBrand, validateZone, validateBranchIdentity, brandIdOf, checkMembership };

@@ -97,4 +97,24 @@ assert.deepStrictEqual(codes({ tb_brand: TB }, { tb_centro: ids.tb_centro, tb_no
 assert.strictEqual(M.brandIdOf('constructor', ident(), {}), M.UNKNOWN, 'brandIdOf never resolves a prototype key as a legacy brand');
 ok('prototype keys and all-digit ids are refused; lookups are own-property only');
 
+// ── ORCHESTRATION O1a (PLAN-multi-location-orchestration r3.1 §3, P-B): the 'staged' location state ──
+const STG = { ...TB, locations: { ...TB.locations, tb_sur: 'staged' } };
+assert.deepStrictEqual(M.validateBrand('tb_brand', STG), { ok: true }, 'staged is a valid location state');
+const legStaged = { ...legacy('leg_a'), locations: { leg_a: 'member', leg_a_centro: 'staged' } };
+assert.deepStrictEqual(M.validateBrand('leg_a', legStaged), { ok: true }, 'legacy: the MEMBER entries are exactly {b}; staged entries allowed');
+for (const [rec, why] of [
+  [{ ...legacy('leg_a'), locations: { leg_a: 'member', leg_a_centro: 'member' } }, 'legacy with a second MEMBER'],
+  [{ ...legacy('leg_a'), locations: { leg_a: 'staged' } }, 'legacy whose own entry is staged (no member)'],
+  [{ ...legacy('leg_a'), locations: { leg_a: 'member', leg_a_centro: 'retired' } }, 'legacy with a retired sibling'],
+]) assert.strictEqual(M.validateBrand('leg_a', rec).ok, false, why);
+assert.strictEqual(M.brandIdOf('leg_a', ident(), { leg_a: legStaged }), 'leg_a', 'a legacy singleton with a staged sibling still resolves to itself');
+assert.strictEqual(M.brandIdOf('leg_a_centro', branch('leg_a'), { leg_a: legStaged }), 'leg_a', 'the staged branch resolves by its explicit brand_id');
+const stgIds = { tb_centro: branch('tb_brand'), tb_norte: branch('tb_brand'), tb_sur: branch('tb_brand', { active: false }) };
+assert.deepStrictEqual(M.checkMembership({ tb_brand: STG }, stgIds), [], 'a staged entry counts as listed (both directions)');
+assert.deepStrictEqual(codes({ leg_a: legStaged }, { leg_a: ident(), leg_a_centro: branch('leg_a') }), [], 'legacy + staged sibling: consistent');
+assert.deepStrictEqual(codes({ tb_brand: STG }, { ...stgIds, tb_sur: branch('other_b') }), ['brand_id_mismatch:tb_brand:tb_sur', 'brand_missing:other_b:tb_sur'], 'a staged entry is still checked');
+assert.deepStrictEqual(codes({ tb_brand: STG }, { tb_centro: stgIds.tb_centro, tb_norte: stgIds.tb_norte }), ['identity_missing:tb_brand:tb_sur'], 'a staged entry needs its identity');
+assert.deepStrictEqual(M.LOCATION_STATES, ['member', 'retired', 'staged'], 'exported location states');
+ok("staged state: valid entry; legacy = member entries exactly {b}; brandIdOf / checkMembership treat staged as listed");
+
 console.log(`brand-model: OK (${n})`);
