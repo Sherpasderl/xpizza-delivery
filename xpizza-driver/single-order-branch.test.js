@@ -56,15 +56,19 @@ const ICONS = Object.fromEntries(['bell', 'bike', 'cash', 'check', 'close', 'mob
 const deferred = () => { let resolve, reject; const promise = new Promise((res, rej) => { resolve = res; reject = rej; }); return { promise, resolve, reject }; };
 const tick = () => new Promise((r) => setTimeout(r, 0));   // flush microtasks + the async onUp continuation
 
-// A deterministic stacked active card that carries a REAL slide element (so a stacked drag is drivable).
-// Identical for mine and baseline, so cell (d)'s byte comparison still isolates the BRANCH, not the stub.
-const STACK_SLIDE = '<div class="slide-confirm pickup" id="btn-pickup"><div class="slide-fill"></div><div class="slide-thumb"></div></div>';
+// A deterministic stacked active card that carries a REAL slide element MATCHING the active order's phase
+// (pickup → btn-pickup, delivery → btn-delivered, offer → btn-accept) — an HONEST fixture, drivable by the
+// real drag handler. Identical for mine and baseline, so cell (d)'s byte comparison isolates the BRANCH.
+const slideFor = (phase) => {
+  const id = phase === 'delivery' ? 'btn-delivered' : phase === 'awaiting_acceptance' ? 'btn-accept' : 'btn-pickup';
+  return `<div class="slide-confirm" id="${id}"><div class="slide-fill"></div><div class="slide-thumb"></div></div>`;
+};
 
 // Deterministic recording stubs for the stacked render helpers — IDENTICAL for my version and baseline.
 function stackedStubs(rec) {
   return {
     renderIncomingBanners: (p) => `IB[${(p || []).map((o) => o.orderId).join(',')}]`,
-    renderActiveCard: (a, solo) => { rec.activeCard = { orderId: a.orderId, solo }; return `AC[${a.orderId},${solo}]${STACK_SLIDE}`; },
+    renderActiveCard: (a, solo) => { rec.activeCard = { orderId: a.orderId, solo }; return `AC[${a.orderId},${solo}]${slideFor(a.phase)}`; },
     renderQueue: (q) => `Q[${(q || []).map((o) => o.orderId).join(',')}]`,
     attachIncomingBannerHandlers: () => {},
     restaurantChip: () => '', displayOrderLabel: (o) => String((o && o.display_number) || ''),
@@ -222,6 +226,26 @@ t('latch A → idle → delivery → pickup A FAR AWAY ⇒ NOT review (stale lat
   assert.ok(r.active().includes('id="btn-at-restaurant"'), 'to-restaurant card, NOT review');
   assert.ok(!r.active().includes('id="btn-pickup"'), 'review did NOT re-open from the stale latch');
 });
+// codex r2 P2-3: the latch must clear whenever the board is NOT single-order — empty OR stacked — not only
+// on a phase change. These are the two direct repros (no delivery leg in between).
+t('latch RESET: latch A → idle (0 orders) → pickup A at 999 m ⇒ NOT review', async () => {
+  const r = run(MY_SCRIPT, { orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03 }, dist: 999 });
+  const d = r.prep('btn-at-restaurant'); r.down(d); r.move(1000); await r.up(1000);
+  assert.equal(r.api.getLatch(), '0:A', 'latched');
+  r.setOrders([]); r.render();                              // board empties → #active-order-slot cleared
+  r.setOrders([pickup('A')]); r.render();                   // same order returns, still far
+  assert.equal(r.api.getLatch(), null, 'the idle gap cleared the latch');
+  assert.ok(r.active().includes('id="btn-at-restaurant"') && !r.active().includes('id="btn-pickup"'), 'to-restaurant, NOT review');
+});
+t('latch RESET: latch A → stacked (2 orders) → pickup A at 999 m ⇒ NOT review', async () => {
+  const r = run(MY_SCRIPT, { orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03 }, dist: 999 });
+  const d = r.prep('btn-at-restaurant'); r.down(d); r.move(1000); await r.up(1000);
+  assert.equal(r.api.getLatch(), '0:A', 'latched');
+  r.setOrders([delivery('A'), delivery('B')]); r.render();  // board goes stacked → branch clears the latch
+  assert.equal(r.api.getLatch(), null, 'the stacked board cleared the latch');
+  r.setOrders([pickup('A')]); r.render();                   // same order returns, still far
+  assert.ok(r.active().includes('id="btn-at-restaurant"') && !r.active().includes('id="btn-pickup"'), 'to-restaurant, NOT review');
+});
 t('latch also clears on a DIFFERENT order and on an auth/session change', async () => {
   const r = run(MY_SCRIPT, { orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03 }, dist: 999 });
   let d = r.prep('btn-at-restaurant'); r.down(d); r.move(1000); await r.up(1000);
@@ -253,17 +277,17 @@ t('(a) 1→2 while a slide drag is in progress → render DEFERS, replays to sta
 });
 
 // ── (b) 2→1 while an action write is pending → deferred, replayed when the write settles ──
-t('(b) 2→1 while a pickup write is PENDING → deferred during the await, single view on settle', async () => {
-  const r = run(MY_SCRIPT, { orders: [delivery('A'), pickup('B')], driverState: { lat: 15.5, lng: -88.03 }, dist: 999 });
+t('(b) 2→1 while a delivery write is PENDING → deferred during the await, single view on settle', async () => {
+  const r = run(MY_SCRIPT, { orders: [delivery('A'), delivery('B')], driverState: { lat: 15.5, lng: -88.03 }, dist: 999 });
   assert.ok(r.rec.activeCard, 'starts stacked (2 orders)');
-  const d = r.prep('btn-pickup');                           // the stacked active card's real slide
+  const d = r.prep('btn-delivered');                        // the stacked active card's real slide — delivery phase ⇒ btn-delivered
   r.down(d); r.move(1000);
-  await r.up(1000);                                         // completes → onConfirm (pickupComplete) PENDING
-  assert.ok(r.writes['btn-pickup'], 'the pickup write is in flight');
+  await r.up(1000);                                         // completes → onConfirm (completeTask) PENDING
+  assert.ok(r.writes['btn-delivered'], 'the delivery write is in flight');
   assert.ok(r.api.getSliding(), 'slidingEl held while the write is pending');
   r.setOrders([delivery('A')]); r.render();                // feed drops to 1 while pending
   assert.equal(r.api.getRenderPending(), true, 'render deferred while the write is pending');
-  r.writes['btn-pickup'].resolve();                        // write settles
+  r.writes['btn-delivered'].resolve();                     // write settles
   await tick();
   assert.equal(r.api.getSliding(), null, 'slidingEl cleared after the write settled');
   assert.ok(r.active().includes('sv-card'), 'replayed into the single-order view (1 order)');

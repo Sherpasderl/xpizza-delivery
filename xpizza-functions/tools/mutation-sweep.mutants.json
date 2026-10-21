@@ -15825,5 +15825,29 @@
       "node",
       "../xpizza-driver/slice1-contrast.test.js"
     ]
+  },
+  {
+    "id": "drv1-19",
+    "slice": "drv1",
+    "file": "../xpizza-driver/index.html",
+    "from": "orders.length !== 1 ||",
+    "to": "false ||",
+    "label": "review latch not cleared on a STACKED board (P2-3 r2) — a stale tap re-opens review after 2+ orders → 1 again",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv1-20",
+    "slice": "drv1",
+    "file": "../xpizza-driver/index.html",
+    "from": "activeSlot.innerHTML === ''",
+    "to": "false",
+    "label": "review latch not cleared after the board EMPTIED (P2-3 r2) — a stale tap re-opens review after idle → same order again",
+    "command": [
+      "node",
+      "../xpizza-driver/single-order-branch.test.js"
+    ]
   }
 ]

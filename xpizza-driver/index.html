@@ -2838,6 +2838,10 @@ function renderActiveAndQueue() {
   // attachActiveCardHandlers (btn-accept / btn-pickup / btn-delivered), reused verbatim; the only new control
   // is the client-only btn-at-restaurant review toggle. Vuelto uses the existing #active-order-slot
   // [data-vuelto-open] delegate — sv-paywith carries data-total / data-tendered.
+  // Review latch lives ONLY while the board stays single-order: the moment it is anything else (a stacked
+  // board reaches here with length > 1; the empty board cleared #active-order-slot on its way out), drop the
+  // latch so a later pickup of the same order can never inherit a stale "Ya estoy en el restaurante".
+  if (orders.length !== 1 || activeSlot.innerHTML === '') slice1ReviewLatchKey = null;
   if (orders.length === 1) {
     const soloOrder = orders[0];
     queuedOrders = [];
