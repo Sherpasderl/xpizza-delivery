@@ -19031,6 +19031,22 @@
     ]
   },
   {
+    "id": "fieldstate-01",
+    "slice": "fieldstate",
+    "label": "train-3 follow-up: a refused save marks the drawer field with the global .err block (display:none hides the field and its message)",
+    "file": "../xpizza-portal/app.js",
+    "from": "    if (m) { f.classList.add('invalid'); f.append(mk('div', 'ferr', m)); }",
+    "to": "    if (m) { f.classList.add('err'); f.append(mk('div', 'ferr', m)); }",
+    "kills_with": [
+      "the field state is .invalid"
+    ],
+    "command": [
+      "node",
+      "--test",
+      "../xpizza-portal/pubreq.test.mjs"
+    ]
+  },
+  {
     "id": "drv1-01",
     "slice": "drv1",
     "file": "../xpizza-driver/single-order-view.js",

@@ -92,8 +92,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "1a4d7e42a883700ca7134468023650a3c1c9c0d19a3fa16f42bbc1162e660361",
-   "bytes": 89428
+   "sha256": "6ae2646fa7c8f8c78a2df3f91a34cf395ba578d5384966f4bebcc771ee2dfd41",
+   "bytes": 89444
   }
  },
  "diff_aid": {
@@ -1035,7 +1035,7 @@
    ],
    [
     "",
-    ".fld.err input,.fld.err textarea,.fld.err select",
+    ".fld.invalid input,.fld.invalid textarea,.fld.invalid select",
     "border-color",
     "var(--red)"
    ],
@@ -1365,7 +1365,7 @@
    ],
    [
     "",
-    ".modgrp.err .mgname-in",
+    ".modgrp.invalid .mgname-in",
     "border-color",
     "var(--red)"
    ],

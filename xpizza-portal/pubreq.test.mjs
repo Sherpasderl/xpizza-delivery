@@ -171,3 +171,27 @@ test('D1 owner: publishing through TODAY\'s review (fiscal ack → publishEdited
   assert.equal(p.badge(), null, 'the badge is retired by the publish');
   assert.ok(p.banner().classList.contains('hidden'), 'and the banner');
 });
+
+// ── train-3 Codex follow-up: a refused save's FIELD state must never take the global `.err` message block's display:none ──
+// The real flow (add a product → editCatalog refuses name_taken → «Corregir el nombre» reopens the drawer) under the REAL
+// styles.css: the named field and its message stay rendered (the field state is `.invalid`, not the hidden `.err` block).
+test('drawer: a refused save marks the named field INVALID and keeps it visible (never the global .err display:none)', async () => {
+  const src = { restaurant_id: 'r_fx', schema_version: 1, items: [{ key: 'Pepperoni', price: 245, display: { id: 1, cat: 'c', name: 'Pepperoni', price: 245 } }], extras: [],
+    structure: { schema_version: 2, item_order: ['Pepperoni'], categories: [{ id: 'c', name: 'Pizzas' }] } };
+  const p = await page({ menu: MENU({ source: src, usesPlatformFactura: false, renderedCategories: ['c'] }), on: {
+    editCatalog: (b) => errJson(409, { error: 'name_taken', ref: b.source.items.find((i) => i.ref).ref, field: 'name' }) } });
+  const css = p.d.createElement('style'); css.textContent = readFileSync(join(DIR, 'styles.css'), 'utf8'); p.d.head.append(css);
+  p.d.querySelector('.addrow').click(); await settle();
+  const ins = [...p.d.getElementById('drawer').querySelectorAll('input')];
+  const set = (label, v) => { const i = ins.find((x) => x.getAttribute('aria-label') === label); i.value = v; i.dispatchEvent(new p.w.Event('input')); };
+  set('Nombre', 'Pepperoni'); set('Precio', '420');
+  p.d.getElementById('review').click(); await settle();
+  const fix = [...p.d.querySelectorAll('#mbody button, #revFoot button')].find((b) => b.textContent === 'Corregir el nombre');
+  assert.ok(fix, 'premise: the designed name_taken panel');
+  fix.click(); await settle();
+  const f = [...p.d.querySelectorAll('#drawer .fld')].find((x) => x.querySelector('.ferr'));
+  assert.ok(f && f.textContent.includes('Nombre'), 'premise: the Nombre field carries the message');
+  assert.ok(f.classList.contains('invalid') && !f.classList.contains('err'), 'the field state is .invalid');
+  assert.notEqual(p.w.getComputedStyle(f).display, 'none', '🔴 the invalid field (and its message) stays rendered');
+});
+

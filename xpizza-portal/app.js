@@ -924,7 +924,7 @@ function renderAddDrawer(d, it, keepScroll) {
     const f = mk('div', 'fld');
     f.append(mk('label', null, label), control);
     const m = errKey ? errFor(errKey) : null;
-    if (m) { f.classList.add('err'); f.append(mk('div', 'ferr', m)); }
+    if (m) { f.classList.add('invalid'); f.append(mk('div', 'ferr', m)); }
     return f;
   };
   const after = () => { refreshBar(); paint(); };
@@ -994,7 +994,7 @@ function renderAddDrawer(d, it, keepScroll) {
     refreshBar(); syncRow('item', id, price.value);
   }));
   prf.append(price);
-  if (errFor('price')) { prf.classList.add('err'); prf.append(mk('div', 'ferr', errFor('price'))); }
+  if (errFor('price')) { prf.classList.add('invalid'); prf.append(mk('div', 'ferr', errFor('price'))); }
   row2.append(prf);
   body.append(row2);
 
@@ -1105,7 +1105,7 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
   }
   grp.append(h);
   const labelErr = errOn && (errField === 'label' || errField === 'choices' || errField === 'prompt') ? errMsg : null;
-  if (labelErr) { grp.classList.add('err'); grp.append(mk('div', 'ferr', labelErr)); }
+  if (labelErr) { grp.classList.add('invalid'); grp.append(mk('div', 'ferr', labelErr)); }
 
   if (group && open) {
     const gb = mk('div', 'mgbody');
@@ -1158,7 +1158,7 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
       }
       gb.append(row);
       const oErr = errAt(oid);
-      if (oErr) { row.classList.add('err'); gb.append(mk('div', 'ferr', oErr)); }
+      if (oErr) { row.classList.add('invalid'); gb.append(mk('div', 'ferr', oErr)); }
     }
     if (unsaved) {
       const add = document.createElement('button'); add.className = 'mgadd'; add.type = 'button';

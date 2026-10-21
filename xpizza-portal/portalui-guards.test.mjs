@@ -41,6 +41,29 @@ const TD_BLOCKS = [
   [/\/\/ PLAN-portal-team-invites T-d — the two per-load facts[\s\S]*?\nfunction applyPublishRequestFacts\(data\) \{[\s\S]*?\n\}\n/, 'applyPublishRequestFacts'],
   [/\/\/ ── PLAN-portal-team-invites T-d — «Enviar al dueño para publicar» [\s\S]*?\nasync function sendToOwnerFlow\(\) \{[\s\S]*?\n\}\n/, 'sendToOwnerFlow'],
 ];
+// ── train-3 Codex follow-up (3a, fix/tb-team-css): a drawer FIELD state is `.invalid`, never the global `.err` message block (its
+// display:none hid the whole field). EXACTLY these four app.js lines changed ('err' → 'invalid'); the pins below judge app.js with
+// them folded back, so every other byte stays proven against its own base.
+const FS_LINES = [
+  ["    if (m) { f.classList.add('invalid'); f.append(mk('div', 'ferr', m)); }\n", "    if (m) { f.classList.add('err'); f.append(mk('div', 'ferr', m)); }\n"],
+  ["  if (errFor('price')) { prf.classList.add('invalid'); prf.append(mk('div', 'ferr', errFor('price'))); }\n", "  if (errFor('price')) { prf.classList.add('err'); prf.append(mk('div', 'ferr', errFor('price'))); }\n"],
+  ["  if (labelErr) { grp.classList.add('invalid'); grp.append(mk('div', 'ferr', labelErr)); }\n", "  if (labelErr) { grp.classList.add('err'); grp.append(mk('div', 'ferr', labelErr)); }\n"],
+  ["      if (oErr) { row.classList.add('invalid'); gb.append(mk('div', 'ferr', oErr)); }\n", "      if (oErr) { row.classList.add('err'); gb.append(mk('div', 'ferr', oErr)); }\n"],
+];
+function withoutFs(src) {
+  let out = src;
+  for (const [now, was] of FS_LINES) {
+    assert.equal(out.split(now).length - 1, 1, `field-state hunk occurs exactly once: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const appJs = () => withoutFs(read('app.js'));
+test('app.js field state (train-3 follow-up): exactly the four named lines; no field toggles the global .err block', () => {
+  assert.ok(withoutFs(read('app.js')) !== read('app.js'), 'non-vacuity: the fold changes something');
+  assert.ok(!/classList\.(add|toggle)\('err'/.test(read('app.js')), 'no app.js element is given the global .err class');
+});
+
 function withoutTd(src) {
   let out = src;
   for (const [now, was] of TD_LINES) {
@@ -57,19 +80,19 @@ function withoutTd(src) {
 
 test('app.js T-d (3a): exactly the named hunks — folding them out gives the pre-T-d file byte-for-byte; the owner path is untouched', () => {
   const was = execFileSync('git', ['show', `${TD_BASE}:xpizza-portal/app.js`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
-  assert.equal(withoutTd(read('app.js')), was, 'app.js minus the T-d hunks ≠ the pre-T-d app.js');
+  assert.equal(withoutTd(appJs()), was, 'app.js minus the T-d hunks ≠ the pre-T-d app.js');
   // the publish path itself carries no T-d line: runPublish / settle / the attestation are byte-identical top-level statements
-  const now = topLevel(read('app.js'));
+  const now = topLevel(appJs());
   for (const keep of ['async function runPublish() {', 'function syncUi() {', 'function showOutcome(outcome) {']) {
     assert.ok(now.some((x) => x.startsWith(keep)) && topLevel(was).some((x) => x.startsWith(keep) && now.includes(x)), `byte-identical: ${keep}`);
   }
   // non-vacuity: the fold really removes something, and a stray extra edit would survive it
-  assert.ok(withoutTd(read('app.js')).length < read('app.js').length);
-  assert.notEqual(withoutTd(read('app.js').replace('function syncUi() {', 'function syncUi() { ')), was);
+  assert.ok(withoutTd(appJs()).length < appJs().length);
+  assert.notEqual(withoutTd(appJs().replace('function syncUi() {', 'function syncUi() { ')), was);
 });
 
 test('app.js: exactly the four named §5.2 changes, every other top-level statement byte-identical', () => {
-  const now = topLevel(withoutTd(read('app.js')));   // T-d's own hunks are judged by the test above
+  const now = topLevel(withoutTd(appJs()));   // T-d's own hunks are judged by the test above
   const was = topLevel(base('app.js'));
   const removed = was.filter((s) => !now.includes(s));
   const added = now.filter((s) => !was.includes(s));
@@ -133,6 +156,6 @@ const SLICE2_BASE = '6d0dd582';
 test('slice 2: app.js and ventas.js are byte-identical to the approved stack tip', () => {
   for (const f of ['app.js', 'ventas.js']) {
     const was = execFileSync('git', ['show', `${SLICE2_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
-    assert.equal(read(f), was, `${f} changed since ${SLICE2_BASE}`);
+    assert.equal(f === 'app.js' ? appJs() : read(f), was, `${f} changed since ${SLICE2_BASE}`);
   }
 });
