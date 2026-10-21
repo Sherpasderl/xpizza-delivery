@@ -12,7 +12,7 @@ import { createRequire } from 'node:module';
 import { DIR, installFetch, okJson, errJson } from './ventas-harness.mjs';
 import { removeAddition } from './editor.js';
 
-const { JSDOM } = createRequire(join(DIR, '..', 'xpizza-functions', 'package.json'))('jsdom');
+const { JSDOM, VirtualConsole } = createRequire(join(DIR, '..', 'xpizza-functions', 'package.json'))('jsdom');
 const HTML = readFileSync(join(DIR, 'index.html'), 'utf8');
 const OWNER_CAPS = ['catalog.read_editor', 'catalog.edit', 'catalog.publish', 'catalog.fiscal_ack', 'stats.read', 'availability.set', 'location.prep', 'location.pause', 'location.hours'];
 const MGR_CAPS = ['catalog.read_editor', 'catalog.edit', 'catalog.publish', 'availability.set'];
@@ -46,9 +46,15 @@ async function loadAll() {
 }
 
 async function page({ caps = OWNER_CAPS, role = 'owner', menu = MENU(), on = {} } = {}) {
-  const dom = new JSDOM(HTML, { url: 'https://portal.test/', pretendToBeVisual: true });
+  // every exception thrown inside a DOM event handler is recorded (jsdom otherwise only logs it), so a flow that dies in a
+  // handler can be asserted on instead of passing silently
+  const errors = [];
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on('jsdomError', (e) => errors.push(e && e.message ? e.message : String(e)));
+  const dom = new JSDOM(HTML, { url: 'https://portal.test/', pretendToBeVisual: true, virtualConsole });
   const w = dom.window;
   w.scrollTo = () => {};
+  globalThis.CSS = { escape: (s) => String(s) };   // jsdom has no CSS.escape — the same stand-in ventas-harness.mjs installs
   for (const k of ['window', 'document', 'CustomEvent', 'Event', 'HTMLElement', 'Node', 'MutationObserver', 'sessionStorage', 'localStorage']) {
     Object.defineProperty(globalThis, k, { value: k === 'window' ? w : w[k], configurable: true, writable: true });
   }
@@ -71,7 +77,7 @@ async function page({ caps = OWNER_CAPS, role = 'owner', menu = MENU(), on = {} 
   await settle(60);
   const n = (fn) => calls.filter((c) => c.fn === fn);
   const badge = () => { const b = d.querySelector('#navprod [data-navbadge="1"]'); return b && !b.classList.contains('hidden') ? b.textContent : null; };
-  return { w, d, mods, calls, n, badge, banner: () => d.getElementById('pubreq') };
+  return { w, d, mods, calls, n, badge, errors, banner: () => d.getElementById('pubreq') };
 }
 
 test('D2 manager (server publish_via_request): «Enviar al dueño para publicar» + the note; editCatalog → catalogRequestPublish with ITS token; toast; never publishEdited', async () => {
@@ -193,5 +199,6 @@ test('drawer: a refused save marks the named field INVALID and keeps it visible 
   assert.ok(f && f.textContent.includes('Nombre'), 'premise: the Nombre field carries the message');
   assert.ok(f.classList.contains('invalid') && !f.classList.contains('err'), 'the field state is .invalid');
   assert.notEqual(p.w.getComputedStyle(f).display, 'none', '🔴 the invalid field (and its message) stays rendered');
+  assert.deepEqual(p.errors, [], 'the whole flow ran without an uncaught handler error');
 });
 
