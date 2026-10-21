@@ -9,46 +9,7 @@ const S = require('./branch-store');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
-
-function fakeRtdb(init = {}) {
-  const root = clone(init);
-  const segs = (p) => (p ? String(p).split('/').filter(Boolean) : []);
-  const get = (p) => segs(p).reduce((o, k) => (o != null && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : null), root);
-  const prune = () => { (function walk(o) { for (const k of Object.keys(o)) { const v = o[k]; if (v && typeof v === 'object') { walk(v); if (!Object.keys(v).length) delete o[k]; } else if (v === null || v === undefined) delete o[k]; } })(root); };
-  const set = (p, v) => {
-    const ks = segs(p); if (!ks.length) { for (const k of Object.keys(root)) delete root[k]; Object.assign(root, clone(v) || {}); return; }
-    let o = root; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; }
-    if (v === null || v === undefined) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = clone(v);
-    prune();
-  };
-  const hooks = {};   // path → async fn run BEFORE a transaction on that path (one-shot) — interleaving seam
-  const failAfter = {};   // path → throw AFTER a successful write on that path: true = the next write, k = the k-th — crash seam
-  const crash = (p) => { if (!(p in failAfter)) return false; const v = failAfter[p]; if (v === true || v <= 1) { delete failAfter[p]; return true; } failAfter[p] = v - 1; return false; };
-  const snap = (v) => ({ val: () => clone(v), exists: () => v != null });
-  const ref = (p = '') => ({
-    async once() { return snap(get(p)); },
-    async set(v) { set(p, v); if (crash(p)) throw new Error(`crash after ${p}`); },
-    async remove() { set(p, null); },
-    async update(patch) {
-      for (const [k, v] of Object.entries(patch)) set(p ? `${p}/${k}` : k, v);
-      const hit = Object.keys(patch).map((k) => (p ? `${p}/${k}` : k)).find((k) => crash(k)); if (hit) throw new Error(`crash after ${hit}`);
-    },
-    orderByChild(child) { return { equalTo(x) { return { async once() { const all = get(p) || {}; const out = {}; for (const [k, v] of Object.entries(all)) if (v && v[child] === x) out[k] = v; return snap(Object.keys(out).length ? out : null); } }; } }; },
-    async transaction(fn) {
-      if (hooks[p]) { const h = hooks[p]; delete hooks[p]; await h(); }
-      const real = clone(get(p));
-      // the Admin SDK's speculative first pass on an UNCACHED node: fn(null); undefined there ABORTS without consulting the server
-      let next = fn(null);
-      if (next === undefined) return { committed: false, snapshot: snap(null) };
-      if (real !== null) next = fn(clone(real));   // the server disagreed with null → re-run on the real value
-      if (next === undefined) return { committed: false, snapshot: snap(real) };
-      set(p, next);
-      if (crash(p)) throw new Error(`crash after ${p}`);
-      return { committed: true, snapshot: snap(get(p)) };
-    },
-  });
-  return { ref, root, get, hooks, failAfter };
-}
+const { fakeRtdb } = require('../test/_fake-rtdb-sdk');   // faithful Admin-SDK transaction semantics (cached-null first pass)
 
 const DAY = { open: true, start: '11:00', end: '22:00' };
 const H7 = { sun: DAY, mon: { open: false }, tue: DAY, wed: DAY, thu: DAY, fri: DAY, sat: DAY };
@@ -218,6 +179,7 @@ const NOW = 1_800_000_000_000;
     const d = await S.setBranchActive(db, { rid: 'tb_norte', active: false, expectedVersion: 4, now: NOW + 70_000, callId: 'c3' });
     assert.deepStrictEqual(d, { ok: true, state: 'inactive', consequences: { live_orders: 2, scheduled_bound: 1, devices: 1 } }, 'deactivate: counts for the portal');
     assert.strictEqual(db.get('brands/tb_brand/locations/tb_norte'), 'member', 'stays member');
+    assert.deepStrictEqual([db.get('restaurants/tb_norte/identity/active'), db.get('restaurants/tb_norte/identity/version')], [false, 5], 'deactivate bumps version by exactly 1');
     const nr = await S.setBranchActive(fakeRtdb({ brands: { tb_brand: { ...BRAND, locations: { tb_norte: 'staged' } } }, restaurants: { tb_norte: { identity: off } } }),
       { rid: 'tb_norte', active: true, expectedVersion: 3, now: NOW, callId: 'c1' });
     assert.deepStrictEqual(nr, { ok: false, error: 'not_ready', unmet: ['brand_not_on', 'no_handheld_online', 'no_owner_or_manager', 'menu_not_published'] }, 'no team reader → fail closed');

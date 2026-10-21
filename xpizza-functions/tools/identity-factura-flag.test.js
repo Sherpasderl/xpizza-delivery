@@ -9,20 +9,8 @@ const { planFlags, applyFlags, readBack, readIdentities, desired } = require('./
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
-function fakeRtdb(init = {}) {
-  const data = JSON.parse(JSON.stringify(init)); const writes = [];
-  const get = (p) => p.split('/').reduce((o, k) => (o && typeof o === 'object' && k in o ? o[k] : null), data);
-  const set = (p, v) => {
-    const ks = p.split('/'); let o = data;
-    for (const k of ks.slice(0, -1)) { if (!o[k] || typeof o[k] !== 'object') o[k] = {}; o = o[k]; }
-    if (v === null) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = v;
-  };
-  const ref = (p) => ({
-    once: async () => ({ val: () => { const v = get(p); return v === undefined ? null : JSON.parse(JSON.stringify(v)); } }),
-    update: async (u) => { writes.push(u); for (const [k, v] of Object.entries(u)) set(k, v); },
-  });
-  return { ref: (p) => ref(p || ''), data, writes };
-}
+// ORCHESTRATION O1a (advisor ruling: EVERY identity write bumps version) — the faithful Admin-SDK fake (cached-null first pass)
+const { fakeRtdb } = require('../test/_fake-rtdb-sdk');
 
 const IDENT = { name: 'Loc', hub_lat: 15.5, hub_lng: -88, active: true, version: 3, hours: { sun: { open: true } } };
 
@@ -45,26 +33,33 @@ const IDENT = { name: 'Loc', hub_lat: 15.5, hub_lng: -88, active: true, version:
   ] });
   ok('plan: one row per drifted identity (set true / remove a stray flag); an identity-less rid is skipped, never created');
 
-  const before = JSON.parse(JSON.stringify(db.data));
+  const before = JSON.parse(JSON.stringify(db.root));
   assert.deepStrictEqual(await readBack(db, rids), [
     'tb_centro: uses_platform_factura reads true, expected ABSENT',
     'x_pizza: uses_platform_factura reads null, expected true',
   ], 'the read-back names every drift before the apply');
-  await applyFlags(db, plan.rows);
-  assert.deepStrictEqual(db.writes, [{ 'restaurants/tb_centro/identity/uses_platform_factura': null, 'restaurants/x_pizza/identity/uses_platform_factura': true }], 'ONE multi-path update of the single leaves');
+  assert.deepStrictEqual(await applyFlags(db, plan.rows), { unversioned: [] });
+  assert.deepStrictEqual(db.writes.map((w) => [w[0], w[1]]), [['txn', 'restaurants/tb_centro/identity'], ['txn', 'restaurants/x_pizza/identity']], 'ONE identity transaction per changed rid');
   for (const rid of ['x_pizza', 'tb_centro', 'tb_norte']) {
-    const { uses_platform_factura: a, ...restAfter } = db.data.restaurants[rid].identity;
-    const { uses_platform_factura: b, ...restBefore } = before.restaurants[rid].identity;
+    const { uses_platform_factura: a, version: va, ...restAfter } = db.root.restaurants[rid].identity;
+    const { uses_platform_factura: b, version: vb, ...restBefore } = before.restaurants[rid].identity;
     assert.deepStrictEqual(restAfter, restBefore, `${rid}: every other identity field is byte-equal`);
+    assert.strictEqual(va, rid === 'tb_norte' ? vb : vb + 1, `${rid}: version ${rid === 'tb_norte' ? 'unchanged (no change)' : 'bumped by exactly 1'}`);
   }
-  assert.strictEqual(db.data.restaurants.tb_floor_only.identity, undefined, 'no identity node is created');
+  assert.strictEqual(db.get('restaurants/tb_floor_only/identity'), null, 'no identity node is created');
   assert.deepStrictEqual(await readBack(db, rids), [], 'read-back clean after the apply');
-  ok('apply: ONE multi-path update of the leaves only (every other identity field byte-equal), then a clean read-back');
+  ok('apply: ONE identity transaction per changed rid — the leaf + version + 1 (every other field byte-equal, an unchanged rid not bumped), then a clean read-back');
 
   assert.deepStrictEqual(planFlags(await readIdentities(db, rids)).rows, [], 'a second run plans 0 changes');
   await applyFlags(db, []);
-  assert.strictEqual(db.writes.length, 1, 'and writes nothing');
-  ok('idempotent: a second run plans 0 rows and writes nothing');
+  await applyFlags(db, plan.rows);   // re-applying the OLD plan: the commit-time check sees the leaf already right
+  assert.strictEqual(db.writes.length, 2, 'and writes nothing (no second bump)');
+  const race = fakeRtdb({ restaurants: { x_pizza: { identity: { ...IDENT } }, tb_v: { identity: { ...IDENT, version: 'x', uses_platform_factura: true } } } });
+  const rplan = planFlags(await readIdentities(race, ['x_pizza', 'tb_v']));
+  race.root.restaurants.x_pizza.identity.uses_platform_factura = true;   // a concurrent writer already set it
+  assert.deepStrictEqual(await applyFlags(race, rplan.rows), { unversioned: ['tb_v'] }, 'an unversioned identity is refused at commit and named');
+  assert.deepStrictEqual([race.writes, race.root.restaurants.x_pizza.identity.version], [[], IDENT.version], 'nothing written, nothing bumped');
+  ok('idempotent: a second run plans 0 rows and writes nothing; a stale plan re-checks AT COMMIT (no write, no bump); an unversioned identity is refused and named');
 
   const noX = fakeRtdb({ restaurants: { tb_norte: { identity: { ...IDENT } } } });
   assert.deepStrictEqual(planFlags(await readIdentities(noX, ['tb_norte'])).missing, ['x_pizza'], 'the platform restaurant absent from discovery is reported');

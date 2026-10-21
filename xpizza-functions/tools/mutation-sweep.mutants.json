@@ -17306,8 +17306,8 @@
     "id": "bsrv-mark-commit",
     "label": "§F: apply writes unconditionally (absent-fill only at plan time)",
     "file": "tools/identity-display-name-admin.js",
-    "from": "  await rtdb.ref(path).transaction((cur) => (cur == null ? to : undefined));",
-    "to": "  await rtdb.ref().update({ [path]: to });",
+    "from": "    if (to === null ? !has : has) return undefined;   // nothing to delete / absent-fill refuses a present value",
+    "to": "    if (to === null && !has) return undefined;",
     "kills_with": [
       "a no-op writes nothing",
       "written meanwhile is preserved"
