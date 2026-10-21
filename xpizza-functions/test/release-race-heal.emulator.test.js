@@ -102,11 +102,12 @@ const hooks = new Map();
   ok('a heal ABORTED by a re-claim between the batch read and the heal CAS → no alert');
 
   const snap1 = await allAlerts();
-  await fns.sweepPendingOrders.run({});
-  await fns.sweepPendingOrders.run({});
-  const snap2 = await allAlerts();
   const EXP3 = clone(EXP1); EXP3.r1_delivery.half_claim_since = 1;                            // r1 (dC vs dA) is now a fresh mismatch: marked, then waits
-  await assertTree(EXP3, 're-sweeps ×2');
+  await fns.sweepPendingOrders.run({});
+  await assertTree(EXP3, 're-sweep 1 (r1 marked; m1 / w1 waiting)');
+  await fns.sweepPendingOrders.run({});
+  await assertTree(EXP3, 're-sweep 2 (everything waiting — unchanged)');
+  const snap2 = await allAlerts();
   for (const oid of ['s1', 'p1', 'a1']) assert.deepStrictEqual(snap2[`assignment_conflict_${oid}`], snap1[`assignment_conflict_${oid}`], `${oid}: re-sweeps leave the alert byte-identical`);
   assert.strictEqual(Object.keys(snap2).filter((k) => k.startsWith('assignment_conflict_')).length, 3, 'still exactly three conflict alerts');
   assert.ok(snap2.assignment_conflict_m1 === undefined && snap2.assignment_conflict_w1 === undefined, 'the transient ones still raise none on re-sweep (now inside their window)');
