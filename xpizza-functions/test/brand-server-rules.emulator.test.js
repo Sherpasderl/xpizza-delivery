@@ -74,7 +74,7 @@ const DRIVER = { name: 'Drv', status: 'returning', active: true, current_shift_i
   await no('F15: handheld+dispatcher token cannot edit coordinates (write excludes handheld)', hhDisp.ref(idp('tb_norte')).update({ hub_lat: 15.7, version: 4 }));
   await no('F16: handheld+dispatcher token cannot touch the flag', hhDisp.ref(`${idp('tb_norte')}/uses_platform_factura`).remove());
   // the WRITE asymmetry (identity .write has no customer term): observed result documented by the assertion itself
-  await ok('F17: customer+dispatcher token CAN edit coordinates (identity .write has no customer term — documented asymmetry)', custDisp.ref(idp('tb_norte')).update({ hub_lat: 15.8, version: 5 }));
+  await ok('F17: customer+dispatcher token CAN edit coordinates (identity .write has no customer term — documented asymmetry)', custDisp.ref(idp('tb_norte')).update({ hub_lat: 15.8, version: 4 }));   // O1a: exactly + 1 (F14 left 3)
   await no('F18: customer+dispatcher token cannot modify the flag', custDisp.ref(`${idp('tb_norte')}/uses_platform_factura`).set(false));
   await no('F19: customer+dispatcher token cannot delete the flag', custDisp.ref(`${idp('tb_norte')}/uses_platform_factura`).remove());
   for (const [who, db] of [['kitchen', kit], ['driver', drv], ['anon', anon]]) {
@@ -86,11 +86,13 @@ const DRIVER = { name: 'Drv', status: 'returning', active: true, current_shift_i
 
   // ── M: identity.display_mark ──
   await reset();
-  await ok("M1: dispatcher sets display_mark 'X'", disp.ref(`${idp('tb_norte')}/display_mark`).set('X'));
-  await ok("M2: dispatcher sets a 2-char display_mark 'LM'", disp.ref(`${idp('leg_x')}/display_mark`).set('LM'));
-  await no("M3: empty display_mark ''", disp.ref(`${idp('leg_x')}/display_mark`).set(''));
-  await no("M4: 3-char display_mark 'XYZ'", disp.ref(`${idp('leg_x')}/display_mark`).set('XYZ'));
-  await no('M5: numeric display_mark', disp.ref(`${idp('leg_x')}/display_mark`).set(7));
+  // O1a (advisor ruling): every non-admin identity write bumps version by exactly 1 — each cell carries it, so the mark rule decides
+  await ok("M1: dispatcher sets display_mark 'X' (+ version)", disp.ref(idp('tb_norte')).update({ display_mark: 'X', version: 2 }));
+  await ok("M2: dispatcher sets a 2-char display_mark 'LM' (+ version)", disp.ref(idp('leg_x')).update({ display_mark: 'LM', version: 2 }));
+  await no("M3: empty display_mark ''", disp.ref(idp('leg_x')).update({ display_mark: '', version: 3 }));
+  await no("M4: 3-char display_mark 'XYZ'", disp.ref(idp('leg_x')).update({ display_mark: 'XYZ', version: 3 }));
+  await no('M5: numeric display_mark', disp.ref(idp('leg_x')).update({ display_mark: 7, version: 3 }));
+  await no('M5b: an UNBUMPED mark write is DENIED', disp.ref(`${idp('leg_x')}/display_mark`).set('Z'));
   assert.strictEqual(await raw(`${idp('tb_norte')}/uses_platform_factura`), true, 'M1: the B1 flag must survive a mark edit');
   assert.strictEqual(await raw(`${idp('tb_norte')}/display_mark`), 'X');
   pass('M6: the B1 flag is preserved alongside the mark');
