@@ -57,6 +57,7 @@
     <div class="nlabel hidden" id="navopslabel">Operación</div>
     <button class="nav hidden" id="navsuc" type="button"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg><span class="nt" id="navsuctext">Sucursales</span><span class="ncount hidden" id="navsuccount"></span></button>
     <button class="nav hidden" id="navpausas" type="button"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg><span class="nt">Pausar pedidos</span></button>
+    <button class="nav hidden" id="navequipos" type="button"><svg viewBox="0 0 24 24"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM12 18h.01"/></svg><span class="nt">Equipos</span><span class="ncount hidden" id="navequiposcount"></span></button>
     <!-- Stats S2: OWNER-ONLY. Hidden until app.js announces an owned restaurant (ventas.js); a non-owner never sees it. -->
     <div class="nlabel hidden" id="navbiz">Negocio</div>
     <button class="nav hidden" id="navventas" type="button"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15l4-5 3 3 5-6"/></svg>Ventas</button>
@@ -81,6 +82,7 @@
     <button class="mn on" id="mnprod" type="button" aria-current="page">Productos</button>
     <button class="mn hidden" id="mnsuc" type="button">Sucursales</button>
     <button class="mn hidden" id="mnpausas" type="button">Pausar pedidos</button>
+    <button class="mn hidden" id="mnequipos" type="button">Equipos</button>
     <button class="mn" id="mnventas" type="button">Ventas</button>
   </nav>
 
@@ -107,10 +109,14 @@
   <!-- PORTAL-UI 1a: Sucursales (list + detail) and Pausar pedidos, built by branches-view.js / pausas.js -->
   <main class="main ops hidden" id="viewsuc" aria-label="Sucursales"></main>
   <main class="main ops hidden" id="viewpausas" aria-label="Pausar pedidos"></main>
+  <!-- PORTAL-UI slice 2: Equipos (handhelds), built by equipos.js -->
+  <main class="main ops hidden" id="viewequipos" aria-label="Equipos"></main>
   <!-- the branch detail's save bar (prep) — its own bar, never the editor's #rbar -->
   <div class="rbar ops" id="sucbar"><span class="rb-dot"></span><span class="rb-t" id="sucbartxt"></span><div class="rb-sp"><button class="btn ghost" id="sucdiscard" type="button">Descartar</button><button class="btn accent" id="sucsave" type="button">Guardar</button></div></div>
   <!-- the pause modal (pausas.js) -->
   <div class="scrim pausescrim" id="pausescrim"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="pausetitle" id="pausemodal"></div></div>
+  <!-- the «Desvincular» modal (equipos.js) -->
+  <div class="scrim pausescrim" id="devscrim"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="devtitle" id="devmodal"></div></div>
   <!-- «Disponibilidad por sucursal» (availability.js; the read-only menu only — the editor's chevron keeps opening #drawer) -->
   <aside class="drawer ops" id="availdrawer" aria-label="Disponibilidad por sucursal"></aside>
   <div class="ops opsscrim hidden" id="availscrim"></div>

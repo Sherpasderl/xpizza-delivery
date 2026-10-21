@@ -25,12 +25,19 @@ const SLOTS = 40;
 const STEP = 10;
 const BANDS = {
   ui: 4000, hub: 4400, logging: 4800, functions: 5200, eventarc: 5600, tasks: 6000,
-  firestore: 8080, firestoreWebsocket: 8500, database: 9000,
+  firestore: 8080, firestoreWebsocket: 8500, database: 9000, auth: 9400,
 };
 const DATA_SERVICES = ['firestore', 'database'];
 const HOST_VAR = { firestore: 'FIRESTORE_EMULATOR_HOST', database: 'FIREBASE_DATABASE_EMULATOR_HOST' };
 const FIRESTORE_ALIAS = 'FIREBASE_FIRESTORE_EMULATOR_ADDRESS';
 const HUB_VAR = 'FIREBASE_EMULATOR_HUB';
+/* AUTH IS OPTIONAL, NOT A DATA SERVICE. Most suites never start it, and an absent var keeps today's behaviour; it is NOT
+   an emulator signal (lib/admin.js's signal list and the operator CLIs' prod/emulator split are unchanged). When it IS
+   set in an emulator-mode process it must be strict loopback — a stray value naming a remote or production host is
+   refused — and, on a run that started auth, exactly this run's auth port. A run that did NOT start auth may still
+   point it at an in-process loopback stand-in (test/portal-handlers.emulator.test.js), but never at the auth band:
+   that would be another run's emulator. */
+const AUTH_VAR = 'FIREBASE_AUTH_EMULATOR_HOST';
 const OFFSET_VAR = 'XPIZZA_EMU_OFFSET';
 const SERVICES_VAR = 'XPIZZA_EMU_SERVICES';
 const DEAD_VAR = 'XPIZZA_EMU_DEAD';
@@ -123,9 +130,30 @@ function validateEmulatorEnv(env, { ns, lenient = false } = {}) {
     throw new EmulatorEndpointError(`${FIRESTORE_ALIAS}=${env[FIRESTORE_ALIAS]} disagrees with ${HOST_VAR.firestore}=${env[HOST_VAR.firestore]} — the SDK honours both`);
   }
   if (present(env[HUB_VAR])) checkBand('hub', HUB_VAR, env[HUB_VAR], offset);
+  const auth = checkAuth(env, offset, started, lenient);
   const project = checkProjectContract(env, offset);
   if (ns !== undefined && !/^[a-z0-9-]+$/.test(String(ns))) throw new EmulatorEndpointError(`RTDB namespace ${JSON.stringify(ns)} is malformed`);
-  return { offset, endpoints, nulls, started: [...started], dead: [...dead], project };
+  return { offset, endpoints, nulls, started: [...started], dead: [...dead], project, auth };
+}
+
+/* The optional Auth endpoint (see AUTH_VAR). Returns the validated value, or null when unset. */
+function checkAuth(env, offset, started, lenient) {
+  const raw = env[AUTH_VAR];
+  if (!present(raw)) {
+    if (!lenient && started.has('auth')) throw new EmulatorEndpointError(`${AUTH_VAR} is not set but this run STARTED auth — Auth calls would go to PRODUCTION`);
+    return null;
+  }
+  const m = HOSTPORT.exec(String(raw));
+  if (!m) throw new EmulatorEndpointError(`${AUTH_VAR}=${JSON.stringify(raw)} is not a strict loopback host:port — Auth would be sent off this machine`);
+  if (raw === NULL_ENDPOINT) throw new EmulatorEndpointError(`${AUTH_VAR}=${NULL_ENDPOINT} (NULL) — auth has no NULL endpoint; leave it unset`);
+  if (started.has('auth')) { checkBand('auth', AUTH_VAR, raw, offset); return raw; }
+  const port = Number(m[2]);
+  const base = BANDS.auth;
+  if (port >= base && port <= base + (SLOTS - 1) * STEP && (port - base) % STEP === 0) {
+    if (!lenient && started.size) throw new EmulatorEndpointError(`${AUTH_VAR}=${raw} names an auth emulator this run did NOT start (${SERVICES_VAR}=${[...started].join(',')}) — that is someone else's`);
+    checkBand('auth', AUTH_VAR, raw, offset);   // the exact slot when XPIZZA_EMU_OFFSET is known
+  }
+  return raw;
 }
 
 /* §c.1 PROJECT / FIREBASE_CONFIG CONTRACT (codex R1-build P2-6). Every project id present — GCLOUD_PROJECT,
@@ -231,7 +259,7 @@ function guardEmulatorProcess(env = process.env) {
 }
 
 module.exports = {
-  NULL_ENDPOINT, SLOTS, STEP, BANDS, DATA_SERVICES, HOST_VAR, FIRESTORE_ALIAS, HUB_VAR,
+  NULL_ENDPOINT, SLOTS, STEP, BANDS, DATA_SERVICES, HOST_VAR, FIRESTORE_ALIAS, HUB_VAR, AUTH_VAR,
   OFFSET_VAR, SERVICES_VAR, DEAD_VAR,
   planPorts, hasEmulatorSignal, validateEmulatorEnv, validateFunctionsUrl, validateRtdbUrl,
   installNullGuard, guardEmulatorProcess, firebaseAppPrototype, EmulatorEndpointError,

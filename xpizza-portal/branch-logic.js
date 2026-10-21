@@ -216,5 +216,54 @@ export function priceText(n) {
 export function navModel(sel) {
   if (!sel) return { ops: false };
   const pause = sel.brand.branches.some((b) => has(b, 'location.pause'));
-  return { ops: true, owner: sel.owner, sucLabel: sel.owner ? 'Sucursales' : 'Mi sucursal', sucCount: sel.owner ? sel.brand.branches.length : null, pause };
+  const devices = sel.brand.branches.some((b) => has(b, 'device.list'));   // slice 2: «Equipos»
+  return { ops: true, owner: sel.owner, sucLabel: sel.owner ? 'Sucursales' : 'Mi sucursal', sucCount: sel.owner ? sel.brand.branches.length : null, pause, devices };
+}
+
+// ── slice 2 «Equipos» (PLAN-portal-ui-slice2-equipos r1.1 §2 E-D6 / E-D7 / E-D9) ────────────────────────────────────────
+// Status is RELATIVE TO THE FETCH (the reply's fetched_at) — no live ticking. A handheld heartbeats every 60 s; three missed
+// beats (3 min) → «Sin señal» (Q3). A device signed out on the handheld (an orphan row) ages into «Sin señal» the same way.
+export const ONLINE_MS = 3 * 60 * 1000;
+const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+export function dayText(ms) {
+  if (!Number.isFinite(ms)) return '';
+  const t = local(ms);
+  return `${t.getUTCDate()} ${MONTHS[t.getUTCMonth()]}`;
+}
+export function onlineState(fetchedAt, lastSeen) {
+  return Number.isFinite(fetchedAt) && Number.isFinite(lastSeen) && fetchedAt - lastSeen <= ONLINE_MS ? 'online' : 'nosignal';
+}
+export const STATUS = Object.freeze({ online: { label: 'En línea', cls: 'open' }, nosignal: { label: 'Sin señal', cls: 'eqwarn' } });
+export function lastSeenText(fetchedAt, lastSeen) {
+  if (!Number.isFinite(lastSeen)) return 'Nunca';
+  const age = Math.max(0, (Number.isFinite(fetchedAt) ? fetchedAt : lastSeen) - lastSeen);
+  if (age < 60 * 60000) return `hace ${Math.max(1, Math.floor(age / 60000))} min`;
+  if (age < 24 * 3600000) return `hace ${Math.floor(age / 3600000)} h`;
+  return `el ${dayText(lastSeen)}`;
+}
+// «Vinculado el {fecha} por {nombre}» / «… por el dueño» / «Vinculado el {fecha}» (E-D6)
+export function pairedText(d) {
+  if (!d || !Number.isFinite(d.paired_at)) return '';
+  const base = `Vinculado el ${dayText(d.paired_at)}`;
+  if (d.paired_by_owner === true) return `${base} por el dueño`;
+  return typeof d.paired_by_name === 'string' && d.paired_by_name.trim() ? `${base} por ${d.paired_by_name.trim()}` : base;
+}
+export const countText = (n) => `${n} ${n === 1 ? 'equipo' : 'equipos'}`;   // «N equipo(s)» rendered as proper singular / plural
+export const deviceLabel = (d) => `Equipo ${d && Number.isInteger(d.n) ? d.n : ''}`.trim();   // E-D8
+// «Antes de vincular» (E-D9): pairing off → ONE line instead of per-branch «Lista»
+// infoOf(rid) → { name, prep } from E1 (prep = the branch's normal prep minutes, or null)
+export function pairChecks(branches, pairingEnabled, infoOf) {
+  if (pairingEnabled !== true) return { off: true, rows: [] };
+  return { off: false, rows: (branches || []).filter((b) => b && !b.error).map((b) => {
+    const { name, prep } = infoOf(b.rid);
+    const ready = b.prep_ok === true;
+    return { rid: b.rid, name, ready, state: ready ? 'Lista' : 'Falta preparación',
+      sub: ready ? `${Number.isInteger(prep) ? `Preparación normal ${prep} min · ` : ''}${countText(b.devices.length)}` : 'Definí el tiempo de preparación normal en la sucursal' };
+  }) };
+}
+// the revoke modal's last-device facts (E-D3b / E-D4 / E-D13): from the LAST fetch — the server decides the pause
+export function revokeFacts(branch, uid) {
+  const others = branch && Array.isArray(branch.devices) ? branch.devices.filter((d) => d.uid !== uid).length : 0;
+  const lastOne = others === 0;
+  return { lastOne, pauses: lastOne && branch && branch.order_surface === 'handheld' };
 }

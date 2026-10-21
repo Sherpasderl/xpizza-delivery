@@ -51,6 +51,8 @@ const SERVICE_LISTENERS = {
   firestore: ['firestore', 'firestoreWebsocket'],
   database: ['database'],
   functions: ['functions', 'eventarc', 'tasks'],
+  // Optional, and never implied: a suite that needs real Auth names it (`--only firestore,database,auth`). One listener.
+  auth: ['auth'],
 };
 // Host vars the Admin SDK honours. Cleared for every service we are NOT starting, so an inherited
 // value from a parent shell can never point a suite at a foreign emulator (see CLEARED_ENV below).
@@ -61,6 +63,7 @@ const HOST_ENV = {
   firestore: ['FIRESTORE_EMULATOR_HOST', 'FIREBASE_FIRESTORE_EMULATOR_ADDRESS'],
   database: ['FIREBASE_DATABASE_EMULATOR_HOST'],
   functions: ['CLOUD_EVENTARC_EMULATOR_HOST', 'CLOUD_TASKS_EMULATOR_HOST'],
+  auth: ['FIREBASE_AUTH_EMULATOR_HOST'],
 };
 
 /* 🔴 EVERY HOST VAR THE INSTALLED CLI CAN EXPORT, not the ones that came to mind. My first list had
@@ -162,7 +165,8 @@ const TMP_PREFIX = 'xpizza-emu-tmp.';
    endpoint cannot reach it, and lib/admin.js would refuse a half-configured discovery. Starting both makes
    discovery see two real hosts. Order preserved, duplicates dropped. */
 function servicesFor(only) {
-  const list = only ? String(only).split(',').map((x) => x.trim()).filter(Boolean) : Object.keys(SERVICE_LISTENERS);
+  // no --only: the three services a bare run always started (auth is opt-in only, never a default)
+  const list = only ? String(only).split(',').map((x) => x.trim()).filter(Boolean) : ['firestore', 'database', 'functions'];
   const out = [];
   const add = (x) => { if (!out.includes(x)) out.push(x); };
   for (const x of list) add(x);
@@ -433,6 +437,7 @@ async function runOnce(excluded, deadlineMs) {
     tasks: { host: '127.0.0.1', port: PORTS.tasks },
     logging: { host: '127.0.0.1', port: PORTS.logging },
     hub: { host: '127.0.0.1', port: PORTS.hub },
+    auth: { host: '127.0.0.1', port: PORTS.auth },
     ui: { enabled: false, host: '127.0.0.1', port: PORTS.ui },
     /* 🔴 NO singleProjectMode: it changes what the emulator ACCEPTS, and several rules suites use their own ids. */
   };

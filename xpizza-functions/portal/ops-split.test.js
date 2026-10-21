@@ -3,14 +3,14 @@
 // Run: node portal/ops-split.test.js   (no emulator; every load-mode check runs in a FRESH child process — FUNCTION_TARGET is
 //                                        read once, at load)
 //   1. ROUTING — the ops early branch is the exact pinned text (appended to the PORTAL_ISOLATED_TARGETS line); its Set is
-//      exactly the five names and exactly portal/ops-functions.js's exports; each name loads ONLY the ops group (+ the
+//      exactly the PORTAL_OPS_TARGETS names and exactly portal/ops-functions.js's exports; each name loads ONLY the ops group (+ the
 //      marker, once); unset / empty / wrong-case / padded / prefix / unknown / Object.prototype names → the FULL load.
 //   2. CLOSURE — the STATIC require closure (every string-literal require(), conditional ones included) from
 //      portal/ops-functions.js EQUALS the reviewed set; the forbidden modules are absent. RUNTIME: with no emulator env the
 //      conditional lib/emulator-endpoint is NOT loaded; with one it is.
-//   3. FULL LOAD — index.js (FUNCTION_TARGET unset) exports the five as the SAME function objects portal/ops-functions.js
+//   3. FULL LOAD — index.js (FUNCTION_TARGET unset) exports every ops name as the SAME function objects portal/ops-functions.js
 //      exports, and still exports every name the base exported.
-//   4. THE WRAPPER — OPTIONS on each of the five gets Access-Control-Max-Age: 600 (the shared preflight wrapper).
+//   4. THE WRAPPER — OPTIONS on each ops function gets Access-Control-Max-Age: 600 (the shared preflight wrapper).
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -19,11 +19,11 @@ const { spawnSync } = require('child_process');
 const FN = path.join(__dirname, '..');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(FN, f), 'utf8');
-const OPS = ['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability'];
+const OPS = ['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice'];
 
 // ── 1. ROUTING ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 const idx = read('index.js');
-const OPS_BRANCH = " const PORTAL_OPS_TARGETS = Object.freeze(new Set(['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability']));"
+const OPS_BRANCH = " const PORTAL_OPS_TARGETS = Object.freeze(new Set(['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice']));"
   + " if (PORTAL_OPS_TARGETS.has(process.env.FUNCTION_TARGET)) { console.log('portal_ops_entry', process.env.FUNCTION_TARGET); module.exports = require('./portal/ops-functions'); return; }";
 const setLine = idx.split('\n').find((l) => l.startsWith('const PORTAL_ISOLATED_TARGETS = '));
 assert.ok(setLine, 'premise: the portal Set line');
@@ -34,7 +34,7 @@ assert.ok(idx.indexOf(setLine) < idx.indexOf("if (PORTAL_ISOLATED_TARGETS.has(pr
 const opsMod = require('./ops-functions');
 assert.deepStrictEqual(Object.keys(opsMod).sort(), [...OPS].sort(), 'the Set is exactly portal/ops-functions.js exports');
 assert.deepStrictEqual([...opsMod.PORTAL_OPS_TARGETS].sort(), [...OPS].sort());
-ok('index.js line 6 carries the EXACT pinned ops early branch: a frozen Set of the 5 names, exact Set.has(FUNCTION_TARGET), the marker, module.exports = portal/ops-functions, return');
+ok(`index.js line 6 carries the EXACT pinned ops early branch: a frozen Set of the ${OPS.length} names, exact Set.has(FUNCTION_TARGET), the marker, module.exports = portal/ops-functions, return`);
 
 const LOCAL = (p) => path.relative(FN, p).split(path.sep).join('/');
 const childScript = `
@@ -62,7 +62,7 @@ for (const t of OPS) {
   assert.deepStrictEqual(r.markers, [`portal_ops_entry ${t}`], `${t}: the marker, exactly once`);
   assert.ok(r.local.includes('portal/ops-functions.js') && !r.local.includes('portal/functions.js'), `${t}: the ops module loaded, the portal group did not`);
 }
-ok(`each of the 5 names loads ONLY portal/ops-functions.js (${isolated[OPS[0]].local.length} local modules), with the marker once`);
+ok(`each of the ${OPS.length} names loads ONLY portal/ops-functions.js (${isolated[OPS[0]].local.length} local modules), with the marker once`);
 
 const full = load(undefined);
 assert.ok(full.exports.length > 100, 'unset → the full load');
@@ -77,7 +77,9 @@ ok('unset / empty / wrong-case / padded / prefix / unknown / Object.prototype na
 const EXPECTED = [
   'portal/ops-functions.js', 'portal/ops-core.js', 'portal/origins.js', 'portal/preflight-max-age.js', 'portal/pause-reasons.js', 'portal/location-name.js', 'portal/reset-list.js',
   'lib/admin.js', 'lib/hn-date.js', 'lib/emulator-endpoint.js',
-  'access/membership.js', 'access/writes-flag.js', 'brands/brand-model.js', 'restaurant-config.js', 'pickup-label.js',
+  'access/membership.js', 'access/writes-flag.js', 'brands/brand-model.js',
+  'merchant/merchant-devices.js', 'merchant/merchant-validate.js', 'merchant/merchant-gate.js', 'merchant/merchant-scope.js',   /* slice 2 (E7 revoke core) */
+  'restaurant-config.js', 'pickup-label.js',
   'merchant/merchant-control.js', 'tools/order-control-core.js', 'order-control-state.js', 'scheduled-orders.js', 'avail-key.js', 'availability-reset.js',
   'catalog/catalog-firestore.js', 'catalog/catalog-menu.js', 'catalog/catalog-transform.js', 'catalog/catalog-integrity.js', 'catalog/content-hash.js', 'catalog/canonical-json.js',
   'catalog/form-menu-source.js', 'catalog/redeem-source.js', 'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'menu-pricing.js', 'price-valid.js', 'rewards-redeem-config.js',
@@ -127,7 +129,7 @@ ok(`CLOSURE: the static require closure is EXACTLY the ${EXPECTED.length} review
   const baseNames = [...new Set([...fs.readFileSync(path.join(tmp, 'index.js'), 'utf8').matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map((m) => m[1]))];
   fs.rmSync(tmp, { recursive: true, force: true });
   for (const k of baseNames) assert.ok(full.exports.includes(k), `the full load still exports ${k}`);
-  ok(`FULL LOAD: the five are re-exported as the same objects; every one of the base's ${baseNames.length} directly-assigned exports is still there`);
+  ok(`FULL LOAD: the ${OPS.length} are re-exported as the same objects; every one of the base's ${baseNames.length} directly-assigned exports is still there`);
 }
 
 // ── 4. THE WRAPPER ──────────────────────────────────────────────────────────────────────────────────────────────────────

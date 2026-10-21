@@ -34,6 +34,7 @@ export const ICON = Object.freeze({
   close: ['M6 6l12 12M18 6L6 18'],
   check: ['M5 12l5 5 9-10'],
   photo: [{ tag: 'rect', x: 3, y: 5, width: 18, height: 14, rx: 2 }, { tag: 'circle', cx: 9, cy: 10, r: 1.5 }, 'M21 15l-5-4-8 7'],
+  info: [{ tag: 'circle', cx: 12, cy: 12, r: 9 }, 'M12 11v5M12 8h.01'],   // slice 2: «Cómo vincular un equipo»
 });
 export const icon = (name) => svg(...ICON[name]);
 

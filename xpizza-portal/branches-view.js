@@ -82,6 +82,7 @@ export function mountBranches(root, ctx) {
     }
     const acts = [];
     if (L.can(b, 'location.pause')) acts.push(button('btn', 'Pausar pedidos', () => ctx.goto('pausas')));
+    if (L.can(b, 'device.list')) acts.push(button('btn', `Equipos · ${Number.isInteger(b.devices) ? b.devices : 0}`, () => ctx.goto('equipos', { rid: b.rid })));   // slice 2
     const { top, h } = topBlock(b.name, null, acts);
     const p = pill(st.pillCls, st.label); p.classList.add('hpill');
     h.append(p);

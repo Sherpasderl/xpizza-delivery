@@ -54,7 +54,7 @@ const differing = rl.map((l, i) => (l === bl[i] ? null : i)).filter((i) => i !==
 assert.deepStrictEqual(differing.map((i) => `${rl[i]}\n`), HUNKS.map((h) => h.now), 'exactly the two hunk lines differ, in order');
 assert.ok(HUNKS[0].now.includes("PORTAL_OPS_TARGETS.has(process.env.FUNCTION_TARGET)") && HUNKS[0].now.includes("module.exports = require('./portal/ops-functions'); return;"),
   'hunk 1 is the ops early branch');
-for (const n of ['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability']) {
+for (const n of ['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice']) {
   assert.ok(HUNKS[1].now.includes(`exports.${n} = require('./portal/ops-functions').${n};`), `hunk 2 re-exports ${n} (the static form source discovery reads)`);
 }
 ok(`SAME-LINE: index.js has the base's ${bl.length} lines; exactly lines ${differing.map((i) => i + 1).join(' and ')} differ (the two hunks)`);

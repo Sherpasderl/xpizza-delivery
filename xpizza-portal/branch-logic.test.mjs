@@ -156,3 +156,51 @@ test('time helpers read the Honduras clock (UTC−6, no DST)', () => {
   assert.equal(L.closesAt(HOURS, at('2026-10-21T20:00:00Z')), null, 'closed today');
   assert.equal(L.nextOpening(null, Date.now()), null);
 });
+
+// ── slice 2 «Equipos» (PLAN-portal-ui-slice2-equipos r1.1 §2) ──────────────────────────────────────────────────────────
+test('Equipos: «En línea» ≤ 3 min BEFORE THE FETCH, «Sin señal» after; never seen → «Sin señal» + «Nunca»', () => {
+  const F = Date.UTC(2026, 9, 20, 18, 0);
+  assert.equal(L.onlineState(F, F - 180000), 'online', '3:00 → online');
+  assert.equal(L.onlineState(F, F - 180001), 'nosignal', '3:00.001 → no signal');
+  assert.equal(L.onlineState(F, null), 'nosignal');
+  assert.deepEqual(L.STATUS.online, { label: 'En línea', cls: 'open' });
+  assert.deepEqual(L.STATUS.nosignal, { label: 'Sin señal', cls: 'eqwarn' });
+  assert.equal(L.lastSeenText(F, null), 'Nunca');
+  assert.equal(L.lastSeenText(F, F - 5000), 'hace 1 min');
+  assert.equal(L.lastSeenText(F, F - 14 * 60000), 'hace 14 min');
+  assert.equal(L.lastSeenText(F, F - 3 * 3600000), 'hace 3 h');
+  assert.equal(L.lastSeenText(F, Date.UTC(2026, 9, 2, 18)), 'el 2 oct', 'older than a day → the date (Honduras time)');
+});
+
+test('Equipos: «Vinculado el … por …» — manager name / «el dueño» / date only; «Equipo N»; counts', () => {
+  const at = Date.UTC(2026, 9, 2, 15);
+  assert.equal(L.pairedText({ paired_at: at, paired_by_name: 'Lucía Paz', paired_by_owner: false }), 'Vinculado el 2 oct por Lucía Paz');
+  assert.equal(L.pairedText({ paired_at: at, paired_by_name: null, paired_by_owner: true }), 'Vinculado el 2 oct por el dueño');
+  assert.equal(L.pairedText({ paired_at: at, paired_by_name: null, paired_by_owner: false }), 'Vinculado el 2 oct');
+  assert.equal(L.deviceLabel({ n: 2 }), 'Equipo 2');
+  assert.deepEqual([L.countText(1), L.countText(3)], ['1 equipo', '3 equipos']);
+});
+
+test('Equipos: «Antes de vincular» — pairing off → one line, no «Lista»; on → per branch Lista / Falta preparación', () => {
+  const br = [{ rid: 'b1', prep_ok: true, devices: [{}, {}] }, { rid: 'b2', prep_ok: false, devices: [] }, { rid: 'b3', error: 'devices_unavailable' }];
+  const info = (rid) => ({ name: rid.toUpperCase(), prep: rid === 'b1' ? 20 : null });
+  assert.deepEqual(L.pairChecks(br, false, info), { off: true, rows: [] });
+  assert.deepEqual(L.pairChecks(br, 'true', info), { off: true, rows: [] }, 'only the strict boolean');
+  assert.deepEqual(L.pairChecks(br, true, info).rows.map((r) => [r.name, r.state, r.sub]), [
+    ['B1', 'Lista', 'Preparación normal 20 min · 2 equipos'],
+    ['B2', 'Falta preparación', 'Definí el tiempo de preparación normal en la sucursal'],
+  ], 'a failed branch is not listed as ready or missing');
+});
+
+test('Equipos: the revoke modal\'s last-device facts — the pause wording only for a handheld branch\'s ONLY device', () => {
+  const two = { order_surface: 'handheld', devices: [{ uid: 'a' }, { uid: 'b' }] };
+  assert.deepEqual(L.revokeFacts(two, 'a'), { lastOne: false, pauses: false });
+  assert.deepEqual(L.revokeFacts({ order_surface: 'handheld', devices: [{ uid: 'a' }] }, 'a'), { lastOne: true, pauses: true });
+  assert.deepEqual(L.revokeFacts({ order_surface: 'kds', devices: [{ uid: 'a' }] }, 'a'), { lastOne: true, pauses: false });
+});
+
+test('Equipos: navModel offers «Equipos» only when a branch of the selection holds device.list', () => {
+  const sel = (caps) => ({ owner: true, brand: { branches: [{ rid: 'b1', caps }] } });
+  assert.equal(L.navModel(sel(['location.pause', 'device.list'])).devices, true);
+  assert.equal(L.navModel(sel(['location.pause'])).devices, false);
+});
