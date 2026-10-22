@@ -560,7 +560,7 @@ function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonica
   return { earn_preview, ...(summary_lines ? { summary_lines } : {}) };
 }
 const { resolveRestaurantId, sameRestaurant } = require('./restaurant-id');
-const { resolveReturnBase } = require('./pixelpay-return-url');
+const { resolveReturnBase, resolveReturnBaseForCharge } = require('./pixelpay-return-url');   // S3b: routing as data (platform/sites.json)
 const { resolveAssignHub, hubForFresh, makeHubPeek } = require('./assign-hub');   // brand-agnostic X1: hubs from each restaurant's identity
 const hubForPeek = makeHubPeek();   // X1 r3 §D: per-instance identity-hub cache for the high-frequency ingest geofence
 
@@ -1986,11 +1986,11 @@ chargeOnlineApp.all('*', async (req, res) => {
       if (!c || !c.ok) return res.status(409).json({ error: 'redemption_reserve_failed', reason: 'cart_unverifiable', order_id: orderId });
     }
   }
-  if (!probeOrder) {
+  let s3bIdentity = null; if (!probeOrder) {   // S3b: the identity a fresh order reads also selects its return site
     // Fresh pending-order creation → gate + zone + immutable charge-time snapshot BEFORE persistence.
     let id;
     try {
-      id = await getRestaurantIdentity(db, restaurantId);
+      id = await getRestaurantIdentity(db, restaurantId); s3bIdentity = id;
     } catch (e) {
       console.error(`chargeOnlineOrder: config unavailable for ${orderId}: ${e.message}`);
       res.set('Retry-After', '2');
@@ -2021,7 +2021,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     console.error('chargeOnlineOrder: PixelPay config error', e.message);
     return res.status(500).json({ error: 'Payment not configured', detail: e.message });
   }
-  const returnBase = resolveReturnBase(restaurantId, process.env);
+  const returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });
   if (returnBase.error) {
     console.error(`chargeOnlineOrder: ${returnBase.error} for ${orderId} (${restaurantId})`);
     return res.status(500).json({ error: 'Payment not configured', detail: 'return URL not configured for restaurant' });
@@ -2213,7 +2213,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // x_pizza → PIXELPAY_RETURN_URL || the orders site (unchanged); la_musa → its own origin.
   const siteBase = returnBase.base;
   const completeUrl = `${siteBase}/?pay=complete&order=${encodeURIComponent(orderId)}&t=${encodeURIComponent(pollToken)}`;
-  const cancelUrl = `${siteBase}/?pay=cancel&order=${encodeURIComponent(orderId)}`;
+  const cancelUrl = `${siteBase}/?pay=cancel&order=${encodeURIComponent(orderId)}&t=${encodeURIComponent(pollToken)}`;   // S3b: the poll token, so a paid order landing on cancel verifies even with the stash cleared
   const wsecret = process.env.PIXELPAY_WEBHOOK_SECRET || '';
   if (!wsecret) console.warn('chargeOnlineOrder: PIXELPAY_WEBHOOK_SECRET not set — hosted callback will be unauthenticated');
   const callbackUrl = pixelPayCallbackUrl() + (wsecret ? `?secret=${encodeURIComponent(wsecret)}` : '');

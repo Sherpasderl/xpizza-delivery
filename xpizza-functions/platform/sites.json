@@ -2,8 +2,8 @@
   "schema": 1,
   "apps": ["orders", "kitchen", "dispatch", "dispatch-mobile", "portal", "track", "dashboard", "catering", "legal"],
   "deployments": [
-    { "id": "orders-xpizza",   "app": "orders",          "folder": "xpizza-orders",          "entrypoints": ["index.html"],                  "context": "x_pizza",  "origins": ["https://orders.xpizza.hn"], "netlify_site": "xpizzaorders" },
-    { "id": "orders-lamusa",   "app": "orders",          "folder": "la-musa-orders",         "entrypoints": ["index.html"],                  "context": "la_musa",  "origins": ["https://orders.lamusa.hn"], "netlify_site": "lamusaorders" },
+    { "id": "orders-xpizza",   "app": "orders",          "folder": "xpizza-orders",          "entrypoints": ["index.html"],                  "context": "x_pizza",  "origins": ["https://orders.xpizza.hn"], "netlify_site": "xpizzaorders", "pay_return": { "env": "PIXELPAY_RETURN_URL", "default": "https://xpizzaorders.netlify.app" } },
+    { "id": "orders-lamusa",   "app": "orders",          "folder": "la-musa-orders",         "entrypoints": ["index.html"],                  "context": "la_musa",  "origins": ["https://orders.lamusa.hn"], "netlify_site": "lamusaorders", "pay_return": { "env": "PIXELPAY_RETURN_URL_LA_MUSA" } },
     { "id": "kitchen-xpizza",  "app": "kitchen",         "folder": "xpizza-kitchen",         "entrypoints": ["index.html"],                  "context": "x_pizza",  "origins": [], "netlify_site": "xpizzakitchendisplay" },
     { "id": "kitchen-lamusa",  "app": "kitchen",         "folder": "xpizza-kitchen",         "entrypoints": ["index.html"],                  "context": "la_musa",  "origins": [], "netlify_site": "lamusakitchendisplay" },
     { "id": "track-xpizza",    "app": "track",           "folder": "xpizza-track",           "entrypoints": ["index.html"],                  "context": "x_pizza",  "origins": [], "netlify_site": "xpizzatrack" },

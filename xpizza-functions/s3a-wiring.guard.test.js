@@ -15,7 +15,7 @@ const { HUNKS, unapplyS3aIndex } = require('./tools/s3a-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const BASE = 'fa6551ab';   // the held S8 tip (r5) this slice branches from
-const live = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');   // this slice is the NEWEST: nothing composes on top
+const live = require('./tools/s3b-inverse').unapplyS3bIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // S3b (newer) is reversed first
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 assert.strictEqual(unapplyS3aIndex(live), baseIdx, `🔴 index.js minus the S3a hunks is not ${BASE}:index.js — something beyond the stated seams changed`);

@@ -42789,7 +42789,7 @@
    "file": "xpizza-functions/platform-manifest.js",
    "fn": "deriveCorsLists",
    "base": "o",
-   "line": 79,
+   "line": 90,
    "how": "spread",
    "rule": "server:infra"
   },
@@ -42797,7 +42797,7 @@
    "file": "xpizza-functions/platform-manifest.js",
    "fn": "deriveCorsLists",
    "base": "o",
-   "line": 79,
+   "line": 90,
    "how": "spread",
    "rule": "server:infra"
   },
