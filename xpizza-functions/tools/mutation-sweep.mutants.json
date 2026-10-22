@@ -17487,10 +17487,11 @@
     "id": "o1a-identity-overwrite",
     "label": "T4: materialize overwrites a different identity",
     "file": "branches/branch-store.js",
-    "from": "(stable(cur) === stable(identity) ? undefined : stop('identity_conflict'))",
-    "to": "identity",
+    "from": "      if (c.identity != null) {",
+    "to": "      if (false) {",
     "kills_with": [
-      "never overwrites a different identity"
+      "never overwrites a different identity",
+      "resume from durable inputs"
     ],
     "command": [
       "node",
@@ -17505,7 +17506,8 @@
     "from": "Number.isFinite(cur.lease.until) && cur.lease.until > now",
     "to": "false",
     "kills_with": [
-      "another call cannot take an unexpired lease"
+      "another call cannot take an unexpired lease",
+      "A is refused while B's op is live"
     ],
     "command": [
       "node",
@@ -17607,8 +17609,8 @@
     "id": "o1a-delete-foreign",
     "label": "T4: deleteBranchDraft frees a reservation another op owns",
     "file": "branches/branch-store.js",
-    "from": "if (res && res.op_id === d.op_id && res.brand_id === brandId) u",
-    "to": "if (res) u",
+    "from": "res: res && res.op_id === d.op_id && res.brand_id === brandId ? res : null,",
+    "to": "res: res,",
     "kills_with": [
       "never frees a reservation another op owns"
     ],
@@ -17637,7 +17639,7 @@
     "id": "o1a-activate-readiness",
     "label": "T8: activateBrand skips per-branch readiness",
     "file": "branches/branch-store.js",
-    "from": "  if (Object.keys(unmet).length) return { ok: false, error: 'not_ready', unmet };\n",
+    "from": "  if (Object.keys(unmet).length) return { ok: false, error: 'not_ready', extra: { unmet } };\n",
     "to": "",
     "kills_with": [
       "no team reader → fail closed"
@@ -18076,7 +18078,7 @@
     "id": "o1a-newbrand-foreign",
     "label": "create-brand: another op can claim an existing brand",
     "file": "branches/branch-store.js",
-    "from": "    if (!(isObj(m0) && m0.rid && onlyStaged(brand0, m0.rid))) return { ok: false, error: 'brand_exists' };\n",
+    "from": "    if (newBrand && brand0 != null && !(isObj(m0) && m0.rid && onlyStaged(brand0, m0.rid))) return fail(db, op, callId, 'brand_exists');\n",
     "to": "",
     "kills_with": [
       "another op cannot claim the new brand",
@@ -18092,8 +18094,8 @@
     "id": "o1a-newbrand-abandon",
     "label": "create-brand: abandoning the first draft leaves an orphan brand",
     "file": "branches/branch-store.js",
-    "from": "        return onlyStaged(cur, rid) && isObj(cur.activation) && cur.activation.state === 'off' ? null : stop('brand_changed');",
-    "to": "        return undefined;",
+    "from": "(same(cur, plan.brand) ? null : stop('brand_changed'))",
+    "to": "undefined",
     "kills_with": [
       "the never-opened brand is abandoned whole"
     ],
@@ -18152,25 +18154,10 @@
     "id": "o1a-race-has-drafts",
     "label": "F2: the first draft delete removes the brand although a sibling draft exists",
     "file": "branches/branch-store.js",
-    "from": "        if (Object.keys(map).some((k) => k !== CLOSED)) return stop('brand_has_drafts');\n",
+    "from": "          if ((await val(db, `restaurants/${mp.rid}/draft`)) != null || (await val(db, `restaurants/${mp.rid}/identity`)) != null) return fail(db, op, callId, 'brand_has_drafts');\n",
     "to": "",
     "kills_with": [
       "RACE-F2-SIBLING"
-    ],
-    "command": [
-      "node",
-      "branches/branch-races.test.js"
-    ]
-  },
-  {
-    "slice": "orch-o1a",
-    "id": "o1a-race-closed",
-    "label": "F2: a sibling createDraft ignores the brand CLOSE tombstone",
-    "file": "branches/branch-store.js",
-    "from": "    if (map[CLOSED] != null && !(newBrand && brand0 == null)) return stop('brand_closed');\n",
-    "to": "",
-    "kills_with": [
-      "RACE-F2-CLOSE"
     ],
     "command": [
       "node",
@@ -18197,7 +18184,7 @@
     "id": "o1a-race-cas",
     "label": "F4: activateBrand activates without the observed-version CAS",
     "file": "branches/branch-store.js",
-    "from": "      if (cur.version !== seen[rid]) return stop('stale_branch');\n",
+    "from": "        if (cur.version !== seen) return stop('stale_branch');\n",
     "to": "",
     "kills_with": [
       "RACE-F4-CAS"
@@ -18220,6 +18207,114 @@
     "command": [
       "node",
       "branches/branches-admin-core.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-lock-busy",
+    "label": "r2: the brand lock lets a different (or live) op take the brand",
+    "file": "branches/branch-store.js",
+    "from": "    if (live || (inputs && (cur.kind !== kind || cur.payload_hash !== hash))) { holder = { kind: cur.kind, interrupted: !live }; return stop('brand_busy'); }",
+    "to": "    if (false) { holder = { kind: cur.kind, interrupted: !live }; return stop('brand_busy'); }",
+    "kills_with": [
+      "A is refused while B's op is live",
+      "another call cannot take an unexpired lease",
+      "ANY lifecycle op on the brand waits",
+      "a re-run inside the crashed op"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r2-draft-observed",
+    "label": "r2: the delete removes a draft that is not the one it observed (a recreated incarnation)",
+    "file": "branches/branch-store.js",
+    "from": "      if (!same(cur.draft, plan.draft) || cur.identity != null) return stop('draft_changed');\n",
+    "to": "",
+    "kills_with": [
+      "RACE-R2-2"
+    ],
+    "command": [
+      "node",
+      "branches/branch-races.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r2-remove-observed",
+    "label": "r2: a reservation / name / mapping is removed whatever incarnation it now holds",
+    "file": "branches/branch-store.js",
+    "from": "const removeIfSame = (db, path, observed) => txn(db, path, (cur) => (cur != null && same(cur, observed) ? null : undefined));",
+    "to": "const removeIfSame = (db, path, observed) => txn(db, path, (cur) => (cur != null ? null : undefined));",
+    "kills_with": [
+      "RACE-R2-2B"
+    ],
+    "command": [
+      "node",
+      "branches/branch-races.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r2-brand-observed",
+    "label": "r2: a brand that changed since the delete observed it is removed anyway (no usable state)",
+    "file": "branches/branch-store.js",
+    "from": "(same(cur, plan.brand) ? null : stop('brand_changed'))",
+    "to": "null",
+    "kills_with": [
+      "RACE-R2-3B"
+    ],
+    "command": [
+      "node",
+      "branches/branch-races.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r2-plan-ready",
+    "label": "r2: an empty-open activation plan is pruned by RTDB, so its resume reads as interrupted",
+    "file": "branches/branch-store.js",
+    "from": "      plan = { ready: true, seen: r.seen };",
+    "to": "      plan = { seen: r.seen };",
+    "kills_with": [
+      "PLAN-EMPTY-RESUME"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-cli-status-lock",
+    "label": "CLI: status no longer shows the brand's lifecycle lock",
+    "file": "branches/branches-admin-core.js",
+    "from": "    const lock = await read(`brand_ops/${id}`);",
+    "to": "    const lock = null;",
+    "kills_with": [
+      "CLI-STATUS-LOCK"
+    ],
+    "command": [
+      "node",
+      "branches/branches-admin-core.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-lock-bad-record",
+    "label": "r2: a malformed lock record is run / overwritten instead of failing closed",
+    "file": "branches/branch-store.js",
+    "from": "    if (!isObj(cur) || typeof cur.op_id !== 'string' || !Object.prototype.hasOwnProperty.call(STEPS, cur.kind)) {",
+    "to": "    if (false) {",
+    "kills_with": [
+      "BAD-LOCK"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
     ]
   },
   {

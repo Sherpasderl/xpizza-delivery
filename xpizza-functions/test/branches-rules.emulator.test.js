@@ -1,7 +1,7 @@
 /**
  * ORCHESTRATION O1a T6 (PLAN-multi-location-orchestration r3.1 §2, §4; advisor ruling "every identity write bumps version") —
  * behavioural suite against the RTDB emulator:
- *   N  server-only: branch_ops, branch_op_ids, rid_reservations, brand_branch_names, route_pins, restaurants/{rid}/draft —
+ *   N  server-only: brand_ops, branch_op_ids, rid_reservations, brand_branch_names, route_pins, restaurants/{rid}/draft —
  *      no client role (dispatcher, kitchen, driver, handheld, customer, anon) reads or writes any of them
  *   H  identity hours (same-day, 7 named days, {open[,start,end]}), address, active_changed_at validators — every cell carries a
  *      valid version + 1, so the validator under test is what decides
@@ -36,7 +36,8 @@ const NOW = 1_800_000_000_000;
     await db.ref(`drivers/${DRV}`).set({ name: 'Drv', status: 'available' });
     await db.ref('restaurants/leg_x/identity').set(IDENT);
     await db.ref('restaurants/tb_c/draft').set({ brand_id: 'tb_brand', location_name: 'C', phone: '+50499990000', hours: H7, prep_default_min: 20, op_id: 'o' });
-    for (const k of ['branch_ops/tb_c', 'branch_op_ids/tb_brand/o', 'rid_reservations/tb_c', 'brand_branch_names/tb_brand/c', 'route_pins/k1']) await db.ref(k).set({ x: 1 });
+    // brand_ops/tb_n: a brand the W section never uses (a probe value there would be a malformed lock → that brand fails closed)
+    for (const k of ['brand_ops/tb_n', 'branch_op_ids/tb_brand/o', 'rid_reservations/tb_c', 'brand_branch_names/tb_brand/c', 'route_pins/k1']) await db.ref(k).set({ x: 1 });
   });
   const roles = [
     ['dispatcher', env.authenticatedContext(DISP).database()], ['kitchen', env.authenticatedContext(KIT).database()],
@@ -50,7 +51,7 @@ const NOW = 1_800_000_000_000;
   const pass = (l) => console.log(`  ✓ ${++n} ${l}`);
 
   // ── N: server-only nodes ──
-  const NODES = ['branch_ops/tb_c', 'branch_op_ids/tb_brand/o', 'rid_reservations/tb_c', 'brand_branch_names/tb_brand/c', 'route_pins/k1', 'restaurants/tb_c/draft'];
+  const NODES = ['brand_ops/tb_n', 'branch_op_ids/tb_brand/o', 'rid_reservations/tb_c', 'brand_branch_names/tb_brand/c', 'route_pins/k1', 'restaurants/tb_c/draft'];
   for (const [who, db] of roles) {
     for (const p of NODES) {
       await no(`N: ${who} cannot read ${p}`, db.ref(p).get());

@@ -112,7 +112,7 @@
     },
 
     "brands": { ".read": false, ".write": false },
-    "branch_ops": { ".read": false, ".write": false },
+    "brand_ops": { ".read": false, ".write": false },
     "branch_op_ids": { ".read": false, ".write": false },
     "rid_reservations": { ".read": false, ".write": false },
     "brand_branch_names": { ".read": false, ".write": false },

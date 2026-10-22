@@ -99,12 +99,13 @@ const run = async (db, op, id, opts = {}, apply = false) => {
 
   // resume / delete-draft
   {
-    const db = fakeRtdb(state({ branch_ops: { tb_brand_centro: { kind: 'materialize', op_id: 'c0', inputs: { brand_id: 'tb_brand', location: {}, identity: { ...NORTE, location_name: 'Centro', active: false, version: 1 } },
-      payload_hash: 'h', lease: { call_id: 'c0', until: NOW - 1 }, step: 'start', rid: 'tb_brand_centro', started_at: 1, updated_at: 1 } } }));
+    // an interrupted materialize: the brand's lifecycle lock brand_ops/{brand}, its plan persisted (lease expired)
+    const db = fakeRtdb(state({ brand_ops: { tb_brand: { kind: 'materialize', op_id: 'c0', brand_id: 'tb_brand', inputs: { rid: 'tb_brand_centro', location: { address_line: 'x' } }, at: 1,
+      plan: { draft: DRAFT, identity: { ...NORTE, location_name: 'Centro', active: false, version: 1 } }, payload_hash: 'h', lease: { call_id: 'c0', until: NOW - 1 }, step: 'planned', started_at: 1, updated_at: 1 } } }));
     let r = await run(db, 'resume', 'tb_brand_centro');
     assert.strictEqual(r.code, 0); assert.match(r.out, /materialize/); assert.deepStrictEqual(db.writes, []);
     r = await run(db, 'delete-draft', 'tb_brand_centro', {}, true);
-    assert.strictEqual(r.code, 1); assert.match(r.out, /op_in_progress/, 'a draft under an unfinished op is not deleted');
+    assert.strictEqual(r.code, 1); assert.match(r.out, /brand_busy: otra operación en curso, reintentá \(materialize, interrumpida: branches-admin resume tb_brand --apply\)/, 'CLI-BUSY a draft under an interrupted op is not deleted; the operator is told to resume');
     r = await run(db, 'resume', 'tb_brand_centro', {}, true);
     assert.strictEqual(r.code, 0, r.out); assert.strictEqual(db.get('brands/tb_brand/locations/tb_brand_centro'), 'staged');
     assert.strictEqual((await run(db, 'resume', 'tb_brand_centro', {}, true)).code, 0, 'nothing to resume → no-op');
@@ -114,12 +115,12 @@ const run = async (db, op, id, opts = {}, apply = false) => {
     r = await run(db2, 'delete-draft', 'tb_brand_centro', {}, true);
     assert.strictEqual(r.code, 0, r.out); assert.strictEqual(db2.get('restaurants/tb_brand_centro'), null); assert.strictEqual(db2.get('rid_reservations/tb_brand_centro'), null);
     // a delete-draft is a durable op since Codex r1 P2-2: a crashed one (lease expired) resumes and finishes; nothing is published
-    const db3 = fakeRtdb(state({ branch_ops: { tb_brand_centro: { kind: 'delete_draft', op_id: 'd0', inputs: { brand_id: 'tb_brand' }, payload_hash: 'h',
-      lease: { call_id: 'd0', until: NOW - 1 }, step: 'start', rid: 'tb_brand_centro', started_at: 1, updated_at: 1 } } }));
+    const db3 = fakeRtdb(state({ brand_ops: { tb_brand: { kind: 'delete_draft', op_id: 'd0', brand_id: 'tb_brand', inputs: { rid: 'tb_brand_centro' }, payload_hash: 'h', at: 1,
+      lease: { call_id: 'd0', until: NOW - 1 }, step: 'start', started_at: 1, updated_at: 1 } } }));
     r = await run(db3, 'resume', 'tb_brand_centro', {}, true);
     assert.strictEqual(r.code, 0, r.out);
     assert.match(r.out, /tb_brand_centro resumed → draft deleted/, 'CLI-RESUME-DELETE a resumed delete reports the deletion');
-    assert.deepStrictEqual([db3.get('restaurants/tb_brand_centro'), db3.get('rid_reservations/tb_brand_centro'), db3.get('branch_ops/tb_brand_centro')], [null, null, null], 'CLI-RESUME-DELETE finished');
+    assert.deepStrictEqual([db3.get('restaurants/tb_brand_centro'), db3.get('rid_reservations/tb_brand_centro'), db3.get('brand_ops/tb_brand')], [null, null, null], 'CLI-RESUME-DELETE finished');
     assert.strictEqual(db3.get('public/brands/tb_brand'), null, 'CLI-RESUME-DELETE a draft delete publishes nothing');
   }
   ok('resume: dry run shows the unfinished op; apply finishes it from its durable inputs; nothing to resume → no-op. delete-draft: refused under an unfinished op; dry run ZERO writes; apply removes draft + reservation');
@@ -164,9 +165,11 @@ const run = async (db, op, id, opts = {}, apply = false) => {
     assert.strictEqual(r.code, 0, r.out); assert.match(r.out, /created and read back/);
     assert.deepStrictEqual(db.get('brands/tb_nueva/locations'), { tb_nueva_centro: 'staged' });
     assert.strictEqual(db.get('restaurants/tb_nueva_centro/draft/location_name'), 'Centro');
-    const n0 = db.writes.length;
+    const dataWrites = () => db.writes.filter(([, p]) => !String(p).startsWith('brand_ops/')).length;   // the lifecycle lock is taken + released
+    const n0 = dataWrites();
     assert.strictEqual((await run(db, 'create-brand', 'tb_nueva', o, true)).code, 0, 'a re-run resumes / is a no-op');
-    assert.strictEqual(db.writes.length, n0, 'and writes nothing');
+    assert.strictEqual(dataWrites(), n0, 'and writes nothing but the brand lock');
+    assert.strictEqual(db.get('brand_ops/tb_nueva'), null, 'the brand lock is released');
   }
   assert.deepStrictEqual(parseOpts(['--hours', '{bad']), { error: '--hours must be JSON' });
   assert.deepStrictEqual(parseOpts(['--name', 'Nueva', '--first-branch', 'Centro', '--phone', '+504', '--hours', '{"mon":{"open":false}}']).hours, { mon: { open: false } });
@@ -179,7 +182,11 @@ const run = async (db, op, id, opts = {}, apply = false) => {
     const r = await run(db, 'status', 'tb_brand');
     assert.strictEqual(r.code, 0);
     assert.deepStrictEqual(JSON.parse(r.out).branches, { tb_brand_centro: 'draft', tb_norte: 'active', tb_sur: 'staged' });
+    assert.strictEqual(JSON.parse(r.out).unfinished_op, null, 'CLI-STATUS-LOCK no lifecycle op holds the brand');
     assert.deepStrictEqual(db.writes, []);
+    db.root.brand_ops = { tb_brand: { kind: 'materialize', op_id: 'c0', brand_id: 'tb_brand', inputs: { rid: 'tb_brand_centro' }, lease: { call_id: 'c0', until: NOW - 1 }, step: 'planned' } };
+    assert.deepStrictEqual(JSON.parse((await run(db, 'status', 'tb_brand')).out).unfinished_op, { kind: 'materialize', rid: 'tb_brand_centro', step: 'planned', interrupted: true },
+      'CLI-STATUS-LOCK the brand\'s lifecycle lock is shown (interrupted → resume)');
   }
   ok('status <brand>: every branch as draft / staged / inactive / active; read-only');
 

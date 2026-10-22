@@ -8,7 +8,7 @@
 //   node tools/branches-admin.js --project <id> materialize <rid> --lat N --lng N --address S [--reference S] [--radius KM] [--apply]
 //   node tools/branches-admin.js --project <id> set-location <rid> --expected-version N [--lat N --lng N] [--address S] [--reference S] [--radius KM] [--apply]
 //   node tools/branches-admin.js --project <id> enrich-legacy <rid> --expected-version N --location-name S --prep MIN [--address S] [--apply]
-//   node tools/branches-admin.js --project <id> resume <rid> [--apply]          ← finish an unfinished op from its durable inputs
+//   node tools/branches-admin.js --project <id> resume <brandId|rid> [--apply]  ← finish the brand's interrupted lifecycle op from its durable record
 //   node tools/branches-admin.js --project <id> delete-draft <rid> [--apply]
 //   node tools/branches-admin.js --project <id> activate-brand <brandId> [--open rid,rid] [--apply]   ← a NEW brand off → on (legacy cutover: O3)
 //   node tools/branches-admin.js --project <id> deactivate-brand <brandId> [--apply]                  ← on → off (rollback)

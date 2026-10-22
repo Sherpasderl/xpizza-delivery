@@ -2,7 +2,7 @@
 // ORCHESTRATION O1a T6 (PLAN-multi-location-orchestration r3.1 §2, §4; advisor ruling 2026-10-20 "every identity write bumps
 // version") — STATIC guard over xpizza-reference/database.rules.json + the client bundles. The behaviour is proved in the emulator
 // (test/branches-rules.emulator.test.js); this pins the shapes so a later edit cannot drop them silently.
-//   1. server-only: branch_ops, branch_op_ids, rid_reservations, brand_branch_names, route_pins (root) and restaurants/{rid}/draft
+//   1. server-only: brand_ops (the per-brand lifecycle lock), branch_op_ids, rid_reservations, brand_branch_names, route_pins (root) and restaurants/{rid}/draft
 //      are explicit {.read:false, .write:false} with NO grant beneath.
 //   2. identity: a client (dispatcher) write is allowed only for an un-branded identity or a LEGACY brand's own branch; every
 //      non-admin write must bump version by EXACTLY 1; hub ranges; address / active_changed_at / same-day 7-day hours validators.
@@ -26,7 +26,7 @@ const grants = (node, at = '') => {
   }
   return out;
 };
-for (const k of ['branch_ops', 'branch_op_ids', 'rid_reservations', 'brand_branch_names', 'route_pins']) {
+for (const k of ['brand_ops', 'branch_op_ids', 'rid_reservations', 'brand_branch_names', 'route_pins']) {
   assert.ok(rules[k], `FAIL: /${k} rule missing`);
   assert.deepStrictEqual([rules[k]['.read'], rules[k]['.write']], [false, false], `FAIL: /${k} must be an explicit server-only deny`);
   assert.deepStrictEqual(grants(rules[k]), [], `FAIL: /${k} has a grant beneath`);

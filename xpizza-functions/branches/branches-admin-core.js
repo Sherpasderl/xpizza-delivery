@@ -36,7 +36,9 @@ function parseOpts(argv) {
   return out;
 }
 
-const refusedLine = (r) => `branches-admin: REFUSED — ${r.error}${r.errors ? `: ${r.errors.join(', ')}` : ''}${r.unmet ? ` ${JSON.stringify(r.unmet)}` : ''}${r.rids ? ` ${r.rids.join(', ')}` : ''}`;
+// brand_busy (one lifecycle lock per brand): another op holds the brand — live (retry later) or interrupted (resume it first)
+const busyLine = (r) => `branches-admin: REFUSED — brand_busy: otra operación en curso, reintentá${r.holder ? ` (${r.holder}` : ''}${r.holder ? (r.interrupted ? `, interrumpida: branches-admin resume ${r.brand} --apply)` : ')') : ''}`;
+const refusedLine = (r) => (r.error === 'brand_busy' ? busyLine(r) : `branches-admin: REFUSED — ${r.error}${r.errors ? `: ${r.errors.join(', ')}` : ''}${r.unmet ? ` ${JSON.stringify(r.unmet)}` : ''}${r.rids ? ` ${r.rids.join(', ')}` : ''}`);
 const show = (title, apply, body) => `branches-admin ${title} ${apply ? 'APPLY' : 'DRY RUN'}${body === undefined ? '' : `\n${JSON.stringify(body, null, 2)}`}`;
 
 async function publishAfter(rtdb, brandId, now, log) {
@@ -70,8 +72,11 @@ async function runBranchesAdmin({ rtdb, op, id, opts = {}, apply, nowMs: now, ca
       const ident = restaurants[rid] && restaurants[rid].identity;
       branches[rid] = st === 'member' ? (ident && ident.active === true ? 'active' : 'inactive') : st;
     }
-    const ops = Object.keys((await read('branch_ops')) || {}).filter((rid) => rid in branches).sort();
-    log(JSON.stringify({ brand: id, activation: brand.activation || null, branches: Object.fromEntries(Object.keys(branches).sort().map((k) => [k, branches[k]])), unfinished_ops: ops }, null, 2));
+    // the brand's lifecycle lock (one per brand): a live op, or an interrupted one waiting for `resume`
+    const lock = await read(`brand_ops/${id}`);
+    const unfinished = lock ? { kind: lock.kind, rid: (lock.inputs && lock.inputs.rid) || null, step: lock.step || null,
+      interrupted: !(lock.lease && Number.isFinite(lock.lease.until) && lock.lease.until > now) } : null;
+    log(JSON.stringify({ brand: id, activation: brand.activation || null, branches: Object.fromEntries(Object.keys(branches).sort().map((k) => [k, branches[k]])), unfinished_op: unfinished }, null, 2));
     return 0;
   }
 
@@ -136,15 +141,18 @@ async function runBranchesAdmin({ rtdb, op, id, opts = {}, apply, nowMs: now, ca
   }
 
   if (op === 'resume') {
-    const rec = await read(`branch_ops/${id}`);
+    // <id> is a brand or one of its rids: the op record is the brand's lifecycle lock brand_ops/{brand}
+    const brandId = await S.opBrandOf(rtdb, id);
+    const rec = brandId ? await read(`brand_ops/${brandId}`) : null;
     if (!rec) { log(`branches-admin: no unfinished op for ${id} — nothing to resume`); return 0; }
-    log(show(`resume ${id}`, apply, { kind: rec.kind, step: rec.step, error: rec.error || null, lease: rec.lease || null }));
+    log(show(`resume ${id}`, apply, { brand: brandId, kind: rec.kind, step: rec.step, lease: rec.lease || null }));
     if (!apply) { log('(dry run — nothing written; add --apply)'); return 0; }
-    const r = await S.resumeBranchOp(rtdb, { rid: id, now, callId });
+    const r = await S.resumeBranchOp(rtdb, { brandId, now, callId });
     if (!r.ok) { log(refusedLine(r)); return 1; }
     if (rec.kind === 'delete_draft') { log(`branches-admin: ${id} resumed → draft deleted (its rid / name reservations released)`); return 0; }   // nothing to publish
-    log(`branches-admin: ${id} resumed → ${r.state}`);
-    return publishAfter(rtdb, rec.inputs.brand_id, now, log);
+    if (rec.kind === 'create_draft') { log(`branches-admin: ${id} resumed → draft ${r.rid} created`); return 0; }   // a draft is not published
+    log(`branches-admin: ${id} resumed → ${r.state || (r.opened ? `opened ${r.opened.join(', ') || '(no branch)'}` : 'done')}`);
+    return publishAfter(rtdb, brandId, now, log);
   }
 
   if (op === 'delete-draft') {
