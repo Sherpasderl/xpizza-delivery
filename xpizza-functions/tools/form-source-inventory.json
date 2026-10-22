@@ -1745,6 +1745,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/release-race-inverse.js",
@@ -1763,6 +1764,7 @@
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -1787,6 +1789,7 @@
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -1806,7 +1809,8 @@
      "file": "xpizza-functions/brand-server-wiring.guard.test.js",
      "inverses": [
       "tools/brand-server-inverse.js",
-      "tools/dlite-push-inverse.js"
+      "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js"
      ]
     },
     {
@@ -1820,6 +1824,7 @@
       "tools/d4c4-inverse.js",
       "tools/d4c5-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -1842,6 +1847,7 @@
       "tools/brand-server-inverse.js",
       "tools/d12b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -1863,6 +1869,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -1883,6 +1890,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -1900,6 +1908,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/release-race-inverse.js",
@@ -1913,6 +1922,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/h1c-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
@@ -1930,6 +1940,7 @@
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -1956,6 +1967,7 @@
       "tools/d4c4-inverse.js",
       "tools/d4c5-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -1976,6 +1988,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/release-race-inverse.js"
      ]
     },
@@ -1985,6 +1998,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/release-race-inverse.js",
@@ -2002,6 +2016,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/release-race-inverse.js",
@@ -2018,6 +2033,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/release-race-inverse.js",
@@ -2033,6 +2049,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2051,6 +2068,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2065,6 +2083,7 @@
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -2109,6 +2128,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/release-race-inverse.js",
       "tools/tracker-fixes-inverse.js"
      ]
@@ -2118,6 +2138,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/release-race-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
@@ -2129,6 +2150,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/driver-ledger-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -2163,6 +2185,7 @@
     "xpizza-functions/createorder-idempotent.test.js",
     "xpizza-functions/dlite-push-wiring.guard.test.js",
     "xpizza-functions/driver-callable-guard-coverage.guard.test.js",
+    "xpizza-functions/driver-ledger-wiring.guard.test.js",
     "xpizza-functions/factura-catalog-cutover.test.js",
     "xpizza-functions/fail-closed-reject.test.js",
     "xpizza-functions/identity-shadow-placement.test.js",
