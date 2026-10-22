@@ -1,25 +1,18 @@
 'use strict';
 // S8 — THE DRIVER PAYABLE LEDGER STORE, end to end on the RTDB emulator (PLAN-shared-order-form.FINAL §5 S8).
 // Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:driver-ledger
-// Every store call goes through an INSTRUMENTED handle that records each read (with its query) and each write, so the
-// suite proves what the ledger touches, not only what it computes: /orders is read ONLY through the bounded delivered_at
-// query or one order at a time; every write lands under the ledger's own paths (never cash-to-remit / cuadre).
-//
-// Cells 13–18 replay codex r1's six findings (24254a26) through the REAL store, one cell each. With DL_RED=1 each also
-// replays the same scenario against the r1 store (`git show 24254a26`) and asserts it is RED there — the regression proof.
+// r3 design: /orders is the source of truth; a week is closed by ONE create-if-absent transaction on
+// driver_ledger_weeks/{week}; the open week is derived on read. Every store call goes through an INSTRUMENTED handle that
+// records each read (with its query) and each write, so the suite proves what the ledger touches, not only what it
+// computes. The codex r1 (6) and r2 (4) findings are each replayed below, labelled; under r3 they are GREEN or impossible.
 require('./_emulator-required')('database');
 
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const { execFileSync } = require('child_process');
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 const admin = require('firebase-admin');
 admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-xpizza', databaseURL: `http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}?ns=demo-xpizza` });   // as test/add-product.emulator.test.js
 const rtdb = admin.database();
 const S = require('../driver-ledger/ledger-store');
-const C = require('../driver-ledger/ledger-core');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -28,26 +21,26 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('driver-le
 // ── the instrumented handle ──
 const READS = [], WRITES = [];
 let ON_READ = null;          // { p, fn }: after the NEXT read of p resolves, run fn before the caller sees it (an interleaving)
-let CRASH_AFTER = null;      // a path whose NEXT transaction commits and then throws (a crash right after that write)
+let CRASH_BEFORE = null;     // a path whose NEXT transaction throws BEFORE it is sent (a crash before the commit)
 function wrap(r, p, chain) {
   return new Proxy(r, { get(t, k) {
     const v = t[k];
     if (typeof v !== 'function') return v;
     return (...a) => {
+      if (k === 'transaction' && CRASH_BEFORE === p) { CRASH_BEFORE = null; return Promise.reject(new Error('injected crash')); }
       if (['set', 'update', 'remove', 'transaction', 'push'].includes(k)) WRITES.push(p);
       const out = v.apply(t, a);
       if (k === 'once') {
         READS.push({ p, chain });
         if (ON_READ && ON_READ.p === p) { const { fn } = ON_READ; ON_READ = null; return out.then(async (s) => { await fn(); return s; }); }
       }
-      if (k === 'transaction' && CRASH_AFTER === p) { CRASH_AFTER = null; return out.then(() => { throw new Error('injected crash'); }); }
-      if (['orderByChild', 'orderByKey', 'startAt', 'startAfter', 'limitToFirst', 'equalTo'].includes(k)) return wrap(out, p, [...chain, k]);
+      if (['orderByChild', 'orderByKey', 'startAt', 'endAt', 'limitToLast', 'limitToFirst', 'equalTo'].includes(k)) return wrap(out, p, [...chain, k]);
       return out;
     };
   } });
 }
 const db = { ref: (p) => wrap(rtdb.ref(p), p, []) };
-const LEDGER = /^(driver_ledger|driver_ledger_orders|driver_ledger_week_index|driver_ledger_unresolved|driver_ledger_meta)(\/|$)/;
+const LEDGER = /^driver_ledger_weeks(\/|$)/;
 
 async function wipe() {
   const url = rtdb.ref().toString();
@@ -56,40 +49,24 @@ async function wipe() {
 }
 const HN = (iso) => Date.parse(`${iso}-06:00`);
 const START = HN('2026-10-19T00:00:00');           // Monday — the ledger's go-live
-const W0 = 'W2026-10-12', W1 = 'W2026-10-19', W2 = 'W2026-10-26', W3 = 'W2026-11-02';
+const W1 = 'W2026-10-19', W2 = 'W2026-10-26', W3 = 'W2026-11-02', W4 = 'W2026-11-09';
+const MON2 = HN('2026-10-26T00:10:00'), MON3 = HN('2026-11-02T00:10:00'), MON4 = HN('2026-11-09T00:10:00'), MON5 = HN('2026-11-16T00:10:00');
 const order = (o) => ({ order_type: 'delivery', status: 'delivered', restaurant_id: 'r1', total: 300, ...o });
 const val = async (p) => (await rtdb.ref(p).get()).val();
-const pick = (o, ks) => Object.fromEntries(ks.map((k) => [k, o && o[k]]));
-
-// the r1 store (24254a26), loaded only for DL_RED=1: the same scenarios must fail there
-const RED = process.env.DL_RED === '1';
-let O = null;
-if (RED) {
-  const src = execFileSync('git', ['show', '24254a26:xpizza-functions/driver-ledger/ledger-store.js'], { cwd: __dirname, encoding: 'utf8' })
-    .replace("require('./ledger-core')", `require(${JSON.stringify(path.join(__dirname, '../driver-ledger/ledger-core'))})`);
-  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dl-r1-')), 'ledger-store-r1.js');
-  fs.writeFileSync(f, src);
-  O = require(f);
-}
-// one adapter per store: `run` = what production runs on a schedule; `sweep` = an accrual run racing it
-const NEW = { name: 'r2', run: (now, o = {}) => S.runLedger(db, now, o.r2), sweep: (now, o = {}) => S.runLedger(db, now, o.r2) };
-const OLD = O && { name: 'r1', run: async (now, o = {}) => { await O.repairSweep(db, now, o.r1); await O.closeWeeks(db, now); }, sweep: (now, o = {}) => O.repairSweep(db, now, o.r1) };
-async function finding(label, scenario, expected) {
-  const got = await scenario(NEW);
-  assert.deepStrictEqual(got, expected, `🔴 ${label} — r2 store: ${JSON.stringify(got)}`);
-  let red = '';
-  if (RED) {
-    const was = await scenario(OLD);
-    assert.notDeepStrictEqual(was, expected, `premise: ${label} reproduces on the r1 store`);
-    red = `\n      r2 GREEN ${JSON.stringify(got)}  |  r1 RED ${JSON.stringify(was)}`;
-  }
-  ok(`${label}${red}`);
-}
-const statementsWith = async (uids, oid) => {
+const list = (x) => (Array.isArray(x) ? x : x ? Object.values(x) : []);
+const json = (x) => JSON.parse(JSON.stringify(x));
+const fresh = async () => { await wipe(); ON_READ = null; CRASH_BEFORE = null; await rtdb.ref('platform_config/driver_pay').set({ base_cents: 7000, ledger_start_at: START, policy_version: 1 }); };
+// in how many closed weeks (deliveries or adjustments, any driver) an order was paid
+async function timesPaid(oid) {
   let k = 0;
-  for (const u of uids) for (const st of Object.values((await val(`driver_ledger/${u}/weeks`)) || {})) if ((st.order_ids || []).includes(oid)) k++;
+  for (const wk of Object.values((await val('driver_ledger_weeks')) || {})) {
+    for (const d of Object.values(wk.drivers || {})) {
+      if (list(d.deliveries).includes(oid)) k++;
+      if (list(d.adjustments).some((a) => a.order_id === oid)) k++;
+    }
+  }
   return k;
-};
+}
 
 (async () => {
   await wipe();
@@ -99,9 +76,10 @@ const statementsWith = async (uids, oid) => {
   const cashBefore = JSON.stringify([await val('driver_shifts'), await val('cash_settlements')]);
 
   // 1. OFF without config
-  assert.deepStrictEqual(await S.runLedger(db, HN('2026-10-21T20:00:00')), { off: true });
+  assert.deepStrictEqual(await S.closeDue(db, MON2), { off: true });
+  assert.deepStrictEqual(await S.previewWeek(db, null, MON2), { off: true });
   assert.deepStrictEqual(WRITES, [], 'no config → nothing written');
-  ok('platform_config/driver_pay absent → the run is OFF and writes nothing');
+  ok('platform_config/driver_pay absent → the close and the read are OFF and write nothing');
 
   await rtdb.ref('platform_config/driver_pay').set({ base_cents: 7000, ledger_start_at: START, policy_version: 1 });
   await rtdb.ref('orders').set({
@@ -114,216 +92,158 @@ const statementsWith = async (uids, oid) => {
     o7: order({ created_at: HN('2026-10-22T15:00:00') }),                                        // not delivered
   });
 
-  // 2. accrual
-  const now1 = HN('2026-10-22T18:00:00');
-  const r1 = await S.runLedger(db, now1);
-  assert.deepStrictEqual([r1.created, r1.unresolved], [3, 1], JSON.stringify(r1));
-  assert.deepStrictEqual(Object.keys((await val('driver_ledger/drvA/events')) || {}).sort(), ['o1', 'o2']);
-  assert.deepStrictEqual(Object.keys((await val('driver_ledger/drvB/events')) || {}), ['o3']);
-  assert.deepStrictEqual(await val('driver_ledger/drvA/events/o1'), { order_id: 'o1', driver_uid: 'drvA', delivered_at: HN('2026-10-20T19:00:00'), base_cents: 7000, policy_version: 1, week: W1, kind: 'delivery' });
-  assert.deepStrictEqual(await val('driver_ledger_orders/o1'), { driver_uid: 'drvA', week: W1, kind: 'delivery' }, 'the order claim fixes driver / week / kind once');
-  assert.ok(await val('driver_ledger_unresolved/o4'), 'o4 (no protected stamp) is listed unresolved');
-  assert.strictEqual(await val('driver_ledger/drvB/events/o4'), null, '…and held out of the balance (best-effort delivered_by_uid is never money)');
-  assert.strictEqual(await val('driver_ledger_meta/lock'), null, 'the lease is released');
-  ok('accrual: L 70 per delivered delivery from the protected stamp, claimed once per order; no stamp → unresolved + held out; pickup / pre-start / undelivered → nothing');
+  // 2. the open week is derived on read, with NO write; nothing closes before the week ends
+  const w0 = WRITES.length;
+  const pv = await S.previewWeek(db, null, HN('2026-10-22T18:00:00'));
+  assert.ok(pv.open, JSON.stringify(pv));
+  assert.deepStrictEqual([list(pv.week.drivers.drvA.deliveries), pv.week.drivers.drvA.net_cents, list(pv.week.unresolved)], [['o1', 'o2'], 14000, ['o4']]);
+  assert.deepStrictEqual(await S.closeDue(db, HN('2026-10-22T18:00:00')), { closed: [] }, 'the open week is never closed');
+  assert.deepStrictEqual(WRITES.slice(w0), [], 'the read and an early run write nothing');
+  ok('the open week is derived from /orders on read (L 70 per delivered delivery from the protected stamp; no stamp → unresolved) and nothing is written');
 
-  // 3. bounded reads only
+  // 3. the close: ONE node for the whole week
+  assert.deepStrictEqual(await S.closeDue(db, MON2), { closed: [W1] });
+  const n1 = await val(`driver_ledger_weeks/${W1}`);
+  assert.deepStrictEqual(Object.keys(n1).sort(), ['base_cents', 'closed_at', 'drivers', 'policy_version', 'unresolved', 'week']);
+  assert.deepStrictEqual([list(n1.drivers.drvA.deliveries), n1.drivers.drvA.net_cents, n1.drivers.drvA.outcome], [['o1', 'o2'], 14000, 'payable']);
+  assert.deepStrictEqual([list(n1.drivers.drvB.deliveries), n1.drivers.drvB.net_cents], [['o3'], 7000]);
+  assert.deepStrictEqual(list(n1.unresolved), ['o4'], 'o4 (no protected stamp) listed, held out of every balance');
+  assert.deepStrictEqual(WRITES.filter((p) => LEDGER.test(p)), [`driver_ledger_weeks/${W1}`], 'exactly ONE write: the week node');
+  ok('the close writes the WHOLE week as one node (pickup / pre-start / undelivered excluded) — one write, nothing else');
+
+  // 4. bounded reads only
   const orderReads = READS.filter((r) => r.p === 'orders' || r.p.startsWith('orders/'));
-  assert.ok(orderReads.length > 0, 'non-vacuity: the run read orders');
-  for (const r of orderReads) assert.ok((r.p === 'orders' && r.chain.join() === 'orderByChild,startAt,limitToFirst') || /^orders\/[^/]+$/.test(r.p), `🔴 an unbounded /orders read: ${JSON.stringify(r)}`);
-  const unresReads = READS.filter((r) => r.p === 'driver_ledger_unresolved');
-  assert.ok(unresReads.length > 0 && unresReads.every((r) => r.chain.includes('limitToFirst')), `🔴 an unbounded unresolved read: ${JSON.stringify(unresReads)}`);
-  ok(`/orders is read only through orderByChild(delivered_at).startAt().limitToFirst() or one order at a time (${orderReads.length} reads); the unresolved list only by bounded page`);
+  assert.ok(orderReads.length > 0, 'non-vacuity: the ledger read orders');
+  for (const r of orderReads) assert.deepStrictEqual([r.p, r.chain.join()], ['orders', 'orderByChild,startAt,endAt'], `🔴 an unbounded /orders read: ${JSON.stringify(r)}`);
+  for (const r of READS.filter((x) => x.p === 'driver_ledger_weeks')) assert.strictEqual(r.chain.join(), 'orderByKey,limitToLast', `🔴 an unbounded weeks read: ${JSON.stringify(r)}`);
+  ok(`/orders is read only through the bounded orderByChild(delivered_at).startAt().endAt() range (${orderReads.length} reads); weeks only one by key or the last one`);
 
-  // 4. idempotent under retry / crash
-  await rtdb.ref(`driver_ledger_week_index/${W1}/drvA`).remove();                                 // a crash between index and event
-  const r2 = await S.runLedger(db, now1 + 60000);
-  assert.strictEqual(r2.created, 0, 'a second run creates nothing');
-  assert.strictEqual(await val(`driver_ledger_week_index/${W1}/drvA`), true, 'the missing week index heals on the next (overlap) pass');
-  assert.strictEqual(Object.keys((await val('driver_ledger/drvA/events')) || {}).length, 2, 'still exactly 2 events for drvA');
-  ok('retry / crash: re-running accrues nothing twice and heals a missing week index');
+  // 5. idempotent and immutable: re-running writes nothing; a later order edit never rewrites a closed week
+  await rtdb.ref('orders/o1/delivered_by_driver_uid').set('drvB');
+  const w5 = WRITES.length;
+  assert.deepStrictEqual(await S.closeDue(db, MON2 + 60000), { closed: [] });
+  assert.strictEqual(await S.closeWeek(db, W1, await S.readConfig(db), MON2 + 120000), false, 'a direct re-close is refused by its transaction');
+  assert.deepStrictEqual(await val(`driver_ledger_weeks/${W1}`), n1, '🔴 a closed week is never rewritten');
+  assert.deepStrictEqual(WRITES.slice(w5), [`driver_ledger_weeks/${W1}`], '…the refused re-close is the only write attempt');
+  await rtdb.ref('orders/o1/delivered_by_driver_uid').set('drvA');
+  ok('re-running closes nothing; a direct re-close of a closed week (after an order edit) loses its create-if-absent transaction');
 
-  // 5. late / offline sync: an order whose delivered_at is BEHIND the forward cursor is still picked up (48 h overlap)
-  const fwd = await val('driver_ledger_meta/fwd');
-  await rtdb.ref('orders/o8').set(order({ delivered_at: fwd.at - 6 * 3600000, delivered_by_driver_uid: 'drvB' }));
-  await S.runLedger(db, now1 + 120000);
-  assert.ok(await val('driver_ledger/drvB/events/o8'), 'o8 (6 h behind the cursor) accrued');
-  ok('a delivery that syncs late, behind the forward cursor, is accrued by the separate 48 h overlap pass');
+  // 6. «Marcar pagado»: full only, compare-and-set, idempotent retry, no bank field
+  const pay = { uid: 'drvA', week: W1, reference: 'BAC-2210-4471', paid_on: '2026-10-26', op_key: 'op_aaaaaaaa', actor: 'adminX' };
+  assert.strictEqual((await S.markPaid(db, { ...pay, amount_cents: 7000 }, MON2)).reason, 'amount_must_equal_net', 'a partial payment is refused');
+  assert.strictEqual((await S.markPaid(db, { ...pay, week: W2, amount_cents: 7000 }, MON2)).reason, 'not_closed', 'an open week is refused');
+  assert.strictEqual((await S.markPaid(db, { ...pay, uid: 'drvNobody', amount_cents: 7000 }, MON2)).reason, 'not_closed', 'a driver absent from the week is refused');
+  assert.strictEqual((await S.markPaid(db, { ...pay, uid: 'a/b', amount_cents: 7000 }, MON2)).reason, 'bad_request', 'a path-like uid is refused');
+  const p1 = await S.markPaid(db, { ...pay, amount_cents: 14000, account_number: '0011223344' }, MON2 + 5);
+  assert.ok(p1.ok && !p1.idempotent, JSON.stringify(p1));
+  assert.deepStrictEqual(Object.keys((await val(`driver_ledger_weeks/${W1}/drivers/drvA`)).paid).sort(), ['amount_cents', 'at', 'by', 'op_key', 'paid_on', 'reference'], 'the payment records ONLY amount/date/reference (+ op key, actor, time) — no bank field');
+  assert.ok((await S.markPaid(db, { ...pay, amount_cents: 14000 }, MON2 + 9)).idempotent, 'the same op_key again → the recorded payment (idempotent)');
+  const conflict = await S.markPaid(db, { ...pay, op_key: 'op_bbbbbbbb', actor: 'adminY', amount_cents: 14000 }, MON2 + 10);
+  assert.deepStrictEqual([conflict.ok, conflict.reason, conflict.by, conflict.at], [false, 'already_paid', 'adminX', MON2 + 5], 'a second admin is REFUSED with who/when');
+  const after = await val(`driver_ledger_weeks/${W1}`);
+  const unpaid = (x) => json({ ...x, drivers: { ...x.drivers, drvA: { ...x.drivers.drvA, paid: undefined } } });
+  assert.deepStrictEqual(unpaid(after), unpaid(n1), 'paying touches only drvA.paid');
+  ok('«Marcar pagado»: exact net only; open week / absent driver / bad uid refused; same op_key idempotent; a conflicting retry refused with who/when; only .paid changes; no bank data');
 
-  // 6. late stamp: (a) inside the overlap window the next pass resolves o4 in place; (b) OUTSIDE it (o12, older than
-  //    cursor − 48 h, recorded unresolved by the real writer) only the unresolved RE-CHECK can resolve it.
-  await rtdb.ref('orders/o4/delivered_by_driver_uid').set('drvB');
-  await S.runLedger(db, now1 + 180000);
-  assert.ok(await val('driver_ledger/drvB/events/o4'), 'o4 accrued to drvB');
-  assert.strictEqual(await val('driver_ledger_unresolved/o4'), null, 'its unresolved entry is gone');
-  const o12 = order({ delivered_at: HN('2026-10-19T12:00:00') });                                   // after go-live, before the window
-  await rtdb.ref('orders/o12').set(o12);
-  assert.strictEqual(await S.accrueOrder(db, 'o12', o12, await S.readConfig(db), now1, null), 'unresolved', 'premise: the real writer records o12 unresolved');
-  assert.ok((await val('driver_ledger_meta/fwd')).at - 48 * 3600000 > o12.delivered_at, 'premise: o12 is OUTSIDE the overlap window');
-  await rtdb.ref('orders/o12/delivered_by_driver_uid').set('drvA');
-  const r3 = await S.runLedger(db, now1 + 240000);
-  assert.strictEqual(r3.resolved, 1, 'the unresolved re-check (not the window) resolved it');
-  assert.ok(await val('driver_ledger/drvA/events/o12'), 'o12 accrued to drvA');
-  assert.strictEqual(await val('driver_ledger_unresolved/o12'), null, 'its unresolved entry is gone');
-  ok('a stamp that arrives after the order was swept resolves it in place — by the overlap pass, or by the unresolved re-check outside the window');
-
-  // 7. weekly close: immutable statements, in the same run as the accrual
-  const mon = HN('2026-10-26T00:10:00');
-  const rc = await S.runLedger(db, mon);
-  assert.deepStrictEqual(rc.closed.sort(), [`${W1}/drvA`, `${W1}/drvB`]);
-  assert.strictEqual(await val('driver_ledger_meta/closed_through'), W1);
-  const sA = await val(`driver_ledger/drvA/weeks/${W1}`), sB = await val(`driver_ledger/drvB/weeks/${W1}`);
-  assert.deepStrictEqual([sA.deliveries, sA.net_cents, sA.outcome], [3, 21000, 'payable']);   // o1, o2, o12
-  assert.deepStrictEqual([sB.deliveries, sB.net_cents], [3, 21000]);                           // o3, o4, o8
-  await rtdb.ref(`driver_ledger/drvA/events/o1/base_cents`).set(99999);                           // tamper after close
-  await S.runLedger(db, mon + 1000); await S.closeDriverWeek(db, 'drvA', W1, mon + 2000);
-  assert.deepStrictEqual(await val(`driver_ledger/drvA/weeks/${W1}`), sA, '🔴 a closed statement is never rewritten');
-  await rtdb.ref(`driver_ledger/drvA/events/o1/base_cents`).set(7000);
-  ok('the run closes finished Mon–Sun weeks after accruing; re-running (and a later event edit) never rewrites a statement');
-
-  // 8. late accrual into a closed week → current-week adjustment referencing the original week
-  await rtdb.ref('orders/o9').set(order({ delivered_at: HN('2026-10-25T21:00:00'), delivered_by_driver_uid: 'drvA' }));
-  await S.runLedger(db, HN('2026-10-27T10:00:00'));
-  assert.deepStrictEqual(pick(await val('driver_ledger/drvA/events/o9'), ['week', 'original_week', 'kind']), { week: W2, original_week: W1, kind: 'late' });
-  ok('a delivery from a closed week (closed_through, global) posts as a current-week LATE adjustment referencing its original week');
-
-  // 9. the lease: two overlapping invocations serialize; a stale lease is taken over; a live one is respected
-  {
-    const t = HN('2026-10-27T11:00:00');
-    let second = null;
-    ON_READ = { p: 'driver_ledger_meta', fn: async () => { second = await S.runLedger(db, t, { owner: 'run_B' }); } };   // B fires while A holds the lease
-    const first = await S.runLedger(db, t, { owner: 'run_A' });
-    assert.ok(second, 'premise: the second invocation ran inside the first');
-    assert.deepStrictEqual(second, { locked: true }, '🔴 a second invocation must not run while the first holds the lease');
-    assert.ok(!first.locked && Array.isArray(first.closed), 'the first ran to completion');
-    assert.strictEqual(await val('driver_ledger_meta/lock'), null, 'and released the lease');
-    await rtdb.ref('driver_ledger_meta/lock').set({ owner: 'run_live', expires_at: t + 60000 });
-    const w0 = WRITES.length;
-    assert.deepStrictEqual(await S.runLedger(db, t + 1000), { locked: true }, 'a live lease of another run → this run does nothing');
-    assert.deepStrictEqual(WRITES.slice(w0), ['driver_ledger_meta/lock'], '…writing nothing but its refused lease attempt');
-    await rtdb.ref('driver_ledger_meta/lock').set({ owner: 'run_dead', expires_at: t - 1 });
-    assert.ok(!(await S.runLedger(db, t + 2000)).locked, 'an EXPIRED lease (a crashed run) is taken over');
-    assert.strictEqual(await val('driver_ledger_meta/lock'), null);
-  }
-  ok('lease: two overlapping invocations serialize (the second is refused); a live lease is respected, an expired one taken over');
-
-  // 10. carry-forward, DERIVED from the previous stored statement (no carry index to lose)
-  await rtdb.ref(`driver_ledger/drvC/weeks/${W1}`).set({ week: W1, net_cents: -7000, outcome: 'no_payment', order_ids: [], closed_at: 1 });
-  await rtdb.ref(`driver_ledger_week_index/${W1}/drvC`).set(true);
-  await S.runLedger(db, HN('2026-11-02T00:10:00'));                                                 // closes W2
-  const sC = await val(`driver_ledger/drvC/weeks/${W2}`);
-  assert.deepStrictEqual([sC.carry_in_cents, sC.net_cents, sC.outcome], [-7000, -7000, 'no_payment']);
-  assert.strictEqual(await val(`driver_ledger_week_index/${W2}/drvC`), true, 'the carried driver is indexed into the week it closed in');
-  assert.strictEqual(await val('driver_ledger_meta/closed_through'), W2);
-  ok('net ≤ 0 closes with no payment and the negative carries into the next week (derived at close from the stored statement)');
-
-  // 11. «Marcar pagado»: full only, compare-and-set, idempotent retry, no bank field
-  const pay = { uid: 'drvB', week: W1, reference: 'BAC-2210-4471', paid_on: '2026-10-26', op_key: 'op_aaaaaaaa', actor: 'adminX' };
-  assert.strictEqual((await S.markPaid(db, { ...pay, amount_cents: 7000 }, mon)).reason, 'amount_must_equal_net', 'a partial payment is refused');
-  assert.strictEqual((await S.markPaid(db, { ...pay, week: W3, amount_cents: 7000 }, mon)).reason, 'not_closed', 'an open week is refused');
-  assert.strictEqual((await S.markPaid(db, { ...pay, uid: 'drvC', week: W2, amount_cents: 0 }, mon)).reason, 'nothing_to_pay', 'a no-payment week is refused');
-  const p1 = await S.markPaid(db, { ...pay, amount_cents: 21000, account_number: '0011223344' }, mon + 5);
-  assert.ok(p1.ok && !p1.idempotent);
-  assert.deepStrictEqual(Object.keys((await val(`driver_ledger/drvB/weeks/${W1}`)).payment).sort(), ['amount_cents', 'at', 'by', 'op_key', 'paid_on', 'reference'], 'the payment records ONLY amount/date/reference (+ op key, actor, time) — no bank field');
-  assert.ok((await S.markPaid(db, { ...pay, amount_cents: 21000 }, mon + 9)).idempotent, 'the same op_key again → the recorded payment (idempotent)');
-  const conflict = await S.markPaid(db, { ...pay, op_key: 'op_bbbbbbbb', actor: 'adminY', amount_cents: 21000 }, mon + 10);
-  assert.deepStrictEqual([conflict.ok, conflict.reason, conflict.by, conflict.at], [false, 'already_paid', 'adminX', mon + 5], 'a second admin is REFUSED with who/when');
-  ok('«Marcar pagado»: exact net only; open / no-payment weeks refused; same op_key idempotent; a conflicting retry refused with who/when; no bank data stored');
-
-  // 12. scope: every write is the ledger's own; cash-to-remit / cuadre untouched
+  // 7. scope: every write is the ledger's own; cash-to-remit / cuadre untouched
   const foreign = [...new Set(WRITES.filter((p) => !LEDGER.test(p)))];
-  assert.deepStrictEqual(foreign, [], `🔴 S8 wrote outside its ledger paths: ${foreign.join(', ')}`);
+  assert.deepStrictEqual(foreign, [], `🔴 S8 wrote outside driver_ledger_weeks: ${foreign.join(', ')}`);
   assert.strictEqual(JSON.stringify([await val('driver_shifts'), await val('cash_settlements')]), cashBefore, 'cash-to-remit / cuadre data unchanged');
   assert.ok(!READS.some((r) => /^(driver_shifts|cash_|cuadre)/.test(r.p)), 'and never read');
-  ok(`every write (${WRITES.length}) is under driver_ledger*; cash-to-remit / cuadre never read or written`);
+  ok(`every write (${WRITES.length}) is under driver_ledger_weeks; cash-to-remit / cuadre never read or written`);
 
-  // ── 13–18: codex r1's findings, each through the real store ──
-  const fresh = async (start = START) => { await wipe(); ON_READ = null; CRASH_AFTER = null; await rtdb.ref('platform_config/driver_pay').set({ base_cents: 7000, ledger_start_at: start, policy_version: 1 }); };
+  // 8. a crash before the commit writes NOTHING; the retry closes the week  [r2 #1 partial close · r1 #6 crash loses carry]
+  await fresh();
+  await rtdb.ref('orders/a1').set(order({ delivered_at: HN('2026-10-20T12:00:00'), delivered_by_driver_uid: 'drvA' }));
+  CRASH_BEFORE = `driver_ledger_weeks/${W1}`;
+  const e = await S.closeDue(db, MON2).then(() => null, (x) => x);
+  assert.ok(e && /injected crash/.test(e.message), `premise: the crash fired (${e && e.message})`);
+  assert.strictEqual(await val('driver_ledger_weeks'), null, '🔴 a crash before the commit left a partial week');
+  assert.deepStrictEqual(await S.closeDue(db, MON2 + 60000), { closed: [W1] });
+  assert.strictEqual(await timesPaid('a1'), 1);
+  ok('r2#1 / r1#6: a crash before the commit writes nothing (no partial close possible); the retry closes the whole week');
 
-  // 13. P1 #1 — a driver with NO statement in a closed week delivers late: the accrual must still reach a statement
-  await finding('P1#1 a late delivery by a driver with no statement in the closed week lands in exactly one statement', async (R) => {
-    await fresh();
-    await rtdb.ref('orders/oA').set(order({ delivered_at: HN('2026-10-20T12:00:00'), delivered_by_driver_uid: 'drvA' }));
-    await R.run(HN('2026-10-26T00:10:00'));                                                         // closes W1 (drvA only)
-    await rtdb.ref('orders/oZ').set(order({ delivered_at: HN('2026-10-25T22:00:00'), delivered_by_driver_uid: 'drvZ' }));   // syncs after the close
-    await R.run(HN('2026-10-27T10:00:00'));
-    await R.run(HN('2026-11-02T00:10:00'));                                                         // closes W2
-    return { statements: await statementsWith(['drvZ'], 'oZ') };
-  }, { statements: 1 });
+  // 9. two concurrent closes → ONE week  [r1 #2 close/accrual race · r2 #3 lease without fencing]
+  await fresh();
+  await rtdb.ref('orders/a1').set(order({ delivered_at: HN('2026-10-20T12:00:00'), delivered_by_driver_uid: 'drvA' }));
+  let second = null;
+  ON_READ = { p: 'orders', fn: async () => {                                                        // A has read /orders; B runs whole
+    await rtdb.ref('orders/aX').set(order({ delivered_at: HN('2026-10-25T23:00:00'), delivered_by_driver_uid: 'drvA' }));
+    second = await S.closeDue(db, MON2 + 1);
+  } };
+  const first = await S.closeDue(db, MON2);
+  assert.deepStrictEqual(second, { closed: [W1] }, 'B closed the week');
+  assert.deepStrictEqual(first, { closed: [] }, '🔴 A (stale snapshot) must lose its transaction and write nothing');
+  assert.deepStrictEqual(list((await val(`driver_ledger_weeks/${W1}`)).drivers.drvA.deliveries), ['a1', 'aX'], 'the week is B\'s, whole');
+  await S.closeDue(db, MON3);
+  assert.deepStrictEqual([await timesPaid('a1'), await timesPaid('aX')], [1, 1], 'each order paid exactly once');
+  ok('r1#2 / r2#3: two overlapping closes produce ONE week — the stale one loses its transaction; every order is paid exactly once');
 
-  // 14. P1 #2 — an accrual racing the close: it must land in exactly one statement
-  await finding('P1#2 an accrual racing the weekly close lands in exactly one statement (one writer under a lease)', async (R) => {
-    await fresh();
-    await rtdb.ref('orders/oA').set(order({ delivered_at: HN('2026-10-20T12:00:00'), delivered_by_driver_uid: 'drvA' }));
-    await R.run(HN('2026-10-24T12:00:00'));
-    // while the Monday close has read drvA's events but not yet written the statement, oX syncs and a sweep runs
-    ON_READ = { p: 'driver_ledger/drvA/events', fn: async () => {
-      await rtdb.ref('orders/oX').set(order({ delivered_at: HN('2026-10-25T23:00:00'), delivered_by_driver_uid: 'drvA' }));
-      await R.sweep(HN('2026-10-26T00:10:01'));
-    } };
-    await R.run(HN('2026-10-26T00:10:00'));
-    await R.run(HN('2026-10-27T10:00:00'));
-    await R.run(HN('2026-11-02T00:10:00'));
-    return { statements: await statementsWith(['drvA'], 'oX') };
-  }, { statements: 1 });
+  // 10. a late sync is picked up by the NEXT close  [r1 #1 driver with no entry · r2 #2 claim-only crash: no claims exist]
+  await fresh();
+  await rtdb.ref('orders/a1').set(order({ delivered_at: HN('2026-10-20T12:00:00'), delivered_by_driver_uid: 'drvA' }));
+  await S.closeDue(db, MON2);
+  await rtdb.ref('orders/oZ').set(order({ delivered_at: HN('2026-10-25T22:00:00'), delivered_by_driver_uid: 'drvZ' }));   // syncs after W1 closed
+  const pv2 = await S.previewWeek(db, null, HN('2026-10-27T10:00:00'));
+  assert.deepStrictEqual(list(pv2.week.drivers.drvZ.adjustments), [{ order_id: 'oZ', original_week: W1 }], 'the open-week read already shows it');
+  await S.closeDue(db, MON3);
+  const z = (await val(`driver_ledger_weeks/${W2}`)).drivers.drvZ;
+  assert.deepStrictEqual([list(z.adjustments), z.net_cents, z.outcome], [[{ order_id: 'oZ', original_week: W1 }], 7000, 'payable']);
+  await S.closeDue(db, MON4);
+  assert.strictEqual(await timesPaid('oZ'), 1, 'paid once, never again');
+  ok('r1#1 / r2#2: a delivery syncing after its week closed is paid as a LATE adjustment by the next close (even for a driver with no entry that week), once');
 
-  // 15. P1 #3 — the stamp changes after the accrual: never pay twice; recorded once for manual handling
-  await finding('P1#3 an attribution change after accrual never accrues twice (recorded once as attribution_changed)', async (R) => {
-    await fresh();
-    await rtdb.ref('orders/oY').set(order({ delivered_at: HN('2026-10-20T12:00:00'), delivered_by_driver_uid: 'drvA' }));
-    await R.run(HN('2026-10-20T13:00:00'));
-    await rtdb.ref('orders/oY/delivered_by_driver_uid').set('drvB');
-    await R.run(HN('2026-10-20T14:00:00'));
-    await R.run(HN('2026-10-20T15:00:00'));
-    const events = [await val('driver_ledger/drvA/events/oY'), await val('driver_ledger/drvB/events/oY')].filter(Boolean).length;
-    const u = await val('driver_ledger_unresolved/oY');
-    return { events, unresolved: u && u.reason };
-  }, { events: 1, unresolved: 'attribution_changed' });
+  // 11. a stamp change after the close → attribution_review, never a second payment  [r1 #3 · r2 #4]
+  await fresh();
+  await rtdb.ref('orders/oY').set(order({ delivered_at: HN('2026-10-20T12:00:00'), delivered_by_driver_uid: 'drvA' }));
+  await S.closeDue(db, MON2);
+  await rtdb.ref('orders/oY/delivered_by_driver_uid').set('drvB');
+  await S.closeDue(db, MON4);                                                                       // closes W2 and W3
+  assert.strictEqual(await timesPaid('oY'), 1, '🔴 an attribution change paid twice');
+  assert.deepStrictEqual(list((await val(`driver_ledger_weeks/${W2}`)).attribution_review), [{ order_id: 'oY', paid_to: 'drvA', paid_week: W1, stamp_now: 'drvB' }]);
+  assert.strictEqual((await val(`driver_ledger_weeks/${W3}`)).attribution_review, undefined, 'listed once, not repeated in later weeks');
+  ok('r1#3 / r2#4: a stamp changed after the close surfaces in the next week\'s attribution_review (once) and is never paid again');
 
-  // 16. P2 #4 — pagination: the overlap must not eat the forward budget, and same-instant ties must not stall it
-  await finding('P2#4 pagination advances past a full overlap window and past ties at one delivered_at', async (R) => {
-    await fresh();
-    const opts = { r1: { pageSize: 2, maxPages: 3 }, r2: { fwdPage: 2, fwdPages: 3, ovlPage: 2, ovlPages: 1 } };
-    for (let h = 10; h <= 15; h++) await rtdb.ref(`orders/o${h}`).set(order({ delivered_at: HN(`2026-10-20T${h}:00:00`), delivered_by_driver_uid: 'drvA' }));
-    await R.run(HN('2026-10-20T16:00:00'), opts);
-    for (const k of ['t1', 't2', 't3']) await rtdb.ref(`orders/${k}`).set(order({ delivered_at: HN('2026-10-20T17:00:00'), delivered_by_driver_uid: 'drvA' }));
-    await rtdb.ref('orders/t4').set(order({ delivered_at: HN('2026-10-20T17:30:00'), delivered_by_driver_uid: 'drvA' }));
-    for (let i = 0; i < 3; i++) await R.run(HN('2026-10-20T18:00:00') + i * 60000, opts);
-    return { events: Object.keys((await val('driver_ledger/drvA/events')) || {}).length };
-  }, { events: 10 });
+  // 12. a late stamp on an unresolved order pays once, as an adjustment; the unresolved entry is not repeated  [r1 #5]
+  await fresh();
+  await rtdb.ref('orders/u1').set(order({ delivered_at: HN('2026-10-24T12:00:00') }));
+  await S.closeDue(db, MON2);
+  assert.deepStrictEqual(list((await val(`driver_ledger_weeks/${W1}`)).unresolved), ['u1']);
+  await rtdb.ref('orders/u1/delivered_by_driver_uid').set('drvA');
+  await S.closeDue(db, MON4);
+  assert.deepStrictEqual(list((await val(`driver_ledger_weeks/${W2}`)).drivers.drvA.adjustments), [{ order_id: 'u1', original_week: W1 }]);
+  assert.strictEqual(await timesPaid('u1'), 1);
+  assert.strictEqual((await val(`driver_ledger_weeks/${W2}`)).unresolved, undefined, 'not repeated');
+  ok('r1#5: an unresolved delivery whose stamp arrives later is paid once as an adjustment (no re-check machinery); its unresolved entry is not repeated');
 
-  // 17. P2 #5 — the unresolved re-check reads a bounded page and continues from a stored key
-  await finding('P2#5 the unresolved re-check is paged (bounded reads) and still reaches every entry', async (R) => {
-    await fresh();
-    for (const k of ['u1', 'u2', 'u3']) await rtdb.ref(`orders/${k}`).set(order({ delivered_at: HN('2026-10-19T01:00:00') }));
-    await rtdb.ref('orders/oF').set(order({ delivered_at: HN('2026-10-22T12:00:00'), delivered_by_driver_uid: 'drvA' }));   // pushes u* out of the window
-    const opts = { r2: { unresPage: 2 } };
-    await R.run(HN('2026-10-22T13:00:00'), opts);
-    for (const k of ['u1', 'u2', 'u3']) await rtdb.ref(`orders/${k}/delivered_by_driver_uid`).set('drvA');
-    const r0 = READS.length;
-    await R.run(HN('2026-10-22T14:00:00'), opts);
-    await R.run(HN('2026-10-22T15:00:00'), opts);
-    const reads = READS.slice(r0).filter((r) => r.p === 'driver_ledger_unresolved');
-    return { bounded: reads.length > 0 && reads.every((r) => r.chain.includes('limitToFirst')), events: Object.keys((await val('driver_ledger/drvA/events')) || {}).length };
-  }, { bounded: true, events: 4 });
+  // 13. many orders at ONE instant and hundreds in a week: all paid, no pagination to stall  [r1 #4]
+  await fresh();
+  const bulk = {};
+  for (let i = 0; i < 250; i++) bulk[`b${String(i).padStart(3, '0')}`] = order({ delivered_at: HN('2026-10-21T13:00:00') + (i < 120 ? 0 : i), delivered_by_driver_uid: 'drvA' });
+  await rtdb.ref('orders').set(bulk);
+  await S.closeDue(db, MON2);
+  const b = (await val(`driver_ledger_weeks/${W1}`)).drivers.drvA;
+  assert.deepStrictEqual([list(b.deliveries).length, b.net_cents], [250, 250 * 7000]);
+  ok('r1#4: 250 deliveries (120 at one instant) are all paid by one bounded range read — no cursor or page cap exists to stall');
 
-  // 18. P2 #6 — a crash right after a negative statement is written must not lose the carry
-  await finding('P2#6 a crash right after a negative statement still carries it into the next week', async (R) => {
-    await fresh(HN('2026-10-12T00:00:00'));
-    await rtdb.ref(`driver_ledger/drvC/weeks/${W0}`).set({ week: W0, net_cents: -7000, outcome: 'no_payment', order_ids: [], closed_at: 1 });
-    await rtdb.ref(`driver_ledger_week_index/${W0}/drvC`).set(true);
-    await rtdb.ref(`driver_ledger_week_index/${W1}/drvC`).set(true);                                 // W0's close indexed the carry
-    await rtdb.ref('driver_ledger_meta').set({ closed_through: W0, last_closed_week: W0 });
-    CRASH_AFTER = `driver_ledger/drvC/weeks/${W1}`;
-    const e = await R.run(HN('2026-10-26T00:10:00')).then(() => null, (x) => x);
-    assert.ok(e && /injected crash/.test(e.message), `premise: the crash fired (${e && e.message})`);
-    await R.run(HN('2026-10-26T00:11:00'));                                                         // the retry
-    await R.run(HN('2026-11-02T00:10:00'));                                                         // closes W2
-    const s = await val(`driver_ledger/drvC/weeks/${W2}`);
-    return { carry_in_cents: s && s.carry_in_cents };
-  }, { carry_in_cents: -7000 });
+  // 14. carry chains across TWO missed weeks, closed oldest first in one run
+  await fresh();
+  // the only fixture: a negative previous week (net < 0 cannot be produced until tips/refunds exist, S2)
+  await rtdb.ref(`driver_ledger_weeks/${W1}`).set({ week: W1, policy_version: 1, base_cents: 7000, closed_at: 1, drivers: { drvC: { base_cents: 0, adjustments_cents: 0, carry_in_cents: -14000, net_cents: -14000, outcome: 'no_payment' } } });
+  await rtdb.ref('orders/c1').set(order({ delivered_at: HN('2026-11-04T12:00:00'), delivered_by_driver_uid: 'drvC' }));     // W3
+  assert.deepStrictEqual(await S.closeDue(db, MON5), { closed: [W2, W3, W4] }, 'missed weeks close oldest first in one run');
+  const c = async (w) => { const d = (await val(`driver_ledger_weeks/${w}`)).drivers.drvC; return [d.carry_in_cents, d.net_cents, d.outcome]; };
+  assert.deepStrictEqual(await c(W2), [-14000, -14000, 'no_payment']);
+  assert.deepStrictEqual(await c(W3), [-14000, -7000, 'no_payment']);
+  assert.deepStrictEqual(await c(W4), [-7000, -7000, 'no_payment']);
+  ok('carry: a negative balance chains across two missed weeks (closed oldest first) and is offset by later deliveries');
+
+  // 15. the open-week read waits for the previous close; a closed week reads as stored
+  assert.deepStrictEqual(await S.previewWeek(db, null, HN('2026-11-23T00:05:00')), { pending_close: true }, 'the week before is not closed yet → no misleading preview');
+  assert.deepStrictEqual(await S.previewWeek(db, W3, MON5), { closed: true, week: await val(`driver_ledger_weeks/${W3}`) });
+  ok('the read: a closed week as stored; the open week only once the previous one is closed');
 
   FINISHED = true;
-  console.log(`\ndriver-ledger: OK (${n})${RED ? ' — with r1 RED replay' : ''}`);
+  console.log(`\ndriver-ledger: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('driver-ledger FAILED:', e && (e.stack || e)); process.exit(1); });

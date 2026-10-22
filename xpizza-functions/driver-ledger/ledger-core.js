@@ -3,8 +3,9 @@
 // Sherpa collects tips and fees and owes tips to the driver, weekly Mon–Sun America/Tegucigalpa, manual bank transfer,
 // FULL settlement only, bank details OFF-platform, net ≤ 0 carries forward).
 //
-// No I/O here: week keys, the accrual record for one order, a week's statement, and the «Marcar pagado» validation.
-// The store (ledger-store.js) does the reads/writes; this file decides.
+// No I/O here: week keys, a whole week computed from /orders (computeWeek), and the «Marcar pagado» validation.
+// The store (ledger-store.js) does the reads and the ONE write per week; this file decides. r3 (codex r2, advisor
+// redesign): NO incremental ledger — /orders is the source of truth; a week is closed by one create-if-absent write.
 //
 // ATTRIBUTION is ONLY the protected stamp `delivered_by_driver_uid` (database.rules.json: write-once, == the writer's uid,
 // assigned driver only; written atomically with `delivered_at = serverTimestamp()` by xpizza-driver/driver-complete.js).
@@ -49,46 +50,63 @@ function isAccruable(order, cfg) {
   return !!(order && cfg && order.order_type === 'delivery' && typeof order.delivered_at === 'number' && order.delivered_at >= cfg.ledger_start_at);
 }
 
-/* The accrual for ONE order: { kind: 'event', driverUid, event } or { kind: 'unresolved', entry } or null.
-   `closedWeeks(week)` answers whether that week's statement already exists; a delivery whose own week is closed is
-   posted into `currentWeek` as a LATE adjustment that references the original week (statements are immutable). */
-function accrualFor(orderId, order, cfg, { currentWeek, isClosed }) {
-  if (!isAccruable(order, cfg)) return null;
-  const week = weekOf(order.delivered_at);
-  const stamp = order.delivered_by_driver_uid;
-  if (typeof stamp !== 'string' || !stamp) {
-    return { kind: 'unresolved', entry: { order_id: orderId, delivered_at: order.delivered_at, week, restaurant_id: order.restaurant_id || null } };
-  }
-  const late = isClosed(week);
-  const event = {
-    order_id: orderId, driver_uid: stamp, delivered_at: order.delivered_at,
-    base_cents: cfg.base_cents,                     // tips arrive with S2 (and their fields with them)
-    policy_version: cfg.policy_version,
-    week: late ? currentWeek : week,
-    ...(late ? { original_week: week, kind: 'late' } : { kind: 'delivery' }),
-  };
-  return { kind: 'event', driverUid: stamp, event };
-}
+const LATE_WINDOW_MS = 14 * DAY_MS;          // a delivery syncing later than this is out of scope (owner rule)
 
-/* A week's statement from that week's events + the previous statement. net = Σ base (deliveries) + adjustments (late
-   accruals, referencing their original week) + carry_in. Tips join both sums in S2, when the tip feature exists. carry_in = the previous statement's net when
-   it was ≤ 0 and closed without payment (a negative balance offsets the next payable); a positive unpaid week stays
-   payable on its OWN statement and never carries. */
-function statementFor(week, events, prev) {
-  const own = events.filter((e) => e && e.week === week);
-  const deliveries = own.filter((e) => e.kind === 'delivery');
-  const lates = own.filter((e) => e.kind === 'late');
-  const sum = (xs, f) => xs.reduce((s, x) => s + f(x), 0);
-  const carry_in_cents = prev && !prev.payment && Number.isInteger(prev.net_cents) && prev.net_cents < 0 ? prev.net_cents : 0;
-  const base_cents = sum(deliveries, (e) => e.base_cents);
-  const adjustments_cents = sum(lates, (e) => e.base_cents);
-  const net_cents = base_cents + adjustments_cents + carry_in_cents;
-  return {
-    week, deliveries: deliveries.length, base_cents, adjustments_cents, carry_in_cents, net_cents,
-    order_ids: own.map((e) => e.order_id).sort(),
-    adjustments: lates.map((e) => ({ order_id: e.order_id, original_week: e.original_week, cents: e.base_cents })),
-    outcome: net_cents > 0 ? 'payable' : 'no_payment',
-  };
+// The [from, to) delivered_at range a week's computation reads: the week itself plus the 14 days before it, so a delivery
+// that synced after its own week closed is picked up by the next close as a LATE adjustment.
+function windowOf(week) { const b = weekBounds(week); return { from: b.start - LATE_WINDOW_MS, to: b.end }; }
+
+// The earlier weeks whose closed nodes cover that window (what "already included / already listed" is checked against).
+function priorWeeksOf(week) { const p1 = prevWeek(week); return [p1, prevWeek(p1)]; }
+
+const list = (x) => (Array.isArray(x) ? x : x && typeof x === 'object' ? Object.values(x) : []);
+
+/* THE WEEK, computed from /orders alone. `rows` = [[order_id, order]] with delivered_at in windowOf(week); `prior` = the
+   closed nodes of priorWeeksOf(week) (missing = not closed). Pure and deterministic: the close commits it once, the
+   read shows it for the open week. An order is PAID at most once, in the first close that sees it with a stamp:
+     · own week                          → deliveries
+     · an earlier week, never included   → adjustments (late sync, or a stamp that arrived late)
+     · already included in a prior week  → never again; if its CURRENT stamp is another driver → attribution_review
+     · no protected stamp                → unresolved (held out of every balance)
+   carry_in = the previous week's net for a driver when it was < 0 and unpaid. Review lists are de-duplicated against the
+   same lists of the prior closed weeks. */
+function computeWeek(week, rows, prior, cfg) {
+  const { start, end } = weekBounds(week);
+  const paidTo = new Map(), listedUnres = new Set(), listedReview = new Set();
+  for (const node of prior) {
+    if (!node) continue;
+    for (const [uid, d] of Object.entries(node.drivers || {})) {
+      for (const oid of list(d.deliveries)) paidTo.set(oid, { uid, week: node.week });
+      for (const a of list(d.adjustments)) paidTo.set(a.order_id, { uid, week: node.week });
+    }
+    for (const oid of list(node.unresolved)) listedUnres.add(oid);
+    for (const r of list(node.attribution_review)) listedReview.add(r.order_id);
+  }
+  const drivers = {}, unresolved = [], review = [];
+  const entry = (uid) => (drivers[uid] = drivers[uid] || { deliveries: [], adjustments: [] });
+  for (const [oid, o] of [...rows].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
+    if (!isAccruable(o, cfg) || !(o.delivered_at < end)) continue;
+    const stamp = typeof o.delivered_by_driver_uid === 'string' && o.delivered_by_driver_uid ? o.delivered_by_driver_uid : null;
+    const was = paidTo.get(oid);
+    if (was) {
+      if (stamp !== was.uid && !listedReview.has(oid)) review.push({ order_id: oid, paid_to: was.uid, paid_week: was.week, stamp_now: stamp });
+      continue;
+    }
+    if (!stamp) { if (!listedUnres.has(oid)) unresolved.push(oid); continue; }
+    if (o.delivered_at >= start) entry(stamp).deliveries.push(oid);
+    else entry(stamp).adjustments.push({ order_id: oid, original_week: weekOf(o.delivered_at) });
+  }
+  const prev = prior.find((n) => n && n.week === prevWeek(week));
+  for (const [uid, d] of Object.entries((prev && prev.drivers) || {})) if (!d.paid && d.net_cents < 0) entry(uid);
+  for (const [uid, d] of Object.entries(drivers)) {
+    const p = prev && prev.drivers && prev.drivers[uid];
+    const carry_in_cents = p && !p.paid && Number.isInteger(p.net_cents) && p.net_cents < 0 ? p.net_cents : 0;
+    const base_cents = d.deliveries.length * cfg.base_cents;
+    const adjustments_cents = d.adjustments.length * cfg.base_cents;    // tips join both in S2
+    const net_cents = base_cents + adjustments_cents + carry_in_cents;
+    drivers[uid] = { ...d, base_cents, adjustments_cents, carry_in_cents, net_cents, outcome: net_cents > 0 ? 'payable' : 'no_payment' };
+  }
+  return { week, policy_version: cfg.policy_version, base_cents: cfg.base_cents, drivers, unresolved, attribution_review: review };
 }
 
 // «Marcar pagado»: FULL settlement only; records amount / date / transfer reference — nothing else, no bank data.
@@ -104,4 +122,4 @@ function validatePayment(statement, req) {
   return { ok: true, payment: { amount_cents: req.amount_cents, paid_on: req.paid_on, reference: req.reference.trim(), op_key: req.op_key } };
 }
 
-module.exports = { HN_OFFSET_MS, WEEK_RE, weekOf, weekBounds, prevWeek, nextWeek, readPayConfig, isAccruable, accrualFor, statementFor, validatePayment };
+module.exports = { HN_OFFSET_MS, WEEK_RE, LATE_WINDOW_MS, weekOf, weekBounds, prevWeek, nextWeek, windowOf, priorWeeksOf, readPayConfig, isAccruable, computeWeek, validatePayment, list };

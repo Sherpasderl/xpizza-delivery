@@ -25,11 +25,11 @@ ok('no ledger module references cash-to-remit / cuadre, and none names a bank fi
 
 const store = code('ledger-store.js');
 const refs = [...store.matchAll(/db\.ref\(([`'][^`']+[`'])\)/g)].map((m) => m[1].slice(1, -1));
-assert.ok(refs.length >= 10, `non-vacuity: ${refs.length} ref() paths`);
-const allowed = /^(driver_ledger|driver_ledger_orders|driver_ledger_week_index|driver_ledger_unresolved|driver_ledger_meta)(\/|$)|^platform_config\/driver_pay$|^orders(\/\$\{oid\})?$/;
+assert.ok(refs.length >= 4, `non-vacuity: ${refs.length} ref() paths`);
+const allowed = /^driver_ledger_weeks(\/|$)|^platform_config\/driver_pay$|^orders$/;
 for (const p of refs) assert.ok(allowed.test(p), `🔴 ledger-store touches an unexpected path: ${p}`);
 const ordersUses = [...store.matchAll(/db\.ref\('orders'\)([^;]*)/g)].map((m) => m[1]);
-assert.ok(ordersUses.length >= 1 && ordersUses.every((u) => /^\.orderByChild\('delivered_at'\)\.startAt\(/.test(u)), `🔴 /orders is read other than through the bounded delivered_at query: ${JSON.stringify(ordersUses)}`);
-ok(`ledger-store touches only its own paths, its config and /orders (${refs.length} refs); /orders only via orderByChild('delivered_at').startAt(…)`);
+assert.ok(ordersUses.length >= 1 && ordersUses.every((u) => /^\.orderByChild\('delivered_at'\)\.startAt\([^)]*\)\.endAt\(/.test(u)), `🔴 /orders is read other than through the bounded delivered_at query: ${JSON.stringify(ordersUses)}`);
+ok(`ledger-store touches only its own paths, its config and /orders (${refs.length} refs); /orders only via the bounded orderByChild('delivered_at').startAt(…).endAt(…) range`);
 
 console.log(`\ndriver-ledger scope.guard: ${n} passed`);

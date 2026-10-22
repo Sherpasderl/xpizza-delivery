@@ -4725,7 +4725,7 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
   return res.status(200).json({ ok: true, accepted: accepted.length, dropped: points.length - accepted.length, status });
 });
 
-exports.driverDiagIngest = require('./driver-diag').driverDiagIngest; { const DL = require('./driver-ledger/functions'); exports.repairDriverLedger = DL.repairDriverLedger; exports.markDriverWeekPaid = DL.markDriverWeekPaid; }   // S8 driver payable ledger (driver-ledger/; tools/driver-ledger-inverse.js)
+exports.driverDiagIngest = require('./driver-diag').driverDiagIngest; { const DL = require('./driver-ledger/functions'); exports.closeDriverPayWeeks = DL.closeDriverPayWeeks; exports.getDriverPayWeek = DL.getDriverPayWeek; exports.markDriverWeekPaid = DL.markDriverWeekPaid; }   // S8 driver payable ledger (driver-ledger/; tools/driver-ledger-inverse.js)
 
 // clearTrackerMirrorOnDone (Phase A) — when an order leaves 'out_for_delivery' (delivered/cancelled/etc.),
 // null its public tracking node's live-driver fields so no stale location lingers (privacy + hygiene). The

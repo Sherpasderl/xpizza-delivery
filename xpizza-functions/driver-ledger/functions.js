@@ -1,8 +1,9 @@
 'use strict';
-// S8 — the two Cloud Functions of the driver payable ledger. index.js re-exports them on ONE line (inverse-fold
-// invariant: tools/driver-ledger-inverse.js). Deploy selectively: repairDriverLedger, markDriverWeekPaid.
-//   repairDriverLedger   (schedule, every 30 min) — the ONLY ledger writer: accrue → re-check unresolved → close finished
-//                        weeks, in ONE run under maxInstances 1 + a lease lock (ledger-store.js runLedger)
+// S8 — the Cloud Functions of the driver payable ledger. index.js re-exports them on ONE line (inverse-fold invariant:
+// tools/driver-ledger-inverse.js). Deploy selectively: closeDriverPayWeeks, getDriverPayWeek, markDriverWeekPaid.
+//   closeDriverPayWeeks  (schedule, every 30 min) — closes every finished week, oldest first, each by ONE create-if-absent
+//                        transaction computed from /orders (ledger-store.js closeDue); a no-op until a week is due
+//   getDriverPayWeek     (callable) — «Pagos»: a closed week as stored, or the open week derived from /orders (no write)
 //   markDriverWeekPaid   (callable) — «Marcar pagado»: FULL settlement, reference + date only, compare-and-set
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
@@ -11,13 +12,21 @@ const { getAuth } = require('firebase-admin/auth');
 const S = require('./ledger-store');
 const { assertCanManageDriverPay } = require('./pay-gate');
 
-exports.repairDriverLedger = onSchedule(
+exports.closeDriverPayWeeks = onSchedule(
   { schedule: 'every 30 minutes', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB', maxInstances: 1, concurrency: 1, retryCount: 0 },
   async () => {
-    try { const r = await S.runLedger(getDatabase(), Date.now()); console.log('driver_ledger_run', JSON.stringify(r)); }
-    catch (e) { console.error('driver_ledger_run_failed', (e && e.message) || String(e)); }
+    try { const r = await S.closeDue(getDatabase(), Date.now()); console.log('driver_ledger_close', JSON.stringify(r)); }
+    catch (e) { console.error('driver_ledger_close_failed', (e && e.message) || String(e)); }
   },
 );
+
+exports.getDriverPayWeek = onCall({ region: 'us-central1', maxInstances: 3 }, async (request) => {
+  const db = getDatabase();
+  await assertCanManageDriverPay(request, { db, auth: getAuth(), HttpsError });
+  const week = request.data && request.data.week;
+  if (week != null && !/^W\d{4}-\d{2}-\d{2}$/.test(String(week))) throw new HttpsError('invalid-argument', 'bad_week');
+  return S.previewWeek(db, week || null, Date.now());
+});
 
 exports.markDriverWeekPaid = onCall({ region: 'us-central1', maxInstances: 3 }, async (request) => {
   const db = getDatabase();

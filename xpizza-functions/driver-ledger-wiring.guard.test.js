@@ -1,12 +1,12 @@
 'use strict';
 // S8 driver payable ledger — hot-file wiring guard (index.js inverse-fold invariant; see memory
 // index-js-inverse-fold-invariant). The slice's ONE index.js hunk is a same-line append to the driverDiagIngest export
-// (no line inserted, so no R3 region line shifts) that re-exports repairDriverLedger / markDriverWeekPaid from
+// (no line inserted, so no R3 region line shifts) that re-exports closeDriverPayWeeks / getDriverPayWeek / markDriverWeekPaid from
 // driver-ledger/functions.js. It ships tools/driver-ledger-inverse.js and composes
 // unapplyDriverLedgerIndex INNERMOST (newest-slice-first) into every index.js fold guard. This guard proves:
 //   (i)  unapplyDriverLedgerIndex(index.js) === ad7a56af:index.js BYTE-FOR-BYTE (the hunk exactly once), with
 //        inside / outside / duplicated / missing sensitivity; and
-//   (ii) NON-VACUITY — the live index.js differs from the base, the hunk is present, and the two functions export.
+//   (ii) NON-VACUITY — the live index.js differs from the base, the hunk is present, and the three functions export.
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -24,8 +24,8 @@ assert.strictEqual(live.split('\n').length, baseIdx.split('\n').length, 'the hun
 assert.notStrictEqual(live, baseIdx, 'non-vacuity: the slice is present in index.js');
 const [now] = HUNKS[0];
 assert.ok(live.indexOf(now) > -1 && live.indexOf(now, live.indexOf(now) + 1) === -1, 'the hunk is present exactly once');
-assert.ok(!/closeDriverPayWeeks/.test(now), 'the separate close function is GONE (r2: one writer)');
-for (const fn of ['repairDriverLedger', 'markDriverWeekPaid']) assert.ok(new RegExp(`exports\\.${fn} = DL\\.${fn};`).test(now), `the hunk exports ${fn}`);
+assert.ok(!/repairDriverLedger/.test(now), 'no incremental-ledger writer remains (r3: weeks are closed whole)');
+for (const fn of ['closeDriverPayWeeks', 'getDriverPayWeek', 'markDriverWeekPaid']) assert.ok(new RegExp(`exports\\.${fn} = DL\\.${fn};`).test(now), `the hunk exports ${fn}`);
 ok(`unapplyDriverLedgerIndex(index.js) === ${BASE}:index.js byte-for-byte (1 same-line hunk, no line inserted); non-vacuous`);
 
 assert.throws(() => unapplyDriverLedgerIndex(live.replace(now, now.replace('DL.markDriverWeekPaid', 'DL.markDriverWeekPaidX'))), /exactly once/, 'a byte INSIDE the hunk');
