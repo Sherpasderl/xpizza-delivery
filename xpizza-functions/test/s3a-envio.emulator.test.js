@@ -23,6 +23,10 @@ const CHARGED = [];
 stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
 stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CHARGED.push(Number(q.amountLempiras)); return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
 stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
+// codex r2 P1 (T / T+1 / T+2): an injected interleaving — the live checkout EXPIRES after the handler's probe and before the
+// acquire (keyed on the call, never on a count); the REAL acquire then rotates to a fresh issuance
+let EXPIRE_BEFORE_ACQUIRE = null;
+stub('../pixelpay-hosted-charge', (r) => ({ ...r, acquireHostedAttempt: async (db, orderId, ...a) => { if (EXPIRE_BEFORE_ACQUIRE) { const f = EXPIRE_BEFORE_ACQUIRE; EXPIRE_BEFORE_ACQUIRE = null; await f(orderId); } return r.acquireHostedAttempt(db, orderId, ...a); } }));
 
 const app = require('../index.js');
 const admin = require('firebase-admin');
@@ -209,6 +213,50 @@ const DELIVERY_KEYS = ['delivery_cents', 'promo_discount_cents', 'delivery_snaps
     const moved = await card('x_pizza', { body: { ...made4.b, ...north(1) } });
     assert.deepStrictEqual([moved.status, moved.json && moved.json.error], [409, 'order_context_changed'], 'another pin on the same order → refused');
   }
+  // ── codex r2 P1: grandfathering is decided by the ACQUIRE — a checkout that expires between probe (T) and acquire (T+2)
+  //    is never re-issued at its stored (dark, food-only) amount; the fresh issuance is refused → re-quote → priced now ──
+  {
+    await setPricing(undefined);
+    const b4 = body('x_pizza', 'online', { km: 4 });
+    const made = await card('x_pizza', { body: b4 });                                                // T0: issued while DARK (L299)
+    assert.ok(made.status === 200 && made.charged.length === 1, `premise: a dark checkout (${made.text.slice(0, 160)})`);
+    await setPricing({ x_pizza: { active: true, free_delivery: false } });
+    const q = await quote('x_pizza', { mode: 'delivery', pin: { ...north(4), confirmed: true } });   // a fresh signed L349 quote
+    assert.strictEqual(q.json.net_total_cents, DARK.x_pizza.total_cents + 5000);
+    const aid = (await rtdb.ref(`orders/${b4.order_id}/active_attempt_id`).get()).val();
+    EXPIRE_BEFORE_ACQUIRE = async () => { await rtdb.ref(`payment_attempts/${aid}/hosted_expires_at`).set(Date.now() - 1000); };   // T+1
+    const withTok = { ...b4, quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents };
+    const raced = await card('x_pizza', { body: withTok });                                          // T+2: acquire rotates
+    assert.deepStrictEqual([raced.status, raced.json && raced.json.error, raced.json && raced.json.reason, raced.charged.length], [409, 'quote_invalid', 'checkout_expired', 0], `🔴 a fresh checkout is never issued at the grandfathered amount (${raced.text.slice(0, 200)})`);
+    const again = await card('x_pizza', { body: withTok });                                          // the SAME order: still bound to its dark L299
+    assert.deepStrictEqual([again.status, again.charged.length], [409, 0], `the same order is never re-issued at another amount (its payment binding) (${again.text.slice(0, 200)})`);
+    const fresh = await card('x_pizza', { body: { ...withTok, order_id: `${b4.order_id}_n` } });     // the client's re-quoted NEW order
+    assert.ok(fresh.status === 200 && fresh.charged.length === 1 && fresh.charged[0] * 100 === DARK.x_pizza.total_cents + 5000, `a new order is charged food + envío with the fresh quote (${fresh.text.slice(0, 200)})`);
+  }
+  ok('codex r2 P1: a checkout expiring between probe and acquire → the fresh issuance is refused (quote_invalid / checkout_expired), never at the stored L299; the same order stays bound (409), a new order is charged L349');
+
+  // ── codex r2 P2: order_context_changed releases an ABANDONED hold (failed_create), never an ambiguous one (expired created) ──
+  {
+    const { reserveRedemption } = require('../rewards-reserve');
+    const { REDEMPTION_CONFIG_VERSION } = require('../rewards-redeem-config');
+    const hold = async (uid, oid) => { await rtdb.ref(`user_rewards/${uid}/x_pizza`).update({ balance: 10, reserved: 0 });
+      const r = await reserveRedemption(rtdb, { uid, rid: 'x_pizza', orderId: oid, cost: 8, canonical: { k: 'p2' }, orderFingerprint: `fp_${oid}`, configVersion: REDEMPTION_CONFIG_VERSION, now: Date.now(), hostedExpiresAt: Date.now() + 60000 });
+      assert.ok(r && r.ok !== false, `premise: the REAL writer reserved 8 (${JSON.stringify(r)})`); };
+    const stateOf = async (uid, oid) => [(await rtdb.ref(`user_rewards/${uid}/x_pizza/reservations/${oid}/state`).get()).val(), (await rtdb.ref(`user_rewards/${uid}/x_pizza/reserved`).get()).val()];
+    for (const [kind, attemptState, want] of [['failed_create', { hosted_state: 'failed_create' }, ['released', 0]], ['expired created (ambiguous)', { hosted_state: 'created', hosted_expires_at: Date.now() - 1000 }, ['reserved', 8]]]) {
+      const uid = `u_p2_${kind.length}`;
+      const made = await card('x_pizza', { km: 4 }, { 'x-firebase-id-token': uid });
+      assert.ok(made.status === 200, `premise: a live delivery checkout (${made.text.slice(0, 160)})`);
+      await hold(uid, made.b.order_id);
+      const aid = (await rtdb.ref(`orders/${made.b.order_id}/active_attempt_id`).get()).val();
+      await rtdb.ref(`payment_attempts/${aid}`).update(attemptState);
+      const r = await card('x_pizza', { body: { ...made.b, order_type: 'pickup', lat: undefined, lng: undefined, pin_confirmed: undefined } }, { 'x-firebase-id-token': uid });
+      assert.deepStrictEqual([r.status, r.json && r.json.error], [409, 'order_context_changed']);
+      assert.deepStrictEqual(await stateOf(uid, made.b.order_id), want, `🔴 ${kind}: the hold after order_context_changed`);
+    }
+  }
+  ok('codex r2 P2: order_context_changed releases a hold whose checkout is definitively dead (failed_create → released, 0 reserved); an expired created checkout (ambiguous) keeps its 8 reserved');
+
   ok('P1-1: a refused delivery leaves no pending order; a stored delivery retried as pickup (or at another pin) → 409 order_context_changed, never charged food-only');
 
   // ── P2-3: a pickup quote never authorises a delivery of equal total (promo makes envío free) ──

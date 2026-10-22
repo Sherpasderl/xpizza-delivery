@@ -1623,7 +1623,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     fields.items_text = prep.itemsText;   // free-item display line → flows into BOTH fingerprints + the pending order
   }
   // Effective (discounted) breakdown used by both fingerprint sites, the pending record, and the charge amount.
-  const dq = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP }), body, Date.now()); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const effBreakdown = DW.withDelivery(dq, redemptionPriced
+  const dq = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP }), body, Date.now(), { releaseStaleHold: customer_uid ? () => releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }) : null }); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const effBreakdown = DW.withDelivery(dq, redemptionPriced
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
     : orderBreakdownCents(total, restaurantId));

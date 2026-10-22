@@ -39,23 +39,33 @@ async function deliveryFor(db, { rid, mode, pin, customerUid, getIdentity, prici
 /* The CHARGE path, against the STORED order (codex S3a P1-1 / P1-2). Only when activated: dark (dq null) reads nothing.
    One read of orders/{id}; absent → this request's dq (a fresh order). Present:
      · already paid → this request's dq (the acquire answers already_paid, as today)
-     · a LIVE issued checkout (its active attempt 'created', unexpired) keeps its STORED economics — storedCtx, or
-       food-only when it was issued dark — so the checkout is reused, never re-priced or refused (§3.3)
+     · a LIVE issued checkout (its active attempt 'created', unexpired) is GRANDFATHERED: priced at its STORED economics
+       (storedCtx, or food-only when issued dark) so the acquire reuses it (§3.3); a FRESH issuance instead → re-quote
      · otherwise a different fulfilment or pin than the stored order's → refused order_context_changed: the client starts a
        fresh order; mixed contexts are never re-priced
    A refusal dq is answered by the handler BEFORE any pending order or hold exists. */
-async function chargeContext(db, orderId, dq, body, now) {
+async function chargeContext(db, orderId, dq, body, now, { releaseStaleHold = null } = {}) {
   if (!dq) return dq;
   const order = (await db.ref(`orders/${orderId}`).get()).val();
   if (!order || order.payment_status === 'confirmed') return dq;   // fresh, or already paid (the acquire answers already_paid as today)
+  let at = null;
   if (typeof order.active_attempt_id === 'string' && order.active_attempt_id) {
-    const at = (await db.ref(`payment_attempts/${order.active_attempt_id}`).get()).val();
-    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const c = P.storedCtx(order); return c ? { ctx: c } : null; }
+    at = (await db.ref(`payment_attempts/${order.active_attempt_id}`).get()).val();
+    // LIVE now → GRANDFATHERED: priced at its STORED economics so the acquire can REUSE it. Whether it IS reused is decided
+    // by the acquire, not by this clock read (codex S3a r2 P1): if the checkout expires before the acquire and a FRESH one
+    // would be issued instead, the gate step refuses it (refusalGate → re-quote) — a fresh checkout is always priced now.
+    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const c = P.storedCtx(order); return c ? { ctx: c, grandfathered: true } : { grandfathered: true }; }
   }
   const pin = orderPin(body);
   const same = order.order_type === (body && body.order_type)
     && (order.order_type !== 'delivery' || (Number(order.lat) === pin.lat && Number(order.lng) === pin.lng));
-  return same ? dq : { refusal: 'order_context_changed', httpStatus: 409 };
+  if (same) return dq;
+  // codex S3a r2 P2: this order will never be charged in THIS context, so a reward hold an earlier request reserved for it is
+  // released — but ONLY when its checkout is DEFINITIVELY dead (no attempt, or failed_create: no payable URL ever existed).
+  // An expired 'created' checkout might still be paid late, so it stays held (the reservation sweep's own ambiguous rule,
+  // rewards-reserve.js sweepStaleReservations / definitivelyNotCaptured). releaseRedemption moves only a 'reserved' hold.
+  if (releaseStaleHold && (!at || at.hosted_state === 'failed_create')) { try { await releaseStaleHold(); } catch (_) { /* best-effort; the sweep / dispatcher remain */ } }
+  return { refusal: 'order_context_changed', httpStatus: 409 };
 }
 
 // The order body's pin: lat/lng are the existing top-level fields; `pin_confirmed: true` is the new client's assertion.
@@ -90,10 +100,13 @@ const gateExtra = (dq) => (ctxOf(dq) ? { deliveryContext: ctxOf(dq) } : {});
 
 // An ACTIVE refusal at the gate step: release the hold, answer with the typed refusal. null → run the real gate.
 async function refusalGate(dq, releaseHold, orderId) {
+  // a GRANDFATHERED request reaching the gate means the acquire is issuing a FRESH checkout (the live one expired since the
+  // probe): never at the stored economics — refused, the client re-quotes and is priced now (codex S3a r2 P1)
+  if (dq && dq.grandfathered) dq = { refusal: 'quote_invalid', httpStatus: 409, reason: 'checkout_expired' };
   if (!dq || !dq.refusal) return null;
   try { await releaseHold(); } catch (_) { /* best-effort, as the gate's own release */ }
   try { console.warn('delivery_refused', JSON.stringify({ orderId, refusal: dq.refusal })); } catch (_) {}
-  return { refuse: { status: dq.httpStatus, body: { error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId } }, provenance: null, result: null };
+  return { refuse: { status: dq.httpStatus, body: { error: dq.refusal, ...(dq.reason ? { reason: dq.reason } : {}), ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId } }, provenance: null, result: null };
 }
 
 /* The QUOTE endpoints' envío: { refuse, httpStatus } when active and refused (a config outage → 503, codex S3a P2-6; a request
