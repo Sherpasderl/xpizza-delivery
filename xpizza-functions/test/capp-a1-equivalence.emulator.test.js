@@ -78,9 +78,8 @@ async function seed(rid) {
 // Everything under RTDB and the Firestore collections a request can write is snapshotted before and after; the delta is
 // the UNION of both path sets: every leaf that appeared, changed, or was DELETED (marked <deleted>). Normalisation is by
 // EXACT VALUE, never by shape: this run's own order id → <oid>, its hosted attempt id (orders/<oid>/active_attempt_id) →
-// <attempt>, its tracking token (orders/<oid>/tracking_token) → <tracking>, its attempt's poll token → <poll>, in path
-// segments, values and the response alike; a numeric
-// leaf within ±1 day of now → <time>. Two raw paths that normalise to the same key THROW (cardinality is preserved).
+// <attempt>, its tracking token (orders/<oid>/tracking_token) → <tracking>, its attempt's poll token → <poll> — a value or
+// segment EQUAL to a token, or one of the listed COMPOSITE forms; a numeric leaf whose KEY is a timestamp field → <time>. Two raw paths that normalise to the same key THROW (cardinality is preserved).
 // The two runs are then compared leaf by leaf over the union of their keys: every leaf must be byte-equal, except the
 // NAMED per-request mints below (each must be present, as a string, on BOTH sides).
 const flat = (v, p, out) => { if (v && typeof v === 'object') { for (const [k, x] of Object.entries(v)) flat(x, p ? `${p}/${k}` : k, out); } else out[p] = v; return out; };
@@ -103,17 +102,34 @@ function idsOf(after, oid) {
   const trk = after[`rtdb/orders/${oid}/tracking_token`]; if (typeof trk === 'string' && trk) ids.push([trk, '<tracking>']);
   return ids;
 }
-const subst = (v, ids) => { if (typeof v !== 'string') return v; let out = v; for (const [raw, tag] of ids) out = out.split(raw).join(tag); return out; };
+// A value or path segment is substituted only when it EQUALS a token, or is one of the COMPOSITE forms the server writes,
+// listed here explicitly — never a substring found anywhere: the task ids (create-order-build.js `${orderId}_pickup` /
+// `${orderId}_delivery`), the hosted order id (`${orderId}-${attemptId}`, pixelpay-hosted-webhook.js ATTEMPT_SUFFIX) and the
+// stubbed checkout URL built from it (this test's createHostedCharge stub).
+const COMPOSITES = [
+  (t) => [`${t.oid}_pickup`, '<oid>_pickup'], (t) => [`${t.oid}_delivery`, '<oid>_delivery'],
+  (t) => t.attempt && [`${t.oid}-${t.attempt}`, '<oid>-<attempt>'], (t) => t.attempt && [`https://pay.test/${t.oid}-${t.attempt}`, 'https://pay.test/<oid>-<attempt>'],
+];
+const subst = (v, ids) => {
+  if (typeof v !== 'string') return v;
+  for (const [raw, tag] of ids) if (v === raw) return tag;
+  const t = { oid: ids[0][0], attempt: (ids.find(([, tag]) => tag === '<attempt>') || [])[0] };
+  for (const c of COMPOSITES) { const pair = c(t); if (pair && v === pair[0]) return pair[1]; }
+  return v;   // anything else is compared RAW (so a token embedded in an unlisted form differs between the runs and FAILS)
+};
+// time: ONLY a leaf whose KEY is a timestamp field, as these handlers name them (*_at, at = recent_order_content, ts,
+// window_start = rate_limits) — never a numeric range
+const TIME_KEY = /_at$|^(at|ts|window_start|timestamp)$/;
 function normalise(before, after, oid) {
   const now = Date.now(); const ids = idsOf(after, oid);
-  const val = (v) => (typeof v === 'number' && Math.abs(v - now) < 86400000 ? '<time>' : subst(v, ids));
+  const val = (k, v) => (TIME_KEY.test(k.split('/').pop()) && typeof v === 'number' && Math.abs(v - now) < 86400000 ? '<time>' : subst(v, ids));
   const d = {}; const from = {};
   for (const k of new Set([...Object.keys(before), ...Object.keys(after)])) {
     const inA = Object.prototype.hasOwnProperty.call(after, k), inB = Object.prototype.hasOwnProperty.call(before, k);
     if (inA && inB && before[k] === after[k]) continue;
     const nk = k.split('/').map((seg) => subst(seg, ids)).join('/');
     if (Object.prototype.hasOwnProperty.call(d, nk)) throw new Error(`capp-a1: two paths normalise to ${nk} (${from[nk]} and ${k}) — cardinality would be lost`);
-    d[nk] = inA ? val(after[k]) : '<deleted>'; from[nk] = k;
+    d[nk] = inA ? val(k, after[k]) : '<deleted>'; from[nk] = k;
   }
   return { delta: d, ids };
 }
@@ -192,7 +208,7 @@ async function run(handler, body, oid) {
   {
     const O = 'negO';
     const base = { [`rtdb/orders/${O}/status`]: 'new' };
-    const runOf = (after) => normalise(base, after, O).delta;
+    const runOf = (after, oid = O, b = base) => normalise(b, after, oid).delta;
     const A = { ...base, [`rtdb/orders/${O}/items/0/dish_id`]: 'D9XRZ89WJ6', [`rtdb/tasks/${O}_delivery/driver_uid`]: 'driver_A', [`rtdb/orders/${O}/tracking_token`]: 'TrkAAAA1111' };
     const sameButToken = { ...A, [`rtdb/orders/${O}/tracking_token`]: 'TrkBBBB2222' };
     assert.deepStrictEqual(compareDeltas(runOf(A), runOf(sameButToken)), [], 'control: a run differing only in its OWN tracking token is equal');
@@ -201,7 +217,12 @@ async function run(handler, body, oid) {
     const { [`rtdb/orders/${O}/status`]: _gone, ...deleted } = A;
     assert.ok(compareDeltas(runOf(A), runOf(deleted)).some((x) => /status: \(absent\) vs "<deleted>"/.test(x)), 'a leaf DELETED on one side FAILS');
     assert.throws(() => normalise({}, { [`rtdb/x/${O}`]: 1, 'rtdb/x/<oid>': 2 }, O), /cardinality/, 'two paths collapsing to one key THROW');
-    ok('comparator: a different dish_id, a different driver and a one-sided deletion each FAIL; only the run\'s own minted ids are substituted; collapsing paths throw');
+    const now = Date.now();
+    assert.ok(compareDeltas(runOf({ ...A, [`rtdb/orders/${O}/total_cents`]: now }), runOf({ ...A, [`rtdb/orders/${O}/total_cents`]: now + 1 })).some((x) => /total_cents/.test(x)), 'an amount that happens to sit near the epoch clock FAILS (time is by KEY, never by range)');
+    const O2 = 'negO2', A2 = Object.fromEntries(Object.entries(A).map(([k, v]) => [k.split(O).join(O2), v]));
+    assert.deepStrictEqual(compareDeltas(runOf(A), runOf(A2, O2, { [`rtdb/orders/${O2}/status`]: 'new' })), [], 'control: the same writes under two different order ids are equal');
+    assert.ok(compareDeltas(runOf({ ...A, [`rtdb/orders/${O}/note`]: `dish_${O}_other` }, O), runOf({ ...A2, [`rtdb/orders/${O2}/note`]: `dish_${O2}_other` }, O2, { [`rtdb/orders/${O2}/status`]: 'new' })).some((x) => /note/.test(x)), 'a token inside an UNLISTED composite (dish_<oid>_other) is not substituted, so it FAILS');
+    ok('comparator: a different dish_id, a different driver, a one-sided deletion, an epoch-near amount and an unlisted oid composite each FAIL; collapsing paths throw; tokens are substituted only whole or in the listed composite forms');
   }
 
   // sensitivity: the comparison is not blind — a different restaurant_id is refused or diverges
