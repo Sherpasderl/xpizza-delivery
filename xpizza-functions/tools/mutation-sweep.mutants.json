@@ -12872,6 +12872,22 @@
     ]
   },
   {
+    "id": "r3p0-98",
+    "slice": "r3p0",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "<span class=\"sv-onum\">${label}</span>${ring}</div>",
+    "to": "<span class=\"sv-onum\">${label}</span>${ring}<span class=\"sv-name\">${esc(order.customer_name)}</span></div>",
+    "label": "R4 privacy: the driver OFFER card (awaiting_acceptance) renders the customer name",
+    "kills_with": [
+      "PRIVACY — the customer's name is rendered while pg_cash is still an OFFER"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p0-pages"
+    ]
+  },
+  {
     "id": "r3p1-01",
     "slice": "r3p1",
     "file": "contract/tracer.js",
