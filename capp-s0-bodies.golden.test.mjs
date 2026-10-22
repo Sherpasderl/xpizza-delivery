@@ -1,0 +1,114 @@
+// CUSTOMER APP S0-test — REQUEST-BODY GOLDENS, byte-exact, per brand (PLAN-shared-order-form.FINAL §5 S0, §7 oracle 1).
+//
+// What it proves: what each LIVE form sends to quoteOrder / createOrder / chargeOnlineOrder / quoteRedemption
+// for the approved matrix, captured from the real forms (the real writers) against catalogs published through
+// the real publish path and served as getPublicMenu serves them. The shared renderer must reproduce these
+// bodies while dark; any approved behavioural delta lands as an explicit, reviewed golden change, never a
+// silent re-capture.
+//
+// Matrix (each brand): A cash delivery · B cash pickup · C card delivery · D RTN on · E scheduled ·
+// F email blank · G reward redemption (x_pizza punch / la_musa points). Every cell's cart = the first priced
+// dish ×2 + the first extra its modal offers (a real click). Third brand (r3_synth): A and C, PROVISIONAL —
+// rendered on the declared x_pizza fork until the S1 shared renderer exists.
+//
+// Masks: ONE list (capture.mjs MASKS); a masked field must be present and well-formed or the capture throws.
+// No network: fetch is the harness stub, XHR/WebSocket/EventSource/sendBeacon are trapped, and every request
+// must be one this rig knows.
+//
+// Run:   node capp-s0-bodies.golden.test.mjs            (check)
+//        node capp-s0-bodies.golden.test.mjs --write    (re-capture from the CURRENT forms; review the diff)
+import assert from 'node:assert';
+import { readFileSync, writeFileSync, rmdirSync } from 'node:fs';
+import { closeAll, counter } from './form-harness.mjs';
+import { provisionBrand, driveCell, recordCell, PLAN_ETAG, MASKS } from './xpizza-functions/contract/capp/capture.mjs';
+import { provisionThirdBrand, materializeFork, removeFork, transformList } from './xpizza-functions/contract/capp/third-brand-fork.mjs';
+
+const GOLDEN = new URL('./capp-s0-bodies.golden.json', import.meta.url);
+const WRITE = process.argv.includes('--write');
+const { ok, count } = counter();
+const LEAK = /x_pizza|la_musa|xpizza|lamusa|X\.? ?Pizza|La Musa/i;
+
+const BRANDS = [
+  { rid: 'x_pizza', dir: 'xpizza-orders', reward: 'punch' },
+  { rid: 'la_musa', dir: 'la-musa-orders', reward: 'points' },
+];
+const CELLS = [
+  { id: 'A-cash-delivery', need: ['quoteOrder', 'createOrder'] },
+  { id: 'B-cash-pickup', pickup: true, need: ['createOrder'] },
+  { id: 'C-card-delivery', card: true, need: ['quoteOrder', 'chargeOnlineOrder'] },
+  { id: 'D-rtn', rtn: true, need: ['createOrder'] },
+  { id: 'E-scheduled', scheduled: true, need: ['createOrder'] },
+  { id: 'F-email-blank', email: '', need: ['createOrder'] },
+  { id: 'G-reward', reward: true, need: ['quoteRedemption', 'createOrder'] },
+];
+const THIRD_CELLS = ['A-cash-delivery', 'C-card-delivery'];
+
+const plain = (x) => JSON.parse(JSON.stringify(x));
+
+(async () => {
+  const got = { cells: {} };
+
+  for (const B of BRANDS) {
+    const prov = await provisionBrand(B.rid);
+    assert.strictEqual(prov.etag, PLAN_ETAG[B.rid], `${B.rid}: the seeded real publish reproduces the plan §10 etag (got ${prov.etag})`);
+    ok(`${B.rid}: catalog published through the real path, etag = plan §10 ${prov.etag.slice(1, 9)}…`);
+    for (const C of CELLS) {
+      const cell = { ...C, reward: C.reward ? B.reward : undefined };
+      const { w, sent, extra } = await driveCell(B.dir, prov.envelope, cell);
+      assert.strictEqual(extra, true, `${B.rid}/${C.id}: non-vacuity — the cart carries an extra (the extras path ran)`);
+      const rec = recordCell(w, sent);
+      for (const ep of C.need) assert.ok(rec.requests[ep], `${B.rid}/${C.id}: non-vacuity — ${ep} was sent (sequence ${rec.sequence.join(',')})`);
+      got.cells[`${B.rid}/${C.id}`] = rec;
+    }
+    ok(`${B.rid}: ${CELLS.length} cells captured, each with its required requests, zero network escapes, every request known`);
+  }
+
+  // ── THIRD BRAND (PROVISIONAL) ──
+  const third = await provisionThirdBrand();
+  const fork = materializeFork(third);
+  try {
+    assert.strictEqual(fork.entries.length, transformList(third.rid).length, 'third brand: every declared transform applied');
+    assert.strictEqual(fork.changedLines, fork.entries.reduce((s, e) => s + e.lines, 0), 'third brand: the fork differs in exactly the declared lines');
+    ok(`third brand ${third.rid}: fork = x_pizza page + ${fork.entries.length} declared transforms, exactly ${fork.changedLines} changed line(s), nothing else`);
+    // The list is enforced, not advisory: an unused entry, or a wrong line count, refuses to materialize.
+    assert.throws(() => materializeFork(third, [...transformList(third.rid), { file: 'index.html', find: 'NO SUCH TEXT ANYWHERE', to: 'x', lines: 1 }]), /unused transform/);
+    assert.throws(() => materializeFork(third, transformList(third.rid).map((e) => (e.find === "'xpizza_pending_pay'" ? { ...e, lines: 5 } : e))), /matched 6 line\(s\), declared 5/);
+    materializeFork(third);
+    ok('third brand: an unused transform entry and a mis-declared line count each refuse to materialize the fork');
+    for (const id of THIRD_CELLS) {
+      const C = CELLS.find((c) => c.id === id);
+      const { w, sent, extra } = await driveCell(fork.dir, third.envelope, C);
+      assert.strictEqual(extra, false, 'third brand: premise — its catalog publishes no extras (contract/third-brand.js)');
+      const rec = recordCell(w, sent);
+      for (const ep of C.need) assert.ok(rec.requests[ep], `${third.rid}/${id}: non-vacuity — ${ep} was sent`);
+      for (const [ep, r] of Object.entries(rec.requests)) {
+        const s = JSON.stringify(r.body);
+        assert.ok(!LEAK.test(s), `${third.rid}/${id}: ${ep} body leaks another brand's literal: ${(LEAK.exec(s) || [])[0]}`);
+        assert.ok(Array.isArray(r.body.items) && r.body.items.length > 0 && r.body.items.every((i) => /^R3 /.test(i.name)), `${third.rid}/${id}: ${ep} carries the third brand's renamed dishes only`);
+      }
+      // KNOWN GAP (FORK-DIVERGENCES A1, closed by S0-prod): the x_pizza fork never sends restaurant_id, so the
+      // third brand's identity does not reach the server today. Pinned as ABSENT so S0-prod's fix must flip it.
+      for (const ep of ['createOrder', 'chargeOnlineOrder', 'quoteOrder']) {
+        if (rec.requests[ep]) assert.ok(!('restaurant_id' in rec.requests[ep].body), `${third.rid}/${id}: KNOWN GAP A1 moved — ${ep} now carries restaurant_id; update this PROVISIONAL cell (S0-prod)`);
+      }
+      got.cells[`${third.rid}/${id} (PROVISIONAL)`] = rec;
+    }
+    ok(`third brand: ${THIRD_CELLS.length} PROVISIONAL cells — no x_pizza/la_musa literal in any body; KNOWN GAP A1 (no restaurant_id) pinned`);
+  } finally { removeFork(); try { rmdirSync(new URL('./node_modules', import.meta.url)); } catch (_) {} }
+
+  got.masks = MASKS.map((m) => ({ name: m.name, path: m.path.join('.'), endpoints: String(m.endpoints), why: m.why }));
+  const doc = { _about: 'Customer App S0-test request-body goldens. Captured from the CURRENT forms by capp-s0-bodies.golden.test.mjs --write; never hand-edit.', ...plain(got) };
+
+  if (WRITE) {
+    writeFileSync(GOLDEN, JSON.stringify(doc, null, 2) + '\n');
+    console.log(`\nWROTE ${GOLDEN.pathname} (${Object.keys(got.cells).length} cells) — review the diff before committing`);
+  } else {
+    const want = JSON.parse(readFileSync(GOLDEN, 'utf8'));
+    assert.deepStrictEqual(Object.keys(doc.cells).sort(), Object.keys(want.cells).sort(), 'the cell set matches the golden');
+    for (const k of Object.keys(want.cells)) assert.deepStrictEqual(doc.cells[k], want.cells[k], `${k}: request bodies differ from the golden (re-capture only for an APPROVED change)`);
+    assert.deepStrictEqual(doc.masks, want.masks, 'the declared mask list matches the golden');
+    ok(`${Object.keys(want.cells).length} cells byte-equal to capp-s0-bodies.golden.json (masks: ${MASKS.map((m) => m.name).join(', ')})`);
+  }
+  console.log(`\ncapp-s0-bodies.golden: ${count()} passed`);
+  closeAll();
+})().catch((e) => { console.error('capp-s0-bodies.golden FAILED:', (e && e.stack) || e); closeAll(); removeFork(); process.exit(1); });

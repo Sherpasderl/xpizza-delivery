@@ -6,6 +6,10 @@
    "tests": [
     "agotado-failopen.test.mjs",
     "avail-key.test.mjs",
+    "capp-s0-bodies.golden.test.mjs",
+    "capp-s0-config.test.mjs",
+    "capp-s0-dom.golden.test.mjs",
+    "capp-s0-harness.test.mjs",
     "cart-decoupling.test.mjs",
     "cart-extras-money.test.mjs",
     "cart-identity-order.test.mjs",
@@ -438,6 +442,10 @@
    "tests": [
     "agotado-failopen.test.mjs",
     "avail-key.test.mjs",
+    "capp-s0-bodies.golden.test.mjs",
+    "capp-s0-config.test.mjs",
+    "capp-s0-dom.golden.test.mjs",
+    "capp-s0-harness.test.mjs",
     "cart-decoupling.test.mjs",
     "cart-extras-money.test.mjs",
     "cart-identity-order.test.mjs",

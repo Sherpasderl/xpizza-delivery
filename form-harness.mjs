@@ -47,17 +47,26 @@ export const envelope = (rid, menu, representationVersion = '1b.1') => ({ rid, r
 /* `transforms` ({ 'account.js': (code) => code }) rewrites ONE local script before it is inlined — for a seam the page has
    no other way to offer (account.js loads the Firebase SDK by dynamic https import, which jsdom cannot run). A transform
    must replace only the unreachable dependency; everything around it runs as shipped. */
-export function loadForm(dir, { omit = [], transforms = {} } = {}) {
+/* 🔴 A LOCAL SCRIPT THE RIG CANNOT RUN IS AN ERROR, NEVER A SILENT DROP (Customer App S0-test). The inliner
+   used to (1) swallow a missing local file (`catch { return '' }`) and (2) match only the bare
+   `<script src="x.js"></script>` form, so a `type="module"` / `defer` / otherwise-attributed local script was
+   neither inlined nor removed. jsdom has no `resources` here, so it never fetched it either: the page ran
+   WITHOUT that module, and every suite on top of it went on passing on a weaker page. A browser 404 is
+   modelled explicitly by `omit`, and a module-script renderer needs a real loader before it can be tested
+   here, so both cases now throw, naming the script. `preamble` is extra script that runs right after the
+   rig's own stubs and before any page script (e.g. a fixed clock); it adds input, never removes code. */
+export function loadForm(dir, { omit = [], transforms = {}, preamble: extra = '' } = {}) {
   let html = readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8');
   html = html.replace(/<script src="(?!https?:)([^"]+)"><\/script>/g, (m, src) => {
     if (omit.indexOf(src) !== -1) return '';
-    try {
-      const code = readFileSync(new URL(`./${dir}/${src}`, import.meta.url), 'utf8');
-      return `<script>\n${transforms[src] ? transforms[src](code) : code}\n</script>`;
-    }
-    catch { return ''; }
+    let code;
+    try { code = readFileSync(new URL(`./${dir}/${src}`, import.meta.url), 'utf8'); }
+    catch (e) { throw new Error(`form-harness: local script "${src}" referenced by ${dir}/index.html cannot be read (${e.code || e.message}); use omit:['${src}'] to model a missing script`); }
+    return `<script>\n${transforms[src] ? transforms[src](code) : code}\n</script>`;
   });
   html = html.replace(/<script[^>]*src="https?:[^"]*"[^>]*><\/script>/g, '');
+  const unrun = html.match(/<script\b[^>]*\bsrc\s*=[^>]*>/gi);
+  if (unrun) throw new Error(`form-harness: ${dir}/index.html has local script tag(s) the rig cannot inline, so they would silently never run: ${unrun.join(' ')}`);
   // Installed at the top of <head>: loadAvailability() and the live-menu boot both run during parse,
   // so the stub has to exist before any of it.
   const preamble = `<script>
@@ -71,7 +80,7 @@ export function loadForm(dir, { omit = [], transforms = {} } = {}) {
     window.__scrollY = 0;
     window.scrollTo = function(x, y){ window.__scrollY = y; };
     Object.defineProperty(window, 'scrollY', { get(){ return window.__scrollY; }, configurable: true });
-  </script>`;
+  </script>${extra ? `<script>\n${extra}\n</script>` : ''}`;
   html = html.replace(/<head([^>]*)>/i, `<head$1>${preamble}`);
 
   const vc = new VirtualConsole();          // swallow the page's own console noise
