@@ -8,7 +8,7 @@
 
 const HUNKS = [
   [
-    "exports.driverDiagIngest = require('./driver-diag').driverDiagIngest; { const DL = require('./driver-ledger/functions'); exports.closeDriverPayWeeks = DL.closeDriverPayWeeks; exports.getDriverPayWeek = DL.getDriverPayWeek; exports.markDriverWeekPaid = DL.markDriverWeekPaid; }   // S8 driver payable ledger (driver-ledger/; tools/driver-ledger-inverse.js)\n",
+    "exports.driverDiagIngest = require('./driver-diag').driverDiagIngest; exports.closeDriverPayWeeks = require('./driver-ledger/functions').closeDriverPayWeeks; exports.getDriverPayWeek = require('./driver-ledger/functions').getDriverPayWeek; exports.markDriverWeekPaid = require('./driver-ledger/functions').markDriverWeekPaid;   // S8 driver payable ledger (driver-ledger/; tools/driver-ledger-inverse.js)\n",
     "exports.driverDiagIngest = require('./driver-diag').driverDiagIngest;\n"
   ]
 ];

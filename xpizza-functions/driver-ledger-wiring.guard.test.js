@@ -25,10 +25,19 @@ assert.notStrictEqual(live, baseIdx, 'non-vacuity: the slice is present in index
 const [now] = HUNKS[0];
 assert.ok(live.indexOf(now) > -1 && live.indexOf(now, live.indexOf(now) + 1) === -1, 'the hunk is present exactly once');
 assert.ok(!/repairDriverLedger/.test(now), 'no incremental-ledger writer remains (r3: weeks are closed whole)');
-for (const fn of ['closeDriverPayWeeks', 'getDriverPayWeek', 'markDriverWeekPaid']) assert.ok(new RegExp(`exports\\.${fn} = DL\\.${fn};`).test(now), `the hunk exports ${fn}`);
+for (const fn of ['closeDriverPayWeeks', 'getDriverPayWeek', 'markDriverWeekPaid']) assert.ok(now.includes(`exports.${fn} = require('./driver-ledger/functions').${fn};`), `the hunk exports ${fn} as a DIRECT require-chain re-export`);
+// S8 r5: the re-exports are direct require chains — contract/discovery.js sourceInventory resolves an `exports.X = Y.z` only
+// through a TOP-LEVEL binding of Y, so a block-scoped `const DL` left them unclassified (test:r3-p0-scheduler D0)
+{
+  const D = require('./contract/discovery');
+  const inv = D.sourceInventory();
+  assert.deepStrictEqual(inv.unclassified.filter((u) => /DriverPay|DriverWeek/.test(u.name)), [], '🔴 the ledger re-exports are unclassified by source discovery');
+  assert.deepStrictEqual(inv.entries.filter((e) => ['closeDriverPayWeeks', 'getDriverPayWeek', 'markDriverWeekPaid'].includes(e.name)).map((e) => [e.name, e.how]).sort(),
+    [['closeDriverPayWeeks', 'reexport'], ['getDriverPayWeek', 'reexport'], ['markDriverWeekPaid', 'reexport']], 'source discovery sees all three as re-exports');
+}
 ok(`unapplyDriverLedgerIndex(index.js) === ${BASE}:index.js byte-for-byte (1 same-line hunk, no line inserted); non-vacuous`);
 
-assert.throws(() => unapplyDriverLedgerIndex(live.replace(now, now.replace('DL.markDriverWeekPaid', 'DL.markDriverWeekPaidX'))), /exactly once/, 'a byte INSIDE the hunk');
+assert.throws(() => unapplyDriverLedgerIndex(live.replace(now, now.replace('.markDriverWeekPaid;', '.markDriverWeekPaidX;'))), /exactly once/, 'a byte INSIDE the hunk');
 assert.throws(() => unapplyDriverLedgerIndex(live + now), /exactly once/, 'a DUPLICATED hunk');
 assert.throws(() => unapplyDriverLedgerIndex(live.replace(now, '')), /exactly once/, 'a MISSING hunk');
 {
