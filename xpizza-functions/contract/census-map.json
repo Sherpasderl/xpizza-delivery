@@ -660,7 +660,11 @@
   "driver-ledger/ledger-core.js#isAccruable": "driver_pay",
   "driver-ledger/ledger-core.js#statementFor>anon": "driver_pay",
   "driver-ledger/ledger-store.js#putEvent": "driver_pay",
-  "driver-ledger/ledger-store.js#repairSweep": "driver_pay"
+  "driver-ledger/ledger-store.js#accrueOrder": "driver_pay",
+  "driver-ledger/ledger-store.js#accrueOrder>anon": "driver_pay",
+  "driver-ledger/ledger-store.js#pageAfter>anon": "driver_pay",
+  "driver-ledger/ledger-store.js#runLedger": "driver_pay",
+  "driver-ledger/ledger-store.js#markPaid": "driver_pay"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
