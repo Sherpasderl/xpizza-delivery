@@ -212,7 +212,9 @@ for (const dir of Object.keys(CASES)) {
       assert.deepStrictEqual(body.items, oldBody.items, `🔴 ${dir} ${path}: items byte-identical to the old page's payload`);
       assert.strictEqual(body.items_text, oldBody.items_text, `🔴 ${dir} ${path}: items_text byte-identical`);
       assert.strictEqual(fps(body, body.order_id).legacy, fps(oldBody, oldBody.order_id).legacy, `🔴 ${dir} ${path}: the same orderFingerprint`);
-      if (path === 'card') assert.strictEqual(chargeInputsFingerprint(body), chargeInputsFingerprint(oldBody), `🔴 ${dir} card: the same charge_inputs_fp`);
+      // S0-prod §A1, advisor ruling 2026-10-22 (rare edge, simple handling): the new page adds restaurant_id, so a pre-deploy reward checkout resumed after it does not bound-reuse (typed 409) — pinned exactly.
+      if (path === 'card') assert.strictEqual(chargeInputsFingerprint(body), chargeInputsFingerprint({ ...oldBody, restaurant_id: BRAND[dir].rid }), `🔴 ${dir} card: the resumed charge_inputs_fp is the old page's with exactly §A1's restaurant_id`);
+      if (path === 'card') assert.strictEqual(oldBody.restaurant_id === undefined || oldBody.restaurant_id === BRAND[dir].rid, true, `${dir}: premise — the old body carried no restaurant_id, or the same one`);
     }
     // a genuine change on resume still differs → the server's fingerprint check refuses it (409)
     {
@@ -246,7 +248,8 @@ for (const dir of Object.keys(CASES)) {
       assert.deepStrictEqual(body.items, oldBody.items, `🔴 ${dir} ${path} + reward: items byte-identical`);
       assert.strictEqual(body.items_text, oldBody.items_text, `🔴 ${dir} ${path} + reward: items_text byte-identical`);
       assert.deepStrictEqual(plain(w.__redq[w.__redq.length - 1]), body.items, `🔴 ${dir} ${path} + reward: the resumed reward quote serializes the same items`);
-      if (path === 'card') assert.strictEqual(chargeInputsFingerprint(body), chargeInputsFingerprint(oldBody), `🔴 ${dir} card + reward: the same charge_inputs_fp`);
+      // S0-prod §A1, the same ruling as §4 above.
+      if (path === 'card') assert.strictEqual(chargeInputsFingerprint(body), chargeInputsFingerprint({ ...oldBody, restaurant_id: BRAND[dir].rid }), `🔴 ${dir} card + reward: the resumed charge_inputs_fp is the old page's with exactly §A1's restaurant_id`);
     }
   }
   ok(`${dir}: a stash written by the pre-§3 page (${OLD_SHA}, menu order) resumes here byte-identically — order_id, items, items_text, orderFingerprint, charge_inputs_fp — on card and cash, with an extra, with and without a reward; a genuine change still differs`);

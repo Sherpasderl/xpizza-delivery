@@ -14,7 +14,7 @@ import { counter, settle, stageSettle, envelope, loadForm, res, BRAND, closeAll 
 const { ok, count } = counter();
 const WATCHDOG = setTimeout(() => { console.error('s5-baseline.golden: FAILED — watchdog'); process.exit(1); }, 300000);
 const GOLDEN = new URL('./s5-baseline.golden.json', import.meta.url);
-const MARK = { 'xpizza-orders': 'xpizza_acct', 'la-musa-orders': 'lamusa_acct' };
+const MARK = Object.fromEntries(Object.entries(BRAND).map(([dir, B]) => [dir, B.config.storage_keys.account_marker]));   // the page's own config (S0-prod)
 const PROBE = {
   'account.js': (code) => {
     const at = 'function openLoginSheet(prefill) {';

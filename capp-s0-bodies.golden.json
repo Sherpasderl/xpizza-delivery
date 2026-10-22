@@ -10,6 +10,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -30,6 +31,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -58,6 +60,7 @@
             "Authorization": "<masked:order_secret>"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "order_id": "<masked:order_id>",
             "customer_name": "Cliente Prueba",
             "customer_phone": "+504 9876-5432",
@@ -111,6 +114,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -131,6 +135,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -159,6 +164,7 @@
             "Authorization": "<masked:order_secret>"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "order_id": "<masked:order_id>",
             "customer_name": "Cliente Prueba",
             "customer_phone": "+504 9876-5432",
@@ -212,6 +218,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -232,6 +239,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -260,6 +268,7 @@
             "Authorization": "<masked:order_secret>"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "order_id": "<masked:order_id>",
             "customer_name": "Cliente Prueba",
             "customer_phone": "+504 9876-5432",
@@ -313,6 +322,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -333,6 +343,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -361,6 +372,7 @@
             "Authorization": "<masked:order_secret>"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "order_id": "<masked:order_id>",
             "customer_name": "Cliente Prueba",
             "customer_phone": "+504 9876-5432",
@@ -414,6 +426,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -434,6 +447,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -462,6 +476,7 @@
             "Authorization": "<masked:order_secret>"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "order_id": "<masked:order_id>",
             "customer_name": "Cliente Prueba",
             "customer_phone": "+504 9876-5432",
@@ -515,6 +530,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -535,6 +551,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -563,6 +580,7 @@
             "Authorization": "<masked:order_secret>"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "order_id": "<masked:order_id>",
             "customer_name": "Cliente Prueba",
             "customer_phone": "+504 9876-5432",
@@ -622,6 +640,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -642,6 +661,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "items": [
               {
                 "name": "Carnivora",
@@ -705,6 +725,7 @@
             "X-Firebase-ID-Token": "test-id-token"
           },
           "body": {
+            "restaurant_id": "x_pizza",
             "order_id": "<masked:order_id>",
             "customer_name": "Cliente Prueba",
             "customer_phone": "+504 9876-5432",
@@ -1608,6 +1629,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "r3_synth",
             "items": [
               {
                 "name": "R3 Carnivora",
@@ -1629,6 +1651,7 @@
             "Authorization": "<masked:order_secret>"
           },
           "body": {
+            "restaurant_id": "r3_synth",
             "order_id": "<masked:order_id>",
             "customer_name": "Cliente Prueba",
             "customer_phone": "+504 9876-5432",
@@ -1675,6 +1698,7 @@
             "Content-Type": "application/json"
           },
           "body": {
+            "restaurant_id": "r3_synth",
             "items": [
               {
                 "name": "R3 Carnivora",
@@ -1696,6 +1720,7 @@
             "Authorization": "<masked:order_secret>"
           },
           "body": {
+            "restaurant_id": "r3_synth",
             "order_id": "<masked:order_id>",
             "customer_name": "Cliente Prueba",
             "customer_phone": "+504 9876-5432",

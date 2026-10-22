@@ -6,7 +6,7 @@
       "restaurant_id": "x_pizza",
       "form": {
         "dir": "xpizza-orders",
-        "page_restaurant_id": null,
+        "page_restaurant_id": "x_pizza",
         "menu_rid": "x_pizza"
       },
       "identity": {
@@ -177,7 +177,7 @@
       "restaurant_id": "r3_synth",
       "form": {
         "dir": "<third-brand fork>",
-        "page_restaurant_id": null,
+        "page_restaurant_id": "r3_synth",
         "menu_rid": "r3_synth"
       },
       "identity": {
@@ -246,7 +246,7 @@
         "kind": "punch"
       },
       "order_id": {
-        "prefix": "PZX-"
+        "prefix": "RTS-"
       },
       "storage_keys": {
         "pending_pay": "r3synth_pending_pay",

@@ -65,6 +65,10 @@ const plain = (x) => JSON.parse(JSON.stringify(x));
       const rec = recordCell(w);
       for (const ep of C.need) assert.ok(lastOf(rec, ep), `${B.rid}/${C.id}: non-vacuity — ${ep} was sent (${rec.requests.map((r) => r.endpoint).join(',')})`);
       assert.strictEqual(leakIn(rec, OTHER[B.rid]), null, `${B.rid}/${C.id}: a request body carries the OTHER brand's literal`);
+      for (const r of rec.raw.filter((x) => ['createOrder', 'chargeOnlineOrder', 'quoteOrder', 'quoteRedemption'].includes(x.endpoint))) {
+        assert.strictEqual(r.body.restaurant_id, B.rid, `${B.rid}/${C.id}: ${r.endpoint} carries restaurant_id = ${B.rid} (§A1)`);
+      }
+      for (const r of rec.raw.filter((x) => ['createOrder', 'chargeOnlineOrder'].includes(x.endpoint))) assert.ok(r.body.order_id.startsWith('PZX-'), `${B.rid}/${C.id}: the live brands keep the PZX- prefix (§A3 ruling)`);
       if (C.reward) {
         const q = rec.raw.filter((r) => r.endpoint === 'quoteRedemption');
         assert.ok(q.length >= 1, `${B.rid}/${C.id}: the reward was quoted`);
@@ -85,7 +89,7 @@ const plain = (x) => JSON.parse(JSON.stringify(x));
     ok(`third brand ${third.rid}: fork = x_pizza page + ${fork.entries.length} declared transforms, exactly ${fork.changedLines} changed line(s), nothing else`);
     // The list is enforced, not advisory: an unused entry, or a wrong line count, refuses to materialize.
     assert.throws(() => materializeFork(third, [...transformList(third.rid), { file: 'index.html', find: 'NO SUCH TEXT ANYWHERE', to: 'x', lines: 1 }]), /unused transform/);
-    assert.throws(() => materializeFork(third, transformList(third.rid).map((e) => (e.find === "'xpizza_pending_pay'" ? { ...e, lines: 5 } : e))), /matched 6 line\(s\), declared 5/);
+    assert.throws(() => materializeFork(third, transformList(third.rid).map((e) => (e.find === 'alt="X Pizza"' ? { ...e, lines: 2 } : e))), /matched 1 line\(s\), declared 2/);
     materializeFork(third);
     ok('third brand: an unused transform entry and a mis-declared line count each refuse to materialize the fork');
     for (const id of THIRD_CELLS) {
@@ -98,14 +102,15 @@ const plain = (x) => JSON.parse(JSON.stringify(x));
       for (const r of rec.raw.filter((x) => x.body && Array.isArray(x.body.items))) {
         assert.ok(r.body.items.length > 0 && r.body.items.every((i) => /^R3 /.test(i.name)), `${third.rid}/${id}: ${r.endpoint} carries the third brand's renamed dishes only`);
       }
-      // KNOWN GAP (FORK-DIVERGENCES A1, closed by S0-prod): the x_pizza fork never sends restaurant_id, so the
-      // third brand's identity does not reach the server today. Pinned as ABSENT so S0-prod's fix must flip it.
+      // §A1 (closed in S0-prod): the third brand's identity reaches the server on EVERY quote and send.
       for (const r of rec.raw.filter((x) => ['createOrder', 'chargeOnlineOrder', 'quoteOrder'].includes(x.endpoint))) {
-        assert.ok(!('restaurant_id' in r.body), `${third.rid}/${id}: KNOWN GAP A1 moved — ${r.endpoint} now carries restaurant_id; update this PROVISIONAL cell (S0-prod)`);
+        assert.strictEqual(r.body.restaurant_id, third.rid, `${third.rid}/${id}: ${r.endpoint} carries restaurant_id = ${third.rid} (§A1)`);
       }
+      // §A3: its order ids carry ITS prefix (data), not x_pizza's.
+      for (const r of rec.raw.filter((x) => ['createOrder', 'chargeOnlineOrder'].includes(x.endpoint))) assert.ok(r.body.order_id.startsWith('RTS-'), `${third.rid}/${id}: order_id prefix is the third brand's (${r.body.order_id.slice(0, 4)})`);
       got.cells[`${third.rid}/${id} (PROVISIONAL)`] = { requests: rec.requests };
     }
-    ok(`third brand: ${THIRD_CELLS.length} PROVISIONAL cells — no x_pizza/la_musa literal in any body; KNOWN GAP A1 (no restaurant_id) pinned`);
+    ok(`third brand: ${THIRD_CELLS.length} PROVISIONAL cells — no x_pizza/la_musa literal in any body; restaurant_id = ${third.rid} on every quote/send (§A1); order ids RTS- (§A3)`);
   } finally { removeFork(); try { rmdirSync(new URL('./node_modules', import.meta.url)); } catch (_) {} }
 
   got.masks = MASKS.map((m) => ({ name: m.name, path: m.path.join('.'), applies: String(m.applies), why: m.why }));

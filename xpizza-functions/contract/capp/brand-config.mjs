@@ -37,7 +37,7 @@ function agreed(values, label) {
 
 /* Derive one brand's config from its RUNNING page. `w` is a window from form-harness loadForm(dir) that has
    not been driven yet (fresh boot), `html` is that page's index.html source (for the single fallback). */
-export function deriveBrandConfig(w, { dir, html }) {
+export async function deriveBrandConfig(w, { dir, html }) {
   const ev = (expr) => w.eval(expr);
   const A = w.__ACCOUNT && w.__ACCOUNT.CONFIG;
   if (!A) throw new Error(`capp brand-config: ${dir} — window.__ACCOUNT.CONFIG is absent (account.js did not run)`);
@@ -84,8 +84,10 @@ export function deriveBrandConfig(w, { dir, html }) {
   const H = ev('HOURS');
   for (let d = 0; d < 7; d++) hours[d] = H[d] ? { open: H[d].open, close: H[d].close } : null;
 
-  // FALLBACK (source text): the pending-pay key is an inline literal with no runtime handle.
-  const pend = exactlyOne(html, /localStorage\.setItem\('([a-z0-9_]+_pending_pay)'/, `${dir} pending-pay storage key`)[1];
+  // The pending-pay key: OBSERVED at runtime — the page's own hosted-checkout path is driven to the point where
+  // it stashes the order (see observePendingPayKey). Before S0-prod this was an inline literal read by an
+  // exactly-one source fallback; the observed key must equal what that fallback read (pinned by the golden).
+  const pend = await observePendingPayKey(w, dir);
 
   return {
     schema: SCHEMA,
@@ -104,6 +106,42 @@ export function deriveBrandConfig(w, { dir, html }) {
     copy: { error_noun: noun[1] },
     contact: { whatsapp: agreed(wa, `${dir} WhatsApp number`) },
   };
+}
+
+/* Drive the page's REAL card path on this (fresh) window just far enough for it to stash the pending order:
+   one priced dish, contact fields, selectPay('online'), processPixelPay(), and a hosted-checkout reply. Every
+   localStorage write is recorded; the key whose value carries this probe's poll token is the pending-pay key,
+   and there must be exactly ONE. The redirect that follows is jsdom's unimplemented navigation (harmless).
+   Call it LAST on a window: it leaves a cart and a sent order behind. */
+export async function observePendingPayKey(w, dir) {
+  const TOKEN = 'capp-probe-poll-token';
+  const writes = [];
+  // Storage.prototype, not the instance: assigning to localStorage.setItem would STORE an item named "setItem".
+  const proto = w.Storage.prototype; const realSet = proto.setItem;
+  proto.setItem = function (k, v) { writes.push([String(k), String(v)]); return realSet.call(this, k, v); };
+  const prevRespond = w.__respond;
+  w.__respond = (url, init) => {
+    if (/\/chargeOnlineOrder$/.test(String(url))) {
+      const body = JSON.parse(init.body);
+      const cfg = { ok: true, order_id: body.order_id, poll_token: TOKEN, checkout_url: 'https://pay.invalid/capp-probe' };
+      return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve(cfg), text: () => Promise.resolve(JSON.stringify(cfg)), clone() { return this; } });
+    }
+    return prevRespond(url, init);
+  };
+  const tick = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0)); };
+  try {
+    const dish = w.liveMenuGlobalGet('MENU').find((d) => d.price > 0);
+    if (!dish) throw new Error(`capp brand-config: ${dir} — no priced dish to drive the card path`);
+    w.chg(dish.id, 1); await tick();
+    for (const [id, v] of [['cname', 'Cliente Prueba'], ['cphone', '98765432']]) w.document.getElementById(id).value = v;
+    w.selectPay('online'); await tick();
+    if (w.buildOrder() !== true) throw new Error(`capp brand-config: ${dir} — the page refused to compose the probe order`);
+    const p = w.processPixelPay(); if (p && p.catch) p.catch(() => {});
+    await tick(); await tick();
+  } finally { proto.setItem = realSet; w.__respond = prevRespond; }
+  const hits = [...new Set(writes.filter(([, v]) => v.includes(TOKEN)).map(([k]) => k))];
+  if (hits.length !== 1) throw new Error(`capp brand-config: ${dir} — expected the hosted-checkout path to stash under exactly ONE key, saw ${JSON.stringify(hits)} (all writes: ${JSON.stringify(writes.map(([k]) => k))})`);
+  return hits[0];
 }
 
 // The inert validator. Mirrors the RESTAURANT_CONFIG shape; strict keys; called only by tests.
@@ -131,5 +169,82 @@ export function validateRestaurantConfig(c) {
   need(isObj(c.storage_keys) && /^[a-z0-9_]+_pending_pay$/.test(c.storage_keys.pending_pay || '') && /^[a-z0-9_]+$/.test(c.storage_keys.account_marker || ''), 'storage_keys');
   need(isObj(c.copy) && str(c.copy.error_noun), 'copy');
   need(isObj(c.contact) && /^\d{8,15}$/.test(c.contact.whatsapp || ''), 'contact');
+  return bad;
+}
+
+// ── S0-prod: THE LIVE INLINE RESTAURANT-CONFIG BLOCK ──────────────────────────────────────────────────────
+// Each live form carries its restaurant's DATA as the FIRST LINES of the page's existing first inline <script> (so no
+// script element is added and every <script@N> ordinal stays put), between two exact marker lines:
+//   /* RESTAURANT-CONFIG:BEGIN — … */
+//   window.RESTAURANT_CONFIG = Object.freeze({ … Object.freeze({…}) … });
+//   /* RESTAURANT-CONFIG:END */
+// configBlockLines() is the ONE emitter (the forms' lines and the third brand's are both its output: pure data, every
+// nested object frozen explicitly, no computed access). readInlineConfig() finds the block (exactly once, as the first
+// statement of the first inline script, before any reader) and EXECUTES it in an isolated vm with an empty `window`,
+// so the value under test is what the browser builds. validateLiveConfig() is the strict live schema; it refuses any
+// factura-like field outright. Key names avoid the order-field vocabulary the R3 census tracks (`rid`, `latitude`,
+// `longitude`; not lat/lng/hub_lat/hub_lng, which orders carry — the status→httpStatus collision rule).
+import vm from 'node:vm';
+export const LIVE_SCHEMA = 'sherpa-restaurant-config/1';
+export const CONFIG_BEGIN = "/* RESTAURANT-CONFIG:BEGIN — this restaurant's DATA (PLAN-shared-order-form §5 S0-prod). Read by this page and account.js; validated by capp-s0prod-config.test.mjs. Data only: never code, never a factura flag (that is a server capability). */";
+export const CONFIG_END = '/* RESTAURANT-CONFIG:END */';
+const LIVE_FIELDS = ['schema', 'rid', 'display_name', 'branding', 'map', 'hours', 'min_order_lempiras', 'payment_methods',
+  'rewards', 'order_id_prefix', 'storage_keys', 'empty_cart_noun', 'item_key'];
+
+const lit = (v) => {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) return `Object.freeze([${v.map(lit).join(',')}])`;
+  return `Object.freeze({${Object.entries(v).map(([k, x]) => `${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}:${lit(x)}`).join(',')}})`;
+};
+export function configBlockLines(cfg) { return [CONFIG_BEGIN, `window.RESTAURANT_CONFIG = ${lit(cfg)};`, CONFIG_END]; }
+
+export function readInlineConfig(html, label = 'page') {
+  const lines = html.split('\n');
+  const at = (t) => lines.map((l, i) => (l === t ? i : -1)).filter((i) => i >= 0);
+  const b = at(CONFIG_BEGIN), e = at(CONFIG_END);
+  if (b.length !== 1 || e.length !== 1) throw new Error(`capp live config: ${label} — expected exactly ONE RESTAURANT-CONFIG BEGIN/END pair, found ${b.length}/${e.length}`);
+  if (e[0] !== b[0] + 2) throw new Error(`capp live config: ${label} — the block must be BEGIN, one assignment line, END`);
+  // the FIRST statement of the page's FIRST inline script: the line before BEGIN opens it, and no inline script precedes it
+  const firstInline = lines.findIndex((l) => /^<script>\s*$/.test(l));
+  if (firstInline < 0 || firstInline !== b[0] - 1) throw new Error(`capp live config: ${label} — the block is not the first statement of the page's first inline <script> (opens at line ${firstInline + 1}, block at ${b[0] + 1})`);
+  const before = lines.slice(0, b[0]).join('\n');
+  if (/RESTAURANT_CONFIG/.test(before) || /<script[^>]*src="account\.js"/.test(before)) throw new Error(`capp live config: ${label} — a reader precedes the block`);
+  const line = lines[b[0] + 1];
+  if (!/^window\.RESTAURANT_CONFIG = Object\.freeze\(\{.*\}\);$/.test(line)) throw new Error(`capp live config: ${label} — the block's line is not a single frozen assignment`);
+  const sandbox = { window: {}, Object };
+  vm.runInNewContext(line, sandbox, { timeout: 1000 });
+  const cfg = sandbox.window.RESTAURANT_CONFIG;
+  if (!cfg || typeof cfg !== 'object') throw new Error(`capp live config: ${label} — the block did not define window.RESTAURANT_CONFIG`);
+  if (line !== configBlockLines(JSON.parse(JSON.stringify(cfg)))[1]) throw new Error(`capp live config: ${label} — the block is not the canonical emitter's output (hand-edited?)`);
+  return { index: b[0] + 1, line, config: cfg };
+}
+
+const deepFrozen = (o) => !(o && typeof o === 'object') || (Object.isFrozen(o) && Object.values(o).every(deepFrozen));
+
+export function validateLiveConfig(c) {
+  const bad = [];
+  const need = (cond, msg) => { if (!cond) bad.push(msg); };
+  const isObj = (o) => o && typeof o === 'object' && !Array.isArray(o);
+  const fin = (n) => typeof n === 'number' && Number.isFinite(n);
+  const str = (s) => typeof s === 'string' && s.length > 0;
+  if (!isObj(c)) return ['config is not an object'];
+  const walk = (o, p) => { if (o && typeof o === 'object') for (const [k, v] of Object.entries(o)) { if (/factura|fiscal|rtn|isv/i.test(k)) bad.push(`factura-like field ${p}${k}: factura is a SERVER capability, never client config`); walk(v, `${p}${k}.`); } };
+  walk(c, '');
+  need(deepFrozen(c), 'not deep-frozen');
+  for (const k of Object.keys(c)) need(LIVE_FIELDS.includes(k), `unknown key ${k}`);
+  for (const k of LIVE_FIELDS) need(Object.prototype.hasOwnProperty.call(c, k), `missing key ${k}`);
+  need(c.schema === LIVE_SCHEMA, 'schema');
+  need(typeof c.rid === 'string' && /^[a-z][a-z0-9_]*$/.test(c.rid), 'rid');
+  need(str(c.display_name), 'display_name');
+  need(isObj(c.branding) && /^#[0-9A-Fa-f]{6}$/.test(c.branding.accent || '') && isObj(c.branding.palette) && Object.keys(c.branding).length === 2 && Object.values(c.branding.palette).every((v) => /^#[0-9A-Fa-f]{6}$/.test(v)), 'branding');
+  need(isObj(c.map) && Object.keys(c.map).length === 3 && fin(c.map.latitude) && Math.abs(c.map.latitude) <= 90 && fin(c.map.longitude) && Math.abs(c.map.longitude) <= 180 && fin(c.map.radius_km) && c.map.radius_km > 0, 'map');
+  need(isObj(c.hours) && Object.keys(c.hours).length === 7 && [0, 1, 2, 3, 4, 5, 6].every((d) => c.hours[d] === null || (isObj(c.hours[d]) && Object.keys(c.hours[d]).length === 2 && Number.isInteger(c.hours[d].open) && Number.isInteger(c.hours[d].close) && c.hours[d].open >= 0 && c.hours[d].open < c.hours[d].close && c.hours[d].close <= 1440)), 'hours');
+  need(fin(c.min_order_lempiras) && c.min_order_lempiras >= 0, 'min_order_lempiras');
+  need(Array.isArray(c.payment_methods) && c.payment_methods.length > 0 && c.payment_methods.every((p) => PAY.includes(p)) && new Set(c.payment_methods).size === c.payment_methods.length, 'payment_methods');
+  need(isObj(c.rewards) && ['punch', 'points'].includes(c.rewards.kind), 'rewards');
+  need(typeof c.order_id_prefix === 'string' && /^[A-Z]{2,5}-$/.test(c.order_id_prefix), 'order_id_prefix');
+  need(isObj(c.storage_keys) && Object.keys(c.storage_keys).length === 3 && /^[a-z0-9_]+_pending_pay$/.test(c.storage_keys.pending_pay || '') && /^[a-z0-9_]+$/.test(c.storage_keys.account_marker || '') && /^[a-z0-9_]+$/.test(c.storage_keys.account_intent || ''), 'storage_keys');
+  need(str(c.empty_cart_noun), 'empty_cart_noun');
+  need(c.item_key === 'id' || c.item_key === 'name', 'item_key');
   return bad;
 }

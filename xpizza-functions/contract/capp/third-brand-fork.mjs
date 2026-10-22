@@ -19,6 +19,7 @@ import { createRequire } from 'node:module';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, statSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { readInlineConfig, configBlockLines } from './brand-config.mjs';
 
 const require = createRequire(import.meta.url);
 const crypto = require('crypto');
@@ -60,28 +61,33 @@ export async function provisionThirdBrand() {
 
 /* THE ONE DECLARED TRANSFORM LIST. Each entry rewrites whole LINES of one file: `find` must occur on exactly
    `lines` lines (else it throws), and `to` replaces it on those lines. The `bundle` entry is the real
-   spliceBundle over the generated-bundle block. Identity only: everything else in the page is x_pizza's
-   code, unchanged, which is the point of a PROVISIONAL cell. */
+   spliceBundle over the generated-bundle block; the `config` entry swaps the page's RESTAURANT-CONFIG data for
+   the third brand's (the same line, only its JSON payload changes). Since S0-prod every identity value the
+   page CODE reads comes from that block, so what remains are the static markup literals the S1 renderer
+   will own. Everything else is x_pizza's page, unchanged, which is the point of a PROVISIONAL cell. */
+export function thirdConfig(rid, xpizzaConfig) {
+  const c = JSON.parse(JSON.stringify(xpizzaConfig));
+  return { ...c, rid, display_name: 'R3 Synthetic', map: { latitude: 14.1, longitude: -87.2, radius_km: 8 }, order_id_prefix: 'RTS-',
+    storage_keys: { pending_pay: 'r3synth_pending_pay', account_marker: 'r3synth_acct', account_intent: 'r3synth_acct_intent' } };
+}
 export function transformList(rid) {
   return [
-    { file: 'index.html', find: "const AVAIL_RID = 'x_pizza';", to: `const AVAIL_RID = '${rid}';`, lines: 1 },
+    { file: 'index.html', config: true },
     { file: 'index.html', find: '<title>X Pizza — Pedido en línea</title>', to: '<title>R3 Synthetic — Pedido en línea</title>', lines: 1 },
     { file: 'index.html', find: '<div class="pickup-store-name">X Pizza</div>', to: '<div class="pickup-store-name">R3 Synthetic</div>', lines: 1 },
     { file: 'index.html', find: 'alt="X Pizza"', to: 'alt="R3 Synthetic"', lines: 1 },
     { file: 'index.html', find: 'alt="X Pizza logo"', to: 'alt="R3 Synthetic logo"', lines: 1 },
-    { file: 'index.html', find: "'xpizza_pending_pay'", to: "'r3synth_pending_pay'", lines: 6 },
-    { file: 'index.html', find: 'const RESTAURANT_LAT = 15.507489753573818;', to: 'const RESTAURANT_LAT = 14.1;', lines: 1 },
-    { file: 'index.html', find: 'const RESTAURANT_LNG = -88.0398486953722;', to: 'const RESTAURANT_LNG = -87.2;', lines: 1 },
-    { file: 'index.html', find: 'const DELIVERY_RADIUS_KM = 7;', to: 'const DELIVERY_RADIUS_KM = 8;', lines: 1 },
     { file: 'index.html', bundle: true },
-    { file: 'account.js', find: "restaurant_id: 'x_pizza',", to: `restaurant_id: '${rid}',`, lines: 1 },
-    { file: 'account.js', find: "brand: 'X. Pizza',", to: "brand: 'R3 Synthetic',", lines: 1 },
-    { file: 'account.js', find: "MARKER: 'xpizza_acct',", to: "MARKER: 'r3synth_acct',", lines: 1 },
   ];
 }
 
 function applyEntry(text, e, ctx) {
   const lines = text.split('\n');
+  if (e.config) {
+    const { index, config } = ctx.readInlineConfig(text, 'x_pizza fork source');
+    lines[index] = ctx.configBlockLines(thirdConfig(ctx.rid, JSON.parse(JSON.stringify(config))))[1];   // the ONE emitter, the third brand's data
+    return { text: lines.join('\n'), touched: [index] };
+  }
   if (e.bundle) {
     const out = ctx.spliceBundle(text, ctx.bundle, 'r3').split('\n');
     if (out.length !== lines.length) throw new Error(`capp third-brand: the bundle splice changed the LINE COUNT of ${e.file} (${lines.length} → ${out.length})`);
@@ -109,10 +115,10 @@ export function materializeFork(prov, list = transformList(prov.rid)) {
   const report = [];
   for (const e of list) {
     const p = join(dst, e.file);
-    const r = applyEntry(readFileSync(p, 'utf8'), e, { spliceBundle, bundle: prov.bundle });
+    const r = applyEntry(readFileSync(p, 'utf8'), e, { spliceBundle, bundle: prov.bundle, readInlineConfig, configBlockLines, rid: prov.rid });
     for (const i of r.touched) { const k = `${e.file}:${i}`; if (touchedBy[k]) throw new Error(`capp third-brand: line ${k} is touched by two entries`); touchedBy[k] = true; }
     writeFileSync(p, r.text);
-    report.push({ file: e.file, what: e.bundle ? 'bundle' : e.find, lines: r.touched.length });
+    report.push({ file: e.file, what: e.bundle ? 'bundle' : e.config ? 'config' : e.find, lines: r.touched.length });
   }
   // Independent check: every differing line between source and fork is one an entry declared.
   let changed = 0;

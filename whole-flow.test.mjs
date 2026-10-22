@@ -110,9 +110,14 @@ const rej = (body, status = 409) => Promise.resolve({
 /* THE SERVER'S PRICE, computed the way the server computes it: from the menu in force, keyed the way
    the brand keys. An item the current menu cannot price returns null — which is the server refusing,
    not a zero. Returning 0 there would have made a dropped dish look free and every total still "agree". */
+/* S0-prod: the brand differences this oracle needs are DATA — the page's RESTAURANT-CONFIG (item_key: how a line
+   names its dish; rewards.kind) — or a CAPABILITY the page itself exposes (chgDetailExtra: qty-aware options),
+   never a folder name. byId/qtyExtras answer for the page the cell booted. */
+const byId = (dir) => BRAND[dir].config.item_key === 'id';
+const QTY_EXTRAS = {};                                // dir → the booted page offers per-option quantities
 function serverPrice(dir, menu, item) {
   const dishes = menu.dishes || [];
-  const rec = dir === 'la-musa-orders'
+  const rec = byId(dir)
     ? dishes.find((d) => String(d.id) === String(item.id))
     : dishes.find((d) => d.name === item.name);
   if (!rec) return null;
@@ -126,11 +131,12 @@ function serverPrice(dir, menu, item) {
   const opts = menu.extras || [];
   let extras = 0;
   for (const e of item.extras || []) {
-    const er = dir === 'la-musa-orders'
+    const er = byId(dir)
       ? opts.find((x) => String(x.id) === String(e.id))
       : opts.find((x) => x.name === e.name);
     if (!er) return null;                          // an option the menu cannot price refuses the line
-    extras += er.price * (dir === 'la-musa-orders' ? (Number(e.qty) || 0) : 1);
+    if (QTY_EXTRAS[dir] === undefined) throw new Error(`whole-flow: ${dir} priced before its page was booted (extras model unknown)`);
+    extras += er.price * (QTY_EXTRAS[dir] ? (Number(e.qty) || 0) : 1);
   }
   return rec.price * (Number(item.qty) || 0) + extras;
 }
@@ -150,6 +156,7 @@ function serverTotalCents(dir, menu, items) {
 async function boot(dir) {
   const B = BRAND[dir];
   const w = loadForm(dir);
+  QTY_EXTRAS[dir] = typeof w.chgDetailExtra === 'function';   // the page's own capability, recorded per folder
   const st = { menuNow: null, quotes: 0, charges: [], gated: [], redeemQuotes: 0, redeemLive: false, rewardPayload: null, tokenTtlMs: 15 * 60 * 1000,
                redeemReply: { ok: true, total_cents: 5000, savings_cents: 1000, free_items: [], remaining: 0, total_cost: 0 } };
   const idle = new Promise(() => {});
@@ -247,7 +254,6 @@ async function boot(dir) {
    guard on the ID token BEFORE the send gate — with a reward pending and no token they bail at
    "No pudimos verificar tu sesión". A reward cell without a session would therefore observe "nothing
    charged" and prove nothing about the gate under test: the auth guard would have done it. */
-const ACCT_MARKER = { 'xpizza-orders': 'xpizza_acct', 'la-musa-orders': 'lamusa_acct' };
 function authenticate(ctx, dir) {
   /* 🔴 THE LOCAL MARKER, NOT JUST A TOKEN. account.js decides guest-vs-customer from the localStorage
      marker — `if (!m || !m.name)` clears any pending reward outright — so a fixture with only an ID
@@ -255,7 +261,7 @@ function authenticate(ctx, dir) {
      change and reported it as general behaviour; it was the guest branch, and the cell was describing
      the fixture rather than the form. The token is still installed because both charge paths check it
      BEFORE the send gate, and without it a reward send bails at the session guard instead. */
-  try { ctx.w.localStorage.setItem(ACCT_MARKER[dir], JSON.stringify({ uid: 'u-test', name: 'Cliente Prueba' })); } catch (_) {}
+  try { ctx.w.localStorage.setItem(BRAND[dir].config.storage_keys.account_marker, JSON.stringify({ uid: 'u-test', name: 'Cliente Prueba' })); } catch (_) {}
   ctx.w.__ACCOUNT = Object.assign({}, ctx.w.__ACCOUNT, {
     customerIdToken: () => Promise.resolve('test-id-token'),
   });
@@ -474,7 +480,7 @@ for (const dir of Object.keys(BRAND)) {
     await addToCart(ctx, d);
     const first = ctx.w.getServerQuoteTotalCents();
     const up = baseMenu(ctx.w);
-    const fresh = { ...up.dishes[0], id: dir === 'la-musa-orders' ? 'nuevo_t9' : 99901, name: 'Nuevo T9', price: 777 };
+    const fresh = { ...up.dishes[0], id: byId(dir) ? 'nuevo_t9' : 99901, name: 'Nuevo T9', price: 777 };
     up.dishes = up.dishes.concat([fresh]);
     await publish(ctx, up);
     ctx.w.requestServerQuote();
@@ -630,7 +636,7 @@ for (const dir of Object.keys(BRAND)) {
     await addToCart(ctx, d);
     // The real map shape and the real key derivation — availKey() is the form's own, and the brands key
     // differently (x_pizza by NAME, la_musa by ID), which is the whole reason this is asked per brand.
-    await loadAvail(ctx.w, { [ctx.w.availKey(dir === 'xpizza-orders' ? d.name : d.id)]: { available: false } });
+    await loadAvail(ctx.w, { [ctx.w.availKey(byId(dir) ? d.id : d.name)]: { available: false } });
     assert.ok(ctx.w.isSoldOut(d), `${dir}/availability: non-vacuity — the dish really is 86'd`);
     const r = await sendAndJudge(ctx, dir, 'availability');
     assert.strictEqual(r.outcome, 'refused',
@@ -733,7 +739,7 @@ for (const dir of Object.keys(BRAND)) {
     const d = plainDish(ctx.w);
     await addToCart(ctx, d);
     const ex = ctx.w.liveMenuGlobalGet('EXTRAS')[0];
-    if (dir === 'xpizza-orders') ctx.w.toggleDetailExtra(ex.id, d.id, 0);
+    if (!QTY_EXTRAS[dir]) ctx.w.toggleDetailExtra(ex.id, d.id, 0);
     else ctx.w.chgDetailExtra(ex.id, d.id, 1);
     ctx.w.requestServerQuote();
     await settle();
@@ -747,11 +753,11 @@ for (const dir of Object.keys(BRAND)) {
     const d2 = plainDish(ctx2.w);
     await addToCart(ctx2, d2);
     const ex2 = ctx2.w.liveMenuGlobalGet('EXTRAS')[0];
-    if (dir === 'xpizza-orders') ctx2.w.toggleDetailExtra(ex2.id, d2.id, 0);
+    if (!QTY_EXTRAS[dir]) ctx2.w.toggleDetailExtra(ex2.id, d2.id, 0);
     else ctx2.w.chgDetailExtra(ex2.id, d2.id, 1);
     ctx2.w.requestServerQuote();
     await settle();
-    await loadAvail(ctx2.w, { [ctx2.w.availKey(dir === 'xpizza-orders' ? ex2.name : ex2.id)]: { available: false } });
+    await loadAvail(ctx2.w, { [ctx2.w.availKey(byId(dir) ? ex2.id : ex2.name)]: { available: false } });
     assert.ok(ctx2.w.isSoldOut(ex2), `${dir}/extra-86: non-vacuity — the OPTION really is 86'd`);
     assert.ok(!ctx2.w.isSoldOut(d2), `${dir}/extra-86: non-vacuity — and the DISH is not`);
     const r = await sendAndJudge(ctx2, dir, 'extra-86');
@@ -965,7 +971,7 @@ for (const dir of Object.keys(BRAND)) {
     const items = ctx.w.redeemCartItems();
     const norm = normalizeCartForFingerprint(items, BRAND[dir].rid);
 
-    const raw = dir === 'la-musa-orders'
+    const raw = BRAND[dir].config.rewards.kind === 'points'
       ? { type: 'points_ala_carte', items: [{ id: 'dimsum_01', qty: 1 }] }
       : { type: 'free_pizza_choice', item_id: items[0].name };
     const resolved = resolveReward(raw, items, BRAND[dir].rid);
@@ -1373,7 +1379,7 @@ for (const dir of Object.keys(BRAND)) {
     ctx.w.requestServerQuote();
     await settle();
     const r = await sendAndJudge(ctx, dir, 'rename');
-    if (dir === 'xpizza-orders') {
+    if (!byId(dir)) {
       assert.strictEqual(r.outcome, 'refused',
         `${dir}/rename: 🔴 priced BY NAME — a renamed dish is a different product and must not charge`);
       ok(`${dir}: rename — priced by name, so the line blocks rather than charging under a new identity`);

@@ -231,7 +231,7 @@ const isSend = (ep) => ep === 'createOrder' || ep === 'chargeOnlineOrder';
 export const MASKS = [
   { name: 'order_id', path: ['body', 'order_id'], applies: (ep) => isSend(ep),
     why: 'genOrderId(): PREFIX + Honduras date/time at the fixed clock + an 8-char CSPRNG suffix',
-    check: (v) => typeof v === 'string' && new RegExp(`^PZX-${HN_DATE}-18\\d{4}-[0-9A-Z]{8}$`).test(v) },
+    check: (v) => typeof v === 'string' && new RegExp(`^[A-Z]{2,5}-${HN_DATE}-18\\d{4}-[0-9A-Z]{8}$`).test(v) },   // the prefix is DATA (§A3); each suite asserts its brand's
   { name: 'timestamp', path: ['body', 'timestamp'], applies: (ep) => isSend(ep),
     why: 'new Date().toISOString() at the send, on the fixed clock (advances with real elapsed time)',
     check: (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(v) && Date.parse(v) >= T0 && Date.parse(v) < T0 + 15 * 60000 },

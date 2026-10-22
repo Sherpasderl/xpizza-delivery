@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 const require = createRequire(new URL('./xpizza-functions/x.js', import.meta.url));
 const { JSDOM, VirtualConsole } = require('jsdom');
+import { readInlineConfig } from './xpizza-functions/contract/capp/brand-config.mjs';
 
 // Each suite owns its own counter — a shared one would make two suites' numbering depend on import
 // order, and the hand-back numbers have to be checkable against the output of the suite that printed
@@ -138,28 +139,39 @@ export const loadAvail = async (w, map) => {
   await settle();
 };
 
-export const BRAND = {
-  'xpizza-orders': {
-    rid: 'x_pizza',
-    containers: ['menu-individual', 'menu-ny'],
+/* THE FORMS THIS RIG KNOWS, AS DATA (Customer App S0-prod). The order-form folders come from platform/sites.json
+   (the deploy manifest), and each one's identity from the RESTAURANT-CONFIG block its own index.html carries,
+   executed (readInlineConfig) — never a per-folder literal in the rig. `menu` reads the page's live-menu globals
+   generically: categories are included where the page's live apply carries them. `containers` is the page's
+   own liveMenuContainers(). */
+const SITES = JSON.parse(readFileSync(new URL('./platform/sites.json', import.meta.url), 'utf8'));
+export const ORDER_FORM_DIRS = SITES.deployments.filter((d) => d.app === 'orders').map((d) => d.folder);
+/* 🔴 THE FOLDERS THIS RIG IS KNOWN TO COVER, by name — the anchor tools/form-source-inventory.js reads (a helper that names
+   a form folder reaches it), and a guard: a new order form in the manifest must be added here (and so to the inventory)
+   rather than silently joining a rig nobody re-inventoried. Folder names, not brand logic — nothing branches on them. */
+const KNOWN_ORDER_FORM_DIRS = ['xpizza-orders', 'la-musa-orders'];
+if (JSON.stringify([...ORDER_FORM_DIRS].sort()) !== JSON.stringify([...KNOWN_ORDER_FORM_DIRS].sort())) {
+  throw new Error(`form-harness: platform/sites.json's order forms ${JSON.stringify(ORDER_FORM_DIRS)} differ from the folders this rig covers ${JSON.stringify(KNOWN_ORDER_FORM_DIRS)}`);
+}
+export function formConfig(dir) {
+  return readInlineConfig(readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8'), dir).config;
+}
+export const BRAND = Object.fromEntries(ORDER_FORM_DIRS.map((dir) => {
+  const config = formConfig(dir);
+  return [dir, {
+    rid: config.rid,
+    config,
+    containers: null,
     menu: (w) => {
-      const live = w.liveMenuGlobalGet('MENU');
-      return {
-        dishes: live.map((d) => ({ ...d })),
+      const out = {
+        dishes: w.liveMenuGlobalGet('MENU').map((d) => ({ ...d })),
         extras: w.liveMenuGlobalGet('EXTRAS').map((e) => ({ ...e })),
       };
+      if (w.eval('LIVE_MENU_GLOBALS').includes('CATEGORIES')) out.categories = w.liveMenuGlobalGet('CATEGORIES').map((c) => ({ ...c }));
+      return out;
     },
-  },
-  'la-musa-orders': {
-    rid: 'la_musa',
-    containers: null,                        // derived from CATEGORIES at run time
-    menu: (w) => ({
-      dishes: w.liveMenuGlobalGet('MENU').map((d) => ({ ...d })),
-      extras: w.liveMenuGlobalGet('EXTRAS').map((e) => ({ ...e })),
-      categories: w.liveMenuGlobalGet('CATEGORIES').map((c) => ({ ...c })),
-    }),
-  },
-};
+  }];
+}));
 
 
 export const closeAll = () => { OPEN.forEach((d) => { try { d.window.close(); } catch (_) {} }); };
