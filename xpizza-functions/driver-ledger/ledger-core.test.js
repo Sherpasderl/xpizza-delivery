@@ -28,13 +28,12 @@ const W1 = 'W2026-10-19', W2 = 'W2026-10-26';
 const at = HN('2026-10-21T19:30:00');
 const del = (o = {}) => ({ order_type: 'delivery', delivered_at: at, delivered_by_driver_uid: 'drvA', restaurant_id: 'r1', ...o });
 assert.deepStrictEqual(C.windowOf(W2), { from: C.weekBounds(W2).start - 14 * 86400000, to: C.weekBounds(W2).end });
-assert.deepStrictEqual(C.priorWeeksOf(W2), [W1, 'W2026-10-12']);
 const w1 = C.computeWeek(W1, [
   ['o2', del()], ['o1', del({ delivered_at: at - 3600000 })], ['o3', del({ delivered_by_driver_uid: 'drvB' })],
   ['o4', del({ delivered_by_driver_uid: undefined, delivered_by_uid: 'drvB' })],               // no PROTECTED stamp
   ['o5', del({ order_type: 'pickup' })], ['o6', del({ delivered_at: cfg.ledger_start_at - 1 })],
   ['o7', del({ delivered_at: undefined })], ['o8', del({ delivered_at: C.weekBounds(W1).end })],   // next week: not this one
-], [null, null], cfg);
+], [], cfg);
 assert.deepStrictEqual(w1.drivers.drvA, { deliveries: ['o1', 'o2'], adjustments: [], base_cents: 14000, adjustments_cents: 0, carry_in_cents: 0, net_cents: 14000, outcome: 'payable' });
 assert.deepStrictEqual(Object.keys(w1.drivers).sort(), ['drvA', 'drvB']);
 assert.deepStrictEqual([w1.unresolved, w1.attribution_review, w1.week, w1.policy_version, w1.base_cents], [['o4'], [], W1, 1, 7000]);
@@ -51,7 +50,7 @@ const w2rows = [
   ['oU', late({ delivered_by_driver_uid: undefined })],                                           // still no stamp
   ['n1', del({ delivered_at: C.weekBounds(W2).start + 3600000 })],
 ];
-const w2 = C.computeWeek(W2, w2rows, [closed1, null], cfg);
+const w2 = C.computeWeek(W2, w2rows, [closed1], cfg);
 assert.deepStrictEqual(w2.drivers.drvA.deliveries, ['n1']);
 assert.deepStrictEqual(w2.drivers.drvB.adjustments, [{ order_id: 'o4', original_week: W1 }], 'a late stamp pays as an adjustment');
 assert.deepStrictEqual(w2.drivers.drvZ, { deliveries: [], adjustments: [{ order_id: 'oZ', original_week: W1 }], base_cents: 0, adjustments_cents: 7000, carry_in_cents: 0, net_cents: 7000, outcome: 'payable' }, 'a late sync by a driver with NO entry that week still pays');
@@ -59,14 +58,16 @@ assert.deepStrictEqual(w2.attribution_review, [{ order_id: 'o2', paid_to: 'drvA'
 assert.deepStrictEqual(w2.unresolved, ['oU']);
 const w3 = C.computeWeek('W2026-11-02', w2rows, [{ ...w2, closed_at: 2 }, closed1], cfg);
 assert.deepStrictEqual([w3.attribution_review, w3.unresolved, Object.keys(w3.drivers)], [[], [], []], 'review lists are not repeated in later weeks; nothing pays twice');
+const moved = C.computeWeek('W2026-11-09', [['o1', del({ delivered_at: C.weekBounds('W2026-11-09').start - 86400000 })]], [closed1, { ...w2, closed_at: 2 }, { week: 'W2026-11-02', drivers: {} }], cfg);
+assert.deepStrictEqual(Object.keys(moved.drivers), [], 'an order paid weeks ago whose delivered_at was MOVED into the window is never paid again (dedupe = all closed weeks)');
 ok('next weeks: late sync / late stamp → adjustment once; paid order never again; changed stamp → attribution_review once; lists de-duplicated');
 
 // carry: a negative unpaid previous entry carries (also into a driver with no deliveries); paid or positive never does
 const neg = { week: W1, drivers: { drvC: { deliveries: [], adjustments: [], net_cents: -7000 }, drvP: { net_cents: 14000 }, drvQ: { net_cents: -7000, paid: { at: 1 } } } };
-const c2 = C.computeWeek(W2, [['m1', del({ delivered_at: C.weekBounds(W2).start + 1, delivered_by_driver_uid: 'drvC' })], ['m2', del({ delivered_at: C.weekBounds(W2).start + 2, delivered_by_driver_uid: 'drvC' })]], [neg, null], cfg);
+const c2 = C.computeWeek(W2, [['m1', del({ delivered_at: C.weekBounds(W2).start + 1, delivered_by_driver_uid: 'drvC' })], ['m2', del({ delivered_at: C.weekBounds(W2).start + 2, delivered_by_driver_uid: 'drvC' })]], [neg], cfg);
 assert.deepStrictEqual([c2.drivers.drvC.carry_in_cents, c2.drivers.drvC.net_cents, c2.drivers.drvC.outcome], [-7000, 7000, 'payable']);
 assert.deepStrictEqual(Object.keys(c2.drivers), ['drvC'], 'a positive unpaid week stays on its own entry; a paid one carries nothing');
-const c3 = C.computeWeek(W2, [], [neg, null], cfg);
+const c3 = C.computeWeek(W2, [], [neg], cfg);
 assert.deepStrictEqual([c3.drivers.drvC.carry_in_cents, c3.drivers.drvC.net_cents, c3.drivers.drvC.outcome], [-7000, -7000, 'no_payment'], 'a carry with no deliveries closes again with no payment');
 ok('carry: net < 0 unpaid carries forward (with or without deliveries); positive unpaid and paid entries never carry');
 

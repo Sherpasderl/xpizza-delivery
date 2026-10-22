@@ -25,8 +25,14 @@ async function ordersIn(db, { from, to }) {
   return rows;
 }
 async function readWeek(db, week) { return val(db, `driver_ledger_weeks/${week}`); }
+// ALL closed weeks before `week`, read ONCE (closed weeks are immutable; only closeWeek creates them): the dedupe memory.
+async function closedBefore(db, week) {
+  const snap = await db.ref('driver_ledger_weeks').orderByKey().endAt(C.prevWeek(week)).once('value');
+  const nodes = []; snap.forEach((c) => { nodes.push(c.val()); });
+  return nodes;
+}
 async function computeFor(db, week, cfg) {
-  const prior = await Promise.all(C.priorWeeksOf(week).map((w) => readWeek(db, w)));
+  const prior = await closedBefore(db, week);
   return C.computeWeek(week, await ordersIn(db, C.windowOf(week)), prior, cfg);
 }
 

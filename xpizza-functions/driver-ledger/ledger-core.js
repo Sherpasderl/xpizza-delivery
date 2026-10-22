@@ -56,14 +56,14 @@ const LATE_WINDOW_MS = 14 * DAY_MS;          // a delivery syncing later than th
 // that synced after its own week closed is picked up by the next close as a LATE adjustment.
 function windowOf(week) { const b = weekBounds(week); return { from: b.start - LATE_WINDOW_MS, to: b.end }; }
 
-// The earlier weeks whose closed nodes cover that window (what "already included / already listed" is checked against).
-function priorWeeksOf(week) { const p1 = prevWeek(week); return [p1, prevWeek(p1)]; }
-
 const list = (x) => (Array.isArray(x) ? x : x && typeof x === 'object' ? Object.values(x) : []);
 
 /* THE WEEK, computed from /orders alone. `rows` = [[order_id, order]] with delivered_at in windowOf(week); `prior` = the
-   closed nodes of priorWeeksOf(week) (missing = not closed). Pure and deterministic: the close commits it once, the
-   read shows it for the open week. An order is PAID at most once, in the first close that sees it with a stamp:
+   closed nodes of ALL weeks before it. Pure and deterministic: the close commits it once, the
+   read shows it for the open week. `prior` must be EVERY closed week before `week`: delivered_at is NOT immutable (dispatch
+   and the driver app may rewrite it, later or earlier), so only all closed weeks bound the dedupe (codex r3).
+   dedupe = all closed weeks; bound it if volume grows.
+   An order is PAID at most once, in the first close that sees it with a stamp:
      · own week                          → deliveries
      · an earlier week, never included   → adjustments (late sync, or a stamp that arrived late)
      · already included in a prior week  → never again; if its CURRENT stamp is another driver → attribution_review
@@ -122,4 +122,4 @@ function validatePayment(statement, req) {
   return { ok: true, payment: { amount_cents: req.amount_cents, paid_on: req.paid_on, reference: req.reference.trim(), op_key: req.op_key } };
 }
 
-module.exports = { HN_OFFSET_MS, WEEK_RE, LATE_WINDOW_MS, weekOf, weekBounds, prevWeek, nextWeek, windowOf, priorWeeksOf, readPayConfig, isAccruable, computeWeek, validatePayment, list };
+module.exports = { HN_OFFSET_MS, WEEK_RE, LATE_WINDOW_MS, weekOf, weekBounds, prevWeek, nextWeek, windowOf, readPayConfig, isAccruable, computeWeek, validatePayment, list };

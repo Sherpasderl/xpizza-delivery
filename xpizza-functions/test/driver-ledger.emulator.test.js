@@ -50,7 +50,7 @@ async function wipe() {
 const HN = (iso) => Date.parse(`${iso}-06:00`);
 const START = HN('2026-10-19T00:00:00');           // Monday — the ledger's go-live
 const W1 = 'W2026-10-19', W2 = 'W2026-10-26', W3 = 'W2026-11-02', W4 = 'W2026-11-09';
-const MON2 = HN('2026-10-26T00:10:00'), MON3 = HN('2026-11-02T00:10:00'), MON4 = HN('2026-11-09T00:10:00'), MON5 = HN('2026-11-16T00:10:00');
+const MON2 = HN('2026-10-26T00:10:00'), MON3 = HN('2026-11-02T00:10:00'), MON4 = HN('2026-11-09T00:10:00'), MON5 = HN('2026-11-16T00:10:00'), MON7 = HN('2026-11-30T00:10:00');
 const order = (o) => ({ order_type: 'delivery', status: 'delivered', restaurant_id: 'r1', total: 300, ...o });
 const val = async (p) => (await rtdb.ref(p).get()).val();
 const list = (x) => (Array.isArray(x) ? x : x ? Object.values(x) : []);
@@ -115,8 +115,8 @@ async function timesPaid(oid) {
   const orderReads = READS.filter((r) => r.p === 'orders' || r.p.startsWith('orders/'));
   assert.ok(orderReads.length > 0, 'non-vacuity: the ledger read orders');
   for (const r of orderReads) assert.deepStrictEqual([r.p, r.chain.join()], ['orders', 'orderByChild,startAt,endAt'], `🔴 an unbounded /orders read: ${JSON.stringify(r)}`);
-  for (const r of READS.filter((x) => x.p === 'driver_ledger_weeks')) assert.strictEqual(r.chain.join(), 'orderByKey,limitToLast', `🔴 an unbounded weeks read: ${JSON.stringify(r)}`);
-  ok(`/orders is read only through the bounded orderByChild(delivered_at).startAt().endAt() range (${orderReads.length} reads); weeks only one by key or the last one`);
+  for (const r of READS.filter((x) => x.p === 'driver_ledger_weeks')) assert.ok(['orderByKey,limitToLast', 'orderByKey,endAt'].includes(r.chain.join()), `🔴 an unexpected weeks read: ${JSON.stringify(r)}`);
+  ok(`/orders is read only through the bounded orderByChild(delivered_at).startAt().endAt() range (${orderReads.length} reads); weeks only the last one, or every closed week before the one computed (the dedupe memory)`);
 
   // 5. idempotent and immutable: re-running writes nothing; a later order edit never rewrites a closed week
   await rtdb.ref('orders/o1/delivered_by_driver_uid').set('drvB');
@@ -242,6 +242,30 @@ async function timesPaid(oid) {
   assert.deepStrictEqual(await S.previewWeek(db, null, HN('2026-11-23T00:05:00')), { pending_close: true }, 'the week before is not closed yet → no misleading preview');
   assert.deepStrictEqual(await S.previewWeek(db, W3, MON5), { closed: true, week: await val(`driver_ledger_weeks/${W3}`) });
   ok('the read: a closed week as stored; the open week only once the previous one is closed');
+
+  // 16–18. delivered_at is NOT immutable (dispatch / the driver app may rewrite it): a paid order whose timestamp MOVES —
+  // later or earlier — is never paid again, however far it lands from the week that paid it  [codex r3 P1]
+  const moveCell = async (label, deliveredIso, closeFirst, moveMs) => {
+    await fresh();
+    const at0 = HN(deliveredIso);
+    await rtdb.ref('orders/oM').set(order({ delivered_at: at0, delivered_by_driver_uid: 'drvA' }));
+    await S.closeDue(db, closeFirst);
+    assert.strictEqual(await timesPaid('oM'), 1, `premise (${label}): paid once by the first close`);
+    await rtdb.ref('orders/oM/delivered_at').set(at0 + moveMs);
+    const r = await S.closeDue(db, MON7);
+    assert.ok(r.closed.length >= 3, `premise (${label}): later weeks closed ${JSON.stringify(r)}`);
+    assert.strictEqual(await timesPaid('oM'), 1, `🔴 ${label}: the moved order was paid twice`);
+    const pv = await S.previewWeek(db, null, MON7 + 3600000);
+    assert.ok(pv.open && !Object.values(pv.week.drivers).length, `${label}: «Pagos» does not show it payable either: ${JSON.stringify(pv)}`);
+  };
+  // codex's exact repro: delivered Sun 25 Oct 23:00 HN, closed + paid in W2026-10-19, corrected +2 h to Mon 26 Oct 01:00;
+  // under r3 the W2026-11-09 close re-paid it (L 140)
+  await moveCell('+2 h', '2026-10-25T23:00:00', MON2, 2 * 3600000);
+  ok('codex r3 repro: an order paid in its week, then moved +2 h into the next week, is never paid again by any later close (through W2026-11-23) or shown payable');
+  await moveCell('+10 d', '2026-10-25T23:00:00', MON2, 10 * 86400000);
+  ok('a paid order moved +10 days is never paid again');
+  await moveCell('−10 d', '2026-11-04T12:00:00', MON4, -10 * 86400000);
+  ok('a paid order BACKDATED −10 days (into an earlier, already-closed week) is never paid again');
 
   FINISHED = true;
   console.log(`\ndriver-ledger: OK (${n})`);
