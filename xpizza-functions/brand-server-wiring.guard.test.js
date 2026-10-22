@@ -14,7 +14,7 @@ const { execFileSync } = require('child_process');
 const { unapplyBrandServerIndex, unapplyBrandServerModule, INDEX_HUNKS, MODULE_HUNKS, FILES } = require('./tools/brand-server-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const idx = require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))))));   // DISPATCH-LITE PUSH (newer layer) reversed first
+const idx = require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))))));   // DISPATCH-LITE PUSH (newer layer) reversed first
 const BASE = execFileSync('git', ['show', 'df4a1bdb:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.strictEqual(unapplyBrandServerIndex(idx), BASE, '🔴 index.js minus the brand-server hunks is not df4a1bdb:index.js');
@@ -49,6 +49,6 @@ for (const f of FILES) {
   assert.throws(() => unapplyBrandServerModule(f, src + now), /occurs 2×/, `${f}: a duplicated hunk is refused`);
   assert.ok(MODULE_HUNKS[f].some(([h]) => h.includes('materializeRestaurant')), `${f}: the hunks carry materializeRestaurant`);
 }
-assert.strictEqual(unapplyBrandServerModule('whatsapp.js', 'x'), 'x', 'an unlisted module passes through');
+assert.strictEqual(unapplyBrandServerModule('unlisted-module.js', 'x'), 'x', 'an unlisted module passes through');
 ok(`PROOF (iii): unapplyBrandServerModule restores df4a1bdb byte-for-byte for ${FILES.join(', ')}; a duplicated hunk is refused; an unlisted module passes through`);
 console.log(`brand-server-wiring.guard: OK (${n} cases)`);

@@ -44,6 +44,16 @@ function formaDePago(paymentMethod) {
   return 'NO IDENTIFICADO';
 }
 
+// S3c (owner ruling 2026-10-21): envío — and the free-delivery promo against it — is Sherpa's pass-through, never the
+// restaurant's sale: the fiscal TOTAL is the FOOD total (= subtotal + ISV under the tax-inclusive split). An order with no
+// envío (delivery_cents absent or 0 — every order while envío is dark) nets 0 → byte-identical to before.
+function envioNetCents(order) {
+  const d = order.delivery_cents;
+  if (!Number.isSafeInteger(d) || d <= 0) return 0;
+  const p = Number.isSafeInteger(order.promo_discount_cents) ? order.promo_discount_cents : 0;
+  return Math.max(0, d - p);
+}
+
 function buildFacturaRecord({ order, config, reserved, now }) {
   const num = String(reserved).padStart(8, '0');
   const { fecha, hora } = formatHN(now);
@@ -99,7 +109,7 @@ function buildFacturaRecord({ order, config, reserved, now }) {
     isv_18_cents: 0,
     subtotal_cents: order.subtotal_cents,
     isv_total_cents: order.tax_cents,
-    total_cents: order.total_cents,
+    total_cents: order.total_cents - envioNetCents(order),   // the FOOD total (envío excluded); the cash change below stays on the CHARGED total
     // payment
     forma_de_pago_label: formaDePago(order.payment_method),
     cambio_cents: order.payment_method === 'cash'

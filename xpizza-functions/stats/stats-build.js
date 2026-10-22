@@ -99,8 +99,17 @@ function itemKey(name, cents) {
   return cents <= 0 ? REWARD_PREFIX + n : n;
 }
 
+// S3c (owner ruling 2026-10-21): the restaurant's revenue excludes envío (Sherpa pass-through) — the FOOD total is the charged
+// total minus the NET envío (delivery − promo). No envío (absent / 0 — every order while dark) → 0 → byte-identical.
+function envioNetCents(order) {
+  const d = order && order.delivery_cents;
+  if (!Number.isSafeInteger(d) || d <= 0) return 0;
+  const p = Number.isSafeInteger(order.promo_discount_cents) ? order.promo_discount_cents : 0;
+  return Math.max(0, d - p);
+}
+
 function addSale(s, order, rid, keyer) {
-  const cents = int(order.total_cents);
+  const cents = int(order.total_cents) - envioNetCents(order);
   const zero = cents === 0 ? 1 : 0;
   s.sale.orders += 1;
   s.sale.cents += cents;
@@ -153,7 +162,7 @@ function addSale(s, order, rid, keyer) {
 // Fold ONE order into a summary. Returns its class (for diagnostics).
 function addOrder(s, order, rid, keyer) {
   const cls = classifyOrder(order);
-  const cents = int(order.total_cents);
+  const cents = int(order.total_cents) - envioNetCents(order);   // S3c: the food total (refunds of the restaurant's sale exclude envío too)
   switch (cls) {
     case CLASS.SALE: addSale(s, order, rid, keyer); break;
     case CLASS.REFUNDED: s.refunded.orders += 1; s.refunded.cents += cents; break;
@@ -243,7 +252,7 @@ function histMedian(h) {
 
 const avgPaidTicket = (m) => { const d = (m.orders || 0) - (m.zero_value_orders || 0); return d > 0 ? Math.round(m.cents / d) : null; };
 
-module.exports = {
+module.exports = { envioNetCents,
   SUMMARY_VERSION, PAYMENT_METHODS, ORDER_TYPES, HIST_BUCKET_MS, HIST_BUCKETS, HIST_LEN, REWARD_PREFIX,
   paymentBucket, emptySummary, addOrder, buildDailies, mergeSummaries, histMedian, avgPaidTicket, ridOf, linesOf, itemKey, interval, prepStart,
 };

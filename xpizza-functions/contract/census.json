@@ -4104,7 +4104,7 @@
   },
   {
    "id": "xpizza-functions/delivery/delivery-wire.js#quoteDeliveryFor#hub_lat#0",
-   "line": 130,
+   "line": 132,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -4114,7 +4114,7 @@
   },
   {
    "id": "xpizza-functions/delivery/delivery-wire.js#quoteDeliveryFor#hub_lng#0",
-   "line": 130,
+   "line": 132,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -4807,7 +4807,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#desc_rebaja_cents#0",
-   "line": 55,
+   "line": 65,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -4817,7 +4817,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#subtotal_cents#0",
-   "line": 56,
+   "line": 66,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -4827,7 +4827,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#factura_items#0",
-   "line": 57,
+   "line": 67,
    "kind": "member",
    "facts": [
     "ITEMS",
@@ -4838,7 +4838,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#items#0",
-   "line": 57,
+   "line": 67,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4848,7 +4848,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#restaurant_name#0",
-   "line": 71,
+   "line": 81,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -4858,7 +4858,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#subtotal_cents#1",
-   "line": 96,
+   "line": 106,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -4868,7 +4868,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#tax_cents#0",
-   "line": 98,
+   "line": 108,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -4878,7 +4878,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#subtotal_cents#2",
-   "line": 100,
+   "line": 110,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -4888,7 +4888,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#tax_cents#1",
-   "line": 101,
+   "line": 111,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -4898,7 +4898,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#total_cents#0",
-   "line": 102,
+   "line": 112,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -4910,7 +4910,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#payment_method#0",
-   "line": 104,
+   "line": 114,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -4923,7 +4923,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#payment_method#1",
-   "line": 105,
+   "line": 115,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -4936,7 +4936,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#cash_tendered_cents#0",
-   "line": 106,
+   "line": 116,
    "kind": "member",
    "facts": [
     "TENDER"
@@ -4946,7 +4946,7 @@
   },
   {
    "id": "xpizza-functions/factura/build-record.js#buildFacturaRecord#total_cents#1",
-   "line": 106,
+   "line": 116,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -18677,7 +18677,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#addSale#total_cents#0",
-   "line": 103,
+   "line": 112,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -18689,7 +18689,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#addSale#subtotal_cents#0",
-   "line": 107,
+   "line": 116,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -18699,7 +18699,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#addSale#tax_cents#0",
-   "line": 108,
+   "line": 117,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -18709,7 +18709,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#addSale#order_type#0",
-   "line": 111,
+   "line": 120,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -18719,7 +18719,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#addSale#order_type#1",
-   "line": 111,
+   "line": 120,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -18729,7 +18729,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#addSale#order_type#2",
-   "line": 111,
+   "line": 120,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -18739,7 +18739,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#addSale#payment_method#0",
-   "line": 113,
+   "line": 122,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -18752,7 +18752,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#addSale#items#0",
-   "line": 129,
+   "line": 138,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -18762,7 +18762,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#addSale#items#1",
-   "line": 129,
+   "line": 138,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -18772,7 +18772,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#addSale#delivered_at#0",
-   "line": 140,
+   "line": 149,
    "kind": "member",
    "facts": [
     "DRIVER",
@@ -18783,7 +18783,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#addOrder#total_cents#0",
-   "line": 156,
+   "line": 165,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -18795,7 +18795,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#ridOf#restaurant_id#0",
-   "line": 172,
+   "line": 181,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -18805,7 +18805,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#ridOf#restaurant_id#1",
-   "line": 172,
+   "line": 181,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -18815,7 +18815,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#mergeSummaries#items#0",
-   "line": 216,
+   "line": 225,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -18825,7 +18825,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#mergeSummaries#items#1",
-   "line": 216,
+   "line": 225,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -18835,7 +18835,7 @@
   },
   {
    "id": "xpizza-functions/stats/stats-build.js#mergeSummaries#items#2",
-   "line": 216,
+   "line": 225,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -20264,7 +20264,7 @@
   },
   {
    "id": "xpizza-functions/whatsapp.js#renderOrderReceived#total#0",
-   "line": 276,
+   "line": 284,
    "kind": "destructure",
    "facts": [
     "MONEY",
@@ -20276,7 +20276,7 @@
   },
   {
    "id": "xpizza-functions/whatsapp.js#renderPickupReceived#total#0",
-   "line": 298,
+   "line": 307,
    "kind": "destructure",
    "facts": [
     "MONEY",
@@ -42059,7 +42059,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#desc_rebaja_cents#0",
-   "line": 55,
+   "line": 65,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -42069,7 +42069,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#subtotal_cents#0",
-   "line": 56,
+   "line": 66,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -42079,7 +42079,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#factura_items#0",
-   "line": 57,
+   "line": 67,
    "kind": "member",
    "facts": [
     "ITEMS",
@@ -42090,7 +42090,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#items#0",
-   "line": 57,
+   "line": 67,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -42100,7 +42100,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#restaurant_name#0",
-   "line": 71,
+   "line": 81,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -42110,7 +42110,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#subtotal_cents#1",
-   "line": 96,
+   "line": 106,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -42120,7 +42120,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#tax_cents#0",
-   "line": 98,
+   "line": 108,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -42130,7 +42130,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#subtotal_cents#2",
-   "line": 100,
+   "line": 110,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -42140,7 +42140,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#tax_cents#1",
-   "line": 101,
+   "line": 111,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -42150,7 +42150,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#total_cents#0",
-   "line": 102,
+   "line": 112,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -42162,7 +42162,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#payment_method#0",
-   "line": 104,
+   "line": 114,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -42175,7 +42175,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#payment_method#1",
-   "line": 105,
+   "line": 115,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -42188,7 +42188,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#cash_tendered_cents#0",
-   "line": 106,
+   "line": 116,
    "kind": "member",
    "facts": [
     "TENDER"
@@ -42198,7 +42198,7 @@
   },
   {
    "id": "xpizza-factura/src/build-record.js#buildFacturaRecord#total_cents#1",
-   "line": 106,
+   "line": 116,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -43402,7 +43402,7 @@
    "file": "xpizza-functions/factura/build-record.js",
    "alias": "gravado_15_cents",
    "field": "subtotal_cents",
-   "line": 96,
+   "line": 106,
    "round": 1
   },
   {
@@ -43410,7 +43410,7 @@
    "file": "xpizza-functions/factura/build-record.js",
    "alias": "isv_15_cents",
    "field": "tax_cents",
-   "line": 98,
+   "line": 108,
    "round": 1
   },
   {
@@ -43418,7 +43418,7 @@
    "file": "xpizza-functions/factura/build-record.js",
    "alias": "isv_total_cents",
    "field": "tax_cents",
-   "line": 101,
+   "line": 111,
    "round": 1
   },
   {
@@ -43426,7 +43426,7 @@
    "file": "xpizza-functions/factura/build-record.js",
    "alias": "forma_de_pago_label",
    "field": "payment_method",
-   "line": 104,
+   "line": 114,
    "round": 1
   },
   {
@@ -44194,7 +44194,7 @@
    "file": "xpizza-factura/src/build-record.js",
    "alias": "gravado_15_cents",
    "field": "subtotal_cents",
-   "line": 96,
+   "line": 106,
    "round": 1
   },
   {
@@ -44202,7 +44202,7 @@
    "file": "xpizza-factura/src/build-record.js",
    "alias": "isv_15_cents",
    "field": "tax_cents",
-   "line": 98,
+   "line": 108,
    "round": 1
   },
   {
@@ -44210,7 +44210,7 @@
    "file": "xpizza-factura/src/build-record.js",
    "alias": "isv_total_cents",
    "field": "tax_cents",
-   "line": 101,
+   "line": 111,
    "round": 1
   },
   {
@@ -44218,7 +44218,7 @@
    "file": "xpizza-factura/src/build-record.js",
    "alias": "forma_de_pago_label",
    "field": "payment_method",
-   "line": 104,
+   "line": 114,
    "round": 1
   }
  ],

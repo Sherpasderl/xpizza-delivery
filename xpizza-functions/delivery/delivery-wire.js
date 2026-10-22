@@ -88,6 +88,8 @@ function withDelivery(dq, breakdown) {
 // The order's `total` (LEMPIRAS — what the driver app collects and the cash count sums): food + net envío when active, so
 // `total` and `total_cents` stay one number. The reward earn base keeps the FOOD total (callers pass it unchanged there).
 const totalLempiras = (dq, foodLempiras) => (ctxOf(dq) ? foodLempiras + P.netDeliveryCents(ctxOf(dq)) / 100 : foodLempiras);
+// S3c: the WhatsApp «Envío» argument from a breakdown / an order record (delivery_cents > 0 only — absent → nothing).
+const waEnvio = (o) => (o && Number.isSafeInteger(o.delivery_cents) && o.delivery_cents > 0 ? { envio: { cents: o.delivery_cents, promo_cents: Number.isSafeInteger(o.promo_discount_cents) ? o.promo_discount_cents : 0 } } : {});
 // The fields the hosted path copies onto the pending order (the cash path spreads the whole breakdown).
 const orderFields = (b) => (b && b.delivery_snapshot ? { delivery_cents: b.delivery_cents, promo_discount_cents: b.promo_discount_cents, delivery_snapshot: b.delivery_snapshot } : {});
 
@@ -139,4 +141,4 @@ function quoteOutcome(dq) {
 // The additive quote response fields (absent when dark → byte-identical response).
 const quoteFields = (ctx) => (ctx ? { delivery: { delivery_cents: ctx.delivery_cents, promo_discount_cents: ctx.promo_discount_cents, policy_version: ctx.policy_version, mode: ctx.mode } } : {});
 
-module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf };
+module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf };
