@@ -63,6 +63,19 @@ const ident = (over = {}) => ({ name: 'Leg', display_name: 'Leg. Brand', hub_lat
   assert.deepStrictEqual(pp.row.to.source, { gen: 0, versions: { tb_centro: 1 } }, 'no projection_gen yet → gen 0');
   const TBg = { ...TB, projection_gen: 4, locations: { tb_centro: 'member', tb_norte: 'staged' } };
   assert.deepStrictEqual(S.projectionSource(TBg, { tb_centro: br, tb_norte: ident({ version: 9 }) }), { gen: 4, versions: { tb_centro: 1 } }, 'members only');
+  // RTDB drops empty objects: a brand with NO member (all staged — a new brand before opening — or all retired) must not carry
+  // `versions: {}`, or the read-back never equals what was written (false superseded_after_write) and a re-plan never reports unchanged.
+  const rtdbShape = (v) => JSON.parse(JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x) && !Object.keys(x).length ? undefined : x)));
+  for (const locations of [{ tb_centro: 'retired' }, { tb_centro: 'staged' }, {}]) {
+    const B0 = { ...TB, projection_gen: 2, locations };
+    assert.deepStrictEqual(S.projectionSource(B0, { tb_centro: br }), { gen: 2 }, `O1a-SRC-EMPTY no member (${JSON.stringify(locations)}) → no versions key`);
+  }
+  const ppR = S.planPublish({ brandId: 'tb_brand', brand: { ...TB, locations: { tb_centro: 'retired' } }, identities: { tb_centro: br }, current: null });
+  assert.strictEqual(ppR.ok, true, JSON.stringify(ppR.errors));
+  assert.deepStrictEqual(rtdbShape(ppR.row.to), ppR.row.to, 'O1a-SRC-EMPTY the all-retired projection survives an RTDB round-trip unchanged');
+  assert.strictEqual(S.planPublish({ brandId: 'tb_brand', brand: { ...TB, locations: { tb_centro: 'retired' } }, identities: { tb_centro: br }, current: rtdbShape(ppR.row.to) }).changed, false,
+    'O1a-SRC-EMPTY a re-plan over the stored (RTDB-shaped) projection reports unchanged');
+  assert.strictEqual(S.compareSource({ gen: 2 }, { gen: 2 }), 'equal', 'a versions-less source compares equal to itself');
   const C = S.compareSource;
   const src = (gen, versions) => ({ gen, versions });
   assert.strictEqual(C(src(1, { a: 1 }), src(1, { a: 1 })), 'equal');

@@ -49,7 +49,8 @@ const finiteOr = (v, d) => (Number.isFinite(v) ? v : d);
 function projectionSource(brand, identities) {
   const versions = {};
   for (const [rid, st] of Object.entries((brand && brand.locations) || {})) if (st === 'member') versions[rid] = finiteOr(identities[rid] && identities[rid].version, 0);
-  return { gen: finiteOr(brand && brand.projection_gen, 0), versions };
+  const gen = finiteOr(brand && brand.projection_gen, 0);
+  return Object.keys(versions).length ? { gen, versions } : { gen };   // RTDB drops an empty object: write what reads back
 }
 // component-wise over gen + the member versions both sides share (a member added / removed moves gen, so gen covers it)
 function compareSource(next, cur) {

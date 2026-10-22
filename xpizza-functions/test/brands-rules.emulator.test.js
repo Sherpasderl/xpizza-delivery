@@ -160,7 +160,8 @@ const task = (oid, type, status) => ({ order_id: oid, type, status, assigned_dri
     const br = { ...IDENT, brand_id: 'tb_brand', location_name: 'Centro', zone: { type: 'circle', radius_km: 5 }, prep_default_min: 20 };
     for (const [label, brand, ident] of [
       ['all-retired brand', { name: 'Third', active: true, locations: { tb_centro: 'retired' }, activation: { state: 'on', since: 1 } }, br],
-      ['member with empty hours', { name: 'Third', active: true, locations: { tb_centro: 'member' }, activation: { state: 'on', since: 1 } }, { ...br, hours: {} }],
+      // same public path as the case above: gaining a member moves projection_gen (the fence: same gen + different members = incomparable)
+      ['member with empty hours', { name: 'Third', active: true, locations: { tb_centro: 'member' }, activation: { state: 'on', since: 1 }, projection_gen: 1 }, { ...br, hours: {} }],
     ]) {
       const plan = S.planPublish({ brandId: 'tb_brand', brand, identities: { tb_centro: ident }, current: null });
       assert.strictEqual(plan.ok, true, JSON.stringify(plan.errors));
