@@ -273,8 +273,8 @@ function trackingUrl(token, restaurantId = 'x_pizza') {
   return `${base}/${token}`;
 }
 
-// S3c: the «Envío» line — only when the order carries envío (delivery_cents > 0); absent (every order while envío is dark,
-// and every pickup) → no line, byte-identical. A free-delivery promo covering it reads «Gratis». `total` is the CHARGED total.
+// S3c: the «Envío» line (order-received for a DELIVERY only — a pickup never carries envío) — only when delivery_cents > 0;
+// absent (every order while envío is dark) → no line, byte-identical. A free-delivery promo covering it reads «Gratis». `total` is the CHARGED total.
 function envioLines(envio) {
   if (!envio || !Number.isSafeInteger(envio.cents) || envio.cents <= 0) return [];
   const net = Math.max(0, envio.cents - (Number.isSafeInteger(envio.promo_cents) ? envio.promo_cents : 0));
@@ -304,7 +304,7 @@ function renderOrderReceived({ customerName, orderId, itemsText, total, tracking
 // pickupTime is either the literal string 'standard' (= ASAP, ~20 min) or
 // a human-readable label like '6:00 PM–6:20 PM' selected by the customer
 // from the schedule sheet on the order form.
-function renderPickupReceived({ customerName, orderId, itemsText, total, pickupTime, trackingToken, restaurantId, brand, envio }) {
+function renderPickupReceived({ customerName, orderId, itemsText, total, pickupTime, trackingToken, restaurantId, brand }) {
   const timeLine = pickupTime === 'standard'
     ? 'Estará listo en aproximadamente 20 minutos.'
     : `Hora de recogida: ${pickupTime}`;
@@ -314,7 +314,6 @@ function renderPickupReceived({ customerName, orderId, itemsText, total, pickupT
     brand ? `Recibimos tu pedido en ${brand} ✅` : 'Recibimos tu pedido ✅',
     ``,
     `${itemsEmojiFor(restaurantId)} ${itemsText || ''}`,
-    ...envioLines(envio),
     `💰 Total: L${total}`,
     ``,
     `🏪 Recogida en restaurante`,

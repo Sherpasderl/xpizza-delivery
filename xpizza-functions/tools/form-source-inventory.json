@@ -2730,6 +2730,7 @@
    "lifts": [
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/d12-wiring.guard.test.js",
+    "xpizza-functions/delivery/envio-consumers.test.mjs",
     "xpizza-functions/preparing-notify.test.js",
     "xpizza-functions/whatsapp-brand.test.js"
    ]

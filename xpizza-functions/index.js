@@ -1356,7 +1356,7 @@ createOrderApp.all('*', async (req, res) => {
             customerName: String(updates[`orders/${orderId}`].customer_name || ''),
             orderId,
             itemsText: String(updates[`orders/${orderId}`].items_text || ''),
-            total: DW.totalLempiras(dq, effectiveTotal), ...DW.waEnvio(priceBreakdown),   // S3c: the charged total + the «Envío» line
+            total: effectiveTotal,
             pickupTime: String(updates[`orders/${orderId}`].pickup_time || 'standard'),
             trackingToken,
             restaurantId
@@ -5058,7 +5058,7 @@ exports.sendOrderStatusNotifications = onValueWritten(
       if (!claim.committed) return;   // already sent
 
       const body = (order.order_type === 'pickup')
-        ? whatsapp.tplPickupReceived({ customerName: order.customer_name, orderId, itemsText: order.items_text, total: order.total, ...DW.waEnvio(order), pickupTime: order.pickup_time || 'standard', trackingToken, restaurantId })
+        ? whatsapp.tplPickupReceived({ customerName: order.customer_name, orderId, itemsText: order.items_text, total: order.total, pickupTime: order.pickup_time || 'standard', trackingToken, restaurantId })
         : whatsapp.tplOrderReceived({ customerName: order.customer_name, orderId, itemsText: order.items_text, total: order.total, ...DW.waEnvio(order), trackingToken, restaurantId });
 
       // sendMessage RETURNS null on failure (bad phone / no config / provider error) — it does NOT throw.

@@ -47,14 +47,18 @@ const { buildCreateOrderUpdates } = require(path.join(FN, 'create-order-build.js
 const HUB = { lat: 14.1, lng: -87.2 };
 const PRICING = P.readPricing({ policy_version: 1, bands: [{ max_km: 2, cents: 3000 }, { max_km: 5, cents: 5000 }], restaurants: { x_pizza: { active: true, free_delivery: true } } }, 'x_pizza');
 const ctxFor = (uid) => P.quoteDelivery({ pricing: PRICING, hub: HUB, mode: 'delivery', pin: { lat: HUB.lat + 4 / 111.195, lng: HUB.lng, confirmed: true }, customerUid: uid }).ctx;
-function realOrder({ dq = null, payment_method = 'cash', tendered = 50000 } = {}) {
+function realOrder({ dq = null, payment_method = 'cash', tendered = 50000, rebaja = null } = {}) {
   const food = 340;
-  const priceBreakdown = DW.withDelivery(dq, orderBreakdownCents(food, 'x_pizza'));
+  // a REDEEMED (A-F) order: the paid L340 cart + a comped L250 line at FULL value; its net comp is the rebaja (the
+  // shape rewards-redeem-pricing records: desc_rebaja_cents beside the paid breakdown, factura_items = paid + comped)
+  const paid = orderBreakdownCents(food, 'x_pizza');
+  const base = rebaja ? { ...paid, desc_rebaja_cents: rebaja.net } : paid;
+  const priceBreakdown = DW.withDelivery(dq, base);
   const orderId = `s3c_${Math.random().toString(36).slice(2, 8)}`;
   const u = buildCreateOrderUpdates({
     orderId, orderType: 'delivery', now: 1792700000000, trackingToken: 'tok', total: DW.totalLempiras(dq, food), lat: 14.13, lng: -87.2,
     fields: { customer_name: 'Ana', customer_phone: '99990000', items_text: '1x Carnivora', payment_method, address_detected: 'Col. Prueba, SPS', address_details: 'casa 1', maps_link: 'm', waze_link: 'w', items: [{ name: 'Carnivora', qty: 1, line_gross_cents: 34000, description: 'Carnivora' }] },
-    hubSnap: { hub_lat: HUB.lat, hub_lng: HUB.lng }, restaurantId: 'x_pizza', priceBreakdown, facturaPriced: { items: [{ qty: 1, description: 'Carnivora', line_gross_cents: 34000 }] },
+    hubSnap: { hub_lat: HUB.lat, hub_lng: HUB.lng }, restaurantId: 'x_pizza', priceBreakdown, facturaPriced: { items: [{ qty: 1, description: 'Carnivora', line_gross_cents: 34000 }], ...(rebaja ? { factura_items: [{ qty: 1, description: 'Carnivora', line_gross_cents: 34000 }, { qty: 1, description: 'Margherita (canje)', line_gross_cents: rebaja.gross }] } : {}) },
     cashTenderedCents: tendered, freeOrder: false, rewardStamp: {},
   });
   return { orderId, rec: u[`orders/${orderId}`], food: priceBreakdown.subtotal_cents + priceBreakdown.tax_cents };
@@ -62,6 +66,9 @@ function realOrder({ dq = null, payment_method = 'cash', tendered = 50000 } = {}
 const guest = realOrder({ dq: { ctx: ctxFor(null) } });
 const member = realOrder({ dq: { ctx: ctxFor('u1') } });
 const dark = realOrder();
+const COMP = { gross: 25000, net: Math.round(25000 / 1.15) };             // a comped L250 pizza: its net is the rebaja
+const redeemed = realOrder({ dq: { ctx: ctxFor(null) }, rebaja: COMP });
+const redeemedDark = realOrder({ rebaja: COMP });
 assert.deepStrictEqual([guest.rec.total_cents, guest.rec.delivery_cents, guest.rec.total, member.rec.total_cents, member.rec.promo_discount_cents, dark.rec.delivery_cents],
   [34000 + 5000, 5000, 390, 34000, 5000, undefined], 'premise: the real writer records envío (guest pays, member promo) and nothing while dark');
 
@@ -77,9 +84,20 @@ assert.deepStrictEqual([guest.rec.total_cents, guest.rec.delivery_cents, guest.r
     assert.strictEqual(build(fac[k], member).total_cents, 34000, `${k}: under the promo the food total is the same`);
     assert.deepStrictEqual(build(fac[k], dark), build(base[k], dark), `🔴 ${k}: a DARK order's factura is byte-identical to ${BASE}`);
   }
+  // codex S3c r1 P3: a REDEEMED order with envío — (a) Σ bases = subtotal + rebaja, (b) Σ bases − rebaja = gravado,
+  // (c) subtotal + ISV = the fiscal total; bases non-negative; cambio on the charged total; dark byte-identical
+  for (const k of ['fn', 'app']) {
+    const r = build(fac[k], redeemed);
+    const sumBases = r.items.reduce((s, i) => s + i.base_cents, 0);
+    assert.strictEqual(sumBases, r.subtotal_cents + r.desc_rebaja_cents, `${k} (a) Σ bases = subtotal + rebaja`);
+    assert.strictEqual(sumBases - r.desc_rebaja_cents, r.gravado_15_cents, `${k} (b) Σ bases − rebaja = gravado`);
+    assert.strictEqual(r.subtotal_cents + r.isv_total_cents, r.total_cents, `${k} (c) subtotal + ISV = the fiscal total`);
+    assert.deepStrictEqual([r.total_cents, r.desc_rebaja_cents, r.items.every((i) => i.base_cents >= 0), r.cambio_cents], [34000, COMP.net, true, 50000 - 39000], `${k}: food total, the rebaja kept, bases ≥ 0, cambio on the charged L390`);
+    assert.deepStrictEqual(build(fac[k], redeemedDark), build(base[k], redeemedDark), `🔴 ${k}: a DARK redeemed order's factura is byte-identical to ${BASE}`);
+  }
   assert.deepStrictEqual(build(fac.fn, guest), build(fac.app, guest), 'the two builders produce the SAME record');
   assert.strictEqual(fs.readFileSync(path.join(FN, 'factura/build-record.js'), 'utf8'), fs.readFileSync(path.join(REPO, 'xpizza-factura/src/build-record.js'), 'utf8'), 'the two builders are byte-identical files');
-  ok('(1) factura: total = the FOOD total (subtotal + ISV), envío excluded, in BOTH identical builders; cash change on the charged total; dark byte-identical to the base');
+  ok('(1) factura: total = the FOOD total (subtotal + ISV), envío excluded, in BOTH identical builders — incl. a REDEEMED order ((a)–(c), bases ≥ 0); cash change on the charged total; dark byte-identical to the base');
 }
 
 // ── (2) cash-to-remit: the charged total (food + envío) ──
@@ -105,8 +123,18 @@ assert.deepStrictEqual([guest.rec.total_cents, guest.rec.delivery_cents, guest.r
   const col = api.ORDER_COLUMNS.indexOf('total_L');
   assert.deepStrictEqual([api.orderRow(asDelivered(guest))[col], api.orderRow(asDelivered(member))[col]], [api.orderRow(asDelivered(dark))[col], api.orderRow(asDelivered(dark))[col]], 'CSV total_L = the food total (L340) for the guest (envío L50 excluded) and the member');
   assert.deepStrictEqual(api.orderRow(asDelivered(dark)), apiBase.orderRow(asDelivered(dark)), `🔴 a DARK order's CSV row is byte-identical to ${BASE}`);
+  // codex S3c r1 P3: an envío order REFUNDED / REFUND_PENDING — counted at its FOOD total in its own bucket, never in sales;
+  // dark byte-identical
+  const cls = (M, o, extra) => { const s = M.emptySummary(); M.addOrder(s, { ...o.rec, ...extra }, 'x_pizza', (rid, phone) => `k_${phone}`); return s; };
+  const REFUNDED = { status: 'cancelled', payment_method: 'online', payment_status: 'refunded', refunded_at: 1792700000000 };
+  const PENDING = { status: 'cancelled', payment_method: 'online', payment_status: 'refund_pending' };
+  for (const [label, extra, bucket] of [['refunded', REFUNDED, 'refunded'], ['refund_pending', PENDING, 'refund_pending']]) {
+    const sg = cls(B, guest, extra);
+    assert.deepStrictEqual([sg[bucket].orders, sg[bucket].cents, sg.sale.orders, sg.sale.cents], [1, 34000, 0, 0], `${label}: the envío order counts at its FOOD total (L340), outside sales (${JSON.stringify(sg[bucket])})`);
+    assert.strictEqual(JSON.stringify(cls(B, dark, extra)), JSON.stringify(cls(Bb, dark, extra)), `🔴 ${label}: a DARK order is byte-identical to ${BASE}`);
+  }
   assert.deepStrictEqual([B.envioNetCents(guest.rec), B.envioNetCents(member.rec), B.envioNetCents(dark.rec), B.envioNetCents({ delivery_cents: 'x' })], [5000, 0, 0, 0]);
-  ok('(3) stats: aggregate revenue and the per-order CSV total use the FOOD total (charged − net envío); dark byte-identical to the base');
+  ok('(3) stats: sales, REFUNDED and REFUND_PENDING aggregates and the per-order CSV total use the FOOD total (charged − net envío); dark byte-identical to the base');
 }
 
 // ── (4) WhatsApp order-received: the charged total + «Envío» ──
@@ -122,7 +150,12 @@ assert.deepStrictEqual([guest.rec.total_cents, guest.rec.delivery_cents, guest.r
   const wb = loadBase('xpizza-functions/whatsapp.js');
   assert.strictEqual(await render(w, args(dark)), await render(wb, args(dark)), `🔴 a DARK order's message is byte-identical to ${BASE}`);
   assert.ok(!/Envío/.test(await render(w, args(dark))), 'no «Envío» line while dark');
-  ok('(4) WhatsApp: the charged total with an «Envío» line (L50, or «Gratis» under the promo); dark byte-identical to the base');
+  // codex S3c r1: a PICKUP never carries envío — the pickup message is byte-identical to the base, even for an activated restaurant
+  const pick = { customerName: 'Ana', orderId: 'p1', itemsText: '1x Carnivora', total: 340, pickupTime: 'standard', trackingToken: 'T', restaurantId: 'x_pizza' };
+  const renderP = async (W) => { sent.length = 0; await W.sendMessage('+50499998888', W.tplPickupReceived(pick), 'x_pizza', { readBrand: reader }); return sent[0]; };
+  assert.strictEqual(await renderP(w), await renderP(wb), `🔴 the pickup message is byte-identical to ${BASE}`);
+  assert.ok(!/envio/.test(fs.readFileSync(path.join(FN, 'whatsapp.js'), 'utf8').match(/function renderPickupReceived[^{]*\{/)[0]), 'renderPickupReceived takes no envío argument');
+  ok('(4) WhatsApp: the DELIVERY received message carries the charged total + «Envío» (L50 / Gratis); the PICKUP message and every dark message are byte-identical to the base');
 }
 
 fs.rmSync(TMP, { recursive: true, force: true });
