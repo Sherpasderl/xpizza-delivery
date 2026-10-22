@@ -6,13 +6,16 @@ const S = require('./merchant-scope');
 
 // Third brand `tb` with two locations; resolveBrand is injected (F1's brandIdOf behind the adapter in production).
 const brandOf = async (_db, rid) => (rid === 'tb_centro' || rid === 'tb_norte' ? 'tb' : rid === 'x_pizza' ? 'x_pizza' : 'unknown');
+// PLAN-portal-membership r3: owners / managers live in brand_members; the brand record must validate and list the location.
 const base = () => ({
+  brands: { tb: { name: 'TB', active: true, locations: { tb_centro: 'member', tb_norte: 'member', tb_viejo: 'retired' }, activation: { state: 'on', since: 1 } } },
   restaurants: {
-    tb_centro: { handhelds: { hh_c1: { kind: 'handheld', revoked: false }, hh_rev: { kind: 'handheld', revoked: true }, hh_nokind: { revoked: false } },
-                 managers: { mgr_c: true } },
-    tb_norte: { handhelds: { hh_n1: { kind: 'handheld', revoked: false } } },
-    tb: { owners: { own_tb: true } },
+    tb_centro: { identity: { brand_id: 'tb' }, handhelds: { hh_c1: { kind: 'handheld', revoked: false }, hh_rev: { kind: 'handheld', revoked: true }, hh_nokind: { revoked: false } } },
+    tb_norte: { identity: { brand_id: 'tb' }, handhelds: { hh_n1: { kind: 'handheld', revoked: false } } },
+    tb_viejo: { identity: { brand_id: 'tb' } },
   },
+  brand_members: { tb: { owners: { own_tb: { granted_at: 1, granted_by: 'cli:op' } }, managers: { tb_centro: { mgr_c: { granted_at: 1, granted_by: 'own_tb' } } } } },
+  dispatchers: { disp_only: true },
 });
 const tok = (uid, rid, extra = {}) => ({ uid, token: { handheld: true, rid, ...extra } });
 
@@ -50,4 +53,11 @@ test('authorizeManager (pairing / revoking): brand owner on any location, manage
   assert.strictEqual((await S.authorizeManager(db, u('hh_c1', { handheld: true, rid: 'tb_centro' }), 'tb_centro', { resolveBrand: brandOf })).code, 'forbidden');
   assert.strictEqual((await S.authorizeManager(db, u('own_tb', { customer: true }), 'tb_centro', { resolveBrand: brandOf })).code, 'forbidden');
   assert.strictEqual((await S.authorizeManager(db, u('own_tb'), 'zz_lost', { resolveBrand: brandOf })).code, 'forbidden');
+  // PLAN-portal-membership r3: a RETIRED location is not pairing-eligible (owner keeps read-only history only)
+  assert.strictEqual((await S.authorizeManager(db, u('own_tb'), 'tb_viejo', { resolveBrand: brandOf })).code, 'forbidden');
+  // a dispatcher ALONE gains no device capability (H1 policy, unchanged)
+  assert.strictEqual((await S.authorizeManager(db, u('disp_only'), 'tb_centro', { resolveBrand: brandOf })).code, 'forbidden');
+  // a read failure is unavailable, never a lower answer
+  const broken = createFakeDb(base()); broken.failReads.add('brand_members');
+  assert.strictEqual((await S.authorizeManager(broken, u('own_tb'), 'tb_centro', { resolveBrand: brandOf })).code, 'unavailable');
 });

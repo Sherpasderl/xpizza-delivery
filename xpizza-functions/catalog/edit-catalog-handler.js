@@ -35,6 +35,7 @@ const AP = require('./add-product');
 const { rendererContract } = require('./source-store');
 const { buildSourceCandidate, assertBuiltValid } = require('./candidate-validate');
 
+const { can } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
 const reply = (status, body) => ({ status, body });
 
 // Firestore signals a failed precondition with code 9 (FAILED_PRECONDITION). Matched on the code, with
@@ -59,6 +60,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   // outage look like a permissions problem.
   const auth = await authorize(rid, req);
   if (!auth || !auth.ok) return reply((auth && auth.status) || 403, { error: (auth && auth.error) || 'not_authorized' });
+  if (!can(auth, 'catalog.edit')) return reply(403, { error: 'not_authorized' });   // membership r3: capability, not tier
 
   const source = body && body.source;
   if (!source || typeof source !== 'object' || Array.isArray(source)) return reply(400, { error: 'bad_source', detail: 'source must be an object' });
@@ -87,7 +89,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     && !Object.prototype.hasOwnProperty.call(it, 'ref'));
   const hasAdditions = Array.isArray(source.items) && source.items.some(isAddition);
   // OWNER-ONLY for any draft that adds products (§1); price-only drafts keep today's tiers.
-  if (hasAdditions && auth.role !== 'owner') {
+  if (hasAdditions && !can(auth, 'catalog.add_product')) {
     return reply(403, { error: 'not_owner', detail: 'only the restaurant owner can add products' });
   }
 

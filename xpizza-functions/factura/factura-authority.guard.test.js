@@ -10,9 +10,10 @@ const { spawnSync } = require('child_process');
 
 const MOD = path.join(__dirname, 'eligibility.js');
 const read = (prelude = '') => {
-  const r = spawnSync(process.execPath, ['-e', `${prelude}const m = require(${JSON.stringify(MOD)}); process.stdout.write(JSON.stringify([...m.FACTURA_PLATFORM_RESTAURANTS]));`], { encoding: 'utf8', timeout: 20000 });
+  const r = spawnSync(process.execPath, ['-e', `${prelude}const m = require(${JSON.stringify(MOD)}); process.stdout.write(JSON.stringify([...m.FACTURA_PLATFORM_RESTAURANTS]) + '\\n');`], { encoding: 'utf8', timeout: 20000 });
   assert.strictEqual(r.status, 0, `could not load ${MOD}: ${r.stderr}`);
-  return JSON.parse(r.stdout);
+  // the child's FIRST line only: under the gate the count-marks preload reaches children too and appends a ##CELLS trailer
+  return JSON.parse(r.stdout.split('\n')[0]);
 };
 const check = (members) => assert.deepStrictEqual(members, ['x_pizza'],
   'FAIL: FACTURA_PLATFORM_RESTAURANTS must be exactly {x_pizza} — OWNER STANDING RULE: only X. Pizza issues facturas. '

@@ -131,8 +131,7 @@ async function child(rowKey, cond) {
     await F.merchant('synth_lat_400', { dishes: 400 }); await F.publish('synth_lat_400', 'lat-s2');
     for (const o of OTHERS) { await F.merchant(o); await F.publish(o, `lat-${o}`); }
     for (const rid of ['x_pizza', 'la_musa', 'synth_lat_400', ...OTHERS]) {
-      await rtdb.ref(`owner_restaurants/${UID}/${rid}`).set(true);
-      await rtdb.ref(`restaurants/${rid}/owners/${UID}`).set(true);
+      await rtdb.ref().update(require('./_membership-seed').ownerSeed(rid, UID));   // PLAN-portal-membership r3: the membership model
       await rtdb.ref(`restaurants/${rid}/identity/name`).set(rid);
     }
     await marker.set({ xv1, lv1, at: new Date() });

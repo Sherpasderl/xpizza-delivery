@@ -3,7 +3,7 @@
 // Rendering the menu is Task 6; this resolves WHICH restaurant is in view and keeps that choice.
 // Nothing here decides what a merchant may see — every answer comes from the server, and the UI simply
 // shows what came back.
-import { apiFetch, editCatalog, publishEdited, resetDraftToLive } from './api.js';
+import { apiFetch, editCatalog, publishEdited, resetDraftToLive, requestPublish } from './api.js';
 import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
 // 1D add-product B — the required choice on a NEW product ("Elección requerida — el cliente elige 1")
 import { parsePrice } from './editor.js';
@@ -401,6 +401,7 @@ export async function loadMenu(rid) {
   state.drawerError = null;
   state.groupAuthoring = false;               // 1D add-product B — per-load server facts, fail closed until they arrive
   state.choiceBadges = [];
+  applyPublishRequestFacts(null);             // T-d — per-load server facts, fail closed (today's path) until they arrive
   state.samePrice = new Map();                // "Mismo precio para todas", per product; DERIVED again on every load
   state.rawPrice = new Map();                 // typed price text that is not (yet) a price, per field (codex PB-3 P2-2)
   invalidateReview();                        // clears tenant-bound state AND bumps the generation
@@ -442,6 +443,7 @@ export async function loadMenu(rid) {
   state.sourceUpdateTime = (data && data.sourceUpdateTime) || null;
   state.usesPlatformFactura = (data && data.usesPlatformFactura) === true;
   applyAddProductFacts(data);
+  applyPublishRequestFacts(data);           // T-d — behind the same generation check
   // WHICH TENANT THIS DRAFT IS. Recorded with the draft, from the rid the request was made for — so
   // the write path names the restaurant it actually loaded rather than the one currently selected.
   state.draftRid = rid;
@@ -481,6 +483,16 @@ function applyAddProductFacts(data) {
   // which badges this brand's picker draws on an option. Strictly from the server; absent = off / none.
   state.groupAuthoring = !!(data && data.groupAuthoring === true);
   state.choiceBadges = Array.isArray(data && data.choiceBadges) ? data.choiceBadges.filter((b) => typeof b === 'string') : [];
+}
+// PLAN-portal-team-invites T-d — the two per-load facts of «Enviar al dueño para publicar», strictly from the server:
+//   publish_via_request  this caller SENDS the draft to the owner instead of publishing (getEditableCatalog decides it with the
+//                        predicate catalogRequestPublish enforces); absent = today's path. Only the review-bar CTA reads it.
+//   publish_request      the owner's pending request (fresh / draft_changed), handed to pubreq.js for the banner + the badge.
+function applyPublishRequestFacts(data) {
+  state.publishViaRequest = !!(data && data.publish_via_request === true);
+  $('review').textContent = state.publishViaRequest ? 'Enviar al dueño para publicar' : 'Revisar y publicar';
+  const request = data && data.publish_request && typeof data.publish_request === 'object' ? data.publish_request : null;
+  document.dispatchEvent(new CustomEvent('portal:publish-request', { detail: { request } }));
 }
 // A NEW product: still unsaved (a temporary reference), or saved but not yet published (the server said so).
 const isTmpRow = (it) => !!(it && typeof it.ref === 'string' && it.ref.startsWith('tmp:') && !('key' in it));
@@ -619,6 +631,8 @@ function refreshBar() {
   $('rbtxt').textContent = n === 0
     ? 'Revisá si hay algo sin publicar'
     : (n === 1 ? '1 cambio sin publicar' : `${n} cambios sin publicar`);
+  // T-d (mockup v8 D2): who publishes, said where the merchant decides — text only
+  if (state.publishViaRequest) { const note = document.createElement('span'); note.textContent = ' · el dueño confirma y publica con la autorización fiscal'; $('rbtxt').append(note); }
   // Nothing typed, nothing to throw away. The review is the way forward here; discard would be a
   // control that looks live and does nothing.
   $('discard').classList.toggle('hidden', n === 0);
@@ -910,7 +924,7 @@ function renderAddDrawer(d, it, keepScroll) {
     const f = mk('div', 'fld');
     f.append(mk('label', null, label), control);
     const m = errKey ? errFor(errKey) : null;
-    if (m) { f.classList.add('err'); f.append(mk('div', 'ferr', m)); }
+    if (m) { f.classList.add('invalid'); f.append(mk('div', 'ferr', m)); }
     return f;
   };
   const after = () => { refreshBar(); paint(); };
@@ -980,7 +994,7 @@ function renderAddDrawer(d, it, keepScroll) {
     refreshBar(); syncRow('item', id, price.value);
   }));
   prf.append(price);
-  if (errFor('price')) { prf.classList.add('err'); prf.append(mk('div', 'ferr', errFor('price'))); }
+  if (errFor('price')) { prf.classList.add('invalid'); prf.append(mk('div', 'ferr', errFor('price'))); }
   row2.append(prf);
   body.append(row2);
 
@@ -1091,7 +1105,7 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
   }
   grp.append(h);
   const labelErr = errOn && (errField === 'label' || errField === 'choices' || errField === 'prompt') ? errMsg : null;
-  if (labelErr) { grp.classList.add('err'); grp.append(mk('div', 'ferr', labelErr)); }
+  if (labelErr) { grp.classList.add('invalid'); grp.append(mk('div', 'ferr', labelErr)); }
 
   if (group && open) {
     const gb = mk('div', 'mgbody');
@@ -1144,7 +1158,7 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
       }
       gb.append(row);
       const oErr = errAt(oid);
-      if (oErr) { row.classList.add('err'); gb.append(mk('div', 'ferr', oErr)); }
+      if (oErr) { row.classList.add('invalid'); gb.append(mk('div', 'ferr', oErr)); }
     }
     if (unsaved) {
       const add = document.createElement('button'); add.className = 'mgadd'; add.type = 'button';
@@ -1284,10 +1298,7 @@ function syncRow(surface, key, value) {
   markChanged(surface, key);
 }
 
-document.addEventListener('portal:signed-in', () => { loadRestaurants(); });
 document.addEventListener('portal:restaurant', (e) => { loadMenu(e.detail && e.detail.rid); });
-$('switcher').addEventListener('click', (e) => { e.stopPropagation(); openSwitch(); });
-document.addEventListener('click', (e) => { if (!e.target.closest('.switchwrap')) openSwitch(false); });
 
 // The review bar's own controls. Wired here, not inline: the CSP has no 'unsafe-inline', so an
 // onclick attribute would be inert and the button would look enabled while doing nothing.
@@ -1306,6 +1317,7 @@ $('discard').addEventListener('click', () => {
 // opinion about money, and publishEdited re-checks the server's one anyway: the two disagreeing is
 // how a merchant approves a change they were never shown.
 async function openReviewFlow() {
+  if (state.publishViaRequest) return sendToOwnerFlow();   // T-d: this caller sends; the owner's path below is untouched
   // 🔴 ADMISSION CONTROL, FIRST — before the generation is bumped and before anything is sent.
   //
   // An operation that cannot acquire the edit lock is REFUSED, not admitted-then-collided. Letting a
@@ -1621,6 +1633,7 @@ async function settlePublish() {
   state.sourceUpdateTime = fresh.sourceUpdateTime || null;
   state.usesPlatformFactura = fresh.usesPlatformFactura === true;
   applyAddProductFacts(fresh);
+  applyPublishRequestFacts(fresh);          // T-d — a publish retires the owner's banner / badge (the request is no longer fresh)
   state.settle = null;
   releaseEditLock(st.lock);               // the publish is done AND its result adopted; editing is handed back
   state.reviewLock = null;
@@ -1652,6 +1665,49 @@ function restorePublishFooter() {
 // Every publish failure lands on a designed panel, and the panel's action is carried out here. The
 // mapping from code to panel lives in review.js; what an action MEANS lives here, because only this
 // module can reload a menu or re-open a review.
+// ── PLAN-portal-team-invites T-d — «Enviar al dueño para publicar» ─────────────────────────────────────────────────────
+// A manager with the menu permission on a platform-factura brand (the SERVER's publish_via_request) never publishes. The SAME
+// admission, lock and generation discipline as openReviewFlow; editCatalog saves the draft exactly as today, then
+// catalogRequestPublish records the request with the edit token that save returned. No review, no attestation, no publishEdited.
+// Every failure lands on the designed panels (outcomeFor), like the review's own save.
+async function sendToOwnerFlow() {
+  if (state.menuLoading) return;
+  if (!state.draft || !state.draftRid) return;
+  if (state.currentRid && state.currentRid !== state.draftRid) return;
+  const lock = takeEditLock();
+  if (lock === null) return;
+  clearReview();
+  bumpGeneration();
+  const gen = opGeneration;
+  syncUi();
+  let writeId = null;
+  try {
+    const submitted = JSON.parse(JSON.stringify(draftSource(state.draft)));
+    writeId = beginWrite(lock);
+    const rid = state.draftRid;
+    const res = await editCatalog({ rid, source: submitted, baseSourceUpdateTime: state.sourceUpdateTime, token });
+    if (gen !== opGeneration) return;
+    if (res && res.source) {
+      adopt(state.draft, res.source);
+      // the saved additions are now known by key — still unpublished, still removable (the review flow's bookkeeping)
+      for (const a of ((res.diff && res.diff.added) || [])) if (a && a.surface === 'item' && typeof a.key === 'string') state.additionKeys.add(a.key);
+    }
+    if (res && res.updateTime) state.sourceUpdateTime = res.updateTime;
+    await requestPublish({ rid, editToken: res && res.token, token });
+    if (gen !== opGeneration) return;
+    commit(state.draft);                       // saved and sent: nothing of this snapshot is pending on THIS screen any more
+    repaintFromDraft();
+    document.dispatchEvent(new CustomEvent('portal:publish-request-sent'));   // pubreq.js: «Enviado al dueño para publicar»
+  } catch (e) {
+      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world
+      showOutcome(outcomeFor(e, 'edit'));
+      $('scrim').classList.add('show');
+  } finally {
+    endWrite(writeId, lock, gen);
+    releaseEditLock(lock);                   // nothing stays live: no review holds the draft on this path
+    if (gen === opGeneration) syncUi();
+  }
+}
 function showOutcome(outcome) {
   // A panel is a SETTLED state: the operation is over and the merchant is deciding what to do next.
   // Editing is theirs again, and the recovery transitions must be able to acquire the lock.
@@ -1784,3 +1840,16 @@ try {
   const S = window.SherpaClient;
   if (S && !S.inert) S.registerAdapter({ canReload: () => portalCanReload(portalReloadFacts()), blockedNotice: 'Nueva versión: guardá tus cambios para actualizar' });
 } catch (_) { /* the module never breaks the portal */ }
+
+// ── PORTAL-UI 1a (PLAN-portal-ui-slice1-sucursales r5 §5.2) — shell.js owns discovery, the brand/branch switcher and the ONE
+// selection per page load. These are the only two additions to this module; everything above is unchanged.
+// openEditor: the selected branch holds catalog.read_editor → the editor opens on it, ONCE per page. It mirrors
+// loadRestaurants' tail (state.currentRid, then the restaurant event) without the switcher render or the localStorage write.
+// `sales` rides on the event for ventas.js (§11 A3: Ventas is owner-only in 1a); a detail without it behaves as today.
+export function openEditor(rid, { name = rid, sales } = {}) {
+  state.restaurants = [{ rid, name }];
+  state.currentRid = rid;
+  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid, sales } }));
+}
+// The self-update guard, reused verbatim to block a branch switch while the merchant has unsaved work or an operation open.
+export const editorCanLeave = () => portalCanReload(portalReloadFacts());

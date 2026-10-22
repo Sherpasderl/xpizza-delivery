@@ -18,7 +18,6 @@
 //
 // Brand-agnostic: nothing here knows which restaurants exist.
 // ---------------------------------------------------------------------------
-const { readOwnerRestaurants } = require('./owner-index');
 const { sourceRefOf, validateSource, rendererContract } = require('./source-store');
 const { assessDraft } = require('./draft-assess');   // 1D add-product A
 const { groupCapabilities } = require('./platform-groups');   // 1D add-product B: the ONE platform authoring switch (no brand)
@@ -29,6 +28,7 @@ const { usesPlatformFactura } = require('../factura/eligibility');   // 2b-2b: t
 // would make every save fail the CAS — the exact bug the emulator e2e caught one layer down.
 const { encodeUpdateTime } = require('./edit-catalog-handler');
 
+const { can, myLocations, resolveAccess } = require('../access/membership');   // PLAN-portal-membership r3 §3.2 — the ONE capability table
 const reply = (status, body) => ({ status, body });
 
 // The display name only.
@@ -61,15 +61,19 @@ async function getMyRestaurantsCore({ db, verifyIdToken }, req) {
   }
   if (!decoded || typeof decoded.uid !== 'string' || !decoded.uid) return reply(401, { error: 'invalid_credentials' });
 
-  // BEFORE any read: a customer token must not be able to probe whether a uid owns anything.
-  if (decoded.customer === true) return reply(403, { error: 'not_authorized' });
+  // BEFORE any read: a customer token must not be able to probe whether a uid owns anything. PLAN-portal-membership r3
+  // §3.1: nor a handheld device token.
+  if (decoded.customer === true || decoded.handheld === true) return reply(403, { error: 'not_authorized' });
 
   try {
-    // decoded.uid, and nothing the request could influence.
-    const rids = (await readOwnerRestaurants(db, decoded.uid)).sort();   // sorted: the switcher must not
-                                                                        // reorder itself between loads
+    // PLAN-portal-membership r3 §4.2 — the EXACT portal shape { restaurants: [{ rid, name }] } over the ONE "my locations":
+    // member_of discovers, the forward grants (brand_members) authorize, each location validated through its brand. Every
+    // location where the caller holds ANY capability (owner: member + retired history; manager: member). Sorted by rid
+    // (the switcher must not reorder itself between loads); the uid comes from the verified token and nothing else.
+    const locs = await myLocations({ db, onStale: (x) => console.warn('member_of_stale', JSON.stringify({ fn: 'getMyRestaurants', kind: x.kind })) },
+      { uid: decoded.uid, token: decoded });
     const restaurants = [];
-    for (const rid of rids) restaurants.push({ rid, name: await displayName(db, rid) });
+    for (const l of locs) if (l.caps.length) restaurants.push({ rid: l.rid, name: await displayName(db, l.rid) });
     return reply(200, { restaurants });
   } catch (e) {
     // ALL OR NOTHING. Returning the restaurants we did manage to read would be a confident, wrong
@@ -96,7 +100,7 @@ async function getMyRestaurantsCore({ db, verifyIdToken }, req) {
 //
 // READ-ONLY. Nothing in this module writes.
 // ---------------------------------------------------------------------------
-async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource }, req) {
+async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource, _readPublishRequest = null, _resolveAccess = resolveAccess, now = () => Date.now() }, req) {
   if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
   const rid = req.query && req.query.restaurantId;
 
@@ -105,7 +109,7 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
   // permissions refusal.
   const auth = await authorize(rid, req);
   if (!auth || !auth.ok) return reply((auth && auth.status) || 403, { error: (auth && auth.error) || 'not_authorized' });
-  if (auth.role !== 'owner') return reply(403, { error: 'not_owner', detail: 'the merchant portal serves restaurant owners' });
+  if (!can(auth, 'catalog.read_editor')) return reply(403, { error: 'not_owner', detail: 'the merchant portal serves restaurant owners' });
 
   let doc;
   try {
@@ -174,9 +178,37 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     }
   }
 
+  /* PLAN-portal-team-invites G3 — «Enviar al dueño para publicar»: on a platform-factura brand the OWNER (the one who holds
+     catalog.fiscal_ack) also receives the manager's pending request, its state DERIVED against this very draft + pointer
+     (fresh / draft_changed; a published or stale one is never sent). Nobody else ever receives the field. Best effort: a
+     failed read omits it and the editor still loads. */
+  let publishRequest = null;
+  if (can(auth, 'catalog.fiscal_ack') && usesPlatformFactura(rid)) {
+    try {
+      publishRequest = await (_readPublishRequest || require('./publish-request').readRequestForOwner)(fsdb, rid, {
+        sourceUpdateTime: doc.updateTime ? encodeUpdateTime(doc.updateTime) : null, sourceHash: require('./catalog-edit').sha256(source),
+        activeVersionId: activeVersionId == null ? null : activeVersionId, now: now() });
+    } catch (e) {
+      console.warn('portal_publish_request_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
+    }
+  }
+
+  /* T-d — «Enviar al dueño para publicar»: does THIS caller send instead of publish? Decided by the SAME predicate
+     catalogRequestPublish enforces (publish-request.js canRequestPublish), never guessed by the client from caps (dispatchers
+     and staff also hold catalog.publish). Only a non-owner on a platform-factura brand can qualify, so only that caller pays
+     the one extra resolve (the caller was verified and context-checked by authorize above). Fail CLOSED (false): the editor
+     then shows today's path, and the server's fiscal gate still decides any publish. */
+  let publishViaRequest = false;
+  if (usesPlatformFactura(rid) && !can(auth, 'catalog.fiscal_ack') && typeof auth.uid === 'string') {
+    try { publishViaRequest = require('./publish-request').canRequestPublish(await _resolveAccess({ db }, { uid: auth.uid, token: {} }, rid), rid); }
+    catch (_) { publishViaRequest = false; }
+  }
+
   return reply(200, {
     renderedCategories,
     groupAuthoring,
+    ...(publishRequest ? { publish_request: publishRequest } : {}),
+    publish_via_request: publishViaRequest,
     choiceBadges,
     restaurantName,
     ...(draftUnpublishable ? { draft_unpublishable: draftUnpublishable } : {}),

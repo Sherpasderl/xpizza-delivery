@@ -163,4 +163,7 @@ admin.initializeApp({ credential: admin.credential.applicationDefault(), project
     })
     .catch((e) => { console.error('seed-source-store failed:', e && e.message); process.exit(1); });
 }
-module.exports = { buildSourceFromCode, seedSourceStore };
+// the locations with a code seed (the membership cutover compare's publish fixture picks from these)
+const seededRestaurantIds = () => Object.keys(MENU_BY_RESTAURANT).sort();
+
+module.exports = { buildSourceFromCode, seedSourceStore, seededRestaurantIds };

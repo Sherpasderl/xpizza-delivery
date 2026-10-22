@@ -43,7 +43,7 @@ if (argv[0] === '--compare' || argv[0] === '--freeze') {
     if (!off.scenarios[sc] || !on.scenarios[sc]) problems.push(`scenario ${sc} missing (off: ${!!off.scenarios[sc]}, on: ${!!on.scenarios[sc]})`);
     for (const [m, r] of [['off', off], ['on', on]]) if (r.scenarios[sc] && r.scenarios[sc].failures) problems.push(`${sc} (${m}): ${r.scenarios[sc].failures} handler failure(s)`);
   }
-  if (problems.length) { console.error(`tracker-measure: FAIL\n  ${problems.join('\n  ')}`); process.exit(1); }
+  if (problems.length) { console.error(`tracker-measure: FAIL\n${problems.map((p) => `  FAIL ${p}`).join('\n')}`); process.exit(1); }
   const delta = (sc, k) => on.scenarios[sc][k] - off.scenarios[sc][k];
   console.log('scenario      invocations       reads           read bytes          recomputes   tx (attempts)   writes (bytes)');
   for (const sc of SCENARIOS) {
@@ -72,16 +72,16 @@ if (argv[0] === '--compare' || argv[0] === '--freeze') {
     const m = on.scenarios[sc];
     if (!m) { problems.push(`${sc} missing`); continue; }
     console.log(`sweep ${sc}: ${m.n} live claims (${m.staled} stale tombstoned, ${m.keptLive} kept) → reads ${m.reads}, bytes ${m.readBytes}, tx ${m.tx}, writes ${m.writes}`);
-    for (const k of ['reads', 'readBytes', 'tx', 'writes']) { const okk = m[k] <= SL[sc][k]; console.log(`  limit ${sc}.${k}: ${m[k]} ≤ ${SL[sc][k]} → ${okk ? 'OK' : 'OVER'}`); if (!okk) problems.push(`${sc}.${k} ${m[k]} over the frozen limit ${SL[sc][k]}`); }
+    for (const k of ['reads', 'readBytes', 'tx', 'writes']) { const okk = m[k] <= SL[sc][k]; console.log(`  ${okk ? '✓' : '✗'} limit ${sc}.${k}: ${m[k]} ≤ ${SL[sc][k]} → ${okk ? 'OK' : 'OVER'}`); if (!okk) problems.push(`${sc}.${k} ${m[k]} over the frozen limit ${SL[sc][k]}`); }
   }
   const L = JSON.parse(fs.readFileSync(LIMITS, 'utf8')).limits;
   for (const sc of SCENARIOS) for (const k of ['reads', 'readBytes']) {
     const dd = delta(sc, k);
     const okk = dd <= L[sc][k];
-    console.log(`  limit ${sc}.${k}: +${dd} ≤ ${L[sc][k]} → ${okk ? 'OK' : 'OVER'}`);
+    console.log(`  ${okk ? '✓' : '✗'} limit ${sc}.${k}: +${dd} ≤ ${L[sc][k]} → ${okk ? 'OK' : 'OVER'}`);
     if (!okk) problems.push(`${sc}.${k} +${dd} over the frozen limit ${L[sc][k]}`);
   }
-  if (problems.length) { console.error(`tracker-measure: FAIL\n  ${problems.join('\n  ')}`); process.exit(1); }
+  if (problems.length) { console.error(`tracker-measure: FAIL\n${problems.map((p) => `  FAIL ${p}`).join('\n')}`); process.exit(1); }
   console.log('tracker-measure: compare OK');
   process.exit(0);
 }

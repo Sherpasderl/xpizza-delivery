@@ -991,6 +991,179 @@
   display: inline-flex; align-items: center; gap: 4px; background: #FBF0CE; color: #7A5B0C;
   font-weight: 700; font-size: 12px; line-height: 1.2; padding: 3px 9px; border-radius: 7px; margin: 4px 0;
 }
+/* SLICE1:PRESENTATION:START =======================================================================
+   Cuadra token foundation (light-only) + self-hosted Red Hat @font-face
+   + the single-active-order (.sv-*) card styling. INSERTION-ONLY (freeze-by-construction): this block
+   is APPENDED after every frozen rule above, so the :root override wins the custom-property cascade by
+   source order and the .sv-* / retint rules win by source order (or higher specificity). Nothing above
+   is edited. Layout changes are confined to the slice-1 single-order screen; all other screens only
+   change colour/typography via the token + font aliasing below (stacked restyle = slice 2).
+   ================================================================================================ */
+
+/* --- Self-hosted Red Hat, ALIASED onto the OLD family names --------------------------------------
+   INTENTIONAL + TEMPORARY. We re-declare 'Plus Jakarta Sans' and 'IBM Plex Mono' to point at the local
+   Red Hat variable woff2. These faces are declared AFTER the Google Fonts <link> (index.html:20): the
+   display ranges win for 501–900 and the exact-weight text faces below pin 400/500, so EVERY used weight
+   renders self-hosted Red Hat ONLINE with the <link> present (runtime-verified); offline the Google
+   stylesheet simply fails to load while these local faces still resolve. Aliasing the OLD names
+   recolours all ~20 scattered `font-family` call sites with ZERO edits — the only way to keep index.html
+   byte-frozen outside this single region. The Google <link> is removed and the families renamed to Red
+   Hat in SLICE 5 (kept until then so the xpizza-driver/ source stays byte-equal to the native www/
+   mirror — no release-time divergence). Red Hat Text 300–500 (body); Red Hat Display 501–900 (display /
+   mono numerals). Full charset (latin + latin-ext → Spanish accents render). SIL OFL — see fonts/OFL.txt. */
+@font-face { font-family:'Plus Jakarta Sans'; src:url("fonts/redhattext-var.woff2") format("woff2"); font-weight:300 500; font-style:normal; font-display:swap; }
+@font-face { font-family:'Plus Jakarta Sans'; src:url("fonts/redhatdisplay-var.woff2") format("woff2"); font-weight:501 900; font-style:normal; font-display:swap; }
+@font-face { font-family:'IBM Plex Mono'; src:url("fonts/redhatdisplay-var.woff2") format("woff2"); font-weight:300 900; font-style:normal; font-display:swap; }
+/* EXACT-weight text faces pin PJS 400 + 500 to local Red Hat ONLINE. Measured: with the Google <link>
+   present, Chrome prefers Google's covering-RANGE variable face over a local covering-RANGE face at the
+   400–500 pivot (a local range face declared later still loses), but an EXACT font-weight wins the
+   cascade. Enumerated from the driver CSS, these are the ONLY weights that otherwise fell to Google:
+   PJS 400 (body default) and 500 (explicit). All other used weights already resolve local via the ranges
+   above — PJS 300 (< Google's 400 floor), 501/600/700/800/900 (display range wins), and IBM Plex Mono
+   400/500/700/800 — verified at runtime. Removing either exact face → that weight falls back to Google
+   online (see slice1-font-resolution.test.js + slice1-font-resolution.proof.sh). */
+@font-face { font-family:'Plus Jakarta Sans'; src:url("fonts/redhattext-var.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
+@font-face { font-family:'Plus Jakarta Sans'; src:url("fonts/redhattext-var.woff2") format("woff2"); font-weight:500; font-style:normal; font-display:swap; }
+.mono { font-variant-numeric: tabular-nums; }   /* Red Hat Display has no default tabular figures; add it to the aliased mono */
+
+/* --- Cuadra tokens (light only) — wins over baseline :root (index.html:23) by source order ------- */
+:root {
+  --accent: #2F5FB8; --accent-hover: #24488C;                 /* azul-acero (primary) */
+  --marino: #14306B; --celeste: #8EC0FF;                      /* Cuadra deep/soft blues (slice-1 card only) */
+  --lamusa: #B9323A;                                          /* la_musa chip retinted into the Cuadra family */
+  --success: #15803D; --success-hover: #116330;
+  --warn: #8A5A00; --info: #2F5FB8;
+  --bg: #F5F7FA; --canvas: #F5F7FA;
+  --surface: #FFFFFF; --surface-2: #F5F7FA; --surface-3: #EAEFF6;
+  --border: #DCE2EC; --border-soft: #EAEFF6; --line: #DCE2EC;
+  --text: #0D1424; --text-soft: #546078; --text-dim: #8A93A6;
+  /* Cuadra-specific slice-1 tokens (additive) */
+  --sv-err: #B9323A; --sv-warn: #8A5A00; --sv-ok: #15803D;
+  --sv-ok-bg: #E7F3EC; --sv-warn-bg: #F6EEDD; --sv-p-bg: #E8F0FB; --sv-ghost-bg: #EEF2F7;
+  --sv-ink: #0D1424; --sv-muted: #546078;
+}
+
+/* ===================== Single-order view (.sv-*) — slice-1 layout ================================ */
+/* Full-height column for the one-order screen (reuses #active-order-slot.solo; the frozen .solo
+   .active-card/.ao-spacer rules don't match these nodes, so only the container flex applies). */
+#active-order-slot.solo { padding: 0 13px; gap: 0; }
+.sv-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
+  box-shadow: var(--shadow-card); padding: 16px 15px; display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+#active-order-slot.solo .sv-card { margin-top: auto; }       /* push the card toward vertical centre */
+.sv-actions { margin: 16px 2px auto; display: flex; flex-direction: column; gap: 10px; }
+
+/* chip row + brand chip (new, OUTLINED — not the frozen .rchip) + phase pill */
+.sv-chiprow, .sv-offer-head, .sv-review-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sv-onum { font-family:'IBM Plex Mono', monospace; font-weight: 700; font-size: 13px; color: var(--sv-muted); letter-spacing: .02em; }
+.sv-rchip { display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:800; letter-spacing:.04em;
+  text-transform:uppercase; padding:4px 10px; border-radius:20px; line-height:1; border:1px solid var(--line);
+  background:var(--surface); color:var(--sv-ink); }
+.sv-rchip i { width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.7; flex-shrink:0; }
+.sv-rchip.xp { color:var(--accent); border-color:#BCD0EE; background:var(--sv-p-bg); }
+.sv-rchip.lm { color:var(--lamusa); border-color:#EAC4C6; background:#FBEDEE; }
+.sv-rchip.neutral { color:var(--sv-muted); border-color:var(--line); background:var(--surface); }
+.sv-chip { display:inline-flex; align-items:center; font-size:11px; font-weight:800; letter-spacing:.03em;
+  padding:4px 10px; border-radius:20px; line-height:1; }
+.sv-chip.ok { color:var(--success-hover); background:var(--sv-ok-bg); }   /* AA: --success-hover #116330 → 6.46:1 on the tint; --sv-ok #15803D is 4.40 at 11px (ruling A) */
+.sv-chip.p  { color:var(--accent); background:var(--sv-p-bg); }
+.sv-chip.warn { color:var(--sv-warn); background:var(--sv-warn-bg); }
+.sv-chip.ghost { color:var(--sv-muted); background:var(--sv-ghost-bg); }
+
+.sv-name { font-family:'Plus Jakarta Sans', sans-serif; font-weight:800; font-size:21px; line-height:1.15; color:var(--sv-ink); letter-spacing:-.01em; }
+.sv-sub { font-size:14px; color:var(--sv-muted); line-height:1.35; }
+.sv-lbl { font-size:11.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--sv-muted); }
+
+/* address + promoted reference (delivery) */
+.sv-addr { display:flex; align-items:flex-start; gap:9px; font-size:15px; line-height:1.4; color:var(--sv-ink); }
+.sv-addr svg, .sv-ref svg { width:18px; height:18px; flex-shrink:0; color:var(--accent); margin-top:1px; }
+.sv-ref { display:flex; align-items:flex-start; gap:9px; background:var(--surface-2); border:1px solid var(--line);
+  border-radius:12px; padding:10px 12px; }
+.sv-ref-lbl { font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--sv-muted); }
+.sv-ref-tx { font-size:14px; color:var(--sv-ink); line-height:1.35; margin-top:2px; }
+
+/* items */
+.sv-items { background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:11px 13px; display:flex; flex-direction:column; gap:6px; }
+.sv-items-h { margin-bottom:2px; }
+.sv-item { display:flex; align-items:baseline; gap:8px; font-size:14.5px; color:var(--sv-ink); line-height:1.3; }
+.sv-item b { font-family:'IBM Plex Mono', monospace; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; min-width:24px; }
+
+/* payment (classification + amount only from collectionFor) */
+.sv-pay { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.sv-pay.warn { background:var(--sv-warn-bg); border:1px solid #E4D3A8; border-radius:12px; padding:10px 12px; }
+.sv-amt { font-family:'Plus Jakarta Sans', sans-serif; font-weight:800; font-size:27px; line-height:1; color:var(--sv-ink); font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+.sv-amt .cur { font-size:16px; font-weight:700; color:var(--sv-muted); margin-right:3px; }
+.sv-amt-sm { font-size:17px; }
+.sv-paywith { display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--sv-muted); background:var(--surface-2);
+  border:1px solid var(--line); border-radius:11px; padding:9px 12px; cursor:pointer; }
+.sv-paywith b { color:var(--sv-ink); font-variant-numeric:tabular-nums; }
+.sv-pw-ic { width:7px; height:7px; border-radius:50%; background:var(--sv-ok); flex-shrink:0; }
+
+/* nav (single preferred primary + the other app) */
+.sv-nav { display:flex; flex-direction:column; gap:8px; margin:14px 2px 0; }
+.sv-nav-primary { display:flex; align-items:center; justify-content:center; gap:9px; padding:14px; border-radius:var(--r-btn);
+  background:var(--accent); color:#fff; font-weight:800; font-size:15px; text-decoration:none; box-shadow:var(--sh-btn); }
+.sv-nav-primary:active { background:var(--accent-hover); }
+.sv-nav-primary .sv-nav-ic svg { width:19px; height:19px; }
+.sv-nav-other { text-align:center; padding:6px; color:var(--sv-muted); font-weight:700; font-size:13px; text-decoration:none; }
+
+/* contact (call + WhatsApp) */
+.sv-contact { display:flex; gap:9px; }
+.sv-ct { flex:1; display:flex; align-items:center; justify-content:center; gap:7px; padding:11px; border-radius:var(--r-btn);
+  font-weight:800; font-size:14px; text-decoration:none; border:1px solid var(--line); background:var(--surface); color:var(--sv-ink); }
+.sv-ct.wa { color:#0B7A3B; border-color:#BEE3CC; background:var(--sv-ok-bg); }
+.sv-ct-ic svg { width:17px; height:17px; }
+
+/* at-restaurant REVIEW card */
+.sv-review-top { display:flex; flex-direction:column; align-items:center; gap:7px; text-align:center; }
+.sv-bignum { font-family:'Plus Jakarta Sans', sans-serif; font-weight:800; font-size:48px; line-height:1; letter-spacing:-.02em;
+  color:var(--accent); font-variant-numeric:tabular-nums; }
+.sv-reminder { display:flex; align-items:flex-start; gap:10px; background:var(--sv-warn-bg); border:1px solid #E4D3A8;
+  border-radius:12px; padding:11px 13px; }
+.sv-reminder svg { width:19px; height:19px; flex-shrink:0; color:var(--sv-warn); margin-top:1px; }
+.sv-reminder b { display:block; font-size:14px; color:var(--sv-ink); }
+.sv-reminder span { display:block; font-size:13px; color:var(--sv-muted); margin-top:1px; }
+
+/* arrived note (delivery) */
+.sv-arrived { display:flex; align-items:center; justify-content:center; gap:8px; font-size:13.5px; font-weight:700; color:var(--sv-ok); margin-bottom:2px; }
+.sv-arrived svg { width:17px; height:17px; }
+
+/* OFFER: acceptance ring + no-reject footnote */
+.sv-offer { align-items:stretch; }
+.sv-offer-head { justify-content:space-between; }
+.sv-ring { position:relative; width:52px; height:52px; flex-shrink:0; margin-left:auto; }
+.sv-ring svg { width:52px; height:52px; transform:rotate(-90deg); }
+.sv-ring circle { fill:none; stroke-width:9; }
+.sv-ring-trk { stroke:var(--surface-3); }
+.sv-ring-run { stroke:var(--accent); stroke-linecap:round; stroke-dasharray:352; stroke-dashoffset:0;
+  animation:sv-ring-drain var(--sv-ring-secs,30s) linear forwards; }
+@keyframes sv-ring-drain { to { stroke-dashoffset:352; } }
+/* the live countdown number reuses .accept-countdown so the frozen tick finds it by [data-deadline];
+   neutralise the frozen orange pill styling and centre it inside the ring */
+.sv-ring-num.accept-countdown { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  background:none; border:none; padding:0; color:var(--accent); font-family:'IBM Plex Mono', monospace; font-weight:800;
+  font-size:13px; font-variant-numeric:tabular-nums; }
+.sv-foot-note { font-size:12.5px; color:var(--sv-muted); line-height:1.4; text-align:center; padding:0 6px; }
+
+/* slides: KEEP the frozen "premium" slide structure + shimmer/breath animation; only recolour the
+   hardcoded orange → Cuadra, and style the new at-restaurant phase. Scoped by .sv-slide so the frozen
+   stacked .slide-confirm (accept/pickup/delivered) keeps its own colours → stacked restyle is slice 2.
+   Each selector matches the frozen per-phase specificity (0,3,0) and wins by source order. The white
+   track, the arrow (white on the coloured thumb) and the delivered-green stay as the frozen base.
+   accept/pickup → azul-acero; at-restaurant → marino; delivered → the frozen green (≈ Cuadra --ok). */
+/* Sheen gradient: the brightest (50%) stop is the WEAKEST contrast as the sheen passes, so it must still
+   clear WCAG AA 4.5:1 on the white track for this 14 px/800 label. #4471BF = 4.82:1 on #FFFFFF (and the
+   slide-label stops are asserted in slice1-contrast.test.js). Base stays the Cuadra azul / marino. */
+.sv-slide.accept .slide-text, .sv-slide.pickup .slide-text {
+  background-image:linear-gradient(100deg,#2F5FB8 0%,#2F5FB8 42%,#4471BF 50%,#2F5FB8 58%,#2F5FB8 100%); }
+.sv-slide.at-restaurant .slide-text {
+  background-image:linear-gradient(100deg,#14306B 0%,#14306B 42%,#4471BF 50%,#14306B 58%,#14306B 100%); }
+.sv-slide.accept .slide-fill, .sv-slide.pickup .slide-fill, .sv-slide.at-restaurant .slide-fill { background:var(--accent); }
+.sv-slide.at-restaurant .slide-fill { background:var(--marino); }
+.sv-slide.accept .slide-thumb, .sv-slide.pickup .slide-thumb {
+  background:linear-gradient(155deg,#5B86D8,#2F5FB8); box-shadow:0 5px 13px rgba(47,95,184,.42), 0 0 9px rgba(47,95,184,.20), inset 0 1.5px 0 rgba(255,255,255,.5), inset 0 -3px 6px rgba(20,48,107,.30); }
+.sv-slide.at-restaurant .slide-thumb {
+  background:linear-gradient(155deg,#3A5BA0,#14306B); box-shadow:0 5px 13px rgba(20,48,107,.42), 0 0 9px rgba(20,48,107,.18), inset 0 1.5px 0 rgba(255,255,255,.42), inset 0 -3px 6px rgba(10,28,70,.32); }
+/* SLICE1:PRESENTATION:END */
 </style>
 </head>
 
@@ -1202,6 +1375,14 @@ import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, co
 import { brandMeta, driverGreeting } from './brand-helpers.js';
 import { displayOrderLabel, endShiftPrompt } from './order-helpers.js';
 import { makeCompanionController } from './onboarding-helpers.js';   // controller owns companion state + the pure decision
+/* ===== SLICE1:IMPORT:START — single-active-order view (slice 1); pure markup builder in single-order-view.js ===== */
+import { singleOrderCardHtml } from './single-order-view.js';
+// The one module binding the slice owns: the client-only pickup-REVIEW latch (no server write) the driver
+// armed by tapping "Ya estoy en el restaurante". It holds a COMPOSITE key `${authGen}:${orderId}` so the
+// SINGLE-ORDER-BRANCH region below can clear it on ANY discontinuity — a different order/assignment, a phase
+// change away from pickup, or an auth/session change (authGen bumps) — never forcing a stale review.
+let slice1ReviewLatchKey = null;
+/* ===== SLICE1:IMPORT:END ===== */
 
 // ============================================================
 // System version (bumped each release)
@@ -2651,6 +2832,56 @@ function renderActiveAndQueue() {
   }
   idleSlot.classList.add('hidden');
 
+  /* ===== SLICE1:SINGLE-ORDER-BRANCH:START — exactly-one-active-order → the slice-1 single-order view ===== */
+  // Exactly one order (no queue, no pending 2nd offer) → render the refreshed single-order card and STOP. The
+  // stacked path below is byte-untouched and still owns every multi-order case. Slide IDs match
+  // attachActiveCardHandlers (btn-accept / btn-pickup / btn-delivered), reused verbatim; the only new control
+  // is the client-only btn-at-restaurant review toggle. Vuelto uses the existing #active-order-slot
+  // [data-vuelto-open] delegate — sv-paywith carries data-total / data-tendered.
+  // Review latch lives ONLY while the board stays single-order: the moment it is anything else (a stacked
+  // board reaches here with length > 1; the empty board cleared #active-order-slot on its way out), drop the
+  // latch so a later pickup of the same order can never inherit a stale "Ya estoy en el restaurante".
+  if (orders.length !== 1 || activeSlot.innerHTML === '') slice1ReviewLatchKey = null;
+  if (orders.length === 1) {
+    const soloOrder = orders[0];
+    queuedOrders = [];
+    collapsedBanners.clear();
+    // "arrived" = within the 50 m geofence of the CURRENT stop — mirrors renderActiveCard's check EXACTLY:
+    // pickup → stamped hub ?? RESTAURANT (?? keeps 0); delivery → order coords || delivery-task dest.
+    const spIsPickup = soloOrder.phase === 'pickup' || soloOrder.phase === 'awaiting_acceptance';
+    const spOrder = soloOrder.order || {};
+    const spLat = spIsPickup ? (soloOrder.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat) : (spOrder.lat || soloOrder.deliveryTask.destination_lat);
+    const spLng = spIsPickup ? (soloOrder.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng) : (spOrder.lng || soloOrder.deliveryTask.destination_lng);
+    const spArrived = !!(driverState && driverState.lat != null && driverState.lng != null
+      && XPD.haversineDistance(driverState.lat, driverState.lng, spLat, spLng) < 50);
+    // Client-only review latch. Reset it on ANY discontinuity BEFORE reading it, so a stale "Ya estoy en el
+    // restaurante" tap can never re-open review for a later visit: a different order/assignment or auth
+    // session (the composite key changes), or a phase change away from pickup. The key pins the current
+    // pickup visit; when it no longer matches, the latch is dropped and only a live geofence can open review.
+    const spLatchKey = authGen + ':' + soloOrder.orderId;
+    if (slice1ReviewLatchKey !== null && (slice1ReviewLatchKey !== spLatchKey || soloOrder.phase !== 'pickup')) {
+      slice1ReviewLatchKey = null;
+    }
+    const spAtRestaurant = soloOrder.phase === 'pickup' && slice1ReviewLatchKey === spLatchKey;
+
+    activeSlot.classList.add('solo');
+    bannerSlot.innerHTML = '';
+    queueSlot.innerHTML = '';
+    activeSlot.innerHTML = singleOrderCardHtml(soloOrder, {
+      ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,
+      RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: undefined,
+      nowMs: Date.now(),   // offer ring: elapsed drives the resume (negative animation-delay); display-only
+    });
+    attachActiveCardHandlers(soloOrder);   // binds whichever server slide this phase renders
+    if ($('btn-at-restaurant')) {
+      attachSlideConfirm('btn-at-restaurant', async () => {
+        slice1ReviewLatchKey = authGen + ':' + soloOrder.orderId;   // latch pickup-review for THIS visit; client-only, no server write
+        renderActiveAndQueue();                          // defers under the active drag, replays into the review card
+      });
+    }
+    return;
+  }
+  /* ===== SLICE1:SINGLE-ORDER-BRANCH:END ===== */
   const [active, ...rest] = orders;
   // Split rest: 2nd swipe-needed orders (awaiting_acceptance) → incoming banner(s); accepted stacked → view-only queue.
   const pendingAccept = rest.filter(o => o.phase === 'awaiting_acceptance');

@@ -19,12 +19,14 @@ function fakeAuth({ failOn } = {}) {
     async revokeRefreshTokens(uid) { calls.push(['revokeRefreshTokens', uid]); },
   };
 }
+// PLAN-portal-membership r3: owners / managers in brand_members; a valid brand record listing the locations.
 const world = (over = {}) => ({
   platform_config: { handheld_pairing_enabled: true },
+  brands: { tb: { name: 'TB', active: true, locations: { tb_centro: 'member', tb_norte: 'member' }, activation: { state: 'on', since: 1 } } },
+  brand_members: { tb: { owners: { own_tb: { granted_at: 1, granted_by: 'cli:op' } }, managers: { tb_centro: { mgr_c: { granted_at: 1, granted_by: 'own_tb' } } } } },
   restaurants: {
-    tb: { owners: { own_tb: true } },
-    tb_centro: { managers: { mgr_c: true }, identity: { prep_default_min: 18 }, handhelds: { hh_tb_centro_a: { kind: 'handheld', revoked: false } } },
-    tb_norte: { handhelds: { hh_tb_norte_b: { kind: 'handheld', revoked: false }, human_row: { revoked: false } } },
+    tb_centro: { identity: { brand_id: 'tb', prep_default_min: 18 }, handhelds: { hh_tb_centro_a: { kind: 'handheld', revoked: false } } },
+    tb_norte: { identity: { brand_id: 'tb' }, handhelds: { hh_tb_norte_b: { kind: 'handheld', revoked: false }, human_row: { revoked: false } } },
   },
   ...over,
 });
@@ -76,7 +78,7 @@ test('pair: refused while the pairing gate is off (even for an owner), across lo
 
 test('pair: PRECONDITION — a location without a valid prep_default_min (5–120) is refused before any Auth call', async () => {
   for (const bad of [undefined, null, 4, 121, 18.5, '18']) {
-    const w = world(); if (bad === undefined) delete w.restaurants.tb_centro.identity; else w.restaurants.tb_centro.identity.prep_default_min = bad;
+    const w = world(); if (bad === undefined) delete w.restaurants.tb_centro.identity.prep_default_min; else w.restaurants.tb_centro.identity.prep_default_min = bad;   // identity.brand_id stays (membership r3)
     const db = createFakeDb(w); const a = fakeAuth();
     await rejectsCode(D.pairDevice(deps(db, a), human('mgr_c'), { rid: 'tb_centro', label: 'x' }), 'failed-precondition');
     assert.deepStrictEqual(a.calls, [], `no Auth call for ${JSON.stringify(bad)}`);
@@ -118,13 +120,17 @@ test('heartbeat: registered unrevoked device only', async () => {
 });
 
 test('myLocations: owner → every member location of their brand; manager → only theirs; retired excluded; devices/customers refused', async () => {
+  const on = { active: true, activation: { state: 'on', since: 1 } };
+  const g = { granted_at: 1, granted_by: 'x' };
   const db = createFakeDb({
-    brands: { tb: { name: 'TB', active: true, locations: { tb_centro: 'member', tb_norte: 'member', tb_viejo: 'retired' } }, zz: { locations: { zz_1: 'member' } } },
+    brands: { tb: { name: 'TB', ...on, locations: { tb_centro: 'member', tb_norte: 'member', tb_viejo: 'retired' } }, zz: { name: 'ZZ', ...on, locations: { zz_1: 'member' } } },
+    brand_members: { tb: { owners: { own_tb: g }, managers: { tb_centro: { mgr_c: g } } }, zz: { managers: { zz_1: { mgr_c: g } } } },
+    member_of: { own_tb: { brands: { tb: 'owner' } }, mgr_c: { locations: { tb_centro: 'manager', zz_1: 'manager' } } },
     restaurants: {
-      tb: { owners: { own_tb: true } },
-      tb_centro: { managers: { mgr_c: true }, identity: { location_name: 'Centro', prep_default_min: 18 } },
-      tb_norte: { identity: { location_name: 'Norte', prep_default_min: 200 } },
-      zz_1: { managers: { mgr_c: true }, identity: { location_name: 'Uno', prep_default_min: 25 } },
+      tb_centro: { identity: { brand_id: 'tb', location_name: 'Centro', prep_default_min: 18 } },
+      tb_norte: { identity: { brand_id: 'tb', location_name: 'Norte', prep_default_min: 200 } },
+      tb_viejo: { identity: { brand_id: 'tb', location_name: 'Viejo', prep_default_min: 20 } },
+      zz_1: { identity: { brand_id: 'zz', location_name: 'Uno', prep_default_min: 25 } },
     },
   });
   const d = deps(db, fakeAuth());
@@ -136,19 +142,24 @@ test('myLocations: owner → every member location of their brand; manager → o
   await rejectsCode(D.myLocations(d, { uid: 'hh_x', token: { handheld: true, rid: 'tb_centro' } }, {}), 'permission-denied');
   await rejectsCode(D.myLocations(d, human('own_tb', { customer: true }), {}), 'permission-denied');
   await rejectsCode(D.myLocations(d, null, {}), 'unauthenticated');
-  const broken = createFakeDb({}); broken.failReads.add('brands');
+  const broken = createFakeDb({}); broken.failReads.add('member_of');
   await rejectsCode(D.myLocations(deps(broken, fakeAuth()), human('own_tb'), {}), 'unavailable');
 });
 
-// ORCHESTRATION O1a T9 (plan r3.1 §3, P-B): STAGED branches are listed too (pairing + managers before opening); retired still excluded
-test('O1a: myLocations lists a STAGED branch (owner + its manager); retired still excluded', async () => {
+// ORCHESTRATION O1a T9 × train-3 membership (merge ruling 2026-10-21): myLocations is now the membership PAIRING-ELIGIBLE list (state
+// member + device.pair). A STAGED branch has no membership state/capability until O1b (plan r3.2 §3: resolveLocation 'staged' + capsFor),
+// so it is NOT listed yet — it was never pairable before O1b anyway. Retired still excluded. O1b flips this pin.
+test('O1a: myLocations does NOT list a STAGED branch until O1b grants staged capabilities; retired still excluded', async () => {
+  const g = { granted_at: 1, granted_by: 'x' };
   const db = createFakeDb({
-    brands: { tb: { name: 'TB', active: true, locations: { tb_centro: 'member', tb_sur: 'staged', tb_viejo: 'retired' } } },
-    restaurants: { tb: { owners: { own_tb: true } }, tb_centro: { identity: { location_name: 'Centro', prep_default_min: 18 } },
-      tb_sur: { managers: { mgr_s: true }, identity: { location_name: 'Sur', prep_default_min: 20 } }, tb_viejo: { identity: { location_name: 'Viejo' } } },
+    brands: { tb: { name: 'TB', active: true, activation: { state: 'on', since: 1 }, locations: { tb_centro: 'member', tb_sur: 'staged', tb_viejo: 'retired' } } },
+    brand_members: { tb: { owners: { own_tb: g }, managers: { tb_sur: { mgr_s: g } } } },
+    member_of: { own_tb: { brands: { tb: 'owner' } }, mgr_s: { locations: { tb_sur: 'manager' } } },
+    restaurants: { tb_centro: { identity: { brand_id: 'tb', location_name: 'Centro', prep_default_min: 18 } },
+      tb_sur: { identity: { brand_id: 'tb', location_name: 'Sur', prep_default_min: 20 } }, tb_viejo: { identity: { brand_id: 'tb', location_name: 'Viejo' } } },
   });
   const d = deps(db, fakeAuth());
   assert.deepStrictEqual(await D.myLocations(d, human('own_tb'), {}), [
-    { rid: 'tb_centro', brand_id: 'tb', location_name: 'Centro', prep_default_min: 18 }, { rid: 'tb_sur', brand_id: 'tb', location_name: 'Sur', prep_default_min: 20 }]);
-  assert.deepStrictEqual(await D.myLocations(d, human('mgr_s'), {}), [{ rid: 'tb_sur', brand_id: 'tb', location_name: 'Sur', prep_default_min: 20 }]);
+    { rid: 'tb_centro', brand_id: 'tb', location_name: 'Centro', prep_default_min: 18 }], 'O1a-STAGED-UNLISTED owner: member only (staged → O1b)');
+  assert.deepStrictEqual(await D.myLocations(d, human('mgr_s'), {}), [], 'O1a-STAGED-UNLISTED a staged branch\'s manager has no pairing location yet');
 });

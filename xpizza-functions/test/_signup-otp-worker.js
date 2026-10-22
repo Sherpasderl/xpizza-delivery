@@ -45,6 +45,18 @@ else {
   const src = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: FN, encoding: 'utf8', maxBuffer: 1 << 28 });
   const file = path.join(FN, 'index.js');
   const m = new Module(file, module); m.filename = file; m.paths = Module._nodeModulePaths(FN);
+  // BASE-PINNED twins: a module whose CURRENT exports no longer carry what the base index.js reads AT LOAD resolves to its own
+  // BASE copy (compiled in place). The brand-agnostic server removed assign-hub's X_PIZZA_HUB (base index.js:5582 reads .lat).
+  const PINNED = { './assign-hub': 'assign-hub.js' };
+  const twins = {};
+  const twin = (rel) => {
+    if (twins[rel]) return twins[rel].exports;
+    const f = path.join(FN, rel); const t = new Module(f, module); t.filename = f; t.paths = Module._nodeModulePaths(path.dirname(f));
+    twins[rel] = t; t._compile(execFileSync('git', ['show', `${BASE}:xpizza-functions/${rel}`], { cwd: FN, encoding: 'utf8' }), f);
+    return t.exports;
+  };
+  const real = m.require.bind(m);
+  m.require = (id) => (PINNED[id] ? twin(PINNED[id]) : real(id));
   m._compile(src, file);
   app = m.exports;
 }

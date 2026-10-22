@@ -134,7 +134,8 @@ test('🔴 the publish listener is REGISTERED, not merely written', async () => 
   assert.ok(pubbtn.listeners.click && pubbtn.listeners.click.length === 1,
     '#pubbtn has exactly one click listener — the whole publish path hangs off it');
   // and the other top-level wiring that a mid-module throw would have taken with it
-  for (const id of ['review', 'discard', 'pubback', 'switcher']) {
+  // PORTAL-UI 1a: #switcher moved to shell.js (the brand/branch switcher); app.js wires the review controls
+  for (const id of ['review', 'discard', 'pubback']) {
     assert.ok(byId.get(id).listeners.click && byId.get(id).listeners.click.length >= 1,
       `#${id} is wired — a module that aborted partway would leave this empty`);
   }

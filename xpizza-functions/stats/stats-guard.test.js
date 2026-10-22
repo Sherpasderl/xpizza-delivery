@@ -25,6 +25,8 @@ const RUNTIME_ENTRIES = ['stats/stats-api.js', 'stats/stats-job.js', 'stats/stat
   'stats/stats-index.js', 'stats/stats-identity.js', 'stats/stats-time.js', 'stats/stats-indexing.js', 'tools/stats-rollup.js',
   'stats/keyer.js'];   // PORTAL SPEED P1: the lazy keyer + live cache, moved verbatim out of index.js — held to every stats rule here
 const ALLOWED_GRAPH = new Set([...RUNTIME_ENTRIES,
+  // PLAN-portal-membership r3: the capability table (stats.read) — access/membership.js and its PURE F1 dependencies
+  'access/membership.js', 'brands/brand-model.js', 'restaurant-config.js', 'pickup-label.js',
   'scheduled-orders.js',           // TZ_OFFSET_MS + DEFAULT_CFG.maxHorizonHours (pure constants/helpers)
   'restaurant-id.js',              // DEFAULT_RESTAURANT_ID for rid-less legacy orders (advisor C2)
   'menu-pricing.js', 'price-valid.js',   // pulled in by restaurant-id.js (pure tables); nothing is called
