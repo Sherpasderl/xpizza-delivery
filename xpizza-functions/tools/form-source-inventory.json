@@ -1619,6 +1619,10 @@
   "catalog/text-version.js",
   "createorder-classify.js",
   "driver-ingest.js",
+  "driver-ledger/functions.js",
+  "driver-ledger/ledger-core.js",
+  "driver-ledger/ledger-store.js",
+  "driver-ledger/pay-gate.js",
   "index.js",
   "lib/driver-admin-ops.js",
   "lib/driver-callable-guard.js",
@@ -1734,6 +1738,22 @@
    "lifts": []
   },
   "driver-ingest.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "driver-ledger/functions.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "driver-ledger/ledger-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "driver-ledger/ledger-store.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "driver-ledger/pay-gate.js": {
    "pins": [],
    "lifts": []
   },
