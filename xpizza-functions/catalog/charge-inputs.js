@@ -20,6 +20,7 @@ const CHARGE_INPUT_FIELDS = Object.freeze([
   'order_id', 'restaurant_id', 'items', 'redeem', 'order_type', 'scheduled_for', 'pickup_time',
   'lat', 'lng', 'address_detected', 'address_details', 'payment_method', 'total', 'items_text',
   'razon_social', 'rtn_cliente',
+  'pin_confirmed',   // S3a envío: the client's pin confirmation decides whether a delivery is priced or refused (codex P1-2)
 ]);
 const NON_CHARGE_FIELDS = Object.freeze({
   customer_name: 'contact display only (and the PixelPay cardholder name padding); never priced',

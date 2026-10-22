@@ -236,11 +236,10 @@ async function traced(rid, oid, uid, phone, opts = {}) {
     const CACHE = { a_cash_fresh: 'warm', b_cash_idempotent_retry: 'cold, existing order', c_cash_redeem_fresh: 'warm', d_cash_conflict: 'cold, existing order' };
     for (const rid of Object.keys(golden)) for (const k of Object.keys(golden[rid])) {
       const floorCalls = out[rid][k].filter(isFloorRead);
-      DR.declare(out[rid][k], `${rid} ${k}`);
       assert.ok(floorCalls.every((e) => e.op === 'get'), `🔴 ${rid} ${k}: the floor path is only ever READ (got ${JSON.stringify(floorCalls)})`);
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request (cached) — got ${floorCalls.length}`);
       const rest = CTL.withoutControlRead(out[rid][k], rid, { expected: 0, label: `${rid} ${k} (switch cache ${CACHE[k]})` });
-      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e) && !DR.isDeliveryPricingRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen ba29282 trace`);
+      assert.deepStrictEqual(DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen ba29282 trace`);
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get)`);
     }
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
@@ -255,7 +254,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
       const fl = t.trace.filter(isFloorRead);
       assert.deepStrictEqual(fl.map((e) => e.op), ['get'], `🔴 after the TTL exactly ONE floor GET is made (got ${JSON.stringify(fl)})`);
       const rest = CTL.withoutControlRead(t.trace, 'x_pizza', { expected: 0, label: 'x_pizza post-TTL b_cash_idempotent_retry (switch cache cold, existing order)' });
-      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e) && !DR.isDeliveryPricingRead(e)), golden.x_pizza.b_cash_idempotent_retry, '🔴 the post-TTL request, minus its floor GET, equals the frozen golden');
+      assert.deepStrictEqual(DR.without(rest, 'post-TTL').filter((e) => !isFloorRead(e)), golden.x_pizza.b_cash_idempotent_retry, '🔴 the post-TTL request, minus its floor GET, equals the frozen golden');
       console.log(`  ✓ x_pizza post-TTL b_cash_idempotent_retry: exactly 1 allowlisted floor GET; the rest identical to the golden`);
     }
     console.log('pselfupdate-createorder-trace(emulator): OK');

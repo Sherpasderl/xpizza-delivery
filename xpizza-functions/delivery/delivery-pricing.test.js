@@ -32,12 +32,12 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   // ── the envío for one request ──
   const pr = P.readPricing(RAW, 'r1');
   const q = (o) => P.quoteDelivery({ pricing: pr, hub: HUB, mode: 'delivery', pin: { ...north(1), confirmed: true }, customerUid: null, ...o });
-  assert.deepStrictEqual(q({}).ctx, { mode: 'delivery', delivery_cents: 3000, promo_discount_cents: 0, policy_version: 3, km: 1, band: 0, promo: null });
+  assert.deepStrictEqual(q({}).ctx, { mode: 'delivery', delivery_cents: 3000, promo_discount_cents: 0, policy_version: 3, km: 1, band: 0, promo: null, place: P.placeOf('delivery', HUB, { ...north(1) }), customer: null });
   assert.strictEqual(q({ pin: { ...north(2), confirmed: true } }).ctx.delivery_cents, 3000, 'exactly max_km → that band (inclusive)');
   assert.strictEqual(q({ pin: { ...north(2.001), confirmed: true } }).ctx.delivery_cents, 5000, 'just past → the next band');
   assert.strictEqual(q({ pin: { ...north(7.9), confirmed: true } }).ctx.band, 2);
   assert.deepStrictEqual(q({ pin: { ...north(8.01), confirmed: true } }), { refusal: 'outside_delivery_bands' }, 'beyond the last band → refused, never free');
-  assert.deepStrictEqual(q({ mode: 'pickup', pin: null }).ctx, { mode: 'pickup', delivery_cents: 0, promo_discount_cents: 0, policy_version: 3 }, 'pickup → 0, no pin needed');
+  assert.deepStrictEqual(q({ mode: 'pickup', pin: null }).ctx, { mode: 'pickup', delivery_cents: 0, promo_discount_cents: 0, policy_version: 3, place: P.placeOf('pickup', HUB, null), customer: null }, 'pickup → 0, no pin needed');
   for (const mode of [undefined, null, '', 'Delivery', 'dine_in']) assert.deepStrictEqual(q({ mode }), { refusal: 'mode_required' }, `mode ${mode} → refused (omitted context is never legacy-free)`);
   for (const pin of [null, { ...north(1) }, { ...north(1), confirmed: 'true' }, { lat: NaN, lng: -87.2, confirmed: true }, { lat: 91, lng: 0, confirmed: true }, { lat: 14, lng: 181, confirmed: true }]) {
     assert.deepStrictEqual(q({ pin }), { refusal: 'pin_required' }, `pin ${JSON.stringify(pin)} → refused`);
@@ -137,6 +137,73 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.deepStrictEqual(unhandled, [], '🔴 a pre-started read that fails must never surface as an unhandled rejection');
     assert.deepStrictEqual([await p1, await p2], [{ failed: true }, { failed: true }], 'both settle to the 503 refusal marker');
     ok('early return: a pre-started config read that throws (sync or async) settles to { failed } — no unhandled rejection; deliveryFor turns it into the 503 refusal');
+  }
+
+  // ── codex S3a r1 ──
+  {
+    // P3-7: the EXACT band boundary — max_km set to the computed distance takes that band (kills `<=` → `<`)
+    const pin = { lat: 14.1234567, lng: -87.1987654, confirmed: true };
+    const km = P.haversineKm(HUB.lat, HUB.lng, pin.lat, pin.lng);
+    const exact = P.readPricing({ ...RAW, bands: [{ max_km: km, cents: 1111 }, { max_km: km + 1, cents: 2222 }] }, 'r1');
+    assert.deepStrictEqual([P.quoteDelivery({ pricing: exact, hub: HUB, mode: 'delivery', pin }).ctx.band, P.quoteDelivery({ pricing: exact, hub: HUB, mode: 'delivery', pin }).ctx.delivery_cents], [0, 1111], 'distance == max_km → that band');
+    ok('P3-7: a distance EXACTLY equal to max_km takes that band');
+  }
+  {
+    // P2-3: the signed envío facts are BINDINGS at the gate (mode, priced place, promo customer)
+    process.env.QUOTE_TOKEN_SECRET = process.env.QUOTE_TOKEN_SECRET || 'unit-secret';
+    const { issueQuote } = require('../quote-issue');
+    const { gateConfirmedNet } = require('../token-gate');
+    const p3x = P.readPricing(RAW, 'r3');                                            // free_delivery ON
+    const ctxOf2 = (o) => P.quoteDelivery({ pricing: p3x, hub: HUB, mode: 'delivery', pin: { ...north(1), confirmed: true }, customerUid: null, ...o }).ctx;
+    const tok = (ctx, customerId = null) => issueQuote({ items: cart, rid: 'x_pizza', customerId, deliveryContext: ctx, nowMs: Date.now() }).quote_token;
+    const gate = (token, ctx) => gateConfirmedNet({ token, submittedCart: cart, rid: 'x_pizza', secret: process.env.QUOTE_TOKEN_SECRET, deliveryContext: ctx, nowMs: Date.now() });
+    const pickupTok = tok(P.quoteDelivery({ pricing: p3x, hub: HUB, mode: 'pickup' }).ctx);
+    const memberDelivery = ctxOf2({ customerUid: 'u9' });                            // promo → envío free → SAME total as pickup
+    assert.strictEqual(computeServerNet({ items: cart, rid: 'x_pizza', deliveryContext: memberDelivery }).net_total_cents, base.net_total_cents, 'premise: the totals are equal');
+    assert.deepStrictEqual([gate(pickupTok, memberDelivery).action, gate(pickupTok, memberDelivery).reason], ['refuse_invalid', 'delivery_mode_mismatch'], '🔴 a pickup token never authorises a delivery of equal total');
+    const tok1 = tok(ctxOf2({}));
+    assert.strictEqual(gate(tok1, ctxOf2({ pin: { ...north(1.2), confirmed: true } })).reason, 'delivery_place_mismatch', 'another pin → re-quote');
+    assert.strictEqual(gate(tok1, ctxOf2({})).action, 'charge', 'the quoted context → charged');
+    const memberTok = tok(ctxOf2({ customerUid: 'u9' }), 'u9');
+    assert.strictEqual(gate(memberTok, ctxOf2({ customerUid: 'u8' })).reason, 'delivery_customer_mismatch', 'another account → re-quote');
+    assert.strictEqual(gate(memberTok, ctxOf2({ customerUid: null })).reason, 'delivery_customer_mismatch', 'a member quote charged as a guest → re-quote (ruling C)');
+    const gm = gate(tok1, ctxOf2({ customerUid: 'u9' }));
+    assert.deepStrictEqual([gm.action, gm.chargeNet], ['charge', base.net_total_cents], 'a GUEST quote charged to a member: the promo LOWERS the price — charged (the approved lower-price rule)');
+    assert.strictEqual(gate(tok1, null).action, 'charge', 'not activated (no ctx) → nothing to bind, as before');
+    assert.strictEqual(gate(tok(null), ctxOf2({})).reason, 'delivery_unbound', 'a token without envío facts never authorises an activated charge');
+    ok('P2-3: the gate binds mode, priced place and promo customer — pickup→delivery, another pin, another account, member→guest refused; guest→member lower price and dark unchanged');
+  }
+  {
+    // P1-1 / P1-2: the charge path against the STORED order (chargeContext)
+    const now = Date.now();
+    const mk = (orders, attempts = {}) => { const reads = []; return { reads, ref: (p) => ({ get: async () => { reads.push(p); const v = p.startsWith('orders/') ? orders[p.slice(7)] : attempts[p.slice('payment_attempts/'.length)]; return { val: () => (v === undefined ? null : v) }; } }) }; };
+    const fresh4 = { ctx: q({ pin: { ...north(4), confirmed: true } }).ctx };
+    const d0 = mk({});
+    assert.strictEqual(await DW.chargeContext(d0, 'o1', null, {}, now), null); assert.deepStrictEqual(d0.reads, [], 'dark → no read');
+    assert.strictEqual(await DW.chargeContext(mk({}), 'o1', fresh4, {}, now), fresh4, 'no stored order → this request');
+    const stored = { order_type: 'delivery', lat: north(4).lat, lng: north(4).lng, active_attempt_id: 'a1', delivery_cents: 7000, promo_discount_cents: 0, delivery_snapshot: { mode: 'delivery', policy_version: 1, km: 4, band: 1, promo: null } };
+    const live = { a1: { hosted_state: 'created', hosted_expires_at: now + 60000 } };
+    const kept = await DW.chargeContext(mk({ o1: stored }, live), 'o1', fresh4, { order_type: 'pickup' }, now);
+    assert.deepStrictEqual([kept.ctx.delivery_cents, P.isServerDeliveryCtx(kept.ctx)], [7000, true], 'a LIVE checkout keeps its STORED envío (L70, not today\'s L50) — reused, never refused even if the body differs');
+    assert.strictEqual(await DW.chargeContext(mk({ o1: { ...stored, delivery_snapshot: undefined, delivery_cents: undefined } }, live), 'o1', fresh4, {}, now), null, 'a live checkout issued while DARK keeps its food-only economics');
+    const expired = { a1: { hosted_state: 'created', hosted_expires_at: now - 1 } };
+    assert.deepStrictEqual(await DW.chargeContext(mk({ o1: stored }, expired), 'o1', fresh4, { order_type: 'pickup' }, now), { refusal: 'order_context_changed', httpStatus: 409 }, '🔴 delivery stored → a pickup retry is refused (never charged food-only)');
+    assert.deepStrictEqual(await DW.chargeContext(mk({ o1: stored }, expired), 'o1', fresh4, { order_type: 'delivery', lat: north(1).lat, lng: north(1).lng }, now), { refusal: 'order_context_changed', httpStatus: 409 }, 'another pin → refused');
+    assert.strictEqual(await DW.chargeContext(mk({ o1: stored }, expired), 'o1', fresh4, { order_type: 'delivery', lat: north(4).lat, lng: north(4).lng }, now), fresh4, 'the same context → this request');
+    assert.strictEqual(await DW.chargeContext(mk({ o1: { ...stored, payment_status: 'confirmed' } }, live), 'o1', fresh4, { order_type: 'pickup' }, now), fresh4, 'already paid → this request (the acquire answers already_paid)');
+    const { chargeInputsFingerprint } = require('../catalog/charge-inputs');
+    assert.ok(chargeInputsFingerprint({ order_id: 'o1', items: [], pin_confirmed: true }), 'pin_confirmed is a CLASSIFIED charge input (the fingerprint is not null)');
+    assert.notStrictEqual(chargeInputsFingerprint({ order_id: 'o1', items: [], pin_confirmed: true }), chargeInputsFingerprint({ order_id: 'o1', items: [] }), '…and it is bound');
+    ok('P1-1/P1-2: a live checkout keeps its STORED economics (or food-only if issued dark); otherwise another fulfilment / pin → order_context_changed; paid → as today; dark reads nothing; pin_confirmed is a bound charge input');
+  }
+  {
+    // P2-6: a quote's config outage is a 503; a request refusal stays a fail-soft 200
+    const failDb = { ref: () => ({ get: () => Promise.reject(new Error('down')) }) };
+    const r = await DW.quoteDeliveryFor({ get: () => null }, failDb, 'r1', {}, { getIdentity, knownUid: null });
+    assert.deepStrictEqual([r.httpStatus, r.refuse.error], [503, 'delivery_pricing_unavailable']);
+    const r2 = await DW.quoteDeliveryFor({ get: () => null }, fakeDb(RAW), 'r1', { mode: 'delivery' }, { getIdentity, knownUid: null });
+    assert.deepStrictEqual([r2.httpStatus, r2.refuse.error], [200, 'pin_required']);
+    ok('P2-6: quote config outage → 503 (retryable); a pin/mode refusal → the fail-soft 200 body');
   }
 
   console.log(`\ndelivery-pricing: ${n} passed`);

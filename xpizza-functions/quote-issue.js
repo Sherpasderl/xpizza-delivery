@@ -110,9 +110,10 @@ function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tabl
       net_total_cents: net.net_total_cents,
       components: net.components,
       redemption_ref: redemptionRef || null,
-      // S3a: the envío facts this net includes (mode, policy_version, delivery/promo) — absent when the restaurant is
+      // S3a: the envío facts this net includes (mode, policy_version, delivery/promo, the priced PLACE and the promo customer —
+      // BINDINGS the gate enforces, codex S3a P2-3) — absent when the restaurant is
       // not activated for envío, so every pre-S3 token payload is byte-identical.
-      ...(deliveryContext ? { delivery: { mode: deliveryContext.mode, policy_version: deliveryContext.policy_version, delivery_cents: deliveryContext.delivery_cents, promo_discount_cents: deliveryContext.promo_discount_cents } } : {}),
+      ...(deliveryContext ? { delivery: { mode: deliveryContext.mode, policy_version: deliveryContext.policy_version, delivery_cents: deliveryContext.delivery_cents, promo_discount_cents: deliveryContext.promo_discount_cents, place: deliveryContext.place || null, customer: deliveryContext.customer || null } } : {}),
       issued_at: nowMs,
       expires_at: nowMs + EXPIRY_MS,
       quote_id: crypto.randomUUID(),             // a nonce, so two identical quotes are still two quotes

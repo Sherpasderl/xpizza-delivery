@@ -21,6 +21,8 @@
 //   · free_delivery ON + an authenticated customer → promo_discount_cents = delivery_cents (Sherpa-funded); guests pay
 // Driver pay is unaffected (flat L 70, S8).
 
+const crypto = require('crypto');
+
 const EARTH_KM = 6371;
 const rad = (d) => (d * Math.PI) / 180;
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -54,7 +56,7 @@ function readPricing(raw, rid) {
    gate charges and the order records. */
 function quoteDelivery({ pricing, hub, mode, pin, customerUid }) {
   if (!pricing || pricing.invalid) return { refusal: 'delivery_pricing_invalid' };
-  if (mode === 'pickup') return { ctx: mint({ mode: 'pickup', delivery_cents: 0, promo_discount_cents: 0, policy_version: pricing.policy_version }) };
+  if (mode === 'pickup') return { ctx: mint({ mode: 'pickup', delivery_cents: 0, promo_discount_cents: 0, policy_version: pricing.policy_version, place: placeOf('pickup', hub, null), customer: uidOrNull(customerUid) }) };
   if (mode !== 'delivery') return { refusal: 'mode_required' };
   if (!pin || pin.confirmed !== true || !isLat(pin.lat) || !isLng(pin.lng)) return { refusal: 'pin_required' };
   if (!hub || !isLat(hub.lat) || !isLng(hub.lng)) return { refusal: 'delivery_pricing_invalid' };
@@ -64,7 +66,39 @@ function quoteDelivery({ pricing, hub, mode, pin, customerUid }) {
   const delivery_cents = pricing.bands[band].cents;
   const promo = pricing.free_delivery && typeof customerUid === 'string' && customerUid ? 'free_delivery' : null;
   return { ctx: mint({ mode: 'delivery', delivery_cents, promo_discount_cents: promo ? delivery_cents : 0, policy_version: pricing.policy_version,
-    km: Math.round(km * 1000) / 1000, band, promo }) };
+    km: Math.round(km * 1000) / 1000, band, promo, place: placeOf('delivery', hub, pin), customer: uidOrNull(customerUid) }) };
+}
+
+const uidOrNull = (u) => (typeof u === 'string' && u ? u : null);
+// The PLACE a quote priced (mode + hub + pin, 6 decimals ≈ 0.1 m) — signed into the quote token and compared at the charge,
+// so a token for one fulfilment / pin / branch never authorises another whose total happens to be no higher (codex S3a P2-3).
+const r6 = (x) => (typeof x === 'number' && Number.isFinite(x) ? x.toFixed(6) : 'x');
+function placeOf(mode, hub, pin) {
+  const s = [mode, r6(hub && hub.lat), r6(hub && hub.lng), r6(pin && pin.lat), r6(pin && pin.lng)].join('|');
+  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 24);
+}
+
+/* The quote's signed envío facts vs the server's envío for THIS charge → null (bound) or the mismatch reason. Not activated
+   (no server ctx) → nothing to bind (dark / legacy, unchanged). A member-bound quote never authorises another account or a
+   guest (re-quote — ruling C); a GUEST quote may be charged to a member (the promo can only lower the price, which the gate
+   already charges). */
+function deliveryBindingMismatch(signed, ctx) {
+  if (!ctx) return null;
+  if (!signed || typeof signed !== 'object') return 'delivery_unbound';
+  if (signed.mode !== ctx.mode) return 'delivery_mode_mismatch';
+  if (signed.place !== ctx.place) return 'delivery_place_mismatch';
+  if (signed.customer && signed.customer !== ctx.customer) return 'delivery_customer_mismatch';
+  return null;
+}
+
+/* A STORED order's envío as a server ctx — for a LIVE issued checkout, whose economics are locked at issuance (§3.3): the
+   charge path prices it from what the order recorded, never from today's config (codex S3a P1-2). No snapshot (issued
+   while dark) → null = food only, exactly what that checkout charges. */
+function storedCtx(order) {
+  const s = order && order.delivery_snapshot;
+  if (!s || typeof s !== 'object' || !Number.isSafeInteger(order.delivery_cents) || !Number.isSafeInteger(order.promo_discount_cents)) return null;
+  return mint({ mode: s.mode, delivery_cents: order.delivery_cents, promo_discount_cents: order.promo_discount_cents, policy_version: s.policy_version,
+    ...(s.mode === 'delivery' ? { km: s.km, band: s.band, promo: s.promo || null } : {}), place: null, customer: null });
 }
 
 // The net envío the customer pays: max(0, delivery − promo).
@@ -75,4 +109,4 @@ const SERVER_CTX = new WeakSet();
 const isServerDeliveryCtx = (c) => !!c && typeof c === 'object' && SERVER_CTX.has(c);
 const mint = (ctx) => { SERVER_CTX.add(ctx); return ctx; };
 
-module.exports = { haversineKm, readPricing, quoteDelivery, netDeliveryCents, isServerDeliveryCtx };
+module.exports = { haversineKm, readPricing, quoteDelivery, netDeliveryCents, isServerDeliveryCtx, deliveryBindingMismatch, storedCtx, placeOf };

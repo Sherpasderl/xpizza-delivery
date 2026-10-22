@@ -28,6 +28,10 @@ assert.strictEqual(calls(/DW\.withDelivery\(dq, redemptionPriced/g), 2, 'both or
 assert.strictEqual(calls(/DW\.refusalGate\(dq, /g), 2, 'both order paths refuse at the gate step (after a live checkout resume)');
 assert.strictEqual(calls(/DW\.gateExtra\(dq\)/g), 2, 'both gates carry the envío context');
 assert.strictEqual(calls(/DW\.quoteDeliveryFor\(req, db, restaurantId, body/g), 2, 'both quote endpoints price the envío');
+assert.strictEqual(calls(/DW\.chargeContext\(db, orderId, await DW\.deliveryFor\(/g), 1, 'the card path prices against the STORED order (live checkout kept / context change refused — codex P1-1/P1-2)');
+assert.strictEqual(calls(/if \(dq && dq\.refusal\) return res\.status\(dq\.httpStatus\)/g), 1, 'the card path refuses BEFORE any pending order or hold exists');
+assert.strictEqual(calls(/if \(dq\.refuse\) return res\.status\(dq\.httpStatus \|\| 200\)/g), 2, 'both quote endpoints answer a config outage with its 503 (codex P2-6)');
+assert.strictEqual(calls(/attachCustomerAttribution\([^;]*total: DW\.totalLempiras\(dq, effectiveTotal\)/g), 2, 'member history carries the order total (codex P2-4)');
 ok(`unapplyS3aIndex(index.js) === ${BASE}:index.js byte-for-byte (${HUNKS.length} same-line hunks, no line inserted); the seam is called at every site; non-vacuous`);
 
 const [first] = HUNKS[0];

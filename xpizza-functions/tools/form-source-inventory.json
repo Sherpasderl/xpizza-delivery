@@ -1620,6 +1620,7 @@
   "assignment-conflict.js",
   "catalog/bound-reuse.js",
   "catalog/canonical-binding.js",
+  "catalog/charge-inputs.js",
   "catalog/text-version.js",
   "compute-server-net.js",
   "createorder-classify.js",
@@ -1715,6 +1716,12 @@
    "pins": [],
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js"
+   ]
+  },
+  "catalog/charge-inputs.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/addproduct-b-wiring.guard.test.js"
    ]
   },
   "catalog/text-version.js": {

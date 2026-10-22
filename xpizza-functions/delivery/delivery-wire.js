@@ -36,6 +36,28 @@ async function deliveryFor(db, { rid, mode, pin, customerUid, getIdentity, prici
   return q.refusal ? { refusal: q.refusal, httpStatus: REFUSAL_STATUS[q.refusal] || 409 } : q;
 }
 
+/* The CHARGE path, against the STORED order (codex S3a P1-1 / P1-2). Only when activated: dark (dq null) reads nothing.
+   One read of orders/{id}; absent → this request's dq (a fresh order). Present:
+     · already paid → this request's dq (the acquire answers already_paid, as today)
+     · a LIVE issued checkout (its active attempt 'created', unexpired) keeps its STORED economics — storedCtx, or
+       food-only when it was issued dark — so the checkout is reused, never re-priced or refused (§3.3)
+     · otherwise a different fulfilment or pin than the stored order's → refused order_context_changed: the client starts a
+       fresh order; mixed contexts are never re-priced
+   A refusal dq is answered by the handler BEFORE any pending order or hold exists. */
+async function chargeContext(db, orderId, dq, body, now) {
+  if (!dq) return dq;
+  const order = (await db.ref(`orders/${orderId}`).get()).val();
+  if (!order || order.payment_status === 'confirmed') return dq;   // fresh, or already paid (the acquire answers already_paid as today)
+  if (typeof order.active_attempt_id === 'string' && order.active_attempt_id) {
+    const at = (await db.ref(`payment_attempts/${order.active_attempt_id}`).get()).val();
+    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const c = P.storedCtx(order); return c ? { ctx: c } : null; }
+  }
+  const pin = orderPin(body);
+  const same = order.order_type === (body && body.order_type)
+    && (order.order_type !== 'delivery' || (Number(order.lat) === pin.lat && Number(order.lng) === pin.lng));
+  return same ? dq : { refusal: 'order_context_changed', httpStatus: 409 };
+}
+
 // The order body's pin: lat/lng are the existing top-level fields; `pin_confirmed: true` is the new client's assertion.
 const num = (x) => (typeof x === 'number' ? x : typeof x === 'string' && x.trim() !== '' ? Number(x) : NaN);
 const orderPin = (body) => ({ lat: num(body && body.lat), lng: num(body && body.lng), confirmed: !!(body && body.pin_confirmed === true) });
@@ -74,14 +96,15 @@ async function refusalGate(dq, releaseHold, orderId) {
   return { refuse: { status: dq.httpStatus, body: { error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId } }, provenance: null, result: null };
 }
 
-/* The QUOTE endpoints' envío: { refuse } (a fail-soft 200 body) when active and refused, else { ctx, uid } (ctx null when
+/* The QUOTE endpoints' envío: { refuse, httpStatus } when active and refused (a config outage → 503, codex S3a P2-6; a request
+   refusal → a fail-soft 200 body), else { ctx, uid } (ctx null when
    dark). Dark costs ONE config read and nothing else — no identity read, no token verify, and uid stays what the caller
    had (quoteOrder: null), so a dark quote is byte-identical. Active: the hub from the restaurant identity, and for
    quoteOrder an OPTIONAL customer ID token (customer:true, not tombstoned) — the promo is account-only.
    `knownUid` (quoteRedemption already verified one) skips the second verify. */
 async function quoteDeliveryFor(req, db, rid, body, { getIdentity, getAuth, attributionUid, knownUid, pricingP }) {
   const lp = await (pricingP || loadPricing(db, rid));
-  if (lp.failed) return { refuse: { ok: false, error: 'delivery_pricing_unavailable' } };
+  if (lp.failed) return { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 };
   if (!lp.pricing) return { ctx: null, uid: knownUid === undefined ? null : knownUid };
   let uid = knownUid === undefined ? null : knownUid;
   if (knownUid === undefined) {
@@ -94,9 +117,9 @@ async function quoteDeliveryFor(req, db, rid, body, { getIdentity, getAuth, attr
     }
   }
   let identity = null;
-  try { identity = await getIdentity(db, rid); } catch (_) { return { refuse: { ok: false, error: 'delivery_pricing_unavailable' } }; }
+  try { identity = await getIdentity(db, rid); } catch (_) { return { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 }; }
   const q = P.quoteDelivery({ pricing: lp.pricing, hub: identity && { lat: identity.hub_lat, lng: identity.hub_lng }, mode: body && body.mode, pin: quotePin(body), customerUid: uid });
-  return q.refusal ? { refuse: { ok: false, error: q.refusal } } : { ctx: q.ctx, uid };
+  return q.refusal ? { refuse: { ok: false, error: q.refusal }, httpStatus: REFUSAL_STATUS[q.refusal] === 503 ? 503 : 200 } : { ctx: q.ctx, uid };   // a config outage is a 503; a request refusal stays a fail-soft 200 body
 }
 
 // The quote endpoints: { refuse } (fail-soft 200 body) when active and refused; else the ctx (or null when dark).
@@ -107,4 +130,4 @@ function quoteOutcome(dq) {
 // The additive quote response fields (absent when dark → byte-identical response).
 const quoteFields = (ctx) => (ctx ? { delivery: { delivery_cents: ctx.delivery_cents, promo_discount_cents: ctx.promo_discount_cents, policy_version: ctx.policy_version, mode: ctx.mode } } : {});
 
-module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, orderPin, quotePin, withDelivery, totalLempiras, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf };
+module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf };

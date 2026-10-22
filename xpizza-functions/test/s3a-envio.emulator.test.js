@@ -160,9 +160,9 @@ const DELIVERY_KEYS = ['delivery_cents', 'promo_discount_cents', 'delivery_snaps
     assert.deepStrictEqual([same.status, same.rec.quote && same.rec.quote.charged_net_cents], [200, food + 3000], `${rid}: the quoted order is charged the signed net (${same.text.slice(0, 160)})`);
     const q2 = await quote(rid, { mode: 'delivery', pin: { ...north(1), confirmed: true } });
     const moved = await cash(rid, { km: 4, extra: { quote_token: q2.json.quote_token, expected_net_cents: q2.json.net_total_cents } });
-    assert.deepStrictEqual([moved.status, moved.json && moved.json.error, moved.rec], [409, 'price_increased', null], `🔴 ${rid}: an order farther than quoted is refused (re-quote) (${moved.text.slice(0, 160)})`);
+    assert.deepStrictEqual([moved.status, moved.json && moved.json.error, moved.rec], [409, 'quote_invalid', null], `🔴 ${rid}: an order at another pin than quoted is refused by the PLACE binding (re-quote) (${moved.text.slice(0, 160)})`);
   }
-  ok('quote: the signed net includes envío (+ delivery facts); the quoted order is charged it; an order whose pin moved to a dearer band → 409 price_increased');
+  ok('quote: the signed net includes envío (+ delivery facts); the quoted order is charged it; an order whose pin moved → 409 quote_invalid (the place binding, codex P2-3)');
 
   // ── 5. the promo: account-only, envío-only ──
   await setPricing({ x_pizza: { active: true, free_delivery: true }, la_musa: { active: true, free_delivery: false } });
@@ -178,20 +178,63 @@ const DELIVERY_KEYS = ['delivery_cents', 'promo_discount_cents', 'delivery_snaps
     assert.deepStrictEqual([qm.json.net_total_cents, qm.json.delivery.promo_discount_cents], [food, 5000], 'the member quote shows envío free');
     // ruling C: a promo quote charged as a GUEST (auth lost) costs more → refused, re-quote
     const asGuest = await card('x_pizza', { km: 4, extra: { quote_token: qm.json.quote_token, expected_net_cents: qm.json.net_total_cents } });
-    assert.deepStrictEqual([asGuest.status, asGuest.json && asGuest.json.error, asGuest.charged.length], [409, 'price_increased', 0], `a promo quote charged without the account → re-quote (${asGuest.text.slice(0, 160)})`);
+    assert.deepStrictEqual([asGuest.status, asGuest.json && asGuest.json.error, asGuest.charged.length], [409, 'quote_invalid', 0], `a promo quote charged without the account → re-quote (the customer binding, codex P2-3) (${asGuest.text.slice(0, 160)})`);
   }
-  ok('promo: free_delivery ON → an authenticated customer pays no envío (recorded as promo), a guest pays, per restaurant; a member quote charged as a guest → 409 price_increased (re-quote)');
+  ok('promo: free_delivery ON → an authenticated customer pays no envío (recorded as promo), a guest pays, per restaurant; a member quote charged as a guest → 409 quote_invalid (re-quote; the customer binding)');
 
-  // ── 6. §3.3: a live checkout issued while DARK is resumed after activation, not refused ──
+  // ── 6. §3.3 (codex P1-2): a live checkout issued while DARK — with a CONFIRMED pin, so activation WOULD price envío — is
+  //       reused after activation at its STORED (food-only) amount: no conflict, no refusal, no second attempt ──
   await setPricing(undefined);
-  const live = body('x_pizza', 'online', { confirmed: false });
+  const live = body('x_pizza', 'online', { km: 4 });
   const made = await card('x_pizza', { body: live });
   assert.ok(made.status === 200 && made.charged.length === 1, `premise: a dark checkout exists (${made.text.slice(0, 160)})`);
   await setPricing({ x_pizza: { active: true, free_delivery: false } });
   const resumed = await card('x_pizza', { body: live });
   assert.ok(resumed.status === 200 && resumed.json && resumed.json.error !== 'pin_required', `🔴 the live checkout resumes after activation (${resumed.status} ${resumed.text.slice(0, 200)})`);
   assert.strictEqual(resumed.attempts, 1, 'no second attempt');
-  ok('§3.3: a live PixelPay checkout issued while dark is resumed after activation (no pin refusal, no second attempt)');
+  assert.deepStrictEqual([resumed.charged.length, (await rtdb.ref(`orders/${live.order_id}/total_cents`).get()).val()], [0, DARK.x_pizza.total_cents], 'no new checkout minted; the order keeps its STORED food-only total');
+  ok('§3.3 / P1-2: a confirmed-pin checkout issued while dark is REUSED after activation at its stored amount (no conflict, no refusal, no second attempt)');
+
+  // ── P1-1: a refused delivery leaves NO pending order; a stored delivery retried as pickup → order_context_changed ──
+  {
+    const far = await card('x_pizza', { km: 7.5 });
+    assert.deepStrictEqual([far.status, far.json && far.json.error, (await rtdb.ref(`orders/${far.b.order_id}`).get()).exists(), far.attempts], [409, 'outside_delivery_bands', false, 0], `🔴 a refused delivery writes no pending order (${far.text.slice(0, 160)})`);
+    const made4 = await card('x_pizza', { km: 4 });
+    assert.ok(made4.status === 200 && made4.charged.length === 1, `premise: a live delivery checkout (${made4.text.slice(0, 160)})`);
+    const aid = (await rtdb.ref(`orders/${made4.b.order_id}/active_attempt_id`).get()).val();
+    await rtdb.ref(`payment_attempts/${aid}/hosted_expires_at`).set(Date.now() - 1000);          // expired → the next call would rotate
+    const asPickup = await card('x_pizza', { body: { ...made4.b, order_type: 'pickup', lat: undefined, lng: undefined, pin_confirmed: undefined } });
+    assert.deepStrictEqual([asPickup.status, asPickup.json && asPickup.json.error, asPickup.charged.length], [409, 'order_context_changed', 0], `🔴 a stored delivery retried as pickup is refused (${asPickup.text.slice(0, 160)})`);
+    assert.strictEqual((await rtdb.ref(`orders/${made4.b.order_id}/order_type`).get()).val(), 'delivery', 'the stored order is untouched');
+    const moved = await card('x_pizza', { body: { ...made4.b, ...north(1) } });
+    assert.deepStrictEqual([moved.status, moved.json && moved.json.error], [409, 'order_context_changed'], 'another pin on the same order → refused');
+  }
+  ok('P1-1: a refused delivery leaves no pending order; a stored delivery retried as pickup (or at another pin) → 409 order_context_changed, never charged food-only');
+
+  // ── P2-3: a pickup quote never authorises a delivery of equal total (promo makes envío free) ──
+  await setPricing({ x_pizza: { active: true, free_delivery: true } });
+  {
+    const qp = await quote('x_pizza', { mode: 'pickup' });
+    const k = await card('x_pizza', { km: 1, extra: { quote_token: qp.json.quote_token, expected_net_cents: qp.json.net_total_cents } }, { 'x-firebase-id-token': 'u_bind' });
+    assert.deepStrictEqual([k.status, k.json && k.json.error, k.charged.length], [409, 'quote_invalid', 0], `🔴 a pickup quote → a member delivery of equal total is refused (re-quote) (${k.text.slice(0, 160)})`);
+    const qd = await quote('x_pizza', { mode: 'delivery', pin: { ...north(1), confirmed: true } }, { 'x-firebase-id-token': 'u_bind' });
+    const k2 = await card('x_pizza', { km: 1, extra: { quote_token: qd.json.quote_token, expected_net_cents: qd.json.net_total_cents } }, { 'x-firebase-id-token': 'u_bind' });
+    assert.ok(k2.status === 200 && k2.charged.length === 1 && k2.charged[0] * 100 === DARK.x_pizza.total_cents, `the quoted delivery (envío free) is charged (${k2.text.slice(0, 160)})`);
+  }
+  ok('P2-3: the signed envío context binds — a pickup quote refused for a member delivery of equal total; the quoted context charged');
+
+  // ── P2-4: member history carries the ORDER total (food + net envío); dark is today's value ──
+  {
+    await setPricing({ x_pizza: { active: true, free_delivery: false } });
+    const m = await cash('x_pizza', { km: 4 }, { 'x-firebase-id-token': 'u_hist' });
+    const h = (await rtdb.ref(`user_orders/u_hist/${m.b.order_id}/total`).get()).val();
+    assert.deepStrictEqual([h, m.rec.total], [m.rec.total, (DARK.x_pizza.total_cents + 5000) / 100], 'active: history total == the order total (food + envío)');
+    await setPricing(undefined);
+    const d = await cash('x_pizza', { km: 4 }, { 'x-firebase-id-token': 'u_hist' });
+    assert.deepStrictEqual([(await rtdb.ref(`user_orders/u_hist/${d.b.order_id}/total`).get()).val(), d.rec.total], [DARK.x_pizza.total_cents / 100, DARK.x_pizza.total_cents / 100], 'dark: history total == food, exactly as before');
+  }
+  ok('P2-4: member history total = the order total when active (food + envío); dark it is today\'s food total');
+  await setPricing({ x_pizza: { active: true, free_delivery: false } });
 
   // ── 7. quoteRedemption refuses an unconfirmed pin when active (before any reward work) ──
   const qr = await post(app.quoteRedemption, { restaurant_id: 'x_pizza', items: [LINE.x_pizza], mode: 'delivery', pin: { ...north(1) } }, { 'x-firebase-id-token': 'u_red' });

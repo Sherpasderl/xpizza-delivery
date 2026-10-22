@@ -27,7 +27,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "quote-issue.js",
-  "now": "      redemption_ref: redemptionRef || null,\n      // S3a: the envío facts this net includes (mode, policy_version, delivery/promo) — absent when the restaurant is\n      // not activated for envío, so every pre-S3 token payload is byte-identical.\n      ...(deliveryContext ? { delivery: { mode: deliveryContext.mode, policy_version: deliveryContext.policy_version, delivery_cents: deliveryContext.delivery_cents, promo_discount_cents: deliveryContext.promo_discount_cents } } : {}),\n",
+  "now": "      redemption_ref: redemptionRef || null,\n      // S3a: the envío facts this net includes (mode, policy_version, delivery/promo, the priced PLACE and the promo customer —\n      // BINDINGS the gate enforces, codex S3a P2-3) — absent when the restaurant is\n      // not activated for envío, so every pre-S3 token payload is byte-identical.\n      ...(deliveryContext ? { delivery: { mode: deliveryContext.mode, policy_version: deliveryContext.policy_version, delivery_cents: deliveryContext.delivery_cents, promo_discount_cents: deliveryContext.promo_discount_cents, place: deliveryContext.place || null, customer: deliveryContext.customer || null } } : {}),\n",
   "was": "      redemption_ref: redemptionRef || null,\n"
  },
  {
@@ -44,6 +44,16 @@ const HUNKS = Object.freeze([
   "file": "rewards-redeem-intake.js",
   "now": "    ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}),\n    ...(deliveryContext ? { delivery: { delivery_cents: deliveryContext.delivery_cents, promo_discount_cents: deliveryContext.promo_discount_cents, policy_version: deliveryContext.policy_version, mode: deliveryContext.mode } } : {}) };\n",
   "was": "    ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}) };\n"
+ },
+ {
+  "file": "token-gate.js",
+  "now": "const { contextOf } = require('./catalog/pricing-tables');\nconst { deliveryBindingMismatch } = require('./delivery/delivery-pricing');   // S3a\n",
+  "was": "const { contextOf } = require('./catalog/pricing-tables');\n"
+ },
+ {
+  "file": "token-gate.js",
+  "now": "    return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'rid_mismatch', quoteId: payload.quote_id || null, degraded: false };\n  }\n  // S3a (codex P2-3): the envío context the quote SIGNED (mode, priced place, promo customer) must be the one being charged —\n  // a pickup token must never authorise a delivery whose total happens to be no higher. Not activated → nothing to bind.\n  { const why = deliveryBindingMismatch(payload.delivery, deliveryContext);\n    if (why) return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: why, quoteId: payload.quote_id || null, degraded: false }; }\n\n",
+  "was": "    return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'rid_mismatch', quoteId: payload.quote_id || null, degraded: false };\n  }\n\n"
  },
  {
   "file": "token-gate.js",
