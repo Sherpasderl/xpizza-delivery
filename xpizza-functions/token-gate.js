@@ -214,8 +214,9 @@ function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, rewar
  * strand a customer's loyalty points; an order that IS created must keep the hold, because completion
  * is what consumes it. Those are opposite mistakes and both are tested.
  */
-async function applyConfirmedNetGate({ gateInput, recordedTotalCents, releaseHold, orderId, log = console }) {
-  const result = gateConfirmedNet(gateInput);
+async function applyConfirmedNetGate({ gateInput, recordedTotalCents, releaseHold, orderId, log = console, deliveryContext = null }) {
+  // S3a: the SERVER's envío for this order (delivery/delivery-wire.js gateExtra) joins the recompute; absent → as before S3.
+  const result = gateConfirmedNet(deliveryContext ? { ...gateInput, deliveryContext } : gateInput);
   const refuse = async (status, body, event, detail) => {
     await releaseHold();
     try { log.warn(event, JSON.stringify({ orderId, ...detail })); } catch (_) {}

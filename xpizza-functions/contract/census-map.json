@@ -251,6 +251,7 @@
   "access": "owner ACCESS-CENSUS / kitchen-roster CLI (PLATFORM F2 Q1) — read-only audit of order ownership, KDS parity, attribution counts and history size; no customer or staff surface, never a writer of /orders",
   "prepstats": "S5 daily prep summary (prepStatsDaily) — reads order_timelines + exactly two order leaves per candidate (restaurant_id, customer_phone) for ATTRIBUTION and the ready-time EXCLUSIONS only; publishes per restaurant × bucket aggregates {median_min, p80_min, n} — never an order fact, an amount or a phone",
   "merchant": "merchant HANDHELD writer (H1a, PLAN-H1a r2 + amendment A-R1) — device-scoped order transitions on orders/{oid} (status CAS + prep + handheld_answered + handheld_ops receipts + reject_intent in ONE transaction), the reject executor (the EXISTING cancelOrderCore, injected) and its op-matched reject_outcome, the reject repair pass (reads persisted reject/cancel/payment state only to decide a dispatch notice — never displays or moves money), busy / pause / agotado; its reads only GATE its own writes — no customer display; persisted outputs covered as writer evidence (census writtenFields / opaqueWriteResolutions). PROPOSED by the handheld session for 2e review (D6).",
+  "delivery_pricing": "ENVÍO (Customer App S3a): derives the delivery fee + free-delivery promo for ONE request from Sherpa config (platform_config/delivery_pricing), the restaurant hub (identity hub_lat/hub_lng) and the request pin (lat/lng + pin_confirmed); writes NOTHING itself — its result reaches the order only through the existing atomic order write (delivery_cents / promo_discount_cents / delivery_snapshot) and the confirmed-net gate; a refusal is an HTTP status on a refusal object, never an order status; covered by delivery/delivery-pricing.test.js + test/s3a-envio.emulator.test.js",
   "driver_pay": "driver payable LEDGER writer (Customer App S8): reads a delivered order's protected attribution (delivered_by_driver_uid / delivered_at / order_type) through the bounded delivered_at range query and writes ONLY driver_ledger_weeks/{week} (one create-if-absent node per closed week, then .paid) — never an order field, never cash-to-remit; covered by test/driver-ledger.emulator.test.js"
  },
  "serverFunctions": {
@@ -642,6 +643,12 @@
   "signup-endpoints.js#getSignupConfig": "infra",
   "signup-endpoints.js#setPromos": "infra",
   "signup-endpoints.js#completeProfile": "infra",
+  "delivery/delivery-pricing.js#quoteDelivery": "delivery_pricing",
+  "delivery/delivery-wire.js#deliveryFor": "delivery_pricing",
+  "delivery/delivery-wire.js#orderPin": "delivery_pricing",
+  "delivery/delivery-wire.js#quotePin": "delivery_pricing",
+  "delivery/delivery-wire.js#withDelivery": "delivery_pricing",
+  "delivery/delivery-wire.js#quoteDeliveryFor": "delivery_pricing",
   "driver-ledger/ledger-core.js#computeWeek": "driver_pay",
   "access/membership-admin-core.js#myRestaurants": "access",
   "access/membership-admin-core.js#census": "access",
@@ -959,6 +966,9 @@
    "class": "pointer",
    "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
   },
+  "delivery_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
+  "promo_discount_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
+  "delivery_snapshot": { "class": "pointer", "reason": "S3a envío provenance (mode, policy_version, km, band, promo id) — the pricing inputs the fee was computed from, kept for audit; never displayed as an order fact" },
   "desc_rebaja_cents": {
    "class": "fact",
    "facts": [

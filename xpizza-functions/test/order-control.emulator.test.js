@@ -25,6 +25,7 @@
 //     today's block; the manual release is refused without clearing a block; a stale releasing claim is held.
 require('./_emulator-required')('database', 'firestore');
 
+const DR = require('./_delivery-read');   // S3a: the declared envío config read
 const assert = require('assert');
 const http = require('http');
 const path = require('path');
@@ -480,8 +481,8 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
     const tx = r.ops.filter((o) => o.db === 'rtdb' && o.op === 'transaction' && o.path === `user_rewards/<uid>/${rid}`);
     assert.strictEqual(tx.length, 2, `🔴 ${key}: exactly the reserve + release transactions on the reward balance (got ${tx.length})`);
   };
-  const stripControl = (ops) => ops.filter((o) => !isControlRead(o) && !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o) && !isD12Read(o));
-  const goldOps = (ops) => ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o));
+  const stripControl = (ops) => ops.filter((o) => !isControlRead(o) && !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o) && !DR.isDeliveryPricingRead(o) && !isD12Read(o));
+  const goldOps = (ops) => ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o) && !DR.isDeliveryPricingRead(o));
   const tally = { same: 0, refused: 0 };
   for (const [key, r] of Object.entries(results)) {
     const [name, state] = key.split(' | ');
@@ -492,6 +493,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         return;
       }
       assertExtrasDeclared(key, r.ops);
+      DR.declare(r.ops, key);
       const g = golden.cases[key];
       assert.ok(g, `${key}: present in the frozen baseline`);
       const refused = c.expect !== 'same' && !ADMIT.has(state);
@@ -574,7 +576,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
   // A GATE / CTX re-read is never set aside: it stays in the comparison and shows.
   let companion = { on: 0, ont: 0, probed: 0, bound: 0, mut: 0 };
   if (!CAPTURE) {
-    const NO = (ops) => RD.normOps(ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o)));
+    const NO = (ops) => RD.normOps(ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o) && !DR.isDeliveryPricingRead(o)));
     const REUSE_REF = 'card REUSE of a live checkout holding a reward (the hold stays)';
     const BOUND = new Set([REUSE_REF, 'RACE with a REUSED reward hold (kept)']);
     const compare = (pass, key, on, c, steady) => {
@@ -582,7 +584,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
       const off = results[key];
       const L = `${key} (render ON${steady ? '' : ', issued with render OFF'})`;
       assert.ok(off && on, `${L}: ran on both sides`);
-      const offOps = NO(FILL.strip(off.ops, rid, off, `${L} [render-OFF side]`, { ignore: isTestOp, cold: COLD_OF.get(off) })); const onOps = NO(FILL.strip(on.ops, rid, on, L, { ignore: isTestOp, cold: COLD_OF.get(on) }));
+      const offOps = NO(FILL.strip(DR.without(off.ops), rid, off, `${L} [render-OFF side]`, { ignore: isTestOp, cold: COLD_OF.get(off) })); const onOps = NO(FILL.strip(DR.without(on.ops), rid, on, L, { ignore: isTestOp, cold: COLD_OF.get(on) }));   // S3a: the declared envío read is set aside first (it leads the request)
       const reward = c.path === 'card' && isRewardCase(c);
       if (steady && BOUND.has(c.name)) {
         const ref = results[`${REUSE_REF} | ${state} | ${rid}`];

@@ -39,14 +39,16 @@
 const { computeServerTotal } = require('./menu-pricing');
 const { orderBreakdownCents } = require('./order-money');
 const { applyRedemptionToPricing } = require('./rewards-redeem-pricing');
+const { isServerDeliveryCtx, netDeliveryCents } = require('./delivery/delivery-pricing');   // S3a envío
 
-/* The delivery slot. Zero today — delivery is free — but it is computed HERE, from server-side
-   context, so the 2-tier distance pricing lands with no rework and no call-site change. The client
-   never supplies a fee: `deliveryContext` describes the delivery (what it will eventually carry is
-   distance/zone), and a caller that passes an amount would be ignored, which is the point. */
+/* The delivery slot, computed HERE from server-side context. The client never supplies a fee: S3a's
+   `deliveryContext` is the SERVER's envío (delivery/delivery-pricing.js quoteDelivery, from Sherpa config + hub +
+   pin), recognised by identity (isServerDeliveryCtx — a JSON object from a request can never be one), and a caller
+   that passes anything else, amount or not, is ignored, which is the point. The slot is the NET envío the customer
+   pays: max(0, delivery − free-delivery promo). No context (a restaurant not activated for envío) → 0, as before S3. */
 function deliveryCentsFor(deliveryContext /* , rid */) {
   if (!deliveryContext) return 0;
-  return 0;
+  return isServerDeliveryCtx(deliveryContext) ? netDeliveryCents(deliveryContext) : 0;
 }
 
 function computeServerNet({ items, reward = null, deliveryContext = null, rid, tables = null }) {

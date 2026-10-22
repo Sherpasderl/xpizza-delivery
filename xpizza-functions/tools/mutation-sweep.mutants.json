@@ -3267,8 +3267,8 @@
     "slice": "c1",
     "label": "the delivery fee is taken from the CLIENT's context instead of computed",
     "file": "compute-server-net.js",
-    "from": "  if (!deliveryContext) return 0;\n  return 0;",
-    "to": "  if (!deliveryContext) return 0;\n  return Number(deliveryContext.fee) || 0;",
+    "from": "  if (!deliveryContext) return 0;\n  return isServerDeliveryCtx(deliveryContext) ? netDeliveryCents(deliveryContext) : 0;",
+    "to": "  if (!deliveryContext) return 0;\n  return Number(deliveryContext.delivery_cents) || Number(deliveryContext.fee) || 0;",
     "command": [
       "node",
       "compute-server-net.test.js"

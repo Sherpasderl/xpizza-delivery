@@ -83,7 +83,7 @@ const ppCrypto = require('./pixelpay');
 const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const N2 = require('./n2-paid-strand-decision');   // N2: sweep re-drives a stranded PAID hosted order (paid attempt + still-pending order)
 const { buildMaterializeUpdates } = require('./materialize');
-const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config');
+const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config'); const DW = require('./delivery/delivery-wire');   // S3a envío (delivery/; tools/s3a-inverse.js)
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
 const { claimPrefillCore } = require('./claim-prefill');   // Track A — profile-claim soft-fill (pure core; wrapper below)
 const { claimOrderCore } = require('./claim-order');       // claimOrder — retro-credit a guest order's earn (pure core; wrapper below)
@@ -787,7 +787,7 @@ createOrderApp.all('*', async (req, res) => {
   const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`createOrder: restaurant_id=${restaurantId}`);
-  const db = getDatabase();                                            // 1b-1: hoisted above validation (the RTDB alarm sink)
+  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId);   // 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads
   const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed
   // 2c FAIL-CLOSED GUARD — the FIRST statement after the resolver, deliberately. Everything below can
   // reach a pricing seam: validateOrderPayload → computeServerTotal, which silently falls back to the
@@ -1133,10 +1133,10 @@ createOrderApp.all('*', async (req, res) => {
 
   const trackingToken = generateTrackingToken();
   // Redeemed → the discounted breakdown + split factura lines (Task 4); else today's pricing, byte-identical.
-  const priceBreakdown = redemptionPriced
+  const dq = await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP }); const priceBreakdown = DW.withDelivery(dq, redemptionPriced
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
-    : orderBreakdownCents(total, restaurantId);  // platform → ISV 15% incl.; non-platform → no split
+    : orderBreakdownCents(total, restaurantId));  // platform → ISV 15% incl.; non-platform → no split
 
   // Reward-card display fields (earn_preview + summary_lines) — stamped for ALL orders on the order record +
   // order_tracking. summary_lines uses the DISCOUNTED subtotal-driven footing so it matches the charged total.
@@ -1167,7 +1167,7 @@ createOrderApp.all('*', async (req, res) => {
      A refusal after the redemption was reserved MUST release the hold, exactly as free_order_stale
      does below: an order that never exists must not strand a customer's reward. */
   {
-    const applied = await applyConfirmedNetGate({
+    const applied = (await DW.refusalGate(dq, async () => { if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {}); }, orderId)) || await applyConfirmedNetGate({
       // The request→gate mapping lives in ONE place (token-gate.js) and is driven end-to-end by
       // composition.test.mjs — a renamed field here used to survive the whole suite.
       gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,
@@ -1176,7 +1176,7 @@ createOrderApp.all('*', async (req, res) => {
       releaseHold: async () => {
         if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});
       },
-      orderId,
+      orderId, ...DW.gateExtra(dq),
     });
     if (applied.refuse) return res.status(applied.refuse.status).json(applied.refuse.body);
     quoteProvenance = applied.provenance;
@@ -1248,7 +1248,7 @@ createOrderApp.all('*', async (req, res) => {
   // (nothing between the reserve and this write may fail — that's the orphaned-hold fix).
   if (isScheduled) {
     const heldUpdates = buildScheduledOrderRecord({
-      orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
+      orderId, orderType, now, trackingToken, total: DW.totalLempiras(dq, effectiveTotal), lat, lng, fields, hubSnap,
       restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
       scheduledFor: scheduledForRaw, releaseAt, paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare
     });
@@ -1284,7 +1284,7 @@ createOrderApp.all('*', async (req, res) => {
   // (create-order-build.js) so the cash path is golden-tested for byte-identical output. The
   // field names are load-bearing (driver app, KDS, tracking site, factura trigger).
   Object.assign(updates, buildCreateOrderUpdates({
-    orderId, orderType, now, trackingToken, total: effectiveTotal, lat, lng, fields, hubSnap,
+    orderId, orderType, now, trackingToken, total: DW.totalLempiras(dq, effectiveTotal), lat, lng, fields, hubSnap,
     restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp,
     paymentFingerprint: storeFp,   // F1: computed at :500 (or recomputed from the resolved reserve for a blipped redemption) → store==compare (idempotent retry recomputes identical)
   }));
@@ -1497,7 +1497,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`chargeOnlineOrder: restaurant_id=${restaurantId}`);
-  const db = getDatabase();                                            // 1b-1: hoisted above validation (the RTDB alarm sink)
+  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId);   // 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads
   const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed
   // 2c FAIL-CLOSED GUARD — first statement after the resolver, ahead of pending-order assembly, the
   // availability read, the rate-limit write, the reward reserve, acquireHostedAttempt and
@@ -1623,10 +1623,10 @@ chargeOnlineApp.all('*', async (req, res) => {
     fields.items_text = prep.itemsText;   // free-item display line → flows into BOTH fingerprints + the pending order
   }
   // Effective (discounted) breakdown used by both fingerprint sites, the pending record, and the charge amount.
-  const effBreakdown = redemptionPriced
+  const dq = await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP }); const effBreakdown = DW.withDelivery(dq, redemptionPriced
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
-    : orderBreakdownCents(total, restaurantId);
+    : orderBreakdownCents(total, restaurantId));
 
   // Reward-card display fields — stamped on the pending order (materialize copies them onto order_tracking at confirm/release).
   const onlineRewardStamp = buildRewardStamp(body.items, restaurantId, effBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName, redemptionFreeItems, pricingTables);
@@ -1906,9 +1906,9 @@ chargeOnlineApp.all('*', async (req, res) => {
     customer_name: fields.customer_name,
     customer_phone: fields.customer_phone,
     items_text: fields.items_text,            // includes the La Musa free-item display line when redeemed
-    total: effTotal,                          // discounted total (== total when no redeem)
+    total: DW.totalLempiras(dq, effTotal),    // discounted total (== total when no redeem); + net envío when active (S3a)
     total_cents, subtotal_cents, tax_cents,   // discounted breakdown when redeemed; else x_pizza ISV 15% incl. / la_musa no split
-    ...(effBreakdown.desc_rebaja_cents ? { desc_rebaja_cents: effBreakdown.desc_rebaja_cents } : {}),   // A-F: factura comp rebaja (x_pizza only)
+    ...(effBreakdown.desc_rebaja_cents ? { desc_rebaja_cents: effBreakdown.desc_rebaja_cents } : {}), ...DW.orderFields(effBreakdown),   // A-F: factura comp rebaja (x_pizza only)
     ...onlineRewardStamp,   // reward-card earn_preview + summary_lines (materialize copies to order_tracking at confirm/release)
     ...(redemptionCanonical ? { redemption: redemptionCanonical } : {}),   // bind the reward to the order (reserved until confirm consumes/holds)
     // 1D add-product B (codex PB-1 r1 P1-3): the CHARGE-INPUT fingerprint this reward order is bound to (render capability only)
@@ -2165,12 +2165,12 @@ chargeOnlineApp.all('*', async (req, res) => {
     retireAttempt: (aid, reason) => retireUnissuedAttempt(db, aid, reason, Date.now()),
     // 🔴 ONE number. The module passes back the very total it will charge, so the gate cannot be
     // checking a different figure from the one that travels to PixelPay.
-    runGate: (recordedTotalCents) => applyConfirmedNetGate({
+    runGate: async (recordedTotalCents) => (await DW.refusalGate(dq, releaseHoldIfOwned, orderId)) || applyConfirmedNetGate({
       gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,
         tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: tokenEnforce, nowMs: Date.now() }),
       recordedTotalCents,                        // === totalCents === the amount handed to createHostedCharge
       releaseHold: releaseHoldIfOwned,
-      orderId,
+      orderId, ...DW.gateExtra(dq),
     }),
     // Stamped on the pending order, which already exists by now — the same two facts the cash path
     // records. Best-effort: an audit write must not cost the customer a checkout they are entitled to.
@@ -7248,7 +7248,7 @@ exports.quoteOrder = onRequest(
       // rate-limited like the other public endpoints.
       const db = getDatabase();
       const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
-      const { allowed, retryAfterSec } = await checkRateLimit(db, 'quote_ip', clientIp, RATE_LIMIT_BUCKETS.quote_ip);
+      const dpP = DW.loadPricing(db, restaurantId); const { allowed, retryAfterSec } = await checkRateLimit(db, 'quote_ip', clientIp, RATE_LIMIT_BUCKETS.quote_ip);   // S3a: envío config read in parallel
       if (!allowed) {
         res.set('Retry-After', String(retryAfterSec));
         return res.status(429).json({ ok: false, error: 'rate_limited' });
@@ -7282,12 +7282,12 @@ exports.quoteOrder = onRequest(
          unchanged (byte-identical response for every existing client); the token and net_total_cents
          are additive. Issued through the shared issuer so this endpoint and the redemption quote
          cannot develop divergent issuance math — the thing 1C exists to prevent, one layer up. */
-      const issued = issueQuote({ items: body.items, reward: null, rid: restaurantId, tables,
-        customerId: null, nowMs: Date.now() });
+      const dq = await DW.quoteDeliveryFor(req, db, restaurantId, body, { getIdentity: getRestaurantIdentity, getAuth, attributionUid, pricingP: dpP }); if (dq.refuse) return res.status(200).json(dq.refuse); const issued = issueQuote({ items: body.items, reward: null, rid: restaurantId, tables, deliveryContext: dq.ctx,
+        customerId: dq.uid, nowMs: Date.now() });
       return res.status(200).json({
         ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents,
         ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}),
-        ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}),
+        ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}), ...DW.quoteFields(dq.ctx),
       });
     } catch (e) {
       console.error('quoteOrder', e && e.message);
@@ -7309,7 +7309,7 @@ exports.quoteRedemption = onRequest(
       const body = req.body || {};
       const { restaurantId, error: ridError } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
       if (ridError) return res.status(400).json({ ok: false, error: 'bad_request', detail: ridError });
-      const db = getDatabase();
+      const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId);   // S3a: envío config read in parallel with the auth reads
       // Verified non-guest uid — SAME as intake (customer:true + tombstone check); a client-supplied uid is never used.
       let customerUid = null;
       const idTok = req.get('x-firebase-id-token');
@@ -7324,7 +7324,7 @@ exports.quoteRedemption = onRequest(
       }
       // 1b-1b: quoteRedemption is NEW to the resolver — the quote must price on the same source as the
       // order it previews, or a customer sees one number and is charged from another.
-      const quoteTables = await resolvePricingTables(restaurantId);
+      const dq = await DW.quoteDeliveryFor(req, db, restaurantId, body, { getIdentity: getRestaurantIdentity, knownUid: customerUid, pricingP: dpP }); if (dq.refuse) return res.status(200).json(dq.refuse);  const quoteTables = await resolvePricingTables(restaurantId);
       // 2c: fail SOFT, and this one MUST be guarded rather than left to throw — quoteRedemptionCore
       // calls requireTables, which throws on a null and would surface as a 500 instead of a clean
       // ok:false the client can degrade from.
@@ -7344,7 +7344,7 @@ exports.quoteRedemption = onRequest(
         if (EI.refuses(xr)) return EI.sendRefusal(res, xr, { ok: false });
       }
       /* extras:end quote-redemption */
-      const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid, tables: quoteTables, eligible: quoteEligible });
+      const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid, tables: quoteTables, eligible: quoteEligible, deliveryContext: dq.ctx });
       if (!q.ok) return res.status(q.status).json({ ok: false, ...q.body });   // same typed errors as intake (+ bad_cart)
       return res.status(200).json(q);   // { ok:true, discount_cents, total_cents, subtotal_cents, tax_cents, free_item:{name} }
     } catch (e) {
