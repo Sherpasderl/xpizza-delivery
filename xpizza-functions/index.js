@@ -7416,7 +7416,7 @@ exports.pruneInactiveAccounts = onSchedule(
 // instances, so these plain values are ignored at deploy). Let the RTDB emulator suites exercise the
 // per-token claimPrefill throttle (checkRateLimit + the claim_token bucket) directly.
 module.exports.checkRateLimit = checkRateLimit;
-module.exports.RATE_LIMIT_BUCKETS = RATE_LIMIT_BUCKETS;
+module.exports.RATE_LIMIT_BUCKETS = RATE_LIMIT_BUCKETS; exports.rateOrder = require('./ratings/rate-order').rateOrder;   // S5 ratings writer (ratings/; tools/s5r-inverse.js)
 // paid-after-close refund-notify composition test drives the REAL sender directly (finalize-path call) alongside
 // app.refundReconciler.run() (the sweep) against the RTDB emulator + a mocked provider.
 module.exports.sendPaidAfterCloseRefund = sendPaidAfterCloseRefund;   /* membership:begin team — PLAN-portal-membership (codex build r1 P1-1): the team endpoints, DARK behind platform_config/membership_writes_enabled */ const MEMBERSHIP_TEAM = require('./access/team-http'); exports.memberInvite = MEMBERSHIP_TEAM.memberInvite; exports.memberAcceptInvite = MEMBERSHIP_TEAM.memberAcceptInvite; exports.memberCancelInvite = MEMBERSHIP_TEAM.memberCancelInvite; exports.memberReissueInvite = MEMBERSHIP_TEAM.memberReissueInvite; exports.memberRevoke = MEMBERSHIP_TEAM.memberRevoke; exports.memberSetMenuPermission = MEMBERSHIP_TEAM.memberSetMenuPermission; exports.memberList = MEMBERSHIP_TEAM.memberList; exports.memberUpdate = MEMBERSHIP_TEAM.memberUpdate; exports.catalogRequestPublish = MEMBERSHIP_TEAM.catalogRequestPublish; exports.memberPasswordSet = MEMBERSHIP_TEAM.memberPasswordSet; exports.memberInvitePreview = MEMBERSHIP_TEAM.memberInvitePreview;   /* membership:end team */

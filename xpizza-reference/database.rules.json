@@ -125,6 +125,8 @@
       }
     },
 
+    "order_ratings": { ".read": false, ".write": false },
+    "public_stats": { ".read": true, ".write": false },
     "order_tracking": {
       "$token": {
         ".read": true,

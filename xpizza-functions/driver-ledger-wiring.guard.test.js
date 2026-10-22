@@ -15,7 +15,7 @@ const { HUNKS, unapplyDriverLedgerIndex } = require('./tools/driver-ledger-inver
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const BASE = 'ad7a56af';   // the S0-prod tip this slice branches from (index.js there == the train base's)
-const live = require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))));   // S3a (newer) is reversed first
+const live = require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))));   // S3a (newer) is reversed first
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 assert.strictEqual(HUNKS.length, 1, 'one index.js hunk (the same-line re-export)');

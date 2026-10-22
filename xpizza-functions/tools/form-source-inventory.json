@@ -1666,6 +1666,8 @@
   "platform-manifest.js",
   "prep-stats.js",
   "quote-issue.js",
+  "ratings/rate-order.js",
+  "ratings/rating-core.js",
   "resolve-manual.js",
   "retention-sweep.js",
   "rewards-redeem-intake.js",
@@ -1832,6 +1834,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
@@ -1857,6 +1860,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -1885,6 +1889,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -1900,7 +1905,8 @@
       "tools/driver-ledger-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
-      "tools/s3c-inverse.js"
+      "tools/s3c-inverse.js",
+      "tools/s5r-inverse.js"
      ]
     },
     {
@@ -1926,6 +1932,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -1952,6 +1959,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -1965,7 +1973,8 @@
       "tools/driver-ledger-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
-      "tools/s3c-inverse.js"
+      "tools/s3c-inverse.js",
+      "tools/s5r-inverse.js"
      ]
     },
     {
@@ -1986,6 +1995,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2009,6 +2019,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
@@ -2026,6 +2037,7 @@
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
@@ -2042,6 +2054,7 @@
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
@@ -2069,6 +2082,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2099,6 +2113,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2115,7 +2130,8 @@
       "tools/release-race-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
-      "tools/s3c-inverse.js"
+      "tools/s3c-inverse.js",
+      "tools/s5r-inverse.js"
      ]
     },
     {
@@ -2134,6 +2150,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
@@ -2155,6 +2172,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
@@ -2165,20 +2183,23 @@
      "inverses": [
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
-      "tools/s3c-inverse.js"
+      "tools/s3c-inverse.js",
+      "tools/s5r-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s3b-wiring.guard.test.js",
      "inverses": [
       "tools/s3b-inverse.js",
-      "tools/s3c-inverse.js"
+      "tools/s3c-inverse.js",
+      "tools/s5r-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s3c-wiring.guard.test.js",
      "inverses": [
-      "tools/s3c-inverse.js"
+      "tools/s3c-inverse.js",
+      "tools/s5r-inverse.js"
      ]
     },
     {
@@ -2194,6 +2215,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
@@ -2216,6 +2238,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2232,6 +2255,7 @@
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
@@ -2257,6 +2281,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2298,6 +2323,7 @@
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/tracker-fixes-inverse.js"
      ]
     },
@@ -2311,6 +2337,7 @@
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
      ]
@@ -2333,6 +2360,7 @@
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5-inverse.js",
+      "tools/s5r-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2375,6 +2403,7 @@
     "xpizza-functions/recon-close-fulfilled.test.js",
     "xpizza-functions/restaurant-config.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
+    "xpizza-functions/s5r-wiring.guard.test.js",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
     "xpizza-functions/serial3-differential.test.js",
@@ -2552,6 +2581,14 @@
      ]
     }
    ],
+   "lifts": []
+  },
+  "ratings/rate-order.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ratings/rating-core.js": {
+   "pins": [],
    "lifts": []
   },
   "resolve-manual.js": {
