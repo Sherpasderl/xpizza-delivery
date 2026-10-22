@@ -18,6 +18,7 @@
 const assert = require('assert');
 const S = require('../branches/branch-store');
 const { gated } = require('./_gated-db');
+const { checkBrand } = require('../branches/branch-check');
 
 const DAY = { open: true, start: '11:00', end: '22:00' };
 const H7 = { sun: DAY, mon: { open: false }, tue: DAY, wed: DAY, thu: DAY, fri: DAY, sat: DAY };
@@ -275,6 +276,104 @@ const SCENARIOS = [
       assert.ok(await read(`restaurants/${r}/draft`) != null || await read(`restaurants/${r}/identity`) != null || await read('brands/rc_nine') != null,
         `RACE-R2-4 a reservation ${r} outlives its brand and draft`);
     }
+  }],
+
+  ['r3 1a: an expired creator\'s late rollback never removes a completed branch\'s allocation', async (db) => {
+    const read = reader(db);
+    await db.ref('platform_config/service_bounds').set(BOUNDS);
+    const g = gated(db);
+    const atBrand = g.pause('transaction', 'brands/rc_ten');
+    const A = S.createBrandWithDraft(g.db, { brandId: 'rc_ten', brandName: 'Diez', input: input('rc_ten', 'Centro'), opId: 'o1', callerUid: 'own', now: NOW, callId: 'cA' });   // reserved, then stalls…
+    await atBrand.reached;
+    const b = await S.resumeBranchOp(db, { brandId: 'rc_ten', now: LATER, callId: 'cB' });   // …past its lease: B completes the creation
+    assert.strictEqual(b.ok, true, `RACE-R3-1A premise: the resumer completes the creation (${JSON.stringify(b)})`);
+    const m = await S.materializeBranch(db, { rid: b.rid, location: LOC, now: LATER + 1, callId: 'cM' });
+    await db.ref(`restaurants/${b.rid}/handhelds/h1`).set({ revoked: false, last_seen: 5 });
+    await db.ref('menus/rc_ten').set({ v: 1 });
+    const act = await S.activateBrand(db, { brandId: 'rc_ten', open: [b.rid], now: LATER + 2, readers: team });
+    assert.ok(m.ok && act.ok, `RACE-R3-1A premise: materialized and activated (${JSON.stringify([m, act])})`);
+    const before = { res: await read(`rid_reservations/${b.rid}`), names: await read('brand_branch_names/rc_ten'), map: await read('branch_op_ids/rc_ten/o1') };
+    atBrand.release();
+    const a = await A;
+    const after = { res: await read(`rid_reservations/${b.rid}`), names: await read('brand_branch_names/rc_ten'), map: await read('branch_op_ids/rc_ten/o1') };
+    assert.deepStrictEqual(after, before, 'RACE-R3-1A the expired creator\'s rollback removed the live branch\'s reservation / name / mapping');
+    assert.strictEqual(a.ok, false, 'RACE-R3-1A the expired creator does not succeed');
+    assert.deepStrictEqual((await checkBrand(db, 'rc_ten', { now: LATER + 3 })).findings, [], 'RACE-R3-1A the brand is consistent');
+  }],
+
+  ['r3 1b: an expired creator never resurrects a draft a later delete removed', async (db) => {
+    const read = reader(db);
+    const rid = 'rc_eleven_centro';
+    const g = gated(db);
+    const atRead = g.pause('once', `restaurants/${rid}/identity`, { nth: 2 });   // the read right before the draft write (the 1st is the allocation check)
+    const A = S.createBrandWithDraft(g.db, { brandId: 'rc_eleven', brandName: 'Once', input: input('rc_eleven', 'Centro'), opId: 'o1', callerUid: 'own', now: NOW, callId: 'cA' });
+    await atRead.reached;
+    const b = await S.resumeBranchOp(db, { brandId: 'rc_eleven', now: LATER, callId: 'cB' });   // B completes the creation…
+    assert.deepStrictEqual(b, { ok: true, rid }, 'RACE-R3-1B premise: the resumer completes the creation');
+    const d = await S.deleteBranchDraft(db, { rid, brandId: 'rc_eleven', now: LATER + 1, callId: 'cD' });   // …then the draft (and the never-opened brand) is deleted
+    assert.deepStrictEqual(d, { ok: true }, 'RACE-R3-1B premise: the delete completes');
+    atRead.release();
+    const a = await A;
+    assert.strictEqual(await read(`restaurants/${rid}/draft`), null, `RACE-R3-1B the expired creator resurrected the deleted draft (${JSON.stringify(a)})`);
+    assert.strictEqual(await read('brands/rc_eleven'), null, 'RACE-R3-1B no brand resurrected');
+    assert.deepStrictEqual((await checkBrand(db, 'rc_eleven', { now: LATER + 2 })).findings, [], 'RACE-R3-1B nothing left inconsistent');
+  }],
+
+  ['r3 1r: the stated residual — a creator stalled AFTER its last renewal lands one create, and `check` reports it', async (db) => {
+    const rid = 'rc_eleven_r_centro';
+    const g = gated(db);
+    const atWrite = g.pause('transaction', `restaurants/${rid}/draft`);   // past the renewal, AT the write
+    const A = S.createBrandWithDraft(g.db, { brandId: 'rc_eleven_r', brandName: 'OnceR', input: input('rc_eleven_r', 'Centro'), opId: 'o1', callerUid: 'own', now: NOW, callId: 'cA' });
+    await atWrite.reached;
+    assert.deepStrictEqual(await S.resumeBranchOp(db, { brandId: 'rc_eleven_r', now: LATER, callId: 'cB' }), { ok: true, rid }, 'RACE-R3-1R premise: the resumer completes');
+    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid, brandId: 'rc_eleven_r', now: LATER + 1, callId: 'cD' }), { ok: true }, 'RACE-R3-1R premise: the delete completes');
+    atWrite.release();
+    await A;
+    const r = await checkBrand(db, 'rc_eleven_r', { now: LATER + 2 });
+    const landed = (await (reader(db))(`restaurants/${rid}/draft`)) != null;
+    if (landed) assert.ok(r.findings.some((f) => f.code === 'draft_without_brand' && f.rid === rid), 'RACE-R3-1R the residual write is DETECTED by check');
+    else assert.deepStrictEqual(r.findings, [], 'RACE-R3-1R nothing landed and nothing is inconsistent');
+  }],
+
+  ['r3 2: deactivateBrand and an in-flight activation never interleave', async (db) => {
+    const read = reader(db);
+    await db.ref('brands/rc_twelve').set({ name: 'Doce', active: true, locations: { rc_twelve_c: 'member' }, activation: { state: 'on', since: 1 }, projection_gen: 1 });
+    const g = gated(db);
+    const atBrand = g.pause('transaction', 'brands/rc_twelve');
+    const A = S.activateBrand(g.db, { brandId: 'rc_twelve', open: [], now: NOW, readers: team, callId: 'cA' });
+    await atBrand.reached;
+    const d = await S.deactivateBrand(db, { brandId: 'rc_twelve', now: NOW + 1 });
+    atBrand.release();
+    const a = await A;
+    const st = (await read('brands/rc_twelve')).activation.state;
+    if (d.ok) assert.strictEqual(st, 'off', `RACE-R3-2 a deactivation that reported ok was undone by the in-flight activation (${JSON.stringify([d, a])})`);
+    else assert.strictEqual(d.error, 'brand_busy', 'RACE-R3-2 the deactivation waits for the brand lock');
+  }],
+
+  ['r3 2b: a stale activation never undoes a later deactivation', async (db) => {
+    const read = reader(db);
+    await db.ref('brands/rc_thirteen').set({ name: 'Trece', active: true, locations: { rc_thirteen_c: 'member' }, activation: { state: 'off', since: 1 }, projection_gen: 1 });
+    const g = gated(db);
+    const atBrand = g.pause('transaction', 'brands/rc_thirteen');
+    const A = S.activateBrand(g.db, { brandId: 'rc_thirteen', open: [], now: NOW, readers: team, callId: 'cA' });   // planned, then stalls…
+    await atBrand.reached;
+    const b = await S.resumeBranchOp(db, { brandId: 'rc_thirteen', now: LATER, callId: 'cB' });   // …B finishes the activation
+    assert.strictEqual(b.ok, true, `RACE-R3-2B premise: the resumer finishes the activation (${JSON.stringify(b)})`);
+    const d = await S.deactivateBrand(db, { brandId: 'rc_thirteen', now: LATER + 1 });
+    assert.strictEqual(d.ok, true, `RACE-R3-2B premise: a later deactivation (${JSON.stringify(d)})`);
+    atBrand.release();
+    await A;
+    assert.deepStrictEqual((await read('brands/rc_thirteen')).activation, { state: 'off', since: LATER + 1 }, 'RACE-R3-2B the stale activation switched the brand back on');
+  }],
+
+  ['r3 3: deleting a draft the brand LISTS never leaves a dangling listing', async (db) => {
+    const read = reader(db);
+    const { rid } = await S.createBrandWithDraft(db, { brandId: 'rc_fourteen', brandName: 'Catorce', input: input('rc_fourteen', 'Centro'), opId: 'o1', callerUid: 'own', now: NOW });
+    assert.strictEqual((await S.activateBrand(db, { brandId: 'rc_fourteen', open: [], now: NOW + 1, readers: team })).ok, true, 'RACE-R3-3 premise: the brand is on');
+    const d = await S.deleteBranchDraft(db, { rid, brandId: 'rc_fourteen', now: NOW + 2 });
+    assert.deepStrictEqual(await listedAreBacked(read, 'rc_fourteen'), [], `RACE-R3-3 the on brand lists a branch with neither draft nor identity (${JSON.stringify(d)})`);
+    assert.deepStrictEqual(d, { ok: false, error: 'brand_lists_draft' }, 'RACE-R3-3 a listed draft of an on brand is refused');
+    assert.deepStrictEqual((await checkBrand(db, 'rc_fourteen', { now: NOW + 3 })).findings, [], 'RACE-R3-3 the brand is consistent');
   }],
 ];
 

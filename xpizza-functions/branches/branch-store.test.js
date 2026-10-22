@@ -132,7 +132,7 @@ const noInc = (v) => (v == null ? v : JSON.parse(JSON.stringify(v, (k, x) => (k 
     const busy = await S.materializeBranch(db, { rid: 'tb_brand_centro', location: LOC, now: NOW + 1000, callId: 'c2' });
     assert.deepStrictEqual(busy, { ok: false, error: 'brand_busy', brand: 'tb_brand', holder: 'materialize', interrupted: false }, 'another call cannot take an unexpired lease');
     assert.deepStrictEqual((await S.createDraft(db, { input: { ...INPUT, location_name: 'Sur' }, opId: 'op9', callerUid: 'own1', now: NOW + 1000 })).error, 'brand_busy', 'ANY lifecycle op on the brand waits');
-    const resumed = await S.resumeBranchOp(db, { rid: 'tb_brand_centro', now: NOW + 61_000, callId: 'c3' });   // lease expired
+    const resumed = await S.resumeBranchOp(db, { rid: 'tb_brand_centro', now: NOW + S.LEASE_MS + 1000, callId: 'c3' });   // lease expired
     assert.deepStrictEqual(resumed, { ok: true, rid: 'tb_brand_centro', state: 'staged' }, 'resume from durable inputs (no request needed)');
     assert.strictEqual(db.get('brands/tb_brand/locations/tb_brand_centro'), 'staged');
     assert.strictEqual(db.get('brands/tb_brand/projection_gen'), 1, 'the membership change bumps projection_gen (once, across the crash + resume)');
@@ -165,6 +165,32 @@ const noInc = (v) => (v == null ? v : JSON.parse(JSON.stringify(v, (k, x) => (k 
     assert.deepStrictEqual(r, { ok: false, error: 'bad_op_record', brand: 'tb_brand' }, 'BAD-LOCK resume refuses a record with no op kind (no crash)');
     assert.deepStrictEqual(db.get('brand_ops/tb_brand'), { x: 1 }, 'BAD-LOCK the record is left untouched');
     assert.deepStrictEqual(await S.createDraft(db, { input: INPUT, opId: 'op1', callerUid: 'own1', now: NOW }), { ok: false, error: 'brand_busy', brand: 'tb_brand', holder: null, interrupted: true }, 'BAD-LOCK every op on the brand stays refused');
+  }
+  {   // Codex r3 #4: the COMPLETE record is validated before any takeover — incomplete records are refused untouched (no lease installed)
+    const lease = { call_id: 'old', until: NOW - 1 };
+    const base_ = { op_id: 'bad', brand_id: 'tb_brand', payload_hash: 'h', step: 'start', lease };
+    for (const [why, rec] of [
+      ['Codex r3 #4 exact: create_draft with no inputs', { kind: 'create_draft', op_id: 'bad', brand_id: 'tb_brand' }],
+      ['create_draft, inputs without a draft', { ...base_, kind: 'create_draft', inputs: { op_id: 'o' } }],
+      ['create_draft whose draft names another brand', { ...base_, kind: 'create_draft', inputs: { op_id: 'o', draft: { ...INPUT, brand_id: 'otra' } } }],
+      ['a record of ANOTHER brand', { ...base_, brand_id: 'otra', kind: 'delete_draft', inputs: { rid: 'tb_brand_centro' } }],
+      ['delete_draft without its rid', { ...base_, kind: 'delete_draft' }],
+      ['materialize without a location', { ...base_, kind: 'materialize', inputs: { rid: 'tb_brand_centro' } }],
+      ['activate without an expected version', { ...base_, kind: 'activate', inputs: { rid: 'tb_brand_centro' } }],
+      ['no payload hash', { ...base_, payload_hash: undefined, kind: 'delete_draft', inputs: { rid: 'r' } }],
+      ['an unknown kind', { ...base_, kind: 'explode', inputs: {} }],
+    ]) {
+      const db = fakeRtdb({ brands: { tb_brand: BRAND }, brand_ops: { tb_brand: rec } });
+      const stored = db.get('brand_ops/tb_brand');
+      const r = await S.resumeBranchOp(db, { brandId: 'tb_brand', now: NOW, callId: 'r1' }).catch((e) => ({ threw: e.message }));
+      assert.deepStrictEqual(r, { ok: false, error: 'bad_op_record', brand: 'tb_brand' }, `BAD-LOCK ${why} → bad_op_record`);
+      assert.deepStrictEqual(db.get('brand_ops/tb_brand'), stored, `BAD-LOCK ${why} → left untouched (no lease installed)`);
+    }
+    // RTDB prunes an empty list / map: these legitimate records (no inputs) still resume
+    const on = { ...BRAND, activation: { state: 'on', since: 1 }, projection_gen: 2 };
+    const dz = fakeRtdb({ brands: { tb_brand: on }, brand_ops: { tb_brand: { ...base_, kind: 'deactivate_brand', at: NOW, step: 'planned', plan: { gen: 2 } } } });
+    assert.deepStrictEqual(await S.resumeBranchOp(dz, { brandId: 'tb_brand', now: NOW, callId: 'r1' }), { ok: true }, 'BAD-LOCK a pruned-inputs deactivate_brand record resumes');
+    assert.deepStrictEqual([dz.get('brands/tb_brand/activation'), dz.get('brands/tb_brand/projection_gen'), dz.get('brand_ops/tb_brand')], [{ state: 'off', since: NOW }, 3, null]);
   }
   ok('materialize: durable inputs + plan on the brand lock (brand_busy for any other op); crash after identity → resume from the record → staged + draft deleted; repeat = no-op; identity_conflict never overwrites; bounds unset refused');
 
@@ -200,7 +226,7 @@ const noInc = (v) => (v == null ? v : JSON.parse(JSON.stringify(v, (k, x) => (k 
     assert.strictEqual(db.get('brands/tb_brand/locations/tb_norte'), 'member');
     assert.strictEqual(db.get('brands/tb_brand/projection_gen'), 1, 'staged → member bumps projection_gen');
     assert.strictEqual(db.get('restaurants/tb_norte/identity/active'), false, 'identity not yet active');
-    const res = await S.resumeBranchOp(db, { rid: 'tb_norte', now: NOW + 61_000, callId: 'c2' });
+    const res = await S.resumeBranchOp(db, { rid: 'tb_norte', now: NOW + S.LEASE_MS + 1000, callId: 'c2' });
     assert.deepStrictEqual(res, { ok: true, rid: 'tb_norte', state: 'active' });
     assert.deepStrictEqual([db.get('restaurants/tb_norte/identity/active'), db.get('restaurants/tb_norte/identity/version')], [true, 4]);
     assert.strictEqual(db.get('brands/tb_brand/projection_gen'), 1, 'the resumed brand step is a no-op (no second bump)');

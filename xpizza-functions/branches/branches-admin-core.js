@@ -7,10 +7,11 @@
 // Exit codes: 0 ok / dry run / no-op, 1 refusal, 2 usage.
 const P = require('./branch-ops');
 const S = require('./branch-store');
+const { checkBrand } = require('./branch-check');
 const B = require('../brands/brand-store');
 const { ridCandidates } = require('./rid-alloc');
 
-const USAGE = 'usage: branches-admin.js --project <id> (status <brandId> | create-brand <brandId> --name S --first-branch S --phone S --prep MIN --hours JSON | materialize <rid> --lat N --lng N --address S [--reference S] [--radius KM]'
+const USAGE = 'usage: branches-admin.js --project <id> (status <brandId> | check <brandId> | create-brand <brandId> --name S --first-branch S --phone S --prep MIN --hours JSON | materialize <rid> --lat N --lng N --address S [--reference S] [--radius KM]'
   + ' | set-location <rid> --expected-version N [--lat N --lng N] [--address S] [--reference S] [--radius KM]'
   + ' | enrich-legacy <rid> --expected-version N --location-name S --prep MIN [--address S] | resume <rid> | delete-draft <rid>'
   + ' | activate-brand <brandId> [--open rid,rid] | deactivate-brand <brandId> | resync-projection <rid>) [--apply]';
@@ -38,7 +39,9 @@ function parseOpts(argv) {
 
 // brand_busy (one lifecycle lock per brand): another op holds the brand — live (retry later) or interrupted (resume it first)
 const busyLine = (r) => `branches-admin: REFUSED — brand_busy: otra operación en curso, reintentá${r.holder ? ` (${r.holder}` : ''}${r.holder ? (r.interrupted ? `, interrumpida: branches-admin resume ${r.brand} --apply)` : ')') : ''}`;
-const refusedLine = (r) => (r.error === 'brand_busy' ? busyLine(r) : `branches-admin: REFUSED — ${r.error}${r.errors ? `: ${r.errors.join(', ')}` : ''}${r.unmet ? ` ${JSON.stringify(r.unmet)}` : ''}${r.rids ? ` ${r.rids.join(', ')}` : ''}`);
+// what the operator does about a refusal that needs a decision first (Codex r3 #3)
+const HINTS = { brand_lists_draft: 'desactivá la marca o quitá la sucursal primero' };
+const refusedLine = (r) => (r.error === 'brand_busy' ? busyLine(r) : `branches-admin: REFUSED — ${r.error}${HINTS[r.error] ? `: ${HINTS[r.error]}` : ''}${r.errors ? `: ${r.errors.join(', ')}` : ''}${r.unmet ? ` ${JSON.stringify(r.unmet)}` : ''}${r.rids ? ` ${r.rids.join(', ')}` : ''}`);
 const show = (title, apply, body) => `branches-admin ${title} ${apply ? 'APPLY' : 'DRY RUN'}${body === undefined ? '' : `\n${JSON.stringify(body, null, 2)}`}`;
 
 async function publishAfter(rtdb, brandId, now, log) {
@@ -64,7 +67,13 @@ async function runBranchesAdmin({ rtdb, op, id, opts = {}, apply, nowMs: now, ca
 
   if (op === 'status') {
     const brand = await read(`brands/${id}`);
-    if (brand === null) { log(refusedLine({ error: 'brand_not_found' })); return 1; }
+    // the brand's lifecycle lock (one per brand): a live op, or an interrupted one waiting for `resume` — shown even when the brand
+    // record does not exist yet (an interrupted create_draft; Codex r3 #5)
+    const lock = await read(`brand_ops/${id}`);
+    const unfinished = lock ? { kind: lock.kind || null, rid: (lock.inputs && lock.inputs.rid) || null, step: lock.step || null,
+      interrupted: !(lock.lease && Number.isFinite(lock.lease.until) && lock.lease.until > now) } : null;
+    if (brand === null && !lock) { log(refusedLine({ error: 'brand_not_found' })); return 1; }
+    if (brand === null) { log(JSON.stringify({ brand: id, brand_record: null, branches: {}, unfinished_op: unfinished }, null, 2)); return 0; }
     const restaurants = (await read('restaurants')) || {};
     const branches = {};
     for (const [rid, node] of Object.entries(restaurants)) if (node && node.draft && node.draft.brand_id === id && !node.identity) branches[rid] = 'draft';
@@ -72,12 +81,16 @@ async function runBranchesAdmin({ rtdb, op, id, opts = {}, apply, nowMs: now, ca
       const ident = restaurants[rid] && restaurants[rid].identity;
       branches[rid] = st === 'member' ? (ident && ident.active === true ? 'active' : 'inactive') : st;
     }
-    // the brand's lifecycle lock (one per brand): a live op, or an interrupted one waiting for `resume`
-    const lock = await read(`brand_ops/${id}`);
-    const unfinished = lock ? { kind: lock.kind, rid: (lock.inputs && lock.inputs.rid) || null, step: lock.step || null,
-      interrupted: !(lock.lease && Number.isFinite(lock.lease.until) && lock.lease.until > now) } : null;
     log(JSON.stringify({ brand: id, activation: brand.activation || null, branches: Object.fromEntries(Object.keys(branches).sort().map((k) => [k, branches[k]])), unfinished_op: unfinished }, null, 2));
     return 0;
+  }
+
+  // READ-ONLY consistency report (Codex r3 #1(d)) — never writes, --apply or not; exit 1 on any finding
+  if (op === 'check') {
+    const r = await checkBrand(rtdb, id, { now });
+    log(JSON.stringify(r, null, 2));
+    if (r.lock) log(`branches-admin: a lifecycle op holds ${id} (${r.lock.kind}${r.lock.interrupted ? ', interrumpida' : ''}) — findings may be its unfinished work; resume it first`);
+    return r.findings.length ? 1 : 0;
   }
 
   if (op === 'create-brand') {

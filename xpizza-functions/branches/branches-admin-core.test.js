@@ -188,6 +188,35 @@ const run = async (db, op, id, opts = {}, apply = false) => {
     assert.deepStrictEqual(JSON.parse((await run(db, 'status', 'tb_brand')).out).unfinished_op, { kind: 'materialize', rid: 'tb_brand_centro', step: 'planned', interrupted: true },
       'CLI-STATUS-LOCK the brand\'s lifecycle lock is shown (interrupted → resume)');
   }
+  {   // Codex r3 #5: an interrupted create_draft before its brand exists is still shown (and resumable)
+    const db = fakeRtdb(state({ brand_ops: { tb_nueva: { kind: 'create_draft', op_id: 'c0', brand_id: 'tb_nueva', payload_hash: 'h', step: 'reserved', at: 1,
+      inputs: { op_id: 'create_tb_nueva', draft: { ...DRAFT, brand_id: 'tb_nueva' }, brand_name: 'Nueva' }, lease: { call_id: 'c0', until: NOW - 1 } } } }));
+    const r = await run(db, 'status', 'tb_nueva');
+    assert.strictEqual(r.code, 0, `CLI-STATUS-NOBRAND ${r.out}`);
+    const st = JSON.parse(r.out);
+    assert.deepStrictEqual([st.brand_record, st.unfinished_op && st.unfinished_op.kind, st.unfinished_op && st.unfinished_op.interrupted], [null, 'create_draft', true], 'CLI-STATUS-NOBRAND the lock is shown with no brand record');
+    assert.strictEqual((await run(db, 'status', 'tb_nada')).code, 1, 'neither a brand nor a lock → brand_not_found');
+  }
+  {   // Codex r3 #3: a draft the brand LISTS (here on an ON brand) is not deleted — the operator is told what to do first
+    const db = fakeRtdb(state({ branch_op_ids: { tb_brand: { op1: { payload_hash: 'h', rid: 'tb_brand_centro' } } } }));
+    db.root.brands.tb_brand.locations.tb_brand_centro = 'staged';
+    const r = await run(db, 'delete-draft', 'tb_brand_centro', {}, true);
+    assert.strictEqual(r.code, 1);
+    assert.match(r.out, /REFUSED — brand_lists_draft: desactivá la marca o quitá la sucursal primero/, 'CLI-LISTED the refusal tells the operator what to do');
+    assert.ok(db.get('restaurants/tb_brand_centro/draft'), 'CLI-LISTED the draft is kept');
+  }
+  // `check <brand>` (Codex r3 #1(d)): read-only consistency report; exit 1 on any finding
+  {
+    const db = fakeRtdb(state({ branch_op_ids: { tb_brand: { op1: { payload_hash: 'h', rid: 'tb_brand_centro' } } } }));   // the draft's allocation, complete
+    let r = await run(db, 'check', 'tb_brand');
+    assert.strictEqual(r.code, 0, r.out); assert.match(r.out, /"findings": \[\]/, 'CLI-CHECK a consistent brand');
+    assert.deepStrictEqual(db.writes, [], 'CLI-CHECK writes nothing');
+    db.root.rid_reservations.tb_brand_gone = { op_id: 'og', brand_id: 'tb_brand' };
+    r = await run(db, 'check', 'tb_brand');
+    assert.strictEqual(r.code, 1, 'CLI-CHECK a finding exits 1'); assert.match(r.out, /orphan_reservation/);
+    assert.strictEqual((await run(db, 'check', 'tb_brand', {}, true)).code, 1, 'check never writes, with or without --apply');
+    assert.deepStrictEqual(db.writes, []);
+  }
   ok('status <brand>: every branch as draft / staged / inactive / active; read-only');
 
   console.log(`\nbranches-admin-core: OK (${n})`);

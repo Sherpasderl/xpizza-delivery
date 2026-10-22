@@ -3,6 +3,7 @@
 // ORCHESTRATION O1a — the SHERPA-admin branches CLI (PLAN-multi-location-orchestration r3.1 §2–§4, §6). DRY RUN unless --apply.
 //
 //   node tools/branches-admin.js --project <id> status <brandId>                                   ← every branch's state (read-only)
+//   node tools/branches-admin.js --project <id> check <brandId>                                    ← READ-ONLY consistency report (exit 1 on a finding)
 //   node tools/branches-admin.js --project <id> create-brand <brandId> --name S --first-branch S --phone S --prep MIN --hours JSON [--apply]
 //                                                     ← a NEW brand (off) seeded TOGETHER with its first draft branch (one op; never an empty brand)
 //   node tools/branches-admin.js --project <id> materialize <rid> --lat N --lng N --address S [--reference S] [--radius KM] [--apply]

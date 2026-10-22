@@ -1686,6 +1686,7 @@
   "alert-prune.js",
   "assign-hub.js",
   "assignment-conflict.js",
+  "branches/branch-check.js",
   "branches/branch-ops.js",
   "branches/branch-store.js",
   "branches/branches-admin-core.js",
@@ -1824,6 +1825,10 @@
    "lifts": []
   },
   "assignment-conflict.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "branches/branch-check.js": {
    "pins": [],
    "lifts": []
   },

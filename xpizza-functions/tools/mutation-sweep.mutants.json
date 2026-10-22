@@ -18169,8 +18169,8 @@
     "id": "o1a-race-owner-read",
     "label": "F3: a held reservation is owned by op_id alone (no brand_id)",
     "file": "branches/branch-store.js",
-    "from": "    if (held && held.op_id === opId && held.brand_id === brandId) owned = true;",
-    "to": "    if (held && held.op_id === opId) owned = true;",
+    "from": "      if (held && held.op_id === opId && held.brand_id === brandId) {",
+    "to": "      if (held && held.op_id === opId) {",
     "kills_with": [
       "RACE-F3-OWNER"
     ],
@@ -18274,21 +18274,6 @@
   },
   {
     "slice": "orch-o1a",
-    "id": "o1a-r2-plan-ready",
-    "label": "r2: an empty-open activation plan is pruned by RTDB, so its resume reads as interrupted",
-    "file": "branches/branch-store.js",
-    "from": "      plan = { ready: true, seen: r.seen };",
-    "to": "      plan = { seen: r.seen };",
-    "kills_with": [
-      "PLAN-EMPTY-RESUME"
-    ],
-    "command": [
-      "node",
-      "branches/branch-store.test.js"
-    ]
-  },
-  {
-    "slice": "orch-o1a",
     "id": "o1a-cli-status-lock",
     "label": "CLI: status no longer shows the brand's lifecycle lock",
     "file": "branches/branches-admin-core.js",
@@ -18307,7 +18292,7 @@
     "id": "o1a-lock-bad-record",
     "label": "r2: a malformed lock record is run / overwritten instead of failing closed",
     "file": "branches/branch-store.js",
-    "from": "    if (!isObj(cur) || typeof cur.op_id !== 'string' || !Object.prototype.hasOwnProperty.call(STEPS, cur.kind)) {",
+    "from": "    if (!validRecord(cur, brandId)) {",
     "to": "    if (false) {",
     "kills_with": [
       "BAD-LOCK"
@@ -18315,6 +18300,186 @@
     "command": [
       "node",
       "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r3-valid-inputs",
+    "label": "r3 #4: a record missing the inputs its kind requires is taken over",
+    "file": "branches/branch-store.js",
+    "from": "  return INPUTS_OK[cur.kind](cur.inputs);\n}",
+    "to": "  return true;\n}",
+    "kills_with": [
+      "BAD-LOCK"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r3-valid-brand",
+    "label": "r3 #4: another brand's record is taken over",
+    "file": "branches/branch-store.js",
+    "from": "  if (!isObj(cur) || !isStr(cur.op_id) || cur.brand_id !== brandId || !isStr(cur.payload_hash) || !isStr(cur.step)) return false;",
+    "to": "  if (!isObj(cur) || !isStr(cur.op_id) || !isStr(cur.payload_hash) || !isStr(cur.step)) return false;",
+    "kills_with": [
+      "BAD-LOCK"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r3-guard-draft",
+    "label": "r3 #1: no renew-and-verify right before the draft create (a stale creator resurrects a deleted draft)",
+    "file": "branches/branch-store.js",
+    "from": "    if (!(await guard())) return LOST;   // RIGHT before the create (Codex r3 #1: a stale creator never resurrects a deleted draft)\n",
+    "to": "",
+    "kills_with": [
+      "RACE-R3-1B"
+    ],
+    "command": [
+      "node",
+      "branches/branch-races.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r3-rollback",
+    "label": "r3 #1: the brand-exists rollback deletes with neither the renew nor the holder-incarnation check",
+    "file": "branches/branch-store.js",
+    "from": "          if (!(await guard())) return LOST;\n          await removeOwned(db, path, mine);",
+    "to": "          await removeOwned(db, path, () => true);",
+    "kills_with": [
+      "RACE-R3-1A"
+    ],
+    "command": [
+      "node",
+      "branches/branch-races.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r3-listed",
+    "label": "r3 #3: a draft the brand lists is deleted, leaving a dangling listing",
+    "file": "branches/branch-store.js",
+    "from": "      if (!closing && isObj(brand) && isObj(brand.locations) && rid in brand.locations) return fail(db, op, callId, 'brand_lists_draft');\n",
+    "to": "",
+    "kills_with": [
+      "RACE-R3-3"
+    ],
+    "command": [
+      "node",
+      "branches/branch-races.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r3-gen-act",
+    "label": "r3 #2: activate_brand commits whatever projection_gen it finds (a stale activation undoes a deactivation)",
+    "file": "branches/branch-store.js",
+    "from": "      if (g !== plan.gen) {\n        const done",
+    "to": "      if (false) {\n        const done",
+    "kills_with": [
+      "RACE-R3-2B"
+    ],
+    "command": [
+      "node",
+      "branches/branch-races.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r3-deact-lock",
+    "label": "r3 #2: deactivateBrand bypasses the brand lock",
+    "file": "branches/branch-store.js",
+    "from": "  return runOp(db, brandId, { kind: 'deactivate_brand', inputs: {}, at: now }, callId, now, clock, { live: true });",
+    "to": "  return STEPS.deactivate_brand(db, { brand_id: brandId, op_id: callId, inputs: {}, at: now, step: 'start' }, callId, clockOf(now, clock), {});",
+    "kills_with": [
+      "RACE-R3-2"
+    ],
+    "command": [
+      "node",
+      "branches/branch-races.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-cli-check-exit",
+    "label": "CLI: check exits 0 with findings",
+    "file": "branches/branches-admin-core.js",
+    "from": "    return r.findings.length ? 1 : 0;",
+    "to": "    return 0;",
+    "kills_with": [
+      "CLI-CHECK"
+    ],
+    "command": [
+      "node",
+      "branches/branches-admin-core.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-cli-status-nobrand",
+    "label": "CLI: status hides the lock when the brand record is absent",
+    "file": "branches/branches-admin-core.js",
+    "from": "    if (brand === null && !lock) { log(refusedLine({ error: 'brand_not_found' })); return 1; }",
+    "to": "    if (brand === null) { log(refusedLine({ error: 'brand_not_found' })); return 1; }",
+    "kills_with": [
+      "CLI-STATUS-NOBRAND"
+    ],
+    "command": [
+      "node",
+      "branches/branches-admin-core.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-cli-listed-hint",
+    "label": "CLI: the brand_lists_draft refusal does not say what to do",
+    "file": "branches/branches-admin-core.js",
+    "from": "const HINTS = { brand_lists_draft: 'desactivá la marca o quitá la sucursal primero' };",
+    "to": "const HINTS = {};",
+    "kills_with": [
+      "CLI-LISTED"
+    ],
+    "command": [
+      "node",
+      "branches/branches-admin-core.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-check-nobrand",
+    "label": "check: a draft whose brand is gone is not reported",
+    "file": "branches/branch-check.js",
+    "from": "      if (!isObj(brand)) findings.push({ code: 'draft_without_brand', rid });\n",
+    "to": "",
+    "kills_with": [
+      "CHECK-FINDS"
+    ],
+    "command": [
+      "node",
+      "branches/branch-check.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-check-orphan-res",
+    "label": "check: an orphan reservation is not reported",
+    "file": "branches/branch-check.js",
+    "from": "    if (isObj(rv) && rv.brand_id === brandId && node(rid).draft == null && node(rid).identity == null) findings.push({ code: 'orphan_reservation', rid });",
+    "to": "    if (false) findings.push({ code: 'orphan_reservation', rid });",
+    "kills_with": [
+      "CHECK-FINDS"
+    ],
+    "command": [
+      "node",
+      "branches/branch-check.test.js"
     ]
   },
   {
