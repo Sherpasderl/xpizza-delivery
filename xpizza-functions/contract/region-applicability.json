@@ -12396,7 +12396,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#createOrderApp.all>anon",
      "text": "if (orderType === 'pickup') {",
-     "scopeSha": "1bd0107d0f0dc2c82ff8677fb6bcb7b8a90f96ee85495ef428e7f7281651c9e5"
+     "scopeSha": "3db7059350277a306f8d639cb512555a6bbe86dd29466272c7df9d6ea347e021"
     },
     {
      "kind": "F",
