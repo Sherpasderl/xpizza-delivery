@@ -57,9 +57,9 @@
   },
   "clocks": {
    "display": 35,
-   "business-sample": 144,
+   "business-sample": 146,
    "persisted-stamp": 58,
-   "business-comparison": 8,
+   "business-comparison": 9,
    "io-deadline": 1
   }
  },
@@ -870,7 +870,7 @@
   },
   {
    "id": "xpizza-functions/branches/branch-store.js#liveOrders>anon#status#0",
-   "line": 42,
+   "line": 45,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -883,7 +883,7 @@
   },
   {
    "id": "xpizza-functions/branches/branch-store.js#setBranchActive>anon#status#0",
-   "line": 306,
+   "line": 377,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -45346,6 +45346,21 @@
    "key": "xpizza-functions/availability-reset.js:resetRestaurant>anon:ServerValue.TIMESTAMP",
    "line": 159,
    "class": "persisted-stamp"
+  },
+  {
+   "key": "xpizza-functions/branches/branch-store.js:deleteBranchDraft:Date.now()",
+   "line": 148,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/branches/branch-store.js:clockOf:Date.now()",
+   "line": 154,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/branches/branch-store.js:clockOf>anon:Date.now()",
+   "line": 154,
+   "class": "business-comparison"
   },
   {
    "key": "xpizza-functions/catalog/identity-bootstrap.js:bootstrapIdentityStamps>anon:new Date()",

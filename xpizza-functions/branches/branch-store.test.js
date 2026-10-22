@@ -73,9 +73,10 @@ const NOW = 1_800_000_000_000;
   }
   {
     // variant: B crashes right after PERSISTING the candidate (the mapping's 2nd write), before reserving it; C takes that exact
-    // candidate → B resumes from its persisted value and advances FORWARD from it
+    // candidate → B resumes from its persisted value and advances FORWARD from it. (The mapping is CREATED through the parent node
+    // branch_op_ids/{brand} since Codex r1 P2-2, so persisting the candidate is the FIRST write on the mapping's own path.)
     const db = base();
-    db.failAfter['branch_op_ids/tb_brand/B'] = 2;
+    db.failAfter['branch_op_ids/tb_brand/B'] = 1;
     await assert.rejects(S.createDraft(db, { input: { ...INPUT, location_name: 'Plaza' }, opId: 'B', callerUid: 'own1', now: NOW }), /crash after branch_op_ids/);
     assert.strictEqual(db.get('branch_op_ids/tb_brand/B').candidate, 'tb_brand_plaza');
     assert.strictEqual(db.get('rid_reservations/tb_brand_plaza'), null, 'not reserved yet');
@@ -132,9 +133,11 @@ const NOW = 1_800_000_000_000;
     const r = await S.materializeBranch(db, { rid: 'tb_brand_centro', location: LOC, now: NOW, callId: 'c1' });
     assert.deepStrictEqual(r, { ok: false, error: 'identity_conflict' }, 'never overwrites a different identity');
     assert.strictEqual(db.get('restaurants/tb_brand_centro/identity').location_name, 'Otro');
-    assert.deepStrictEqual(db.get('dispatcher_alerts/branch_identity_conflict_tb_brand_centro'), { type: 'branch_identity_conflict', rid: 'tb_brand_centro', created_at: NOW });
+    const alert = db.get('dispatcher_alerts/branch_identity_conflict_tb_brand_centro');
+    assert.deepStrictEqual({ ...alert, created_at: 0 }, { type: 'branch_identity_conflict', rid: 'tb_brand_centro', created_at: 0 });
+    assert.ok(alert.created_at >= NOW && alert.created_at < NOW + 60000, 'stamped on the op\'s fresh clock (now + elapsed; Codex r1 P2-1)');
     assert.deepStrictEqual(await S.materializeBranch(db, { rid: 'tb_brand_centro', location: LOC, now: NOW + 5, callId: 'c9' }), { ok: false, error: 'identity_conflict' });
-    assert.strictEqual(db.get('dispatcher_alerts/branch_identity_conflict_tb_brand_centro').created_at, NOW, 'alert is create-only');
+    assert.strictEqual(db.get('dispatcher_alerts/branch_identity_conflict_tb_brand_centro').created_at, alert.created_at, 'alert is create-only (the first stamp is kept)');
     assert.deepStrictEqual(await S.materializeBranch(db, { rid: 'tb_nothing', location: LOC, now: NOW, callId: 'c1' }), { ok: false, error: 'not_a_draft' });
     const bad = await S.materializeBranch(fakeRtdb({ brands: { tb_brand: BRAND }, restaurants: { x: { draft: { ...INPUT, op_id: 'o' } } } }), { rid: 'x', location: LOC, now: NOW, callId: 'c1' });
     assert.deepStrictEqual(bad, { ok: false, error: 'bad_location', errors: ['service_bounds_unset'] }, 'no service bounds → refused');
@@ -270,7 +273,8 @@ const NOW = 1_800_000_000_000;
     const first = { location_name: 'Centro', phone: '+50499990000', hours: H7, prep_default_min: 20 };
     await S.createBrandWithDraft(db, { brandId: 'tb_nueva', brandName: 'Nueva', input: first, opId: 'create_tb_nueva', callerUid: 'sherpa', now: NOW });
     assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_nueva_centro', brandId: 'tb_nueva' }), { ok: true });
-    for (const p of ['brands/tb_nueva', 'restaurants/tb_nueva_centro', 'rid_reservations/tb_nueva_centro', 'brand_branch_names/tb_nueva', 'branch_op_ids/tb_nueva']) assert.strictEqual(db.get(p), null, `${p} removed (the never-opened brand is abandoned whole)`);
+    for (const p of ['brands/tb_nueva', 'restaurants/tb_nueva_centro', 'rid_reservations/tb_nueva_centro', 'brand_branch_names/tb_nueva', 'branch_op_ids/tb_nueva/create_tb_nueva', 'branch_ops/tb_nueva_centro']) assert.strictEqual(db.get(p), null, `${p} removed (the never-opened brand is abandoned whole)`);
+    assert.deepStrictEqual(Object.keys(db.get('branch_op_ids/tb_nueva')), ['~closed'], 'only the brand CLOSE tombstone remains (a late sibling createDraft is refused; Codex r1 P2-2)');
     assert.deepStrictEqual(db.get('brands/tb_brand'), BRAND, 'other brands untouched');
   }
   ok('createBrandWithDraft: one op seeds the brand OFF with its first branch listed (never an empty brand); crash → resume; idempotent; foreign op / existing brand refused; materialize already matching; abandoning its draft removes the never-opened brand whole');

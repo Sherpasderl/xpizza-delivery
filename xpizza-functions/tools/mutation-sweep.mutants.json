@@ -17607,7 +17607,7 @@
     "id": "o1a-delete-foreign",
     "label": "T4: deleteBranchDraft frees a reservation another op owns",
     "file": "branches/branch-store.js",
-    "from": "if (res && res.op_id === d.op_id) u",
+    "from": "if (res && res.op_id === d.op_id && res.brand_id === brandId) u",
     "to": "if (res) u",
     "kills_with": [
       "never frees a reservation another op owns"
@@ -18092,8 +18092,8 @@
     "id": "o1a-newbrand-abandon",
     "label": "create-brand: abandoning the first draft leaves an orphan brand",
     "file": "branches/branch-store.js",
-    "from": "  if (onlyStaged(brand, rid) && isObj(brand.activation) && brand.activation.state === 'off') u[`brands/${brandId}`] = null;\n",
-    "to": "",
+    "from": "        return onlyStaged(cur, rid) && isObj(cur.activation) && cur.activation.state === 'off' ? null : stop('brand_changed');",
+    "to": "        return undefined;",
     "kills_with": [
       "the never-opened brand is abandoned whole"
     ],
@@ -18130,6 +18130,96 @@
     "command": [
       "node",
       "brands/brand-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-race-fence",
+    "label": "F1: the op fence ignores op_id / lease owner (a stale worker checkpoints and removes a newer op)",
+    "file": "branches/branch-store.js",
+    "from": "const owns = (cur, op, callId) => isObj(cur) && cur.op_id === op.op_id && isObj(cur.lease) && cur.lease.call_id === callId;",
+    "to": "const owns = (cur, op, callId) => isObj(cur);",
+    "kills_with": [
+      "RACE-F1-FENCE"
+    ],
+    "command": [
+      "node",
+      "branches/branch-races.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-race-has-drafts",
+    "label": "F2: the first draft delete removes the brand although a sibling draft exists",
+    "file": "branches/branch-store.js",
+    "from": "        if (Object.keys(map).some((k) => k !== CLOSED)) return stop('brand_has_drafts');\n",
+    "to": "",
+    "kills_with": [
+      "RACE-F2-SIBLING"
+    ],
+    "command": [
+      "node",
+      "branches/branch-races.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-race-closed",
+    "label": "F2: a sibling createDraft ignores the brand CLOSE tombstone",
+    "file": "branches/branch-store.js",
+    "from": "    if (map[CLOSED] != null && !(newBrand && brand0 == null)) return stop('brand_closed');\n",
+    "to": "",
+    "kills_with": [
+      "RACE-F2-CLOSE"
+    ],
+    "command": [
+      "node",
+      "branches/branch-races.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-race-owner-read",
+    "label": "F3: a held reservation is owned by op_id alone (no brand_id)",
+    "file": "branches/branch-store.js",
+    "from": "    if (held && held.op_id === opId && held.brand_id === brandId) owned = true;",
+    "to": "    if (held && held.op_id === opId) owned = true;",
+    "kills_with": [
+      "RACE-F3-OWNER"
+    ],
+    "command": [
+      "node",
+      "branches/branch-races.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-race-cas",
+    "label": "F4: activateBrand activates without the observed-version CAS",
+    "file": "branches/branch-store.js",
+    "from": "      if (cur.version !== seen[rid]) return stop('stale_branch');\n",
+    "to": "",
+    "kills_with": [
+      "RACE-F4-CAS"
+    ],
+    "command": [
+      "node",
+      "branches/branch-races.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-cli-resume-delete",
+    "label": "CLI: resuming a draft delete reports a state of undefined and publishes",
+    "file": "branches/branches-admin-core.js",
+    "from": "    if (rec.kind === 'delete_draft') { log(`branches-admin: ${id} resumed → draft deleted (its rid / name reservations released)`); return 0; }   // nothing to publish\n",
+    "to": "",
+    "kills_with": [
+      "CLI-RESUME-DELETE"
+    ],
+    "command": [
+      "node",
+      "branches/branches-admin-core.test.js"
     ]
   },
   {

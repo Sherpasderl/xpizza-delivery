@@ -4,8 +4,10 @@
 //   • createDraft — payload-bound op-id mapping branch_op_ids/{brand}/{op_id}; the name is reserved FIRST (a taken name never
 //     strands a rid reservation), then the rid candidate is PERSISTED on the mapping BEFORE it is reserved, advanced only forward
 //     from the persisted value, and the draft is written create-only. A crash anywhere resumes from the persisted candidate.
-//   • multi-step ops (materialize, activate) run under branch_ops/{rid}: durable validated inputs + a 60 s lease; every step
-//     succeeds if already matching (idempotent re-entry) and checkpoints `step`; resumeBranchOp finishes one from its inputs.
+//   • multi-step ops (materialize, activate, delete_draft) run under branch_ops/{rid}: durable validated inputs + a 60 s lease;
+//     every step succeeds if already matching (idempotent re-entry) and checkpoints `step`; resumeBranchOp finishes one from its
+//     inputs. FENCED (Codex r1 P2-1): renew / checkpoint, failure and cleanup act only while the record is THIS op and THIS caller
+//     holds the lease (renewed on a fresh clock before and after every step) — a worker that lost its lease stops with lease_lost.
 //   • single-node writes (set-location, deactivate, enrich-legacy) are a version CAS inside one identity transaction.
 // No Firestore write in any lifecycle op. A branch becomes `member` only at activation, after its identity exists and validates.
 const crypto = require('crypto');
@@ -15,6 +17,7 @@ const P = require('./branch-ops');
 const { HEAL_TERMINAL_STATUSES } = require('../sweep-pending');   // every terminal status incl. cancelled — anything else is live
 
 const LEASE_MS = 60 * 1000;
+const CLOSED = '~closed';   // branch_op_ids/{brand} tombstone: the brand was removed with its last draft ('~' is never in an op id)
 const DRAFT_KEYS = ['brand_id', 'location_name', 'phone', 'hours', 'prep_default_min'];
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -71,10 +74,18 @@ async function draftFlow(db, { input, opId, callerUid, now }, newBrand) {
     if (!(isObj(m0) && m0.rid && onlyStaged(brand0, m0.rid))) return { ok: false, error: 'brand_exists' };
   }
 
-  // (1) the op-id mapping, create-only and payload-bound
-  const m = await txn(db, mapPath, (cur, stop) => (cur == null ? { payload_hash: hash } : (cur.payload_hash === hash ? undefined : stop('op_conflict'))));
+  // (1) the op-id mapping, create-only and payload-bound — written through the brand's PARENT node branch_op_ids/{brand}, so it is
+  // linearized with a brand-removing draft delete (Codex r1 P2-2): a closed brand refuses it; a NEW brand (absent) clears the tombstone
+  const m = await txn(db, `branch_op_ids/${brandId}`, (cur, stop) => {
+    const map = isObj(cur) ? cur : {};
+    const own = map[opId];
+    if (own != null) return isObj(own) && own.payload_hash === hash ? undefined : stop('op_conflict');
+    if (map[CLOSED] != null && !(newBrand && brand0 == null)) return stop('brand_closed');
+    const next = { ...map, [opId]: { payload_hash: hash } }; delete next[CLOSED];
+    return next;
+  });
   if (m.stop) return { ok: false, error: m.stop };
-  let mapping = m.value || {};
+  let mapping = (isObj(m.value) && m.value[opId]) || {};
 
   // (2) the name, reserved before any rid (owned when op_id matches)
   const nk = nameKey(draft.location_name);
@@ -94,9 +105,9 @@ async function draftFlow(db, { input, opId, callerUid, now }, newBrand) {
     mapping = pc.value; const cand = mapping.candidate;
     let owned = false;
     const held = await val(db, `rid_reservations/${cand}`);
-    if (held && held.op_id === opId) owned = true;
+    if (held && held.op_id === opId && held.brand_id === brandId) owned = true;   // (brand, op) — op ids are per brand (Codex r1 P2-3)
     else if (!held && (await val(db, `restaurants/${cand}/identity`)) == null && (await val(db, `brands/${cand}`)) == null) {
-      const rv = await txn(db, `rid_reservations/${cand}`, (cur, stop) => (cur == null ? { op_id: opId, brand_id: brandId } : (cur.op_id === opId ? undefined : stop('taken'))));
+      const rv = await txn(db, `rid_reservations/${cand}`, (cur, stop) => (cur == null ? { op_id: opId, brand_id: brandId } : (cur.op_id === opId && cur.brand_id === brandId ? undefined : stop('taken'))));
       owned = !rv.stop;
     }
     if (owned) { rid = cand; break; }
@@ -116,42 +127,35 @@ async function draftFlow(db, { input, opId, callerUid, now }, newBrand) {
     if (!validateBrand(brandId, rec).ok) return { ok: false, error: 'brand_invalid' };
     const b = await txn(db, `brands/${brandId}`, (cur, stop) => (cur == null ? rec : (onlyStaged(cur, rid) ? undefined : stop('brand_exists'))));
     if (b.stop) {   // lost the brand id to another op: release what this op holds, then refuse
-      await txn(db, `rid_reservations/${rid}`, (cur) => (cur && cur.op_id === opId ? null : undefined));
+      await txn(db, `rid_reservations/${rid}`, (cur) => (cur && cur.op_id === opId && cur.brand_id === brandId ? null : undefined));
       await txn(db, `brand_branch_names/${brandId}/${nk}`, (cur) => (cur && cur.op_id === opId ? null : undefined));
       await txn(db, mapPath, (cur) => (cur && cur.payload_hash === hash ? null : undefined));
       return { ok: false, error: b.stop };
     }
   }
 
-  // (5) the draft, create-only; an already-materialized branch of this op is done
-  if ((await val(db, `restaurants/${rid}/identity`)) != null) return { ok: true, rid };
-  const dw = await txn(db, `restaurants/${rid}/draft`, (cur, stop) => (cur == null ? { ...draft, created_at: now, created_by: callerUid, op_id: opId } : (cur.op_id === opId ? undefined : stop('draft_conflict'))));
+  // (5) the draft, create-only; an already-materialized branch of this op is done — ownership verified (this brand's identity / this
+  // (brand, op)'s draft) before ok
+  const idNow = await val(db, `restaurants/${rid}/identity`);
+  if (idNow != null) return isObj(idNow) && idNow.brand_id === brandId ? { ok: true, rid } : { ok: false, error: 'rid_conflict' };
+  const dw = await txn(db, `restaurants/${rid}/draft`, (cur, stop) => (cur == null ? { ...draft, created_at: now, created_by: callerUid, op_id: opId } : (cur.op_id === opId && cur.brand_id === brandId ? undefined : stop('draft_conflict'))));
   if (dw.stop) return { ok: false, error: dw.stop };
   return { ok: true, rid };
 }
 
-// abandoned-draft cleanup: the draft + its rid / name reservations + the op-id mapping (only those this draft's op owns)
-async function deleteBranchDraft(db, { rid, brandId }) {
-  const d = await val(db, `restaurants/${rid}/draft`);
-  if (!isObj(d) || d.brand_id !== brandId) return { ok: false, error: 'not_a_draft' };
-  if ((await val(db, `branch_ops/${rid}`)) != null) return { ok: false, error: 'op_in_progress' };
-  const nk = nameKey(d.location_name);
-  const [res, nm] = await Promise.all([val(db, `rid_reservations/${rid}`), val(db, `brand_branch_names/${brandId}/${nk}`)]);
-  const u = { [`restaurants/${rid}/draft`]: null };
-  if (res && res.op_id === d.op_id) u[`rid_reservations/${rid}`] = null;
-  if (nm && nm.op_id === d.op_id) u[`brand_branch_names/${brandId}/${nk}`] = null;
-  if (typeof d.op_id === 'string') u[`branch_op_ids/${brandId}/${d.op_id}`] = null;
-  // a NEW brand whose only (never-opened) branch is this draft is abandoned whole — no empty-brand state
-  const brand = await val(db, `brands/${brandId}`);
-  if (onlyStaged(brand, rid) && isObj(brand.activation) && brand.activation.state === 'off') u[`brands/${brandId}`] = null;
-  await db.ref().update(u);
-  return { ok: true };
-}
+// abandoned-draft cleanup — a durable op (STEPS.delete_draft) under branch_ops/{rid}, so it is serialized with materialization and
+// a crashed delete resumes (resumeBranchOp)
+const deleteBranchDraft = (db, { rid, brandId, now = Date.now(), callId = `delete_${crypto.randomUUID()}`, clock }) =>
+  runOp(db, rid, { kind: 'delete_draft', inputs: { brand_id: brandId } }, callId, now, clock);
 
 // ── durable op runner (§2.2) ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-async function acquire(db, rid, { kind, inputs }, callId, now) {
+// a fresh clock (Codex r1 P2-1): an injected `clock`, else the call's `now` advanced by the real time elapsed since the call began
+const clockOf = (now, clock) => { if (typeof clock === 'function') return clock; const t0 = Date.now(); return () => now + (Date.now() - t0); };
+
+async function acquire(db, rid, { kind, inputs }, callId, clk) {
   const hash = hashOf(inputs);
+  const now = clk();
   const lease = { call_id: callId, until: now + LEASE_MS };
   const r = await txn(db, `branch_ops/${rid}`, (cur, stop) => {
     if (cur == null) return inputs ? { kind, op_id: callId, inputs, payload_hash: hash, lease, step: 'start', rid, started_at: now, updated_at: now } : stop('no_op');
@@ -163,18 +167,38 @@ async function acquire(db, rid, { kind, inputs }, callId, now) {
   });
   return r.stop ? { error: r.stop } : { op: r.value };
 }
-const checkpoint = (db, rid, step, callId, now) => db.ref(`branch_ops/${rid}`).update({ step, updated_at: now, lease: { call_id: callId, until: now + LEASE_MS } });
-const fail = async (db, rid, error, now) => { await db.ref(`branch_ops/${rid}`).update({ error, lease: null, updated_at: now }); return { ok: false, error }; };
+// the fence: the record is still THIS op (op_id) and THIS caller still holds its lease
+const owns = (cur, op, callId) => isObj(cur) && cur.op_id === op.op_id && isObj(cur.lease) && cur.lease.call_id === callId;
+const LOST = Object.freeze({ ok: false, error: 'lease_lost' });
+// renew (optionally checkpointing `step`) on a fresh clock — false when the fence is lost (nothing written)
+async function renew(db, op, callId, clk, step) {
+  const r = await txn(db, `branch_ops/${op.rid}`, (cur, stop) => {
+    if (!owns(cur, op, callId)) return stop('lease_lost');
+    const t = clk();
+    return { ...cur, ...(step ? { step } : {}), updated_at: t, lease: { call_id: callId, until: t + LEASE_MS } };
+  });
+  return !r.stop;
+}
+async function fail(db, op, callId, clk, error) {
+  const r = await txn(db, `branch_ops/${op.rid}`, (cur, stop) => (owns(cur, op, callId) ? { ...cur, error, lease: null, updated_at: clk() } : stop('lease_lost')));
+  return r.stop ? LOST : { ok: false, error };
+}
+async function finish(db, op, callId) {
+  const r = await txn(db, `branch_ops/${op.rid}`, (cur, stop) => (owns(cur, op, callId) ? null : stop('lease_lost')));
+  return !r.stop;
+}
 
 const STEPS = {
-  async materialize(db, op, callId, now) {
+  async materialize(db, op, callId, clk) {
     const { rid } = op; const { brand_id: brandId, identity } = op.inputs;
+    if (!(await renew(db, op, callId, clk))) return LOST;
     const id = await txn(db, `restaurants/${rid}/identity`, (cur, stop) => (cur == null ? identity : (stable(cur) === stable(identity) ? undefined : stop('identity_conflict'))));
     if (id.stop) {
-      await db.ref(`dispatcher_alerts/branch_identity_conflict_${rid}`).transaction((cur) => (cur == null ? { type: 'branch_identity_conflict', rid, created_at: now } : undefined));
-      return fail(db, rid, 'identity_conflict', now);
+      if (!(await renew(db, op, callId, clk))) return LOST;   // a worker that lost its lease raises no alert
+      await db.ref(`dispatcher_alerts/branch_identity_conflict_${rid}`).transaction((cur) => (cur == null ? { type: 'branch_identity_conflict', rid, created_at: clk() } : undefined));
+      return fail(db, op, callId, clk, 'identity_conflict');
     }
-    await checkpoint(db, rid, 'identity', callId, now);
+    if (!(await renew(db, op, callId, clk, 'identity'))) return LOST;
     const b = await txn(db, `brands/${brandId}`, (cur, stop) => {
       if (!isObj(cur)) return stop('brand_not_found');
       const st = isObj(cur.locations) ? cur.locations[rid] : undefined;
@@ -183,14 +207,15 @@ const STEPS = {
       const next = { ...cur, locations: { ...cur.locations, [rid]: 'staged' }, projection_gen: (cur.projection_gen || 0) + 1 };
       return validateBrand(brandId, next).ok ? next : stop('brand_invalid');
     });
-    if (b.stop) return fail(db, rid, b.stop, now);
-    await checkpoint(db, rid, 'staged', callId, now);
+    if (b.stop) return fail(db, op, callId, clk, b.stop);
+    if (!(await renew(db, op, callId, clk, 'staged'))) return LOST;
     await db.ref(`restaurants/${rid}/draft`).remove();
-    await db.ref(`branch_ops/${rid}`).remove();
+    if (!(await finish(db, op, callId))) return LOST;
     return { ok: true, rid, state: 'staged' };
   },
-  async activate(db, op, callId, now) {
+  async activate(db, op, callId, clk) {
     const { rid } = op; const { brand_id: brandId, membership_to: to, patch, expected_version: ev } = op.inputs;
+    if (!(await renew(db, op, callId, clk))) return LOST;
     if (to === 'member') {
       const b = await txn(db, `brands/${brandId}`, (cur, stop) => {
         const st = isObj(cur) && isObj(cur.locations) ? cur.locations[rid] : undefined;
@@ -199,34 +224,80 @@ const STEPS = {
         const next = { ...cur, locations: { ...cur.locations, [rid]: 'member' }, projection_gen: (cur.projection_gen || 0) + 1 };
         return validateBrand(brandId, next).ok ? next : stop('brand_invalid');
       });
-      if (b.stop) return fail(db, rid, b.stop, now);
-      await checkpoint(db, rid, 'member', callId, now);
+      if (b.stop) return fail(db, op, callId, clk, b.stop);
+      if (!(await renew(db, op, callId, clk, 'member'))) return LOST;
     }
     const id = await txn(db, `restaurants/${rid}/identity`, (cur, stop) => {
       if (!isObj(cur)) return stop('identity_missing');
       if (cur.version === patch.version && cur.active === patch.active) return undefined;
       return cur.version === ev ? { ...cur, ...patch } : stop('stale_branch');
     });
-    if (id.stop) return fail(db, rid, id.stop, now);
-    await db.ref(`branch_ops/${rid}`).remove();
+    if (id.stop) return fail(db, op, callId, clk, id.stop);
+    if (!(await finish(db, op, callId))) return LOST;
     return { ok: true, rid, state: 'active' };
+  },
+  // abandoned-draft cleanup UNDER the rid's op (Codex r1 P2-2: serialized with materialize — the draft is re-read under the lease):
+  // the draft + its rid / name reservations + the op-id mapping (only those this draft's (brand, op) owns). A NEW brand's first,
+  // listed draft also removes the never-opened brand — only when NO other draft mapping exists (the brand CLOSE on
+  // branch_op_ids/{brand}, linearized with every createDraft's mapping step); with a sibling draft it is refused (brand_has_drafts).
+  async delete_draft(db, op, callId, clk) {
+    const { rid } = op; const brandId = op.inputs.brand_id;
+    if (!(await renew(db, op, callId, clk))) return LOST;
+    const d = await val(db, `restaurants/${rid}/draft`);
+    if (!isObj(d) || d.brand_id !== brandId) {
+      if (!(await finish(db, op, callId))) return LOST;
+      return op.step === 'start' ? { ok: false, error: 'not_a_draft' } : { ok: true };   // a resumed delete already removed it
+    }
+    const nk = nameKey(d.location_name);
+    const [res, nm] = await Promise.all([val(db, `rid_reservations/${rid}`), val(db, `brand_branch_names/${brandId}/${nk}`)]);
+    const brand = await val(db, `brands/${brandId}`);
+    const closing = brand == null ? op.step === 'closed' : onlyStaged(brand, rid) && isObj(brand.activation) && brand.activation.state === 'off';
+    const opId = typeof d.op_id === 'string' ? d.op_id : null;
+    if (!(await renew(db, op, callId, clk))) return LOST;
+    const c = await txn(db, `branch_op_ids/${brandId}`, (cur, stop) => {
+      const map = isObj(cur) ? { ...cur } : {};
+      if (opId) delete map[opId];
+      if (closing) {
+        if (Object.keys(map).some((k) => k !== CLOSED)) return stop('brand_has_drafts');
+        return map[CLOSED] != null && !(opId && isObj(cur) && opId in cur) ? undefined : { [CLOSED]: clk() };
+      }
+      if (!(opId && isObj(cur) && opId in cur)) return undefined;
+      return Object.keys(map).length ? map : null;
+    });
+    if (c.stop) return fail(db, op, callId, clk, c.stop);
+    if (closing) {
+      if (!(await renew(db, op, callId, clk, 'closed'))) return LOST;
+      const b = await txn(db, `brands/${brandId}`, (cur, stop) => {
+        if (cur == null) return undefined;
+        return onlyStaged(cur, rid) && isObj(cur.activation) && cur.activation.state === 'off' ? null : stop('brand_changed');
+      });
+      if (b.stop) return fail(db, op, callId, clk, b.stop);
+    }
+    if (!(await renew(db, op, callId, clk, 'cleanup'))) return LOST;
+    const u = { [`restaurants/${rid}/draft`]: null };
+    if (res && res.op_id === d.op_id && res.brand_id === brandId) u[`rid_reservations/${rid}`] = null;
+    if (nm && nm.op_id === d.op_id) u[`brand_branch_names/${brandId}/${nk}`] = null;
+    await db.ref().update(u);
+    if (!(await finish(db, op, callId))) return LOST;
+    return { ok: true };
   },
 };
 
-async function runOp(db, rid, spec, callId, now) {
-  const a = await acquire(db, rid, spec, callId, now);
+async function runOp(db, rid, spec, callId, now, clock) {
+  const clk = clockOf(now, clock);
+  const a = await acquire(db, rid, spec, callId, clk);
   if (a.error) return { ok: false, error: a.error };
-  return STEPS[a.op.kind](db, a.op, callId, now);
+  return STEPS[a.op.kind](db, a.op, callId, clk);
 }
 
 // finish an unfinished op from its durable inputs (any later call, or the admin `resume <rid>`)
-const resumeBranchOp = (db, { rid, now, callId }) => runOp(db, rid, { kind: null, inputs: null }, callId, now);
+const resumeBranchOp = (db, { rid, now, callId, clock }) => runOp(db, rid, { kind: null, inputs: null }, callId, now, clock);
 
 // ── Sherpa admin: materialize a draft with its location (§4) ─────────────────────────────────────────────────────────────────
 
-async function materializeBranch(db, { rid, location, now, callId }) {
+async function materializeBranch(db, { rid, location, now, callId, clock }) {
   const op = await val(db, `branch_ops/${rid}`);
-  if (isObj(op)) return op.kind === 'materialize' ? runOp(db, rid, { kind: 'materialize', inputs: null }, callId, now) : { ok: false, error: 'op_in_progress' };
+  if (isObj(op)) return op.kind === 'materialize' ? runOp(db, rid, { kind: 'materialize', inputs: null }, callId, now, clock) : { ok: false, error: 'op_in_progress' };
   const draft = await val(db, `restaurants/${rid}/draft`);
   if (!isObj(draft)) {
     const [id, brands] = [await val(db, `restaurants/${rid}/identity`), await val(db, 'brands')];
@@ -237,7 +308,7 @@ async function materializeBranch(db, { rid, location, now, callId }) {
   if (!isObj(brand)) return { ok: false, error: 'brand_not_found' };
   const plan = P.planMaterialize({ draft, location, brandName: brand.name, bounds, now });
   if (!plan.ok) return { ok: false, error: 'bad_location', errors: plan.errors };
-  return runOp(db, rid, { kind: 'materialize', inputs: { brand_id: draft.brand_id, location, identity: plan.identity } }, callId, now);
+  return runOp(db, rid, { kind: 'materialize', inputs: { brand_id: draft.brand_id, location, identity: plan.identity } }, callId, now, clock);
 }
 
 // ── single-node identity CAS writes ──────────────────────────────────────────────────────────────────────────────────────────
@@ -288,7 +359,7 @@ async function readinessFacts(db, rid, brandId, brand, devices, readers) {
 }
 const unrevoked = (handhelds) => Object.values(isObj(handhelds) ? handhelds : {}).filter((h) => isObj(h) && h.revoked !== true);
 
-async function setBranchActive(db, { rid, active, expectedVersion, now, callId, readers = {} }) {
+async function setBranchActive(db, { rid, active, expectedVersion, now, callId, clock, readers = {} }) {
   const identity = await val(db, `restaurants/${rid}/identity`);
   if (!isObj(identity)) return { ok: false, error: 'not_a_branch' };
   const brandId = identity.brand_id;
@@ -298,7 +369,7 @@ async function setBranchActive(db, { rid, active, expectedVersion, now, callId, 
   const plan = P.planSetActive({ identity, active, facts, now, expectedVersion });
   if (!plan.ok) return plan.unmet ? { ok: false, error: plan.error, unmet: plan.unmet } : { ok: false, error: plan.error };
   if (active === true) {
-    return runOp(db, rid, { kind: 'activate', inputs: { brand_id: brandId, membership_to: plan.membershipTo || 'none', patch: plan.patch, expected_version: expectedVersion } }, callId, now);
+    return runOp(db, rid, { kind: 'activate', inputs: { brand_id: brandId, membership_to: plan.membershipTo || 'none', patch: plan.patch, expected_version: expectedVersion } }, callId, now, clock);
   }
   const w = await casIdentity(db, rid, expectedVersion, plan.patch);
   if (!w.ok) return w;
@@ -308,7 +379,8 @@ async function setBranchActive(db, { rid, active, expectedVersion, now, callId, 
 
 // ── Sherpa admin: brand activation (§3 for a NEW brand: off → on; the LEGACY cutover is O3) / deactivation (on → off) ──────────
 // One brand transaction (state + the chosen staged → member + projection_gen + 1, re-validated), then each opened branch's identity
-// active:true (+ version + 1). Every step succeeds if already matching, so a re-run resumes a crashed activation.
+// active:true (+ version + 1) — by CAS on the identity version THIS call observed (Codex r1 P2-4): a branch changed since (e.g.
+// deactivated concurrently) is never re-activated → stale_branch; a re-run re-observes, so a crashed activation resumes from state.
 async function activateBrand(db, { brandId, open = [], now, readers = {}, checkOnly = false }) {
   const brand = await val(db, `brands/${brandId}`);
   if (!isObj(brand)) return { ok: false, error: 'brand_not_found' };
@@ -316,9 +388,10 @@ async function activateBrand(db, { brandId, open = [], now, readers = {}, checkO
   const locs = isObj(brand.locations) ? brand.locations : {};
   const bad = open.filter((rid) => locs[rid] !== 'staged' && locs[rid] !== 'member');
   if (bad.length) return { ok: false, error: 'not_staged', rids: bad };
-  const unmet = {};
+  const unmet = {}; const seen = {};
   for (const rid of open) {
     const identity = await val(db, `restaurants/${rid}/identity`);
+    seen[rid] = isObj(identity) ? identity.version : undefined;
     if (isObj(identity) && identity.active === true) continue;
     const facts = await readinessFacts(db, rid, brandId, brand, unrevoked(await val(db, `restaurants/${rid}/handhelds`)), readers);
     const plan = P.planSetActive({ identity, active: true, facts: { ...facts, brandState: 'on' }, now, expectedVersion: isObj(identity) ? identity.version : undefined });
@@ -342,6 +415,7 @@ async function activateBrand(db, { brandId, open = [], now, readers = {}, checkO
   for (const rid of open) {
     const id = await txn(db, `restaurants/${rid}/identity`, (cur, stop) => {
       if (!isObj(cur) || !Number.isFinite(cur.version)) return stop('identity_invalid');
+      if (cur.version !== seen[rid]) return stop('stale_branch');
       if (cur.active === true) return undefined;
       return { ...cur, active: true, active_changed_at: now, version: cur.version + 1 };
     });

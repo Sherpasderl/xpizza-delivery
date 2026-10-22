@@ -113,6 +113,14 @@ const run = async (db, op, id, opts = {}, apply = false) => {
     assert.strictEqual(r.code, 0); assert.deepStrictEqual(db2.writes, []);
     r = await run(db2, 'delete-draft', 'tb_brand_centro', {}, true);
     assert.strictEqual(r.code, 0, r.out); assert.strictEqual(db2.get('restaurants/tb_brand_centro'), null); assert.strictEqual(db2.get('rid_reservations/tb_brand_centro'), null);
+    // a delete-draft is a durable op since Codex r1 P2-2: a crashed one (lease expired) resumes and finishes; nothing is published
+    const db3 = fakeRtdb(state({ branch_ops: { tb_brand_centro: { kind: 'delete_draft', op_id: 'd0', inputs: { brand_id: 'tb_brand' }, payload_hash: 'h',
+      lease: { call_id: 'd0', until: NOW - 1 }, step: 'start', rid: 'tb_brand_centro', started_at: 1, updated_at: 1 } } }));
+    r = await run(db3, 'resume', 'tb_brand_centro', {}, true);
+    assert.strictEqual(r.code, 0, r.out);
+    assert.match(r.out, /tb_brand_centro resumed → draft deleted/, 'CLI-RESUME-DELETE a resumed delete reports the deletion');
+    assert.deepStrictEqual([db3.get('restaurants/tb_brand_centro'), db3.get('rid_reservations/tb_brand_centro'), db3.get('branch_ops/tb_brand_centro')], [null, null, null], 'CLI-RESUME-DELETE finished');
+    assert.strictEqual(db3.get('public/brands/tb_brand'), null, 'CLI-RESUME-DELETE a draft delete publishes nothing');
   }
   ok('resume: dry run shows the unfinished op; apply finishes it from its durable inputs; nothing to resume → no-op. delete-draft: refused under an unfinished op; dry run ZERO writes; apply removes draft + reservation');
 

@@ -142,6 +142,7 @@ async function runBranchesAdmin({ rtdb, op, id, opts = {}, apply, nowMs: now, ca
     if (!apply) { log('(dry run — nothing written; add --apply)'); return 0; }
     const r = await S.resumeBranchOp(rtdb, { rid: id, now, callId });
     if (!r.ok) { log(refusedLine(r)); return 1; }
+    if (rec.kind === 'delete_draft') { log(`branches-admin: ${id} resumed → draft deleted (its rid / name reservations released)`); return 0; }   // nothing to publish
     log(`branches-admin: ${id} resumed → ${r.state}`);
     return publishAfter(rtdb, rec.inputs.brand_id, now, log);
   }
@@ -151,7 +152,7 @@ async function runBranchesAdmin({ rtdb, op, id, opts = {}, apply, nowMs: now, ca
     if (!draft) { log(refusedLine({ error: 'not_a_draft' })); return 1; }
     log(show(`delete-draft ${id}`, apply, draft));
     if (!apply) { log('(dry run — nothing written; add --apply)'); return 0; }
-    const r = await S.deleteBranchDraft(rtdb, { rid: id, brandId: draft.brand_id });
+    const r = await S.deleteBranchDraft(rtdb, { rid: id, brandId: draft.brand_id, now, callId });
     if (!r.ok) { log(refusedLine(r)); return 1; }
     log(`branches-admin: draft ${id} deleted (its rid / name reservations released)`);
     return 0;
