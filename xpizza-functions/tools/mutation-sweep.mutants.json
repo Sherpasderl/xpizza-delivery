@@ -18483,6 +18483,36 @@
     ]
   },
   {
+    "slice": "orch-o1a",
+    "id": "o1a-r4-valid-draft",
+    "label": "r4 #1: a create_draft record whose draft payload a fresh call would refuse is resumed",
+    "file": "branches/branch-store.js",
+    "from": "isObj(i.draft) && P.draftErrors(i.draft).length === 0 && typeof i.op_id",
+    "to": "isObj(i.draft) && typeof i.op_id",
+    "kills_with": [
+      "BAD-LOCK"
+    ],
+    "command": [
+      "node",
+      "branches/branch-store.test.js"
+    ]
+  },
+  {
+    "slice": "orch-o1a",
+    "id": "o1a-r4-check-norid",
+    "label": "r4 #2: check skips a mapping with no rid",
+    "file": "branches/branch-check.js",
+    "from": "    if (rid === null || (node(rid).draft == null && node(rid).identity == null)) findings.push",
+    "to": "    if (rid !== null && (node(rid).draft == null && node(rid).identity == null)) findings.push",
+    "kills_with": [
+      "CHECK-NORID"
+    ],
+    "command": [
+      "node",
+      "branches/branch-check.test.js"
+    ]
+  },
+  {
     "id": "r3p0-98",
     "slice": "r3p0",
     "file": "../xpizza-driver/single-order-view.js",

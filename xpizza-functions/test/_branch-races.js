@@ -335,6 +335,22 @@ const SCENARIOS = [
     else assert.deepStrictEqual(r.findings, [], 'RACE-R3-1R nothing landed and nothing is inconsistent');
   }],
 
+  ['r4 2: a stray mapping (no rid) left by an expired creator is reported by `check`', async (db) => {
+    const g = gated(db);
+    const atMap = g.pause('transaction', 'branch_op_ids/rc_fifteen/o1');   // AT its first write (the mapping), after its renewal
+    const A = S.createBrandWithDraft(g.db, { brandId: 'rc_fifteen', brandName: 'Quince', input: input('rc_fifteen', 'Centro'), opId: 'o1', callerUid: 'own', now: NOW, callId: 'cA' });
+    await atMap.reached;
+    const b = await S.resumeBranchOp(db, { brandId: 'rc_fifteen', now: LATER, callId: 'cB' });
+    assert.strictEqual(b.ok, true, `RACE-R4-2 premise: the resumer completes the creation (${JSON.stringify(b)})`);
+    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: b.rid, brandId: 'rc_fifteen', now: LATER + 1, callId: 'cD' }), { ok: true }, 'RACE-R4-2 premise: then the delete completes');
+    atMap.release();
+    await A;
+    const map = await (reader(db))('branch_op_ids/rc_fifteen');
+    const r = await checkBrand(db, 'rc_fifteen', { now: LATER + 2 });
+    if (map != null) assert.ok(r.findings.some((f) => f.code === 'orphan_mapping' && f.op_id === 'o1'), `RACE-R4-2 the stray mapping is not reported (${JSON.stringify(r.findings)})`);
+    else assert.deepStrictEqual(r.findings, [], 'RACE-R4-2 nothing landed and nothing is inconsistent');
+  }],
+
   ['r3 2: deactivateBrand and an in-flight activation never interleave', async (db) => {
     const read = reader(db);
     await db.ref('brands/rc_twelve').set({ name: 'Doce', active: true, locations: { rc_twelve_c: 'member' }, activation: { state: 'on', since: 1 }, projection_gen: 1 });

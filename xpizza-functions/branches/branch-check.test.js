@@ -36,6 +36,12 @@ const codes = (r) => r.findings.map((f) => `${f.code}${f.rid ? `:${f.rid}` : ''}
     `orphan_mapping:${r1.rid}`, `orphan_mapping:tb_k_gone`, `orphan_name`, `orphan_reservation:${r1.rid}`, `orphan_reservation:tb_k_gone`].sort(), 'CHECK-FINDS every class is reported');
   ok('every class of inconsistency is reported: listed without branch, draft without reservation / mapping, identity not listed, orphan reservation / mapping / name');
 
+  // Codex r4 #2: a mapping with NO rid (an incomplete / stray create) is reported by op id too
+  const inc0 = fakeRtdb({ branch_op_ids: { tb_k: { stray: { payload_hash: 'h', inc: 'cA' } } } });
+  const ri = await checkBrand(inc0, 'tb_k');
+  assert.deepStrictEqual(ri.findings, [{ code: 'orphan_mapping', op_id: 'stray', rid: null }], 'CHECK-NORID a mapping that resolves to no draft / identity is reported by op id');
+  ok('an incomplete mapping (no rid) is an orphan_mapping, keyed by op id');
+
   // a draft whose brand is gone; a lock is shown (its findings may be its unfinished work)
   const gone = fakeRtdb(JSON.parse(JSON.stringify(db.root)));
   delete gone.root.brands.tb_k;

@@ -7,7 +7,8 @@
 //   draft_without_reservation / draft_without_mapping   a draft its (brand, op) allocation does not back
 //   draft_and_identity      a rid holding both (materialize writes one and removes the other atomically)
 //   identity_not_listed     an identity of this brand its brand does not list
-//   orphan_reservation / orphan_mapping   allocation records of this brand whose rid has no draft and no identity
+//   orphan_reservation / orphan_mapping   allocation records of this brand whose rid has no draft and no identity (a mapping with no rid
+//                           at all — an incomplete or stray create — is an orphan_mapping too, keyed by op id)
 //   orphan_name             a name reservation of this brand no op-id mapping owns
 // The brand's lifecycle lock is reported alongside: while one is held, findings may be its unfinished work (resume it first).
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -40,8 +41,9 @@ async function checkBrand(db, brandId, { now = Date.now() } = {}) {
   for (const [rid, rv] of Object.entries(RES)) {
     if (isObj(rv) && rv.brand_id === brandId && node(rid).draft == null && node(rid).identity == null) findings.push({ code: 'orphan_reservation', rid });
   }
-  for (const [opId, mp] of Object.entries(MAPS)) {
-    if (isObj(mp) && typeof mp.rid === 'string' && node(mp.rid).draft == null && node(mp.rid).identity == null) findings.push({ code: 'orphan_mapping', rid: mp.rid, op_id: opId });
+  for (const [opId, mp] of Object.entries(MAPS)) {   // EVERY mapping must resolve to a live draft / identity — an incomplete one (no rid) too (Codex r4 #2)
+    const rid = isObj(mp) && typeof mp.rid === 'string' ? mp.rid : null;
+    if (rid === null || (node(rid).draft == null && node(rid).identity == null)) findings.push({ code: 'orphan_mapping', op_id: opId, rid });
   }
   for (const [nk, nm] of Object.entries(NAMES)) if (!(isObj(nm) && typeof nm.op_id === 'string' && isObj(MAPS[nm.op_id]))) findings.push({ code: 'orphan_name', name: nk });
   const held = isObj(lock) ? { kind: lock.kind || null, step: lock.step || null, rid: (isObj(lock.inputs) && lock.inputs.rid) || null,

@@ -84,8 +84,12 @@ async function acquire(db, brandId, { kind, inputs, at }, callId, clk) {
 // a COMPLETE durable record (Codex r3 #4), validated before any takeover: never run, never re-leased otherwise. RTDB prunes an
 // empty list / map, so activate_brand / deactivate_brand legitimately have no inputs.
 const isStr = (v) => typeof v === 'string' && v.length > 0;
+// the SAME rules the public writers apply to a fresh call (Codex r4 #1): a record whose payload a fresh call would refuse never resumes
+const OP_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const validBrandName = (n) => typeof n === 'string' && n.length >= 1 && n.length <= 80 && n.trim() === n;
 const INPUTS_OK = {
-  create_draft: (i) => isObj(i) && isObj(i.draft) && isStr(i.op_id) && typeof i.draft.location_name === 'string',
+  create_draft: (i) => isObj(i) && isObj(i.draft) && P.draftErrors(i.draft).length === 0 && typeof i.op_id === 'string' && OP_ID_RE.test(i.op_id)
+    && (i.brand_name == null || validBrandName(i.brand_name)),
   delete_draft: (i) => isObj(i) && isStr(i.rid),
   materialize: (i) => isObj(i) && isStr(i.rid) && isObj(i.location),
   activate: (i) => isObj(i) && isStr(i.rid) && Number.isFinite(i.expected_version),
@@ -481,7 +485,7 @@ const STEPS = {
 function draftInputs(input, opId) {
   const errors = P.draftErrors(input);
   if (errors.length) return { error: { ok: false, error: 'bad_draft', errors } };
-  if (typeof opId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(opId)) return { error: { ok: false, error: 'bad_op_id' } };
+  if (typeof opId !== 'string' || !OP_ID_RE.test(opId)) return { error: { ok: false, error: 'bad_op_id' } };
   const draft = {}; for (const k of DRAFT_KEYS) draft[k] = input[k];
   return { draft };
 }
@@ -494,7 +498,7 @@ async function createDraft(db, { input, opId, callerUid, now, callId = newCallId
 // mapping / name / persisted-candidate / reservation steps), then ONE create-only brand transaction {name, active, locations:
 // {rid:'staged'}, activation off, projection_gen 1}, then the draft. The brand is never empty; a re-run resumes.
 async function createBrandWithDraft(db, { brandId, brandName, input, opId, callerUid, now, callId = newCallId('create'), clock }) {
-  if (typeof brandName !== 'string' || brandName.length < 1 || brandName.length > 80 || brandName.trim() !== brandName) return { ok: false, error: 'bad_brand_name' };
+  if (!validBrandName(brandName)) return { ok: false, error: 'bad_brand_name' };
   const v = draftInputs({ ...(isObj(input) ? input : {}), brand_id: brandId }, opId);
   if (v.error) return v.error;
   return runOp(db, brandId, { kind: 'create_draft', inputs: { draft: v.draft, op_id: opId, brand_name: brandName, caller_uid: callerUid }, at: now }, callId, now, clock, { live: true });
