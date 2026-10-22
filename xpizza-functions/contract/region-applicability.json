@@ -12247,7 +12247,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'cancelled') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     },
     {
      "kind": "F",
@@ -12298,7 +12298,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'delivered') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     },
     {
      "kind": "F",
@@ -12396,7 +12396,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#createOrderApp.all>anon",
      "text": "if (orderType === 'pickup') {",
-     "scopeSha": "3db7059350277a306f8d639cb512555a6bbe86dd29466272c7df9d6ea347e021"
+     "scopeSha": "b36a045e2246f16fb974c49771eb3a8f2f0c7488e78d541cddd11538699e05eb"
     },
     {
      "kind": "F",
@@ -12661,32 +12661,32 @@
     "site": "await whatsapp.sendMessage(order.customer_phone, body, restaurantId);",
     "siteSha": "de950982ac799734df60e476f575dc87f00303c69c8a3c049a2867439b7394c8",
     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
-    "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+    "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'delivered') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'cancelled') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (!body) return;",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     }
    ],
    "cases": {
@@ -12813,7 +12813,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     }
    ],
    "cases": {
@@ -12844,14 +12844,14 @@
     "site": "body = whatsapp.tplOutForDelivery({",
     "siteSha": "915ce8b4ba6ac92e28a0e2b083d95cc51ba0dd093677945be0e7d82b7b2aa9ee",
     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
-    "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+    "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "278bf86752d2d45b5e99fc1323c6002f8b0fe6445d6dc18d092102817ac0fb1b"
+     "scopeSha": "7807300681291e3cdfd072049c905604d493f56b87ab94d02e9ddffcac2bcab6"
     }
    ],
    "cases": {
