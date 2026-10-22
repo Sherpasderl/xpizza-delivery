@@ -194,6 +194,12 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
         assert.strictEqual(onum && onum.textContent.trim(), LABEL.cash, FAIL(cell, `${dir}: the offer card names pg_cash by its display label ${JSON.stringify(LABEL.cash)} — visible text: ${vis}`));
         assert.ok(offer.textContent.includes(ITEM), FAIL(cell, `${dir}: the offer card shows pg_cash's item line (${ITEM}) — visible text: ${vis}`));
         assert.ok(!text.includes('Pages Cash'), FAIL(cell, `${dir}: PRIVACY — the customer's name is rendered while pg_cash is still an OFFER — visible text: ${vis}`));
+        // the phone as PLAIN TEXT in any display form (spaces, dashes, dots, parens, +504): its last 8 digits (the local
+        // number) must not appear in any number-like run of ≥ 8 digits — prices, the countdown and the label are shorter
+        const phone8 = String((await rtdb.ref('orders/pg_cash/customer_phone').get()).val() || '').replace(/\D/g, '').slice(-8);
+        assert.strictEqual(phone8.length, 8, FAIL(cell, `premise — pg_cash carries a customer phone (${JSON.stringify(phone8)})`));
+        const runs = (slot.textContent.match(/\+?\d[\d\s().-]*\d/g) || []).map((r) => r.replace(/\D/g, '')).filter((d) => d.length >= 8);
+        assert.ok(!runs.some((d) => d.includes(phone8)), FAIL(cell, `${dir}: PRIVACY — the customer's phone is rendered while pg_cash is still an OFFER (digit runs: ${JSON.stringify(runs)})`));
         const contact = [...slot.querySelectorAll('a[href^="tel:"], a[href*="wa.me"]')].map((a) => a.getAttribute('href'));
         assert.deepStrictEqual(contact, [], FAIL(cell, `${dir}: PRIVACY — a customer contact link is rendered while pg_cash is still an OFFER`));
         // S6 without the name: the offer card never shows one, so the pending order's absence is proven by its LABEL too
@@ -202,7 +208,7 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
       } else assert.ok(text.includes('Pages Cash'), FAIL(cell, `${dir}: the real order is rendered after the barrier (customer name) — visible text: ${text.replace(/\s+/g, ' ').trim().slice(0, 700)}`));
       if (['R1', 'R4'].includes(cell)) assert.ok(!OBS[cell].pendShown, FAIL(cell, `${dir}: the PENDING online order (S6) is rendered — it must be absent`));
     } finally { p.close(); await host.close(); }
-    ok(`${cell} ${dir}: booted (no script error), ${host.subs.length} subscriptions incl. the reviewed order-data queries (${wantQueries.length}), SETTLED after the barrier, the order rendered${cell === 'R4' ? ` (OFFER card: label ${LABEL.cash} + ${ITEM}; no customer name, no tel:/wa.me)` : ''}${['R1', 'R4'].includes(cell) ? `, the S6 pending order ABSENT${cell === 'R4' ? ` (by name AND by label ${LABEL.pend})` : ''}` : ''}${maps && maps.maps ? ` (maps double: ${maps.markers.length} markers, ${maps.infoWindows.length} info window)` : ''}`);
+    ok(`${cell} ${dir}: booted (no script error), ${host.subs.length} subscriptions incl. the reviewed order-data queries (${wantQueries.length}), SETTLED after the barrier, the order rendered${cell === 'R4' ? ` (OFFER card: label ${LABEL.cash} + ${ITEM}; no customer name, no phone digits, no tel:/wa.me)` : ''}${['R1', 'R4'].includes(cell) ? `, the S6 pending order ABSENT${cell === 'R4' ? ` (by name AND by label ${LABEL.pend})` : ''}` : ''}${maps && maps.maps ? ` (maps double: ${maps.markers.length} markers, ${maps.infoWindows.length} info window)` : ''}`);
   }
   console.log(`\nP0-OBS ${JSON.stringify(OBS)}`);
 

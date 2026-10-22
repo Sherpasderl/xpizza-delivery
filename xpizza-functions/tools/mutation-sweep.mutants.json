@@ -12888,6 +12888,22 @@
     ]
   },
   {
+    "id": "r3p0-99",
+    "slice": "r3p0",
+    "file": "../xpizza-driver/single-order-view.js",
+    "from": "<span class=\"sv-onum\">${label}</span>${ring}</div>",
+    "to": "<span class=\"sv-onum\">${label}</span>${ring}<span>${esc(order.customer_phone)}</span></div>",
+    "label": "R4 privacy: the driver OFFER card (awaiting_acceptance) renders the customer phone as plain text (codex r1 P2)",
+    "kills_with": [
+      "PRIVACY — the customer's phone is rendered while pg_cash is still an OFFER"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p0-pages"
+    ]
+  },
+  {
     "id": "r3p1-01",
     "slice": "r3p1",
     "file": "contract/tracer.js",
