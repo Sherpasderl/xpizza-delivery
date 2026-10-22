@@ -76,12 +76,13 @@ async function seed(rid) {
 
 // ── the whole-database DELTA of one request, normalised ──────────────────────────────────────────────────────────
 // Everything under RTDB and the Firestore collections a request can write is snapshotted before and after; the delta is
-// every leaf that appeared or changed. Normalisation, and ONLY this: the request's order id (as a value or a path
-// segment) → <oid>; a numeric leaf within ±1 day of now → <time>; a PATH SEGMENT the server mints per request (a push id,
-// a tracking token: ≥8 url-safe chars with an uppercase letter or digit, absent from the request body) → <minted:len>.
-// VALUES are never normalised up front: the two runs are compared leaf by leaf, and a leaf may differ ONLY when both
-// sides are mint-shaped strings of the same length and alphabet (a token minted per request). A status word, an amount,
-// a flag or an id that differs is a difference.
+// the UNION of both path sets: every leaf that appeared, changed, or was DELETED (marked <deleted>). Normalisation is by
+// EXACT VALUE, never by shape: this run's own order id → <oid>, its hosted attempt id (orders/<oid>/active_attempt_id) →
+// <attempt>, its tracking token (orders/<oid>/tracking_token) → <tracking>, its attempt's poll token → <poll>, in path
+// segments, values and the response alike; a numeric
+// leaf within ±1 day of now → <time>. Two raw paths that normalise to the same key THROW (cardinality is preserved).
+// The two runs are then compared leaf by leaf over the union of their keys: every leaf must be byte-equal, except the
+// NAMED per-request mints below (each must be present, as a string, on BOTH sides).
 const flat = (v, p, out) => { if (v && typeof v === 'object') { for (const [k, x] of Object.entries(v)) flat(x, p ? `${p}/${k}` : k, out); } else out[p] = v; return out; };
 async function snapshot() {
   const out = flat((await rtdb.ref().get()).val() || {}, 'rtdb', {});
@@ -91,35 +92,40 @@ async function snapshot() {
   }
   return out;
 }
-const isMint = (s, bodyText) => typeof s === 'string' && s.length >= 8 && /^[A-Za-z0-9_-]+$/.test(s) && /[A-Z0-9]/.test(s) && !bodyText.includes(s);
-const shape = (s) => `${s.length}`;   // a random token's character classes vary run to run; its length and alphabet (isMint) do not
-// equal, or both minted per request with the same shape (the ONLY tolerated difference)
-const sameOrMinted = (x, y, bodyA, bodyB) => JSON.stringify(x) === JSON.stringify(y)
-  || (isMint(x, bodyA) && isMint(y, bodyB) && shape(x) === shape(y));
-function deepSame(x, y, bodyA, bodyB, path = '') {
-  if (x && y && typeof x === 'object' && typeof y === 'object') {
-    const ks = new Set([...Object.keys(x), ...Object.keys(y)]);
-    const out = [];
-    for (const k of ks) out.push(...deepSame(x[k], y[k], bodyA, bodyB, `${path}.${k}`));
-    return out;
-  }
-  return sameOrMinted(x, y, bodyA, bodyB) ? [] : [`${path}: ${JSON.stringify(x)} vs ${JSON.stringify(y)}`];
+const MINTED = [                                            // the ONLY leaves allowed to differ between the two runs
+  /^rtdb\/orders\/<oid>\/payment_fingerprint$/,             // a hash over the order id (pixelpay-charge orderFingerprint)
+];
+const isMinted = (k) => MINTED.some((re) => re.test(k));
+function idsOf(after, oid) {
+  const ids = [[oid, '<oid>']];
+  const att = after[`rtdb/orders/${oid}/active_attempt_id`]; if (typeof att === 'string' && att) ids.push([att, '<attempt>']);
+  const poll = att && after[`rtdb/payment_attempts/${att}/poll_token`]; if (typeof poll === 'string' && poll) ids.push([poll, '<poll>']);
+  const trk = after[`rtdb/orders/${oid}/tracking_token`]; if (typeof trk === 'string' && trk) ids.push([trk, '<tracking>']);
+  return ids;
 }
-// a string carrying the order id: the id → <oid>, and the hosted attempt suffix the server mints after it
-// (pixelpay-hosted-webhook.js ATTEMPT_SUFFIX: `${orderId}-${16 hex}`) → <attempt16>
-const swapOid = (v, oid) => v.split(oid).join('<oid>').replace(/<oid>-[0-9a-f]{16}(?![0-9a-f])/g, '<oid>-<attempt16>');
-function normalise(before, after, oid, bodyText) {
-  const now = Date.now();
-  const seg = (x) => (x === oid ? '<oid>' : x.includes(oid) ? swapOid(x, oid) : isMint(x, bodyText) ? `<minted:${shape(x)}>` : x);
-  const val = (v) => (v === oid ? '<oid>' : typeof v === 'string' && v.includes(oid) ? swapOid(v, oid)
-    : typeof v === 'number' && Math.abs(v - now) < 86400000 ? '<time>' : v);
-  const d = {};
-  for (const [k, v] of Object.entries(after)) {
-    if (Object.prototype.hasOwnProperty.call(before, k) && before[k] === v) continue;
-    const nk = k.split('/').map(seg).join('/');
-    d[nk] = val(v);
+const subst = (v, ids) => { if (typeof v !== 'string') return v; let out = v; for (const [raw, tag] of ids) out = out.split(raw).join(tag); return out; };
+function normalise(before, after, oid) {
+  const now = Date.now(); const ids = idsOf(after, oid);
+  const val = (v) => (typeof v === 'number' && Math.abs(v - now) < 86400000 ? '<time>' : subst(v, ids));
+  const d = {}; const from = {};
+  for (const k of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    const inA = Object.prototype.hasOwnProperty.call(after, k), inB = Object.prototype.hasOwnProperty.call(before, k);
+    if (inA && inB && before[k] === after[k]) continue;
+    const nk = k.split('/').map((seg) => subst(seg, ids)).join('/');
+    if (Object.prototype.hasOwnProperty.call(d, nk)) throw new Error(`capp-a1: two paths normalise to ${nk} (${from[nk]} and ${k}) — cardinality would be lost`);
+    d[nk] = inA ? val(after[k]) : '<deleted>'; from[nk] = k;
   }
-  return d;
+  return { delta: d, ids };
+}
+function compareDeltas(a, e) {
+  const diffs = [];
+  for (const k of new Set([...Object.keys(a), ...Object.keys(e)])) {
+    const inA = k in a, inE = k in e;
+    if (inA && inE && JSON.stringify(a[k]) === JSON.stringify(e[k])) continue;
+    if (inA && inE && isMinted(k) && typeof a[k] === 'string' && typeof e[k] === 'string' && a[k] !== '<deleted>' && e[k] !== '<deleted>') continue;
+    diffs.push(`${k}: ${inA ? JSON.stringify(a[k]) : '(absent)'} vs ${inE ? JSON.stringify(e[k]) : '(absent)'}`);
+  }
+  return diffs;
 }
 
 const CART = [{ name: 'Carnivora', qty: 2, price: 340, extras: [{ name: 'Salsa Roja', price: 39 }] }];
@@ -137,10 +143,9 @@ async function run(handler, body, oid) {
   const r = await post(handler, body);
   await new Promise((res) => setTimeout(res, 400));       // let any trigger the emulator runs settle its writes
   const after = await snapshot();
-  const text = JSON.stringify(body);
-  const delta = normalise(before, after, oid, text);
-  const resp = JSON.parse(JSON.stringify(r.json === null ? r.text : r.json), (k, v) => (v === oid ? '<oid>' : typeof v === 'string' && v.includes(oid) ? swapOid(v, oid) : v));
-  return { status: r.status, resp, delta, charged: CHARGED.slice(), body: text };
+  const { delta, ids } = normalise(before, after, oid);
+  const resp = JSON.parse(JSON.stringify(r.json === null ? r.text : r.json), (k, v) => subst(v, ids));   // the same EXACT substitutions
+  return { status: r.status, resp, delta, charged: CHARGED.slice() };
 }
 
 (async () => {
@@ -168,13 +173,11 @@ async function run(handler, body, oid) {
     const e = await run(handler, order(`a1exp${tag}`, method, true), `a1exp${tag}`);
     assert.strictEqual(a.status, 200, `${name} (absent): ${JSON.stringify(a.resp).slice(0, 300)}`);
     assert.strictEqual(e.status, 200, `${name} (explicit): ${JSON.stringify(e.resp).slice(0, 300)} — the field is NOT rejected`);
-    assert.deepStrictEqual(deepSame(a.resp, e.resp, a.body, e.body), [], `${name}: identical response body (per-request tokens excepted)`);
+    assert.deepStrictEqual(e.resp, a.resp, `${name}: identical response body (this run's own oid/attempt/tracking substituted by exact value)`);
     assert.deepStrictEqual(e.charged, a.charged, `${name}: identical amount handed to PixelPay`);
     assert.ok(Object.keys(a.delta).length > 5, `${name}: non-vacuity — the request wrote ${Object.keys(a.delta).length} leaves`);
-    const onlyA = Object.keys(a.delta).filter((k) => !(k in e.delta)); const onlyE = Object.keys(e.delta).filter((k) => !(k in a.delta));
-    assert.deepStrictEqual([onlyA, onlyE], [[], []], `${name}: the same paths were written (absent-only ${JSON.stringify(onlyA)}, explicit-only ${JSON.stringify(onlyE)})`);
-    const diff = Object.keys(a.delta).filter((k) => !sameOrMinted(a.delta[k], e.delta[k], a.body, e.body));
-    assert.deepStrictEqual(diff, [], `${name}: every written value is identical: ${diff.map((k) => `${k}: ${JSON.stringify(a.delta[k])} vs ${JSON.stringify(e.delta[k])}`).join('; ')}`);
+    const diff = compareDeltas(a.delta, e.delta);
+    assert.deepStrictEqual(diff, [], `${name}: the database deltas differ: ${diff.join('; ')}`);
     const minted = Object.keys(a.delta).filter((k) => JSON.stringify(a.delta[k]) !== JSON.stringify(e.delta[k]));
     const stored = Object.entries(e.delta).filter(([k]) => k.startsWith('rtdb/orders/<oid>/'));
     const rid = stored.find(([k]) => k === 'rtdb/orders/<oid>/restaurant_id');
@@ -182,7 +185,23 @@ async function run(handler, body, oid) {
       assert.ok(rid && rid[1] === 'x_pizza', `${name}: the stored order carries restaurant_id 'x_pizza' (not stripped): ${JSON.stringify(rid)}`);
       for (const f of ['total_cents', 'factura_status']) assert.ok(stored.some(([k]) => k === `rtdb/orders/<oid>/${f}`), `${name}: non-vacuity — the stored order has ${f}`);
     }
-    ok(`${name}: explicit 'x_pizza' ≡ absent — status 200 both, same response, same PixelPay amount ${JSON.stringify(a.charged.map((c) => c.amount))}, and the SAME ${Object.keys(a.delta).length}-leaf database delta (price, factura_status, routing, every stored field; ${minted.length} per-request token leaves: ${minted.join(', ') || 'none'})`);
+    ok(`${name}: explicit 'x_pizza' ≡ absent — status 200 both, same response, same PixelPay amount ${JSON.stringify(a.charged.map((c) => c.amount))}, and the SAME ${Object.keys(a.delta).length}-leaf database delta (price, factura_status, routing, every stored field incl. deletions; ${minted.length} NAMED per-request mint(s) differ: ${minted.join(', ') || 'none'})`);
+  }
+
+  // ── the comparator is not blind (codex r1): a different dish id, a different driver, a deletion on one side each FAIL ──
+  {
+    const O = 'negO';
+    const base = { [`rtdb/orders/${O}/status`]: 'new' };
+    const runOf = (after) => normalise(base, after, O).delta;
+    const A = { ...base, [`rtdb/orders/${O}/items/0/dish_id`]: 'D9XRZ89WJ6', [`rtdb/tasks/${O}_delivery/driver_uid`]: 'driver_A', [`rtdb/orders/${O}/tracking_token`]: 'TrkAAAA1111' };
+    const sameButToken = { ...A, [`rtdb/orders/${O}/tracking_token`]: 'TrkBBBB2222' };
+    assert.deepStrictEqual(compareDeltas(runOf(A), runOf(sameButToken)), [], 'control: a run differing only in its OWN tracking token is equal');
+    assert.ok(compareDeltas(runOf(A), runOf({ ...A, [`rtdb/orders/${O}/items/0/dish_id`]: 'SBMGAMAGJQ' })).some((x) => /dish_id/.test(x)), 'a different dish_id FAILS');
+    assert.ok(compareDeltas(runOf(A), runOf({ ...A, [`rtdb/tasks/${O}_delivery/driver_uid`]: 'driver_B' })).some((x) => /driver_uid/.test(x)), 'a different driver FAILS');
+    const { [`rtdb/orders/${O}/status`]: _gone, ...deleted } = A;
+    assert.ok(compareDeltas(runOf(A), runOf(deleted)).some((x) => /status: \(absent\) vs "<deleted>"/.test(x)), 'a leaf DELETED on one side FAILS');
+    assert.throws(() => normalise({}, { [`rtdb/x/${O}`]: 1, 'rtdb/x/<oid>': 2 }, O), /cardinality/, 'two paths collapsing to one key THROW');
+    ok('comparator: a different dish_id, a different driver and a one-sided deletion each FAIL; only the run\'s own minted ids are substituted; collapsing paths throw');
   }
 
   // sensitivity: the comparison is not blind — a different restaurant_id is refused or diverges
