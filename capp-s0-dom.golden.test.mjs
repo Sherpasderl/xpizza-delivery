@@ -8,14 +8,15 @@
 // (first launcher dish, when the catalog has one) · cart review · Stage-2 summary · rewards: guest, signed-in
 // with an eligible balance, signed-in with points/stamps HELD by a pending order (chip, cart earn line, redeem
 // ticket). Third brand (r3_synth, PROVISIONAL, the declared x_pizza fork): grid, modal, cart, summary, plus a
-// leak check — no x_pizza/la_musa literal in any visible text, attribute or the title.
+// leak check — no x_pizza/la_musa literal in any visible text, attribute, the title, or any request body.
+// Every window is network-checked: a recorder installed before the page's first script, every URL known, no escape.
 //
 // Run:   node capp-s0-dom.golden.test.mjs            (check)
 //        node capp-s0-dom.golden.test.mjs --write    (re-capture from the CURRENT forms; review the diff)
 import assert from 'node:assert';
 import { readFileSync, writeFileSync, rmdirSync } from 'node:fs';
 import { closeAll, counter, settle } from './form-harness.mjs';
-import { provisionBrand, boot, composeCart, GSTATIC, rewardsPreamble, REWARD } from './xpizza-functions/contract/capp/capture.mjs';
+import { provisionBrand, boot, composeCart, netCheck, GSTATIC, rewardsPreamble } from './xpizza-functions/contract/capp/capture.mjs';
 import { provisionThirdBrand, materializeFork, removeFork } from './xpizza-functions/contract/capp/third-brand-fork.mjs';
 
 const GOLDEN = new URL('./capp-s0-dom.golden.json', import.meta.url);
@@ -57,7 +58,7 @@ async function rewardsCell(B, envelope, state) {
     : await boot(B.dir, envelope);
   await composeCart(w); await tick();
   w.renderRedeemUI(); await tick();
-  if (w.__netEscapes.length) throw new Error(`capp dom: network escape ${w.__netEscapes.join(' | ')}`);
+  netCheck(w);   // every request this window made (start-up included) is known; no escape
   return { chip: html(w, 'acct-chip'), cart_earn: w.document.getElementById('acct-cart-earn').outerHTML, redeem: html(w, 'acct-redeem') };
 }
 
@@ -75,6 +76,7 @@ function visibleLeak(w) {
     const prov = await provisionBrand(B.rid);
     const { w } = await boot(B.dir, prov.envelope);
     const s = await shopping(w);
+    netCheck(w);
     assert.strictEqual(s.extra, true, `${B.rid}: non-vacuity — the cart carries an extra`);
     assert.ok(s.out.grid.join('').length > 1000 && s.out.cart_review.length > 200, `${B.rid}: non-vacuity — the grid and cart rendered`);
     got[`${B.rid}/shopping`] = s.out;
@@ -92,6 +94,7 @@ function visibleLeak(w) {
   try {
     const { w } = await boot(fork.dir, third.envelope);
     const s = await shopping(w);
+    for (const r of netCheck(w)) { const m = LEAK.exec(r.rawBody || ''); assert.strictEqual(m, null, `third brand: a ${r.endpoint} request body leaks ${m && m[0]}`); }
     const leak = visibleLeak(w);
     assert.strictEqual(leak, null, `third brand: another brand's literal is visible: ${leak}`);
     assert.ok(/R3 /.test(s.out.grid.join('')), 'third brand: non-vacuity — the grid renders the third brand\'s renamed dishes');

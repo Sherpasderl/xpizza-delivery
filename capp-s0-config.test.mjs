@@ -54,6 +54,20 @@ async function derive(dir) {
   assert.strictEqual(exactlyOne("localStorage.setItem('a_pending_pay'", /localStorage\.setItem\('([a-z_]+_pending_pay)'/, 'one')[1], 'a_pending_pay');
   ok('source-text fallback: zero matches and two matches both throw; exactly one returns it');
 
+  // Payment methods come from the RUNTIME handlers, fail-closed: a handler the regex era would have skipped is
+  // either derived (and then refused by the validator) or refused outright.
+  {
+    const html = readFileSync(new URL('./la-musa-orders/index.html', import.meta.url), 'utf8');
+    const withHandler = async (onclick) => { const w = loadForm('la-musa-orders'); await settle(); const b = w.document.createElement('button'); b.setAttribute('onclick', onclick); w.document.body.appendChild(b); return w; };
+    const dq = deriveBrandConfig(await withHandler('selectPay("bitcoin")'), { dir: 'la-musa-orders', html });
+    assert.deepStrictEqual(dq.payment_methods, ['bitcoin', 'cash', 'online'], 'a double-quoted handler is DERIVED, not skipped');
+    assert.ok(validateRestaurantConfig(plain(dq)).includes('payment_methods'), '…and the validator refuses the unknown method');
+    await assert.rejects(async () => deriveBrandConfig(await withHandler("selectPay('cash');selectPay('online')"), { dir: 'la-musa-orders', html }), /instead of exactly one selectPay/);
+    await assert.rejects(async () => deriveBrandConfig(await withHandler("if (false) selectPay('cash')"), { dir: 'la-musa-orders', html }), /instead of exactly one selectPay/);
+    await assert.rejects(async () => deriveBrandConfig(await withHandler('selectPay()'), { dir: 'la-musa-orders', html }), /instead of exactly one selectPay/);
+  }
+  ok('payment methods derive from the runtime handlers: a double-quoted unknown method is derived and refused; a double call, no call or no argument throws');
+
   // The inert validator refuses what RESTAURANT_CONFIG must never carry.
   const base = got.la_musa;
   const bad = (patch, re) => { const c = { ...plain(base), ...patch }; const e = validateRestaurantConfig(c); assert.ok(e.some((m) => re.test(m)), `validator must reject ${JSON.stringify(patch)} (got ${JSON.stringify(e)})`); };

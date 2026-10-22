@@ -39,7 +39,9 @@ try {
   assert.throws(() => loadForm(mod), /cannot inline.*type="module" src="form-cart\.js"/s);
   const def = probe('defer', (d) => replaceOnce(`${d}/index.html`, '<script src="form-cart.js"></script>', '<script defer src="form-cart.js"></script>'));
   assert.throws(() => loadForm(def), /cannot inline.*defer src="form-cart\.js"/s);
-  ok('a type="module" or defer local script THROWS, naming the script — it is never silently left unrun');
+  const inl = probe('inline-module', (d) => replaceOnce(`${d}/index.html`, '<script src="form-cart.js"></script>', '<script src="form-cart.js"></script><script type="module">window.__inlineModuleRan = true; throw new Error("capp probe");</script>'));
+  assert.throws(() => loadForm(inl), /module script\(s\), which jsdom never runs.*type="module"/s);
+  ok('a type="module" or defer local script THROWS, naming the script; an INLINE module script throws too — none is silently left unrun');
 
   const gone = probe('missing', (d) => unlinkSync(`${d}/form-cart.js`));
   assert.throws(() => loadForm(gone), /local script "form-cart\.js" .* cannot be read/);

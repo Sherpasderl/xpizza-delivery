@@ -49,7 +49,24 @@ export function deriveBrandConfig(w, { dir, html }) {
 
   const store = [...doc.querySelectorAll('.pickup-store-name')].map((e) => e.textContent.trim());
   const wa = [...doc.querySelectorAll('a[href^="https://wa.me/"]')].map((a) => a.getAttribute('href').slice('https://wa.me/'.length));
-  const pays = [...new Set([...doc.querySelectorAll('[onclick*="selectPay("]')].map((e) => (/selectPay\('([a-z]+)'\)/.exec(e.getAttribute('onclick')) || [])[1]).filter(Boolean))].sort();
+  // Payment methods, from the RUNTIME handlers: every element whose handler names selectPay is clicked with
+  // selectPay temporarily replaced by a recorder; each click must make exactly ONE call with one string.
+  // A handler that calls it differently, twice, or not at all THROWS — nothing is skipped.
+  const payEls = [...doc.querySelectorAll('[onclick*="selectPay"]')];
+  if (!payEls.length) throw new Error(`capp brand-config: ${dir} — no element's handler names selectPay`);
+  const realPay = w.selectPay; const payCalls = [];
+  w.selectPay = function () { payCalls.push(Array.from(arguments)); };
+  const payList = [];
+  try {
+    for (const el of payEls) {
+      const before = payCalls.length;
+      el.dispatchEvent(new w.MouseEvent('click', { bubbles: false, cancelable: true }));
+      const mine = payCalls.slice(before);
+      if (mine.length !== 1 || mine[0].length !== 1 || typeof mine[0][0] !== 'string') throw new Error(`capp brand-config: ${dir} — a selectPay handler (${el.getAttribute('onclick')}) made ${JSON.stringify(mine)} instead of exactly one selectPay(<string>)`);
+      payList.push(mine[0][0]);
+    }
+  } finally { w.selectPay = realPay; }
+  const pays = [...new Set(payList)].sort();
 
   // The order-id prefix, from the page's OWN minter.
   const minted = ev('genOrderId()');

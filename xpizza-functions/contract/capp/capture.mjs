@@ -9,9 +9,10 @@
 // PAGE: the shared form-harness, plus two preamble scripts that run before any page script:
 //   • a fixed clock (Wednesday 18:00 Honduras, both restaurants open), advancing with real elapsed time
 //     so timers still behave;
+//   • a fetch RECORDER installed over the harness stub BEFORE any page script, so a request made during
+//     start-up is recorded like any other (window.__capAll); every recorded URL must be one this rig knows;
 //   • a network trap: XMLHttpRequest / WebSocket / EventSource / sendBeacon record into
-//     window.__netEscapes and throw. fetch is the harness stub. A cell asserts zero escapes, so no
-//     PixelPay, Maps or Firebase request can leave the process unseen.
+//     window.__netEscapes and throw. Every window a suite opens is checked for both.
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -28,6 +29,13 @@ export const PLAN_ETAG = {                                // PLAN-shared-order-f
 };
 
 export const PREAMBLE = `(function(){
+  window.__capAll = [];
+  var stub = window.fetch;
+  window.fetch = function(url, init){
+    var h = {}; try { if (init && init.headers) for (var k in init.headers) h[k] = String(init.headers[k]); } catch (_) {}
+    window.__capAll.push({ url: String(url), method: (init && init.method) || 'GET', headers: h, body: init && typeof init.body === 'string' ? init.body : null });
+    return stub.apply(this, arguments);
+  };
   var R = Date, start = R.now(), T0 = ${T0};
   function D(){ var a = Array.prototype.slice.call(arguments);
     return a.length ? new (Function.prototype.bind.apply(R, [null].concat(a)))() : new R(T0 + (R.now() - start)); }
@@ -67,7 +75,33 @@ export async function provisionBrand(rid) {
     await publishVersion(db, rid, input, { expected });
   });
   const m = await buildPublicMenu(db, rid, { known: new Set([rid]), isActive: async () => true });
-  return { rid, etag: m.etag, envelope: { rid: m.rid, representation_version: m.representation_version, menu: m.body } };
+  // the PUBLISHED catalog's pricing tables + reward allowlist (plan §10.3), for the reward server below
+  const { getRestaurantMenu } = require(join(FN, 'catalog/catalog-menu'));
+  const { buildTablesFromDocs } = require(join(FN, 'catalog/catalog-transform'));
+  const { redeemEligibleFrom } = require(join(FN, 'catalog/menu-gates'));
+  const built = await getRestaurantMenu(db, rid);
+  return { rid, etag: m.etag, envelope: { rid: m.rid, representation_version: m.representation_version, menu: m.body },
+    tables: { restaurantId: rid, ...buildTablesFromDocs(built.items, built.extras) }, eligible: redeemEligibleFrom(rid, built) };
+}
+
+/* THE REWARD SERVER: the real quoteRedemptionCore (rewards-redeem-intake.js) over the PUBLISHED catalog's tables
+   and allowlist, against an in-memory RTDB provisioned with the account's balance, the global redemption flag
+   and an empty 86 list. The caller is verified the way the handler verifies it: only the ID token this rig
+   installs maps to a uid; anything else is a guest and the core refuses it (login_required). Quotes are issued
+   by the real issuer under a TEST-ONLY secret, so the token the page receives is a real one. */
+export const QUOTE_TEST_SECRET = 'capp-s0-test-only-quote-secret';
+export function rewardServer(prov, balance) {
+  const { quoteRedemptionCore } = require(join(FN, 'rewards-redeem-intake'));
+  const { fakeRtdb } = require(join(FN, 'test/_fake-rtdb'));
+  const rt = fakeRtdb({ config: { redemption_enabled: true }, user_rewards: { 'u-capp': { [prov.rid]: { balance, reserved: 0 } } }, restaurants: { [prov.rid]: { item_availability: {} } } });
+  const db = { ref: (p) => { const r = rt.ref(p); return { ...r, get: r.once }; } };
+  return async (body, headers) => {
+    if (!process.env.QUOTE_TOKEN_SECRET) process.env.QUOTE_TOKEN_SECRET = QUOTE_TEST_SECRET;
+    if (process.env.QUOTE_TOKEN_SECRET !== QUOTE_TEST_SECRET) throw new Error('capp: refusing to issue quotes under a non-test QUOTE_TOKEN_SECRET');
+    const customerUid = headers['X-Firebase-ID-Token'] === 'test-id-token' ? 'u-capp' : null;
+    const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId: prov.rid, customerUid, tables: prov.tables, eligible: prov.eligible });
+    return q.ok ? { status: 200, json: q } : { status: q.status, json: { ok: false, ...q.body } };
+  };
 }
 
 // The same minimal google.maps the location suites use, so initMap/placePin run (the Maps script is stripped).
@@ -82,29 +116,31 @@ function installMaps(w) {
   } };
 }
 
-/* The rewards each brand runs TODAY, in the shape the page's own account module stores (plan §10.2). */
+/* The rewards each brand runs TODAY, in the shape the page's own account module stores (plan §10.2), and the
+   balance the account is provisioned with (enough for exactly that reward). */
 export const REWARD = {
-  punch: { payload: { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' }, cost: 8 },
-  points: { payload: { type: 'points_ala_carte', items: [{ id: 'rice_white', qty: 2, name: 'Arroz Blanco' }] }, cost: 334 },
+  punch: { payload: { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' }, balance: 8 },
+  points: { payload: { type: 'points_ala_carte', items: [{ id: 'rice_white', qty: 2, name: 'Arroz Blanco' }] }, balance: 400 },
 };
+const reply = (status, json) => Promise.resolve({ ok: status >= 200 && status < 300, status, headers: { get: () => null }, json: () => Promise.resolve(json), text: () => Promise.resolve(JSON.stringify(json)) });
 
 /* ONE CELL, driven through the page's own writers and UI handlers:
    cart = the first priced dish ×2 with the first extra its detail modal offers (a real delegated click);
    contact fields; order type; for delivery a pin 1–2 km from the restaurant (the page's own placePin);
    then the cell's variation; then the real send (submitOrder / processPixelPay). */
-export async function driveCell(dir, envelope, cell, { transforms } = {}) {
-  const answer = (u, body) => {
-    if (/quoteRedemption/.test(u)) {
-      const r = REWARD[cell.reward];
-      // priced by the REAL server pricer over the cart as sent; today's rewards are add-free (no discount, plan §10.2)
-      const { computeServerTotal } = require(join(FN, 'menu-pricing'));
-      const priced = computeServerTotal((body && body.items) || [], body && body.restaurant_id);
-      if (!priced || priced.error || typeof priced.total !== 'number') throw new Error(`capp: the real pricer refused the reward cart (${JSON.stringify(priced)})`);
-      return res({ ok: true, total_cents: Math.round(priced.total * 100), savings_cents: 0, free_items: [], remaining: 0, total_cost: r ? r.cost : 0 });
+export async function driveCell(dir, prov, cell, { transforms } = {}) {
+  const server = cell.reward ? rewardServer(prov, REWARD[cell.reward].balance) : null;
+  const answer = (u, body, headers) => {
+    if (/quoteRedemption$/.test(u)) {
+      if (!server) throw new Error(`capp cell ${dir}/${cell.id}: a reward quote was requested by a cell with no reward`);
+      return server(body || {}, headers).then((r) => reply(r.status, r.json));
     }
     return null;
   };
-  const { w, sent } = await boot(dir, envelope, { transforms, answer });
+  /* A reward cell is a SIGNED-IN session: the account module's own customerIdToken() runs through the gstatic seam
+     (the fake auth hands it the ID token the reward server verifies). cell.marker is the brand's account key. */
+  const signedIn = cell.reward ? { transforms: { ...(transforms || {}), ...GSTATIC }, preamble: rewardsPreamble(cell.marker, { balance: REWARD[cell.reward].balance, reserved: 0 }) } : { transforms };
+  const { w } = await boot(dir, prov.envelope, { ...signedIn, answer });
   installMaps(w);
   const doc = w.document;
   const { dish, extra } = await composeCart(w);
@@ -124,8 +160,7 @@ export async function driveCell(dir, envelope, cell, { transforms } = {}) {
     first.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); w.confirmSched(); await settle();
   }
   if (cell.reward) {
-    w.localStorage.setItem(w.__ACCOUNT.CONFIG.MARKER, JSON.stringify({ uid: 'u-capp', name: 'Cliente Prueba' }));
-    w.__ACCOUNT = Object.assign({}, w.__ACCOUNT, { customerIdToken: () => Promise.resolve('test-id-token') });
+    if (w.__ACCOUNT.CONFIG.MARKER !== cell.marker) throw new Error(`capp cell ${dir}/${cell.id}: the signed-in marker ${cell.marker} is not this page's (${w.__ACCOUNT.CONFIG.MARKER})`);
     w.__ACCOUNT.restoreRedeem(REWARD[cell.reward].payload, null, null);
     await w.__ACCOUNT.requoteRedeem(w.redeemCartItems()); await settle();
   }
@@ -134,7 +169,7 @@ export async function driveCell(dir, envelope, cell, { transforms } = {}) {
   const pend = cell.card ? w.processPixelPay() : w.submitOrder('confirmed');
   if (pend && pend.catch) pend.catch(() => {});
   await settle(); await settle();
-  return { w, sent, dish, extra };
+  return { w, dish, extra };
 }
 
 /* The cart every cell uses: the first priced dish ×2 and, when the catalog offers any, the first extra its
@@ -145,7 +180,10 @@ export async function composeCart(w) {
   const doc = w.document;
   const priced = w.liveMenuGlobalGet('MENU').filter((x) => x.price > 0);
   if (!priced.length) throw new Error('capp: the served menu has no priced dish');
-  for (const d of priced) {
+  // A catalog that publishes no extras cannot offer one: no search (each probe would add a quote request
+  // that is this rig's artefact, not the page's contract).
+  const offersExtras = (w.liveMenuGlobalGet('EXTRAS') || []).length > 0;
+  for (const d of offersExtras ? priced : []) {
     w.chg(d.id, 2); await settle(); w.openDetailModal(d.id); await settle();
     const row = doc.querySelector('#detail-modal [data-act="extra"]');
     if (row) { row.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle(); w.closeDetailModal(); await settle(); return { dish: d, extra: true }; }
@@ -183,76 +221,100 @@ export function rewardsPreamble(marker, state) {
 })();`;
 }
 
-/* THE ONE DECLARED MASK LIST. A masked field is never just hidden: it must be PRESENT on every request of
-   the named endpoints and pass its format/consistency check, or the capture throws. Only then is it
-   replaced by a stable placeholder in the golden. Anything not listed here is pinned byte-for-byte. */
+/* THE ONE DECLARED MASK LIST. A masked field is never just hidden: on every request it applies to it must be
+   PRESENT and pass its format/consistency check, or the capture throws. Only then is it replaced by a stable
+   placeholder, and the placeholder itself is pinned by the golden (so a field that disappears, or appears,
+   is a golden difference). Anything not listed here is pinned byte-for-byte. `when` limits a mask to the
+   requests that carry the field by contract (quote_token rides only a reward-quoted send). */
 const HN_DATE = '261021';                                   // the fixed clock's Honduras date (YYMMDD)
+const isSend = (ep) => ep === 'createOrder' || ep === 'chargeOnlineOrder';
 export const MASKS = [
-  { endpoints: /^(createOrder|chargeOnlineOrder)$/, path: ['body', 'order_id'], name: 'order_id',
+  { name: 'order_id', path: ['body', 'order_id'], applies: (ep) => isSend(ep),
     why: 'genOrderId(): PREFIX + Honduras date/time at the fixed clock + an 8-char CSPRNG suffix',
     check: (v) => typeof v === 'string' && new RegExp(`^PZX-${HN_DATE}-18\\d{4}-[0-9A-Z]{8}$`).test(v) },
-  { endpoints: /^(createOrder|chargeOnlineOrder)$/, path: ['body', 'timestamp'], name: 'timestamp',
+  { name: 'timestamp', path: ['body', 'timestamp'], applies: (ep) => isSend(ep),
     why: 'new Date().toISOString() at the send, on the fixed clock (advances with real elapsed time)',
     check: (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(v) && Date.parse(v) >= T0 && Date.parse(v) < T0 + 15 * 60000 },
-  { endpoints: /^(createOrder|chargeOnlineOrder)$/, path: ['headers', 'Authorization'], name: 'order_secret',
+  { name: 'order_secret', path: ['headers', 'Authorization'], applies: (ep) => isSend(ep),
     why: 'Bearer ORDER_SECRET: a constant in the public page, never written into a golden file',
     check: (v) => typeof v === 'string' && /^Bearer [0-9a-f]{64}$/.test(v) },
+  { name: 'quote_token', path: ['body', 'quote_token'], applies: (ep, req) => isSend(ep) && req.body && req.body.redeem != null,
+    why: 'the reward quote token the real issuer signed (issued_at = the real clock); verified against the test secret',
+    check: (v) => { const { verifyQuoteToken } = require(join(FN, 'quote-token')); const r = verifyQuoteToken(v, QUOTE_TEST_SECRET, Date.now());
+      return !!(r && r.ok && r.payload && /^[a-z][a-z0-9_]*$/.test(r.payload.rid) && Number.isInteger(r.payload.net_total_cents)); } },
 ];
 
 export const endpointOf = (url) => {
   const u = String(url);
-  if (/\/getPublicMenu\/menu\/[a-z0-9_]+$/.test(u)) return 'getPublicMenu';
-  const m = /\/(quoteOrder|createOrder|chargeOnlineOrder|quoteRedemption)$/.exec(u);
+  if (/^https:\/\/us-central1-xpizza-delivery\.cloudfunctions\.net\/getPublicMenu\/menu\/[a-z0-9_]+$/.test(u)) return 'getPublicMenu';
+  const m = /^https:\/\/us-central1-xpizza-delivery\.cloudfunctions\.net\/(quoteOrder|createOrder|chargeOnlineOrder|quoteRedemption|paymentStatus|claimPrefill|claimOrder|reportClientVersion)$/.exec(u);
   if (m) return m[1];
-  if (/\/restaurants\/[a-z0-9_]+\/item_availability\.json$/.test(u)) return 'item_availability';
+  // the account module's endpoints (account.js CONFIG: Cloud Run hosts), query string allowed
+  const a = /^https:\/\/(requestotp|verifyotp|deleteaccount|getsignupconfig|googlestart|googlesignin|completeprofile|setpromos)-m7syoovdsa-uc\.a\.run\.app(\?[^#]*)?$/.exec(u);
+  if (a) return a[1];
+  if (/^https:\/\/xpizza-delivery-default-rtdb\.firebaseio\.com\/restaurants\/[a-z0-9_]+\/item_availability\.json$/.test(u)) return 'item_availability';
   return null;
 };
 
 function maskOne(ep, req) {
   const out = JSON.parse(JSON.stringify(req));
   for (const m of MASKS) {
-    if (!m.endpoints.test(ep)) continue;
+    if (!m.applies(ep, req)) continue;
     let o = out;
     for (const k of m.path.slice(0, -1)) o = o && o[k];
     const last = m.path[m.path.length - 1];
     if (!o || !Object.prototype.hasOwnProperty.call(o, last)) throw new Error(`capp mask ${m.name}: ${ep} carries no ${m.path.join('.')} — a mask never hides a MISSING field`);
-    if (!m.check(o[last])) throw new Error(`capp mask ${m.name}: ${ep} ${m.path.join('.')} = ${m.name === 'order_secret' ? '<redacted>' : JSON.stringify(o[last])} fails its format check — a mask never hides a MALFORMED field`);
+    if (!m.check(o[last], req)) throw new Error(`capp mask ${m.name}: ${ep} ${m.path.join('.')} = ${m.name === 'order_secret' ? '<redacted>' : JSON.stringify(o[last])} fails its format check — a mask never hides a MALFORMED field`);
     o[last] = `<masked:${m.name}>`;
   }
   return out;
 }
 
-/* A cell's record: the endpoint sequence (consecutive repeats collapsed: the number of debounced quote
-   refreshes is timing, not contract) and the LAST request each endpoint received, masked. Throws on a
-   network escape or on any request this rig does not know. */
-export function recordCell(w, sent) {
+/* Every request the window made, from the recorder installed BEFORE its first script. Throws on a network
+   escape or on any request this rig does not know. Returns the raw list (bodies parsed) for leak checks. */
+export function netCheck(w) {
+  if (!Array.isArray(w.__capAll)) throw new Error('capp: the fetch recorder is not installed (boot through capture.mjs preambles)');
   if (w.__netEscapes.length) throw new Error(`capp: network escaped the fetch stub: ${w.__netEscapes.join(' | ')}`);
-  const sequence = []; const requests = {};
-  for (const s of sent) {
-    const ep = endpointOf(s.url);
-    if (!ep) throw new Error(`capp: an UNKNOWN request left the page: ${s.method} ${s.url}`);
-    if (ep === 'getPublicMenu' || ep === 'item_availability') continue;
-    if (sequence[sequence.length - 1] !== ep) sequence.push(ep);
-    requests[ep] = maskOne(ep, { method: s.method, headers: s.headers, body: s.body });
-  }
-  return { sequence, requests };
+  return Array.from(w.__capAll, (r) => {
+    const ep = endpointOf(r.url);
+    if (!ep) throw new Error(`capp: an UNKNOWN request left the page: ${r.method} ${r.url}`);
+    let body = r.body;
+    if (typeof body === 'string') { try { body = JSON.parse(body); } catch (_) { /* kept as the raw string */ } }
+    return { endpoint: ep, url: r.url, method: r.method, headers: { ...r.headers }, body, rawBody: r.body };
+  });
 }
 
-/* Boot a page with the clock + trap, serve its catalog through the form's OWN live-menu feed, and record
-   every request. Requests other than the menu never settle (the harness rule: page state stays exactly
-   where the code under test left it). `answer(url, body)` may return a response for a specific request. */
+/* A cell's record: EVERY request in order (masked), collapsing only a request byte-identical to the one
+   right before it (the number of identical debounced quote refreshes is timing, not contract). Distinct
+   payloads to the same endpoint are all kept. The menu and availability reads are inputs, not output. */
+export function recordCell(w) {
+  const all = netCheck(w);
+  const requests = [];
+  for (const r of all) {
+    if (r.endpoint === 'getPublicMenu' || r.endpoint === 'item_availability') continue;
+    const m = { endpoint: r.endpoint, ...maskOne(r.endpoint, { method: r.method, headers: r.headers, body: r.body }) };
+    const prev = requests[requests.length - 1];
+    if (prev && JSON.stringify(prev) === JSON.stringify(m)) continue;
+    requests.push(m);
+  }
+  return { requests, raw: all };
+}
+export const lastOf = (rec, ep) => { for (let i = rec.requests.length - 1; i >= 0; i--) if (rec.requests[i].endpoint === ep) return rec.requests[i]; return null; };
+
+/* Boot a page with the clock, recorder and trap; serve its catalog through the form's OWN live-menu feed.
+   Requests other than the menu never settle (the harness rule: page state stays exactly where the code
+   under test left it). `answer(url, body, headers)` may return a response for a specific request. */
 export async function boot(dir, envelope, { transforms, answer, preamble } = {}) {
   const w = loadForm(dir, { preamble: preamble || PREAMBLE, ...(transforms ? { transforms } : {}) });
-  const sent = [];
   w.__respond = (url, init) => {
     const u = String(url);
-    const body = init && typeof init.body === 'string' ? JSON.parse(init.body) : null;
-    sent.push({ url: u, method: (init && init.method) || 'GET', headers: { ...((init && init.headers) || {}) }, body });
     if (u.includes('/menu/')) return res(envelope);
-    const a = answer && answer(u, body);
+    let body = null; try { body = init && typeof init.body === 'string' ? JSON.parse(init.body) : null; } catch (_) {}
+    const h = {}; try { if (init && init.headers) for (const k of Object.keys(init.headers)) h[k] = String(init.headers[k]); } catch (_) {}
+    const a = answer && answer(u, body, h);
     return a || new Promise(() => {});
   };
   await w.__liveMenu.feed.refresh();
   await settle();
-  return { w, sent };
+  return { w };
 }

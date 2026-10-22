@@ -67,6 +67,9 @@ export function loadForm(dir, { omit = [], transforms = {}, preamble: extra = ''
   html = html.replace(/<script[^>]*src="https?:[^"]*"[^>]*><\/script>/g, '');
   const unrun = html.match(/<script\b[^>]*\bsrc\s*=[^>]*>/gi);
   if (unrun) throw new Error(`form-harness: ${dir}/index.html has local script tag(s) the rig cannot inline, so they would silently never run: ${unrun.join(' ')}`);
+  // jsdom does not execute module scripts at all — an INLINE <script type="module"> vanishes just as silently.
+  const modules = html.match(/<script\b[^>]*\btype\s*=\s*["']?module\b[^>]*>/gi);
+  if (modules) throw new Error(`form-harness: ${dir}/index.html has module script(s), which jsdom never runs, so they would silently never run: ${modules.join(' ')}`);
   // Installed at the top of <head>: loadAvailability() and the live-menu boot both run during parse,
   // so the stub has to exist before any of it.
   const preamble = `<script>
