@@ -44,7 +44,7 @@ async function deliveryFor(db, { rid, mode, pin, customerUid, getIdentity, prici
      · otherwise a different fulfilment or pin than the stored order's → refused order_context_changed: the client starts a
        fresh order; mixed contexts are never re-priced
    A refusal dq is answered by the handler BEFORE any pending order or hold exists. */
-async function chargeContext(db, orderId, dq, body, now, { releaseStaleHold = null } = {}) {
+async function chargeContext(db, orderId, dq, body, now) {
   if (!dq) return dq;
   const order = (await db.ref(`orders/${orderId}`).get()).val();
   if (!order || order.payment_status === 'confirmed') return dq;   // fresh, or already paid (the acquire answers already_paid as today)
@@ -60,11 +60,7 @@ async function chargeContext(db, orderId, dq, body, now, { releaseStaleHold = nu
   const same = order.order_type === (body && body.order_type)
     && (order.order_type !== 'delivery' || (Number(order.lat) === pin.lat && Number(order.lng) === pin.lng));
   if (same) return dq;
-  // codex S3a r2 P2: this order will never be charged in THIS context, so a reward hold an earlier request reserved for it is
-  // released — but ONLY when its checkout is DEFINITIVELY dead (no attempt, or failed_create: no payable URL ever existed).
-  // An expired 'created' checkout might still be paid late, so it stays held (the reservation sweep's own ambiguous rule,
-  // rewards-reserve.js sweepStaleReservations / definitivelyNotCaptured). releaseRedemption moves only a 'reserved' hold.
-  if (releaseStaleHold && (!at || at.hosted_state === 'failed_create')) { try { await releaseStaleHold(); } catch (_) { /* best-effort; the sweep / dispatcher remain */ } }
+  // reward holds are NOT touched here (advisor ruling 2026-10-22, codex S3a r3: a release raced a concurrent reuse) — an interrupted reward order retried in another context keeps its punches reserved (no money lost; recoverable manually)
   return { refusal: 'order_context_changed', httpStatus: 409 };
 }
 

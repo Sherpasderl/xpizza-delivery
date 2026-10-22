@@ -235,7 +235,7 @@ const DELIVERY_KEYS = ['delivery_cents', 'promo_discount_cents', 'delivery_snaps
   }
   ok('codex r2 P1: a checkout expiring between probe and acquire → the fresh issuance is refused (quote_invalid / checkout_expired), never at the stored L299; the same order stays bound (409), a new order is charged L349');
 
-  // ── codex r2 P2: order_context_changed releases an ABANDONED hold (failed_create), never an ambiguous one (expired created) ──
+  // ── advisor ruling (codex S3a r3): order_context_changed touches NO reward hold — even a failed_create order's stays reserved ──
   {
     const { reserveRedemption } = require('../rewards-reserve');
     const { REDEMPTION_CONFIG_VERSION } = require('../rewards-redeem-config');
@@ -243,7 +243,7 @@ const DELIVERY_KEYS = ['delivery_cents', 'promo_discount_cents', 'delivery_snaps
       const r = await reserveRedemption(rtdb, { uid, rid: 'x_pizza', orderId: oid, cost: 8, canonical: { k: 'p2' }, orderFingerprint: `fp_${oid}`, configVersion: REDEMPTION_CONFIG_VERSION, now: Date.now(), hostedExpiresAt: Date.now() + 60000 });
       assert.ok(r && r.ok !== false, `premise: the REAL writer reserved 8 (${JSON.stringify(r)})`); };
     const stateOf = async (uid, oid) => [(await rtdb.ref(`user_rewards/${uid}/x_pizza/reservations/${oid}/state`).get()).val(), (await rtdb.ref(`user_rewards/${uid}/x_pizza/reserved`).get()).val()];
-    for (const [kind, attemptState, want] of [['failed_create', { hosted_state: 'failed_create' }, ['released', 0]], ['expired created (ambiguous)', { hosted_state: 'created', hosted_expires_at: Date.now() - 1000 }, ['reserved', 8]]]) {
+    for (const [kind, attemptState, want] of [['failed_create', { hosted_state: 'failed_create' }, ['reserved', 8]]]) {
       const uid = `u_p2_${kind.length}`;
       const made = await card('x_pizza', { km: 4 }, { 'x-firebase-id-token': uid });
       assert.ok(made.status === 200, `premise: a live delivery checkout (${made.text.slice(0, 160)})`);
@@ -255,7 +255,7 @@ const DELIVERY_KEYS = ['delivery_cents', 'promo_discount_cents', 'delivery_snaps
       assert.deepStrictEqual(await stateOf(uid, made.b.order_id), want, `🔴 ${kind}: the hold after order_context_changed`);
     }
   }
-  ok('codex r2 P2: order_context_changed releases a hold whose checkout is definitively dead (failed_create → released, 0 reserved); an expired created checkout (ambiguous) keeps its 8 reserved');
+  ok('ruling (codex r3): order_context_changed leaves the reward hold UNTOUCHED — 8 punches reserved by the real writer stay reserved (accepted edge: recoverable manually, no money lost)');
 
   ok('P1-1: a refused delivery leaves no pending order; a stored delivery retried as pickup (or at another pin) → 409 order_context_changed, never charged food-only');
 

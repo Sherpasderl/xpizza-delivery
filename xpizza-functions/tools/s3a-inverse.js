@@ -54,7 +54,7 @@ const HUNKS = [
     "  if (!ridDefaulted) console.log(`chargeOnlineOrder: restaurant_id=${restaurantId}`);\n  const db = getDatabase();                                            // 1b-1: hoisted above validation (the RTDB alarm sink)\n"
   ],
   [
-    "  const dq = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP }), body, Date.now(), { releaseStaleHold: customer_uid ? () => releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }) : null }); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const effBreakdown = DW.withDelivery(dq, redemptionPriced\n",
+    "  const dq = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP }), body, Date.now()); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const effBreakdown = DW.withDelivery(dq, redemptionPriced\n",
     "  const effBreakdown = redemptionPriced\n"
   ],
   [
