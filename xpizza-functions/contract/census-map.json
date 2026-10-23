@@ -251,7 +251,7 @@
   "access": "owner ACCESS-CENSUS / kitchen-roster CLI (PLATFORM F2 Q1) — read-only audit of order ownership, KDS parity, attribution counts and history size; no customer or staff surface, never a writer of /orders",
   "prepstats": "S5 daily prep summary (prepStatsDaily) — reads order_timelines + exactly two order leaves per candidate (restaurant_id, customer_phone) for ATTRIBUTION and the ready-time EXCLUSIONS only; publishes per restaurant × bucket aggregates {median_min, p80_min, n} — never an order fact, an amount or a phone",
   "merchant": "merchant HANDHELD writer (H1a, PLAN-H1a r2 + amendment A-R1) — device-scoped order transitions on orders/{oid} (status CAS + prep + handheld_answered + handheld_ops receipts + reject_intent in ONE transaction), the reject executor (the EXISTING cancelOrderCore, injected) and its op-matched reject_outcome, the reject repair pass (reads persisted reject/cancel/payment state only to decide a dispatch notice — never displays or moves money), busy / pause / agotado; its reads only GATE its own writes — no customer display; persisted outputs covered as writer evidence (census writtenFields / opaqueWriteResolutions). PROPOSED by the handheld session for 2e review (D6).",
-  "ratings": "S5 RATINGS WRITER (Customer App): reads ONE order through its PUBLIC tracker token (order_tracking/{token}.order_id → orders/{id} status / delivered_at / completed_at / restaurant_id) to decide whether it may be rated, and writes ONLY order_ratings/{order_id} (create-if-absent, no customer identity) + its rate_limits buckets — never an order field; `status` in its handler is the Express HTTP status; covered by ratings/rating-core.test.js + test/s5-ratings.emulator.test.js",
+  "ratings": "S5 RATINGS WRITER (Customer App): reads ONE order (orders/{id} customer_uid / status / restaurant_id) for the VERIFIED signed-in customer who placed it (+ its deleted_uids tombstone) to decide whether it may be rated, and writes ONLY order_ratings/{order_id} (create-if-absent, no customer identity) — never an order field; `status` in its handler is the Express HTTP status; covered by ratings/rating-core.test.js + test/s5-ratings.emulator.test.js",
   "delivery_pricing": "ENVÍO (Customer App S3a): derives the delivery fee + free-delivery promo for ONE request from Sherpa config (platform_config/delivery_pricing), the restaurant hub (identity hub_lat/hub_lng) and the request pin (lat/lng + pin_confirmed); on the card path ALSO reads the stored order (orders/{id} order_type / lat / lng / payment_status / active_attempt_id + its payment_attempts state) to keep a live checkout's stored economics or refuse a changed context; writes NOTHING itself — its result reaches the order only through the existing atomic order write (delivery_cents / promo_discount_cents / delivery_snapshot) and the confirmed-net gate; a refusal is an HTTP status on a refusal object, never an order status; covered by delivery/delivery-pricing.test.js + test/s3a-envio.emulator.test.js",
   "driver_pay": "driver payable LEDGER writer (Customer App S8): reads a delivered order's protected attribution (delivered_by_driver_uid / delivered_at / order_type) through the bounded delivered_at range query and writes ONLY driver_ledger_weeks/{week} (one create-if-absent node per closed week, then .paid) — never an order field, never cash-to-remit; covered by test/driver-ledger.emulator.test.js"
  },
@@ -647,7 +647,7 @@
   "ratings/rate-order.js#rateOrderCore": "ratings",
   "ratings/rate-order.js#<top>>anon": "ratings",
   "ratings/rating-core.js#eligibility": "ratings",
-  "ratings/rating-core.js#fulfilledAt": "ratings",
+  "ratings/rating-core.js#parseRequest": "ratings",
   "delivery/delivery-pricing.js#quoteDelivery": "delivery_pricing",
   "delivery/delivery-pricing.js#placeOf": "delivery_pricing",
   "delivery/delivery-wire.js#chargeContext": "delivery_pricing",
@@ -1415,7 +1415,6 @@
   }
  ],
  "moneyPathNonFactReads": {
-  "completed_at@xpizza-functions/ratings/rating-core.js#fulfilledAt": "S5 ratings: the pickup's fulfilment TIME only decides whether the 7-day rating window is open; it moves no money and is never displayed (the rating record carries only thumb / rated_at / restaurant_id)",
   "active_attempt_id@xpizza-functions/delivery/delivery-wire.js#chargeContext": "S3a envío: decides only WHETHER the card request is a live-checkout reuse (its STORED economics are kept) — the money effect is asserted through the OUTCOME (the reused checkout's stored total_cents, test/s3a-envio.emulator.test.js §3.3 / P1-2), never through this field",
   "cancelled_at@xpizza-functions/tracking/reconcile-core.js#windowOrders": "the order's terminal TIMESTAMP — selects the reconcile window (terminal within 24 h); never an amount, a collector or a selector of money",
   "completed_at@xpizza-functions/tracking/reconcile-core.js#windowOrders": "the order's terminal TIMESTAMP — selects the reconcile window (terminal within 24 h); never an amount, a collector or a selector of money",

@@ -866,6 +866,7 @@
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/kds-pre-q2-denial.emulator.test.mjs",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
+    "xpizza-functions/test/s5-ratings.emulator.test.js",
     "xpizza-kitchen/avail-write.test.mjs",
     "xpizza-kitchen/card-model.test.mjs",
     "xpizza-kitchen/kds-smoke.test.mjs",
