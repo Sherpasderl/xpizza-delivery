@@ -95,6 +95,16 @@ const ALLOWED_MODIFY = 'xpizza-driver/index.html';
 // / review-latch / drag-defer cells were migrated there verbatim). Advisor ruling 2026-10-21; Codex plan amendment.
 const ALLOWED_DELETE = new Set(['xpizza-driver/single-order-branch.test.js']);
 
+// OUT-OF-REGION ALLOW (owner/advisor ruling 2026-10-23): a short, explicit list of exact single-line edits
+// permitted OUTSIDE the SLICE2 regions, each documented. The native 2.5.3 build bumps the app's SYSTEM_VERSION
+// constant (2.5.2 → 2.5.3); that line is not inside any SLICE2 region. The restoration check applies this list
+// to the baseline before the byte-compare, so ONLY these exact lines may differ — any OTHER out-of-region drift
+// still goes RED (proven by the sensitivity cell below: the allow is line-count-preserving and changes exactly
+// these lines, nothing else).
+const OUT_OF_REGION_ALLOW = [
+  { from: "const SYSTEM_VERSION = '2.5.2';", to: "const SYSTEM_VERSION = '2.5.3';" },
+];
+
 // Import allowlists for the two new modules.
 const IMPORT_ALLOWLIST = {
   'overview-map.js': {},   // imports NOTHING
@@ -214,8 +224,36 @@ t('index.html: strip SLICE2 regions + restore the replacement spans recovers bas
   for (const { r, s, e } of ordered) {
     lines.splice(s, e - s + 1, ...(r.kind === 'replace' ? r.restore : []));
   }
-  assert.equal(lines.join('\n'), baseHtml,
-    'strip+restore did NOT recover baseline — a change leaked OUTSIDE the SLICE2 regions, or a pinned span is wrong');
+  // Apply the documented out-of-region allow to the BASELINE before comparing (native 2.5.3 SYSTEM_VERSION bump).
+  let expected = baseHtml;
+  for (const a of OUT_OF_REGION_ALLOW) {
+    assert.equal(baseHtml.split(a.from).length - 1, 1, `freeze allow: baseline must contain "${a.from}" exactly once`);
+    expected = expected.replace(a.from, a.to);
+  }
+  assert.equal(lines.join('\n'), expected,
+    'strip+restore did NOT recover baseline (modulo the documented OUT_OF_REGION_ALLOW) — a change leaked OUTSIDE the SLICE2 regions, or a pinned span is wrong');
+});
+
+// ---------- 3b. the out-of-region allow is EXACTLY its documented line(s) — nothing else is exempt ----------
+t('out-of-region allow changes exactly its documented line(s); any other out-of-region change still RED', () => {
+  const baseHtml = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`);
+  const baseLines = baseHtml.split('\n');
+  let allowed = baseHtml;
+  for (const a of OUT_OF_REGION_ALLOW) {
+    assert.notEqual(a.from, a.to, 'an allow entry must actually change something');
+    assert.equal(baseHtml.split(a.from).length - 1, 1, `allow "from" must occur exactly once in baseline: ${a.from}`);
+    allowed = allowed.replace(a.from, a.to);
+  }
+  const allowLines = allowed.split('\n');
+  assert.equal(allowLines.length, baseLines.length, 'the allow must be line-count-preserving (no inserts/deletes outside regions)');
+  const changed = baseLines.map((l, i) => (l === allowLines[i] ? null : i)).filter((x) => x !== null);
+  assert.equal(changed.length, OUT_OF_REGION_ALLOW.length,
+    `the allow must change exactly ${OUT_OF_REGION_ALLOW.length} line(s); it changed ${changed.length}`);
+  // Sensitivity: a DIFFERENT out-of-region line is NOT absorbed — tampering it would still fail the restore compare.
+  const probe = 'el.textContent = `v${SYSTEM_VERSION} · driver`;';
+  assert.equal(baseHtml.split(probe).length - 1, 1, 'sensitivity probe line present exactly once');
+  assert.notEqual(allowed.replace(probe, 'el.textContent = `vX`;'), allowed,
+    'a non-allowed out-of-region edit is not covered by the allow (would be RED)');
 });
 
 // ---------- 4. file-level allowlist ----------
