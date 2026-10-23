@@ -8,7 +8,7 @@
 
 const INDEX_HUNKS = [
  [
-  "\n/* wahealth:begin */\n// WhatsApp gateway health (OWNER-approved 2026-10-22) — every 30 min, ONE severity=ERROR line per UNLINKED UltraMsg instance\n// (the owner's error alert emails it). Logic in whatsapp/instance-health.js; the restaurant ids come from the registry (data).\nexports.whatsappInstanceHealth = require('./whatsapp/instance-health').makeHealthFunction({ knownRids: async () => { await restaurantRegistry().ready(); return [...restaurantRegistry().known()]; }, getDb: getDatabase });\n/* wahealth:end */\n",
+  "\n/* wahealth:begin */\n// WhatsApp gateway health (OWNER-approved 2026-10-22) — every 30 min, ONE severity=ERROR line per UNLINKED UltraMsg instance\n// (the owner's error alert emails it). Logic in whatsapp/instance-health.js; the restaurant ids come from the registry (data).\nexports.whatsappInstanceHealth = require('./whatsapp/instance-health').makeHealthFunction({ registry: restaurantRegistry, getDb: getDatabase });\n/* wahealth:end */\n",
   ""
  ]
 ];

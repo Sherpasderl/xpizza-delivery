@@ -28,24 +28,29 @@ const block = real.slice(real.indexOf(BEGIN), real.indexOf(END) + END.length);
 assert.throws(() => unapplyWaHealthIndex(real.replace(BEGIN, '/* wahealth:begn */')), /occurs 0×/);
 assert.throws(() => unapplyWaHealthIndex(real.replace(END, '/* wahealth:ed */')), /occurs 0×/);
 assert.throws(() => unapplyWaHealthIndex(real + `\n${block}\n`), /occurs 2×/);
-assert.throws(() => unapplyWaHealthIndex(real.replace(block, () => block.replace('knownRids', 'knownRidz'))), /occurs 0×/, 'a byte INSIDE the block');
+const insideBlock = block.replace('registry: restaurantRegistry', 'registry: restaurantRegistrx');
+assert.notStrictEqual(insideBlock, block, 'the inside probe edits the block');
+assert.throws(() => unapplyWaHealthIndex(real.replace(block, () => insideBlock)), /occurs 0×/, 'a byte INSIDE the block');
 const outside = real.replace('exports.merchantPushOnAnswered = merchantPushFunctions.merchantPushOnAnswered;', 'exports.merchantPushOnAnswered = merchantPushFunctions.merchantPushOnAnswered; ');
 assert.notStrictEqual(outside, real);
 assert.notStrictEqual(unapplyWaHealthIndex(outside), base, 'a byte OUTSIDE the block survives the inverse and fails the base pin');
 ok('sensitivity: missing begin, missing end, a second block, a byte inside and a byte outside are each caught');
 
 const lines = block.split('\n').slice(1, -1).filter((l) => !l.startsWith('//'));
-assert.deepStrictEqual(lines, ["exports.whatsappInstanceHealth = require('./whatsapp/instance-health').makeHealthFunction({ knownRids: async () => { await restaurantRegistry().ready(); return [...restaurantRegistry().known()]; }, getDb: getDatabase });"]);
+assert.deepStrictEqual(lines, ["exports.whatsappInstanceHealth = require('./whatsapp/instance-health').makeHealthFunction({ registry: restaurantRegistry, getDb: getDatabase });"]);
 ok('the block is comments + ONE export: whatsappInstanceHealth from whatsapp/instance-health.js, restaurant ids from the registry');
 
 (async () => {
-  const fn = require('./whatsapp/instance-health').makeHealthFunction({ knownRids: async () => [], getDb: () => null });
+  const fn = require('./whatsapp/instance-health').makeHealthFunction({ registry: () => ({ ready: async () => {}, known: () => new Set() }), getDb: () => null });
   const ep = fn.__endpoint;
   assert.strictEqual(ep.platform, 'gcfv2');
   assert.deepStrictEqual(ep.region, ['us-central1']);
   assert.strictEqual(ep.scheduleTrigger.schedule, 'every 30 minutes'); assert.strictEqual(ep.scheduleTrigger.retryConfig.retryCount, 0);
   assert.strictEqual(ep.timeoutSeconds, 60); assert.strictEqual(ep.maxInstances, 1); assert.strictEqual(ep.availableMemoryMb, 256);
-  await fn.run({});   // no restaurants → no HTTP; a null db → isEnabled's own fail-soft default; must not throw
-  ok('deployed shape: v2 scheduled, every 30 minutes, us-central1, 60 s / 1 instance / 256 MiB / no retry; a run with no ids completes');
+  await fn.run({});   // no restaurants → no HTTP; a null db → the config read fails soft (config_error); must not throw
+  const seen = [];
+  await require('./whatsapp/instance-health').makeHealthFunction({ registry: () => ({ ready: async () => { seen.push('ready'); }, known: () => { seen.push('known'); return new Set(); } }), getDb: () => null, configTimeoutMs: 20 }).run({});
+  assert.deepStrictEqual(seen, ['ready', 'known'], 'the registry is WARMED (ready) before its ids are read — a cold instance still sees a newly-registered merchant');
+  ok('deployed shape: v2 scheduled, every 30 minutes, us-central1, 60 s / 1 instance / 256 MiB / no retry; a run with no ids completes; the registry is warmed before known()');
   console.log(`wahealth-wiring.guard: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

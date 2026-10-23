@@ -7,7 +7,7 @@ const { resolveWhatsappConfig } = require('../whatsapp');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 // A hung await with no live timer lets node EXIT 0 mid-test (a stalled config read would then "pass") — completion is asserted.
-const CELLS = 15; let done = false;
+const CELLS = 16; let done = false;
 process.on('exit', (code) => { if (code === 0 && (!done || n !== CELLS)) { console.error(`🔴 instance-health did not complete (${n}/${CELLS} cells)`); process.exitCode = 1; } });
 const TOKEN_A = 'tok-SECRET-aaa', TOKEN_B = 'tok-SECRET-bbb';
 const URL_A = `https://api.ultramsg.com/instance111/instance/status?token=${TOKEN_A}`;
@@ -207,6 +207,38 @@ const sevs = (log) => log.lines.map((l) => l.sev);
     } finally { srv.closeAllConnections(); srv.close(); }
   }
   ok('real node-fetch (loopback): a 302 loop is ONE request → reason=redirect; a never-ending body → reason=timeout at the deadline');
+
+  // 16. codex r2: the REAL scheduler wrapper (onSchedule .run) — the db read rejects with the token / URL before AND after the
+  //     deadline; EVERY console method, both std streams and unhandled rejections are captured → nothing leaks.
+  { const out = []; const saved = {}; const unhandled = [];
+    const onUnh = (e) => unhandled.push(String(e && e.message));
+    const capture = () => {
+      for (const k of ['log', 'info', 'warn', 'error', 'debug']) { saved[k] = console[k]; console[k] = (...a) => out.push(a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')); }
+      for (const st of ['stdout', 'stderr']) { saved[st] = process[st].write; process[st].write = (chunk) => { out.push(String(chunk)); return true; }; }
+      process.on('unhandledRejection', onUnh);
+    };
+    const release = () => { for (const k of ['log', 'info', 'warn', 'error', 'debug']) console[k] = saved[k]; for (const st of ['stdout', 'stderr']) process[st].write = saved[st]; process.off('unhandledRejection', onUnh); };
+    const leak = `db read failed ${URL_A} ${TOKEN_A}`;
+    const dbRejecting = (delayMs) => ({ ref: () => ({ once: () => new Promise((_, rej) => setTimeout(() => rej(new Error(leak)), delayMs)) }) });
+    const dbValue = (v) => ({ ref: (p) => { assert.strictEqual(p, 'config/whatsapp_enabled'); return { once: async () => ({ val: () => v }) }; } });
+    const wrapper = (db) => H.makeHealthFunction({ registry: () => ({ ready: async () => {}, known: () => new Set() }), getDb: () => db, configTimeoutMs: 40 });
+    capture();
+    try {
+      await wrapper(dbRejecting(0)).run({});                         // rejects BEFORE the deadline → config_error
+      await wrapper(dbRejecting(150)).run({});                       // rejects AFTER the 40 ms deadline → config_timeout, then late
+      await new Promise((r) => setTimeout(r, 300));                  // let the late rejection land
+      await wrapper(dbValue(false)).run({});
+      await wrapper(dbValue(null)).run({});
+    } finally { release(); }
+    const all = out.join('\n');
+    for (const bad of [TOKEN_A, 'token=', 'https://', 'instance/status', 'SECRET', 'db read failed']) assert.ok(!all.includes(bad), `🔴 a captured line carries "${bad}":\n${all}`);
+    assert.deepStrictEqual(unhandled, [], 'the late rejection is swallowed, never unhandled');
+    assert.strictEqual((all.match(/reason=config_error/g) || []).length, 1, all);
+    assert.strictEqual((all.match(/reason=config_timeout/g) || []).length, 1, all);
+    assert.ok(/"severity":"WARNING"/.test(all), 'the real firebase logger emitted structured WARNINGs');
+    assert.strictEqual(await H.readEnabledFlag(dbValue(false)), false); assert.strictEqual(await H.readEnabledFlag(dbValue(null)), true);
+    await assert.rejects(H.readEnabledFlag(dbRejecting(0)), (e) => e.message === 'config_error'); }
+  ok('codex r2: the REAL scheduler wrapper — a db read rejecting with the token / URL before or after the deadline leaks into NO console / stream line; the late rejection is swallowed');
 
   done = true;
   console.log(`instance-health: OK (${n})`);

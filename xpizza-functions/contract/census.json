@@ -20216,7 +20216,7 @@
   },
   {
    "id": "xpizza-functions/whatsapp/instance-health.js#checkInstances>anon>anon#status#0",
-   "line": 92,
+   "line": 94,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -20229,7 +20229,7 @@
   },
   {
    "id": "xpizza-functions/whatsapp/instance-health.js#checkInstances>anon>anon#status#1",
-   "line": 92,
+   "line": 94,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -20242,7 +20242,7 @@
   },
   {
    "id": "xpizza-functions/whatsapp/instance-health.js#checkInstances>anon>anon#status#2",
-   "line": 93,
+   "line": 95,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -20255,7 +20255,7 @@
   },
   {
    "id": "xpizza-functions/whatsapp/instance-health.js#checkInstances>anon#status#0",
-   "line": 99,
+   "line": 101,
    "kind": "projection",
    "facts": [
     "STATUS",
@@ -20269,7 +20269,7 @@
   },
   {
    "id": "xpizza-functions/whatsapp/instance-health.js#checkInstances>anon#status#1",
-   "line": 99,
+   "line": 101,
    "kind": "projection",
    "facts": [
     "STATUS",
@@ -44501,7 +44501,7 @@
    "file": "xpizza-functions/whatsapp/instance-health.js",
    "alias": "code",
    "field": "status",
-   "line": 93,
+   "line": 95,
    "round": 1
   },
   {

@@ -66,7 +66,9 @@ async function withDeadline(work, ms) {
   const ac = new AbortController();
   let timer = null;
   const expiry = new Promise((_, reject) => { timer = setTimeout(() => { ac.abort(); reject(DEADLINE); }, ms); });
-  try { return await Promise.race([Promise.resolve().then(() => work(ac.signal)), expiry]); } finally { clearTimeout(timer); }
+  const p = Promise.resolve().then(() => work(ac.signal));
+  p.catch(() => {});   // a rejection landing AFTER the deadline is swallowed silently (codex r2)
+  try { return await Promise.race([p, expiry]); } finally { clearTimeout(timer); }
 }
 
 // rids: iterable of restaurant ids; resolve(rid) → { apiBase, token } | null; fetchImpl: node-fetch compatible.
@@ -112,6 +114,14 @@ async function checkInstances({ rids, resolve, fetchImpl, enabled = true, timeou
   }));
 }
 
+// /config/whatsapp_enabled read DIRECTLY (codex r2): whatsapp.isEnabled logs its raw error message, so it is not used here. This
+// reader never logs — it returns the flag (absent → enabled, as isEnabled) or throws a FIXED code, which runHealth maps.
+async function readEnabledFlag(db) {
+  let v;
+  try { v = (await db.ref('config/whatsapp_enabled').once('value')).val(); } catch (_) { throw new Error('config_error'); }
+  return v !== false;
+}
+
 // One scheduled run. Every dependency is injected (the scheduler wrapper passes the real ones), so a test drives it end to end.
 async function runHealth({ knownRids, readEnabled, resolve, fetchImpl, log, timeoutMs = TIMEOUT_MS, configTimeoutMs = CONFIG_TIMEOUT_MS }) {
   try {
@@ -130,14 +140,17 @@ async function runHealth({ knownRids, readEnabled, resolve, fetchImpl, log, time
 }
 
 // The deployable function. deps are injected by index.js (the registry singleton lives there).
-function makeHealthFunction({ knownRids, getDb }) {
+// registry: index.js's restaurantRegistry accessor — warmed (ready) HERE, then its known ids (index.js's own warm sites are the order
+// handlers only; catalog/restaurant-registry.test.js pins that count).
+function makeHealthFunction({ registry, getDb, configTimeoutMs = CONFIG_TIMEOUT_MS }) {
+  const knownRids = async () => { const r = registry(); await r.ready(); return [...r.known()]; };
   return onSchedule(
     { schedule: 'every 30 minutes', region: 'us-central1', timeoutSeconds: 60, memory: '256MiB', maxInstances: 1, retryCount: 0 },
     async () => {
       const whatsapp = require('../whatsapp');
-      await runHealth({ knownRids, readEnabled: () => whatsapp.isEnabled(getDb()), resolve: (rid) => whatsapp.resolveWhatsappConfig(rid),
-        fetchImpl: require('node-fetch'), log: require('firebase-functions/logger') });
+      await runHealth({ knownRids, readEnabled: () => readEnabledFlag(getDb()), resolve: (rid) => whatsapp.resolveWhatsappConfig(rid),
+        fetchImpl: require('node-fetch'), log: require('firebase-functions/logger'), configTimeoutMs });
     });
 }
 
-module.exports = { checkInstances, runHealth, readAccountStatus, classify, labelOf, failureCode, withDeadline, instanceOf, makeHealthFunction, TIMEOUT_MS, CONFIG_TIMEOUT_MS };
+module.exports = { checkInstances, runHealth, readEnabledFlag, readAccountStatus, classify, labelOf, failureCode, withDeadline, instanceOf, makeHealthFunction, TIMEOUT_MS, CONFIG_TIMEOUT_MS };
