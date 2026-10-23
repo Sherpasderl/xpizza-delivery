@@ -19207,7 +19207,7 @@
     "label": "single-order gate ===1 -> >=1 HIJACKS the stacked flow (2+ orders wrongly render the single view)",
     "command": [
       "node",
-      "../xpizza-driver/single-order-branch.test.js"
+      "../xpizza-driver/slice2-branch.test.js"
     ]
   },
   {
@@ -19219,7 +19219,7 @@
     "label": "arrived geofence threshold shrunk (<50m -> <40m) — a driver at 49m no longer enters pickup review",
     "command": [
       "node",
-      "../xpizza-driver/single-order-branch.test.js"
+      "../xpizza-driver/slice2-branch.test.js"
     ]
   },
   {
@@ -19231,7 +19231,7 @@
     "label": "review latch never set on tap — Ya estoy en el restaurante no longer opens the review card",
     "command": [
       "node",
-      "../xpizza-driver/single-order-branch.test.js"
+      "../xpizza-driver/slice2-branch.test.js"
     ]
   },
   {
@@ -19267,7 +19267,7 @@
     "label": "review latch never reset (P2-3) — a stale 'Ya estoy en el restaurante' re-opens review for a later order/phase/session",
     "command": [
       "node",
-      "../xpizza-driver/single-order-branch.test.js"
+      "../xpizza-driver/slice2-branch.test.js"
     ]
   },
   {
@@ -19303,7 +19303,7 @@
     "label": "review latch not cleared on a STACKED board (P2-3 r2) — a stale tap re-opens review after 2+ orders → 1 again",
     "command": [
       "node",
-      "../xpizza-driver/single-order-branch.test.js"
+      "../xpizza-driver/slice2-branch.test.js"
     ]
   },
   {
@@ -19315,7 +19315,403 @@
     "label": "review latch not cleared after the board EMPTIED (P2-3 r2) — a stale tap re-opens review after idle → same order again",
     "command": [
       "node",
-      "../xpizza-driver/single-order-branch.test.js"
+      "../xpizza-driver/slice2-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv2-01",
+    "slice": "drv2",
+    "label": "normalizeFixTs stops scaling a seconds timestamp to ms — a legacy seconds fix reads 1000x too old",
+    "file": "../xpizza-driver/overview-map.js",
+    "from": "return n < 1e11 ? n * 1000 : n;",
+    "to": "return n < 1e11 ? n : n;",
+    "command": [
+      "node",
+      "../xpizza-driver/overview-map.test.js"
+    ]
+  },
+  {
+    "id": "drv2-02",
+    "slice": "drv2",
+    "label": "isStaleFix treats a missing / non-finite fix ts as FRESH — the map never dims on a bad fix",
+    "file": "../xpizza-driver/overview-map.js",
+    "from": "if (!Number.isFinite(ts)) return true;",
+    "to": "if (!Number.isFinite(ts)) return false;",
+    "command": [
+      "node",
+      "../xpizza-driver/overview-map.test.js"
+    ]
+  },
+  {
+    "id": "drv2-03",
+    "slice": "drv2",
+    "label": "isStaleFix threshold inverted — fresh fixes read stale and stale fixes read fresh",
+    "file": "../xpizza-driver/overview-map.js",
+    "from": "(now - ts) >= thresholdMs",
+    "to": "(now - ts) <= thresholdMs",
+    "command": [
+      "node",
+      "../xpizza-driver/overview-map.test.js"
+    ]
+  },
+  {
+    "id": "drv2-04",
+    "slice": "drv2",
+    "label": "projectGeo flips the latitude sign — north is drawn downward (map upside-down)",
+    "file": "../xpizza-driver/overview-map.js",
+    "from": "ry: -p.lat",
+    "to": "ry: p.lat",
+    "command": [
+      "node",
+      "../xpizza-driver/overview-map.test.js"
+    ]
+  },
+  {
+    "id": "drv2-05",
+    "slice": "drv2",
+    "label": "projectGeo drops the cos-lat longitude scaling — east/west is stretched (aspect wrong)",
+    "file": "../xpizza-driver/overview-map.js",
+    "from": "Math.cos(meanLat * Math.PI / 180)",
+    "to": "Math.cos(0)",
+    "command": [
+      "node",
+      "../xpizza-driver/overview-map.test.js"
+    ]
+  },
+  {
+    "id": "drv2-06",
+    "slice": "drv2",
+    "label": "isFiniteCoord accepts an out-of-range longitude (>180) — a garbage coord projects instead of being omitted",
+    "file": "../xpizza-driver/overview-map.js",
+    "from": "lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180",
+    "to": "lat >= -90 && lat <= 90 && lng >= -180 && lng <= 360",
+    "command": [
+      "node",
+      "../xpizza-driver/overview-map.test.js"
+    ]
+  },
+  {
+    "id": "drv2-07",
+    "slice": "drv2",
+    "label": "projectGeo stops separating coincident pins — overlapping markers hide each other",
+    "file": "../xpizza-driver/overview-map.js",
+    "from": "Math.hypot(s.x - o.x, s.y - o.y) < EPS",
+    "to": "Math.hypot(s.x - o.x, s.y - o.y) < 0",
+    "command": [
+      "node",
+      "../xpizza-driver/overview-map.test.js"
+    ]
+  },
+  {
+    "id": "drv2-08",
+    "slice": "drv2",
+    "label": "overviewMapSvg inverts the missing-driver note — 'sin ubicación de tu ubicación' shows when the driver IS located",
+    "file": "../xpizza-driver/overview-map.js",
+    "from": "if (!pDriver) notes.push('tu ubicación');",
+    "to": "if (pDriver) notes.push('tu ubicación');",
+    "command": [
+      "node",
+      "../xpizza-driver/overview-map.test.js"
+    ]
+  },
+  {
+    "id": "drv2-09",
+    "slice": "drv2",
+    "label": "overviewMapSvg omits the 'stale' class on the map container — the dim styling never applies",
+    "file": "../xpizza-driver/overview-map.js",
+    "from": "class=\"map${stale ? ' stale' : ''}\"",
+    "to": "class=\"map${stale ? '' : ''}\"",
+    "command": [
+      "node",
+      "../xpizza-driver/overview-map.test.js"
+    ]
+  },
+  {
+    "id": "drv2-10",
+    "slice": "drv2",
+    "label": "destinationLabel names the CUSTOMER address on a pickup (P1-2 regression: the nav label disagrees with the hub the URL targets)",
+    "file": "../xpizza-driver/stacked-view.js",
+    "from": "brandLabel(order) || pt.destination_address || 'el restaurante'",
+    "to": "order.address_detected || pt.destination_address || 'el restaurante'",
+    "command": [
+      "node",
+      "../xpizza-driver/stacked-view.test.js"
+    ]
+  },
+  {
+    "id": "drv2-11",
+    "slice": "drv2",
+    "label": "orderIdTail returns 3 chars instead of 4 — the collision tiebreaker is shorter than spec",
+    "file": "../xpizza-driver/stacked-view.js",
+    "from": "s.slice(-4)",
+    "to": "s.slice(-3)",
+    "command": [
+      "node",
+      "../xpizza-driver/stacked-view.test.js"
+    ]
+  },
+  {
+    "id": "drv2-12",
+    "slice": "drv2",
+    "label": "resolveVisibleLabels appends the orderId tail only when a label BOTH collides and has an empty number — an empty-number label stays ambiguous",
+    "file": "../xpizza-driver/stacked-view.js",
+    "from": "if (collides || !i.displayNum) {",
+    "to": "if (collides && !i.displayNum) {",
+    "command": [
+      "node",
+      "../xpizza-driver/stacked-view.test.js"
+    ]
+  },
+  {
+    "id": "drv2-13",
+    "slice": "drv2",
+    "label": "resolveVisibleLabels needs 3 identical labels to disambiguate — a 2-way collision slips through",
+    "file": "../xpizza-driver/stacked-view.js",
+    "from": "counts[i.label] > 1",
+    "to": "counts[i.label] > 2",
+    "command": [
+      "node",
+      "../xpizza-driver/stacked-view.test.js"
+    ]
+  },
+  {
+    "id": "drv2-14",
+    "slice": "drv2",
+    "label": "bagTagClass swaps the stop-1 marino and later-stop celeste classes",
+    "file": "../xpizza-driver/stacked-view.js",
+    "from": "Number(n) === 1 ? 'a' : 'b'",
+    "to": "Number(n) === 1 ? 'b' : 'a'",
+    "command": [
+      "node",
+      "../xpizza-driver/stacked-view.test.js"
+    ]
+  },
+  {
+    "id": "drv2-15",
+    "slice": "drv2",
+    "label": "phaseStripHtml renders the progress strip for a single stop (it should need >=2)",
+    "file": "../xpizza-driver/stacked-view.js",
+    "from": "stops.length < 2",
+    "to": "stops.length < 1",
+    "command": [
+      "node",
+      "../xpizza-driver/stacked-view.test.js"
+    ]
+  },
+  {
+    "id": "drv2-16",
+    "slice": "drv2",
+    "label": "phaseStripHtml marks every INACTIVE segment 'on' — the active-stop highlight is inverted",
+    "file": "../xpizza-driver/stacked-view.js",
+    "from": "s.on ? ' on' : ''",
+    "to": "s.on ? '' : ' on'",
+    "command": [
+      "node",
+      "../xpizza-driver/stacked-view.test.js"
+    ]
+  },
+  {
+    "id": "drv2-17",
+    "slice": "drv2",
+    "label": "vueltoLine shows the vuelto block for NON-cash orders and hides it for cash — change-calc on the wrong orders",
+    "file": "../xpizza-driver/stacked-view.js",
+    "from": "collectionFor(order).kind !== 'cash'",
+    "to": "collectionFor(order).kind === 'cash'",
+    "command": [
+      "node",
+      "../xpizza-driver/stacked-view.test.js"
+    ]
+  },
+  {
+    "id": "drv2-18",
+    "slice": "drv2",
+    "label": "renderActiveAndQueue no longer DEFERS a mid-drag render (renderPending stays false) — a feed update mid-drag is lost",
+    "file": "../xpizza-driver/index.html",
+    "from": "if (slidingEl) { renderPending = true; return; }",
+    "to": "if (slidingEl) { renderPending = false; return; }",
+    "command": [
+      "node",
+      "../xpizza-driver/slice2-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv2-19",
+    "slice": "drv2",
+    "label": "the drag-end REPLAY of a deferred render is inverted — a deferred feed update never replays after the drag ends",
+    "file": "../xpizza-driver/index.html",
+    "from": "if (renderPending) renderActiveAndQueue();",
+    "to": "if (!renderPending) renderActiveAndQueue();",
+    "command": [
+      "node",
+      "../xpizza-driver/slice2-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv2-20",
+    "slice": "drv2",
+    "label": "attachSlideConfirm never records the dragging slide — render-suppression is lost so a mid-drag rebuild wipes the slider",
+    "file": "../xpizza-driver/index.html",
+    "from": "slidingEl = el;",
+    "to": "slidingEl = null;",
+    "command": [
+      "node",
+      "../xpizza-driver/slice2-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv2-21",
+    "slice": "drv2",
+    "label": "the pickup-review gate uses OR not AND — a fresh pickup with no latch wrongly opens the review card",
+    "file": "../xpizza-driver/index.html",
+    "from": "const spAtRestaurant = soloOrder.phase === 'pickup' && slice1ReviewLatchKey === spLatchKey;",
+    "to": "const spAtRestaurant = soloOrder.phase === 'pickup' || slice1ReviewLatchKey === spLatchKey;",
+    "command": [
+      "node",
+      "../xpizza-driver/slice2-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv2-22",
+    "slice": "drv2",
+    "label": "PRIVACY: the active card shows the customer name/phone/tel/wa.me/address even before acceptance (offer leak)",
+    "file": "../xpizza-driver/stacked-view.js",
+    "from": "const accepted = phase !== 'awaiting_acceptance';",
+    "to": "const accepted = true;",
+    "command": [
+      "node",
+      "../xpizza-driver/stacked-view.test.js"
+    ]
+  },
+  {
+    "id": "drv2-23",
+    "slice": "drv2",
+    "label": "PRIVACY (Codex r2/r3): the incoming banner re-shows the customer address in its sub-line before acceptance",
+    "file": "../xpizza-driver/stacked-view.js",
+    "from": "<div class=\"ib-sub\">${total} · otro hub</div>",
+    "to": "<div class=\"ib-sub\">${total} · ${esc(order.address_detected || '')} · otro hub</div>",
+    "command": [
+      "node",
+      "../xpizza-driver/stacked-view.test.js"
+    ]
+  },
+  {
+    "id": "drv2-24",
+    "slice": "drv2",
+    "label": "the active-card navBtn drops the «→ {destino}» line — the destination is no longer named in the button",
+    "file": "../xpizza-driver/stacked-view.js",
+    "from": "const navDest = opts.navLabel ? ",
+    "to": "const navDest = false ? ",
+    "command": [
+      "node",
+      "../xpizza-driver/stacked-view.test.js"
+    ]
+  },
+  {
+    "id": "drv2-25",
+    "slice": "drv2",
+    "label": "the overview map OMITS pending cross-hub offers — two offers show one pin instead of two peer points (P2-5)",
+    "file": "../xpizza-driver/index.html",
+    "from": "const mapEntities2 = [active, ...queue, ...pendingAccept];",
+    "to": "const mapEntities2 = [active, ...queue];",
+    "command": [
+      "node",
+      "../xpizza-driver/slice2-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv2-26",
+    "slice": "drv2",
+    "label": "the queued sheet resolves its nav over the PICKUP phase — label/URL target the restaurant, not the customer (P1-2)",
+    "file": "../xpizza-driver/index.html",
+    "from": "stopNavInfo(s, XPD.RESTAURANT, false)",
+    "to": "stopNavInfo(s, XPD.RESTAURANT, true)",
+    "command": [
+      "node",
+      "../xpizza-driver/slice2-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv2-27",
+    "slice": "drv2",
+    "label": "PRIVACY (Codex r2): queueHtml shows the customer name for a NON-accepted (awaiting) queued row",
+    "file": "../xpizza-driver/stacked-view.js",
+    "from": "const name = accepted ? (order.customer_name || o.deliveryTask.recipient_name || '—') : 'Nuevo pedido';",
+    "to": "const name = true ? (order.customer_name || o.deliveryTask.recipient_name || '—') : 'Nuevo pedido';",
+    "command": [
+      "node",
+      "../xpizza-driver/stacked-view.test.js"
+    ]
+  },
+  {
+    "id": "drv2-28",
+    "slice": "drv2",
+    "label": "PRIVACY (Codex r2): the queue sheet shows customer navigation for a NON-accepted (awaiting) order",
+    "file": "../xpizza-driver/stacked-view.js",
+    "from": "${accepted ? `<div class=\"nav-row\" style=\"margin-top:14px\">",
+    "to": "${true ? `<div class=\"nav-row\" style=\"margin-top:14px\">",
+    "command": [
+      "node",
+      "../xpizza-driver/stacked-view.test.js"
+    ]
+  },
+  {
+    "id": "drv2-29",
+    "slice": "drv2",
+    "label": "PRIVACY (Codex r2): the queue-tap handler opens the sheet for an order that returned to awaiting_acceptance during a deferred render (name/phone/address/nav leak)",
+    "file": "../xpizza-driver/index.html",
+    "from": "if (o.phase === 'awaiting_acceptance') return;",
+    "to": "if (false) return;",
+    "command": [
+      "node",
+      "../xpizza-driver/slice2-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv2-30",
+    "slice": "drv2",
+    "label": "MOCK FAITHFULNESS (Codex r3-1): the mock update's undefined check is top-level only (nested {value:undefined} passes) — the SDK-parity + recursive boundary cells must die",
+    "file": "../xpizza-driver/slice2-branch.test.js",
+    "from": ": (v && typeof v === 'object' && !v.__st) ? Object.values(v).some(hasUndef) : false;",
+    "to": ": false;",
+    "command": [
+      "node",
+      "../xpizza-driver/slice2-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv2-31",
+    "slice": "drv2",
+    "label": "MOCK FAITHFULNESS (Codex r3-1): the mock update stops normalizing empty path segments (trailing-slash 'probe/a/' no longer collides with 'probe/a/b') — the recursive boundary cell must die",
+    "file": "../xpizza-driver/slice2-branch.test.js",
+    "from": "const seg = (p) => String(p).split('/').filter(Boolean);",
+    "to": "const seg = (p) => String(p).split('/');",
+    "command": [
+      "node",
+      "../xpizza-driver/slice2-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv2-32",
+    "slice": "drv2",
+    "label": "MOCK FAITHFULNESS (Codex r3-1): the mock runTransaction commits the STALE result over a mid-txn conflict instead of re-running (no retry) — the conflict-retry cell must die",
+    "file": "../xpizza-driver/slice2-branch.test.js",
+    "from": "if (conflict !== undefined) { writeOne(r.path, conflict === null ? null : conflict); continue; }",
+    "to": "if (conflict !== undefined) { writeOne(r.path, conflict === null ? null : conflict); }",
+    "command": [
+      "node",
+      "../xpizza-driver/slice2-branch.test.js"
+    ]
+  },
+  {
+    "id": "drv2-33",
+    "slice": "drv2",
+    "label": "INVENTORY GUARD (Codex r3-2): the firebase-binding parser stops resolving aliases ('increment as inc' kept whole) so an aliased uncovered call fails open — the alias-probe cell must die",
+    "file": "../xpizza-driver/slice2-branch.test.js",
+    "from": "const [exp, local] = raw.split(/\\s+as\\s+/).map((s) => s.trim());",
+    "to": "const [exp, local] = [raw, raw];",
+    "command": [
+      "node",
+      "../xpizza-driver/slice2-branch.test.js"
     ]
   }
 ]

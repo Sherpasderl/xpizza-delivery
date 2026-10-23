@@ -1164,6 +1164,82 @@
 .sv-slide.at-restaurant .slide-thumb {
   background:linear-gradient(155deg,#3A5BA0,#14306B); box-shadow:0 5px 13px rgba(20,48,107,.42), 0 0 9px rgba(20,48,107,.18), inset 0 1.5px 0 rgba(255,255,255,.42), inset 0 -3px 6px rgba(10,28,70,.32); }
 /* SLICE1:PRESENTATION:END */
+/* SLICE2:PRESENTATION:START =======================================================================
+   Stacked-surface restyle + overview-map styling (light-only). INSERTION-ONLY, appended after every
+   frozen rule AND after SLICE1:PRESENTATION, so it wins the cascade by source order. Only ADDS rules
+   (.strip/.bagtag/.pactual/.map*/.lockchip + the stacked .seq touch-up + --p/--muted/--dim aliases the
+   overview-map SVG references); nothing above is edited. All new fg/bg pairs are at/above WCAG AA
+   (see slice2-contrast.test.js, measured against these very tokens).
+   ================================================================================================ */
+:root {
+  --p: var(--accent);            /* azul-acero primary — the map connector + active strip bar */
+  --muted: #6B7687;              /* 4.6:1 on #fff — queued map-pin number, strip label, captions (AA) */
+  --dim: #8A94A6;                /* decorative only (never carries text that must meet AA) */
+}
+
+/* phase strip (stacked) — ordinals + customer name, NO per-stop time, NO "done" segment this slice */
+.strip { display:flex; align-items:center; gap:8px; margin:2px 0 2px; }
+.strip .st { flex:1; display:flex; flex-direction:column; gap:5px; min-width:0; }
+.strip .st .bar { height:6px; border-radius:3px; background:var(--line); }
+.strip .st.on .bar { background:var(--p); }
+.strip .st .lbl { font-size:11.5px; font-weight:700; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.strip .st.on .lbl { color:var(--text); }
+
+/* bag tags — stop 1 marino/white (12.6:1), later stops celeste/dark-ink (#0D1424 = 9.7:1; white FAILS) */
+.bagtag { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px;
+  border-radius:8px; font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:12px; flex:none; }
+.bagtag.a { background:var(--marino); color:#fff; }
+.bagtag.b { background:var(--celeste); color:#0D1424; }
+
+/* "Parada actual" pill — marino ink on the soft-blue wash (high contrast), pushed to the chiprow end */
+.pactual { margin-left:auto; font-size:11.5px; font-weight:700; color:var(--marino);
+  background:var(--sv-p-bg); border-radius:999px; padding:3px 10px; white-space:nowrap; }
+
+/* queued card: the ordinal cell now carries the bag tag — drop the old numeric-badge chrome */
+.qcard .seq { background:none; color:inherit; width:auto; min-width:0; padding:0; border-radius:0;
+  display:flex; align-items:flex-start; }
+
+/* restyled completion-lock chip (ghost) — replaces the old .locked look; copy unchanged */
+.lockchip { display:flex; align-items:center; gap:8px; margin-top:12px; padding:9px 12px; border-radius:12px;
+  background:var(--sv-ghost-bg); color:var(--text-soft); font-size:12.5px; font-weight:600; line-height:1.3; }
+.lockchip .ico { flex:none; width:16px; height:16px; color:var(--muted); display:inline-flex; }
+.lockchip .ico svg { width:16px; height:16px; }
+
+/* overview map (SVG reference schematic) — plain panel background, straight-line connectors only */
+.map { position:relative; height:150px; border-radius:var(--r-card); overflow:hidden; background:var(--surface-3);
+  border:1px solid var(--line); margin:2px 0 4px; flex:none; }
+.map svg { position:absolute; inset:0; width:100%; height:100%; }
+.map.stale { filter:saturate(.75); }
+.map-cap { position:absolute; left:10px; bottom:9px; background:var(--surface); box-shadow:0 1px 4px rgba(13,20,36,.14);
+  border-radius:9px; padding:4px 9px; font-size:11px; font-weight:600; color:var(--muted); }
+.map-note { position:absolute; right:10px; top:9px; background:var(--surface); box-shadow:0 1px 4px rgba(13,20,36,.14);
+  border-radius:9px; padding:4px 9px; font-size:11px; font-weight:600; color:var(--warn); max-width:60%; }
+
+/* nav button — matches the approved navBtn: «Navegar con {app}» (line 1) + «→ {destino}» (line 2) inside the
+   primary. The baseline brand tints (--waze 2.7:1 / --maps 3.6:1 on their washes) FAIL AA for this 13px label,
+   so the slice-2 primary is REPLACED with accent/white (6.1:1) and the secondary with a dark-ink/light pair
+   (Codex r1 P2-8). The destination line is a lighter-white that still clears AA on the accent. */
+.nav-btn .nav-txt { display:inline-flex; flex-direction:column; align-items:flex-start; min-width:0; max-width:100%; line-height:1.15; }
+.nav-btn .nav-main { font-weight:800; }
+.nav-btn .nav-dest { font-size:11px; font-weight:700; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nav-btn.waze-btn { background:var(--accent); color:#fff; }            /* #fff on #2F5FB8 = 6.1:1 (AA) */
+.nav-btn.waze-btn .nav-dest { color:#E6EEFB; }                         /* #E6EEFB on #2F5FB8 = 5.5:1 (AA) */
+.nav-btn.maps-btn { background:var(--surface-2); color:var(--text-soft); }  /* #546078 on #F5F7FA = 6.0:1 (AA) */
+/* single-order primary nav button (single-order-view.js is frozen): «→ {destino}» is injected at the mount and
+   wraps to a second line; the primary is accent/white so the injected line clears AA. */
+.sv-nav-primary { flex-wrap:wrap; }
+.sv-nav-primary .sv-nav-dest { flex-basis:100%; text-align:center; margin-top:1px; font-size:11px; font-weight:700;
+  color:#E6EEFB; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* enlarged-text hardening (Codex r4): at the largest Android font the offer banner's head overflowed — the
+   title starved the countdown pill until it wrapped — and any slide label long enough to wrap crossed under the
+   fixed thumb (thumb = left:6 + width:52 = 58px, but the label's reserved lane was only 56px). Additive, scoped
+   to these surfaces; cosmetically identical at the normal font size. */
+.incoming-banner .ib-title { min-width:0; }                                  /* the title yields, so… */
+.incoming-banner .ib-right { flex:0 0 auto; }                                /* …the countdown group keeps its size */
+.incoming-banner .accept-countdown { white-space:nowrap; flex:0 0 auto; }    /* "38s" never wraps */
+.slide-text { padding-left:60px; }                                           /* clear the thumb lane (6+52=58px); +4px only, so a long label does not newly wrap */
+/* SLICE2:PRESENTATION:END */
 </style>
 </head>
 
@@ -1383,6 +1459,27 @@ import { singleOrderCardHtml } from './single-order-view.js';
 // change away from pickup, or an auth/session change (authGen bumps) — never forcing a stale review.
 let slice1ReviewLatchKey = null;
 /* ===== SLICE1:IMPORT:END ===== */
+/* ===== SLICE2:IMPORT:START — stacked view + overview map (slice 2); pure builders in stacked-view.js / overview-map.js ===== */
+import { activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels } from './stacked-view.js';
+import { overviewMapSvg, isStaleFix } from './overview-map.js';
+// The display-only map-aging timer (SLICE2:MAP-LIFECYCLE): a ~30 s re-render that re-evaluates the driver
+// fix-age (last_location_ts) and dims the dot when stale. It owns NO data — it only re-runs the EXISTING
+// render (slidingEl drag-suppression still guards it) — and self-clears when the tab is hidden so a
+// backgrounded WebView never ticks. `render()`'s own off-shift guard does not wrap renderActiveAndQueue,
+// so the callback repeats that guard (visible + on-shift) before re-rendering.
+let slice2MapAgeTimer = null;
+const SLICE2_MAP_AGE_MS = 30000;
+function ensureSlice2MapAgeTimer() {
+  if (slice2MapAgeTimer != null || document.visibilityState !== 'visible') return;
+  slice2MapAgeTimer = setInterval(() => {
+    if (document.visibilityState !== 'visible') { clearInterval(slice2MapAgeTimer); slice2MapAgeTimer = null; return; }
+    if (driverState && driverState.active) renderActiveAndQueue();
+  }, SLICE2_MAP_AGE_MS);
+}
+function stopSlice2MapAgeTimer() {
+  if (slice2MapAgeTimer != null) { clearInterval(slice2MapAgeTimer); slice2MapAgeTimer = null; }
+}
+/* ===== SLICE2:IMPORT:END ===== */
 
 // ============================================================
 // System version (bumped each release)
@@ -2336,10 +2433,31 @@ $('idle-help-link').addEventListener('click', () => {
 $('queue-slot').addEventListener('click', (e) => {
   const card = e.target.closest('.qcard');
   if (!card) return;
-  const i = Number(card.getAttribute('data-q'));
-  const o = queuedOrders[i];
-  if (!o) return;
-  $('queue-sheet-body').innerHTML = renderQueueDetail(o, i + 2);
+  /* ===== SLICE2:QUEUE-IDENTITY:START — resolve by orderId in a FRESHLY computed board at tap time, fail closed, NO index/stale fallback (Codex P2-4 + r1 P2-3) ===== */
+  // The card's stable orderId (data-order-id) is resolved against the board RECOMPUTED NOW — not the possibly
+  // stale last-rendered queuedOrders (a render deferred during a pending write leaves that array stale, so a
+  // tap on a retained card for a cancelled/promoted order would open the wrong stop — Codex r1 P2-3). If the
+  // order has left the queue (reorder / cancel / promote between render and tap) we NO-OP. There is
+  // deliberately no Number(data-q)→queuedOrders[i] index fallback (the baseline bug).
+  const qOrderId = card.getAttribute('data-order-id');
+  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);
+  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);
+  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row
+  const o = qBoard[qIdx];
+  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to
+  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its
+  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /
+  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.
+  if (o.phase === 'awaiting_acceptance') return;
+  /* ===== SLICE2:QUEUE-IDENTITY:END ===== */
+  /* ===== SLICE2:QUEUE-SHEET:START — read-only detail via the builder (nav KEPT; ONE delivery target for label+URL — Codex r1 P1-2) ===== */
+  // The label AND the Waze/Maps URLs come from ONE stopNavInfo over the DELIVERY phase (isPickup=false),
+  // collision-resolved over the same fresh board and matched back by orderId — so the sheet's label can never
+  // name the restaurant while its link opens customer coordinates. renderQueueDetail stays in the file
+  // byte-identical (now unreachable; the restored call re-reaches it for the freeze guard).
+  const qNav = resolveVisibleLabels(qBoard.map((s) => stopNavInfo(s, XPD.RESTAURANT, false))).find((L) => L.orderId === qOrderId) || {};
+  $('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge }, qNav);
+  /* ===== SLICE2:QUEUE-SHEET:END ===== */
   $('queue-sheet').classList.add('open');
 });
 $('queue-sheet').addEventListener('click', (e) => {
@@ -2471,6 +2589,11 @@ $('cuadre-screen').addEventListener('click', async (e) => {
 });
 
 async function cleanupShift() {
+  /* ===== SLICE2:SHIFT-CLEANUP:START — stop the map-aging timer on shift/session disposal (Codex r1 P2-7) ===== */
+  // Shift end is a disposal: stop the display-only aging timer SYNCHRONOUSLY here (the visibilitychange handler
+  // only covers tab hide). The baseline cleanupShift body below is pinned by the freeze guard.
+  stopSlice2MapAgeTimer();
+  /* ===== SLICE2:SHIFT-CLEANUP:END ===== */
   if (watchId) {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
@@ -2494,6 +2617,15 @@ async function acquireWakeLock() {
   }
 }
 document.addEventListener('visibilitychange', async () => {
+  /* ===== SLICE2:MAP-LIFECYCLE:START — stop on hide SYNCHRONOUSLY; re-age BEFORE any awaited resume work (Codex r1 P2-7) ===== */
+  // Stop the display-only aging timer the INSTANT the tab hides — don't wait for the next ~30 s tick to notice
+  // (an off-screen WebView must not keep a live interval). On return, re-age the map IMMEDIATELY (recompute
+  // isStaleFix from last_location_ts, so a threshold crossed while hidden — possibly with NO new fix — shows
+  // stale at once) BEFORE the awaited wake-lock reacquire below, then re-arm the timer. Shift/session disposal
+  // stops it in cleanupShift (SLICE2:SHIFT-CLEANUP). The baseline statement below is pinned by the freeze guard.
+  if (document.visibilityState !== 'visible') { stopSlice2MapAgeTimer(); }
+  else if (driverState?.active) { renderActiveAndQueue(); stopSlice2MapAgeTimer(); ensureSlice2MapAgeTimer(); }
+  /* ===== SLICE2:MAP-LIFECYCLE:END ===== */
   if (document.visibilityState === 'visible' && driverState?.active) {
     // Reacquire wake lock (lost when page went to background)
     if (!wakeLock) await acquireWakeLock();
@@ -2867,11 +2999,37 @@ function renderActiveAndQueue() {
     activeSlot.classList.add('solo');
     bannerSlot.innerHTML = '';
     queueSlot.innerHTML = '';
-    activeSlot.innerHTML = singleOrderCardHtml(soloOrder, {
+    /* ===== SLICE2:SINGLE-ORDER-MOUNT:START — overview map on the lone-stop screen (Codex P2-5) ===== */
+    // The one allowed single-order integration point: a promoted lone stop (or any single active order that
+    // is not a fresh offer) gets the reference map ABOVE the slice-1 card. single-order-view.js stays
+    // BYTE-IDENTICAL — the map is injected here at the mount only. The approved navBtn ALSO names the
+    // destination INSIDE the primary nav button («Navegar con {app}» + «→ {destino}», Codex r1 P2-6); since
+    // single-order-view.js is frozen, the «→ {destino}» line is injected into the rendered .sv-nav-primary at
+    // this seam (below), derived from the SAME phase-correct target the card's nav URL uses. The baseline
+    // assignment below is pinned by slice2-freeze.guard; stripping this region restores it, so index.html equals the landed SHA.
+    const soloMapHtml = (soloOrder.phase !== 'awaiting_acceptance')
+      ? overviewMapSvg({
+          driver: (driverState && driverState.lat != null && driverState.lng != null) ? { lat: driverState.lat, lng: driverState.lng, heading: driverState.heading } : null,
+          hubs: [{ lat: soloOrder.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat, lng: soloOrder.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng, on: spIsPickup }],
+          stops: [{ lat: spOrder.lat || (soloOrder.deliveryTask && soloOrder.deliveryTask.destination_lat), lng: spOrder.lng || (soloOrder.deliveryTask && soloOrder.deliveryTask.destination_lng), n: 1, on: !spIsPickup }],
+          phase: spIsPickup ? 'pickup' : 'delivery',
+          stale: isStaleFix(driverState && driverState.last_location_ts, Date.now()),
+        })
+      : '';
+    activeSlot.innerHTML = soloMapHtml + singleOrderCardHtml(soloOrder, {
       ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,
       RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: undefined,
       nowMs: Date.now(),   // offer ring: elapsed drives the resume (negative animation-delay); display-only
     });
+    // Destination-in-button (Codex r1 P2-6): the offer card has no nav button (no .sv-nav-primary) so this is
+    // a no-op pre-acceptance; an accepted lone stop gets «→ {destino}» appended, from the same phase-correct
+    // target as the button's URL, so label and URL cannot disagree.
+    const soloNavBtn = activeSlot.querySelector('.sv-nav-primary');
+    if (soloNavBtn && !soloNavBtn.querySelector('.sv-nav-dest')) {
+      soloNavBtn.insertAdjacentHTML('beforeend', `<span class="sv-nav-dest">→ ${escapeHtml(stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base)}</span>`);
+    }
+    if (soloMapHtml) ensureSlice2MapAgeTimer();
+    /* ===== SLICE2:SINGLE-ORDER-MOUNT:END ===== */
     attachActiveCardHandlers(soloOrder);   // binds whichever server slide this phase renders
     if ($('btn-at-restaurant')) {
       attachSlideConfirm('btn-at-restaurant', async () => {
@@ -2894,10 +3052,54 @@ function renderActiveAndQueue() {
 
   const solo = queue.length === 0 && pendingAccept.length === 0;
   activeSlot.classList.toggle('solo', solo);
-  bannerSlot.innerHTML = renderIncomingBanners(pendingAccept);
-  activeSlot.innerHTML = renderActiveCard(active, solo);
+  /* ===== SLICE2:STACKED-BRANCH:START — restyle the ≥2-order stacked path via the pure builders ===== */
+  // REPLACES the inline renderIncomingBanners/renderActiveCard/renderQueue calls (baseline statements
+  // pinned by slice2-freeze.guard) with calls into stacked-view.js, and prepends the phase strip + the
+  // overview map. The attach* handler calls + slidingEl suppression below stay byte-identical; the frozen
+  // renderActiveCard/renderQueue/renderQueueDetail/renderIncomingBanners functions remain in the file,
+  // byte-identical (now unreachable from this path — kept to satisfy freeze-by-construction; the restored
+  // call statements re-reach them, so the guard proves byte-identity to the landed SHA).
+  const stacked2 = [active, ...queue];                                   // VISIBLE set in board order (active = stop 1)
+  const labels2 = resolveVisibleLabels(stacked2.map((s) => stopNavInfo(s, XPD.RESTAURANT)));  // collision-safe phase-correct labels
+  const deps2 = { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: XPD.RESTAURANT, navPref: undefined, collapsedBanners };
+  // Active-card "arrived" — replicate renderActiveCard's geofence check EXACTLY (?? pickup / || delivery).
+  const a2IsPickup = active.phase === 'pickup' || active.phase === 'awaiting_acceptance';
+  const a2Order = active.order || {};
+  const a2Lat = a2IsPickup ? (active.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat) : (a2Order.lat || active.deliveryTask.destination_lat);
+  const a2Lng = a2IsPickup ? (active.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng) : (a2Order.lng || active.deliveryTask.destination_lng);
+  const a2Arrived = !!(driverState && driverState.lat != null && driverState.lng != null
+    && XPD.haversineDistance(driverState.lat, driverState.lng, a2Lat, a2Lng) < 50);
+  // Overview-map model (Codex r1 P2-5): EVERY visible destination is a pin — the accepted stops (active + queue)
+  // AND the pending cross-hub offer(s) as dim peer points (mockup stOffer: two dim peers) — and EVERY DISTINCT
+  // pickup hub (cross-hub stacks show them all), with the active order's hub "on" while heading to pickup.
+  const mapPhase2 = a2IsPickup ? 'pickup' : 'delivery';
+  const mapDriver2 = (driverState && driverState.lat != null && driverState.lng != null)
+    ? { lat: driverState.lat, lng: driverState.lng, heading: driverState.heading } : null;
+  const mapStale2 = isStaleFix(driverState && driverState.last_location_ts, Date.now());
+  const mapEntities2 = [active, ...queue, ...pendingAccept];   // active=on; queue + offers are dim peers
+  const mapStops2 = mapEntities2.map((s, i) => {
+    const so = s.order || {};
+    return { lat: so.lat || (s.deliveryTask && s.deliveryTask.destination_lat), lng: so.lng || (s.deliveryTask && s.deliveryTask.destination_lng), n: i + 1, on: i === 0 };
+  });
+  const hubOf2 = (s) => ({ lat: s.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat, lng: s.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng });
+  const activeHubKey2 = (() => { const h = hubOf2(active); return h.lat + ',' + h.lng; })();
+  const mapHubs2 = [];
+  const seenHubs2 = new Set();
+  for (const s of mapEntities2) {
+    const h = hubOf2(s); const k = h.lat + ',' + h.lng;
+    if (seenHubs2.has(k)) continue;
+    seenHubs2.add(k);
+    mapHubs2.push({ lat: h.lat, lng: h.lng, on: k === activeHubKey2 && mapPhase2 === 'pickup' });
+  }
+  const stripStops2 = stacked2.map((s, i) => ({ n: i + 1, on: i === 0, label: (s.order && s.order.customer_name) || (s.deliveryTask && s.deliveryTask.recipient_name) || '' }));
+  bannerSlot.innerHTML = incomingBannerHtml(pendingAccept, deps2);
+  activeSlot.innerHTML = phaseStripHtml(stripStops2, escapeHtml)
+    + overviewMapSvg({ driver: mapDriver2, hubs: mapHubs2, stops: mapStops2, phase: mapPhase2, stale: mapStale2 })
+    + activeCardHtml(active, deps2, { ordinal: 1, solo, showActualPill: !solo, arrived: a2Arrived, navLabel: labels2[0] && labels2[0].label });
   queuedOrders = queue;
-  queueSlot.innerHTML = renderQueue(queue);
+  queueSlot.innerHTML = queueHtml(queue, deps2);
+  ensureSlice2MapAgeTimer();   // SLICE2:MAP-LIFECYCLE — age the fix on silence; self-clears when hidden
+  /* ===== SLICE2:STACKED-BRANCH:END ===== */
 
   attachActiveCardHandlers(active);
   pendingAccept.forEach(attachIncomingBannerHandlers);

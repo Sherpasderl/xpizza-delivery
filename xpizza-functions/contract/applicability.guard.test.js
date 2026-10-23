@@ -329,7 +329,7 @@ ok('dispatch on EXECUTION (codex b3 r1): the real dispatch unit is probed line-p
   const P = 'xpizza-driver/index.html<script@0>'; const D = 'xpizza-driver/xpizza-delivery.js'; const I = 'xpizza-functions/index.js';
   const board = Object.entries(doc.regions).filter(([, e]) => e.group === 'driverBoard');
   const push = [`${I}#notifyDriverOnAssignment@self`, `${I}#sendDriverPush@${I}#notifyDriverOnAssignment`];
-  assert.ok(board.length === 22 && board.every(([, e]) => JSON.stringify(e.appliesWhenAny) === JSON.stringify([{ driver: ['assigned', 'reassigned'], terminal: ['none'] }])) && push.every((k) => doc.regions[k] && doc.regions[k].group === 'driverPush'), FAIL(`driver board entries ${board.length} (expected 22) / assignment push entries missing`));
+  assert.ok(board.length === 17 && board.every(([, e]) => JSON.stringify(e.appliesWhenAny) === JSON.stringify([{ driver: ['assigned', 'reassigned'], terminal: ['none'] }])) && push.every((k) => doc.regions[k] && doc.regions[k].group === 'driverPush'), FAIL(`driver board entries ${board.length} (expected 17) / assignment push entries missing`));
   const units = require('./census').sources();
   const edit = (file, from, to) => units.map((u) => { if (u.file !== file) return u; assert.strictEqual(u.code.split(from).length - 1, 1, FAIL(`probe text not exactly once in ${file}: ${from}`)); return { ...u, code: u.code.replace(from, to) }; });
   // each distinct guard once per probe; a scope guard re-parses only its own unit (the R guards scan every unit)
@@ -366,7 +366,7 @@ ok('dispatch on EXECUTION (codex b3 r1): the real dispatch unit is probed line-p
   assert.strictEqual(RA.runDecision(doc, id, at('S1', 'delivered'), ev('delivered', {})).outcome, 'required', FAIL('a delivered LP was excluded without driver evidence'));
   assert.strictEqual(RA.staticDecision(doc, id, at('S1', 'assigned')).excluded, false, FAIL('the board was excluded at an assigned LP'));
 }
-ok('driver board (P1-c c1): 22 entries on driver ∈ {assigned, reassigned} ∧ terminal = none + 2 assignment-push entries; dropping the assigned-driver filter, keeping completed deliveries, an idle-screen payment row, a new DELIVERED writer, dropping the server terminal task delete, the helper\'s deletion itself (codex r1 P2), the terminal edge or delivered from its set → stale; weakening `if (!newDriverId) return;` → stale; getDriverOrders stays required; never assigned → excluded, assigned / assigned-then-cleared → contradicted, unassigned / delivered LPs → required');
+ok('driver board (P1-c c1): 17 entries on driver ∈ {assigned, reassigned} ∧ terminal = none + 2 assignment-push entries; dropping the assigned-driver filter, keeping completed deliveries, an idle-screen payment row, a new DELIVERED writer, dropping the server terminal task delete, the helper\'s deletion itself (codex r1 P2), the terminal edge or delivered from its set → stale; weakening `if (!newDriverId) return;` → stale; getDriverOrders stays required; never assigned → excluded, assigned / assigned-then-cleared → contradicted, unassigned / delivered LPs → required');
 { // P1-c c2 (R4 driver actions): decided on the ACTION's own execution (no-exec on xpizza-delivery.js#<fn>, never the
   // generic handler bundle); where the action IS the LP's action (pickupComplete / completeDelivery) it stays required
   const D = 'xpizza-driver/xpizza-delivery.js'; const P = 'xpizza-driver/index.html<script@0>';
