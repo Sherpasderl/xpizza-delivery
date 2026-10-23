@@ -30342,7 +30342,7 @@
   },
   {
    "id": "xpizza-driver/stacked-view.js#queueDetailHtml#address_detected#0",
-   "line": 306,
+   "line": 304,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -30352,7 +30352,7 @@
   },
   {
    "id": "xpizza-driver/stacked-view.js#queueDetailHtml#address_detected#1",
-   "line": 306,
+   "line": 304,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -30363,7 +30363,7 @@
   },
   {
    "id": "xpizza-driver/stacked-view.js#queueDetailHtml#address_details#0",
-   "line": 306,
+   "line": 304,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -30373,7 +30373,7 @@
   },
   {
    "id": "xpizza-driver/stacked-view.js#queueDetailHtml#address_details#1",
-   "line": 306,
+   "line": 304,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -30383,7 +30383,7 @@
   },
   {
    "id": "xpizza-driver/stacked-view.js#queueDetailHtml#items_text#0",
-   "line": 307,
+   "line": 305,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -30393,7 +30393,7 @@
   },
   {
    "id": "xpizza-driver/stacked-view.js#queueDetailHtml#items_text#1",
-   "line": 307,
+   "line": 305,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -30403,7 +30403,7 @@
   },
   {
    "id": "xpizza-driver/stacked-view.js#incomingBannerHtml>anon#total#0",
-   "line": 331,
+   "line": 325,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -30415,7 +30415,7 @@
   },
   {
    "id": "xpizza-driver/stacked-view.js#incomingBannerHtml>anon#total#1",
-   "line": 331,
+   "line": 325,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31455,7 +31455,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderHistoryModal>anon#total#0",
-   "line": 2737,
+   "line": 2735,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31467,7 +31467,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderHistoryModal>anon#total#1",
-   "line": 2737,
+   "line": 2735,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31479,7 +31479,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderHistoryModal>anon#total#2",
-   "line": 2755,
+   "line": 2753,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31491,7 +31491,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderHistoryModal>anon#total#3",
-   "line": 2755,
+   "line": 2753,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31503,7 +31503,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderStatusBar#status#0",
-   "line": 2861,
+   "line": 2859,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -31516,7 +31516,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderStatusBar#lat#0",
-   "line": 2900,
+   "line": 2898,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31526,7 +31526,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderStatusBar#lng#0",
-   "line": 2900,
+   "line": 2898,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31536,7 +31536,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderStatusBar#lat#1",
-   "line": 2901,
+   "line": 2899,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31546,7 +31546,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderStatusBar#lng#1",
-   "line": 2901,
+   "line": 2899,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31556,7 +31556,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#hub_lat#0",
-   "line": 2985,
+   "line": 2983,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31567,7 +31567,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#0",
-   "line": 2985,
+   "line": 2983,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31577,7 +31577,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#1",
-   "line": 2985,
+   "line": 2983,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31587,7 +31587,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#hub_lat#1",
-   "line": 2985,
+   "line": 2983,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31598,7 +31598,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#hub_lng#0",
-   "line": 2986,
+   "line": 2984,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31609,7 +31609,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#0",
-   "line": 2986,
+   "line": 2984,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31619,7 +31619,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#1",
-   "line": 2986,
+   "line": 2984,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31629,7 +31629,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#hub_lng#1",
-   "line": 2986,
+   "line": 2984,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31640,7 +31640,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#2",
-   "line": 2987,
+   "line": 2985,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31650,7 +31650,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#2",
-   "line": 2987,
+   "line": 2985,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31660,7 +31660,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#3",
-   "line": 2988,
+   "line": 2986,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31670,7 +31670,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#3",
-   "line": 2988,
+   "line": 2986,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31680,7 +31680,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#4",
-   "line": 3012,
+   "line": 3010,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31690,7 +31690,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#4",
-   "line": 3012,
+   "line": 3010,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31700,7 +31700,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#5",
-   "line": 3012,
+   "line": 3010,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31710,7 +31710,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#5",
-   "line": 3012,
+   "line": 3010,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31720,7 +31720,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#hub_lat#2",
-   "line": 3013,
+   "line": 3011,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31731,7 +31731,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#6",
-   "line": 3013,
+   "line": 3011,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31741,7 +31741,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#hub_lng#2",
-   "line": 3013,
+   "line": 3011,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31752,7 +31752,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#6",
-   "line": 3013,
+   "line": 3011,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31762,7 +31762,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#7",
-   "line": 3014,
+   "line": 3012,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31772,7 +31772,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#hub_lat#3",
-   "line": 3014,
+   "line": 3012,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31783,7 +31783,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#7",
-   "line": 3014,
+   "line": 3012,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31793,7 +31793,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#hub_lng#3",
-   "line": 3014,
+   "line": 3012,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31804,7 +31804,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#hub_lat#4",
-   "line": 3068,
+   "line": 3066,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31815,7 +31815,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#8",
-   "line": 3068,
+   "line": 3066,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31825,7 +31825,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#9",
-   "line": 3068,
+   "line": 3066,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31835,7 +31835,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#hub_lat#5",
-   "line": 3068,
+   "line": 3066,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31846,7 +31846,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#hub_lng#4",
-   "line": 3069,
+   "line": 3067,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31857,7 +31857,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#8",
-   "line": 3069,
+   "line": 3067,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31867,7 +31867,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#9",
-   "line": 3069,
+   "line": 3067,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31877,7 +31877,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#hub_lng#5",
-   "line": 3069,
+   "line": 3067,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31888,7 +31888,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#10",
-   "line": 3070,
+   "line": 3068,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31898,7 +31898,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#10",
-   "line": 3070,
+   "line": 3068,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31908,7 +31908,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#11",
-   "line": 3071,
+   "line": 3069,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31918,7 +31918,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#11",
-   "line": 3071,
+   "line": 3069,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31928,7 +31928,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#12",
-   "line": 3076,
+   "line": 3074,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31938,7 +31938,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#12",
-   "line": 3076,
+   "line": 3074,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31948,7 +31948,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#13",
-   "line": 3077,
+   "line": 3075,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31958,7 +31958,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#13",
-   "line": 3077,
+   "line": 3075,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31968,7 +31968,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon#lat#0",
-   "line": 3082,
+   "line": 3080,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31978,7 +31978,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon#hub_lat#0",
-   "line": 3082,
+   "line": 3080,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31989,7 +31989,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon#lng#0",
-   "line": 3082,
+   "line": 3080,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31999,7 +31999,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon#hub_lng#0",
-   "line": 3082,
+   "line": 3080,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -32010,7 +32010,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#hubOf2#hub_lat#0",
-   "line": 3084,
+   "line": 3082,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -32021,7 +32021,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#hubOf2#lat#0",
-   "line": 3084,
+   "line": 3082,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32031,7 +32031,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#hubOf2#hub_lng#0",
-   "line": 3084,
+   "line": 3082,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -32042,7 +32042,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#hubOf2#lng#0",
-   "line": 3084,
+   "line": 3082,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32052,7 +32052,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon#lat#1",
-   "line": 3085,
+   "line": 3083,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32062,7 +32062,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue>anon#lng#1",
-   "line": 3085,
+   "line": 3083,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32072,7 +32072,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#14",
-   "line": 3089,
+   "line": 3087,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32082,7 +32082,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#14",
-   "line": 3089,
+   "line": 3087,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32092,7 +32092,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lat#15",
-   "line": 3092,
+   "line": 3090,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32102,7 +32102,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveAndQueue#lng#15",
-   "line": 3092,
+   "line": 3090,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32112,7 +32112,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#scheduledBadge#scheduled_for#0",
-   "line": 3120,
+   "line": 3118,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -32122,7 +32122,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#scheduledBadge#order_type#0",
-   "line": 3121,
+   "line": 3119,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -32132,7 +32132,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#scheduledBadge#scheduled_for#1",
-   "line": 3122,
+   "line": 3120,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -32142,7 +32142,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon#total#0",
-   "line": 3131,
+   "line": 3129,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -32154,7 +32154,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon#total#1",
-   "line": 3131,
+   "line": 3129,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -32166,7 +32166,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon#address_detected#0",
-   "line": 3132,
+   "line": 3130,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32176,7 +32176,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon#address_detected#1",
-   "line": 3132,
+   "line": 3130,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -32187,7 +32187,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderIdleState#status#0",
-   "line": 3186,
+   "line": 3184,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -32200,7 +32200,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#hub_lat#0",
-   "line": 3247,
+   "line": 3245,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -32211,7 +32211,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#lat#0",
-   "line": 3247,
+   "line": 3245,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32221,7 +32221,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#lat#1",
-   "line": 3247,
+   "line": 3245,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32231,7 +32231,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#hub_lat#1",
-   "line": 3247,
+   "line": 3245,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -32242,7 +32242,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#hub_lng#0",
-   "line": 3248,
+   "line": 3246,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -32253,7 +32253,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#lng#0",
-   "line": 3248,
+   "line": 3246,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32263,7 +32263,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#lng#1",
-   "line": 3248,
+   "line": 3246,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32273,7 +32273,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#hub_lng#1",
-   "line": 3248,
+   "line": 3246,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -32284,7 +32284,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#lat#2",
-   "line": 3255,
+   "line": 3253,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32294,7 +32294,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#lng#2",
-   "line": 3255,
+   "line": 3253,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32304,7 +32304,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#lat#3",
-   "line": 3257,
+   "line": 3255,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32314,7 +32314,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#lng#3",
-   "line": 3257,
+   "line": 3255,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32324,7 +32324,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#address_detected#0",
-   "line": 3328,
+   "line": 3326,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32334,7 +32334,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#address_detected#1",
-   "line": 3328,
+   "line": 3326,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -32345,7 +32345,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#address_details#0",
-   "line": 3328,
+   "line": 3326,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32355,7 +32355,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#address_details#1",
-   "line": 3328,
+   "line": 3326,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32365,7 +32365,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#items_text#0",
-   "line": 3329,
+   "line": 3327,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -32375,7 +32375,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard#items_text#1",
-   "line": 3329,
+   "line": 3327,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -32385,7 +32385,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard>anon#cash_tendered_cents#0",
-   "line": 3334,
+   "line": 3332,
    "kind": "member",
    "facts": [
     "TENDER"
@@ -32395,7 +32395,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard>anon#total#0",
-   "line": 3335,
+   "line": 3333,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -32407,7 +32407,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard>anon#total#1",
-   "line": 3337,
+   "line": 3335,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -32419,7 +32419,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderActiveCard>anon#total#2",
-   "line": 3339,
+   "line": 3337,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -32431,7 +32431,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderQueue>anon#address_detected#0",
-   "line": 3557,
+   "line": 3555,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32441,7 +32441,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderQueue>anon#address_detected#1",
-   "line": 3557,
+   "line": 3555,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -32452,7 +32452,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderQueueDetail#lat#0",
-   "line": 3577,
+   "line": 3575,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32462,7 +32462,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderQueueDetail#hub_lat#0",
-   "line": 3577,
+   "line": 3575,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -32473,7 +32473,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderQueueDetail#lng#0",
-   "line": 3578,
+   "line": 3576,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32483,7 +32483,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderQueueDetail#hub_lng#0",
-   "line": 3578,
+   "line": 3576,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -32494,7 +32494,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderQueueDetail#address_detected#0",
-   "line": 3588,
+   "line": 3586,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32504,7 +32504,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderQueueDetail#address_detected#1",
-   "line": 3588,
+   "line": 3586,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -32515,7 +32515,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderQueueDetail#address_details#0",
-   "line": 3588,
+   "line": 3586,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32525,7 +32525,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderQueueDetail#address_details#1",
-   "line": 3588,
+   "line": 3586,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32535,7 +32535,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderQueueDetail#items_text#0",
-   "line": 3589,
+   "line": 3587,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -32545,7 +32545,7 @@
   },
   {
    "id": "xpizza-driver/index.html<script@0>#renderQueueDetail#items_text#1",
-   "line": 3589,
+   "line": 3587,
    "kind": "member",
    "facts": [
     "ITEMS"

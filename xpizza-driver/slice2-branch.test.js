@@ -472,15 +472,15 @@ t('map staleness: a fresh last_location_ts renders a live map; an old one render
   assert.ok(missing.active().includes('class="map stale"'), 'missing last_location_ts → stale (conservative)');
 });
 
-// 6. SLICE2:QUEUE-IDENTITY: tapping a real queued card opens the read-only sheet (nav KEPT); a stale card
-//    whose orderId left the queue FAILS CLOSED (no index fallback, no wrong-stop sheet).
-t('queue identity: tapping B opens the read-only sheet for B (nav KEPT); a stale/gone card is a no-op', () => {
+// 6. SLICE2:QUEUE-IDENTITY: tapping a real queued card opens the read-only sheet (NO nav — owner ruling
+//    2026-10-23); a stale card whose orderId left the queue FAILS CLOSED (no index fallback, no wrong-stop sheet).
+t('queue identity: tapping B opens the read-only sheet for B (NO nav — owner ruling); a stale/gone card is a no-op', () => {
   const r = run({ orders: [delivery('A'), delivery('B', { dn: 'B', name: 'Carlos' })], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH } });
   r.clickCard('.qcard[data-order-id="B"]');
   assert.ok(r.sheetOpen(), 'sheet opened for the resolved order');
   const s = r.sheet();
   assert.ok(s.includes('Carlos'), 'sheet shows B’s customer');
-  assert.ok(s.includes('waze-btn') && s.includes('maps-btn'), 'read-only sheet KEEPS the nav (Codex P1-1)');
+  assert.ok(!s.includes('waze-btn') && !s.includes('maps-btn') && !s.includes('nav-row'), 'read-only sheet has NO nav (owner ruling 2026-10-23 supersedes Codex P1-1)');
   assert.ok(s.includes('Orden de entrega asignada por despacho.'), 'completion-lock copy present');
   assert.ok(s.includes('id="queue-sheet-close"'), 'close hook present');
   // Fail-closed: inject a stale card for an order no longer in the queue and tap it → no sheet change.
@@ -726,8 +726,10 @@ t('runReal map model (kills drv2-25): TWO pending cross-hub offers → TWO peer 
   assert.ok(hubs >= 2, `cross-hub: both hubs shown — got ${hubs}`);
 });
 
-// QUEUE-SHEET NAV TARGET (kills drv2-26): a PICKUP-phase queued order's sheet targets the CUSTOMER, not the hub.
-t('runReal queue-sheet nav (kills drv2-26): a PICKUP-phase queued order → label + Waze URL target the CUSTOMER', () => {
+// QUEUE-SHEET IS READ-ONLY (owner ruling 2026-10-23, supersedes Codex P1-1): a queued order's sheet shows its
+// info but offers NO navigation — navigation exists only for the ACTIVE stop, so a driver cannot route to stop 2
+// before delivering stop 1.
+t('runReal queue-sheet (owner ruling 2026-10-23): a queued order opens a READ-ONLY sheet with its info but NO nav', () => {
   const r = runReal({ seed: seed([
     { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, lat: 15.40, lng: -88.00 },
     { id: 'B', pickup: TASK_STATUS.ACCEPTED, delivery: TASK_STATUS.ACCEPTED, hub: HUBM, created: 2, lat: 15.45, lng: -88.05, addr: 'Res. Los Robles' },
@@ -736,9 +738,9 @@ t('runReal queue-sheet nav (kills drv2-26): a PICKUP-phase queued order → labe
   r.clickCard('.qcard[data-order-id="B"]');
   assert.ok(r.sheetOpen(), 'sheet opened for B');
   const s = r.sheet();
-  assert.ok(s.includes('Res. Los Robles'), 'label/address names B’s CUSTOMER');
-  assert.ok(s.includes('waze.com/ul?ll=15.45,-88.05'), 'Waze URL targets B’s CUSTOMER coords');
-  assert.ok(!s.includes(`ll=${HUBM.lat},${HUBM.lng}`), 'NOT B’s restaurant coords (drv2-26 would open the hub)');
+  assert.ok(s.includes('Res. Los Robles'), 'read-only sheet still shows B’s CUSTOMER address (info)');
+  assert.ok(!s.includes('waze-btn') && !s.includes('maps-btn') && !s.includes('nav-row'), 'NO nav controls in the queued sheet');
+  assert.ok(!s.includes('waze.com/ul'), 'no navigation URL to a queued stop');
 });
 
 // ── P2-1 mock-faithfulness boundary cells (prove the mock is NOT laxer than Firebase) ──

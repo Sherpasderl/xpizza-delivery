@@ -279,12 +279,13 @@ export function queueHtml(orders, deps = {}) {
 }
 
 /**
- * The read-only QUEUE-DETAIL sheet (apDetalle2). REPRODUCES renderQueueDetail — KEEPS the Waze+Maps nav
- * (Codex P1-1), KEEPS the completion-lock copy ("Orden de entrega asignada por despacho.") + queue-sheet-close
- * — and LAYERS the bag tag + the phase-correct (delivery) destination name inside the Waze button. `seq` is
- * the 1-based stop position; `navLabel` is the collision-resolved delivery label (§7). Pure.
+ * The read-only QUEUE-DETAIL sheet (apDetalle2). Owner ruling 2026-10-23 (supersedes the Codex P1-1 "keep
+ * baseline renderQueueDetail nav" constraint — the owner's sequencing rule wins): the queued stop is READ-ONLY
+ * with NO navigation and no «Entregado». Navigation exists ONLY for the ACTIVE stop. Shows the bag tag, #,
+ * customer (when accepted), items, payment, and the completion-lock copy ("Orden de entrega asignada por
+ * despacho.") + queue-sheet-close. `seq` is the 1-based stop position. Pure.
  */
-export function queueDetailHtml(o, seq, deps = {}, nav = {}) {
+export function queueDetailHtml(o, seq, deps = {}) {
   const { ICONS = {}, esc = String, scheduledBadge = () => '' } = deps;
   const order = o.order || {};
   // PRIVACY (Codex r2 P1): gate ALL customer-identifying fields on acceptance. The tap handler refuses a
@@ -292,10 +293,7 @@ export function queueDetailHtml(o, seq, deps = {}, nav = {}) {
   // name, phone, contact links, address, or customer navigation.
   const accepted = o.phase !== 'awaiting_acceptance';
   const name = accepted ? (order.customer_name || (o.deliveryTask && o.deliveryTask.recipient_name) || '—') : 'Nuevo pedido';
-  // Codex r1 P1-2: when accepted, the label AND the Waze/Maps URLs come from ONE delivery target (nav = { label,
-  // waze, maps } over the DELIVERY phase) — label and URL cannot disagree.
   const phone = order.customer_phone;
-  const navDest = nav.label ? `<span class="nav-dest">→ ${esc(nav.label)}</span>` : '';
   return `
     <div class="grab"></div>
     <div class="ac-chiprow" style="margin-top:2px">${bagTagHtml(seq, esc)}<span class="order-num">${esc(displayOrderLabel(order))}</span>${rchip(order, esc)}</div>
@@ -307,10 +305,6 @@ export function queueDetailHtml(o, seq, deps = {}, nav = {}) {
     ${order.items_text ? `<div class="items-list">${order.items_text.split(',').map((s) => `<div class="item">${esc(s.trim())}</div>`).join('')}</div>` : ''}
     <div class="ac-hr"></div>
     ${paymentRowHtml(order, esc)}
-    ${accepted ? `<div class="nav-row" style="margin-top:14px">
-      <a class="nav-btn waze-btn" href="${nav.waze || ''}" target="_blank" rel="noopener"><span class="nav-icon">${ICONS.nav}</span><span class="nav-txt"><span class="nav-main">Navegar con Waze</span>${navDest}</span></a>
-      <a class="nav-btn maps-btn" href="${nav.maps || ''}" target="_blank" rel="noopener"><span class="nav-icon">${ICONS.nav}</span>Maps</a>
-    </div>` : ''}
     <div class="lockchip"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>Orden de entrega asignada por despacho.</div>
     <button class="sheet-close" id="queue-sheet-close">Cerrar</button>`;
 }

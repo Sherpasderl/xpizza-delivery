@@ -174,23 +174,22 @@ t('queueHtml: each row carries data-q (index) AND data-order-id, with a bag tag'
 });
 t('queueHtml: empty → empty string', () => assert.equal(queueHtml([], DEPS), ''));
 
-// ---------- queueDetailHtml: nav KEPT, lock copy KEPT, bag tag + phase label layered ----------
-t('queueDetailHtml: label AND URL from ONE delivery target (Codex r1 P1-2) — a PICKUP-phase queued order still navigates to the CUSTOMER', () => {
-  // The queued order is still in PICKUP phase, but the read-only sheet always navigates to the DELIVERY (the
-  // approved behaviour). The caller resolves the nav over the DELIVERY phase (isPickup=false), so the label
-  // names the customer and the URL targets the customer — they can never disagree (the reported bug).
+// ---------- queueDetailHtml: READ-ONLY, NO nav (owner ruling 2026-10-23, supersedes Codex P1-1) ----------
+t('queueDetailHtml: the queued sheet is READ-ONLY — NO navigation (owner ruling 2026-10-23); info + lock copy + bag tag KEPT', () => {
+  // Owner sequencing rule (wins over the Codex P1-1 "keep baseline nav" constraint): navigation exists ONLY for
+  // the ACTIVE stop. The queued detail sheet shows the stop's info (bag tag, #, customer, address, items,
+  // payment, completion-lock) but offers NO Waze/Maps and no «Entregado» — a driver cannot navigate to stop 2
+  // before delivering stop 1.
   const o = deepFreeze({ orderId: 'ordB', phase: 'pickup',
     order: { display_number: 6, customer_name: 'Carlos', address_detected: 'Res. Los Castaños', lat: 14.12, lng: -87.10 },
     pickupTask: { destination_lat: 14.11, destination_lng: -87.23, destination_address: 'Blvd Morazán' }, deliveryTask: {} });
-  const nav = resolveVisibleLabels([stopNavInfo(o, RESTAURANT, false)])[0];   // DELIVERY-forced nav object { label, waze, maps }
-  const html = queueDetailHtml(o, 2, DEPS, nav);
-  assert.ok(html.includes('waze-btn') && html.includes('maps-btn'), 'nav KEPT (Codex P1-1)');
-  assert.ok(html.includes('Navegar con Waze') && html.includes('→ Res. Los Castaños'), 'label names the CUSTOMER destination');
-  assert.ok(html.includes('waze.com/ul?ll=14.12,-87.1'), 'URL targets the customer (same delivery target as the label)');
-  assert.ok(!html.includes('14.11,-87.23'), 'NOT the restaurant coords — label and URL agree (P1-2)');
+  const html = queueDetailHtml(o, 2, DEPS);
+  assert.ok(!html.includes('nav-row') && !html.includes('waze-btn') && !html.includes('maps-btn'), 'NO nav row / Waze / Maps in the read-only queued sheet');
+  assert.ok(!html.includes('Navegar con Waze') && !html.includes('waze.com/ul'), 'no navigation affordance or URL to a queued stop');
   assert.ok(html.includes('Orden de entrega asignada por despacho.'), 'completion-lock copy KEPT');
   assert.ok(html.includes('id="queue-sheet-close"'), 'close button hook');
   assert.ok(html.includes('<span class="bagtag b">2</span>'), 'bag tag');
+  assert.ok(html.includes('Res. Los Castaños'), 'an accepted queued stop still shows its address (read-only info)');
   assert.ok(!html.includes('id="btn-delivered"'), 'NO Entregado in the read-only sheet');
 });
 
@@ -233,7 +232,7 @@ t('queueDetailHtml (PRIVACY, Codex r2 P1): an awaiting_acceptance order → NO n
   const o = deepFreeze({ orderId: 'ordW', phase: 'awaiting_acceptance',
     order: { display_number: 8, customer_name: 'Secreta Pérez', customer_phone: '99990000', address_detected: 'Col. Escondida 7', total: 300 },
     pickupTask: {}, deliveryTask: { recipient_name: 'Secreta Pérez', destination_address: 'Col. Escondida 7' } });
-  const html = queueDetailHtml(o, 2, DEPS, { label: 'x', waze: 'https://waze.com/ul?ll=1,2', maps: 'https://maps' });
+  const html = queueDetailHtml(o, 2, DEPS);
   assert.ok(!html.includes('Secreta'), 'no name');
   assert.ok(!html.replace(/\D/g, '').includes('99990000'), 'no phone digit-run');
   assert.ok(!html.includes('tel:') && !html.includes('wa.me'), 'no tel: / wa.me');

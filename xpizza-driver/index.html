@@ -2450,13 +2450,11 @@ $('queue-slot').addEventListener('click', (e) => {
   // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.
   if (o.phase === 'awaiting_acceptance') return;
   /* ===== SLICE2:QUEUE-IDENTITY:END ===== */
-  /* ===== SLICE2:QUEUE-SHEET:START — read-only detail via the builder (nav KEPT; ONE delivery target for label+URL — Codex r1 P1-2) ===== */
-  // The label AND the Waze/Maps URLs come from ONE stopNavInfo over the DELIVERY phase (isPickup=false),
-  // collision-resolved over the same fresh board and matched back by orderId — so the sheet's label can never
-  // name the restaurant while its link opens customer coordinates. renderQueueDetail stays in the file
+  /* ===== SLICE2:QUEUE-SHEET:START — read-only detail via the builder (owner ruling 2026-10-23: NO nav; supersedes Codex P1-1) ===== */
+  // Owner ruling 2026-10-23 (sequencing rule wins over Codex P1-1): the queued stop's sheet is READ-ONLY with
+  // NO navigation — navigation exists only for the ACTIVE stop. renderQueueDetail stays in the file
   // byte-identical (now unreachable; the restored call re-reaches it for the freeze guard).
-  const qNav = resolveVisibleLabels(qBoard.map((s) => stopNavInfo(s, XPD.RESTAURANT, false))).find((L) => L.orderId === qOrderId) || {};
-  $('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge }, qNav);
+  $('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });
   /* ===== SLICE2:QUEUE-SHEET:END ===== */
   $('queue-sheet').classList.add('open');
 });
