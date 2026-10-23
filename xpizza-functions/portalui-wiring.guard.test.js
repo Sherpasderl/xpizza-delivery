@@ -12,7 +12,7 @@ const { execFileSync } = require('child_process');
 const { HUNKS, BASE, unapplyPortalUiIndex, unapplyPortalUiFold } = require('./tools/portalui-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const real = require('./tools/wahealth-inverse').unapplyWaHealthIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // WAHEALTH (newest) stripped first
 
 // 3a T-c (merged onto this slice in feat/portal-team) appended ONE export to the membership line after BASE — a same-line hunk,
 // folded out here so this pin keeps judging portal-ui's own two hunks against BASE (the membership inverse covers T-c's line)

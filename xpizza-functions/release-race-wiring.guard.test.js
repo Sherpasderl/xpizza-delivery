@@ -11,7 +11,7 @@ const { execFileSync } = require('child_process');
 const { unapplyReleaseRaceIndex, INDEX_HUNKS } = require('./tools/release-race-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const idx = require('./tools/brand-server-inverse').unapplyBrandServerIndex(require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))));   // BRAND-AGNOSTIC SERVER (newer layer) reversed first
+const idx = require('./tools/brand-server-inverse').unapplyBrandServerIndex(require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))));   // BRAND-AGNOSTIC SERVER (newer layer) reversed first
 const BASE = execFileSync('git', ['show', '32f6f17e:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.strictEqual(unapplyReleaseRaceIndex(idx), BASE, '🔴 index.js minus the release-race hunks is not 32f6f17e:index.js');

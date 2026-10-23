@@ -654,7 +654,9 @@
   "portal/ops-core.js#projectMenu": "catalog",
   "portal/ops-core.js#getBranchAvailabilityCore>anon": "catalog",
   "portal/ops-core.js#setBranchAvailabilityCore>anon": "catalog",
-  "portal/ops-functions.js#handler>anon": "catalog"
+  "portal/ops-functions.js#handler>anon": "catalog",
+  "whatsapp/instance-health.js#checkInstances>anon": "infra",
+  "whatsapp/instance-health.js#readAccountStatus": "infra"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
