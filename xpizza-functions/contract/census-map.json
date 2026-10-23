@@ -656,6 +656,7 @@
   "portal/ops-core.js#setBranchAvailabilityCore>anon": "catalog",
   "portal/ops-functions.js#handler>anon": "catalog",
   "whatsapp/instance-health.js#checkInstances>anon": "infra",
+  "whatsapp/instance-health.js#checkInstances>anon>anon": "infra",
   "whatsapp/instance-health.js#readAccountStatus": "infra"
  },
  "pageFunctionExemptions": {

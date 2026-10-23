@@ -7,13 +7,17 @@
 //   · Brands come from data: the restaurant registry's known ids through whatsapp.js resolveWhatsappConfig — no brand literal here.
 //     Ids that resolve to the SAME instance are checked once (one HTTP call per instance per run) and named together.
 //   · Verdict: authenticated → silent; qr / disconnected (or substatus disconnected / logged out) → ERROR; any other state
-//     (initialize, loading, retrying, standby, …) → WARNING. A failed status call (timeout, network, non-2xx, bad or unknown
-//     JSON) is a WARNING — never reported as "disconnected".
-//   · /config/whatsapp_enabled === false (sends deliberately off) → still checked, but an unlinked instance is a WARNING.
-//   · Never logs the token or the request URL (the token rides in its query string). No state, no dedupe.
+//     (initialize, loading, retrying, standby, …) → WARNING. A failed status call (timeout, network, non-2xx, redirect, bad or
+//     unknown JSON) is a WARNING — never reported as "disconnected".
+//   · /config/whatsapp_enabled === false (sends deliberately off) → still checked, but an unlinked instance is a WARNING. That read
+//     is bounded (CONFIG_TIMEOUT_MS); on expiry the check proceeds as enabled and logs a WARNING config_timeout.
+//   · Logs ONLY allowlisted status labels and fixed failure codes (codex r1 P1) — never an upstream string, an exception message,
+//     the token or the request URL (the token rides in its query string). No state, no dedupe.
+//   · ONE deadline per status call covers the request AND the body read; redirects are refused, not followed (codex r1 P2).
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 
 const TIMEOUT_MS = 8000;
+const CONFIG_TIMEOUT_MS = 3000;
 const ERROR_STATES = new Set(['qr', 'disconnected']);
 const ERROR_SUBSTATES = new Set(['disconnected', 'logged out']);
 
@@ -37,6 +41,34 @@ function classify(st) {
   return 'transient';
 }
 
+// The ONLY status text that is ever logged: a fixed label, never the upstream string.
+function labelOf(st) {
+  if (!st) return 'unrecognised';
+  if (ERROR_STATES.has(st.state)) return st.state;
+  if (st.sub === 'logged out') return 'logged_out';
+  if (st.sub === 'disconnected') return 'disconnected';
+  if (st.state === 'authenticated') return 'authenticated';
+  return 'transient';
+}
+
+// A fixed failure code for a thrown error — never its message (node-fetch's carries the URL, so the token).
+const DEADLINE = Symbol('deadline');
+function failureCode(e) {
+  if (e === DEADLINE || (e && (e.name === 'AbortError' || e.type === 'request-timeout' || e.type === 'body-timeout'))) return 'timeout';
+  if (e && e.name === 'SyntaxError') return 'bad_json';
+  if (e && e.type === 'invalid-json') return 'bad_json';
+  return 'network';
+}
+const httpCode = (s) => (Number.isInteger(s) && s >= 100 && s <= 599 ? `http_${s}` : 'http_unknown');
+
+// work(signal) raced against ONE timer (cleared on every path); on expiry the signal is aborted and DEADLINE is thrown.
+async function withDeadline(work, ms) {
+  const ac = new AbortController();
+  let timer = null;
+  const expiry = new Promise((_, reject) => { timer = setTimeout(() => { ac.abort(); reject(DEADLINE); }, ms); });
+  try { return await Promise.race([Promise.resolve().then(() => work(ac.signal)), expiry]); } finally { clearTimeout(timer); }
+}
+
 // rids: iterable of restaurant ids; resolve(rid) → { apiBase, token } | null; fetchImpl: node-fetch compatible.
 async function checkInstances({ rids, resolve, fetchImpl, enabled = true, timeoutMs = TIMEOUT_MS, log }) {
   const byInstance = new Map();
@@ -48,34 +80,53 @@ async function checkInstances({ rids, resolve, fetchImpl, enabled = true, timeou
     g.rids.push(rid);
     byInstance.set(cfg.apiBase, g);
   }
-  const results = await Promise.all([...byInstance.values()].map(async (g) => {
+  return Promise.all([...byInstance.values()].map(async (g) => {
     const instance = instanceOf(g.apiBase);
     const who = { rids: g.rids.join(','), instance };
-    let st = null;
+    const failed = (code) => { log.warn(`whatsapp-health: status check failed rid=${who.rids} instance=${instance} reason=${code}`, { ...who, reason: code }); return { ...who, verdict: 'check_failed', reason: code }; };
+    let got;
     try {
-      const res = await fetchImpl(`${g.apiBase}/instance/status?token=${encodeURIComponent(g.token)}`, { method: 'GET', timeout: timeoutMs });
-      if (!res || !res.ok) {
-        log.warn(`whatsapp-health: status check failed rid=${who.rids} instance=${instance} http=${res ? res.status : 'none'}`, who);
-        return { ...who, verdict: 'check_failed' };
-      }
-      st = readAccountStatus(await res.json());
+      got = await withDeadline(async (signal) => {
+        const res = await fetchImpl(`${g.apiBase}/instance/status?token=${encodeURIComponent(g.token)}`, { method: 'GET', redirect: 'manual', timeout: timeoutMs, signal });
+        if (!res) return { code: 'network' };
+        if (res.status >= 300 && res.status < 400) return { code: 'redirect' };
+        if (!res.ok) return { code: httpCode(res.status) };
+        return { body: await res.json() };
+      }, timeoutMs);
     } catch (e) {
-      log.warn(`whatsapp-health: status check failed rid=${who.rids} instance=${instance} error=${(e && e.name) || 'Error'}`, who);
-      return { ...who, verdict: 'check_failed' };
+      return failed(failureCode(e));
     }
+    if (got.code) return failed(got.code);
+    const st = readAccountStatus(got.body);
     const verdict = classify(st);
-    const shown = st ? `${st.state}${st.sub ? '/' + st.sub : ''}` : 'unreadable';
+    const label = labelOf(st);
     if (verdict === 'down') {
-      const line = `whatsapp-health: DISCONNECTED rid=${who.rids} instance=${instance} status=${shown} — re-link the device (QR) in UltraMsg`;
-      if (enabled) log.error(line, who); else log.warn(`${line} (whatsapp_enabled=false)`, who);
+      const line = `whatsapp-health: DISCONNECTED rid=${who.rids} instance=${instance} status=${label} — re-link the device (QR) in UltraMsg`;
+      if (enabled) log.error(line, { ...who, status: label }); else log.warn(`${line} (whatsapp_enabled=false)`, { ...who, status: label });
     } else if (verdict === 'transient') {
-      log.warn(`whatsapp-health: not ready rid=${who.rids} instance=${instance} status=${shown}`, who);
+      log.warn(`whatsapp-health: not ready rid=${who.rids} instance=${instance} status=${label}`, { ...who, status: label });
     } else if (verdict === 'unknown') {
-      log.warn(`whatsapp-health: unrecognised status response rid=${who.rids} instance=${instance}`, who);
+      log.warn(`whatsapp-health: unrecognised status response rid=${who.rids} instance=${instance} status=${label}`, { ...who, status: label });
     }
-    return { ...who, verdict };
+    return { ...who, verdict, status: label };
   }));
-  return results;
+}
+
+// One scheduled run. Every dependency is injected (the scheduler wrapper passes the real ones), so a test drives it end to end.
+async function runHealth({ knownRids, readEnabled, resolve, fetchImpl, log, timeoutMs = TIMEOUT_MS, configTimeoutMs = CONFIG_TIMEOUT_MS }) {
+  try {
+    const rids = await knownRids();
+    let enabled = true;   // enabled-unknown → treated as enabled: an unlinked gateway still pages
+    try {
+      enabled = (await withDeadline(() => readEnabled(), configTimeoutMs)) !== false;
+    } catch (e) {
+      log.warn(`whatsapp-health: whatsapp_enabled read failed reason=${e === DEADLINE ? 'config_timeout' : 'config_error'} (checking as enabled)`, { reason: e === DEADLINE ? 'config_timeout' : 'config_error' });
+    }
+    return await checkInstances({ rids, resolve, fetchImpl, enabled, timeoutMs, log });
+  } catch (_) {
+    log.warn('whatsapp-health: run failed reason=run_error', { reason: 'run_error' });
+    return null;
+  }
 }
 
 // The deployable function. deps are injected by index.js (the registry singleton lives there).
@@ -83,16 +134,10 @@ function makeHealthFunction({ knownRids, getDb }) {
   return onSchedule(
     { schedule: 'every 30 minutes', region: 'us-central1', timeoutSeconds: 60, memory: '256MiB', maxInstances: 1, retryCount: 0 },
     async () => {
-      const logger = require('firebase-functions/logger');
       const whatsapp = require('../whatsapp');
-      try {
-        const rids = await knownRids();
-        const enabled = await whatsapp.isEnabled(getDb());
-        await checkInstances({ rids, resolve: (rid) => whatsapp.resolveWhatsappConfig(rid), fetchImpl: require('node-fetch'), enabled, log: logger });
-      } catch (e) {
-        logger.warn(`whatsapp-health: run failed ${(e && e.message) || e}`);
-      }
+      await runHealth({ knownRids, readEnabled: () => whatsapp.isEnabled(getDb()), resolve: (rid) => whatsapp.resolveWhatsappConfig(rid),
+        fetchImpl: require('node-fetch'), log: require('firebase-functions/logger') });
     });
 }
 
-module.exports = { checkInstances, readAccountStatus, classify, instanceOf, makeHealthFunction, TIMEOUT_MS };
+module.exports = { checkInstances, runHealth, readAccountStatus, classify, labelOf, failureCode, withDeadline, instanceOf, makeHealthFunction, TIMEOUT_MS, CONFIG_TIMEOUT_MS };
