@@ -4,9 +4,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { execSync } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { slotLabel } from './slot-format.js';
 import { agingBaselineMs, agingSeconds } from './dispatch-aging.js';
+import { makeReleasedOrder, withFrozenClock } from './scheduled-badge-fixture.mjs';
 
 // «Programado» badge on RELEASED scheduled orders (dispatch-lite). A scheduled order keeps
 // `scheduled_for` after it releases to a live status, but every indicator was keyed on
@@ -88,40 +88,8 @@ const branch = buildFrom(passHTMLSrc, openDetailSrc);
 const baseHtml = execSync('git show e2266b24:xpizza-dispatch-mobile/index.html', { cwd: here + '/..', maxBuffer: 50 * 1024 * 1024 }).toString();
 const base = buildFrom(sliceFn(baseHtml, 'function passHTML(id, order){'), sliceFn(baseHtml, 'function openDetail(orderId){'));
 
-// ── the REAL release writer, run against an in-memory DB, is the source of the released order ──
-const require = createRequire(import.meta.url);
-const { releaseOne } = require('../xpizza-functions/scheduled-release-core.js');
-
-function makeDb(initial) {
-  const root = JSON.parse(JSON.stringify(initial));
-  const get = (p) => (p ? p.split('/').filter(Boolean).reduce((o, k) => (o == null ? undefined : o[k]), root) : root);
-  const set = (p, v) => { const ks = p.split('/').filter(Boolean); let o = root; for (let i = 0; i < ks.length - 1; i++) { o[ks[i]] ??= {}; o = o[ks[i]]; } const last = ks[ks.length - 1]; if (v === null) delete o[last]; else o[last] = v; };
-  const ref = (p = '') => ({
-    async transaction(fn) { const cur = get(p) ?? null; const res = fn(cur); if (res === undefined) return { committed: false, snapshot: { val: () => get(p) ?? null } }; set(p, res); return { committed: true, snapshot: { val: () => res } }; },
-    async update(obj) { if (!p) { for (const [k, v] of Object.entries(obj)) set(k, v); } else { const cur = get(p) || {}; for (const [k, v] of Object.entries(obj)) { if (v === null) delete cur[k]; else cur[k] = v; } set(p, cur); } },
-    async once() { return { val: () => get(p) ?? null }; },
-  });
-  return { ref, get };
-}
-
-const OPEN_ALL_DAY = Object.fromEntries(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].map((d) => [d, { start: '00:00', end: '23:59' }]));
-
-// Release a scheduled order with `now` chosen so released_at lands `agoMin` minutes in the past.
-async function releasedOrder({ agoMin, rid = 'la_musa' }) {
-  const now = Date.now() - agoMin * 60 * 1000;
-  const SF = Date.now() + 90 * 60 * 1000;                 // a real future slot
-  const scheduled = {
-    status: 'scheduled', release_at: now - 1000, scheduled_for: SF, restaurant_id: rid,
-    created_at: now - 5 * 3600 * 1000,                    // placed 5h before release
-    customer_name: 'Rodrigo Fúnez', customer_phone: '+504 3345-7788', order_type: 'delivery',
-    total: 430, items_text: '2× Pizza', address_detected: 'Res. Villas del Sol',
-    hub_lat: 15.5, hub_lng: -88.0, restaurant_name: 'La Musa', restaurant_display_name: 'La Musa',
-  };
-  const db = makeDb({ orders: { o1187: scheduled }, restaurants: { [rid]: { identity: { hours: OPEN_ALL_DAY } } } });
-  const res = await releaseOne({ db, genToken: () => 'tok', restaurantFallback: { lat: 15.5, lng: -88.0, name: 'La Musa', phone: '' } }, { orderId: 'o1187', now, claimId: 'c1' });
-  assert.equal(res.released, true, 'the real writer materialized the order');
-  return { order: db.get('orders/o1187'), now, SF };
-}
+// The released order comes from the REAL releaseOne writer under a FROZEN clock (scheduled-badge-fixture.mjs),
+// so slot validity, the "min" and the slot label are all deterministic regardless of wall-clock time.
 
 // ── hasSlot predicate (the status-independent key) ───────────────────────────
 test('hasSlot is true only for a finite POSITIVE scheduled_for, independent of status', () => {
@@ -138,26 +106,28 @@ test('hasSlot is true only for a finite POSITIVE scheduled_for, independent of s
 // ── writer→renderer: the REAL released order renders the badge across the 4 live statuses, ──
 // ── with the "min" computed from released_at by the REAL minutesOf (aging not stubbed) ───────
 test('released scheduled order (real writer) shows the badge + release-based min across new/preparing/ready/out_for_delivery', async () => {
-  const { order, SF } = await releasedOrder({ agoMin: 8 });     // released 8 min ago → min === 8
-  assert.ok(Number.isFinite(order.released_at), 'writer stamped a numeric released_at');
-  assert.equal(order.scheduled_for, SF, 'writer retained scheduled_for');
-  assert.equal(order.status, 'new', 'writer materialized to a live status');
-  const want = slotLabel(order.scheduled_for, Date.now());
-  assert.ok(want.length > 0, 'real formatter produced a slot label');
+  await withFrozenClock(async () => {
+    const { order, SF } = await makeReleasedOrder({ agoMin: 8 });   // released 8 min before the frozen now → min === 8
+    assert.ok(Number.isFinite(order.released_at), 'writer stamped a numeric released_at');
+    assert.equal(order.scheduled_for, SF, 'writer retained scheduled_for');
+    assert.equal(order.status, 'new', 'writer materialized to a live status');
+    const want = slotLabel(order.scheduled_for, Date.now());
+    assert.ok(want.length > 0, 'real formatter produced a slot label');
 
-  for (const status of ['new', 'preparing', 'ready', 'out_for_delivery']) {
-    const o = { ...order, status };
-    const STORE = { orders: { o1187: o }, scheduled: {}, drivers: {}, tasks: {} };
-    const card = branch.card(STORE, 'o1187');
-    assert.match(card, /class="peek has-sched"/, `[${status}] card peek marked has-sched`);
-    assert.ok(card.includes('Programado') && card.includes(want), `[${status}] card badge shows the real slot`);
-    assert.match(card, /<b>8<\/b><s>min<\/s>/, `[${status}] live min = 8, computed from released_at (not stubbed)`);
+    for (const status of ['new', 'preparing', 'ready', 'out_for_delivery']) {
+      const o = { ...order, status };
+      const STORE = { orders: { o1187: o }, scheduled: {}, drivers: {}, tasks: {} };
+      const card = branch.card(STORE, 'o1187');
+      assert.match(card, /class="peek has-sched"/, `[${status}] card peek marked has-sched`);
+      assert.ok(card.includes('Programado') && card.includes(want), `[${status}] card badge shows the real slot`);
+      assert.match(card, /<b>8<\/b><s>min<\/s>/, `[${status}] live min = 8, computed from released_at (not stubbed)`);
 
-    const sheet = branch.detail(STORE, 'o1187');
-    assert.match(sheet, /<span class="sched">/, `[${status}] sheet carries the pill`);
-    assert.ok(sheet.includes(want), `[${status}] sheet badge shows the same real slot`);
-    assert.ok(sheet.includes('>8<'), `[${status}] sheet top-right chip keeps the live min (8)`);
-  }
+      const sheet = branch.detail(STORE, 'o1187');
+      assert.match(sheet, /<span class="sched">/, `[${status}] sheet carries the pill`);
+      assert.ok(sheet.includes(want), `[${status}] sheet badge shows the same real slot`);
+      assert.ok(sheet.includes('>8<'), `[${status}] sheet top-right chip keeps the live min (8)`);
+    }
+  });
 });
 
 // ── ASAP: no badge, and byte-identical to the e2266b24 render (card AND detail) ──────────────
@@ -186,12 +156,14 @@ test('pre-release scheduled keeps today’s rendering and is byte-identical to t
 
 // ── persistence through completados (mockup rule: appears "hasta Completados") ────────────────
 test('a delivered scheduled order still shows the badge (persists through completados)', async () => {
-  const { order } = await releasedOrder({ agoMin: 40 });
-  const o = { ...order, status: 'delivered', delivered_at: Date.now(), _lv: 'done', _section: 'completados' };
-  const card = branch.card({ orders: { o1187: o }, scheduled: {}, drivers: {}, tasks: {} }, 'o1187');
-  assert.match(card, /class="peek has-sched"/, 'done scheduled card still peeks with the badge');
-  assert.ok(card.includes('Programado'), 'badge persists after delivery');
-  assert.doesNotMatch(card, /<s>min<\/s>/, 'done card shows the check, not a min counter — badge independent of the time column');
+  await withFrozenClock(async () => {
+    const { order } = await makeReleasedOrder({ agoMin: 40 });
+    const o = { ...order, status: 'delivered', delivered_at: Date.now(), _lv: 'done', _section: 'completados' };
+    const card = branch.card({ orders: { o1187: o }, scheduled: {}, drivers: {}, tasks: {} }, 'o1187');
+    assert.match(card, /class="peek has-sched"/, 'done scheduled card still peeks with the badge');
+    assert.ok(card.includes('Programado'), 'badge persists after delivery');
+    assert.doesNotMatch(card, /<s>min<\/s>/, 'done card shows the check, not a min counter — badge independent of the time column');
+  });
 });
 
 // ── aging baseline: released_at preferred, created_at fallback (ASAP unchanged) ───────────────

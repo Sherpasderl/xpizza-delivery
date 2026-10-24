@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { slotLabel } from './slot-format.js';
 import { agingBaselineMs, agingSeconds } from './dispatch-aging.js';
+import { makeReleasedOrder, withFrozenClock } from './scheduled-badge-fixture.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const html = fs.readFileSync(path.join(HERE, 'index.html'), 'utf8');
@@ -40,9 +41,9 @@ const stubs = `
   ${sliceConst('const slotLabelSafe =')}
 `;
 const mk = new Function('slotLabel', 'agingBaselineMs', 'agingSeconds', 'escapeHtml', `${stubs}\n${passHTMLSrc}\n; return passHTML;`)(slotLabel, agingBaselineMs, agingSeconds, escapeHtml);
-const SF = Date.now() + 90 * 60 * 1000;
 const asap = { customer_name: 'Marcela', status: 'preparing', created_at: Date.now() - 12 * 60 * 1000, order_type: 'delivery' };
-const released = { customer_name: 'Rodrigo', status: 'preparing', scheduled_for: SF, released_at: Date.now() - 8 * 60 * 1000, order_type: 'delivery' };
+// The released card is built from the REAL releaseOne writer (frozen clock), same source as the node test.
+const { order: released } = await withFrozenClock(() => makeReleasedOrder({ agoMin: 8 }));
 const card = (id, o, open) => mk(id, o).replace('class="pass lv-calm', `class="pass lv-calm${open ? ' open' : ''}`);
 const deckA = `<div class="deck">${card('a1', asap)}${card('b1', released)}${card('b2', released)}</div>`;      // all collapsed
 const deckB = `<div class="deck">${card('c1', asap)}${card('c2', released, true)}${card('c3', released)}</div>`; // middle expanded
@@ -55,14 +56,29 @@ ${style}
 <div class="board" id="B">${deckB}</div>
 <script>
   const PEEK = 80;
+  const DECK_A = ${JSON.stringify(deckA)};
   ${layoutDecksSrc}
+  const read = (boardId) => [...document.querySelectorAll('#' + boardId + ' .pass')].map((p) => ({
+    mt: p.style.marginTop, full: p.offsetHeight, peek: p.querySelector('.peek').offsetHeight,
+    open: p.classList.contains('open'),
+  }));
   requestAnimationFrame(() => { requestAnimationFrame(() => {
     layoutDecks();
-    const read = (boardId) => [...document.querySelectorAll('#' + boardId + ' .pass')].map((p) => ({
-      mt: p.style.marginTop, full: p.offsetHeight, peek: p.querySelector('.peek').offsetHeight,
-      open: p.classList.contains('open'),
-    }));
-    window.__m = { A: read('A'), B: read('B') };
+    const initial = read('A');
+    const B = read('B');
+    // expand the first badge card → re-layout
+    document.querySelectorAll('#A .pass')[1].classList.add('open');
+    layoutDecks();
+    const expanded = read('A');
+    // collapse it again → re-layout
+    document.querySelectorAll('#A .pass')[1].classList.remove('open');
+    layoutDecks();
+    const collapsed = read('A');
+    // rerender the whole list, then re-layout (a fresh render must keep the geometry)
+    document.getElementById('A').innerHTML = DECK_A;
+    layoutDecks();
+    const rerendered = read('A');
+    window.__m = { initial, expanded, collapsed, rerendered, B };
     window.__ready = true;
   }); });
 </script>
@@ -105,26 +121,36 @@ try {
   assert.ok(ready, 'page rendered + layoutDecks ran');
   const m = await ev('window.__m');
 
-  // Peek heights: ASAP card 80px, each badge card its own 100px peek.
-  assert.equal(m.A[0].peek, 80, 'ASAP card peek is 80px');
-  assert.equal(m.A[1].peek, 100, 'badge card peek is 100px (its own measured peek, not the global PEEK)');
-  assert.equal(m.A[2].peek, 100, 'second badge card peek is 100px');
+  // Peek heights hold in EVERY phase: ASAP card 80px, each badge card its own 100px peek.
+  const peeks = (phase, cards) => {
+    assert.equal(cards[0].peek, 80, `${phase}: ASAP card peek is 80px`);
+    assert.equal(cards[1].peek, 100, `${phase}: badge card peek is 100px (its own peek, not the global PEEK)`);
+    assert.equal(cards[2].peek, 100, `${phase}: second badge card peek is 100px`);
+  };
 
-  // Collapsed stack: each card after the first reveals exactly the PREVIOUS card's own peek.
-  assert.equal(m.A[0].mt, '0px', 'first card has no negative margin');
-  assert.equal(m.A[1].mt, `${-(m.A[0].full - m.A[0].peek)}px`, 'card after ASAP reveals ASAP’s 80px peek');
-  assert.equal(m.A[2].mt, `${-(m.A[1].full - m.A[1].peek)}px`, 'card after a badge card reveals its 100px peek (not 80)');
-  // Guard against a GLOBAL PEEK: with PEEK=80 the badge predecessor would reveal only 80px, pulling the
-  // next card up 20px further. Assert the badge card reveals its own 100px, i.e. 20px LESS pull-up than a
-  // global PEEK would give. (-(full-100) is exactly +20 vs -(full-80).)
-  assert.equal(m.A[2].mt, `${-(m.A[1].full - 100)}px`, 'badge predecessor reveals 100px, not the global 80px');
-  assert.notEqual(m.A[2].mt, `${-(m.A[1].full - 80)}px`, 'reverting to global PEEK=80 would change this margin');
+  // Initial collapsed stack: each card after the first reveals exactly the PREVIOUS card's own peek.
+  peeks('initial', m.initial);
+  assert.equal(m.initial[0].mt, '0px', 'first card has no negative margin');
+  assert.equal(m.initial[1].mt, `${-(m.initial[0].full - m.initial[0].peek)}px`, 'card after ASAP reveals ASAP’s 80px peek');
+  assert.equal(m.initial[2].mt, `${-(m.initial[1].full - 100)}px`, 'card after a badge card reveals its own 100px peek');
+  assert.notEqual(m.initial[2].mt, `${-(m.initial[1].full - 80)}px`, 'reverting to a global PEEK=80 would change this margin');
 
-  // Expanded predecessor → the next card sits flush (no overlap).
-  assert.equal(m.B[1].open, true, 'middle card is expanded');
-  assert.equal(m.B[2].mt, '0px', 'the card after an OPEN card has no negative margin (no overlap)');
+  // Expand → collapse cycle: expanding the badge card makes the next card flush; collapsing restores it.
+  peeks('expanded', m.expanded);
+  assert.equal(m.expanded[1].open, true, 'the badge card is expanded');
+  assert.equal(m.expanded[2].mt, '0px', 'the card after an OPEN card is flush (no overlap)');
+  peeks('collapsed', m.collapsed);
+  assert.deepEqual(m.collapsed.map((c) => c.mt), m.initial.map((c) => c.mt), 'collapsing restores the collapsed geometry exactly');
 
-  console.log('scheduled-badge-browser: OK (peek 80/100 per-card, reveal per-card, open→flush)');
+  // Rerender: re-rendering the list and re-running layoutDecks reproduces the same geometry.
+  peeks('rerendered', m.rerendered);
+  assert.deepEqual(m.rerendered.map((c) => c.mt), m.initial.map((c) => c.mt), 'rerender + re-layout reproduces the geometry');
+
+  // Static deck B with a pre-expanded middle card: the card after it is flush.
+  assert.equal(m.B[1].open, true, 'deck B middle card is expanded');
+  assert.equal(m.B[2].mt, '0px', 'the card after an OPEN card has no negative margin');
+
+  console.log('scheduled-badge-browser: OK (peek 80/100 every phase; per-card reveal; expand→collapse; rerender; open→flush)');
   code = 0;
 } catch (e) {
   console.error('scheduled-badge-browser: FAIL —', e.message);
