@@ -3887,7 +3887,11 @@ function colaCard(e, showSelfBtn) {
     actions = `${showSelfBtn ? `<button class="assign-self-btn" data-assign-self="${escapeHtml(o.order_id)}" title="Asignar a mí">A mí</button>` : ''}`
       + `<button class="assign-btn" data-assign-order="${escapeHtml(o.order_id)}">Asignar</button>`;
   } else {
-    actions = `<button class="reassign-btn" data-reassign-order="${escapeHtml(o.order_id)}">Reasignar</button>`;
+    // Hide «Reasignar» once the pickup is done (driver has the food). The row + counts stay — only the
+    // action goes (an at-risk out_for_delivery order can still appear here).
+    actions = isPostPickup(o.order_id)
+      ? ''
+      : `<button class="reassign-btn" data-reassign-order="${escapeHtml(o.order_id)}">Reasignar</button>`;
   }
   // F5 #2: explicit "Ver detalle" ghost button (mockup .btn.ghost.sm) → opens the order drawer. The card body
   // click still opens it too (wireColaHandlers); this is an added affordance, no behavior removed.
@@ -5388,8 +5392,6 @@ function renderOrderDetailModal(order) {
   // stalled. Opens the existing CAS-safe picker → reassignOrder (which owns its own result toast).
   const dtDetail = allTasks[`${order.order_id}_delivery`];
   const ptDetail = allTasks[`${order.order_id}_pickup`];
-  // Hide «Reasignar» once the pickup is done (driver has the food) — the order stays visible, only the
-  // action disappears. The openPicker guard is the safety net; this keeps the dead button off the drawer.
   const isAssignedActive = !!(dtDetail && dtDetail.assigned_driver_id) && cancellable && !isPostPickup(order.order_id);
   if (isAssignedActive) {
     const stalledDetail = isStalledAssignment(dtDetail, Date.now(), ptDetail);
@@ -6394,11 +6396,11 @@ async function draRenderDeactivate(body) {
     $('dra-back')?.addEventListener('click', back); return;
   }
   // live pre-check reads (the callable re-validates authoritatively). A READ FAILURE is UNKNOWN, never "clear".
-  let openShift = false, openOrders = [], precheckErr = false;
+  let openShift = false, openOrders = [], precheckErr = false, tasks = {};   // tasks hoisted: the Reasignar remedy reads it after the try
   try {
     const d = (await draGet(draRef(XPD.getDb(), `drivers/${uid}`))).val() || {};
     openShift = d.active === true || (d.current_shift_id !== undefined && d.current_shift_id !== null);
-    const tasks = (await draGet(draRef(XPD.getDb(), 'tasks'))).val() || {};
+    tasks = (await draGet(draRef(XPD.getDb(), 'tasks'))).val() || {};
     const set = new Set();
     for (const tid of Object.keys(tasks)) { const t = tasks[tid]; if (t && t.assigned_driver_id === uid && t.status !== 'completed' && t.status !== 'cancelled') set.add(t.order_id || tid); }
     openOrders = [...set];
