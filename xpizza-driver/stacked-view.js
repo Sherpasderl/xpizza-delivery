@@ -201,6 +201,26 @@ export function coloniaOf(o) {
   return '';
 }
 
+/**
+ * The restaurant PICKUP ready time «~H:MM» from the order's REAL merchant prep (Owner ruling #2, 2026-10-24).
+ * Source is ONLY orders/{id}/prep/ready_at — the epoch (ms) the handheld sets on accept (accepted_at +
+ * committed_min), bumped on «más», finalized on «ready». When it is absent → '' (NO estimate, NO fallback; the
+ * ETA/traffic deadline «antes de …» stays hidden until the parked stop-order/ETA project). Pure: formats in
+ * America/Tegucigalpa (UTC-6, no DST) with plain arithmetic, never `new Date` (purity). DISPLAY ONLY, never money.
+ */
+export function readyTimeHHMM(ms) {
+  const n = Number(ms);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  const mins = Math.floor((n - 6 * 3600000) / 60000);   // America/Tegucigalpa = UTC-6 year-round
+  const h = ((Math.floor(mins / 60) % 24) + 24) % 24;
+  const m = ((mins % 60) + 60) % 60;
+  return h + ':' + String(m).padStart(2, '0');
+}
+export function readyTimeLabel(order) {
+  const hhmm = readyTimeHHMM(order && order.prep && order.prep.ready_at);
+  return hhmm ? '~' + hhmm : '';
+}
+
 // The collect-aware pay PHRASE for the pickup-bag rows (P1-3, Codex r1): the FULL collectionFor classification —
 // never collapse card_delivery (collected at delivery) or a pending-online payment into «pagado en línea». The
 // copy mirrors cash-helpers / the queued-sheet pay-ro-card; nothing new is invented.
@@ -611,7 +631,11 @@ export function offerScreenHtml(offers, deps = {}, opts = {}) {
   // Pickup-timing line: with ready-time (dep B) it reads «Recogés primero en X (~HH:MM) y luego en Y»; until then the
   // order WITHOUT times, which is true today.
   const brands = offers.map((o) => brandLabel(o.order || {}) || (o.pickupTask && o.pickupTask.destination_address) || 'el restaurante');
-  const pickupLine = brands.length >= 2 ? `Recogés primero en ${esc(brands[0])} y luego en ${esc(brands[1])}.` : '';
+  // Per-restaurant pickup ready time «(~H:MM)» from each order's real prep.ready_at (Owner ruling #2); hidden when
+  // absent (no estimate). «ambos listos cuando pasás» only when BOTH are known.
+  const rt = offers.map((o) => readyTimeLabel(o.order || {}));
+  const bt = (i) => (rt[i] ? `${esc(brands[i])} (${rt[i]})` : esc(brands[i]));
+  const pickupLine = brands.length >= 2 ? `Recogés primero en ${bt(0)} y luego en ${bt(1)}${(rt[0] && rt[1]) ? ': ambos listos cuando pasás' : ''}.` : '';
   const rows = offers.map((o, i) => {
     const order = o.order || {};
     const area = coloniaOf(o);   // R4: COLONIA only, never a customer name before accept

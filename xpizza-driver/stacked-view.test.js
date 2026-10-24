@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import {
   destinationLabel, orderIdTail, stopNavInfo, resolveVisibleLabels,
-  bagTagClass, bagTagHtml, phaseStripHtml, navBtnHtml, queuedPreviewHtml, coloniaOf,
+  bagTagClass, bagTagHtml, phaseStripHtml, navBtnHtml, queuedPreviewHtml, coloniaOf, readyTimeHHMM, readyTimeLabel,
   activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml,
   stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
 } from './stacked-view.js';
@@ -83,6 +83,22 @@ t('coloniaOf: returns "" unconditionally — never splits the address, never gue
   assert.equal(coloniaOf({ order: { colonia: 'Col. Trejo' } }), '', 'an UNVERIFIED colonia alias is NOT read (Codex r2 P2-8)');
   assert.equal(coloniaOf({ order: { locality: 'Los Robles' } }), '', 'no locality alias either');
   assert.equal(coloniaOf({ order: {} }), '', 'empty when there is nothing');
+});
+
+// ---------- readyTimeHHMM / readyTimeLabel (Owner ruling #2 — pickup ready time from orders/{id}/prep/ready_at) ----------
+t('readyTimeHHMM: formats an epoch to H:MM in America/Tegucigalpa (UTC-6), pure (no new Date)', () => {
+  // 48120000 ms → UTC-6 = 07:22; verifies the fixed-offset arithmetic.
+  assert.equal(readyTimeHHMM(48120000), '7:22', 'epoch → «7:22» at UTC-6');
+  assert.equal(readyTimeHHMM(48120000 + 3 * 3600000), '10:22', '+3h');
+  assert.equal(readyTimeHHMM(48120000 + 30 * 60000), '7:52', '+30m');
+});
+t('readyTimeLabel: «~H:MM» from prep.ready_at; HIDDEN («») when the field is absent — no fallback (ruling #2)', () => {
+  assert.equal(readyTimeLabel({ prep: { ready_at: 48120000 } }), '~7:22', 'present → «~7:22»');
+  assert.equal(readyTimeLabel({}), '', 'no prep → hidden');
+  assert.equal(readyTimeLabel({ prep: {} }), '', 'no ready_at → hidden');
+  assert.equal(readyTimeLabel({ prep: { ready_at: null } }), '', 'null ready_at → hidden');
+  assert.equal(readyTimeLabel({ prep: { ready_at: 0 } }), '', 'zero/invalid → hidden');
+  assert.equal(readyTimeLabel(null), '', 'no order → hidden');
 });
 
 // ---------- navBtnHtml (N3 — ONE primary + «Abrir en {otra}»; N6 external) ----------
@@ -282,6 +298,21 @@ t('offerScreenHtml: colonia only (NO customer name), lock chip, rchip/#, pickup 
   assert.ok(html.includes('Recogés primero en X. Pizza y luego en La Musa'), 'pickup-timing line without times');
   assert.ok((html.match(/id="btn-accept"/g) || []).length === 1, 'one accept slide');
   assert.ok(!html.includes('+ L 140') && !html.includes('+L 140'), 'earnings hidden (R2)');
+});
+t('offerScreenHtml: pickup line shows «(~H:MM)» per restaurant from prep.ready_at; omits it when absent (ruling #2)', () => {
+  const withTimes = [
+    deepFreeze({ orderId: 'A', phase: 'awaiting_acceptance', order: { restaurant_display_name: 'X. Pizza', display_number: 9, prep: { ready_at: 48120000 } } }),
+    deepFreeze({ orderId: 'B', phase: 'awaiting_acceptance', order: { restaurant_display_name: 'La Musa', display_number: 12, prep: { ready_at: 48120000 + 3 * 60000 } } }),
+  ];
+  const h1 = offerScreenHtml(withTimes, DEPS, {});
+  assert.ok(h1.includes('X. Pizza (~7:22)') && h1.includes('La Musa (~7:25)'), 'per-restaurant ready times from prep.ready_at');
+  assert.ok(h1.includes('ambos listos cuando pasás'), 'the «ambos listos» tail when BOTH are known');
+  const noTimes = [
+    deepFreeze({ orderId: 'A', phase: 'awaiting_acceptance', order: { restaurant_display_name: 'X. Pizza', display_number: 9 } }),
+    deepFreeze({ orderId: 'B', phase: 'awaiting_acceptance', order: { restaurant_display_name: 'La Musa', display_number: 12 } }),
+  ];
+  const h2 = offerScreenHtml(noTimes, DEPS, {});
+  assert.ok(h2.includes('Recogés primero en X. Pizza y luego en La Musa.') && !h2.includes('(~'), 'no prep.ready_at → no times, no «ambos listos»');
 });
 t('offerScreenHtml: NEVER renders the of-area line today — coloniaOf is "" unconditionally (Codex r2 P2-8)', () => {
   const offers = [deepFreeze({ orderId: 'A', phase: 'awaiting_acceptance', order: { colonia: 'Col. Trejo', restaurant_display_name: 'X. Pizza', display_number: 9 } })];
