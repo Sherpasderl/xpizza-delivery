@@ -138,17 +138,25 @@ function hubMarker(x, y, on) {
     + `</g></g>`;
 }
 
-/** A numbered customer stop pin; `on` = active stop (marino/white number), else dim/grey. */
-function stopPin(x, y, n, on) {
-  const fill = on ? '#14306B' : 'var(--surface, #fff)';
-  const stroke = on ? '#fff' : 'var(--line, #D7DEEA)';
+/**
+ * A numbered customer stop pin. `state`: 'on' = active (marino/white number), 'done' = delivered (green + white
+ * check, prototype pin() done glyph; ledger M3/R8), anything else = dim/grey upcoming. A boolean `on` is still
+ * accepted (true→'on').
+ */
+function stopPin(x, y, n, state) {
+  const done = state === 'done';
+  const on = state === 'on' || state === true;
+  const fill = done ? 'var(--sv-ok, #15803D)' : on ? '#14306B' : 'var(--surface, #fff)';
+  const stroke = (on || done) ? '#fff' : 'var(--line, #D7DEEA)';
   // Queued-pin NUMBER must stay AA. The pin SHAPE is dimmed (opacity on the PATH only), but the number is drawn
   // at FULL opacity in a dark ink (`--text-soft` #546078 ≈ 6:1 on the pin fill) so it never composites below AA.
-  // The old group-wide opacity="0.8" pulled `--muted` #6B7687 down to ~3.2:1 (Codex r1 P2-8).
-  const txt = on ? '#fff' : 'var(--text-soft, #546078)';
-  return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})" class="om-stop">`
-    + `<path d="M0 0c-6-7-9-11-9-16a9 9 0 1 1 18 0c0 5-3 9-9 16z" fill="${fill}" stroke="${stroke}" stroke-width="2"${on ? '' : ' opacity="0.8"'}/>`
-    + `<text x="0" y="-12.5" text-anchor="middle" font-family="Red Hat Display, sans-serif" font-weight="800" font-size="11" fill="${txt}">${esc(n)}</text>`
+  const txt = (on || done) ? '#fff' : 'var(--text-soft, #546078)';
+  const glyph = done
+    ? '<path d="M-4 -17l3 3 5 -6" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'
+    : `<text x="0" y="-12.5" text-anchor="middle" font-family="Red Hat Display, sans-serif" font-weight="800" font-size="11" fill="${txt}">${esc(n)}</text>`;
+  return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})" class="om-stop${done ? ' done' : ''}">`
+    + `<path d="M0 0c-6-7-9-11-9-16a9 9 0 1 1 18 0c0 5-3 9-9 16z" fill="${fill}" stroke="${stroke}" stroke-width="2"${(on || done) ? '' : ' opacity="0.8"'}/>`
+    + glyph
     + `</g>`;
 }
 
@@ -200,7 +208,7 @@ export function overviewMapSvg({ driver = null, hubs = [], stops = [], phase = '
   }
   // 2. hubs, 3. stops, 4. driver on top.
   hubList.forEach((h, i) => { if (pHubs[i]) parts.push(hubMarker(pHubs[i].x, pHubs[i].y, !!h.on && phase === 'pickup')); });
-  stopList.forEach((s, i) => { if (pStops[i]) parts.push(stopPin(pStops[i].x, pStops[i].y, s.n != null ? s.n : (i + 1), !!s.on && phase !== 'pickup')); });
+  stopList.forEach((s, i) => { if (pStops[i]) { const st = s.state === 'done' ? 'done' : (!!s.on && phase !== 'pickup') ? 'on' : 'dim'; parts.push(stopPin(pStops[i].x, pStops[i].y, s.n != null ? s.n : (i + 1), st)); } });
   if (pDriver) parts.push(driverDot(pDriver.x, pDriver.y, driver && driver.heading, stale));
 
   // Driver-only (the common GPS-warming case): a natural sentence. Any other / combined missing point keeps the
@@ -209,9 +217,14 @@ export function overviewMapSvg({ driver = null, hubs = [], stops = [], phase = '
     ? `<div class="map-note">${(!pDriver && notes.length === 1) ? 'Tu ubicación no está disponible' : 'Sin ubicación de ' + notes.join(' y ')}</div>`
     : '';
 
+  // GPS pip in the map corner (prototype .fl; ledger ruling a — GPS liveness moves off the status bar). Live
+  // (green) when the driver fix is present and not stale, dim otherwise. aria-hidden; the «Tu ubicación no está
+  // disponible» note still carries the real missing-fix message.
+  const gpsLive = !!pDriver && !stale;
+  const gpsPip = `<div class="om-gps${gpsLive ? '' : ' off'}" aria-hidden="true"><span class="om-gps-dot"></span>GPS</div>`;
   return `<div class="map${stale ? ' stale' : ''}" role="img" aria-label="Mapa de referencia${notes.length ? ' (ubicación incompleta)' : ''}">`
     + `<svg viewBox="0 0 ${VIEWBOX.w} ${VIEWBOX.h}" preserveAspectRatio="xMidYMid meet">${parts.join('')}</svg>`
-    + `<div class="map-cap">Mapa de referencia · navega con el botón</div>`
+    + gpsPip
     + noteHtml
     + `</div>`;
 }

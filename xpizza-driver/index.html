@@ -1014,6 +1014,11 @@
 @font-face { font-family:'Plus Jakarta Sans'; src:url("fonts/redhattext-var.woff2") format("woff2"); font-weight:300 500; font-style:normal; font-display:swap; }
 @font-face { font-family:'Plus Jakarta Sans'; src:url("fonts/redhatdisplay-var.woff2") format("woff2"); font-weight:501 900; font-style:normal; font-display:swap; }
 @font-face { font-family:'IBM Plex Mono'; src:url("fonts/redhatdisplay-var.woff2") format("woff2"); font-weight:300 900; font-style:normal; font-display:swap; }
+/* The stacked rebuild references 'Red Hat Display' / 'Red Hat Text' by name (header, nav, card titles). Those were
+   never defined as families (only 'Plus Jakarta Sans' was aliased), so they fell back to a heavier system sans —
+   the prototype's medium/semibold look was lost (advisor 2026-10-23 #7). Alias them to the self-hosted Red Hat. */
+@font-face { font-family:'Red Hat Display'; src:url("fonts/redhatdisplay-var.woff2") format("woff2"); font-weight:300 900; font-style:normal; font-display:swap; }
+@font-face { font-family:'Red Hat Text'; src:url("fonts/redhattext-var.woff2") format("woff2"); font-weight:300 700; font-style:normal; font-display:swap; }
 /* EXACT-weight text faces pin PJS 400 + 500 to local Red Hat ONLINE. Measured: with the Google <link>
    present, Chrome prefers Google's covering-RANGE variable face over a local covering-RANGE face at the
    400–500 pivot (a local range face declared later still loses), but an EXACT font-weight wins the
@@ -1239,7 +1244,22 @@
 .incoming-banner .ib-right { flex:0 0 auto; }                                /* …the countdown group keeps its size */
 .incoming-banner .accept-countdown { white-space:nowrap; flex:0 0 auto; }    /* "38s" never wraps */
 .slide-text { padding-left:60px; }                                           /* clear the thumb lane (6+52=58px); +4px only, so a long label does not newly wrap */
+/* Slider → EXACT prototype parity (advisor 2026-10-23 #1): solid steel-blue track, sentence-case Red Hat Display,
+   «DESLIZÁ» hint on the right, 50px square-ish knob at rgba(255,255,255,.22), NO coloured glow / breathe. All
+   actions (Aceptar/Recogí/Entregado) share the one blue component (prototype .slide uses --p-p for every action). */
+.slide-confirm { height:60px; border-radius:16px; background:var(--accent); border:none; box-shadow:none; margin:0 16px; overflow:hidden; }
+.slide-confirm::before { display:none; }
+.slide-confirm .slide-text { inset:0; padding-left:48px; padding-right:72px; justify-content:center; font-family:'Red Hat Display', sans-serif; font-weight:700; font-size:15px; letter-spacing:.01em; text-transform:none; background-image:none !important; color:#fff; -webkit-text-fill-color:#fff; animation:none; }
+.slide-confirm .slide-hint { position:absolute; right:14px; top:0; bottom:0; display:flex; align-items:center; z-index:2; font-family:'Red Hat Text', sans-serif; font-weight:600; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:#fff; opacity:.7; pointer-events:none; }
+.slide-confirm.completed .slide-hint, .slide-confirm.dragging .slide-hint { opacity:0; }
+.slide-confirm .slide-thumb { left:5px; top:5px; bottom:5px; height:auto; width:50px; border-radius:12px; background:rgba(255,255,255,.22) !important; box-shadow:none !important; animation:none !important; }
+.slide-confirm .slide-thumb svg { color:#fff; filter:none; width:22px; height:22px; }
+.slide-confirm .slide-fill { background:rgba(255,255,255,.18) !important; border-radius:16px; }
+.slide-confirm.completed .slide-fill { opacity:1; }
+.slide-confirm.completed .slide-text { background-image:none !important; color:#fff; -webkit-text-fill-color:#fff; }
 /* ===== Prototype stacked rebuild (apParada1/2/offer/pickup/avance/cancel) — additive, light-only ===== */
+/* Current-stop card: the prototype's blue outline ring (advisor 2026-10-23 #4; prototype .card.hi = 0 0 0 1.5px --p-p). */
+#active-order-slot .active-card { border: none; box-shadow: 0 0 0 2px var(--accent, #2F5FB8), 0 6px 18px rgba(20,30,50,.06); }
 .strip { padding: 0 16px; }                                   /* 16 px page gutter (fix: stop 1 no longer flush at x=0) */
 .strip .st.done .bar { background: var(--sv-ok, #15803D); }
 .strip .st.done .lbl { color: var(--sv-ok, #15803D); }
@@ -1260,12 +1280,15 @@
 
 /* ONE primary nav (preferred app) + secondary text link (N3) — replaces the two side-by-side buttons */
 .nav-col { display: flex; flex-direction: column; gap: 6px; margin: 10px 16px 2px; }
-.nav-col .nav-primary { display: flex; align-items: center; gap: 10px; justify-content: flex-start; background: var(--p, #2F5FB8); color: #fff; border-radius: 14px; padding: 12px 14px; text-decoration: none; }
-.nav-col .nav-primary .nav-icon { width: 28px; height: 28px; border-radius: 8px; background: #fff; color: var(--p, #2F5FB8); display: grid; place-items: center; flex: none; }
-.nav-col .nav-primary .nav-txt { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.15; }
-.nav-col .nav-primary .nav-main { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 15px; }
+.nav-col .nav-primary { display: flex; align-items: center; gap: 11px; justify-content: flex-start; background: var(--accent, #2F5FB8); color: #fff; border-radius: 14px; padding: 11px 14px; text-decoration: none; }
+.nav-col .nav-primary .nav-logo { width: 28px; height: 28px; border-radius: 8px; background: #fff; display: grid; place-items: center; flex: none; }
+.nav-col .nav-primary .nav-logo svg { width: 20px; height: 20px; display: block; }
+.nav-col .nav-primary .nav-txt { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; line-height: 1.15; }
+.nav-col .nav-primary .nav-arrow { flex: none; display: grid; place-items: center; color: #fff; }
+.nav-col .nav-primary .nav-arrow svg { width: 20px; height: 20px; display: block; }
+.nav-col .nav-primary .nav-main { font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 15px; }
 .nav-col .nav-primary .nav-dest { font-family: 'Red Hat Text', sans-serif; font-weight: 600; font-size: 12px; opacity: .9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-.nav-col .nav-alt { text-align: center; color: var(--p, #2F5FB8); background: transparent; border: none; font-family: 'Red Hat Text', sans-serif; font-weight: 700; font-size: 13px; padding: 4px; text-decoration: none; }
+.nav-col .nav-alt { text-align: center; color: var(--text-soft, #546078); background: transparent; border: none; font-family: 'Red Hat Text', sans-serif; font-weight: 600; font-size: 13px; padding: 4px; text-decoration: none; }  /* grey, not blue (advisor #8) */
 
 /* «Después» queued preview card (S12) — overrides the .qcard row-flex base so head + hint stack */
 .after-card { display: block; margin: 2px 16px; background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); border-radius: var(--r-card, 14px); padding: 12px 14px; grid-template-columns: none; }
@@ -1290,8 +1313,11 @@
 .strip .st.on .bar { background: var(--p, #2F5FB8); }
 .strip .st.done .bar { background: var(--sv-ok, #15803D); }
 /* #2 brand chip = white/outline pill + neutral dot + ink text (brand-agnostic, B4 — no colour field) */
-.active-card .rchip, .after-card .rchip, .sh-head .rchip { background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); color: var(--text, #0D1424); border-radius: 999px; padding: 3px 9px 3px 7px; display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: 12px; }
-.active-card .rchip .rdot, .after-card .rchip .rdot, .sh-head .rchip .rdot { width: 7px; height: 7px; border-radius: 50%; background: var(--marino, #14306B); flex: none; }
+.active-card .rchip, .after-card .rchip, .sh-head .rchip { background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); color: var(--text, #0D1424); border-radius: 999px; padding: 3px 9px 3px 7px; display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: 12px; text-transform: none; letter-spacing: 0; }
+/* The dot is the RESTAURANT brand colour FROM DATA (advisor 2026-10-23 #5): X. Pizza #FA4400, La Musa #B61218. */
+.active-card .rchip .rdot, .after-card .rchip .rdot, .sh-head .rchip .rdot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--text-soft, #546078); }
+.active-card .rchip.xp .rdot, .after-card .rchip.xp .rdot, .sh-head .rchip.xp .rdot { background: #FA4400; }
+.active-card .rchip.lm .rdot, .after-card .rchip.lm .rdot, .sh-head .rchip.lm .rdot { background: var(--lamusa, #B61218); }
 /* #3 order number = grey surface-2 pill (muted); 8px gap in the chiprow */
 .ac-chiprow { display: flex; align-items: center; gap: 8px; }
 .ac-chiprow .order-num, .after-head .order-num { background: var(--surface-2, #F5F7FA); color: var(--text-soft, #546078); border-radius: 7px; padding: 2px 7px; font-weight: 700; font-size: 12.5px; }
