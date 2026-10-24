@@ -70,6 +70,9 @@
         },
         "last_location_ts": {
           ".validate": "root.child('dispatchers').child(auth.uid).exists()"
+        },
+        "nav_app": {
+          ".validate": "newData.isString() && (newData.val() === 'waze' || newData.val() === 'maps')"
         }
       }
     },

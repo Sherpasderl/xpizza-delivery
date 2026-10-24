@@ -1239,7 +1239,202 @@
 .incoming-banner .ib-right { flex:0 0 auto; }                                /* …the countdown group keeps its size */
 .incoming-banner .accept-countdown { white-space:nowrap; flex:0 0 auto; }    /* "38s" never wraps */
 .slide-text { padding-left:60px; }                                           /* clear the thumb lane (6+52=58px); +4px only, so a long label does not newly wrap */
+/* ===== Prototype stacked rebuild (apParada1/2/offer/pickup/avance/cancel) — additive, light-only ===== */
+.strip { padding: 0 16px; }                                   /* 16 px page gutter (fix: stop 1 no longer flush at x=0) */
+.strip .st.done .bar { background: var(--sv-ok, #15803D); }
+.strip .st.done .lbl { color: var(--sv-ok, #15803D); }
+.strip .st.cancelled .lbl { color: var(--muted, #6B7687); text-decoration: line-through; }
+
+/* Stop screens: the stop header IS the only top bar — hide the «En reparto / GPS / toggle» status bar (ruling a) */
+#screen-onshift.delivering .status-bar { display: none; }
+.stop-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px 4px; }
+.stop-header .sh-logo { flex: none; width: 26px; height: 26px; color: var(--marino, #14306B); display: inline-flex; align-items: center; }
+.stop-header .sh-logo svg { width: 26px; height: 26px; }
+.stop-header .sh-titles { flex: 1; min-width: 0; }
+.stop-header .sh-title { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 16px; color: var(--text, #0D1424); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stop-header .sh-sub { font-size: 13px; color: var(--muted, #6B7687); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stop-header .sh-actions { flex: none; display: inline-flex; gap: 6px; }
+.stop-header .ib { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line, #D7DEEA); background: var(--surface, #fff); color: var(--text-soft, #546078); display: grid; place-items: center; padding: 0; cursor: pointer; }
+.stop-header .ib svg { width: 18px; height: 18px; }
+.stop-header .ib.sh-end { color: var(--sv-err, #B9323A); }
+
+/* ONE primary nav (preferred app) + secondary text link (N3) — replaces the two side-by-side buttons */
+.nav-col { display: flex; flex-direction: column; gap: 6px; margin: 10px 16px 2px; }
+.nav-col .nav-primary { display: flex; align-items: center; gap: 10px; justify-content: flex-start; background: var(--p, #2F5FB8); color: #fff; border-radius: 14px; padding: 12px 14px; text-decoration: none; }
+.nav-col .nav-primary .nav-icon { width: 28px; height: 28px; border-radius: 8px; background: #fff; color: var(--p, #2F5FB8); display: grid; place-items: center; flex: none; }
+.nav-col .nav-primary .nav-txt { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.15; }
+.nav-col .nav-primary .nav-main { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 15px; }
+.nav-col .nav-primary .nav-dest { font-family: 'Red Hat Text', sans-serif; font-weight: 600; font-size: 12px; opacity: .9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.nav-col .nav-alt { text-align: center; color: var(--p, #2F5FB8); background: transparent; border: none; font-family: 'Red Hat Text', sans-serif; font-weight: 700; font-size: 13px; padding: 4px; text-decoration: none; }
+
+/* «Después» queued preview card (S12) — overrides the .qcard row-flex base so head + hint stack */
+.after-card { display: block; margin: 2px 16px; background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); border-radius: var(--r-card, 14px); padding: 12px 14px; grid-template-columns: none; }
+.after-card .after-head { display: flex; align-items: center; gap: 8px; }
+.after-card .after-title { font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 14px; color: var(--text, #0D1424); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.after-card .qchev { margin-left: auto; color: var(--muted, #6B7687); display: inline-flex; width: 18px; }
+.after-card .after-hint { font-size: 12px; color: var(--muted, #6B7687); margin-top: 4px; }
+
+/* «Llegué · avisar» soft button (L1); the «En cola» ghost pill */
+.llegue-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; background: var(--sv-ghost-bg, #EEF2F7); color: var(--text, #0D1424); border: none; border-radius: 14px; padding: 12px; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+.sh-pill.ghost { background: var(--sv-ghost-bg, #EEF2F7); color: var(--text-soft, #546078); }
+
+/* Map inset in the page gutter (fix #3 — was edge-to-edge) */
+.map { margin: 2px 16px 6px; }
+/* Delivery-instructions block inside the active card (fix #4 — amber warn-wash, replaces the italic quote) */
+.instr { display: flex; gap: 9px; align-items: flex-start; margin: 8px 0 0; padding: 9px 11px; border-radius: 12px; background: var(--sv-warn-bg, #F6EEDD); color: var(--sv-warn, #8A5A00); }
+.instr .ico { flex: none; width: 18px; height: 18px; color: var(--sv-warn, #8A5A00); display: inline-flex; margin-top: 1px; }
+
+/* ===== apParada1 CSS-detail match (shared classes used by every stop screen) ===== */
+/* #1 strip: each segment gets its own bar — active=primary-blue, done=green, upcoming=line-grey */
+.strip .st .bar { display: block; height: 6px; border-radius: 3px; background: var(--line, #D7DEEA); }
+.strip .st.on .bar { background: var(--p, #2F5FB8); }
+.strip .st.done .bar { background: var(--sv-ok, #15803D); }
+/* #2 brand chip = white/outline pill + neutral dot + ink text (brand-agnostic, B4 — no colour field) */
+.active-card .rchip, .after-card .rchip, .sh-head .rchip { background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); color: var(--text, #0D1424); border-radius: 999px; padding: 3px 9px 3px 7px; display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: 12px; }
+.active-card .rchip .rdot, .after-card .rchip .rdot, .sh-head .rchip .rdot { width: 7px; height: 7px; border-radius: 50%; background: var(--marino, #14306B); flex: none; }
+/* #3 order number = grey surface-2 pill (muted); 8px gap in the chiprow */
+.ac-chiprow { display: flex; align-items: center; gap: 8px; }
+.ac-chiprow .order-num, .after-head .order-num { background: var(--surface-2, #F5F7FA); color: var(--text-soft, #546078); border-radius: 7px; padding: 2px 7px; font-weight: 700; font-size: 12.5px; }
+/* #4 instructions: ink main line on the warn-wash (door icon in markup); 10px gaps around the card sections */
+.instr .instr-main { font-family: 'Red Hat Display', sans-serif; color: var(--text, #0D1424); font-weight: 700; font-size: 15px; line-height: 1.3; }
+.active-card .address-block { margin-top: 10px; }
+.active-card .contact-row { margin-top: 10px; }
+/* #5 footer = a FIXED bottom bar (prototype .foot) — the body (#onshift-content) scrolls behind it; nothing
+   crops or overlaps at 390×844. Shown only on stop screens (.delivering); safe-area padding at the bottom. */
+#screen-onshift.delivering #active-order-slot .action-zone,
+#screen-onshift.delivering #active-order-slot .sv-actions {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; margin: 0;
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--bg, #F4F2EE);
+  box-shadow: 0 -2px 14px rgba(13, 20, 36, .07);
+}
+#screen-onshift.delivering #onshift-content { padding-bottom: 104px; }
+/* #6 slide = solid primary bar + white label + translucent knob (prototype .slide; swipe mechanics unchanged) */
+.action-zone .slide-confirm { background: var(--p, #2F5FB8); }
+.action-zone .slide-confirm.delivered, .action-zone .slide-confirm.pickup, .action-zone .slide-confirm.accept { background: var(--p, #2F5FB8); }
+.action-zone .slide-confirm.delivered .slide-text, .action-zone .slide-confirm.pickup .slide-text, .action-zone .slide-confirm.accept .slide-text { color: #fff; background-image: none; -webkit-text-fill-color: #fff; animation: none; }
+.action-zone .slide-confirm .slide-thumb { background: rgba(255,255,255,.26); color: #fff; }
+.action-zone .slide-confirm .slide-fill { background: rgba(255,255,255,.16); }
+/* #7 GPS pip in the map corner (top-left, clear of the top-right «sin ubicación» note + the bottom-left caption) */
+.om-gps { position: absolute; top: 9px; left: 9px; display: inline-flex; align-items: center; gap: 4px; background: var(--surface, #fff); box-shadow: 0 1px 4px rgba(13, 20, 36, .14); border-radius: 999px; padding: 3px 8px; font-family: 'Red Hat Text', sans-serif; font-weight: 700; font-size: 10.5px; color: var(--text-soft, #546078); }
+.om-gps .om-gps-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sv-ok, #15803D); }
+.om-gps.off .om-gps-dot { background: var(--muted, #6B7687); }
+/* apDetalle2 sheet: title left-aligned beside the tag (19px), «En cola» pushed right; items card + outline chip */
+.sheet-head { justify-content: flex-start; margin-bottom: 10px; }
+.sheet-head .sh-name { font-size: 19px; }
+.sheet-head .sh-pill { margin-left: auto; }
+.items-card { background: var(--surface-2, #F5F7FA); border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
+.items-card .items-head { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+.items-card .items-head .lbl { font-weight: 800; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted, #6B7687); }
+.items-card .items-head .items-brand { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+.items-card .items-head .items-brand .order-num { background: var(--surface, #fff); color: var(--text-soft, #546078); border-radius: 7px; padding: 1px 6px; font-weight: 700; font-size: 11.5px; }
+.items-card .items-list .item { color: var(--text, #0D1424); font-size: 13.5px; padding: 2px 0; }
+.items-card .items-list .item b { color: var(--p, #2F5FB8); font-weight: 800; margin-right: 2px; }
+.pay-ro-card { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2, #F5F7FA); }
+.pay-ro-card .ico { flex: none; width: 20px; height: 20px; color: var(--text-soft, #546078); display: inline-flex; }
+.pay-ro-card .pay-ro-t { font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 14px; color: var(--text, #0D1424); }
+.pay-ro-card .pay-ro-d { font-size: 12.5px; color: var(--muted, #6B7687); margin-top: 1px; }
+.sheet-head .rchip, .items-head .rchip { background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); color: var(--text, #0D1424); border-radius: 999px; padding: 3px 9px 3px 7px; display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: 12px; }
+.items-head .rchip .rdot { width: 7px; height: 7px; border-radius: 50%; background: var(--marino, #14306B); flex: none; }
+/* apParada2: the promoted single-order card sits UNDER the map, not vertically centered (overrides slice-1 auto) */
+#active-order-slot.solo .sv-card { margin-top: 12px; }
+/* apAvance 3-s interlude overlay */
+.interlude-overlay { position: fixed; inset: 0; z-index: 60; background: var(--bg, #F4F2EE); display: none; }
+.interlude-overlay.open { display: flex; }
+.interlude { margin: auto; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; padding: 24px; max-width: 360px; width: 100%; }
+.interlude .il-illus { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: var(--sv-ok-bg, #E7F3EC); color: var(--sv-ok, #15803D); }
+.interlude .il-illus svg { width: 32px; height: 32px; }
+.interlude .il-head { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; color: var(--text, #0D1424); }
+.interlude .il-sub { font-size: 14px; color: var(--muted, #6B7687); margin: 0; }
+.interlude .il-now { width: 100%; text-align: left; background: var(--surface, #fff); border: 1.5px solid var(--p, #2F5FB8); border-radius: var(--r-card, 14px); padding: 14px; }
+.interlude .il-now-lbl { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted, #6B7687); }
+.interlude .il-now-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.interlude .il-now-name { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 19px; }
+.interlude .il-now-sub { font-size: 13px; color: var(--muted, #6B7687); margin-top: 4px; }
+.interlude .il-now-hint { font-size: 12px; color: var(--text-soft, #546078); margin-top: 6px; line-height: 1.35; }
+.interlude .il-foot-note { font-size: 12px; color: var(--muted, #6B7687); }
+.interlude .il-go { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: var(--p, #2F5FB8); color: #fff; border: none; border-radius: 14px; padding: 14px; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 15px; }
+.interlude .il-go svg { width: 18px; height: 18px; }
+/* apCancelada banner (red, persistent until «Entendido») */
+.cancel-banner { display: flex; gap: 9px; align-items: flex-start; margin: 2px 16px 6px; padding: 11px 13px; border-radius: 12px; background: var(--sv-err-bg, #FBEAEA); color: var(--sv-err, #B9323A); font-size: 13px; line-height: 1.35; }
+.cancel-banner .ico { flex: none; width: 18px; height: 18px; margin-top: 1px; }
+.cancel-banner b { display: block; margin-bottom: 2px; }
+.cancel-banner .x { margin-left: auto; flex: none; align-self: center; background: var(--sv-err, #B9323A); color: #fff; border: none; border-radius: 8px; padding: 6px 11px; font-weight: 700; font-size: 12px; }
+/* single-order path (apParada2 / apCancelada via single-order-view.js): match the shared look (B4 neutral chip, blue slide, pinned footer) */
+.sv-rchip { background: var(--surface, #fff) !important; border: 1px solid var(--line, #D7DEEA); color: var(--text, #0D1424) !important; border-radius: 999px; padding: 3px 9px 3px 7px; font-weight: 700; font-size: 12px; }
+.sv-rchip i { width: 7px; height: 7px; border-radius: 50%; background: var(--marino, #14306B) !important; display: inline-block; margin-right: 5px; }
+.slide-confirm.sv-slide { background: var(--p, #2F5FB8); }
+.slide-confirm.sv-slide .slide-text { color: #fff; background-image: none; -webkit-text-fill-color: #fff; animation: none; }
+.slide-confirm.sv-slide .slide-thumb { background: rgba(255,255,255,.26); color: #fff; }
+.slide-confirm.sv-slide .slide-fill { background: rgba(255,255,255,.16); }
+/* apRecoger combined-pickup card */
+.pickup-card { margin: 2px 16px; background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); border-radius: var(--r-card, 14px); padding: 14px; }
+.pickup-card .pk-lead { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 14px; color: var(--text, #0D1424); margin-bottom: 8px; }
+.pk-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line, #D7DEEA); }
+.pickup-card .pk-row:first-of-type { border-top: none; }
+.pk-row .pk-t { flex: 1; min-width: 0; }
+.pk-row .pk-h { font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 14px; color: var(--text, #0D1424); }
+.pk-row .pk-chips { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.pk-row .pk-chips .order-num { background: var(--surface-2, #F5F7FA); color: var(--text-soft, #546078); border-radius: 7px; padding: 1px 6px; font-weight: 700; font-size: 11.5px; }
+.pk-row .pk-items { font-size: 12.5px; color: var(--muted, #6B7687); }
+.pk-row .pk-bx { flex: none; width: 24px; height: 24px; border-radius: 7px; border: 1.5px solid var(--line, #D7DEEA); display: grid; place-items: center; color: #fff; }
+.pk-row.done .pk-bx { background: var(--sv-ok, #15803D); border-color: var(--sv-ok, #15803D); }
+.pickup-card .pk-warn { margin-top: 10px; display: flex; gap: 8px; align-items: flex-start; padding: 9px 11px; border-radius: 10px; background: var(--sv-warn-bg, #F6EEDD); color: var(--sv-warn, #8A5A00); font-size: 12.5px; line-height: 1.35; }
+.pk-chips .rchip, .of-chip .rchip { background: var(--surface, #fff) !important; border: 1px solid var(--line, #D7DEEA); color: var(--text, #0D1424) !important; border-radius: 999px; padding: 2px 8px 2px 6px; font-weight: 700; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px; }
+.pk-chips .rchip .rdot, .of-chip .rchip .rdot { width: 6px; height: 6px; border-radius: 50%; background: var(--marino, #14306B) !important; flex: none; }
+/* apOferta double-offer */
+.of-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px 6px; }
+.of-head .of-sola { flex: none; width: 24px; height: 24px; color: var(--marino, #14306B); display: inline-flex; }
+.of-head .of-sola svg { width: 24px; height: 24px; }
+.of-head .of-title { flex: 1; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 19px; color: var(--text, #0D1424); }
+.of-head .of-ring { flex: none; width: 46px; height: 46px; border-radius: 50%; border: 3px solid var(--p, #2F5FB8); display: grid; place-items: center; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 14px; color: var(--p, #2F5FB8); background: transparent; }
+.of-head .of-ring::before, .of-head .of-ring::after { content: none !important; display: none !important; }
+.offer-card { margin: 2px 16px; background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); border-radius: var(--r-card, 14px); padding: 14px; }
+.offer-card .of-chiprow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.offer-card .of-dist { margin-left: auto; background: var(--sv-ghost-bg, #EEF2F7); color: var(--text-soft, #546078); border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 12px; }
+.offer-card .of-lock { display: inline-flex; align-items: center; gap: 6px; background: var(--sv-ghost-bg, #EEF2F7); color: var(--text-soft, #546078); border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 12px; }
+.offer-card .of-lock .ico { width: 14px; height: 14px; display: inline-flex; }
+.of-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line, #D7DEEA); }
+.of-list .of-row:first-child { border-top: none; }
+.of-row .of-t { flex: 1; min-width: 0; }
+.of-row .of-area { font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 14px; color: var(--text, #0D1424); }
+.of-row .of-chip { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+.of-row .of-chip .order-num { background: var(--surface-2, #F5F7FA); color: var(--text-soft, #546078); border-radius: 7px; padding: 1px 6px; font-weight: 700; font-size: 11.5px; }
+.offer-card .of-note { font-size: 12.5px; color: var(--muted, #6B7687); margin-top: 10px; line-height: 1.35; }
 /* SLICE2:PRESENTATION:END */
+/* SLICE2:NAVPREF-CSS:START — Cuenta + «App de navegación» screens (R7); exact to the prototype, mapped to the app's Clean-Light-Pro tokens + Red Hat display face (same language as the stacked screens). */
+  #screen-cuenta, #screen-navApp { background: var(--bg); color: var(--text); height: 100%; display: flex; flex-direction: column; }
+  .set-top { flex: none; display: flex; align-items: center; gap: 10px; padding: calc(10px + var(--safe-top)) 16px 10px; }
+  .set-top .set-back { width: 36px; height: 36px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); display: grid; place-items: center; color: var(--text); cursor: pointer; flex: none; }
+  .set-top .set-back svg { width: 18px; height: 18px; }
+  .set-top .set-ttl { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 18px; letter-spacing: -.015em; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .set-top .set-spacer { width: 36px; flex: none; }
+  .set-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px; -webkit-overflow-scrolling: touch; }
+  .set-body .set-intro { font-size: 13px; color: var(--text-soft); line-height: 1.4; margin: 0; }
+  .set-card { background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow-card); padding: 2px 14px; }
+  .set-row { display: flex; gap: 11px; align-items: center; padding: 13px 0; border-top: 1px solid var(--border-soft); cursor: pointer; }
+  .set-row:first-child { border-top: 0; }
+  .set-row .set-ic { width: 30px; height: 30px; border-radius: 9px; background: var(--surface-2); color: var(--text-soft); display: grid; place-items: center; flex: none; }
+  .set-row .set-ic svg { width: 17px; height: 17px; }
+  .set-row .set-tx { min-width: 0; flex: 1; }
+  .set-row .set-t { font-weight: 700; font-size: 14px; line-height: 1.3; color: var(--text); }
+  .set-row .set-d { font-size: 12.5px; color: var(--text-soft); margin-top: 1px; }
+  .set-row .set-chev { color: var(--text-dim); flex: none; display: grid; place-items: center; }
+  .set-row .set-chev svg { width: 16px; height: 16px; }
+  .set-signout { width: 100%; background: none; border: 0; color: var(--text-soft); font-family: inherit; font-weight: 600; font-size: 13px; padding: 13px; cursor: pointer; }
+  .set-opt { display: flex; gap: 11px; align-items: center; padding: 13px 12px; border-radius: 12px; background: var(--surface-2); cursor: pointer; font-weight: 700; font-size: 14px; color: var(--text); }
+  .set-opt .set-opt-logo { width: 28px; height: 28px; border-radius: 8px; background: #fff; display: grid; place-items: center; flex: none; box-shadow: 0 1px 2px rgba(20,30,50,.1); }
+  .set-opt .set-opt-logo svg { width: 20px; height: 20px; display: block; }
+  .set-opt .set-opt-tx { flex: 1; min-width: 0; }
+  .set-opt .set-opt-d { display: block; font-size: 12px; color: var(--text-soft); font-weight: 500; margin-top: 1px; }
+  .set-opt .set-opt-ck { flex: none; color: var(--accent); display: none; }
+  .set-opt .set-opt-ck svg { width: 20px; height: 20px; }
+  .set-opt.sel { box-shadow: inset 0 0 0 1.5px var(--accent); background: var(--sv-p-bg, #E8F0FB); }
+  .set-opt.sel .set-opt-ck { display: block; }
+  .set-flat { background: transparent; box-shadow: none; border: 1px dashed var(--border); border-radius: var(--r-card); padding: 2px 14px; }
+  .set-foot { flex: none; padding: 10px 16px calc(12px + var(--safe-bottom)); background: var(--bg); }
+  .set-foot .set-save { width: 100%; background: var(--accent); color: #fff; border: 0; border-radius: var(--r-btn); font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 16px; letter-spacing: -.01em; padding: 15px; min-height: 52px; cursor: pointer; }
+  .set-foot .set-save:disabled { opacity: .6; }
+/* SLICE2:NAVPREF-CSS:END */
 </style>
 </head>
 
@@ -1284,6 +1479,12 @@
       </div>
       <div class="gps-meta">Activa el interruptor para empezar</div>
     </div>
+    <button class="icon-btn" id="cuenta-btn" title="Cuenta" aria-label="Cuenta">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="8.5" r="3.6"/>
+        <path d="M5 19.5c1.3-3.2 4-4.8 7-4.8s5.7 1.6 7 4.8"/>
+      </svg>
+    </button>
     <button class="duty-toggle" id="duty-toggle-off" title="Iniciar turno">
       <span class="duty-arrow left">▶</span>
       <span class="duty-arrow right">■</span>
@@ -1401,6 +1602,12 @@
 </style>
 <div id="screen-companion" class="hidden" style="height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
 
+<!-- ======================================================== -->
+<!-- CUENTA + APP DE NAVEGACIÓN (R7 nav preference; rendered by renderCuenta/renderNavApp) -->
+<!-- ======================================================== -->
+<div id="screen-cuenta" class="hidden"></div>
+<div id="screen-navApp" class="hidden"></div>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -1460,8 +1667,10 @@ import { singleOrderCardHtml } from './single-order-view.js';
 let slice1ReviewLatchKey = null;
 /* ===== SLICE1:IMPORT:END ===== */
 /* ===== SLICE2:IMPORT:START — stacked view + overview map (slice 2); pure builders in stacked-view.js / overview-map.js ===== */
-import { activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels } from './stacked-view.js';
+import { activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels,
+         navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml } from './stacked-view.js';
 import { overviewMapSvg, isStaleFix } from './overview-map.js';
+import { cuentaHtml, navAppHtml } from './nav-view.js';   // R7 Cuenta + «App de navegación» pure builders
 // The display-only map-aging timer (SLICE2:MAP-LIFECYCLE): a ~30 s re-render that re-evaluates the driver
 // fix-age (last_location_ts) and dims the dot when stale. It owns NO data — it only re-runs the EXISTING
 // render (slidingEl drag-suppression still guards it) — and self-clears when the tab is hidden so a
@@ -1479,7 +1688,173 @@ function ensureSlice2MapAgeTimer() {
 function stopSlice2MapAgeTimer() {
   if (slice2MapAgeTimer != null) { clearInterval(slice2MapAgeTimer); slice2MapAgeTimer = null; }
 }
+
+// Capability gates (ledger R9 — no dead control): these prototype controls stay HIDDEN until their server piece
+// ships. Flip to true when the endpoint lands (routed separately): dep C = «Llegué · avisar» arrival
+// notification; dep F = «Problema» → Torre alert (the header Ayuda icon).
+const DRV2_CAN_NOTIFY_ARRIVAL = false;
+const DRV2_CAN_REPORT_PROBLEM = false;
+
+// Device-cached nav preference (R7): drivers/{uid}/nav_app is authoritative; localStorage mirrors it as a fast
+// READ cache (written by the Cuenta/onboarding picker). Default Waze. Returns 'Waze' | 'Maps'.
+const DRV2_NAV_PREF_KEY = 'sherpa_nav_app';
+function drv2ReadNavPref() {
+  try { return localStorage.getItem(DRV2_NAV_PREF_KEY) === 'maps' ? 'Maps' : 'Waze'; } catch { return 'Waze'; }
+}
+// Persist the chosen nav app (R7). SERVER-authoritative FIRST (drivers/{uid}/nav_app ∈ {waze,maps}, own-uid,
+// enum-validated), then mirror to localStorage ONLY on the server ack — so a failed write never diverges the
+// device cache from server truth. Throws on failure; the picker surfaces it and leaves the old choice intact.
+async function drv2WriteNavPref(pref) {
+  const p = pref === 'maps' ? 'maps' : 'waze';
+  if (currentUser && currentUser.uid) await XPD.setNavPref(currentUser.uid, p);
+  try { localStorage.setItem(DRV2_NAV_PREF_KEY, p); } catch { /* best-effort mirror */ }
+}
+
+// Recent-completion memory (dep D): the stops delivered THIS run, in board order, so the stacked header/strip/map
+// can show «Parada N de M» + the green done segment after a delivery (apAvance/apParada2). Bounded (cap 8) and
+// SESSION-scoped: reset when the board goes idle or the shift/auth changes; a CANCELLED/reassigned stop is removed
+// and NEVER marked done (it is excluded from M). After an app restart the memory is empty → degrades to live-only
+// («Parada 1 de 1»), which is true. Pure client state — never a server write, never money/cash logic (R11).
+let drv2DoneRun = [];       // [{ orderId, label, time, lat, lng }] delivered this run
+let drv2PrevActive = null;  // { orderId, phase } of the previous render's active stop (completion/cancel diff)
+let drv2Interlude = null;   // { orderId, name, area, cash, vuelto } pending the 3-s interlude overlay
+let drv2Cancel = null;      // { cancelledNum, cancelledName, cancelledAmount, survivorName, cancelledBrand } banner, until «Entendido»
+function drv2ResetRun() { drv2DoneRun = []; drv2PrevActive = null; drv2Interlude = null; drv2Cancel = null; }
+function drv2FirstWord(s) { return String(s || '').trim().split(/\s+/)[0] || ''; }
+function drv2NowHM() { const d = new Date(); return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); }
+function drv2DropDone(orderId) { drv2DoneRun = drv2DoneRun.filter((d) => d.orderId !== orderId); }
+function drv2RecordDone(o) {
+  if (!o || drv2DoneRun.some((d) => d.orderId === o.orderId)) return;
+  const order = o.order || {};
+  const nm = order.customer_name || (o.deliveryTask && o.deliveryTask.recipient_name) || '';
+  drv2DoneRun.push({ orderId: o.orderId, label: drv2FirstWord(nm), time: drv2NowHM(), lat: order.lat, lng: order.lng });
+  if (drv2DoneRun.length > 8) drv2DoneRun.shift();
+}
+// The completion/cancel OBSERVER (read-only — never touches the completion/cash write path, R11). Diffs the
+// previous active stop against the live board: if the previous active DELIVERY stop is gone AND confirmed
+// cancelled → raise the cancel banner + drop it from done (never resurrect it); else (gone, not cancelled →
+// delivered off the board) → record it done + arm the interlude. Then remember the new active stop.
+function drv2Observe(orders) {
+  const liveIds = new Set((orders || []).map((o) => o && o.orderId));
+  const prev = drv2PrevActive;   // { orderId, phase, o, order, name } from the previous render
+  if (prev && prev.phase === 'delivery' && !liveIds.has(prev.orderId)) {
+    const rec = (typeof allOrders === 'object' && allOrders) ? allOrders[prev.orderId] : null;
+    const cancelled = !!rec && (rec.status === 'cancelled' || rec.status === 'canceled');
+    if (cancelled) {
+      drv2DropDone(prev.orderId);                               // never resurrect a cancelled stop as done
+      const survivor = (orders && orders[0]) || null;
+      drv2Cancel = {
+        cancelledNum: '#' + (rec.display_number || rec.order_id || ''),
+        cancelledName: rec.customer_name || prev.name || '',
+        cancelledAmount: rec.payment_method === 'cash' ? (Number(rec.total) || 0) : null,
+        survivorName: survivor ? ((survivor.order && survivor.order.customer_name) || '') : '',
+        cancelledBrand: rec.restaurant_display_name || '',
+      };
+    } else {
+      // gone + not cancelled → delivered off the board (getDriverOrders filters completed orders out)
+      drv2RecordDone(prev.o);
+      const po = prev.order || {};
+      const isCash = po.payment_method === 'cash';
+      const tendered = (Number(po.cash_tendered_cents) || 0) / 100;
+      const total = Number(po.total) || 0;
+      drv2Interlude = { orderId: prev.orderId, name: po.customer_name || prev.name || '',
+        cash: isCash ? total : null, vuelto: (isCash && tendered >= total) ? (tendered - total) : null };
+    }
+  }
+  const active = (orders && orders[0]) || null;
+  if (active) {
+    drv2PrevActive = { orderId: active.orderId, phase: active.phase, o: active, order: active.order || {}, name: (active.order && active.order.customer_name) || '' };
+  }
+  // board empty → keep prev (idle branch calls drv2ResetRun() to clear the run).
+}
+
+// The 3-second post-delivery INTERLUDE (apAvance / S15): armed by the observer when a stop is delivered with a
+// next stop behind it. A full-screen overlay (created on demand, like the O4 sheet — never in the static DOM),
+// auto-advances in 3 s, or «Ir a la parada 2» skips. «+L 70» hidden (R2); the «pasó a seguimiento en vivo»
+// sentence is OMITTED until tracker_fixes flips Monday (advisor ruling — flagged for the one-line follow-up).
+let drv2InterludeTimer = null;
+function drv2DismissInterlude() {
+  if (drv2InterludeTimer != null) { clearTimeout(drv2InterludeTimer); drv2InterludeTimer = null; }
+  drv2Interlude = null;
+  const ov = $('drv2-interlude'); if (ov) ov.classList.remove('open');
+}
+function drv2ShowInterlude() {
+  if (!drv2Interlude) return;
+  const info = drv2Interlude;
+  const board = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);
+  const next = board[0];
+  if (!next || next.phase === 'awaiting_acceptance') { drv2Interlude = null; return; }   // nothing live to advance to
+  const nextOrder = next.order || {};
+  let ov = $('drv2-interlude');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'drv2-interlude'; ov.className = 'interlude-overlay'; document.body.appendChild(ov); }
+  ov.innerHTML = interludeHtml({
+    deliveredName: info.name, cash: info.cash, vuelto: info.vuelto, showEarnings: false,
+    next: { name: nextOrder.customer_name || (next.deliveryTask && next.deliveryTask.recipient_name) || '', area: coloniaOf(next) },
+    liveTracking: false,   // omitted until tracker_fixes ON (advisor); the 2nd nav sentence always renders
+  }, { ICONS, esc: escapeHtml });
+  ov.classList.add('open');
+  const go = ov.querySelector('#btn-interlude-go'); if (go) go.onclick = drv2DismissInterlude;
+  if (drv2InterludeTimer != null) clearTimeout(drv2InterludeTimer);
+  drv2InterludeTimer = setTimeout(drv2DismissInterlude, 3000);
+}
 /* ===== SLICE2:IMPORT:END ===== */
+
+/* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
+   drivers/{uid}/nav_app (own-uid, enum) with a localStorage mirror; «Cerrar sesión» reuses driverSignOut. ===== */
+const NAVP_ICONS = {
+  back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>',
+  navi: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 11l18-8-8 18-2-8z"/></svg>',
+  chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4 10-11"/></svg>',
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01" stroke-linecap="round"/></svg>',
+  waze: '<svg viewBox="0 0 24 24"><path d="M5 15.5c-1-1-1.6-2.5-1.6-4.2C3.4 7.3 7.3 4 12 4s8.6 3.3 8.6 7.3-3.9 7.2-8.6 7.2c-1.1 0-2.2-.2-3.2-.5" fill="#33CCFF" stroke="#0A2533" stroke-width="1.6" stroke-linecap="round"/><circle cx="9.3" cy="10.3" r="1" fill="#0A2533"/><circle cx="14.7" cy="10.3" r="1" fill="#0A2533"/><circle cx="7" cy="19" r="1.7" fill="#0A2533"/><circle cx="15" cy="19" r="1.7" fill="#0A2533"/></svg>',
+  gmaps: '<svg viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" fill="#EA4335"/><circle cx="12" cy="10" r="2.4" fill="#fff"/></svg>',
+};
+let drv2NavReturn = 'cuenta';   // where the navApp picker returns on save/back: 'cuenta' | 'companion'
+let drv2NavSel = 'waze';        // the picker's in-screen selection until «Guardar»
+
+// Open Cuenta from off-shift (the header icon). Minimal (R7): one row to the nav picker + «Cerrar sesión».
+function openCuenta() { renderCuenta(); showScreen('cuenta'); }
+
+function renderCuenta() {
+  const pref = drv2ReadNavPref();                                   // 'Waze' | 'Maps'
+  const navLabel = pref === 'Maps' ? 'Google Maps' : 'Waze';
+  $('screen-cuenta').innerHTML = cuentaHtml({ icons: NAVP_ICONS, esc: escapeHtml, navLabel });
+  $('cuenta-back').addEventListener('click', () => showScreen('offshift'));
+  $('cuenta-navapp').addEventListener('click', () => { drv2NavReturn = 'cuenta'; renderNavApp(); });
+  $('cuenta-signout').addEventListener('click', driverSignOut);
+}
+
+function renderNavApp() {
+  const pref = drv2ReadNavPref();
+  drv2NavSel = pref === 'Maps' ? 'maps' : 'waze';
+  const back = () => {
+    if (drv2NavReturn === 'companion') { companionRenderOnboarding(); }
+    else { renderCuenta(); showScreen('cuenta'); }
+  };
+  $('screen-navApp').innerHTML = navAppHtml(drv2NavSel, { icons: NAVP_ICONS });
+  const paint = () => {
+    $('navapp-waze').classList.toggle('sel', drv2NavSel === 'waze');
+    $('navapp-maps').classList.toggle('sel', drv2NavSel === 'maps');
+  };
+  paint();
+  $('navapp-waze').addEventListener('click', () => { drv2NavSel = 'waze'; paint(); });
+  $('navapp-maps').addEventListener('click', () => { drv2NavSel = 'maps'; paint(); });
+  $('navapp-back').addEventListener('click', back);
+  $('navapp-save').addEventListener('click', async () => {
+    const btn = $('navapp-save'); btn.disabled = true;
+    try {
+      await drv2WriteNavPref(drv2NavSel);
+      if (drv2NavReturn === 'companion') companionWriteDraft({ navChosen: true });
+      back();
+    } catch (e) {
+      btn.disabled = false;
+      toast('No se pudo guardar. Intentá de nuevo.', 'error');
+    }
+  });
+  showScreen('navApp');
+}
+/* ===== SLICE2:NAVPREF:END ===== */
 
 // ============================================================
 // System version (bumped each release)
@@ -1623,7 +1998,7 @@ function toast(msg, kind = '') {
 // Screen routing
 // ============================================================
 function showScreen(name) {
-  ['config', 'login', 'offshift', 'onshift', 'companion'].forEach(s => {
+  ['config', 'login', 'offshift', 'onshift', 'companion', 'cuenta', 'navApp'].forEach(s => {
     $(`screen-${s}`).classList.toggle('hidden', s !== name);
   });
   // Refresh notification banner state on screen change
@@ -1800,11 +2175,13 @@ function companionRenderOnboarding() {
       <label class="co-card co-ck"><span class="co-box ${ck(d.ackPerms)}" id="co-bx-perms">${d.ackPerms ? '✓' : ''}</span>Permisos y batería (ubicación + "sin restricción")</label>
       <label class="co-card co-ck"><span class="co-box ${ck(d.ackCash)}" id="co-bx-cash">${d.ackCash ? '✓' : ''}</span>Reglas de efectivo + cambio inicial (entregás 100% · llevás sencillo)</label>
       <div class="co-card co-ck" id="co-practice-row"><span class="co-box ${ck(d.practiceDone)}">${d.practiceDone ? '✓' : ''}</span>Pedido de práctica${d.practiceDone ? '' : ' <span class="co-sub" style="margin-left:auto">Abrir →</span>'}</div>
+      <div class="co-card co-ck" id="co-nav-row"><span class="co-box ${ck(d.navChosen)}">${d.navChosen ? '✓' : ''}</span><div style="min-width:0;flex:1"><div>App de navegación</div><div class="co-sub" style="font-weight:600;margin-top:1px">Elegí Waze o Google Maps; lo cambiás en Cuenta</div></div>${d.navChosen ? '' : '<span class="co-sub" style="flex:none">Abrir →</span>'}</div>
       <div style="flex:1"></div>`,
       `<button class="big-btn primary" id="co-request" ${(d.ackPerms && d.ackCash && d.practiceDone) ? '' : 'disabled'}>Pedir aprobación</button>`);
     $('co-bx-perms').closest('label').addEventListener('click', () => { const n = companionWriteDraft({ ackPerms: !companionReadDraft().ackPerms }); companionRenderOnboarding(); void n; });
     $('co-bx-cash').closest('label').addEventListener('click', () => { companionWriteDraft({ ackCash: !companionReadDraft().ackCash }); companionRenderOnboarding(); });
     if (!d.practiceDone) $('co-practice-row').addEventListener('click', () => { companionStep = 'practice'; companionRenderOnboarding(); });
+    $('co-nav-row').addEventListener('click', () => { drv2NavReturn = 'companion'; renderNavApp(); });
     const req = $('co-request'); if (req && !req.disabled) req.addEventListener('click', () => companionSubmit());
   } else { // 'practice'
     // Guided practice — writes NOTHING real; brand-agnostic (a synthetic order with no brand → neutral greeting).
@@ -2141,14 +2518,16 @@ $('forgot-btn').addEventListener('click', async () => {
 // Tidy: clear the stale reset confirmation once the driver re-engages the email field.
 $('login-email').addEventListener('focus', () => $('reset-msg').classList.add('hidden'));
 
-$('signout-btn').addEventListener('click', async () => {
-  // Native: drop the FCM token before signing out so this device stops
-  // receiving this driver's orders (shared-phone safety).
+// Shared sign-out (reused by the off-shift link AND the Cuenta screen's «Cerrar sesión», R7). Native: drop the
+// FCM token before signing out so this device stops receiving this driver's orders (shared-phone safety).
+async function driverSignOut() {
   if (isNative() && currentUser) {
     try { await unregisterNativePush(XPD.getAuthInstance().app); } catch (e) { /* non-fatal */ }
   }
   await XPD.signOutUser();
-});
+}
+$('signout-btn').addEventListener('click', driverSignOut);
+$('cuenta-btn').addEventListener('click', openCuenta);
 
 // Native foreground push: when the app is open, Android delivers the push to us
 // instead of drawing a system banner (native-push.js re-emits it here). Show an
@@ -2417,6 +2796,30 @@ $('duty-toggle-on').addEventListener('click', async () => {
   // The shift transition (onshift → offshift screen) handles visual reset.
   try { await handleEndShift(); } finally { shiftBusy = false; }
 });
+
+/* ===== SLICE2:STACKED-HANDLERS:START — delegated clicks for the new stacked-flow controls (re-rendered each tick) ===== */
+$('screen-onshift').addEventListener('click', (e) => {
+  const hit = (sel) => e.target.closest && e.target.closest(sel);
+  // «Terminar turno» in the stop header → reuse the EXISTING end-shift path (duty-toggle-on → handleEndShift → O4 → cuadre), unchanged.
+  if (hit('#btn-end-shift')) { const t = $('duty-toggle-on'); if (t) t.click(); return; }
+  // «Entendido» on the cancelled-stop banner → dismiss it and re-render (S17).
+  if (hit('#btn-cancel-ack')) { drv2Cancel = null; renderActiveAndQueue(); return; }
+  // «Después» preview tap → open the read-only queued sheet, resolved by orderId in a FRESH board, FAIL CLOSED if
+  // gone/promoted, REFUSE an awaiting_acceptance stop (S7/S8) — mirrors the QUEUE-IDENTITY handler.
+  const after = hit('.after-card');
+  if (after) {
+    const oid = after.getAttribute('data-order-id');
+    const board = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);
+    const idx = board.findIndex((q) => q && q.orderId === oid);
+    if (idx < 1) return;                                  // gone / now active (promoted) — no sheet
+    const o = board[idx];
+    if (o.phase === 'awaiting_acceptance') return;        // privacy: never open an unaccepted stop
+    $('queue-sheet-body').innerHTML = queueDetailHtml(o, drv2DoneRun.length + idx + 1, { ICONS, esc: escapeHtml, scheduledBadge });
+    $('queue-sheet').classList.add('open');
+    return;
+  }
+});
+/* ===== SLICE2:STACKED-HANDLERS:END ===== */
 
 // "Why don't I see tasks?" help link on the idle state
 $('idle-help-link').addEventListener('click', () => {
@@ -2944,6 +3347,12 @@ function renderActiveAndQueue() {
   renderPending = false;
 
   const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);
+  /* ===== SLICE2:RUN-OBSERVER:START — read-only completion/cancel diff → recent-completion memory (dep D); no write path ===== */
+  drv2Observe(orders);
+  // Stop screens use the stop header as the sole top bar — hide the status bar while there is an active stop (ruling a).
+  $('screen-onshift').classList.toggle('delivering', orders.length > 0);
+  drv2ShowInterlude();   // a just-completed delivery with a next stop → the 3-s apAvance overlay over the promoted screen
+  /* ===== SLICE2:RUN-OBSERVER:END ===== */
   const idleSlot = $('idle-state');
   const bannerSlot = $('incoming-banner-slot');
   const activeSlot = $('active-order-slot');
@@ -2957,6 +3366,10 @@ function renderActiveAndQueue() {
     queueSlot.innerHTML = '';
     queuedOrders = [];
     collapsedBanners.clear();
+    /* ===== SLICE2:IDLE-RESET:START — clear the per-run recent-completion memory + any interlude when the board is idle ===== */
+    drv2DismissInterlude();
+    drv2ResetRun();
+    /* ===== SLICE2:IDLE-RESET:END ===== */
     renderIdleState();
     return;
   }
@@ -3005,26 +3418,54 @@ function renderActiveAndQueue() {
     // single-order-view.js is frozen, the «→ {destino}» line is injected into the rendered .sv-nav-primary at
     // this seam (below), derived from the SAME phase-correct target the card's nav URL uses. The baseline
     // assignment below is pinned by slice2-freeze.guard; stripping this region restores it, so index.html equals the landed SHA.
+    // History (dep D): a PROMOTED survivor of a stack (delivered-this-run > 0) renders the stop header + the
+    // done-strip + the done map-pins, like the prototype apParada2. A genuine solo order (no history) keeps the
+    // plain single-order screen. Cancelled stops are already out of drv2DoneRun, so M excludes them.
+    const spDeliveredCount = drv2DoneRun.length;
+    const spOrdinal = spDeliveredCount + 1;
+    const spTotalM = spDeliveredCount + 1;
+    const spStacked = spTotalM > 1 && soloOrder.phase !== 'awaiting_acceptance';
+    const spDonePins = drv2DoneRun.filter((d) => d.lat != null && d.lng != null).map((d, i) => ({ lat: d.lat, lng: d.lng, n: i + 1, state: 'done' }));
     const soloMapHtml = (soloOrder.phase !== 'awaiting_acceptance')
       ? overviewMapSvg({
           driver: (driverState && driverState.lat != null && driverState.lng != null) ? { lat: driverState.lat, lng: driverState.lng, heading: driverState.heading } : null,
           hubs: [{ lat: soloOrder.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat, lng: soloOrder.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng, on: spIsPickup }],
-          stops: [{ lat: spOrder.lat || (soloOrder.deliveryTask && soloOrder.deliveryTask.destination_lat), lng: spOrder.lng || (soloOrder.deliveryTask && soloOrder.deliveryTask.destination_lng), n: 1, on: !spIsPickup }],
+          stops: [...spDonePins, { lat: spOrder.lat || (soloOrder.deliveryTask && soloOrder.deliveryTask.destination_lat), lng: spOrder.lng || (soloOrder.deliveryTask && soloOrder.deliveryTask.destination_lng), n: spOrdinal, on: !spIsPickup }],
           phase: spIsPickup ? 'pickup' : 'delivery',
           stale: isStaleFix(driverState && driverState.last_location_ts, Date.now()),
         })
       : '';
-    activeSlot.innerHTML = soloMapHtml + singleOrderCardHtml(soloOrder, {
+    const spName = (soloOrder.phase !== 'awaiting_acceptance') ? ((spOrder.customer_name) || (soloOrder.deliveryTask && soloOrder.deliveryTask.recipient_name) || '') : '';
+    // apCancelada: a confirmed cancellation of the OTHER stop leaves this survivor. Show the «Entendido» banner,
+    // the «Única parada» header, and a strip with the cancelled segment + this stop (S17; the banner only ever
+    // comes from drv2Observe's confirmed status==='cancelled' signal, never a disappearance — S17/R11).
+    const spCancel = drv2Cancel ? cancelBannerHtml(drv2Cancel, { ICONS, esc: escapeHtml }) : '';
+    const spShowChrome = (spStacked || !!drv2Cancel) && soloOrder.phase !== 'awaiting_acceptance';
+    const spHeader = spShowChrome ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: (spTotalM === 1 && !!drv2Cancel), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml }) : '';
+    const spStripStops = drv2Cancel
+      ? [{ n: 1, state: 'cancelled', label: drv2FirstWord(drv2Cancel.cancelledName) }, { n: 2, state: 'on', label: drv2FirstWord(spName) }]
+      : [...drv2DoneRun.map((d, i) => ({ n: i + 1, state: 'done', label: d.label, time: d.time })), { n: spOrdinal, state: 'on', label: drv2FirstWord(spName) }];
+    const spStrip = spShowChrome ? phaseStripHtml(spStripStops, escapeHtml) : '';
+    activeSlot.innerHTML = spHeader + spCancel + spStrip + soloMapHtml + singleOrderCardHtml(soloOrder, {
       ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,
-      RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: undefined,
+      RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: drv2ReadNavPref(),
       nowMs: Date.now(),   // offer ring: elapsed drives the resume (negative animation-delay); display-only
     });
-    // Destination-in-button (Codex r1 P2-6): the offer card has no nav button (no .sv-nav-primary) so this is
-    // a no-op pre-acceptance; an accepted lone stop gets «→ {destino}» appended, from the same phase-correct
-    // target as the button's URL, so label and URL cannot disagree.
+    // Destination-in-button (Codex r1 P2-6): the offer card has no nav button (no .sv-nav-primary) so this is a
+    // no-op pre-acceptance; an accepted lone stop gets «→ {destino}» (or «→ Parada N · {destino}» when promoted,
+    // N10), from the same phase-correct target as the button's URL, so label and URL cannot disagree.
     const soloNavBtn = activeSlot.querySelector('.sv-nav-primary');
     if (soloNavBtn && !soloNavBtn.querySelector('.sv-nav-dest')) {
-      soloNavBtn.insertAdjacentHTML('beforeend', `<span class="sv-nav-dest">→ ${escapeHtml(stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base)}</span>`);
+      const spBase = stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base;
+      soloNavBtn.insertAdjacentHTML('beforeend', `<span class="sv-nav-dest">→ ${escapeHtml(spStacked ? `Parada ${spOrdinal} · ${spBase}` : spBase)}</span>`);
+    }
+    // Personalize the delivery slide label on the lone-stop screen (ledger slide copy): «Entregado · {Nombre} ·
+    // L {monto}» (cash) / «Entregado · {Nombre}» (paid). Injected at the seam (single-order-view.js is frozen).
+    const spDelivText = activeSlot.querySelector('#btn-delivered .slide-text');
+    if (spDelivText && soloOrder.phase === 'delivery') {
+      const spCash = spOrder.payment_method === 'cash';
+      const spAmt = spCash ? ` · L ${(Number(spOrder.total) || 0).toLocaleString('es-HN')}` : '';
+      spDelivText.textContent = `Entregado · ${drv2FirstWord(spName)}${spAmt}`;
     }
     if (soloMapHtml) ensureSlice2MapAgeTimer();
     /* ===== SLICE2:SINGLE-ORDER-MOUNT:END ===== */
@@ -3059,7 +3500,14 @@ function renderActiveAndQueue() {
   // call statements re-reach them, so the guard proves byte-identity to the landed SHA).
   const stacked2 = [active, ...queue];                                   // VISIBLE set in board order (active = stop 1)
   const labels2 = resolveVisibleLabels(stacked2.map((s) => stopNavInfo(s, XPD.RESTAURANT)));  // collision-safe phase-correct labels
-  const deps2 = { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: XPD.RESTAURANT, navPref: undefined, collapsedBanners };
+  const deps2 = { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: XPD.RESTAURANT, navPref: drv2ReadNavPref(), collapsedBanners };
+  // Stop numbering with the recent-completion history (dep D): delivered-this-run stops precede the live stops,
+  // so ordinal(active) = delivered+1 and M = delivered + live stops. A cancelled stop is already out of drv2DoneRun.
+  const deliveredCount2 = drv2DoneRun.length;
+  const activeOrdinal2 = deliveredCount2 + 1;
+  const totalM2 = deliveredCount2 + stacked2.length;
+  const activeAccepted2 = active.phase !== 'awaiting_acceptance';
+  const nameOf2 = (s) => (s && s.order && s.order.customer_name) || (s && s.deliveryTask && s.deliveryTask.recipient_name) || '';
   // Active-card "arrived" — replicate renderActiveCard's geofence check EXACTLY (?? pickup / || delivery).
   const a2IsPickup = active.phase === 'pickup' || active.phase === 'awaiting_acceptance';
   const a2Order = active.order || {};
@@ -3075,10 +3523,13 @@ function renderActiveAndQueue() {
     ? { lat: driverState.lat, lng: driverState.lng, heading: driverState.heading } : null;
   const mapStale2 = isStaleFix(driverState && driverState.last_location_ts, Date.now());
   const mapEntities2 = [active, ...queue, ...pendingAccept];   // active=on; queue + offers are dim peers
-  const mapStops2 = mapEntities2.map((s, i) => {
+  const doneStops2 = drv2DoneRun.filter((d) => d.lat != null && d.lng != null)
+    .map((d, i) => ({ lat: d.lat, lng: d.lng, n: i + 1, state: 'done' }));   // delivered-this-run → green check (M3/R8)
+  const liveStops2 = mapEntities2.map((s, i) => {
     const so = s.order || {};
-    return { lat: so.lat || (s.deliveryTask && s.deliveryTask.destination_lat), lng: so.lng || (s.deliveryTask && s.deliveryTask.destination_lng), n: i + 1, on: i === 0 };
+    return { lat: so.lat || (s.deliveryTask && s.deliveryTask.destination_lat), lng: so.lng || (s.deliveryTask && s.deliveryTask.destination_lng), n: deliveredCount2 + 1 + i, on: i === 0 };
   });
+  const mapStops2 = [...doneStops2, ...liveStops2];
   const hubOf2 = (s) => ({ lat: s.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat, lng: s.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng });
   const activeHubKey2 = (() => { const h = hubOf2(active); return h.lat + ',' + h.lng; })();
   const mapHubs2 = [];
@@ -3089,13 +3540,53 @@ function renderActiveAndQueue() {
     seenHubs2.add(k);
     mapHubs2.push({ lat: h.lat, lng: h.lng, on: k === activeHubKey2 && mapPhase2 === 'pickup' });
   }
-  const stripStops2 = stacked2.map((s, i) => ({ n: i + 1, on: i === 0, label: (s.order && s.order.customer_name) || (s.deliveryTask && s.deliveryTask.recipient_name) || '' }));
+  const stripStops2 = [
+    ...drv2DoneRun.map((d, i) => ({ n: i + 1, state: 'done', label: d.label, time: d.time })),
+    ...stacked2.map((s, i) => ({ n: deliveredCount2 + 1 + i, state: i === 0 ? 'on' : '', label: drv2FirstWord(nameOf2(s)) })),
+  ];
   bannerSlot.innerHTML = incomingBannerHtml(pendingAccept, deps2);
-  activeSlot.innerHTML = phaseStripHtml(stripStops2, escapeHtml)
+  activeSlot.innerHTML = stopHeaderHtml({ ordinal: activeOrdinal2, total: totalM2, name: activeAccepted2 ? nameOf2(active) : '', area: activeAccepted2 ? coloniaOf(active) : '', canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)
+    + (drv2Cancel ? cancelBannerHtml(drv2Cancel, { ICONS, esc: escapeHtml }) : '')
+    + phaseStripHtml(stripStops2, escapeHtml)
     + overviewMapSvg({ driver: mapDriver2, hubs: mapHubs2, stops: mapStops2, phase: mapPhase2, stale: mapStale2 })
-    + activeCardHtml(active, deps2, { ordinal: 1, solo, showActualPill: !solo, arrived: a2Arrived, navLabel: labels2[0] && labels2[0].label });
+    + activeCardHtml(active, deps2, { ordinal: activeOrdinal2, solo, showActualPill: !solo, arrived: a2Arrived, navLabel: labels2[0] && labels2[0].label, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: queue.length ? queuedPreviewHtml(queue[0], activeOrdinal2 + 1, deps2) : '' });
   queuedOrders = queue;
-  queueSlot.innerHTML = queueHtml(queue, deps2);
+  // The immediate «Después» preview sits ABOVE the footer (inside the active card). Any further queued stops go in
+  // #queue-slot. Both carry data-order-id; the SLICE2:STACKED-HANDLERS delegate opens the read-only sheet by
+  // orderId (fail-closed, refuse awaiting — S7/S8).
+  queueSlot.innerHTML = queue.slice(1).map((o, i) => queuedPreviewHtml(o, activeOrdinal2 + 2 + i, deps2)).join('');
+  // apRecoger (S19): when every stacked order is still at PICKUP, show the combined multi-bag pickup screen. One
+  // «Recogí las N bolsas» slide (id btn-pickup) → the frozen pickupComplete batch-completes the others (preserved,
+  // P2-9). Nav points to the ACTIVE pickup's restaurant. Replaces the active-card composition above for this state.
+  if (stacked2.length >= 2 && stacked2.every((s) => s.phase === 'pickup')) {
+    const pkTarget = { lat: active.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat, lng: active.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng };
+    const pkLabel = (labels2[0] && labels2[0].base) || 'el restaurante';
+    bannerSlot.innerHTML = '';
+    activeSlot.innerHTML = stopHeaderHtml({ pickupCount: stacked2.length, canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)
+      + phaseStripHtml(stacked2.map((s, i) => ({ n: i + 1, state: i === 0 ? 'on' : '', label: 'Recoger' })), escapeHtml)
+      + overviewMapSvg({ driver: mapDriver2, hubs: mapHubs2, stops: mapStops2, phase: 'pickup', stale: mapStale2 })
+      + combinedPickupHtml(stacked2, deps2, new Set())
+      + navBtnHtml(pkTarget, deps2.navPref, pkLabel, deps2)
+      + `<div class="action-zone"><div class="slide-confirm pickup" id="btn-pickup"><div class="slide-fill"></div><div class="slide-text">Recogí las ${stacked2.length} bolsas</div><div class="slide-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div></div></div>`;
+    queuedOrders = queue;
+    queueSlot.innerHTML = '';
+  } else if (active.phase === 'awaiting_acceptance' && pendingAccept.length >= 1) {
+    // apOferta (S18): a combined double-offer (active + pending, all awaiting). R4 privacy — colonia only, no name.
+    // Both stops as map peers. One «Aceptar los N pedidos» slide (btn-accept) → the server auto-accepts the rest (S20).
+    const offers = [active, ...pendingAccept];
+    // «X km total» (advisor): haversine sum driver → each restaurant → each stop in platform order (meters → km, 0.1).
+    const ofHaver = (a, b) => (a && b && a.lat != null && a.lng != null && b.lat != null && b.lng != null) ? XPD.haversineDistance(a.lat, a.lng, b.lat, b.lng) : 0;
+    const ofHubs = offers.map((o) => ({ lat: o.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat, lng: o.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng }));
+    const ofStops = offers.map((o) => ({ lat: (o.order && o.order.lat) || (o.deliveryTask && o.deliveryTask.destination_lat), lng: (o.order && o.order.lng) || (o.deliveryTask && o.deliveryTask.destination_lng) }));
+    let ofKm = 0, ofPrev = mapDriver2;
+    for (const h of ofHubs) { ofKm += ofHaver(ofPrev, h); ofPrev = h; }
+    for (const s of ofStops) { ofKm += ofHaver(ofPrev, s); ofPrev = s; }
+    const ofDist = (mapDriver2 && ofKm > 0) ? `${(Math.round(ofKm / 100) / 10).toFixed(1)} km total` : '';
+    bannerSlot.innerHTML = '';
+    activeSlot.innerHTML = offerScreenHtml(offers, deps2, { mapHtml: overviewMapSvg({ driver: mapDriver2, hubs: mapHubs2, stops: mapStops2, phase: 'pickup', stale: mapStale2 }), distanceStr: ofDist });
+    queuedOrders = [];
+    queueSlot.innerHTML = '';
+  }
   ensureSlice2MapAgeTimer();   // SLICE2:MAP-LIFECYCLE — age the fix on silence; self-clears when hidden
   /* ===== SLICE2:STACKED-BRANCH:END ===== */
 

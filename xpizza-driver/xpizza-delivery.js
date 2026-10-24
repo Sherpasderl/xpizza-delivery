@@ -390,6 +390,19 @@ export async function updateDriverLocation(driverId, location) {
   await checkGeofenceTransition(driverId, lat, lng);
 }
 
+/**
+ * Persist the driver's navigation-app preference (R7). A TARGETED leaf write to drivers/{uid}/nav_app:
+ * the own-uid `.write` cascades from the drivers/$driver_id parent (same grant updateDriverLocation uses),
+ * and a child `.validate` pins the value to the enum, so a leaf set never triggers the parent's
+ * hasChildren(['name']) validate (validation does not cascade to ancestors). uid comes from the caller's
+ * auth context; `pref` MUST be one of 'waze' | 'maps'. Returns the acked write promise. Never money/cash.
+ */
+export async function setNavPref(driverId, pref) {
+  if (!driverId) throw new Error('setNavPref: missing driverId');
+  if (pref !== 'waze' && pref !== 'maps') throw new Error('setNavPref: pref must be "waze" | "maps"');
+  await set(ref(db, `drivers/${driverId}/nav_app`), pref);
+}
+
 async function checkGeofenceTransition(driverId, lat, lng) {
   const snapshot = await get(ref(db, `drivers/${driverId}`));
   const driver = snapshot.val();

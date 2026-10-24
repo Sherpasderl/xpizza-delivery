@@ -22,6 +22,7 @@ import { singleOrderCardHtml } from './single-order-view.js';
 import {
   incomingBannerHtml, activeCardHtml, queueHtml, queueDetailHtml,
   phaseStripHtml, stopNavInfo, resolveVisibleLabels,
+  navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
 } from './stacked-view.js';
 import { overviewMapSvg, isStaleFix } from './overview-map.js';
 // Firebase-FREE real modules → imported REAL (not lifted): the writers' pure cores + the task/order constants.
@@ -58,6 +59,18 @@ function liftCall(script, anchor) {
   }
   throw new Error(`unbalanced call: ${anchor}`);
 }
+// Lift a contiguous SOURCE span [startNeedle .. just before endNeedle) verbatim — used for the drv2
+// recent-completion machinery (a block of lets + functions, not a single function) so the harness drives the
+// REAL observer/interlude code, not a stub.
+function liftSpan(script, startNeedle, endNeedle) {
+  const s = script.indexOf(startNeedle);
+  assert.notEqual(s, -1, `span start not found: ${startNeedle}`);
+  const e = script.indexOf(endNeedle, s);
+  assert.notEqual(e, -1, `span end not found: ${endNeedle}`);
+  return script.slice(s, e);
+}
+// The REAL dep-D recent-completion block (drv2DoneRun … drv2ShowInterlude), lifted verbatim from SLICE2:IMPORT.
+const DRV2_BLOCK = liftSpan(MY_SCRIPT, 'let drv2DoneRun', '/* ===== SLICE2:IMPORT:END');
 
 const escapeHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 const ICONS = Object.fromEntries(['bell', 'cash', 'check', 'close', 'nav', 'phone', 'pin', 'store', 'warn', 'whatsapp'].map((k) => [k, `<svg data-ic="${k}"></svg>`]));
@@ -321,8 +334,9 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
 
 function run({ orders, driverState = null, dist = 999, latchInit = null, authGen = 0 }) {
   const dom = new JSDOM('<!doctype html><html><body>'
+    + '<div id="screen-onshift"><main id="onshift-content">'
     + '<div id="idle-state"></div><div id="incoming-banner-slot"></div>'
-    + '<div id="active-order-slot"></div><div id="queue-slot"></div>'
+    + '<div id="active-order-slot"></div><div id="queue-slot"></div></main></div>'
     + '<div id="queue-sheet"><div id="queue-sheet-body"></div></div></body></html>', { pretendToBeVisual: true });
   const { document } = dom.window;
   const ctx = { orders };
@@ -352,21 +366,28 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     + 'let slice2MapAgeTimer=null; const SLICE2_MAP_AGE_MS=30000;\n'
     + 'function ensureSlice2MapAgeTimer(){ _rec.mapTimerEnsured++; }\n'
     + 'function stopSlice2MapAgeTimer(){ _rec.mapTimerStopped++; }\n'
+    // dep-D capability gates + nav pref (R7): render reads these. The recent-completion machinery is lifted REAL.
+    + 'const DRV2_CAN_NOTIFY_ARRIVAL=false; const DRV2_CAN_REPORT_PROBLEM=false;\n'
+    + 'const drv2ReadNavPref=()=>\'Waze\';\n'
+    + DRV2_BLOCK + '\n'
     + liftFn(MY_SCRIPT, 'renderActiveAndQueue') + '\n'
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
     + liftFn(MY_SCRIPT, 'attachSlideConfirm') + '\n'
     + liftCall(MY_SCRIPT, "$('queue-slot').addEventListener") + '\n'
     + 'return { render: renderActiveAndQueue, setDriver:(d)=>{driverState=d;}, getQueued:()=>queuedOrders,'
-    + ' getLatch:()=>slice1ReviewLatchKey, getSliding:()=>slidingEl, getRenderPending:()=>renderPending, bumpAuth:()=>{ authGen+=1; } };';
+    + ' getLatch:()=>slice1ReviewLatchKey, getSliding:()=>slidingEl, getRenderPending:()=>renderPending, bumpAuth:()=>{ authGen+=1; },'
+    + ' getDoneRun:()=>drv2DoneRun, getInterlude:()=>drv2Interlude, getCancel:()=>drv2Cancel };';
   const params = ['document', 'window', '$', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'escapeHtml', 'ICONS',
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
+    'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml',
     'attachIncomingBannerHandlers', 'renderIdleState', 'toast', 'resolveCompleteErrorMessage', '_driverState', '_rec',
     '_latchInit', '_authGen'];
   const fn = new Function(...params, body);
   const api = fn(document, dom.window, $, XPD, { uid: 'drv' }, {}, {}, escapeHtml, ICONS,
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
+    navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
     attachIncomingBannerHandlers, renderIdleState, toast, resolveCompleteErrorMessage, driverState, rec,
     latchInit, authGen);
 
