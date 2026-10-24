@@ -19317,5 +19317,416 @@
       "node",
       "../xpizza-driver/single-order-branch.test.js"
     ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-reason",
+    "label": "the stored-shape check accepts an unknown reason",
+    "file": "driver-problem-alert.js",
+    "from": "  if (!REASONS.includes(rec.reason)) return false;\n",
+    "to": "",
+    "kills_with": [
+      "DRVF-MALFORMED"
+    ],
+    "command": [
+      "node",
+      "driver-problem-alert.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-by",
+    "label": "the stored-shape check accepts an empty / non-string by",
+    "file": "driver-problem-alert.js",
+    "from": "  if (typeof rec.by !== 'string' || rec.by === '') return false;\n",
+    "to": "",
+    "kills_with": [
+      "DRVF-MALFORMED"
+    ],
+    "command": [
+      "node",
+      "driver-problem-alert.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-at",
+    "label": "the stored-shape check accepts a non-finite at",
+    "file": "driver-problem-alert.js",
+    "from": "typeof rec.at !== 'number' || !Number.isFinite(rec.at)",
+    "to": "false",
+    "kills_with": [
+      "DRVF-MALFORMED"
+    ],
+    "command": [
+      "node",
+      "driver-problem-alert.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-note-len",
+    "label": "the note length cap is dropped",
+    "file": "driver-problem-alert.js",
+    "from": "rec.note.length > NOTE_MAX",
+    "to": "false",
+    "kills_with": [
+      "DRVF-MALFORMED"
+    ],
+    "command": [
+      "node",
+      "driver-problem-alert.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-note-200",
+    "label": "the 200-char boundary is off by one",
+    "file": "driver-problem-alert.js",
+    "from": "rec.note.length > NOTE_MAX",
+    "to": "rec.note.length >= NOTE_MAX",
+    "kills_with": [
+      "DRVF-NOTE200"
+    ],
+    "command": [
+      "node",
+      "driver-problem-alert.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-validate",
+    "label": "the core writes without the stored-shape check",
+    "file": "driver-problem-alert.js",
+    "from": "if (!validReport(rec))",
+    "to": "if (false)",
+    "kills_with": [
+      "DRVF-MALFORMED"
+    ],
+    "command": [
+      "node",
+      "driver-problem-alert.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-coldnull",
+    "label": "the create-only transaction overwrites an existing alert",
+    "file": "driver-problem-alert.js",
+    "from": "(cur) => (cur == null ? alert : undefined)",
+    "to": "() => alert",
+    "kills_with": [
+      "DRVF-COLDNULL"
+    ],
+    "command": [
+      "node",
+      "driver-problem-alert.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-besteffort",
+    "label": "an enrichment read failure drops the alert",
+    "file": "driver-problem-alert.js",
+    "from": "  try { return await read(); } catch (e) { log.warn(",
+    "to": "  { return await read(); } if (0) { log.warn(",
+    "kills_with": [
+      "DRVF-ENRICH-FAIL"
+    ],
+    "command": [
+      "node",
+      "driver-problem-alert.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-dn",
+    "label": "display_number is not carried",
+    "file": "driver-problem-alert.js",
+    "from": "  if (order && order.display_number !== undefined && order.display_number !== null) alert.display_number = order.display_number;\n",
+    "to": "",
+    "kills_with": [
+      "DRVF-PAYLOAD"
+    ],
+    "command": [
+      "node",
+      "driver-problem-alert.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-note",
+    "label": "the driver's note is not carried",
+    "file": "driver-problem-alert.js",
+    "from": "  if (typeof rec.note === 'string' && rec.note) alert.note = rec.note;\n",
+    "to": "",
+    "kills_with": [
+      "DRVF-NOTE"
+    ],
+    "command": [
+      "node",
+      "driver-problem-alert.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-type",
+    "label": "the alert type is misspelled (Torre falls back to «Alerta»)",
+    "file": "driver-problem-alert.js",
+    "from": "{ type: 'driver_problem', order_id: oid,",
+    "to": "{ type: 'driver_problemx', order_id: oid,",
+    "kills_with": [
+      "DRVF-PAYLOAD"
+    ],
+    "command": [
+      "node",
+      "driver-problem-alert.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-key",
+    "label": "the alert key drops the push id (a second report is swallowed)",
+    "file": "driver-problem-alert.js",
+    "from": "`driver_problem_${oid}_${pid}`",
+    "to": "`driver_problem_${oid}`",
+    "kills_with": [
+      "DRVF-PER-REPORT"
+    ],
+    "command": [
+      "node",
+      "driver-problem-alert.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-wire-retry",
+    "label": "the trigger does not retry",
+    "file": "index.js",
+    "from": "{ ref: '/driver_problems/{oid}/{pid}', region: 'us-central1', retry: true }",
+    "to": "{ ref: '/driver_problems/{oid}/{pid}', region: 'us-central1', retry: false }",
+    "kills_with": [
+      "DRVF-WIRE-RETRY"
+    ],
+    "command": [
+      "node",
+      "drvf-wiring.guard.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-wire-await",
+    "label": "the trigger does not await the core (errors never reach retry)",
+    "file": "index.js",
+    "from": "    await driverProblemAlertCore(getDatabase()",
+    "to": "    driverProblemAlertCore(getDatabase()",
+    "kills_with": [
+      "DRVF-WIRE-CALL"
+    ],
+    "command": [
+      "node",
+      "drvf-wiring.guard.test.js"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-torre-sev",
+    "label": "the Torre classifies the report red",
+    "file": "../xpizza-dispatch/dispatch-alerts.js",
+    "from": "driver_problem:                  { category: 'driver-problem', severity: 'amber',",
+    "to": "driver_problem:                  { category: 'driver-problem', severity: 'red',",
+    "kills_with": [
+      "DRVF-TORRE-AMBER"
+    ],
+    "command": [
+      "node",
+      "../xpizza-dispatch/dispatch-driver-problem.test.mjs"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-torre-label",
+    "label": "a reason label drifts from the approved copy",
+    "file": "../xpizza-dispatch/dispatch-alerts.js",
+    "from": "  customer_no_answer:   'El cliente no contesta',",
+    "to": "  customer_no_answer:   'Cliente no contesta',",
+    "kills_with": [
+      "DRVF-TORRE-LABEL"
+    ],
+    "command": [
+      "node",
+      "../xpizza-dispatch/dispatch-driver-problem.test.mjs"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-torre-proto",
+    "label": "an inherited key renders as a label",
+    "file": "../xpizza-dispatch/dispatch-alerts.js",
+    "from": "Object.prototype.hasOwnProperty.call(DRIVER_PROBLEM_REASON_LABELS, reason)",
+    "to": "(reason in DRIVER_PROBLEM_REASON_LABELS)",
+    "kills_with": [
+      "DRVF-TORRE-LABEL-PROTO"
+    ],
+    "command": [
+      "node",
+      "../xpizza-dispatch/dispatch-driver-problem.test.mjs"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-torre-xss",
+    "label": "the driver note renders unescaped",
+    "file": "../xpizza-dispatch/index.html",
+    "from": "` — ${escapeHtml(a.note)}`",
+    "to": "` — ${a.note}`",
+    "kills_with": [
+      "DRVF-TORRE-XSS"
+    ],
+    "command": [
+      "node",
+      "../xpizza-dispatch/dispatch-driver-problem.test.mjs"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-torre-case",
+    "label": "alertContent has no driver_problem case (falls back to «Alerta»)",
+    "file": "../xpizza-dispatch/index.html",
+    "from": "    case 'driver_problem': {",
+    "to": "    case 'driver_problemx': {",
+    "kills_with": [
+      "DRVF-TORRE-TITLE"
+    ],
+    "command": [
+      "node",
+      "../xpizza-dispatch/dispatch-driver-problem.test.mjs"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-torre-dn",
+    "label": "the Torre ignores the alert's own display number",
+    "file": "../xpizza-dispatch/index.html",
+    "from": "const ord = Number.isFinite(a.display_number) ?",
+    "to": "const ord = false ?",
+    "kills_with": [
+      "DRVF-TORRE-DETAIL"
+    ],
+    "command": [
+      "node",
+      "../xpizza-dispatch/dispatch-driver-problem.test.mjs"
+    ]
+  },
+  {
+    "slice": "drv-f",
+    "id": "drvf-torre-v",
+    "label": "the page import keeps the stale cache key",
+    "file": "../xpizza-dispatch/index.html",
+    "from": "from './dispatch-alerts.js?v=3';",
+    "to": "from './dispatch-alerts.js?v=2';",
+    "kills_with": [
+      "DRVF-TORRE-IMPORT"
+    ],
+    "command": [
+      "node",
+      "../xpizza-dispatch/dispatch-driver-problem.test.mjs"
+    ]
+  },
+  {
+    "slice": "drv-f-rules",
+    "id": "drvf-rule-create-only",
+    "label": "a report can be overwritten",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "&& !data.exists() && newData.child('by').val() === auth.uid && (root.child('tasks').child($oid + '_delivery')",
+    "to": "&& newData.child('by').val() === auth.uid && (root.child('tasks').child($oid + '_delivery')",
+    "kills_with": [
+      "an overwrite of an existing report is DENIED"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:driver-problems-rules"
+    ]
+  },
+  {
+    "slice": "drv-f-rules",
+    "id": "drvf-rule-customer",
+    "label": "a customer token with the assigned uid can report",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && !data.exists() && newData.child('by')",
+    "to": "root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && !data.exists() && newData.child('by')",
+    "kills_with": [
+      "a CUSTOMER token with the assigned uid is DENIED"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:driver-problems-rules"
+    ]
+  },
+  {
+    "slice": "drv-f-rules",
+    "id": "drvf-rule-pickup",
+    "label": "the assigned pickup driver cannot report",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": " || root.child('tasks').child($oid + '_pickup').child('assigned_driver_id').val() === auth.uid)\",\n          \".validate\": \"newData.hasChildren(['reason', 'by', 'at'])\"",
+    "to": ")\",\n          \".validate\": \"newData.hasChildren(['reason', 'by', 'at'])\"",
+    "kills_with": [
+      "the assigned PICKUP driver creates a report"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:driver-problems-rules"
+    ]
+  },
+  {
+    "slice": "drv-f-rules",
+    "id": "drvf-rule-now",
+    "label": "a client-chosen at is accepted",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "\"at\": { \".validate\": \"newData.isNumber() && newData.val() === now\" },\n          \"$other\": { \".validate\": false }",
+    "to": "\"at\": { \".validate\": \"newData.isNumber()\" },\n          \"$other\": { \".validate\": false }",
+    "kills_with": [
+      "a non-now at is DENIED"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:driver-problems-rules"
+    ]
+  },
+  {
+    "slice": "drv-f-rules",
+    "id": "drvf-rule-other",
+    "label": "an extra child is accepted",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "\"at\": { \".validate\": \"newData.isNumber() && newData.val() === now\" },\n          \"$other\": { \".validate\": false }",
+    "to": "\"at\": { \".validate\": \"newData.isNumber() && newData.val() === now\" },\n          \"$other\": { \".validate\": true }",
+    "kills_with": [
+      "an extra child is DENIED"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:driver-problems-rules"
+    ]
+  },
+  {
+    "slice": "drv-f-rules",
+    "id": "drvf-rule-contact",
+    "label": "the dispatch contact shape is not validated",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "newData.val().matches(/^\\\\+[1-9][0-9]{7,14}$/)",
+    "to": "newData.val().matches(/^.+$/)",
+    "kills_with": [
+      "a malformed dispatch contact"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:driver-problems-rules"
+    ]
   }
 ]

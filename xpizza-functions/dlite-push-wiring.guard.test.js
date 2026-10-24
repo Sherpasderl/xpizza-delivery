@@ -17,7 +17,7 @@ const { HUNKS, unapplyDlitePushIndex } = require('./tools/dlite-push-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const BASE = '798f9edf';   // the next train: 32f6f17e + release-race + brand-agnostic server (the hunks are unchanged; index.js below them differs only by those slices)
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const live = require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(read('index.js')));   // the membership slice landed on top → reversed first (innermost)
+const live = require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(read('index.js'))));   // the membership slice landed on top → reversed first (innermost)
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // ── (i) the inverse reconstructs the base byte-for-byte ──

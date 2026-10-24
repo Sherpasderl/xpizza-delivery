@@ -7529,3 +7529,16 @@ exports.merchantPendingOrders = merchantPushFunctions.merchantPendingOrders;
 exports.merchantPushOnStatus = merchantPushFunctions.merchantPushOnStatus;
 exports.merchantPushOnAnswered = merchantPushFunctions.merchantPushOnAnswered;
 /* h1c:end */
+
+/* drvf:begin */
+// DRIVER F (PLAN-driver-server-F-problema r2, Codex r3 APPROVE) — «Problema con este pedido»: a driver's create-only report at
+// driver_problems/{oid}/{pid} → ONE keyed dispatcher alert (driver-problem-alert.js). retry:true, and the core's write errors are
+// NOT caught here, so a transient failure re-runs the trigger. No order / task state is touched.
+const { alertOnDriverProblem: driverProblemAlertCore } = require('./driver-problem-alert');
+exports.alertOnDriverProblem = onValueCreated(
+  { ref: '/driver_problems/{oid}/{pid}', region: 'us-central1', retry: true },
+  async (event) => {
+    await driverProblemAlertCore(getDatabase(), { oid: event.params.oid, pid: event.params.pid, rec: event.data.val(), now: Date.now() }, { resolveDriverName });
+  }
+);
+/* drvf:end */

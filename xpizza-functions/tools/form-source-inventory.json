@@ -933,6 +933,7 @@
     "xpizza-dispatch/dispatch-driver-admin-panel.test.js",
     "xpizza-dispatch/dispatch-driver-admin.test.js",
     "xpizza-dispatch/dispatch-driver-deactivated.test.js",
+    "xpizza-dispatch/dispatch-driver-problem.test.mjs",
     "xpizza-dispatch/dispatch-h0-alerts.test.mjs",
     "xpizza-dispatch/dispatch-heartbeat-alerts.test.js",
     "xpizza-dispatch/dispatch-nav-rail.test.js",
@@ -1689,6 +1690,7 @@
   "catalog/text-version.js",
   "createorder-classify.js",
   "driver-ingest.js",
+  "driver-problem-alert.js",
   "index.js",
   "lib/driver-admin-ops.js",
   "lib/driver-callable-guard.js",
@@ -1883,6 +1885,12 @@
    "pins": [],
    "lifts": []
   },
+  "driver-problem-alert.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-dispatch/dispatch-driver-problem.test.mjs"
+   ]
+  },
   "index.js": {
    "pins": [
     {
@@ -1891,6 +1899,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
@@ -1911,6 +1920,7 @@
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -1937,6 +1947,7 @@
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -1959,6 +1970,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js"
      ]
@@ -1974,6 +1986,7 @@
       "tools/d4c4-inverse.js",
       "tools/d4c5-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -1998,6 +2011,7 @@
       "tools/brand-server-inverse.js",
       "tools/d12b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -2019,8 +2033,15 @@
      "file": "xpizza-functions/dlite-push-wiring.guard.test.js",
      "inverses": [
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/drvf-wiring.guard.test.js",
+     "inverses": [
+      "tools/drvf-inverse.js"
      ]
     },
     {
@@ -2029,6 +2050,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -2051,6 +2073,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2070,6 +2093,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
@@ -2085,6 +2109,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
@@ -2097,6 +2122,7 @@
     {
      "file": "xpizza-functions/membership-wiring.guard.test.js",
      "inverses": [
+      "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js"
      ]
@@ -2111,6 +2137,7 @@
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -2139,6 +2166,7 @@
       "tools/d4c4-inverse.js",
       "tools/d4c5-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -2159,6 +2187,7 @@
     {
      "file": "xpizza-functions/portalui-wiring.guard.test.js",
      "inverses": [
+      "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js"
      ]
@@ -2168,6 +2197,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js"
@@ -2179,6 +2209,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
@@ -2198,6 +2229,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
@@ -2216,6 +2248,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
@@ -2233,6 +2266,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2253,6 +2287,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
@@ -2269,6 +2304,7 @@
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -2321,6 +2357,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
@@ -2332,6 +2369,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
@@ -2345,6 +2383,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
