@@ -638,7 +638,7 @@ function validateOrderPayload(body, restaurantId, tables = null) {
     notes: sanitizeText(body.notes, 500),
     payment_method: payment,
     address_detected: sanitizeText(body.address_detected, 300),
-    address_details: sanitizeText(body.address_details, 300),
+    address_details: sanitizeText(body.address_details, 300), address_area: body.order_type === 'delivery' ? require('./address-area').addressAreaFrom(body.address_area) : '',   // colonia (PLAN-colonia r1): server policy, '' = omitted
     pickup_time: sanitizeText(body.pickup_time, 40) || 'standard',
     // Factura-with-RTN (D3). razon_social replaces CLIENTE; rtn_cliente validated server-side
     // as 14 digits (never trust the client) — blank if absent/invalid (= consumidor final).
@@ -1944,7 +1944,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     pendingOrderRecord.lat = lat;
     pendingOrderRecord.lng = lng;
     pendingOrderRecord.address_detected = fields.address_detected;
-    pendingOrderRecord.address_details = fields.address_details;
+    pendingOrderRecord.address_details = fields.address_details; if (fields.address_area) pendingOrderRecord.address_area = fields.address_area;   // colonia: only when kept
     pendingOrderRecord.maps_link = `https://www.google.com/maps?q=${lat},${lng}`;
   } else {
     pendingOrderRecord.pickup_time = fields.pickup_time;

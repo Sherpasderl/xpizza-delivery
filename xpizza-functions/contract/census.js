@@ -44,7 +44,7 @@ const FIELD_FACTS = {
   status: ['STATUS', 'PAYLIFE', 'ACCT', 'FACTELIG'], refunded_at: ['PAYLIFE'], refund_ref: ['PAYLIFE'], blocked_reason: ['PAYLIFE'],
   order_type: ['FULFIL'], pickup_time: ['FULFIL'],
   scheduled_for: ['SCHED'], release_at: ['SCHED'], released_at: ['SCHED'], scheduled_blocked: ['SCHED'],
-  address_detected: ['PLACE'], address_details: ['PLACE'], lat: ['PLACE'], lng: ['PLACE'], maps_link: ['PLACE'], hub_lat: ['PLACE'], hub_lng: ['PLACE'],
+  address_detected: ['PLACE'], address_details: ['PLACE'], address_area: ['PLACE'], lat: ['PLACE'], lng: ['PLACE'], maps_link: ['PLACE'], hub_lat: ['PLACE'], hub_lng: ['PLACE'],
   restaurant_name: ['PLACE'], address_short: ['PLACE'], restaurant_id: ['BRAND'],
   restaurant_display_name: ['PLACE', 'BRAND'],   // D12b (reviewed at the rebase onto 445d85d): the snapshotted display name — pickup PLACE + brand label
   display_number: ['NUM'], order_id: ['NUM'],

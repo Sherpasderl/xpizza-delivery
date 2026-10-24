@@ -268,8 +268,8 @@ async function wipe() {
        not enough on its own — the current path's pricing / eligibility reads sit behind a 45 s pointer cache and could
        also reuse — so every cell below asserts the footprint too. */
     const footprint = async () => (await rtdb.ref('rate_limits').get()).val();
-    const sameUrl = async (label) => {
-      const r = await send('la_musa', 'apg_bd_C', 'online', PAID, { redeem: rdV });
+    const sameUrl = async (label, extra = {}) => {
+      const r = await send('la_musa', 'apg_bd_C', 'online', PAID, { redeem: rdV, ...extra });
       assert.deepStrictEqual([r.status, r.json && r.json.checkout_url], [200, urlC], `🔴 ${label}: the bound checkout is resumed (same URL) — ${r.text.slice(0, 200)}`);
       assert.strictEqual(await footprint(), null, `🔴 ${label}: answered by the BOUND fast path (its probe + reuse branch leave no rate-limit footprint)`);
       assert.strictEqual(await reservedNow(), heldC, `${label}: no second hold`);
@@ -285,6 +285,11 @@ async function wipe() {
     const inel = JSON.parse(JSON.stringify(repriced)); inel.structure.redeem_eligible_cats = inel.structure.redeem_eligible_cats.filter((c) => c !== 'noodles');
     await publishSource('la_musa', inel);
     await sameUrl('the reward made INELIGIBLE after issuance');
+    // colonia (PLAN-colonia r1 P1-1): address_area is a NON-charge field — present, then CHANGED, after the catalog changes above,
+    // the SAME bound checkout is resumed by the fast path; the stored order keeps its first-written area (none: never rewritten)
+    await sameUrl('the colonia label PRESENT after the catalog changes', { address_area: 'Colonia Trejo' });
+    await sameUrl('the colonia label CHANGED after the catalog changes', { address_area: 'Res. Los Castaños' });
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(await order('apg_bd_C'), 'address_area'), false, 'a bound reuse never rewrites the stored order (its area stays the first-written: absent)');
     // different options on a line / a different fee input → not the bound inputs → the CURRENT path answers (footprint)
     const ext = await send('la_musa', 'apg_bd_C', 'online', [{ ...PAID[0], extras: [{ id: 'rice_white', qty: 1 }] }], { redeem: rdV });
     // (its total differs, so the current path's classifier refuses it as a conflict before any bookkeeping write; the fast
@@ -308,7 +313,7 @@ async function wipe() {
     await rtdb.ref(`restaurants/la_musa/item_availability/${availKey('noodle_01')}`).remove();
     await publishSource('la_musa', lm);   // restore today's catalog
   }
-  ok('bound reuse (render ON): a choice-reward checkout resumes its URL — answered by the bound fast path (probe + reuse branch write-free: no rate-limit footprint) with no second hold — untouched and after a whole-dish 86, a re-price and an eligibility change; different options or fee input reach the current path; an expired one rotates through current enforcement (reward_unavailable); a fresh launcher reward whose preparation fails answers choice_required');
+  ok('bound reuse (render ON): a choice-reward checkout resumes its URL — answered by the bound fast path (probe + reuse branch write-free: no rate-limit footprint) with no second hold — untouched and after a whole-dish 86, a re-price and an eligibility change, and with the colonia label present or changed (non-charge; the stored order is not rewritten); different options or fee input reach the current path; an expired one rotates through current enforcement (reward_unavailable); a fresh launcher reward whose preparation fails answers choice_required');
 
   assert.ok(WC.calls.some((c) => c.restaurantId === 'x_pizza' && c.isNow && c.day === 6), 'premise: the x_pizza orders above met the REAL weekend gate, on the controlled Saturday');
   FINISHED = true;

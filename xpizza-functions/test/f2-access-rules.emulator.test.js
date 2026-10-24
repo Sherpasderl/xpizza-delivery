@@ -49,6 +49,9 @@ const SEED = {
   'orders/O7': order('O7', C, { payment_method: 'online', payment_status: 'confirmed' }),
   'tasks/O1_pickup': task('O1', 'pickup', 'u-d1'), 'tasks/O1_delivery': task('O1', 'delivery', 'u-d1'),
   'tasks/O5_pickup': task('O5', 'pickup', 'u-d2'), 'tasks/O6_delivery': task('O6', 'delivery', 'u-deact'),
+  // colonia (PLAN-colonia r1): an offer the driver has been ASSIGNED but has NOT accepted — the pre-accept «Col. X» reads the order
+  'orders/O9': order('O9', C, { address_area: 'Colonia Trejo' }), 'tasks/O9_delivery': { ...task('O9', 'delivery', 'u-d1'), status: 'assigned' },
+  'orders/O10': order('O10', C, { address_area: 'Res. Los Castaños' }), 'tasks/O10_delivery': { ...task('O10', 'delivery', 'u-d2'), status: 'assigned' },
   'order_timelines/O1/e1': { at: 1 }, 'order_timelines/O3/e1': { at: 1 }, 'order_timelines/O5/e1': { at: 1 },
   'kds_cancel_acks/O1': { at: 1, by: 'u-kitA' }, 'kds_cancel_acks/O3': { at: 1, by: 'x' },
 };
@@ -130,6 +133,9 @@ const ROWS = [
   ['driver: whole /tasks', (db) => get(db, 'tasks'), 'd1', 'ADD'],
   ['driver: whole /orders', (db) => get(db, 'orders'), 'd1', 'ADD'],
   ["driver: another driver's order", (db) => get(db, 'orders/O5'), 'd1', 'ADD'],
+  ['driver: ASSIGNED-but-unaccepted offer — its colonia (pre-accept)', (db) => get(db, 'orders/O9/address_area'), 'd1', 'AAA'],
+  ['driver: ASSIGNED-but-unaccepted offer — the order point read', (db) => get(db, 'orders/O9'), 'd1', 'AAA'],
+  ["driver: another driver's unaccepted offer — its colonia", (db) => get(db, 'orders/O10/address_area'), 'd1', 'ADD'],
   ["driver: another driver's timeline", (db) => get(db, 'order_timelines/O5'), 'd1', 'ADD'],
   ["driver: another driver's task", (db) => get(db, 'tasks/O5_pickup'), 'd1', 'ADD'],
   ["driver: history query for another uid", (db) => by(db, 'orders', 'delivered_by_driver_uid', 'u-d2'), 'd1', 'ADD'],

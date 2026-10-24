@@ -908,6 +908,12 @@
    "class": "pointer",
    "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
   },
+  "address_area": {
+   "class": "fact",
+   "facts": [
+    "PLACE"
+   ]
+  },
   "address_details": {
    "class": "fact",
    "facts": [
