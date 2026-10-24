@@ -1248,7 +1248,10 @@
 /* Slider → EXACT prototype parity (advisor 2026-10-23 #1): solid steel-blue track, sentence-case Red Hat Display,
    «DESLIZÁ» hint on the right, 50px square-ish knob at rgba(255,255,255,.22), NO coloured glow / breathe. All
    actions (Aceptar/Recogí/Entregado) share the one blue component (prototype .slide uses --p-p for every action). */
-#active-order-slot .action-zone { margin-left: 0; margin-right: 0; }   /* the slide matches the nav button's 16px inset (advisor #2), not action-zone 13 + slide 16 */
+/* The fixed-footer action-zone already has 16px side PADDING; zero the slide's side margin so the slider spans the
+   SAME content width as the nav button + cards (16px inset), not 16 (padding) + 16 (margin) = 32 (advisor #2). */
+#screen-onshift.delivering #active-order-slot .action-zone .slide-confirm,
+#screen-onshift.delivering #active-order-slot .sv-actions .slide-confirm { margin-left: 0; margin-right: 0; }
 .slide-confirm { height:60px; border-radius:16px; background:var(--accent); border:none; box-shadow:none; margin:0 16px; overflow:hidden; }
 .slide-confirm::before { display:none; }
 .slide-confirm .slide-text { inset:0; padding-left:48px; padding-right:72px; justify-content:center; font-family:'Red Hat Display', sans-serif; font-weight:700; font-size:15px; letter-spacing:.01em; text-transform:none; background-image:none !important; color:#fff; -webkit-text-fill-color:#fff; animation:none; }
