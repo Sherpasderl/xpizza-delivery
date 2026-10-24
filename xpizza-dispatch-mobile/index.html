@@ -1025,8 +1025,7 @@ function passHTML(id, order){
           <span class="bm" style="background:var(--${brandKey(order)})">${brandMark(order)}</span>
           <span class="onum num">${escapeHtml(displayLabel(id, order))}</span>
         </span>
-        <span class="st">${done ? '' : `<i style="background:${dotVar(id, order)}"></i>`}<b>${escapeHtml(stateParts(id, order).lead)}</b>${stateParts(id, order).tail ? `<q>${escapeHtml(stateParts(id, order).tail)}</q>` : ''}</span>
-        ${schedBadge}
+        <span class="st">${done ? '' : `<i style="background:${dotVar(id, order)}"></i>`}<b>${escapeHtml(stateParts(id, order).lead)}</b>${stateParts(id, order).tail ? `<q>${escapeHtml(stateParts(id, order).tail)}</q>` : ''}</span>${schedBadge}
       </span>
       ${right}
     </button>${body}
