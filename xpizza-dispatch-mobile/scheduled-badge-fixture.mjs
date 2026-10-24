@@ -13,7 +13,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 // 04:29Z — the instant Codex names: 22:29 America/Tegucigalpa, deep enough into the evening that a
 // `now + 90min` slot would have crossed the 23:59 close. A fixed valid slot (+30min) stays open.
-export const FROZEN = Date.UTC(2026, 9, 24, 4, 29, 0);
+// Overridable via SCHED_FROZEN_MS so the suite can be run at instants either side of local midnight
+// (e.g. 05:59Z / 06:01Z) to prove rendering is wall-clock-independent.
+export const FROZEN = Number(process.env.SCHED_FROZEN_MS) || Date.UTC(2026, 9, 24, 4, 29, 0);
 
 // Stub the WHOLE Date (not only Date.now): no-arg `new Date()` and `Date.now()` return the frozen
 // instant; `new Date(arg)` still builds a real date (slot-format formats specific timestamps).

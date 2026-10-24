@@ -41,12 +41,16 @@ const stubs = `
   ${sliceConst('const slotLabelSafe =')}
 `;
 const mk = new Function('slotLabel', 'agingBaselineMs', 'agingSeconds', 'escapeHtml', `${stubs}\n${passHTMLSrc}\n; return passHTML;`)(slotLabel, agingBaselineMs, agingSeconds, escapeHtml);
-const asap = { customer_name: 'Marcela', status: 'preparing', created_at: Date.now() - 12 * 60 * 1000, order_type: 'delivery' };
-// The released card is built from the REAL releaseOne writer (frozen clock), same source as the node test.
-const { order: released } = await withFrozenClock(() => makeReleasedOrder({ agoMin: 8 }));
 const card = (id, o, open) => mk(id, o).replace('class="pass lv-calm', `class="pass lv-calm${open ? ' open' : ''}`);
-const deckA = `<div class="deck">${card('a1', asap)}${card('b1', released)}${card('b2', released)}</div>`;      // all collapsed
-const deckB = `<div class="deck">${card('c1', asap)}${card('c2', released, true)}${card('c3', released)}</div>`; // middle expanded
+// Build the released order from the REAL releaseOne writer AND render every card inside the frozen
+// clock, so neither the fixture nor slotLabelSafe/minutesOf reads wall-clock time.
+let deckA, deckB;
+await withFrozenClock(async () => {
+  const { order: released } = await makeReleasedOrder({ agoMin: 8 });
+  const asap = { customer_name: 'Marcela', status: 'preparing', created_at: Date.now() - 12 * 60 * 1000, order_type: 'delivery' };
+  deckA = `<div class="deck">${card('a1', asap)}${card('b1', released)}${card('b2', released)}</div>`;      // all collapsed
+  deckB = `<div class="deck">${card('c1', asap)}${card('c2', released, true)}${card('c3', released)}</div>`; // middle expanded
+});
 
 const page = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 ${style}

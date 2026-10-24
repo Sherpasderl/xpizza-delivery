@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { execSync } from 'node:child_process';
 import { slotLabel } from './slot-format.js';
 import { agingBaselineMs, agingSeconds } from './dispatch-aging.js';
-import { makeReleasedOrder, withFrozenClock } from './scheduled-badge-fixture.mjs';
+import { makeReleasedOrder, withFrozenClock, FROZEN } from './scheduled-badge-fixture.mjs';
 
 // «Programado» badge on RELEASED scheduled orders (dispatch-lite). A scheduled order keeps
 // `scheduled_for` after it releases to a live status, but every indicator was keyed on
@@ -94,8 +94,9 @@ const base = buildFrom(sliceFn(baseHtml, 'function passHTML(id, order){'), slice
 // ── hasSlot predicate (the status-independent key) ───────────────────────────
 test('hasSlot is true only for a finite POSITIVE scheduled_for, independent of status', () => {
   const hasSlot = new Function(`${hasSlotSrc}; return hasSlot;`)();
-  assert.equal(hasSlot({ scheduled_for: Date.now() }), true);
-  assert.equal(hasSlot({ scheduled_for: String(Date.now()) }), true, 'numeric string coerces');
+  const SOME = 1_700_000_000_000;   // a fixed positive epoch (no wall-clock dependency)
+  assert.equal(hasSlot({ scheduled_for: SOME }), true);
+  assert.equal(hasSlot({ scheduled_for: String(SOME) }), true, 'numeric string coerces');
   assert.equal(hasSlot({}), false, 'ASAP (no field) → false');
   assert.equal(hasSlot({ scheduled_for: null }), false, 'null → false (Number(null)===0 must NOT count)');
   assert.equal(hasSlot({ scheduled_for: 0 }), false, 'epoch 0 → false (no spurious 1970 badge)');
@@ -131,27 +132,31 @@ test('released scheduled order (real writer) shows the badge + release-based min
 });
 
 // ── ASAP: no badge, and byte-identical to the e2266b24 render (card AND detail) ──────────────
-test('ASAP order renders no badge and is byte-identical to the e2266b24 render (card + detail)', () => {
-  const STORE = { orders: { o2: { customer_name: 'Marcela Zelaya', status: 'preparing', total: 200, created_at: Date.now() - 12 * 60 * 1000, order_type: 'delivery' } }, scheduled: {}, drivers: {}, tasks: {} };
-  const card = branch.card(STORE, 'o2');
-  assert.doesNotMatch(card, /has-sched/, 'no has-sched');
-  assert.doesNotMatch(card, /class="sched"/, 'no pill on the card');
-  assert.doesNotMatch(branch.detail(STORE, 'o2'), /class="sched"/, 'no pill in the sheet');
-  assert.equal(branch.card(STORE, 'o2'), base.card(STORE, 'o2'), 'ASAP card byte-identical to e2266b24');
-  assert.equal(branch.detail(STORE, 'o2'), base.detail(STORE, 'o2'), 'ASAP detail byte-identical to e2266b24');
+test('ASAP order renders no badge and is byte-identical to the e2266b24 render (card + detail)', async () => {
+  await withFrozenClock(async () => {
+    const STORE = { orders: { o2: { customer_name: 'Marcela Zelaya', status: 'preparing', total: 200, created_at: Date.now() - 12 * 60 * 1000, order_type: 'delivery' } }, scheduled: {}, drivers: {}, tasks: {} };
+    const card = branch.card(STORE, 'o2');
+    assert.doesNotMatch(card, /has-sched/, 'no has-sched');
+    assert.doesNotMatch(card, /class="sched"/, 'no pill on the card');
+    assert.doesNotMatch(branch.detail(STORE, 'o2'), /class="sched"/, 'no pill in the sheet');
+    assert.equal(branch.card(STORE, 'o2'), base.card(STORE, 'o2'), 'ASAP card byte-identical to e2266b24');
+    assert.equal(branch.detail(STORE, 'o2'), base.detail(STORE, 'o2'), 'ASAP detail byte-identical to e2266b24');
+  });
 });
 
 // ── pre-release scheduled: today's rendering (slot in the time column, no pill), byte-identical ─
-test('pre-release scheduled keeps today’s rendering and is byte-identical to the e2266b24 render (card + detail)', () => {
-  const SF = Date.now() + 90 * 60 * 1000;
-  const STORE = { orders: {}, scheduled: { o3: { customer_name: 'Rodrigo Fúnez', status: 'scheduled', scheduled_for: SF } }, drivers: {}, tasks: {} };
-  const want = slotLabel(SF, Date.now());
-  const card = branch.card(STORE, 'o3');
-  assert.doesNotMatch(card, /has-sched/, 'pre-release carries no pill');
-  assert.ok(card.includes('class="t rd"') && card.includes(want), 'slot shows in the lilac time column');
-  assert.doesNotMatch(branch.detail(STORE, 'o3'), /class="sched"/, 'no pill in the pre-release sheet');
-  assert.equal(branch.card(STORE, 'o3'), base.card(STORE, 'o3'), 'pre-release card byte-identical to e2266b24');
-  assert.equal(branch.detail(STORE, 'o3'), base.detail(STORE, 'o3'), 'pre-release detail byte-identical to e2266b24');
+test('pre-release scheduled keeps today’s rendering and is byte-identical to the e2266b24 render (card + detail)', async () => {
+  await withFrozenClock(async () => {
+    const SF = Date.now() + 90 * 60 * 1000;
+    const STORE = { orders: {}, scheduled: { o3: { customer_name: 'Rodrigo Fúnez', status: 'scheduled', scheduled_for: SF } }, drivers: {}, tasks: {} };
+    const want = slotLabel(SF, Date.now());
+    const card = branch.card(STORE, 'o3');
+    assert.doesNotMatch(card, /has-sched/, 'pre-release carries no pill');
+    assert.ok(card.includes('class="t rd"') && card.includes(want), 'slot shows in the lilac time column');
+    assert.doesNotMatch(branch.detail(STORE, 'o3'), /class="sched"/, 'no pill in the pre-release sheet');
+    assert.equal(branch.card(STORE, 'o3'), base.card(STORE, 'o3'), 'pre-release card byte-identical to e2266b24');
+    assert.equal(branch.detail(STORE, 'o3'), base.detail(STORE, 'o3'), 'pre-release detail byte-identical to e2266b24');
+  });
 });
 
 // ── persistence through completados (mockup rule: appears "hasta Completados") ────────────────
