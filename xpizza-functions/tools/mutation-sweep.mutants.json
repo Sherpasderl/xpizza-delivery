@@ -19503,8 +19503,8 @@
   "slice": "drv2",
   "label": "phaseStripHtml marks every INACTIVE segment 'on' — the active-stop highlight is inverted",
   "file": "../xpizza-driver/stacked-view.js",
-  "from": "s.on ? ' on' : ''",
-  "to": "s.on ? '' : ' on'",
+  "from": "state === 'on' ? ' on' : ''",
+  "to": "state === 'on' ? '' : ' on'",
   "command": [
    "node",
    "../xpizza-driver/stacked-view.test.js"
@@ -19599,8 +19599,8 @@
   "slice": "drv2",
   "label": "the active-card navBtn drops the «→ {destino}» line — the destination is no longer named in the button",
   "file": "../xpizza-driver/stacked-view.js",
-  "from": "const navDest = opts.navLabel ? ",
-  "to": "const navDest = false ? ",
+  "from": "const dest = label ? ",
+  "to": "const dest = false ? ",
   "command": [
    "node",
    "../xpizza-driver/stacked-view.test.js"
@@ -19635,8 +19635,8 @@
   "slice": "drv2",
   "label": "PRIVACY (Codex r2): the queue-tap handler opens the sheet for an order that returned to awaiting_acceptance during a deferred render (name/phone/address/nav leak)",
   "file": "../xpizza-driver/index.html",
-  "from": "if (o.phase === 'awaiting_acceptance') return;",
-  "to": "if (false) return;",
+  "from": "if (o.phase === 'awaiting_acceptance') return;        // privacy: never open an unaccepted stop",
+  "to": "if (false) return;        // privacy: never open an unaccepted stop",
   "command": [
    "node",
    "../xpizza-driver/slice2-branch.test.js"
