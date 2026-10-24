@@ -3482,26 +3482,33 @@ function renderActiveAndQueue() {
       ? [{ n: 1, state: 'cancelled', label: drv2FirstWord(drv2Cancel.cancelledName) }, { n: 2, state: 'on', label: drv2FirstWord(spName) }]
       : [...drv2DoneRun.map((d, i) => ({ n: i + 1, state: 'done', label: d.label, time: d.time })), { n: spOrdinal, state: 'on', label: drv2FirstWord(spName) }];
     const spStrip = spShowChrome ? phaseStripHtml(spStripStops, escapeHtml) : '';
-    activeSlot.innerHTML = spHeader + spCancel + spStrip + soloMapHtml + singleOrderCardHtml(soloOrder, {
-      ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,
-      RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: drv2ReadNavPref(),
-      nowMs: Date.now(),   // offer ring: elapsed drives the resume (negative animation-delay); display-only
-    });
-    // Destination-in-button (Codex r1 P2-6): the offer card has no nav button (no .sv-nav-primary) so this is a
-    // no-op pre-acceptance; an accepted lone stop gets «→ {destino}» (or «→ Parada N · {destino}» when promoted,
-    // N10), from the same phase-correct target as the button's URL, so label and URL cannot disagree.
-    const soloNavBtn = activeSlot.querySelector('.sv-nav-primary');
-    if (soloNavBtn && !soloNavBtn.querySelector('.sv-nav-dest')) {
-      const spBase = stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base;
-      soloNavBtn.insertAdjacentHTML('beforeend', `<span class="sv-nav-dest">→ ${escapeHtml(spStacked ? `Parada ${spOrdinal} · ${spBase}` : spBase)}</span>`);
-    }
-    // Personalize the delivery slide label on the lone-stop screen (ledger slide copy): «Entregado · {Nombre} ·
-    // L {monto}» (cash) / «Entregado · {Nombre}» (paid). Injected at the seam (single-order-view.js is frozen).
-    const spDelivText = activeSlot.querySelector('#btn-delivered .slide-text');
-    if (spDelivText && soloOrder.phase === 'delivery') {
-      const spCash = spOrder.payment_method === 'cash';
-      const spAmt = spCash ? ` · L ${(Number(spOrder.total) || 0).toLocaleString('es-HN')}` : '';
-      spDelivText.textContent = `Entregado · ${drv2FirstWord(spName)}${spAmt}`;
+    // A PROMOTED survivor (apParada2) or a cancel-survivor (apCancelada) renders the prototype STOP card — the SAME
+    // activeCardHtml the stacked path uses (number tile, brand chip, # chip, «Parada actual», amber door/ref box,
+    // A COBRAR/PAGO, the one nav button + the personalized «Entregado» slide), NOT the slice-1 single-order card
+    // (advisor 2026-10-23 #3). A genuine fresh solo (no history, no cancel) keeps the slice-1 card.
+    const spCardDeps = { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: XPD.RESTAURANT, navPref: drv2ReadNavPref(), collapsedBanners };
+    const spCardHtml = spShowChrome
+      ? activeCardHtml(soloOrder, spCardDeps, { ordinal: spOrdinal, solo: true, showActualPill: true, arrived: spArrived, navLabel: stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: '' })
+      : singleOrderCardHtml(soloOrder, {
+          ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,
+          RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: drv2ReadNavPref(),
+          nowMs: Date.now(),   // offer ring: elapsed drives the resume (negative animation-delay); display-only
+        });
+    activeSlot.innerHTML = spHeader + spCancel + spStrip + soloMapHtml + spCardHtml;
+    // The slice-1 card path (frozen module) needs the «→ {destino}» nav line + the personalized «Entregado» slide
+    // injected at the seam. The stop-card path (activeCardHtml) already renders both, so these run ONLY for it.
+    if (!spShowChrome) {
+      const soloNavBtn = activeSlot.querySelector('.sv-nav-primary');
+      if (soloNavBtn && !soloNavBtn.querySelector('.sv-nav-dest')) {
+        const spBase = stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base;
+        soloNavBtn.insertAdjacentHTML('beforeend', `<span class="sv-nav-dest">→ ${escapeHtml(spBase)}</span>`);
+      }
+      const spDelivText = activeSlot.querySelector('#btn-delivered .slide-text');
+      if (spDelivText && soloOrder.phase === 'delivery') {
+        const spCash = spOrder.payment_method === 'cash';
+        const spAmt = spCash ? ` · L ${(Number(spOrder.total) || 0).toLocaleString('es-HN')}` : '';
+        spDelivText.textContent = `Entregado · ${drv2FirstWord(spName)}${spAmt}`;
+      }
     }
     if (soloMapHtml) ensureSlice2MapAgeTimer();
     /* ===== SLICE2:SINGLE-ORDER-MOUNT:END ===== */
