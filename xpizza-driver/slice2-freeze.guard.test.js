@@ -82,6 +82,8 @@ const REGIONS = [
   { name: 'NAV-SCREENS', kind: 'insert' },
   { name: 'OFFSHIFT-CUENTA', kind: 'insert' },
   { name: 'ONBOARDING-NAV', kind: 'insert' },
+  { name: 'OFFER-RING', kind: 'insert' },
+  { name: 'FONTFACE', kind: 'insert' },
   { name: 'SIGNOUT', kind: 'replace', restore: [
     "$('signout-btn').addEventListener('click', async () => {",
     '  // Native: drop the FCM token before signing out so this device stops',

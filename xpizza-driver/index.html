@@ -1014,11 +1014,12 @@
 @font-face { font-family:'Plus Jakarta Sans'; src:url("fonts/redhattext-var.woff2") format("woff2"); font-weight:300 500; font-style:normal; font-display:swap; }
 @font-face { font-family:'Plus Jakarta Sans'; src:url("fonts/redhatdisplay-var.woff2") format("woff2"); font-weight:501 900; font-style:normal; font-display:swap; }
 @font-face { font-family:'IBM Plex Mono'; src:url("fonts/redhatdisplay-var.woff2") format("woff2"); font-weight:300 900; font-style:normal; font-display:swap; }
-/* The stacked rebuild references 'Red Hat Display' / 'Red Hat Text' by name (header, nav, card titles). Those were
-   never defined as families (only 'Plus Jakarta Sans' was aliased), so they fell back to a heavier system sans —
-   the prototype's medium/semibold look was lost (advisor 2026-10-23 #7). Alias them to the self-hosted Red Hat. */
+/* SLICE2:FONTFACE:START — the stacked rebuild references 'Red Hat Display'/'Red Hat Text' by name but they were
+   never defined (only 'Plus Jakarta Sans' was aliased) → fell back to a heavier system sans (advisor #7). Alias
+   them to the self-hosted Red Hat. */
 @font-face { font-family:'Red Hat Display'; src:url("fonts/redhatdisplay-var.woff2") format("woff2"); font-weight:300 900; font-style:normal; font-display:swap; }
 @font-face { font-family:'Red Hat Text'; src:url("fonts/redhattext-var.woff2") format("woff2"); font-weight:300 700; font-style:normal; font-display:swap; }
+/* SLICE2:FONTFACE:END */
 /* EXACT-weight text faces pin PJS 400 + 500 to local Red Hat ONLINE. Measured: with the Google <link>
    present, Chrome prefers Google's covering-RANGE variable face over a local covering-RANGE face at the
    400–500 pivot (a local range face declared later still loses), but an EXACT font-weight wins the
@@ -1260,6 +1261,15 @@
 /* ===== Prototype stacked rebuild (apParada1/2/offer/pickup/avance/cancel) — additive, light-only ===== */
 /* Current-stop card: the prototype's blue outline ring (advisor 2026-10-23 #4; prototype .card.hi = 0 0 0 1.5px --p-p). */
 #active-order-slot .active-card { border: none; box-shadow: 0 0 0 2px var(--accent, #2F5FB8), 0 6px 18px rgba(20,30,50,.06); }
+/* apDetalle2 (advisor #11): the queued-sheet lock banner in a BLUE tint; «Cerrar» outlined, not filled grey. */
+.lockchip { background: var(--sv-p-bg, #E8F0FB); color: var(--accent, #2F5FB8); }
+.lockchip .ico { color: var(--accent, #2F5FB8); }
+.sheet-close { background: var(--surface, #fff); border: 1px solid var(--border, #E2E6EC); color: var(--text, #1F2733); font-weight: 700; }
+/* The sheet items-card brand chip: sentence case + brand-colour dot (advisor #5, extended to the sheet). */
+.items-card .rchip { background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); color: var(--text, #1F2733); text-transform: none; letter-spacing: 0; font-weight: 700; }
+.items-card .rchip .rdot { background: var(--text-soft, #546078); }
+.items-card .rchip.xp .rdot { background: #FA4400; }
+.items-card .rchip.lm .rdot { background: var(--lamusa, #B61218); }
 .strip { padding: 0 16px; }                                   /* 16 px page gutter (fix: stop 1 no longer flush at x=0) */
 .strip .st.done .bar { background: var(--sv-ok, #15803D); }
 .strip .st.done .lbl { color: var(--sv-ok, #15803D); }
@@ -1366,9 +1376,11 @@
 /* apAvance 3-s interlude overlay */
 .interlude-overlay { position: fixed; inset: 0; z-index: 60; background: var(--bg, #F4F2EE); display: none; }
 .interlude-overlay.open { display: flex; }
-.interlude { margin: auto; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; padding: 24px; max-width: 360px; width: 100%; }
-.interlude .il-illus { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: var(--sv-ok-bg, #E7F3EC); color: var(--sv-ok, #15803D); }
-.interlude .il-illus svg { width: 32px; height: 32px; }
+/* apAvance: TOP-aligned, a large rounded-square check tile, the «Ir a la parada N» button pinned at the bottom (advisor #9). */
+.interlude { margin: 0 auto; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; padding: calc(44px + var(--safe-top)) 24px calc(16px + var(--safe-bottom)); max-width: 380px; width: 100%; height: 100%; }
+.interlude .il-illus { width: 84px; height: 84px; border-radius: 24px; margin-top: 4px; display: grid; place-items: center; background: var(--sv-ok-bg, #E7F3EC); color: var(--sv-ok, #15803D); }
+.interlude .il-illus svg { width: 42px; height: 42px; }
+.interlude .il-go { margin-top: auto; }
 .interlude .il-head { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; color: var(--text, #0D1424); }
 .interlude .il-sub { font-size: 14px; color: var(--muted, #6B7687); margin: 0; }
 .interlude .il-now { width: 100%; text-align: left; background: var(--surface, #fff); border: 1.5px solid var(--p, #2F5FB8); border-radius: var(--r-card, 14px); padding: 14px; }
@@ -1394,7 +1406,7 @@
 .slide-confirm.sv-slide .slide-fill { background: rgba(255,255,255,.16); }
 /* apRecoger combined-pickup card */
 .pickup-card { margin: 2px 16px; background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); border-radius: var(--r-card, 14px); padding: 14px; }
-.pickup-card .pk-lead { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 14px; color: var(--text, #0D1424); margin-bottom: 8px; }
+.pickup-card .pk-lead { font-family: 'Red Hat Text', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-soft, #546078); margin-bottom: 8px; }  /* small-caps grey (advisor #8) */
 .pk-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line, #D7DEEA); }
 .pickup-card .pk-row:first-of-type { border-top: none; }
 .pk-row .pk-t { flex: 1; min-width: 0; }
@@ -1405,15 +1417,27 @@
 .pk-row .pk-bx { flex: none; width: 24px; height: 24px; border-radius: 7px; border: 1.5px solid var(--line, #D7DEEA); display: grid; place-items: center; color: #fff; }
 .pk-row.done .pk-bx { background: var(--sv-ok, #15803D); border-color: var(--sv-ok, #15803D); }
 .pickup-card .pk-warn { margin-top: 10px; display: flex; gap: 8px; align-items: flex-start; padding: 9px 11px; border-radius: 10px; background: var(--sv-warn-bg, #F6EEDD); color: var(--sv-warn, #8A5A00); font-size: 12.5px; line-height: 1.35; }
-.pk-chips .rchip, .of-chip .rchip { background: var(--surface, #fff) !important; border: 1px solid var(--line, #D7DEEA); color: var(--text, #0D1424) !important; border-radius: 999px; padding: 2px 8px 2px 6px; font-weight: 700; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px; }
-.pk-chips .rchip .rdot, .of-chip .rchip .rdot { width: 6px; height: 6px; border-radius: 50%; background: var(--marino, #14306B) !important; flex: none; }
+.pk-chips .rchip, .of-chip .rchip { background: var(--surface, #fff) !important; border: 1px solid var(--line, #D7DEEA); color: var(--text, #0D1424) !important; border-radius: 999px; padding: 2px 8px 2px 6px; font-weight: 700; font-size: 11.5px; text-transform: none; letter-spacing: 0; display: inline-flex; align-items: center; gap: 5px; }
+.pk-chips .rchip .rdot, .of-chip .rchip .rdot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-soft, #546078) !important; flex: none; }
+.pk-chips .rchip.xp .rdot, .of-chip .rchip.xp .rdot { background: #FA4400 !important; }
+.pk-chips .rchip.lm .rdot, .of-chip .rchip.lm .rdot { background: var(--lamusa, #B61218) !important; }
 /* apOferta double-offer */
 .of-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px 6px; }
 .of-head .of-sola { flex: none; width: 24px; height: 24px; color: var(--marino, #14306B); display: inline-flex; }
 .of-head .of-sola svg { width: 24px; height: 24px; }
 .of-head .of-title { flex: 1; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 19px; color: var(--text, #0D1424); }
-.of-head .of-ring { flex: none; width: 46px; height: 46px; border-radius: 50%; border: 3px solid var(--p, #2F5FB8); display: grid; place-items: center; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 14px; color: var(--p, #2F5FB8); background: transparent; }
-.of-head .of-ring::before, .of-head .of-ring::after { content: none !important; display: none !important; }
+/* Offer countdown = a partial progress ARC + the number only (advisor #10), not a full ring + «40s». */
+.of-head .of-ring { position: relative; flex: none; width: 46px; height: 46px; }
+.of-head .of-ring-svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.of-head .of-ring-track { fill: none; stroke: var(--surface-3, #E7EBF1); stroke-width: 3; }
+.of-head .of-ring-arc { fill: none; stroke: var(--accent, #2F5FB8); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 125.66; stroke-dashoffset: 31; transition: stroke-dashoffset .9s linear; }
+.of-head .of-ring-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 15px; color: var(--accent, #2F5FB8); background: none; border: none; padding: 0; }
+.of-head .of-ring-num::before, .of-head .of-ring-num::after { content: none !important; display: none !important; }
+/* The offer-card brand chip: sentence case + brand-colour dot (advisor #5, extended to the offer). */
+.of-chip .rchip, .of-row .rchip { background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); color: var(--text, #1F2733); text-transform: none; letter-spacing: 0; font-weight: 700; }
+.of-chip .rchip .rdot, .of-row .rchip .rdot { background: var(--text-soft, #546078); }
+.of-chip .rchip.xp .rdot, .of-row .rchip.xp .rdot { background: #FA4400; }
+.of-chip .rchip.lm .rdot, .of-row .rchip.lm .rdot { background: var(--lamusa, #B61218); }
 .offer-card { margin: 2px 16px; background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); border-radius: var(--r-card, 14px); padding: 14px; }
 .offer-card .of-chiprow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .offer-card .of-dist { margin-left: auto; background: var(--sv-ghost-bg, #EEF2F7); color: var(--text-soft, #546078); border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 12px; }
@@ -1447,7 +1471,7 @@
   .set-row .set-chev { color: var(--text-dim); flex: none; display: grid; place-items: center; }
   .set-row .set-chev svg { width: 16px; height: 16px; }
   .set-signout { width: 100%; background: none; border: 0; color: var(--text-soft); font-family: inherit; font-weight: 600; font-size: 13px; padding: 13px; cursor: pointer; }
-  .set-opt { display: flex; gap: 11px; align-items: center; padding: 13px 12px; border-radius: 12px; background: var(--surface-2); cursor: pointer; font-weight: 700; font-size: 14px; color: var(--text); }
+  .set-opt { display: flex; gap: 11px; align-items: center; padding: 13px 12px; border-radius: 12px; background: var(--surface-3, #E7EBF1); cursor: pointer; font-weight: 700; font-size: 14px; color: var(--text); }  /* unselected sits on a visible grey card (advisor #12) */
   .set-opt .set-opt-logo { width: 28px; height: 28px; border-radius: 8px; background: #fff; display: grid; place-items: center; flex: none; box-shadow: 0 1px 2px rgba(20,30,50,.1); }
   .set-opt .set-opt-logo svg { width: 20px; height: 20px; display: block; }
   .set-opt .set-opt-tx { flex: 1; min-width: 0; }
@@ -1456,7 +1480,7 @@
   .set-opt .set-opt-ck svg { width: 20px; height: 20px; }
   .set-opt.sel { box-shadow: inset 0 0 0 1.5px var(--accent); background: var(--sv-p-bg, #E8F0FB); }
   .set-opt.sel .set-opt-ck { display: block; }
-  .set-flat { background: transparent; box-shadow: none; border: 1px dashed var(--border); border-radius: var(--r-card); padding: 2px 14px; }
+  .set-flat { background: var(--surface, #fff); box-shadow: none; border: 1px solid var(--border, #E2E6EC); border-radius: var(--r-card); padding: 2px 14px; }  /* solid white + solid border, not dashed (advisor #12) */
   .set-foot { flex: none; padding: 10px 16px calc(12px + var(--safe-bottom)); background: var(--bg); }
   .set-foot .set-save { width: 100%; background: var(--accent); color: #fff; border: 0; border-radius: var(--r-btn); font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 16px; letter-spacing: -.01em; padding: 15px; min-height: 52px; cursor: pointer; }
   .set-foot .set-save:disabled { opacity: .6; }
@@ -3950,6 +3974,14 @@ function startCountdownTick() {
       if (!deadline) return;
       const secondsLeft = Math.max(0, Math.ceil((deadline - now) / 1000));
       chip.textContent = `${secondsLeft}s`;
+      /* ===== SLICE2:OFFER-RING:START — the stacked-offer ring shows the number ONLY (no «s») + drives its progress arc (advisor 2026-10-23 #10). ===== */
+      if (chip.classList.contains('of-ring-num')) {
+        chip.textContent = String(secondsLeft);
+        const ofTotal = Number(chip.dataset.total) || 40;
+        const ofArc = chip.parentElement && chip.parentElement.querySelector('.of-ring-arc');
+        if (ofArc) ofArc.style.strokeDashoffset = String(125.66 * (1 - Math.max(0, Math.min(1, secondsLeft / ofTotal))));
+      }
+      /* ===== SLICE2:OFFER-RING:END ===== */
       // Subtle urgency in the last 10 seconds — amber chip but not flashy
       chip.classList.toggle('urgent', secondsLeft <= 10 && secondsLeft > 0);
       // At 0, the Cloud Function will reassign or unassign within ~1s.

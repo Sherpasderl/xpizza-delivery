@@ -471,6 +471,7 @@ const SOLA_SVG = '<svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect 
 const DOOR_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17"/><path d="M14 12v.5"/></svg>';
 // Lock glyph for the «Orden fijado por la plataforma» chip + the queued-sheet lock banner.
 const LOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+const CUP_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8h12l-1 12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8z"/><path d="M8 8V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v3"/><path d="M9 12h6"/></svg>';
 
 export function stopHeaderHtml(info = {}, deps = {}) {
   const { ICONS = {}, esc = String } = deps;
@@ -502,21 +503,24 @@ export function combinedPickupHtml(orders, deps = {}, pickedUp = new Set()) {
   const rows = orders.map((o, i) => {
     const order = o.order || {};
     const done = pickedUp.has(o.orderId);
-    const items = order.items_text ? order.items_text.split(',').map((s) => esc(s.trim())).join(' · ') : '';
+    // Bag summary «N artículos · {items} · {pago}» from data (prototype apParada1 bag rows; advisor #8).
+    const rawItems = order.items_text ? order.items_text.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const items = rawItems.map((s) => esc(s)).join(', ');
     const pay = collectionFor(order).kind === 'cash'
       ? `a cobrar L ${(Number(order.total) || 0).toLocaleString('es-HN')}` : 'pagado en línea';
+    const summary = [rawItems.length ? `${rawItems.length} artículo${rawItems.length === 1 ? '' : 's'}` : '', items, pay].filter(Boolean).join(' · ');
     return `<div class="pk-row${done ? ' done' : ''}" data-order-id="${esc(o.orderId)}">
         ${bagTagHtml(i + 1, esc)}
         <div class="pk-t"><div class="pk-h">Bolsa ${i + 1} · ${esc(order.customer_name || (o.deliveryTask && o.deliveryTask.recipient_name) || '—')}</div>
           <div class="pk-chips">${rchip(order, esc, 'sm')}<span class="order-num">${esc(displayOrderLabel(order))}</span></div>
-          ${items ? `<div class="pk-items">${items} · ${pay}</div>` : `<div class="pk-items">${pay}</div>`}</div>
+          <div class="pk-items">${summary}</div></div>
         <span class="pk-bx">${done ? ICONS.check || '✓' : ''}</span>
       </div>`;
   }).join('');
   return `<div class="pickup-card">
       <div class="pk-lead">Marcá cada bolsa con su número de parada</div>
       ${rows}
-      <div class="banner warn pk-warn"><span class="ico">${ICONS.cup || ''}</span><div>Revisá bebidas y salsas de cada bolsa. Lo caliente y lo frío, separados.</div></div>
+      <div class="banner warn pk-warn"><span class="ico">${ICONS.cup || CUP_SVG}</span><div>Revisá bebidas y salsas de cada bolsa. Lo caliente y lo frío, separados.</div></div>
     </div>`;
 }
 
@@ -568,7 +572,11 @@ export function offerScreenHtml(offers, deps = {}, opts = {}) {
   // no new timer is added (advisor). Ring styling is CSS. A distance chip «X km total» is OMITTED unless it can be
   // computed from the real coords (not wired yet — omit, not invent). The rationale «+N min…» is omitted (dep A).
   const deadline = offers[0] && offers[0].pickupTask && offers[0].pickupTask.assignment_deadline;
-  const ring = deadline ? `<span class="accept-countdown of-ring" data-deadline="${deadline}">--s</span>` : '';
+  // The ring = a partial progress ARC + the number only (advisor #10). The number span carries .accept-countdown so
+  // the EXISTING timer finds it; a small SLICE2:OFFER-RING tick (index.html) strips the «s» and drives the arc.
+  const ring = deadline
+    ? `<span class="of-ring"><svg class="of-ring-svg" viewBox="0 0 46 46" aria-hidden="true"><circle class="of-ring-track" cx="23" cy="23" r="20"/><circle class="of-ring-arc" cx="23" cy="23" r="20"/></svg><span class="of-ring-num accept-countdown" data-deadline="${deadline}" data-total="40">--</span></span>`
+    : '';
   // Pickup-timing line: with ready-time (dep B) it reads «Recogés primero en X (~HH:MM) y luego en Y»; until then the
   // order WITHOUT times, which is true today.
   const brands = offers.map((o) => brandLabel(o.order || {}) || (o.pickupTask && o.pickupTask.destination_address) || 'el restaurante');
