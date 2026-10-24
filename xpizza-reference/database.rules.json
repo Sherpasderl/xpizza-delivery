@@ -34,7 +34,7 @@
         "current_hub_task_id":  { ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'", ".validate": "root.child('dispatchers').child(auth.uid).exists() || auth.uid === 'svc-assigner'" },
         "ingest_token_hash":    { ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner'", ".validate": "root.child('dispatchers').child(auth.uid).exists() || auth.uid === 'svc-assigner'" },
         "last_location_ts":     { ".validate": "root.child('dispatchers').child(auth.uid).exists()" },
-        "nav_app":              { ".validate": "newData.isString() && (newData.val() === 'waze' || newData.val() === 'maps')" }
+        "nav_app":              { ".validate": "newData.isString() && (newData.val() === 'waze' || newData.val() === 'maps') && auth.token.customer !== true" }
       }
     },
 
