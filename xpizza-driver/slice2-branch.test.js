@@ -259,8 +259,9 @@ function seed(specs) {
 // real write → the next render recomputes the board. Returns the same drag/dom helpers as run() + the mock.
 function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, active: true, last_location_ts: Date.now() }, dist = 999, restaurant = HUBX }) {
   const dom = new JSDOM('<!doctype html><html><body>'
+    + '<div id="screen-onshift"><main id="onshift-content">'
     + '<div id="idle-state"></div><div id="incoming-banner-slot"></div>'
-    + '<div id="active-order-slot"></div><div id="queue-slot"></div>'
+    + '<div id="active-order-slot"></div><div id="queue-slot"></div></main></div>'
     + '<div id="queue-sheet"><div id="queue-sheet-body"></div></div></body></html>', { pretendToBeVisual: true });
   const { document } = dom.window;
   const { data, read, fb, queueConflict } = makeMock(initial);
@@ -289,20 +290,26 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     + 'let slice2MapAgeTimer=null; const SLICE2_MAP_AGE_MS=30000;\n'
     + 'function ensureSlice2MapAgeTimer(){ _rec.mapTimerEnsured++; }\n'
     + 'function stopSlice2MapAgeTimer(){ _rec.mapTimerStopped++; }\n'
+    + 'const DRV2_CAN_NOTIFY_ARRIVAL=false; const DRV2_CAN_REPORT_PROBLEM=false;\n'
+    + 'const drv2ReadNavPref=()=>\'Waze\';\n'
+    + DRV2_BLOCK + '\n'
     + liftFn(MY_SCRIPT, 'renderActiveAndQueue') + '\n'
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
     + liftFn(MY_SCRIPT, 'attachSlideConfirm') + '\n'
     + liftCall(MY_SCRIPT, "$('queue-slot').addEventListener") + '\n'
+    + liftCall(MY_SCRIPT, "$('screen-onshift').addEventListener") + '\n'   // STACKED-HANDLERS: .after-card tap → read-only sheet (by orderId)
     + liftFn(MY_SCRIPT, 'attachIncomingBannerHandlers') + '\n'   // REAL banner handler (Codex r2 P2-3)
     + 'return { render: renderActiveAndQueue, setDriver:(d)=>{driverState=d;} };';
   const names = ['document', 'window', '$', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'escapeHtml', 'ICONS',
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
+    'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml',
     'renderIdleState', 'toast', 'resolveCompleteErrorMessage', 'CSS', '_driverState', '_rec'];
   const CSS = dom.window.CSS || { escape: (s) => String(s).replace(/[^\w-]/g, '\\$&') };
   const api = (new Function(...names, body))(document, dom.window, $, XPD, { uid: 'drv' }, {}, {}, escapeHtml, ICONS,
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
+    navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
     renderIdleState, toast, resolveCompleteErrorMessage, CSS, driverState, rec);
   const slot = (id) => document.getElementById(id);
   const ret = {
@@ -374,6 +381,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
     + liftFn(MY_SCRIPT, 'attachSlideConfirm') + '\n'
     + liftCall(MY_SCRIPT, "$('queue-slot').addEventListener") + '\n'
+    + liftCall(MY_SCRIPT, "$('screen-onshift').addEventListener") + '\n'   // STACKED-HANDLERS: .after-card tap → read-only sheet (by orderId), cancel-ack, end-shift
     + 'return { render: renderActiveAndQueue, setDriver:(d)=>{driverState=d;}, getQueued:()=>queuedOrders,'
     + ' getLatch:()=>slice1ReviewLatchKey, getSliding:()=>slidingEl, getRenderPending:()=>renderPending, bumpAuth:()=>{ authGen+=1; },'
     + ' getDoneRun:()=>drv2DoneRun, getInterlude:()=>drv2Interlude, getCancel:()=>drv2Cancel };';
@@ -439,19 +447,31 @@ const t = (name, fn) => _p.push(Promise.resolve().then(fn).then(() => { passed +
 const FRESH = Date.now();
 
 // 1. Stacked render via the REAL builders: strip + map + active card hooks + queue identity hooks.
-t('stacked (2 orders): real builders render strip + overview map + active card + queue with identity hooks', () => {
+t('stacked (2 orders): real builders render stop-header + strip + map + active card + the in-card «Después» preview (identity hook)', () => {
   const r = run({ orders: [delivery('A'), delivery('B')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH } });
   const a = r.active();
+  assert.ok(a.includes('class="stop-header"') && a.includes('Parada 1 de 2'), 'stop header «Parada 1 de 2»');
   assert.ok(a.includes('class="strip"'), 'phase strip rendered');
   assert.ok(a.includes('class="map"'), 'overview map mounted');
   assert.ok(a.includes('id="btn-delivered"') && a.includes('class="slide-thumb"'), 'active card slide hook');
   assert.ok(a.includes('<span class="bagtag a">1</span>'), 'active bag tag 1');
   assert.ok(a.includes('class="pactual">Parada actual'), 'parada-actual pill');
   assert.ok(a.includes('Navegar con Waze') && a.includes('→ '), 'navBtn: «Navegar con {app}» + «→ {destino}»');
-  const q = r.queue();
-  assert.ok(q.includes('data-order-id="B"') && q.includes('data-q="0"'), 'queue row carries both identity hooks');
-  assert.ok(q.includes('<span class="bagtag b">2</span>'), 'queued bag tag 2');
+  // stop 2 is the «Después» preview INSIDE the active card (after-card + identity hook, bag tag 2); queue-slot is empty with 2 stops.
+  assert.ok(a.includes('class="after-card" data-order-id="B"'), 'stop-2 preview in the card carries the orderId hook');
+  assert.ok(a.includes('<span class="bagtag b">2</span>'), 'preview bag tag 2');
+  assert.equal(r.queue(), '', 'queue-slot empty with only 2 stops (stop 2 is the in-card preview)');
   assert.equal(r.rec.mapTimerEnsured >= 1, true, 'map-age lifecycle timer armed on mount');
+});
+
+// 1b. A THIRD stop lands in #queue-slot as an after-card with its identity hook (the in-card preview is stop 2).
+t('stacked (3 orders): stop 3 renders in #queue-slot as an after-card with the orderId hook (bag tag 3)', () => {
+  const r = run({ orders: [delivery('A'), delivery('B'), delivery('C')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH } });
+  assert.ok(r.active().includes('class="after-card" data-order-id="B"'), 'stop 2 is the in-card preview');
+  const q = r.queue();
+  assert.ok(q.includes('class="after-card" data-order-id="C"'), 'stop 3 is a queue-slot after-card with the orderId hook');
+  assert.ok(q.includes('<span class="bagtag b">3</span>'), 'queued stop 3 bag tag');
+  assert.ok(!q.includes('data-order-id="B"'), 'stop 2 is NOT duplicated into the queue slot');
 });
 
 // 2. REAL slide binds to the REAL handler on the REAL builder markup → completeTask fired.
@@ -474,13 +494,29 @@ t('stacked pickup: dragging btn-pickup calls XPD.pickupComplete for the active p
 // 4. A→B promotion reaches the SLICE2:SINGLE-ORDER-MOUNT map; completed A is absent from the board.
 t('A→B promotion: when A leaves, the lone B renders the single-order card WITH the overview map; A absent', () => {
   const r = run({ orders: [delivery('A'), delivery('B')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH } });
-  assert.ok(r.queue().includes('data-order-id="B"'), 'B starts queued');
+  assert.ok(r.active().includes('class="after-card" data-order-id="B"'), 'B starts as the in-card «Después» preview');
   r.setOrders([delivery('B')]); r.render();                         // A completed/gone → lone B
   assert.ok(r.activeEl().classList.contains('solo'), 'lone B → solo single-order layout');
   assert.ok(r.active().includes('class="map"'), 'promoted lone B gets the overview map (SINGLE-ORDER-MOUNT)');
   assert.ok(r.active().includes('sv-card'), 'the slice-1 single-order card renders');
   assert.ok(!r.active().includes('>A<') && !r.active().includes('data-order-id="A"'), 'completed A is off the board');
   assert.equal(r.banner(), '', 'no banner'); assert.equal(r.queue(), '', 'no queue');
+});
+
+// 4b. TRANSITION LAYOUT (Fix 2, advisor 2026-10-23): two-stop stacked → deliver stop 1 → the promoted single-order
+//     render must leave NO stale stacked node in the flow (the ~380px map↔card gap in an earlier build). The
+//     post-transition #active-order-slot is a CLEAN single-order structure and the card immediately follows the map.
+t('transition 2→1: delivering stop 1 leaves a CLEAN single-order layout — no stale node / map↔card gap', () => {
+  const r = run({ orders: [delivery('A'), delivery('B')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH } });
+  r.setOrders([delivery('B')]); r.render();   // A delivered → drv2Observe records A done → single-order B WITH history
+  const kids = Array.from(r.activeEl().children);
+  const empties = kids.filter((c) => c.children.length === 0 && (c.textContent || '').trim() === '');
+  assert.equal(empties.length, 0, 'no empty/childless leftover node (the old stacked container that caused the gap)');
+  const cls = kids.map((c) => String(c.className || ''));
+  const mapI = cls.findIndex((c) => /(^|\s)map(\s|$)/.test(c));
+  assert.ok(mapI >= 0, 'overview map present after the transition');
+  assert.ok(/sv-card/.test(cls[mapI + 1] || ''), 'the single-order card IMMEDIATELY follows the map (no gap node between)');
+  assert.ok(r.activeEl().classList.contains('solo'), 'lone promoted order → solo layout (equals a direct apParada2 render)');
 });
 
 // 5. Staleness drives the map render: fresh fix → not stale; old fix → stale (dimmed) class.
@@ -495,22 +531,24 @@ t('map staleness: a fresh last_location_ts renders a live map; an old one render
 
 // 6. SLICE2:QUEUE-IDENTITY: tapping a real queued card opens the read-only sheet (NO nav — owner ruling
 //    2026-10-23); a stale card whose orderId left the queue FAILS CLOSED (no index fallback, no wrong-stop sheet).
-t('queue identity: tapping B opens the read-only sheet for B (NO nav — owner ruling); a stale/gone card is a no-op', () => {
-  const r = run({ orders: [delivery('A'), delivery('B', { dn: 'B', name: 'Carlos' })], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH } });
-  r.clickCard('.qcard[data-order-id="B"]');
+t('queue identity: tapping a queue-slot after-card opens the read-only sheet by orderId (NO nav — owner ruling); a stale/gone card is a no-op', () => {
+  // 3 stops → C is a real #queue-slot after-card (B is the in-card preview). The #screen-onshift delegate resolves
+  // the tap by data-order-id against a FRESHLY computed board and opens the read-only sheet.
+  const r = run({ orders: [delivery('A'), delivery('B'), delivery('C', { name: 'Carlos' })], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH } });
+  r.clickCard('.after-card[data-order-id="C"]');
   assert.ok(r.sheetOpen(), 'sheet opened for the resolved order');
   const s = r.sheet();
-  assert.ok(s.includes('Carlos'), 'sheet shows B’s customer');
+  assert.ok(s.includes('Carlos'), 'sheet shows C’s customer');
   assert.ok(!s.includes('waze-btn') && !s.includes('maps-btn') && !s.includes('nav-row'), 'read-only sheet has NO nav (owner ruling 2026-10-23 supersedes Codex P1-1)');
-  assert.ok(s.includes('Orden de entrega asignada por despacho.'), 'completion-lock copy present');
+  assert.ok(s.includes('nunca se entrega fuera de orden'), 'completion-lock copy present');
   assert.ok(s.includes('id="queue-sheet-close"'), 'close hook present');
-  // Fail-closed: inject a stale card for an order no longer in the queue and tap it → no sheet change.
+  // Fail-closed: inject a stale after-card for an order no longer on the board and tap it → no sheet change.
   r.document.getElementById('queue-sheet').classList.remove('open');
   const stale = r.document.createElement('div');
-  stale.className = 'qcard'; stale.setAttribute('data-order-id', 'GONE'); stale.setAttribute('data-q', '0');
+  stale.className = 'after-card'; stale.setAttribute('data-order-id', 'GONE');
   r.document.getElementById('queue-slot').appendChild(stale);
   stale.dispatchEvent(new r.window.MouseEvent('click', { bubbles: true, cancelable: true }));
-  assert.equal(r.sheetOpen(), false, 'a card whose orderId is gone from the queue fails CLOSED (no index fallback)');
+  assert.equal(r.sheetOpen(), false, 'a card whose orderId is gone from the board fails CLOSED (no index fallback)');
 });
 
 // ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -755,8 +793,12 @@ t('runReal queue-sheet (owner ruling 2026-10-23): a queued order opens a READ-ON
     { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, lat: 15.40, lng: -88.00 },
     { id: 'B', pickup: TASK_STATUS.ACCEPTED, delivery: TASK_STATUS.ACCEPTED, hub: HUBM, created: 2, lat: 15.45, lng: -88.05, addr: 'Res. Los Robles' },
   ]) });
-  assert.ok(r.queue().includes('data-order-id="B"'), 'B (still pickup phase) is queued');
-  r.clickCard('.qcard[data-order-id="B"]');
+  // With 2 stops, the queued B is the in-card «Después» preview (after-card). Tapping it bubbles to the
+  // #screen-onshift delegate, which resolves by orderId and opens the read-only sheet.
+  assert.ok(r.active().includes('class="after-card" data-order-id="B"'), 'B (still pickup phase) is the in-card preview');
+  const bCard = r.document.querySelector('.after-card[data-order-id="B"]');
+  assert.ok(bCard, 'B after-card present');
+  bCard.dispatchEvent(new r.window.MouseEvent('click', { bubbles: true, cancelable: true }));
   assert.ok(r.sheetOpen(), 'sheet opened for B');
   const s = r.sheet();
   assert.ok(s.includes('Res. Los Robles'), 'read-only sheet still shows B’s CUSTOMER address (info)');
@@ -924,13 +966,15 @@ t('runReal deferred-render privacy (kills drv2-29): a queued order gone to await
     { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Ana' },
     { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2, name: 'Beto Secreto' },
   ]) });
-  assert.ok(r.queue().includes('data-order-id="B"'), 'B starts accepted + queued');
+  assert.ok(r.active().includes('class="after-card" data-order-id="B"'), 'B starts accepted + queued (the in-card preview)');
   const d = r.prep('btn-delivered'); r.down(d);   // begin A's completion drag → slidingEl set
   // B goes back to awaiting_acceptance in the feed; the render DEFERS (drag in progress) so B's card is RETAINED/stale.
   r.read('tasks/B_p').status = TASK_STATUS.ASSIGNED; r.read('tasks/B_d').status = TASK_STATUS.ASSIGNED;
-  r.render();   // deferred under the drag — the stale B card stays in the DOM
-  r.clickCard('.qcard[data-order-id="B"]');
-  assert.ok(!r.sheetOpen(), 'the sheet does NOT open for an order now awaiting (QUEUE-IDENTITY awaiting gate)');
+  r.render();   // deferred under the drag — the stale B after-card stays in the DOM
+  const staleB = r.document.querySelector('.after-card[data-order-id="B"]');
+  assert.ok(staleB, 'the stale B after-card is retained under the deferred render');
+  staleB.dispatchEvent(new r.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  assert.ok(!r.sheetOpen(), 'the sheet does NOT open for an order now awaiting (STACKED-HANDLERS awaiting gate)');
   assert.ok(!r.sheet().includes('Beto Secreto') && !r.sheet().includes('99998888') && !r.sheet().includes('waze-btn'), 'no awaiting-order name/phone/nav leaked into the sheet body');
   r.move(20); await r.up(20);   // finish the drag (below threshold)
 });
