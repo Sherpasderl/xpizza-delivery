@@ -22,6 +22,9 @@ test('exactly three mutation sites: 1 assign + 1 reassign + 1 unassign + 1 own s
   assert.equal(assigns, 1, `expected exactly 1 assignOrderToDriver call, found ${assigns}`);
   assert.equal(reassigns, 1, `expected exactly 1 reassignOrder call, found ${reassigns}`);
   assert.equal(unassigns, 1, `expected exactly 1 unassignOrder call, found ${unassigns}`);
+  // (4) dismiss a dispatcher alert (driver_problem), via XPD.dismissDispatcherAlert — removal only, exactly once.
+  const dismisses = (html.match(/XPD\.dismissDispatcherAlert\s*\(/g) || []).length;
+  assert.equal(dismisses, 1, `expected exactly 1 dismissDispatcherAlert call, found ${dismisses}`);
   // the ONLY sanctioned direct RTDB write: set(ref(XPD.getDb(), `staff_push/${uid}`), …)
   const staffPushWrites = (html.match(/set\(\s*ref\(\s*XPD\.getDb\(\)\s*,\s*`staff_push\//g) || []).length;
   assert.equal(staffPushWrites, 1, `expected exactly 1 staff_push write, found ${staffPushWrites}`);
@@ -34,7 +37,7 @@ test('exactly three mutation sites: 1 assign + 1 reassign + 1 unassign + 1 own s
 // Access validation (codex P2-3): counting literal `XPD.foo(` is not enough — bracket access and aliasing bypass
 // it. Every reference to a mutation method must be a DIRECT dotted call at an approved site. `accessViolations`
 // is pure so the three documented bypasses can be driven as sensitivity cells (not just asserted on index.html).
-const MUTATIONS = ['assignOrderToDriver', 'reassignOrder', 'unassignOrder'];
+const MUTATIONS = ['assignOrderToDriver', 'reassignOrder', 'unassignOrder', 'dismissDispatcherAlert'];
 function accessViolations(src) {
   const v = [];
   // (a) no computed/bracket access to the SDK object — hides XPD["unassignOrder"](…) and XPD["cancel…"](…)
@@ -44,7 +47,7 @@ function accessViolations(src) {
   if (/(?:const|let|var)\s+\w+\s*=\s*XPD\s*;/.test(src)) v.push('aliasing the XPD object');
   // (c) no method aliasing: `const release = XPD.unassignOrder` (+ the cancel family) — and every mutation
   //     reference must be immediately a call (refs === calls), so a bare `XPD.unassignOrder` without `(` fails.
-  if (/(?:const|let|var)\s+\w+\s*=\s*XPD\.(assignOrderToDriver|reassignOrder|unassignOrder|cancel\w*)\b/.test(src))
+  if (/(?:const|let|var)\s+\w+\s*=\s*XPD\.(assignOrderToDriver|reassignOrder|unassignOrder|dismissDispatcherAlert|cancel\w*)\b/.test(src))
     v.push('aliasing an XPD mutation method');
   for (const m of MUTATIONS) {
     const refs  = (src.match(new RegExp(`XPD\\.${m}\\b`, 'g')) || []).length;

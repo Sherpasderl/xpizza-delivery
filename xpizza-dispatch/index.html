@@ -2657,7 +2657,7 @@ import { getFunctions as draGetFunctions, httpsCallable as draHttpsCallable } fr
 import { createGlideEngine } from './driver-glide.js?v=2';
 import { etaEligible, projectArrival, relativeEta, clockTime, dueForRefresh, distanceMeters } from './driver-eta.js?v=1';
 // ── Dispatch Phase-1 pure modules (Torre de Control redesign) ──
-import { classifyAlert, sortAlertEntries, driverProblemReasonLabel } from './dispatch-alerts.js?v=3';
+import { classifyAlert, sortAlertEntries, driverProblemReasonLabel, driverProblemContent } from './dispatch-alerts.js?v=4';
 import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js?v=2';
 import { isStalledAssignment } from './dispatch-stalled.js?v=2';
 import { alertNavTarget, enFilaAttentionCount } from './dispatch-alert-nav.js?v=2';
@@ -3245,16 +3245,11 @@ function alertContent(a) {
       return { title: 'Repartidor desactivado con trabajo',
         detail: `${name} fue desactivado pero ${what} — reasigná su trabajo con <strong>Reasignar</strong>.` };
     }
-    case 'driver_problem': {
+    case 'driver_problem':
       // DRIVER F — a driver's «Problema con este pedido» report: which order, why (the approved reason label), who, and the
-      // driver's own note (escaped). Dispatch decides what happens; the order itself never changed. Tested by
-      // dispatch-driver-problem.test.mjs against the server core's payload.
-      const name = escapeHtml(a.driver_name || allDrivers[a.driver_uid]?.name || 'Un repartidor');
-      const note = typeof a.note === 'string' && a.note ? ` — ${escapeHtml(a.note)}` : '';
-      const ord = Number.isFinite(a.display_number) ? { order_id: a.order_id, display_number: a.display_number } : a.order_id;   // the alert's own number, else the page's
-      return { title: 'Problema con el pedido',
-        detail: `Pedido ${label(ord)} · ${escapeHtml(driverProblemReasonLabel(a.reason))} · ${name}${note}` };
-    }
+      // driver's own note (escaped). Content now lives in the shared pure builder (ONE copy, used by the mobile Torre too);
+      // byte-identical to the previous inline assembly. Tested by dispatch-driver-problem.test.mjs.
+      return driverProblemContent(a, { label, resolveDriverName: (x) => x.driver_name || allDrivers[x.driver_uid]?.name || 'Un repartidor', escapeHtml });
     default: {
       // Fallback bucket (factura_* / unknown / no-type) — humanize, NEVER drop.
       const humanType = String(a.type || '').replace(/^(payment|factura)_/, '').replace(/_/g, ' ').trim();

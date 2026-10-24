@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { classifyAlert, sortAlertEntries, driverProblemReasonLabel } from './dispatch-alerts.js';
+import { classifyAlert, sortAlertEntries, driverProblemReasonLabel, driverProblemContent } from './dispatch-alerts.js';
 
 const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -32,20 +32,20 @@ assert.ok(colaLine, 'premise — COLA_OWNED_ALERT_TYPES is findable');
 const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // the page's import must carry the new export and a bumped cache key (a stale cached module would lack driverProblemReasonLabel)
-assert.match(html, /import \{ classifyAlert, sortAlertEntries, driverProblemReasonLabel \} from '\.\/dispatch-alerts\.js\?v=3';/, 'DRVF-TORRE-IMPORT the page imports the label helper with a bumped ?v');
+assert.match(html, /import \{ classifyAlert, sortAlertEntries, driverProblemReasonLabel, driverProblemContent \} from '\.\/dispatch-alerts\.js\?v=4';/, 'DRVF-TORRE-IMPORT the page imports the helpers (incl. the extracted driverProblemContent) with a bumped ?v');
 
 function build({ allOrders = {}, allDrivers = {} } = {}) {
   // eslint-disable-next-line no-new-func
-  return new Function('escapeHtml', 'allOrders', 'allDrivers', 'driverProblemReasonLabel',
-    `${lift('displayOrderLabel')}; ${lift('alertContent')}; return alertContent;`)(escapeHtml, allOrders, allDrivers, driverProblemReasonLabel);
+  return new Function('escapeHtml', 'allOrders', 'allDrivers', 'driverProblemReasonLabel', 'driverProblemContent',
+    `${lift('displayOrderLabel')}; ${lift('alertContent')}; return alertContent;`)(escapeHtml, allOrders, allDrivers, driverProblemReasonLabel, driverProblemContent);
 }
 function buildRender({ allOrders = {}, allDrivers = {} } = {}) {
   const els = {};
   const $ = (id) => (els[id] = els[id] || { innerHTML: '', textContent: '', hidden: false, classList: { toggle() {}, add() {}, remove() {} }, querySelectorAll: () => [] });
   // eslint-disable-next-line no-new-func
-  const render = new Function('escapeHtml', 'allOrders', 'allDrivers', 'driverProblemReasonLabel', '$', 'sortAlertEntries',
+  const render = new Function('escapeHtml', 'allOrders', 'allDrivers', 'driverProblemReasonLabel', 'driverProblemContent', '$', 'sortAlertEntries',
     `${colaLine[0]}; ${lift('displayOrderLabel')}; ${lift('alertContent')}; ${lift('renderDispatcherAlerts')}; return renderDispatcherAlerts;`)(
-    escapeHtml, allOrders, allDrivers, driverProblemReasonLabel, $, sortAlertEntries);
+    escapeHtml, allOrders, allDrivers, driverProblemReasonLabel, driverProblemContent, $, sortAlertEntries);
   return { render, els };
 }
 
