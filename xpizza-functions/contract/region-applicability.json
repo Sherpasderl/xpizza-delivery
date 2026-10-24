@@ -4330,7 +4330,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "const label = brandLabel(order);",
     "siteSha": "565f2a9a2162393f276f9430ee90ef1bf2aa52d69bb5ec3001e503adbe974a4f",
@@ -4360,12 +4360,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -4378,9 +4380,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -4479,51 +4482,46 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "C",
@@ -4531,7 +4529,9 @@
      "callers": [
       "xpizza-driver/brand-helpers.js#brandMeta",
       "xpizza-driver/brand-helpers.js#driverGreeting",
-      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml",
+      "xpizza-driver/stacked-view.js#destinationLabel",
+      "xpizza-driver/stacked-view.js#offerScreenHtml>anon"
      ]
     },
     {
@@ -4540,6 +4540,7 @@
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 3,
       "xpizza-driver/single-order-view.js#xpizza-driver": 4,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-functions/staff-push.js#functions": 3
      }
     },
@@ -4548,7 +4549,8 @@
      "output": "xpizza-driver/brand-helpers.js#brandMeta",
      "callers": [
       "xpizza-driver/index.html<script@0>#restaurantMeta",
-      "xpizza-driver/single-order-view.js#svChip"
+      "xpizza-driver/single-order-view.js#svChip",
+      "xpizza-driver/stacked-view.js#rchip"
      ]
     },
     {
@@ -4557,7 +4559,8 @@
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 3
+      "xpizza-driver/single-order-view.js#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 5
      }
     },
     {
@@ -4566,7 +4569,8 @@
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 4,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 4
+      "xpizza-driver/single-order-view.js#xpizza-driver": 4,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 2
      }
     },
     {
@@ -4580,7 +4584,8 @@
      "kind": "R",
      "name": "restaurantChip",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 2
      }
     }
    ],
@@ -4611,7 +4616,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "const label = brandLabel(order);",
     "siteSha": "565f2a9a2162393f276f9430ee90ef1bf2aa52d69bb5ec3001e503adbe974a4f",
@@ -4641,12 +4646,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -4659,9 +4666,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -4760,51 +4768,46 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "C",
@@ -4812,7 +4815,9 @@
      "callers": [
       "xpizza-driver/brand-helpers.js#brandMeta",
       "xpizza-driver/brand-helpers.js#driverGreeting",
-      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml",
+      "xpizza-driver/stacked-view.js#destinationLabel",
+      "xpizza-driver/stacked-view.js#offerScreenHtml>anon"
      ]
     },
     {
@@ -4821,6 +4826,7 @@
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 3,
       "xpizza-driver/single-order-view.js#xpizza-driver": 4,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-functions/staff-push.js#functions": 3
      }
     },
@@ -4829,7 +4835,8 @@
      "output": "xpizza-driver/brand-helpers.js#brandMeta",
      "callers": [
       "xpizza-driver/index.html<script@0>#restaurantMeta",
-      "xpizza-driver/single-order-view.js#svChip"
+      "xpizza-driver/single-order-view.js#svChip",
+      "xpizza-driver/stacked-view.js#rchip"
      ]
     },
     {
@@ -4838,7 +4845,8 @@
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 3
+      "xpizza-driver/single-order-view.js#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 5
      }
     },
     {
@@ -4847,7 +4855,8 @@
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 4,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 4
+      "xpizza-driver/single-order-view.js#xpizza-driver": 4,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 2
      }
     },
     {
@@ -4861,7 +4870,8 @@
      "kind": "R",
      "name": "restaurantChip",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 2
      }
     }
    ],
@@ -4892,7 +4902,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "return brandMeta(order);",
     "siteSha": "1b782bc78457abdf5a5974ab60f161022cc7761023a0ddd9b81b7903c6f5d1f5",
@@ -4922,12 +4932,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -4940,9 +4952,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -5041,51 +5054,46 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "C",
@@ -5093,7 +5101,9 @@
      "callers": [
       "xpizza-driver/brand-helpers.js#brandMeta",
       "xpizza-driver/brand-helpers.js#driverGreeting",
-      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml",
+      "xpizza-driver/stacked-view.js#destinationLabel",
+      "xpizza-driver/stacked-view.js#offerScreenHtml>anon"
      ]
     },
     {
@@ -5102,6 +5112,7 @@
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 3,
       "xpizza-driver/single-order-view.js#xpizza-driver": 4,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-functions/staff-push.js#functions": 3
      }
     },
@@ -5110,7 +5121,8 @@
      "output": "xpizza-driver/brand-helpers.js#brandMeta",
      "callers": [
       "xpizza-driver/index.html<script@0>#restaurantMeta",
-      "xpizza-driver/single-order-view.js#svChip"
+      "xpizza-driver/single-order-view.js#svChip",
+      "xpizza-driver/stacked-view.js#rchip"
      ]
     },
     {
@@ -5119,7 +5131,8 @@
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 3
+      "xpizza-driver/single-order-view.js#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 5
      }
     },
     {
@@ -5128,7 +5141,8 @@
      "counts": {
       "xpizza-driver/brand-helpers.js#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 4,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 4
+      "xpizza-driver/single-order-view.js#xpizza-driver": 4,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 2
      }
     },
     {
@@ -5142,7 +5156,8 @@
      "kind": "R",
      "name": "restaurantChip",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 2
      }
     }
    ],
@@ -5319,7 +5334,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "const c = collectionFor(order);",
     "siteSha": "380a85ccab6e6f1770a1636d1b79e29106d7c04042cf5ac0e72da4bfe91df920",
@@ -5349,12 +5364,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -5367,9 +5384,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -5468,58 +5486,54 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/cash-helpers.js#paymentRowHtml",
      "callers": [
       "xpizza-driver/index.html<script@0>#renderActiveCard",
-      "xpizza-driver/index.html<script@0>#renderQueueDetail"
+      "xpizza-driver/index.html<script@0>#renderQueueDetail",
+      "xpizza-driver/stacked-view.js#activeCardHtml"
      ]
     },
     {
@@ -5527,14 +5541,16 @@
      "name": "paymentRowHtml",
      "counts": {
       "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "C",
      "output": "xpizza-driver/cash-helpers.js#queuePayHtml",
      "callers": [
-      "xpizza-driver/index.html<script@0>#renderQueue>anon"
+      "xpizza-driver/index.html<script@0>#renderQueue>anon",
+      "xpizza-driver/stacked-view.js#queueHtml>anon"
      ]
     },
     {
@@ -5542,7 +5558,8 @@
      "name": "queuePayHtml",
      "counts": {
       "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
@@ -5579,7 +5596,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "const c = collectionFor(order);",
     "siteSha": "380a85ccab6e6f1770a1636d1b79e29106d7c04042cf5ac0e72da4bfe91df920",
@@ -5609,12 +5626,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -5627,9 +5646,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -5728,58 +5748,54 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/cash-helpers.js#paymentRowHtml",
      "callers": [
       "xpizza-driver/index.html<script@0>#renderActiveCard",
-      "xpizza-driver/index.html<script@0>#renderQueueDetail"
+      "xpizza-driver/index.html<script@0>#renderQueueDetail",
+      "xpizza-driver/stacked-view.js#activeCardHtml"
      ]
     },
     {
@@ -5787,14 +5803,16 @@
      "name": "paymentRowHtml",
      "counts": {
       "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "C",
      "output": "xpizza-driver/cash-helpers.js#queuePayHtml",
      "callers": [
-      "xpizza-driver/index.html<script@0>#renderQueue>anon"
+      "xpizza-driver/index.html<script@0>#renderQueue>anon",
+      "xpizza-driver/stacked-view.js#queueHtml>anon"
      ]
     },
     {
@@ -5802,7 +5820,8 @@
      "name": "queuePayHtml",
      "counts": {
       "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
@@ -5839,7 +5858,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "if (collectionFor(order).kind !== 'cash') return '';   // vuelto only for cash-collected orders (never online/card/free/warning)",
     "siteSha": "90659a58fb89c200173051448e2efc9eab4e0a44d0eb76f6e4acdd43f965e1cd",
@@ -5869,12 +5888,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -5887,9 +5908,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -5988,58 +6010,54 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/cash-helpers.js#paymentRowHtml",
      "callers": [
       "xpizza-driver/index.html<script@0>#renderActiveCard",
-      "xpizza-driver/index.html<script@0>#renderQueueDetail"
+      "xpizza-driver/index.html<script@0>#renderQueueDetail",
+      "xpizza-driver/stacked-view.js#activeCardHtml"
      ]
     },
     {
@@ -6047,14 +6065,16 @@
      "name": "paymentRowHtml",
      "counts": {
       "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "C",
      "output": "xpizza-driver/cash-helpers.js#queuePayHtml",
      "callers": [
-      "xpizza-driver/index.html<script@0>#renderQueue>anon"
+      "xpizza-driver/index.html<script@0>#renderQueue>anon",
+      "xpizza-driver/stacked-view.js#queueHtml>anon"
      ]
     },
     {
@@ -6062,7 +6082,8 @@
      "name": "queuePayHtml",
      "counts": {
       "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
@@ -6099,7 +6120,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "${paymentRowHtml(order, escapeHtml)}",
     "siteSha": "bbb4d499e68bfa884321566eab992d8adf774e2bfe930ae563480af42cb95932",
@@ -6129,12 +6150,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -6147,9 +6170,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -6248,58 +6272,54 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/cash-helpers.js#paymentRowHtml",
      "callers": [
       "xpizza-driver/index.html<script@0>#renderActiveCard",
-      "xpizza-driver/index.html<script@0>#renderQueueDetail"
+      "xpizza-driver/index.html<script@0>#renderQueueDetail",
+      "xpizza-driver/stacked-view.js#activeCardHtml"
      ]
     },
     {
@@ -6307,7 +6327,8 @@
      "name": "paymentRowHtml",
      "counts": {
       "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     }
    ],
@@ -6338,7 +6359,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "${paymentRowHtml(order, escapeHtml)}",
     "siteSha": "bbb4d499e68bfa884321566eab992d8adf774e2bfe930ae563480af42cb95932",
@@ -6368,12 +6389,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -6386,9 +6409,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -6487,58 +6511,54 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/cash-helpers.js#paymentRowHtml",
      "callers": [
       "xpizza-driver/index.html<script@0>#renderActiveCard",
-      "xpizza-driver/index.html<script@0>#renderQueueDetail"
+      "xpizza-driver/index.html<script@0>#renderQueueDetail",
+      "xpizza-driver/stacked-view.js#activeCardHtml"
      ]
     },
     {
@@ -6546,7 +6566,8 @@
      "name": "paymentRowHtml",
      "counts": {
       "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     }
    ],
@@ -6577,7 +6598,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "${queuePayHtml(order, escapeHtml)}",
     "siteSha": "e60b113eb28319f54f2cdfad3c4e91b199f56326cc521e1e1dbc9c8f0455a7f4",
@@ -6607,12 +6628,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -6625,9 +6648,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -6726,57 +6750,53 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/cash-helpers.js#queuePayHtml",
      "callers": [
-      "xpizza-driver/index.html<script@0>#renderQueue>anon"
+      "xpizza-driver/index.html<script@0>#renderQueue>anon",
+      "xpizza-driver/stacked-view.js#queueHtml>anon"
      ]
     },
     {
@@ -6784,7 +6804,8 @@
      "name": "queuePayHtml",
      "counts": {
       "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     }
    ],
@@ -6877,452 +6898,6 @@
      "S1|x_pizza|new",
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|assigned"
-    ]
-   }
-  },
-  "xpizza-driver/index.html<script@0>#renderActiveCard>anon@self": {
-   "group": "driverBoard",
-   "appliesWhenAny": [
-    {
-     "driver": [
-      "assigned",
-      "reassigned"
-     ],
-     "terminal": [
-      "none"
-     ]
-    }
-   ],
-   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
-   "bind": {
-    "site": "s => `<div class=\"item\">${escapeHtml(s.trim())}</div>`",
-    "siteSha": "86a6ed2107d0ca9981435a699ceee38be01b322add12ed4dd09ba432b74d79a9",
-    "scope": "xpizza-driver/index.html<script@0>#renderActiveCard>anon",
-    "scopeSha": "cdeafe3c562fc20eb770ef33fbbee13b7d04c61a53768fc5f53213dc2656d164"
-   },
-   "guards": [
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
-     "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
-     "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#handleEndShift",
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "getDriverOrders",
-     "counts": {
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
-      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
-      "xpizza-functions/tracking/derive.js#functions": 3,
-      "xpizza-functions/tracking/driver-orders.js#functions": 5,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
-     "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-dispatch/xpizza-delivery.js#completeTask",
-     "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "d6afa905ad9ab28ae3aae6401efcc8b1975a5962c274163c045916360d5b9da5"
-    },
-    {
-     "kind": "R",
-     "name": "DELIVERED",
-     "counts": {
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
-      "xpizza-driver/driver-complete.js#xpizza-driver": 3,
-      "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
-      "xpizza-functions/index.js#functions": 1,
-      "xpizza-functions/resolve-manual.js#functions": 1,
-      "xpizza-kitchen/order-filter.js#xpizza-kitchen": 1,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
-     "text": "if (!entersTerminalEdge(before, after, REALTIME_TERMINAL_STATUSES)) return;",
-     "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
-     "text": "await captureDeliveryAttributionAndDelete(db, orderId);",
-     "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
-     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
-     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
-     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
-     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/tasks-retention.js",
-     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/index.js",
-     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/index.js",
-     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
-    },
-    {
-     "kind": "R",
-     "name": "captureDeliveryAttributionAndDelete",
-     "counts": {
-      "xpizza-functions/driver-attribution.js#functions": 4,
-      "xpizza-functions/index.js#functions": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "entersTerminalEdge",
-     "counts": {
-      "xpizza-functions/index.js#functions": 2,
-      "xpizza-functions/tasks-retention.js#functions": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "REALTIME_TERMINAL_STATUSES",
-     "counts": {
-      "xpizza-functions/driver-attribution.js#functions": 2,
-      "xpizza-functions/index.js#functions": 3,
-      "xpizza-functions/tasks-retention.js#functions": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "renderActiveCard",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderQueue",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderIncomingBanners",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "renderQueueDetail",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
-    }
-   ],
-   "cases": {
-    "required": [
-     "S1|x_pizza|assigned",
-     "S1t-a|x_pizza|assigned",
-     "S1a-on|x_pizza|assigned"
-    ],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|delivered"
-    ]
-   }
-  },
-  "xpizza-driver/index.html<script@0>#renderActiveCard@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
-   "group": "driverBoard",
-   "appliesWhenAny": [
-    {
-     "driver": [
-      "assigned",
-      "reassigned"
-     ],
-     "terminal": [
-      "none"
-     ]
-    }
-   ],
-   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
-   "bind": {
-    "site": "activeSlot.innerHTML = renderActiveCard(active, solo);",
-    "siteSha": "bc320b81debf0e4fe71c8b56a5f2b835d981b0bc8f8452896081c5c49c20fc6d",
-    "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
-    "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
-   },
-   "guards": [
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
-     "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
-     "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#handleEndShift",
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "getDriverOrders",
-     "counts": {
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
-      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
-      "xpizza-functions/tracking/derive.js#functions": 3,
-      "xpizza-functions/tracking/driver-orders.js#functions": 5,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
-     "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-dispatch/xpizza-delivery.js#completeTask",
-     "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "d6afa905ad9ab28ae3aae6401efcc8b1975a5962c274163c045916360d5b9da5"
-    },
-    {
-     "kind": "R",
-     "name": "DELIVERED",
-     "counts": {
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
-      "xpizza-driver/driver-complete.js#xpizza-driver": 3,
-      "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
-      "xpizza-functions/index.js#functions": 1,
-      "xpizza-functions/resolve-manual.js#functions": 1,
-      "xpizza-kitchen/order-filter.js#xpizza-kitchen": 1,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
-     "text": "if (!entersTerminalEdge(before, after, REALTIME_TERMINAL_STATUSES)) return;",
-     "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
-     "text": "await captureDeliveryAttributionAndDelete(db, orderId);",
-     "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
-     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
-     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
-     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
-     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/tasks-retention.js",
-     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/index.js",
-     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/index.js",
-     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
-    },
-    {
-     "kind": "R",
-     "name": "captureDeliveryAttributionAndDelete",
-     "counts": {
-      "xpizza-functions/driver-attribution.js#functions": 4,
-      "xpizza-functions/index.js#functions": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "entersTerminalEdge",
-     "counts": {
-      "xpizza-functions/index.js#functions": 2,
-      "xpizza-functions/tasks-retention.js#functions": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "REALTIME_TERMINAL_STATUSES",
-     "counts": {
-      "xpizza-functions/driver-attribution.js#functions": 2,
-      "xpizza-functions/index.js#functions": 3,
-      "xpizza-functions/tasks-retention.js#functions": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "renderActiveCard",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderQueue",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderIncomingBanners",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "renderQueueDetail",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
-    }
-   ],
-   "cases": {
-    "required": [
-     "S1|x_pizza|assigned",
-     "S1t-a|x_pizza|assigned",
-     "S1a-on|x_pizza|assigned"
-    ],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|delivered"
     ]
    }
   },
@@ -7472,675 +7047,6 @@
     ]
    }
   },
-  "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon@self": {
-   "group": "driverBoard",
-   "appliesWhenAny": [
-    {
-     "driver": [
-      "assigned",
-      "reassigned"
-     ],
-     "terminal": [
-      "none"
-     ]
-    }
-   ],
-   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
-   "bind": {
-    "site": "o => {",
-    "siteSha": "e11a39d909aa3289fa248d2557e3c320228524007c7c674b82f8f339152acc83",
-    "scope": "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon",
-    "scopeSha": "2774d3061e3dc4251b11d72a30bff579429e1b3bfaf55d17f61d263d4a068d87"
-   },
-   "guards": [
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
-     "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
-     "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#handleEndShift",
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "getDriverOrders",
-     "counts": {
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
-      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
-      "xpizza-functions/tracking/derive.js#functions": 3,
-      "xpizza-functions/tracking/driver-orders.js#functions": 5,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
-     "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-dispatch/xpizza-delivery.js#completeTask",
-     "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "d6afa905ad9ab28ae3aae6401efcc8b1975a5962c274163c045916360d5b9da5"
-    },
-    {
-     "kind": "R",
-     "name": "DELIVERED",
-     "counts": {
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
-      "xpizza-driver/driver-complete.js#xpizza-driver": 3,
-      "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
-      "xpizza-functions/index.js#functions": 1,
-      "xpizza-functions/resolve-manual.js#functions": 1,
-      "xpizza-kitchen/order-filter.js#xpizza-kitchen": 1,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
-     "text": "if (!entersTerminalEdge(before, after, REALTIME_TERMINAL_STATUSES)) return;",
-     "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
-     "text": "await captureDeliveryAttributionAndDelete(db, orderId);",
-     "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
-     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
-     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
-     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
-     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/tasks-retention.js",
-     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/index.js",
-     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/index.js",
-     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
-    },
-    {
-     "kind": "R",
-     "name": "captureDeliveryAttributionAndDelete",
-     "counts": {
-      "xpizza-functions/driver-attribution.js#functions": 4,
-      "xpizza-functions/index.js#functions": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "entersTerminalEdge",
-     "counts": {
-      "xpizza-functions/index.js#functions": 2,
-      "xpizza-functions/tasks-retention.js#functions": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "REALTIME_TERMINAL_STATUSES",
-     "counts": {
-      "xpizza-functions/driver-attribution.js#functions": 2,
-      "xpizza-functions/index.js#functions": 3,
-      "xpizza-functions/tasks-retention.js#functions": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "renderActiveCard",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderQueue",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderIncomingBanners",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "renderQueueDetail",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
-    }
-   ],
-   "cases": {
-    "required": [
-     "S1|x_pizza|assigned",
-     "S1t-a|x_pizza|assigned",
-     "S1a-on|x_pizza|assigned"
-    ],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|delivered"
-    ]
-   }
-  },
-  "xpizza-driver/index.html<script@0>#renderQueue>anon@self": {
-   "group": "driverBoard",
-   "appliesWhenAny": [
-    {
-     "driver": [
-      "assigned",
-      "reassigned"
-     ],
-     "terminal": [
-      "none"
-     ]
-    }
-   ],
-   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
-   "bind": {
-    "site": "(o, i) => {",
-    "siteSha": "69616695c0f5f8ccce4cdda52056cc52350bb3cd7c897b43328d4eb341a7dba1",
-    "scope": "xpizza-driver/index.html<script@0>#renderQueue>anon",
-    "scopeSha": "5c33bb76357800298e1f0149553ec17bd3cb68c70e15b29ffb602435869f6035"
-   },
-   "guards": [
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
-     "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
-     "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#handleEndShift",
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "getDriverOrders",
-     "counts": {
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
-      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
-      "xpizza-functions/tracking/derive.js#functions": 3,
-      "xpizza-functions/tracking/driver-orders.js#functions": 5,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
-     "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-dispatch/xpizza-delivery.js#completeTask",
-     "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "d6afa905ad9ab28ae3aae6401efcc8b1975a5962c274163c045916360d5b9da5"
-    },
-    {
-     "kind": "R",
-     "name": "DELIVERED",
-     "counts": {
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
-      "xpizza-driver/driver-complete.js#xpizza-driver": 3,
-      "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
-      "xpizza-functions/index.js#functions": 1,
-      "xpizza-functions/resolve-manual.js#functions": 1,
-      "xpizza-kitchen/order-filter.js#xpizza-kitchen": 1,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
-     "text": "if (!entersTerminalEdge(before, after, REALTIME_TERMINAL_STATUSES)) return;",
-     "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
-     "text": "await captureDeliveryAttributionAndDelete(db, orderId);",
-     "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
-     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
-     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
-     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
-     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/tasks-retention.js",
-     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/index.js",
-     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/index.js",
-     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
-    },
-    {
-     "kind": "R",
-     "name": "captureDeliveryAttributionAndDelete",
-     "counts": {
-      "xpizza-functions/driver-attribution.js#functions": 4,
-      "xpizza-functions/index.js#functions": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "entersTerminalEdge",
-     "counts": {
-      "xpizza-functions/index.js#functions": 2,
-      "xpizza-functions/tasks-retention.js#functions": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "REALTIME_TERMINAL_STATUSES",
-     "counts": {
-      "xpizza-functions/driver-attribution.js#functions": 2,
-      "xpizza-functions/index.js#functions": 3,
-      "xpizza-functions/tasks-retention.js#functions": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "renderActiveCard",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderQueue",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderIncomingBanners",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "renderQueueDetail",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
-    }
-   ],
-   "cases": {
-    "required": [
-     "S1|x_pizza|assigned",
-     "S1t-a|x_pizza|assigned",
-     "S1a-on|x_pizza|assigned"
-    ],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|delivered"
-    ]
-   }
-  },
-  "xpizza-driver/index.html<script@0>#renderQueueDetail@xpizza-driver/index.html<script@0>#<top>>anon": {
-   "group": "driverBoard",
-   "appliesWhenAny": [
-    {
-     "driver": [
-      "assigned",
-      "reassigned"
-     ],
-     "terminal": [
-      "none"
-     ]
-    }
-   ],
-   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
-   "bind": {
-    "site": "$('queue-sheet-body').innerHTML = renderQueueDetail(o, i + 2);",
-    "siteSha": "b54fc32960294228c224efedf87b702d3a2f83a43f094e6f90d28486d7dd0ccb",
-    "scope": "xpizza-driver/index.html<script@0>#<top>>anon",
-    "scopeSha": "eb6c8d182121e9cb1f494d72ceba8554ec077f3fcd02da9e4f5330ea1641cf30"
-   },
-   "guards": [
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon",
-     "text": "if (t.assigned_driver_id !== driverId) return;",
-     "scopeSha": "45a101fca544fbf2d346ffd484e67d2a03a52becd5896f321a8104488b917dc6"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "text": "if (phase === 'completed' && !includeCompleted) continue;",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "text": "if (delivery.status === TASK_STATUS.COMPLETED) phase = 'completed';",
-     "scopeSha": "4574b8c165c43918912f3db26ec6099834618b546b32404e4834ab6a1801577d"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
-     "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#handleEndShift",
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "getDriverOrders",
-     "counts": {
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
-      "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-driver/order-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 1,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
-      "xpizza-functions/tracking/derive.js#functions": 3,
-      "xpizza-functions/tracking/driver-orders.js#functions": 5,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
-     "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-dispatch/xpizza-delivery.js#completeTask",
-     "text": "updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;",
-     "scopeSha": "d6afa905ad9ab28ae3aae6401efcc8b1975a5962c274163c045916360d5b9da5"
-    },
-    {
-     "kind": "R",
-     "name": "DELIVERED",
-     "counts": {
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
-      "xpizza-driver/driver-complete.js#xpizza-driver": 3,
-      "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
-      "xpizza-functions/index.js#functions": 1,
-      "xpizza-functions/resolve-manual.js#functions": 1,
-      "xpizza-kitchen/order-filter.js#xpizza-kitchen": 1,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
-     "text": "if (!entersTerminalEdge(before, after, REALTIME_TERMINAL_STATUSES)) return;",
-     "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
-     "text": "await captureDeliveryAttributionAndDelete(db, orderId);",
-     "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
-     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
-     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
-     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
-     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/tasks-retention.js",
-     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/index.js",
-     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-functions/index.js",
-     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
-    },
-    {
-     "kind": "R",
-     "name": "captureDeliveryAttributionAndDelete",
-     "counts": {
-      "xpizza-functions/driver-attribution.js#functions": 4,
-      "xpizza-functions/index.js#functions": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "entersTerminalEdge",
-     "counts": {
-      "xpizza-functions/index.js#functions": 2,
-      "xpizza-functions/tasks-retention.js#functions": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "REALTIME_TERMINAL_STATUSES",
-     "counts": {
-      "xpizza-functions/driver-attribution.js#functions": 2,
-      "xpizza-functions/index.js#functions": 3,
-      "xpizza-functions/tasks-retention.js#functions": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "renderActiveCard",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderQueue",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderIncomingBanners",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "renderQueueDetail",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "F",
-     "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
-    }
-   ],
-   "cases": {
-    "required": [
-     "S1|x_pizza|assigned",
-     "S1t-a|x_pizza|assigned",
-     "S1a-on|x_pizza|assigned"
-    ],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|delivered"
-    ]
-   }
-  },
   "xpizza-driver/index.html<script@0>#scheduledBadge@xpizza-driver/index.html<script@0>#renderActiveCard": {
    "group": "driverBoard",
    "appliesWhenAny": [
@@ -8155,7 +7061,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "${scheduledBadge(order)}",
     "siteSha": "7af405919535866e072b12a5ba044e0784e06462de324f2e022f9d7c706ac584",
@@ -8185,12 +7091,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -8203,9 +7111,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -8304,51 +7213,46 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "C",
@@ -8358,7 +7262,11 @@
       "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon",
       "xpizza-driver/index.html<script@0>#renderQueue>anon",
       "xpizza-driver/index.html<script@0>#renderQueueDetail",
-      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml",
+      "xpizza-driver/stacked-view.js#activeCardHtml",
+      "xpizza-driver/stacked-view.js#incomingBannerHtml>anon",
+      "xpizza-driver/stacked-view.js#queueDetailHtml",
+      "xpizza-driver/stacked-view.js#queueHtml>anon"
      ]
     },
     {
@@ -8366,8 +7274,9 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 8
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 10,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 8,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 10
      }
     }
    ],
@@ -8398,7 +7307,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "${scheduledBadge(order)}",
     "siteSha": "7af405919535866e072b12a5ba044e0784e06462de324f2e022f9d7c706ac584",
@@ -8428,12 +7337,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -8446,9 +7357,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -8547,51 +7459,46 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "C",
@@ -8601,7 +7508,11 @@
       "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon",
       "xpizza-driver/index.html<script@0>#renderQueue>anon",
       "xpizza-driver/index.html<script@0>#renderQueueDetail",
-      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml",
+      "xpizza-driver/stacked-view.js#activeCardHtml",
+      "xpizza-driver/stacked-view.js#incomingBannerHtml>anon",
+      "xpizza-driver/stacked-view.js#queueDetailHtml",
+      "xpizza-driver/stacked-view.js#queueHtml>anon"
      ]
     },
     {
@@ -8609,8 +7520,9 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 8
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 10,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 8,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 10
      }
     }
    ],
@@ -8641,7 +7553,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "${scheduledBadge(order)}",
     "siteSha": "7af405919535866e072b12a5ba044e0784e06462de324f2e022f9d7c706ac584",
@@ -8671,12 +7583,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -8689,9 +7603,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -8790,51 +7705,46 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "C",
@@ -8844,7 +7754,11 @@
       "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon",
       "xpizza-driver/index.html<script@0>#renderQueue>anon",
       "xpizza-driver/index.html<script@0>#renderQueueDetail",
-      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml",
+      "xpizza-driver/stacked-view.js#activeCardHtml",
+      "xpizza-driver/stacked-view.js#incomingBannerHtml>anon",
+      "xpizza-driver/stacked-view.js#queueDetailHtml",
+      "xpizza-driver/stacked-view.js#queueHtml>anon"
      ]
     },
     {
@@ -8852,8 +7766,9 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 8
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 10,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 8,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 10
      }
     }
    ],
@@ -8884,7 +7799,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "${scheduledBadge(order)}",
     "siteSha": "7af405919535866e072b12a5ba044e0784e06462de324f2e022f9d7c706ac584",
@@ -8914,12 +7829,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -8932,9 +7849,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -9033,51 +7951,46 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "C",
@@ -9087,7 +8000,11 @@
       "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon",
       "xpizza-driver/index.html<script@0>#renderQueue>anon",
       "xpizza-driver/index.html<script@0>#renderQueueDetail",
-      "xpizza-driver/single-order-view.js#singleOrderCardHtml"
+      "xpizza-driver/single-order-view.js#singleOrderCardHtml",
+      "xpizza-driver/stacked-view.js#activeCardHtml",
+      "xpizza-driver/stacked-view.js#incomingBannerHtml>anon",
+      "xpizza-driver/stacked-view.js#queueDetailHtml",
+      "xpizza-driver/stacked-view.js#queueHtml>anon"
      ]
     },
     {
@@ -9095,8 +8012,9 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 8
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 10,
+      "xpizza-driver/single-order-view.js#xpizza-driver": 8,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 10
      }
     }
    ],
@@ -9127,7 +8045,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "<div class=\"ac-chiprow\"><span class=\"order-num\">${escapeHtml(displayOrderLabel(order))}</span>${restaurantChip(order)}</div>",
     "siteSha": "60b75165774c7e8b5aca0c8bb5da937237616363f5f869c861208016bd74c109",
@@ -9157,12 +8075,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -9175,9 +8095,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -9276,51 +8197,46 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "R",
@@ -9329,7 +8245,8 @@
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 2
+      "xpizza-driver/single-order-view.js#xpizza-driver": 2,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 9
      }
     }
    ],
@@ -9360,7 +8277,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "<div class=\"ib-title\">🔔 Nuevo pedido ${escapeHtml(displayOrderLabel(order))} ${restaurantChip(order, 'sm')}</div>",
     "siteSha": "bbdf91d360515ab6bbf47f1b59186b31fe98c1f067c615bb359af5b24f204302",
@@ -9390,12 +8307,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -9408,9 +8327,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -9509,51 +8429,46 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "R",
@@ -9562,7 +8477,8 @@
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 2
+      "xpizza-driver/single-order-view.js#xpizza-driver": 2,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 9
      }
     }
    ],
@@ -9593,7 +8509,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "<div class=\"qchip-row\"><span class=\"order-num\">${escapeHtml(displayOrderLabel(order))}</span>${restaurantChip(order, 'sm')}</div>",
     "siteSha": "fbcd144bb99546aacd2c7a738e020ec1a4df63383c2090e337c285e4cd1f0d24",
@@ -9623,12 +8539,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -9641,9 +8559,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -9742,51 +8661,46 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "R",
@@ -9795,7 +8709,8 @@
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 2
+      "xpizza-driver/single-order-view.js#xpizza-driver": 2,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 9
      }
     }
    ],
@@ -9826,7 +8741,7 @@
     }
    ],
    "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver web shows an order on the driver's BOARD — active card, view-only queue chip + sheet, cross-hub incoming banner — only while that order is assigned to the driver and not yet delivered (getDriverOrders: tasks whose assigned_driver_id is the driver; a completed delivery task is dropped)",
-   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id), the order was unassigned, or its delivery is complete (an order turns delivered only in the update that completes its delivery task, and the server deletes both task legs on the delivered edge) → getDriverOrders does not return it → no card / queue / banner / detail renders it Not in these regions (owner-approved prototype S15/S17, 2026-10-23): renderActiveAndQueue's drv2Observe reads allOrders[prev.orderId] for the stop that just LEFT getDriverOrders and renders it inline — the cancel banner (cancelBannerHtml ×2) and the 3-s post-delivery interlude (drv2ShowInterlude / drv2RecordDone). Those terminal displays read rec fields inline (none of these helper regions feed them); they are their own pending regions and never inherit this terminal exclusion.",
    "bind": {
     "site": "<div class=\"ac-chiprow\" style=\"margin-top:2px\"><span class=\"order-num\">${escapeHtml(displayOrderLabel(order))}</span>${restaurantChip(order)}</div>",
     "siteSha": "c4c37ae35adb3900c4cba3ca33a664d544441df26ce339a76241765d26154c3a",
@@ -9856,12 +8771,14 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "f11f3f0634696fe4440584285f8b5fc23532e30e84b18c7dbd2dce0b0e342d85"
+     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
      ]
@@ -9874,9 +8791,10 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
       "xpizza-driver/driver-feed.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 1,
       "xpizza-driver/single-order-view.js#xpizza-driver": 1,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
       "xpizza-functions/tracking/derive.js#functions": 3,
       "xpizza-functions/tracking/driver-orders.js#functions": 5,
@@ -9975,51 +8893,46 @@
      }
     },
     {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
-     ]
-    },
-    {
      "kind": "R",
      "name": "renderActiveCard",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 4
      }
     },
     {
      "kind": "R",
      "name": "renderQueue",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "R",
      "name": "renderIncomingBanners",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/index.html<script@0>#renderQueueDetail",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#<top>>anon"
-     ]
     },
     {
      "kind": "R",
      "name": "renderQueueDetail",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 3
      }
     },
     {
      "kind": "F",
      "file": "xpizza-driver/index.html",
-     "text": "const o = queuedOrders[i];"
+     "text": "const qOrderId = card.getAttribute('data-order-id');\n  const qBoard = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);\n  const qIdx = qBoard.findIndex((q) => q && q.orderId === qOrderId);\n  if (qIdx < 1) return;   // <0: gone from the board; 0: now the ACTIVE stop (promoted) — not a queued row\n  const o = qBoard[qIdx];\n  // PRIVACY (Codex r2 P1): the sheet opens ONLY for an ACCEPTED queued order. If the order returned to\n  // awaiting_acceptance during a deferred render (A's completion pending → B back to offer), tapping its\n  // retained card must NOT open the sheet — that would leak the customer's name / phone / contact / address /\n  // nav before acceptance. Board POSITION alone is not enough; membership must be an accepted queued stop.\n  if (o.phase === 'awaiting_acceptance') return;"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-driver/index.html",
+     "text": "$('queue-sheet-body').innerHTML = queueDetailHtml(o, qIdx + 1, { ICONS, esc: escapeHtml, scheduledBadge });"
     },
     {
      "kind": "R",
@@ -10028,7 +8941,8 @@
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 5,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2,
-      "xpizza-driver/single-order-view.js#xpizza-driver": 2
+      "xpizza-driver/single-order-view.js#xpizza-driver": 2,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 9
      }
     }
    ],
@@ -10212,7 +9126,7 @@
     "site": "await XPD.arriveAtRestaurant(currentUser.uid);",
     "siteSha": "0f8cf0137e7d9e23868daa9b056e8ebffe93e608e96f0c33e7a483bde9735f2a",
     "scope": "xpizza-driver/index.html<script@0>#<top>>anon",
-    "scopeSha": "eb6c8d182121e9cb1f494d72ceba8554ec077f3fcd02da9e4f5330ea1641cf30"
+    "scopeSha": "d043a2d0772a9e55333e522a59994c8a1e15d25475e5efd29178fe0ffca5217b"
    },
    "guards": [
     {
@@ -10372,7 +9286,8 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
+      "xpizza-driver/stacked-view.js#xpizza-driver": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1,
       "xpizza-functions/index.js#functions": 2,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
