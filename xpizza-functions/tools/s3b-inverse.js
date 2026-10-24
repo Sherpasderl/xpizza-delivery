@@ -2,9 +2,9 @@
 // S3b PixelPay return routing (Customer App) — the test-only INVERSE of the S3b slice's index.js hunks (hot-file invariant, see
 // memory index-js-inverse-fold-invariant). Every hunk is SAME-LINE: the resolver import; the fresh path's identity captured
 // for the return site; resolveReturnBaseForCharge (brand-aware, platform/sites.json data); the poll token on the cancel URL.
-// Put back to their df5bc8c1 text, so every *-wiring.guard fold chain reconstructs its frozen base. Proof (i):
-// unapplyS3bIndex(index.js) === df5bc8c1:index.js byte-for-byte (s3b-wiring.guard). Each hunk must occur EXACTLY once.
-// GENERATED from `git diff df5bc8c1 -- index.js` (context grown until unique); JSON-quoted strings.
+// Put back to their 3b6e9fc8 text, so every *-wiring.guard fold chain reconstructs its frozen base. Proof (i):
+// unapplyS3bIndex(index.js) === 3b6e9fc8:index.js byte-for-byte (s3b-wiring.guard). Each hunk must occur EXACTLY once.
+// GENERATED from `git diff 3b6e9fc8 -- index.js` (context grown until unique); JSON-quoted strings.
 
 const HUNKS = [
   [

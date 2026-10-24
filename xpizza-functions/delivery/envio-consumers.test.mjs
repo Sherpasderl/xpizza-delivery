@@ -4,7 +4,7 @@
 //   (3) stats (aggregates + the per-order CSV): revenue = the food total
 //   (4) WhatsApp order-received: the charged total + an «Envío» line (Gratis under the promo)
 // Each order is built by the REAL writers (DW.withDelivery on the real breakdown → buildCreateOrderUpdates), and every DARK
-// case (no envío) is compared with the SAME module loaded from the S3b base (50ab2b56) — byte-identical while dark.
+// case (no envío) is compared with the SAME module loaded from the S3b base (786a328a) — byte-identical while dark.
 // Run: node delivery/envio-consumers.test.mjs
 import assert from 'assert';
 import { createRequire } from 'module';
@@ -17,7 +17,7 @@ import { fileURLToPath } from 'url';
 const require = createRequire(import.meta.url);
 const FN = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = path.join(FN, '..');
-const BASE = '50ab2b56';
+const BASE = '786a328a';
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 // the base version of a module, its relative requires re-pointed at the live tree (only the module itself is the base)

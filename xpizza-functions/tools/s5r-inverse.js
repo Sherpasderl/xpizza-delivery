@@ -1,9 +1,9 @@
 'use strict';
 // S5 ratings writer (Customer App) — the test-only INVERSE of the slice's ONE index.js hunk (hot-file invariant, see memory
 // index-js-inverse-fold-invariant): a same-line append to the RATE_LIMIT_BUCKETS export that re-exports rateOrder from
-// ratings/rate-order.js (a direct require chain, so contract/discovery classifies it). Put back to its c81afe18 text, so
-// every *-wiring.guard fold chain reconstructs its frozen base. Proof (i): unapplyS5rIndex(index.js) === c81afe18:index.js
-// byte-for-byte (s5r-wiring.guard). The hunk must occur EXACTLY once. GENERATED from `git diff c81afe18 -- index.js`.
+// ratings/rate-order.js (a direct require chain, so contract/discovery classifies it). Put back to its 5f2e1ef7 text, so
+// every *-wiring.guard fold chain reconstructs its frozen base. Proof (i): unapplyS5rIndex(index.js) === 5f2e1ef7:index.js
+// byte-for-byte (s5r-wiring.guard). The hunk must occur EXACTLY once. GENERATED from `git diff 5f2e1ef7 -- index.js`.
 
 const HUNKS = [
   [

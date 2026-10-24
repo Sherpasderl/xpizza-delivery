@@ -2,7 +2,7 @@
 // S3c envío activation prerequisites — hot-file wiring guard (index.js inverse-fold invariant). The slice's index.js hunks are
 // all SAME-LINE: the DELIVERY order-received calls carry the CHARGED total and the «Envío» argument (createOrder, and the
 // online order-received trigger); a pickup never carries envío, so both pickup calls are untouched. It ships tools/s3c-inverse.js and composes unapplyS3cIndex INNERMOST into every
-// index.js fold guard. This guard proves (i) unapplyS3cIndex(index.js) === 50ab2b56:index.js BYTE-FOR-BYTE with sensitivity,
+// index.js fold guard. This guard proves (i) unapplyS3cIndex(index.js) === 786a328a:index.js BYTE-FOR-BYTE with sensitivity,
 // and (ii) NON-VACUITY — every hunk present and every order-received call site carries the envío argument.
 const assert = require('assert');
 const fs = require('fs');
@@ -11,7 +11,7 @@ const { execFileSync } = require('child_process');
 const { HUNKS, unapplyS3cIndex } = require('./tools/s3c-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const BASE = '50ab2b56';   // the HELD S3b tip this slice branches from
+const BASE = '786a328a';   // the HELD S3b tip this slice branches from
 const live = require('./tools/s5r-inverse').unapplyS5rIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // S5r (newer) is reversed first
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 

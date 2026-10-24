@@ -2,8 +2,8 @@
 // S3a envío (Customer App) — the slice's INVERSE for the order-path MODULES older slices pin byte-for-byte
 // (catalog/identity-record-guards: compute-server-net / quote-issue / rewards-redeem-intake / token-gate by sha256;
 // a1-wiring.guard: rewards-redeem-intake.js vs 341d1b1a). Those guards apply unapplyS3aModule FIRST (newest first), so any
-// byte outside these exact hunks still fails them. s3a-wiring.guard.test.js proves this inverse reproduces fa6551ab for each
-// file byte-for-byte. GENERATED from `git diff fa6551ab` (context grown until unique); each `now` occurs exactly once.
+// byte outside these exact hunks still fails them. s3a-wiring.guard.test.js proves this inverse reproduces c2c3b815 for each
+// file byte-for-byte. GENERATED from `git diff c2c3b815` (context grown until unique); each `now` occurs exactly once.
 const HUNKS = Object.freeze([
  {
   "file": "compute-server-net.js",

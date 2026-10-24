@@ -2,7 +2,7 @@
 // S5 ratings writer — hot-file wiring guard (index.js inverse-fold invariant). The slice's ONE index.js hunk is a same-line
 // append to the RATE_LIMIT_BUCKETS export: `exports.rateOrder = require('./ratings/rate-order').rateOrder;` (a direct require
 // chain — contract/discovery's source inventory classifies it). It ships tools/s5r-inverse.js and composes unapplyS5rIndex
-// INNERMOST into every index.js fold guard. This guard proves unapplyS5rIndex(index.js) === c81afe18:index.js byte-for-byte
+// INNERMOST into every index.js fold guard. This guard proves unapplyS5rIndex(index.js) === 5f2e1ef7:index.js byte-for-byte
 // (one hunk, no line inserted), the export, and source discovery's view of it.
 const assert = require('assert');
 const fs = require('fs');
@@ -11,7 +11,7 @@ const { execFileSync } = require('child_process');
 const { HUNKS, unapplyS5rIndex } = require('./tools/s5r-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const BASE = 'c81afe18';   // the HELD S3c tip this slice branches from
+const BASE = '5f2e1ef7';   // the HELD S3c tip this slice branches from
 const live = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');   // this slice is the NEWEST: nothing composes on top
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 

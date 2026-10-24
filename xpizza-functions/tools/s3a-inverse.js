@@ -3,9 +3,9 @@
 // index-js-inverse-fold-invariant). Every hunk is SAME-LINE (no line inserted, so no R3 region line shifts): the DW require
 // on the restaurant-config line; quoteOrder / quoteRedemption envío + optional auth; createOrder / chargeOnlineOrder
 // deliveryFor → withDelivery on the breakdown, the refusal step before the gate, and the envío argument to the gate;
-// the hosted pending record's envío fields; the order / held / pending `total` (lempiras) = food + net envío; the envío config read started in parallel with each handler's first reads; the card path priced against the STORED order (codex P1-1/P1-2); quote 503s; member history = the order total. Put back to their fa6551ab text, so every *-wiring.guard fold chain
-// reconstructs its frozen base. Proof (i): unapplyS3aIndex(index.js) === fa6551ab:index.js byte-for-byte
-// (s3a-wiring.guard). Each hunk must occur EXACTLY once, else this throws. GENERATED from `git diff fa6551ab -- index.js`
+// the hosted pending record's envío fields; the order / held / pending `total` (lempiras) = food + net envío; the envío config read started in parallel with each handler's first reads; the card path priced against the STORED order (codex P1-1/P1-2); quote 503s; member history = the order total. Put back to their c2c3b815 text, so every *-wiring.guard fold chain
+// reconstructs its frozen base. Proof (i): unapplyS3aIndex(index.js) === c2c3b815:index.js byte-for-byte
+// (s3a-wiring.guard). Each hunk must occur EXACTLY once, else this throws. GENERATED from `git diff c2c3b815 -- index.js`
 // (context grown until unique); JSON-quoted strings.
 
 const HUNKS = [

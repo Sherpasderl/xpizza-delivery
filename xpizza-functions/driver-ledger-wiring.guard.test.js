@@ -4,7 +4,7 @@
 // (no line inserted, so no R3 region line shifts) that re-exports closeDriverPayWeeks / getDriverPayWeek / markDriverWeekPaid from
 // driver-ledger/functions.js. It ships tools/driver-ledger-inverse.js and composes
 // unapplyDriverLedgerIndex INNERMOST (newest-slice-first) into every index.js fold guard. This guard proves:
-//   (i)  unapplyDriverLedgerIndex(index.js) === ad7a56af:index.js BYTE-FOR-BYTE (the hunk exactly once), with
+//   (i)  unapplyDriverLedgerIndex(index.js) === e0af1007:index.js BYTE-FOR-BYTE (the hunk exactly once), with
 //        inside / outside / duplicated / missing sensitivity; and
 //   (ii) NON-VACUITY — the live index.js differs from the base, the hunk is present, and the three functions export.
 const assert = require('assert');
@@ -14,7 +14,7 @@ const { execFileSync } = require('child_process');
 const { HUNKS, unapplyDriverLedgerIndex } = require('./tools/driver-ledger-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const BASE = 'ad7a56af';   // the S0-prod tip this slice branches from (index.js there == the train base's)
+const BASE = 'e0af1007';   // the S0-prod tip this slice branches from (index.js there == the train base's)
 const live = require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))));   // S3a (newer) is reversed first
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 

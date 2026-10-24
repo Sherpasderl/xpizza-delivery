@@ -4,7 +4,7 @@
 // endpoints' envío, createOrder / chargeOnlineOrder's deliveryFor → withDelivery, the refusal step before each gate, the
 // envío context in each gate input, and the hosted pending record's envío fields. It ships tools/s3a-inverse.js and
 // composes unapplyS3aIndex INNERMOST (newest-slice-first) into every index.js fold guard. This guard proves:
-//   (i)  unapplyS3aIndex(index.js) === fa6551ab:index.js BYTE-FOR-BYTE (each hunk exactly once), with inside /
+//   (i)  unapplyS3aIndex(index.js) === c2c3b815:index.js BYTE-FOR-BYTE (each hunk exactly once), with inside /
 //        duplicated / missing sensitivity; and
 //   (ii) NON-VACUITY — the live index.js differs from the base, every hunk is present, and the order paths call the seam.
 const assert = require('assert');
@@ -14,7 +14,7 @@ const { execFileSync } = require('child_process');
 const { HUNKS, unapplyS3aIndex } = require('./tools/s3a-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const BASE = 'fa6551ab';   // the held S8 tip (r5) this slice branches from
+const BASE = 'c2c3b815';   // the held S8 tip (r5) this slice branches from
 const live = require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))));   // S3b (newer) is reversed first
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
@@ -41,7 +41,7 @@ assert.throws(() => unapplyS3aIndex(live.replace(HUNKS[HUNKS.length - 1][0], '')
 ok('sensitivity: a byte inside a hunk, a duplicated hunk and a missing hunk are each detected');
 
 // ── the pinned order-path MODULES: their exact inverse (tools/s3a-module-inverse.js, applied first by
-// catalog/identity-record-guards and a1-wiring.guard) reproduces fa6551ab byte-for-byte ──
+// catalog/identity-record-guards and a1-wiring.guard) reproduces c2c3b815 byte-for-byte ──
 {
   const { unapplyS3aModule, FILES, HUNKS: MH } = require('./tools/s3a-module-inverse');
   assert.deepStrictEqual([...FILES].sort(), ['compute-server-net.js', 'quote-issue.js', 'rewards-redeem-intake.js', 'token-gate.js']);

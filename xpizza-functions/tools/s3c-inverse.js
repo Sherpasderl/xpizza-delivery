@@ -2,9 +2,9 @@
 // S3c envío activation prerequisites (Customer App) — the test-only INVERSE of the S3c slice's index.js hunks (hot-file
 // invariant, see memory index-js-inverse-fold-invariant). Every hunk is SAME-LINE: the DELIVERY order-received calls carry the
 // CHARGED total and the «Envío» argument (createOrder, and the online order-received trigger); pickup untouched. Put back to their
-// 50ab2b56 text, so every *-wiring.guard fold chain reconstructs its frozen base. Proof (i): unapplyS3cIndex(index.js) ===
-// 50ab2b56:index.js byte-for-byte (s3c-wiring.guard). Each hunk must occur EXACTLY once. GENERATED from
-// `git diff 50ab2b56 -- index.js` (context grown until unique); JSON-quoted strings.
+// 786a328a text, so every *-wiring.guard fold chain reconstructs its frozen base. Proof (i): unapplyS3cIndex(index.js) ===
+// 786a328a:index.js byte-for-byte (s3c-wiring.guard). Each hunk must occur EXACTLY once. GENERATED from
+// `git diff 786a328a -- index.js` (context grown until unique); JSON-quoted strings.
 
 const HUNKS = [
   [

@@ -3,7 +3,7 @@
 // SAME-LINE: the resolver import, the fresh path's identity captured for the return site, resolveReturnBaseForCharge
 // (platform/sites.json pay_return, brand-aware, ONE precedence rule) and the poll token on the cancel URL. It ships
 // tools/s3b-inverse.js and composes unapplyS3bIndex INNERMOST into every index.js fold guard. This guard proves:
-//   (i)  unapplyS3bIndex(index.js) === df5bc8c1:index.js BYTE-FOR-BYTE (each hunk exactly once), with sensitivity; and
+//   (i)  unapplyS3bIndex(index.js) === 3b6e9fc8:index.js BYTE-FOR-BYTE (each hunk exactly once), with sensitivity; and
 //   (ii) NON-VACUITY — every hunk present, the charge path resolves through the data-driven resolver, cancel carries t.
 const assert = require('assert');
 const fs = require('fs');
@@ -12,7 +12,7 @@ const { execFileSync } = require('child_process');
 const { HUNKS, unapplyS3bIndex } = require('./tools/s3b-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const BASE = 'df5bc8c1';   // the HELD S3a tip this slice branches from
+const BASE = '3b6e9fc8';   // the HELD S3a tip this slice branches from
 const live = require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')));   // S3c (newer) is reversed first
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
