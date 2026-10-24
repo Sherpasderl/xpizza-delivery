@@ -320,8 +320,6 @@ async function wipe() {
   // fingerprints that are the area-free formulas over their OWN order id (each recomputed; the ids differ, so never compared raw)
   {
     const CI = require('../catalog/charge-inputs');
-    const { orderFingerprint } = require('../pixelpay-charge');
-    const { redemptionFingerprint } = require('../rewards-redeem');
     const rdV = { type: 'points_ala_carte', items: [{ id: 'noodle_01_pollo', qty: 1, name: 'Pad Thai - Pollo' }] };
     const DLV = { order_type: 'delivery', lat: 14.11, lng: -87.19, address_detected: 'Calle Principal', address_details: 'portón negro' };
     const fresh = async (oid, extra) => {
@@ -349,11 +347,24 @@ async function wipe() {
     assert.strictEqual(ob.charge_inputs_fp, CI.chargeInputsFingerprint(noArea(B_.b)), '🔴 B: the charge-input fingerprint is AREA-FREE');
     assert.strictEqual(ob.charge_inputs_fp, CI.chargeInputsFingerprint({ ...A_.b, order_id: 'apg_ar_B', customer_phone: B_.b.customer_phone }), '🔴 B: = A\'s request re-keyed to B\'s identity');
     assert.strictEqual(oa.charge_inputs_fp, CI.chargeInputsFingerprint(A_.b), 'A: the stored charge-input fingerprint is its request\'s');
-    const payFp = (o, oid) => orderFingerprint(oid, o.total_cents, o.items_text, [`rf:${redemptionFingerprint(o.redemption)}`].join('|'));
-    assert.strictEqual(oa.payment_fingerprint, payFp(oa, 'apg_ar_A'), 'A: payment_fingerprint = the formula over its own id + the reward set');
-    assert.strictEqual(ob.payment_fingerprint, payFp(ob, 'apg_ar_B'), '🔴 B: payment_fingerprint = the same AREA-FREE formula over its own id + the reward set');
+    // payment_fingerprint, identity-aware: it hashes the order id + the reward SET (unrecoverable from storage — RTDB reorders
+    // nested keys and drops nulls), so each order is RETRIED with its OWN id and the area CHANGED (A gains one, B loses its own)
+    // with render OFF — the bound fast path cannot answer, so the current path resumes the SAME checkout only if the request's
+    // payment fingerprint EQUALS the stored one (a mismatch is a 409 conflict, never a second attempt)
+    Object.assign(CAPS, { render: false });
+    for (const [label, X, oid, retryBody] of [['A + an area', A_, 'apg_ar_A', { ...A_.b, address_area: 'Res. Los Castaños' }], ['B minus its area', B_, 'apg_ar_B', noArea(B_.b)]]) {
+      const att = (await order(oid)).active_attempt_id;
+      await clean();
+      const r = await post(app.chargeOnlineOrder, retryBody, { 'x-firebase-id-token': 'u_la_musa' });
+      assert.deepStrictEqual([r.status, r.json && r.json.checkout_url], [200, X.r.json.checkout_url], `🔴 ${label}: the same checkout resumes — the payment fingerprint is AREA-FREE (${r.text.slice(0, 160)})`);
+      assert.strictEqual((await order(oid)).active_attempt_id, att, `${label}: no new attempt`);
+      assert.strictEqual((await order(oid)).payment_fingerprint, oid === 'apg_ar_A' ? oa.payment_fingerprint : ob.payment_fingerprint, `${label}: the stored payment fingerprint is unchanged`);
+    }
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(await order('apg_ar_A'), 'address_area'), false, 'a resumed checkout never rewrites the stored order (A still has no area)');
+    assert.strictEqual((await order('apg_ar_B')).address_area, 'Colonia Trejo', 'a resumed checkout never rewrites the stored order (B keeps its area)');
+    Object.assign(CAPS, { render: true });
   }
-  ok('colonia: FRESH reward issuance — two delivery choice-reward checkouts identical except address_area are both bound (redemption + charge_inputs_fp + payment_fingerprint present), hold the same points, equal totals / text / binding; each fingerprint is the area-free formula over its own order id');
+  ok('colonia: FRESH reward issuance — two delivery choice-reward checkouts identical except address_area are both bound (redemption + charge_inputs_fp + payment_fingerprint present), hold the same points, equal totals / text / binding; the charge-input fingerprint is the area-free formula over its own id; a same-id retry with the area changed resumes the same checkout (the payment fingerprint is area-free)');
 
   assert.ok(WC.calls.some((c) => c.restaurantId === 'x_pizza' && c.isNow && c.day === 6), 'premise: the x_pizza orders above met the REAL weekend gate, on the controlled Saturday');
   FINISHED = true;
