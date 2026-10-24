@@ -390,6 +390,8 @@ export async function updateDriverLocation(driverId, location) {
   await checkGeofenceTransition(driverId, lat, lng);
 }
 
+/* ===== SLICE2:NAV-SDK:START — R7 nav-preference writer (the ONLY slice-2 addition to this module; the freeze
+   guard strips this region before the byte-compare to baseline). ===== */
 /**
  * Persist the driver's navigation-app preference (R7). A TARGETED leaf write to drivers/{uid}/nav_app:
  * the own-uid `.write` cascades from the drivers/$driver_id parent (same grant updateDriverLocation uses),
@@ -402,7 +404,7 @@ export async function setNavPref(driverId, pref) {
   if (pref !== 'waze' && pref !== 'maps') throw new Error('setNavPref: pref must be "waze" | "maps"');
   await set(ref(db, `drivers/${driverId}/nav_app`), pref);
 }
-
+/* ===== SLICE2:NAV-SDK:END ===== */
 async function checkGeofenceTransition(driverId, lat, lng) {
   const snapshot = await get(ref(db, `drivers/${driverId}`));
   const driver = snapshot.val();

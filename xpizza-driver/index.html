@@ -1479,12 +1479,14 @@
       </div>
       <div class="gps-meta">Activa el interruptor para empezar</div>
     </div>
+    <!-- SLICE2:OFFSHIFT-CUENTA:START — off-shift entry to the minimal Cuenta screen (R7 nav pref). Pure insert. -->
     <button class="icon-btn" id="cuenta-btn" title="Cuenta" aria-label="Cuenta">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="8.5" r="3.6"/>
         <path d="M5 19.5c1.3-3.2 4-4.8 7-4.8s5.7 1.6 7 4.8"/>
       </svg>
     </button>
+    <!-- SLICE2:OFFSHIFT-CUENTA:END -->
     <button class="duty-toggle" id="duty-toggle-off" title="Iniciar turno">
       <span class="duty-arrow left">▶</span>
       <span class="duty-arrow right">■</span>
@@ -1602,12 +1604,10 @@
 </style>
 <div id="screen-companion" class="hidden" style="height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
 
-<!-- ======================================================== -->
-<!-- CUENTA + APP DE NAVEGACIÓN (R7 nav preference; rendered by renderCuenta/renderNavApp) -->
-<!-- ======================================================== -->
+<!-- SLICE2:NAV-SCREENS:START — Cuenta + «App de navegación» screen shells (R7); filled by renderCuenta/renderNavApp. Pure insert. -->
 <div id="screen-cuenta" class="hidden"></div>
 <div id="screen-navApp" class="hidden"></div>
-
+<!-- SLICE2:NAV-SCREENS:END -->
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -1798,7 +1798,6 @@ function drv2ShowInterlude() {
   drv2InterludeTimer = setTimeout(drv2DismissInterlude, 3000);
 }
 /* ===== SLICE2:IMPORT:END ===== */
-
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
    drivers/{uid}/nav_app (own-uid, enum) with a localStorage mirror; «Cerrar sesión» reuses driverSignOut. ===== */
 const NAVP_ICONS = {
@@ -2175,13 +2174,11 @@ function companionRenderOnboarding() {
       <label class="co-card co-ck"><span class="co-box ${ck(d.ackPerms)}" id="co-bx-perms">${d.ackPerms ? '✓' : ''}</span>Permisos y batería (ubicación + "sin restricción")</label>
       <label class="co-card co-ck"><span class="co-box ${ck(d.ackCash)}" id="co-bx-cash">${d.ackCash ? '✓' : ''}</span>Reglas de efectivo + cambio inicial (entregás 100% · llevás sencillo)</label>
       <div class="co-card co-ck" id="co-practice-row"><span class="co-box ${ck(d.practiceDone)}">${d.practiceDone ? '✓' : ''}</span>Pedido de práctica${d.practiceDone ? '' : ' <span class="co-sub" style="margin-left:auto">Abrir →</span>'}</div>
-      <div class="co-card co-ck" id="co-nav-row"><span class="co-box ${ck(d.navChosen)}">${d.navChosen ? '✓' : ''}</span><div style="min-width:0;flex:1"><div>App de navegación</div><div class="co-sub" style="font-weight:600;margin-top:1px">Elegí Waze o Google Maps; lo cambiás en Cuenta</div></div>${d.navChosen ? '' : '<span class="co-sub" style="flex:none">Abrir →</span>'}</div>
       <div style="flex:1"></div>`,
       `<button class="big-btn primary" id="co-request" ${(d.ackPerms && d.ackCash && d.practiceDone) ? '' : 'disabled'}>Pedir aprobación</button>`);
     $('co-bx-perms').closest('label').addEventListener('click', () => { const n = companionWriteDraft({ ackPerms: !companionReadDraft().ackPerms }); companionRenderOnboarding(); void n; });
     $('co-bx-cash').closest('label').addEventListener('click', () => { companionWriteDraft({ ackCash: !companionReadDraft().ackCash }); companionRenderOnboarding(); });
     if (!d.practiceDone) $('co-practice-row').addEventListener('click', () => { companionStep = 'practice'; companionRenderOnboarding(); });
-    $('co-nav-row').addEventListener('click', () => { drv2NavReturn = 'companion'; renderNavApp(); });
     const req = $('co-request'); if (req && !req.disabled) req.addEventListener('click', () => companionSubmit());
   } else { // 'practice'
     // Guided practice — writes NOTHING real; brand-agnostic (a synthetic order with no brand → neutral greeting).
@@ -2209,6 +2206,16 @@ function companionRenderOnboarding() {
     });
     $('co-practice-exit').addEventListener('click', () => { companionStep = 'checklist'; companionRenderOnboarding(); });
   }
+  /* ===== SLICE2:ONBOARDING-NAV:START — inject the «App de navegación» checklist row (R7, exact prototype copy) +
+     wire it, as a POST-RENDER injection so the baseline companionRenderOnboarding template stays byte-identical
+     (freeze guard strips this region cleanly). Non-blocking: default Waze, never gates «Pedir aprobación». ===== */
+  if (companionStep === 'checklist' && $('co-practice-row')) {
+    const navChosen = !!companionReadDraft().navChosen;
+    $('co-practice-row').insertAdjacentHTML('afterend',
+      `<div class="co-card co-ck" id="co-nav-row"><span class="co-box ${navChosen ? 'on' : ''}">${navChosen ? '✓' : ''}</span><div style="min-width:0;flex:1"><div>App de navegación</div><div class="co-sub" style="font-weight:600;margin-top:1px">Elegí Waze o Google Maps; lo cambiás en Cuenta</div></div>${navChosen ? '' : '<span class="co-sub" style="flex:none">Abrir →</span>'}</div>`);
+    $('co-nav-row').addEventListener('click', () => { drv2NavReturn = 'companion'; renderNavApp(); });
+  }
+  /* ===== SLICE2:ONBOARDING-NAV:END ===== */
   showScreen('companion');
 }
 
@@ -2518,6 +2525,9 @@ $('forgot-btn').addEventListener('click', async () => {
 // Tidy: clear the stale reset confirmation once the driver re-engages the email field.
 $('login-email').addEventListener('focus', () => $('reset-msg').classList.add('hidden'));
 
+/* ===== SLICE2:SIGNOUT:START — extract the sign-out body into driverSignOut() so BOTH the off-shift link and the
+   Cuenta «Cerrar sesión» reuse it (R7); add the off-shift Cuenta-entry handler. Replaces the baseline inline
+   #signout-btn listener (restored by the freeze guard → baseline). ===== */
 // Shared sign-out (reused by the off-shift link AND the Cuenta screen's «Cerrar sesión», R7). Native: drop the
 // FCM token before signing out so this device stops receiving this driver's orders (shared-phone safety).
 async function driverSignOut() {
@@ -2528,6 +2538,7 @@ async function driverSignOut() {
 }
 $('signout-btn').addEventListener('click', driverSignOut);
 $('cuenta-btn').addEventListener('click', openCuenta);
+/* ===== SLICE2:SIGNOUT:END ===== */
 
 // Native foreground push: when the app is open, Android delivers the push to us
 // instead of drawing a system banner (native-push.js re-emits it here). Show an
@@ -2820,7 +2831,6 @@ $('screen-onshift').addEventListener('click', (e) => {
   }
 });
 /* ===== SLICE2:STACKED-HANDLERS:END ===== */
-
 // "Why don't I see tasks?" help link on the idle state
 $('idle-help-link').addEventListener('click', () => {
   alert(

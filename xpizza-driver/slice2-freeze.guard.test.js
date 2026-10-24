@@ -70,6 +70,28 @@ const REGIONS = [
     '  queuedOrders = queue;',
     '  queueSlot.innerHTML = renderQueue(queue);',
   ] },
+  // ── The prototype-rebuild regions (owner H2: the approved prototype overrides the old freeze). All PURE
+  //    INSERTS (verified absent from baseline): the dep-D observer, the idle reset, the stacked delegate, and the
+  //    whole R7 nav-preference surface (Cuenta/navApp CSS + screens + off-shift entry + onboarding row). Stripping
+  //    each recovers baseline byte-for-byte. SIGNOUT is the one REPLACE (it extracted the inline #signout listener).
+  { name: 'RUN-OBSERVER', kind: 'insert' },
+  { name: 'IDLE-RESET', kind: 'insert' },
+  { name: 'STACKED-HANDLERS', kind: 'insert' },
+  { name: 'NAVPREF-CSS', kind: 'insert' },
+  { name: 'NAVPREF', kind: 'insert' },
+  { name: 'NAV-SCREENS', kind: 'insert' },
+  { name: 'OFFSHIFT-CUENTA', kind: 'insert' },
+  { name: 'ONBOARDING-NAV', kind: 'insert' },
+  { name: 'SIGNOUT', kind: 'replace', restore: [
+    "$('signout-btn').addEventListener('click', async () => {",
+    '  // Native: drop the FCM token before signing out so this device stops',
+    "  // receiving this driver's orders (shared-phone safety).",
+    '  if (isNative() && currentUser) {',
+    '    try { await unregisterNativePush(XPD.getAuthInstance().app); } catch (e) { /* non-fatal */ }',
+    '  }',
+    '  await XPD.signOutUser();',
+    '});',
+  ] },
 ];
 const KNOWN_REGIONS = REGIONS.map((r) => r.name);
 
@@ -84,6 +106,8 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/slice2-freeze.guard.test.js',     // this guard
   'xpizza-driver/slice2-slice1guard.detached.test.js', // runs slice 1's guard UNCHANGED at the landed SHA (detached worktree)
   'xpizza-driver/slice2-freeze.proof.sh',          // the mutation-outside-regions → RED proof harness
+  'xpizza-driver/nav-view.js',                     // R7 Cuenta/navApp pure builders
+  'xpizza-driver/nav-view.test.js',                // R7 Cuenta/navApp builder tests
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';
@@ -103,6 +127,9 @@ const ALLOWED_DELETE = new Set(['xpizza-driver/single-order-branch.test.js']);
 // these lines, nothing else).
 const OUT_OF_REGION_ALLOW = [
   { from: "const SYSTEM_VERSION = '2.5.2';", to: "const SYSTEM_VERSION = '2.5.3';" },
+  // R7: add the two nav-pref screen names to showScreen's switch list (single-line, line-count-preserving).
+  { from: "  ['config', 'login', 'offshift', 'onshift', 'companion'].forEach(s => {",
+    to:   "  ['config', 'login', 'offshift', 'onshift', 'companion', 'cuenta', 'navApp'].forEach(s => {" },
 ];
 
 // Import allowlists for the two new modules.
@@ -140,7 +167,23 @@ t('baseline commit is reachable', () => {
 });
 
 // ---------- 1. every baseline file except index.html byte-identical ----------
-t('frozen: every baseline file under xpizza-driver/ (except index.html) is byte-identical', () => {
+// Strip every SLICE2:*:START..END region (inclusive) from a source — used to prove a REGION-BEARING frozen file
+// recovers baseline once its (pure-insert) region(s) are removed. Only xpizza-delivery.js carries one (NAV-SDK).
+function stripSlice2Regions(text) {
+  const out = []; let skip = false;
+  for (const line of text.split('\n')) {
+    if (/SLICE2:[A-Za-z0-9-]+:START/.test(line)) { skip = true; continue; }
+    if (/SLICE2:[A-Za-z0-9-]+:END/.test(line)) { skip = false; continue; }
+    if (!skip) out.push(line);
+  }
+  return out.join('\n');
+}
+// Baseline .js files that are allowed to carry a SLICE2 region (a PURE INSERT that strips back to baseline). The
+// region is still region-contained; this only exempts the file from the raw byte-identity check (it is verified
+// byte-identical AFTER stripping). index.html is handled by the region-restoration test, not here.
+const ALLOWED_REGION_BEARING = new Set(['xpizza-driver/xpizza-delivery.js']);
+
+t('frozen: every baseline file under xpizza-driver/ (except index.html) is byte-identical (region-bearing files strip to baseline)', () => {
   const baseFiles = gitStr('ls-tree', '-r', '--name-only', BASELINE, '--', 'xpizza-driver')
     .split('\n').map((s) => s.trim()).filter(Boolean);
   assert.ok(baseFiles.length > 10, 'baseline file list looks empty — wrong ref?');
@@ -153,9 +196,30 @@ t('frozen: every baseline file under xpizza-driver/ (except index.html) is byte-
     let diskBytes;
     try { diskBytes = readFileSync(join(__dir, rel)); }
     catch { drift.push(`${repoPath} (missing on disk — deleted?)`); continue; }
-    if (Buffer.compare(baseBytes, diskBytes) !== 0) drift.push(`${repoPath} (byte-changed)`);
+    if (Buffer.compare(baseBytes, diskBytes) === 0) continue;
+    // A region-bearing file is OK iff stripping its SLICE2 region(s) recovers baseline byte-for-byte.
+    if (ALLOWED_REGION_BEARING.has(repoPath)
+        && Buffer.from(stripSlice2Regions(diskBytes.toString('utf8'))).equals(baseBytes)) continue;
+    drift.push(`${repoPath} (byte-changed${ALLOWED_REGION_BEARING.has(repoPath) ? ' — region strip did NOT recover baseline' : ''})`);
   }
   assert.deepEqual(drift, [], `frozen files changed:\n  ${drift.join('\n  ')}`);
+});
+
+// A region-bearing frozen file must ONLY carry the regions the freeze allows (NAV-SDK), and nothing else may
+// smuggle a SLICE2 marker into a frozen .js — any OTHER marker-bearing baseline .js is RED.
+t('region-bearing frozen files carry only the allowed SLICE2 region(s)', () => {
+  const baseFiles = gitStr('ls-tree', '-r', '--name-only', BASELINE, '--', 'xpizza-driver')
+    .split('\n').map((s) => s.trim()).filter(Boolean);
+  for (const repoPath of baseFiles) {
+    if (repoPath === ALLOWED_MODIFY) continue;
+    const rel = repoPath.slice(PFX.length);
+    let text; try { text = readFileSync(join(__dir, rel), 'utf8'); } catch { continue; }
+    const marks = (text.match(/SLICE2:[A-Za-z0-9-]+:(START|END)/g) || []);
+    if (marks.length === 0) continue;
+    assert.ok(ALLOWED_REGION_BEARING.has(repoPath), `${repoPath} carries SLICE2 markers but is not an allowed region-bearing file`);
+    const names = new Set(marks.map((m) => m.replace(/SLICE2:|:(START|END)/g, '')));
+    assert.deepEqual([...names], ['NAV-SDK'], `${repoPath} may only carry the NAV-SDK region, found: ${[...names].join(', ')}`);
+  }
 });
 
 // ---------- 2 & 3. markers well-formed + restoration recovers baseline ----------
@@ -274,7 +338,10 @@ t('file-level: only index.html modified; only the slice-2 allowlist added; nothi
   for (const p of untracked) added.push(p);
 
   assert.deepEqual(otherOps, [], `forbidden op(s) (unlisted delete/rename/copy/type):\n  ${otherOps.join('\n  ')}`);
-  assert.deepEqual(modified, [ALLOWED_MODIFY], `modified set must be exactly [${ALLOWED_MODIFY}], got: ${modified.join(', ')}`);
+  // The sole free-form MODIFY is index.html; a region-bearing file (xpizza-delivery.js, NAV-SDK) may also be
+  // modified, but ONLY within its region — verified byte-identical-after-strip by the frozen-files test above.
+  const expectedModified = [ALLOWED_MODIFY, ...ALLOWED_REGION_BEARING].sort();
+  assert.deepEqual(modified.slice().sort(), expectedModified, `modified set must be exactly [${expectedModified.join(', ')}], got: ${modified.join(', ')}`);
   assert.deepEqual(deleted.sort(), [...ALLOWED_DELETE].sort(), `deleted set must be exactly the allowed-DELETE list, got: ${deleted.join(', ')}`);
   const strayAdds = added.filter((p) => !ALLOWED_ADDS.has(p));
   assert.deepEqual(strayAdds, [], `added path(s) outside the slice-2 allowlist:\n  ${strayAdds.join('\n  ')}`);
@@ -309,7 +376,10 @@ t('stacked-view.js is pure (allowlisted named imports only, no impurity tokens)'
 
 // ---------- 6. insert-region LOCATION pins (strip-back cannot catch a relocated insertion) ----------
 const INSERT_ANCHORS = {
-  'PRESENTATION': { before: '/* SLICE1:PRESENTATION:END */', after: '</style>' },
+  // PRESENTATION is now immediately followed by the NAVPREF-CSS region (both are CSS before </style>); NAVPREF-CSS
+  // ends at </style>. The two CSS insert regions pin each other + the </style> landmark.
+  'PRESENTATION': { before: '/* SLICE1:PRESENTATION:END */', after: "/* SLICE2:NAVPREF-CSS:START — Cuenta + «App de navegación» screens (R7); exact to the prototype, mapped to the app's Clean-Light-Pro tokens + Red Hat display face (same language as the stacked screens). */" },
+  'NAVPREF-CSS': { before: '/* SLICE2:PRESENTATION:END */', after: '</style>' },
   'SHIFT-CLEANUP': { before: 'async function cleanupShift() {', after: '  if (watchId) {' },
   'MAP-LIFECYCLE': { before: "document.addEventListener('visibilitychange', async () => {", after: "  if (document.visibilityState === 'visible' && driverState?.active) {" },
 };
