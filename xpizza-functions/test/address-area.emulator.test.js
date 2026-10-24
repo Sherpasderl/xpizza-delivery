@@ -36,7 +36,7 @@ const { buildFacturaRecord } = require('../factura/build-record');
 const SCHED = require('../scheduled-orders');
 const REL = require('../scheduled-release-core');
 const { orderFingerprint } = require('../pixelpay-charge');
-const { orderContentKey } = require('../order-dedup');
+const { orderContentKey, rateLimitKey } = require('../order-dedup');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -73,10 +73,10 @@ async function wipe() {
   await rtdb.ref().remove();
 }
 
-// a record with its request-local identity normalised: the order id, the phone, tokens, timestamps and the area itself
+// a record with its request-local identity normalised: the order id, the phone, tokens and timestamps. address_area is NOT
+// stripped here (codex r1 P2-1): only the ORDER's own key is excluded, by sameBut below, so a copy anywhere else fails
 function norm(v, ids) {
   const s = JSON.stringify(v === undefined ? null : v, (k, x) => {
-    if (k === 'address_area') return undefined;
     if (/(^|_)(at|ts|timestamp)$|_at_|token|^created|^updated|expires/.test(k)) return typeof x === 'object' ? x : '<t>';
     return x;
   });
@@ -89,6 +89,9 @@ const FACTURA_CONFIG = { restaurant_name: 'R', legal_name: 'R SA', rtn: '0801199
 const edgeDeps = (rid) => ({ db: rtdb, restaurant: { lat: HUB.lat, lng: HUB.lng, name: rid, phone: '+504' }, buildMaterializeUpdates, genToken: () => 'TOK', alert: async () => {},
   client: { voidTransaction: async () => ({ ok: true }) }, getIdentity: async () => ({ active: true, hours: HOURS }), sanitizeText: (x) => String(x || ''), serverTimestamp: 1,
   voidOrRefund: async () => ({ ok: true, outcome: 'voided' }) });
+// the pair's snapshots are equal except for the ORDER's own address_area (tasks / tracking / factura / any nested copy compared)
+const ownless = (snap) => { const c = JSON.parse(JSON.stringify(snap)); if (c.o) delete c.o.address_area; return c; };
+const sameBut = (sb, idsB, sa, idsA, label) => assert.deepStrictEqual(norm(ownless(sb), idsB), norm(ownless(sa), idsA), label);
 let FACTURA_COMPARED = 0;   // non-vacuity: the platform-factura restaurant's pairs really compare a factura record
 async function snapshotOf(oid) {
   const o = (await getOrder(oid)).val() || {};
@@ -169,7 +172,15 @@ async function snapshotOf(oid) {
       assert.strictEqual(sa.o.address_area, undefined, 'premise: A does not');
       assert.deepStrictEqual(norm(rb.json, ids(sb, b)), norm(ra.json, ids(sa, a)), `🔴 ${rid} cash: the response differs`);
       assert.deepStrictEqual(Object.keys(sb.o).filter((k) => !(k in sa.o)), ['address_area'], `🔴 ${rid} cash: the ONLY new order key is address_area`);
-      assert.deepStrictEqual(norm(sb, ids(sb, b)), norm(sa, ids(sa, a)), `🔴 ${rid} cash: order / tasks / tracking / factura differ beyond address_area`);
+      sameBut(sb, ids(sb, b), sa, ids(sa, a), `🔴 ${rid} cash: order / tasks / tracking / factura differ beyond the order's address_area`);
+      // NEGATIVE (codex r1 P2-1): a copy of the area ANYWHERE else — the delivery task, the tracking record, the factura — fails
+      const leaks = [['tasks.delivery', (c) => { c.tasks.delivery.address_area = 'Colonia Trejo'; }], ['tracking', (c) => { c.tracking.address_area = 'Colonia Trejo'; }]];
+      if (sb.factura) leaks.push(['factura', (c) => { c.factura.address_area = 'Colonia Trejo'; }]);
+      assert.ok(sb.tasks.delivery && sb.tracking, 'premise: the delivery task and the tracking record exist');
+      for (const [where, plant] of leaks) {
+        const leaked = JSON.parse(JSON.stringify(sb)); plant(leaked);
+        assert.throws(() => sameBut(leaked, ids(sb, b), sa, ids(sa, a), 'x'), assert.AssertionError, `🔴 ${rid}: an area leaked into ${where} must FAIL the comparison`);
+      }
       assert.ok(waA.length === 1 && waB.length === 1, 'premise: one WhatsApp each');
       assert.deepStrictEqual(norm(waB[0], ids(sb, b)), norm(waA[0], ids(sa, a)), `🔴 ${rid} cash: the WhatsApp message differs`);
       // a retry of B with a CHANGED area → the same answer as a control retry with the SAME area (the idempotent return);
@@ -202,7 +213,7 @@ async function snapshotOf(oid) {
       assert.strictEqual(sb.o.address_area, 'Colonia Trejo', `${rid} card: materialize preserves the area`);
       const ids = (s, oid, t) => [[oid, '<oid>'], [s.o.customer_phone, '<phone>'], [t, '<tok>'], ...(s.o.active_attempt_id ? [[s.o.active_attempt_id, '<att>']] : [])];
       assert.deepStrictEqual(Object.keys(sb.o).filter((k) => !(k in sa.o)), ['address_area'], `🔴 ${rid} card: the ONLY new order key is address_area`);
-      assert.deepStrictEqual(norm(sb, ids(sb, b, `TTB${rid}`)), norm(sa, ids(sa, a, `TTA${rid}`)), `🔴 ${rid} card: order / tasks / tracking / factura differ beyond address_area`);
+      sameBut(sb, ids(sb, b, `TTB${rid}`), sa, ids(sa, a, `TTA${rid}`), `🔴 ${rid} card: order / tasks / tracking / factura differ beyond the order's address_area`);
     }
     // scheduled (cash): held → the REAL release
     {
@@ -220,9 +231,35 @@ async function snapshotOf(oid) {
       assert.strictEqual(sb.o.address_area, 'Colonia Trejo', `${rid} scheduled: the release preserves the area`);
       const ids = (s, oid) => [[oid, '<oid>'], [s.o.customer_phone, '<phone>'], [`RT${oid}`, '<tok>']];
       assert.deepStrictEqual(Object.keys(sb.o).filter((k) => !(k in sa.o)), ['address_area'], `🔴 ${rid} scheduled: the ONLY new order key is address_area`);
-      assert.deepStrictEqual(norm(sb, ids(sb, b)), norm(sa, ids(sa, a)), `🔴 ${rid} scheduled: order / tasks / tracking / factura differ beyond address_area`);
+      sameBut(sb, ids(sb, b), sa, ids(sa, a), `🔴 ${rid} scheduled: order / tasks / tracking / factura differ beyond the order's address_area`);
     }
   }
+  // ── content dedup (codex r1 P2-3): a DIFFERENT order id, the SAME customer + content, the stamp KEPT — a live card order, then
+  // a cash re-order (create-side retap + the duplicate-sibling alert), then the card's confirm (the confirm-side guard) — has
+  // the SAME outcome whether the area is absent, present on both, or present on one only
+  const dedupScenario = async (rid, tag, areaFirst, areaSecond) => {
+    for (const p of ['rate_limits', 'recent_order_content', 'dispatcher_alerts']) await rtdb.ref(p).remove();
+    const ph = `9977${String(SEQ += 1).padStart(4, '0')}`;
+    const [p1, p2] = [`aa_dd_${rid}_${tag}_1`, `aa_dd_${rid}_${tag}_2`];
+    const r1 = await post(app.chargeOnlineOrder, { ...bodyFor(rid, p1, 'online', areaFirst ? { address_area: areaFirst } : {}), customer_phone: ph });
+    const r2 = await post(app.createOrder, { ...bodyFor(rid, p2, 'cash', areaSecond ? { address_area: areaSecond } : {}), customer_phone: ph });   // the stamp is NOT cleared
+    const stamps = (await rtdb.ref(`recent_order_content/${rateLimitKey(ph)}`).get()).val();
+    const alerts = (await rtdb.ref('dispatcher_alerts').get()).val();
+    const p1o = (await getOrder(p1)).val() || {};
+    const conf = await confirmAndMaterialize(edgeDeps(rid), { orderId: p1, attemptId: p1o.active_attempt_id, now: Date.now(), trackingToken: `TTD${tag}${rid}` });
+    const p1after = (await getOrder(p1)).val() || {};
+    const ids = [[p1, '<p1>'], [p2, '<p2>'], [ph, '<phone>'], [rateLimitKey(ph), '<phk>'], [`TTD${tag}${rid}`, '<tok>'], ...(p1o.active_attempt_id ? [[p1o.active_attempt_id, '<att>']] : [])];
+    return norm({ r1: [r1.status, r1.json], r2: [r2.status, r2.json], stamps, alerts, conf, p1: [p1after.status, p1after.payment_status] }, ids);
+  };
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const base = await dedupScenario(rid, 'X', null, null);
+    assert.ok(base.stamps && Object.values(base.stamps).some((v) => v && v.order_id === '<p2>'), `premise: the re-order kept the SAME content stamp, now naming the cash order (${JSON.stringify(base.stamps)})`);
+    assert.ok(base.alerts && Object.keys(base.alerts).length === 1, `premise: the create-side duplicate-sibling alert fired (${JSON.stringify(base.alerts)})`);
+    assert.deepStrictEqual(await dedupScenario(rid, 'Y', 'Colonia Trejo', 'Res. Los Castaños'), base, `🔴 ${rid}: the duplicate outcome changes when BOTH orders carry (different) areas`);
+    assert.deepStrictEqual(await dedupScenario(rid, 'Z', null, 'Colonia Trejo'), base, `🔴 ${rid}: the duplicate outcome changes when only the re-order carries an area`);
+  }
+  ok('content dedup (both brands): a different order id with the same customer + content and the stamp KEPT — the create-side stamp, the duplicate-sibling alert and the card confirm\'s duplicate guard — give the SAME outcome with the area absent, on both, or on one only');
+
   assert.ok(FACTURA_COMPARED >= 6, `non-vacuity: factura records were built and compared (${FACTURA_COMPARED})`);
   ok('paired non-interference (both brands): cash, card (issuance + confirm/materialize) and scheduled release differing ONLY in address_area → equal responses, totals / breakdown / payment + charge-input fingerprints / PixelPay amount, tasks, tracking, WhatsApp and factura; the only order diff is address_area; a cash retry with a changed area is the same idempotent answer and never rewrites it');
 
