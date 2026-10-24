@@ -41,13 +41,16 @@ ok(`the registry covers exactly the inventory, every entry well-formed (${Object
 
 // codex's example: every CALL SITE of paymentRowHtml is its own region — the driver active card AND the queue detail sheet,
 // in the baseline renderers (kept in the file, now unreachable) and in the slice-2 stacked-view builders
-const PR_CONSUMERS = ['xpizza-driver/index.html<script@0>#renderActiveCard', 'xpizza-driver/index.html<script@0>#renderQueueDetail', 'xpizza-driver/stacked-view.js#activeCardHtml', 'xpizza-driver/stacked-view.js#queueDetailHtml'];
+// activeCardHtml calls paymentRowHtml TWICE (the warning branch re-labels «COBRO»→«PAGO», advisor #8), so it is two
+// regions; the queued sheet now renders payment INLINE via collectionFor in queueDetailHtml>anon (stacked-view.js:402-410),
+// so queueDetailHtml is no longer a paymentRowHtml consumer.
+const PR_CONSUMERS = ['xpizza-driver/index.html<script@0>#renderActiveCard', 'xpizza-driver/index.html<script@0>#renderQueueDetail', 'xpizza-driver/stacked-view.js#activeCardHtml', 'xpizza-driver/stacked-view.js#activeCardHtml'];
 const pr = doc.regions.filter((r) => r.output === 'xpizza-driver/cash-helpers.js#paymentRowHtml').map((r) => r.consumer);
 assert.deepStrictEqual(pr.sort(), PR_CONSUMERS, FAIL(`paymentRowHtml regions: ${JSON.stringify(pr)}`));
 const ga = gateA({ scenarios: ['S1'], brands: ['x_pizza'], lps: ['assigned'] });
 const prCells = ga.cells.filter((c) => c.output === 'xpizza-driver/cash-helpers.js#paymentRowHtml');
-assert.deepStrictEqual([...new Set(prCells.map((c) => c.region))].sort(), PR_CONSUMERS.map((c) => `xpizza-driver/cash-helpers.js#paymentRowHtml@${c}`), FAIL('gate A does not hold one cell per paymentRowHtml region'));
-ok(`codex's example: paymentRowHtml → 4 regions (renderActiveCard, renderQueueDetail, stacked-view activeCardHtml, queueDetailHtml), each its own gate A cell (${prCells.length} at S1 / x_pizza / assigned)`);
+assert.deepStrictEqual([...new Set(prCells.map((c) => c.region))].sort(), PR_CONSUMERS.map((c, i) => `xpizza-driver/cash-helpers.js#paymentRowHtml@${c}${i === 3 ? '~2' : ''}`), FAIL('gate A does not hold one cell per paymentRowHtml region'));
+ok(`codex's example: paymentRowHtml → 4 regions (renderActiveCard, renderQueueDetail, stacked-view activeCardHtml ×2), each its own gate A cell (${prCells.length} at S1 / x_pizza / assigned)`);
 
 // codex P1-a r1 P1-8: every CALL SITE is a region — getSalesStatsCore calls shapePeriod for the current AND the comparison
 // period: two regions, never folded by caller
