@@ -1,11 +1,12 @@
 // Pure stacked-view logic + markup builders — run: `node stacked-view.test.js` (no framework, repo idiom).
-// The markup builders are ALSO co-verified by the jsdom real-writer branch harness (handler binding); here
-// we assert the pure output: the baseline binding hooks are present and the slice-2 elements are correct.
+// The builders are ALSO co-verified by the jsdom real-writer branch harness (handler binding); here we assert
+// the pure output: the baseline binding hooks are present and the prototype rebuild's elements are correct.
 import assert from 'node:assert/strict';
 import {
   destinationLabel, orderIdTail, stopNavInfo, resolveVisibleLabels,
-  bagTagClass, bagTagHtml, phaseStripHtml,
+  bagTagClass, bagTagHtml, phaseStripHtml, navBtnHtml, queuedPreviewHtml, coloniaOf,
   activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml,
+  stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
 } from './stacked-view.js';
 
 let passed = 0;
@@ -14,7 +15,7 @@ const deepFreeze = (o) => { if (o && typeof o === 'object') { Object.values(o).f
 const RESTAURANT = { lat: 14.10, lng: -87.22 };
 
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-const ICONS = { nav: '<i>N</i>', check: '<i>C</i>', phone: '<i>P</i>', whatsapp: '<i>W</i>', pin: '<i>PIN</i>', cash: '<i>$</i>' };
+const ICONS = { nav: '<i>N</i>', check: '<i>C</i>', phone: '<i>P</i>', whatsapp: '<i>W</i>', pin: '<i>PIN</i>', cash: '<i>$</i>', help: '<i>?</i>', door: '<i>D</i>', bell: '<i>B</i>', warn: '<i>!</i>', cup: '<i>U</i>', lock: '<i>L</i>' };
 const DEPS = { ICONS, esc, scheduledBadge: () => '', computeVuelto: () => null, RESTAURANT, navPref: undefined };
 
 // ---------- destinationLabel: phase-correct (Codex P1-2) ----------
@@ -35,210 +36,196 @@ t('destinationLabel: delivery w/o order record → delivery task address', () =>
 t('orderIdTail: last 4 chars', () => assert.equal(orderIdTail('ord_9a3f9'), 'a3f9'));
 t('orderIdTail: empty when no id', () => assert.equal(orderIdTail(null), ''));
 
-// ---------- resolveVisibleLabels: Codex r2 P1-2 collision cases ----------
-t('cross-hub pair with the SAME display number → both get an orderId tail; label+orderId+URL hold', () => {
-  const stops = [
-    { orderId: 'ordA1b2', phase: 'delivery', order: { restaurant_id: 'x_pizza', display_number: 5, address_detected: 'Col. Palmira', lat: 14.06, lng: -87.16 }, deliveryTask: {} },
-    { orderId: 'ordC3d4', phase: 'delivery', order: { restaurant_id: 'la_musa', display_number: 5, address_detected: 'Col. Palmira', lat: 14.12, lng: -87.10 }, deliveryTask: {} },
-  ];
-  const infos = stops.map((o) => stopNavInfo(deepFreeze(o), RESTAURANT));
-  const out = resolveVisibleLabels(infos);
-  assert.equal(out[0].label, 'Col. Palmira · #5 · #' + orderIdTail('ordA1b2'));
-  assert.equal(out[1].label, 'Col. Palmira · #5 · #' + orderIdTail('ordC3d4'));
-  assert.notEqual(out[0].label, out[1].label);
-  assert.equal(out[0].orderId, 'ordA1b2');
-  assert.ok(out[0].waze.includes('14.06,-87.16') && out[0].maps.includes('destination=14.06,-87.16'));
-  assert.equal(out[1].orderId, 'ordC3d4');
-  assert.ok(out[1].waze.includes('14.12,-87.1') && out[1].maps.includes('destination=14.12,-87.1'));
+// ---------- stopNavInfo + resolveVisibleLabels (Codex P1-2 collision) ----------
+t('stopNavInfo: label + URLs derive from ONE phase target', () => {
+  const info = stopNavInfo(deepFreeze({ orderId: 'A', phase: 'delivery', order: { address_detected: 'Col. Kennedy', display_number: 47, lat: 14.1, lng: -87.1 }, deliveryTask: {} }), RESTAURANT);
+  assert.equal(info.base, 'Col. Kennedy');
+  assert.equal(info.displayNum, '#47');
+  assert.ok(info.waze.includes('14.1') && info.waze.includes('-87.1'), 'waze targets the customer');
+});
+t('resolveVisibleLabels: same display-number across hubs → append orderId last-4', () => {
+  const a = stopNavInfo(deepFreeze({ orderId: 'ordA1', phase: 'delivery', order: { address_detected: 'Col. X', display_number: 5 }, deliveryTask: {} }), RESTAURANT);
+  const b = stopNavInfo(deepFreeze({ orderId: 'ordB2', phase: 'delivery', order: { address_detected: 'Col. X', display_number: 5 }, deliveryTask: {} }), RESTAURANT);
+  const [la, lb] = resolveVisibleLabels([a, b]);
+  assert.ok(la.label.endsWith('#ordA1'.slice(-4)) && lb.label.endsWith('#ordB2'.slice(-4)), 'orderId tails disambiguate');
+});
+t('resolveVisibleLabels: empty display number → orderId tail (never blank)', () => {
+  const a = stopNavInfo(deepFreeze({ orderId: 'ord_zzzz', phase: 'delivery', deliveryTask: { destination_address: 'Res. Y' } }), RESTAURANT);
+  const [la] = resolveVisibleLabels([a]);
+  assert.ok(la.label.includes('#zzzz'), 'orderId tail appended');
 });
 
-t('absent order record → display number empty → orderId tail appended; label+orderId+URL hold', () => {
-  const o = { orderId: 'ordZ9f0', phase: 'delivery', deliveryTask: { destination_address: 'Res. El Trapiche', destination_lat: 14.09, destination_lng: -87.19 } };
-  const [out] = resolveVisibleLabels([stopNavInfo(deepFreeze(o), RESTAURANT)]);
-  assert.equal(out.label, 'Res. El Trapiche · #' + orderIdTail('ordZ9f0'));
-  assert.equal(out.orderId, 'ordZ9f0');
-  assert.ok(out.waze.includes('14.09,-87.19') && out.maps.includes('destination=14.09,-87.19'));
+// ---------- bag tags (S14) ----------
+t('bagTagClass: stop 1 = a (marino), later = b (celeste)', () => { assert.equal(bagTagClass(1), 'a'); assert.equal(bagTagClass(2), 'b'); assert.equal(bagTagClass(3), 'b'); });
+t('bagTagHtml: renders the ordinal', () => assert.ok(bagTagHtml(2, esc).includes('>2<') && bagTagHtml(2, esc).includes('bagtag b')));
+
+// ---------- phaseStripHtml (S11: on/done/cancelled + deadline only with data) ----------
+t('phaseStripHtml: <2 segments renders nothing', () => assert.equal(phaseStripHtml([{ n: 1, state: 'on' }], esc), ''));
+t('phaseStripHtml: active=on, upcoming=plain, done=done, cancelled=cancelled; bars present', () => {
+  const html = phaseStripHtml([{ n: 1, state: 'done', label: 'Daniela', time: '7:44' }, { n: 2, state: 'on', label: 'Carlos' }], esc);
+  assert.ok(html.includes('st done') && html.includes('1 · Daniela · 7:44'), 'done segment + delivered time');
+  assert.ok(html.includes('st on') && html.includes('2 · Carlos'), 'active segment');
+  assert.ok((html.match(/class="bar"/g) || []).length === 2, 'a bar per segment');
+});
+t('phaseStripHtml: NO trailing time when none supplied (R1 — no invented deadline)', () => {
+  const html = phaseStripHtml([{ n: 1, state: 'on', label: 'Ana' }, { n: 2, label: 'Beto' }], esc);
+  assert.ok(html.includes('1 · Ana') && !html.includes('·  ·') && !/Ana · \d/.test(html), 'no made-up time');
+});
+t('phaseStripHtml: cancelled segment', () => assert.ok(phaseStripHtml([{ n: 1, state: 'cancelled', label: 'X' }, { n: 2, state: 'on', label: 'Y' }], esc).includes('st cancelled')));
+
+// ---------- coloniaOf (R4 — area only) ----------
+t('coloniaOf: first comma-segment of the address', () => assert.equal(coloniaOf({ order: { address_detected: 'Col. Trejo, casa 1215' } }), 'Col. Trejo'));
+t('coloniaOf: delivery task fallback; empty when none', () => {
+  assert.equal(coloniaOf({ deliveryTask: { destination_address: 'Res. Los Robles, bloque C' } }), 'Res. Los Robles');
+  assert.equal(coloniaOf({ order: {} }), '');
 });
 
-t('distinct labels WITH display numbers → no orderId tail (stable)', () => {
-  const stops = [
-    { orderId: 'ordA', phase: 'delivery', order: { display_number: 7, address_detected: 'Col. Kennedy', lat: 14.06, lng: -87.16 }, deliveryTask: {} },
-    { orderId: 'ordB', phase: 'delivery', order: { display_number: 8, address_detected: 'Col. Miraflores', lat: 14.12, lng: -87.10 }, deliveryTask: {} },
-  ];
-  const out = resolveVisibleLabels(stops.map((o) => stopNavInfo(deepFreeze(o), RESTAURANT)));
-  assert.equal(out[0].label, 'Col. Kennedy · #7');
-  assert.equal(out[1].label, 'Col. Miraflores · #8');
+// ---------- navBtnHtml (N3 — ONE primary + «Abrir en {otra}»; N6 external) ----------
+t('navBtnHtml: Waze default → primary Waze + «Abrir en Google Maps en su lugar»; no two side-by-side buttons', () => {
+  const html = navBtnHtml({ lat: 14.1, lng: -87.1 }, undefined, 'Parada 1 · Col. Trejo', DEPS);
+  assert.ok(html.includes('Navegar con Waze') && html.includes('→ Parada 1 · Col. Trejo'), 'primary + destination');
+  assert.ok(html.includes('Abrir en Google Maps en su lugar'), 'secondary link to the other app');
+  assert.ok(!html.includes('waze-btn') && !html.includes('maps-btn'), 'no two side-by-side app buttons');
+  assert.ok((html.match(/nav-primary/g) || []).length === 1, 'exactly one primary');
+});
+t('navBtnHtml: Maps pref → primary Google Maps + «Abrir en Waze»', () => {
+  const html = navBtnHtml({ lat: 1, lng: 2 }, 'Maps', 'x', { ICONS, esc });
+  assert.ok(html.includes('Navegar con Google Maps') && html.includes('Abrir en Waze en su lugar'));
 });
 
-// ---------- bag tags ----------
-t('bagTagClass: 1→a (marino), 2→b (celeste)', () => {
-  assert.equal(bagTagClass(1), 'a');
-  assert.equal(bagTagClass(2), 'b');
-  assert.equal(bagTagClass(3), 'b');
+// ---------- activeCardHtml (single nav, «Parada N ·», personalized slide, Llegué gated, no phase-pill, instr) ----------
+const A = deepFreeze({ orderId: 'A', phase: 'delivery', deliveryTask: { destination_lat: 14.0, destination_lng: -87.0 },
+  order: { customer_name: 'Daniela Núñez', customer_phone: '99998888', payment_method: 'cash', total: 385, display_number: 47, address_detected: 'Col. Palmira, casa 12', address_details: 'portón negro', lat: 14.0, lng: -87.0 } });
+t('activeCardHtml: single-primary nav with «Parada N ·» label (N10); two-button nav gone', () => {
+  const html = activeCardHtml(A, DEPS, { ordinal: 1, showActualPill: true, navLabel: 'Col. Palmira · #47' });
+  assert.ok(html.includes('nav-primary') && html.includes('→ Parada 1 · Col. Palmira · #47'), 'single primary + «Parada N ·»');
+  assert.ok(!html.includes('waze-btn') && !html.includes('maps-btn'), 'no two side-by-side buttons');
 });
-t('bagTagHtml: renders the chip', () => assert.equal(bagTagHtml(1), '<span class="bagtag a">1</span>'));
-
-// ---------- phase strip ----------
-t('phaseStripHtml: fewer than 2 stops → empty', () => assert.equal(phaseStripHtml([{ n: 1, on: true }]), ''));
-t('phaseStripHtml: 2 stops → ONLY the active segment is on (position-pinned), both numbered, no done', () => {
-  const html = phaseStripHtml([{ n: 1, on: true }, { n: 2, on: false }]);
-  // Pin the class of EACH segment in order: the active (stop 1) is `st on`, the inactive (stop 2) is bare `st`.
-  // (A bare `includes('class="st on"')` would pass even if the on-class landed on the WRONG segment.)
-  const segClasses = html.match(/<span class="st( on)?">/g);
-  assert.deepEqual(segClasses, ['<span class="st on">', '<span class="st">'], 'segment 1 active (on), segment 2 inactive (no on)');
-  assert.ok(html.includes('>1</span>') && html.includes('>2</span>'), 'numbered');
-  assert.ok(!html.includes('done'), 'no done segment');
+t('activeCardHtml: personalized delivery slide «Entregado · {first name} · L {monto}» (cash)', () => {
+  assert.ok(activeCardHtml(A, DEPS, { ordinal: 1 }).includes('Entregado · Daniela · L 385'), 'first name + cash amount');
 });
-t('phaseStripHtml: the active flag moves with the data (stop 2 active → only segment 2 is on)', () => {
-  const html = phaseStripHtml([{ n: 1, on: false }, { n: 2, on: true }]);
-  const segClasses = html.match(/<span class="st( on)?">/g);
-  assert.deepEqual(segClasses, ['<span class="st">', '<span class="st on">'], 'segment 1 inactive, segment 2 active');
+t('activeCardHtml: no «Entregar»/phase pill; «Parada actual» when showActualPill', () => {
+  const html = activeCardHtml(A, DEPS, { ordinal: 1, showActualPill: true });
+  assert.ok(!html.includes('phase-pill'), 'no phase pill');
+  assert.ok(html.includes('Parada actual'), '«Parada actual» pill');
 });
-t('phaseStripHtml: customer-name labels render "1 · Name" (escaped), no per-stop time', () => {
-  const html = phaseStripHtml([{ n: 1, on: true, label: 'Daniela' }, { n: 2, on: false, label: 'Carlos <&>' }], esc);
-  assert.ok(html.includes('>1 · Daniela</span>'), 'active name label');
-  assert.ok(html.includes('>2 · Carlos &lt;&amp;&gt;</span>'), 'escaped queued name label');
-  assert.ok(!html.includes('antes de'), 'no per-stop target time');
+t('activeCardHtml: delivery instructions block (address_details), contact kept (S13)', () => {
+  const html = activeCardHtml(A, DEPS, { ordinal: 1 });
+  assert.ok(html.includes('class="instr"') && html.includes('portón negro'), 'instructions block');
+  assert.ok(html.includes('recipient-phone') && html.includes('recipient-whatsapp'), 'contact kept on the active card');
 });
-
-// ---------- activeCardHtml: delivery (binding hooks + slice-2 elements) ----------
-t('activeCardHtml: delivery reproduces btn-delivered + slider shape + vuelto hooks + layers bag tag / pill / data-order-id / phase-correct Waze label', () => {
-  const o = deepFreeze({
-    orderId: 'ordA1b2', phase: 'delivery',
-    order: { display_number: 5, customer_name: 'Daniela', address_detected: 'Col. Palmira', lat: 14.06, lng: -87.16, total: 385, payment_method: 'cash' },
-    deliveryTask: {},
-  });
-  const html = activeCardHtml(o, DEPS, { ordinal: 1, solo: false, showActualPill: true, arrived: false, navLabel: 'Col. Palmira · #5' });
-  // frozen binding hooks
-  assert.ok(html.includes('id="btn-delivered"'), 'deliver slide id');
-  assert.ok(html.includes('class="slide-fill"') && html.includes('class="slide-thumb"'), 'slider shape');
-  assert.ok(html.includes('data-vuelto-open') && html.includes('data-total="385"'), 'cash vuelto hooks');
-  // slice-2 layers
-  assert.ok(html.includes('data-order-id="ordA1b2"'), 'identity hook');
-  assert.ok(html.includes('<span class="bagtag a">1</span>'), 'bag tag 1');
-  assert.ok(html.includes('class="pactual">Parada actual'), 'parada-actual pill');
-  assert.ok(html.includes('Navegar con Waze') && html.includes('→ Col. Palmira · #5'), 'navBtn: «Navegar con {app}» + «→ {destino}» (Codex r1)');
-  // Waze href targets the delivery coord (order.lat||deliveryTask), Maps secondary present
-  assert.ok(html.includes('waze.com/ul?ll=14.06,-87.16'), 'waze targets customer');
-  assert.ok(html.includes('maps/dir/?api=1&destination=14.06,-87.16'), 'maps secondary targets customer');
+t('activeCardHtml: «Llegué» HIDDEN until the capability (R9); shown when canNotifyArrival', () => {
+  assert.ok(!activeCardHtml(A, DEPS, { ordinal: 1, canNotifyArrival: false }).includes('btn-llegue'), 'hidden by default');
+  assert.ok(activeCardHtml(A, DEPS, { ordinal: 1, canNotifyArrival: true }).includes('Llegué · avisar a Daniela'), 'shown with the capability');
+});
+t('activeCardHtml: the frozen delivered slide id btn-delivered is present', () => assert.ok(activeCardHtml(A, DEPS, { ordinal: 1 }).includes('id="btn-delivered"')));
+t('activeCardHtml (PRIVACY): an awaiting_acceptance offer shows NO name/phone/address/nav', () => {
+  const offer = deepFreeze({ orderId: 'C', phase: 'awaiting_acceptance', pickupTask: { assignment_deadline: 1 }, deliveryTask: {}, order: { customer_name: 'Secreta', customer_phone: '1', address_detected: 'Col. Z', total: 100 } });
+  const html = activeCardHtml(offer, DEPS, { ordinal: 1 });
+  assert.ok(!html.includes('Secreta') && !html.includes('Col. Z') && !html.includes('recipient-phone') && !html.includes('nav-primary'), 'offer hides who/where');
 });
 
-t('activeCardHtml: pickup → Waze label names the RESTAURANT and URL targets the hub (label matches URL)', () => {
-  const o = deepFreeze({
-    orderId: 'ordP', phase: 'pickup',
-    order: { display_number: 47, restaurant_display_name: 'La Musa', address_detected: 'Col. Cliente' },
-    pickupTask: { destination_lat: 14.11, destination_lng: -87.23, destination_address: 'Blvd Morazán' },
-    deliveryTask: {},
-  });
-  const html = activeCardHtml(o, DEPS, { ordinal: 1, showActualPill: true, navLabel: 'La Musa · #47' });
-  assert.ok(html.includes('id="btn-pickup"'), 'pickup slide id');
-  assert.ok(html.includes('Navegar con Waze') && html.includes('→ La Musa · #47'), 'pickup navBtn names the restaurant destination');
-  assert.ok(html.includes('waze.com/ul?ll=14.11,-87.23'), 'pickup URL targets the hub, not the customer');
+// ---------- queuedPreviewHtml («Después» — first name + colonia; privacy on awaiting) ----------
+const B = deepFreeze({ orderId: 'B', phase: 'pickup', deliveryTask: { destination_lat: 14.2, destination_lng: -87.2 },
+  order: { customer_name: 'Carlos Mejía', display_number: 12, address_detected: 'Res. Los Robles, #4', lat: 14.2, lng: -87.2 } });
+t('queuedPreviewHtml: «Después: {first name} · {colonia}» + the no-nav-yet hint + data-order-id', () => {
+  const html = queuedPreviewHtml(B, 2, DEPS);
+  assert.ok(html.includes('Después: Carlos · Res. Los Robles'), 'first name + colonia');
+  assert.ok(html.includes('sin navegación aún'), 'hint');
+  assert.ok(html.includes('data-order-id="B"'), 'orderId hook for the fail-closed tap');
+});
+t('queuedPreviewHtml: an awaiting_acceptance next stop shows no name (privacy)', () => {
+  const html = queuedPreviewHtml(deepFreeze({ orderId: 'C', phase: 'awaiting_acceptance', order: { customer_name: 'Secreta', address_detected: 'Col. Z' } }), 2, DEPS);
+  assert.ok(!html.includes('Secreta') && !html.includes('Col. Z'), 'no PII before accept');
 });
 
-t('activeCardHtml: awaiting_acceptance (PRIVACY, Codex r1 P1) → NO customer name/phone/tel/wa.me/address before accept; accept slide + countdown only', () => {
-  // Populated customer fields — none may appear in the pre-acceptance offer card.
-  const o = deepFreeze({ orderId: 'ordN', phase: 'awaiting_acceptance',
-    order: { display_number: 9, customer_name: 'Daniela Núñez', customer_phone: '99998888', address_detected: 'Col. Palmira, casa 12', total: 385 },
-    pickupTask: { assignment_deadline: 1760000000000 }, deliveryTask: { recipient_name: 'Daniela Núñez', destination_address: 'Col. Palmira, casa 12' } });
-  const html = activeCardHtml(o, DEPS, { ordinal: 1 });
-  assert.ok(html.includes('id="btn-accept"'), 'accept slide');
-  assert.ok(!html.includes('nav-row'), 'no nav while awaiting');
-  assert.ok(html.includes('accept-countdown') && html.includes('data-deadline="1760000000000"'), 'countdown hook');
-  // PRIVACY negatives on POPULATED fields:
-  assert.ok(!html.includes('Daniela'), 'no customer name before accept');
-  assert.ok(!html.replace(/\D/g, '').includes('99998888'), 'no phone digit-run before accept');
-  assert.ok(!html.includes('tel:') && !html.includes('wa.me'), 'no tel: / wa.me before accept');
-  assert.ok(!html.includes('Col. Palmira') && !html.includes('address-block'), 'no exact address before accept');
-  assert.ok(html.includes('Nuevo pedido'), 'offer shows the non-identifying "Nuevo pedido"');
+// ---------- stopHeaderHtml (S9/S10 — «Parada N de M»/«Única parada»/pickup; Ayuda gated; deadline w/ data) ----------
+t('stopHeaderHtml: «Parada 1 de 2» + «name · area»; end-shift always; Ayuda gated', () => {
+  const html = stopHeaderHtml({ ordinal: 1, total: 2, name: 'Daniela Mejía', area: 'Col. Trejo', canReportProblem: false }, DEPS);
+  assert.ok(html.includes('Parada 1 de 2') && html.includes('Daniela Mejía · Col. Trejo'));
+  assert.ok(html.includes('id="btn-end-shift"'), 'end-shift always present');
+  assert.ok(!html.includes('id="btn-problema"'), 'Ayuda hidden until the capability');
+});
+t('stopHeaderHtml: deadline only with data (R1); «Única parada»; «Recoger N pedidos»; Ayuda when capable', () => {
+  assert.ok(!stopHeaderHtml({ ordinal: 1, total: 2 }, DEPS).includes('antes de'), 'no invented deadline');
+  assert.ok(stopHeaderHtml({ ordinal: 1, total: 2, deadline: '7:48' }, DEPS).includes('Parada 1 de 2 · antes de 7:48'));
+  assert.ok(stopHeaderHtml({ single: true }, DEPS).includes('Única parada'));
+  assert.ok(stopHeaderHtml({ pickupCount: 2 }, DEPS).includes('Recoger 2 pedidos'));
+  assert.ok(stopHeaderHtml({ ordinal: 1, total: 1, canReportProblem: true }, DEPS).includes('id="btn-problema"'));
 });
 
-t('activeCardHtml: arrived → arrived-note instead of nav-row', () => {
-  const o = deepFreeze({ orderId: 'ordD', phase: 'delivery', order: { address_detected: 'Col. X', lat: 14.06, lng: -87.16 }, deliveryTask: {} });
-  const html = activeCardHtml(o, DEPS, { ordinal: 1, arrived: true, navLabel: 'Col. X' });
-  assert.ok(html.includes('arrived-note') && html.includes('donde el cliente'), 'arrived note');
-  assert.ok(!html.includes('nav-row'), 'no nav-row when arrived');
+// ---------- queueDetailHtml (S5/S6 — read-only: no contact, no nav, no Entregado; items + payment + lock) ----------
+t('queueDetailHtml: read-only — NO nav, NO contact, NO «Entregado»; the lock banner; «Parada N · name»', () => {
+  const html = queueDetailHtml(B, 2, DEPS);
+  assert.ok(!html.includes('nav-primary') && !html.includes('waze'), 'no navigation');
+  assert.ok(!html.includes('recipient-phone') && !html.includes('recipient-whatsapp'), 'no contact actions');
+  assert.ok(!html.includes('id="btn-delivered"'), 'no Entregado');
+  assert.ok(html.includes('Parada 2 · Carlos Mejía') && html.includes('En cola'), 'title + chip');
+  assert.ok(html.includes('Sin navegación ni') && html.includes('hasta terminar la parada 1'), 'lock banner');
+  assert.ok(html.includes('id="queue-sheet-close"'), 'close hook');
 });
-
-// ---------- queueHtml: identity + bag tags ----------
-t('queueHtml: each row carries data-q (index) AND data-order-id, with a bag tag', () => {
-  const orders = [
-    { orderId: 'ordB', phase: 'delivery', order: { display_number: 6, customer_name: 'Carlos', address_detected: 'Res. Los Castaños' }, deliveryTask: {} },
-    { orderId: 'ordC', phase: 'delivery', order: { display_number: 7, customer_name: 'Eva', address_detected: 'Col. Y' }, deliveryTask: {} },
-  ].map(deepFreeze);
-  const html = queueHtml(orders, DEPS);
-  assert.ok(html.includes('data-q="0"') && html.includes('data-order-id="ordB"'), 'row0 hooks');
-  assert.ok(html.includes('data-q="1"') && html.includes('data-order-id="ordC"'), 'row1 hooks');
-  assert.ok(html.includes('<span class="bagtag b">2</span>') && html.includes('<span class="bagtag b">3</span>'), 'bag tags 2,3');
-  assert.ok(html.includes('Orden de despacho'), 'neutral queue label (no platform-order claim)');
-});
-t('queueHtml: empty → empty string', () => assert.equal(queueHtml([], DEPS), ''));
-
-// ---------- queueDetailHtml: READ-ONLY, NO nav (owner ruling 2026-10-23, supersedes Codex P1-1) ----------
-t('queueDetailHtml: the queued sheet is READ-ONLY — NO navigation (owner ruling 2026-10-23); info + lock copy + bag tag KEPT', () => {
-  // Owner sequencing rule (wins over the Codex P1-1 "keep baseline nav" constraint): navigation exists ONLY for
-  // the ACTIVE stop. The queued detail sheet shows the stop's info (bag tag, #, customer, address, items,
-  // payment, completion-lock) but offers NO Waze/Maps and no «Entregado» — a driver cannot navigate to stop 2
-  // before delivering stop 1.
-  const o = deepFreeze({ orderId: 'ordB', phase: 'pickup',
-    order: { display_number: 6, customer_name: 'Carlos', address_detected: 'Res. Los Castaños', lat: 14.12, lng: -87.10 },
-    pickupTask: { destination_lat: 14.11, destination_lng: -87.23, destination_address: 'Blvd Morazán' }, deliveryTask: {} });
+t('queueDetailHtml: items card (N artículos + qty×) + read-only payment row (no Revisar button)', () => {
+  const o = deepFreeze({ orderId: 'B', phase: 'pickup', order: { customer_name: 'Carlos', display_number: 12, address_detected: 'Res. Los Robles', items_text: 'baleada, 2 catrachas', payment_method: 'card' } });
   const html = queueDetailHtml(o, 2, DEPS);
-  assert.ok(!html.includes('nav-row') && !html.includes('waze-btn') && !html.includes('maps-btn'), 'NO nav row / Waze / Maps in the read-only queued sheet');
-  assert.ok(!html.includes('Navegar con Waze') && !html.includes('waze.com/ul'), 'no navigation affordance or URL to a queued stop');
-  assert.ok(html.includes('Orden de entrega asignada por despacho.'), 'completion-lock copy KEPT');
-  assert.ok(html.includes('id="queue-sheet-close"'), 'close button hook');
-  assert.ok(html.includes('<span class="bagtag b">2</span>'), 'bag tag');
-  assert.ok(html.includes('Res. Los Castaños'), 'an accepted queued stop still shows its address (read-only info)');
-  assert.ok(!html.includes('id="btn-delivered"'), 'NO Entregado in the read-only sheet');
+  assert.ok(html.includes('2 artículos') && html.includes('<b>1×</b>') && html.includes('<b>2×</b>'), 'items card with qty');
+  assert.ok(html.includes('pay-ro-card') && !html.includes('>Revisar<'), 'read-only payment row, no Revisar button');
 });
 
-// ---------- incomingBannerHtml: reproduces banner hooks ----------
-t('incomingBannerHtml: reproduces data-order-id / data-ib-toggle / btn-accept-inc / countdown / slider', () => {
-  const pending = [deepFreeze({ orderId: 'ordX', phase: 'awaiting_acceptance', order: { display_number: 9, total: 200, address_detected: 'Col. Z' }, pickupTask: { assignment_deadline: 1760000000000 }, deliveryTask: {} })];
-  const html = incomingBannerHtml(pending, { ...DEPS, collapsedBanners: new Set() });
-  assert.ok(html.includes('data-order-id="ordX"'), 'order id');
-  assert.ok(html.includes('data-ib-toggle="ordX"'), 'toggle hook');
-  assert.ok(html.includes('id="btn-accept-inc-ordX"'), 'accept slide id');
-  assert.ok(html.includes('accept-countdown') && html.includes('data-deadline="1760000000000"'), 'countdown');
-  assert.ok(html.includes('class="slide-fill"') && html.includes('class="slide-thumb"'), 'slider shape');
-  assert.ok(html.includes('· otro hub'), 'cross-hub sub');
-  assert.ok(!html.includes('Col. Z'), 'PRIVACY (Codex r2): no exact address/destination in the pre-accept banner');
-});
-t('incomingBannerHtml: collapsed set marks the banner collapsed', () => {
-  const pending = [deepFreeze({ orderId: 'ordX', phase: 'awaiting_acceptance', order: {}, pickupTask: { assignment_deadline: 1 }, deliveryTask: {} })];
-  const html = incomingBannerHtml(pending, { ...DEPS, collapsedBanners: new Set(['ordX']) });
-  assert.ok(html.includes('incoming-banner collapsed'), 'collapsed class');
-});
-t('incomingBannerHtml (PRIVACY, Codex r1 P1): with NO address it does NOT fall back to the customer name', () => {
-  const pending = [deepFreeze({ orderId: 'ordP', phase: 'awaiting_acceptance',
-    order: { display_number: 3, total: 300, customer_name: 'Secreto López' },   // name present, address absent
-    pickupTask: { assignment_deadline: 1 }, deliveryTask: {} })];
-  const html = incomingBannerHtml(pending, { ...DEPS, collapsedBanners: new Set() });
-  assert.ok(!html.includes('Secreto'), 'the pre-accept banner never shows the customer name');
+// ---------- incomingBannerHtml (privacy — brand/#/total/otro hub only) ----------
+t('incomingBannerHtml: pre-accept shows NO name/address; shows brand + total + otro hub + accept slide', () => {
+  const html = incomingBannerHtml([deepFreeze({ orderId: 'X', phase: 'awaiting_acceptance', order: { display_number: 9, total: 200, customer_name: 'Secreta', address_detected: 'Col. Z' }, pickupTask: { assignment_deadline: 1760000000000 }, deliveryTask: {} })], { ...DEPS, collapsedBanners: new Set() });
+  assert.ok(!html.includes('Secreta') && !html.includes('Col. Z'), 'no PII pre-accept');
+  assert.ok(html.includes('otro hub') && html.includes('btn-accept-inc-X') && html.includes('data-deadline="1760000000000"'));
 });
 
-// ---------- PRIVACY gates on the queue + sheet (Codex r2 P1) — an awaiting_acceptance order never leaks ----------
-t('queueHtml (PRIVACY, Codex r2 P1): an awaiting_acceptance row shows NO name/address (offer-safe)', () => {
-  const orders = [deepFreeze({ orderId: 'ordW', phase: 'awaiting_acceptance',
-    order: { display_number: 8, customer_name: 'Secreta Pérez', address_detected: 'Col. Escondida 7', total: 300 }, deliveryTask: {} })];
-  const html = queueHtml(orders, DEPS);
-  assert.ok(html.includes('data-order-id="ordW"'), 'row still rendered (hook present)');
-  assert.ok(!html.includes('Secreta'), 'no customer name for a non-accepted row');
-  assert.ok(!html.includes('Col. Escondida'), 'no address for a non-accepted row');
-  assert.ok(html.includes('Nuevo pedido'), 'shows the non-identifying placeholder');
+// ---------- combinedPickupHtml (apRecoger / S19) ----------
+t('combinedPickupHtml: per-bag rows (bag, brand, #, items, pay) + the hot/cold banner', () => {
+  const html = combinedPickupHtml([
+    deepFreeze({ orderId: 'A', order: { customer_name: 'Daniela', items_text: 'pizza', total: 385, payment_method: 'cash', display_number: 47 } }),
+    deepFreeze({ orderId: 'B', order: { customer_name: 'Carlos', items_text: 'baleada', display_number: 12 } }),
+  ], DEPS, new Set(['A']));
+  assert.ok(html.includes('Bolsa 1 · Daniela') && html.includes('Bolsa 2 · Carlos'));
+  assert.ok(html.includes('a cobrar L 385') && html.includes('pagado en línea'));
+  assert.ok(html.includes('pk-row done'), 'bag A marked picked up');
+  assert.ok(html.includes('Lo caliente y lo frío, separados'), 'hot/cold banner');
 });
-t('queueDetailHtml (PRIVACY, Codex r2 P1): an awaiting_acceptance order → NO name/phone/tel/wa.me/address/nav', () => {
-  const o = deepFreeze({ orderId: 'ordW', phase: 'awaiting_acceptance',
-    order: { display_number: 8, customer_name: 'Secreta Pérez', customer_phone: '99990000', address_detected: 'Col. Escondida 7', total: 300 },
-    pickupTask: {}, deliveryTask: { recipient_name: 'Secreta Pérez', destination_address: 'Col. Escondida 7' } });
-  const html = queueDetailHtml(o, 2, DEPS);
-  assert.ok(!html.includes('Secreta'), 'no name');
-  assert.ok(!html.replace(/\D/g, '').includes('99990000'), 'no phone digit-run');
-  assert.ok(!html.includes('tel:') && !html.includes('wa.me'), 'no tel: / wa.me');
-  assert.ok(!html.includes('Col. Escondida') && !html.includes('address-block'), 'no address');
-  assert.ok(!html.includes('waze-btn') && !html.includes('waze.com/ul'), 'no customer navigation');
-  assert.ok(html.includes('PENDIENTE'), 'shows the pending (non-accepted) pill');
+t('combinedPickupHtml: <2 orders renders nothing', () => assert.equal(combinedPickupHtml([{ orderId: 'A', order: {} }], DEPS), ''));
+
+// ---------- interludeHtml (apAvance / S15) ----------
+t('interludeHtml: «Parada 1 entregada» + cash/vuelto; +L70 HIDDEN (R2); 2nd nav sentence ALWAYS; live gated', () => {
+  const html = interludeHtml({ deliveredName: 'Daniela', cash: 385, vuelto: 115, showEarnings: false, next: { name: 'Carlos', area: 'Res. Los Robles' }, liveTracking: false }, DEPS);
+  assert.ok(html.includes('Parada 1 entregada') && html.includes('Cobraste L 385 · vuelto L 115'));
+  assert.ok(!html.includes('+L 70') && !html.includes('+L70'), '+L70 hidden');
+  assert.ok(html.includes('El botón de navegar ya apunta a su dirección.'), 'second sentence always');
+  assert.ok(!html.includes('pasó a seguimiento en vivo'), 'live-tracking sentence omitted when off');
+  assert.ok(html.includes('id="btn-interlude-go"') && html.includes('Ir a la parada 2'));
+});
+t('interludeHtml: earnings on → +L 70; live on → the live sentence', () => {
+  const html = interludeHtml({ next: { name: 'Carlos' }, cash: 385, showEarnings: true, liveTracking: true }, DEPS);
+  assert.ok(html.includes('+L 70') && html.includes('Carlos pasó a seguimiento en vivo.'));
+});
+
+// ---------- cancelBannerHtml (apCancelada / S17) ----------
+t('cancelBannerHtml: «Pedido #N (name) cancelado» + no-cobrés + bag return + «Entendido»', () => {
+  const html = cancelBannerHtml({ cancelledNum: '#1042', cancelledName: 'Daniela', cancelledAmount: 385, survivorName: 'Carlos', cancelledBrand: 'X. Pizza' }, DEPS);
+  assert.ok(html.includes('Pedido #1042 (Daniela) cancelado') && html.includes('No cobrés sus L 385'));
+  assert.ok(html.includes('devolvé la bolsa a X. Pizza') && html.includes('id="btn-cancel-ack"'));
+});
+
+// ---------- offerScreenHtml (apOferta / S18 — R4 privacy: colonia only, NO name) ----------
+t('offerScreenHtml: colonia only (NO customer name), lock chip, rchip/#, pickup line, one accept slide; +L140 absent', () => {
+  const offers = [
+    deepFreeze({ orderId: 'A', phase: 'awaiting_acceptance', pickupTask: { assignment_deadline: 1760000000000 }, order: { customer_name: 'Daniela', restaurant_display_name: 'X. Pizza', address_detected: 'Barrio El Centro, casa 3', display_number: 9, total: 70 } }),
+    deepFreeze({ orderId: 'B', phase: 'awaiting_acceptance', order: { customer_name: 'Carlos', restaurant_display_name: 'La Musa', address_detected: 'Res. Los Robles, bloque C', display_number: 12, total: 70 } }),
+  ];
+  const html = offerScreenHtml(offers, DEPS, { mapHtml: '<div class="map"></div>', distanceStr: '3.5 km total' });
+  assert.ok(html.includes('2 pedidos juntos') && html.includes('Orden fijado por la plataforma'));
+  assert.ok(html.includes('Barrio El Centro') && html.includes('Res. Los Robles'), 'colonia shown');
+  assert.ok(!html.includes('Daniela') && !html.includes('Carlos'), 'NO customer names before accept (R4)');
+  assert.ok(html.includes('3.5 km total'), 'distance chip when provided');
+  assert.ok(html.includes('Recogés primero en X. Pizza y luego en La Musa'), 'pickup-timing line without times');
+  assert.ok((html.match(/id="btn-accept"/g) || []).length === 1, 'one accept slide');
+  assert.ok(!html.includes('+ L 140') && !html.includes('+L 140'), 'earnings hidden (R2)');
 });
 
 console.log(`stacked-view.test.js: ${passed} passed`);
