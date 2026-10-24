@@ -192,4 +192,20 @@ t('isStaleFix: seconds-valued fix ts is normalized before the age test', () => {
   assert.equal(isStaleFix(nowSec - (STALE_MS / 1000 + 5), now), true, 'old seconds fix → stale');
 });
 
+// ---------- done pin (dep D: recent-completion memory renders a delivered stop as a green check) ----------
+t('overviewMapSvg: a DONE stop renders the green-check pin (sv-ok fill, check glyph, no number); the active stop keeps its number', () => {
+  const svg = overviewMapSvg(deepFreeze({
+    driver: { lat: 14.08, lng: -87.18 },
+    hubs: [{ lat: 14.10, lng: -87.20, on: false }],
+    stops: [{ lat: 14.06, lng: -87.16, n: 1, state: 'done' }, { lat: 14.12, lng: -87.10, n: 2, on: true }],
+    phase: 'delivery',
+  }));
+  assert.ok(svg.includes('om-stop done'), 'done pin carries the done class');
+  assert.ok(svg.includes('var(--sv-ok, #15803D)'), 'done pin filled with the OK green');
+  assert.ok(svg.includes('M-4 -17l3 3 5 -6'), 'done pin draws the white check glyph (not a number)');
+  assert.equal((svg.match(/om-stop/g) || []).length, 2, 'both stops rendered');
+  assert.ok(/>2<\/text>/.test(svg), 'the active stop still shows its number');
+  assert.ok(!/>1<\/text>/.test(svg), 'the done stop shows the check, NOT its number');
+});
+
 console.log(`overview-map.test.js: ${passed} passed`);

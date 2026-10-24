@@ -70,13 +70,13 @@ const S = 'var(--surface)';
 // Overview-map pin INK + fill read from overview-map.js source: the queued pin `txt`, its dim `fill`, and the
 // opacity. The number must be drawn at FULL opacity (opacity on the PATH, not the group) so it stays AA; this
 // test COMPOSITES the dim pin fill over the map background and measures the number against THAT (Codex r1 P2-8).
-const queuedTxt = (mapSrc.match(/const txt = on \? '#fff' : '(var\(--[\w-]+, #[0-9A-Fa-f]{6}\))';/) || [])[1];
+const queuedTxt = (mapSrc.match(/const txt = \(on \|\| done\) \? '#fff' : '(var\(--[\w-]+, #[0-9A-Fa-f]{6}\))';/) || [])[1];
 assert.ok(queuedTxt, 'could not read the queued-pin text colour from overview-map.js source');
 const queuedTxtToken = queuedTxt.replace(/,\s*#[0-9A-Fa-f]{6}\)/, ')');
-const pinFill = (mapSrc.match(/const fill = on \? '#14306B' : '(var\(--[\w-]+, #[0-9A-Fa-f]{3,6}\))';/) || [])[1];
+const pinFill = (mapSrc.match(/const fill = done \? 'var\(--sv-ok, #15803D\)' : on \? '#14306B' : '(var\(--[\w-]+, #[0-9A-Fa-f]{3,6}\))';/) || [])[1];
 assert.ok(pinFill, 'could not read the queued-pin fill from overview-map.js source');
 const pinFillToken = pinFill.replace(/,\s*#[0-9A-Fa-f]{3,6}\)/, ')');
-const pinOpacity = parseFloat((mapSrc.match(/stroke-width="2"\$\{on \? '' : ' opacity="([\d.]+)"'\}/) || [])[1]);
+const pinOpacity = parseFloat((mapSrc.match(/stroke-width="2"\$\{\(on \|\| done\) \? '' : ' opacity="([\d.]+)"'\}/) || [])[1]);
 assert.ok(pinOpacity > 0 && pinOpacity <= 1, 'queued pin opacity must sit on the PATH (stroke-width="2"${...opacity}) — not the group');
 // The number must be drawn at FULL opacity: the <g class="om-stop"> must NOT carry a dim opacity (that would
 // composite the TEXT too and pull it below AA — the original bug).
@@ -91,6 +91,14 @@ const navMain = ruleProp('.nav-btn.waze-btn', 'color'), navMainBg = ruleProp('.n
 const navDest = ruleProp('.nav-btn.waze-btn .nav-dest', 'color');
 const mapsFg = ruleProp('.nav-btn.maps-btn', 'color'), mapsBg = ruleProp('.nav-btn.maps-btn', 'background');
 const svNavBg = ruleProp('.sv-nav-primary', 'background'), svNavDest = ruleProp('.sv-nav-primary .sv-nav-dest', 'color');
+
+// R7 Cuenta / «App de navegación» nav-pref screens (SLICE2:NAVPREF-CSS) — steel-blue (--accent) primary + the
+// option/detail/sign-out inks. `.set-opt.sel` background carries a fallback token, so its wash is read as the token.
+const saveFg = ruleProp('.set-foot .set-save', 'color'), saveBg = ruleProp('.set-foot .set-save', 'background');
+const optFg = ruleProp('.set-opt', 'color'), optBg = ruleProp('.set-opt', 'background');
+const optDFg = ruleProp('.set-opt .set-opt-d', 'color');
+const rowDFg = ruleProp('.set-row .set-d', 'color');
+const signoutFg = ruleProp('.set-signout', 'color');
 
 // [label, fgExpr, bgExpr, px, weight]  (bgExpr may be a literal #hex composited colour)
 const PAIRS = [
@@ -108,6 +116,13 @@ const PAIRS = [
   ['nav primary destination «→ {dest}»', navDest, navMainBg, 11, 700],
   ['nav secondary (Maps)', mapsFg, mapsBg, 13, 800],
   ['single-order nav injected destination «→ {dest}»', svNavDest, svNavBg, 11, 700],
+  // R7 nav-pref screens (steel-blue --accent primary)
+  ['navApp «Guardar» (white on steel-blue)', saveFg, saveBg, 16, 800],
+  ['navApp option label (ink on surface-2)', optFg, optBg, 14, 700],
+  ['navApp option detail (text-soft on surface-2)', optDFg, optBg, 12, 500],
+  ['navApp selected option label (ink on steel wash)', optFg, 'var(--sv-p-bg)', 14, 700],
+  ['Cuenta row detail (text-soft on surface)', rowDFg, 'var(--surface)', 12.5, 600],
+  ['Cuenta «Cerrar sesión» (text-soft on bg)', signoutFg, 'var(--bg)', 13, 600],
 ];
 
 let passed = 0;
