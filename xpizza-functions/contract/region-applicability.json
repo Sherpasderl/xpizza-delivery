@@ -4360,13 +4360,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -4410,6 +4412,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -4646,13 +4649,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -4696,6 +4701,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -4932,13 +4938,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -4982,6 +4990,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -5364,13 +5373,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -5414,6 +5425,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -5626,13 +5638,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -5676,6 +5690,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -5888,13 +5903,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -5938,6 +5955,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -6150,13 +6168,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -6200,6 +6220,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -6389,13 +6410,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -6439,6 +6462,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -6628,13 +6652,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -6678,6 +6704,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -7091,13 +7118,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -7141,6 +7170,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -7274,7 +7304,7 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 10,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
       "xpizza-driver/single-order-view.js#xpizza-driver": 8,
       "xpizza-driver/stacked-view.js#xpizza-driver": 10
      }
@@ -7337,13 +7367,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -7387,6 +7419,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -7520,7 +7553,7 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 10,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
       "xpizza-driver/single-order-view.js#xpizza-driver": 8,
       "xpizza-driver/stacked-view.js#xpizza-driver": 10
      }
@@ -7583,13 +7616,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -7633,6 +7668,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -7766,7 +7802,7 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 10,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
       "xpizza-driver/single-order-view.js#xpizza-driver": 8,
       "xpizza-driver/stacked-view.js#xpizza-driver": 10
      }
@@ -7829,13 +7865,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -7879,6 +7917,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -8012,7 +8051,7 @@
      "name": "scheduledBadge",
      "counts": {
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 10,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 11,
       "xpizza-driver/single-order-view.js#xpizza-driver": 8,
       "xpizza-driver/stacked-view.js#xpizza-driver": 10
      }
@@ -8075,13 +8114,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -8125,6 +8166,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -8307,13 +8349,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -8357,6 +8401,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -8539,13 +8584,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -8589,6 +8636,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -8771,13 +8819,15 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "ec20453c389fdf2fe03d99c02fe5230c05f85c54cd2305aff31911c3329515a5"
+     "scopeSha": "cec64686bd443804d1c821bf456a5994e66b4327d651c05c190f26f9570a9947"
     },
     {
      "kind": "C",
      "output": "xpizza-driver/xpizza-delivery.js#getDriverOrders",
      "callers": [
       "xpizza-driver/index.html<script@0>#<top>>anon",
+      "xpizza-driver/index.html<script@0>#drv2ActionGuard>anon",
+      "xpizza-driver/index.html<script@0>#drv2LiveBoard",
       "xpizza-driver/index.html<script@0>#drv2ShowInterlude",
       "xpizza-driver/index.html<script@0>#handleEndShift",
       "xpizza-driver/index.html<script@0>#renderActiveAndQueue"
@@ -8821,6 +8871,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
       "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
       "xpizza-functions/access/kds-filter-pre-f2.mjs#functions": 1,
       "xpizza-functions/index.js#functions": 1,
       "xpizza-functions/resolve-manual.js#functions": 1,
@@ -9073,7 +9124,7 @@
     "site": "const p = XPD.acceptTask(currentUser.uid, o.pickupTask.id);",
     "siteSha": "656e0bf9f6b48da30c1722f2db6335bceabdc420a6db2036ab0d9a919f54786a",
     "scope": "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon",
-    "scopeSha": "7b74e414dee09206c10327d09e44ff24e42c44d3618515cbfa59b1f8dc3c1145"
+    "scopeSha": "8cbc755873f5b82423a77f8a2787bea909f73a390efc0d03b88cdf6d9a86e73d"
    },
    "guards": [
     {
@@ -9126,7 +9177,7 @@
     "site": "await XPD.arriveAtRestaurant(currentUser.uid);",
     "siteSha": "0f8cf0137e7d9e23868daa9b056e8ebffe93e608e96f0c33e7a483bde9735f2a",
     "scope": "xpizza-driver/index.html<script@0>#<top>>anon",
-    "scopeSha": "d043a2d0772a9e55333e522a59994c8a1e15d25475e5efd29178fe0ffca5217b"
+    "scopeSha": "e3bf546c3a118ad45cb4629a5380addff4fb027ca8fd3075a11395188cd86dbd"
    },
    "guards": [
     {
@@ -9183,7 +9234,7 @@
     "site": "const p = XPD.completeTask(actingUid, o.deliveryTask.id);",
     "siteSha": "3ed443e0e56b3d96567038aec540e76074280e71a9308031c4459aa8d5b5038e",
     "scope": "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon",
-    "scopeSha": "7b74e414dee09206c10327d09e44ff24e42c44d3618515cbfa59b1f8dc3c1145"
+    "scopeSha": "8cbc755873f5b82423a77f8a2787bea909f73a390efc0d03b88cdf6d9a86e73d"
    },
    "guards": [
     {
@@ -9262,7 +9313,7 @@
     "site": "await XPD.pickupComplete(currentUser.uid, o.pickupTask.id);",
     "siteSha": "9e794452016d96cf9a83d2e669db4b893545fcaa3d4a6e609b5a65f1d952a271",
     "scope": "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon",
-    "scopeSha": "7b74e414dee09206c10327d09e44ff24e42c44d3618515cbfa59b1f8dc3c1145"
+    "scopeSha": "8cbc755873f5b82423a77f8a2787bea909f73a390efc0d03b88cdf6d9a86e73d"
    },
    "guards": [
     {
