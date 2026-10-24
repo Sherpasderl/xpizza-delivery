@@ -14,9 +14,13 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const html = fs.readFileSync(path.join(HERE, 'index.html'), 'utf8');
 const style = (() => { let o = '', f = 0; for (let i = 0; i < 2; i++) { const s = html.indexOf('<style>', f); if (s < 0) break; const e = html.indexOf('</style>', s) + 8; o += html.slice(s, e) + '\n'; f = e; } return o; })();
 const EMPTY = '<span class="av empty"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>';
+const FILLED = '<span class="av">JL</span>';   // a filled avatar (no `empty` class) — regression control: the fix must leave it untouched
 const page = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>avatar</title>${style}<style>body{background:var(--ground)}</style></head><body>
-  <div class="deck"><div class="pass lv-act"><button class="peek"><span class="t rd num"><b>3</b><s>min</s></span><span class="m"><span class="r1"><span class="nm">X</span></span></span>${EMPTY}</button></div></div>
-  <div class="panel" style="max-width:360px"><button class="row" type="button"><span class="m"><b>Y</b></span>${EMPTY}</button></div>
+  <div class="deck"><div class="pass lv-act"><button class="peek" id="peek-empty"><span class="t rd num"><b>3</b><s>min</s></span><span class="m"><span class="r1"><span class="nm">X</span></span></span>${EMPTY}</button></div></div>
+  <div class="panel" style="max-width:360px"><button class="row" id="row-empty" type="button"><span class="m"><b>Y</b></span>${EMPTY}</button></div>
+  <div class="deck"><div class="pass lv-act"><button class="peek" id="peek-filled"><span class="t rd num"><b>3</b><s>min</s></span><span class="m"><span class="r1"><span class="nm">X</span></span></span>${FILLED}</button></div></div>
+  <div class="panel" style="max-width:360px"><button class="row" id="row-filled" type="button"><span class="m"><b>Y</b></span>${FILLED}</button></div>
+  <div class="empty" id="empty-state"><b>Sin alertas</b><p>El otro consumidor de la clase .empty — su relleno no debe cambiar.</p></div>
 </body></html>`;
 
 function chromeBin() {
@@ -52,7 +56,18 @@ try {
   const m = await ev(`(() => { const r = (sel) => { const a = document.querySelector(sel + ' .av.empty'); const b = a.getBoundingClientRect(); const s = a.querySelector('svg').getBoundingClientRect(); return { w: Math.round(b.width), h: Math.round(b.height), dx: Math.round((s.left+s.width/2)-(b.left+b.width/2)), dy: Math.round((s.top+s.height/2)-(b.top+b.height/2)) }; }; return { board: r('.peek'), picker: r('.row') }; })()`);
   assert.deepEqual(m.board, { w: 42, h: 42, dx: 0, dy: 0 }, 'board avatar is a 42×42 centred circle');
   assert.deepEqual(m.picker, { w: 44, h: 44, dx: 0, dy: 0 }, 'picker avatar is a 44×44 centred circle');
-  console.log('avatar-browser: OK (board 42×42, picker 44×44, both centred)');
+  // Regression controls: the scoped `.av.empty{padding:0}` must NOT change a filled avatar, and must NOT
+  // leak into the empty-STATE block (.empty{padding:46px 24px}) it collides with by class name.
+  const ctl = await ev(`(() => {
+    const size = (sel) => { const b = document.querySelector(sel).getBoundingClientRect(); return { w: Math.round(b.width), h: Math.round(b.height) }; };
+    const es = getComputedStyle(document.querySelector('#empty-state'));
+    return { boardFilled: size('#peek-filled .av'), pickerFilled: size('#row-filled .av'), padTop: es.paddingTop, padLeft: es.paddingLeft };
+  })()`);
+  assert.deepEqual(ctl.boardFilled, { w: 42, h: 42 }, 'filled board avatar stays 42×42 (fix is scoped to .av.empty)');
+  assert.deepEqual(ctl.pickerFilled, { w: 44, h: 44 }, 'filled picker avatar stays 44×44');
+  assert.equal(ctl.padTop, '46px', 'the empty-STATE block keeps its 46px top padding (fix did not leak into .empty)');
+  assert.equal(ctl.padLeft, '24px', 'the empty-STATE block keeps its 24px side padding');
+  console.log('avatar-browser: OK (empty 42/44 circles; filled 42/44 unchanged; .empty block padding intact)');
   code = 0;
 } catch (e) { console.error('avatar-browser: FAIL —', e.message); }
 finally { try { ws.close(); } catch {} try { chrome.kill(); } catch {} server.close(); try { fs.rmSync(profile, { recursive: true, force: true }); } catch {} }

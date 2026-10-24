@@ -3249,7 +3249,7 @@ function alertContent(a) {
       // DRIVER F — a driver's «Problema con este pedido» report: which order, why (the approved reason label), who, and the
       // driver's own note (escaped). Content now lives in the shared pure builder (ONE copy, used by the mobile Torre too);
       // byte-identical to the previous inline assembly. Tested by dispatch-driver-problem.test.mjs.
-      return driverProblemContent(a, { label, resolveDriverName: (x) => x.driver_name || allDrivers[x.driver_uid]?.name || 'Un repartidor', escapeHtml });
+      return driverProblemContent(a, { label: (id) => `Pedido ${label(id)}`, resolveDriverName: (x) => x.driver_name || allDrivers[x.driver_uid]?.name || 'Un repartidor', escapeHtml });
     default: {
       // Fallback bucket (factura_* / unknown / no-type) — humanize, NEVER drop.
       const humanType = String(a.type || '').replace(/^(payment|factura)_/, '').replace(/_/g, ' ').trim();

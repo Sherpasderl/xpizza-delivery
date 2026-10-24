@@ -406,7 +406,7 @@
         <button class="live on" id="live" type="button" aria-describedby="live-txt">
           <i></i><span id="live-txt">En vivo</span>
         </button>
-        <span id="alerts-slot"></span>
+        <span id="alerts-slot" class="hidden"></span>
         <button class="ibtn" id="menu-btn" type="button" aria-label="Ajustes">
           <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg>
         </button>
@@ -456,7 +456,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').ca
 
 import { SECTIONS, sectionForOrder, assignedDriverId, isUnassignedDelivery, canReassign,
          matchesChip, chipCounts, orderCompare } from './board-model.js';
-import { driverProblemContent } from './dispatch-alerts.js?v=4';   // DRIVER F — the ONE shared content builder (desktop uses it too)
+import { classifyAlert, sortAlertEntries, driverProblemContent } from './dispatch-alerts.js?v=4';   // DRIVER F — shared classify/sort + the ONE content builder (desktop uses them too)
 import { groupScheduledBySlot, slotLabel } from './slot-format.js';
 import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js';
 import { driverPickList } from './reassign-model.js';
@@ -538,7 +538,8 @@ XPD.onAuth((user) => {
   if (!user) {
     started = false;
     if (alertsUnsub) { alertsUnsub(); alertsUnsub = null; }   // tear down the alert listener so sign-in cycles don't accumulate callbacks
-    alertsList = []; alertsSheetOwner = false;
+    alertsList = []; alertsSheetOwner = false; alertNavToken += 1;   // invalidate any in-flight alert order-fetch so a late result can't replace the sheet after logout
+    renderAlertsPill();   // clear the pill NOW so the previous count isn't visible on the next sign-in before its snapshot arrives
     show('login'); return;
   }
   show('main');
@@ -1222,16 +1223,26 @@ const AL_BELL = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" str
 const AL_WARN = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.8 2.9 19.4h18.2L12 3.8z"/><path d="M12 9.6v4.6M12 17.1h.01"/></svg>';
 const AL_X = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg>';
 
-// Filter the whole collection to driver_problem ONLY, newest first (filter BEFORE sorting).
+// Filter the whole collection to driver_problem ONLY (the ONE filter), then order it through the SHARED
+// classify/sort path the desktop uses — never a local sorter. `classifyAlert` confirms the driver-problem
+// category; `sortAlertEntries` returns [{id, alert, …}] stable within severity (all driver_problem = amber).
 function buildAlerts(raw){
-  return Object.entries(raw || {})
-    .filter(([, a]) => a && a.type === 'driver_problem')
-    .sort((x, y) => (y[1].created_at || 0) - (x[1].created_at || 0) || (y[1].reported_at || 0) - (x[1].reported_at || 0))
-    .map(([id, alert]) => ({ id, alert }));
+  const filtered = {};
+  for (const [id, a] of Object.entries(raw || {})) {
+    if (a && a.type === 'driver_problem' && classifyAlert(a).category === 'driver-problem') filtered[id] = a;
+  }
+  return sortAlertEntries(filtered);   // shared path: classify + stable sort; each row is { id, alert, … }
 }
-// The order number as the violet tap-cue. Takes the builder's object-or-id argument; escapes the number;
-// emits only trusted violet markup. (The shared builder prepends «Pedido ».)
-const alLabel = (ord) => `<em class="num">#${escapeHtml(String((ord && typeof ord === 'object') ? ord.display_number : ord))}</em>`;
+// The order label as the violet tap-cue — the WHOLE «Pedido #N» phrase in violet (mockup). Takes the shared
+// builder's object-or-id argument: the alert's finite display_number first, otherwise the live/scheduled
+// order's label via displayLabel (which keeps its short-ID fallback) — NEVER the raw order id. Escaped.
+const alLabel = (ord) => {
+  const isObj = ord && typeof ord === 'object';
+  const oid = isObj ? ord.order_id : ord;
+  const dn = isObj ? ord.display_number : undefined;
+  const label = Number.isFinite(dn) ? '#' + dn : displayLabel(oid, STORE.orders[oid] || STORE.scheduled[oid]);
+  return `<em class="num">Pedido ${escapeHtml(label)}</em>`;
+};
 const alDriverName = (a) => a.driver_name || (STORE.drivers[a.driver_uid] || {}).name || 'Un repartidor';
 function alertRow({ id, alert }){
   const { title, detail } = driverProblemContent(alert, { label: alLabel, resolveDriverName: alDriverName, escapeHtml });
@@ -1244,7 +1255,8 @@ function alertRow({ id, alert }){
 function renderAlertsPill(){
   const slot = $('alerts-slot'); if (!slot) return;
   const n = alertsList.length;
-  slot.innerHTML = n ? `<button class="alrt rd num" type="button" data-alerts="1" aria-label="Alertas: ${n}">${AL_BELL}${n}</button>` : '';   // hidden at zero (element absent)
+  slot.innerHTML = n ? `<button class="alrt rd num" type="button" data-alerts="1" aria-label="Alertas: ${n}">${AL_BELL}${n}</button>` : '';
+  slot.classList.toggle('hidden', !n);   // at zero the slot leaves the flex row entirely, so the header gap matches the no-alerts baseline exactly
 }
 function alertsSheetHtml(){
   const n = alertsList.length;
@@ -1761,7 +1773,7 @@ document.addEventListener('click', (e) => {
   if (ds.close){ closeSheet(); return; }
   if (ds.alerts){ openAlertsSheet(); return; }
   if ('alertOrder' in ds){ openOrderFromAlert(ds.alertOrder); return; }   // tap a row → open the order (fetches if pruned)
-  if (ds.alertDismiss){ const row = alertsList.find((r) => r.id === ds.alertDismiss); XPD.dismissDispatcherAlert(ds.alertDismiss, row ? row.alert : null).catch(() => {}); return; }   // remove; rare reappearance accepted
+  if (ds.alertDismiss){ const row = alertsList.find((r) => r.id === ds.alertDismiss); if (!row) return; XPD.dismissDispatcherAlert(row.id, row.alert).catch(() => {}); return; }   // ONLY a current driver_problem row, passing its record; rare reappearance accepted
   if (ds.settheme){
     theme = ds.settheme;
     try { localStorage.setItem('dl-theme', theme); } catch {}

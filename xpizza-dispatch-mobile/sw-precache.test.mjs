@@ -10,9 +10,10 @@ const HELPER = './dispatch-h0-dismiss.js?v=1';   // the exact query xpizza-deliv
 const ALERTS = './dispatch-alerts.js?v=4';       // the exact query index.html imports (shared alert module)
 
 // 1) static: the versioned helper is precached and the shell version was bumped so existing installs re-cache.
+const REQUIRED_SHELL = 'dl-shell-v7';   // the exact version this alerts slice ships (adding dispatch-alerts.js?v=4 to the precache demands a shell bump); reverting to v6 must fail here
 test('sw precaches the exact versioned helper URL and bumps the shell version', () => {
   const shell = (swSrc.match(/const SHELL = '([^']+)'/) || [])[1];
-  assert.ok(shell && shell !== 'dl-shell-v5', `SHELL must be bumped past v5 (got ${shell})`);
+  assert.equal(shell, REQUIRED_SHELL, `SHELL must be exactly ${REQUIRED_SHELL} (got ${shell}) — the new precache asset requires this bump`);
   const assets = swSrc.slice(swSrc.indexOf('const ASSETS = ['), swSrc.indexOf('];', swSrc.indexOf('const ASSETS')));
   assert.ok(assets.includes(`'${HELPER}'`), 'ASSETS must precache the exact ./dispatch-h0-dismiss.js?v=1 URL (with the query)');
   assert.ok(assets.includes(`'${ALERTS}'`), 'ASSETS must precache the exact ./dispatch-alerts.js?v=4 URL (the shared alert module the page imports)');
