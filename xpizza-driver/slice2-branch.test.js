@@ -71,6 +71,9 @@ function liftSpan(script, startNeedle, endNeedle) {
 }
 // The REAL dep-D recent-completion block (drv2DoneRun … drv2ShowInterlude), lifted verbatim from SLICE2:IMPORT.
 const DRV2_BLOCK = liftSpan(MY_SCRIPT, 'let drv2DoneRun', '/* ===== SLICE2:IMPORT:END');
+// The REAL R7 nav-preference helpers (DRV2_NAV_PREF_PREFIX … drv2WriteNavPref), lifted verbatim — so the harness
+// drives the REAL server-truth/per-uid hydration, not a `() => 'Waze'` stub (Codex r1 P2-10).
+const NAV_BLOCK = liftSpan(MY_SCRIPT, 'const DRV2_NAV_PREF_PREFIX', 'let drv2DoneRun');
 
 const escapeHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 const ICONS = Object.fromEntries(['bell', 'cash', 'check', 'close', 'nav', 'phone', 'pin', 'store', 'warn', 'whatsapp'].map((k) => [k, `<svg data-ic="${k}"></svg>`]));
@@ -291,30 +294,46 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     + 'function ensureSlice2MapAgeTimer(){ _rec.mapTimerEnsured++; }\n'
     + 'function stopSlice2MapAgeTimer(){ _rec.mapTimerStopped++; }\n'
     + 'const DRV2_CAN_NOTIFY_ARRIVAL=false; const DRV2_CAN_REPORT_PROBLEM=false;\n'
-    + 'const drv2ReadNavPref=()=>\'Waze\';\n'
+    + NAV_BLOCK + '\n'   // REAL drv2ReadNavPref/drv2WriteNavPref (not a Waze stub) — server-truth + per-uid hydration (Codex r1 P2-10)
     + DRV2_BLOCK + '\n'
     + liftFn(MY_SCRIPT, 'renderActiveAndQueue') + '\n'
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
     + liftFn(MY_SCRIPT, 'attachSlideConfirm') + '\n'
     + liftCall(MY_SCRIPT, "$('queue-slot').addEventListener") + '\n'
-    + liftCall(MY_SCRIPT, "$('screen-onshift').addEventListener") + '\n'   // STACKED-HANDLERS: .after-card tap → read-only sheet (by orderId)
+    // The WHOLE STACKED-HANDLERS span — the delegate click (sheet taps) AND the capture-phase drv2ActionGuard
+    // registration — so the harness boots the REAL listener set (Codex r2 P2-7: disabling the action guard → red).
+    + liftSpan(MY_SCRIPT, "$('screen-onshift').addEventListener('click', (e) => {", '/* ===== SLICE2:STACKED-HANDLERS:END') + '\n'
     + liftFn(MY_SCRIPT, 'attachIncomingBannerHandlers') + '\n'   // REAL banner handler (Codex r2 P2-3)
-    + 'return { render: renderActiveAndQueue, setDriver:(d)=>{driverState=d;} };';
-  const names = ['document', 'window', '$', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'escapeHtml', 'ICONS',
+    // expose the lifted mutable state so a cell can feed the observer the LIVE mock + flip the session (P2-10)
+    + 'return { render: renderActiveAndQueue, setDriver:(d)=>{driverState=d;}, syncState:(t,o)=>{allTasks=t;allOrders=o;}, bumpAuth:()=>{authGen++;},'
+    + ' getDoneRun:()=>drv2DoneRun, getInterlude:()=>drv2Interlude, getCancel:()=>drv2Cancel };';
+  const names = ['document', 'window', '$', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'escapeHtml', 'ICONS', 'localStorage',
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
     'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml',
     'renderIdleState', 'toast', 'resolveCompleteErrorMessage', 'CSS', '_driverState', '_rec'];
   const CSS = dom.window.CSS || { escape: (s) => String(s).replace(/[^\w-]/g, '\\$&') };
-  const api = (new Function(...names, body))(document, dom.window, $, XPD, { uid: 'drv' }, {}, {}, escapeHtml, ICONS,
+  const lsStore = {};   // per-harness in-memory localStorage (the real drv2ReadNavPref per-uid mirror)
+  const localStorage = { getItem: (k) => (k in lsStore ? lsStore[k] : null), setItem: (k, v) => { lsStore[k] = String(v); }, removeItem: (k) => { delete lsStore[k]; } };
+  const api = (new Function(...names, body))(document, dom.window, $, XPD, { uid: 'drv' }, {}, {}, escapeHtml, ICONS, localStorage,
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
     navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
     renderIdleState, toast, resolveCompleteErrorMessage, CSS, driverState, rec);
+  // Feed the observer the SAME live mock state getDriverOrders reads BEFORE every render (prod's allTasks/
+  // allOrders are the live listener state; a captured ref would go stale when completeTask deletes the task legs).
+  // Also merge the mock's drivers/{uid} record into driverState — in prod driverState IS that record, so
+  // current_task_id (written by the real acceptTask/pickupComplete/completeTask) must flow into the pointer (P1-1).
+  const syncAndRender = () => {
+    api.syncState(read('tasks') || {}, read('orders') || {});
+    api.setDriver({ ...driverState, ...(read('drivers/drv') || {}) });
+    api.render();
+  };
   const slot = (id) => document.getElementById(id);
   const ret = {
     document, window: dom.window, rec, data, read, fb, queueConflict, sdk, XPD, api,
-    render: () => api.render(),
+    lsStore,
+    render: () => syncAndRender(),
     active: () => slot('active-order-slot').innerHTML,
     activeEl: () => slot('active-order-slot'),
     banner: () => slot('incoming-banner-slot').innerHTML,
@@ -335,7 +354,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     move(x) { document.dispatchEvent(new dom.window.MouseEvent('mousemove', { clientX: x, bubbles: true, cancelable: true })); },
     async up(x) { document.dispatchEvent(new dom.window.MouseEvent('mouseup', { clientX: x, bubbles: true, cancelable: true })); await tick(); },
   };
-  api.render();
+  syncAndRender();
   return ret;
 }
 
@@ -381,9 +400,12 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
     + liftFn(MY_SCRIPT, 'attachSlideConfirm') + '\n'
     + liftCall(MY_SCRIPT, "$('queue-slot').addEventListener") + '\n'
-    + liftCall(MY_SCRIPT, "$('screen-onshift').addEventListener") + '\n'   // STACKED-HANDLERS: .after-card tap → read-only sheet (by orderId), cancel-ack, end-shift
+    // WHOLE STACKED-HANDLERS span: the delegate click (sheet taps, cancel-ack, end-shift) AND the capture-phase
+    // drv2ActionGuard registration — the real listener set (Codex r2 P2-7).
+    + liftSpan(MY_SCRIPT, "$('screen-onshift').addEventListener('click', (e) => {", '/* ===== SLICE2:STACKED-HANDLERS:END') + '\n'
     + 'return { render: renderActiveAndQueue, setDriver:(d)=>{driverState=d;}, getQueued:()=>queuedOrders,'
     + ' getLatch:()=>slice1ReviewLatchKey, getSliding:()=>slidingEl, getRenderPending:()=>renderPending, bumpAuth:()=>{ authGen+=1; },'
+    + ' syncState:(t,o)=>{allTasks=t;allOrders=o;}, setPtr:(id)=>{ if(driverState) driverState.current_task_id=id; },'
     + ' getDoneRun:()=>drv2DoneRun, getInterlude:()=>drv2Interlude, getCancel:()=>drv2Cancel };';
   const params = ['document', 'window', '$', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'escapeHtml', 'ICONS',
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
@@ -399,11 +421,45 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     attachIncomingBannerHandlers, renderIdleState, toast, resolveCompleteErrorMessage, driverState, rec,
     latchInit, authGen);
 
+  // Live observer state (Codex r1 P2-10): drv2Observe must see the SAME board state getDriverOrders reports, plus
+  // the affirmative terminal status of any stop that LEFT the board. `terminal` persists a vanished order's
+  // outcome (delivered / cancelled / reassigned-away) so the observer classifies on EVIDENCE, never a bare
+  // disappearance. `current_task_id` auto-points at the active board[0] working task (the realistic pointer for
+  // these single/stacked layout cells → navArmed, controls not gated); the pointer-disagreement / fail-closed and
+  // cancel-ordering / reassign paths are exercised in the runReal real-writer cells + the dedicated cells below.
+  const terminal = {};   // orderId → { status?, reassigned? } for orders no longer in ctx.orders
+  const workId = (o) => (o && o.phase === 'delivery') ? (o.deliveryTask && o.deliveryTask.id)
+    : (o && o.phase === 'pickup') ? (o.pickupTask && o.pickupTask.id) : null;
+  const stateFrom = () => {
+    const tasks = {}, orders = {};
+    for (const o of ctx.orders) {
+      orders[o.orderId] = { ...(o.order || {}), status: (o.order && o.order.status) || 'out_for_delivery' };
+      if (o.pickupTask && o.pickupTask.id) tasks[o.pickupTask.id] = { order_id: o.orderId, assigned_driver_id: 'drv', type: 'pickup', status: 'accepted' };
+      if (o.deliveryTask && o.deliveryTask.id) tasks[o.deliveryTask.id] = { order_id: o.orderId, assigned_driver_id: 'drv', type: 'delivery', status: 'accepted' };
+    }
+    for (const [oid, m] of Object.entries(terminal)) {
+      orders[oid] = { ...(orders[oid] || {}), status: m.status || 'out_for_delivery' };
+      if (m.reassigned) {   // reassign KEEPS the legs, now owned by another driver (delivered/cancelled delete them)
+        tasks[oid + '_p'] = { order_id: oid, assigned_driver_id: 'other', type: 'pickup', status: 'assigned' };
+        tasks[oid + '_d'] = { order_id: oid, assigned_driver_id: 'other', type: 'delivery', status: 'assigned' };
+      }
+    }
+    return { tasks, orders };
+  };
+  const syncAndRender = () => {
+    const st = stateFrom();
+    api.syncState(st.tasks, st.orders);
+    api.setPtr(workId(ctx.orders[0]));
+    api.render();
+  };
   const slot = (id) => document.getElementById(id);
   const ret = {
-    document, window: dom.window, rec, writes, api,
-    render: () => api.render(),
+    document, window: dom.window, rec, writes, api, terminal,
+    render: () => syncAndRender(),
     setOrders: (o) => { ctx.orders = o; },
+    markDelivered: (oid) => { terminal[oid] = { status: 'delivered' }; },
+    markCancelled: (oid) => { terminal[oid] = { status: 'cancelled' }; },
+    markReassigned: (oid) => { terminal[oid] = { status: 'out_for_delivery', reassigned: true }; },
     active: () => slot('active-order-slot').innerHTML,
     activeEl: () => slot('active-order-slot'),
     banner: () => slot('incoming-banner-slot').innerHTML,
@@ -427,7 +483,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     move(x) { document.dispatchEvent(new dom.window.MouseEvent('mousemove', { clientX: x, bubbles: true, cancelable: true })); },
     async up(x) { document.dispatchEvent(new dom.window.MouseEvent('mouseup', { clientX: x, bubbles: true, cancelable: true })); await tick(); },
   };
-  api.render();
+  syncAndRender();
   return ret;
 }
 
@@ -495,7 +551,7 @@ t('stacked pickup: dragging btn-pickup calls XPD.pickupComplete for the active p
 t('A→B promotion: when A leaves, the lone B renders the single-order card WITH the overview map; A absent', () => {
   const r = run({ orders: [delivery('A'), delivery('B')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH } });
   assert.ok(r.active().includes('class="after-card" data-order-id="B"'), 'B starts as the in-card «Después» preview');
-  r.setOrders([delivery('B')]); r.render();                         // A completed/gone → lone B
+  r.markDelivered('A'); r.setOrders([delivery('B')]); r.render();   // A DELIVERED (affirmative status) + off the board → lone B promoted
   assert.ok(r.activeEl().classList.contains('solo'), 'lone B → solo single-order layout');
   assert.ok(r.active().includes('class="map"'), 'promoted lone B gets the overview map (SINGLE-ORDER-MOUNT)');
   assert.ok(r.active().includes('class="active-card"'), 'the promoted stop renders the prototype STOP card (activeCardHtml, advisor #3)');
@@ -508,7 +564,7 @@ t('A→B promotion: when A leaves, the lone B renders the single-order card WITH
 //     post-transition #active-order-slot is a CLEAN single-order structure and the card immediately follows the map.
 t('transition 2→1: delivering stop 1 leaves a CLEAN single-order layout — no stale node / map↔card gap', () => {
   const r = run({ orders: [delivery('A'), delivery('B')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH } });
-  r.setOrders([delivery('B')]); r.render();   // A delivered → drv2Observe records A done → single-order B WITH history
+  r.markDelivered('A'); r.setOrders([delivery('B')]); r.render();   // A delivered (affirmative) → drv2Observe records A done → single-order B WITH history
   const kids = Array.from(r.activeEl().children);
   const empties = kids.filter((c) => c.children.length === 0 && (c.textContent || '').trim() === '');
   assert.equal(empties.length, 0, 'no empty/childless leftover node (the old stacked container that caused the gap)');
@@ -559,14 +615,16 @@ t('queue identity: tapping a queue-slot after-card opens the read-only sheet by 
 // overturns (it reroutes the stacked path through the builders; renderActiveCard is now dead code, see the
 // census unreachableOnSurface entries). The retired file's mapping table is in the hand-back evidence.
 
-// M1 ← slice-1 "1 order → single-order card, .solo, cleared". The gate: exactly one order renders the
-// single-order view (NOT the stacked activeCardHtml/queueHtml builders), with the SINGLE-ORDER-MOUNT map.
-t('M1 gate: 1 order → single-order card in #active-order-slot (.solo) + overview map; banner & queue cleared', () => {
+// M1 ← slice-1 "1 order → single-order card, .solo, cleared", RETUNED (Codex r2 visual): a committed single stop
+// renders the UNIFIED prototype STOP card (activeCardHtml) + the «Única parada» header + the SINGLE-ORDER-MOUNT map,
+// NOT the retired slice-1 single-order card.
+t('M1 gate: 1 order → the prototype stop card (.active-card) + «Única parada» header + overview map; banner & queue cleared', () => {
   const r = run({ orders: [delivery('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH } });
   assert.ok(r.activeEl().classList.contains('solo'), 'active slot gets .solo');
-  assert.ok(r.active().includes('sv-card'), 'the slice-1 single-order card rendered');
+  assert.ok(r.active().includes('class="active-card"'), 'the UNIFIED prototype stop card rendered (Codex r2)');
+  assert.ok(r.active().includes('class="stop-header"') && r.active().includes('Única parada'), '«Única parada» stop header (end-shift power reachable)');
   assert.ok(r.active().includes('class="map"'), 'the single-order overview map mounted (SINGLE-ORDER-MOUNT)');
-  assert.ok(!r.active().includes('class="pactual"') && !r.active().includes('class="bagtag'), 'NOT the stacked builder (no Parada-actual pill / bag tag for 1 order)');
+  assert.ok(!r.active().includes('sv-card'), 'NOT the retired slice-1 single-order card');
   assert.equal(r.banner(), '', 'banner cleared'); assert.equal(r.queue(), '', 'queue cleared');
 });
 
@@ -578,95 +636,46 @@ t('M2 gate: 0 orders → idle path (renderIdleState), no .solo, slots cleared', 
   assert.equal(r.active(), ''); assert.equal(r.banner(), ''); assert.equal(r.queue(), '');
 });
 
-// M3/M4 ← slice-1 "pickup @49 m → review (#btn-pickup)" / "@51 m → to-restaurant (#btn-at-restaurant)".
-t('M3 arrived: pickup @ 49 m → ARRIVED → review card (#btn-pickup)', () => {
+// M3/M4 ← slice-1 geofence cells, RETUNED to the stop card (Codex r2): the pickup stop card shows the arrived
+// note when inside the geofence, else the nav button — both with the Recogí slide. The slice-1 «Ya estoy en el
+// restaurante» review latch is GONE (unified stop card; the latch was client-only, no server write).
+t('M3 arrived: pickup @ 49 m → ARRIVED → «Has llegado al restaurante» note + the Recogí slide', () => {
   const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 49 });
-  assert.ok(r.active().includes('id="btn-pickup"'), 'review card renders the pickup slide');
-  assert.ok(!r.active().includes('id="btn-at-restaurant"'), 'not the to-restaurant card');
+  assert.ok(r.active().includes('Has llegado al restaurante'), 'the geofence arrived note on the stop card');
+  assert.ok(r.active().includes('id="btn-pickup"'), 'the Recogí slide');
+  assert.ok(!r.active().includes('id="btn-at-restaurant"'), 'no review toggle (latch removed)');
 });
-t('M4 threshold: pickup @ 51 m → NOT arrived → to-restaurant card (#btn-at-restaurant)', () => {
+t('M4 threshold: pickup @ 51 m → NOT arrived → the nav button + the Recogí slide (no arrived note, no review toggle)', () => {
   const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 51 });
-  assert.ok(r.active().includes('id="btn-at-restaurant"'), 'to-restaurant card renders the client toggle');
-  assert.ok(!r.active().includes('id="btn-pickup"'), 'not yet the review card');
+  assert.ok(r.active().includes('Navegar con'), 'the nav button renders when not arrived');
+  assert.ok(r.active().includes('id="btn-pickup"'), 'the Recogí slide');
+  assert.ok(!r.active().includes('Has llegado'), 'not arrived → no arrived note');
+  assert.ok(!r.active().includes('id="btn-at-restaurant"'), 'the review latch is gone (unified stop card)');
 });
 
-// M5 ← slice-1 "tap btn-at-restaurant latches review CLIENT-ONLY (no writer)".
-t('M5 latch: drag btn-at-restaurant → latches review client-side (0:A), re-renders #btn-pickup, NO writer', async () => {
-  const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 999 });
-  assert.ok(r.active().includes('id="btn-at-restaurant"'), 'starts on the to-restaurant card');
-  const d = r.prep('btn-at-restaurant'); r.down(d); r.move(1000); await r.up(1000);
-  assert.equal(r.api.getLatch(), '0:A', 'latch set to `${authGen}:${orderId}` (client-only)');
-  assert.ok(r.document.getElementById('btn-pickup'), 're-rendered into the review card');
-  assert.deepEqual(Object.keys(r.writes), [], 'NO XPD server write was called (client-only latch)');
-});
+// M5–M9 RETIRED (Codex r2 confirmed 2026-10-24): the slice-1 «Ya estoy en el restaurante» review latch
+// (slice1ReviewLatchKey + btn-at-restaurant) is dropped by unifying the single stop on the prototype stop card.
+// It was CLIENT-ONLY (no server write) so nothing is lost; the server-side arriveAtRestaurant / geofence
+// at_restaurant paths are separate and remain byte-unchanged (proven by the freeze guard on xpizza-delivery.js).
 
-// M6 ← slice-1 "latch A → idle → delivery → pickup A far ⇒ NOT review" (phase-change clear).
-t('M6 latch reset: A → idle → delivery (phase change) → pickup A @999 m ⇒ NOT review', async () => {
-  const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 999 });
-  const d = r.prep('btn-at-restaurant'); r.down(d); r.move(1000); await r.up(1000);
-  assert.equal(r.api.getLatch(), '0:A', 'latched');
-  r.setOrders([]); r.render();
-  r.setOrders([delivery('A')]); r.render();                 // A returns as delivery → phase change clears
-  assert.equal(r.api.getLatch(), null, 'latch cleared on the delivery render (phase !== pickup)');
-  r.setOrders([pickup('A')]); r.render();
-  assert.ok(r.active().includes('id="btn-at-restaurant"') && !r.active().includes('id="btn-pickup"'), 'to-restaurant, NOT a stale review');
-});
-
-// M7 ← slice-1 "latch reset: idle (0 orders)".
-t('M7 latch reset: A → idle (0 orders) → pickup A @999 m ⇒ NOT review', async () => {
-  const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 999 });
-  const d = r.prep('btn-at-restaurant'); r.down(d); r.move(1000); await r.up(1000);
-  assert.equal(r.api.getLatch(), '0:A', 'latched');
-  r.setOrders([]); r.render();
-  r.setOrders([pickup('A')]); r.render();
-  assert.equal(r.api.getLatch(), null, 'the idle gap cleared the latch');
-  assert.ok(r.active().includes('id="btn-at-restaurant"') && !r.active().includes('id="btn-pickup"'), 'to-restaurant, NOT review');
-});
-
-// M8 ← slice-1 "latch reset: stacked (2 orders)".
-t('M8 latch reset: A → stacked (2 orders) → pickup A @999 m ⇒ NOT review', async () => {
-  const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 999 });
-  const d = r.prep('btn-at-restaurant'); r.down(d); r.move(1000); await r.up(1000);
-  assert.equal(r.api.getLatch(), '0:A', 'latched');
-  r.setOrders([delivery('A'), delivery('B')]); r.render();  // stacked → the branch clears the latch
-  assert.equal(r.api.getLatch(), null, 'the stacked board cleared the latch');
-  r.setOrders([pickup('A')]); r.render();
-  assert.ok(r.active().includes('id="btn-at-restaurant"') && !r.active().includes('id="btn-pickup"'), 'to-restaurant, NOT review');
-});
-
-// M9 ← slice-1 "latch clears on a DIFFERENT order and on an auth/session change".
-t('M9 latch reset: a DIFFERENT order clears it; an auth/session bump clears it', async () => {
-  const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 999 });
-  let d = r.prep('btn-at-restaurant'); r.down(d); r.move(1000); await r.up(1000);
-  r.setOrders([pickup('B')]); r.render();
-  assert.equal(r.api.getLatch(), null, 'latch cleared for a different order');
-  assert.ok(r.active().includes('id="btn-at-restaurant"'), 'B shows to-restaurant, not a stale review');
-  r.setOrders([pickup('A')]); r.render();
-  d = r.prep('btn-at-restaurant'); r.down(d); r.move(1000); await r.up(1000);
-  assert.equal(r.api.getLatch(), '0:A', 're-latched A');
-  r.api.bumpAuth(); r.render();
-  assert.equal(r.api.getLatch(), null, 'latch cleared after an auth/session change (authGen bump)');
-});
-
-// M10 ← slice-1 "(a) 1→2 while a drag is in progress → deferred, replayed on drag-end".
+// M10 ← slice-1 "(a) 1→2 while a drag is in progress → deferred, replayed on drag-end" (retuned to the stop card).
 t('M10 defer: 1→2 while a slide drag is in progress → render DEFERS (renderPending), replays to stacked on drag-end', async () => {
-  const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 999 });
-  const d = r.prep('btn-at-restaurant');
+  const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 49 });
+  const d = r.prep('btn-pickup');
   r.down(d);
   assert.ok(r.api.getSliding(), 'slidingEl set during the drag');
   r.setOrders([delivery('A'), delivery('B')]); r.render();  // 2 orders arrive mid-drag
   assert.equal(r.api.getRenderPending(), true, 'render DEFERRED (not applied mid-drag)');
-  assert.ok(r.active().includes('sv-card'), 'DOM still shows the single card during the drag');
+  assert.ok(r.active().includes('Única parada'), 'DOM still shows the SINGLE stop during the drag');
   r.move(20); await r.up(20);                               // release below threshold → reset + replay
   assert.equal(r.api.getSliding(), null, 'slidingEl cleared on drag-end');
-  assert.ok(r.active().includes('class="bagtag'), 'the deferred render replayed into the stacked builder');
-  assert.ok(!r.active().includes('sv-card'), 'single card replaced by the stacked render');
+  assert.ok(r.active().includes('Parada 1 de 2') && !r.active().includes('Única parada'), 'the deferred render replayed into the stacked builder');
 });
 
 // M11 ← slice-1 "(b) 2→1 while an action write is pending → deferred, replayed when the write settles".
 t('M11 defer: 2→1 while a delivery write is PENDING → deferred during the await, single view on settle', async () => {
   const r = run({ orders: [delivery('A'), delivery('B')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 999 });
-  assert.ok(r.active().includes('class="bagtag'), 'starts stacked (2 orders)');
+  assert.ok(r.active().includes('Parada 1 de 2'), 'starts stacked (2 orders)');
   const d = r.prep('btn-delivered'); r.down(d); r.move(1000); await r.up(1000);  // completeTask PENDING
   assert.ok(r.writes.complete, 'the delivery write is in flight');
   assert.ok(r.api.getSliding(), 'slidingEl held while the write is pending');
@@ -674,13 +683,13 @@ t('M11 defer: 2→1 while a delivery write is PENDING → deferred during the aw
   assert.equal(r.api.getRenderPending(), true, 'render deferred while the write is pending');
   r.writes.complete.resolve(); await tick();
   assert.equal(r.api.getSliding(), null, 'slidingEl cleared after the write settled');
-  assert.ok(r.active().includes('sv-card'), 'replayed into the single-order view (1 order)');
+  assert.ok(r.active().includes('Única parada'), 'replayed into the single stop card (1 order)');
 });
 
 // M12 ← slice-1 "(c) rejected write recovers (slider reset, toast, slidingEl cleared)".
 t('M12 recover: a rejected pickup write → slider RESETS (no .completed), error toast, slidingEl cleared', async () => {
   const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 49 });  // arrived → btn-pickup
-  assert.ok(r.active().includes('id="btn-pickup"'), 'review card with the server pickup slide');
+  assert.ok(r.active().includes('id="btn-pickup"'), 'the stop card renders the server pickup slide');
   const d = r.prep('btn-pickup'); r.down(d); r.move(1000);
   const upDone = r.up(1000); await tick();
   assert.ok(r.writes.pickup, 'pickupComplete write in flight');
@@ -918,7 +927,7 @@ function runLifecycle() {
   const { document } = dom.window;
   let vis = 'visible';
   Object.defineProperty(document, 'visibilityState', { get: () => vis, configurable: true });
-  const spies = { render: 0, statusBar: 0, gps: 0, wakeLockCalls: 0 };
+  const spies = { render: 0, statusBar: 0, gps: 0, wakeLockCalls: 0, interludeDismissed: 0, runReset: 0 };
   const renderActiveAndQueue = () => { spies.render += 1; };
   const renderStatusBar = () => { spies.statusBar += 1; };
   const startGpsStream = () => { spies.gps += 1; };
@@ -927,13 +936,18 @@ function runLifecycle() {
   const navigator = { geolocation: { clearWatch() {} } };
   const body = 'let slice2MapAgeTimer=null; const SLICE2_MAP_AGE_MS=30000;\n'
     + 'let wakeLock=null, watchId=null, lastUpdateAt=0;\n'
+    // P2-8: cleanupShift now clears the per-run terminal state on shift/session disposal — spy the two calls here
+    // (this harness owns the map-timer + lifecycle; the run-state reset is proven by these spies + the runReal cells).
+    + 'let drv2DoneRun=[1];\n'
+    + 'function drv2DismissInterlude(){ _spies.interludeDismissed += 1; }\n'
+    + 'function drv2ResetRun(){ _spies.runReset += 1; drv2DoneRun = []; }\n'
     + liftFn(MY_SCRIPT, 'ensureSlice2MapAgeTimer') + '\n'
     + liftFn(MY_SCRIPT, 'stopSlice2MapAgeTimer') + '\n'
     + liftFn(MY_SCRIPT, 'cleanupShift') + '\n'
     + liftVisibilityHandler(MY_SCRIPT) + '\n'
-    + 'return { ensure: ensureSlice2MapAgeTimer, stop: stopSlice2MapAgeTimer, cleanup: cleanupShift, timerSet: () => slice2MapAgeTimer != null };';
-  const names = ['document', 'setInterval', 'clearInterval', 'renderActiveAndQueue', 'renderStatusBar', 'startGpsStream', 'acquireWakeLock', 'driverState', 'navigator', 'isNative', 'pingNativeLocation'];
-  const api = (new Function(...names, body))(document, setInterval, clearInterval, renderActiveAndQueue, renderStatusBar, startGpsStream, acquireWakeLock, driverState, navigator, () => false, () => {});
+    + 'return { ensure: ensureSlice2MapAgeTimer, stop: stopSlice2MapAgeTimer, cleanup: cleanupShift, timerSet: () => slice2MapAgeTimer != null, doneRun: () => drv2DoneRun };';
+  const names = ['document', 'setInterval', 'clearInterval', 'renderActiveAndQueue', 'renderStatusBar', 'startGpsStream', 'acquireWakeLock', 'driverState', 'navigator', 'isNative', 'pingNativeLocation', '_spies'];
+  const api = (new Function(...names, body))(document, setInterval, clearInterval, renderActiveAndQueue, renderStatusBar, startGpsStream, acquireWakeLock, driverState, navigator, () => false, () => {}, spies);
   return { document, spies, api, setVis: (v) => { vis = v; }, fireVis: () => document.dispatchEvent(new dom.window.Event('visibilitychange')) };
 }
 t('runLifecycle (a): tab HIDE clears the aging timer SYNCHRONOUSLY (not on the next ~30 s tick)', () => {
@@ -949,6 +963,8 @@ t('runLifecycle (b): cleanupShift (shift/session disposal) clears the aging time
   assert.ok(L.api.timerSet(), 'timer armed');
   await L.api.cleanup();
   assert.ok(!L.api.timerSet(), 'cleanupShift stopped the timer (SLICE2:SHIFT-CLEANUP)');
+  assert.ok(L.spies.runReset >= 1 && L.spies.interludeDismissed >= 1, 'cleanupShift also cleared the per-run terminal state (drv2ResetRun + drv2DismissInterlude) — P2-8 shift/session disposal');
+  assert.deepEqual(L.api.doneRun(), [], 'the recent-completion memory is emptied on disposal');
 });
 t('runLifecycle (c): on resume, the re-age (renderActiveAndQueue) runs BEFORE the awaited acquireWakeLock() settles', async () => {
   const L = runLifecycle();
@@ -977,6 +993,282 @@ t('runReal deferred-render privacy (kills drv2-29): a queued order gone to await
   assert.ok(!r.sheetOpen(), 'the sheet does NOT open for an order now awaiting (STACKED-HANDLERS awaiting gate)');
   assert.ok(!r.sheet().includes('Beto Secreto') && !r.sheet().includes('99998888') && !r.sheet().includes('waze-btn'), 'no awaiting-order name/phone/nav leaked into the sheet body');
   r.move(20); await r.up(20);   // finish the drag (below threshold)
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+// P2-10 — the NEW safety paths exercised through the REAL observer + pointer, over the live mock (Codex r1).
+// These cells are the mutation tripwires: disabling the pointer binding OR the cancel/affirmative classifier
+// turns at least one RED (the old build's empty-globals observer let both regress silently).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// P1-1 pointer binding (kills a mutation to `active = orders[0]`): board order is [A, B] (A created first), but the
+// driver's current_task_id points at B — so B is the ACTIVE card and A becomes the «Después» preview.
+t('P1-1 active = current_task_id pointer, not board[0]: pointer→B makes B active (A the preview)', () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1 },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2 },
+  ]) });
+  assert.equal(r.board()[0].orderId, 'A', 'board order is A then B (A created first)');
+  r.read('drivers/drv').current_task_id = 'B_d'; r.render();
+  assert.ok(r.active().includes('class="active-card" data-order-id="B"'), 'B (the pointer) is the ACTIVE card — not board[0]=A');
+  assert.ok(r.active().includes('class="after-card" data-order-id="A"'), 'A is the «Después» preview behind the pointer stop');
+});
+
+// P1-1 fail-closed (kills removing the gate): accepted stops but the pointer resolves to NONE (missing/disagree)
+// → the nav + Entregado controls are neutralized (is-gated, href stripped), read-only, no new copy.
+t('P1-1 fail closed: a missing/disagreeing pointer gates the nav + Entregado controls', () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1 },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2 },
+  ]) });
+  r.read('drivers/drv').current_task_id = 'ZZZ_nonexistent'; r.render();   // points at no board stop → disagree
+  const del = r.activeEl().querySelector('#btn-delivered');
+  assert.ok(del && del.classList.contains('is-gated'), 'Entregado slide is gated (fail-closed)');
+  const nav = r.activeEl().querySelector('.nav-btn, .sv-nav-primary');
+  assert.ok(nav && nav.classList.contains('is-gated') && !nav.getAttribute('href'), 'nav button gated + href stripped (cannot launch nav)');
+});
+
+// P1-2 cancel, ORDER-first (kills the cancel classifier): B leaves the board AND its order status is 'cancelled'
+// → the cancel banner is raised and B is never recorded done.
+t('P1-2 cancel (order-first): a cancelled queued stop raises the banner, never a phantom delivery', () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Ana' },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2, name: 'Beto' },
+  ]) });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();   // A active, B queued — observed
+  r.read('orders/B').status = ORDER_STATUS.CANCELLED;
+  r.read('tasks/B_p').status = TASK_STATUS.CANCELLED; r.read('tasks/B_d').status = TASK_STATUS.CANCELLED;  // B drops from the board
+  r.render();
+  assert.ok(r.api.getCancel(), 'the cancel banner is armed from the confirmed cancelled status');
+  assert.ok(!r.api.getDoneRun().some((d) => d.orderId === 'B'), 'cancelled B is NOT recorded as a delivery');
+  assert.ok(!r.api.getInterlude(), 'no delivered interlude for a cancellation');
+});
+
+// P1-2 cancel, TASK-first + late-snapshot reconcile: the task leg vanishes BEFORE the order status flips. The
+// observer must NOT bank anything on the bare disappearance; it reconciles when the status later confirms cancel.
+t('P1-2 cancel (task-first): a bare disappearance banks nothing; the banner appears only once status confirms', () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Ana' },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2, name: 'Beto' },
+  ]) });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();
+  r.read('tasks/B_p').status = TASK_STATUS.CANCELLED; r.read('tasks/B_d').status = TASK_STATUS.CANCELLED;  // legs gone, status still live
+  r.render();
+  assert.ok(!r.api.getCancel(), 'no banner yet — the order status has not confirmed the cancellation');
+  assert.ok(!r.api.getDoneRun().some((d) => d.orderId === 'B'), 'and definitely no phantom delivery from the disappearance');
+  r.read('orders/B').status = ORDER_STATUS.CANCELLED; r.render();   // late snapshot confirms
+  assert.ok(r.api.getCancel(), 'the banner appears once the cancelled status reconciles');
+});
+
+// P1-2 reassign (THE discriminator — kills the old "disappearance ⇒ delivered" bug): B is reassigned to another
+// driver (its legs survive under that driver). B must drop SILENTLY — no banner, no done, no interlude.
+t('P1-2 reassign: a stop reassigned away drops silently — never a phantom delivery or cash', () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Ana' },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2, name: 'Beto' },
+  ]) });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();
+  r.read('tasks/B_p').assigned_driver_id = 'other'; r.read('tasks/B_d').assigned_driver_id = 'other';  // reassigned away (legs survive)
+  r.render();
+  assert.ok(!r.board().some((o) => o.orderId === 'B'), 'B is off MY board (owned by another driver)');
+  assert.ok(!r.api.getDoneRun().some((d) => d.orderId === 'B'), 'reassigned B is NOT recorded delivered (the old bug)');
+  assert.ok(!r.api.getInterlude(), 'no «Cobraste» interlude for a reassignment');
+  assert.ok(!r.api.getCancel(), 'no cancel banner for a reassignment');
+});
+
+// P1-2 delivered (affirmative): A, the active stop, is delivered through the REAL completeTask drag → recorded
+// done + the interlude armed (A was active), with B promoted behind it.
+t('P1-2 delivered: the active stop delivered through the real writer → recorded done + interlude armed', async () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Ana' },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2, name: 'Beto' },
+  ]), dist: 10 });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();   // A active + observed
+  const d = r.prep('btn-delivered'); r.down(d); r.move(1000); await r.up(1000);   // REAL completeTask(A_d)
+  assert.equal(r.read('orders/A').status, ORDER_STATUS.DELIVERED, 'A really went delivered through the writer');
+  r.render();
+  assert.ok(r.api.getDoneRun().some((x) => x.orderId === 'A'), 'A recorded done on the affirmative delivered status');
+  assert.ok(r.api.getInterlude() && r.api.getInterlude().orderId === 'A', 'the interlude is armed for the delivered active stop');
+});
+
+// P2-6 nav-pref hydration (kills the Waze stub / an un-hydrated read): driverState.nav_app = 'maps' → the lone
+// stop's nav button reads «Navegar con Maps», not the Waze default.
+t('P2-6 nav hydration: driverState.nav_app = "maps" surfaces «Navegar con Maps» (server truth, not a Waze stub)', () => {
+  const r = runReal({ seed: seed([{ id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1 }]),
+    driverState: { lat: 15.47, lng: -88.015, active: true, last_location_ts: Date.now(), nav_app: 'maps', current_task_id: 'A_d' } });
+  assert.ok(r.active().includes('Navegar con Google Maps'), 'the nav button hydrated to Maps from the server leaf');
+  assert.ok(!r.active().includes('Navegar con Waze'), 'not the Waze default');
+});
+
+// P2-6 nav-pref WRITE — the real drv2WriteNavPref/drv2ReadNavPref lifted into a focused closure: server-truth
+// hydration, per-UID isolation, ack→mirror, rejection→no mirror, session-switch→no mirror, no-auth→throw.
+function buildNav({ uid = 'drv', nav_app = null, setNavPref = async () => {} } = {}) {
+  const lsStore = {};
+  const localStorage = { getItem: (k) => (k in lsStore ? lsStore[k] : null), setItem: (k, v) => { lsStore[k] = String(v); }, removeItem: (k) => { delete lsStore[k]; } };
+  const s = { driverState: nav_app ? { nav_app } : {}, currentUser: uid ? { uid } : null, setNavPref };
+  const body = 'let driverState=_s.driverState; let currentUser=_s.currentUser; let authGen=0;\n'
+    + 'const XPD={ setNavPref:(u,p)=>_s.setNavPref(u,p) };\n'
+    + NAV_BLOCK + '\n'
+    + 'return { read:()=>drv2ReadNavPref(), write:(p)=>drv2WriteNavPref(p), setAuth:(n)=>{authGen=n;}, setUser:(u)=>{currentUser=u;}, setDriver:(d)=>{driverState=d;} };';
+  const api = new Function('_s', 'localStorage', body)(s, localStorage);
+  return { api, lsStore };
+}
+t('P2-6 nav write: hydration + per-UID isolation + ack-mirror + rejection/session/no-auth guards', async () => {
+  // hydration: server leaf wins
+  assert.equal(buildNav({ nav_app: 'maps' }).api.read(), 'Maps', 'driverState.nav_app=maps → Maps');
+  assert.equal(buildNav({ nav_app: 'waze' }).api.read(), 'Waze', 'driverState.nav_app=waze → Waze');
+  // per-UID cache isolation: uid A's mirror never leaks to uid B
+  const n = buildNav({ uid: 'A' });
+  await n.api.write('maps');
+  assert.equal(n.lsStore['sherpa_nav_app:A'], 'maps', 'ack → per-uid mirror written for A');
+  n.api.setUser({ uid: 'B' });
+  assert.equal(n.api.read(), 'Waze', 'uid B does NOT inherit A’s cached Maps (per-uid key)');
+  // write rejection → no mirror + throws
+  const rej = buildNav({ uid: 'A', setNavPref: async () => { throw new Error('denied'); } });
+  await assert.rejects(rej.api.write('maps'), /denied/, 'a rejected server write propagates');
+  assert.equal(rej.lsStore['sherpa_nav_app:A'], undefined, 'a rejected write mirrors NOTHING');
+  // session switch mid-write → no mirror (the ack belongs to the OLD session)
+  let ref; const sw = buildNav({ uid: 'A', setNavPref: async () => { ref.setAuth(99); } }); ref = sw.api;
+  await sw.api.write('maps');
+  assert.equal(sw.lsStore['sherpa_nav_app:A'], undefined, 'session changed during the await → no local success banked');
+  // no auth → throws, writes nothing
+  const noauth = buildNav({ uid: null });
+  await assert.rejects(noauth.api.write('maps'), /sesión/, 'no signed-in session → the write throws');
+  assert.equal(Object.keys(noauth.lsStore).length, 0, 'no auth → nothing mirrored');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Codex r2 — the new mutation tripwires. Each kills a specific r2 regression.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// P1-1 STARTUP ORDER (kills reintroducing `let drv2RunAuthGen = authGen;` before `let authGen`): reproduce the two
+// declarations in SOURCE order in a bare Function — a TDZ read throws, which is the real boot crash.
+t('P1-1 startup order: drv2RunAuthGen + authGen in source order do NOT TDZ-crash at module load', () => {
+  const raM = MY_SCRIPT.match(/let\s+drv2RunAuthGen\s*=\s*[^;]*;/);
+  assert.ok(raM, 'drv2RunAuthGen declaration found');
+  assert.doesNotThrow(() => { (new Function(raM[0] + '\nlet authGen = 0;\nreturn drv2RunAuthGen;'))(); },
+    'drv2RunAuthGen read authGen before `let authGen` → TDZ crash at boot (Codex r2 P1-1)');
+});
+
+// P1-3 cross-hub (kills failing closed on a NULL pointer): after a cross-hub delivery current_task_id is cleared
+// while the next order is still at PICKUP — that pickup must stay ARMED (baseline), never gated.
+t('P1-3 cross-hub: a NULL pointer behaves as baseline — the next pickup is ARMED, not gated', () => {
+  const r = runReal({ seed: seed([{ id: 'B', pickup: TASK_STATUS.ACCEPTED, delivery: TASK_STATUS.ACCEPTED, hub: HUBM, created: 2, name: 'Beto' }]) });
+  r.read('drivers/drv').current_task_id = null; r.render();
+  assert.ok(r.active().includes('class="active-card"'), 'B renders the stop card');
+  const slide = r.activeEl().querySelector('#btn-pickup');
+  assert.ok(slide && !slide.classList.contains('is-gated'), 'the Recogí slide is ARMED (null pointer = baseline, not fail-closed)');
+});
+
+// P1-2 swipe-END revalidation (kills removing the onConfirm pointer check): the pointer disagrees at the instant
+// of completion → the delivery is NOT banked, no server write.
+t('P1-2 swipe-END: a pointer that disagrees at completion time aborts — A is never delivered', async () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Ana' },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2, name: 'Beto' },
+  ]), dist: 10 });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();   // A active + armed
+  const d = r.prep('btn-delivered'); r.down(d); r.move(1000);
+  r.api.setDriver({ ...r.read('drivers/drv'), current_task_id: 'B_d' });   // pointer goes stale mid-swipe (no re-render)
+  await r.up(1000);   // swipe completes → onConfirm revalidates → aborts
+  assert.notEqual(r.read('orders/A').status, ORDER_STATUS.DELIVERED, 'A was NOT delivered — completeTask aborted at swipe-end (Codex r2 P1-2)');
+});
+
+// P2-7 ACTION GUARD (kills disabling drv2ActionGuard): a nav tap is blocked when the pointer went stale AFTER the
+// render (the render gate did NOT fire — the href is still present — so this isolates the capture-phase guard).
+t('P2-7 action guard: a nav tap is blocked when the pointer goes stale after render (guard, not the render gate)', () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1 },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2 },
+  ]) });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();   // armed → the render gate is OFF (nav keeps its href)
+  const nav = r.activeEl().querySelector('.nav-btn, .sv-nav-primary');
+  assert.ok(nav && nav.getAttribute('href'), 'nav armed with an href at render time (gate off)');
+  r.api.setDriver({ ...r.read('drivers/drv'), current_task_id: 'ZZZ_nope' });   // pointer disagrees now, NO re-render
+  const ev = new r.window.MouseEvent('click', { bubbles: true, cancelable: true });
+  nav.dispatchEvent(ev);
+  assert.ok(ev.defaultPrevented, 'the capture-phase action guard blocked the stale-pointer nav tap');
+});
+
+// P2-7 INTERLUDE FIXED EXPIRY (kills restoring the per-render timer reset): a re-render must NOT rebuild the
+// interlude overlay — the button tagged after the first show survives the second render.
+t('P2-7 interlude fixed expiry: a re-render does NOT rebuild the interlude overlay', async () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Ana' },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2, name: 'Beto' },
+  ]), dist: 10 });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();
+  const d = r.prep('btn-delivered'); r.down(d); r.move(1000); await r.up(1000);   // deliver A (B promotes)
+  r.render();   // A delivered → interlude armed + shown
+  const ov = r.document.getElementById('drv2-interlude');
+  assert.ok(ov && ov.classList.contains('open'), 'the interlude overlay is shown');
+  const go = ov.querySelector('#btn-interlude-go'); assert.ok(go, 'interlude button present'); go.dataset.probe = '1';
+  r.render();   // a re-render must leave the overlay untouched (fixed expiry)
+  const go2 = r.document.querySelector('#drv2-interlude #btn-interlude-go');
+  assert.ok(go2 && go2.dataset.probe === '1', 'the overlay was NOT rebuilt/re-armed on re-render (Codex r2 P2-8)');
+});
+
+// P2-7 ACTIVE-CARD DETAIL (kills removing the active-card tap): tapping the active card opens the read-only sheet,
+// as the ACTIVE stop (no «En cola» chip, no lock text — P3-9), still read-only.
+t('P2-7 active-card detail: tapping the active card opens the read-only sheet (active variant, P3-9)', () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Ana', items: 'pizza' },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2, name: 'Beto' },
+  ]) });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();
+  const card = r.activeEl().querySelector('.active-card');
+  assert.ok(card, 'active card present');
+  card.dispatchEvent(new r.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  assert.ok(r.sheetOpen(), 'the read-only detail sheet opened');
+  const s = r.sheet();
+  assert.ok(!s.includes('En cola') && !s.includes('Sin navegación'), 'active-stop sheet drops the queued-only chrome (P3-9)');
+  assert.ok(!s.includes('nav-primary') && !s.includes('id="btn-delivered"'), 'still read-only — no nav, no Entregado');
+});
+
+// P2-4 ordering (kills resolving the «Después» tap against a non-pointer-ordered board): with pointer→B, A is the
+// queued «Después» and opens AS a queued stop (lock text present), numbered consistently with the render.
+t('P2-4 «Después» tap uses the pointer-ordered board: pointer→B makes A the queued stop', () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Ana' },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2, name: 'Beto' },
+  ]) });
+  r.read('drivers/drv').current_task_id = 'B_d'; r.render();   // B active, A is the «Después» preview
+  const after = r.activeEl().querySelector('.after-card[data-order-id="A"]');
+  assert.ok(after, 'A is the «Después» preview behind the pointer stop B');
+  after.dispatchEvent(new r.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  assert.ok(r.sheetOpen() && r.sheet().includes('Ana'), 'A opens as the queued stop, resolved in pointer order');
+  assert.ok(r.sheet().includes('Sin navegación'), 'A is a QUEUED stop (lock text present) — not the active one');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Codex r3 — nav-link task binding + stale-fix arrival.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// P1-1 (kills the resolve-ONLY action guard): a nav link RETAINED from before the pointer moved A→B must not
+// open. At click, bound=A_d but the pointer is B_d (which DOES resolve to B) — the resolve-only check passed, the
+// bound-task check must still block.
+t('P1-1 nav-link task binding: a stale A nav link is blocked after the pointer moved A→B (bound ≠ pointer)', () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Ana' },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2, name: 'Beto' },
+  ]) });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();   // A active, nav bound to A_d
+  const nav = r.activeEl().querySelector('.nav-btn[data-nav-task], .sv-nav-primary[data-nav-task]');
+  assert.ok(nav && nav.getAttribute('data-nav-task') === 'A_d', 'the rendered nav link is bound to A_d');
+  r.api.setDriver({ ...r.read('drivers/drv'), current_task_id: 'B_d' });   // pointer moves A→B (B resolves!), NO re-render
+  const ev = new r.window.MouseEvent('click', { bubbles: true, cancelable: true });
+  nav.dispatchEvent(ev);
+  assert.ok(ev.defaultPrevented, 'the stale A link is blocked (bound A_d ≠ pointer B_d) even though B resolves');
+});
+
+// P2-4 (kills dropping the freshness gate on arrival): inside the 50 m geofence with a STALE fix → keep
+// navigation, no «Has llegado». A FRESH fix inside the geofence shows the arrived note.
+t('P2-4 stale-fix arrival: inside 50 m but a STALE fix keeps navigation (no «Has llegado»); a FRESH fix arrives', () => {
+  const fresh = run({ orders: [delivery('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: Date.now() }, dist: 10 });
+  assert.ok(fresh.active().includes('Has llegado'), 'a FRESH fix inside 50 m → the arrived note');
+  const stale = run({ orders: [delivery('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: Date.now() - 5 * 60 * 1000 }, dist: 10 });
+  assert.ok(!stale.active().includes('Has llegado'), 'a STALE fix inside 50 m → NO arrived note');
+  assert.ok(stale.active().includes('Navegar con'), 'a stale fix keeps navigation (as the old single card did)');
 });
 
 await Promise.all(_p);

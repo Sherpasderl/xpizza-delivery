@@ -2,13 +2,16 @@
  * R7 — the drivers/{uid}/nav_app RTDB rule (nav-preference). Run: npm run test:driver-nav-pref-rules
  *   = firebase emulators:exec --only database "node test/driver-nav-pref-rules.emulator.test.js"
  *
- * Proves, against the REAL compiled ruleset (xpizza-reference/database.rules.json), that nav_app is a
- * self-service enum field:
+ * Proves, against the REAL compiled ruleset (xpizza-reference/database.rules.json), that nav_app is an enum
+ * field writable by the DRIVER themselves OR by STAFF (R7 as amended 2026-10-23: "driver OR staff" — a
+ * dispatcher setting a driver's nav app is BY DESIGN, not an own-uid violation). No new rule machinery: the
+ * boundary is the existing drivers/$id grant plus the nav_app enum .validate.
  *   A. an ENABLED own driver writes 'waze' / 'maps' → OK; any other value or a non-string → DENIED (.validate).
- *   B. ANOTHER non-privileged uid, a HANDHELD token, a CUSTOMER token and a DEACTIVATED driver → DENIED.
- *   C. DOCUMENTED inherited-grant behaviour: a DISPATCHER may write a driver's nav_app (the admin grant on
- *      drivers/$id covers every field), and a driver may set nav_app through a PARENT object write — but only
- *      with `name` present (the parent .validate) AND a valid enum value; dropping name or a bad enum is denied.
+ *   B. ANOTHER NON-PRIVILEGED uid (neither the driver nor staff), a HANDHELD token, a CUSTOMER token and a
+ *      DEACTIVATED driver → DENIED (so the "driver OR staff" boundary is real, not open to any uid).
+ *   C. a DISPATCHER (staff) MAY write a driver's nav_app — the admin grant on drivers/$id covers every field —
+ *      and a driver may set nav_app through a PARENT object write, but only with `name` present (the parent
+ *      .validate) AND a valid enum value; a non-staff/non-owner uid, a dropped name, or a bad enum is denied.
  *
  * Plain-node style (no jest) to match the repo's existing `node *.test.js` tests.
  */

@@ -1751,19 +1751,33 @@ function stopSlice2MapAgeTimer() {
 const DRV2_CAN_NOTIFY_ARRIVAL = false;
 const DRV2_CAN_REPORT_PROBLEM = false;
 
-// Device-cached nav preference (R7): drivers/{uid}/nav_app is authoritative; localStorage mirrors it as a fast
-// READ cache (written by the Cuenta/onboarding picker). Default Waze. Returns 'Waze' | 'Maps'.
-const DRV2_NAV_PREF_KEY = 'sherpa_nav_app';
+// Device-cached nav preference (R7): drivers/{uid}/nav_app is AUTHORITATIVE. drv2ReadNavPref returns SERVER truth
+// (driverState.nav_app) when the driver record is loaded, else the PER-UID localStorage mirror, else the Waze
+// default — so a new device honours the saved server choice and a shared device never inherits the previous
+// driver's preference (Codex r1 P2-6). The mirror is keyed by uid. Returns 'Waze' | 'Maps'.
+const DRV2_NAV_PREF_PREFIX = 'sherpa_nav_app:';
+function drv2NavPrefKey(uid) { return DRV2_NAV_PREF_PREFIX + (uid || ''); }
+function drv2NavFromToken(tok) { return tok === 'maps' ? 'Maps' : tok === 'waze' ? 'Waze' : null; }
 function drv2ReadNavPref() {
-  try { return localStorage.getItem(DRV2_NAV_PREF_KEY) === 'maps' ? 'Maps' : 'Waze'; } catch { return 'Waze'; }
+  const server = driverState && drv2NavFromToken(driverState.nav_app);   // authoritative leaf
+  if (server) return server;
+  const uid = currentUser && currentUser.uid;
+  if (uid) { try { const m = drv2NavFromToken(localStorage.getItem(drv2NavPrefKey(uid))); if (m) return m; } catch { /* unreadable → default */ } }
+  return 'Waze';
 }
 // Persist the chosen nav app (R7). SERVER-authoritative FIRST (drivers/{uid}/nav_app ∈ {waze,maps}, own-uid,
-// enum-validated), then mirror to localStorage ONLY on the server ack — so a failed write never diverges the
-// device cache from server truth. Throws on failure; the picker surfaces it and leaves the old choice intact.
+// enum-validated), then mirror to the PER-UID localStorage key ONLY after the ack AND only if the SAME session is
+// still signed in — a failed write, a signed-out session, or a uid change never banks a local success (Codex r1
+// P2-6). No auth → no server write and no local success (throws). The picker surfaces a throw and keeps the old choice.
 async function drv2WriteNavPref(pref) {
   const p = pref === 'maps' ? 'maps' : 'waze';
-  if (currentUser && currentUser.uid) await XPD.setNavPref(currentUser.uid, p);
-  try { localStorage.setItem(DRV2_NAV_PREF_KEY, p); } catch { /* best-effort mirror */ }
+  const uid = currentUser && currentUser.uid;
+  if (!uid) throw new Error('No hay sesión activa');   // no auth → nothing is written anywhere
+  const gen = authGen;
+  await XPD.setNavPref(uid, p);
+  if (authGen === gen && currentUser && currentUser.uid === uid) {   // the ack belongs to THIS session
+    try { localStorage.setItem(drv2NavPrefKey(uid), p); } catch { /* best-effort mirror */ }
+  }
 }
 
 // Recent-completion memory (dep D): the stops delivered THIS run, in board order, so the stacked header/strip/map
@@ -1772,10 +1786,16 @@ async function drv2WriteNavPref(pref) {
 // and NEVER marked done (it is excluded from M). After an app restart the memory is empty → degrades to live-only
 // («Parada 1 de 1»), which is true. Pure client state — never a server write, never money/cash logic (R11).
 let drv2DoneRun = [];       // [{ orderId, label, time, lat, lng }] delivered this run
-let drv2PrevActive = null;  // { orderId, phase } of the previous render's active stop (completion/cancel diff)
-let drv2Interlude = null;   // { orderId, name, area, cash, vuelto } pending the 3-s interlude overlay
+let drv2PrevStops = [];     // [{ orderId, phase, isActive, o, order, name }] EVERY accepted stop (active + queued) of the previous render — the observer diffs them all (Codex r1 P1-2)
+let drv2PendingTerminal = [];  // [{ orderId, isActive, o, order, name }] stops that vanished without an affirmed terminal status yet — reconciled on later snapshots or a lifecycle boundary, never attributed on a bare disappearance (Codex r1 P1-2 / r2 P2-5)
+let drv2Interlude = null;   // { orderId, name, cash, vuelto } pending the 3-s interlude overlay
 let drv2Cancel = null;      // { cancelledNum, cancelledName, cancelledAmount, survivorName, cancelledBrand } banner, until «Entendido»
-function drv2ResetRun() { drv2DoneRun = []; drv2PrevActive = null; drv2Interlude = null; drv2Cancel = null; }
+// The auth session this run-state belongs to; a uid/login change clears it (P2-8). Init to a LITERAL, NOT
+// `authGen` — authGen is declared ~200 lines below in the module body, so referencing it here is a TDZ
+// ReferenceError at load that stops the app from booting (Codex r2 P1-1). 0 matches authGen's initial value;
+// the first real session (onAuth bumps authGen≥1) reconciles on the first render.
+let drv2RunAuthGen = 0;
+function drv2ResetRun() { drv2DoneRun = []; drv2PrevStops = []; drv2PendingTerminal = []; drv2Interlude = null; drv2Cancel = null; drv2InterludeShownFor = null; }
 function drv2FirstWord(s) { return String(s || '').trim().split(/\s+/)[0] || ''; }
 function drv2NowHM() { const d = new Date(); return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); }
 function drv2DropDone(orderId) { drv2DoneRun = drv2DoneRun.filter((d) => d.orderId !== orderId); }
@@ -1786,42 +1806,155 @@ function drv2RecordDone(o) {
   drv2DoneRun.push({ orderId: o.orderId, label: drv2FirstWord(nm), time: drv2NowHM(), lat: order.lat, lng: order.lng });
   if (drv2DoneRun.length > 8) drv2DoneRun.shift();
 }
-// The completion/cancel OBSERVER (read-only — never touches the completion/cash write path, R11). Diffs the
-// previous active stop against the live board: if the previous active DELIVERY stop is gone AND confirmed
-// cancelled → raise the cancel banner + drop it from done (never resurrect it); else (gone, not cancelled →
-// delivered off the board) → record it done + arm the interlude. Then remember the new active stop.
-function drv2Observe(orders) {
+// ── P1-1 (the Waze trap): the IN-PROGRESS stop the driver navigates to and marks «Entregado» is whichever
+// accepted stop drivers/{uid}/current_task_id points to. The pointer names a TASK; a board entry's working task
+// is its delivery leg once picked up, else its pickup leg.
+//   • pointer NULL (not set) → behave exactly as the BASELINE: active = board[0], controls ARMED. No-regression
+//     ruling (Codex r2 P1-3): after a cross-hub delivery completes, current_task_id is cleared while the next
+//     order is still at PICKUP — that pickup flow must keep working as it does today, never fail closed.
+//   • pointer SET + resolves to exactly one accepted entry → that entry is active, ARMED.
+//   • pointer SET + resolves to NONE (pointer⇄snapshot disagree) → FAIL CLOSED: active falls back to board[0],
+//     the nav + pickup/Entregado controls neutralized until it reconciles.
+function drv2WorkingTaskId(o) {
+  if (!o) return null;
+  if (o.phase === 'delivery') return (o.deliveryTask && o.deliveryTask.id) || null;
+  if (o.phase === 'pickup') return (o.pickupTask && o.pickupTask.id) || null;
+  return null;   // awaiting_acceptance: not yet accepted → no working task (the Aceptar flow needs no pointer)
+}
+function drv2RawPointer() { return (driverState && driverState.current_task_id) || null; }
+function drv2ResolveActivePointer(orders) {
+  const ptr = drv2RawPointer();
+  if (!ptr) return null;
+  const hits = (orders || []).filter((o) => drv2WorkingTaskId(o) === ptr);
+  return hits.length === 1 ? hits[0] : null;
+}
+// Controls armed? Disarmed ONLY when the pointer is SET but does not resolve (P1-3). Null pointer, or no accepted
+// stops, is armed (baseline). `ptrEntry` is the already-resolved entry for this `orders` snapshot.
+function drv2NavArmed(orders, ptrEntry) {
+  if (!drv2RawPointer()) return true;
+  const acceptedN = (orders || []).filter((o) => o.phase === 'pickup' || o.phase === 'delivery').length;
+  return acceptedN === 0 ? true : !!ptrEntry;
+}
+// The board in POINTER order: the pointer's accepted entry first (when it resolves), else baseline order. The
+// render, the «Después»/active-card taps and the action guard ALL order through this so numbering + membership
+// agree (Codex r2 P2-4). drv2LiveBoard reads a FRESH live board, pointer-ordered, for the delegated handlers.
+function drv2OrderedBoard(orders) {
+  const a = drv2ResolveActivePointer(orders);
+  return (a && (orders || [])[0] !== a) ? [a, ...orders.filter((o) => o !== a)] : (orders || []);
+}
+function drv2LiveBoard() { return drv2OrderedBoard(XPD.getDriverOrders(currentUser && currentUser.uid, allTasks, allOrders)); }
+// Does the pointer STILL designate this bound working task? Revalidates at the swipe-END / nav-tap moment (Codex
+// r2 P1-2). A null pointer is NOT a disagreement (baseline, P1-3) → true. A set pointer must equal the bound task.
+function drv2PointerStillBound(boundTaskId) {
+  const ptr = drv2RawPointer();
+  return !ptr || ptr === boundTaskId;
+}
+// P1-1 fail-closed gate (render-time): when the pointer does not resolve to the active working stop, neutralize
+// the in-progress controls — the nav links and the pickup/delivery slide — so the driver can neither navigate to
+// nor complete a stop we cannot confirm. The «Aceptar» swipe on a fresh offer is untouched. Read-only, NO new
+// copy; the next reconciled render re-arms. (drv2ActionGuard below re-checks at the instant of the tap/swipe.)
+function drv2GateActiveControls(armed) {
+  if (armed) return;
+  const slot = $('active-order-slot');
+  if (!slot) return;
+  slot.querySelectorAll('.nav-btn, .sv-nav-primary, #btn-pickup, #btn-delivered').forEach((el) => {
+    el.classList.add('is-gated');
+    el.setAttribute('aria-disabled', 'true');
+    el.style.pointerEvents = 'none';
+    el.style.opacity = '0.45';
+    if (el.tagName === 'A') el.removeAttribute('href');   // a stripped href cannot launch nav even if the style is overridden
+  });
+}
+// P1-1 revalidation at the NAV tap (Codex r2 P1-2): a nav link is an <a href>, so it commits on click — this
+// capture-phase guard (bound once on #screen-onshift) re-resolves current_task_id at that instant and blocks the
+// navigation when the pointer is SET but no longer resolves. The pickup/delivery SLIDES revalidate at swipe-END
+// inside their onConfirm (drv2PointerStillBound), not here. Null pointer → baseline, never blocked (P1-3).
+function drv2ActionGuard(e) {
+  const t = (e.target && e.target.closest) ? e.target.closest('.nav-btn, .sv-nav-primary') : null;
+  const ptr = drv2RawPointer();
+  if (!t || !ptr) return;                      // only nav links; a null pointer is baseline (never blocked, P1-3)
+  // The link is BOUND to the task it was rendered for (data-nav-task). Navigation is honoured only while that
+  // bound task is STILL the one the pointer designates — this catches a link retained from before the pointer
+  // moved A→B (the resolve-only check passed because B resolves; the stale A link must not open, Codex r3 P1-1).
+  const bound = t.getAttribute('data-nav-task');
+  const stale = bound ? (bound !== ptr)
+    : (() => { const board = XPD.getDriverOrders(currentUser && currentUser.uid, allTasks, allOrders);
+               return board.some((o) => o.phase === 'pickup' || o.phase === 'delivery') && !drv2ResolveActivePointer(board); })();
+  if (stale) {
+    if (e.cancelable) e.preventDefault();
+    e.stopPropagation();
+    renderActiveAndQueue();                    // re-render with the correct active stop; the tap does nothing else
+  }
+}
+// The completion/cancel OBSERVER (read-only — never touches the completion/cash write path, R11). Diffs EVERY
+// accepted stop of the previous render (active + queued) plus any still-pending vanished stop against the live
+// board (Codex r1 P1-2). A stop that left the board is attributed ONLY on affirmative order status:
+//   status 'delivered'  → record it done (+ arm the interlude iff it was the active stop);
+//   status 'cancelled'  → raise the cancel banner + drop it from done (never resurrect it);
+//   legs reassigned to another driver (delivered DELETES the legs; reassign keeps them) → drop SILENTLY;
+//   order still present, non-terminal, legs gone → a late snapshot → keep pending, re-check next tick;
+//   order record absent entirely → unknowable → drop SILENTLY.
+// A bare disappearance NEVER invents a delivery or collected cash. `activeEntry` is the pointer-resolved active.
+function drv2Observe(orders, activeEntry) {
+  if (drv2RunAuthGen !== authGen) { drv2ResetRun(); drv2RunAuthGen = authGen; }   // session change → previous driver's run never carries over (P2-8)
+  const myUid = currentUser && currentUser.uid;
   const liveIds = new Set((orders || []).map((o) => o && o.orderId));
-  const prev = drv2PrevActive;   // { orderId, phase, o, order, name } from the previous render
-  if (prev && prev.phase === 'delivery' && !liveIds.has(prev.orderId)) {
-    const rec = (typeof allOrders === 'object' && allOrders) ? allOrders[prev.orderId] : null;
-    const cancelled = !!rec && (rec.status === 'cancelled' || rec.status === 'canceled');
-    if (cancelled) {
-      drv2DropDone(prev.orderId);                               // never resurrect a cancelled stop as done
-      const survivor = (orders && orders[0]) || null;
+  const recOf = (orderId) => ((typeof allOrders === 'object' && allOrders) ? allOrders[orderId] : null);
+  const statusOf = (orderId) => { const r = recOf(orderId); return r ? String(r.status || '') : null; };
+  // legs still present for this order but none a live leg of MINE ⇒ it moved to another driver (reassign keeps
+  // the legs; delivery deletes them). Distinguishes a reassign from a late delivered-snapshot (legs gone).
+  const legsAssignedElsewhere = (orderId) => {
+    if (typeof allTasks !== 'object' || !allTasks) return false;
+    const legs = Object.values(allTasks).filter((t) => t && t.order_id === orderId);
+    if (!legs.length) return false;
+    return legs.every((t) => t.assigned_driver_id !== myUid);
+  };
+  const tracked = [...drv2PrevStops, ...drv2PendingTerminal];
+  const seen = new Set();
+  const stillPending = [];
+  for (const t of tracked) {
+    if (!t || seen.has(t.orderId)) continue;
+    seen.add(t.orderId);
+    if (liveIds.has(t.orderId)) continue;                 // still on the board → nothing to resolve
+    const st = statusOf(t.orderId);
+    if (st === 'delivered') {
+      drv2RecordDone(t.o);                                // affirmative evidence only
+      if (t.isActive) {
+        const po = t.order || {};
+        const isCash = po.payment_method === 'cash';
+        const tendered = (Number(po.cash_tendered_cents) || 0) / 100;
+        const total = Number(po.total) || 0;
+        drv2Interlude = { orderId: t.orderId, name: po.customer_name || t.name || '',
+          cash: isCash ? total : null, vuelto: (isCash && tendered >= total) ? (tendered - total) : null };
+      }
+    } else if (st === 'cancelled' || st === 'canceled') {
+      drv2DropDone(t.orderId);                             // never resurrect a cancelled stop as done
+      const rec = recOf(t.orderId) || {};
+      const survivor = activeEntry || (orders && orders[0]) || null;
       drv2Cancel = {
         cancelledNum: '#' + (rec.display_number || rec.order_id || ''),
-        cancelledName: rec.customer_name || prev.name || '',
+        cancelledName: rec.customer_name || t.name || '',
         cancelledAmount: rec.payment_method === 'cash' ? (Number(rec.total) || 0) : null,
         survivorName: survivor ? ((survivor.order && survivor.order.customer_name) || '') : '',
         cancelledBrand: rec.restaurant_display_name || '',
       };
-    } else {
-      // gone + not cancelled → delivered off the board (getDriverOrders filters completed orders out)
-      drv2RecordDone(prev.o);
-      const po = prev.order || {};
-      const isCash = po.payment_method === 'cash';
-      const tendered = (Number(po.cash_tendered_cents) || 0) / 100;
-      const total = Number(po.total) || 0;
-      drv2Interlude = { orderId: prev.orderId, name: po.customer_name || prev.name || '',
-        cash: isCash ? total : null, vuelto: (isCash && tendered >= total) ? (tendered - total) : null };
+    } else if (legsAssignedElsewhere(t.orderId)) {
+      /* reassigned away → drop silently; never attribute a delivery or cash to this run */
+    } else if (st != null) {
+      stillPending.push(t);   // order present, non-terminal, legs gone → a late snapshot; keep until it reconciles
     }
+    /* else: order record gone entirely → unknowable → drop silently */
   }
-  const active = (orders && orders[0]) || null;
-  if (active) {
-    drv2PrevActive = { orderId: active.orderId, phase: active.phase, o: active, order: active.order || {}, name: (active.order && active.order.customer_name) || '' };
-  }
-  // board empty → keep prev (idle branch calls drv2ResetRun() to clear the run).
+  // Keep unresolved terminal entries until their status reconciles OR a lifecycle boundary clears them — shift end
+  // / auth change, via drv2ResetRun (Codex r2 P2-5: no render-count expiry). A reassigned order is already dropped
+  // above the instant its legs show under another driver, so a stale entry can NEVER be mis-attributed later.
+  drv2PendingTerminal = stillPending;
+  // Snapshot THIS render's accepted stops (active + queued) for the next diff — observe queued members too (P1-2).
+  drv2PrevStops = (orders || [])
+    .filter((o) => o && (o.phase === 'pickup' || o.phase === 'delivery'))
+    .map((o) => ({ orderId: o.orderId, phase: o.phase,
+      isActive: !!(activeEntry && o.orderId === activeEntry.orderId),
+      o, order: o.order || {}, name: (o.order && o.order.customer_name) || '' }));
 }
 
 // The 3-second post-delivery INTERLUDE (apAvance / S15): armed by the observer when a stop is delivered with a
@@ -1829,9 +1962,11 @@ function drv2Observe(orders) {
 // auto-advances in 3 s, or «Ir a la parada 2» skips. «+L 70» hidden (R2); the «pasó a seguimiento en vivo»
 // sentence is OMITTED until tracker_fixes flips Monday (advisor ruling — flagged for the one-line follow-up).
 let drv2InterludeTimer = null;
+let drv2InterludeShownFor = null;   // orderId currently on screen — so a re-render NEVER restarts the fixed 3-s expiry (Codex r1 P2-8)
 function drv2DismissInterlude() {
   if (drv2InterludeTimer != null) { clearTimeout(drv2InterludeTimer); drv2InterludeTimer = null; }
   drv2Interlude = null;
+  drv2InterludeShownFor = null;
   const ov = $('drv2-interlude'); if (ov) ov.classList.remove('open');
 }
 function drv2ShowInterlude() {
@@ -1839,7 +1974,8 @@ function drv2ShowInterlude() {
   const info = drv2Interlude;
   const board = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);
   const next = board[0];
-  if (!next || next.phase === 'awaiting_acceptance') { drv2Interlude = null; return; }   // nothing live to advance to
+  if (!next || next.phase === 'awaiting_acceptance') { drv2DismissInterlude(); return; }   // nothing live to advance to → CLOSE any open overlay, don't just null the state (P2-8)
+  if (drv2InterludeShownFor === info.orderId) return;   // already shown + timer armed; a re-render must NOT rebuild it or restart the 3-s expiry (P2-8)
   const nextOrder = next.order || {};
   let ov = $('drv2-interlude');
   if (!ov) { ov = document.createElement('div'); ov.id = 'drv2-interlude'; ov.className = 'interlude-overlay'; document.body.appendChild(ov); }
@@ -1850,8 +1986,9 @@ function drv2ShowInterlude() {
   }, { ICONS, esc: escapeHtml });
   ov.classList.add('open');
   const go = ov.querySelector('#btn-interlude-go'); if (go) go.onclick = drv2DismissInterlude;
+  drv2InterludeShownFor = info.orderId;
   if (drv2InterludeTimer != null) clearTimeout(drv2InterludeTimer);
-  drv2InterludeTimer = setTimeout(drv2DismissInterlude, 3000);
+  drv2InterludeTimer = setTimeout(drv2DismissInterlude, 3000);   // armed ONCE per interlude — fixed expiry
 }
 /* ===== SLICE2:IMPORT:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
@@ -1898,11 +2035,17 @@ function renderNavApp() {
   $('navapp-back').addEventListener('click', back);
   $('navapp-save').addEventListener('click', async () => {
     const btn = $('navapp-save'); btn.disabled = true;
+    const gen = authGen, uid = currentUser && currentUser.uid;   // P2-6: pin the session across the await
     try {
       await drv2WriteNavPref(drv2NavSel);
+      // Guard the UI CONTINUATION on the session, not only the localStorage mirror (Codex r2 P2-6): if the
+      // session changed during the write, do NOT write the companion draft or navigate — the ack belonged to the
+      // old session, and a new session's onboarding/screen must not inherit it.
+      if (authGen !== gen || !currentUser || currentUser.uid !== uid) return;
       if (drv2NavReturn === 'companion') companionWriteDraft({ navChosen: true });
       back();
     } catch (e) {
+      if (authGen !== gen || !currentUser || currentUser.uid !== uid) return;   // a superseded session leaves no surfaced error
       btn.disabled = false;
       toast('No se pudo guardar. Intentá de nuevo.', 'error');
     }
@@ -2871,21 +3014,39 @@ $('screen-onshift').addEventListener('click', (e) => {
   if (hit('#btn-end-shift')) { const t = $('duty-toggle-on'); if (t) t.click(); return; }
   // «Entendido» on the cancelled-stop banner → dismiss it and re-render (S17).
   if (hit('#btn-cancel-ack')) { drv2Cancel = null; renderActiveAndQueue(); return; }
-  // «Después» preview tap → open the read-only queued sheet, resolved by orderId in a FRESH board, FAIL CLOSED if
-  // gone/promoted, REFUSE an awaiting_acceptance stop (S7/S8) — mirrors the QUEUE-IDENTITY handler.
+  // «Después» preview tap → open the read-only queued sheet, resolved by orderId in a FRESH POINTER-ordered board
+  // (same ordering + numbering as the render, Codex r2 P2-4), FAIL CLOSED if gone/promoted, REFUSE an
+  // awaiting_acceptance stop (S7/S8) — mirrors the QUEUE-IDENTITY handler.
   const after = hit('.after-card');
   if (after) {
     const oid = after.getAttribute('data-order-id');
-    const board = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);
+    const board = drv2LiveBoard();                        // pointer-ordered: [active, ...queue]
     const idx = board.findIndex((q) => q && q.orderId === oid);
-    if (idx < 1) return;                                  // gone / now active (promoted) — no sheet
+    if (idx < 1) return;                                  // gone / now the active stop (promoted) — no queued sheet
     const o = board[idx];
     if (o.phase === 'awaiting_acceptance') return;        // privacy: never open an unaccepted stop
     $('queue-sheet-body').innerHTML = queueDetailHtml(o, drv2DoneRun.length + idx + 1, { ICONS, esc: escapeHtml, scheduledBadge });
     $('queue-sheet').classList.add('open');
     return;
   }
+  // P2-9: the active card shows NO item list; a tap on it (outside its own nav/slide/vuelto/button controls) opens
+  // the SAME read-only sheet (items, no actions) — but as the ACTIVE stop: drop the «En cola» chip + the «Sin
+  // navegación…» lock text, which are for queued stops only (Codex r2 P3-9). Resolve against the pointer-ordered board.
+  const activeCard = hit('.active-card');
+  if (activeCard && !hit('a') && !hit('.slide-confirm') && !hit('[data-vuelto-open]') && !hit('button')) {
+    const oid = activeCard.getAttribute('data-order-id');
+    const board = drv2LiveBoard();
+    const o = board.find((q) => q && q.orderId === oid);
+    if (!o || o.phase === 'awaiting_acceptance') return;   // no read-only sheet for a fresh offer card
+    $('queue-sheet-body').innerHTML = queueDetailHtml(o, drv2DoneRun.length + 1, { ICONS, esc: escapeHtml, scheduledBadge, active: true });
+    $('queue-sheet').classList.add('open');
+    return;
+  }
 });
+// P1-1 revalidation at the NAV tap (Codex r2 P1-2): a CAPTURE-phase click guard, bound once, blocks a nav-link
+// tap the instant current_task_id is SET but no longer resolves (the render gate can go stale between paint and
+// tap). The pickup/delivery SLIDES revalidate at swipe-END in their onConfirm, so only `click` is intercepted here.
+$('screen-onshift').addEventListener('click', drv2ActionGuard, true);
 /* ===== SLICE2:STACKED-HANDLERS:END ===== */
 // "Why don't I see tasks?" help link on the idle state
 $('idle-help-link').addEventListener('click', () => {
@@ -3058,8 +3219,12 @@ $('cuadre-screen').addEventListener('click', async (e) => {
 async function cleanupShift() {
   /* ===== SLICE2:SHIFT-CLEANUP:START — stop the map-aging timer on shift/session disposal (Codex r1 P2-7) ===== */
   // Shift end is a disposal: stop the display-only aging timer SYNCHRONOUSLY here (the visibilitychange handler
-  // only covers tab hide). The baseline cleanupShift body below is pinned by the freeze guard.
+  // only covers tab hide). Also clear the per-run terminal state — the recent-completion memory, any armed
+  // interlude (overlay closed) and the cancel banner — so a new shift never inherits the previous run's history
+  // (Codex r1 P2-8). The baseline cleanupShift body below is pinned by the freeze guard.
   stopSlice2MapAgeTimer();
+  drv2DismissInterlude();
+  drv2ResetRun();
   /* ===== SLICE2:SHIFT-CLEANUP:END ===== */
   if (watchId) {
     navigator.geolocation.clearWatch(watchId);
@@ -3414,7 +3579,11 @@ function renderActiveAndQueue() {
 
   const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);
   /* ===== SLICE2:RUN-OBSERVER:START — read-only completion/cancel diff → recent-completion memory (dep D); no write path ===== */
-  drv2Observe(orders);
+  // P1-1: resolve the active WORKING stop from current_task_id (never board position). Fail closed (navArmed
+  // false → drv2GateActiveControls) ONLY when the pointer is SET but disagrees; a null pointer is baseline (P1-3).
+  const ptrEntry = drv2ResolveActivePointer(orders);
+  const navArmed = drv2NavArmed(orders, ptrEntry);
+  drv2Observe(orders, ptrEntry);
   // Stop screens use the stop header as the sole top bar — hide the status bar while there is an active stop (ruling a).
   $('screen-onshift').classList.toggle('delivering', orders.length > 0);
   drv2ShowInterlude();   // a just-completed delivery with a next stop → the 3-s apAvance overlay over the promoted screen
@@ -3507,27 +3676,35 @@ function renderActiveAndQueue() {
     // comes from drv2Observe's confirmed status==='cancelled' signal, never a disappearance — S17/R11).
     const spCancel = drv2Cancel ? cancelBannerHtml(drv2Cancel, { ICONS, esc: escapeHtml }) : '';
     const spShowChrome = (spStacked || !!drv2Cancel) && soloOrder.phase !== 'awaiting_acceptance';
-    const spHeader = spShowChrome ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: (spTotalM === 1 && !!drv2Cancel), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml }) : '';
+    // P2-5 (advisor 2026-10-24, uniform treatment): EVERY committed single stop — fresh, promoted or cancel-
+    // survivor — gets the prototype stop header, so «Terminar turno» (the power icon) is always reachable without
+    // resurrecting the status bar. A lone stop reads «Única parada» (single); a promoted survivor keeps «Parada N
+    // de M». Only the fresh offer card (awaiting_acceptance) stays headerless. The strip + the stop-card swap still
+    // belong to the chrome states (spShowChrome); the fresh single keeps its slice-1 card below the header.
+    const spStopScreen = soloOrder.phase !== 'awaiting_acceptance';
+    const spHeader = spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml }) : '';
     const spStripStops = drv2Cancel
       ? [{ n: 1, state: 'cancelled', label: drv2FirstWord(drv2Cancel.cancelledName) }, { n: 2, state: 'on', label: drv2FirstWord(spName) }]
       : [...drv2DoneRun.map((d, i) => ({ n: i + 1, state: 'done', label: d.label, time: d.time })), { n: spOrdinal, state: 'on', label: drv2FirstWord(spName) }];
     const spStrip = spShowChrome ? phaseStripHtml(spStripStops, escapeHtml) : '';
-    // A PROMOTED survivor (apParada2) or a cancel-survivor (apCancelada) renders the prototype STOP card — the SAME
-    // activeCardHtml the stacked path uses (number tile, brand chip, # chip, «Parada actual», amber door/ref box,
-    // A COBRAR/PAGO, the one nav button + the personalized «Entregado» slide), NOT the slice-1 single-order card
-    // (advisor 2026-10-23 #3). A genuine fresh solo (no history, no cancel) keeps the slice-1 card.
+    // EVERY committed single stop — fresh, promoted (apParada2) or cancel-survivor (apCancelada) — renders the
+    // SAME prototype STOP card as the stacked path (activeCardHtml: number tile, sentence-case brand chip, # chip,
+    // «Parada actual», amber door/ref box, A COBRAR/PAGO, the logo-tile nav button + the personalized «Entregado»
+    // slide), NEVER the slice-1 single-order card (Codex r2 visual). singleOrderCardHtml is now the OFFER card only
+    // (awaiting_acceptance). The geofence «Has llegado» line is dropped — no ruling covers it (Codex r2).
     const spCardDeps = { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: XPD.RESTAURANT, navPref: drv2ReadNavPref(), collapsedBanners };
-    const spCardHtml = spShowChrome
-      ? activeCardHtml(soloOrder, spCardDeps, { ordinal: spOrdinal, solo: false, showActualPill: true, arrived: spArrived, navLabel: stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: '' })
+    const spCardHtml = spStopScreen
+      ? activeCardHtml(soloOrder, spCardDeps, { ordinal: spOrdinal, solo: false, showActualPill: true, arrived: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()), navLabel: stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: '' })
       : singleOrderCardHtml(soloOrder, {
           ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,
           RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: drv2ReadNavPref(),
           nowMs: Date.now(),   // offer ring: elapsed drives the resume (negative animation-delay); display-only
         });
     activeSlot.innerHTML = spHeader + spCancel + spStrip + soloMapHtml + spCardHtml;
-    // The slice-1 card path (frozen module) needs the «→ {destino}» nav line + the personalized «Entregado» slide
-    // injected at the seam. The stop-card path (activeCardHtml) already renders both, so these run ONLY for it.
-    if (!spShowChrome) {
+    // The slice-1 OFFER card (singleOrderCardHtml, awaiting_acceptance only) needs the «→ {destino}» nav line +
+    // the personalized «Entregado» slide injected at the seam. The stop-card path (activeCardHtml) renders both,
+    // so these run ONLY for the offer card — and for an offer there is no nav/Entregado, so this is inert today.
+    if (!spStopScreen) {
       const soloNavBtn = activeSlot.querySelector('.sv-nav-primary');
       if (soloNavBtn && !soloNavBtn.querySelector('.sv-nav-dest')) {
         const spBase = stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base;
@@ -3541,6 +3718,7 @@ function renderActiveAndQueue() {
       }
     }
     if (soloMapHtml) ensureSlice2MapAgeTimer();
+    drv2GateActiveControls(navArmed);   // P1-1: a lone accepted stop whose pointer doesn't resolve → nav + Entregado fail closed
     /* ===== SLICE2:SINGLE-ORDER-MOUNT:END ===== */
     attachActiveCardHandlers(soloOrder);   // binds whichever server slide this phase renders
     if ($('btn-at-restaurant')) {
@@ -3552,7 +3730,13 @@ function renderActiveAndQueue() {
     return;
   }
   /* ===== SLICE1:SINGLE-ORDER-BRANCH:END ===== */
-  const [active, ...rest] = orders;
+  /* ===== SLICE2:ACTIVE-POINTER:START — the active WORKING stop is the current_task_id pointer's, never board
+     position (Codex r1 P1-1 / r2 P1-3). When the pointer resolves, promote that entry and keep the REST in board
+     order; a null or disagreeing pointer falls back to the baseline orders[0] (and when it DISAGREES, navArmed is
+     false so the controls gate closed — a null pointer stays armed, baseline). ===== */
+  const active = ptrEntry || orders[0];
+  const rest = orders.filter((o) => o !== active);
+  /* ===== SLICE2:ACTIVE-POINTER:END ===== */
   // Split rest: 2nd swipe-needed orders (awaiting_acceptance) → incoming banner(s); accepted stacked → view-only queue.
   const pendingAccept = rest.filter(o => o.phase === 'awaiting_acceptance');
   const queue = rest.filter(o => o.phase !== 'awaiting_acceptance');
@@ -3622,7 +3806,7 @@ function renderActiveAndQueue() {
     + (drv2Cancel ? cancelBannerHtml(drv2Cancel, { ICONS, esc: escapeHtml }) : '')
     + phaseStripHtml(stripStops2, escapeHtml)
     + overviewMapSvg({ driver: mapDriver2, hubs: mapHubs2, stops: mapStops2, phase: mapPhase2, stale: mapStale2 })
-    + activeCardHtml(active, deps2, { ordinal: activeOrdinal2, solo, showActualPill: !solo, arrived: a2Arrived, navLabel: labels2[0] && labels2[0].label, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: queue.length ? queuedPreviewHtml(queue[0], activeOrdinal2 + 1, deps2) : '' });
+    + activeCardHtml(active, deps2, { ordinal: activeOrdinal2, solo, showActualPill: !solo, arrived: a2Arrived && !mapStale2, navLabel: labels2[0] && labels2[0].label, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: queue.length ? queuedPreviewHtml(queue[0], activeOrdinal2 + 1, deps2) : '' });
   queuedOrders = queue;
   // The immediate «Después» preview sits ABOVE the footer (inside the active card). Any further queued stops go in
   // #queue-slot. Both carry data-order-id; the SLICE2:STACKED-HANDLERS delegate opens the read-only sheet by
@@ -3638,7 +3822,7 @@ function renderActiveAndQueue() {
     activeSlot.innerHTML = stopHeaderHtml({ pickupCount: stacked2.length, canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)
       + phaseStripHtml(stacked2.map((s, i) => ({ n: i + 1, state: i === 0 ? 'on' : '', label: 'Recoger' })), escapeHtml)
       + combinedPickupHtml(stacked2, deps2, new Set())
-      + navBtnHtml(pkTarget, deps2.navPref, pkLabel, deps2)
+      + navBtnHtml(pkTarget, deps2.navPref, pkLabel, { ...deps2, navTaskId: active.pickupTask && active.pickupTask.id })
       + `<div class="action-zone"><div class="slide-confirm pickup" id="btn-pickup"><div class="slide-fill"></div><div class="slide-text">Recogí las ${stacked2.length} bolsas</div><div class="slide-hint">deslizá</div><div class="slide-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div></div></div>`;
     queuedOrders = queue;
     queueSlot.innerHTML = '';
@@ -3655,11 +3839,15 @@ function renderActiveAndQueue() {
     for (const s of ofStops) { ofKm += ofHaver(ofPrev, s); ofPrev = s; }
     const ofDist = (mapDriver2 && ofKm > 0) ? `${(Math.round(ofKm / 100) / 10).toFixed(1)} km total` : '';
     bannerSlot.innerHTML = '';
+    // P2-5 (advisor 2026-10-24): the combined OFFER stays EXACTLY as the prototype — timer ring, no power icon.
+    // An offer lasts ~28 s and the stop header (with the end-shift power) returns the moment it's accepted or
+    // declined, so no shift-end entry is added here and the status bar stays hidden.
     activeSlot.innerHTML = offerScreenHtml(offers, deps2, { mapHtml: overviewMapSvg({ driver: mapDriver2, hubs: mapHubs2, stops: mapStops2, phase: 'pickup', stale: mapStale2 }), distanceStr: ofDist });
     queuedOrders = [];
     queueSlot.innerHTML = '';
   }
   ensureSlice2MapAgeTimer();   // SLICE2:MAP-LIFECYCLE — age the fix on silence; self-clears when hidden
+  drv2GateActiveControls(navArmed);   // P1-1: unresolved pointer among accepted stops → nav + pickup/Entregado fail closed (the Aceptar offer stays live, navArmed=true when all-offers)
   /* ===== SLICE2:STACKED-BRANCH:END ===== */
 
   attachActiveCardHandlers(active);
@@ -3927,16 +4115,27 @@ function attachActiveCardHandlers(o) {
   }
   if ($('btn-pickup')) {
     attachSlideConfirm('btn-pickup', async () => {
+      /* ===== SLICE2:PICKUP-REVALIDATE:START — revalidate the pointer at swipe-END, right before the server call (Codex r2 P1-2) ===== */
+      // The pointer can shift during the ~1 s swipe. If the current_task_id no longer matches the stop this slide
+      // was bound to, DON'T complete — re-render (which re-gates, fail-closed) and abort. No server call, no new copy.
+      if (!drv2PointerStillBound(o.pickupTask.id)) { renderActiveAndQueue(); return; }
       await XPD.pickupComplete(currentUser.uid, o.pickupTask.id);
+      /* ===== SLICE2:PICKUP-REVALIDATE:END ===== */
       toast('En camino al cliente', 'success');
     });
   }
   if ($('btn-delivered')) {
     attachSlideConfirm('btn-delivered', async () => {
+      /* ===== SLICE2:DELIVERED-REVALIDATE:START — revalidate the pointer at swipe-END, right before completion (Codex r2 P1-2) ===== */
+      // If the current_task_id no longer matches the stop this slide was bound to (a mid-swipe reassign/advance),
+      // DON'T complete — re-render (re-gates) and abort. This is the money-grade check: never bank the wrong
+      // delivery / collect the wrong cash. No server call, no new copy.
+      if (!drv2PointerStillBound(o.deliveryTask.id)) { renderActiveAndQueue(); return; }
       // Capture the acting uid BEFORE completion starts: the error-path role mapping must attribute the role to
       // the account that actually ran the completion, not whatever account is current if the session changed
       // mid-write (codex core r3 P2).
       const actingUid = currentUser.uid;
+      /* ===== SLICE2:DELIVERED-REVALIDATE:END ===== */
       // Track the completion write so a clock-out in progress waits for it to SETTLE before computing cash
       // (a rejected completion must not bank its optimistically-stamped delivery). finally-deregisters.
       const p = XPD.completeTask(actingUid, o.deliveryTask.id);

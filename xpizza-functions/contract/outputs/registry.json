@@ -994,9 +994,6 @@
   "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/stacked-view.js#activeCardHtml~2": {
    "status": "pending"
   },
-  "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/stacked-view.js#combinedPickupHtml>anon": {
-   "status": "pending"
-  },
   "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/stacked-view.js#queueDetailHtml>anon": {
    "status": "pending"
   },
@@ -1279,21 +1276,6 @@
   "xpizza-driver/stacked-view.js#cancelBannerHtml@xpizza-driver/index.html<script@0>#renderActiveAndQueue~2": {
    "status": "pending"
   },
-  "xpizza-driver/stacked-view.js#coloniaOf@xpizza-driver/index.html<script@0>#drv2ShowInterlude": {
-   "status": "pending"
-  },
-  "xpizza-driver/stacked-view.js#coloniaOf@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
-   "status": "pending"
-  },
-  "xpizza-driver/stacked-view.js#coloniaOf@xpizza-driver/index.html<script@0>#renderActiveAndQueue~2": {
-   "status": "pending"
-  },
-  "xpizza-driver/stacked-view.js#coloniaOf@xpizza-driver/stacked-view.js#offerScreenHtml>anon": {
-   "status": "pending"
-  },
-  "xpizza-driver/stacked-view.js#coloniaOf@xpizza-driver/stacked-view.js#queuedPreviewHtml": {
-   "status": "pending"
-  },
   "xpizza-driver/stacked-view.js#combinedPickupHtml>anon@self": {
    "status": "pending"
   },
@@ -1400,9 +1382,6 @@
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#<top>>anon": {
-   "status": "pending"
-  },
-  "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#<top>>anon~2": {
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#drv2ShowInterlude": {
@@ -2636,6 +2615,39 @@
    "status": "pending"
   },
   "xpizza-functions/tracking/tombstones.js#staleVerdict@xpizza-functions/tracking/tombstones.js#validateLiveClaims": {
+   "status": "pending"
+  },
+  "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/stacked-view.js#payPhrase": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#queueDetailHtml@xpizza-driver/index.html<script@0>#<top>>anon~3": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#legsAssignedElsewhere>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon~2": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#statusOf@xpizza-driver/index.html<script@0>#drv2Observe": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacked-view.js#payPhrase@xpizza-driver/stacked-view.js#combinedPickupHtml>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#drv2LiveBoard": {
+   "status": "pending"
+  },
+  "xpizza-driver/index.html<script@0>#renderActiveAndQueue@xpizza-driver/index.html<script@0>#drv2ActionGuard": {
+   "status": "pending"
+  },
+  "xpizza-driver/single-order-view.js#itemLines@xpizza-driver/stacked-view.js#queueDetailHtml>anon": {
+   "status": "pending"
+  },
+  "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#drv2ActionGuard>anon": {
    "status": "pending"
   }
  }

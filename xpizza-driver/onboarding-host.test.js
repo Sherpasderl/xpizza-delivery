@@ -37,6 +37,10 @@ function makeDom() {
     addEventListener(ev, fn) { this._h[ev] = fn; }, click() { return this._h.click && this._h.click(); },
     classList: { toggle() {}, contains() { return false; }, add() {}, remove() {} },
     closest() { return this; }, querySelectorAll() { return []; }, getAttribute() { return null; },
+    // Real-DOM 'afterend' = a SIBLING inserted after this element. In this flat mock the new node lives at the
+    // companion-screen level, so reflect the markup in screen-companion's innerHTML and register its ids so
+    // $(newId) resolves + it is queryable — matching the shipped SLICE2:ONBOARDING-NAV injection (index.html).
+    insertAdjacentHTML(pos, html) { const sc = els['screen-companion']; if (sc) sc._html += String(html); for (const m of String(html).matchAll(/id="([\w-]+)"/g)) exists.add(m[1]); },
     set textContent(v) { this._text = v; }, get textContent() { return this._text; } });
   const $ = (id) => (exists.has(id) ? (els[id] || (els[id] = mkEl(id))) : null);
   return { $, els, exists };
@@ -103,6 +107,18 @@ t('A3 "Guardar perfil" writes the draft + advances to the checklist, and does NO
   assert.equal(draft.name, 'Elmer Padilla');            // staged to the draft
   assert.equal(host.getStep(), 'checklist');            // advanced
   assert.equal(xpd.calls.submit, 0, 'Guardar perfil must NOT submit');
+});
+
+// ---- SLICE2:ONBOARDING-NAV: the «App de navegación» row is injected + wired after the checklist renders ----
+// (Codex r4-followup): covers the shipped index.html insertAdjacentHTML injection, not merely the absence of a
+// crash. Removing the ONBOARDING-NAV injection turns this RED.
+t('the «App de navegación» row (co-nav-row) is injected after the checklist renders and is WIRED', async () => {
+  const dom = makeDom(); const user = { uid: 'A', email: 'e@x.hn' }; const xpd = makeXPD(); const store = {};
+  const host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store });
+  host.setStep('checklist'); host.companionRenderOnboarding();
+  assert.ok(dom.$('co-nav-row'), 'co-nav-row exists after the checklist renders (afterend sibling injection)');
+  assert.ok(host.getScreenHtml().includes('App de navegación'), 'the nav-row markup is present in the companion screen');
+  assert.ok(dom.$('co-nav-row')._h && typeof dom.$('co-nav-row')._h.click === 'function', 'co-nav-row is WIRED (has a click handler)');
 });
 
 // ---- "Pedir aprobación" (A4) is the submit path ----

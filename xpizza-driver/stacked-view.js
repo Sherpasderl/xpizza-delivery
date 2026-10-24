@@ -16,7 +16,7 @@
  * "Parada actual" pill, the phase-correct nav destination label, data-order-id, the restyled lock chip).
  * The Cuadra restyle is CSS-only (SLICE2:PRESENTATION) on these same classes; geometry/hooks stay baseline.
  */
-import { navTarget, wazeHref, mapsHref, brandLabel } from './single-order-view.js';
+import { navTarget, wazeHref, mapsHref, brandLabel, waPhone, itemLines } from './single-order-view.js';
 import { brandMeta, driverGreeting } from './brand-helpers.js';
 import { displayOrderLabel } from './order-helpers.js';
 import { collectionFor, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
@@ -146,18 +146,21 @@ export function phaseStripHtml(stops, esc = String) {
  * rendered inside the primary as "→ {label}". Pure. Waze/Maps hrefs are byte-identical to the baseline.
  */
 export function navBtnHtml(target, navPref, label, deps = {}) {
-  const { esc = String } = deps;
+  const { esc = String, navTaskId } = deps;
   const pref = navPref === 'Maps' ? 'Google Maps' : 'Waze';
   const other = pref === 'Google Maps' ? 'Waze' : 'Google Maps';
   const logo = pref === 'Google Maps' ? GMAPS_LOGO : WAZE_LOGO;
   const primaryHref = pref === 'Google Maps' ? mapsHref(target) : wazeHref(target);
   const otherHref = pref === 'Google Maps' ? wazeHref(target) : mapsHref(target);
   const dest = label ? `<span class="nav-dest">→ ${esc(label)}</span>` : '';
+  // Each nav link is BOUND to the TASK it was rendered for (data-nav-task) so the action guard can compare it with
+  // the CURRENT pointer at click time and refuse a stale link (pointer moved A→B before repaint — Codex r3 P1-1).
+  const taskAttr = navTaskId ? ` data-nav-task="${esc(navTaskId)}"` : '';
   // ONE component (advisor 2026-10-23 #2): the chosen app's LOGO in a white tile on the LEFT, the left-aligned
   // title + «→ {destino}» sub-line in the middle (flex:1), the navi ARROW on the RIGHT.
   return `<div class="nav-col">
-      <a class="nav-btn nav-primary" href="${primaryHref}" target="_blank" rel="noopener"><span class="nav-logo">${logo}</span><span class="nav-txt"><span class="nav-main">Navegar con ${pref}</span>${dest}</span><span class="nav-arrow">${NAVI_ARROW}</span></a>
-      <a class="nav-btn nav-alt" href="${otherHref}" target="_blank" rel="noopener">Abrir en ${other} en su lugar</a>
+      <a class="nav-btn nav-primary"${taskAttr} href="${primaryHref}" target="_blank" rel="noopener"><span class="nav-logo">${logo}</span><span class="nav-txt"><span class="nav-main">Navegar con ${pref}</span>${dest}</span><span class="nav-arrow">${NAVI_ARROW}</span></a>
+      <a class="nav-btn nav-alt"${taskAttr} href="${otherHref}" target="_blank" rel="noopener">Abrir en ${other} en su lugar</a>
     </div>`;
 }
 
@@ -183,16 +186,32 @@ export function queuedPreviewHtml(next, ordinal, deps = {}) {
 }
 
 /**
- * The customer COLONIA / area only — a privacy-safe locality label (ledger R4/S9 subtitle "· {barrio}"). Derived
- * from the first comma-segment of the detected/destination address (the colonia), never the full street line.
- * Returns '' when no address. Pure.
+ * The customer COLONIA / area only — a privacy-safe locality label (ledger R4/S9 subtitle "· {barrio}"). The ONE
+ * shared locality helper: it reads a VERIFIED structured field and returns '' when none exists, so every caller
+ * omits the location line today and a real colonia field wires in later ADDITIVELY (advisor 2026-10-24). Pure.
  */
 export function coloniaOf(o) {
-  const order = (o && o.order) || {};
-  const dt = (o && o.deliveryTask) || {};
-  const full = order.address_detected || dt.destination_address || '';
-  if (!full) return '';
-  return String(full).split(',')[0].trim();
+  // Returns '' UNCONDITIONALLY today (Codex r2 P2-8). There is NO verified locality field on the order, and we
+  // never GUESS one: not a comma-split of the formatted address (its first segment can be the exact house, e.g.
+  // «Casa 14 Calle 3», which would leak the address pre-accept), and not an unverified alias like
+  // order.colonia/locality/barrio (none exists in the schema). So every caller OMITS the location line — the
+  // offer never invents «Zona por confirmar»; post-accept the subtitle is name-only. ADDITIVE: when a real,
+  // verified locality field is confirmed, read THAT one here and the whole app surfaces it at once.
+  void o;
+  return '';
+}
+
+// The collect-aware pay PHRASE for the pickup-bag rows (P1-3, Codex r1): the FULL collectionFor classification —
+// never collapse card_delivery (collected at delivery) or a pending-online payment into «pagado en línea». The
+// copy mirrors cash-helpers / the queued-sheet pay-ro-card; nothing new is invented.
+function payPhrase(order) {
+  const c = collectionFor(order);
+  const amt = `L ${(Number(order.total) || 0).toLocaleString('es-HN')}`;
+  if (c.kind === 'cash') return `a cobrar ${amt}`;
+  if (c.kind === 'card') return `a cobrar ${amt} · tarjeta`;   // card_delivery: the driver charges the card at delivery (collect:true)
+  if (c.kind === 'paid_online') return 'pagado en línea';
+  if (c.kind === 'free') return 'pedido gratis';
+  return 'pago no confirmado';   // warning: pending online / unknown — never «pagado»
 }
 
 // ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -297,12 +316,15 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   // destination inside carries the «Parada N ·» prefix (N10). No nav while awaiting; the arrived-note (L2)
   // replaces it inside the 50 m geofence.
   const navLabel = opts.navLabel ? `Parada ${ordinal} · ${opts.navLabel}` : '';
+  // The working task this stop's nav points to — delivery leg once picked up, else the pickup leg. The nav link
+  // carries it so the action guard can refuse a stale link whose task no longer matches the pointer (r3 P1-1).
+  const navTaskId = phase === 'delivery' ? (o.deliveryTask && o.deliveryTask.id) : (o.pickupTask && o.pickupTask.id);
   let navBlock;
   if (phase === 'awaiting_acceptance') { navBlock = ''; }
   else if (arrived) {
     navBlock = `<div class="arrived-note">${ICONS.check}<span>Has llegado ${isPickup ? 'al restaurante' : 'donde el cliente'}</span></div>`;
   } else {
-    navBlock = navBtnHtml(target, navPref, navLabel, deps);
+    navBlock = navBtnHtml(target, navPref, navLabel, { ...deps, navTaskId });
   }
 
   const flowTop = solo ? '<div class="ao-spacer ao-spacer-top"></div>' : '';
@@ -318,7 +340,7 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
       ${scheduledBadge(order)}
       ${accepted ? `<div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${esc(order.address_detected || (o.deliveryTask && o.deliveryTask.destination_address) || '—')}</div></div></div>` : ''}
       ${accepted && order.address_details ? `<div class="instr"><span class="ico">${ICONS.door || DOOR_SVG}</span><div class="instr-main">${esc(order.address_details)}</div></div>` : ''}
-      ${accepted && order.customer_phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(order.customer_phone).replace(/[^\d+]/g, '')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${String(order.customer_phone).replace(/\D/g, '')}?text=${encodeURIComponent(driverGreeting(order))}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
+      ${accepted && order.customer_phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(order.customer_phone).replace(/[^\d+]/g, '')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${waPhone(order.customer_phone)}?text=${encodeURIComponent(driverGreeting(order))}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
       <div class="ac-hr"></div>
       ${collectionFor(order).kind === 'warning' ? paymentRowHtml(order, esc).replace('>COBRO<', '>PAGO<') : paymentRowHtml(order, esc)}
       ${vueltoLine(order, deps)}
@@ -377,7 +399,7 @@ export function queueHtml(orders, deps = {}) {
  * despacho.") + queue-sheet-close. `seq` is the 1-based stop position. Pure.
  */
 export function queueDetailHtml(o, seq, deps = {}) {
-  const { ICONS = {}, esc = String, scheduledBadge = () => '' } = deps;
+  const { ICONS = {}, esc = String, scheduledBadge = () => '', active = false } = deps;
   const order = o.order || {};
   // PRIVACY (Codex r2 P1 / S7): gate ALL customer-identifying fields on acceptance. The tap handler refuses a
   // non-accepted order; defense-in-depth here shows no name/address for a non-accepted entry.
@@ -389,27 +411,37 @@ export function queueDetailHtml(o, seq, deps = {}) {
   // items, payment) + the lock banner. Supersedes Codex P1-1.
   return `
     <div class="grab"></div>
-    <div class="sh-head sheet-head"><span class="bagtag ${bagTagClass(seq)}">${esc(seq)}</span><div class="sh-name">Parada ${esc(seq)} · ${esc(name)}</div><span class="sh-pill ghost">En cola</span></div>
+    <div class="sh-head sheet-head"><span class="bagtag ${bagTagClass(seq)}">${esc(seq)}</span><div class="sh-name">Parada ${esc(seq)} · ${esc(name)}</div>${active ? '' : '<span class="sh-pill ghost">En cola</span>'}</div>
     ${scheduledBadge(order)}
     ${accepted ? `<div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${esc(addr)}</div></div></div>` : ''}
     ${accepted && order.address_details ? `<div class="instr"><span class="ico">${ICONS.door || DOOR_SVG}</span><div class="instr-main">${esc(order.address_details)}</div></div>` : ''}
-    ${order.items_text ? (() => {
-      const its = order.items_text.split(',').map((s) => s.trim()).filter(Boolean);
-      const lines = its.map((s) => { const m = s.match(/^(\d+)\s*[x×]?\s+(.*)$/i); const qty = m ? m[1] : '1'; const nm = m ? m[2] : s; return `<div class="item"><b>${esc(qty)}×</b> <span>${esc(nm)}</span></div>`; }).join('');
-      return `<div class="items-card"><div class="items-head"><span class="lbl">${its.length} artículo${its.length === 1 ? '' : 's'}</span><span class="items-brand">${rchip(order, esc, 'sm')}<span class="order-num">${esc(displayOrderLabel(order))}</span></span></div><div class="items-list">${lines}</div></div>`;
-    })() : ''}
+    ${(() => {
+      // Structured articles from the server-built summary_lines FIRST (itemLines), falling back to items_text
+      // exactly as the previous single-pickup review did (Codex r3 P2-3) — so structured items always show.
+      const struct = itemLines(order);
+      let count, body;
+      if (struct) {
+        count = struct.reduce((a, l) => a + l.qty, 0);
+        body = struct.map((l) => `<div class="item"><b>${esc(l.qty)}×</b> <span>${esc(l.name)}</span></div>`).join('');
+      } else if (order.items_text) {
+        const parts = String(order.items_text).split(',').map((s) => s.trim()).filter(Boolean);
+        count = parts.length;
+        body = parts.map((s) => { const m = s.match(/^(\d+)\s*[x×]?\s+(.*)$/i); const qty = m ? m[1] : '1'; const nm = m ? m[2] : s; return `<div class="item"><b>${esc(qty)}×</b> <span>${esc(nm)}</span></div>`; }).join('');
+      } else { return ''; }
+      return `<div class="items-card"><div class="items-head"><span class="lbl">${count} artículo${count === 1 ? '' : 's'}</span><span class="items-brand">${rchip(order, esc, 'sm')}<span class="order-num">${esc(displayOrderLabel(order))}</span></span></div><div class="items-list">${body}</div></div>`;
+    })()}
     ${(() => {
       const col = collectionFor(order);
       const amt = Number(order.total) || 0;
       let t, d;
       if (col.kind === 'cash') { t = `A cobrar L ${amt.toLocaleString('es-HN')}`; d = 'Efectivo'; }
       else if (col.kind === 'paid_online') { t = 'Pagado en línea'; d = 'No cobrés nada'; }
-      else if (col.kind === 'card') { t = 'Pagado en línea'; d = 'Tarjeta'; }
+      else if (col.kind === 'card') { t = `A cobrar L ${amt.toLocaleString('es-HN')}`; d = 'Tarjeta'; }   // card_delivery is COLLECTED at delivery (P1-3), not paid online
       else if (col.kind === 'free') { t = 'Pedido gratis'; d = 'Nada que cobrar'; }
       else { t = 'Pago no confirmado'; d = 'Consultá a despacho'; }
       return `<div class="pay-ro-card"><span class="ico">${ICONS.cash || ''}</span><div><div class="pay-ro-t">${esc(t)}</div><div class="pay-ro-d">${esc(d)}</div></div></div>`;
     })()}
-    <div class="lockchip"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>Sin navegación ni “Entregado” hasta terminar la parada 1. Así nunca se entrega fuera de orden.</div>
+    ${active ? '' : `<div class="lockchip"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>Sin navegación ni “Entregado” hasta terminar la parada 1. Así nunca se entrega fuera de orden.</div>`}
     <button class="sheet-close" id="queue-sheet-close">Cerrar</button>`;
 }
 
@@ -506,8 +538,7 @@ export function combinedPickupHtml(orders, deps = {}, pickedUp = new Set()) {
     // Bag summary «N artículos · {items} · {pago}» from data (prototype apParada1 bag rows; advisor #8).
     const rawItems = order.items_text ? order.items_text.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const items = rawItems.map((s) => esc(s)).join(', ');
-    const pay = collectionFor(order).kind === 'cash'
-      ? `a cobrar L ${(Number(order.total) || 0).toLocaleString('es-HN')}` : 'pagado en línea';
+    const pay = payPhrase(order);   // FULL classification (P1-3) — never collapse non-cash into «pagado en línea»
     const summary = [rawItems.length ? `${rawItems.length} artículo${rawItems.length === 1 ? '' : 's'}` : '', items, pay].filter(Boolean).join(' · ');
     return `<div class="pk-row${done ? ' done' : ''}" data-order-id="${esc(o.orderId)}">
         ${bagTagHtml(i + 1, esc)}
@@ -584,7 +615,11 @@ export function offerScreenHtml(offers, deps = {}, opts = {}) {
   const rows = offers.map((o, i) => {
     const order = o.order || {};
     const area = coloniaOf(o);   // R4: COLONIA only, never a customer name before accept
-    return `<div class="of-row">${bagTagHtml(i + 1, esc)}<div class="of-t"><div class="of-area">${area ? esc(area) : 'Zona por confirmar'}</div><div class="of-chip">${rchip(order, esc, 'sm')}<span class="order-num">${esc(displayOrderLabel(order))}</span></div></div></div>`;
+    // Advisor 2026-10-24: with no verified locality field, OMIT the location line entirely — never invent «Zona
+    // por confirmar» (not in the prototype). The offer still shows the km total + the restaurants. The of-area
+    // line renders only when a real colonia is present (additive: coloniaOf returns '' today, a field later).
+    const areaLine = area ? `<div class="of-area">${esc(area)}</div>` : '';
+    return `<div class="of-row">${bagTagHtml(i + 1, esc)}<div class="of-t">${areaLine}<div class="of-chip">${rchip(order, esc, 'sm')}<span class="order-num">${esc(displayOrderLabel(order))}</span></div></div></div>`;
   }).join('');
   const distChip = distanceStr ? `<span class="of-dist">${esc(distanceStr)}</span>` : '';
   return `

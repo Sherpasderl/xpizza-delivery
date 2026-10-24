@@ -73,11 +73,16 @@ t('phaseStripHtml: NO trailing time when none supplied (R1 — no invented deadl
 });
 t('phaseStripHtml: cancelled segment', () => assert.ok(phaseStripHtml([{ n: 1, state: 'cancelled', label: 'X' }, { n: 2, state: 'on', label: 'Y' }], esc).includes('st cancelled')));
 
-// ---------- coloniaOf (R4 — area only) ----------
-t('coloniaOf: first comma-segment of the address', () => assert.equal(coloniaOf({ order: { address_detected: 'Col. Trejo, casa 1215' } }), 'Col. Trejo'));
-t('coloniaOf: delivery task fallback; empty when none', () => {
-  assert.equal(coloniaOf({ deliveryTask: { destination_address: 'Res. Los Robles, bloque C' } }), 'Res. Los Robles');
-  assert.equal(coloniaOf({ order: {} }), '');
+// ---------- coloniaOf (R4 / P1-4 / Codex r2 P2-8 — returns '' UNCONDITIONALLY; no address split, no alias) ----------
+t('coloniaOf: returns "" unconditionally — never splits the address, never guesses an unverified alias', () => {
+  // There is NO verified locality field today, and coloniaOf never guesses one: not a comma-split of the
+  // formatted address (its first segment can be the exact house → address leak), and not an unverified alias.
+  assert.equal(coloniaOf({ order: { address_detected: 'Col. Trejo, casa 1215' } }), '', 'address_detected is NOT split');
+  assert.equal(coloniaOf({ order: { address_detected: 'Casa 14 Calle 3, Colonia Trejo, SPS' } }), '', 'a house-first address is never exposed');
+  assert.equal(coloniaOf({ deliveryTask: { destination_address: 'Res. Los Robles, bloque C' } }), '', 'the destination address is NOT split either');
+  assert.equal(coloniaOf({ order: { colonia: 'Col. Trejo' } }), '', 'an UNVERIFIED colonia alias is NOT read (Codex r2 P2-8)');
+  assert.equal(coloniaOf({ order: { locality: 'Los Robles' } }), '', 'no locality alias either');
+  assert.equal(coloniaOf({ order: {} }), '', 'empty when there is nothing');
 });
 
 // ---------- navBtnHtml (N3 — ONE primary + «Abrir en {otra}»; N6 external) ----------
@@ -114,6 +119,17 @@ t('activeCardHtml: delivery instructions block (address_details), contact kept (
   assert.ok(html.includes('class="instr"') && html.includes('portón negro'), 'instructions block');
   assert.ok(html.includes('recipient-phone') && html.includes('recipient-whatsapp'), 'contact kept on the active card');
 });
+t('activeCardHtml: WhatsApp link uses the 504-normalized number (Codex r3 P2-2), not the raw 8-digit local', () => {
+  const html = activeCardHtml(A, DEPS, { ordinal: 1 });   // A.customer_phone = '99998888'
+  assert.ok(html.includes('wa.me/50499998888?'), 'wa.me number normalized to +504 via the established waPhone helper');
+  assert.ok(!html.includes('wa.me/99998888?'), 'NOT the un-normalized 8-digit local');
+});
+t('activeCardHtml: the nav link is BOUND to its rendered task (data-nav-task) (Codex r3 P1-1)', () => {
+  const del = deepFreeze({ orderId: 'A', phase: 'delivery', deliveryTask: { id: 'A_d', destination_lat: 14, destination_lng: -87 }, order: { customer_name: 'Ana', display_number: 1, total: 385, payment_method: 'cash', lat: 14, lng: -87 } });
+  assert.ok(activeCardHtml(del, DEPS, { ordinal: 1 }).includes('data-nav-task="A_d"'), 'delivery nav bound to the delivery task');
+  const pk = deepFreeze({ orderId: 'A', phase: 'pickup', pickupTask: { id: 'A_p', destination_lat: 15, destination_lng: -88 }, deliveryTask: { id: 'A_d' }, order: { customer_name: 'Ana', display_number: 1 } });
+  assert.ok(activeCardHtml(pk, DEPS, { ordinal: 1 }).includes('data-nav-task="A_p"'), 'pickup nav bound to the pickup task');
+});
 t('activeCardHtml: «Llegué» HIDDEN until the capability (R9); shown when canNotifyArrival', () => {
   assert.ok(!activeCardHtml(A, DEPS, { ordinal: 1, canNotifyArrival: false }).includes('btn-llegue'), 'hidden by default');
   assert.ok(activeCardHtml(A, DEPS, { ordinal: 1, canNotifyArrival: true }).includes('Llegué · avisar a Daniela'), 'shown with the capability');
@@ -128,11 +144,17 @@ t('activeCardHtml (PRIVACY): an awaiting_acceptance offer shows NO name/phone/ad
 // ---------- queuedPreviewHtml («Después» — first name + colonia; privacy on awaiting) ----------
 const B = deepFreeze({ orderId: 'B', phase: 'pickup', deliveryTask: { destination_lat: 14.2, destination_lng: -87.2 },
   order: { customer_name: 'Carlos Mejía', display_number: 12, address_detected: 'Res. Los Robles, #4', lat: 14.2, lng: -87.2 } });
-t('queuedPreviewHtml: «Después: {first name} · {colonia}» + the no-nav-yet hint + data-order-id', () => {
+t('queuedPreviewHtml: «Después: {first name}» (name only — no address split) + the no-nav-yet hint + data-order-id', () => {
   const html = queuedPreviewHtml(B, 2, DEPS);
-  assert.ok(html.includes('Después: Carlos · Res. Los Robles'), 'first name + colonia');
+  // P1-4 / advisor 2026-10-24: post-accept the preview is NAME-ONLY (coloniaOf returns '' with no verified field);
+  // the formatted address is never split into a «· {colonia}» suffix.
+  assert.ok(html.includes('Después: Carlos') && !html.includes('Res. Los Robles'), 'first name only, no address split');
   assert.ok(html.includes('sin navegación aún'), 'hint');
   assert.ok(html.includes('data-order-id="B"'), 'orderId hook for the fail-closed tap');
+});
+t('queuedPreviewHtml: an unverified colonia alias is NOT appended (Codex r2 P2-8 — name only)', () => {
+  const withAlias = deepFreeze({ orderId: 'B2', phase: 'pickup', order: { customer_name: 'Carlos Mejía', colonia: 'Los Robles' } });
+  assert.ok(queuedPreviewHtml(withAlias, 2, DEPS).includes('Después: Carlos') && !queuedPreviewHtml(withAlias, 2, DEPS).includes('Los Robles'), 'name only, alias ignored');
 });
 t('queuedPreviewHtml: an awaiting_acceptance next stop shows no name (privacy)', () => {
   const html = queuedPreviewHtml(deepFreeze({ orderId: 'C', phase: 'awaiting_acceptance', order: { customer_name: 'Secreta', address_detected: 'Col. Z' } }), 2, DEPS);
@@ -170,6 +192,27 @@ t('queueDetailHtml: items card (N artículos + qty×) + read-only payment row (n
   assert.ok(html.includes('2 artículos') && html.includes('<b>1×</b>') && html.includes('<b>2×</b>'), 'items card with qty');
   assert.ok(html.includes('pay-ro-card') && !html.includes('>Revisar<'), 'read-only payment row, no Revisar button');
 });
+t('queueDetailHtml: STRUCTURED items from summary_lines render (itemLines), items_text is only the fallback (Codex r3 P2-3)', () => {
+  const o = deepFreeze({ orderId: 'B', phase: 'delivery', order: { customer_name: 'Beto', display_number: 2,
+    summary_lines: [{ name: 'Pizza grande', qty: 2, cents: 30000 }, { name: 'Baleada', qty: 1, cents: 5000 }], items_text: 'wrong fallback text' } });
+  const html = queueDetailHtml(o, 2, DEPS);
+  assert.ok(html.includes('Pizza grande') && html.includes('Baleada'), 'structured summary_lines items shown');
+  assert.ok(html.includes('<b>2×</b>') && html.includes('3 artículos'), 'qty + total count from summary_lines (2 + 1)');
+  assert.ok(!html.includes('wrong fallback text'), 'items_text NOT used when summary_lines is present');
+});
+t('queueDetailHtml: items_text fallback when summary_lines is absent/malformed', () => {
+  const o = deepFreeze({ orderId: 'C', phase: 'delivery', order: { customer_name: 'Cindy', display_number: 3, items_text: '2 pizza, baleada' } });
+  const html = queueDetailHtml(o, 2, DEPS);
+  assert.ok(html.includes('pizza') && html.includes('baleada') && html.includes('2 artículos'), 'items_text fallback intact');
+});
+t('queueDetailHtml: the ACTIVE-stop variant drops the «En cola» chip + the «Sin navegación…» lock text, still read-only (Codex r2 P3-9)', () => {
+  const o = deepFreeze({ orderId: 'B', phase: 'delivery', order: { customer_name: 'Carlos Mejía', display_number: 12, address_detected: 'Res. Los Robles', items_text: 'baleada', payment_method: 'cash', total: 385 } });
+  const html = queueDetailHtml(o, 1, { ...DEPS, active: true });
+  assert.ok(!html.includes('En cola'), 'no «En cola» chip for the active stop');
+  assert.ok(!html.includes('Sin navegación') && !html.includes('lockchip'), 'no queued-only lock text for the active stop');
+  assert.ok(html.includes('items-list') && html.includes('pay-ro-card'), 'still shows items + payment (read-only)');
+  assert.ok(!html.includes('nav-primary') && !html.includes('id="btn-delivered"'), 'still read-only — no nav, no Entregado');
+});
 
 // ---------- incomingBannerHtml (privacy — brand/#/total/otro hub only) ----------
 t('incomingBannerHtml: pre-accept shows NO name/address; shows brand + total + otro hub + accept slide', () => {
@@ -182,12 +225,21 @@ t('incomingBannerHtml: pre-accept shows NO name/address; shows brand + total + o
 t('combinedPickupHtml: per-bag rows (bag, brand, #, items, pay) + the hot/cold banner', () => {
   const html = combinedPickupHtml([
     deepFreeze({ orderId: 'A', order: { customer_name: 'Daniela', items_text: 'pizza', total: 385, payment_method: 'cash', display_number: 47 } }),
-    deepFreeze({ orderId: 'B', order: { customer_name: 'Carlos', items_text: 'baleada', display_number: 12 } }),
+    deepFreeze({ orderId: 'B', order: { customer_name: 'Carlos', items_text: 'baleada', payment_method: 'online', payment_status: 'confirmed', display_number: 12 } }),
   ], DEPS, new Set(['A']));
   assert.ok(html.includes('Bolsa 1 · Daniela') && html.includes('Bolsa 2 · Carlos'));
   assert.ok(html.includes('a cobrar L 385') && html.includes('pagado en línea'));
   assert.ok(html.includes('pk-row done'), 'bag A marked picked up');
   assert.ok(html.includes('Lo caliente y lo frío, separados'), 'hot/cold banner');
+});
+t('combinedPickupHtml: P1-3 payment classification — card_delivery is «a cobrar … · tarjeta», unconfirmed is «pago no confirmado» (never collapsed to «pagado en línea»)', () => {
+  const html = combinedPickupHtml([
+    deepFreeze({ orderId: 'C', order: { customer_name: 'Cindy', total: 520, payment_method: 'card_delivery', display_number: 3 } }),
+    deepFreeze({ orderId: 'D', order: { customer_name: 'Dario', payment_method: 'online', display_number: 4 } }),   // online, NOT confirmed
+  ], DEPS, new Set());
+  assert.ok(html.includes('a cobrar L 520') && html.toLowerCase().includes('tarjeta'), 'card_delivery → collect + «tarjeta»');
+  assert.ok(html.includes('pago no confirmado'), 'unconfirmed online → «pago no confirmado», NOT «pagado en línea»');
+  assert.ok(!html.includes('pagado en línea'), 'no non-cash order was mislabeled paid-online (the P1-3 bug)');
 });
 t('combinedPickupHtml: <2 orders renders nothing', () => assert.equal(combinedPickupHtml([{ orderId: 'A', order: {} }], DEPS), ''));
 
@@ -220,12 +272,21 @@ t('offerScreenHtml: colonia only (NO customer name), lock chip, rchip/#, pickup 
   ];
   const html = offerScreenHtml(offers, DEPS, { mapHtml: '<div class="map"></div>', distanceStr: '3.5 km total' });
   assert.ok(html.includes('2 pedidos juntos') && html.includes('Orden fijado por la plataforma'));
-  assert.ok(html.includes('Barrio El Centro') && html.includes('Res. Los Robles'), 'colonia shown');
+  // Advisor 2026-10-24 / P1-4: NO verified locality field today → the offer OMITS the location line entirely —
+  // never a split of the address, and never an invented «Zona por confirmar». It shows the km + the restaurants.
+  assert.ok(!html.includes('Barrio El Centro') && !html.includes('Res. Los Robles'), 'the formatted address is NEVER split into the offer');
+  assert.ok(!html.includes('Zona por confirmar'), 'no invented placeholder copy');
+  assert.ok(!html.includes('class="of-area"'), 'the location line is omitted when there is no verified colonia');
   assert.ok(!html.includes('Daniela') && !html.includes('Carlos'), 'NO customer names before accept (R4)');
   assert.ok(html.includes('3.5 km total'), 'distance chip when provided');
   assert.ok(html.includes('Recogés primero en X. Pizza y luego en La Musa'), 'pickup-timing line without times');
   assert.ok((html.match(/id="btn-accept"/g) || []).length === 1, 'one accept slide');
   assert.ok(!html.includes('+ L 140') && !html.includes('+L 140'), 'earnings hidden (R2)');
+});
+t('offerScreenHtml: NEVER renders the of-area line today — coloniaOf is "" unconditionally (Codex r2 P2-8)', () => {
+  const offers = [deepFreeze({ orderId: 'A', phase: 'awaiting_acceptance', order: { colonia: 'Col. Trejo', restaurant_display_name: 'X. Pizza', display_number: 9 } })];
+  const html = offerScreenHtml(offers, DEPS, {});
+  assert.ok(!html.includes('class="of-area"') && !html.includes('Col. Trejo'), 'no location line, even from an unverified alias');
 });
 
 console.log(`stacked-view.test.js: ${passed} passed`);

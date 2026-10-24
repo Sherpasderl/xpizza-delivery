@@ -64,6 +64,18 @@ const REGIONS = [
     '      nowMs: Date.now(),   // offer ring: elapsed drives the resume (negative animation-delay); display-only',
     '    });',
   ] },
+  { name: 'ACTIVE-POINTER', kind: 'replace', restore: [
+    '  const [active, ...rest] = orders;',
+  ] },
+  { name: 'PICKUP-REVALIDATE', kind: 'replace', restore: [
+    '      await XPD.pickupComplete(currentUser.uid, o.pickupTask.id);',
+  ] },
+  { name: 'DELIVERED-REVALIDATE', kind: 'replace', restore: [
+    '      // Capture the acting uid BEFORE completion starts: the error-path role mapping must attribute the role to',
+    '      // the account that actually ran the completion, not whatever account is current if the session changed',
+    '      // mid-write (codex core r3 P2).',
+    '      const actingUid = currentUser.uid;',
+  ] },
   { name: 'STACKED-BRANCH', kind: 'replace', restore: [
     '  bannerSlot.innerHTML = renderIncomingBanners(pendingAccept);',
     '  activeSlot.innerHTML = renderActiveCard(active, solo);',
@@ -113,6 +125,12 @@ const ALLOWED_ADDS = new Set([
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';
+// Baseline TEST files slice 2 may MODIFY (advisor ruling 2026-10-24): the SLICE2:ONBOARDING-NAV region injects the
+// R7 «App de navegación» row into the companion onboarding via `$('co-practice-row').insertAdjacentHTML('afterend',…)`.
+// onboarding-host.test.js's fake-DOM mock had no insertAdjacentHTML, so it must be extended to support the injection
+// AND now covers it (asserts co-nav-row is injected + wired). This is a test-only change; no production/baseline
+// behaviour moves. The region-restoration byte check still proves index.html's companion code is baseline-identical.
+const SLICE2_TEST_MODIFY = new Set(['xpizza-driver/onboarding-host.test.js']);
 // Exactly ONE baseline file may be DELETED by slice 2: the slice-1 branch harness single-order-branch.test.js.
 // Its stub-based proof (the 2-order stacked render is byte-identical to baseline + renderActiveCard is called)
 // is superseded — slice 2 intentionally reroutes the stacked path through the builders (renderActiveCard is now
@@ -138,7 +156,7 @@ const OUT_OF_REGION_ALLOW = [
 const IMPORT_ALLOWLIST = {
   'overview-map.js': {},   // imports NOTHING
   'stacked-view.js': {
-    './single-order-view.js': new Set(['navTarget', 'wazeHref', 'mapsHref', 'brandLabel']),
+    './single-order-view.js': new Set(['navTarget', 'wazeHref', 'mapsHref', 'brandLabel', 'waPhone', 'itemLines']),
     './brand-helpers.js': new Set(['brandMeta', 'driverGreeting']),
     './order-helpers.js': new Set(['displayOrderLabel']),
     './cash-helpers.js': new Set(['collectionFor', 'paymentRowHtml', 'queuePayHtml']),
@@ -192,6 +210,7 @@ t('frozen: every baseline file under xpizza-driver/ (except index.html) is byte-
   const drift = [];
   for (const repoPath of baseFiles) {
     if (repoPath === ALLOWED_MODIFY) continue;
+    if (SLICE2_TEST_MODIFY.has(repoPath)) continue;   // the companion test, extended for the ONBOARDING-NAV injection (test-only; see SLICE2_TEST_MODIFY)
     if (ALLOWED_DELETE.has(repoPath)) continue;   // the retired slice-1 harness (see ALLOWED_DELETE); its deletion is checked in the file-level test
     const rel = repoPath.slice(PFX.length);
     const baseBytes = gitBuf('show', `${BASELINE}:${repoPath}`);
@@ -342,7 +361,7 @@ t('file-level: only index.html modified; only the slice-2 allowlist added; nothi
   assert.deepEqual(otherOps, [], `forbidden op(s) (unlisted delete/rename/copy/type):\n  ${otherOps.join('\n  ')}`);
   // The sole free-form MODIFY is index.html; a region-bearing file (xpizza-delivery.js, NAV-SDK) may also be
   // modified, but ONLY within its region — verified byte-identical-after-strip by the frozen-files test above.
-  const expectedModified = [ALLOWED_MODIFY, ...ALLOWED_REGION_BEARING].sort();
+  const expectedModified = [ALLOWED_MODIFY, ...ALLOWED_REGION_BEARING, ...SLICE2_TEST_MODIFY].sort();
   assert.deepEqual(modified.slice().sort(), expectedModified, `modified set must be exactly [${expectedModified.join(', ')}], got: ${modified.join(', ')}`);
   assert.deepEqual(deleted.sort(), [...ALLOWED_DELETE].sort(), `deleted set must be exactly the allowed-DELETE list, got: ${deleted.join(', ')}`);
   const strayAdds = added.filter((p) => !ALLOWED_ADDS.has(p));
