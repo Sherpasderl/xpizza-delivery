@@ -220,6 +220,25 @@ export function readyTimeLabel(order) {
   const hhmm = readyTimeHHMM(order && order.prep && order.prep.ready_at);
   return hhmm ? '~' + hhmm : '';
 }
+/**
+ * The apRecoger header subtitle (ruling #2): «{brand} ~H:MM · {brand} ~H:MM» across the DISTINCT pickup restaurants,
+ * in the order they first appear. The ready time is appended only where prep.ready_at exists (per restaurant); a
+ * brand with no ready time shows the brand alone — never a fabricated time. Returns '' when no brand resolves.
+ * Pure: brandLabel + readyTimeLabel only. The caller escapes the result (stopHeaderHtml does).
+ */
+export function pickupSubLabel(orders) {
+  const seen = new Set();
+  const parts = [];
+  for (const o of (orders || [])) {
+    const ord = o || {};
+    const brand = brandLabel(ord);
+    if (!brand || seen.has(brand)) continue;
+    seen.add(brand);
+    const rt = readyTimeLabel(ord);
+    parts.push(rt ? `${brand} ${rt}` : brand);
+  }
+  return parts.join(' · ');
+}
 
 // The collect-aware pay PHRASE for the pickup-bag rows (P1-3, Codex r1): the FULL collectionFor classification —
 // never collapse card_delivery (collected at delivery) or a pending-online payment into «pagado en línea». The
@@ -527,10 +546,12 @@ const CUP_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 
 export function stopHeaderHtml(info = {}, deps = {}) {
   const { ICONS = {}, esc = String } = deps;
-  const { ordinal, total, name, area, deadline, single, canReportProblem, pickupCount } = info;
+  const { ordinal, total, name, area, deadline, single, canReportProblem, pickupCount, sub: subOverride } = info;
   const title = pickupCount ? `Recoger ${esc(pickupCount)} pedidos` : single ? 'Única parada' : `Parada ${esc(ordinal)} de ${esc(total)}`;
   const dl = deadline ? ` · antes de ${esc(deadline)}` : '';
-  const sub = [name, area].filter(Boolean).map(esc).join(' · ');
+  // An explicit `sub` (e.g. apRecoger's «{brand} ~H:MM · {brand} ~H:MM» ready-time line, ruling #2) wins; else the
+  // name·area subtitle. subOverride is raw text, escaped here.
+  const sub = subOverride != null ? esc(subOverride) : [name, area].filter(Boolean).map(esc).join(' · ');
   // Right cluster (header ruling, option a): «Terminar turno» power icon — ALWAYS present (the one end-shift
   // entry during a delivery → the existing end-shift path → O4 sheet → cuadre, unchanged) — then the Ayuda icon,
   // gated on the Problema capability (R9/F; hidden until that endpoint exists). Left: the subtle Sola brand mark.

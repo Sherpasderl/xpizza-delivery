@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import {
   destinationLabel, orderIdTail, stopNavInfo, resolveVisibleLabels,
-  bagTagClass, bagTagHtml, phaseStripHtml, navBtnHtml, queuedPreviewHtml, coloniaOf, readyTimeHHMM, readyTimeLabel,
+  bagTagClass, bagTagHtml, phaseStripHtml, navBtnHtml, queuedPreviewHtml, coloniaOf, readyTimeHHMM, readyTimeLabel, pickupSubLabel,
   activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml,
   stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
 } from './stacked-view.js';
@@ -99,6 +99,42 @@ t('readyTimeLabel: «~H:MM» from prep.ready_at; HIDDEN («») when the field is
   assert.equal(readyTimeLabel({ prep: { ready_at: null } }), '', 'null ready_at → hidden');
   assert.equal(readyTimeLabel({ prep: { ready_at: 0 } }), '', 'zero/invalid → hidden');
   assert.equal(readyTimeLabel(null), '', 'no order → hidden');
+});
+
+t('pickupSubLabel: «{brand} ~H:MM · {brand} ~H:MM» across DISTINCT restaurants; time only where prep exists (ruling #2)', () => {
+  const o = (name, ready) => ({ restaurant_display_name: name, ...(ready ? { prep: { ready_at: ready } } : {}) });
+  // two distinct restaurants, both with ready times
+  assert.equal(
+    pickupSubLabel([o('X. Pizza', 48120000), o('La Musa', 48300000)]),
+    'X. Pizza ~7:22 · La Musa ~7:25',
+    'distinct brands joined with « · », each with its own ~H:MM');
+  // ready time appended only where prep exists; brand alone otherwise (no fabricated time)
+  assert.equal(
+    pickupSubLabel([o('X. Pizza', 48120000), o('La Musa')]),
+    'X. Pizza ~7:22 · La Musa',
+    'brand with no prep shows brand alone');
+  assert.equal(pickupSubLabel([o('X. Pizza'), o('La Musa')]), 'X. Pizza · La Musa', 'no ready times → brands only');
+  // duplicate restaurant collapses to one entry, first appearance kept
+  assert.equal(
+    pickupSubLabel([o('X. Pizza', 48120000), o('X. Pizza', 48300000)]),
+    'X. Pizza ~7:22',
+    'same brand collapses to first appearance');
+  // empties/garbage
+  assert.equal(pickupSubLabel([]), '', 'empty list → «»');
+  assert.equal(pickupSubLabel(null), '', 'null → «»');
+  assert.equal(pickupSubLabel([{}, null]), '', 'no brand → «»');
+});
+
+t('stopHeaderHtml: explicit sub override renders (escaped) under «Recoger N pedidos» (apRecoger ready-time line)', () => {
+  const html = stopHeaderHtml({ pickupCount: 2, sub: 'X. Pizza ~7:22 · La Musa ~7:25' }, DEPS);
+  assert.ok(html.includes('Recoger 2 pedidos'), 'title');
+  assert.ok(html.includes('X. Pizza ~7:22 · La Musa ~7:25'), 'sub override shown verbatim');
+  // override is escaped — a brand with markup cannot inject
+  const esc = stopHeaderHtml({ pickupCount: 2, sub: '<b>X</b>' }, DEPS);
+  assert.ok(!esc.includes('<b>X</b>'), 'sub override is HTML-escaped');
+  assert.ok(esc.includes('&lt;b&gt;X&lt;/b&gt;'), 'escaped form present');
+  // empty sub override → no stray subtitle markup beyond the title
+  assert.ok(stopHeaderHtml({ pickupCount: 2, sub: '' }, DEPS).includes('Recoger 2 pedidos'), 'empty sub still renders title');
 });
 
 // ---------- navBtnHtml (N3 — ONE primary + «Abrir en {otra}»; N6 external) ----------

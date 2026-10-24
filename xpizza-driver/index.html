@@ -1724,7 +1724,7 @@ let slice1ReviewLatchKey = null;
 /* ===== SLICE1:IMPORT:END ===== */
 /* ===== SLICE2:IMPORT:START — stacked view + overview map (slice 2); pure builders in stacked-view.js / overview-map.js ===== */
 import { activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels,
-         navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml } from './stacked-view.js';
+         navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel } from './stacked-view.js';
 import { overviewMapSvg, isStaleFix } from './overview-map.js';
 import { cuentaHtml, navAppHtml } from './nav-view.js';   // R7 Cuenta + «App de navegación» pure builders
 // The display-only map-aging timer (SLICE2:MAP-LIFECYCLE): a ~30 s re-render that re-evaluates the driver
@@ -3819,7 +3819,7 @@ function renderActiveAndQueue() {
     const pkTarget = { lat: active.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat, lng: active.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng };
     const pkLabel = (labels2[0] && labels2[0].base) || 'el restaurante';
     bannerSlot.innerHTML = '';
-    activeSlot.innerHTML = stopHeaderHtml({ pickupCount: stacked2.length, canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)
+    activeSlot.innerHTML = stopHeaderHtml({ pickupCount: stacked2.length, sub: pickupSubLabel(stacked2.map((s) => s.order)), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)
       + phaseStripHtml(stacked2.map((s, i) => ({ n: i + 1, state: i === 0 ? 'on' : '', label: 'Recoger' })), escapeHtml)
       + combinedPickupHtml(stacked2, deps2, new Set())
       + navBtnHtml(pkTarget, deps2.navPref, pkLabel, { ...deps2, navTaskId: active.pickupTask && active.pickupTask.id })
