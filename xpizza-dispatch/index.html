@@ -4371,7 +4371,7 @@ function renderDriversSection() {
       const uid = btn.dataset.moreDriver;
       const d = allDrivers[uid];
       if (!d) return;
-      const order = getOrdersForDriver(uid)[0];   // reassignable active order, if any
+      const order = getOrdersForDriver(uid).find(o => !isPostPickup(o.order_id));   // first PRE-PICKUP order, if any (post-pickup can't be reassigned)
       const items = [];
       if (d.phone) items.push({ label: `Llamar a ${d.name || 'repartidor'}`, icon: ICONS.phone, action: () => { window.location.href = `tel:${d.phone}`; } });
       if (!d.active && Number.isFinite(d.lat) && Number.isFinite(d.lng)) items.push({ label: 'Ver última ubicación', icon: ICONS.pin, action: () => showLastLocation(uid) });
@@ -4428,7 +4428,7 @@ function renderDriversSection() {
           action: () => window.location.href = `tel:${order.customer_phone}`
         } : null,
         order?.customer_phone ? { divider: true } : null,
-        {
+        isPostPickup(oid) ? null : {   // hidden once the pickup is done — the order can't be reassigned
           label: 'Reasignar a otro driver',
           icon: ICONS.refresh,
           action: () => openPicker(oid, true)
@@ -5388,7 +5388,9 @@ function renderOrderDetailModal(order) {
   // stalled. Opens the existing CAS-safe picker → reassignOrder (which owns its own result toast).
   const dtDetail = allTasks[`${order.order_id}_delivery`];
   const ptDetail = allTasks[`${order.order_id}_pickup`];
-  const isAssignedActive = !!(dtDetail && dtDetail.assigned_driver_id) && cancellable;
+  // Hide «Reasignar» once the pickup is done (driver has the food) — the order stays visible, only the
+  // action disappears. The openPicker guard is the safety net; this keeps the dead button off the drawer.
+  const isAssignedActive = !!(dtDetail && dtDetail.assigned_driver_id) && cancellable && !isPostPickup(order.order_id);
   if (isAssignedActive) {
     const stalledDetail = isStalledAssignment(dtDetail, Date.now(), ptDetail);
     actions.push(`<button class="od-action-btn${stalledDetail ? ' primary' : ''}" id="od-reassign-order">Reasignar</button>`);
@@ -5723,6 +5725,17 @@ function focusTrapTarget(shiftKey, active, focusables) {
   return null;
 }
 
+// A delivery whose pickup is DONE can no longer be reassigned — the driver physically has the food, and
+// reassigning would reset the completed pickup and corrupt the order. Mirrors unassign-core.js:59 (pickup
+// completed OR order out_for_delivery), plus a finite picked_up_at (also fires on the corrupted shape a
+// reset would leave behind). Phase of THE ORDER, not the driver's global status. `tasksSrc` lets a fresh
+// read (e.g. the deactivation pre-check) reuse it; defaults to the live board tasks.
+function isPostPickup(orderId, tasksSrc = allTasks) {
+  const o = allOrders[orderId] || {};
+  const pt = (tasksSrc || {})[`${orderId}_pickup`];
+  return (pt && pt.status === 'completed') || o.status === 'out_for_delivery' || Number.isFinite(o.picked_up_at);
+}
+
 function openPicker(orderId, isReassign = false) {
   // a11y: remember who opened the picker (first-choice return target if it's still attached+visible on close).
   pickerOpener = document.activeElement;
@@ -5736,6 +5749,13 @@ function openPicker(orderId, isReassign = false) {
   pickerFromDriver = allTasks[`${orderId}_delivery`]?.assigned_driver_id ?? null;
   const order = allOrders[orderId];
   if (!order) return;
+  // Phase guard: a reassign of an order whose pickup is done can't proceed (driver has the food). This one
+  // choke point covers every reassign entry — Cola, detail drawer, driver/task overflow menus, and the
+  // deactivation remedy. Mirrors unassign; surfaces the existing copy. Assign mode is unaffected.
+  if (isReassign && isPostPickup(orderId)) {
+    toast('El repartidor ya recogió el pedido', 'error');
+    return;
+  }
 
   $('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;
   $('picker-sub').textContent = `${order.customer_name || '—'} · L${order.total}`;
@@ -5967,6 +5987,8 @@ function assignFailMsg(reason) {
       return 'Ya fue asignada a otro repartidor';
     case 'write_failed':
       return 'No se pudo asignar (error de red) — reintentá';
+    case 'picked_up':
+      return 'El repartidor ya recogió el pedido';
     default:
       return 'No se pudo asignar';
   }
@@ -6397,8 +6419,11 @@ async function draRenderDeactivate(body) {
     const lab = deactivateReasonLabel(r, openOrders.length);
     // "Reasignar" (open_tasks) is a LIVE remedy → openPicker; "Ver turno" (open_shift) stays instructive text.
     let fixHtml = '';
-    if (bad) fixHtml = (r === 'open_tasks' && openOrders.length)
-      ? `<button class="fix" id="dra-reasignar" data-oid="${escapeHtml(String(openOrders[0]))}" style="background:none;border:none;padding:0;color:var(--primary);text-decoration:underline;cursor:pointer;font:inherit">Reasignar</button>`
+    // The remedy reassigns an open delivery, so it must pick a PRE-PICKUP one — a post-pickup order can't be
+    // reassigned (driver has the food). If none qualifies, fall to the instructive text.
+    const reOid = openOrders.find(oid => !isPostPickup(oid, tasks));
+    if (bad) fixHtml = (r === 'open_tasks' && reOid)
+      ? `<button class="fix" id="dra-reasignar" data-oid="${escapeHtml(String(reOid))}" style="background:none;border:none;padding:0;color:var(--primary);text-decoration:underline;cursor:pointer;font:inherit">Reasignar</button>`
       : `<span class="fix">${escapeHtml(lab.fix)}</span>`;
     condHtml += `<div class="dra-cond"><span class="dra-ci ${bad ? 'bad' : 'good'}"><svg class="ic sm"><use href="#i-${bad ? 'close' : 'check'}"/></svg></span><div class="dra-ct"><b>${bad ? escapeHtml(lab.t) : (r === 'open_shift' ? 'Sin turno abierto' : 'Sin entregas en curso')}</b>${fixHtml}</div></div>`;
   }

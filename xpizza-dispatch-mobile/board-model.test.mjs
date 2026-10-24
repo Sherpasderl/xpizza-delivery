@@ -52,7 +52,8 @@ test('canReassign: any live delivery (assign pre-ready), not pickup/completed', 
   assert.equal(canReassign(del('new'), 'o1', noDrv), true);
   assert.equal(canReassign(del('preparing'), 'o1', noDrv), true);
   assert.equal(canReassign(del('ready'), 'o1', noDrv), true);
-  assert.equal(canReassign(del('out_for_delivery'), 'o1', drv), true);  // reassign an assigned one
+  assert.equal(canReassign(del('out_for_delivery'), 'o1', drv), false); // POST-PICKUP: out_for_delivery can no longer be reassigned (phase guard — driver has the food)
+  assert.equal(canReassign(del('ready'), 'o1', { 'o1_delivery':{assigned_driver_id:'drvA',status:'accepted'}, 'o1_pickup':{status:'completed'} }), false); // pickup task completed → post-pickup
   assert.equal(canReassign(del('ready'), 'o1', {}), false);             // missing task row → NOT assignable (desktop parity: no phantom assign)
   // no driver leg / terminal → no action
   assert.equal(canReassign(pick('ready'), 'o1', noDrv), false);

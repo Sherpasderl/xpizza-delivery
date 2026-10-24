@@ -872,6 +872,20 @@ export async function reassignOrder(orderId, newDriverId, expectedFromDriver) {
   const pickup = pickupSnap.val();
   if (!pickup) throw new Error(`Order ${orderId} not found`);
 
+  // Phase guard — refuse once the driver physically has the food, exactly like unassign-core.js:59
+  // (pickup completed OR order out_for_delivery), plus a finite picked_up_at (which also fires on the
+  // corrupted shape a reset would leave behind). Without this, reassign would rewrite the COMPLETED pickup
+  // back to `assigned`. Refuse BEFORE the CAS so nothing is written. NOTE: the client CAS below locks only
+  // the delivery owner, so a pickup swipe in the same instant as this read is an accepted residual (owner
+  // simple-edge-case rule); the everyday case — reassigning an order already en route — is fully covered.
+  const orderSnap = await get(ref(db, `orders/${orderId}`));
+  const order = orderSnap.val() || {};
+  if (pickup.status === TASK_STATUS.COMPLETED
+      || order.status === ORDER_STATUS.OUT_FOR_DELIVERY
+      || Number.isFinite(order.picked_up_at)) {
+    return { ok: false, reason: 'picked_up' };
+  }
+
   // S3n: CAS the delivery field against the driver the PICKER CAPTURED AT OPEN-TIME (expectedFromDriver),
   // NOT a fresh click-time read. This closes the stale-picker-view window: if the order moved (sweeper /
   // timeout monitor / another dispatcher) between the picker opening and this click, cur !== expectedFrom-

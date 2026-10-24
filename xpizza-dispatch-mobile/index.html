@@ -436,7 +436,7 @@ import * as XPD from './xpizza-delivery.js';
 // PWA: register the static-shell service worker (never caches live RTDB/Maps — see sw.js).
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 
-import { SECTIONS, sectionForOrder, assignedDriverId, isUnassignedDelivery, canReassign,
+import { SECTIONS, sectionForOrder, assignedDriverId, isUnassignedDelivery, canReassign, isPostPickup,
          matchesChip, chipCounts, orderCompare } from './board-model.js';
 import { groupScheduledBySlot, slotLabel } from './slot-format.js';
 import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatch-aging.js';
@@ -1256,6 +1256,7 @@ function assignFailMsg(reason){
     case 'pickup_taken': return 'Ya fue asignada a otro repartidor';
     case 'claim_stale': return 'La asignación cambió — el tablero ya se actualizó, intentá de nuevo';
     case 'write_failed': return 'No se pudo asignar (error de red) — reintentá';
+    case 'picked_up': return 'El repartidor ya recogió el pedido';
     default: return 'No se pudo asignar';
   }
 }
@@ -1379,6 +1380,13 @@ function openPicker(orderId){
   // pickerFromDriver so a moved order aborts instead of clobbering.
   pickerFromDriver = assignedDriverId(orderId, STORE.tasks);
   pickerIsReassign = !!pickerFromDriver;
+  // Phase guard (derived reassign mode): once the pickup is done the order can't be reassigned — the driver
+  // has the food. Refuse here, before opening the sheet, so every reassign entry (incl. the deactivation
+  // remedy that bypasses canReassign, and a stale tap) is covered. Assign mode is unaffected.
+  if (pickerIsReassign && isPostPickup(order, orderId, STORE.tasks)) {
+    toast('El repartidor ya recogió el pedido', true);
+    return;
+  }
   const hub = HUBS[order.restaurant_id] || HUBS.x_pizza;
   const list = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing });
 
@@ -1501,6 +1509,11 @@ async function commitAssign(orderId, driverId){
       const before = document.querySelector(`.pass[data-pass="${orderId}"]`);
       pendingSettle = { id: orderId, at: Date.now(), from: before ? before.getBoundingClientRect().top : null };
       toast((pickerIsReassign ? 'Reasignado a ' : 'Asignado a ') + name);
+      closeSheet();
+    } else if (res && res.reason === 'picked_up') {
+      // Terminal — the pickup completed (e.g. while this sheet was open). Close, like unassign; re-enabling
+      // «Confirmar» would leave a dead confirmation.
+      toast(assignFailMsg('picked_up'), true);
       closeSheet();
     } else {
       toast(assignFailMsg(res?.reason), true);
@@ -2080,7 +2093,7 @@ async function mdraDeactivate(body) {
   const blockers = mdraBlockers({ openShift, openOrders, cashAttested: MDRA.attested === true }); const hard = openShift || openOrders.length > 0;
   const cond = ['open_shift', 'open_tasks'].map((r) => {
     if (precheckErr) return `<div class="mdra-cond"><span class="mdra-ci" style="background:var(--warn,#e7bd86);color:#5a3c10"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 8v4M12 16h.01"/></svg></span><div><b style="font-size:13px">${r === 'open_shift' ? 'Turno: desconocido' : 'Entregas: desconocido'}</b></div></div>`;
-    const bad = (r === 'open_shift' && openShift) || (r === 'open_tasks' && openOrders.length); const t = r === 'open_shift' ? (bad ? 'Turno abierto' : 'Sin turno abierto') : (bad ? `${openOrders.length} entrega(s) en curso` : 'Sin entregas en curso'); const fix = (bad && r === 'open_tasks' && openOrders.length) ? `<button id="mdra-reasignar" data-oid="${escapeHtml(String(openOrders[0]))}" style="background:none;border:none;padding:0;color:var(--primary,#a6a0f0);text-decoration:underline;font:inherit;cursor:pointer">Reasignar</button>` : ''; return `<div class="mdra-cond"><span class="mdra-ci ${bad ? 'bad' : 'good'}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="${bad ? 'M6 6l12 12M18 6L6 18' : 'M4 12l5 5L20 6'}"/></svg></span><div><b style="font-size:13px">${escapeHtml(t)}</b>${fix}</div></div>`; }).join('');
+    const bad = (r === 'open_shift' && openShift) || (r === 'open_tasks' && openOrders.length); const t = r === 'open_shift' ? (bad ? 'Turno abierto' : 'Sin turno abierto') : (bad ? `${openOrders.length} entrega(s) en curso` : 'Sin entregas en curso'); const reOid = openOrders.find((oid) => !isPostPickup(STORE.orders[oid] || {}, oid, tasks)); const fix = (bad && r === 'open_tasks' && reOid) ? `<button id="mdra-reasignar" data-oid="${escapeHtml(String(reOid))}" style="background:none;border:none;padding:0;color:var(--primary,#a6a0f0);text-decoration:underline;font:inherit;cursor:pointer">Reasignar</button>` : ''; return `<div class="mdra-cond"><span class="mdra-ci ${bad ? 'bad' : 'good'}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="${bad ? 'M6 6l12 12M18 6L6 18' : 'M4 12l5 5L20 6'}"/></svg></span><div><b style="font-size:13px">${escapeHtml(t)}</b>${fix}</div></div>`; }).join('');
   const canDo = !precheckErr && blockers.length === 0; // dual-role is the server's call — its refusal surfaces via mdraErr
   body.innerHTML = `<button class="mdra-back" id="mdra-bk">← Volver</button><div style="font-size:16px;font-weight:700;margin-bottom:10px">Desactivar a ${escapeHtml(mdraName(uid, rec))}</div>`
     + ((hard || precheckErr) ? `<div class="mdra-inset" style="background:var(--warn-soft,rgba(231,189,134,.16))"><b style="font-size:13px">${precheckErr ? 'No se pudo verificar el estado' : 'Todavía no se puede desactivar'}</b><div style="margin-top:9px">${cond}</div></div>` : `<div>${cond}</div>`)
