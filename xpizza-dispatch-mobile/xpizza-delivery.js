@@ -236,7 +236,8 @@ export async function endShift(driverId) {
   await update(ref(db, `drivers/${driverId}`), {
     active: false,
     status: DRIVER_STATUS.OFF_SHIFT,
-    shift_ended_at: serverTimestamp()
+    shift_ended_at: serverTimestamp(),
+    break_since: null   // Pausa: a forced clock-out (Torre forceOffShift) ends the pause too
   });
 }
 
@@ -758,6 +759,14 @@ function casAssign(expected, target) {
   };
 }
 
+// Pausa (PLAN-driver-pausa-server r1.1 §5, owner ruling BLOCK): a paused driver is never hand-assigned. The TARGET's CURRENT status
+// is read right before the claim — so «A mí», self-assign, a stale picker (paused after it opened) and a stale mobile confirmation
+// are all refused, not only the picker row. The read→claim instant is an accepted residual (the offer then times out).
+async function targetOnBreak(driverId) {
+  if (!driverId) return false;
+  return (await get(ref(db, `drivers/${driverId}/status`))).val() === DRIVER_STATUS.ON_BREAK;
+}
+
 export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
   // S2 same-hub stacking: force-accept (direct 'accepted', no swipe/timeout) ONLY when the driver
   // already has an accepted/in-progress order at the SAME restaurant hub as this new order. A cross-hub
@@ -790,6 +799,8 @@ export async function assignOrderToDriver(orderId, driverId, allTasks = null) {
 
   const pickupTaskId = `${orderId}_pickup`;
   const deliveryTaskId = `${orderId}_delivery`;
+
+  if (await targetOnBreak(driverId)) return { ok: false, reason: 'on_break' };   // Pausa: refused, nothing written
 
   // S3b race guard: atomically CAS-claim the DELIVERY task's assigned_driver_id — the same field the
   // S3 sweeper and SIN ASIGNAR use — so a manual assign cannot race the sweeper or another dispatcher.
@@ -880,6 +891,7 @@ export async function reassignOrder(orderId, newDriverId, expectedFromDriver) {
   // fresh-pickup fallback preserves the old behavior for any caller that doesn't capture. oldDriverId — the
   // driver we CAS-confirmed we moved away FROM — is also whose current_task_id/status we clean up below.
   const oldDriverId = expectedFromDriver !== undefined ? (expectedFromDriver ?? null) : (pickup.assigned_driver_id ?? null);
+  if (await targetOnBreak(newDriverId)) return { ok: false, reason: 'on_break' };   // Pausa: refused, nothing written
   const claim = await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), casAssign(oldDriverId, newDriverId));
   if (!claim.committed || claim.snapshot.val() !== newDriverId) {
     return { ok: false, reason: 'already_assigned' };

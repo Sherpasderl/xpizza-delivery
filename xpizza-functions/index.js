@@ -4424,6 +4424,7 @@ exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) => 
     [`drivers/${uid}/current_restaurant_id`]: null,
     [`drivers/${uid}/current_hub_task_id`]: null,
     [`drivers/${uid}/current_shift_id`]: shiftId,
+    [`drivers/${uid}/break_since`]: null,   // Pausa: a new shift never starts paused (svc-assigner clear-only grant)
     [`drivers/${uid}/location_source`]: isNativeClient ? 'native' : 'pwa'
   };
 
@@ -4459,6 +4460,7 @@ exports.endDriverShift = onCall({ region: 'us-central1' }, async (request) => {
     [`drivers/${uid}/active`]: false,
     [`drivers/${uid}/status`]: 'off_shift',
     [`drivers/${uid}/shift_ended_at`]: ServerValue.TIMESTAMP,
+    [`drivers/${uid}/break_since`]: null,   // Pausa: clocking off ends the pause
     [`drivers/${uid}/current_shift_id`]: null,
     [`drivers/${uid}/current_task_id`]: null,
     [`drivers/${uid}/current_hub_lat`]: null,
@@ -5977,7 +5979,8 @@ function constantTimeEqual(a, b) {
  *   - assigned: has task, hasn't accepted yet (rare in pick context;
  *     mostly relevant when stacking onto same driver)
  *   - en_route_delivery: out delivering — last resort for stacking
- *   - on_break / unknown: deprioritize via the ?? 99 fallback
+ *   - on_break: NEVER offered (Pausa — skipped in pickEligibleDriver, refused in reassertAssignable)
+ *   - unknown: deprioritize via the ?? 99 fallback
  */
 const STATUS_PRIORITY = {
   at_restaurant: 0,
@@ -6066,6 +6069,7 @@ async function pickEligibleDriver(db, excludeDriverIds, hubLat, hubLng) {
     // the driver as if they're at the restaurant. They probably are if their
     // phone hasn't pinged.
     if (d.status === 'off_shift') continue;
+    if (d.status === 'on_break') continue;   // Pausa: a paused driver is never offered an order
     // computePushReachable on the driver record only sees web push_subscription
     // (FCM tokens are server-only), which is exactly the legacy fallback we want.
     const reachable = (typeof d.push_reachable === 'boolean') ? d.push_reachable : computePushReachable(d);
@@ -6195,6 +6199,7 @@ async function reassertAssignable(db, driverId, newOrderId = null) {
   const d = dSnap.val();
   if (!d) return { ok: false, reason: 'no_driver' };
   if (d.status === 'off_shift') return { ok: false, reason: 'off_shift' };
+  if (d.status === 'on_break') return { ok: false, reason: 'on_break' };   // Pausa: refused right before the write
   const reachable = (typeof d.push_reachable === 'boolean')
     ? d.push_reachable : !!(d.push_subscription && d.push_subscription.endpoint);
   if (!reachable) return { ok: false, reason: 'unreachable' };
