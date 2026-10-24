@@ -19728,5 +19728,858 @@
       "run",
       "test:driver-problems-rules"
     ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-cap",
+    "label": "the cap is ignored (a notice with the feature off)",
+    "file": "arrived-notify.js",
+    "from": "  if (cap !== true) return { ok: false, reason: 'cap_off' };\n",
+    "to": "",
+    "kills_with": [
+      "DRVC-EXIT"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-replaced",
+    "label": "a replaced arrival leaf still notifies",
+    "file": "arrived-notify.js",
+    "from": "if (!sameArrival(task.arrived, arrived))",
+    "to": "if (false)",
+    "kills_with": [
+      "DRVC-EXIT"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-owner",
+    "label": "a tap by a driver who no longer owns the task notifies",
+    "file": "arrived-notify.js",
+    "from": "if (task.assigned_driver_id !== arrived.by)",
+    "to": "if (false)",
+    "kills_with": [
+      "DRVC-EXIT"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-since",
+    "label": "a tap from before the current assignment notifies",
+    "file": "arrived-notify.js",
+    "from": "since !== null && arrived.at < since",
+    "to": "false",
+    "kills_with": [
+      "DRVC-EXIT"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-accepted-at",
+    "label": "the accepted_at fallback is dropped",
+    "file": "arrived-notify.js",
+    "from": "(Number.isFinite(task.accepted_at) ? task.accepted_at : null)",
+    "to": "null",
+    "kills_with": [
+      "DRVC-EXIT"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-task-status",
+    "label": "an inactive task notifies",
+    "file": "arrived-notify.js",
+    "from": "if (!ACTIVE_TASK.has(task.status))",
+    "to": "if (false)",
+    "kills_with": [
+      "DRVC-EXIT"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-deact",
+    "label": "a deactivated driver's tap notifies",
+    "file": "arrived-notify.js",
+    "from": "if (deactivated === true) return",
+    "to": "if (false) return",
+    "kills_with": [
+      "DRVC-EXIT"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-binding",
+    "label": "a task that is not the order's delivery task notifies",
+    "file": "arrived-notify.js",
+    "from": "if (order.delivery_task_id !== taskId)",
+    "to": "if (false)",
+    "kills_with": [
+      "DRVC-EXIT"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ],
+    "repointed": "Codex r1 P2-1: the pointer check is now EXACT (no `${oid}_delivery` fallback)"
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-ofd",
+    "label": "an order not out for delivery notifies",
+    "file": "arrived-notify.js",
+    "from": "if (order.status !== 'out_for_delivery') return { ok: false, reason: 'order_not_ofd' };",
+    "to": "if (false) return { ok: false, reason: 'order_not_ofd' };",
+    "kills_with": [
+      "DRVC-EXIT"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-cancelling",
+    "label": "a cancelling order notifies",
+    "file": "arrived-notify.js",
+    "from": "order.cancel_claim_id != null || order.resolving_action === 'cancel'",
+    "to": "false",
+    "kills_with": [
+      "DRVC-EXIT"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-claim-cas",
+    "label": "the claim overwrites an existing claim",
+    "file": "arrived-notify.js",
+    "from": "(cur) => (cur == null ? claim : undefined)",
+    "to": "() => claim",
+    "kills_with": [
+      "DRVC-NULLFIRST"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-winner",
+    "label": "a claim loser still sends",
+    "file": "arrived-notify.js",
+    "from": "won = !!v && v.by === arrived.by && v.arrival_at === arrived.at && v.state === 'claimed';",
+    "to": "won = true;",
+    "kills_with": [
+      "DRVC-NULLFIRST"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-recheck",
+    "label": "the full recheck is skipped",
+    "file": "arrived-notify.js",
+    "from": "const again = await eligible(db, { taskId, oid, arrived });",
+    "to": "const again = first;",
+    "kills_with": [
+      "DRVC-RECHECK"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-route-inst",
+    "label": "an unknown restaurant routes to the default instance",
+    "file": "arrived-notify.js",
+    "from": "  if (!inst) return false;\n",
+    "to": "",
+    "kills_with": [
+      "DRVC-ROUTE"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-route-flag",
+    "label": "the global WhatsApp flag is ignored",
+    "file": "arrived-notify.js",
+    "from": "  if ((await read(db, 'config/whatsapp_enabled')) === false) return false;\n",
+    "to": "",
+    "kills_with": [
+      "DRVC-ROUTE"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-route-switch",
+    "label": "a switched-off second instance still sends",
+    "file": "arrived-notify.js",
+    "from": "  if (inst !== 'default' && !(await wa.isEnabledForRestaurant(db, rid))) return false;\n",
+    "to": "",
+    "kills_with": [
+      "DRVC-ROUTE"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-route-identity",
+    "label": "an invalid identity still sends",
+    "file": "arrived-notify.js",
+    "from": "  if (!wa.isRoutingValid(identity)) return false;\n",
+    "to": "",
+    "kills_with": [
+      "DRVC-ROUTE"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-confirmed",
+    "label": "an unconfirmed provider result is recorded as sent",
+    "file": "arrived-notify.js",
+    "from": "wa.isSendConfirmed(result) ? 'sent' : 'unconfirmed'",
+    "to": "(result ? 'sent' : 'unconfirmed')",
+    "kills_with": [
+      "DRVC-UNCONFIRMED"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-mirror-cold",
+    "label": "the mirror aborts on the cold-cache pass",
+    "file": "arrived-notify.js",
+    "from": "    if (cur === null || cur === undefined) return null;\n    if (cur.order_id !== oid",
+    "to": "    if (cur === null || cur === undefined) return undefined;\n    if (cur.order_id !== oid",
+    "kills_with": [
+      "DRVC-MIRROR-COLDNULL",
+      "DRVC-HAPPY"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-mirror-tag",
+    "label": "the mirror ignores the tracker's live owner",
+    "file": "arrived-notify.js",
+    "from": "cur.mx.mode !== 'live' || cur.mx.owner_tag !== expectedTag",
+    "to": "cur.mx.mode !== 'live'",
+    "kills_with": [
+      "DRVC-MIRROR-REFUSED"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-mirror-mode",
+    "label": "the mirror writes into a waiting / neutral tracker",
+    "file": "arrived-notify.js",
+    "from": "cur.mx.mode !== 'live' || cur.mx.owner_tag !== expectedTag",
+    "to": "cur.mx.owner_tag !== expectedTag",
+    "kills_with": [
+      "DRVC-MIRROR-REFUSED"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-mirror-legacy",
+    "label": "the legacy mirror ignores the displayed name",
+    "file": "arrived-notify.js",
+    "from": "!expectedName || cur.driver_name !== expectedName",
+    "to": "!expectedName",
+    "kills_with": [
+      "DRVC-MIRROR-REFUSED"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-final-guard",
+    "label": "the final outcome overwrites another arrival's record",
+    "file": "arrived-notify.js",
+    "from": "if (cur.state !== 'claimed' || cur.by !== arrived.by || cur.arrival_at !== arrived.at) return undefined;",
+    "to": "if (false) return undefined;",
+    "kills_with": [
+      "DRVC-FINAL-MISMATCH"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-final-cold",
+    "label": "the final outcome aborts on the cold-cache pass",
+    "file": "arrived-notify.js",
+    "from": "      if (cur == null) return null;   // cold cache",
+    "to": "      if (cur == null) return undefined;   // cold cache",
+    "kills_with": [
+      "DRVC-HAPPY-FINAL"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-inst-unknown",
+    "label": "instanceFor routes an unknown id to the default instance",
+    "file": "whatsapp.js",
+    "from": "  if (restaurantId === 'x_pizza') return 'default';\n  return null;",
+    "to": "  if (restaurantId === 'x_pizza') return 'default';\n  return 'default';",
+    "kills_with": [
+      "DRVC-INST-UNKNOWN"
+    ],
+    "command": [
+      "node",
+      "whatsapp-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-inst-creds",
+    "label": "instanceFor accepts la_musa without creds",
+    "file": "whatsapp.js",
+    "from": "resolveWhatsappConfig(restaurantId, env) ? 'la_musa' : null",
+    "to": "'la_musa'",
+    "kills_with": [
+      "DRVC-INST-NOCREDS"
+    ],
+    "command": [
+      "node",
+      "whatsapp-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-wa-copy",
+    "label": "the WhatsApp copy drifts from the approved text",
+    "file": "whatsapp.js",
+    "from": "🛵 Ya está afuera con tu pedido.`",
+    "to": "🛵 Ya está afuera.`",
+    "kills_with": [
+      "DRVC-WA-COPY"
+    ],
+    "command": [
+      "node",
+      "whatsapp-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-wa-link-label",
+    "label": "the «Sigue su ubicación:» line is dropped",
+    "file": "whatsapp.js",
+    "from": "    `Sigue su ubicación:`,\n    trackingUrl(trackingToken, restaurantId)\n  ].join('\\n');\n}\n\nfunction renderDelivered",
+    "to": "    trackingUrl(trackingToken, restaurantId)\n  ].join('\\n');\n}\n\nfunction renderDelivered",
+    "kills_with": [
+      "DRVC-WA-COPY"
+    ],
+    "command": [
+      "node",
+      "whatsapp-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-sv-tag",
+    "label": "an arrival renders for another (reassigned) driver",
+    "file": "../xpizza-track/status-view.js",
+    "from": "a.owner_tag === mx.owner_tag",
+    "to": "true",
+    "kills_with": [
+      "DRVC-SV",
+      "DRVC-TRK-REASSIGN"
+    ],
+    "command": [
+      "node",
+      "../xpizza-track/tracker-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-sv-name",
+    "label": "a legacy arrival renders beside another driver's name",
+    "file": "../xpizza-track/status-view.js",
+    "from": "a.name !== '' && a.name === r.driver_name",
+    "to": "a.name !== ''",
+    "kills_with": [
+      "DRVC-SV"
+    ],
+    "command": [
+      "node",
+      "../xpizza-track/tracker-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-sv-active",
+    "label": "a legacy arrival renders in the waiting state",
+    "file": "../xpizza-track/status-view.js",
+    "from": "return r.is_active_drop === true && typeof a.name",
+    "to": "return typeof a.name",
+    "kills_with": [
+      "DRVC-SV"
+    ],
+    "command": [
+      "node",
+      "../xpizza-track/tracker-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-sv-live",
+    "label": "an arrival renders on a waiting / neutral tracker",
+    "file": "../xpizza-track/status-view.js",
+    "from": "return mx.mode === 'live' && typeof a.owner_tag",
+    "to": "return typeof a.owner_tag",
+    "kills_with": [
+      "DRVC-SV"
+    ],
+    "command": [
+      "node",
+      "../xpizza-track/tracker-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-sv-eta",
+    "label": "an ETA renders beside the arrival",
+    "file": "../xpizza-track/status-view.js",
+    "from": "  v.etaMin = null;\n  v.mapEligible",
+    "to": "  v.mapEligible",
+    "kills_with": [
+      "DRVC-SV-NOETAMIN"
+    ],
+    "command": [
+      "node",
+      "../xpizza-track/tracker-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-sv-big",
+    "label": "the arrival sub-line loses the approved big style",
+    "file": "../xpizza-track/status-view.js",
+    "from": "  v.subClass = 'ssub big';\n  v.arrived = true;",
+    "to": "  v.arrived = true;",
+    "kills_with": [
+      "DRVC-SV-BIG",
+      "DRVC-TRK-BIG"
+    ],
+    "command": [
+      "node",
+      "../xpizza-track/tracker-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-sv-map",
+    "label": "the driver's dot disappears while arrived",
+    "file": "../xpizza-track/status-view.js",
+    "from": "  v.mapEligible = !!(loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lng));\n}\n\nfunction presentStatus",
+    "to": "  v.mapEligible = false;\n}\n\nfunction presentStatus",
+    "kills_with": [
+      "DRVC-SV-MAP",
+      "DRVC-TRK-MAP"
+    ],
+    "command": [
+      "node",
+      "../xpizza-track/tracker-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-trk-branch",
+    "label": "the tracker drops the map while arrived",
+    "file": "../xpizza-track/index.html",
+    "from": "if (v.etaEligible || (v.arrived && v.mapEligible)) {",
+    "to": "if (v.etaEligible) {",
+    "kills_with": [
+      "DRVC-TRK-MAP"
+    ],
+    "command": [
+      "node",
+      "../xpizza-track/tracker-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-trk-sub",
+    "label": "the tracker keeps the old ETA line while arrived",
+    "file": "../xpizza-track/index.html",
+    "from": "          subEl.textContent = v.sub;\n          if (etaTimer) { clearTimeout(etaTimer); etaTimer = null; }\n        }",
+    "to": "          if (etaTimer) { clearTimeout(etaTimer); etaTimer = null; }\n        }",
+    "kills_with": [
+      "DRVC-TRK-SUB"
+    ],
+    "command": [
+      "node",
+      "../xpizza-track/tracker-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-trk-expiry",
+    "label": "a pending ETA expiry survives into the arrived state",
+    "file": "../xpizza-track/index.html",
+    "from": "          subEl.textContent = v.sub;\n          if (etaTimer) { clearTimeout(etaTimer); etaTimer = null; }\n        }",
+    "to": "          subEl.textContent = v.sub;\n        }",
+    "kills_with": [
+      "DRVC-TRK-NOEXPIRY"
+    ],
+    "command": [
+      "node",
+      "../xpizza-track/tracker-arrived.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-form-window",
+    "label": "the form's arrival line shows «En ruta» beside «llegó»",
+    "file": "../xpizza-orders/form-live-status.js",
+    "from": "    if (v.arrived) return { text: v.sub, deadline: null };",
+    "to": "    if (false) return { text: v.sub, deadline: null };",
+    "kills_with": [
+      "DRVC-FORM-WINDOW"
+    ],
+    "command": [
+      "node",
+      "../s5-confirmation.test.mjs"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-wire-retry",
+    "label": "the arrival trigger retries (a resend)",
+    "file": "index.js",
+    "from": "{ ref: '/tasks/{taskId}/arrived', region: 'us-central1', retry: false }",
+    "to": "{ ref: '/tasks/{taskId}/arrived', region: 'us-central1', retry: true }",
+    "kills_with": [
+      "DRVC-WIRE-NORETRY"
+    ],
+    "command": [
+      "node",
+      "drvc-wiring.guard.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-wire-secret",
+    "label": "the mirror tag is computed without the tracker secret",
+    "file": "index.js",
+    "from": "resolveDriverName, tagOf, secret: process.env.MAKE_SECRET,",
+    "to": "resolveDriverName, tagOf, secret: undefined,",
+    "kills_with": [
+      "DRVC-WIRE-DEPS"
+    ],
+    "command": [
+      "node",
+      "drvc-wiring.guard.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c-rules",
+    "id": "drvc-rule-once",
+    "label": "the arrival leaf can be overwritten",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "\"!data.exists() && auth.token.customer !== true && newData.hasChildren(['at', 'by'])",
+    "to": "\"auth.token.customer !== true && newData.hasChildren(['at', 'by'])",
+    "kills_with": [
+      "a second create (overwrite) is DENIED"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:arrived-rules"
+    ]
+  },
+  {
+    "slice": "drv-c-rules",
+    "id": "drvc-rule-customer",
+    "label": "a customer token with the driver's uid can tap",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "\"!data.exists() && auth.token.customer !== true && newData.hasChildren(['at', 'by'])",
+    "to": "\"!data.exists() && newData.hasChildren(['at', 'by'])",
+    "kills_with": [
+      "a CUSTOMER token with the assigned uid is DENIED"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:arrived-rules"
+    ]
+  },
+  {
+    "slice": "drv-c-rules",
+    "id": "drvc-rule-type",
+    "label": "a pickup task accepts an arrival",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "&& newData.parent().child('type').val() === 'delivery'\",\n          \"at\"",
+    "to": "\",\n          \"at\"",
+    "kills_with": [
+      "a PICKUP task is DENIED"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:arrived-rules"
+    ]
+  },
+  {
+    "slice": "drv-c-rules",
+    "id": "drvc-rule-other",
+    "label": "an extra child is accepted on the arrival",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "\"by\": { \".validate\": \"newData.isString() && newData.val() === auth.uid\" },\n          \"$other\": { \".validate\": false }",
+    "to": "\"by\": { \".validate\": \"newData.isString() && newData.val() === auth.uid\" },\n          \"$other\": { \".validate\": true }",
+    "kills_with": [
+      "an extra child is DENIED"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:arrived-rules"
+    ]
+  },
+  {
+    "slice": "drv-c-rules",
+    "id": "drvc-rule-absent",
+    "label": "an absent result is unreadable (the listener is cancelled)",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": " || (!data.exists() && root.child('tasks').child($oid + '_delivery').child('assigned_driver_id').val() === auth.uid))\"",
+    "to": ")\"",
+    "kills_with": [
+      "an ABSENT result is readable by the eligible assigned driver"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:arrived-rules"
+    ]
+  },
+  {
+    "slice": "drv-c-rules",
+    "id": "drvc-rule-read-customer",
+    "label": "a customer token reads the result",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && ((data.exists()",
+    "to": "root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && ((data.exists()",
+    "kills_with": [
+      "DENIED to a customer token"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:arrived-rules"
+    ]
+  },
+  {
+    "slice": "drv-c-rules",
+    "id": "drvc-rule-by",
+    "label": "any driver reads an existing result",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "(data.exists() && data.child('by').val() === auth.uid)",
+    "to": "(data.exists())",
+    "kills_with": [
+      "DENIED to the NEW assignee"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:arrived-rules"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-pointer-fallback",
+    "label": "an absent / malformed delivery_task_id falls back to `${oid}_delivery`",
+    "file": "arrived-notify.js",
+    "from": "if (order.delivery_task_id !== taskId)",
+    "to": "if ((order.delivery_task_id || `${oid}${DELIVERY_SUFFIX}`) !== taskId)",
+    "kills_with": [
+      "DRVC-POINTER"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-token-gate",
+    "label": "a notice is sent without a valid tracking token (a «/undefined» link)",
+    "file": "arrived-notify.js",
+    "from": "order.customer_phone && validToken(order.tracking_token)) {",
+    "to": "order.customer_phone) {",
+    "kills_with": [
+      "DRVC-TOKEN"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-token-shape",
+    "label": "any non-empty token is accepted",
+    "file": "arrived-notify.js",
+    "from": "typeof t === 'string' && t.length === TOKEN_LENGTH && [...t].every((c) => TOKEN_ALPHABET.includes(c))",
+    "to": "typeof t === 'string' && t.length > 0",
+    "kills_with": [
+      "DRVC-TOKEN"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ],
+    "repointed": "Codex r2: the token check is the exact generator shape"
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-claim-snap",
+    "label": "the claim trusts its own proposal (committed by / arrival_at unchecked)",
+    "file": "arrived-notify.js",
+    "from": "won = !!v && v.by === arrived.by && v.arrival_at === arrived.at && v.state === 'claimed';",
+    "to": "won = !!v && v.state === 'claimed';",
+    "kills_with": [
+      "DRVC-CLAIM-SNAP"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-mirror-snap",
+    "label": "the mirror trusts its own proposal (committed at / owner_tag unchecked)",
+    "file": "arrived-notify.js",
+    "from": "if (!a || a.at !== arrived.at || a.owner_tag !== expectedTag) return false;",
+    "to": "if (!a) return false;",
+    "kills_with": [
+      "DRVC-MIRROR-SNAP"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-mirror-snap-legacy",
+    "label": "the legacy mirror trusts its own proposal (committed name unchecked)",
+    "file": "arrived-notify.js",
+    "from": "  if (!snap.mx && a.name !== expectedName) return false;\n",
+    "to": "",
+    "kills_with": [
+      "DRVC-MIRROR-SNAP-LEGACY"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-token-length",
+    "label": "a token of any length passes",
+    "file": "arrived-notify.js",
+    "from": "t.length === TOKEN_LENGTH && [...t]",
+    "to": "[...t]",
+    "kills_with": [
+      "DRVC-TOKEN"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c",
+    "id": "drvc-token-alphabet",
+    "label": "any alphanumeric token passes (excluded 0/O/1/l/I, \"undefined\")",
+    "file": "arrived-notify.js",
+    "from": "[...t].every((c) => TOKEN_ALPHABET.includes(c))",
+    "to": "/^[A-Za-z0-9]+$/.test(t)",
+    "kills_with": [
+      "DRVC-TOKEN"
+    ],
+    "command": [
+      "node",
+      "arrived-notify.test.js"
+    ]
   }
 ]

@@ -12,7 +12,7 @@ const { execFileSync } = require('child_process');
 const { HUNKS, BASE, unapplyPortalUiIndex, unapplyPortalUiFold } = require('./tools/portalui-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = require('./tools/drvf-inverse').unapplyDrvfIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // DRIVER F (newest) reversed first
+const real = require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')));   // DRIVER F (newest) reversed first
 
 // 3a T-c (merged onto this slice in feat/portal-team) appended ONE export to the membership line after BASE — a same-line hunk,
 // folded out here so this pin keeps judging portal-ui's own two hunks against BASE (the membership inverse covers T-c's line)
@@ -61,7 +61,7 @@ ok(`SAME-LINE: index.js has the base's ${bl.length} lines; exactly lines ${diffe
 
 // ── 3. the fold variant ──
 const { foldPortalSplit } = require('./tools/portal-split');
-const fold = require('./tools/drvf-inverse').unapplyDrvfIndex(foldPortalSplit());   // DRIVER F (newest) reversed first
+const fold = require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(foldPortalSplit()));   // DRIVER F (newest) reversed first
 assert.ok(!fold.includes('PORTAL_OPS_TARGETS'), 'foldPortalSplit drops the early-branch region (with the ops branch in it)');
 assert.ok(fold.includes(HUNKS[1].now), 'premise: the re-export hunk survives the portal fold');
 const folded = unapplyPortalUiFold(fold);

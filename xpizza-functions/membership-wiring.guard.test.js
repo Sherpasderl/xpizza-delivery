@@ -15,7 +15,7 @@ const BASE = '2920b705';
 const { ROUTES } = require('./access/team-http-core');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')));   // PORTAL-UI 1a landed on top: stripped first
+const real = require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))));   // PORTAL-UI 1a landed on top: stripped first
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: path.join(__dirname, '..'), encoding: 'utf8', maxBuffer: 1 << 26 });
 
 assert.strictEqual(HUNKS.length, 1);

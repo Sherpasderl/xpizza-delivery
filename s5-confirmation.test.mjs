@@ -207,6 +207,20 @@ for (const key of Object.keys(PAGES)) {
     assert.strictEqual(statusLine(w), 'Tu pedido va en camino', 'F4 (BC2 parity): the tracker\'s calm words — a name, no live location');
     assert.strictEqual(F.timers('etaTimer').length, 1, 'the etaTimer re-renders the countdown');
     { const before = steadyS5(w); assert.strictEqual(F.fire('etaTimer'), 1); await settle(); assert.strictEqual(steadyS5(w), before, `${key}: the etaTimer changed an #s5 node OUTSIDE the declared live set (ADVISOR 2026-10-15)`); assert.strictEqual(F.timers('etaTimer').length, 1, 'and re-arms'); }
+    // DRIVER C (OWNER-APPROVED mockup, frame 6): the driver tapped «Llegué» — «{Nombre} llegó» in ls-status, «Ya está afuera con tu
+    // pedido» in the arrival line (ls-window), never «En ruta a tu dirección» / an ETA; an arrival bound to another driver never shows
+    {
+      const ofd = { status: 'out_for_delivery', order_type: 'delivery', restaurant_id: P.rid, created_at: now - 2 * MIN, ready_at: now - MIN, picked_up_at: now - 3 * MIN, driver_name: 'Carlos', is_active_drop: true };
+      F.push({ ...ofd, arrived: { at: now - MIN, owner_tag: 'tb_tag', name: 'Carlos' } }); await settle();
+      assert.strictEqual(statusLine(w), 'Carlos llegó', `DRVC-FORM-STATUS ${key}: ls-status reads «Carlos llegó»`);
+      assert.strictEqual(arrival(w), 'Ya está afuera con tu pedido', `DRVC-FORM-WINDOW ${key}: the arrival line reads the arrival copy, never an ETA`);
+      assert.ok($(w, 'success-sub').classList.contains('ls-window'), `${key}: premise — the arrival line IS ls-window`);
+      F.push({ ...ofd, driver_name: 'Ana', arrived: { at: now - MIN, owner_tag: 'tb_tag', name: 'Carlos' } }); await settle();
+      assert.notStrictEqual(statusLine(w), 'Carlos llegó', `DRVC-FORM-MISMATCH ${key}: an arrival for another driver never shows`);
+      assert.notStrictEqual(arrival(w), 'Ya está afuera con tu pedido', `DRVC-FORM-MISMATCH-WINDOW ${key}`);
+      assert.deepStrictEqual(F.errs, []);
+      ok(`${key}: arrived → ls-status «Carlos llegó», ls-window «Ya está afuera con tu pedido»; an arrival for another driver never shows`);
+    }
     F.push({ status: 'delivered', order_type: 'delivery', restaurant_id: P.rid, created_at: now - 2 * MIN, delivered_at: now }); await settle();
     assert.strictEqual(arrival(w), 'Entregado'); assert.strictEqual(F.live().length, 0, `${key}: a terminal status unsubscribes`);
     assert.strictEqual(F.timers('etaTimer').length + F.timers('deadlineTimer').length, 0, 'and clears the timers');

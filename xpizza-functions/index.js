@@ -7542,3 +7542,20 @@ exports.alertOnDriverProblem = onValueCreated(
   }
 );
 /* drvf:end */
+
+/* drvc:begin */
+// DRIVER C (PLAN-driver-server-C-llegue r3, Codex r4 APPROVE) — «Llegué · avisar a {Nombre}»: the driver's create of
+// tasks/{oid}_delivery/arrived → at most ONE customer notice (arrived-notify.js): claim in arrived_notices/{oid}, a full recheck,
+// the tracker mirror bound to the TAPPING driver, the approved WhatsApp, a winner-only final outcome. retry:false — never a resend.
+const { notifyArrived } = require('./arrived-notify');
+exports.notifyArrivedOnTap = onValueCreated(
+  { ref: '/tasks/{taskId}/arrived', region: 'us-central1', retry: false },
+  async (event) => {
+    await notifyArrived(getDatabase(), { taskId: event.params.taskId, arrived: event.data.val(), now: Date.now() }, {
+      wa: { sendMessage: whatsapp.sendMessage, isSendConfirmed: whatsapp.isSendConfirmed, instanceFor: whatsapp.instanceFor,
+        isEnabledForRestaurant: whatsapp.isEnabledForRestaurant, tplArrived: whatsapp.tplArrived, isRoutingValid: require('./restaurant-config').isRoutingValid },
+      resolveDriverName, tagOf, secret: process.env.MAKE_SECRET,
+    });
+  }
+);
+/* drvc:end */

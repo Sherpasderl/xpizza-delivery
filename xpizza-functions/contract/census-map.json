@@ -235,7 +235,9 @@
   "index.js#claimPrefill": "R17",
   "index.js#mirrorStatusToHistory": "R17",
   "index.js#clearTrackerMirrorOnDone": "R8",
-  "index.js#trackerOnOrderStatus": "R8"
+  "index.js#trackerOnOrderStatus": "R8",
+  "arrived-notify.js": "R9",
+  "arrived-notify.js#makeMirrorUpdater>anon": "R8"
  },
  "serverCategories": {
   "intake": "order INTAKE writer / validator (createOrder, chargeOnlineOrder, quotes, pricing, classification, display number) — produces the persisted evidence (§1) the readers are asserted against; its outputs are covered as writers",
