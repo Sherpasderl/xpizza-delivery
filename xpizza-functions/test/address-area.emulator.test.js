@@ -248,12 +248,15 @@ async function snapshotOf(oid) {
     const p1o = (await getOrder(p1)).val() || {};
     const conf = await confirmAndMaterialize(edgeDeps(rid), { orderId: p1, attemptId: p1o.active_attempt_id, now: Date.now(), trackingToken: `TTD${tag}${rid}` });
     const p1after = (await getOrder(p1)).val() || {};
-    const ids = [[p1, '<p1>'], [p2, '<p2>'], [ph, '<phone>'], [rateLimitKey(ph), '<phk>'], [`TTD${tag}${rid}`, '<tok>'], ...(p1o.active_attempt_id ? [[p1o.active_attempt_id, '<att>']] : [])];
+    // the stamp is keyed by the content key, which hashes the PHONE — normalised through its RECOMPUTED area-free value (an
+    // area folded into the key would not match and the scenario would differ)
+    const ck = orderContentKey({ phone: ph, itemsText: `1x ${LINE[rid].name}`, orderType: 'delivery', scheduledFor: null });
+    const ids = [[p1, '<p1>'], [p2, '<p2>'], [ph, '<phone>'], [rateLimitKey(ph), '<phk>'], [ck, '<ck>'], [`TTD${tag}${rid}`, '<tok>'], ...(p1o.active_attempt_id ? [[p1o.active_attempt_id, '<att>']] : [])];
     return norm({ r1: [r1.status, r1.json], r2: [r2.status, r2.json], stamps, alerts, conf, p1: [p1after.status, p1after.payment_status] }, ids);
   };
   for (const rid of ['x_pizza', 'la_musa']) {
     const base = await dedupScenario(rid, 'X', null, null);
-    assert.ok(base.stamps && Object.values(base.stamps).some((v) => v && v.order_id === '<p2>'), `premise: the re-order kept the SAME content stamp, now naming the cash order (${JSON.stringify(base.stamps)})`);
+    assert.ok(base.stamps && base.stamps['<ck>'] && base.stamps['<ck>'].order_id === '<p2>', `premise: the re-order kept the SAME content stamp, now naming the cash order (${JSON.stringify(base.stamps)})`);
     assert.ok(base.alerts && Object.keys(base.alerts).length === 1, `premise: the create-side duplicate-sibling alert fired (${JSON.stringify(base.alerts)})`);
     assert.deepStrictEqual(await dedupScenario(rid, 'Y', 'Colonia Trejo', 'Res. Los Castaños'), base, `🔴 ${rid}: the duplicate outcome changes when BOTH orders carry (different) areas`);
     assert.deepStrictEqual(await dedupScenario(rid, 'Z', null, 'Colonia Trejo'), base, `🔴 ${rid}: the duplicate outcome changes when only the re-order carries an area`);
