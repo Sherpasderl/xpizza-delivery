@@ -129,9 +129,10 @@ export function bagTagHtml(n, esc = String) {
 export function phaseStripHtml(stops, esc = String) {
   if (!Array.isArray(stops) || stops.length < 2) return '';
   const segs = stops.map((s) => {
-    const base = s.label ? `${s.n} · ${esc(s.label)}` : String(s.n);
-    const lbl = s.time ? `${base} · ${esc(s.time)}` : base;   // trailing time only when provided (R1)
     const state = s.state || (s.on ? 'on' : '');
+    const base = s.label ? `${s.n} · ${esc(s.label)}` : String(s.n);
+    // cancelled reads «N · {name} · cancelado» (advisor); a trailing time only when provided (R1).
+    const lbl = state === 'cancelled' ? `${base} · cancelado` : (s.time ? `${base} · ${esc(s.time)}` : base);
     const cls = state === 'done' ? ' done' : state === 'cancelled' ? ' cancelled' : state === 'on' ? ' on' : '';
     return `<span class="st${cls}"><span class="bar"></span><span class="lbl">${lbl}</span></span>`;
   }).join('');
@@ -318,9 +319,8 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
       ${accepted ? `<div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${esc(order.address_detected || (o.deliveryTask && o.deliveryTask.destination_address) || '—')}</div></div></div>` : ''}
       ${accepted && order.address_details ? `<div class="instr"><span class="ico">${ICONS.door || DOOR_SVG}</span><div class="instr-main">${esc(order.address_details)}</div></div>` : ''}
       ${accepted && order.customer_phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(order.customer_phone).replace(/[^\d+]/g, '')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${String(order.customer_phone).replace(/\D/g, '')}?text=${encodeURIComponent(driverGreeting(order))}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
-      ${order.items_text ? `<div class="items-list">${order.items_text.split(',').map((s) => `<div class="item">${esc(s.trim())}</div>`).join('')}</div>` : ''}
       <div class="ac-hr"></div>
-      ${paymentRowHtml(order, esc)}
+      ${collectionFor(order).kind === 'warning' ? paymentRowHtml(order, esc).replace('>COBRO<', '>PAGO<') : paymentRowHtml(order, esc)}
       ${vueltoLine(order, deps)}
     </div>
     ${navBlock}
@@ -595,7 +595,7 @@ export function offerScreenHtml(offers, deps = {}, opts = {}) {
       <div class="of-list">${rows}</div>
       ${pickupLine ? `<div class="of-note">${pickupLine}</div>` : ''}
     </div>
-    <div class="action-zone"><div class="slide-confirm accept" id="btn-accept"><div class="slide-fill"></div><div class="slide-text">Aceptar los ${esc(n)} pedidos</div><div class="slide-thumb">${SLIDE_ARROW}</div></div></div>`;
+    <div class="action-zone"><div class="slide-confirm accept" id="btn-accept"><div class="slide-fill"></div><div class="slide-text">Aceptar los ${esc(n)} pedidos</div><div class="slide-hint">deslizá</div><div class="slide-thumb">${SLIDE_ARROW}</div></div></div>`;
 }
 
 /**

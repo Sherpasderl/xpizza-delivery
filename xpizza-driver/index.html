@@ -1248,6 +1248,7 @@
 /* Slider → EXACT prototype parity (advisor 2026-10-23 #1): solid steel-blue track, sentence-case Red Hat Display,
    «DESLIZÁ» hint on the right, 50px square-ish knob at rgba(255,255,255,.22), NO coloured glow / breathe. All
    actions (Aceptar/Recogí/Entregado) share the one blue component (prototype .slide uses --p-p for every action). */
+#active-order-slot .action-zone { margin-left: 0; margin-right: 0; }   /* the slide matches the nav button's 16px inset (advisor #2), not action-zone 13 + slide 16 */
 .slide-confirm { height:60px; border-radius:16px; background:var(--accent); border:none; box-shadow:none; margin:0 16px; overflow:hidden; }
 .slide-confirm::before { display:none; }
 .slide-confirm .slide-text { inset:0; padding-left:48px; padding-right:72px; justify-content:center; font-family:'Red Hat Display', sans-serif; font-weight:700; font-size:15px; letter-spacing:.01em; text-transform:none; background-image:none !important; color:#fff; -webkit-text-fill-color:#fff; animation:none; }
@@ -1261,6 +1262,8 @@
 /* ===== Prototype stacked rebuild (apParada1/2/offer/pickup/avance/cancel) — additive, light-only ===== */
 /* Current-stop card: the prototype's blue outline ring (advisor 2026-10-23 #4; prototype .card.hi = 0 0 0 1.5px --p-p). */
 #active-order-slot .active-card { border: none; box-shadow: 0 0 0 2px var(--accent, #2F5FB8), 0 6px 18px rgba(20,30,50,.06); }
+/* Unconfirmed-payment (R11 logic kept): style like the prototype PAGO block — dark title, not a bold amber two-line headline (advisor #8). */
+#active-order-slot .active-card .payment-amount.warn-amount { font-size: 16px; font-weight: 800; letter-spacing: -.01em; color: var(--text, #1F2733); line-height: 1.2; }
 /* apDetalle2 (advisor #11): the queued-sheet lock banner in a BLUE tint; «Cerrar» outlined, not filled grey. */
 .lockchip { background: var(--sv-p-bg, #E8F0FB); color: var(--accent, #2F5FB8); }
 .lockchip .ico { color: var(--accent, #2F5FB8); }
@@ -1272,8 +1275,8 @@
 .items-card .rchip.lm .rdot { background: var(--lamusa, #B61218); }
 .strip { padding: 0 16px; }                                   /* 16 px page gutter (fix: stop 1 no longer flush at x=0) */
 .strip .st.done .bar { background: var(--sv-ok, #15803D); }
-.strip .st.done .lbl { color: var(--sv-ok, #15803D); }
-.strip .st.cancelled .lbl { color: var(--muted, #6B7687); text-decoration: line-through; }
+.strip .st.done .lbl { color: var(--text-soft, #546078); }                    /* delivered label muted grey, not green (advisor #6) */
+.strip .st.cancelled .lbl { color: var(--text-soft, #546078); text-decoration: none; }  /* muted grey, NOT strikethrough (advisor #6) */
 
 /* Stop screens: the stop header IS the only top bar — hide the «En reparto / GPS / toggle» status bar (ruling a) */
 #screen-onshift.delivering .status-bar { display: none; }
@@ -1358,7 +1361,7 @@
 .sheet-head { justify-content: flex-start; margin-bottom: 10px; }
 .sheet-head .sh-name { font-size: 19px; }
 .sheet-head .sh-pill { margin-left: auto; }
-.items-card { background: var(--surface-2, #F5F7FA); border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
+.items-card { background: var(--surface, #fff); box-shadow: var(--shadow-card, 0 2px 12px rgba(20,30,50,.06)); border-radius: 12px; padding: 10px 12px; margin-top: 10px; }  /* white card + shadow, not grey (advisor #9) */
 .items-card .items-head { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
 .items-card .items-head .lbl { font-weight: 800; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted, #6B7687); }
 .items-card .items-head .items-brand { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
@@ -1396,7 +1399,7 @@
 .cancel-banner { display: flex; gap: 9px; align-items: flex-start; margin: 2px 16px 6px; padding: 11px 13px; border-radius: 12px; background: var(--sv-err-bg, #FBEAEA); color: var(--sv-err, #B9323A); font-size: 13px; line-height: 1.35; }
 .cancel-banner .ico { flex: none; width: 18px; height: 18px; margin-top: 1px; }
 .cancel-banner b { display: block; margin-bottom: 2px; }
-.cancel-banner .x { margin-left: auto; flex: none; align-self: center; background: var(--sv-err, #B9323A); color: #fff; border: none; border-radius: 8px; padding: 6px 11px; font-weight: 700; font-size: 12px; }
+.cancel-banner .x { margin-left: auto; flex: none; align-self: center; background: transparent; color: var(--sv-err, #B9323A); border: 1px solid var(--sv-err, #B9323A); border-radius: 8px; padding: 6px 11px; font-weight: 700; font-size: 12px; }  /* OUTLINED red, not filled (advisor #7) */
 /* single-order path (apParada2 / apCancelada via single-order-view.js): match the shared look (B4 neutral chip, blue slide, pinned footer) */
 .sv-rchip { background: var(--surface, #fff) !important; border: 1px solid var(--line, #D7DEEA); color: var(--text, #0D1424) !important; border-radius: 999px; padding: 3px 9px 3px 7px; font-weight: 700; font-size: 12px; }
 .sv-rchip i { width: 7px; height: 7px; border-radius: 50%; background: var(--marino, #14306B) !important; display: inline-block; margin-right: 5px; }
@@ -1405,7 +1408,7 @@
 .slide-confirm.sv-slide .slide-thumb { background: rgba(255,255,255,.26); color: #fff; }
 .slide-confirm.sv-slide .slide-fill { background: rgba(255,255,255,.16); }
 /* apRecoger combined-pickup card */
-.pickup-card { margin: 2px 16px; background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); border-radius: var(--r-card, 14px); padding: 14px; }
+.pickup-card { margin: 2px 16px; background: var(--surface, #fff); border: none; box-shadow: 0 0 0 2px var(--accent, #2F5FB8), 0 6px 18px rgba(20,30,50,.06); border-radius: var(--r-card, 14px); padding: 14px; }  /* blue current-card outline (advisor #3) */
 .pickup-card .pk-lead { font-family: 'Red Hat Text', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-soft, #546078); margin-bottom: 8px; }  /* small-caps grey (advisor #8) */
 .pk-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line, #D7DEEA); }
 .pickup-card .pk-row:first-of-type { border-top: none; }
@@ -1438,7 +1441,7 @@
 .of-chip .rchip .rdot, .of-row .rchip .rdot { background: var(--text-soft, #546078); }
 .of-chip .rchip.xp .rdot, .of-row .rchip.xp .rdot { background: #FA4400; }
 .of-chip .rchip.lm .rdot, .of-row .rchip.lm .rdot { background: var(--lamusa, #B61218); }
-.offer-card { margin: 2px 16px; background: var(--surface, #fff); border: 1px solid var(--line, #D7DEEA); border-radius: var(--r-card, 14px); padding: 14px; }
+.offer-card { margin: 2px 16px; background: var(--surface, #fff); border: none; box-shadow: 0 0 0 2px var(--accent, #2F5FB8), 0 6px 18px rgba(20,30,50,.06); border-radius: var(--r-card, 14px); padding: 14px; }  /* blue current-card outline (advisor #4) */
 .offer-card .of-chiprow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .offer-card .of-dist { margin-left: auto; background: var(--sv-ghost-bg, #EEF2F7); color: var(--text-soft, #546078); border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 12px; }
 .offer-card .of-lock { display: inline-flex; align-items: center; gap: 6px; background: var(--sv-ghost-bg, #EEF2F7); color: var(--text-soft, #546078); border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 12px; }
@@ -1471,7 +1474,7 @@
   .set-row .set-chev { color: var(--text-dim); flex: none; display: grid; place-items: center; }
   .set-row .set-chev svg { width: 16px; height: 16px; }
   .set-signout { width: 100%; background: none; border: 0; color: var(--text-soft); font-family: inherit; font-weight: 600; font-size: 13px; padding: 13px; cursor: pointer; }
-  .set-opt { display: flex; gap: 11px; align-items: center; padding: 13px 12px; border-radius: 12px; background: var(--surface-3, #E7EBF1); cursor: pointer; font-weight: 700; font-size: 14px; color: var(--text); }  /* unselected sits on a visible grey card (advisor #12) */
+  .set-opt { display: flex; gap: 11px; align-items: center; padding: 13px 12px; border-radius: 12px; background: var(--surface-3); cursor: pointer; font-weight: 700; font-size: 14px; color: var(--text); }  /* unselected sits on a visible grey card (advisor #12) */
   .set-opt .set-opt-logo { width: 28px; height: 28px; border-radius: 8px; background: #fff; display: grid; place-items: center; flex: none; box-shadow: 0 1px 2px rgba(20,30,50,.1); }
   .set-opt .set-opt-logo svg { width: 20px; height: 20px; display: block; }
   .set-opt .set-opt-tx { flex: 1; min-width: 0; }
@@ -3482,7 +3485,7 @@ function renderActiveAndQueue() {
     // done-strip + the done map-pins, like the prototype apParada2. A genuine solo order (no history) keeps the
     // plain single-order screen. Cancelled stops are already out of drv2DoneRun, so M excludes them.
     const spDeliveredCount = drv2DoneRun.length;
-    const spOrdinal = spDeliveredCount + 1;
+    const spOrdinal = drv2Cancel ? 2 : (spDeliveredCount + 1);   // a cancel survivor KEEPS its original number «2» (advisor #7)
     const spTotalM = spDeliveredCount + 1;
     const spStacked = spTotalM > 1 && soloOrder.phase !== 'awaiting_acceptance';
     const spDonePins = drv2DoneRun.filter((d) => d.lat != null && d.lng != null).map((d, i) => ({ lat: d.lat, lng: d.lng, n: i + 1, state: 'done' }));
@@ -3512,7 +3515,7 @@ function renderActiveAndQueue() {
     // (advisor 2026-10-23 #3). A genuine fresh solo (no history, no cancel) keeps the slice-1 card.
     const spCardDeps = { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: XPD.RESTAURANT, navPref: drv2ReadNavPref(), collapsedBanners };
     const spCardHtml = spShowChrome
-      ? activeCardHtml(soloOrder, spCardDeps, { ordinal: spOrdinal, solo: true, showActualPill: true, arrived: spArrived, navLabel: stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: '' })
+      ? activeCardHtml(soloOrder, spCardDeps, { ordinal: spOrdinal, solo: false, showActualPill: true, arrived: spArrived, navLabel: stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: '' })
       : singleOrderCardHtml(soloOrder, {
           ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,
           RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: drv2ReadNavPref(),
@@ -3631,10 +3634,9 @@ function renderActiveAndQueue() {
     bannerSlot.innerHTML = '';
     activeSlot.innerHTML = stopHeaderHtml({ pickupCount: stacked2.length, canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)
       + phaseStripHtml(stacked2.map((s, i) => ({ n: i + 1, state: i === 0 ? 'on' : '', label: 'Recoger' })), escapeHtml)
-      + overviewMapSvg({ driver: mapDriver2, hubs: mapHubs2, stops: mapStops2, phase: 'pickup', stale: mapStale2 })
       + combinedPickupHtml(stacked2, deps2, new Set())
       + navBtnHtml(pkTarget, deps2.navPref, pkLabel, deps2)
-      + `<div class="action-zone"><div class="slide-confirm pickup" id="btn-pickup"><div class="slide-fill"></div><div class="slide-text">Recogí las ${stacked2.length} bolsas</div><div class="slide-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div></div></div>`;
+      + `<div class="action-zone"><div class="slide-confirm pickup" id="btn-pickup"><div class="slide-fill"></div><div class="slide-text">Recogí las ${stacked2.length} bolsas</div><div class="slide-hint">deslizá</div><div class="slide-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div></div></div>`;
     queuedOrders = queue;
     queueSlot.innerHTML = '';
   } else if (active.phase === 'awaiting_acceptance' && pendingAccept.length >= 1) {

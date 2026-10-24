@@ -498,7 +498,7 @@ t('A→B promotion: when A leaves, the lone B renders the single-order card WITH
   r.setOrders([delivery('B')]); r.render();                         // A completed/gone → lone B
   assert.ok(r.activeEl().classList.contains('solo'), 'lone B → solo single-order layout');
   assert.ok(r.active().includes('class="map"'), 'promoted lone B gets the overview map (SINGLE-ORDER-MOUNT)');
-  assert.ok(r.active().includes('sv-card'), 'the slice-1 single-order card renders');
+  assert.ok(r.active().includes('class="active-card"'), 'the promoted stop renders the prototype STOP card (activeCardHtml, advisor #3)');
   assert.ok(!r.active().includes('>A<') && !r.active().includes('data-order-id="A"'), 'completed A is off the board');
   assert.equal(r.banner(), '', 'no banner'); assert.equal(r.queue(), '', 'no queue');
 });
@@ -515,7 +515,7 @@ t('transition 2→1: delivering stop 1 leaves a CLEAN single-order layout — no
   const cls = kids.map((c) => String(c.className || ''));
   const mapI = cls.findIndex((c) => /(^|\s)map(\s|$)/.test(c));
   assert.ok(mapI >= 0, 'overview map present after the transition');
-  assert.ok(/sv-card/.test(cls[mapI + 1] || ''), 'the single-order card IMMEDIATELY follows the map (no gap node between)');
+  assert.ok(/active-card/.test(cls[mapI + 1] || ''), 'the promoted stop card IMMEDIATELY follows the map (no gap node between)');
   assert.ok(r.activeEl().classList.contains('solo'), 'lone promoted order → solo layout (equals a direct apParada2 render)');
 });
 
@@ -767,7 +767,7 @@ t('runReal (e) promotion: real drag → real completeTask(A) → A completes in 
   assert.equal(r.read('tasks/A_d').status, TASK_STATUS.COMPLETED, 'A delivery completed by the REAL writer (buildCompleteTaskUpdates)');
   r.render();
   assert.equal(r.board().length, 1, 'A dropped (completed); only B remains');
-  assert.ok(r.activeEl().classList.contains('solo') && r.active().includes('sv-card'), 'lone B → single-order view');
+  assert.ok(r.activeEl().classList.contains('solo') && r.active().includes('class="active-card"'), 'lone B → promoted stop card (activeCardHtml, advisor #3)');
   assert.ok(r.active().includes('class="map"'), 'promoted B gets the SINGLE-ORDER-MOUNT map');
   assert.ok(!r.queue().includes('data-order-id="A"'), 'A off the board');
 });
