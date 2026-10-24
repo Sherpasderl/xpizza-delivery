@@ -67,6 +67,9 @@ const blockSrc = html.slice(html.indexOf('const AL_BELL ='), html.indexOf('\nfun
 // exercises the ACTUAL short-ID fallback, not a re-implementation.
 const displayLabelSrc = html.slice(html.indexOf('function displayLabel('), html.indexOf('\n}', html.indexOf('function displayLabel(')) + 2);
 const displayLabel = new Function(`${displayLabelSrc}; return displayLabel;`)();
+// The REAL openSheet + closeSheet source (used by the sheet-lifecycle integration test so their own
+// ownership/token invalidation is exercised, not a stub).
+const sheetFnsSrc = html.slice(html.indexOf('function openSheet(html){'), html.indexOf("\n$('scrim').addEventListener('click', closeSheet);"));
 function harness(opts = {}) {
   const calls = { openDetail: [], toast: [], dismiss: [] };
   const slotClasses = new Set();
@@ -279,4 +282,65 @@ test('INTEGRATION delegated click: the alert selectors route, and dismiss is gua
   const calls2 = [];
   run({ alertDismiss: 'ghost' }, { alertsList: [], XPD: { dismissDispatcherAlert: (id, r) => { calls2.push({ id, r }); return { catch() {} }; } } });
   assert.equal(calls2.length, 0, 'an id absent from the current driver_problem list writes nothing');
+});
+
+// INTEGRATION: the REAL openSheet/closeSheet (not a stub) — so their own `alertsSheetOwner = false;
+// alertNavToken += 1;` is exercised. Removing either from openSheet or closeSheet must turn this red.
+function sheetHarness(opts = {}) {
+  const calls = { openDetail: [], toast: [] };
+  const mkEl = () => { const cls = new Set(); return { innerHTML: '', scrollTop: 0, classList: { add: (c) => cls.add(c), remove: (c) => cls.delete(c), contains: (c) => cls.has(c), toggle: (c, on) => { on ? cls.add(c) : cls.delete(c); } }, querySelector: () => null, setAttribute: () => {} }; };
+  const els = { sheet: mkEl(), 'sheet-body': mkEl(), scrim: mkEl(), 'screen-main': mkEl(), 'alerts-slot': mkEl() };
+  const $ = (id) => els[id] || mkEl();
+  const STORE = opts.STORE || { orders: {}, scheduled: {}, drivers: {} };
+  const openDetail = (id, fetched) => calls.openDetail.push({ id, fetched });
+  const toast = (m, bad) => calls.toast.push({ m, bad });
+  const XPD = { fetchOrderById: opts.fetchOrderById || (async () => ({ ok: true, order: { order_id: 'o' } })) };
+  const documentStub = { activeElement: null, contains: () => false };
+  const replay = () => {};
+  const api = new Function('classifyAlert', 'sortAlertEntries', 'driverProblemContent', 'escapeHtml', 'displayLabel', 'STORE', '$', 'openDetail', 'toast', 'XPD', 'document', 'replay',
+    `let alertsList=[], alertsSheetOwner=false, alertNavToken=0, unassignToken=0, lastFocus=null, sheetDir=null, pickerFromDriver=null, pickerIsReassign=false;
+${blockSrc}
+${sheetFnsSrc}
+; return { setList:(l)=>{alertsList=l;}, openAlertsSheet, renderAlertsSheet, openOrderFromAlert, openSheet, closeSheet, bodyHtml:()=>$('sheet-body').innerHTML, owner:()=>alertsSheetOwner, nav:()=>alertNavToken };`)(
+    classifyAlert, sortAlertEntries, driverProblemContent, escapeHtml, displayLabel, STORE, $, openDetail, toast, XPD, documentStub, replay);
+  return { api, calls };
+}
+const tick = () => new Promise((r) => setTimeout(r));
+
+test('INTEGRATION sheet lifecycle: real openSheet/closeSheet release Alertas ownership and invalidate a pending alert fetch', async () => {
+  // (1) opening ANOTHER sheet mid-fetch drops the stale alert order result (openSheet bumps alertNavToken)
+  let release; let h = sheetHarness({ fetchOrderById: () => new Promise((r) => { release = () => r({ ok: true, order: { order_id: 'oPruned' } }); }) });
+  h.api.setList([{ id: 'dp', alert: { type: 'driver_problem', order_id: 'oPruned' } }]);
+  h.api.openAlertsSheet();
+  h.api.openOrderFromAlert('oPruned');     // pruned → pending fetch, captures the token
+  h.api.openSheet('<other-sheet>');        // REAL openSheet → must invalidate the pending fetch's token
+  release(); await tick();
+  assert.equal(h.calls.openDetail.length, 0, 'openSheet invalidated the in-flight alert fetch (token bump)');
+
+  // (2) closing the sheet mid-fetch also drops the stale result (closeSheet bumps alertNavToken)
+  h = sheetHarness({ fetchOrderById: () => new Promise((r) => { release = () => r({ ok: true, order: { order_id: 'oPruned' } }); }) });
+  h.api.setList([{ id: 'dp', alert: { type: 'driver_problem', order_id: 'oPruned' } }]);
+  h.api.openAlertsSheet();
+  h.api.openOrderFromAlert('oPruned');
+  h.api.closeSheet();                      // REAL closeSheet → must invalidate the pending fetch's token
+  release(); await tick();
+  assert.equal(h.calls.openDetail.length, 0, 'closeSheet invalidated the in-flight alert fetch (token bump)');
+
+  // (3) after openSheet takes over, an alert update must NOT overwrite the other sheet (ownership released)
+  h = sheetHarness();
+  h.api.setList([{ id: 'dp', alert: { type: 'driver_problem', order_id: 'o', display_number: 1, reason: 'other' } }]);
+  h.api.openAlertsSheet();
+  assert.equal(h.api.owner(), true, 'Alertas owns the sheet after openAlertsSheet');
+  h.api.openSheet('<other-sheet>');        // REAL openSheet → must release ownership
+  assert.equal(h.api.owner(), false, 'openSheet released Alertas ownership');
+  h.api.renderAlertsSheet();               // a concurrent alert update
+  assert.equal(h.api.bodyHtml(), '<other-sheet>', 'an alert update does not overwrite another sheet after openSheet');
+
+  // (4) after closeSheet, an alert update must NOT repopulate the closed sheet (ownership released)
+  h = sheetHarness();
+  h.api.setList([{ id: 'dp', alert: { type: 'driver_problem', order_id: 'o', display_number: 1, reason: 'other' } }]);
+  h.api.openAlertsSheet();
+  h.api.closeSheet();                      // REAL closeSheet → must release ownership + clear the body
+  h.api.renderAlertsSheet();
+  assert.equal(h.api.bodyHtml(), '', 'an alert update does not repopulate a closed sheet after closeSheet');
 });
