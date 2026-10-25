@@ -95,7 +95,7 @@ const T_KEYS = new Set(['assigned_at', 'accepted_at', 'assignment_deadline', 'cr
 const norm = (v) => JSON.parse(JSON.stringify(v, (k, x) => (T_KEYS.has(k) && typeof x === 'number' ? '<t>' : x)));
 const snap = async (s) => norm({
   tasks: Object.fromEntries(await Promise.all([`${s.i}_pickup`, `${s.i}_delivery`, `${s.n}_pickup`, `${s.n}_delivery`].map(async (t) => [t.replace(/_s\d+/, ''), await val(`tasks/${t}`)]))),
-  driver: await val(`drivers/${s.d}`), alerts: await alertsFor(s.n), stacks: await val('stacks'),
+  driver: await val(`drivers/${s.d}`), alerts: await alertsFor(s.n), stack: await val(`stacks/${stackIdFor(s.d, s.i, s.n).stack_id}`),   // THIS pair's record only (scenarios share a batch)
 });
 const expectStacked = async (s, label) => {
   const nd = await val(`tasks/${s.n}_delivery`); const idl = await val(`tasks/${s.i}_delivery`);
