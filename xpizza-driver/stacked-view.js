@@ -798,6 +798,47 @@ export function splashHtml() {
     + `</div>`;
 }
 
+// SLICE3:HELP — a self-contained GPS/location glyph (no ICONS.gps key exists; ICONS is out-of-region).
+const HELP_GPS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+/**
+ * SLICE3:HELP — a truthful relative-age label «hace N s|min|h» (the prototype's «3 s» is sample data). Pure: takes
+ * elapsed ms. Returns '' when unknown/negative, so the caller shows a no-signal variant instead of a fake time.
+ */
+export function relativeAgeLabel(ms) {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return '';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `hace ${s} s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `hace ${m} min`;
+  return `hace ${Math.round(m / 60)} h`;
+}
+/**
+ * SLICE3:HELP — the «¿Por qué no veo pedidos?» diagnosis sheet (prototype S.help). Three rows: on-shift-OK (the
+ * sheet is only reachable from the on-shift idle screen), the REAL GPS freshness (age from last_location_ts; a
+ * truthful no-signal / stale variant when the fix is old or absent — the prototype only draws the live case), and
+ * a static dispatch reassurance. Dismissible «Entendido». Pure; the host passes the measured age + live flag.
+ */
+export function helpDiagnosisHtml(info = {}, deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  const { gpsAgeMs = null, gpsLive = true } = info;
+  const age = relativeAgeLabel(gpsAgeMs);
+  const hrow = (icon, title, sub, ok) =>
+    `<div class="help-row${ok ? ' ok' : ''}"><span class="ico">${icon}</span><div class="help-rtext"><div class="help-rt">${esc(title)}</div>${sub ? `<div class="help-rd">${esc(sub)}</div>` : ''}</div></div>`;
+  const gpsRow = gpsLive
+    ? hrow(HELP_GPS_SVG, age ? `Tu GPS se vio ${age}` : 'Tu GPS está activo', 'Despacho ve dónde estás')
+    : hrow(HELP_GPS_SVG, age ? `No se ve tu GPS desde ${age}` : 'No se ve tu GPS', 'Activá la ubicación para que despacho te vea');
+  return `<div class="sheet help-sheet" role="dialog" aria-modal="true">
+      <div class="grab"></div>
+      <h4 class="help-h4">¿Por qué no veo pedidos?</h4>
+      <div class="help-card">
+        ${hrow(ICONS.check || '', 'Estás en turno y disponible', 'Todo bien de tu lado', true)}
+        ${gpsRow}
+        ${hrow(ICONS.store || '', 'Las cocinas tienen poco movimiento', 'Despacho asigna en cuanto entra un pedido cerca')}
+      </div>
+      <button class="help-done" id="btn-help-done">Entendido</button>
+    </div>`;
+}
+
 // SLICE3:OFERTA-EXPIRADA — a self-contained clock glyph (no ICONS key exists; index.html's ICONS object is
 // out-of-region, so the banner carries its own).
 const OE_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';

@@ -9,6 +9,7 @@ import {
   stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
   pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml,
   contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml, splashHtml,
+  relativeAgeLabel, helpDiagnosisHtml,
 } from './stacked-view.js';
 
 let passed = 0;
@@ -441,6 +442,30 @@ t('offerExpiredBannerHtml: «Se venció la oferta #N» + reassurance + «Ok»; M
 t('offerExpiredBannerHtml: no num → no dangling «#»', () => {
   const html = offerExpiredBannerHtml({}, DEPS);
   assert.ok(html.includes('Se venció la oferta<') && !html.includes('oferta #'), 'omits the number cleanly when absent');
+});
+
+// ---------- relativeAgeLabel + helpDiagnosisHtml (help / S.help) ----------
+t('relativeAgeLabel: «hace N s|min|h»; empty for unknown/negative (no fabricated time)', () => {
+  assert.equal(relativeAgeLabel(3000), 'hace 3 s');
+  assert.equal(relativeAgeLabel(45000), 'hace 45 s');
+  assert.equal(relativeAgeLabel(120000), 'hace 2 min');
+  assert.equal(relativeAgeLabel(3600000), 'hace 1 h');
+  assert.equal(relativeAgeLabel(null), '');
+  assert.equal(relativeAgeLabel(-5), '');
+});
+t('helpDiagnosisHtml: 3 rows (on-shift OK, REAL GPS freshness, dispatch reassurance) + «Entendido»', () => {
+  const live = helpDiagnosisHtml({ gpsAgeMs: 3000, gpsLive: true }, DEPS);
+  assert.ok(live.includes('¿Por qué no veo pedidos?'));
+  assert.ok(live.includes('Estás en turno y disponible') && live.includes('Todo bien de tu lado'));
+  assert.ok(live.includes('Tu GPS se vio hace 3 s') && live.includes('Despacho ve dónde estás'), 'live GPS row uses the real age');
+  assert.ok(live.includes('Las cocinas tienen poco movimiento'));
+  assert.ok(live.includes('id="btn-help-done"') && live.includes('>Entendido<'));
+  // stale/absent GPS → a TRUTHFUL variant, never a fake «hace 3 s» (the prototype only draws the live case)
+  const stale = helpDiagnosisHtml({ gpsAgeMs: 300000, gpsLive: false }, DEPS);
+  assert.ok(stale.includes('No se ve tu GPS desde hace 5 min') && stale.includes('Activá la ubicación'), 'stale GPS → truthful');
+  assert.ok(!/se vio hace/.test(stale), 'a stale fix never claims it was just seen');
+  const noFix = helpDiagnosisHtml({ gpsAgeMs: null, gpsLive: false }, DEPS);
+  assert.ok(noFix.includes('No se ve tu GPS') && !/hace/.test(noFix), 'no fix → no fabricated age');
 });
 
 // ---------- splashHtml (splash / S.splash) ----------

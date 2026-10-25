@@ -20,6 +20,20 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 
 <style>
+/* ===== SLICE3:PRESENTATION-3:START — batch-3 CSS (help / gpsoff / cierreRechazado / offline) ===== */
+.help-sheet { display: flex; flex-direction: column; gap: 10px; }
+.help-sheet .help-h4 { margin: 2px 0; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -.01em; color: var(--text, #0D1424); }
+.help-card { background: var(--surface-2, #F5F7FA); border-radius: 14px; padding: 2px 14px; }
+.help-row { display: flex; gap: 12px; align-items: flex-start; padding: 11px 0; border-bottom: 1px solid var(--line, #EEF1F5); }
+.help-row:last-child { border-bottom: none; }
+.help-row .ico { flex: none; width: 20px; height: 20px; margin-top: 1px; color: var(--text-dim, #8A93A6); }
+.help-row.ok .ico { color: var(--green, #2F9E66); }
+.help-row .ico svg { width: 20px; height: 20px; }
+.help-rtext { flex: 1; min-width: 0; }
+.help-rt { font-weight: 700; font-size: 14.5px; color: var(--text, #0D1424); }
+.help-rd { font-size: 12.5px; color: var(--text-soft, #546078); margin-top: 2px; line-height: 1.3; }
+.help-done { margin-top: 2px; width: 100%; background: var(--accent, #2F5FB8); color: #fff; border: none; border-radius: 14px; padding: 14px; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 15px; }
+/* ===== SLICE3:PRESENTATION-3:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
     --bg: #F4F6F9;
@@ -2182,6 +2196,24 @@ function openWhatsappSheet(btn) {
   ov.classList.add('open');
 }
 /* ===== SLICE2:IMPORT:END ===== */
+/* ===== SLICE3:IMPORT-3:START — batch-3 pure builders ===== */
+import { helpDiagnosisHtml } from './stacked-view.js';
+/* ===== SLICE3:IMPORT-3:END ===== */
+/* ===== SLICE3:LOGIC-3:START — batch-3 module logic (help diagnosis sheet; gpsoff / cierreRechazado / offline to follow) ===== */
+// SLICE3:HELP — the «¿Por qué no veo pedidos?» diagnosis sheet (prototype S.help), mounted on demand (reusing the
+// .sheet-backdrop) in place of the old idle alert(). The GPS row reads the REAL last_location_ts (age + live via
+// isStaleFix); dismissible «Entendido». Pure data in, DOM here.
+function openHelpSheet() {
+  const lt = driverState && driverState.last_location_ts;
+  const ageMs = (typeof lt === 'number') ? Date.now() - lt : null;
+  const gpsLive = (typeof lt === 'number') && !isStaleFix(lt, Date.now());
+  let ov = $('drv2-help');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'drv2-help'; ov.className = 'sheet-backdrop'; document.body.appendChild(ov); }
+  ov.innerHTML = helpDiagnosisHtml({ gpsAgeMs: ageMs, gpsLive }, { ICONS, esc: escapeHtml });
+  ov.onclick = (e) => { if (e.target === ov || (e.target.closest && e.target.closest('#btn-help-done'))) ov.classList.remove('open'); };
+  ov.classList.add('open');
+}
+/* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
    drivers/{uid}/nav_app (own-uid, enum) with a localStorage mirror; «Cerrar sesión» reuses driverSignOut. ===== */
 const NAVP_ICONS = {
@@ -3244,15 +3276,9 @@ $('screen-onshift').addEventListener('click', (e) => {
 $('screen-onshift').addEventListener('click', drv2ActionGuard, true);
 /* ===== SLICE2:STACKED-HANDLERS:END ===== */
 // "Why don't I see tasks?" help link on the idle state
-$('idle-help-link').addEventListener('click', () => {
-  alert(
-    'Posibles razones:\n\n' +
-    '• Aún no se ha asignado un pedido a ti\n' +
-    '• Tu GPS está inactivo (revisa el indicador arriba)\n' +
-    '• Las notificaciones están desactivadas\n\n' +
-    'Si crees que algo está mal, contacta al despachador.'
-  );
-});
+/* ===== SLICE3:HELP-HANDLER:START — «¿Por qué no veo pedidos?» opens the diagnosis sheet (S.help), not an alert() ===== */
+$('idle-help-link').addEventListener('click', () => { openHelpSheet(); });
+/* ===== SLICE3:HELP-HANDLER:END ===== */
 
 // Stacked-order queue → view-only detail sheet
 $('queue-slot').addEventListener('click', (e) => {
