@@ -787,7 +787,7 @@ createOrderApp.all('*', async (req, res) => {
   const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`createOrder: restaurant_id=${restaurantId}`);
-  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId); { const tr = TIP.orderRefusal(body); if (tr) return res.status(tr.status).json({ error: tr.error }); }   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads
+  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId); if (TIP.refuse(res, body)) return;   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads
   const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed
   // 2c FAIL-CLOSED GUARD — the FIRST statement after the resolver, deliberately. Everything below can
   // reach a pricing seam: validateOrderPayload → computeServerTotal, which silently falls back to the
@@ -1497,7 +1497,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`chargeOnlineOrder: restaurant_id=${restaurantId}`);
-  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId); { const tr = TIP.orderRefusal(body); if (tr) return res.status(tr.status).json({ error: tr.error }); }   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads
+  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId); if (TIP.refuse(res, body)) return;   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads
   const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed
   // 2c FAIL-CLOSED GUARD — first statement after the resolver, ahead of pending-order assembly, the
   // availability read, the rate-limit write, the reward reserve, acquireHostedAttempt and
@@ -2031,7 +2031,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // so the only post-reserve failures are the acquire outcomes + hosted-create, each released below. Bound to
   // the SAME payment fingerprint the attempt uses → hold ↔ order ↔ charge are one identity. Idempotent: a
   // retry/reuse returns 'reused' (a prior attempt's hold → we do NOT own the debit).
-  let redemptionOwnsHold = false; if (PE.refusesFresh(clsForMenu, body, process.env)) return res.status(503).json({ error: 'payer_email_unconfigured', order_id: orderId });   // S2 P-C: a FRESH checkout with no payer email → refused before the reserve and the acquire (recovery is never refused)
+  let redemptionOwnsHold = false; if (PE.refusesFresh(clsForMenu, body, process.env)) return PE.refuse(res, orderId);   // S2 P-C: a FRESH checkout with no payer email → refused before the reserve and the acquire (recovery is never refused)
   if (redemptionCanonical) {
     // hosted_expires_at bound AT RESERVE = nowTs + HOSTED_TTL_MS — IDENTICAL to acquireHostedAttempt's
     // expires_at (same nowTs, same TTL) — so an unattached hold is sweep-visible immediately; attach refines
@@ -2139,7 +2139,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     /* extras:end card-map */
     // 1D D4-b: a TYPED conflict (binding_format_invalid / cart_unverifiable) keeps its reason; a legacy mismatch → the neutral 'conflict'
     console.warn(`chargeOnlineOrder: ${orderId} — 409 order_exists (acquire conflict${acq.reason ? `: ${acq.reason}` : ''})`);
-    return acq.reason === 'payer_email_unconfigured' ? res.status(503).json({ error: 'payer_email_unconfigured', order_id: orderId }) : res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));   // S2 P-C: the acquire's fresh-issuance payer check (no attempt written; the hold was released above)
+    return acq.reason === 'payer_email_unconfigured' ? PE.refuse(res, orderId) : res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));   // S2 P-C: the acquire's fresh-issuance payer check (no attempt written; the hold was released above)
   }
   if (acq.outcome === 'closed') {
     await releaseHoldIfOwned();   // abandoned: order is in a terminal-closed state

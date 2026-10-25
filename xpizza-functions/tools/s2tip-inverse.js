@@ -15,7 +15,7 @@ const HUNKS = [
     "const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config'); const DW = require('./delivery/delivery-wire');   // S3a envío (delivery/; tools/s3a-inverse.js)\n"
   ],
   [
-    "  if (!ridDefaulted) console.log(`createOrder: restaurant_id=${restaurantId}`);\n  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId); { const tr = TIP.orderRefusal(body); if (tr) return res.status(tr.status).json({ error: tr.error }); }   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads\n",
+    "  if (!ridDefaulted) console.log(`createOrder: restaurant_id=${restaurantId}`);\n  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId); if (TIP.refuse(res, body)) return;   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads\n",
     "  if (!ridDefaulted) console.log(`createOrder: restaurant_id=${restaurantId}`);\n  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId);   // 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads\n"
   ],
   [
@@ -51,7 +51,7 @@ const HUNKS = [
     "    storeFp = orderFingerprint(orderId, redemptionPriced.total_cents, fields.items_text, [_schedExtraA8, `rf:${redemptionFingerprint(redemptionCanonical)}`].filter(Boolean).join('|'));\n"
   ],
   [
-    "  if (!ridDefaulted) console.log(`chargeOnlineOrder: restaurant_id=${restaurantId}`);\n  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId); { const tr = TIP.orderRefusal(body); if (tr) return res.status(tr.status).json({ error: tr.error }); }   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads\n",
+    "  if (!ridDefaulted) console.log(`chargeOnlineOrder: restaurant_id=${restaurantId}`);\n  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId); if (TIP.refuse(res, body)) return;   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads\n",
     "  if (!ridDefaulted) console.log(`chargeOnlineOrder: restaurant_id=${restaurantId}`);\n  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId);   // 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads\n"
   ],
   [
@@ -87,7 +87,7 @@ const HUNKS = [
     "    schedExtra: isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '' }));\n"
   ],
   [
-    "  let redemptionOwnsHold = false; if (PE.refusesFresh(clsForMenu, body, process.env)) return res.status(503).json({ error: 'payer_email_unconfigured', order_id: orderId });   // S2 P-C: a FRESH checkout with no payer email → refused before the reserve and the acquire (recovery is never refused)\n",
+    "  let redemptionOwnsHold = false; if (PE.refusesFresh(clsForMenu, body, process.env)) return PE.refuse(res, orderId);   // S2 P-C: a FRESH checkout with no payer email → refused before the reserve and the acquire (recovery is never refused)\n",
     "  let redemptionOwnsHold = false;\n"
   ],
   [
@@ -95,7 +95,7 @@ const HUNKS = [
     "      { a8Fp: () => a8FingerprintC, fresh: cardTextVersion },   // PLAN-A A8a: the a8 candidate (compared only against an 'a8' record) + this request's fresh version\n"
   ],
   [
-    "    return acq.reason === 'payer_email_unconfigured' ? res.status(503).json({ error: 'payer_email_unconfigured', order_id: orderId }) : res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));   // S2 P-C: the acquire's fresh-issuance payer check (no attempt written; the hold was released above)\n",
+    "    return acq.reason === 'payer_email_unconfigured' ? PE.refuse(res, orderId) : res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));   // S2 P-C: the acquire's fresh-issuance payer check (no attempt written; the hold was released above)\n",
     "    return res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));\n"
   ],
   [

@@ -18,4 +18,7 @@ const payerEmail = (body, env) => validEmail(body && body.customer_email) || val
 const refusesFresh = (cls, body, env) => !!cls && cls.willIssueFreshUrl === true && !payerEmail(body, env);
 const unconfigured = (body, env) => !payerEmail(body, env);
 
-module.exports = { validEmail, payerEmail, refusesFresh, unconfigured };
+// The handler's response for both refusal points (pre-reserve and the acquire's fresh-issuance conflict).
+const refuse = (res, orderId) => res.status(503).json({ error: 'payer_email_unconfigured', order_id: orderId });
+
+module.exports = { validEmail, payerEmail, refusesFresh, unconfigured, refuse };

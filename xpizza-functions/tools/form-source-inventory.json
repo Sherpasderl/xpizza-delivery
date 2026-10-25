@@ -1106,6 +1106,7 @@
     "xpizza-functions/contract/token.guard.test.js",
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/delivery/envio-consumers.test.mjs",
+    "xpizza-functions/delivery/tip-consumers.test.mjs",
     "xpizza-functions/test/brands-rules.emulator.test.js",
     "xpizza-functions/test/driver-assignment-parity.emulator.test.js",
     "xpizza-functions/test/driver-cuadre-rules.emulator.test.js",
@@ -1758,6 +1759,8 @@
   "merchant/merchant-transitions.js",
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
+  "order-exists.js",
+  "payer-email.js",
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
@@ -1782,6 +1785,7 @@
   "stats/stats-api.js",
   "stats/stats-build.js",
   "test-push-core.js",
+  "tip.js",
   "token-gate.js",
   "tracking/claims-txn.js",
   "tracking/derive.js",
@@ -1920,12 +1924,14 @@
     {
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
+      "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s3a-wiring.guard.test.js",
      "inverses": [
+      "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
     }
@@ -1937,19 +1943,22 @@
     {
      "file": "xpizza-functions/a1-wiring.guard.test.js",
      "inverses": [
-      "tools/a1-inverse.js"
+      "tools/a1-inverse.js",
+      "tools/s2tip-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
-      "tools/a1-inverse.js"
+      "tools/a1-inverse.js",
+      "tools/s2tip-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/order-control-wiring.guard.test.js",
      "inverses": [
-      "tools/a1-inverse.js"
+      "tools/a1-inverse.js",
+      "tools/s2tip-module-inverse.js"
      ]
     }
    ],
@@ -2005,6 +2014,7 @@
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2033,6 +2043,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2064,6 +2075,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2084,6 +2096,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2111,6 +2124,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2140,6 +2154,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2159,6 +2174,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2169,6 +2185,7 @@
      "file": "xpizza-functions/driver-ledger-wiring.guard.test.js",
      "inverses": [
       "tools/driver-ledger-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2191,6 +2208,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2217,6 +2235,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2238,6 +2257,7 @@
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2257,6 +2277,7 @@
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2272,6 +2293,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2298,6 +2320,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2331,6 +2354,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2349,6 +2373,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2364,6 +2389,7 @@
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2384,6 +2410,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2408,6 +2435,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2421,6 +2449,7 @@
     {
      "file": "xpizza-functions/s3a-wiring.guard.test.js",
      "inverses": [
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2430,6 +2459,7 @@
     {
      "file": "xpizza-functions/s3b-wiring.guard.test.js",
      "inverses": [
+      "tools/s2tip-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5r-inverse.js"
@@ -2438,6 +2468,7 @@
     {
      "file": "xpizza-functions/s3c-wiring.guard.test.js",
      "inverses": [
+      "tools/s2tip-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s5r-inverse.js"
      ]
@@ -2453,6 +2484,7 @@
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2461,6 +2493,13 @@
       "tools/signup-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/s5r-wiring.guard.test.js",
+     "inverses": [
+      "tools/s2tip-inverse.js",
+      "tools/s5r-inverse.js"
      ]
     },
     {
@@ -2478,6 +2517,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2498,6 +2538,7 @@
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2525,6 +2566,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2576,6 +2618,7 @@
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2592,6 +2635,7 @@
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2616,6 +2660,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -2664,7 +2709,8 @@
     "xpizza-functions/recon-close-fulfilled.test.js",
     "xpizza-functions/restaurant-config.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
-    "xpizza-functions/s5r-wiring.guard.test.js",
+    "xpizza-functions/s2tip-wiring.guard.test.js",
+    "xpizza-functions/s2tip.test.js",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
     "xpizza-functions/serial3-differential.test.js",
@@ -2792,6 +2838,21 @@
    "pins": [],
    "lifts": []
   },
+  "order-exists.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/order-control-wiring.guard.test.js",
+     "inverses": [
+      "tools/s2tip-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
+  },
+  "payer-email.js": {
+   "pins": [],
+   "lifts": []
+  },
   "pixelpay-charge.js": {
    "pins": [],
    "lifts": []
@@ -2866,12 +2927,14 @@
     {
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
+      "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s3a-wiring.guard.test.js",
      "inverses": [
+      "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
     }
@@ -2931,6 +2994,7 @@
      "file": "xpizza-functions/a1-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
+      "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
     },
@@ -2938,13 +3002,13 @@
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
       "tools/a1-inverse.js",
+      "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
     }
    ],
    "lifts": [
     "xpizza-functions/rewards-catalog-cutover.test.js",
-    "xpizza-functions/s3a-wiring.guard.test.js",
     "xpizza-functions/serial3-wiring.guard.test.js"
    ]
   },
@@ -2980,6 +3044,10 @@
    "pins": [],
    "lifts": []
   },
+  "tip.js": {
+   "pins": [],
+   "lifts": []
+  },
   "token-gate.js": {
    "pins": [
     {
@@ -2991,8 +3059,7 @@
    ],
    "lifts": [
     "xpizza-functions/catalog/charge-inputs.test.js",
-    "xpizza-functions/charge-gate-placement.test.js",
-    "xpizza-functions/s3a-wiring.guard.test.js"
+    "xpizza-functions/charge-gate-placement.test.js"
    ]
   },
   "tracking/claims-txn.js": {

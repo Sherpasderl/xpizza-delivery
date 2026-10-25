@@ -95,10 +95,9 @@ function computeWeek(week, rows, prior, cfg) {
     }
     if (!stamp) { if (!listedUnres.has(oid)) unresolved.push(oid); continue; }
     const tip = Number.isSafeInteger(o.tip_cents) && o.tip_cents > 0 ? o.tip_cents : 0;
-    const acc = o.delivered_at >= start ? tipsNow : tipsLate;
-    acc.set(stamp, (acc.get(stamp) || 0) + tip);
-    if (o.delivered_at >= start) entry(stamp).deliveries.push(oid);
-    else entry(stamp).adjustments.push({ order_id: oid, original_week: weekOf(o.delivered_at) });
+    const accrue = (acc) => acc.set(stamp, (acc.get(stamp) || 0) + tip);   // S2: the tip rides the delivery that pays it
+    if (o.delivered_at >= start) { entry(stamp).deliveries.push(oid); accrue(tipsNow); }
+    else { entry(stamp).adjustments.push({ order_id: oid, original_week: weekOf(o.delivered_at) }); accrue(tipsLate); }
   }
   const prev = prior.find((n) => n && n.week === prevWeek(week));
   for (const [uid, d] of Object.entries((prev && prev.drivers) || {})) if (!d.paid && d.net_cents < 0) entry(uid);

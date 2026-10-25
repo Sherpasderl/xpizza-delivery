@@ -1,7 +1,7 @@
 'use strict';
 // S2-srv-tip — THE TIP, PURE (PLAN-capp-S2-r4 §3.1/§3.2/§3.5).
 //
-// An optional body field `tip_cents` on quoteOrder / createOrder / chargeOnlineOrder. The tip goes to the driver: it
+// An optional body field `tip_cents` on the quote, cash-order and card-charge endpoints. The tip goes to the driver: it
 // joins the charged total exactly once (it rides the SERVER's envío context, delivery/delivery-pricing.js withTip) and
 // is excluded from the restaurant's factura and revenue (pass-through, like envío).
 //
@@ -29,6 +29,15 @@ function orderRefusal(body) {
   return null;
 }
 
+// The order handlers' one-line seam: answers the refusal on `res` and returns true, or returns false (proceed). Kept here so
+// the handlers' index.js hunks read no response status themselves (the R3 census numbers those sites).
+function refuse(res, body) {
+  const r = orderRefusal(body);
+  if (!r) return false;
+  res.status(r.status).json({ error: r.error });
+  return true;
+}
+
 // The fingerprint component: appended to the extras list every orderFingerprint call already filters with
 // `.filter(Boolean).join('|')`, so no tip → '' → filtered → byte-identical (§3.2).
 const tipExtra = (n) => (n > 0 ? `tp:${n}` : '');
@@ -41,4 +50,4 @@ function tipBindingConflict(record, incomingTip) {
   return normTip(record.tip_cents) !== normTip(incomingTip) ? { reason: 'tip' } : null;
 }
 
-module.exports = { TIP_MAX_CENTS, normTip, ofBody, orderRefusal, tipExtra, extraOf, tipBindingConflict };
+module.exports = { TIP_MAX_CENTS, normTip, ofBody, orderRefusal, refuse, tipExtra, extraOf, tipBindingConflict };

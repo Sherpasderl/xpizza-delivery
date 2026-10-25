@@ -213,8 +213,8 @@ const HUNKS = [
  },
  {
   "file": "driver-ledger/ledger-core.js",
-  "now": "    if (!stamp) { if (!listedUnres.has(oid)) unresolved.push(oid); continue; }\n    const tip = Number.isSafeInteger(o.tip_cents) && o.tip_cents > 0 ? o.tip_cents : 0;\n    const acc = o.delivered_at >= start ? tipsNow : tipsLate;\n    acc.set(stamp, (acc.get(stamp) || 0) + tip);\n",
-  "was": "    if (!stamp) { if (!listedUnres.has(oid)) unresolved.push(oid); continue; }\n"
+  "now": "    if (!stamp) { if (!listedUnres.has(oid)) unresolved.push(oid); continue; }\n    const tip = Number.isSafeInteger(o.tip_cents) && o.tip_cents > 0 ? o.tip_cents : 0;\n    const accrue = (acc) => acc.set(stamp, (acc.get(stamp) || 0) + tip);   // S2: the tip rides the delivery that pays it\n    if (o.delivered_at >= start) { entry(stamp).deliveries.push(oid); accrue(tipsNow); }\n    else { entry(stamp).adjustments.push({ order_id: oid, original_week: weekOf(o.delivered_at) }); accrue(tipsLate); }\n",
+  "was": "    if (!stamp) { if (!listedUnres.has(oid)) unresolved.push(oid); continue; }\n    if (o.delivered_at >= start) entry(stamp).deliveries.push(oid);\n    else entry(stamp).adjustments.push({ order_id: oid, original_week: weekOf(o.delivered_at) });\n"
  },
  {
   "file": "driver-ledger/ledger-core.js",
