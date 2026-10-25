@@ -8,6 +8,7 @@ import {
   activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml,
   stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
   pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml,
+  contactRowHtml, waTemplatesHtml,
 } from './stacked-view.js';
 
 let passed = 0;
@@ -172,10 +173,14 @@ t('activeCardHtml: delivery instructions block (address_details), contact kept (
   assert.ok(html.includes('class="instr"') && html.includes('portón negro'), 'instructions block');
   assert.ok(html.includes('recipient-phone') && html.includes('recipient-whatsapp'), 'contact kept on the active card');
 });
-t('activeCardHtml: WhatsApp link uses the 504-normalized number (Codex r3 P2-2), not the raw 8-digit local', () => {
+t('activeCardHtml → waTemplatesHtml: the WhatsApp number reaches wa.me 504-normalized (Codex r3 P2-2), not the raw local', () => {
   const html = activeCardHtml(A, DEPS, { ordinal: 1 });   // A.customer_phone = '99998888'
-  assert.ok(html.includes('wa.me/50499998888?'), 'wa.me number normalized to +504 via the established waPhone helper');
-  assert.ok(!html.includes('wa.me/99998888?'), 'NOT the un-normalized 8-digit local');
+  assert.ok(!/wa\.me\//.test(html), 'the active card no longer embeds a wa.me link — WhatsApp now opens the template sheet');
+  const m = html.match(/data-wa-phone="([^"]*)"/);
+  assert.ok(m, 'the WhatsApp button carries the order phone for the sheet to normalize');
+  const sheet = waTemplatesHtml({ name: A.customer_name, brand: 'X. Pizza', phone: m[1], driverName: 'Leo' }, DEPS);
+  assert.ok(sheet.includes('wa.me/50499998888?'), 'the sheet normalizes via the established waPhone helper (+504)');
+  assert.ok(!sheet.includes('wa.me/99998888?'), 'NOT the un-normalized 8-digit local');
 });
 t('activeCardHtml: the nav link is BOUND to its rendered task (data-nav-task) (Codex r3 P1-1)', () => {
   const del = deepFreeze({ orderId: 'A', phase: 'delivery', deliveryTask: { id: 'A_d', destination_lat: 14, destination_lng: -87 }, order: { customer_name: 'Ana', display_number: 1, total: 385, payment_method: 'cash', lat: 14, lng: -87 } });
@@ -385,6 +390,37 @@ t('deliverySummaryHtml: affirmative-only + Pagos gate — paid-online never «Co
   assert.ok(pending.includes('Sin cobro confirmado') && !/pagad/i.test(pending), 'pending online → never «pagado» (affirmative-only)');
   const earn = deliverySummaryHtml({ order: { payment_method: 'cash', total: 385 }, deliveredName: 'Daniela', vuelto: 115, showEarnings: true, dayCashOwed: 385 }, DEPS);
   assert.ok(earn.includes('+ L 70') && earn.includes('Tu pago por esta entrega'), 'earnings on → +L 70 shows');
+});
+
+// ---------- contactRowHtml + waTemplatesHtml (whatsapp / S.whatsapp) ----------
+t('contactRowHtml: tel link for Llamar; WhatsApp is a BUTTON carrying phone/name/brand-from-order (no href, no greeting)', () => {
+  const html = contactRowHtml({ customer_phone: '9999-8888', customer_name: 'Daniela Mejía', restaurant_display_name: 'La Musa' }, DEPS);
+  assert.ok(/<a class="recipient-phone" href="tel:99998888"/.test(html), 'Llamar is a tel: link with the stripped number');
+  assert.ok(/<button[^>]*class="recipient-whatsapp"/.test(html), 'WhatsApp is a button (opens the template sheet), not an <a href>');
+  assert.ok(!/recipient-whatsapp[^>]*href=/.test(html), 'the WhatsApp control has NO direct href');
+  assert.ok(html.includes('data-wa-phone="9999-8888"') && html.includes('data-wa-name="Daniela Mejía"'), 'carries the order phone + name');
+  assert.ok(html.includes('data-wa-brand="La Musa"'), 'brand comes from the order (brandLabel), never hardwired');
+});
+
+t('waTemplatesHtml: 3 phase templates + a free message; brand-from-order + driver name interpolated; free has NO prefilled text', () => {
+  const html = waTemplatesHtml({ name: 'Daniela Mejía', brand: 'La Musa', phone: '9999-8888', driverName: 'Marvin' }, DEPS);
+  assert.ok(html.includes('Escribirle a Daniela'), 'title addresses the customer by first name');
+  const btns = html.match(/<button class="wa-tpl"/g) || [];
+  assert.equal(btns.length, 4, 'exactly 3 templates + 1 free message');
+  assert.ok(/En camino<\/small>/.test(html) && /Al llegar<\/small>/.test(html) && /Dirección<\/small>/.test(html) && /Sin plantilla<\/small>/.test(html), 'the four phase labels');
+  // the «en camino» template interpolates the driver name + the ORDER brand (never a literal brand)
+  assert.ok(html.includes('soy Marvin, su repartidor de La Musa'), 'driver name + order brand woven into the draft');
+  // every template href is wa.me/<waPhone>?text=<encoded>; the free button opens the chat with NO text
+  const hrefs = [...html.matchAll(/data-href="(https:\/\/wa\.me\/[^"]*)"/g)].map((m) => m[1]);
+  assert.equal(hrefs.length, 4, 'four wa.me hrefs');
+  assert.ok(hrefs.slice(0, 3).every((h) => /\?text=/.test(h)), 'the three phase templates prefill an editable message');
+  assert.ok(!/\?text=/.test(hrefs[3]), 'the free-message button opens WhatsApp with no prefilled text');
+  assert.ok(hrefs.every((h) => h.includes('wa.me/50499998888')), 'wa.me uses waPhone(phone) — 8-digit HN local → +504');
+});
+
+t('waTemplatesHtml: brand-agnostic — a different order brand flows straight through (no hardwired restaurant)', () => {
+  const xp = waTemplatesHtml({ name: 'Ana', brand: 'X. Pizza', phone: '98887777', driverName: 'Leo' }, DEPS);
+  assert.ok(xp.includes('su repartidor de X. Pizza') && !xp.includes('La Musa'), 'the X. Pizza brand, nothing hardwired');
 });
 
 // ---------- cancelBannerHtml (apCancelada / S17) ----------

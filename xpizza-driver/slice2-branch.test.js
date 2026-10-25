@@ -24,6 +24,7 @@ import {
   phaseStripHtml, stopNavInfo, resolveVisibleLabels,
   navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
   pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM,
+  contactRowHtml, waTemplatesHtml,
 } from './stacked-view.js';
 import { overviewMapSvg, isStaleFix } from './overview-map.js';
 // REAL money-grade day total — the resumen stat REUSES computeShiftCash().cashOwed (never a stub), so a mutation
@@ -321,7 +322,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
     'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml', 'pickupSubLabel',
-    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash',
+    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash', 'contactRowHtml', 'waTemplatesHtml',
     'renderIdleState', 'toast', 'resolveCompleteErrorMessage', 'CSS', '_driverState', '_rec'];
   const CSS = dom.window.CSS || { escape: (s) => String(s).replace(/[^\w-]/g, '\\$&') };
   const lsStore = {};   // per-harness in-memory localStorage (the real drv2ReadNavPref per-uid mirror)
@@ -330,7 +331,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
     navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
-    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash,
+    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash, contactRowHtml, waTemplatesHtml,
     renderIdleState, toast, resolveCompleteErrorMessage, CSS, driverState, rec);
   // Feed the observer the SAME live mock state getDriverOrders reads BEFORE every render (prod's allTasks/
   // allOrders are the live listener state; a captured ref would go stale when completeTask deletes the task legs).
@@ -427,7 +428,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
     'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml', 'pickupSubLabel',
-    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash',
+    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash', 'contactRowHtml', 'waTemplatesHtml',
     'attachIncomingBannerHandlers', 'renderIdleState', 'toast', 'resolveCompleteErrorMessage', '_driverState', '_rec',
     '_latchInit', '_authGen'];
   const fn = new Function(...params, body);
@@ -435,7 +436,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
     navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
-    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash,
+    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash, contactRowHtml, waTemplatesHtml,
     attachIncomingBannerHandlers, renderIdleState, toast, resolveCompleteErrorMessage, driverState, rec,
     latchInit, authGen);
 
@@ -1201,6 +1202,30 @@ t('R3 resumen money-grade: the day stat equals computeShiftCash().cashOwed, hidd
   assert.ok(ov2 && ov2.classList.contains('open'), 'the resumen still shows the delivery itself while the feed settles');
   assert.ok(!r2.document.querySelector('#drv2-resumen .rs-stat'), 'a settling feed HIDES the day stat — never a false L0');
   assert.ok(/Cobraste/.test(ov2.innerHTML), 'the per-delivery cobro still shows — this order’s own collectionFor, not a day aggregate');
+});
+
+// SLICE3:WHATSAPP R4 — tapping «WhatsApp» on an accepted stop opens the phase-template sheet (not a direct
+// wa.me jump); a template opens wa.me with the session driver name + order brand woven in, then the sheet closes.
+t('R4 whatsapp: «WhatsApp» opens the template sheet; a template opens wa.me (504 + text) and closes; the card holds no wa.me link', () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Daniela' },
+  ]), driverState: { lat: 15.47, lng: -88.015, active: true, last_location_ts: Date.now(), name: 'Marvin' } });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();
+  assert.ok(!r.active().includes('wa.me/'), 'the active card embeds NO wa.me link — WhatsApp opens the sheet');
+  const waBtn = r.document.querySelector('#active-order-slot .recipient-whatsapp');
+  assert.ok(waBtn && waBtn.tagName === 'BUTTON', 'the accepted stop shows a WhatsApp button');
+  const opened = [];
+  r.window.open = (url) => { opened.push(url); return null; };   // capture the wa.me launch
+  waBtn.dispatchEvent(new r.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  const sheet = r.document.getElementById('drv2-whatsapp');
+  assert.ok(sheet && sheet.classList.contains('open'), 'the phase-template sheet opens');
+  const tpls = sheet.querySelectorAll('.wa-tpl');
+  assert.equal(tpls.length, 4, '3 phase templates + 1 free message');
+  assert.ok(sheet.innerHTML.includes('soy Marvin'), 'the session driver name is woven into the draft');
+  tpls[0].dispatchEvent(new r.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  assert.equal(opened.length, 1, 'tapping a template opens WhatsApp once');
+  assert.ok(/^https:\/\/wa\.me\/504\d+\?text=/.test(opened[0]), 'wa.me with a 504-normalized number + prefilled editable text');
+  assert.ok(!sheet.classList.contains('open'), 'the sheet closes after launching WhatsApp');
 });
 
 // P2-6 nav-pref hydration (kills the Waze stub / an un-hydrated read): driverState.nav_app = 'maps' → the lone

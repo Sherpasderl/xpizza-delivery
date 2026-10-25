@@ -17,7 +17,7 @@
  * The Cuadra restyle is CSS-only (SLICE2:PRESENTATION) on these same classes; geometry/hooks stay baseline.
  */
 import { navTarget, wazeHref, mapsHref, brandLabel, waPhone, itemLines } from './single-order-view.js';
-import { brandMeta, driverGreeting } from './brand-helpers.js';
+import { brandMeta } from './brand-helpers.js';
 import { displayOrderLabel } from './order-helpers.js';
 import { collectionFor, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
 
@@ -398,7 +398,7 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
       ${scheduledBadge(order)}
       ${accepted ? `<div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${esc(order.address_detected || (o.deliveryTask && o.deliveryTask.destination_address) || '—')}</div></div></div>` : ''}
       ${accepted && order.address_details ? `<div class="instr"><span class="ico">${ICONS.door || DOOR_SVG}</span><div class="instr-main">${esc(order.address_details)}</div></div>` : ''}
-      ${accepted && order.customer_phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(order.customer_phone).replace(/[^\d+]/g, '')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${waPhone(order.customer_phone)}?text=${encodeURIComponent(driverGreeting(order))}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
+      ${accepted && order.customer_phone ? contactRowHtml(order, { ICONS, esc }) : ''}
       <div class="ac-hr"></div>
       ${collectionFor(order).kind === 'warning' ? paymentRowHtml(order, esc).replace('>COBRO<', '>PAGO<') : paymentRowHtml(order, esc)}
       ${vueltoLine(order, deps)}
@@ -779,6 +779,57 @@ export function deliverySummaryHtml(info = {}, deps = {}) {
       <div class="rs-card">${rsRow(ICONS.cash || '', cobT, cobSub, cobV)}${vueltoRow}${earnRow}</div>
       ${stat}
       <button class="rs-done" id="btn-resumen-done">Listo</button>
+    </div>`;
+}
+
+/**
+ * SLICE3:WHATSAPP — the contact row (Llamar + WhatsApp), shared by every post-accept card. «Llamar» stays a
+ * tel: link; «WhatsApp» is now a BUTTON that opens the phase-template sheet (waTemplatesHtml) instead of jumping
+ * straight to a single greeting. It carries the order-derived strings the sheet needs (phone, customer name,
+ * brand-from-order) as data-attrs; the open-handler adds the session driver name. Caller gates on accept + phone.
+ */
+export function contactRowHtml(order = {}, deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  const phone = String(order.customer_phone || '');
+  const tel = phone.replace(/[^\d+]/g, '');
+  const brand = brandLabel(order) || '';
+  return `<div class="contact-row">`
+    + `<a class="recipient-phone" href="tel:${tel}"><span class="ico">${ICONS.phone}</span>Llamar</a>`
+    + `<button type="button" class="recipient-whatsapp" data-wa-phone="${esc(phone)}" data-wa-name="${esc(String(order.customer_name || ''))}" data-wa-brand="${esc(brand)}"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</button>`
+    + `</div>`;
+}
+
+/**
+ * SLICE3:WHATSAPP — the per-phase WhatsApp template sheet (prototype S.whatsapp). Three phase templates + a free
+ * message, each opening wa.me PRE-FILLED with an EDITABLE draft (the driver reviews/edits before sending). The
+ * restaurant name comes from the ORDER (brand, resolved by the caller via brandLabel) — never hardwired; the
+ * driver's own name comes from the session. Pure: takes plain strings so the open-handler can build it from the
+ * contact-row's data-attrs + the session name. Each button carries the full wa.me href; the free button opens the
+ * chat with NO prefilled text. Customer identity is already gated upstream (the contact-row only renders post-accept).
+ */
+export function waTemplatesHtml(info = {}, deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  const { name = '', brand = '', phone = '', driverName = '' } = info;
+  const fn = firstName(name);
+  const num = waPhone(phone);
+  const soy = driverName ? `soy ${driverName}, ` : 'soy ';
+  const deBrand = brand ? ` de ${brand}` : '';
+  const tpls = [
+    { label: 'En camino', msg: `${fn ? 'Hola ' + fn + ', ' : 'Hola, '}${soy}su repartidor${deBrand}. Voy en camino, llego en unos 6 minutos.` },
+    { label: 'Al llegar', msg: `Ya estoy afuera con su pedido${deBrand}. ¿Me abre, por favor?` },
+    { label: 'Dirección', msg: 'No encuentro la dirección. ¿Me manda su ubicación por aquí?' },
+  ];
+  const wa = ICONS.whatsapp || '';
+  const tplBtn = (msg, label) =>
+    `<button class="wa-tpl" data-href="https://wa.me/${num}?text=${encodeURIComponent(msg)}"><span class="ico">${wa}</span><span class="wa-txt">${esc(msg)}<small>${esc(label)}</small></span></button>`;
+  const freeBtn =
+    `<button class="wa-tpl" data-href="https://wa.me/${num}"><span class="ico">${wa}</span><span class="wa-txt">Escribir mi propio mensaje<small>Sin plantilla</small></span></button>`;
+  return `<div class="sheet wa-sheet" role="dialog" aria-modal="true">
+      <div class="grab"></div>
+      <h4 class="wa-h4">Escribirle${fn ? ' a ' + esc(fn) : ''}</h4>
+      <p class="wa-sub">Se abre WhatsApp con el mensaje listo. Podés editarlo antes de enviar.</p>
+      <div class="wa-tpls">${tpls.map((t) => tplBtn(t.msg, t.label)).join('')}${freeBtn}</div>
+      <button class="sheet-close" id="wa-cancel">Cancelar</button>
     </div>`;
 }
 

@@ -1420,6 +1420,15 @@
 .rs-stat b { display: block; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; color: var(--text, #0D1424); }
 .rs-stat small { font-size: 12px; color: var(--muted, #6B7687); }
 .rs-done { margin-top: 2px; width: 100%; background: var(--accent, #2F5FB8); color: #fff; border: none; border-radius: 14px; padding: 14px; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 15px; }
+/* SLICE3:WHATSAPP — per-phase template sheet (whatsapp / S.whatsapp); reuses .sheet/.grab/.sheet-close */
+.wa-sheet { display: flex; flex-direction: column; gap: 10px; }
+.wa-sheet .wa-h4 { margin: 2px 0 0; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -.01em; color: var(--text, #0D1424); }
+.wa-sub { margin: 0 0 2px; font-size: 13px; line-height: 1.4; color: var(--muted, #6B7687); }
+.wa-tpls { display: flex; flex-direction: column; gap: 8px; }
+.wa-tpl { display: flex; gap: 11px; align-items: flex-start; width: 100%; text-align: left; background: var(--surface-2, #F5F7FA); border: 1px solid var(--line, #EEF1F5); border-radius: 13px; padding: 12px 13px; font-family: inherit; color: var(--text, #0D1424); cursor: pointer; }
+.wa-tpl .ico { flex: none; width: 18px; height: 18px; margin-top: 1px; color: var(--green, #2F9E66); }
+.wa-tpl .wa-txt { display: block; font-size: 13.5px; line-height: 1.4; font-weight: 600; }
+.wa-tpl .wa-txt small { display: block; margin-top: 5px; font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--text-dim, #8A93A6); }
 /* apCancelada banner (red, persistent until «Entendido») */
 .cancel-banner { display: flex; gap: 9px; align-items: flex-start; margin: 2px 16px 6px; padding: 11px 13px; border-radius: 12px; background: var(--sv-err-bg, #FBEAEA); color: var(--sv-err, #B9323A); font-size: 13px; line-height: 1.35; }
 .cancel-banner .ico { flex: none; width: 18px; height: 18px; margin-top: 1px; }
@@ -1747,7 +1756,7 @@ let slice1ReviewLatchKey = null;
 /* ===== SLICE2:IMPORT:START — stacked view + overview map (slice 2); pure builders in stacked-view.js / overview-map.js ===== */
 import { activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels,
          navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
-         pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM } from './stacked-view.js';
+         pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, contactRowHtml, waTemplatesHtml } from './stacked-view.js';
 import { overviewMapSvg, isStaleFix } from './overview-map.js';
 import { cuentaHtml, navAppHtml } from './nav-view.js';   // R7 Cuenta + «App de navegación» pure builders
 // The display-only map-aging timer (SLICE2:MAP-LIFECYCLE): a ~30 s re-render that re-evaluates the driver
@@ -2060,6 +2069,30 @@ function drv2ShowResumen(info) {
   ov.classList.add('open');
   const done = ov.querySelector('#btn-resumen-done'); if (done) done.onclick = drv2DismissResumen;
   drv2ResumenShownFor = info.orderId;
+}
+
+// SLICE3:WHATSAPP — the per-phase template sheet (prototype S.whatsapp). Opened from a post-accept contact row's
+// «WhatsApp» button. Mounted on demand (like the resumen); each template button opens wa.me with an EDITABLE
+// draft, the free button opens the chat with no prefilled text. Brand comes from the order (data-wa-brand, set
+// by contactRowHtml via brandLabel); the driver's own name comes from the session.
+function drv2CloseWhatsapp() { const ov = $('drv2-whatsapp'); if (ov) ov.classList.remove('open'); }
+function openWhatsappSheet(btn) {
+  if (!btn || !btn.getAttribute('data-wa-phone')) return;
+  const driverName = (driverState && driverState.name) || (currentUser && currentUser.email ? currentUser.email.split('@')[0] : '');
+  let ov = $('drv2-whatsapp');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'drv2-whatsapp'; ov.className = 'sheet-backdrop'; document.body.appendChild(ov); }
+  ov.innerHTML = waTemplatesHtml({
+    name: btn.getAttribute('data-wa-name') || '',
+    brand: btn.getAttribute('data-wa-brand') || '',
+    phone: btn.getAttribute('data-wa-phone') || '',
+    driverName,
+  }, { ICONS, esc: escapeHtml });
+  ov.onclick = (e) => {
+    const tpl = e.target.closest && e.target.closest('.wa-tpl');
+    if (tpl) { const href = tpl.getAttribute('data-href'); if (href) window.open(href, '_blank', 'noopener'); drv2CloseWhatsapp(); return; }
+    if (e.target === ov || (e.target.closest && e.target.closest('#wa-cancel'))) drv2CloseWhatsapp();
+  };
+  ov.classList.add('open');
 }
 /* ===== SLICE2:IMPORT:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
@@ -3081,6 +3114,10 @@ $('duty-toggle-on').addEventListener('click', async () => {
 /* ===== SLICE2:STACKED-HANDLERS:START — delegated clicks for the new stacked-flow controls (re-rendered each tick) ===== */
 $('screen-onshift').addEventListener('click', (e) => {
   const hit = (sel) => e.target.closest && e.target.closest(sel);
+  // «WhatsApp» on a post-accept contact row → open the phase-template sheet (S.whatsapp). Informational, never
+  // gated by drv2ActionGuard (it targets nav/slide only); the active-card tap branch below excludes buttons.
+  const waBtn = hit('.recipient-whatsapp');
+  if (waBtn) { openWhatsappSheet(waBtn); return; }
   // «Terminar turno» in the stop header → reuse the EXISTING end-shift path (duty-toggle-on → handleEndShift → O4 → cuadre), unchanged.
   if (hit('#btn-end-shift')) { const t = $('duty-toggle-on'); if (t) t.click(); return; }
   // «Entendido» on the cancelled-stop banner → dismiss it and re-render (S17).
