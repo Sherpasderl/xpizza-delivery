@@ -62,8 +62,8 @@ const SLICE3_REGIONS = loadContract();
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = 'cd1862860d144a5cc6e61fdc0d7f109580c3faaa08d1b6f373dd08bffeaeec20';
-const SLICE2_GUARD_CHECKS = 14;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 13)
+const SLICE2_GUARD_SHA = '0b0173ac9342e43a4a398f2267bec8c5c230b5fba194cab02d62d33d602058a8';
+const SLICE2_GUARD_CHECKS = 15;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
   assert.deepEqual(regions.map((r) => r.name), SLICE3_PINS.names, 'SLICE3 region names/order tampered (added/removed/shrunk region?)');
@@ -105,10 +105,17 @@ const git = (...a) => execFileSync('git', a, { cwd: REPO, maxBuffer: 128 * 1024 
 const gitStr = (...a) => git(...a).toString('utf8');
 
 let passed = 0;
-const t = (name, fn) => { fn(); passed += 1; };
+// Checks MUST be synchronous (Codex r3): an async callback returns a thenable immediately and would be counted
+// before its assertions ran (an `await new Promise(()=>{})` would never execute them). Reject a thenable return
+// BEFORE incrementing — all shipped checks are sync. (Active-handle hangs still need an external timeout.)
+const t = (name, fn) => {
+  const r = fn();
+  assert.ok(!(r && typeof r.then === 'function'), `check "${name}" must be synchronous (it returned a thenable)`);
+  passed += 1;
+};
 // Belt-and-braces (Codex r2 P1): force RED on ANY early exit — if fewer than the expected checks completed (an
 // injected process.exit, a thrown/short-circuited load, a skipped check), the process exit code is forced to 1.
-const EXPECTED_CHECKS = 16;
+const EXPECTED_CHECKS = 17;
 process.on('exit', () => {
   if (passed !== EXPECTED_CHECKS) {
     console.error(`slice3-freeze.guard INCOMPLETE: ${passed}/${EXPECTED_CHECKS} checks ran — early exit / skipped check`);
@@ -348,6 +355,11 @@ t('NEG P2 (r2): dotted/spaced/slashed/Unicode marker names are REJECTED across c
   }
   // the narrow label exception survives: a bare `SLICE3:<word>` with no :START/:END is still not a marker
   assert.deepEqual(slice3Ranges(['// SLICE3:RESUMEN — see the batch-2 overlay']), {});
+});
+
+// Codex r3: an async/thenable check must FAIL immediately, not be silently counted as complete.
+t('NEG: an async/thenable check is rejected before it counts (checks must be synchronous)', () => {
+  assert.throws(() => t('fake-async', async () => {}), /must be synchronous/, 'an async check must fail immediately, not count as complete');
 });
 
 console.log(`✓ slice3-freeze.guard: ${passed} checks passed (baseline ${baseSha.slice(0, 10)})`);

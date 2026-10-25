@@ -242,10 +242,17 @@ const gitBuf = (...a) => git(...a);
 const gitStr = (...a) => git(...a).toString('utf8');
 
 let passed = 0;
-const t = (name, fn) => { fn(); passed += 1; };
+// Checks MUST be synchronous (Codex r3): an async callback returns a thenable immediately and would be counted
+// before its assertions ran (an `await new Promise(()=>{})` would never execute them). Reject a thenable return
+// BEFORE incrementing — all shipped checks are sync. (Active-handle hangs still need an external timeout.)
+const t = (name, fn) => {
+  const r = fn();
+  assert.ok(!(r && typeof r.then === 'function'), `check "${name}" must be synchronous (it returned a thenable)`);
+  passed += 1;
+};
 // Belt-and-braces (Codex r2 P1): force RED on ANY early exit — if fewer than the expected checks completed (an
 // injected process.exit, a thrown/short-circuited load, a skipped check), the process exit code is forced to 1.
-const EXPECTED_CHECKS = 14;
+const EXPECTED_CHECKS = 15;
 process.on('exit', () => {
   if (passed !== EXPECTED_CHECKS) {
     console.error(`slice2-freeze.guard INCOMPLETE: ${passed}/${EXPECTED_CHECKS} checks ran — early exit / skipped check`);
@@ -549,6 +556,11 @@ t('insert regions are pinned at their exact baseline neighbours (PRESENTATION, M
   const [impS] = ranges['IMPORT'];
   const [brS] = ranges['STACKED-BRANCH'];
   assert.ok(s1End >= 0 && impS > s1End && impS < brS, 'IMPORT region must sit after SLICE1:IMPORT and before STACKED-BRANCH');
+});
+
+// Codex r3: an async/thenable check must FAIL immediately, not be silently counted as complete.
+t('NEG: an async/thenable check is rejected before it counts (checks must be synchronous)', () => {
+  assert.throws(() => t('fake-async', async () => {}), /must be synchronous/, 'an async check must fail immediately, not count as complete');
 });
 
 console.log(`✓ slice2-freeze.guard: ${passed} checks passed (baseline ${baseSha.slice(0, 10)})`);
