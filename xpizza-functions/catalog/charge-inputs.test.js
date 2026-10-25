@@ -66,6 +66,7 @@ const SAMPLE = {
   order_id: 'XP-1', restaurant_id: 'x_pizza', order_type: 'delivery', scheduled_for: null, pickup_time: 'standard', lat: 14.1, lng: -87.2,
   address_detected: 'Col. X', address_details: 'casa azul', payment_method: 'card', total: 1308, items_text: '2x NY Plain Slice - Combinada (L654)',
   razon_social: '', rtn_cliente: '', pin_confirmed: true,   // S3a envío
+  tip_cents: 500,   // S2-srv-tip: a tipped payload (0 is the no-tip case and is normalized out — s2tip.test.js cell 6)
   items: [{ id: 33, name: 'NY Plain Slice - Combinada', qty: 2, price: 654, extras: [{ instance: 0, name: 'Salsa Roja', price: 39 }, { instance: 1, name: 'Mozzarella', price: 50 }] }],
   redeem: { type: 'free_pizza_choice', item_id: 'Carnivora', name: 'Carnivora' },
   customer_name: 'Ana Pérez', customer_phone: '99990000', customer_email: 'a@b.hn', notes: 'sin cebolla', quote_token: 'tok', expected_net_cents: 130800,

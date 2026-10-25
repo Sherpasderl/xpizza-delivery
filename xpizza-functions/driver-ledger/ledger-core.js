@@ -84,7 +84,7 @@ function computeWeek(week, rows, prior, cfg) {
   }
   const drivers = {}, unresolved = [], review = [];
   const entry = (uid) => (drivers[uid] = drivers[uid] || { deliveries: [], adjustments: [] });
-  const tips = new Map();   // S2: order_id → its tip (accrued with the delivery that pays it)
+  const tipsNow = new Map(), tipsLate = new Map();   // S2: driver uid → the tips of this week's / late deliveries (accrued with the delivery that pays them)
   for (const [oid, o] of [...rows].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
     if (!isAccruable(o, cfg) || !(o.delivered_at < end)) continue;
     const stamp = typeof o.delivered_by_driver_uid === 'string' && o.delivered_by_driver_uid ? o.delivered_by_driver_uid : null;
@@ -94,7 +94,9 @@ function computeWeek(week, rows, prior, cfg) {
       continue;
     }
     if (!stamp) { if (!listedUnres.has(oid)) unresolved.push(oid); continue; }
-    tips.set(oid, Number.isSafeInteger(o.tip_cents) && o.tip_cents > 0 ? o.tip_cents : 0);
+    const tip = Number.isSafeInteger(o.tip_cents) && o.tip_cents > 0 ? o.tip_cents : 0;
+    const acc = o.delivered_at >= start ? tipsNow : tipsLate;
+    acc.set(stamp, (acc.get(stamp) || 0) + tip);
     if (o.delivered_at >= start) entry(stamp).deliveries.push(oid);
     else entry(stamp).adjustments.push({ order_id: oid, original_week: weekOf(o.delivered_at) });
   }
@@ -103,9 +105,8 @@ function computeWeek(week, rows, prior, cfg) {
   for (const [uid, d] of Object.entries(drivers)) {
     const p = prev && prev.drivers && prev.drivers[uid];
     const carry_in_cents = p && !p.paid && Number.isInteger(p.net_cents) && p.net_cents < 0 ? p.net_cents : 0;
-    const tipSum = (oids) => oids.reduce((t, oid) => t + (tips.get(oid) || 0), 0);
-    const base_cents = d.deliveries.length * cfg.base_cents + tipSum(d.deliveries);                          // S2: + the tips of this week's deliveries
-    const adjustments_cents = d.adjustments.length * cfg.base_cents + tipSum(d.adjustments.map((a) => a.order_id));   // S2: + the late deliveries' tips
+    const base_cents = d.deliveries.length * cfg.base_cents + (tipsNow.get(uid) || 0);         // S2: + the tips of this week's deliveries
+    const adjustments_cents = d.adjustments.length * cfg.base_cents + (tipsLate.get(uid) || 0);   // S2: + the late deliveries' tips
     const net_cents = base_cents + adjustments_cents + carry_in_cents;
     drivers[uid] = { ...d, base_cents, adjustments_cents, carry_in_cents, net_cents, outcome: net_cents > 0 ? 'payable' : 'no_payment' };
   }

@@ -208,17 +208,17 @@ const HUNKS = [
  },
  {
   "file": "driver-ledger/ledger-core.js",
-  "now": "  const entry = (uid) => (drivers[uid] = drivers[uid] || { deliveries: [], adjustments: [] });\n  const tips = new Map();   // S2: order_id → its tip (accrued with the delivery that pays it)\n",
+  "now": "  const entry = (uid) => (drivers[uid] = drivers[uid] || { deliveries: [], adjustments: [] });\n  const tipsNow = new Map(), tipsLate = new Map();   // S2: driver uid → the tips of this week's / late deliveries (accrued with the delivery that pays them)\n",
   "was": "  const entry = (uid) => (drivers[uid] = drivers[uid] || { deliveries: [], adjustments: [] });\n"
  },
  {
   "file": "driver-ledger/ledger-core.js",
-  "now": "    if (!stamp) { if (!listedUnres.has(oid)) unresolved.push(oid); continue; }\n    tips.set(oid, Number.isSafeInteger(o.tip_cents) && o.tip_cents > 0 ? o.tip_cents : 0);\n",
+  "now": "    if (!stamp) { if (!listedUnres.has(oid)) unresolved.push(oid); continue; }\n    const tip = Number.isSafeInteger(o.tip_cents) && o.tip_cents > 0 ? o.tip_cents : 0;\n    const acc = o.delivered_at >= start ? tipsNow : tipsLate;\n    acc.set(stamp, (acc.get(stamp) || 0) + tip);\n",
   "was": "    if (!stamp) { if (!listedUnres.has(oid)) unresolved.push(oid); continue; }\n"
  },
  {
   "file": "driver-ledger/ledger-core.js",
-  "now": "    const carry_in_cents = p && !p.paid && Number.isInteger(p.net_cents) && p.net_cents < 0 ? p.net_cents : 0;\n    const tipSum = (oids) => oids.reduce((t, oid) => t + (tips.get(oid) || 0), 0);\n    const base_cents = d.deliveries.length * cfg.base_cents + tipSum(d.deliveries);                          // S2: + the tips of this week's deliveries\n    const adjustments_cents = d.adjustments.length * cfg.base_cents + tipSum(d.adjustments.map((a) => a.order_id));   // S2: + the late deliveries' tips\n",
+  "now": "    const carry_in_cents = p && !p.paid && Number.isInteger(p.net_cents) && p.net_cents < 0 ? p.net_cents : 0;\n    const base_cents = d.deliveries.length * cfg.base_cents + (tipsNow.get(uid) || 0);         // S2: + the tips of this week's deliveries\n    const adjustments_cents = d.adjustments.length * cfg.base_cents + (tipsLate.get(uid) || 0);   // S2: + the late deliveries' tips\n",
   "was": "    const carry_in_cents = p && !p.paid && Number.isInteger(p.net_cents) && p.net_cents < 0 ? p.net_cents : 0;\n    const base_cents = d.deliveries.length * cfg.base_cents;\n    const adjustments_cents = d.adjustments.length * cfg.base_cents;    // tips join both in S2\n"
  },
  {
