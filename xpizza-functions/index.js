@@ -6474,23 +6474,19 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       return;
     }
 
+    // stacked-seq r5 T5(iii) (r1 P1 ×2): a SEQUENCED placement runs its post-claim checks — the hold check, then the stack re-check
+    // — under ONE 3 s deadline started HERE, right after the claim; held / changed / confirm false / a throw / the deadline each roll
+    // back through rollbackOrAlert (retry + assignment_strand alert); confirm false also raises the existing no-taker alert.
+    if (seq) {
+      const v = await SEQ.sequencedPostClaim({ budget: SEQ.claimBudget(seq), hold: () => merchantHooks.holdAfterClaim(db, orderId, (o) => !AUTO_ASSIGNABLE_STATUSES.has(o.status)), rollback: () => rollbackOrAlert(db, claim, orderId, 'autoAssign'), db, uid: chosen.driverId, newOid: orderId, decision: seq.decision, reassert: reassertAssignable, isAssignable: (o) => AUTO_ASSIGNABLE_STATUSES.has(o.status), isHeld: (o) => merchantHooks.heldByReject(o) });
+      if (v === 'refused') await db.ref('dispatcher_alerts').push({ type: 'no_drivers_available', order_id: orderId, customer_name: after.recipient_name || 'Cliente', total: after.total || null, created_at: ServerValue.TIMESTAMP });
+      if (v !== 'ok') { console.log(`autoAssign: ${orderId} stack post-claim check → ${v}, rolled back`); return; }
+    }
+
     // attempts=1 = initial assignment. monitorAssignmentTimeout uses this
     // for its 2-strikes rule (only relevant for non-stacked).
-    if (await merchantHooks.holdAfterClaim(db, orderId, (o) => !AUTO_ASSIGNABLE_STATUSES.has(o.status))) { console.log(`autoAssign: ${orderId} held or gone after the claim, rolling back`); await claim.rollback(); return; } const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);   // h1 A-R1
-    // stacked-seq r5 T5(iii): a sequenced placement re-checks under its OWN 3 s budget, inside the claim's rollback region —
-    // changed → roll back + return; confirm false → roll back + the existing alert; a throw / expiry → the existing rollbackOrAlert.
-    if (seq) {
-      let pc;
-      try { pc = await SEQ.postClaimSeq({ db, uid: chosen.driverId, newOid: orderId, decision: seq.decision, reassert: reassertAssignable, isAssignable: (o) => AUTO_ASSIGNABLE_STATUSES.has(o.status), isHeld: (o) => merchantHooks.heldByReject(o) }); }
-      catch (e) { console.error(`autoAssign: ${orderId} stack re-check failed`, e && e.message); await rollbackOrAlert(db, claim, orderId, 'autoAssign'); return; }
-      if (pc.changed) { console.log(`autoAssign: ${orderId} changed during planning (${pc.changed}), rolling back`); await claim.rollback(); return; }
-      if (!pc.ok) {
-        await claim.rollback();
-        await db.ref('dispatcher_alerts').push({ type: 'no_drivers_available', order_id: orderId, customer_name: after.recipient_name || 'Cliente', total: after.total || null, created_at: ServerValue.TIMESTAMP });
-        return;
-      }
-      Object.assign(updates, stackCopies(seq.decision, chosen.driverId));   // the copies ride in the ONE finalize update()
-    }
+    if (!seq && await merchantHooks.holdAfterClaim(db, orderId, (o) => !AUTO_ASSIGNABLE_STATUSES.has(o.status))) { console.log(`autoAssign: ${orderId} held or gone after the claim, rolling back`); await claim.rollback(); return; } const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);   // h1 A-R1
+    if (seq) Object.assign(updates, stackCopies(seq.decision, chosen.driverId));   // stacked-seq r5: the copies ride in the ONE finalize update()
     try {
       await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'autoAssign.finalize', target: chosen.driverId });   // S1a §3
       console.log(`autoAssign: success for ${orderId} → ${chosen.driverId}`);
@@ -6878,13 +6874,14 @@ exports.sweepPendingOrders = onSchedule(
         // order + delivery task immediately before the write. sweepDecision ran against the batch snapshot,
         // so a dispatcher park, a cancel, a status change, or a driver-state change landing mid-sweep must
         // abort the placement. (delNow is also the FRESH source for retry_count below.)
-        const recheck = await reassertAssignable(db, chosen.driverId, orderId);
-        const [parkedSnap, orderNowSnap, delNowSnap, pickupNowSnap] = await Promise.all([
+        const pcb = SEQ.claimBudget(seq);   // stacked-seq r5 (r1 P1): sequenced → ONE 3 s deadline from the claim over every read below; else the identity
+        const recheck = await pcb(reassertAssignable(db, chosen.driverId, orderId));
+        const [parkedSnap, orderNowSnap, delNowSnap, pickupNowSnap] = await pcb(Promise.all([
           db.ref(`orders/${orderId}/dispatch_parked`).once('value'),
           db.ref(`orders/${orderId}`).once('value'),
           db.ref(`tasks/${orderId}_delivery`).once('value'),
           db.ref(`tasks/${orderId}_pickup`).once('value')
-        ]);
+        ]));
         const parkedNow = parkedSnap.val();
         const orderNow = orderNowSnap.val();
         const delNow = delNowSnap.val();
@@ -6901,10 +6898,10 @@ exports.sweepPendingOrders = onSchedule(
           await claim.rollback();   // back to SIN ASIGNAR, no throttle bump
           continue;
         }
-        // stacked-seq r5 T5(iii): a sequenced placement re-checks under its OWN 3 s budget (a throw / expiry → the catch below →
+        // stacked-seq r5 T5(iii): a sequenced placement re-checks under the SAME deadline (a throw / expiry → the catch below →
         // rollbackOrAlert); changed or confirm false → roll back, skip
         if (seq) {
-          const pc = await SEQ.postClaimSeq({ db, uid: chosen.driverId, newOid: orderId, decision: seq.decision, reassert: reassertAssignable, sweep: true, isAssignable: (o) => AUTO_ASSIGNABLE_STATUSES.has(o.status), isHeld: (o) => merchantHooks.heldByReject(o) });
+          const pc = await SEQ.postClaimSeq({ db, uid: chosen.driverId, newOid: orderId, decision: seq.decision, reassert: reassertAssignable, sweep: true, isAssignable: (o) => AUTO_ASSIGNABLE_STATUSES.has(o.status), isHeld: (o) => merchantHooks.heldByReject(o), end: pcb.end });
           if (pc.changed || !pc.ok) { await claim.rollback(); continue; }
         }
 

@@ -41,8 +41,12 @@ const INDEX_HUNKS = [
   ""
  ],
  [
-  "    // stacked-seq r5 T5(iii): a sequenced placement re-checks under its OWN 3 s budget, inside the claim's rollback region —\n    // changed → roll back + return; confirm false → roll back + the existing alert; a throw / expiry → the existing rollbackOrAlert.\n    if (seq) {\n      let pc;\n      try { pc = await SEQ.postClaimSeq({ db, uid: chosen.driverId, newOid: orderId, decision: seq.decision, reassert: reassertAssignable, isAssignable: (o) => AUTO_ASSIGNABLE_STATUSES.has(o.status), isHeld: (o) => merchantHooks.heldByReject(o) }); }\n      catch (e) { console.error(`autoAssign: ${orderId} stack re-check failed`, e && e.message); await rollbackOrAlert(db, claim, orderId, 'autoAssign'); return; }\n      if (pc.changed) { console.log(`autoAssign: ${orderId} changed during planning (${pc.changed}), rolling back`); await claim.rollback(); return; }\n      if (!pc.ok) {\n        await claim.rollback();\n        await db.ref('dispatcher_alerts').push({ type: 'no_drivers_available', order_id: orderId, customer_name: after.recipient_name || 'Cliente', total: after.total || null, created_at: ServerValue.TIMESTAMP });\n        return;\n      }\n      Object.assign(updates, stackCopies(seq.decision, chosen.driverId));   // the copies ride in the ONE finalize update()\n    }\n",
+  "    // stacked-seq r5 T5(iii) (r1 P1 ×2): a SEQUENCED placement runs its post-claim checks — the hold check, then the stack re-check\n    // — under ONE 3 s deadline started HERE, right after the claim; held / changed / confirm false / a throw / the deadline each roll\n    // back through rollbackOrAlert (retry + assignment_strand alert); confirm false also raises the existing no-taker alert.\n    if (seq) {\n      const v = await SEQ.sequencedPostClaim({ budget: SEQ.claimBudget(seq), hold: () => merchantHooks.holdAfterClaim(db, orderId, (o) => !AUTO_ASSIGNABLE_STATUSES.has(o.status)), rollback: () => rollbackOrAlert(db, claim, orderId, 'autoAssign'), db, uid: chosen.driverId, newOid: orderId, decision: seq.decision, reassert: reassertAssignable, isAssignable: (o) => AUTO_ASSIGNABLE_STATUSES.has(o.status), isHeld: (o) => merchantHooks.heldByReject(o) });\n      if (v === 'refused') await db.ref('dispatcher_alerts').push({ type: 'no_drivers_available', order_id: orderId, customer_name: after.recipient_name || 'Cliente', total: after.total || null, created_at: ServerValue.TIMESTAMP });\n      if (v !== 'ok') { console.log(`autoAssign: ${orderId} stack post-claim check → ${v}, rolled back`); return; }\n    }\n\n",
   ""
+ ],
+ [
+  "    if (!seq && await merchantHooks.holdAfterClaim(db, orderId, (o) => !AUTO_ASSIGNABLE_STATUSES.has(o.status))) { console.log(`autoAssign: ${orderId} held or gone after the claim, rolling back`); await claim.rollback(); return; } const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);   // h1 A-R1\n    if (seq) Object.assign(updates, stackCopies(seq.decision, chosen.driverId));   // stacked-seq r5: the copies ride in the ONE finalize update()\n",
+  "    if (await merchantHooks.holdAfterClaim(db, orderId, (o) => !AUTO_ASSIGNABLE_STATUSES.has(o.status))) { console.log(`autoAssign: ${orderId} held or gone after the claim, rolling back`); await claim.rollback(); return; } const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);   // h1 A-R1\n"
  ],
  [
   "  { schedule: 'every 1 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB', secrets: [ROUTES_API_KEY] },   // stacked-seq r5 T3\n",
@@ -61,7 +65,15 @@ const INDEX_HUNKS = [
   ""
  ],
  [
-  "        // stacked-seq r5 T5(iii): a sequenced placement re-checks under its OWN 3 s budget (a throw / expiry → the catch below →\n        // rollbackOrAlert); changed or confirm false → roll back, skip\n        if (seq) {\n          const pc = await SEQ.postClaimSeq({ db, uid: chosen.driverId, newOid: orderId, decision: seq.decision, reassert: reassertAssignable, sweep: true, isAssignable: (o) => AUTO_ASSIGNABLE_STATUSES.has(o.status), isHeld: (o) => merchantHooks.heldByReject(o) });\n          if (pc.changed || !pc.ok) { await claim.rollback(); continue; }\n        }\n",
+  "        const pcb = SEQ.claimBudget(seq);   // stacked-seq r5 (r1 P1): sequenced → ONE 3 s deadline from the claim over every read below; else the identity\n        const recheck = await pcb(reassertAssignable(db, chosen.driverId, orderId));\n        const [parkedSnap, orderNowSnap, delNowSnap, pickupNowSnap] = await pcb(Promise.all([\n",
+  "        const recheck = await reassertAssignable(db, chosen.driverId, orderId);\n        const [parkedSnap, orderNowSnap, delNowSnap, pickupNowSnap] = await Promise.all([\n"
+ ],
+ [
+  "        ]));\n",
+  "        ]);\n"
+ ],
+ [
+  "        // stacked-seq r5 T5(iii): a sequenced placement re-checks under the SAME deadline (a throw / expiry → the catch below →\n        // rollbackOrAlert); changed or confirm false → roll back, skip\n        if (seq) {\n          const pc = await SEQ.postClaimSeq({ db, uid: chosen.driverId, newOid: orderId, decision: seq.decision, reassert: reassertAssignable, sweep: true, isAssignable: (o) => AUTO_ASSIGNABLE_STATUSES.has(o.status), isHeld: (o) => merchantHooks.heldByReject(o), end: pcb.end });\n          if (pc.changed || !pc.ok) { await claim.rollback(); continue; }\n        }\n",
   ""
  ],
  [

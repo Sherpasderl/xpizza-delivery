@@ -433,6 +433,7 @@
   "index.js#quoteOrder": "intake",
   "index.js#quoteRedemption": "intake",
   "index.js#reassertAssignable": "dispatch",
+  "index.js#hold>anon": "dispatch",
   "sequencing/post-claim.js#confirmIncumbent": "dispatch",
   "sequencing/routes-client.js#wp": "dispatch",
   "sequencing/routes-client.js#legsOf": "dispatch",

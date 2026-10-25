@@ -7,6 +7,7 @@
 //                            (D7 phase 1: today's rule exactly) or same-hub AND the cheap gate passes (prep + coords)
 //   planForWriter(...)       { mode:'today' } (cross-hub / not one other order) | { mode:'single', reason } | { mode:'stack', … }
 //   postClaimSeq(...)        the post-claim checks under a SEPARATE 3 s budget; a stall throws `deadline`
+//   claimBudget / sequencedPostClaim   r1: ONE deadline from the claim over every post-claim read; refusals → rollbackOrAlert
 const { stackGate } = require('./gate');
 const { planStack } = require('./plan-stack');
 const { candidateState, confirmIncumbent } = require('./post-claim');
@@ -57,8 +58,7 @@ async function planForWriter({ db, uid, newOid, invocationDeadline, key, transpo
   return { mode: 'single', reason: r.reason };
 }
 
-async function postClaimSeq({ db, uid, newOid, decision, reassert, parked = false, sweep = false, isAssignable, isHeld, budgetMs = POST_CLAIM_MS }) {
-  const end = Date.now() + budgetMs;
+async function postClaimSeq({ db, uid, newOid, decision, reassert, parked = false, sweep = false, isAssignable, isHeld, budgetMs = POST_CLAIM_MS, end = Date.now() + budgetMs }) {
   const b = (p) => bounded(p, end - Date.now());
   const [pickup, delivery, order] = (await b(Promise.all([`tasks/${newOid}_pickup`, `tasks/${newOid}_delivery`, `orders/${newOid}`].map((p) => db.ref(p).once('value'))))).map((s) => s.val());
   const st = candidateState({ pickup, delivery, order }, { uid, parked: parked || (sweep && !!(order && order.dispatch_parked)), isAssignable, isHeld });
@@ -69,4 +69,33 @@ async function postClaimSeq({ db, uid, newOid, decision, reassert, parked = fals
   return confirmIncumbent({ tasks: tasksSnap.val() || {}, uid, newOid, decision, incOrder: incSnap.val(), isAssignable, isHeld }) ? { ok: true } : { ok: false };
 }
 
-module.exports = { readSeqFlag, filterEligible, planForWriter, postClaimSeq, PLAN_DEADLINE_MS, MIN_LEFT_MS, POST_CLAIM_MS };
+// r1 fix (Codex P1 ×2) — ONE post-claim deadline per SEQUENCED placement, started the moment the claim lands, bounding EVERY
+// validation read after it (sweep's existing recheck + fresh reads, autoAssign's holdAfterClaim, then postClaimSeq).
+// Not sequenced → the identity: the caller awaits the very same promise it awaited before (flag OFF / today's path unchanged).
+function claimBudget(seq, budgetMs = POST_CLAIM_MS) {
+  if (!seq) { const same = (p) => p; same.end = null; return same; }
+  const end = Date.now() + budgetMs;
+  const b = (p) => bounded(p, end - Date.now()); b.end = end;
+  return b;
+}
+
+// autoAssign's sequenced post-claim region: the hold check + postClaimSeq under the claim's ONE deadline; every outcome other
+// than 'ok' — held, changed, refused, a throw, the deadline — rolls back through `rollback` ONCE (the caller's rollbackOrAlert:
+// a retry, then the assignment_strand alert). Returns 'ok' | 'held' | 'changed' | 'refused' | 'error'.
+async function sequencedPostClaim({ budget, hold, rollback, ...pc }) {
+  let out;
+  try {
+    if (await budget(hold())) out = 'held';
+    else {
+      const r = await postClaimSeq({ ...pc, end: budget.end });
+      out = r.changed ? 'changed' : (r.ok ? 'ok' : 'refused');
+    }
+  } catch (e) {
+    console.error(`stackseq: post-claim check failed for ${pc.newOid} (${(e && e.message) || e})`);
+    out = 'error';
+  }
+  if (out !== 'ok') await rollback();
+  return out;
+}
+
+module.exports = { readSeqFlag, filterEligible, planForWriter, postClaimSeq, claimBudget, sequencedPostClaim, PLAN_DEADLINE_MS, MIN_LEFT_MS, POST_CLAIM_MS };

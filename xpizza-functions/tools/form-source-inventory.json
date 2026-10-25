@@ -2482,6 +2482,7 @@
     "xpizza-functions/recon-close-fulfilled.test.js",
     "xpizza-functions/restaurant-config.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
+    "xpizza-functions/sequencing/writer.test.js",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
     "xpizza-functions/serial3-differential.test.js",

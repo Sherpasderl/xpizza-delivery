@@ -126,6 +126,88 @@ const active = { d1: new Set(['o1']), d2: new Set(['o2']), d3: new Set(['o3']) }
     ok('postClaimSeq: ok | changed (fresh, parked for sweep) | confirm false (incumbent moved, reassert refuses); a stall → deadline within budget');
   }
 
+  // ── 5. r1 P1 (deadline): ONE deadline from the claim; not sequenced → the identity ─────────────────────────────
+  {
+    const p = Promise.resolve(7); const same = W.claimBudget(null);
+    assert.strictEqual(same(p), p, 'not sequenced: the very same promise is awaited (today’s path)'); assert.strictEqual(same.end, null);
+    const t0 = Date.now(); const b = W.claimBudget({ decision: {} }, 80);
+    assert.ok(b.end >= t0 + 80 && b.end <= Date.now() + 80, 'sequenced: the deadline starts at the claim');
+    await assert.rejects(b(new Promise(() => {})), (e) => isDeadline(e), 'a stalled read rejects with deadline');
+    assert.ok(Date.now() - t0 < 500);
+    ok('claimBudget: not sequenced → the identity (same promise); sequenced → ONE deadline from the claim, a stall rejects within it');
+  }
+
+  // ── 6. r1 P1 ×2: sequencedPostClaim — every non-ok outcome rolls back ONCE through the caller's rollback; a stalled FIRST
+  //       check (holdAfterClaim) is bounded by the claim's deadline ─────────────────────────────────────────────────────
+  {
+    const decision = { stack_id: 'stk_x', pair: ['nx', 'o1'], ranks: { o1: 1, nx: 2 }, plus_min: 2, incumbentOid: 'o1' };
+    const policy = { isAssignable: (o) => ['new', 'preparing', 'ready'].includes(o.status), isHeld: () => false };
+    const claimed = () => { const db = world('tb_centro'); db.put('tasks/nx_delivery/assigned_driver_id', 'd1'); return db; };
+    const go = async (db, over = {}) => {
+      let rb = 0; const out = await W.sequencedPostClaim({ budget: W.claimBudget({ decision }, over.ms || 3000), hold: async () => false, rollback: async () => { rb++; }, db, uid: 'd1', newOid: 'nx', decision, reassert: async () => ({ ok: true }), ...policy, ...over });
+      return { out, rb };
+    };
+    assert.deepStrictEqual(await go(claimed()), { out: 'ok', rb: 0 }, 'ok → no rollback');
+    assert.deepStrictEqual(await go(claimed(), { hold: async () => 'held' }), { out: 'held', rb: 1 }, 'held → ONE rollback');
+    let db = claimed(); db.put('tasks/nx_pickup/status', 'cancelled');
+    assert.deepStrictEqual(await go(db), { out: 'changed', rb: 1 }, 'changed → ONE rollback through the caller');
+    db = claimed(); db.put('tasks/o1_pickup/status', 'completed');
+    assert.deepStrictEqual(await go(db), { out: 'refused', rb: 1 }, 'confirm false → ONE rollback through the caller');
+    assert.deepStrictEqual(await go(claimed(), { reassert: async () => { throw new Error('boom'); } }), { out: 'error', rb: 1 }, 'a throw → ONE rollback');
+    const t0 = Date.now();
+    assert.deepStrictEqual(await go(claimed(), { hold: () => new Promise(() => {}), ms: 80 }), { out: 'error', rb: 1 }, 'a stalled holdAfterClaim → deadline → ONE rollback');
+    assert.ok(Date.now() - t0 < 500, 'the stalled FIRST check is bounded by the claim deadline');
+    // the deadline is SHARED: a hold that eats most of it leaves postClaimSeq only the remainder
+    const t1 = Date.now();
+    assert.deepStrictEqual(await go(claimed(), { hold: () => new Promise((r) => setTimeout(() => r(false), 60)), reassert: () => new Promise(() => {}), ms: 100 }), { out: 'error', rb: 1 }, 'hold + stalled reassert share ONE deadline');
+    assert.ok(Date.now() - t1 < 300, 'ONE deadline, not two');
+    ok('sequencedPostClaim: ok → none; held / changed / confirm false / throw / stalled hold → ONE rollback via the caller; ONE shared deadline');
+  }
+
+  // ── 7. r1 P1 (rollback recovery): autoAssign wires the sequenced refusals to the REAL rollbackOrAlert — a failing
+  //       claim.rollback() on every branch → the retry recovers it, a double failure → the assignment_strand alert ──────────
+  {
+    const fs = require('fs'); const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8');
+    const a = src.indexOf('async function rollbackOrAlert('); const z = src.indexOf('\n}\n', a);
+    assert.ok(a > 0 && z > a, 'premise: rollbackOrAlert found');
+    const rollbackOrAlert = new Function('ServerValue', `${src.slice(a, z + 2)}\nreturn rollbackOrAlert;`)({ TIMESTAMP: 'TS' });
+    // the autoAssign sequenced region passes exactly this rollback, and holds no bare claim.rollback()
+    const r0 = src.indexOf('exports.autoAssignOnOrderCreate'); const r1 = src.indexOf('\nexports.', r0 + 10);
+    const region = src.slice(src.indexOf('    if (seq) {\n      const v = await SEQ.sequencedPostClaim(', r0), src.indexOf('    // attempts=1 = initial assignment.', r0));
+    assert.ok(region.length > 0 && src.indexOf('SEQ.sequencedPostClaim(', r0) < r1, 'premise: the autoAssign sequenced region');
+    assert.ok(region.includes("rollback: () => rollbackOrAlert(db, claim, orderId, 'autoAssign')"), 'autoAssign: sequenced refusals roll back through rollbackOrAlert');
+    assert.ok(!/claim\.rollback\(\)/.test(region), 'autoAssign: no bare claim.rollback() in the sequenced region');
+    const decision = { stack_id: 'stk_x', pair: ['nx', 'o1'], ranks: { o1: 1, nx: 2 }, plus_min: 2, incumbentOid: 'o1' };
+    const policy = { isAssignable: (o) => ['new', 'preparing', 'ready'].includes(o.status), isHeld: () => false };
+    const branches = {
+      held: (over) => ({ ...over, hold: async () => 'held' }),
+      changed: (over) => { over.db.put('tasks/nx_pickup/status', 'cancelled'); return over; },
+      refused: (over) => { over.db.put('tasks/o1_pickup/status', 'completed'); return over; },
+      error: (over) => ({ ...over, reassert: async () => { throw new Error('boom'); } }),
+      deadline: (over) => ({ ...over, hold: () => new Promise(() => {}), ms: 60 }),
+    };
+    let k = 0; const withPush = (db) => ({ ...db, ref: (p) => (p === 'dispatcher_alerts' ? { push: async (v) => db.put(`dispatcher_alerts/a${++k}`, v) } : db.ref(p)) });   // the fake has no push()
+    for (const [name, mk] of Object.entries(branches)) {
+      for (const fails of [1, 2]) {
+        const db = world('tb_centro'); db.put('tasks/nx_delivery/assigned_driver_id', 'd1');
+        let calls = 0; const claim = { rollback: async () => { if (++calls <= fails) throw new Error('rollback down'); db.put('tasks/nx_delivery/assigned_driver_id', null); } };
+        const o = mk({ db });
+        const out = await W.sequencedPostClaim({ budget: W.claimBudget({ decision }, o.ms || 3000), hold: o.hold || (async () => false), rollback: () => rollbackOrAlert(withPush(db), claim, 'nx', 'autoAssign'), db, uid: 'd1', newOid: 'nx', decision, reassert: o.reassert || (async () => ({ ok: true })), ...policy });
+        assert.strictEqual(out, name === 'deadline' ? 'error' : name, `${name}: outcome`);
+        const alertsNow = Object.values(db.get('dispatcher_alerts') || {});
+        if (fails === 1) {
+          assert.strictEqual(calls, 2, `${name}: a failed rollback is retried`); assert.strictEqual(db.get('tasks/nx_delivery/assigned_driver_id'), null, `${name}: the retry recovers the delivery`);
+          assert.deepStrictEqual(alertsNow, [], `${name}: recovered → no alert`);
+        } else {
+          assert.strictEqual(calls, 2, `${name}: retried once`);
+          assert.deepStrictEqual(alertsNow.map((x) => [x.type, x.order_id, x.context]), [['assignment_strand', 'nx', 'autoAssign']], `${name}: a double failure → the assignment_strand alert`);
+        }
+      }
+    }
+    ok('autoAssign sequenced refusals use the REAL rollbackOrAlert: held / changed / confirm false / throw / deadline × a failing rollback → retried + recovered; twice → assignment_strand alert');
+  }
+
   FINISHED = true;
   console.log(`\nwriter: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

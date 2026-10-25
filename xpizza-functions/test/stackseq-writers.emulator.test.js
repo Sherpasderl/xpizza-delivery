@@ -15,7 +15,8 @@
  *   autoAssign, flag ABSENT: A2's twin and a same-hub twin → byte-identical to today (A2 ON ≡ A2 OFF, normalized)
  *   sweep, flag ON (one tick per scenario): S1 stacked; S2 cross-hub ≡ OFF; S3 parked during Routes → rollback, skip;
  *     S4 incumbent picked up during Routes → rollback, skip; S5 planning deadline → waiting, no claim; S6 three same-hub pairs in
- *     one tick → at most TWO Routes calls, the third single; S7 post-claim expiry → rollbackOrAlert
+ *     one tick → at most TWO Routes calls, the third single; S7 post-claim expiry → rollbackOrAlert; S8 (r1) a stall in the FIRST
+ *     post-claim recheck → the ONE claim deadline → rollbackOrAlert
  *   timeout (D12): a reassign onto a same-hub 1-order driver and a two-strike release, flag ON ≡ flag false (normalized)
  */
 require('./_emulator-required')('database');
@@ -222,6 +223,15 @@ const expectUntouched = async (s, label) => {
     routes.set(s.nLat, { hook: async () => { holds.set(`assign:hub:${s.n}`, { skip: 1, ms: 6000 }); } });   // sweep: skip its existing recheck, hold the post-claim one
     await seedAll([s], true); await tick(); await expectUntouched(s, 'S7');
     ok('S7 sweep: a post-claim expiry → the existing rollbackOrAlert, no copies');
+  }
+  {
+    // r1 P1: the deadline starts at the CLAIM — a stall in sweep's FIRST (existing) recheck is bounded too
+    const s = scenario(20, { newStatus: 'preparing' });
+    routes.set(s.nLat, { hook: async () => { holds.set(`assign:hub:${s.n}`, { skip: 0, ms: 6000 }); } });   // hold the existing recheck itself
+    await seedAll([s], true); const t0 = Date.now(); await tick(); const took = Date.now() - t0;
+    await expectUntouched(s, 'S8');
+    assert.ok(took < 5500, `S8: the tick is released by the 3 s claim deadline, not the 6 s stall (took ${took} ms)`);
+    ok('S8 sweep: a stall in the FIRST post-claim recheck → the claim deadline expires → rollbackOrAlert, no copies');
   }
 
   // ═════ timeout (D12): byte-identical with the flag ON and false ═════
