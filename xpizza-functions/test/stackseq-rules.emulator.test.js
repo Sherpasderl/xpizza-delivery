@@ -46,8 +46,10 @@ const LEAVES = { stack_id: SID, stop_seq: 2, stack_uid: DRV, stack_at: 1000, sta
   const custDisp = as(DISP, { customer: true }); const custDrv = as(DRV, { customer: true });
   const hand = as(DRV, { handheld: true }); const handDisp = as(DISP, { handheld: true });
 
-  const ok = async (label, pr) => { await assertSucceeds(pr); console.log(`  ok ${++n} ${label}`); };
-  const no = async (label, pr) => { await assertFails(pr); console.log(`  ok ${++n} ${label}`); };
+  // a failing cell names itself (the mutant runner counts a kill only on the cell's own label)
+  const named = (label, e) => { console.error(`  not ok ${n + 1} ${label}`); e.message = `${label}: ${e.message}`; return e; };
+  const ok = async (label, pr) => { try { await assertSucceeds(pr); } catch (e) { throw named(label, e); } console.log(`  ok ${++n} ${label}`); };
+  const no = async (label, pr) => { try { await assertFails(pr); } catch (e) { throw named(label, e); } console.log(`  ok ${++n} ${label}`); };
   const S = (db) => db.ref(`stacks/${SID}`);
   const D = (db, leaf) => db.ref(`tasks/ord_b_delivery${leaf ? `/${leaf}` : ''}`);
 
