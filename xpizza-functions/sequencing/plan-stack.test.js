@@ -86,6 +86,18 @@ function stalling(db, match) {
     ok('same-hub pair: one call, I-first decision, the committed record (depart_at = max(now, readies)), six budget elements');
   }
 
+  // ── 1b. a NEGATIVE plus_s (advisor 2026-10-25: no server clamp) is stored as-is and the stack still commits ────
+  {
+    // HI=900 HN=300 IN=300 NI=300 → only N-first fits; plusI = 300+120+300−900 = −180 s → ceil = −3 min
+    const db = seed(); const r = await plan(db, { transport: transport({ HI: 900, HN: 300, IN: 300, NI: 300 }) });
+    assert.strictEqual(r.stack, true);
+    assert.deepStrictEqual(r.decision.ranks, { ord_b: 1, ord_a: 2 }, 'N-first');
+    assert.strictEqual(r.decision.plus_min, -3, 'the raw promise, unclamped');
+    const rec = db.get(`stacks/${ID}`);
+    assert.strictEqual(rec.state, 'committed'); assert.strictEqual(rec.plus_s, -180, 'plus_s stored as-is'); assert.strictEqual(rec.plus_min, -3);
+    ok('a negative plus_s (rank 2 arrives earlier than solo): committed, stored raw (−180 s / −3 min), no clamp');
+  }
+
   // ── 2. gate refusals: no call, no budget, no record ─────────────────────────────────────────────────────────
   {
     const cases = { cross_hub: seed({ bRid: 'tb_norte' }), no_prep: seed({ bPrep: null }), not_one: seed({ extraOrder: true }) };
