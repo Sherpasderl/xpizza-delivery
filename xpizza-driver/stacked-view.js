@@ -239,6 +239,19 @@ export function pickupSubLabel(orders) {
   }
   return parts.join(' · ');
 }
+/**
+ * The solo-pickup two-step header {title, sub} (ruling #2 ready time). Step 1 (to-restaurant): «Recoger ~H:MM»
+ * (or «Recoger» with no ready time) + the brand sub. Step 2 (review, atRestaurant): «Revisá el pedido» + «{brand}
+ * · listo ~H:MM» (brand alone when no ready time). Pure — the caller (stopHeaderHtml) escapes both strings.
+ */
+export function soloPickupHeaderInfo(order, atRestaurant) {
+  const brand = brandLabel(order) || '';
+  const rt = readyTimeLabel(order);
+  if (atRestaurant === true) {
+    return { title: 'Revisá el pedido', sub: rt ? (brand ? `${brand} · listo ${rt}` : `listo ${rt}`) : brand };
+  }
+  return { title: rt ? `Recoger ${rt}` : 'Recoger', sub: brand };
+}
 
 // The collect-aware pay PHRASE for the pickup-bag rows (P1-3, Codex r1): the FULL collectionFor classification —
 // never collapse card_delivery (collected at delivery) or a pending-online payment into «pagado en línea». The
@@ -274,17 +287,23 @@ const phasePillMap = {
  * `deliveredText` (pre-escaped) overrides the delivery label → «Entregado · {Nombre} · L {monto}» (cash) /
  * «Entregado · {Nombre}» (paid) per the ledger slide copy; the accept/pickup labels are unchanged.
  */
+// The slide-confirm control markup. Shared by actionSlide (phase-driven) and the solo-pickup two-step builders
+// (btn-at-restaurant / btn-pickup), so every slide the frozen attachSlideConfirm handlers bind to is byte-identical.
+// `label` is caller-escaped where it carries data (deliveredText); the two-step labels are static literals.
+function slideConfirmHtml(id, cls, label) {
+  return `<div class="slide-confirm ${cls}" id="${id}">
+      <div class="slide-fill"></div>
+      <div class="slide-text">${label}</div>
+      <div class="slide-hint">deslizá</div>
+      <div class="slide-thumb">${SLIDE_ARROW}</div>
+    </div>`;
+}
 function actionSlide(phase, deliveredText) {
   let actionLabel, actionClass, actionId;
   if (phase === 'awaiting_acceptance') { actionLabel = 'Aceptar pedido'; actionClass = 'accept'; actionId = 'btn-accept'; }
   else if (phase === 'pickup') { actionLabel = 'Recogí el pedido'; actionClass = 'pickup'; actionId = 'btn-pickup'; }
   else { actionLabel = deliveredText || 'Entregado'; actionClass = 'delivered'; actionId = 'btn-delivered'; }
-  return `<div class="slide-confirm ${actionClass}" id="${actionId}">
-      <div class="slide-fill"></div>
-      <div class="slide-text">${actionLabel}</div>
-      <div class="slide-hint">deslizá</div>
-      <div class="slide-thumb">${SLIDE_ARROW}</div>
-    </div>`;
+  return slideConfirmHtml(actionId, actionClass, actionLabel);
 }
 
 /** First name only (for the «Llegué · avisar a {Nombre}» button + privacy-light labels). Pure. */
@@ -390,6 +409,95 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
       ${llegueBtn}
       ${actionSlide(phase, deliveredText)}
     </div>${flowBot}`;
+}
+
+// The structured items-card (count + brand + line list), reused by the solo-pickup review. Mirrors the
+// queueDetailHtml items block (itemLines → summary_lines, else items_text) so solo review + queued sheet read
+// identically. Returns '' when the order has no item data. Pure.
+function reviewItemsCardHtml(order, esc, ICONS) {
+  const struct = itemLines(order);
+  let count, body;
+  if (struct) {
+    count = struct.reduce((a, l) => a + l.qty, 0);
+    body = struct.map((l) => `<div class="item"><b>${esc(l.qty)}×</b> <span>${esc(l.name)}</span></div>`).join('');
+  } else if (order.items_text) {
+    const parts = String(order.items_text).split(',').map((s) => s.trim()).filter(Boolean);
+    count = parts.length;
+    body = parts.map((s) => { const m = s.match(/^(\d+)\s*[x×]?\s+(.*)$/i); const qty = m ? m[1] : '1'; const nm = m ? m[2] : s; return `<div class="item"><b>${esc(qty)}×</b> <span>${esc(nm)}</span></div>`; }).join('');
+  } else { return ''; }
+  return `<div class="items-card"><div class="items-head"><span class="lbl">${count} artículo${count === 1 ? '' : 's'}</span><span class="items-brand">${rchip(order, esc, 'sm')}<span class="order-num">${esc(displayOrderLabel(order))}</span></span></div><div class="items-list">${body}</div></div>`;
+}
+
+// The solo-pickup review pay row, DISPLAY-only and driven by collectionFor (the single classification source —
+// never a literal, affirmative-only, never «pagado» for a pending online charge). The cash case uses the
+// owner-approved prototype copy «Cobrar L X al entregar» + the «No cobrés aquí …» reassurance; every other class
+// reuses the established queueDetailHtml / payPhrase copy. The reassurance subtitle shows only where the driver
+// actually collects at the door (collectionFor().collect === true: cash + card_delivery). Pure.
+function reviewPayRowHtml(order, esc, ICONS) {
+  const c = collectionFor(order);
+  const amt = `L ${(Number(order.total) || 0).toLocaleString('es-HN')}`;
+  let t, d;
+  if (c.kind === 'cash') { t = `Cobrar ${amt} al entregar`; d = 'No cobrés aquí; el restaurante no recibe efectivo del cliente'; }
+  else if (c.kind === 'card') { t = `Cobrar ${amt} al entregar`; d = 'Con tarjeta; no cobrés aquí'; }   // card_delivery is COLLECTED at delivery (P1-3)
+  else if (c.kind === 'paid_online') { t = 'Pagado en línea'; d = 'No cobrés nada'; }
+  else if (c.kind === 'free') { t = 'Pedido gratis'; d = 'Nada que cobrar'; }
+  else { t = 'Pago no confirmado'; d = 'Consultá a despacho'; }
+  return `<div class="pay-ro-card"><span class="ico">${ICONS.cash || ''}</span><div><div class="pay-ro-t">${esc(t)}</div><div class="pay-ro-d">${esc(d)}</div></div></div>`;
+}
+
+/**
+ * SOLO-PICKUP step 1 «alRestaurante» (owner prototype, supersedes the r2 unified card FOR THE PICKUP PHASE ONLY):
+ * heading-to-the-restaurant card + the single nav + the «Ya estoy en el restaurante» slide (btn-at-restaurant —
+ * the existing client-only review latch; NO server write). Composed below the stop header + overview map by the
+ * index.html solo branch. The restaurant is the order's brand (brandLabel) at the pickup task's address; the
+ * kitchen-ready note «Cocina: listo ~H:MM» shows only when orders/{id}/prep/ready_at exists (ruling #2 — no
+ * fabricated time, the parked «+ tráfico» ETA stays out). No «Instrucciones del restaurante» row: no such field
+ * exists in the data today (omitted, not invented). Pure; does not mutate `o`/`deps`.
+ */
+export function pickupToRestaurantHtml(o, deps = {}) {
+  const { ICONS = {}, esc = String, scheduledBadge = () => '', RESTAURANT = {}, navPref } = deps;
+  const order = o.order || {};
+  const restName = esc(brandLabel(order) || 'el restaurante');
+  const restAddr = esc((o.pickupTask && o.pickupTask.destination_address) || '');
+  const rt = readyTimeLabel(order);
+  const target = navTarget(o, true, RESTAURANT);
+  const navTaskId = o.pickupTask && o.pickupTask.id;
+  return `<div class="active-card" data-order-id="${esc(o.orderId)}">
+      <div class="ac-chiprow">${rchip(order, esc)}<span class="order-num">${esc(displayOrderLabel(order))}</span><span class="phase-pill pickup" style="margin-left:auto">Recoger</span></div>
+      <div class="ac-head"><div class="recipient-name">${restName}</div></div>
+      ${restAddr ? `<div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${restAddr}</div></div></div>` : ''}
+      ${scheduledBadge(order)}
+      ${rt ? `<div class="ac-hr"></div><div class="sv-sub">Cocina: listo ${esc(rt)}. Llegás justo; no hace falta correr.</div>` : ''}
+    </div>
+    ${navBtnHtml(target, navPref, '', { ...deps, navTaskId })}
+    <div class="action-zone">${slideConfirmHtml('btn-at-restaurant', 'at-restaurant', 'Ya estoy en el restaurante')}</div>`;
+}
+
+/**
+ * SOLO-PICKUP step 2 «enRestaurante» review (owner prototype): order-# protagonist + brand + customer-name chip
+ * (KEPT — R4 restricts identity only BEFORE acceptance; this screen is post-accept, ruling 2026-10-24) + the
+ * structured items with the «Revisá bebidas y salsas» reminder + the collectionFor-driven pay row + the «Recogí
+ * el pedido» slide (btn-pickup — the existing frozen server pickupComplete). A body «Problema» control is NOT
+ * rendered: the capability is off (DRV2_CAN_REPORT_PROBLEM) and the header's gated Ayuda icon is the single help
+ * affordance until the report endpoint lands (R9/F). Pure; does not mutate `o`/`deps`.
+ */
+export function pickupReviewHtml(o, deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  const order = o.order || {};
+  const name = order.customer_name || (o.deliveryTask && o.deliveryTask.recipient_name) || '—';
+  const items = reviewItemsCardHtml(order, esc, ICONS);
+  const reminder = items ? `<div class="sv-reminder">${ICONS.cup || ICONS.warn || ''}<div><b>Revisá bebidas y salsas</b><span>Son lo que más se olvida.</span></div></div>` : '';
+  return `<div class="active-card">
+      <div class="sv-review-top">
+        <div class="sv-lbl">Número de pedido · decilo en ventanilla</div>
+        <div class="sv-bignum">${esc(displayOrderLabel(order))}</div>
+        <div class="sv-review-chips">${rchip(order, esc)}<span class="rchip neutral">${esc(firstName(name))}</span></div>
+      </div>
+    </div>
+    ${items}
+    ${reminder}
+    ${reviewPayRowHtml(order, esc, ICONS)}
+    <div class="action-zone">${actionSlide('pickup')}</div>`;
 }
 
 /**
@@ -546,8 +654,11 @@ const CUP_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 
 export function stopHeaderHtml(info = {}, deps = {}) {
   const { ICONS = {}, esc = String } = deps;
-  const { ordinal, total, name, area, deadline, single, canReportProblem, pickupCount, sub: subOverride } = info;
-  const title = pickupCount ? `Recoger ${esc(pickupCount)} pedidos` : single ? 'Única parada' : `Parada ${esc(ordinal)} de ${esc(total)}`;
+  const { ordinal, total, name, area, deadline, single, canReportProblem, pickupCount, sub: subOverride, title: titleOverride } = info;
+  // An explicit `title` (the solo-pickup two-step: «Recoger ~H:MM» / «Revisá el pedido») wins over the stop-count
+  // vocabulary. Escaped — the ready label it may carry is pure «~H:MM». subOverride is raw text, escaped below.
+  const title = titleOverride != null ? esc(titleOverride)
+    : pickupCount ? `Recoger ${esc(pickupCount)} pedidos` : single ? 'Única parada' : `Parada ${esc(ordinal)} de ${esc(total)}`;
   const dl = deadline ? ` · antes de ${esc(deadline)}` : '';
   // An explicit `sub` (e.g. apRecoger's «{brand} ~H:MM · {brand} ~H:MM» ready-time line, ruling #2) wins; else the
   // name·area subtitle. subOverride is raw text, escaped here.

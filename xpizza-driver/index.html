@@ -1724,7 +1724,8 @@ let slice1ReviewLatchKey = null;
 /* ===== SLICE1:IMPORT:END ===== */
 /* ===== SLICE2:IMPORT:START — stacked view + overview map (slice 2); pure builders in stacked-view.js / overview-map.js ===== */
 import { activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels,
-         navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel } from './stacked-view.js';
+         navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
+         pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo } from './stacked-view.js';
 import { overviewMapSvg, isStaleFix } from './overview-map.js';
 import { cuentaHtml, navAppHtml } from './nav-view.js';   // R7 Cuenta + «App de navegación» pure builders
 // The display-only map-aging timer (SLICE2:MAP-LIFECYCLE): a ~30 s re-render that re-evaluates the driver
@@ -3682,25 +3683,38 @@ function renderActiveAndQueue() {
     // de M». Only the fresh offer card (awaiting_acceptance) stays headerless. The strip + the stop-card swap still
     // belong to the chrome states (spShowChrome); the fresh single keeps its slice-1 card below the header.
     const spStopScreen = soloOrder.phase !== 'awaiting_acceptance';
-    const spHeader = spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml }) : '';
+    // SOLO PICKUP is the owner-approved two-step (alRestaurante → enRestaurante), which supersedes the r2 unified
+    // card FOR THE PICKUP PHASE ONLY (advisor ruling 2026-10-24). Review opens on the «Ya estoy en el restaurante»
+    // tap (slice1ReviewLatchKey) OR the 50 m geofence (spArrived) — the same OR the slice-1 card used, so arrival
+    // is never a regression. Applies to ANY solo order at pickup (fresh, promoted or cancel-survivor).
+    const spSoloPickup = soloOrder.phase === 'pickup';
+    const spShowReview = spSoloPickup && (spAtRestaurant || spArrived);
+    const spHeader = spSoloPickup
+      ? stopHeaderHtml({ ...soloPickupHeaderInfo(spOrder, spShowReview), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml })
+      : (spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml }) : '');
     const spStripStops = drv2Cancel
       ? [{ n: 1, state: 'cancelled', label: drv2FirstWord(drv2Cancel.cancelledName) }, { n: 2, state: 'on', label: drv2FirstWord(spName) }]
       : [...drv2DoneRun.map((d, i) => ({ n: i + 1, state: 'done', label: d.label, time: d.time })), { n: spOrdinal, state: 'on', label: drv2FirstWord(spName) }];
     const spStrip = spShowChrome ? phaseStripHtml(spStripStops, escapeHtml) : '';
-    // EVERY committed single stop — fresh, promoted (apParada2) or cancel-survivor (apCancelada) — renders the
-    // SAME prototype STOP card as the stacked path (activeCardHtml: number tile, sentence-case brand chip, # chip,
-    // «Parada actual», amber door/ref box, A COBRAR/PAGO, the logo-tile nav button + the personalized «Entregado»
-    // slide), NEVER the slice-1 single-order card (Codex r2 visual). singleOrderCardHtml is now the OFFER card only
-    // (awaiting_acceptance). The geofence «Has llegado» line is dropped — no ruling covers it (Codex r2).
+    // Card selection: solo PICKUP → the v2 two-step builders (to-restaurant → review), driven by the existing
+    // slice1ReviewLatchKey + the frozen btn-at-restaurant/btn-pickup handlers (no server-call change). Solo
+    // DELIVERY (and a promoted/cancel-survivor at delivery) still renders the unified prototype STOP card
+    // (activeCardHtml: number tile, brand chip, # chip, «Parada actual», amber door/ref box, A COBRAR/PAGO, the
+    // logo-tile nav + personalized «Entregado» slide). singleOrderCardHtml is the OFFER card only (awaiting_acceptance).
     const spCardDeps = { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: XPD.RESTAURANT, navPref: drv2ReadNavPref(), collapsedBanners };
-    const spCardHtml = spStopScreen
+    const spCardHtml = spShowReview
+      ? pickupReviewHtml(soloOrder, spCardDeps)
+      : spSoloPickup
+      ? pickupToRestaurantHtml(soloOrder, spCardDeps)
+      : spStopScreen
       ? activeCardHtml(soloOrder, spCardDeps, { ordinal: spOrdinal, solo: false, showActualPill: true, arrived: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()), navLabel: stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: '' })
       : singleOrderCardHtml(soloOrder, {
           ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,
           RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: drv2ReadNavPref(),
           nowMs: Date.now(),   // offer ring: elapsed drives the resume (negative animation-delay); display-only
         });
-    activeSlot.innerHTML = spHeader + spCancel + spStrip + soloMapHtml + spCardHtml;
+    // The review step (enRestaurante) has no map — the prototype drops it; the to-restaurant step keeps it.
+    activeSlot.innerHTML = spHeader + spCancel + spStrip + (spShowReview ? '' : soloMapHtml) + spCardHtml;
     // The slice-1 OFFER card (singleOrderCardHtml, awaiting_acceptance only) needs the «→ {destino}» nav line +
     // the personalized «Entregado» slide injected at the seam. The stop-card path (activeCardHtml) renders both,
     // so these run ONLY for the offer card — and for an offer there is no nav/Entregado, so this is inert today.

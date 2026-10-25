@@ -23,6 +23,7 @@ import {
   incomingBannerHtml, activeCardHtml, queueHtml, queueDetailHtml,
   phaseStripHtml, stopNavInfo, resolveVisibleLabels,
   navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
+  pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo,
 } from './stacked-view.js';
 import { overviewMapSvg, isStaleFix } from './overview-map.js';
 // Firebase-FREE real modules → imported REAL (not lifted): the writers' pure cores + the task/order constants.
@@ -311,6 +312,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
     'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml', 'pickupSubLabel',
+    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo',
     'renderIdleState', 'toast', 'resolveCompleteErrorMessage', 'CSS', '_driverState', '_rec'];
   const CSS = dom.window.CSS || { escape: (s) => String(s).replace(/[^\w-]/g, '\\$&') };
   const lsStore = {};   // per-harness in-memory localStorage (the real drv2ReadNavPref per-uid mirror)
@@ -319,6 +321,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
     navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
+    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo,
     renderIdleState, toast, resolveCompleteErrorMessage, CSS, driverState, rec);
   // Feed the observer the SAME live mock state getDriverOrders reads BEFORE every render (prod's allTasks/
   // allOrders are the live listener state; a captured ref would go stale when completeTask deletes the task legs).
@@ -411,6 +414,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
     'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml', 'pickupSubLabel',
+    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo',
     'attachIncomingBannerHandlers', 'renderIdleState', 'toast', 'resolveCompleteErrorMessage', '_driverState', '_rec',
     '_latchInit', '_authGen'];
   const fn = new Function(...params, body);
@@ -418,6 +422,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
     navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
+    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo,
     attachIncomingBannerHandlers, renderIdleState, toast, resolveCompleteErrorMessage, driverState, rec,
     latchInit, authGen);
 
@@ -636,27 +641,40 @@ t('M2 gate: 0 orders → idle path (renderIdleState), no .solo, slots cleared', 
   assert.equal(r.active(), ''); assert.equal(r.banner(), ''); assert.equal(r.queue(), '');
 });
 
-// M3/M4 ← slice-1 geofence cells, RETUNED to the stop card (Codex r2): the pickup stop card shows the arrived
-// note when inside the geofence, else the nav button — both with the Recogí slide. The slice-1 «Ya estoy en el
-// restaurante» review latch is GONE (unified stop card; the latch was client-only, no server write).
-t('M3 arrived: pickup @ 49 m → ARRIVED → «Has llegado al restaurante» note + the Recogí slide', () => {
+// M3/M4 ← slice-1 geofence cells, RETUNED to the owner-approved SOLO-PICKUP two-step (advisor ruling 2026-10-24,
+// which supersedes the r2 unified card FOR THE PICKUP PHASE): arrival (or the «Ya estoy en el restaurante» tap)
+// opens the enRestaurante REVIEW (btn-pickup; no «Has llegado» note, no map), and not-arrived shows the
+// alRestaurante to-restaurant step (the nav button + the «Ya estoy» slide, btn-at-restaurant). Both the latch and
+// the geofence open review (the same OR the slice-1 card used) — arrival is never a regression.
+t('M3 arrived: pickup @ 49 m → ARRIVED opens the review step (btn-pickup; no «Has llegado» note, not the «Ya estoy» step)', () => {
   const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 49 });
-  assert.ok(r.active().includes('Has llegado al restaurante'), 'the geofence arrived note on the stop card');
+  assert.ok(r.active().includes('Número de pedido'), 'the enRestaurante review card (number protagonist)');
   assert.ok(r.active().includes('id="btn-pickup"'), 'the Recogí slide');
-  assert.ok(!r.active().includes('id="btn-at-restaurant"'), 'no review toggle (latch removed)');
+  assert.ok(!r.active().includes('Has llegado'), 'the review card carries no geofence arrived note');
+  assert.ok(!r.active().includes('id="btn-at-restaurant"'), 'already at review → not the to-restaurant step');
 });
-t('M4 threshold: pickup @ 51 m → NOT arrived → the nav button + the Recogí slide (no arrived note, no review toggle)', () => {
+t('M4 threshold: pickup @ 51 m → NOT arrived → the to-restaurant step (nav + «Ya estoy en el restaurante»), not the Recogí slide', () => {
   const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 51 });
-  assert.ok(r.active().includes('Navegar con'), 'the nav button renders when not arrived');
-  assert.ok(r.active().includes('id="btn-pickup"'), 'the Recogí slide');
+  assert.ok(r.active().includes('Navegar con'), 'the nav button renders at the to-restaurant step');
+  assert.ok(r.active().includes('id="btn-at-restaurant"'), 'the «Ya estoy en el restaurante» slide');
+  assert.ok(!r.active().includes('id="btn-pickup"'), 'not the review step yet → no Recogí slide');
   assert.ok(!r.active().includes('Has llegado'), 'not arrived → no arrived note');
-  assert.ok(!r.active().includes('id="btn-at-restaurant"'), 'the review latch is gone (unified stop card)');
 });
 
-// M5–M9 RETIRED (Codex r2 confirmed 2026-10-24): the slice-1 «Ya estoy en el restaurante» review latch
-// (slice1ReviewLatchKey + btn-at-restaurant) is dropped by unifying the single stop on the prototype stop card.
-// It was CLIENT-ONLY (no server write) so nothing is lost; the server-side arriveAtRestaurant / geofence
-// at_restaurant paths are separate and remain byte-unchanged (proven by the freeze guard on xpizza-delivery.js).
+// M5 RESTORED (advisor ruling 2026-10-24): the owner-approved solo-pickup two-step brings back the «Ya estoy en
+// el restaurante» review latch (slice1ReviewLatchKey + btn-at-restaurant) as the NEW v2 flow, superseding the r2
+// unified card for the pickup phase. The tap is CLIENT-ONLY (no server write); the server pickupComplete still
+// fires only from the review step's btn-pickup, with the swipe-END pointer revalidation byte-unchanged. This cell
+// drives the full latch path the advisor asked for: to-restaurant → «Ya estoy» tap → review → Recogí.
+t('M5 latch path: to-restaurant → «Ya estoy» tap opens the review step → the Recogí slide (restored two-step)', async () => {
+  const r = run({ orders: [pickup('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH }, dist: 300 });  // far → step 1
+  assert.ok(r.active().includes('id="btn-at-restaurant"'), 'step 1: the «Ya estoy en el restaurante» slide');
+  assert.ok(!r.active().includes('id="btn-pickup"'), 'step 1: no Recogí slide yet');
+  const d = r.prep('btn-at-restaurant'); r.down(d); r.move(1000); await r.up(1000);   // swipe «Ya estoy» → latch + re-render
+  assert.ok(r.active().includes('Número de pedido'), 'the enRestaurante review opened on the tap latch (no geofence)');
+  assert.ok(r.active().includes('id="btn-pickup"'), 'step 2: the server Recogí slide');
+  assert.ok(!r.active().includes('id="btn-at-restaurant"'), 'step 2: the «Ya estoy» slide is gone');
+});
 
 // M10 ← slice-1 "(a) 1→2 while a drag is in progress → deferred, replayed on drag-end" (retuned to the stop card).
 t('M10 defer: 1→2 while a slide drag is in progress → render DEFERS (renderPending), replays to stacked on drag-end', async () => {
@@ -666,10 +684,10 @@ t('M10 defer: 1→2 while a slide drag is in progress → render DEFERS (renderP
   assert.ok(r.api.getSliding(), 'slidingEl set during the drag');
   r.setOrders([delivery('A'), delivery('B')]); r.render();  // 2 orders arrive mid-drag
   assert.equal(r.api.getRenderPending(), true, 'render DEFERRED (not applied mid-drag)');
-  assert.ok(r.active().includes('Única parada'), 'DOM still shows the SINGLE stop during the drag');
+  assert.ok(r.active().includes('Número de pedido'), 'DOM still shows the SINGLE pickup review during the drag');
   r.move(20); await r.up(20);                               // release below threshold → reset + replay
   assert.equal(r.api.getSliding(), null, 'slidingEl cleared on drag-end');
-  assert.ok(r.active().includes('Parada 1 de 2') && !r.active().includes('Única parada'), 'the deferred render replayed into the stacked builder');
+  assert.ok(r.active().includes('Parada 1 de 2') && !r.active().includes('Número de pedido'), 'the deferred render replayed into the stacked builder');
 });
 
 // M11 ← slice-1 "(b) 2→1 while an action write is pending → deferred, replayed when the write settles".
@@ -1153,9 +1171,11 @@ t('P1-1 startup order: drv2RunAuthGen + authGen in source order do NOT TDZ-crash
 // P1-3 cross-hub (kills failing closed on a NULL pointer): after a cross-hub delivery current_task_id is cleared
 // while the next order is still at PICKUP — that pickup must stay ARMED (baseline), never gated.
 t('P1-3 cross-hub: a NULL pointer behaves as baseline — the next pickup is ARMED, not gated', () => {
-  const r = runReal({ seed: seed([{ id: 'B', pickup: TASK_STATUS.ACCEPTED, delivery: TASK_STATUS.ACCEPTED, hub: HUBM, created: 2, name: 'Beto' }]) });
+  // dist:10 → arrived → the enRestaurante review step, where the server Recogí slide (btn-pickup) renders; the
+  // gating safety assertion (null pointer = baseline, not fail-closed) is unchanged by the two-step restructure.
+  const r = runReal({ seed: seed([{ id: 'B', pickup: TASK_STATUS.ACCEPTED, delivery: TASK_STATUS.ACCEPTED, hub: HUBM, created: 2, name: 'Beto' }]), dist: 10 });
   r.read('drivers/drv').current_task_id = null; r.render();
-  assert.ok(r.active().includes('class="active-card"'), 'B renders the stop card');
+  assert.ok(r.active().includes('class="active-card"'), 'B renders the review stop card');
   const slide = r.activeEl().querySelector('#btn-pickup');
   assert.ok(slide && !slide.classList.contains('is-gated'), 'the Recogí slide is ARMED (null pointer = baseline, not fail-closed)');
 });

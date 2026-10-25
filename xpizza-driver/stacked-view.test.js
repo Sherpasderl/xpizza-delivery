@@ -7,6 +7,7 @@ import {
   bagTagClass, bagTagHtml, phaseStripHtml, navBtnHtml, queuedPreviewHtml, coloniaOf, readyTimeHHMM, readyTimeLabel, pickupSubLabel,
   activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml,
   stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
+  pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo,
 } from './stacked-view.js';
 
 let passed = 0;
@@ -226,6 +227,61 @@ t('stopHeaderHtml: deadline only with data (R1); «Única parada»; «Recoger N 
   assert.ok(stopHeaderHtml({ single: true }, DEPS).includes('Única parada'));
   assert.ok(stopHeaderHtml({ pickupCount: 2 }, DEPS).includes('Recoger 2 pedidos'));
   assert.ok(stopHeaderHtml({ ordinal: 1, total: 1, canReportProblem: true }, DEPS).includes('id="btn-problema"'));
+});
+t('stopHeaderHtml: explicit title override wins over the stop-count vocabulary (solo-pickup «Recoger ~H:MM» / «Revisá el pedido»)', () => {
+  assert.ok(stopHeaderHtml({ title: 'Recoger ~7:22', sub: 'X. Pizza' }, DEPS).includes('Recoger ~7:22'), 'title override shown');
+  assert.ok(!stopHeaderHtml({ title: 'Revisá el pedido' }, DEPS).includes('Única parada'), 'override suppresses the count title');
+  assert.ok(stopHeaderHtml({ title: '<b>x</b>' }, DEPS).includes('&lt;b&gt;x&lt;/b&gt;'), 'title override is escaped');
+});
+
+// ---------- solo-pickup two-step: soloPickupHeaderInfo / pickupToRestaurantHtml / pickupReviewHtml (advisor 2026-10-24) ----------
+const PK = deepFreeze({ orderId: 'A', phase: 'pickup',
+  pickupTask: { id: 'A_p', destination_address: 'Blvd. del Norte', destination_lat: 15, destination_lng: -88 },
+  deliveryTask: { id: 'A_d', destination_lat: 14, destination_lng: -87 },
+  order: { customer_name: 'Daniela Mejía', restaurant_display_name: 'X. Pizza', display_number: 47, total: 385,
+    payment_method: 'cash', items_text: 'Pizza grande, 2 Refrescos', prep: { ready_at: 48120000 } } });
+
+t('soloPickupHeaderInfo: step-1 «Recoger ~H:MM»/brand; step-2 «Revisá el pedido»/«brand · listo ~H:MM»; ready omitted when absent', () => {
+  assert.deepEqual(soloPickupHeaderInfo(PK.order, false), { title: 'Recoger ~7:22', sub: 'X. Pizza' });
+  assert.deepEqual(soloPickupHeaderInfo(PK.order, true), { title: 'Revisá el pedido', sub: 'X. Pizza · listo ~7:22' });
+  assert.deepEqual(soloPickupHeaderInfo({ restaurant_display_name: 'La Musa' }, false), { title: 'Recoger', sub: 'La Musa' });
+  assert.deepEqual(soloPickupHeaderInfo({ restaurant_display_name: 'La Musa' }, true), { title: 'Revisá el pedido', sub: 'La Musa' });
+});
+
+t('pickupToRestaurantHtml: to-restaurant card — brand/addr, «Recoger» pill, «Cocina: listo», nav + «Ya estoy» slide; NO invented instructions', () => {
+  const html = pickupToRestaurantHtml(PK, DEPS);
+  assert.ok(html.includes('class="active-card"'), 'the stop card shell');
+  assert.ok(html.includes('X. Pizza'), 'restaurant name (brandLabel)');
+  assert.ok(html.includes('Blvd. del Norte'), 'restaurant address (pickupTask.destination_address)');
+  assert.ok(html.includes('phase-pill pickup') && html.includes('>Recoger<'), 'the «Recoger» pill');
+  assert.ok(html.includes('Cocina: listo ~7:22'), 'the kitchen-ready note (ruling #2)');
+  assert.ok(html.includes('id="btn-at-restaurant"') && html.includes('Ya estoy en el restaurante'), 'the «Ya estoy» slide');
+  assert.ok(!html.includes('id="btn-pickup"'), 'no server Recogí slide at step 1');
+  assert.ok(!html.includes('Instrucciones del restaurante'), 'no invented instructions row (no such field exists)');
+  const noReady = pickupToRestaurantHtml(deepFreeze({ ...PK, order: { ...PK.order, prep: undefined } }), DEPS);
+  assert.ok(!noReady.includes('Cocina: listo'), 'ready note hidden when prep.ready_at absent (no fabricated time)');
+});
+
+t('pickupReviewHtml: review — number protagonist + name chip (R4 is pre-accept only → KEPT) + items + reminder + Recogí', () => {
+  const html = pickupReviewHtml(PK, DEPS);
+  assert.ok(html.includes('Número de pedido · decilo en ventanilla'), 'the «decilo en ventanilla» label');
+  assert.ok(html.includes('sv-bignum') && html.includes('#47'), 'the order-number protagonist');
+  assert.ok(html.includes('Daniela'), 'the customer-name chip is KEPT (R4 restricts identity only before accept)');
+  assert.ok(html.includes('Pizza grande') && html.includes('Refrescos'), 'the structured items');
+  assert.ok(html.includes('Revisá bebidas y salsas'), 'the reminder banner');
+  assert.ok(html.includes('id="btn-pickup"') && html.includes('Recogí el pedido'), 'the server Recogí slide');
+  assert.ok(!html.includes('id="btn-at-restaurant"'), 'no «Ya estoy» slide at the review step');
+});
+
+t('pickupReviewHtml pay row: collectionFor-driven, affirmative-only (cash = prototype copy; pending online NEVER «pagado»)', () => {
+  const pay = (order) => pickupReviewHtml(deepFreeze({ ...PK, order: { ...PK.order, ...order } }), DEPS);
+  const cash = pay({ payment_method: 'cash' });
+  assert.ok(cash.includes('Cobrar L 385 al entregar') && cash.includes('No cobrés aquí'), 'cash = prototype copy + reassurance');
+  assert.ok(pay({ payment_method: 'card_delivery' }).includes('Con tarjeta'), 'card_delivery is collected at delivery (distinct subtitle)');
+  assert.ok(pay({ payment_method: 'online', payment_status: 'confirmed' }).includes('Pagado en línea'), 'confirmed online → affirmative «Pagado en línea»');
+  const pending = pay({ payment_method: 'online' });   // NOT confirmed
+  assert.ok(pending.includes('Pago no confirmado') && !/pagado/i.test(pending), 'pending online is NEVER «pagado» (affirmative-only)');
+  assert.ok(pay({ free_order: true }).includes('Pedido gratis'), 'free order → «Pedido gratis»');
 });
 
 // ---------- queueDetailHtml (S5/S6 — read-only: no contact, no nav, no Entregado; items + payment + lock) ----------
