@@ -849,7 +849,11 @@ export function waTemplatesHtml(info = {}, deps = {}) {
   const soy = driverName ? `soy ${driverName}, ` : 'soy ';
   const deBrand = brand ? ` de ${brand}` : '';
   const tpls = [
-    { label: 'En camino', msg: `${fn ? 'Hola ' + fn + ', ' : 'Hola, '}${soy}su repartidor${deBrand}. Voy en camino, llego en unos 6 minutos.` },
+    // «En camino»: the prototype's «llego en unos 6 minutos» is SAMPLE DATA (like «Daniela»/«Marvin») — the driver
+    // app holds NO live ETA to the customer (computeReturnEta targets the restaurant, and traffic ETAs are parked),
+    // so shipping a literal 6 would put false copy in front of every customer. Clause dropped until a real per-order
+    // customer ETA exists (advisor 2026-10-25, ruling pending the owner). The draft is editable, so the driver can add a time.
+    { label: 'En camino', msg: `${fn ? 'Hola ' + fn + ', ' : 'Hola, '}${soy}su repartidor${deBrand}. Voy en camino.` },
     { label: 'Al llegar', msg: `Ya estoy afuera con su pedido${deBrand}. ¿Me abre, por favor?` },
     { label: 'Dirección', msg: 'No encuentro la dirección. ¿Me manda su ubicación por aquí?' },
   ];
@@ -863,6 +867,7 @@ export function waTemplatesHtml(info = {}, deps = {}) {
       <h4 class="wa-h4">Escribirle${fn ? ' a ' + esc(fn) : ''}</h4>
       <p class="wa-sub">Se abre WhatsApp con el mensaje listo. Podés editarlo antes de enviar.</p>
       <div class="wa-tpls">${tpls.map((t) => tplBtn(t.msg, t.label)).join('')}${freeBtn}</div>
+      <div class="wa-tiny">El nombre del restaurante viene del pedido; nunca va fijo en el app.</div>
       <button class="sheet-close" id="wa-cancel">Cancelar</button>
     </div>`;
 }

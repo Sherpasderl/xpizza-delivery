@@ -410,6 +410,10 @@ t('waTemplatesHtml: 3 phase templates + a free message; brand-from-order + drive
   assert.ok(/En camino<\/small>/.test(html) && /Al llegar<\/small>/.test(html) && /Dirección<\/small>/.test(html) && /Sin plantilla<\/small>/.test(html), 'the four phase labels');
   // the «en camino» template interpolates the driver name + the ORDER brand (never a literal brand)
   assert.ok(html.includes('soy Marvin, su repartidor de La Musa'), 'driver name + order brand woven into the draft');
+  // no fabricated ETA: the prototype's sample «6 minutos» is NOT shipped (no live customer ETA exists)
+  assert.ok(html.includes('Voy en camino.') && !/\d+\s*minutos/.test(html), 'template 1 says «Voy en camino.» — no hard-coded minutes');
+  // the approved tiny note is part of the screen (advisor 2026-10-25 ruling #1) — verbatim
+  assert.ok(html.includes('El nombre del restaurante viene del pedido; nunca va fijo en el app.'), 'the approved brand-source note, verbatim');
   // every template href is wa.me/<waPhone>?text=<encoded>; the free button opens the chat with NO text
   const hrefs = [...html.matchAll(/data-href="(https:\/\/wa\.me\/[^"]*)"/g)].map((m) => m[1]);
   assert.equal(hrefs.length, 4, 'four wa.me hrefs');
