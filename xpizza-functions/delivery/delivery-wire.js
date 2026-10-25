@@ -149,7 +149,7 @@ async function quoteDeliveryFor(req, db, rid, body, { getIdentity, getAuth, attr
   }
   let identity = null;
   try { identity = await getIdentity(db, rid); } catch (_) { return { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 }; }
-  const maxKm = coverageKm(lp.pricing, identity, body);
+  const maxKm = lp.pricing.invalid ? null : coverageKm(lp.pricing, identity, body);   // an invalid config has no bands: quoteDelivery refuses it (delivery_pricing_invalid) exactly as before S2 — coverage is never read for it (codex S2-srv-tip r1 P2)
   const q = P.quoteDelivery({ pricing: lp.pricing, hub: identity && { lat: identity.hub_lat, lng: identity.hub_lng }, mode: body && body.mode, pin: quotePin(body), customerUid: uid, ...(isApp(body) ? { maxKm } : {}) });
   if (q.refusal) return { refuse: { ok: false, error: q.refusal }, httpStatus: REFUSAL_STATUS[q.refusal] === 503 ? 503 : 200 };   // a config outage is a 503; a request refusal stays a fail-soft 200 body
   if (t > 0 && q.ctx.mode === 'pickup') return { refuse: { ok: false, error: 'tip_pickup' }, httpStatus: 400 };

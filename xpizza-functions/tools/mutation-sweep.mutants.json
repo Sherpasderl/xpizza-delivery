@@ -19984,17 +19984,18 @@
   {
     "id": "s2tip-e12",
     "slice": "s2tip",
-    "label": "the pre-reserve payer-email check is dropped (the acquire still refuses)",
+    "label": "the pre-reserve payer-email check is dropped (a reward hold is reserved before the acquire refuses)",
     "file": "index.js",
-    "from": "  let redemptionOwnsHold = false; if (PE.refusesFresh(clsForMenu, body, process.env)) return PE.refuse(res, orderId);",
+    "from": "  let redemptionOwnsHold = false; if (await PE.refusesFresh(clsForMenu, body, process.env, () => classifyHostedAttempt(db, orderId, fingerprint, nowTs, canonicalChargeFp, () => a8FingerprintC, TIP.ofBody(body)))) return PE.refuse(res, orderId);",
     "to": "  let redemptionOwnsHold = false; if (false) return PE.refuse(res, orderId);",
     "command": [
       "npm",
       "run",
       "test:s2tip"
     ],
-    "equivalent": true,
-    "why": "EQUIVALENT in observable outcome for a non-reward order, measured: the acquire's fresh-issuance check refuses the same 503 with no attempt, no order and no gateway call (s2tip-e07/e08 kill those). The pre-check's only distinct effect is skipping a reward RESERVE that the acquire refusal would then release (releaseHoldIfOwned) — reward card orders only; S2's app never sends a reward (tip + reward refused; rewards UI deferred, plan §6)."
+    "kills_with": [
+      "refused before the reserve"
+    ]
   },
   {
     "id": "s2tip-e13",
@@ -20010,6 +20011,53 @@
     ],
     "kills_with": [
       "card {\"tip_cents\":500,\"redeem\""
+    ]
+  },
+  {
+    "id": "s2tip-u25",
+    "slice": "s2tip",
+    "label": "P-C trusts a FAILED classification again (no re-check before the reserve)",
+    "file": "payer-email.js",
+    "from": "  return !(again && again.willIssueFreshUrl === false);",
+    "to": "  return false;",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "classify failed + re-check says FRESH"
+    ]
+  },
+  {
+    "id": "s2tip-u26",
+    "slice": "s2tip",
+    "label": "the quote reads coverage before the invalid-config refusal (TypeError → 500)",
+    "file": "delivery/delivery-wire.js",
+    "from": "  const maxKm = lp.pricing.invalid ? null : coverageKm(lp.pricing, identity, body);",
+    "to": "  const maxKm = coverageKm(lp.pricing, identity, body);",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "invalid active pricing",
+      "s2tip FAILED: TypeError"
+    ]
+  },
+  {
+    "id": "s2tip-e14",
+    "slice": "s2tip",
+    "label": "chargeOnlineOrder no longer re-establishes fresh-vs-recovery when classify failed",
+    "file": "index.js",
+    "from": ", () => classifyHostedAttempt(db, orderId, fingerprint, nowTs, canonicalChargeFp, () => a8FingerprintC, TIP.ofBody(body)))) return PE.refuse(res, orderId);",
+    "to": ")) return PE.refuse(res, orderId);",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "kills_with": [
+      "classify failed once"
     ]
   }
 ]

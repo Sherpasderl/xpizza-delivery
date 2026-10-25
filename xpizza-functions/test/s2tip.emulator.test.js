@@ -31,7 +31,11 @@ stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CH
 stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
 // the P-C race (as test/s3a-envio.emulator.test.js): the live checkout EXPIRES after the handler's classify and before the acquire
 let EXPIRE_BEFORE_ACQUIRE = null;
-stub('../pixelpay-hosted-charge', (r) => ({ ...r, acquireHostedAttempt: async (db, orderId, ...a) => { if (EXPIRE_BEFORE_ACQUIRE) { const f = EXPIRE_BEFORE_ACQUIRE; EXPIRE_BEFORE_ACQUIRE = null; await f(orderId); } return r.acquireHostedAttempt(db, orderId, ...a); } }));
+// codex r1 P2: the read-only classifier fails the next N calls (the handler's classify, then P-C's re-check)
+let CLASSIFY_FAIL = 0; let CLASSIFY_CALLS = 0;
+stub('../pixelpay-hosted-charge', (r) => ({ ...r,
+  acquireHostedAttempt: async (db, orderId, ...a) => { if (EXPIRE_BEFORE_ACQUIRE) { const f = EXPIRE_BEFORE_ACQUIRE; EXPIRE_BEFORE_ACQUIRE = null; await f(orderId); } return r.acquireHostedAttempt(db, orderId, ...a); },
+  classifyHostedAttempt: async (...a) => { CLASSIFY_CALLS++; if (CLASSIFY_FAIL > 0) { CLASSIFY_FAIL--; throw new Error('injected classify read failure'); } return r.classifyHostedAttempt(...a); } }));
 const { orderFingerprint } = require('../pixelpay-charge');
 
 const app = require('../index.js');
@@ -216,9 +220,42 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     assert.deepStrictEqual([raced.status, raced.json && raced.json.error, raced.charged.length, after.length, (await rtdb.ref(`orders/${live.b.order_id}/active_attempt_id`).get()).val()],
       [503, 'payer_email_unconfigured', 0, 1, aid], `P-C race: 503, no gateway call, no new attempt, the order still points at its attempt (${raced.text.slice(0, 160)})`);
     assert.deepStrictEqual((await rtdb.ref(`payment_attempts/${aid}`).get()).val(), before, 'the existing attempt is byte-untouched (never retired or rotated)');
+    // codex r1 P2: a REWARD-bearing fresh checkout whose classification FAILS (and whose re-check fails too) with no payer email
+    // → refused BEFORE the reserve: zero reserve, zero hold, zero gateway calls, no attempt, no order
+    const UID = 'u_s2tip';
+    await rtdb.ref('config/redemption_enabled').set(true);
+    await rtdb.ref(`user_rewards/${UID}/${RID}`).set({ balance: 8, reserved: 0 });
+    CLASSIFY_FAIL = 2; CLASSIFY_CALLS = 0;
+    const rw = await card({ extra: { customer_email: '', redeem: { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' } } }, { 'x-firebase-id-token': UID });
+    const wallet = (await rtdb.ref(`user_rewards/${UID}/${RID}`).get()).val();
+    assert.deepStrictEqual([rw.status, rw.json && rw.json.error, CLASSIFY_CALLS, CLASSIFY_FAIL, rw.charged.length, rw.attempts, rw.rec, wallet.reserved, wallet.reservations || null],
+      [503, 'payer_email_unconfigured', 2, 0, 0, 0, null, 0, null], `reward + classify failure + no email → refused before the reserve: zero hold, zero gateway calls (${rw.text.slice(0, 200)})`);
+    // the same failure ONCE (the re-check works) on a real live checkout → recovery untouched (reuse, no new charge)
+    process.env.PIXELPAY_MERCHANT_EMAIL = 'merchant@example.com';
+    const live2 = await card({ extra: { customer_email: '' } });
+    assert.ok(live2.status === 200 && live2.charged.length === 1, `premise: a live checkout (${live2.text.slice(0, 160)})`);
+    delete process.env.PIXELPAY_MERCHANT_EMAIL;
+    CLASSIFY_FAIL = 1; CLASSIFY_CALLS = 0;
+    const rec = await card({ body: live2.b });
+    assert.deepStrictEqual([rec.status, rec.charged.length, rec.attempts, CLASSIFY_CALLS], [200, 0, 1, 2], `classify failed once, the re-check proves the live checkout → reuse, no charge (${rec.text.slice(0, 160)})`);
     process.env.PIXELPAY_MERCHANT_EMAIL = 'merchant@example.com';
   }
-  ok('P-C: no payer email (env missing / blank / malformed, none from the customer) → 503 payer_email_unconfigured with zero gateway calls, no attempt, no order; a customer email works; a live checkout still resumes; the classify→acquire race is refused at the acquire with the existing attempt untouched');
+  ok('P-C: no payer email (env missing / blank / malformed, none from the customer) → 503 payer_email_unconfigured with zero gateway calls, no attempt, no order; a customer email works; a live checkout still resumes; the classify→acquire race is refused at the acquire with the existing attempt untouched; a FAILED classify is re-established before the reserve (reward + no email → zero hold), and a proven live checkout still reuses');
+
+  // ── 6b. codex r1 P2: an ACTIVE but INVALID config → both quote handlers answer 200 {ok:false, error:'delivery_pricing_invalid'}
+  //        exactly as before S2, for an absent and a zero tip (never a 500) ──
+  {
+    await rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: [{ max_km: 'x', cents: 1 }], restaurants: { [RID]: { active: true } } });
+    for (const extra of [{}, { tip_cents: 0 }, { entry_mode: 'app' }]) {
+      const q = await quote(extra);
+      assert.deepStrictEqual([q.status, q.text], [200, JSON.stringify({ ok: false, error: 'delivery_pricing_invalid' })], `quoteOrder, invalid config ${JSON.stringify(extra)} → the base 200 body (${q.status} ${q.text.slice(0, 160)})`);
+      await clean();
+      const qr = await post(app.quoteRedemption, { restaurant_id: RID, items: [LINE], redeem: { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' }, mode: 'delivery', pin: { ...north(4), confirmed: true }, ...extra }, { 'x-firebase-id-token': 'member1' });
+      assert.deepStrictEqual([qr.status, qr.text], [200, JSON.stringify({ ok: false, error: 'delivery_pricing_invalid' })], `quoteRedemption, invalid config ${JSON.stringify(extra)} → the base 200 body (${qr.status} ${qr.text.slice(0, 160)})`);
+    }
+    await setPricing({ x_pizza: { active: true, free_delivery: true }, la_musa: { active: false } });
+  }
+  ok('invalid active delivery config: quoteOrder AND quoteRedemption answer the base 200 {ok:false, error:"delivery_pricing_invalid"} for an absent / zero tip (legacy + app), never a 500');
 
   // ── 7. the APP quote: coverage = min(last band, radius); legacy unchanged ──
   {

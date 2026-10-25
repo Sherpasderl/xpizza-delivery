@@ -87,7 +87,7 @@ const HUNKS = [
     "    schedExtra: isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '' }));\n"
   ],
   [
-    "  let redemptionOwnsHold = false; if (PE.refusesFresh(clsForMenu, body, process.env)) return PE.refuse(res, orderId);   // S2 P-C: a FRESH checkout with no payer email → refused before the reserve and the acquire (recovery is never refused)\n",
+    "  let redemptionOwnsHold = false; if (await PE.refusesFresh(clsForMenu, body, process.env, () => classifyHostedAttempt(db, orderId, fingerprint, nowTs, canonicalChargeFp, () => a8FingerprintC, TIP.ofBody(body)))) return PE.refuse(res, orderId);   // S2 P-C: a FRESH checkout with no payer email → refused before the reserve and the acquire (recovery is never refused)\n",
     "  let redemptionOwnsHold = false;\n"
   ],
   [

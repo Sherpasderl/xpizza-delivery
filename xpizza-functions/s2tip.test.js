@@ -192,6 +192,17 @@ const seq = (...ids) => { let i = 0; return () => ids[i++]; };
     const tq = await q(body({ tip_cents: 2000 }));
     assert.strictEqual(issueQuote({ items: ITEMS, rid: RID, tables: TABLES, deliveryContext: tq.ctx, nowMs: NOW }).net_total_cents, computeServerNet({ items: ITEMS, deliveryContext: ctxT, rid: RID, tables: TABLES }).net_total_cents, 'a tipped quote\'s net = food + envío + tip');
     assert.deepStrictEqual(DW.quoteFields(null), {}, 'dark quote: no delivery block');
+    // codex r1 P2: an ACTIVE but INVALID config ({invalid:true}, no bands) refuses exactly as before S2 — byte-equal to the base,
+    // for an absent and a zero tip, legacy and app (coverage is never read for it)
+    const DWb = loadBase('delivery/delivery-wire.js');
+    const bad = P.readPricing({ policy_version: 1, bands: [{ max_km: 'x', cents: 1 }], restaurants: { [RID]: { active: true } } }, RID);
+    assert.deepStrictEqual(bad, { invalid: true }, 'premise: readPricing yields {invalid:true}');
+    for (const extra of [{}, { tip_cents: 0 }, { entry_mode: 'app' }, { tip_cents: 0, entry_mode: 'app' }]) {
+      const args = [req, null, RID, body(extra), { getIdentity, pricingP: Promise.resolve({ pricing: bad }) }];
+      const now = await DW.quoteDeliveryFor(...args);
+      assert.deepStrictEqual(now, await DWb.quoteDeliveryFor(...args), `invalid active pricing ${JSON.stringify(extra)}: byte-equal to the base refusal`);
+      assert.deepStrictEqual(now, { refuse: { ok: false, error: 'delivery_pricing_invalid' }, httpStatus: 200 }, `invalid active pricing ${JSON.stringify(extra)} → 200 delivery_pricing_invalid`);
+    }
     ok('deliveryFor / quoteDeliveryFor: tip_invalid 400, tip_reward_unsupported 409, tip_not_enabled 409 (dark), tip_pickup 400; the APP quote refuses beyond min(bands, radius) and reports it; legacy unchanged; public { from_cents, max_km }');
   }
 
@@ -307,14 +318,25 @@ const seq = (...ids) => { let i = 0; return () => ids[i++]; };
     assert.strictEqual(PE.payerEmail({ customer_email: ' a@b.co ' }, env(undefined)), 'a@b.co');
     assert.strictEqual(PE.payerEmail({}, env('m@x.com')), 'm@x.com');
     for (const v of [undefined, '', '  ', 'not-an-email', 'a@b']) assert.strictEqual(PE.payerEmail({}, env(v)), null, `env ${JSON.stringify(v)} → none`);
-    assert.strictEqual(PE.refusesFresh({ willIssueFreshUrl: true }, {}, env('')), true);
-    for (const cls of [{ willIssueFreshUrl: false, outcome: 'reuse' }, { willIssueFreshUrl: false, outcome: 'in_progress' }, { willIssueFreshUrl: false, outcome: 'already_paid' }, { willIssueFreshUrl: false, outcome: 'closed' }, null]) {
-      assert.strictEqual(PE.refusesFresh(cls, {}, env('')), false, `pre-check never refuses ${JSON.stringify(cls)} (null → the acquire decides)`);
+    assert.strictEqual(await PE.refusesFresh({ willIssueFreshUrl: true }, {}, env('')), true);
+    for (const cls of [{ willIssueFreshUrl: false, outcome: 'reuse' }, { willIssueFreshUrl: false, outcome: 'in_progress' }, { willIssueFreshUrl: false, outcome: 'already_paid' }, { willIssueFreshUrl: false, outcome: 'closed' }]) {
+      assert.strictEqual(await PE.refusesFresh(cls, {}, env('')), false, `pre-check never refuses a recovery ${JSON.stringify(cls)}`);
     }
-    assert.strictEqual(PE.refusesFresh({ willIssueFreshUrl: true }, { customer_email: 'c@d.hn' }, env('')), false, 'a valid customer email needs no fallback');
+    assert.strictEqual(await PE.refusesFresh({ willIssueFreshUrl: true }, { customer_email: 'c@d.hn' }, env('')), false, 'a valid customer email needs no fallback');
+    // codex r1 P2: the handler's classification FAILED (null) → fresh-vs-recovery is established again BEFORE the reserve
+    let calls = 0;
+    const re = (v) => async () => { calls++; if (v instanceof Error) throw v; return v; };
+    assert.strictEqual(await PE.refusesFresh(null, {}, env(''), re({ willIssueFreshUrl: true })), true, 'classify failed + re-check says FRESH → refused before the reserve');
+    assert.strictEqual(await PE.refusesFresh(null, {}, env(''), re({ willIssueFreshUrl: false, outcome: 'reuse' })), false, 'classify failed + re-check proves a live checkout → recovery untouched');
+    assert.strictEqual(await PE.refusesFresh(null, {}, env(''), re(new Error('read failed'))), true, 'classify failed twice (cannot be established) → treated as FRESH, refused');
+    assert.strictEqual(await PE.refusesFresh(null, {}, env(''), re(null)), true, 'an empty re-check → treated as FRESH, refused');
+    assert.strictEqual(await PE.refusesFresh(null, {}, env('')), true, 'no re-check available → treated as FRESH, refused');
+    const before = calls;
+    assert.strictEqual(await PE.refusesFresh(null, { customer_email: 'c@d.hn' }, env(''), re({ willIssueFreshUrl: true })), false);
+    assert.strictEqual(calls, before, 'with a payer email the re-check is never made (no extra read)');
     const src = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
     assert.ok(!/pedidos@lamusa\.hn/.test(src), 'the brand-literal fallback is gone from index.js');
-    ok('P-C: payer email = a valid customer email, else the env ONLY; a fresh issuance without one is refused before the CAS (create and rotate), recovery (reuse) never; the pre-check skips reuse/in_progress/already_paid/closed and a failed classify; the brand literal is gone');
+    ok('P-C: payer email = a valid customer email, else the env ONLY; a fresh issuance without one is refused before the CAS (create and rotate), recovery (reuse) never; the pre-check skips reuse/in_progress/already_paid/closed; a FAILED classify is re-established before the reserve and refused unless a live checkout is proven; the brand literal is gone');
   }
 
   fs.rmSync(TMP, { recursive: true, force: true });
