@@ -315,6 +315,7 @@ module.exports = {
   resolveHubFromTask,
   syncDriverHubUpdate,
   resolvePickupHub,
+  coordsMatchHub,   // stacked-seq r5 T2: the stack gate's same-hub test is THIS one (no second EPS)
   driverHasSameHubAccepted,
   sameHubRids,
   ingestHubRid,
