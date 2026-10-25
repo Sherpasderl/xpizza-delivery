@@ -1029,3 +1029,51 @@
     .eqsc td:nth-child(2),.eqsc td:nth-child(3){grid-column:1;font-size:12.5px;color:var(--mute)}
     .eqsc td:last-child{grid-column:2;grid-row:2 / span 2;align-self:end}
   }
+  /* ── PLAN-public-menu-display T1 · a section's name (owner-approved mockup «Cambiar nombre de sección», 2026-10-25) ── */
+  .secren{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border:0;border-radius:8px;background:none;color:var(--mute);font-size:12.5px;font-weight:650;cursor:pointer;font-family:inherit;white-space:nowrap;transition:color .15s,background .15s}
+  .secren:hover{color:var(--ink);background:var(--board-2)}
+  .secren:disabled{opacity:.42;cursor:not-allowed}
+  .secren:disabled:hover{color:var(--mute);background:none}
+  .secren svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .dhead.secedit{flex-wrap:wrap}
+  .secfield{display:flex;flex-direction:column;gap:5px;flex:1;min-width:220px}
+  .secvh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .secrow{display:flex;align-items:center;gap:10px}
+  .secin{font-family:var(--disp);font-size:17px;font-weight:800;letter-spacing:-.03em;color:var(--ink);background:var(--board-2);border:1px solid var(--accent);border-radius:10px;padding:8px 12px;width:100%;max-width:380px;min-width:0;outline:none}
+  .seccnt{font-size:12px;color:var(--mute2);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .secerr{font-size:12px;color:var(--red-text);font-weight:600}
+  .secact{display:flex;gap:8px;margin-left:auto}
+  .secnote{display:flex;align-items:center;gap:9px;padding:10px 20px;background:var(--board-2);border-bottom:1px solid var(--line2);font-size:12.5px;color:var(--mute);line-height:1.45}
+  .secnote svg{width:14px;height:14px;stroke:var(--mute2);fill:none;stroke-width:2;flex:none}
+  .price input:disabled{opacity:.5;cursor:not-allowed}
+  .dright .btn:disabled{opacity:.42;cursor:not-allowed}
+  .addrow.off{opacity:.42;pointer-events:none}
+  #seccall{display:flex;gap:14px;align-items:center;padding:14px 18px;border:1px solid var(--line);background:var(--card);border-radius:14px;margin-top:22px}
+  .seccallic{width:36px;height:36px;border-radius:10px;background:var(--board-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--mute);flex:none}
+  .seccallic svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .seccalltx{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .seccalltx b{font-size:14px;font-weight:700}
+  .seccalltx span{font-size:13px;color:var(--mute)}
+  #seccall .btn{flex:none}
+  .secnm{position:relative}
+  .secnm+.secnm{margin-top:14px}
+  .secnmid{font-size:12px;color:var(--mute2);display:flex;align-items:center;gap:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .secnmk{font-family:var(--body);font-size:11px;font-weight:750;color:var(--mute);background:var(--board-2);border:1px solid var(--line2);border-radius:999px;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+  .secmfnote{margin-right:auto;align-self:center;font-size:12.5px;color:var(--mute)}
+  #namemodal .mf{align-items:center}
+  @media(max-width:920px){
+    .dhead:has(.secren){flex-wrap:wrap}
+    .dhead .secren{order:3;flex-basis:100%;justify-content:flex-start;padding-left:0;margin-top:-4px}
+    .dhead:has(.secren) .dright{order:4;margin-left:0}
+    .secfield{flex-basis:100%}
+    .secact{margin-left:0;width:100%}
+    .secact .btn{flex:1;justify-content:center;min-height:44px}
+    .secin{max-width:none}
+    #namemodal .mf{flex-wrap:wrap}
+    .secmfnote{width:100%;margin-right:0}
+  }
+  @media(max-width:560px){
+    /* a section's old → new names are long: on a phone the value drops under the name instead of squeezing it */
+    .prow .pmain{flex:1 1 100%}
+    .prow .pval{margin-left:auto}
+  }

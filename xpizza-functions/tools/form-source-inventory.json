@@ -1705,6 +1705,7 @@
   "catalog/canonical-binding.js",
   "catalog/catalog-edit-auth.js",
   "catalog/catalog-edit.js",
+  "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
   "catalog/portal-reads.js",
   "catalog/public-menu.js",
@@ -1861,6 +1862,10 @@
    "lifts": []
   },
   "catalog/catalog-edit.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/draft-assess.js": {
    "pins": [],
    "lifts": []
   },

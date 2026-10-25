@@ -1805,7 +1805,7 @@
   },
   {
    "id": "xpizza-functions/catalog/draft-assess.js#assessDraft#items#0",
-   "line": 29,
+   "line": 28,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -1815,7 +1815,7 @@
   },
   {
    "id": "xpizza-functions/catalog/draft-assess.js#assessDraft#items#1",
-   "line": 30,
+   "line": 29,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43327,7 +43327,7 @@
   },
   {
    "id": "xpizza-portal/app.js#repaintFromDraft>anon#items#0",
-   "line": 465,
+   "line": 469,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43337,7 +43337,7 @@
   },
   {
    "id": "xpizza-portal/app.js#repaintFromDraft>anon#items#1",
-   "line": 466,
+   "line": 470,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43347,7 +43347,7 @@
   },
   {
    "id": "xpizza-portal/app.js#describeAddition#items#0",
-   "line": 516,
+   "line": 680,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43357,7 +43357,7 @@
   },
   {
    "id": "xpizza-portal/app.js#onAddProduct#items#0",
-   "line": 563,
+   "line": 727,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43367,7 +43367,7 @@
   },
   {
    "id": "xpizza-portal/app.js#renderDrawer#items#0",
-   "line": 770,
+   "line": 956,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43377,7 +43377,7 @@
   },
   {
    "id": "xpizza-portal/app.js#renderDrawer#items#1",
-   "line": 771,
+   "line": 957,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43387,7 +43387,7 @@
   },
   {
    "id": "xpizza-portal/app.js#renderAddDrawer>anon#items#0",
-   "line": 985,
+   "line": 1171,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43397,7 +43397,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#0",
-   "line": 1133,
+   "line": 1319,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43407,7 +43407,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#1",
-   "line": 1168,
+   "line": 1354,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43417,7 +43417,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#2",
-   "line": 1186,
+   "line": 1372,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43427,7 +43427,7 @@
   },
   {
    "id": "xpizza-portal/app.js#showOutcome>anon#items#0",
-   "line": 1762,
+   "line": 1955,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43437,7 +43437,7 @@
   },
   {
    "id": "xpizza-portal/app.js#showOutcome>anon#items#1",
-   "line": 1767,
+   "line": 1960,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43487,7 +43487,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#rowsOf#items#0",
-   "line": 126,
+   "line": 138,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43497,7 +43497,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#rowsOf#items#1",
-   "line": 126,
+   "line": 138,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43507,7 +43507,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#addProduct#items#0",
-   "line": 161,
+   "line": 173,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43517,7 +43517,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#addProduct#items#1",
-   "line": 162,
+   "line": 174,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43527,7 +43527,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#addProduct#items#2",
-   "line": 165,
+   "line": 177,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43537,7 +43537,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#adopt#items#0",
-   "line": 221,
+   "line": 233,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43547,7 +43547,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#addChoice#items#0",
-   "line": 477,
+   "line": 489,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43557,7 +43557,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#addChoice#items#1",
-   "line": 480,
+   "line": 492,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43567,7 +43567,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#addChoice#items#2",
-   "line": 480,
+   "line": 492,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43577,7 +43577,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#productsUsingGroup#items#0",
-   "line": 572,
+   "line": 584,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43643,7 +43643,7 @@
   },
   {
    "id": "xpizza-portal/render.js#renderDetail#items#0",
-   "line": 212,
+   "line": 284,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43653,7 +43653,7 @@
   },
   {
    "id": "xpizza-portal/render.js#renderDetail#items#1",
-   "line": 217,
+   "line": 289,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -43663,7 +43663,7 @@
   },
   {
    "id": "xpizza-portal/review.js#renderReview#total#0",
-   "line": 89,
+   "line": 98,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -43675,7 +43675,7 @@
   },
   {
    "id": "xpizza-portal/review.js#attestationModel#total#0",
-   "line": 252,
+   "line": 282,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -43687,7 +43687,7 @@
   },
   {
    "id": "xpizza-portal/review.js#serverAnswered#status#0",
-   "line": 648,
+   "line": 713,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -43700,7 +43700,7 @@
   },
   {
    "id": "xpizza-portal/review.js#serverAnswered#status#1",
-   "line": 648,
+   "line": 713,
    "kind": "member",
    "facts": [
     "STATUS",

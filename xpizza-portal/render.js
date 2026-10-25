@@ -103,7 +103,7 @@ export function renderRail(railEl, groups, selectedId, onSelect) {
 // its value (accepting "1e3", localising separators), and a price the merchant did not type is exactly
 // the failure this whole slice is built to prevent. editor.parsePrice is the only thing that decides
 // what counts, and it refuses anything that is not plain digits.
-function priceCell(value, { editable, changed, onInput, surface, key }) {
+function priceCell(value, { editable, locked = false, changed, onInput, surface, key }) {
   const cell = el('div', `price${changed ? ' chg' : ''}`);
   // The cell is addressable so the drawer and the row can stay in step without a repaint (a repaint
   // mid-edit would steal the caret). data-*, not an id: keys are merchant text and would not survive
@@ -119,7 +119,8 @@ function priceCell(value, { editable, changed, onInput, surface, key }) {
   // rather than "0" — which reads as free.
   input.value = (Number.isInteger(value) && value > 0) ? String(value) : '';
   input.placeholder = 'Sin precio';
-  input.addEventListener('input', () => onInput(input.value));
+  if (locked) input.disabled = true;
+  else input.addEventListener('input', () => onInput(input.value));
   cell.append(input);
   return cell;
 }
@@ -169,6 +170,54 @@ function groupKids(grp) {
   return kids;
 }
 
+const PENCIL = 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z';
+const LOCK = 'M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM8 11V7a4 4 0 0 1 8 0v4';
+// PLAN-public-menu-display T1 (mockup R2) — the section title as a field: the typed value, a counter, «Escribí un nombre» when
+// it is empty, Guardar (off while it is not a name) and Cancelar. Typing re-renders nothing: the counter, the message and
+// Guardar are updated in place, so the caret stays where the merchant left it.
+const SECTION_NAME_MAX = 40;
+const NAME_PROBLEM = { empty: 'Escribí un nombre', long: `Hasta ${SECTION_NAME_MAX} letras`, markup: 'Quitá los signos < y >' };
+function sectionNameField(head, rename) {
+  head.classList.add('secedit');
+  const field = el('label', 'secfield');
+  field.append(el('span', 'secvh', 'Nombre de la sección'));
+  const row = el('span', 'secrow');
+  const input = document.createElement('input');
+  input.className = 'secin';
+  input.type = 'text';
+  input.maxLength = SECTION_NAME_MAX;
+  input.placeholder = 'Nombre de la sección';
+  input.autocomplete = 'off';
+  input.value = typeof rename.value === 'string' ? rename.value : '';
+  const cnt = el('span', 'seccnt');
+  row.append(input, cnt);
+  const err = el('span', 'secerr');
+  field.append(row, err);
+  const act = el('span', 'secact');
+  const save = el('button', 'btn accent', 'Guardar');
+  save.type = 'button';
+  const cancel = el('button', 'btn ghost', 'Cancelar');
+  cancel.type = 'button';
+  act.append(save, cancel);
+  const sync = () => {
+    const problem = typeof rename.problemOf === 'function' ? rename.problemOf(input.value) : null;
+    cnt.textContent = `${input.value.length}/${SECTION_NAME_MAX}`;
+    err.textContent = problem ? NAME_PROBLEM[problem] || NAME_PROBLEM.empty : '';
+    err.hidden = !problem;
+    save.disabled = !!problem;
+  };
+  input.addEventListener('input', () => { if (typeof rename.onInput === 'function') rename.onInput(input.value); sync(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !save.disabled) { e.preventDefault(); rename.onSave(input.value); }
+    if (e.key === 'Escape') { e.preventDefault(); rename.onCancel(); }
+  });
+  save.addEventListener('click', () => rename.onSave(input.value));
+  cancel.addEventListener('click', () => rename.onCancel());
+  sync();
+  head.append(field, act);
+  if (rename.focus) setTimeout(() => { if (input.isConnected) { input.focus(); input.select(); } }, 0);
+}
+
 // `opts` is how the read-only 2b-2a render becomes the 2b-2b editor without forking the file. Absent,
 // every call behaves exactly as it did before — which is what keeps the read-only paths green.
 //
@@ -188,6 +237,12 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   // group as a chip and its price as the order page will (read-only: it is the group's, edited in the drawer).
   const groupOf = typeof opts.groupOf === 'function' ? opts.groupOf : () => null;
   const onAdd = editable && typeof opts.onAdd === 'function' && group && opts.canAdd && opts.canAdd(group.category.id) ? opts.onAdd : null;
+  // PLAN-public-menu-display T1 — a section's NAME (owner-approved mockup R1–R3b). All three are the caller's answers:
+  //   rename   null (no control) | {mode: 'idle' | 'blocked' | 'edit', value, problem, onStart, onInput, onSave, onCancel}
+  //   notice   the slim line under the header that says why a control is off (a rename travels alone), or null
+  //   locked   prices and «Agregar producto» are off while a name change waits to be published
+  const rename = editable && opts.rename && typeof opts.rename === 'object' ? opts.rename : null;
+  const locked = editable && opts.locked === true;
   const rid = (it) => (it && typeof it.key === 'string' ? it.key : (it && typeof it.ref === 'string' ? it.ref : ''));
   detailEl.replaceChildren();
   if (!group) {
@@ -197,17 +252,34 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     return;
   }
   const head = el('div', 'dhead');
-  head.append(el('div', 'dtitle', group.category.name));
-  if (onAdd) {
+  if (rename && rename.mode === 'edit') sectionNameField(head, rename);
+  else {
+    head.append(el('div', 'dtitle', group.category.name));
+    if (rename) {
+      const b = el('button', 'secren');
+      b.type = 'button';
+      b.append(svgIcon(PENCIL), document.createTextNode('Cambiar nombre'));
+      if (rename.mode === 'blocked') b.disabled = true;
+      else b.addEventListener('click', () => rename.onStart());
+      head.append(b);
+    }
+  }
+  if (onAdd && !(rename && rename.mode === 'edit')) {
     const right = el('span', 'dright');
     const add = el('button', 'btn', '');
     add.type = 'button';
     add.append(svgIcon('M12 5v14M5 12h14'), document.createTextNode('Agregar producto'));
-    add.addEventListener('click', () => onAdd(group.category.id));
+    if (locked) add.disabled = true;
+    else add.addEventListener('click', () => onAdd(group.category.id));
     right.append(add);
     head.append(right);
   }
   detailEl.append(head);
+  if (editable && typeof opts.notice === 'string' && opts.notice) {
+    const n = el('div', 'secnote');
+    n.append(svgIcon(LOCK), el('span', null, opts.notice));
+    detailEl.append(n);
+  }
 
   if (group.items.length === 0) {
     const e = el('div', 'empty');
@@ -259,7 +331,7 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       cells.push(chev);
     }
     const pcell = grp ? groupPriceCell(grp, { changed: changed('item', id) || !!grp.changed, key: id }) : priceCell(it && it.price, {
-      editable, changed: changed('item', id), onInput: (v) => onPrice('item', id, v),
+      editable, locked, changed: changed('item', id), onInput: (v) => onPrice('item', id, v),
       surface: 'item', key: id,
     });
     row.append(...cells.slice(0, 1), info, pcell, ...cells.slice(1));
@@ -272,10 +344,14 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   }
   if (onAdd) {
     const addRow = el('div', 'addrow');
-    addRow.setAttribute('role', 'button'); addRow.tabIndex = 0;
+    addRow.setAttribute('role', 'button');
     addRow.append(svgIcon('M12 5v14M5 12h14'), document.createTextNode('Agregar producto'));
-    addRow.addEventListener('click', () => onAdd(group.category.id));
-    addRow.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(group.category.id); } });
+    if (locked) { addRow.classList.add('off'); addRow.setAttribute('aria-disabled', 'true'); }
+    else {
+      addRow.tabIndex = 0;
+      addRow.addEventListener('click', () => onAdd(group.category.id));
+      addRow.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(group.category.id); } });
+    }
     detailEl.append(addRow);
   }
 
@@ -297,7 +373,7 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       const nm = (ex.display && typeof ex.display.name === 'string' && ex.display.name.trim()) ? ex.display.name : k;
       info.append(el('div', 'nm', nm));
       row.append(info, priceCell(ex.price, {
-        editable, changed: changed('extra', k), onInput: (v) => onPrice('extra', k, v),
+        editable, locked, changed: changed('extra', k), onInput: (v) => onPrice('extra', k, v),
         surface: 'extra', key: k,
       }));
       // Item rows give up width to a leading thumb and a trailing chevron; option rows have neither,

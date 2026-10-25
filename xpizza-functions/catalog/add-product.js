@@ -559,5 +559,6 @@ function assertSameAuthoredFields(incomingStructure, storedStructure, { activeHa
 module.exports = {
   MAX_ADDITIONS, TMP_RE, AddProductError, normalizeName, tidyName, slugify, sameJson,
   resolveKeyMode, classifyItems, allocateAdditions, compareToActive, assertSameAuthoredFields, isGroupVariant, optionName, prospectiveAdditionNames,
+  changesNothingElse,   // PLAN-public-menu-display T1 (portal r1 #3): the SAME «anything but a category name» rule, read by draft-assess
   ALWAYS_COMPARED, COMPARED_WHEN_AUTHORED,
 };
