@@ -229,17 +229,14 @@ const expectUntouched = async (s, label) => {
     const s = scenario(k, { newStatus: 'preparing' });
     // the NEW order is offered to a timed-out driver d_t{k}; the next candidate is s.d (same hub, 1 accepted order, prep)
     const t = `d_t${k}`;
-    Object.assign(s.seed, {
-      [`drivers/${t}`]: { name: t, status: 'assigned', push_reachable: true, lat: 0, lng: 0, active: true },
-      [`tasks/${s.n}_pickup/assigned_driver_id`]: t, [`tasks/${s.n}_pickup/status`]: 'assigned', [`tasks/${s.n}_pickup/assignment_attempts`]: 1,
-      [`tasks/${s.n}_delivery/assigned_driver_id`]: t, [`tasks/${s.n}_delivery/status`]: 'assigned', [`tasks/${s.n}_delivery/assignment_attempts`]: 1,
-    });
+    s.seed[`drivers/${t}`] = { name: t, status: 'assigned', push_reachable: true, lat: 0, lng: 0, active: true };
+    for (const leg of ['pickup', 'delivery']) Object.assign(s.seed[`tasks/${s.n}_${leg}`], { assigned_driver_id: t, status: 'assigned', assignment_attempts: 1, assigned_at: NOW - 2 * 60000, assignment_deadline: NOW - 60000 });
     return { s, t };
   };
   const mon = (oid, drv) => fns.monitorAssignmentTimeout.run({ params: { taskId: `${oid}_pickup` }, data: { before: { val: () => null }, after: { val: () => drv } } });
   const runTimeout = async (flag) => {
     const re = timeoutWorld(21); const two = timeoutWorld(22);
-    two.s.seed[`tasks/${two.s.n}_pickup/assignment_attempts`] = 2; two.s.seed[`tasks/${two.s.n}_delivery/assignment_attempts`] = 2;
+    for (const leg of ['pickup', 'delivery']) two.s.seed[`tasks/${two.s.n}_${leg}`].assignment_attempts = 2;
     await seedAll([re.s, two.s], flag); calls.length = 0;
     await Promise.all([mon(re.s.n, re.t), mon(two.s.n, two.t)]);
     const a = await snap(re.s); const b = await snap(two.s);
