@@ -7,7 +7,8 @@
 // mount(doc, { envelope, config, unavailable, now, onEvent })
 //   config: { name, kicker, logo, logoWide, hero, unit: [singular, plural], hours: [ [h1,m1,h2,m2] | null ×7 (Sun..Sat) ],
 //             addr, etaDel: [a,b], etaPick: [a,b], feeFromCents: int | null, assetBase: string | null, entry: 'app' | 'link' }
-//   unavailable: Set of dish keys sold out right now (the live availability reader is wired by the host)
+//   unavailable: the LIVE availability — a Set of sold-out dish keys (the host mutates it) or a function key → bool; read at render
+//                AND at action time, never snapshotted (the live reader itself is wired by the host)
 //   onEvent(name, detail): the controls whose screens land in later slices — 'back' (the in-app close X, S7), 'checkout' (S2),
 //                          'schedule' (S2) — are host events, never dead buttons.
 (function (root, factory) {
@@ -48,12 +49,13 @@
     const menu = CappMenu.adaptMenu(opts.envelope);
     const cfg = opts.config || {};
     const unavailable = opts.unavailable || new Set();
+    const soldOf = (key) => { try { return typeof unavailable === 'function' ? !!unavailable(key) : unavailable.has(key); } catch (_) { return false; } };
     const now = opts.now || (() => new Date());
     const emit = (name, detail) => { try { (opts.onEvent || (() => {}))(name, detail); } catch (_) {} };
     const cart = CappCart.createCart(menu);
     const $ = (id) => doc.getElementById(id);
     const app = $('app');
-    const S = { mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', entry: cfg.entry === 'app' ? 'app' : 'link' };
+    const S = { mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link' };
 
     // ── the view model: the served menu as the prototype's item shape ──
     const photo = (d) => (d && d.img && cfg.assetBase ? cfg.assetBase.replace(/\/?$/, '/') + String(d.img).replace(/^\.?\//, '') : '');
@@ -61,8 +63,8 @@
     const EX = {}; for (const e of menu.extras) EX[e.key] = { n: e.name, p: e.price, c: e.cat, max: 1 };
     const itemOf = (d) => {
       const g = menu.groups[d.key];
-      const it = { id: d.key, n: d.name, d: d.desc, p: d.price, img: photo(d), hero: photo(d), tags: d.tags || [], ex: exOf(d.key), cat: d.cat, sold: unavailable.has(d.key) };
-      if (g) it.group = { label: g.label, choices: g.choices.map((ck) => { const c = menu.dish(ck); return { id: c.key, choice: c.choice || c.name, p: c.price, n: c.name, ex: exOf(c.key), sold: unavailable.has(c.key) }; }) };
+      const it = { id: d.key, n: d.name, d: d.desc, p: d.price, img: photo(d), hero: photo(d), tags: d.tags || [], ex: exOf(d.key), cat: d.cat };
+      if (g) it.group = { label: g.label, choices: g.choices.map((ck) => { const c = menu.dish(ck); return { id: c.key, choice: c.choice || c.name, p: c.price, n: c.name, ex: exOf(c.key) }; }) };
       return it;
     };
     const sections = menu.categories.map((c) => {
@@ -72,6 +74,7 @@
       return { id: cid, name: c.name != null ? c.name : cid, items, pickupOnly: pick, note: pick && wknd ? 'Solo viernes a domingo · para recoger' : '' };
     }).filter((s) => s.items.length);
     const find = (id) => { for (const s of sections) for (const it of s.items) { if (it.id === id) return it; if (it.group) for (const c of it.group.choices) if (c.id === id) return { ...c, d: it.d, img: it.img, hero: it.hero, tags: [], parent: it }; } return null; };
+    const isSold = (it) => !!it && (soldOf(it.id) || (it.parent ? soldOf(it.parent.id) : false) || (it.group ? it.group.choices.every((c) => soldOf(c.id)) : false));
     const unit = cfg.unit && cfg.unit.length === 2 ? cfg.unit : ['plato', 'platos'];
     const unitOf = (n) => n + ' ' + (n === 1 ? unit[0] : unit[1]);
     const badgeOf = (it) => { const k = BADGE_PRIORITY.find((t) => (it.tags || []).includes(t)); if (!k) return null; const served = menu.badges && menu.badges[k] && menu.badges[k].label; return { text: served || BADGE_FALLBACK[k], color: k === 'must_try' || k === 'crowd_favourite' ? 'var(--acc)' : 'var(--price)' }; };
@@ -97,12 +100,18 @@
       try { fn(); } catch (_) { return false; }
       if (cart.count()) {
         try { CappSerialize.serialize(cart, menu); } catch (e) {
-          if (e && e.code === 'cart_text_too_long') { cart.hydrate(before); S.refusal = FULL_CART; render(); return false; }
+          if (e && e.code === 'cart_text_too_long') { cart.hydrate(before); S.refusal = FULL_CART; showRefusal(); return false; }
         }
       }
       S.refusal = null;
       return true;
     }
+
+    // a refusal is shown WHERE the action happened: inside the open sheet, in the cart sheet, else as the prototype's toast
+    let toastT = null;
+    function toast(msg) { const t = $('toast'); if (!t) return; t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 4000); }
+    function showRefusal() { if (S.open) renderDetail(); else if (S.layerKind === 'cart') renderLayer(); else toast(S.refusal); }
+    const tooLong = () => { if (!cart.count()) return false; try { CappSerialize.serialize(cart, menu); return false; } catch (e) { return !!(e && e.code === 'cart_text_too_long'); } };
 
     // ── STORE ──
     function overlayHtml(it) {
@@ -113,12 +122,12 @@
     <button class="qty-add-btn"${n > 0 ? ' style="display:none"' : ''} data-act="${launcher ? 'open' : 'inc'}" data-id="${id}" aria-label="${launcher ? 'Personalizar' : 'Agregar ' + esc(it.n)}">+</button></div>`;
     }
     function rowHtml(it) {
-      const b = badgeOf(it), sold = it.sold ? '<span class="mark" style="color:var(--mute)">Agotado</span>' : '';
+      const b = badgeOf(it), sold = isSold(it) ? '<span class="mark" style="color:var(--mute)">Agotado</span>' : '';
       const label = b ? `<span class="mark" style="color:${b.color}">${esc(b.text)}</span>` : '';
       const marks = sold || label ? `<span class="marks">${sold}${label}</span>` : '';
       const price = it.group ? 'desde ' + money(Math.min(...it.group.choices.map((c) => c.p))) : money(it.p);
       const open = `data-act="open" data-id="${esc(it.id)}"`;
-      return `<div class="row${it.sold ? ' sold-out' : ''}" id="dish-${esc(it.id)}"><button class="txtbtn" ${open}>${marks}<span class="nm">${esc(it.n)}</span>${it.d ? `<span class="ds">${esc(it.d)}</span>` : ''}<span class="prrow"><span class="pr">${esc(price)}</span></span></button>
+      return `<div class="row${isSold(it) ? ' sold-out' : ''}" id="dish-${esc(it.id)}"><button class="txtbtn" ${open}>${marks}<span class="nm">${esc(it.n)}</span>${it.d ? `<span class="ds">${esc(it.d)}</span>` : ''}<span class="prrow"><span class="pr">${esc(price)}</span></span></button>
     ${it.img ? `<div class="thumb"><button class="openimg" ${open} aria-label="Ver ${esc(it.n)}" tabindex="-1"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div>` : `<div class="ovl-inline">${overlayHtml(it)}</div>`}</div>`;
     }
     function storeHtml() {
@@ -167,14 +176,38 @@
     function jumpTo(id) { const el = $('sec-' + id), sc = $('scroller'); if (!el || !sc) return; const extra = $('stick').classList.contains('collapsed') ? 0 : 56; if (sc.scrollTo) sc.scrollTo({ top: el.offsetTop - ($('stick').offsetHeight + extra) + 8, behavior: 'smooth' }); }
     function renderStoreKeep() { const sc = $('scroller'); const y = sc ? sc.scrollTop : 0; render(); const sc2 = $('scroller'); if (sc2) sc2.scrollTop = y; }
 
+    // ── focus (sheets are dialogs: focus moves in, Tab stays in, the background and a closed sheet are inert, focus returns) ──
+    const FOCUSABLE = 'button:not([disabled]),input,[tabindex]:not([tabindex="-1"]),a[href]';
+    const descOf = (el) => (el && el.dataset ? { act: el.dataset.act, id: el.dataset.id, key: el.dataset.key, grp: el.dataset.grp, field: el.dataset.field, elId: el.id } : null);
+    function refind(d) {
+      if (!d) return null;
+      if (d.elId) { const e = $(d.elId); if (e) return e; }
+      if (d.field) return app.querySelector(`[data-field="${d.field}"]`);
+      if (!d.act) return null;
+      const sel = `[data-act="${d.act}"]` + (d.id != null ? `[data-id="${d.id}"]` : '') + (d.key != null ? `[data-key="${d.key}"]` : '') + (d.grp != null ? `[data-grp="${d.grp}"]` : '');
+      try { return app.querySelector(sel) || (d.act === 'inc' || d.act === 'dec' ? app.querySelector(`[data-act="badge"][data-id="${d.id}"]`) || app.querySelector(`[data-act="open"][data-id="${d.id}"]`) : null); } catch (_) { return null; }
+    }
+    const focusTo = (el) => { if (el && el.focus) { try { el.focus(); } catch (_) {} } };
+    const setInert = (el, on) => { if (!el) return; if (on) { el.setAttribute('inert', ''); el.setAttribute('aria-hidden', 'true'); } else { el.removeAttribute('inert'); el.removeAttribute('aria-hidden'); } };
+    let returnTo = null;   // where focus goes back when the open dialog closes
+    const screenEl = () => app.querySelector('.screen');
+    function dialogEl() { if (S.open) return $('detail-modal'); const L = $('layer'); return S.layerKind && L ? L : null; }
+    function syncInert() {
+      const dlg = !!(S.open || S.layerKind);
+      setInert(screenEl(), dlg);
+      const pill = $('cart-bar'); if (pill) setInert(pill, dlg);
+      setInert($('detail-modal'), !S.open);
+      const L = $('layer'); if (L) setInert(L, !!S.open || !S.layerKind);
+    }
+
     // ── ITEM SHEET (per-instance extras; S1: toggles) ──
     const detailSkeleton = () => `<div class="detail-overlay" id="detail-overlay" data-act="dclose"></div><div class="detail-modal" id="detail-modal" aria-hidden="true" role="dialog" aria-labelledby="detail-header-title"><div class="detail-drag-handle" aria-hidden="true"></div><div class="detail-header"><button class="detail-close" id="detail-close" data-act="dclose" aria-label="Cerrar">${IC.close}</button><div class="detail-header-title" id="detail-header-title"></div><div class="detail-header-spacer"></div></div><div class="detail-scroll" id="detail-scroll"></div><div class="detail-cta-bar"><div class="detail-step" id="detail-step" role="group" aria-label="Cantidad"></div><button class="detail-cta" id="detail-cta" data-act="dcta"></button></div></div>`;
     const extrasByCat = (ids) => { const out = []; for (const id of ids) { const e = EX[id]; if (!e) continue; let g = out.find((x) => x.cat === e.c); if (!g) out.push(g = { cat: e.c, list: [] }); g.list.push({ id, ...e }); } return out; };
     const instTotal = (inst) => Object.keys(inst || {}).reduce((a, k) => a + (EX[k] ? EX[k].p : 0), 0);
     function openDetail(id) { const it = find(id); if (!it) return; S.open = it.group ? { id, kind: 'launcher', staged: { choice: null, ex: {}, qty: 1 } } : { id, kind: 'dish', staged: { qty: 1 } }; openDetailDom(); }
     function openEdit(key, g = '') { const l = cart.lines().find((x) => x.key === key); if (!l) return; const it = find(key); const n = l.ex.filter((inst) => CappCart.sigOf(inst) === g).length; S.open = { id: it.parent ? it.parent.id : it.id, kind: 'edit', key, g, n, staged: { choice: it.parent ? it.id : null, ex: Object.fromEntries(g ? g.split(',').map((k) => [k, 1]) : []) } }; openDetailDom(); }
-    function openDetailDom() { renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); $('detail-modal').setAttribute('aria-hidden', 'false'); }
-    function closeDetail() { $('detail-overlay').classList.remove('open'); $('detail-modal').classList.remove('open'); $('detail-modal').setAttribute('aria-hidden', 'true'); S.open = null; renderStoreKeep(); }
+    function openDetailDom() { if (!S.open) return; returnTo = returnTo || descOf(doc.activeElement); renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); syncInert(); focusTo($('detail-close')); }
+    function closeDetail() { $('detail-overlay').classList.remove('open'); $('detail-modal').classList.remove('open'); S.open = null; S.refusal = null; renderStoreKeep(); syncInert(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar')); }
     function extraRow(e, q, act, attrs) {
       const sel = q > 0;
       return `<div class="detail-extras-row" data-act="${act}" ${attrs} role="checkbox" aria-checked="${sel}" tabindex="0"><span class="xrow-main"><span class="detail-extras-name">${esc(e.n)}</span><span class="xrow-price">+${money(e.p)}</span></span><div class="detail-extras-toggle ${sel ? 'selected' : ''}">${IC.check.replace('class="i"', '')}</div></div>`;
@@ -186,7 +219,7 @@
       let html = `<div class="detail-photo${src ? '' : ' empty'}">${src ? `<img class="detail-photo-img" src="${esc(src)}" alt="${esc(it.n)}">` : ''}</div>`;
       const body = (price) => `<div class="detail-body"><div class="detail-name">${esc(it.n)}</div><div class="detail-price">${price}</div>${it.d ? `<div class="detail-desc">${esc(it.d)}</div>` : ''}</div>`;
       const groupLabel = (g) => `<div class="detail-cat-label"><span>${esc(g.label)}</span><span class="grp-status ${o.staged.choice ? 'done' : 'req'}">${o.staged.choice ? IC.check.replace('class="i"', '') + 'Requerido' : IC.alert.replace('class="i"', '') + 'Elegí 1 · Requerido'}</span></div>`;
-      const variantRows = (g, min) => `<div class="detail-extras-list">${g.choices.map((c) => { const sel = o.staged.choice === c.id, delta = c.p - min > 0 ? c.p - min : null; return `<div class="detail-variant-row${sel ? ' sel' : ''}" data-act="variant" data-id="${esc(c.id)}" role="radio" aria-checked="${sel}" tabindex="0"><div><span class="detail-extras-name">${esc(c.choice)}</span>${delta !== null ? `<span class="detail-extras-price">+${money(delta)}</span>` : ''}</div><span class="detail-variant-radio"></span></div>`; }).join('')}</div>`;
+      const variantRows = (g, min) => `<div class="detail-extras-list">${g.choices.map((c) => { const sel = o.staged.choice === c.id, delta = c.p - min > 0 ? c.p - min : null, off = soldOf(c.id); return `<div class="detail-variant-row${sel ? ' sel' : ''}${off ? ' sold-out' : ''}" data-act="variant" data-id="${esc(c.id)}" role="radio" aria-checked="${sel}"${off ? ' aria-disabled="true" style="opacity:.45"' : ''} tabindex="0"><div><span class="detail-extras-name">${esc(c.choice)}</span>${off ? '<span class="detail-extras-price">Agotado</span>' : delta !== null ? `<span class="detail-extras-price">+${money(delta)}</span>` : ''}</div><span class="detail-variant-radio"></span></div>`; }).join('')}</div>`;
       const optLabel = (cat) => `<div class="detail-cat-label"><span>${esc(cat)}</span><span class="grp-status optional">Opcional</span></div>`;
       const exOfChoice = () => { const c = o.staged.choice ? find(o.staged.choice) : null; return c ? c.ex : (it.group ? [] : it.ex); };
       if (o.kind === 'edit') {
@@ -211,11 +244,11 @@
       const step = $('detail-step'), cta = $('detail-cta'); cta.disabled = false; cta.className = 'detail-cta';
       const stepper = (n, minusOk) => `<button class="detail-step-btn" data-act="qty" data-delta="-1" aria-label="Quitar una"${minusOk ? '' : ' disabled'}>−</button><span class="detail-step-num" aria-live="polite">${n}</span><button class="detail-step-btn" data-act="qty" data-delta="1" aria-label="Agregar una">+</button>`;
       const label = (verb, amount) => `<span>${verb}</span><span class="detail-cta-divider">·</span><span>${money(amount)}</span>`;
-      if (o.kind === 'edit') { step.hidden = true; step.innerHTML = ''; const base = o.staged.choice ? find(o.staged.choice).p : it.p; cta.innerHTML = label('Guardar', o.n * (base + instTotal(o.staged.ex))); return; }
+      if (o.kind === 'edit') { step.hidden = true; step.innerHTML = ''; const base = o.staged.choice ? find(o.staged.choice).p : it.p; const target = o.staged.choice || o.key; if (soldOf(target)) { cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; } cta.innerHTML = label('Guardar', o.n * (base + instTotal(o.staged.ex))); return; }
       step.hidden = false;
-      if (o.kind === 'launcher') { const c = it.group.choices.find((x) => x.id === o.staged.choice), n = o.staged.qty || 1; step.innerHTML = stepper(n, n > 1); if (!c) { cta.disabled = true; cta.innerHTML = `<span>Elegí tu ${esc(it.group.label.toLowerCase())}</span>`; } else cta.innerHTML = label('Agregar', n * (c.p + instTotal(o.staged.ex))); return; }
+      if (o.kind === 'launcher') { const c = it.group.choices.find((x) => x.id === o.staged.choice), n = o.staged.qty || 1; step.innerHTML = stepper(n, n > 1); if (c && (soldOf(c.id) || soldOf(it.id))) { cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; } if (!c) { cta.disabled = true; cta.innerHTML = `<span>Elegí tu ${esc(it.group.label.toLowerCase())}</span>`; } else cta.innerHTML = label('Agregar', n * (c.p + instTotal(o.staged.ex))); return; }
       const q = qtyOf(it.id);
-      if (it.sold) { step.innerHTML = stepper(o.staged.qty || 1, false); cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; }
+      if (isSold(it)) { step.innerHTML = stepper(o.staged.qty || 1, false); cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; }
       if (q === 0) { const n = o.staged.qty || 1; step.innerHTML = stepper(n, n > 1); cta.innerHTML = label('Agregar', n * it.p); }
       else { const lineSum = cart.groups().filter((g) => g.key === it.id).reduce((a, g) => a + g.total, 0); step.innerHTML = stepper(q, true); cta.innerHTML = label('Guardar', lineSum); }
     }
@@ -223,12 +256,12 @@
       const o = S.open, it = find(o.id), act = t.dataset.act;
       if (act === 'qty') { const d = Number(t.dataset.delta); if (o.kind === 'launcher' || qtyOf(it.id) === 0) o.staged.qty = Math.max(1, (o.staged.qty || 1) + d); else { mutate(() => cart.setQty(it.id, qtyOf(it.id) + d)); if (!qtyOf(it.id)) o.staged.qty = 1; } }
       else if (act === 'extra') { const i = Number(t.dataset.inst), e = t.dataset.eid; const l = cart.lines().find((x) => x.key === it.id); const cur = Object.keys((l && l.ex[i]) || {}); mutate(() => cart.setInstance(it.id, i, cur.includes(e) ? cur.filter((k) => k !== e) : [...cur, e])); }
-      else if (act === 'variant') { o.staged.choice = t.dataset.id; const allowed = new Set(find(o.staged.choice).ex); for (const k of Object.keys(o.staged.ex)) if (!allowed.has(k)) delete o.staged.ex[k]; }
+      else if (act === 'variant') { if (soldOf(t.dataset.id)) return; o.staged.choice = t.dataset.id; const allowed = new Set(find(o.staged.choice).ex); for (const k of Object.keys(o.staged.ex)) if (!allowed.has(k)) delete o.staged.ex[k]; }
       else if (act === 'staged') { const e = t.dataset.eid; if (o.staged.ex[e]) delete o.staged.ex[e]; else o.staged.ex[e] = 1; }
       else if (act === 'dcta') {
         if (o.kind === 'edit') { saveEdit(); return; }
-        if (o.kind === 'launcher') { const c = find(o.staged.choice); if (!c) return; if (mutate(() => cart.add(c.id, Object.keys(o.staged.ex), o.staged.qty || 1))) { bumpPill(); closeDetail(); } return; }
-        if (it.sold) return;
+        if (o.kind === 'launcher') { const c = find(o.staged.choice); if (!c || soldOf(c.id) || soldOf(it.id)) { renderDetail(); return; } if (mutate(() => cart.add(c.id, Object.keys(o.staged.ex), o.staged.qty || 1))) { bumpPill(); closeDetail(); } return; }
+        if (isSold(it)) { renderDetail(); return; }
         if (qtyOf(it.id) === 0) { if (!mutate(() => cart.add(it.id, [], o.staged.qty || 1))) { renderDetail(); return; } bumpPill(); if (!it.ex.length) { closeDetail(); return; } renderDetail(); syncPill(); return; }   // with extras the sheet stays open to dress each instance (v11)
         closeDetail(); return;
       }
@@ -236,7 +269,8 @@
     }
     function saveEdit() {
       const o = S.open; const target = o.staged.choice || o.key;
-      mutate(() => cart.edit(o.key, o.g, Object.keys(o.staged.ex), target));
+      if (soldOf(target)) { renderDetail(); return; }
+      if (!mutate(() => cart.edit(o.key, o.g, Object.keys(o.staged.ex), target))) { renderDetail(); return; }   // refused: the sheet stays open, the reason shown in it
       closeDetail();
     }
     function syncPill() { const p = $('cart-bar'); if (!p) return; const n = cart.count(); p.querySelectorAll('.cart-pill-text')[0].textContent = n ? unitOf(n) : 'Tu pedido'; p.querySelectorAll('.cart-pill-text')[1].textContent = money(cartTotal()); }
@@ -251,63 +285,91 @@
       const lines = displayLines(), mode = S.mode, total = cartTotal();
       const head = `<div class="sheethead"><div><h2>Tu pedido</h2><small>${lines.length ? unitOf(cart.count()) + ' · ' : ''}${mode === 'delivery' ? 'Delivery' : 'Pickup'}</small></div><button class="iconbtn" data-act="cartclose" aria-label="Cerrar el carrito">${IC.close}</button></div>`;
       const note = S.cartNote ? `<div class="cartnote">${IC.info}<span>${S.cartNote === 1 ? '1 plato ya no está disponible' : S.cartNote + ' platos ya no están disponibles'}</span></div>` : '';
-      const refusal = S.refusal ? `<div class="cartnote">${IC.info}<span>${esc(S.refusal)}</span></div>` : '';
+      const over = tooLong();
+      const refusal = S.refusal || over ? `<div class="cartnote">${IC.info}<span>${esc(over ? FULL_CART : S.refusal)}</span></div>` : '';
       if (!lines.length) return head + note + `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span><button class="btn2" data-act="cartclose">Ver el menú</button></div>`;
       return head + note + refusal + lines.map((d) => `<div class="cline">${lineName(d, 'cl-txt')}${lineStep(d)}<span class="cl-p">${money(d.total)}</span></div>`).join('')
         + `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>`
-        + '<div class="sheetbar"><button class="primary" data-act="checkout">Ir al checkout</button></div>';
+        + `<div class="sheetbar"><button class="primary" data-act="checkout"${over ? ' disabled aria-disabled="true"' : ''}>Ir al checkout</button></div>`;
     }
     function runStoreSearch(q) {
       const box = $('sresults'); if (!box) return;
       const nq = norm(q).trim(); const hits = nq ? sections.flatMap((s) => s.items).filter((it) => norm(it.n + ' ' + (it.d || '')).includes(nq)) : [];
       box.innerHTML = !nq ? '' : hits.length ? `<div class="rcount">${hits.length} resultado${hits.length === 1 ? '' : 's'}</div>${hits.map(rowHtml).join('')}` : `<div class="noresults">Nada con «${esc(q)}». Probá otra palabra.</div>`;
     }
-    function renderLayer() {
+    function openLayer(kind) { returnTo = descOf(doc.activeElement); S.layerKind = kind; renderLayer(true); }
+    function closeLayer() { S.layerKind = null; S.cartNote = null; S.refusal = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar')); }
+    function renderLayer(fresh) {
       const L = $('layer'); if (!L) return; const k = S.layerKind;
-      if (!k) { L.innerHTML = ''; return; }
+      if (!k) { L.innerHTML = ''; syncInert(); return; }
+      if (k === 'ssearch' && !fresh && L.querySelector('#sq')) { runStoreSearch(S.searchQ); syncInert(); return; }   // an open search keeps its query, results and focus
       if (k === 'cart') L.innerHTML = `<div class="scrim" data-act="cartclose"></div><div class="sheet" role="dialog" aria-label="Tu pedido" style="padding-bottom:0"><div class="grab"></div>${cartInner()}</div>`;
       else if (k === 'menu') { const total = sections.reduce((a, s) => a + s.items.length, 0); L.innerHTML = `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Menú completo"><div class="grab"></div><div class="sheethead"><div><h2>Menú</h2><small>${isOpen() ? 'Abierto hoy · cierra ' + esc(closesText()) : 'Cerrado · ' + esc(opensText())} · ${total} platos</small></div><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div><nav aria-label="Secciones">${sections.map((s) => `<button class="navrow${s.id === S.activeSec ? ' on' : ''}" data-act="goto" data-goto="${esc(s.id)}">${esc(s.name)}<span>${s.items.length}</span></button>`).join('')}</nav></div>`; }
-      else if (k === 'ssearch') { L.innerHTML = `<div class="search" role="dialog" aria-label="Buscar en el menú"><div class="searchbar"><label for="sq">${IC.search}<input id="sq" type="search" placeholder="Buscar platos" autocomplete="off" data-field="sq"></label><button class="textbtn" data-act="lclose">Cancelar</button></div><div class="results" id="sresults"></div></div>`; runStoreSearch(''); }
+      else if (k === 'ssearch') { L.innerHTML = `<div class="search" role="dialog" aria-label="Buscar en el menú"><div class="searchbar"><label for="sq">${IC.search}<input id="sq" type="search" placeholder="Buscar platos" autocomplete="off" data-field="sq" value="${esc(S.searchQ)}"></label><button class="textbtn" data-act="lclose">Cancelar</button></div><div class="results" id="sresults"></div></div>`; runStoreSearch(S.searchQ); }
+      syncInert();
+      if (fresh) { const first = k === 'ssearch' ? $('sq') : L.querySelector(FOCUSABLE); focusTo(first); }
     }
 
     function render() {
       app.classList.toggle('narrow', app.clientWidth > 0 && app.clientWidth < 375);
-      app.innerHTML = `<div class="screen">${storeHtml()}</div>${detailSkeleton()}<div class="layer" id="layer"></div>`;   // the prototype's mount (render())
+      const keepSearch = S.layerKind === 'ssearch' && $('layer') && $('layer').querySelector('#sq') ? $('layer') : null;
+      const had = keepSearch ? descOf(doc.activeElement) : null;
+      const keepToast = $('toast');
+      app.innerHTML = `<div class="screen">${storeHtml()}</div>${detailSkeleton()}<div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`;   // the prototype's mount (render())
+      if (keepSearch) app.replaceChild(keepSearch, $('layer'));
+      if (keepToast) app.replaceChild(keepToast, $('toast'));   // a live refusal toast survives the re-render that follows it
       wireStore(); renderLayer();
-      if (S.open) { renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); $('detail-modal').setAttribute('aria-hidden', 'false'); }
+      if (S.open) { renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); }
+      syncInert();
+      if (had) focusTo(refind(had));
     }
     function onClick(ev) {
       const t = ev.target.closest && ev.target.closest('[data-act]'); if (!t || !app.contains(t)) return;
       const act = t.dataset.act, id = t.dataset.id;
       if (S.open && ['qty', 'extra', 'variant', 'staged', 'dcta'].includes(act)) { detailAct(t); return; }
       if (act === 'dclose') { closeDetail(); return; }
-      if (act === 'inc') { const it = find(id); if (it && it.group) { openDetail(id); return; } if (it && it.sold) return; if (mutate(() => cart.inc(id))) { S.expanded.add(id); bumpPill(); } renderStoreKeep(); return; }
-      if (act === 'dec') { const it = find(id); if (it && it.group) { S.layerKind = 'cart'; renderLayer(); return; } mutate(() => cart.dec(id)); renderStoreKeep(); return; }
+      if (act === 'inc') { const it = find(id); if (it && it.group) { openDetail(id); return; } if (!it || isSold(it)) { renderStoreKeep(); return; } if (mutate(() => cart.inc(id))) { S.expanded.add(id); bumpPill(); } renderStoreKeep(); return; }
+      if (act === 'dec') { const it = find(id); if (it && it.group) { openLayer('cart'); return; } mutate(() => cart.dec(id)); renderStoreKeep(); return; }
       if (act === 'badge') { S.expanded.add(id); renderStoreKeep(); return; }
-      if (act === 'open') { openDetail(id); return; }
-      if (act === 'pill') { S.layerKind = 'cart'; renderLayer(); return; }
-      if (act === 'cartclose' || act === 'lclose') { S.layerKind = null; S.cartNote = null; renderLayer(); return; }
-      if (act === 'rev') { const k = t.dataset.key, g = t.dataset.grp || ''; mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(k, g) : cart.lineDec(k, g))); renderStoreKeep(); S.layerKind = 'cart'; renderLayer(); return; }
-      if (act === 'edit') { S.layerKind = null; renderLayer(); openEdit(t.dataset.key, t.dataset.grp || ''); return; }
+      if (act === 'open') { returnTo = descOf(t); openDetail(id); return; }
+      if (act === 'pill') { openLayer('cart'); return; }
+      if (act === 'cartclose' || act === 'lclose') { closeLayer(); return; }
+      if (act === 'rev') { const k = t.dataset.key, g = t.dataset.grp || '', d = descOf(t); mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(k, g) : cart.lineDec(k, g))); renderStoreKeep(); renderLayer(); focusTo(refind(d) || $('layer').querySelector(FOCUSABLE)); return; }
+      if (act === 'edit') { S.layerKind = null; renderLayer(); returnTo = { act: 'pill' }; openEdit(t.dataset.key, t.dataset.grp || ''); return; }
       if (act === 'mode') { S.mode = t.dataset.val; renderStoreKeep(); return; }
       if (act === 'jump') { jumpTo(t.dataset.jump); return; }
-      if (act === 'menu') { S.layerKind = 'menu'; renderLayer(); return; }
-      if (act === 'goto') { S.layerKind = null; renderLayer(); jumpTo(t.dataset.goto); return; }
-      if (act === 'ssearch') { S.layerKind = 'ssearch'; renderLayer(); return; }
+      if (act === 'menu') { openLayer('menu'); return; }
+      if (act === 'goto') { closeLayer(); jumpTo(t.dataset.goto); return; }
+      if (act === 'ssearch') { openLayer('ssearch'); return; }
       if (act === 'back') { emit('back'); return; }
       if (act === 'checkout') { let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return; } emit('checkout', { body, mode: S.mode }); return; }
       if (act === 'closed-sched') { emit('schedule'); return; }
     }
-    function onInput(ev) { const t = ev.target; if (t && t.dataset && t.dataset.field === 'sq') runStoreSearch(t.value); }
+    function onInput(ev) { const t = ev.target; if (t && t.dataset && t.dataset.field === 'sq') { S.searchQ = t.value; runStoreSearch(t.value); } }
+    // the prototype's keyboard handler (Escape closes; Enter / Space activate the checkbox / radio rows and the badge) + Tab containment
+    function onKey(e) {
+      if (!app.contains(e.target) && e.target !== doc.body) return;
+      if (e.key === 'Escape') { if (S.open) { e.preventDefault(); closeDetail(); return; } if (S.layerKind) { e.preventDefault(); closeLayer(); return; } }
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[role="checkbox"][data-act], [role="radio"][data-act], .qty-badge')) { e.preventDefault(); e.target.click(); return; }
+      if (e.key === 'Tab') {
+        const dlg = dialogEl(); if (!dlg) return;
+        const f = [...dlg.querySelectorAll(FOCUSABLE)].filter((x) => !x.closest('[inert]'));
+        if (!f.length) { e.preventDefault(); return; }
+        const first = f[0], last = f[f.length - 1];
+        if (!dlg.contains(doc.activeElement)) { e.preventDefault(); focusTo(first); return; }
+        if (e.shiftKey && doc.activeElement === first) { e.preventDefault(); focusTo(last); } else if (!e.shiftKey && doc.activeElement === last) { e.preventDefault(); focusTo(first); }
+      }
+    }
 
     app.classList.add('app');
     doc.addEventListener('click', onClick);
     doc.addEventListener('input', onInput);
+    doc.addEventListener('keydown', onKey);
     render();
     return {
       cart, menu, render, state: S,
-      restore(snapshot) { const r = cart.hydrate(snapshot); S.cartNote = r.dropped || null; render(); return r; },
-      destroy() { doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); },
+      restore(snapshot) { const r = cart.hydrate(snapshot); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
+      destroy() { doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); },
     };
   }
 

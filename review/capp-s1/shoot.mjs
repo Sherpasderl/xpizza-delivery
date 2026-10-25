@@ -97,18 +97,19 @@ for (const [rid, st] of STATES) {
 const COMMON_STORE = ['P1 data gap: category display names (served id shown) and dish photo URLs (envelope img is form-relative) — advisor ruling (a)+(b), routed to 5f',
   'S5 data: social-proof pills («N+ volvieron a pedir»), «Lo más pedido» section + «#k más pedido» tags, liked % — no stats served yet',
   'S3 scope: the ⓘ fee-detail sheet and the guest promo pill «Envío gratis con tu cuenta» (envío/promo data + sheet)'];
+const FOCUS = 'a11y (Codex r1 P2-4): focus moves into the open sheet, so its close control shows the focus ring HERE only because the harness clicks synthetically (no pointer modality) — CDP-probed with real input: mouse / touch → focus moves in, no ring; keyboard Enter → ring';
 const NOTES = {
   'store-top': ['identical: hero, avatar, name, kicker, open/closes facts, ETA, «Envío desde» (config), Delivery/Pickup segment, slim bar, tabs, section head + count, rows, thumbs, «+», cart pill «Tu pedido · L 0»', ...COMMON_STORE,
     'P1 data gap (x_pizza): «La casa recomienda» — the prototype curates it (r.house); the build shows it only from catalog tags with a photo'],
   'store-scrolled': ['identical: the collapsed slim bar (name + search), the tabs bar, scrollspy on the first section', ...COMMON_STORE.slice(0, 2)],
   'store-pickup': ['identical: Pickup pressed, «Listo en ≈ N min», «Recogé en <dirección>», pickup-only flag hidden', ...COMMON_STORE.slice(0, 2)],
-  'sheet-dish': ['identical: sheet header, 4:3 photo, 24px name, price, description, stepper + «Agregar · L p»', 'S5 data: the rank / liked line under the price'],
-  'sheet-dressed': ['identical: «Pizza 1 / Pizza 2» sections, «SALSAS & QUESO · Opcional», toggle rows «+L p», «Guardar · L 730»', 'S5 data: the rank / liked line'],
-  'cart': ['identical: «Tu pedido», «3 pizzas · Delivery», grouped lines (plain / «+ Pepperoni»), «Editar», per-configuration stepper (trash at 1), line totals, Subtotal, «Ir al checkout»',
+  'sheet-dish': [FOCUS, 'identical: sheet header, 4:3 photo, 24px name, price, description, stepper + «Agregar · L p»', 'S5 data: the rank / liked line under the price'],
+  'sheet-dressed': [FOCUS, 'identical: «Pizza 1 / Pizza 2» sections, «SALSAS & QUESO · Opcional», toggle rows «+L p», «Guardar · L 730»', 'S5 data: the rank / liked line'],
+  'cart': [FOCUS, 'identical: «Tu pedido», «3 pizzas · Delivery», grouped lines (plain / «+ Pepperoni»), «Editar», per-configuration stepper (trash at 1), line totals, Subtotal, «Ir al checkout»',
     'S2/S3 scope: Envío row, «Creá tu cuenta y tu envío es gratis», Total — the plan renders Subtotal only in S1', 'la_musa: «+ Arroz Blanco» once — S1 is TOGGLES ONLY (ruling); the v6 sample shows «2×» (a stepper)'],
-  'cart-empty': ['identical: «Tu pedido está vacío.» + «Ver el menú»'],
-  'sheet-launcher': ['identical: «PROTEÍNA» + «Elegí 1 · Requerido», choices + deltas, disabled «Elegí tu proteína»', 'P1 data gap: no photo URL → the prototype\'s own empty photo frame', 'S5 data: rank / liked line'],
-  'sheet-launcher-chosen': ['identical: «Requerido» (done), Pollo selected, «Agregar · L 342»', 'P1 data gap: no photo URL → the empty photo frame', 'S5 data: rank / liked line'],
+  'cart-empty': [FOCUS, 'identical: «Tu pedido está vacío.» + «Ver el menú»'],
+  'sheet-launcher': [FOCUS, 'identical: «PROTEÍNA» + «Elegí 1 · Requerido», choices + deltas, disabled «Elegí tu proteína»', 'P1 data gap: no photo URL → the prototype\'s own empty photo frame', 'S5 data: rank / liked line'],
+  'sheet-launcher-chosen': [FOCUS, 'identical: «Requerido» (done), Pollo selected, «Agregar · L 342»', 'P1 data gap: no photo URL → the empty photo frame', 'S5 data: rank / liked line'],
 };
 const page = `<!doctype html><meta charset="utf-8"><title>S1b fidelity</title><style>body{font:14px system-ui;background:#EDEAE4;margin:24px}h2{margin:28px 0 8px}
 .p{display:flex;gap:24px}.p figure{margin:0}.p img{width:${W}px;height:${H}px;border:1px solid #D7D3CB;border-radius:18px}figcaption{font-weight:700;margin-bottom:6px}</style>
