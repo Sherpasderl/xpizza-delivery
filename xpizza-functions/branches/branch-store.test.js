@@ -78,6 +78,9 @@ const noInc = (v) => (v == null ? v : JSON.parse(JSON.stringify(v, (k, x) => (k 
     // interrupted (lease expired: «resume»); B's own retry after its lease takes the op over and finishes on the PERSISTED candidate
     const del = (now) => S.deleteBranchDraft(db, { rid: 'tb_brand_plaza_comercial', brandId: 'tb_brand', now });
     assert.deepStrictEqual(await del(NOW + 1), { ok: false, error: 'brand_busy', brand: 'tb_brand', holder: 'create_draft', interrupted: false }, 'A is refused while B\'s op is live');
+    // LIVE control: one ms before the lease's EARLIEST possible expiry (B's until ≥ NOW + LEASE_MS) is still live — the slack below
+    // widens only the EXPIRED probes and can never make a should-be-live probe read as interrupted
+    assert.deepStrictEqual(await del(NOW + S.LEASE_MS - 1), { ok: false, error: 'brand_busy', brand: 'tb_brand', holder: 'create_draft', interrupted: false }, 'still live just before the lease ends');
     assert.deepStrictEqual(await del(NOW + S.LEASE_MS + EXPIRY_SLACK + 1), { ok: false, error: 'brand_busy', brand: 'tb_brand', holder: 'create_draft', interrupted: true }, 'and while it is interrupted (resume first)');
     const rb = await S.createDraft(db, { input: { ...INPUT, location_name: 'Plaza Comercial Sur' }, opId: 'B', callerUid: 'own1', now: NOW + S.LEASE_MS + EXPIRY_SLACK + 2 });
     assert.deepStrictEqual(rb, { ok: true, rid: 'tb_brand_plaza_comercial_2' }, 'B resumes on its PERSISTED candidate');
