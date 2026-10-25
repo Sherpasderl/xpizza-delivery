@@ -64,6 +64,11 @@ if (PORTAL_ISOLATED_TARGETS.has(process.env.FUNCTION_TARGET)) {
 const { onRequest, onCall } = require('firebase-functions/v2/https');
 const { onValueWritten, onValueCreated } = require('firebase-functions/v2/database');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { defineSecret } = require('firebase-functions/params');
+const ROUTES_API_KEY = defineSecret('ROUTES_API_KEY');   // stacked-seq r5 T3: bound to autoAssign + sweep ONLY (D12: timeout never stacks)
+const SEQ = require('./sequencing/writer');   // stacked-seq r5 T5: flag, D7 candidate filter, planning, post-claim checks
+const { stackCopies } = require('./sequencing/plan-stack');
+const routesKey = () => { try { return ROUTES_API_KEY.value() || ''; } catch (_) { return ''; } };   // empty → planStack refuses no_key
 const { beforeUserCreated, HttpsError } = require('firebase-functions/v2/identity');
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
@@ -6002,7 +6007,7 @@ const STATUS_PRIORITY = {
  * Shared by autoAssignOnOrderCreate and monitorAssignmentTimeout to avoid
  * drift between initial-assign and reassign behavior.
  */
-async function pickEligibleDriver(db, excludeDriverIds, hubLat, hubLng) {
+async function pickEligibleDriver(db, excludeDriverIds, hubLat, hubLng, opts) {
   // brand-agnostic X1: the hub is REQUIRED (no x_pizza default) — a caller without one has nothing to rank from
   if (!Number.isFinite(hubLat) || !Number.isFinite(hubLng)) { console.error('pickEligibleDriver: no hub — refusing to rank'); return null; }
   excludeDriverIds = excludeDriverIds || [];
@@ -6110,6 +6115,9 @@ async function pickEligibleDriver(db, excludeDriverIds, hubLat, hubLng) {
     eligible.push({ driverId, orderCount, hasAcceptedOrder, statusPriority, distanceKm, name: d.name || driverId });
   }
 
+  // stacked-seq r5 T5(i): ONLY with {stackFilter} (autoAssign / sweep, flag ON) — a 1-order driver stays a candidate iff the pair is
+  // cross-hub (D7: today's rule) or same-hub AND the cheap gate passes. Without the option (flag OFF, timeout) nothing changes.
+  if (opts && opts.stackFilter) eligible.splice(0, eligible.length, ...(await SEQ.filterEligible(db, tasks, eligible, activeOrdersByDriver, opts.stackFilter.newOid)));
   if (eligible.length === 0) return null;
   eligible.sort((a, b) => {
     if (a.orderCount !== b.orderCount) return a.orderCount - b.orderCount;
@@ -6313,9 +6321,11 @@ exports.autoAssignOnOrderCreate = onValueWritten(
   {
     ref: '/orders/{orderId}',
     region: 'us-central1',
-    timeoutSeconds: 90  // 30s sleep + ample headroom for the assignment query
+    timeoutSeconds: 90,  // 30s sleep + ample headroom for the assignment query
+    secrets: [ROUTES_API_KEY]   // stacked-seq r5 T3
   },
   async (event) => {
+    const seqInvocationDeadline = Date.now() + 90 * 1000;   // stacked-seq r5 T5: the 90 s invocation budget INCLUDES the grace sleep
     const before = event.data.before.val();
     const after = event.data.after.val();
 
@@ -6389,7 +6399,8 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       return;
     }
     const { hubLat, hubLng } = assignHub;
-    const chosen = await pickEligibleDriver(db, [], hubLat, hubLng);
+    const seqOn = await SEQ.readSeqFlag(db);   // stacked-seq r5 T5: read ONCE per invocation; OFF → every line below is today's
+    const chosen = await pickEligibleDriver(db, [], hubLat, hubLng, seqOn ? { stackFilter: { newOid: orderId } } : undefined);
     if (!chosen) {
       console.warn(`autoAssign: no eligible drivers for ${orderId}, alerting dispatcher`);
       await db.ref('dispatcher_alerts').push({
@@ -6429,6 +6440,20 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       console.log(`autoAssign: ${orderId} is SAME-HUB STACKED on ${chosen.name} (already has ${chosen.orderCount} active)`);
     }
 
+    // stacked-seq r5 T5(ii): a same-hub pair is planned BEFORE the claim (no claim is held across Routes). Cross-hub / not one
+    // other order → today's path (D7). Any same-hub refusal, a deadline or no time left → SINGLE: the existing no-taker alert,
+    // no claim. The deadline is checked again right before the claim.
+    let seq = null;
+    if (seqOn && recheck.orderCount === 1) {
+      const p = await SEQ.planForWriter({ db, uid: chosen.driverId, newOid: orderId, invocationDeadline: seqInvocationDeadline, key: routesKey() });
+      if (p.mode === 'stack') seq = p;
+      if (p.mode === 'single' || (seq && Date.now() >= seq.deadlineAt)) {
+        console.warn(`autoAssign: ${orderId} not stacked on ${chosen.driverId} (${p.reason || 'deadline'}) — single, alerting`);
+        await db.ref('dispatcher_alerts').push({ type: 'no_drivers_available', order_id: orderId, customer_name: after.recipient_name || 'Cliente', total: after.total || null, created_at: ServerValue.TIMESTAMP });
+        return;
+      }
+    }
+
     // S3d: CAS-claim the delivery task before the finalize write, so a manual assign / sweep landing in
     // the window between reassert and this write can't be overwritten (and vice-versa). NULL-claim: a
     // brand-new order's delivery is null → the claim commits uncontended and the finalize update() below
@@ -6445,6 +6470,20 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     // attempts=1 = initial assignment. monitorAssignmentTimeout uses this
     // for its 2-strikes rule (only relevant for non-stacked).
     if (await merchantHooks.holdAfterClaim(db, orderId, (o) => !AUTO_ASSIGNABLE_STATUSES.has(o.status))) { console.log(`autoAssign: ${orderId} held or gone after the claim, rolling back`); await claim.rollback(); return; } const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);   // h1 A-R1
+    // stacked-seq r5 T5(iii): a sequenced placement re-checks under its OWN 3 s budget, inside the claim's rollback region —
+    // changed → roll back + return; confirm false → roll back + the existing alert; a throw / expiry → the existing rollbackOrAlert.
+    if (seq) {
+      let pc;
+      try { pc = await SEQ.postClaimSeq({ db, uid: chosen.driverId, newOid: orderId, decision: seq.decision, reassert: reassertAssignable, isAssignable: (o) => AUTO_ASSIGNABLE_STATUSES.has(o.status), isHeld: (o) => merchantHooks.heldByReject(o) }); }
+      catch (e) { console.error(`autoAssign: ${orderId} stack re-check failed`, e && e.message); await rollbackOrAlert(db, claim, orderId, 'autoAssign'); return; }
+      if (pc.changed) { console.log(`autoAssign: ${orderId} changed during planning (${pc.changed}), rolling back`); await claim.rollback(); return; }
+      if (!pc.ok) {
+        await claim.rollback();
+        await db.ref('dispatcher_alerts').push({ type: 'no_drivers_available', order_id: orderId, customer_name: after.recipient_name || 'Cliente', total: after.total || null, created_at: ServerValue.TIMESTAMP });
+        return;
+      }
+      Object.assign(updates, stackCopies(seq.decision, chosen.driverId));   // the copies ride in the ONE finalize update()
+    }
     try {
       await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'autoAssign.finalize', target: chosen.driverId });   // S1a §3
       console.log(`autoAssign: success for ${orderId} → ${chosen.driverId}`);
@@ -6668,11 +6707,12 @@ const SWEEP_RETRY_MAX = 2;
 const HALF_CLAIM_STALE_MS = 2 * SWEEP_INTERVAL_MS;
 
 exports.sweepPendingOrders = onSchedule(
-  { schedule: 'every 1 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  { schedule: 'every 1 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB', secrets: [ROUTES_API_KEY] },   // stacked-seq r5 T3
   async () => {
     const db = getDatabase();
     const svcDb = await pickHandle(db);   // S1a §3 — ownership-creating writes are rules-bound
     const now = Date.now();
+    const seqStart = now; let seqPlans = 0; let seqOn = null;   // stacked-seq r5 T5: ≤ 2 plans per tick, only while < 60 s of 120 elapsed
     // Read config + all data up front. The HEAL pass runs EVERY tick regardless of the flags (H1) — the
     // delivery CAS-claim is on the LIVE autoAssign/timeout paths, so a strand there must self-heal even
     // while the pending-re-offer behaviour is OFF. Only the OFFER pass is gated.
@@ -6800,8 +6840,19 @@ exports.sweepPendingOrders = onSchedule(
       const sweepHub = await resolveAssignHub(db, order);
       if (sweepHub.unresolved) { if (sweepHub.unresolved === 'no_hub') await alertHubUnresolved(db, orderId, order, 'sweepPending'); continue; }
       const { hubLat, hubLng } = sweepHub;
-      const chosen = await pickEligibleDriver(db, [], hubLat, hubLng);
+      if (seqOn === null) seqOn = await SEQ.readSeqFlag(db);   // stacked-seq r5 T5: read ONCE per invocation, only when an order is swept
+      const chosen = await pickEligibleDriver(db, [], hubLat, hubLng, seqOn ? { stackFilter: { newOid: orderId } } : undefined);
       if (!chosen) { waiting++; continue; }   // no taker this cycle — leave pending, keep waiting (no throttle bump)
+      // stacked-seq r5 T5(ii): plan a same-hub pair BEFORE the claim; cross-hub → today (D7); a same-hub refusal / deadline / no
+      // plan budget left → single (waiting++, no claim)
+      let seq = null;
+      if (seqOn && chosen.orderCount === 1) {
+        const mayPlan = seqPlans < 2 && Date.now() - seqStart < 60 * 1000;
+        const p = await SEQ.planForWriter({ db, uid: chosen.driverId, newOid: orderId, invocationDeadline: seqStart + 120 * 1000, key: routesKey(), mayPlan });
+        if (mayPlan && p.reason !== 'cross_hub' && p.reason !== 'not_one') seqPlans++;
+        if (p.mode === 'stack') seq = p;
+        if (p.mode === 'single' || (seq && Date.now() >= seq.deadlineAt)) { waiting++; continue; }
+      }
 
       // S3d: CAS-claim the DELIVERY task's assigned_driver_id (null → chosen) via the shared helper. This
       // is the field getPendingOrders reads, so the claim atomically leaves SIN ASIGNAR + blocks a
@@ -6843,6 +6894,12 @@ exports.sweepPendingOrders = onSchedule(
           await claim.rollback();   // back to SIN ASIGNAR, no throttle bump
           continue;
         }
+        // stacked-seq r5 T5(iii): a sequenced placement re-checks under its OWN 3 s budget (a throw / expiry → the catch below →
+        // rollbackOrAlert); changed or confirm false → roll back, skip
+        if (seq) {
+          const pc = await SEQ.postClaimSeq({ db, uid: chosen.driverId, newOid: orderId, decision: seq.decision, reassert: reassertAssignable, sweep: true, isAssignable: (o) => AUTO_ASSIGNABLE_STATUSES.has(o.status), isHeld: (o) => merchantHooks.heldByReject(o) });
+          if (pc.changed || !pc.ok) { await claim.rollback(); continue; }
+        }
 
         // Finalize as a NORMAL new offer: attempts=1 → fresh 60s deadline + slide-to-accept, re-arms the
         // timer. Same-hub force-accept (S3a): mirror autoAssign — if the chosen driver already ACCEPTED a
@@ -6852,6 +6909,7 @@ exports.sweepPendingOrders = onSchedule(
         // under-count. retry_count is written SEPARATELY (buildAssignmentUpdates never touches it).
         const retryCount = (delNow.retry_count) || 0;
         const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, recheck.hasAcceptedSameHubOrder);
+        if (seq) Object.assign(updates, stackCopies(seq.decision, chosen.driverId));   // stacked-seq r5: the copies ride in the ONE finalize
         updates[`tasks/${orderId}_delivery/retry_count`] = retryCount + 1;
         updates[`tasks/${orderId}_delivery/last_swept`] = now;
         await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'sweeper.finalize', target: chosen.driverId });   // S1a §3

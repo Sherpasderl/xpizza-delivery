@@ -42,7 +42,7 @@ const decisionOf = (rec, stack_id, pair, incumbentOid) => ({ stack_id, pair, ran
 const validCommitted = (rec, pair) => !!rec && rec.state === 'committed' && !!rec.ranks
   && [1, 2].every((r) => pair.filter((o) => rec.ranks[o] === r).length === 1);
 
-async function planStack({ db, uid, newOid, deadlineAt, transport, key, now = Date.now }) {
+async function planStack({ db, uid, newOid, deadlineAt, transport, key, now = Date.now, gateOnly = false }) {
   const left = () => deadlineAt - Date.now();
   const b = (p) => bounded(p, left());
   let attempt = null;   // set once a Routes call is under way: { stack_id, pair, ready_at, at }
@@ -59,6 +59,7 @@ async function planStack({ db, uid, newOid, deadlineAt, transport, key, now = Da
     const hubs = Object.fromEntries(await b(Promise.all(rids.map(async (rid) => [rid, await hubForFresh(db, rid)]))));
     const g = stackGate({ incumbent: { oid: incOid, order: incOrder, pickup: incPickup }, candidate: { oid: newOid, order: newOrder, pickup: newPickup }, otherCount: 1, hubs });
     if (!g.ok) return { stack: false, reason: g.reason };
+    if (gateOnly) return { stack: false, reason: 'no_time' };   // the caller may not plan (time / per-tick budget): the gate only
 
     // 2. the record: reuse a committed decision; honour an unexpired refusal for the same ready_at pair
     const { stack_id, pair } = stackIdFor(uid, incOid, newOid);
