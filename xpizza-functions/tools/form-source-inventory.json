@@ -20,6 +20,7 @@
     "charge-inputs-form-bodies.guard.test.mjs",
     "composition.test.mjs",
     "confirm-quote-wiring.test.mjs",
+    "customer-app/capp-guards.test.mjs",
     "d4b-availability.test.mjs",
     "d4b-reorder.test.mjs",
     "extras-parity-current.test.mjs",
@@ -463,6 +464,8 @@
     "charge-boundary.test.mjs",
     "charge-inputs-form-bodies.guard.test.mjs",
     "confirm-quote-wiring.test.mjs",
+    "customer-app/capp-cart.test.mjs",
+    "customer-app/capp-guards.test.mjs",
     "d4b-availability.test.mjs",
     "d4b-reorder.test.mjs",
     "extras-parity-current.test.mjs",
@@ -892,6 +895,7 @@
   "xpizza-kitchen": {
    "tests": [
     "avail-key.test.mjs",
+    "customer-app/capp-readers.test.mjs",
     "d4b-availability.test.mjs",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -948,6 +952,7 @@
   },
   "xpizza-dispatch": {
    "tests": [
+    "customer-app/capp-readers.test.mjs",
     "xpizza-dispatch-mobile/parity.test.mjs",
     "xpizza-dispatch/dispatch-alert-nav.test.js",
     "xpizza-dispatch/dispatch-alerts.test.js",
@@ -1018,6 +1023,7 @@
   },
   "xpizza-dispatch-mobile": {
    "tests": [
+    "customer-app/capp-readers.test.mjs",
     "xpizza-dispatch-mobile/board-model.test.mjs",
     "xpizza-dispatch-mobile/boot.test.mjs",
     "xpizza-dispatch-mobile/dispatch-lite-push-refresh.test.mjs",
@@ -1069,6 +1075,7 @@
   },
   "xpizza-driver": {
    "tests": [
+    "customer-app/capp-readers.test.mjs",
     "xpizza-driver/brand-helpers.test.js",
     "xpizza-driver/cash-helpers.test.js",
     "xpizza-driver/endshift-confirm.test.js",
