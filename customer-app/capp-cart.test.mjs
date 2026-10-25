@@ -308,3 +308,16 @@ test('P2 issued snapshot: deeply immutable — the resent body can never differ 
   assert.throws(() => { 'use strict'; snap.json = '{}'; }, TypeError);
   assert.equal(JSON.stringify(resendBody(snap)), before, 'neither the source body nor a resent copy reaches the snapshot');
 });
+
+test('cart: setInstance dresses ONE instance through the single write point (validated; others untouched)', () => {
+  const m = MENU.x_pizza; const d = configurable(m); const [e1, e2] = m.extrasFor(d.key);
+  const c = createCart(m); c.inc(d.key); c.inc(d.key);
+  c.setInstance(d.key, 1, [e2.key, e1.key]);
+  assert.deepEqual(c.lines()[0].ex, [{}, { [e1.key]: 1, [e2.key]: 1 }].map((x) => Object.fromEntries(Object.entries(x).sort())));
+  c.setInstance(d.key, 1, []);
+  assert.deepEqual(c.lines()[0].ex, [{}, {}]);
+  assert.throws(() => c.setInstance(d.key, 2, []), (e) => e.code === 'bad_instance');
+  const other = m.extras.find((e) => !m.extrasFor(d.key).some((x) => x.key === e.key));
+  if (other) assert.throws(() => c.setInstance(d.key, 0, [other.key]), (e) => e.code === 'extra_not_offered');
+  assert.deepEqual(c.lines()[0].ex, [{}, {}], 'a refused write changes nothing');
+});

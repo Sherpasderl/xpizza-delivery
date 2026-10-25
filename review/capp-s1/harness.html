@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es-HN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>S1b harness (review only)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@500;600;700&family=Red+Hat+Text:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/customer-app/capp.css">
+<style>html,body{margin:0;height:100%}body{position:relative;overflow:hidden}</style>
+</head>
+<body>
+<!-- REVIEW ONLY: mounts the REAL customer-app/ modules on the REAL served envelope (envelopes.json, written by shoot.mjs from the
+     S0 rig's real publish) with a store-config FIXTURE (the shell's data inputs, not customer-app code), then drives one state. -->
+<div class="app" id="app"></div>
+<script src="/customer-app/capp-version.js"></script>
+<script src="/customer-app/capp-menu.js"></script>
+<script src="/customer-app/capp-cart.js"></script>
+<script src="/customer-app/capp-serialize.js"></script>
+<script src="/customer-app/capp-ui.js"></script>
+<script>
+(async () => {
+  const qs = new URLSearchParams(location.search), rid = qs.get('rid'), state = qs.get('state');
+  const env = (await (await fetch('/review/capp-s1/envelopes.json')).json())[rid];
+  const P = '/proto/img/';
+  const CFG = {   // the prototype's own store facts for these two restaurants (rail data), as config
+    x_pizza: { name: 'X. Pizza', kicker: 'Pizzería', logo: P + 'xp-logo.webp', hero: P + 'xp-hero.jpg', unit: ['pizza', 'pizzas'],
+      hours: [[12, 0, 19, 45], [12, 0, 19, 45], [12, 0, 19, 45], [12, 0, 19, 45], [12, 0, 20, 45], [12, 0, 20, 45], [12, 0, 20, 45]], addr: 'Blvd. Los Próceres 1ra Calle, 20 Ave. N.O., San Pedro Sula',
+      etaDel: [30, 45], etaPick: [15, 20], feeFromCents: 4500, assetBase: '/xpizza-orders/', entry: 'link' },
+    la_musa: { name: 'La Musa', kicker: 'Gastropub', logo: P + 'lm-logo.png', logoWide: true, hero: P + 'lm-hero.jpg', unit: ['plato', 'platos'],
+      hours: [[12, 0, 19, 45], null, [17, 0, 20, 45], [17, 0, 20, 45], [17, 0, 20, 45], [17, 0, 21, 45], [17, 0, 21, 45]], addr: 'Barrio Rio Piedras, 5ta. Calle entre 17 & 18 Ave. N.O., San Pedro Sula',
+      etaDel: [35, 50], etaPick: [20, 30], feeFromCents: 4500, assetBase: '/la-musa-orders/', entry: 'link' },
+  };
+  const now = () => new Date(2026, 9, 20, 19, 5);   // the prototype's simulated clock: martes 20 oct, 7:05 p.m.
+  const ui = CappUI.mount(document, { envelope: env, config: CFG[rid], now });
+  window.__ui = ui;
+  const $ = (s) => document.querySelector(s), click = (s) => { const el = typeof s === 'string' ? $(s) : s; el.dispatchEvent(new MouseEvent('click', { bubbles: true })); };
+  const m = ui.menu, byName = (n) => m.dishes.find((d) => d.name === n);
+  const nap = () => new Promise((r) => setTimeout(r, 120));
+  try {
+    if (state === 'store-pickup') click('[data-act="mode"][data-val="pickup"]');
+    if (state === 'store-scrolled') { const sc = $('#scroller'); sc.scrollTop = 700; sc.dispatchEvent(new Event('scroll')); }
+    if (state === 'sheet-dish') click(`.txtbtn[data-id="${byName('Carnivora').key}"]`);
+    if (state === 'sheet-dressed') {   // the prototype's sampleCart: 2× Carnivora, Pepperoni on pizza 2
+      const c = byName('Carnivora'); ui.cart.add(c.key, [], 2); ui.cart.setInstance(c.key, 1, [m.extras.find((e) => e.name === 'Pepperoni').key]); ui.render();
+      click(`.txtbtn[data-id="${c.key}"]`);
+    }
+    if (state === 'sheet-launcher') click(`.txtbtn[data-id="${byName('Pad Thai').key}"]`);
+    if (state === 'sheet-launcher-chosen') { click(`.txtbtn[data-id="${byName('Pad Thai').key}"]`); click(`.detail-variant-row[data-id="${byName('Pad Thai - Pollo').key}"]`); }
+    if (state === 'cart') {
+      if (rid === 'x_pizza') { const c = byName('Carnivora'); ui.cart.add(c.key, [], 2); ui.cart.setInstance(c.key, 1, [m.extras.find((e) => e.name === 'Pepperoni').key]); ui.cart.inc(byName('Margherita').key); }
+      else { ui.cart.add(byName('Pad Thai - Pollo').key, [m.extras.find((e) => e.name === 'Arroz Blanco').key], 1); ui.cart.add(byName('Pork Belly Buns').key, [], 2); }   // S1 toggles: one Arroz Blanco (the v6 sample's «2×» is a stepper)
+      ui.render(); click('#cart-bar');
+    }
+    if (state === 'cart-empty') click('#cart-bar');
+    await nap();
+  } catch (e) { document.getElementById('app').insertAdjacentHTML('afterbegin', `<pre>harness error ${String(e && e.stack || e)}</pre>`); }
+  window.__ready = true;
+})();
+</script>
+</body>
+</html>

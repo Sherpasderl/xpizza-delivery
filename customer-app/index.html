@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es-HN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sherpa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@500;600;700&family=Red+Hat+Text:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="capp.css">
+<style>html,body{margin:0;height:100%}body{position:relative;overflow:hidden}</style>
+</head>
+<body>
+<!-- Customer app S1 — DARK (not a manifest site; deploys nowhere). The host (the S0 harness / the later shell) provides the
+     served envelope and the store config, then calls CappUI.mount(document, { envelope, config, … }). -->
+<div class="app" id="app"></div>
+<script src="capp-version.js"></script>
+<script src="capp-menu.js"></script>
+<script src="capp-cart.js"></script>
+<script src="capp-serialize.js"></script>
+<script src="capp-ui.js"></script>
+</body>
+</html>

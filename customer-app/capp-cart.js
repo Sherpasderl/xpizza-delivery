@@ -107,6 +107,13 @@
         put(t, moved); claim(t);
       },
       setQty,
+      // the sheet dresses ONE instance: its configuration replaced by extraKeys (validated; the single write point)
+      setInstance(key, i, extraKeys) {
+        const l = lines.get(String(key)); if (!l) return;
+        if (!Number.isInteger(i) || i < 0 || i >= l.qty) throw err('bad_instance', String(i));
+        const cfg = validConfig(l.key, extraKeys);
+        put(l, l.ex.map((x, j) => (j === i ? instOf(cfg) : x)));
+      },
       // DERIVED display: lines in first-add order, groups in first-instance order
       groups() {
         const out = [];
