@@ -365,6 +365,7 @@
   "catalog/policy-primitive.js#redeemRule": "catalog",
   "catalog/portal-reads.js#getEditableCatalogCore": "catalog",
   "catalog/public-menu.js#fromSource": "catalog",
+  "catalog/public-photos.js#buildPhotos": "catalog",
   "catalog/publish-edited-handler.js#publishEditedCore": "catalog",
   "catalog/publish-parity.js#catalogDescriptor": "catalog",
   "catalog/redeem-source.js#assertRedeemAllowMatchesToday": "catalog",

@@ -37,6 +37,7 @@
     "picker-extras-combos.test.mjs",
     "picker-extras-money.test.mjs",
     "picker-extras.test.mjs",
+    "public-menu-display-noop.test.mjs",
     "qty-stepper-outside-click.test.mjs",
     "reorder-whole-page.test.mjs",
     "s2-stash-cleanup.test.mjs",
@@ -107,6 +108,7 @@
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
     "xpizza-functions/catalog/public-menu.test.js",
+    "xpizza-functions/catalog/public-photos.test.js",
     "xpizza-functions/catalog/publish-edited.test.js",
     "xpizza-functions/catalog/publish-parity.test.js",
     "xpizza-functions/catalog/publish-paths.test.js",
@@ -320,6 +322,7 @@
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
+    "xpizza-functions/catalog/public-photos.test.js",
     "xpizza-functions/catalog/publish-edited.test.js",
     "xpizza-functions/catalog/publish-parity.test.js",
     "xpizza-functions/catalog/publish-paths.test.js",
@@ -472,6 +475,7 @@
     "picker-extras-combos.test.mjs",
     "picker-extras-money.test.mjs",
     "picker-extras.test.mjs",
+    "public-menu-display-noop.test.mjs",
     "qty-stepper-outside-click.test.mjs",
     "reorder-whole-page.test.mjs",
     "s2-stash-cleanup.test.mjs",
@@ -541,6 +545,7 @@
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
     "xpizza-functions/catalog/public-menu.test.js",
+    "xpizza-functions/catalog/public-photos.test.js",
     "xpizza-functions/catalog/publish-edited.test.js",
     "xpizza-functions/catalog/publish-parity.test.js",
     "xpizza-functions/catalog/publish-paths.test.js",
@@ -751,6 +756,7 @@
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
     "xpizza-functions/catalog/public-menu.test.js",
+    "xpizza-functions/catalog/public-photos.test.js",
     "xpizza-functions/catalog/publish-edited.test.js",
     "xpizza-functions/catalog/publish-parity.test.js",
     "xpizza-functions/catalog/publish-paths.test.js",
@@ -1701,6 +1707,8 @@
   "catalog/catalog-edit.js",
   "catalog/edit-catalog-handler.js",
   "catalog/portal-reads.js",
+  "catalog/public-menu.js",
+  "catalog/public-photos.js",
   "catalog/publish-edited-handler.js",
   "catalog/publish-request.js",
   "catalog/reset-draft.js",
@@ -1865,6 +1873,14 @@
    "lifts": [
     "xpizza-functions/portal/ops-helpers.guard.test.js"
    ]
+  },
+  "catalog/public-menu.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/public-photos.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/publish-edited-handler.js": {
    "pins": [],
