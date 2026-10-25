@@ -502,12 +502,12 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
   return { additions: additions.map((it) => it.key), removals };
 }
 
-// Two category lists that differ at most in `name`: same length, same id at each index, and every other field equal
-// (a field present on one side only is a change).
+// Two category lists that differ at most in `name`: same length, and at each index every field but `name` equal — the id
+// among them, so the same ids in the same order (a field present on one side only is a change).
 function sameCategoriesExceptName(d, a) {
   if (!Array.isArray(d) || !Array.isArray(a)) return sameJson(d, a);
   if (d.length !== a.length) return false;
-  return d.every((c, i) => isObj(c) && isObj(a[i]) && c.id === a[i].id && sameJson(without(c, ['name']), without(a[i], ['name'])));
+  return d.every((c, i) => isObj(c) && isObj(a[i]) && sameJson(without(c, ['name']), without(a[i], ['name'])));
 }
 // Nothing but the categories differs: no product added or removed, every product and extra record (price included) equal.
 function changesNothingElse(draftBuilt, activeBuilt, additions, removals) {
