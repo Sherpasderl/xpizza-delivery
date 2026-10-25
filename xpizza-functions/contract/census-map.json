@@ -152,6 +152,34 @@
   {
    "key": "normEmail",
    "reason": "lib/driver-admin-ops.js exports its email normalizer (trim + lowercase of a driver INVITE email) by name in module.exports — a helper, not an order field; §1 \"no order email\" stands"
+  },
+  {
+   "key": "tip_cents",
+   "reason": "S2-srv-tip: tips ARE implemented (PLAN-capp-S2-r4 §3, owner Q7 TIP_MAX L 2,000): the order's tip_cents (written only when > 0 by the existing atomic order write — cash via the spread breakdown, card via the pending order) and the same key on the server envío ctx / the signed quote payload / computeServerNet components. §1's 'no tip' is superseded for this field only; covered by s2tip.test.js + delivery/tip-consumers.test.mjs. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tip",
+   "reason": "S2-srv-tip: deliveryFor's parameter key (the request's raw tip_cents, validated) — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tipCents",
+   "reason": "S2-srv-tip: the cash fingerprint context key (tip.js normTip output) feeding tipExtra — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tipCentsOf",
+   "reason": "S2-srv-tip: delivery-pricing's exported reader of a server ctx's tip (a module.exports key) — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tipExtra",
+   "reason": "S2-srv-tip: tip.js's exported fingerprint-component helper (a module.exports key) — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "tipBindingConflict",
+   "reason": "S2-srv-tip: tip.js's exported direct stored-tip compare (a module.exports key) — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
+  },
+  {
+   "key": "payerEmail",
+   "reason": "S2 P-C: payer-email.js's exported PixelPay payer-email resolver (a module.exports key) — the hosted charge's payer email, not an order-email SENDER; §1's 'no order email' stands. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
   }
  ],
  "timerReview": {
@@ -381,6 +409,9 @@
   "create-order-build.js#attachCustomerAttribution": "intake",
   "create-order-build.js#buildCreateOrderUpdates": "intake",
   "createorder-classify.js#classifyExistingOrder": "intake",
+  "tip.js#orderRefusal": "intake",
+  "tip.js#refuse": "intake",
+  "payer-email.js#refuse": "intake",
   "createorder-classify.js#computeCanonicalIncomingFingerprint": "intake",
   "createorder-classify.js#computeIncomingFingerprint": "intake",
   "driver-attribution.js#shouldBackstopAttribution": "dispatch",
@@ -974,6 +1005,7 @@
    "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
   },
   "delivery_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
+  "tip_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
   "promo_discount_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
   "delivery_snapshot": { "class": "pointer", "reason": "S3a envío provenance (mode, policy_version, km, band, promo id) — the pricing inputs the fee was computed from, kept for audit; never displayed as an order fact" },
   "desc_rebaja_cents": {
@@ -1415,6 +1447,7 @@
   }
  ],
  "moneyPathNonFactReads": {
+  "tip_cents@xpizza-functions/driver-ledger/ledger-core.js#computeWeek": "S2-srv-tip (PLAN-capp-S2-r4 §3.4, OWNER-CONFIRMED 2026-10-25): the S8 driver PAYABLE accrual — the order’s tip joins the driver’s base_cents (this week) / adjustments_cents (late) at delivered; never a customer-charged amount, a collection or a display (the charged total is total_cents, unchanged). Asserted by delivery/tip-consumers.test.mjs (6) + driver-ledger/ledger-core.test.js; the scope guard allows exactly this read. PROPOSED by the Customer App session for 2e review — 2e may instead register tip_cents in census FIELD_FACTS (delivery_cents precedent: writtenFields only, not FIELD_FACTS).",
   "active_attempt_id@xpizza-functions/delivery/delivery-wire.js#chargeContext": "S3a envío: decides only WHETHER the card request is a live-checkout reuse (its STORED economics are kept) — the money effect is asserted through the OUTCOME (the reused checkout's stored total_cents, test/s3a-envio.emulator.test.js §3.3 / P1-2), never through this field",
   "cancelled_at@xpizza-functions/tracking/reconcile-core.js#windowOrders": "the order's terminal TIMESTAMP — selects the reconcile window (terminal within 24 h); never an amount, a collector or a selector of money",
   "completed_at@xpizza-functions/tracking/reconcile-core.js#windowOrders": "the order's terminal TIMESTAMP — selects the reconcile window (terminal within 24 h); never an amount, a collector or a selector of money",
