@@ -83,7 +83,7 @@ const ppCrypto = require('./pixelpay');
 const { confirmOnlinePayment, confirmAndMaterialize } = require('./pixelpay-confirm');
 const N2 = require('./n2-paid-strand-decision');   // N2: sweep re-drives a stranded PAID hosted order (paid attempt + still-pending order)
 const { buildMaterializeUpdates } = require('./materialize');
-const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config'); const DW = require('./delivery/delivery-wire');   // S3a envío (delivery/; tools/s3a-inverse.js)
+const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restaurant-config'); const DW = require('./delivery/delivery-wire'); const TIP = require('./tip'); const PE = require('./payer-email');   // S2-srv-tip (tip.js, payer-email.js; tools/s2tip-inverse.js) · S3a envío (delivery/; tools/s3a-inverse.js)
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
 const { claimPrefillCore } = require('./claim-prefill');   // Track A — profile-claim soft-fill (pure core; wrapper below)
 const { claimOrderCore } = require('./claim-order');       // claimOrder — retro-credit a guest order's earn (pure core; wrapper below)
@@ -787,7 +787,7 @@ createOrderApp.all('*', async (req, res) => {
   const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`createOrder: restaurant_id=${restaurantId}`);
-  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId);   // 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads
+  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId); { const tr = TIP.orderRefusal(body); if (tr) return res.status(tr.status).json({ error: tr.error }); }   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads
   const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed
   // 2c FAIL-CLOSED GUARD — the FIRST statement after the resolver, deliberately. Everything below can
   // reach a pricing seam: validateOrderPayload → computeServerTotal, which silently falls back to the
@@ -867,7 +867,7 @@ createOrderApp.all('*', async (req, res) => {
   /* a1:end cash-paid-text-full */
   const incomingFp = await computeIncomingFingerprint(
     { orderId, restaurantId, total, itemsText: fields.items_text, items: body.items, redeem: body.redeem,
-      customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },
+      customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType, tipCents: TIP.ofBody(body) },
     { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables, eligible: redeemEligible });   // 1b-1b GRILL-FIX #1: classifier prices redemption on the SAME source as the reserve
 
   // Idempotency check — a re-submit of an EXISTING order_id returns idempotent-200 ONLY for the SAME LIVE cash
@@ -884,7 +884,7 @@ createOrderApp.all('*', async (req, res) => {
       const canonicalIncoming = (ev && ev.fp_format !== undefined && ev.fp_format === 'canonical')
         ? await computeCanonicalIncomingFingerprint(
           { orderId, restaurantId, total, itemsText: fields.items_text, items: body.items, redeem: body.redeem,
-            customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },
+            customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType, tipCents: TIP.ofBody(body) },
           { orderBreakdownCents, prepareRedemption, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables, eligible: redeemEligible, context: contextOfTables(pricingTables) })
         : null;
       /* a1:begin cash-a8-incoming */
@@ -892,12 +892,12 @@ createOrderApp.all('*', async (req, res) => {
       const a8Incoming = (ev && ev[TV.ORDER_FIELD] === TV.TEXT_A8)
         ? await computeIncomingFingerprint(
           { orderId, restaurantId, total, itemsText: paidTextFull, items: body.items, redeem: body.redeem,
-            customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },
+            customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType, tipCents: TIP.ofBody(body) },
           { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables, eligible: redeemEligible })
         : null;
       /* a1:end cash-a8-incoming */
       const cls = classifyExistingOrder(ev,
-        { paymentMethod: fields.payment_method, restaurantMatches: sameRestaurant(ev.restaurant_id, restaurantId) },
+        { paymentMethod: fields.payment_method, restaurantMatches: sameRestaurant(ev.restaurant_id, restaurantId), incomingTip: TIP.ofBody(body) },
         incomingFp, { isPaymentStatusClosed: MR.isStatusChangeClosedToAutomation, canonicalIncoming, a8Incoming });
       if (cls.action === '409') {
         // D4-c5 P1: today's self-heal literal ONLY for a `closed` order provably terminal and money-free (from `ev`, no read)
@@ -1111,7 +1111,7 @@ createOrderApp.all('*', async (req, res) => {
     const a1Cash = { paidTextFull, writeMode: TV.WRITE_MODE };   // PLAN-A A8a: the reservation's own marker selects the binding
     const rd = await resolveRedemptionForOrder(db, {
       redeem: body.redeem, items: body.items, restaurantId, orderId,
-      customerUid: customer_uid, itemsText: fields.items_text, totalLempiras: total, schedExtra: '', now: Date.now(),
+      customerUid: customer_uid, itemsText: fields.items_text, totalLempiras: total, schedExtra: TIP.extraOf(body), now: Date.now(),
       tables: pricingTables,                                                            // 1b-1b: same guarded tables as the order total
       eligible: redeemEligible,                                                         // 2a: same catalog-authored allowlist as the fingerprint above
       context: contextOfTables(pricingTables),   // 1D D4-b
@@ -1133,7 +1133,7 @@ createOrderApp.all('*', async (req, res) => {
 
   const trackingToken = generateTrackingToken();
   // Redeemed → the discounted breakdown + split factura lines (Task 4); else today's pricing, byte-identical.
-  const dq = await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP }); const priceBreakdown = DW.withDelivery(dq, redemptionPriced
+  const dq = await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents }); const priceBreakdown = DW.withDelivery(dq, redemptionPriced
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
     : orderBreakdownCents(total, restaurantId));  // platform → ISV 15% incl.; non-platform → no split
@@ -1232,13 +1232,13 @@ createOrderApp.all('*', async (req, res) => {
     try {
       const _schedExtra = Number.isFinite(scheduledForRaw) ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '';
       storeFp = orderFingerprint(orderId, redemptionPriced.total_cents, fields.items_text,
-        [_schedExtra, `rf:${redemptionFingerprint(redemptionCanonical)}`].filter(Boolean).join('|'));
+        [_schedExtra, `rf:${redemptionFingerprint(redemptionCanonical)}`, TIP.extraOf(body)].filter(Boolean).join('|'));
     } catch (_) { storeFp = incomingFp; }
   }
   /* a1:begin cash-a8-store-fp */
   if (cashTextVersion === TV.TEXT_A8 && redemptionCanonical && redemptionPriced) {   // the retained binding's text (fields.items_text is the a8 text)
     const _schedExtraA8 = Number.isFinite(scheduledForRaw) ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '';
-    storeFp = orderFingerprint(orderId, redemptionPriced.total_cents, fields.items_text, [_schedExtraA8, `rf:${redemptionFingerprint(redemptionCanonical)}`].filter(Boolean).join('|'));
+    storeFp = orderFingerprint(orderId, redemptionPriced.total_cents, fields.items_text, [_schedExtraA8, `rf:${redemptionFingerprint(redemptionCanonical)}`, TIP.extraOf(body)].filter(Boolean).join('|'));
   }
   /* a1:end cash-a8-store-fp */
 
@@ -1497,7 +1497,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   const { restaurantId, error: ridError, defaulted: ridDefaulted } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
   if (ridError) return badRequest(res, ridError);
   if (!ridDefaulted) console.log(`chargeOnlineOrder: restaurant_id=${restaurantId}`);
-  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId);   // 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads
+  const db = getDatabase(); const dpP = DW.loadPricing(db, restaurantId); { const tr = TIP.orderRefusal(body); if (tr) return res.status(tr.status).json({ error: tr.error }); }   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads
   const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed
   // 2c FAIL-CLOSED GUARD — first statement after the resolver, ahead of pending-order assembly, the
   // availability read, the rate-limit write, the reward reserve, acquireHostedAttempt and
@@ -1623,7 +1623,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     fields.items_text = prep.itemsText;   // free-item display line → flows into BOTH fingerprints + the pending order
   }
   // Effective (discounted) breakdown used by both fingerprint sites, the pending record, and the charge amount.
-  const dq = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP }), body, Date.now()); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const effBreakdown = DW.withDelivery(dq, redemptionPriced
+  const dq = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents }), body, Date.now()); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const effBreakdown = DW.withDelivery(dq, redemptionPriced
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
     : orderBreakdownCents(total, restaurantId));
@@ -1683,18 +1683,18 @@ chargeOnlineApp.all('*', async (req, res) => {
     const schedForRawG = SCHED.normalizeScheduledFor(body.scheduled_for);
     const isScheduledG = Number.isFinite(schedForRawG);
     const totalCentsG = effBreakdown.total_cents;   // discounted when redeemed → the read-only classify fingerprint matches the authoritative one
-    const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));   // v2: bind the redeemed SET into payment_fingerprint (design-gate #2)
+    const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : '', TIP.extraOf(body)].filter(Boolean).join('|'));   // v2: bind the redeemed SET into payment_fingerprint (design-gate #2)
     let clsG;
     // 1D D4-b: a LAZY, request-local memoized thunk — evaluated only for a canonical-tagged order.
     canonicalFpG = CB.once(() => CB.canonicalOrderFingerprint({ orderId, totalCents: totalCentsG,
       items: body.items, redemption: redemptionResolved, rid: restaurantId, context: contextOfTables(pricingTables),
-      schedExtra: isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '' }));
+      schedExtra: [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', TIP.extraOf(body)].filter(Boolean).join('|') }));
     const ctlP = OC.orderControlFor(db, restaurantId);   // D4-c4: read alongside the classify below; decided at the pre-gate
     try {
       /* a1:begin card-classify-a8 */
-      const a8FpG = () => orderFingerprint(orderId, totalCentsG, `${paidTextFullC}${fields.items_text.slice(legacyPaidTextC.length)}`, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));
+      const a8FpG = () => orderFingerprint(orderId, totalCentsG, `${paidTextFullC}${fields.items_text.slice(legacyPaidTextC.length)}`, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : '', TIP.extraOf(body)].filter(Boolean).join('|'));
       /* a1:end card-classify-a8 */
-      clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs, canonicalFpG, a8FpG);
+      clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs, canonicalFpG, a8FpG, TIP.ofBody(body));
       clsForMenu = clsG;   // 1D add-product A
       orderBindingFormat = (clsG && clsG.bindingFormat === CB.FORMAT_CANONICAL) ? CB.FORMAT_CANONICAL : CB.FORMAT_LEGACY;   // classify's snapshot
     } catch (e) {
@@ -1858,16 +1858,16 @@ chargeOnlineApp.all('*', async (req, res) => {
   // Bind the slot into the fingerprint (R2-#3): a reused cart can't be charged against a different slot. When
   // redeemed, total_cents (discounted) + items_text (free line appended) make this fingerprint carry the reward
   // — the SAME fingerprint the reservation binds to (below), so hold ↔ order ↔ charge are one identity.
-  const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));   // v2: + redeemed-SET hash (design-gate #2)
+  const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : '', TIP.extraOf(body)].filter(Boolean).join('|'));   // v2: + redeemed-SET hash (design-gate #2)
   /* a1:begin card-a8-candidate */
   const a8TextC = `${paidTextFullC}${fields.items_text.slice(legacyPaidTextC.length)}`;   // the same reward append over the untruncated paid text
-  const a8FingerprintC = orderFingerprint(orderId, total_cents, a8TextC, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));
+  const a8FingerprintC = orderFingerprint(orderId, total_cents, a8TextC, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : '', TIP.extraOf(body)].filter(Boolean).join('|'));
   /* a1:end card-a8-candidate */
   // 1D D4-b §B.3: the CANONICAL counterpart of `fingerprint` — same inputs, items_text → the canonical digest. A lazy,
   // memoized thunk: only a canonical-tagged order or reservation record ever evaluates it.
   const canonicalChargeFp = CB.once(() => CB.canonicalOrderFingerprint({ orderId, totalCents: total_cents, items: body.items,
     redemption: redemptionResolved, rid: restaurantId, context: contextOfTables(pricingTables),
-    schedExtra: isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '' }));
+    schedExtra: [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', TIP.extraOf(body)].filter(Boolean).join('|') }));
 
   // Factura inputs (FACTURA_PLAN §2) — structured priced items for the factura trigger.
   // factura_status starts 'not_due': a pending_payment order is NOT yet a Sale, so it's
@@ -2031,7 +2031,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // so the only post-reserve failures are the acquire outcomes + hosted-create, each released below. Bound to
   // the SAME payment fingerprint the attempt uses → hold ↔ order ↔ charge are one identity. Idempotent: a
   // retry/reuse returns 'reused' (a prior attempt's hold → we do NOT own the debit).
-  let redemptionOwnsHold = false;
+  let redemptionOwnsHold = false; if (PE.refusesFresh(clsForMenu, body, process.env)) return res.status(503).json({ error: 'payer_email_unconfigured', order_id: orderId });   // S2 P-C: a FRESH checkout with no payer email → refused before the reserve and the acquire (recovery is never refused)
   if (redemptionCanonical) {
     // hosted_expires_at bound AT RESERVE = nowTs + HOSTED_TTL_MS — IDENTICAL to acquireHostedAttempt's
     // expires_at (same nowTs, same TTL) — so an unattached hold is sweep-visible immediately; attach refines
@@ -2093,7 +2093,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     /* extras:begin card-acquire */
     acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow, controlArmed !== null, menuArmed, choiceArmed, extrasArmed,
       /* a1:begin card-acquire-binding */
-      { a8Fp: () => a8FingerprintC, fresh: cardTextVersion },   // PLAN-A A8a: the a8 candidate (compared only against an 'a8' record) + this request's fresh version
+      { a8Fp: () => a8FingerprintC, fresh: cardTextVersion }, TIP.ofBody(body), PE.unconfigured(body, process.env),   // PLAN-A A8a: the a8 candidate (compared only against an 'a8' record) + this request's fresh version
       /* a1:end card-acquire-binding */
     );   // P-SELFUPDATE §5 (2): refuseFresh; D4-c4: the race guard; add-product A: the menu guard; per-product extras: the extras guard
     /* extras:end card-acquire */
@@ -2139,7 +2139,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     /* extras:end card-map */
     // 1D D4-b: a TYPED conflict (binding_format_invalid / cart_unverifiable) keeps its reason; a legacy mismatch → the neutral 'conflict'
     console.warn(`chargeOnlineOrder: ${orderId} — 409 order_exists (acquire conflict${acq.reason ? `: ${acq.reason}` : ''})`);
-    return res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));
+    return acq.reason === 'payer_email_unconfigured' ? res.status(503).json({ error: 'payer_email_unconfigured', order_id: orderId }) : res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));   // S2 P-C: the acquire's fresh-issuance payer check (no attempt written; the hold was released above)
   }
   if (acq.outcome === 'closed') {
     await releaseHoldIfOwned();   // abandoned: order is in a terminal-closed state
@@ -2202,7 +2202,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // intermittently rejects it ({"_email": invalid}), failing card checkout for every blank-email order.
   // PIXELPAY_MERCHANT_EMAIL is PixelPay's own registered merchant user (a real gmail.com address, valid MX)
   // so it can never be rejected. A customer-supplied valid email is used unchanged — only the fallback moves.
-  const fallbackEmail = process.env.PIXELPAY_MERCHANT_EMAIL || 'pedidos@lamusa.hn';   // both deliverable (MX-valid)
+  const fallbackEmail = PE.validEmail(process.env.PIXELPAY_MERCHANT_EMAIL);   // S2 P-C: the env ONLY, fail-closed (no brand literal; a fresh checkout without it was refused before the reserve)
   const email = (typeof rawEmail === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rawEmail.trim())) ? rawEmail.trim() : fallbackEmail;
 
   // Customer-facing return URLs + the AUTHENTICATED server callback (?secret=…).

@@ -53,6 +53,11 @@ function envioNetCents(order) {
   const p = Number.isSafeInteger(order.promo_discount_cents) ? order.promo_discount_cents : 0;
   return Math.max(0, d - p);
 }
+// S2 (PLAN-capp-S2-r4 §3.3): the tip is the driver's pass-through too — never on the fiscal total. Absent / 0 → 0 → byte-identical.
+function tipCents(order) {
+  const t = order.tip_cents;
+  return Number.isSafeInteger(t) && t > 0 ? t : 0;
+}
 
 function buildFacturaRecord({ order, config, reserved, now }) {
   const num = String(reserved).padStart(8, '0');
@@ -109,7 +114,7 @@ function buildFacturaRecord({ order, config, reserved, now }) {
     isv_18_cents: 0,
     subtotal_cents: order.subtotal_cents,
     isv_total_cents: order.tax_cents,
-    total_cents: order.total_cents - envioNetCents(order),   // the FOOD total (envío excluded); the cash change below stays on the CHARGED total
+    total_cents: order.total_cents - envioNetCents(order) - tipCents(order),   // the FOOD total (envío and the S2 tip excluded); the cash change below stays on the CHARGED total
     // payment
     forma_de_pago_label: formaDePago(order.payment_method),
     cambio_cents: order.payment_method === 'cash'

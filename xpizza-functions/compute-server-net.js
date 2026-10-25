@@ -39,7 +39,7 @@
 const { computeServerTotal } = require('./menu-pricing');
 const { orderBreakdownCents } = require('./order-money');
 const { applyRedemptionToPricing } = require('./rewards-redeem-pricing');
-const { isServerDeliveryCtx, netDeliveryCents } = require('./delivery/delivery-pricing');   // S3a envío
+const { isServerDeliveryCtx, netDeliveryCents, tipCentsOf } = require('./delivery/delivery-pricing');   // S3a envío; S2 tip
 
 /* The delivery slot, computed HERE from server-side context. The client never supplies a fee: S3a's
    `deliveryContext` is the SERVER's envío (delivery/delivery-pricing.js quoteDelivery, from Sherpa config + hub +
@@ -49,6 +49,12 @@ const { isServerDeliveryCtx, netDeliveryCents } = require('./delivery/delivery-p
 function deliveryCentsFor(deliveryContext /* , rid */) {
   if (!deliveryContext) return 0;
   return isServerDeliveryCtx(deliveryContext) ? netDeliveryCents(deliveryContext) : 0;
+}
+
+/* S2 (PLAN-capp-S2-r4 §3.1): the tip rides the SAME server ctx (delivery-pricing withTip — a request body can never mint one)
+   and joins the net EXACTLY ONCE, after the envío. No tip → 0 → the net and the components are byte-identical. */
+function tipCentsFor(deliveryContext) {
+  return isServerDeliveryCtx(deliveryContext) ? tipCentsOf(deliveryContext) : 0;
 }
 
 function computeServerNet({ items, reward = null, deliveryContext = null, rid, tables = null }) {
@@ -80,7 +86,8 @@ function computeServerNet({ items, reward = null, deliveryContext = null, rid, t
   const reward_discount_cents = base_cents - netAfterReward;
 
   const delivery_cents = deliveryCentsFor(deliveryContext, rid);
-  const net_total_cents = netAfterReward + delivery_cents;
+  const tip_cents = tipCentsFor(deliveryContext);
+  const net_total_cents = netAfterReward + delivery_cents + tip_cents;
 
   /* The provenance breakdown for the quote token. Deliberately NOT split into items vs extras:
      computeServerTotal returns one total and does not separate them, so a split would have to be
@@ -100,14 +107,14 @@ function computeServerNet({ items, reward = null, deliveryContext = null, rid, t
      cannot round-trip, and money that cannot round-trip is not money. Every component is checked, not
      just the net, because the components go into the token's provenance breakdown and a NaN there is
      a fact nobody can later verify. */
-  const out = { net_total_cents, base_cents, reward_discount_cents, delivery_cents, fiscal_cents };
+  const out = { net_total_cents, base_cents, reward_discount_cents, delivery_cents, fiscal_cents, tip_cents };
   for (const k of Object.keys(out)) {
     if (!Number.isSafeInteger(out[k])) return { error: `non_finite_${k}` };
   }
 
   return {
     net_total_cents,
-    components: { base_cents, reward_discount_cents, delivery_cents, fiscal_cents },
+    components: { base_cents, reward_discount_cents, delivery_cents, fiscal_cents, ...(tip_cents > 0 ? { tip_cents } : {}) },   // S2: tip_cents only when > 0
   };
 }
 

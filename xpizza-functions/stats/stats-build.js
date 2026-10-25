@@ -107,9 +107,14 @@ function envioNetCents(order) {
   const p = Number.isSafeInteger(order.promo_discount_cents) ? order.promo_discount_cents : 0;
   return Math.max(0, d - p);
 }
+// S2 (PLAN-capp-S2-r4 §3.3): the tip is the driver's pass-through — never the restaurant's revenue. Absent / 0 → 0 → byte-identical.
+function tipCents(order) {
+  const t = order && order.tip_cents;
+  return Number.isSafeInteger(t) && t > 0 ? t : 0;
+}
 
 function addSale(s, order, rid, keyer) {
-  const cents = int(order.total_cents) - envioNetCents(order);
+  const cents = int(order.total_cents) - envioNetCents(order) - tipCents(order);
   const zero = cents === 0 ? 1 : 0;
   s.sale.orders += 1;
   s.sale.cents += cents;
@@ -162,7 +167,7 @@ function addSale(s, order, rid, keyer) {
 // Fold ONE order into a summary. Returns its class (for diagnostics).
 function addOrder(s, order, rid, keyer) {
   const cls = classifyOrder(order);
-  const cents = int(order.total_cents) - envioNetCents(order);   // S3c: the food total (refunds of the restaurant's sale exclude envío too)
+  const cents = int(order.total_cents) - envioNetCents(order) - tipCents(order);   // S3c: the food total (refunds of the restaurant's sale exclude envío too); S2: and the tip
   switch (cls) {
     case CLASS.SALE: addSale(s, order, rid, keyer); break;
     case CLASS.REFUNDED: s.refunded.orders += 1; s.refunded.cents += cents; break;
@@ -252,7 +257,7 @@ function histMedian(h) {
 
 const avgPaidTicket = (m) => { const d = (m.orders || 0) - (m.zero_value_orders || 0); return d > 0 ? Math.round(m.cents / d) : null; };
 
-module.exports = { envioNetCents,
+module.exports = { envioNetCents, tipCents,
   SUMMARY_VERSION, PAYMENT_METHODS, ORDER_TYPES, HIST_BUCKET_MS, HIST_BUCKETS, HIST_LEN, REWARD_PREFIX,
   paymentBucket, emptySummary, addOrder, buildDailies, mergeSummaries, histMedian, avgPaidTicket, ridOf, linesOf, itemKey, interval, prepStart,
 };

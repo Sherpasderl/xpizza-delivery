@@ -12,10 +12,10 @@
 // The async best-effort `delivered_by_uid` is never used for money. An order delivered without the stamp is UNRESOLVED:
 // listed for the admin and held out of every balance.
 //
-// REFUNDS (plan §5 S8): the L 70 base is retained on any refund (the delivery happened); only a tip-inclusive refund
-// reverses the tip. Tips do not exist until S2, so no refund can move a payable today — the refund-adjustment hook is
-// DEFERRED to S2 (advisor ruling 2026-10-22). Hook point: cancel-order-core.js, where the refund outcome is final
-// (`const refund = …` near :208), which S2 wires to a current-week adjustment referencing the original week.
+// REFUNDS (plan §5 S8): the L 70 base is retained on any refund (the delivery happened).
+// TIPS (S2, PLAN-capp-S2-r4 §3.4 — OWNER-CONFIRMED 2026-10-25): the order's tip accrues to the driver ONLY at delivered, in
+// the SAME accrual as the base (current week → base_cents, late → adjustments_cents). A cancellation before delivery never
+// accrues it. A refund AFTER delivery does NOT claw the tip back (a manual adjustment is a backlog item): no refund hook.
 
 const HN_OFFSET_MS = 6 * 3600 * 1000;           // America/Tegucigalpa = UTC−6, no DST
 const DAY_MS = 86400000;
@@ -84,6 +84,7 @@ function computeWeek(week, rows, prior, cfg) {
   }
   const drivers = {}, unresolved = [], review = [];
   const entry = (uid) => (drivers[uid] = drivers[uid] || { deliveries: [], adjustments: [] });
+  const tips = new Map();   // S2: order_id → its tip (accrued with the delivery that pays it)
   for (const [oid, o] of [...rows].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
     if (!isAccruable(o, cfg) || !(o.delivered_at < end)) continue;
     const stamp = typeof o.delivered_by_driver_uid === 'string' && o.delivered_by_driver_uid ? o.delivered_by_driver_uid : null;
@@ -93,6 +94,7 @@ function computeWeek(week, rows, prior, cfg) {
       continue;
     }
     if (!stamp) { if (!listedUnres.has(oid)) unresolved.push(oid); continue; }
+    tips.set(oid, Number.isSafeInteger(o.tip_cents) && o.tip_cents > 0 ? o.tip_cents : 0);
     if (o.delivered_at >= start) entry(stamp).deliveries.push(oid);
     else entry(stamp).adjustments.push({ order_id: oid, original_week: weekOf(o.delivered_at) });
   }
@@ -101,8 +103,9 @@ function computeWeek(week, rows, prior, cfg) {
   for (const [uid, d] of Object.entries(drivers)) {
     const p = prev && prev.drivers && prev.drivers[uid];
     const carry_in_cents = p && !p.paid && Number.isInteger(p.net_cents) && p.net_cents < 0 ? p.net_cents : 0;
-    const base_cents = d.deliveries.length * cfg.base_cents;
-    const adjustments_cents = d.adjustments.length * cfg.base_cents;    // tips join both in S2
+    const tipSum = (oids) => oids.reduce((t, oid) => t + (tips.get(oid) || 0), 0);
+    const base_cents = d.deliveries.length * cfg.base_cents + tipSum(d.deliveries);                          // S2: + the tips of this week's deliveries
+    const adjustments_cents = d.adjustments.length * cfg.base_cents + tipSum(d.adjustments.map((a) => a.order_id));   // S2: + the late deliveries' tips
     const net_cents = base_cents + adjustments_cents + carry_in_cents;
     drivers[uid] = { ...d, base_cents, adjustments_cents, carry_in_cents, net_cents, outcome: net_cents > 0 ? 'payable' : 'no_payment' };
   }

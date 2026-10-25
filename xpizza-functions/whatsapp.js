@@ -281,7 +281,13 @@ function envioLines(envio) {
   return [net === 0 ? '🛵 Envío: Gratis' : `🛵 Envío: L${net / 100}`];
 }
 
-function renderOrderReceived({ customerName, orderId, itemsText, total, trackingToken, restaurantId, brand, envio }) {
+// S2: the «Propina» line beside «Envío» — only when the order carries a tip (> 0); absent → no line, byte-identical.
+function propinaLines(propina) {
+  if (!propina || !Number.isSafeInteger(propina.cents) || propina.cents <= 0) return [];
+  return [`🤝 Propina: L${propina.cents / 100}`];
+}
+
+function renderOrderReceived({ customerName, orderId, itemsText, total, trackingToken, restaurantId, brand, envio, propina }) {
   return [
     `¡Hola ${customerName || ''}! 👋`,
     ``,
@@ -289,6 +295,7 @@ function renderOrderReceived({ customerName, orderId, itemsText, total, tracking
     ``,
     `${itemsEmojiFor(restaurantId)} ${itemsText || ''}`,
     ...envioLines(envio),
+    ...propinaLines(propina),
     `💰 Total: L${total}`,
     ``,
     `Tu pedido está siendo preparado. Te avisamos cuando esté en camino 🛵`,

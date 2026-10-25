@@ -17,8 +17,12 @@ for (const [f, s] of all) {
   const m = /cuadre|cash|shift|computeShiftCash|remit/i.exec(s);
   assert.strictEqual(m, null, `🔴 ${f} references cash-to-remit / cuadre: ${m && m[0]}`);
   const b = /\b(bank|iban|account_number|cuenta|routing|swift)\b/i.exec(s);
-  const t = /\btip_/.exec(s);
-  assert.strictEqual(t, null, `🔴 ${f} carries a tip field before S2 (the census write sentinel: tips are not implemented): ${t && t[0]}`);
+  // S2 (PLAN-capp-S2-r4 §3.4): the ONE allowed tip read is computeWeek's `o.tip_cents` (the tip accrues at delivered); any
+  // other tip field — a write, another read — still fails.
+  const allowedTip = f === 'ledger-core.js' ? (s.match(/\bo\.tip_cents\b/g) || []).length : 0;
+  if (f === 'ledger-core.js') assert.strictEqual(allowedTip, 3, `non-vacuity: computeWeek reads o.tip_cents in one statement (3 refs), found ${allowedTip}`);
+  const t = /\btip_/.exec(f === 'ledger-core.js' ? s.replace(/\bo\.tip_cents\b/g, '') : s);
+  assert.strictEqual(t, null, `🔴 ${f} carries a tip field beyond computeWeek's accrual read: ${t && t[0]}`);
   assert.strictEqual(b, null, `🔴 ${f} names a bank field: ${b && b[0]}`);
 }
 ok('no ledger module references cash-to-remit / cuadre, and none names a bank field');

@@ -153,7 +153,7 @@ async function quoteRedemptionCore(db, { redeem, items, restaurantId, customerUi
     total_cost: cost, remaining: available - cost, savings_cents,
     ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}),
     ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}),
-    ...(deliveryContext ? { delivery: { delivery_cents: deliveryContext.delivery_cents, promo_discount_cents: deliveryContext.promo_discount_cents, policy_version: deliveryContext.policy_version, mode: deliveryContext.mode } } : {}) };
+    ...require('./delivery/delivery-wire').quoteFields(deliveryContext) };   // S3a envío block (absent when not activated); S2 §3.6: + the public { from_cents, max_km }, ONE builder with quoteOrder
 }
 
 module.exports = { prepareRedemption, resolveRedemptionForOrder, quoteRedemptionCore, fingerprintExtra };

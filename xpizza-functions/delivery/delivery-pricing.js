@@ -54,7 +54,10 @@ function readPricing(raw, rid) {
 /* The envío for one request on an ACTIVE restaurant → { ctx } or { refusal }.
    ctx = { mode, delivery_cents, promo_discount_cents, policy_version, km?, band?, promo? } — what the quote signs, the
    gate charges and the order records. */
-function quoteDelivery({ pricing, hub, mode, pin, customerUid }) {
+/* S2 §3.6: `maxKm` (the APP's effective coverage, min(last band, identity.delivery_radius_km) — delivery-wire quoteDeliveryFor)
+   refuses a pin beyond it as outside_delivery_bands, so an app quote never prices a pin the order's radius check refuses.
+   Absent (every legacy caller) → unchanged. */
+function quoteDelivery({ pricing, hub, mode, pin, customerUid, maxKm = null }) {
   if (!pricing || pricing.invalid) return { refusal: 'delivery_pricing_invalid' };
   if (mode === 'pickup') return { ctx: mint({ mode: 'pickup', delivery_cents: 0, promo_discount_cents: 0, policy_version: pricing.policy_version, place: placeOf('pickup', hub, null), customer: uidOrNull(customerUid) }) };
   if (mode !== 'delivery') return { refusal: 'mode_required' };
@@ -62,7 +65,7 @@ function quoteDelivery({ pricing, hub, mode, pin, customerUid }) {
   if (!hub || !isLat(hub.lat) || !isLng(hub.lng)) return { refusal: 'delivery_pricing_invalid' };
   const km = haversineKm(hub.lat, hub.lng, pin.lat, pin.lng);
   const band = pricing.bands.findIndex((b) => km <= b.max_km);
-  if (band < 0) return { refusal: 'outside_delivery_bands' };
+  if (band < 0 || (typeof maxKm === 'number' && km > maxKm)) return { refusal: 'outside_delivery_bands' };
   const delivery_cents = pricing.bands[band].cents;
   const promo = pricing.free_delivery && typeof customerUid === 'string' && customerUid ? 'free_delivery' : null;
   return { ctx: mint({ mode: 'delivery', delivery_cents, promo_discount_cents: promo ? delivery_cents : 0, policy_version: pricing.policy_version,
@@ -88,6 +91,7 @@ function deliveryBindingMismatch(signed, ctx) {
   if (signed.mode !== ctx.mode) return 'delivery_mode_mismatch';
   if (signed.place !== ctx.place) return 'delivery_place_mismatch';
   if (signed.customer && signed.customer !== ctx.customer) return 'delivery_customer_mismatch';
+  if (tipCentsOf(signed) !== tipCentsOf(ctx)) return 'tip_mismatch';   // S2: the signed tip is the charged tip (absent on both = 0)
   return null;
 }
 
@@ -98,15 +102,21 @@ function storedCtx(order) {
   const s = order && order.delivery_snapshot;
   if (!s || typeof s !== 'object' || !Number.isSafeInteger(order.delivery_cents) || !Number.isSafeInteger(order.promo_discount_cents)) return null;
   return mint({ mode: s.mode, delivery_cents: order.delivery_cents, promo_discount_cents: order.promo_discount_cents, policy_version: s.policy_version,
-    ...(s.mode === 'delivery' ? { km: s.km, band: s.band, promo: s.promo || null } : {}), place: null, customer: null });
+    ...(s.mode === 'delivery' ? { km: s.km, band: s.band, promo: s.promo || null } : {}), place: null, customer: null,
+    ...(Number.isSafeInteger(order.tip_cents) && order.tip_cents > 0 ? { tip_cents: order.tip_cents } : {}) });   // S2: the tip the checkout was issued with
 }
 
 // The net envío the customer pays: max(0, delivery − promo).
 const netDeliveryCents = (ctx) => (ctx ? Math.max(0, ctx.delivery_cents - ctx.promo_discount_cents) : 0);
+// S2 (PLAN-capp-S2-r4 §3.1): the tip on a server ctx (or a signed payload's delivery block) — 0 when absent. It is NOT part of
+// the envío (netDeliveryCents stays envío-only); computeServerNet and the order breakdown add it once, separately.
+const tipCentsOf = (c) => (c && Number.isSafeInteger(c.tip_cents) && c.tip_cents > 0 ? c.tip_cents : 0);
+// A server ctx carrying this request's tip — a NEW minted object (the original stays untouched). tip 0 → the same ctx.
+const withTip = (ctx, tip) => (ctx && tip > 0 ? mint({ ...ctx, tip_cents: tip }) : ctx);
 
 // Only a ctx MADE HERE is money (computeServerNet ignores any other object — a request body can never mint one).
 const SERVER_CTX = new WeakSet();
 const isServerDeliveryCtx = (c) => !!c && typeof c === 'object' && SERVER_CTX.has(c);
 const mint = (ctx) => { SERVER_CTX.add(ctx); return ctx; };
 
-module.exports = { haversineKm, readPricing, quoteDelivery, netDeliveryCents, isServerDeliveryCtx, deliveryBindingMismatch, storedCtx, placeOf };
+module.exports = { haversineKm, readPricing, quoteDelivery, netDeliveryCents, isServerDeliveryCtx, deliveryBindingMismatch, storedCtx, placeOf, tipCentsOf, withTip };

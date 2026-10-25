@@ -9,6 +9,7 @@
 //                           unreadable). The ORDER paths refuse through the gate step (refusalGate), which runs AFTER
 //                           a live issued PixelPay checkout is resumed (§3.3 grandfathering) and releases a reward hold.
 const P = require('./delivery-pricing');
+const TIP = require('../tip');   // S2-srv-tip (PLAN-capp-S2-r4 §3)
 
 const REFUSAL_STATUS = { delivery_pricing_unavailable: 503 };
 
@@ -25,15 +26,22 @@ async function loadPricing(db, rid) {
 
 // The ORDER paths' envío. Dark → null after ONE config read (no identity read). Active → the hub from the restaurant
 // identity (the same cached reader the order path uses; unreadable → a 503 refusal, never free).
-async function deliveryFor(db, { rid, mode, pin, customerUid, getIdentity, pricingP }) {
+/* S2 (§3.1): `tip` is the request's raw tip_cents (already validated by the handler's early TIP.orderRefusal). A tip needs an
+   ACTIVE restaurant (dark + tip → 409 tip_not_enabled) and a delivery (pickup + tip → 400 tip_pickup); otherwise it rides the
+   server ctx (P.withTip), so the breakdown, the gate's recompute and the record all carry it. No tip → byte-identical. */
+async function deliveryFor(db, { rid, mode, pin, customerUid, getIdentity, pricingP, tip }) {
+  const t = TIP.normTip(tip);
+  if (Number.isNaN(t)) return { refusal: 'tip_invalid', httpStatus: 400 };
   const lp = await (pricingP || loadPricing(db, rid));   // pricingP: the handler started the read in parallel with its first reads
   if (lp.failed) return { refusal: 'delivery_pricing_unavailable', httpStatus: 503 };
-  if (!lp.pricing) return null;
+  if (!lp.pricing) return t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;
   let identity = null;
   try { identity = await getIdentity(db, rid); } catch (_) { return { refusal: 'delivery_pricing_unavailable', httpStatus: 503 }; }
   const hub = identity && { lat: identity.hub_lat, lng: identity.hub_lng };
   const q = P.quoteDelivery({ pricing: lp.pricing, hub, mode, pin, customerUid });
-  return q.refusal ? { refusal: q.refusal, httpStatus: REFUSAL_STATUS[q.refusal] || 409 } : q;
+  if (q.refusal) return { refusal: q.refusal, httpStatus: REFUSAL_STATUS[q.refusal] || 409 };
+  if (t > 0 && q.ctx.mode === 'pickup') return { refusal: 'tip_pickup', httpStatus: 400 };
+  return t > 0 ? { ctx: P.withTip(q.ctx, t) } : q;
 }
 
 /* The CHARGE path, against the STORED order (codex S3a P1-1 / P1-2). Only when activated: dark (dq null) reads nothing.
@@ -74,24 +82,29 @@ const ctxOf = (dq) => (dq && dq.ctx ? dq.ctx : null);
 
 // The breakdown the order RECORDS and CHARGES: unchanged when dark/refused; else total + net envío and the envío facts.
 // subtotal/tax stay the FOOD split (envío is pass-through to Sherpa, outside the restaurant's revenue and factura).
+// S2: + the tip (once) on total_cents, and `tip_cents` on the record only when > 0 (subtotal/tax stay the FOOD split — the tip,
+// like envío, is pass-through: never restaurant revenue, never on the factura).
 function withDelivery(dq, breakdown) {
   const c = ctxOf(dq);
   if (!c) return breakdown;
+  const tip = P.tipCentsOf(c);
   return {
     ...breakdown,
-    total_cents: breakdown.total_cents + P.netDeliveryCents(c),
+    total_cents: breakdown.total_cents + P.netDeliveryCents(c) + tip,
     delivery_cents: c.delivery_cents,
     promo_discount_cents: c.promo_discount_cents,
     delivery_snapshot: { mode: c.mode, policy_version: c.policy_version, ...(c.mode === 'delivery' ? { km: c.km, band: c.band, promo: c.promo || null } : {}) },
+    ...(tip > 0 ? { tip_cents: tip } : {}),
   };
 }
 // The order's `total` (LEMPIRAS — what the driver app collects and the cash count sums): food + net envío when active, so
 // `total` and `total_cents` stay one number. The reward earn base keeps the FOOD total (callers pass it unchanged there).
-const totalLempiras = (dq, foodLempiras) => (ctxOf(dq) ? foodLempiras + P.netDeliveryCents(ctxOf(dq)) / 100 : foodLempiras);
+const totalLempiras = (dq, foodLempiras) => (ctxOf(dq) ? foodLempiras + (P.netDeliveryCents(ctxOf(dq)) + P.tipCentsOf(ctxOf(dq))) / 100 : foodLempiras);   // S2: + the tip
 // S3c: the WhatsApp «Envío» argument from a breakdown / an order record (delivery_cents > 0 only — absent → nothing).
-const waEnvio = (o) => (o && Number.isSafeInteger(o.delivery_cents) && o.delivery_cents > 0 ? { envio: { cents: o.delivery_cents, promo_cents: Number.isSafeInteger(o.promo_discount_cents) ? o.promo_discount_cents : 0 } } : {});
+const waEnvio = (o) => ({ ...(o && Number.isSafeInteger(o.delivery_cents) && o.delivery_cents > 0 ? { envio: { cents: o.delivery_cents, promo_cents: Number.isSafeInteger(o.promo_discount_cents) ? o.promo_discount_cents : 0 } } : {}),
+  ...(o && Number.isSafeInteger(o.tip_cents) && o.tip_cents > 0 ? { propina: { cents: o.tip_cents } } : {}) });   // S2: + the «Propina» line
 // The fields the hosted path copies onto the pending order (the cash path spreads the whole breakdown).
-const orderFields = (b) => (b && b.delivery_snapshot ? { delivery_cents: b.delivery_cents, promo_discount_cents: b.promo_discount_cents, delivery_snapshot: b.delivery_snapshot } : {});
+const orderFields = (b) => (b && b.delivery_snapshot ? { delivery_cents: b.delivery_cents, promo_discount_cents: b.promo_discount_cents, delivery_snapshot: b.delivery_snapshot, ...(b.tip_cents > 0 ? { tip_cents: b.tip_cents } : {}) } : {});   // S2: + tip_cents (> 0 only)
 
 // applyConfirmedNetGate's envío argument (it joins the gate's recompute, so the token is checked against food + envío).
 const gateExtra = (dq) => (ctxOf(dq) ? { deliveryContext: ctxOf(dq) } : {});
@@ -113,10 +126,17 @@ async function refusalGate(dq, releaseHold, orderId) {
    had (quoteOrder: null), so a dark quote is byte-identical. Active: the hub from the restaurant identity, and for
    quoteOrder an OPTIONAL customer ID token (customer:true, not tombstoned) — the promo is account-only.
    `knownUid` (quoteRedemption already verified one) skips the second verify. */
+/* S2 (§3.1/§3.5/§3.6): the tip is validated here for BOTH quote endpoints (they pass the raw body) — malformed → 400
+   tip_invalid; a tip with a reward (`redeem`) → 409 tip_reward_unsupported; dark + tip → 409 tip_not_enabled; pickup + tip →
+   400 tip_pickup. An APP quote (`entry_mode:'app'`) is refused beyond min(last band, identity.delivery_radius_km), so it never
+   prices a pin the order's radius check refuses. Active quotes carry the public { from_cents, max_km } (quoteFields). */
 async function quoteDeliveryFor(req, db, rid, body, { getIdentity, getAuth, attributionUid, knownUid, pricingP }) {
+  const t = TIP.normTip(body && typeof body === 'object' ? body.tip_cents : undefined);
+  if (Number.isNaN(t)) return { refuse: { ok: false, error: 'tip_invalid' }, httpStatus: 400 };
+  if (t > 0 && body.redeem != null) return { refuse: { ok: false, error: 'tip_reward_unsupported' }, httpStatus: 409 };
   const lp = await (pricingP || loadPricing(db, rid));
   if (lp.failed) return { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 };
-  if (!lp.pricing) return { ctx: null, uid: knownUid === undefined ? null : knownUid };
+  if (!lp.pricing) return t > 0 ? { refuse: { ok: false, error: 'tip_not_enabled' }, httpStatus: 409 } : { ctx: null, uid: knownUid === undefined ? null : knownUid };
   let uid = knownUid === undefined ? null : knownUid;
   if (knownUid === undefined) {
     const idTok = req.get && req.get('x-firebase-id-token');
@@ -129,9 +149,26 @@ async function quoteDeliveryFor(req, db, rid, body, { getIdentity, getAuth, attr
   }
   let identity = null;
   try { identity = await getIdentity(db, rid); } catch (_) { return { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 }; }
-  const q = P.quoteDelivery({ pricing: lp.pricing, hub: identity && { lat: identity.hub_lat, lng: identity.hub_lng }, mode: body && body.mode, pin: quotePin(body), customerUid: uid });
-  return q.refusal ? { refuse: { ok: false, error: q.refusal }, httpStatus: REFUSAL_STATUS[q.refusal] === 503 ? 503 : 200 } : { ctx: q.ctx, uid };   // a config outage is a 503; a request refusal stays a fail-soft 200 body
+  const maxKm = coverageKm(lp.pricing, identity, body);
+  const q = P.quoteDelivery({ pricing: lp.pricing, hub: identity && { lat: identity.hub_lat, lng: identity.hub_lng }, mode: body && body.mode, pin: quotePin(body), customerUid: uid, ...(isApp(body) ? { maxKm } : {}) });
+  if (q.refusal) return { refuse: { ok: false, error: q.refusal }, httpStatus: REFUSAL_STATUS[q.refusal] === 503 ? 503 : 200 };   // a config outage is a 503; a request refusal stays a fail-soft 200 body
+  if (t > 0 && q.ctx.mode === 'pickup') return { refuse: { ok: false, error: 'tip_pickup' }, httpStatus: 400 };
+  const ctx = P.withTip(q.ctx, t);
+  PUBLIC.set(ctx, { from_cents: lp.pricing.bands[0].cents, max_km: maxKm });
+  return { ctx, uid };
 }
+
+// S2 §3.6: an APP request (the only entry_mode value besides 'direct' — never priced, charge-inputs.js NON_CHARGE_FIELDS).
+const isApp = (body) => !!body && body.entry_mode === 'app';
+// The coverage a quote reports and (for the app) enforces: the last band's max_km; for the app, also no further than the
+// restaurant's own delivery radius (the identity read just above — no new read). A missing/invalid radius → the bands.
+function coverageKm(pricing, identity, body) {
+  const last = pricing.bands[pricing.bands.length - 1].max_km;
+  const r = identity && identity.delivery_radius_km;
+  return isApp(body) && typeof r === 'number' && Number.isFinite(r) && r > 0 ? Math.min(last, r) : last;
+}
+// The public delivery facts of an ACTIVE quote ctx (WeakMap: never a field on the money ctx, never signed or recorded).
+const PUBLIC = new WeakMap();
 
 // The quote endpoints: { refuse } (fail-soft 200 body) when active and refused; else the ctx (or null when dark).
 function quoteOutcome(dq) {
@@ -139,6 +176,6 @@ function quoteOutcome(dq) {
   return { ctx: ctxOf(dq) };
 }
 // The additive quote response fields (absent when dark → byte-identical response).
-const quoteFields = (ctx) => (ctx ? { delivery: { delivery_cents: ctx.delivery_cents, promo_discount_cents: ctx.promo_discount_cents, policy_version: ctx.policy_version, mode: ctx.mode } } : {});
+const quoteFields = (ctx) => (ctx ? { delivery: { delivery_cents: ctx.delivery_cents, promo_discount_cents: ctx.promo_discount_cents, policy_version: ctx.policy_version, mode: ctx.mode, ...(PUBLIC.get(ctx) || {}) } } : {});   // S2 §3.6: + { from_cents, max_km }
 
 module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf };
