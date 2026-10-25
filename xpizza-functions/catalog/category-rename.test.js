@@ -86,6 +86,20 @@ const named = (src, names) => { const s = clone(src); s.structure.categories.for
   ok('rename_not_alone: a rename beside an item price, an extra price or a new product is refused; a price-only edit passes as today');
 }
 
+// ── rename_not_alone covers STRUCTURE too (codex build r1 P2): with extras authoring ON, a deny_extras change is an
+//    allowed structure edit on its own — beside a rename it is refused, so the reviewed diff never hides it ──────
+{
+  const cmpX = (rid, draftSrc) => A.compareToActive({ draftBuilt: build(rid, draftSrc), activeBuilt: build(rid, SRC[rid]),
+    draftAuthored: new Set(Object.keys(SRC[rid].structure)), renderedCategories: rendererContract(rid).renderedCategories, extrasAuthoring: true });
+  const denied = (src) => { const s = clone(src); s.structure.exposure.item_overrides[s.items[0].key] = { deny_extras: [s.extras[0].key] }; return s; };
+  for (const rid of ['x_pizza', 'la_musa']) {
+    assert.deepStrictEqual(cmpX(rid, denied(SRC[rid])), { additions: [], removals: [] }, `${rid}: premise — a deny_extras change alone passes with authoring ON`);
+    const both = denied(named(SRC[rid], rid === 'x_pizza' ? ['A', 'B'] : ['Otro']));
+    throwsCode(() => cmpX(rid, both), 'rename_not_alone', `${rid}: a rename with a deny_extras change`);
+  }
+  ok('rename_not_alone: with extras authoring ON, a rename beside a deny_extras change is refused on both brands; the deny_extras change alone passes');
+}
+
 // ── the validator: La Musa keeps REQUIRED names; all-or-nothing only where names are optional ───────────
 {
   assert.strictEqual(rendererContract('la_musa').categoriesNamed, true, 'premise: la_musa names are required');

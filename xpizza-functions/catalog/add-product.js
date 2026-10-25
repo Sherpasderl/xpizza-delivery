@@ -509,9 +509,11 @@ function sameCategoriesExceptName(d, a) {
   if (d.length !== a.length) return false;
   return d.every((c, i) => isObj(c) && isObj(a[i]) && sameJson(without(c, ['name']), without(a[i], ['name'])));
 }
-// Nothing but the categories differs: no product added or removed, every product and extra record (price included) equal.
+// Nothing but the categories differs: no product added or removed, every product and extra record (price included) equal,
+// and every OTHER structure field equal (an allowed structure edit — deny_extras under extras authoring — is a change too).
 function changesNothingElse(draftBuilt, activeBuilt, additions, removals) {
   if (additions.length || removals.length) return false;
+  if (!sameJson(without(draftBuilt.structure, ['categories']), without(activeBuilt.structure, ['categories']))) return false;
   const da = new Map(draftBuilt.items.map((it) => [it.key, it]));
   if (!activeBuilt.items.every((a) => { const d = da.get(a.key); return d && d.price === a.price && sameJson(d.display, a.display) && !!d.has_photo === !!a.has_photo; })) return false;
   const de = new Map((draftBuilt.extras || []).map((e) => [e.key, e]));

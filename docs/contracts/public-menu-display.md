@@ -5,7 +5,12 @@
 **Consumer:** the new customer app.
 **Served by:** `getPublicMenu` (`/menu/<rid>`), from representation `1d.2`.
 
-Both fields are **additive**. The two live order forms ignore them: proven page-level by `public-menu-display-noop.test.mjs`, and both form files are byte-identical.
+Both fields are **additive**, and both form files are byte-identical. What the two live order forms do with them:
+- **`photos`:** both forms ignore it.
+- **Category `name`:** x_pizza's form ignores it.
+- **La Musa's form renders category names** in its tabs and section headings. So a La Musa rename **does** change its live page: the new label shows. That is the intended effect of a rename.
+
+`public-menu-display-noop.test.mjs` proves page-level that adding `photos` (both forms) and adding x_pizza's names changes nothing. La Musa's names are already present and unchanged in that test, so it does not prove a no-op for a La Musa rename.
 
 ## `menu.categories[].name`: the category's display name
 - **What it is:** a non-empty string authored in the catalog.

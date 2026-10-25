@@ -1325,7 +1325,7 @@
   },
   {
    "id": "xpizza-functions/catalog/add-product.js#changesNothingElse#items#0",
-   "line": 515,
+   "line": 517,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -1335,7 +1335,7 @@
   },
   {
    "id": "xpizza-functions/catalog/add-product.js#changesNothingElse#items#1",
-   "line": 516,
+   "line": 518,
    "kind": "member",
    "facts": [
     "ITEMS"

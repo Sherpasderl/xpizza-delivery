@@ -7,6 +7,9 @@
 // Run: node catalog/category-rename-flow.test.js
 const assert = require('assert');
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
+// the platform extras-authoring switch, made settable (shipped OFF; cell 4 turns it ON) — before the handlers load it
+const EXTRAS = { authoring: false };
+{ const p = require.resolve('./platform-extras'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { extrasCapabilities: () => ({ ...EXTRAS }) } }; }
 const { editCatalogCore } = require('./edit-catalog-handler');
 const { publishEditedCore } = require('./publish-edited-handler');
 const { catalogDiff, issueEditToken, sha256 } = require('./catalog-edit');
@@ -163,6 +166,33 @@ async function served(rid, captured) {
     assert.strictEqual(rp.status, 200, `a price-only edit publishes (got ${rp.status} ${JSON.stringify(rp.body).slice(0, 160)})`);
   }
   ok('rename + price → rename_not_alone on save AND at publish; reordered categories → structure_changed at publish; a price-only edit saves and publishes as today');
+
+  // ── (4) codex build r1 P2: with extras authoring ON, a rename beside a deny_extras change is refused on SAVE and at
+  //    PUBLISH on both brands (the reviewed diff would show only the rename); the deny_extras change alone still lands ──
+  EXTRAS.authoring = true;
+  try {
+    const denied = (src) => { src.structure.exposure.item_overrides[src.items[0].key] = { deny_extras: [src.extras[0].key] }; return src; };
+    for (const rid of ['x_pizza', 'la_musa']) {
+      const fiscal = rid === 'x_pizza' ? { fiscalAck: true } : {};
+      const both = denied(renamed(rid));
+      const { r } = await save(rid, both);
+      assert.strictEqual(r.status, 400, `${rid} save: rename + deny_extras → 400 (got ${r.status} ${JSON.stringify(r.body).slice(0, 160)})`);
+      assert.strictEqual(r.body.error, 'rename_not_alone', `${rid}: rename_not_alone on save`);
+      const tok = issueEditToken({ rid, baseActiveVersionId: ACTIVE, sourceUpdateTime: T1, sourceHash: sha256(both), diff: catalogDiff(builtOf(base(rid), rid), builtOf(both, rid)) });
+      const pb = publishDeps(rid, both);
+      const rb = await publishEditedCore(pb.deps, { restaurantId: rid, token: tok, ...fiscal }, {});
+      assert.strictEqual(rb.status, 400, `${rid} publish: rename + deny_extras → 400 (got ${rb.status} ${JSON.stringify(rb.body).slice(0, 160)})`);
+      assert.strictEqual(rb.body.error, 'rename_not_alone', `${rid}: rename_not_alone at publish`);
+      assert.strictEqual(pb.state.publishes.length, 0, `${rid}: nothing published`);
+      // premise: the deny_extras change on its own saves and publishes with authoring ON
+      const alone = await save(rid, denied(base(rid)));
+      assert.strictEqual(alone.r.status, 200, `${rid}: deny_extras alone saves (got ${alone.r.status} ${JSON.stringify(alone.r.body).slice(0, 160)})`);
+      const pa = publishDeps(rid, alone.db.state.source.data);
+      const ra = await publishEditedCore(pa.deps, { restaurantId: rid, token: alone.r.body.token, ...fiscal }, {});
+      assert.strictEqual(ra.status, 200, `${rid}: deny_extras alone publishes (got ${ra.status} ${JSON.stringify(ra.body).slice(0, 160)})`);
+    }
+  } finally { EXTRAS.authoring = false; }
+  ok('extras authoring ON: rename + deny_extras → rename_not_alone on save AND at publish, both brands, nothing published; deny_extras alone saves and publishes');
 
   FINISHED = true;
   console.log(`\ncategory-rename-flow: OK (${n})`);
