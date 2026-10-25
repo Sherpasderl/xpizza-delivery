@@ -236,6 +236,7 @@
     "xpizza-functions/test/release-race-heal.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
+    "xpizza-functions/test/stackseq-writers.emulator.test.js",
     "xpizza-functions/test/tracker-reconcile.emulator.test.js",
     "xpizza-functions/test/tracker-schedules.emulator.test.js",
     "xpizza-functions/test/trigger-runner.emulator.test.mjs",
@@ -422,6 +423,7 @@
     "xpizza-functions/test/release-race-heal.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
+    "xpizza-functions/test/stackseq-writers.emulator.test.js",
     "xpizza-functions/test/tracker-reconcile.emulator.test.js",
     "xpizza-functions/test/tracker-schedules.emulator.test.js",
     "xpizza-functions/test/trigger-runner.emulator.test.mjs",
@@ -666,6 +668,7 @@
     "xpizza-functions/test/release-race-heal.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
+    "xpizza-functions/test/stackseq-writers.emulator.test.js",
     "xpizza-functions/test/tracker-reconcile.emulator.test.js",
     "xpizza-functions/test/tracker-schedules.emulator.test.js",
     "xpizza-functions/test/trigger-runner.emulator.test.mjs",
@@ -853,6 +856,7 @@
     "xpizza-functions/test/release-race-heal.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
+    "xpizza-functions/test/stackseq-writers.emulator.test.js",
     "xpizza-functions/test/tracker-reconcile.emulator.test.js",
     "xpizza-functions/test/tracker-schedules.emulator.test.js",
     "xpizza-functions/test/trigger-runner.emulator.test.mjs",
@@ -1686,6 +1690,7 @@
   "alert-prune.js",
   "assign-hub.js",
   "assignment-conflict.js",
+  "cancel-order-core.js",
   "catalog/bound-reuse.js",
   "catalog/canonical-binding.js",
   "catalog/catalog-edit-auth.js",
@@ -1734,6 +1739,19 @@
   "retention-sweep.js",
   "rewards-redeem-intake.js",
   "rewards-reserve.js",
+  "sequencing/bounded.js",
+  "sequencing/budget.js",
+  "sequencing/cancel-promotion.js",
+  "sequencing/decide.js",
+  "sequencing/detector.js",
+  "sequencing/gate.js",
+  "sequencing/id.js",
+  "sequencing/plan-stack.js",
+  "sequencing/post-claim.js",
+  "sequencing/retention.js",
+  "sequencing/routes-client.js",
+  "sequencing/validity.js",
+  "sequencing/writer.js",
   "signup-core.js",
   "signup-endpoints.js",
   "staff-push.js",
@@ -1817,6 +1835,39 @@
   "assignment-conflict.js": {
    "pins": [],
    "lifts": []
+  },
+  "cancel-order-core.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/h0-wiring.guard.test.js",
+     "inverses": [
+      "tools/h0-inverse.js",
+      "tools/stackseq-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/stackseq-wiring.guard.test.js",
+     "inverses": [
+      "tools/stackseq-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/test/superseded-capture.emulator.test.js",
+     "inverses": [
+      "tools/h0-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/tools/stackseq-module-inverse.js",
+     "inverses": [
+      "tools/stackseq-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": [
+    "xpizza-functions/a1-wiring.guard.test.js",
+    "xpizza-functions/rewards-reversal-placement.test.js"
+   ]
   },
   "catalog/bound-reuse.js": {
    "pins": [],
@@ -1907,6 +1958,7 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
      ]
@@ -1931,6 +1983,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
@@ -1957,6 +2010,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
@@ -1968,7 +2022,8 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
-      "tools/portalui-inverse.js"
+      "tools/portalui-inverse.js",
+      "tools/stackseq-inverse.js"
      ]
     },
     {
@@ -1994,6 +2049,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
@@ -2018,6 +2074,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
@@ -2028,7 +2085,8 @@
      "inverses": [
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
-      "tools/portalui-inverse.js"
+      "tools/portalui-inverse.js",
+      "tools/stackseq-inverse.js"
      ]
     },
     {
@@ -2049,6 +2107,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
      ]
@@ -2069,6 +2128,7 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
      ]
@@ -2084,6 +2144,7 @@
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
      ]
@@ -2098,6 +2159,7 @@
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
      ]
@@ -2106,7 +2168,8 @@
      "file": "xpizza-functions/membership-wiring.guard.test.js",
      "inverses": [
       "tools/membership-inverse.js",
-      "tools/portalui-inverse.js"
+      "tools/portalui-inverse.js",
+      "tools/stackseq-inverse.js"
      ]
     },
     {
@@ -2131,6 +2194,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
@@ -2159,6 +2223,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
@@ -2168,7 +2233,8 @@
      "file": "xpizza-functions/portalui-wiring.guard.test.js",
      "inverses": [
       "tools/membership-inverse.js",
-      "tools/portalui-inverse.js"
+      "tools/portalui-inverse.js",
+      "tools/stackseq-inverse.js"
      ]
     },
     {
@@ -2178,7 +2244,8 @@
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
-      "tools/release-race-inverse.js"
+      "tools/release-race-inverse.js",
+      "tools/stackseq-inverse.js"
      ]
     },
     {
@@ -2196,6 +2263,7 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
      ]
@@ -2215,6 +2283,7 @@
       "tools/s1b-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
      ]
@@ -2231,6 +2300,7 @@
       "tools/release-race-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
      ]
@@ -2252,6 +2322,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
      ]
@@ -2265,6 +2336,7 @@
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
      ]
@@ -2289,6 +2361,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
@@ -2332,6 +2405,7 @@
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js"
      ]
     },
@@ -2343,6 +2417,7 @@
       "tools/membership-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js"
      ]
@@ -2365,6 +2440,7 @@
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
+      "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js"
@@ -2409,6 +2485,7 @@
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
     "xpizza-functions/serial3-differential.test.js",
+    "xpizza-functions/stackseq-wiring.guard.test.js",
     "xpizza-functions/staff-push-isolation.test.js",
     "xpizza-functions/stats/stats-guard.test.js",
     "xpizza-functions/tasks-retention.test.js",
@@ -2621,8 +2698,21 @@
   "retention-sweep.js": {
    "pins": [
     {
+     "file": "xpizza-functions/stackseq-wiring.guard.test.js",
+     "inverses": [
+      "tools/stackseq-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/tools/stackseq-module-inverse.js",
+     "inverses": [
+      "tools/stackseq-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/tracker-retention-wiring.guard.test.js",
      "inverses": [
+      "tools/stackseq-module-inverse.js",
       "tools/tracker-retention-inverse.js"
      ]
     }
@@ -2652,6 +2742,58 @@
    ]
   },
   "rewards-reserve.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "sequencing/bounded.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "sequencing/budget.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "sequencing/cancel-promotion.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "sequencing/decide.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "sequencing/detector.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "sequencing/gate.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "sequencing/id.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "sequencing/plan-stack.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "sequencing/post-claim.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "sequencing/retention.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "sequencing/routes-client.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "sequencing/validity.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "sequencing/writer.js": {
    "pins": [],
    "lifts": []
   },
