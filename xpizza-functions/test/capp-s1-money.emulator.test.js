@@ -236,6 +236,11 @@ async function oldBody(rid, build) {
     await rtdb.ref(`user_rewards/${UID}/${rid}`).set({ balance: BALANCE[rid], reserved: 0 });
     await clean(); CHARGED.length = 0;
     const qk = await post(app.quoteRedemption, { restaurant_id: rid, items: s.items, redeem: REWARD[rid], mode: 'delivery', pin: { ...PIN, confirmed: true } }, auth);
+    const signedQuote = (q, label) => {
+      assert.ok(q.json && q.json.ok && typeof q.json.quote_token === 'string' && q.json.quote_token, `${rid} ${label}: a SIGNED reward quote — ${q.text.slice(0, 200)}`);
+      assert.deepStrictEqual([q.json.total_cents, q.json.net_total_cents, q.json.total_cost], [paid, net, cost], `🔴 ${rid} ${label}: exact quote money (food, net, cost)`);
+    };
+    signedQuote(qk, 'card quote');
     const kb = bodyOf(rid, 'online', cart, { redeem: REWARD[rid], quote_token: qk.json.quote_token, expected_net_cents: qk.json.net_total_cents });
     const issued = issuedSnapshot(kb);
     const k = await post(app.chargeOnlineOrder, kb, auth);
@@ -258,6 +263,7 @@ async function oldBody(rid, build) {
     await rtdb.ref(`user_rewards/${UID}/${rid}`).set({ balance: BALANCE[rid], reserved: 0 });
     await clean();
     const qc = await post(app.quoteRedemption, { restaurant_id: rid, items: s.items, redeem: REWARD[rid], mode: 'delivery', pin: { ...PIN, confirmed: true } }, auth);
+    signedQuote(qc, 'cancel-cell quote');
     const rb = bodyOf(rid, 'online', cart, { redeem: REWARD[rid], quote_token: qc.json.quote_token, expected_net_cents: qc.json.net_total_cents });
     assert.strictEqual((await post(app.chargeOnlineOrder, rb, auth)).status, 200);
     assert.deepStrictEqual([(await resv(rid, rb.order_id)).state, (await wallet(rid)).reserved], ['reserved', cost], 'premise: held');
@@ -470,6 +476,7 @@ async function oldBody(rid, build) {
       const lines = o.factura_items || o.items;
       if (reward) {
         assert.strictEqual(lines.length, expectLines.length + 1, 'factura_items = the paid lines + the comped line');
+        assert.deepStrictEqual(lines.slice(0, expectLines.length).map((l) => ({ qty: l.qty, line_gross_cents: l.line_gross_cents })), expectLines, '🔴 F: the PAID prefix of factura_items == the cart instances, line by line');
         const comp = lines[lines.length - 1];
         assert.deepStrictEqual([comp.redeemed, comp.qty, comp.line_gross_cents], [true, 1, freeDish.price * 100], `🔴 F: the comped line == the reward dish at its catalog value`);
       } else assert.strictEqual(o.factura_items, undefined, 'no reward → no factura_items');
