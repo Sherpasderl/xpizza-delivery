@@ -20057,7 +20057,7 @@
       "test:s2tip"
     ],
     "kills_with": [
-      "classify failed once"
+      "reward + classify failure + no email"
     ]
   }
 ]
