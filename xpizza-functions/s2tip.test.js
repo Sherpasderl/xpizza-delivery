@@ -179,7 +179,8 @@ const seq = (...ids) => { let i = 0; return () => ids[i++]; };
     assert.deepStrictEqual(await dq(body({ tip_cents: 500 })), { refuse: { ok: false, error: 'tip_not_enabled' }, httpStatus: 409 }, 'quote dark + tip → 409 tip_not_enabled');
     assert.deepStrictEqual(await q({ mode: 'pickup', tip_cents: 500 }), { refuse: { ok: false, error: 'tip_pickup' }, httpStatus: 400 }, 'quote pickup + tip → 400 tip_pickup');
     // app coverage: the pin is 4 km; bands reach 6 km; the restaurant's radius is 3.5 km
-    assert.strictEqual((await q(body({ entry_mode: 'app' }))).refuse.error, 'outside_delivery_bands', 'APP: a pin between the radius and the last band is refused');
+    const appOut = await q(body({ entry_mode: 'app' }));
+    assert.strictEqual(appOut.refuse && appOut.refuse.error, 'outside_delivery_bands', 'APP: a pin between the radius and the last band is refused');
     const legacy = await q(body({}));
     assert.ok(legacy.ctx && legacy.ctx.delivery_cents === 5000, 'legacy (no entry_mode): unchanged — priced at the band');
     assert.deepStrictEqual(DW.quoteFields(legacy.ctx).delivery, { delivery_cents: 5000, promo_discount_cents: 0, policy_version: 1, mode: 'delivery', from_cents: 3000, max_km: 6 }, 'public facts: from_cents = the lowest band, max_km = the last band');

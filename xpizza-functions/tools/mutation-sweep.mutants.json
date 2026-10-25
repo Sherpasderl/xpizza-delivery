@@ -19320,5 +19320,696 @@
       "node",
       "../xpizza-driver/single-order-branch.test.js"
     ]
+  },
+  {
+    "id": "s2tip-u01",
+    "slice": "s2tip",
+    "label": "the net drops the tip",
+    "file": "compute-server-net.js",
+    "from": "  const net_total_cents = netAfterReward + delivery_cents + tip_cents;",
+    "to": "  const net_total_cents = netAfterReward + delivery_cents;",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "the tip joins the net once"
+    ]
+  },
+  {
+    "id": "s2tip-u02",
+    "slice": "s2tip",
+    "label": "the quote token stops signing the tip",
+    "file": "quote-issue.js",
+    "from": "        ...(tipCentsOf(deliveryContext) > 0 ? { tip_cents: tipCentsOf(deliveryContext) } : {}) } } : {}),",
+    "to": "        ...({}) } } : {}),",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "the signed payload carries the tip"
+    ]
+  },
+  {
+    "id": "s2tip-u03",
+    "slice": "s2tip",
+    "label": "the gate stops binding the signed tip",
+    "file": "delivery/delivery-pricing.js",
+    "from": "  if (tipCentsOf(signed) !== tipCentsOf(ctx)) return 'tip_mismatch';",
+    "to": "",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "never authorises"
+    ]
+  },
+  {
+    "id": "s2tip-u04",
+    "slice": "s2tip",
+    "label": "withTip no longer carries the tip on the ctx",
+    "file": "delivery/delivery-pricing.js",
+    "from": "const withTip = (ctx, tip) => (ctx && tip > 0 ? mint({ ...ctx, tip_cents: tip }) : ctx);",
+    "to": "const withTip = (ctx, tip) => ctx;",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "the tip joins the net once",
+      "tipped token",
+      "STORED"
+    ]
+  },
+  {
+    "id": "s2tip-u05",
+    "slice": "s2tip",
+    "label": "stored (grandfathered) economics drop the tip",
+    "file": "delivery/delivery-pricing.js",
+    "from": "    ...(Number.isSafeInteger(order.tip_cents) && order.tip_cents > 0 ? { tip_cents: order.tip_cents } : {}) });",
+    "to": "    });",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "STORED economics"
+    ]
+  },
+  {
+    "id": "s2tip-u06",
+    "slice": "s2tip",
+    "label": "the cash classifier drops the direct tip compare",
+    "file": "createorder-classify.js",
+    "from": "  if (TIP.tipBindingConflict(existing, incomingTip)) return { action: '409', reason: 'tip' };\n",
+    "to": "",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "a changed tip on a live cash order"
+    ]
+  },
+  {
+    "id": "s2tip-u07",
+    "slice": "s2tip",
+    "label": "tipExtra leaves the cash incoming fingerprint",
+    "file": "createorder-classify.js",
+    "from": "      return orderFingerprint(orderId, totalCents, itemsText, [schedExtra, tipX].filter(Boolean).join('|'));",
+    "to": "      return orderFingerprint(orderId, totalCents, itemsText, [schedExtra].filter(Boolean).join('|'));",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "joins the cash incoming fingerprint"
+    ]
+  },
+  {
+    "id": "s2tip-u08",
+    "slice": "s2tip",
+    "label": "tipExtra leaves the canonical incoming fingerprint",
+    "file": "createorder-classify.js",
+    "from": ", TIP.tipExtra(tipCents)].filter(Boolean).join('|');   // S2: + the tip component",
+    "to": ", ''].filter(Boolean).join('|');   // S2: + the tip component",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "joins the canonical incoming fingerprint"
+    ]
+  },
+  {
+    "id": "s2tip-u09",
+    "slice": "s2tip",
+    "label": "acquisition drops the pre-read tip compare",
+    "file": "pixelpay-hosted-charge.js",
+    "from": "      { const t = tipBindingConflict(order, incomingTip); if (t) return conflictOutcome(t); }   // S2: a changed tip",
+    "to": "      { }   // S2: a changed tip",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "precedence"
+    ]
+  },
+  {
+    "id": "s2tip-u10",
+    "slice": "s2tip",
+    "label": "the CAS stops holding a record whose tip changed",
+    "file": "pixelpay-hosted-charge.js",
+    "from": "      if (tipBindingConflict(c, incomingTip) || paymentBindingConflict(c, fingerprint, canon, a8)) return c;",
+    "to": "      if (paymentBindingConflict(c, fingerprint, canon, a8)) return c;",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "CAS race"
+    ]
+  },
+  {
+    "id": "s2tip-u11",
+    "slice": "s2tip",
+    "label": "the read-only classifier drops the tip compare (parity)",
+    "file": "pixelpay-hosted-charge.js",
+    "from": "    { const t = tipBindingConflict(order, incomingTip); if (t) return conflictOutcome(t, { willIssueFreshUrl: false }); }   // S2: parity with acquire",
+    "to": "    { }   // S2: parity with acquire",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "classifier parity"
+    ]
+  },
+  {
+    "id": "s2tip-u12",
+    "slice": "s2tip",
+    "label": "acquisition ignores the payer-email fresh refusal",
+    "file": "pixelpay-hosted-charge.js",
+    "from": "    if (payerRefuseFresh === true) return { outcome: 'conflict', reason: 'payer_email_unconfigured' };",
+    "to": "",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "refused BEFORE the CAS"
+    ]
+  },
+  {
+    "id": "s2tip-u13",
+    "slice": "s2tip",
+    "label": "charge-inputs stops normalizing tip_cents:0 out",
+    "file": "catalog/charge-inputs.js",
+    "from": " && !(k === 'tip_cents' && body[k] === 0)) picked[k] = body[k];",
+    "to": ") picked[k] = body[k];",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "hash identically"
+    ]
+  },
+  {
+    "id": "s2tip-u14",
+    "slice": "s2tip",
+    "label": "'tip' leaves the closed order_exists enum",
+    "file": "order-exists.js",
+    "from": "'client_update_race', 'conflict', 'tip']));",
+    "to": "'client_update_race', 'conflict']));",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "serializes tip"
+    ]
+  },
+  {
+    "id": "s2tip-u15",
+    "slice": "s2tip",
+    "label": "tip + reward is no longer refused early",
+    "file": "tip.js",
+    "from": "  if (t > 0 && body.redeem != null) return { status: 409, error: 'tip_reward_unsupported' };",
+    "to": "",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "tip + reward"
+    ]
+  },
+  {
+    "id": "s2tip-u16",
+    "slice": "s2tip",
+    "label": "the TIP_MAX bound is dropped",
+    "file": "tip.js",
+    "from": "v >= 1 && v <= TIP_MAX_CENTS ? v : NaN;",
+    "to": "v >= 1 ? v : NaN;",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "200001"
+    ]
+  },
+  {
+    "id": "s2tip-u17",
+    "slice": "s2tip",
+    "label": "a dark restaurant accepts a tip on the order path",
+    "file": "delivery/delivery-wire.js",
+    "from": "  if (!lp.pricing) return t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;",
+    "to": "  if (!lp.pricing) return null;",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "dark + tip"
+    ]
+  },
+  {
+    "id": "s2tip-u18",
+    "slice": "s2tip",
+    "label": "pickup accepts a tip on the order path",
+    "file": "delivery/delivery-wire.js",
+    "from": "  if (t > 0 && q.ctx.mode === 'pickup') return { refusal: 'tip_pickup', httpStatus: 400 };\n  return t > 0",
+    "to": "  return t > 0",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "order pickup + tip"
+    ]
+  },
+  {
+    "id": "s2tip-u19",
+    "slice": "s2tip",
+    "label": "the quote stops refusing tip + reward",
+    "file": "delivery/delivery-wire.js",
+    "from": "  if (t > 0 && body.redeem != null) return { refuse: { ok: false, error: 'tip_reward_unsupported' }, httpStatus: 409 };",
+    "to": "",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "quote tip + reward"
+    ]
+  },
+  {
+    "id": "s2tip-u20",
+    "slice": "s2tip",
+    "label": "the APP quote stops enforcing min(bands, radius)",
+    "file": "delivery/delivery-wire.js",
+    "from": "...(isApp(body) ? { maxKm } : {}) });",
+    "to": "...({}) });",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "APP: a pin between"
+    ]
+  },
+  {
+    "id": "s2tip-u21",
+    "slice": "s2tip",
+    "label": "the breakdown total drops the tip",
+    "file": "delivery/delivery-wire.js",
+    "from": "    total_cents: breakdown.total_cents + P.netDeliveryCents(c) + tip,",
+    "to": "    total_cents: breakdown.total_cents + P.netDeliveryCents(c),",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "total + envío + tip"
+    ]
+  },
+  {
+    "id": "s2tip-u22",
+    "slice": "s2tip",
+    "label": "totalLempiras drops the tip",
+    "file": "delivery/delivery-wire.js",
+    "from": "foodLempiras + (P.netDeliveryCents(ctxOf(dq)) + P.tipCentsOf(ctxOf(dq))) / 100",
+    "to": "foodLempiras + P.netDeliveryCents(ctxOf(dq)) / 100",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "totalLempiras includes the tip"
+    ]
+  },
+  {
+    "id": "s2tip-u23",
+    "slice": "s2tip",
+    "label": "the payer email falls back to a literal again",
+    "file": "payer-email.js",
+    "from": "const payerEmail = (body, env) => validEmail(body && body.customer_email) || validEmail(env && env.PIXELPAY_MERCHANT_EMAIL);",
+    "to": "const payerEmail = (body, env) => validEmail(body && body.customer_email) || validEmail(env && env.PIXELPAY_MERCHANT_EMAIL) || 'fallback@example.com';",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "kills_with": [
+      "none"
+    ]
+  },
+  {
+    "id": "s2tip-c01",
+    "slice": "s2tip",
+    "label": "the factura (functions copy) charges the tip as restaurant revenue",
+    "file": "factura/build-record.js",
+    "from": "    total_cents: order.total_cents - envioNetCents(order) - tipCents(order),",
+    "to": "    total_cents: order.total_cents - envioNetCents(order),",
+    "command": [
+      "node",
+      "delivery/tip-consumers.test.mjs"
+    ],
+    "kills_with": [
+      "factura total = FOOD"
+    ]
+  },
+  {
+    "id": "s2tip-c02",
+    "slice": "s2tip",
+    "label": "the factura (xpizza-factura copy) charges the tip as restaurant revenue",
+    "file": "../xpizza-factura/src/build-record.js",
+    "from": "    total_cents: order.total_cents - envioNetCents(order) - tipCents(order),",
+    "to": "    total_cents: order.total_cents - envioNetCents(order),",
+    "command": [
+      "node",
+      "delivery/tip-consumers.test.mjs"
+    ],
+    "kills_with": [
+      "factura total = FOOD"
+    ]
+  },
+  {
+    "id": "s2tip-c03",
+    "slice": "s2tip",
+    "label": "stats sales count the tip as revenue",
+    "file": "stats/stats-build.js",
+    "from": "  const cents = int(order.total_cents) - envioNetCents(order) - tipCents(order);\n  const zero",
+    "to": "  const cents = int(order.total_cents) - envioNetCents(order);\n  const zero",
+    "command": [
+      "node",
+      "delivery/tip-consumers.test.mjs"
+    ],
+    "kills_with": [
+      "aggregate revenue = the FOOD totals"
+    ]
+  },
+  {
+    "id": "s2tip-c04",
+    "slice": "s2tip",
+    "label": "refund buckets count the tip",
+    "file": "stats/stats-build.js",
+    "from": "  const cents = int(order.total_cents) - envioNetCents(order) - tipCents(order);   // S3c",
+    "to": "  const cents = int(order.total_cents) - envioNetCents(order);   // S3c",
+    "command": [
+      "node",
+      "delivery/tip-consumers.test.mjs"
+    ],
+    "kills_with": [
+      "REFUNDED tipped order"
+    ]
+  },
+  {
+    "id": "s2tip-c05",
+    "slice": "s2tip",
+    "label": "the CSV total counts the tip",
+    "file": "stats/stats-api.js",
+    "from": "L(Number(o.total_cents) - B.envioNetCents(o) - B.tipCents(o))",
+    "to": "L(Number(o.total_cents) - B.envioNetCents(o))",
+    "command": [
+      "node",
+      "delivery/tip-consumers.test.mjs"
+    ],
+    "kills_with": [
+      "CSV total_L"
+    ]
+  },
+  {
+    "id": "s2tip-c06",
+    "slice": "s2tip",
+    "label": "WhatsApp drops the «Propina» line",
+    "file": "whatsapp.js",
+    "from": "    ...propinaLines(propina),\n",
+    "to": "",
+    "command": [
+      "node",
+      "delivery/tip-consumers.test.mjs"
+    ],
+    "kills_with": [
+      "Propina"
+    ]
+  },
+  {
+    "id": "s2tip-c07",
+    "slice": "s2tip",
+    "label": "the ledger stops accruing this week's tips",
+    "file": "driver-ledger/ledger-core.js",
+    "from": "d.deliveries.length * cfg.base_cents + (tipsNow.get(uid) || 0);",
+    "to": "d.deliveries.length * cfg.base_cents;",
+    "command": [
+      "node",
+      "delivery/tip-consumers.test.mjs"
+    ],
+    "kills_with": [
+      "this week"
+    ]
+  },
+  {
+    "id": "s2tip-c08",
+    "slice": "s2tip",
+    "label": "the ledger stops accruing late tips",
+    "file": "driver-ledger/ledger-core.js",
+    "from": "d.adjustments.length * cfg.base_cents + (tipsLate.get(uid) || 0);",
+    "to": "d.adjustments.length * cfg.base_cents;",
+    "command": [
+      "node",
+      "delivery/tip-consumers.test.mjs"
+    ],
+    "kills_with": [
+      "this week"
+    ]
+  },
+  {
+    "id": "s2tip-e01",
+    "slice": "s2tip",
+    "label": "createOrder no longer threads the tip into deliveryFor",
+    "file": "index.js",
+    "from": "pricingP: dpP, tip: body.tip_cents }); const priceBreakdown",
+    "to": "pricingP: dpP }); const priceBreakdown",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "kills_with": [
+      "dark cash + tip",
+      "recorded = quoted"
+    ]
+  },
+  {
+    "id": "s2tip-e02",
+    "slice": "s2tip",
+    "label": "chargeOnlineOrder no longer threads the tip into deliveryFor",
+    "file": "index.js",
+    "from": "pricingP: dpP, tip: body.tip_cents }), body, Date.now());",
+    "to": "pricingP: dpP }), body, Date.now());",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "kills_with": [
+      "PixelPay is asked for food + envío + tip",
+      "dark card + tip"
+    ]
+  },
+  {
+    "id": "s2tip-e03",
+    "slice": "s2tip",
+    "label": "the cash classifier no longer gets the incoming tip",
+    "file": "index.js",
+    "from": "restaurantMatches: sameRestaurant(ev.restaurant_id, restaurantId), incomingTip: TIP.ofBody(body) },",
+    "to": "restaurantMatches: sameRestaurant(ev.restaurant_id, restaurantId) },",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "kills_with": [
+      "same id + same tip"
+    ]
+  },
+  {
+    "id": "s2tip-e04",
+    "slice": "s2tip",
+    "label": "the cash incoming fingerprint drops the tip",
+    "file": "index.js",
+    "from": "      customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType, tipCents: TIP.ofBody(body) },\n    { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables, eligible: redeemEligible });",
+    "to": "      customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },\n    { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables, eligible: redeemEligible });",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "kills_with": [
+      "cash order\\'s stored fingerprint binds the tip",
+      "cash order's stored fingerprint binds the tip"
+    ]
+  },
+  {
+    "id": "s2tip-e05",
+    "slice": "s2tip",
+    "label": "the card authoritative fingerprint drops the tip",
+    "file": "index.js",
+    "from": "  const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : '', TIP.extraOf(body)].filter(Boolean)",
+    "to": "  const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean)",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "kills_with": [
+      "card order's stored fingerprint binds the tip"
+    ]
+  },
+  {
+    "id": "s2tip-e06",
+    "slice": "s2tip",
+    "label": "acquisition no longer gets the incoming tip",
+    "file": "index.js",
+    "from": "{ a8Fp: () => a8FingerprintC, fresh: cardTextVersion }, TIP.ofBody(body), PE.unconfigured(body, process.env),",
+    "to": "{ a8Fp: () => a8FingerprintC, fresh: cardTextVersion }, 0, PE.unconfigured(body, process.env),",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "kills_with": [
+      "card accepted",
+      "card: same tip",
+      "card: changed tip"
+    ]
+  },
+  {
+    "id": "s2tip-e07",
+    "slice": "s2tip",
+    "label": "acquisition no longer gets the payer-email flag (the race issues a fresh checkout)",
+    "file": "index.js",
+    "from": "{ a8Fp: () => a8FingerprintC, fresh: cardTextVersion }, TIP.ofBody(body), PE.unconfigured(body, process.env),",
+    "to": "{ a8Fp: () => a8FingerprintC, fresh: cardTextVersion }, TIP.ofBody(body), false,",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "kills_with": [
+      "P-C race"
+    ]
+  },
+  {
+    "id": "s2tip-e08",
+    "slice": "s2tip",
+    "label": "the acquire payer conflict is answered as order_exists",
+    "file": "index.js",
+    "from": "    return acq.reason === 'payer_email_unconfigured' ? PE.refuse(res, orderId) : res.status(409)",
+    "to": "    return false ? PE.refuse(res, orderId) : res.status(409)",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "kills_with": [
+      "P-C race"
+    ]
+  },
+  {
+    "id": "s2tip-e09",
+    "slice": "s2tip",
+    "label": "the early tip refusal is dropped from createOrder",
+    "file": "index.js",
+    "from": "const dpP = DW.loadPricing(db, restaurantId); if (TIP.refuse(res, body)) return;   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads\n  const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed\n  // 2c FAIL-CLOSED GUARD — the FIRST",
+    "to": "const dpP = DW.loadPricing(db, restaurantId);   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads\n  const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed\n  // 2c FAIL-CLOSED GUARD — the FIRST",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "kills_with": [
+      "cash {\"tip_cents\":500,\"redeem\""
+    ]
+  },
+  {
+    "id": "s2tip-u24",
+    "slice": "s2tip",
+    "label": "acquisition drops the POST-COMMIT tip compare",
+    "file": "pixelpay-hosted-charge.js",
+    "from": "    { const t = tipBindingConflict(committed, incomingTip); if (t) return conflictOutcome(t); }   // S2: post-txn tip",
+    "to": "    { }   // S2: post-txn tip",
+    "command": [
+      "node",
+      "s2tip.test.js"
+    ],
+    "equivalent": true,
+    "why": "EQUIVALENT by construction, measured: `committed` is the transaction's own snapshot, which the CAS step has just checked with tipBindingConflict(c, …) — a record whose tip changed is HELD unchanged (no new active_attempt_id), so `winner` is never this call's new attempt, the loop re-reads and the PRE-READ compare refuses 'tip'. The race cell (s2tip.test.js 8) still passes with this line removed. Kept as belt-and-braces, mirroring the existing advisory post-txn binding check (plan §3.2)."
+  },
+  {
+    "id": "s2tip-e10",
+    "slice": "s2tip",
+    "label": "the read-only classifier no longer gets the incoming tip",
+    "file": "index.js",
+    "from": "clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs, canonicalFpG, a8FpG, TIP.ofBody(body));",
+    "to": "clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs, canonicalFpG, a8FpG);",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "equivalent": true,
+    "why": "EQUIVALENT in outcome, measured: the classifier is ADVISORY — a generic classify conflict never returns from the handler; acquisition decides, and acquisition compares the tip itself (s2tip-e06 kills that). A changed tip still answers 409 order_exists/tip from the acquire. The parity is proven at unit level (s2tip-u11 kills classifyFromOrder's compare)."
+  },
+  {
+    "id": "s2tip-e11",
+    "slice": "s2tip",
+    "label": "the classify-time fingerprint drops tipExtra",
+    "file": "index.js",
+    "from": "    const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : '', TIP.extraOf(body)].filter(Boolean)",
+    "to": "    const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean)",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "equivalent": true,
+    "why": "EQUIVALENT in outcome, measured: fingerprintG feeds ONLY the read-only classifier (advisory; never stored, never decides alone). A tipped order's stored binding comes from the authoritative fingerprint (s2tip-e05 kills that), and a changed tip is refused by the direct compare before any fingerprint (plan §3.2 precedence)."
+  },
+  {
+    "id": "s2tip-e12",
+    "slice": "s2tip",
+    "label": "the pre-reserve payer-email check is dropped (the acquire still refuses)",
+    "file": "index.js",
+    "from": "  let redemptionOwnsHold = false; if (PE.refusesFresh(clsForMenu, body, process.env)) return PE.refuse(res, orderId);",
+    "to": "  let redemptionOwnsHold = false; if (false) return PE.refuse(res, orderId);",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "equivalent": true,
+    "why": "EQUIVALENT in observable outcome for a non-reward order, measured: the acquire's fresh-issuance check refuses the same 503 with no attempt, no order and no gateway call (s2tip-e07/e08 kill those). The pre-check's only distinct effect is skipping a reward RESERVE that the acquire refusal would then release (releaseHoldIfOwned) — reward card orders only; S2's app never sends a reward (tip + reward refused; rewards UI deferred, plan §6)."
+  },
+  {
+    "id": "s2tip-e13",
+    "slice": "s2tip",
+    "label": "the early tip refusal is dropped from chargeOnlineOrder",
+    "file": "index.js",
+    "from": "const dpP = DW.loadPricing(db, restaurantId); if (TIP.refuse(res, body)) return;   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads\n  const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed\n  // 2c FAIL-CLOSED GUARD — first",
+    "to": "const dpP = DW.loadPricing(db, restaurantId);   // S2: a malformed tip / tip + reward → refused before any read, reserve or write · 1b-1: hoisted above validation (the RTDB alarm sink); S3a: the envío config read starts NOW, in parallel with the first reads\n  const pricingTables = await resolvePricingTables(restaurantId);      // 2c: catalog-authoritative; null = fail-closed\n  // 2c FAIL-CLOSED GUARD — first",
+    "command": [
+      "npm",
+      "run",
+      "test:s2tip"
+    ],
+    "kills_with": [
+      "card {\"tip_cents\":500,\"redeem\""
+    ]
   }
 ]
