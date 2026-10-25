@@ -129,7 +129,33 @@
         "last_swept": {
           ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && $task_id.endsWith('_delivery')"
         },
+        "stack_id": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && $task_id.endsWith('_delivery')",
+          ".validate": "auth.uid === 'svc-assigner' || (auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()) || newData.val() === data.val()"
+        },
+        "stop_seq": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && $task_id.endsWith('_delivery')",
+          ".validate": "auth.uid === 'svc-assigner' || (auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()) || newData.val() === data.val()"
+        },
+        "stack_uid": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && $task_id.endsWith('_delivery')",
+          ".validate": "auth.uid === 'svc-assigner' || (auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()) || newData.val() === data.val()"
+        },
+        "stack_at": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && $task_id.endsWith('_delivery')",
+          ".validate": "auth.uid === 'svc-assigner' || (auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()) || newData.val() === data.val()"
+        },
+        "stack_plus_min": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.uid === 'svc-assigner' && $task_id.endsWith('_delivery')",
+          ".validate": "auth.uid === 'svc-assigner' || (auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()) || newData.val() === data.val()"
+        },
         ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner' && data.child('assigned_driver_id').val() === auth.uid"
+      }
+    },
+    "stacks": {
+      "$stack_id": {
+        ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && (data.child('driver_uid').val() === auth.uid || root.child('dispatchers').child(auth.uid).exists())",
+        ".write": false
       }
     },
     "orders": {
