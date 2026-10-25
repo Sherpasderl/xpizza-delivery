@@ -278,7 +278,26 @@ test('P2 cart: ONE quantity policy — every write refuses over MAX_QTY (no clam
   c.add(p.key, [], 2); assert.throws(() => c.edit(p.key, '', [], d.key), (e) => e.code === 'qty_limit');
   assert.deepEqual(c.lines().map((l) => [l.key, l.qty]), [[d.key, 49], [p.key, 2]], 'an edit that would exceed the target line is refused BEFORE any write');
   const over = { v: 2, lines: [{ key: d.key, qty: 51, ex: Array.from({ length: 51 }, () => ({})), added: 1 }] };
-  assert.deepEqual(createCart(m).hydrate(over), { dropped: 51 }, 'a restored line over the limit is dropped and counted');
+  assert.deepEqual(createCart(m).hydrate(over), { dropped: 1 }, 'a restored line over the limit is dropped and counted as ONE unavailable line');
+  // every requested quantity is validated BEFORE coercion or allocation (codex r2): no wrap-around, no huge array, no change
+  const before = JSON.stringify(c.snapshot());
+  const realFrom = Array.from; let allocated = 0;
+  Array.from = function (...a) { allocated += 1; return realFrom.apply(this, a); };
+  try {
+    for (const [label, fn] of [['add(4294967297)', () => c.add(p.key, [], 4294967297)], ['setQty(2147483648)', () => c.setQty(d.key, 2147483648)],
+      ['setQty(100000)', () => c.setQty(d.key, 100000)], ['setQty(-1)', () => c.setQty(d.key, -1)], ['setQty(1.5)', () => c.setQty(d.key, 1.5)],
+      ['add(0)', () => c.add(p.key, [], 0)], ['add("2")', () => c.add(p.key, [], '2')]]) {
+      assert.throws(fn, (e) => e.code === 'qty_limit', `${label} is refused`);
+      assert.equal(JSON.stringify(c.snapshot()), before, `${label}: the cart is unchanged`);
+    }
+    assert.equal(allocated, 0, 'no instance array was allocated for a refused quantity');
+  } finally { Array.from = realFrom; }
+  const huge = { v: 2, lines: [{ key: d.key, qty: 4294967297, ex: [], added: 1 }] };
+  assert.deepEqual(createCart(m).hydrate(huge), { dropped: 1 }, 'a restored absurd quantity is refused before its instances are read');
+  const twice = { v: 2, lines: [{ key: d.key, qty: 30, ex: Array.from({ length: 30 }, () => ({})), added: 1 }, { key: d.key, qty: 30, ex: Array.from({ length: 30 }, () => ({})), added: 2 }] };
+  const h = createCart(m);
+  assert.deepEqual(h.hydrate(twice), { dropped: 30 }, 'hydrate goes through the ONE write point: the same dish restored twice merges, and the part over 50 is refused');
+  assert.deepEqual(h.lines().map((l) => [l.key, l.qty]), [[d.key, 30]]);
 });
 
 test('P2 issued snapshot: deeply immutable — the resent body can never differ from what was issued', () => {

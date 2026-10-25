@@ -50,11 +50,17 @@
       if (!lines.has(l.key)) lines.set(l.key, l);
       l.ex = ex; l.qty = ex.length;
     }
+    // every REQUESTED quantity is validated BEFORE any coercion or allocation: an integer within [lo, MAX_QTY], else refused
+    // with the cart unchanged (no `| 0` wrap-around, no huge array ever built)
+    function wantQty(n, lo) {
+      if (typeof n !== 'number' || !Number.isInteger(n) || n < lo || n > MAX_QTY) throw err('qty_limit', String(n));
+      return n;
+    }
     // pad with plain instances / truncate to qty
     function setQty(key, qty) {
+      const q = wantQty(qty, 0);
       const l = lines.get(String(key));
       if (!l) return;
-      const q = Math.max(0, qty | 0);
       const ex = l.ex.slice(0, q);
       while (ex.length < q) ex.push({});
       put(l, ex);
@@ -74,7 +80,8 @@
       add(key, extraKeys = [], n = 1) {
         const d = orderable(key); const cfg = validConfig(d.key, extraKeys);
         const l = lineFor(d.key);
-        put(l, [...l.ex, ...Array.from({ length: Math.max(0, n | 0) }, () => instOf(cfg))]); claim(l);
+        wantQty(n, 1); wantQty(l.qty + n, 1);   // both checked before a single instance is allocated
+        put(l, [...l.ex, ...Array.from({ length: n }, () => instOf(cfg))]); claim(l);
       },
       // cart-line controls: "+" clones that configuration, "−" removes ONE instance OF THAT configuration (its last one)
       lineInc(key, sig) {
@@ -128,10 +135,11 @@
           try {
             const d = orderable(raw.key);
             const ex = Array.isArray(raw.ex) ? raw.ex : [];
-            if (!Number.isInteger(raw.qty) || raw.qty < 1 || raw.qty > MAX_QTY || raw.qty !== ex.length) throw err('bad_line');
+            wantQty(raw.qty, 1);   // validated before the instances are read
+            if (raw.qty !== ex.length) throw err('bad_line');
             const inst = ex.map((x) => { const ks = Object.keys(x || {}); if (ks.some((k) => x[k] !== 1)) throw err('unsupported_extra_quantity'); return instOf(validConfig(d.key, ks)); });
-            lines.set(d.key, { key: d.key, qty: inst.length, ex: inst, added: ++seq });
-          } catch (_) { dropped += (raw && Number.isInteger(raw.qty) && raw.qty > 0) ? raw.qty : 1; }
+            const l = lineFor(d.key); put(l, [...l.ex, ...inst]); claim(l);   // the ONE write point (a repeated key merges, bounded by MAX_QTY)
+          } catch (_) { dropped += (raw && Number.isInteger(raw.qty) && raw.qty > 0 && raw.qty <= MAX_QTY) ? raw.qty : 1; }   // an out-of-range quantity counts as ONE unavailable line
         }
         return { dropped };
       },
