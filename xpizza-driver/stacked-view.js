@@ -451,8 +451,10 @@ function reviewPayRowHtml(order, esc, ICONS) {
  * the existing client-only review latch; NO server write). Composed below the stop header + overview map by the
  * index.html solo branch. The restaurant is the order's brand (brandLabel) at the pickup task's address; the
  * kitchen-ready note «Cocina: listo ~H:MM» shows only when orders/{id}/prep/ready_at exists (ruling #2 — no
- * fabricated time, the parked «+ tráfico» ETA stays out). No «Instrucciones del restaurante» row: no such field
- * exists in the data today (omitted, not invented). Pure; does not mutate `o`/`deps`.
+ * fabricated time, the parked «+ tráfico» ETA stays out). The prototype's «Llegás justo; no hace falta correr»
+ * reassurance is HELD: it is a claim about the driver's ARRIVAL, which needs the parked traffic ETA — restore it
+ * with the ready note when that ETA ships (advisor 2026-10-24). No «Instrucciones del restaurante» row: no such
+ * field exists in the data today (omitted, not invented). Pure; does not mutate `o`/`deps`.
  */
 export function pickupToRestaurantHtml(o, deps = {}) {
   const { ICONS = {}, esc = String, scheduledBadge = () => '', RESTAURANT = {}, navPref } = deps;
@@ -467,7 +469,7 @@ export function pickupToRestaurantHtml(o, deps = {}) {
       <div class="ac-head"><div class="recipient-name">${restName}</div></div>
       ${restAddr ? `<div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${restAddr}</div></div></div>` : ''}
       ${scheduledBadge(order)}
-      ${rt ? `<div class="ac-hr"></div><div class="sv-sub">Cocina: listo ${esc(rt)}. Llegás justo; no hace falta correr.</div>` : ''}
+      ${rt ? `<div class="ac-hr"></div><div class="sv-sub">Cocina: listo ${esc(rt)}.</div>` : ''}
     </div>
     ${navBtnHtml(target, navPref, '', { ...deps, navTaskId })}
     <div class="action-zone">${slideConfirmHtml('btn-at-restaurant', 'at-restaurant', 'Ya estoy en el restaurante')}</div>`;
