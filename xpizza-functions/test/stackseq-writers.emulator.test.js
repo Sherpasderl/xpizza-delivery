@@ -93,9 +93,13 @@ const COPY = ['stack_id', 'stop_seq', 'stack_uid', 'stack_at', 'stack_plus_min']
 const hasCopies = (t) => !!t && COPY.some((c) => c in t);
 const T_KEYS = new Set(['assigned_at', 'accepted_at', 'assignment_deadline', 'created_at', 'stack_at', 'last_swept']);
 const norm = (v) => JSON.parse(JSON.stringify(v, (k, x) => (T_KEYS.has(k) && typeof x === 'number' ? '<t>' : x)));
+// every stacks/ record that touches THIS scenario — its orders (pair) or its driver — under ANY id: a stray write under an
+// unexpected id is caught, while other scenarios' records in the same batch are not
+const stacksTouching = async (s) => Object.fromEntries(Object.entries((await val('stacks')) || {})
+  .filter(([, r]) => r && ((Array.isArray(r.pair) && r.pair.some((o) => o === s.i || o === s.n)) || r.driver_uid === s.d)));
 const snap = async (s) => norm({
   tasks: Object.fromEntries(await Promise.all([`${s.i}_pickup`, `${s.i}_delivery`, `${s.n}_pickup`, `${s.n}_delivery`].map(async (t) => [t.replace(/_s\d+/, ''), await val(`tasks/${t}`)]))),
-  driver: await val(`drivers/${s.d}`), alerts: await alertsFor(s.n), stack: await val(`stacks/${stackIdFor(s.d, s.i, s.n).stack_id}`),   // THIS pair's record only (scenarios share a batch)
+  driver: await val(`drivers/${s.d}`), alerts: await alertsFor(s.n), stacks: await stacksTouching(s),
 });
 const expectStacked = async (s, label) => {
   const nd = await val(`tasks/${s.n}_delivery`); const idl = await val(`tasks/${s.i}_delivery`);
