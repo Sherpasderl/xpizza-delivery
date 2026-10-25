@@ -56,7 +56,7 @@ const pickerJs = html.slice(openIdx, closeEnd);
 {
   assert.match(pickerJs, /pickerOpener\s*=\s*document\.activeElement/, 'captures opener at top of openPicker');
   // focus moves into the list (first row) or the cancel button on open
-  assert.match(pickerJs, /querySelector\('\.picker-row'\)\s*\|\|\s*\$\('picker-remove-row'\)\s*\|\|\s*\$\('picker-cancel-btn'\)/, 'first-focusable = first row, else the "Quitar repartidor" remove row (reassign+pre-pickup), else cancel');
+  assert.match(pickerJs, /querySelector\('\.picker-row:not\(\[disabled\]\)'\)\s*\|\|\s*\$\('picker-remove-row'\)\s*\|\|\s*\$\('picker-cancel-btn'\)/, 'first-focusable = first ENABLED row («Pausa»: never a disabled/paused row — an all-paused list still lands focus on Quitar/Cancel), else the "Quitar repartidor" remove row, else cancel');
   assert.match(pickerJs, /firstFocusable\.focus\(/, 'focus() moved into dialog on open');
   // restore in closePicker goes through the stable-identity resolver (NOT a raw stale node)
   assert.match(pickerJs, /const returnOrderId = pickerOrderId;/, 'orderId captured before closePicker resets');
@@ -103,11 +103,15 @@ const pickerJs = html.slice(openIdx, closeEnd);
   assert.doesNotMatch(html, /\.picker-row\.disabled\s*\{[^}]*opacity/, 'old .picker-row.disabled opacity rule removed');
   assert.doesNotMatch(html, /\.picker-row[^{]*\{[^}]*pointer-events:\s*none/, 'no pointer-events:none on picker rows');
   assert.doesNotMatch(html, /\.picker-row\.needs-confirm[^{]*\{[^}]*cursor:\s*not-allowed/, 'needs-confirm never cursor:not-allowed');
-  // the row <button> must NEVER carry a `disabled` attribute (that would truly block the click + confirm override)
+  // «Pausa» (owner ruling BLOCK): the `disabled` attribute is gated on `paused` (on_break) ONLY. A
+  // needs-confirm/risky row (full|en-route|unreachable) must NEVER be disabled — its confirm() override stays.
+  assert.match(pickerJs, /const paused = driver\.status === 'on_break'/, 'paused derives from on_break');
   const btnOpen = pickerJs.match(/<button type="button" class="picker-row[\s\S]*?>/);
   assert.ok(btnOpen, 'row button open-tag located');
-  assert.doesNotMatch(btnOpen[0], /\sdisabled(\s|=|>)/, 'row button has no disabled attribute');
-  ok('needs-confirm amber warning replaces fake-disabled; row stays clickable (no disabled attr)');
+  assert.match(btnOpen[0], /\$\{paused \? 'disabled' : ''\}/, 'the row disabled attribute is gated on paused (on_break) only');
+  assert.doesNotMatch(btnOpen[0], /requireConfirm \? 'disabled'|\sdisabled=|\sdisabled>|\sdisabled\s/, 'disabled is never unconditional nor gated on requireConfirm (confirm rows stay clickable)');
+  assert.match(pickerJs, /class="picker-row \$\{paused \? 'paused' : requireConfirm \? 'needs-confirm' : ''\}/, 'paused wins the row class over needs-confirm');
+  ok('needs-confirm amber warning stays clickable; «Pausa» rows carry disabled gated on on_break only');
 }
 
 // FEATURE 6 — Esc + focus trap, guarded on pickerOpen, scoped to the overlay
@@ -141,11 +145,13 @@ const pickerJs = html.slice(openIdx, closeEnd);
   assert.match(branch, /n < rows\.length/, 'out-of-range digits are ignored');
   // arrow-nav branch still returns before the 1–9 branch (unchanged roving focus, no fall-through)
   assert.match(h, /rows\[\(idx \+ dir \+ rows\.length\) % rows\.length\]\.focus\(\);\s*\n\s*return;/, 'arrow/j-k roving focus preserved (returns before the digit branch)');
-  // knum badge only for the first 9 rows (where the shortcut is live) — no dead numbers
-  assert.match(pickerJs, /i < 9 \?/, 'knum badge gated on i < 9 (only where the 1–9 shortcut is live)');
-  assert.match(pickerJs, /<span class="knum" aria-hidden="true">\$\{i \+ 1\}<\/span>/, 'knum shows the 1-based key number, aria-hidden (visual affordance only)');
-  assert.match(pickerJs, /\.map\(\(\{[^}]*\}, i\)\s*=>/, 'row map carries the index i the badge + shortcut rely on');
-  ok('1–9 shortcut routes through the byte-identical click (confirm+assign) path; knum only where live; roving focus intact');
+  // «Pausa»: knum numbers the first 9 ENABLED rows only — paused rows get no badge and don't advance the
+  // counter — so a displayed badge always matches the digit shortcut's enabled-row target (no dead numbers).
+  assert.match(pickerJs, /let knumSeq = 0;/, 'the enabled-row counter is initialised before the row map');
+  assert.match(pickerJs, /const knum = paused \? null : \(\+\+knumSeq <= 9 \? knumSeq : null\);/, 'knum = 1-based position among ENABLED rows (first 9); paused → none, no advance');
+  assert.match(pickerJs, /<span class="knum" aria-hidden="true">\$\{knum\}<\/span>/, 'knum shows the enabled-row number, aria-hidden (visual affordance only)');
+  assert.match(pickerJs, /knum !== null \?/, 'the badge renders only when knum is assigned (enabled, within the first 9)');
+  ok('1–9 shortcut routes through the byte-identical click (confirm+assign) path; knum numbers ENABLED rows only (digit↔badge aligned); roving focus intact');
 }
 
 // FEATURE 8 — F5-fix P1#2: ⌘/Ctrl-K must NOT steal focus out of an open modal (picker / flyout / drawer /

@@ -816,8 +816,16 @@ const SECTION_LABELS = { nuevos:'Nuevos', preparacion:'En preparación', listos:
 const STATUS_ES = { nuevos:'en cocina', preparacion:'en cocina', listos:'listo', camino:'en camino', completados:'entregado' };
 const DRIVER_STATUS_ES = {
   off_shift:'Fuera de turno', available:'Disponible', assigned:'Asignado',
-  at_restaurant:'En restaurante', en_route_delivery:'En camino', returning:'Regresando', on_break:'En descanso',
+  at_restaurant:'En restaurante', en_route_delivery:'En camino', returning:'Regresando', on_break:'En pausa',
 };
+// «Pausa» — on_break status with elapsed minutes from drivers/{uid}/break_since. Number.isFinite FIRST
+// (missing/string/NaN/Infinity never coerce); N<1 (just-started OR future→negative) shows «En pausa» with no
+// tail. Re-evaluated on the 20 s roster refresh (no new timer).
+function pausaLabel(d){
+  if (!d || !Number.isFinite(d.break_since)) return 'En pausa';
+  const n = Math.floor((Date.now() - d.break_since) / 60000);
+  return n < 1 ? 'En pausa' : `En pausa · ${n} min`;
+}
 
 // Urgency: what the phone is actually for. Colour answers "does this need me", never "what stage is it".
 function levelOf(id, order){
@@ -1144,7 +1152,12 @@ function orderForDriver(uid){
 function driverRow(uid, d){
   const oid = orderForDriver(uid);
   const statusEs = DRIVER_STATUS_ES[d.status] || d.status || '—';
-  const lead = XPD.isStalePing(d.last_ping) ? 'Sin señal' : statusEs;
+  const stale = XPD.isStalePing(d.last_ping);
+  // «Pausa»: the pause label must survive stale-GPS (which would otherwise REPLACE the status with «Sin señal»).
+  // Show «En pausa · N min» and append « · Sin señal» when stale, so both stay visible. (Mobile has no push-reachability status.)
+  const lead = d.status === 'on_break'
+    ? (stale ? `${pausaLabel(d)} · Sin señal` : pausaLabel(d))
+    : (stale ? 'Sin señal' : statusEs);
   return `<button class="row" type="button" data-drvfocus="${escapeHtml(uid)}">
     <span class="av rd" style="background:${driverColorVar(d)}">${escapeHtml(String(d.name || '?').charAt(0).toUpperCase())}</span>
     <span class="m"><b>${escapeHtml(d.name || 'Repartidor')}</b><s>${escapeHtml(lead)}, ${oid ? escapeHtml(displayLabel(oid, STORE.orders[oid])) : 'sin pedido'}</s></span>
@@ -1252,6 +1265,7 @@ function toast(msg, bad){
 // Failure copy — mirrors the desktop's assignFailMsg.
 function assignFailMsg(reason){
   switch (reason) {
+    case 'on_break': return 'El repartidor está en pausa';   // «Pausa» backstop: a raced/stale assign to a paused driver is refused
     case 'already_assigned':
     case 'pickup_taken': return 'Ya fue asignada a otro repartidor';
     case 'claim_stale': return 'La asignación cambió — el tablero ya se actualizó, intentá de nuevo';
@@ -1393,9 +1407,13 @@ function openPicker(orderId){
   };
   const rowOf = (r) => {
     const dObj = STORE.drivers[r.id] || {};
-    // Say the exception, not the normal case: "GPS activo" on every row is noise.
-    const statusEs = r.live ? (DRIVER_STATUS_ES[dObj.status] || r.status || '') : 'Sin señal';
-    return `<button class="row" type="button" data-choose="${escapeHtml(r.id)}"${r.isCurrent ? ' disabled' : ''}>
+    const paused = dObj.status === 'on_break';   // «Pausa» (owner ruling BLOCK): listed but NOT assignable
+    // Say the exception, not the normal case: "GPS activo" on every row is noise. «Pausa»: the «En pausa» tag
+    // must survive stale-GPS, so show it regardless and append « · Sin señal» when not live (no push status on mobile).
+    const statusEs = paused
+      ? (r.live ? 'En pausa' : 'En pausa · Sin señal')
+      : (r.live ? (DRIVER_STATUS_ES[dObj.status] || r.status || '') : 'Sin señal');
+    return `<button class="row" type="button" data-choose="${escapeHtml(r.id)}"${(r.isCurrent || paused) ? ' disabled' : ''}>
       <span class="av rd" style="background:${driverColorVar(dObj)}">${escapeHtml(String(r.name || '?').charAt(0).toUpperCase())}</span>
       <span class="m"><b>${escapeHtml(r.name)}${r.isCurrent ? ' <span style="font-size:12px;font-weight:600;color:var(--ink3)">— actual</span>' : ''}</b>
       <s>${escapeHtml(statusEs)}, ${r.load} pedido${r.load === 1 ? '' : 's'}</s></span>

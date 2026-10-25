@@ -208,11 +208,16 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
   let baseHtml;
   try { baseHtml = execSync(`git show ${BASE}:xpizza-dispatch/index.html`, { cwd: __dirname, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); }
   catch (e) { console.error('  ! could not load base blob:', e.message); process.exit(1); }
-  assert.strictEqual(fnSrc(html, 'renderDriverNode'), fnSrc(baseHtml, 'renderDriverNode'), 'renderDriverNode byte-identical to base (roster logic + presentation untouched)');
-  // the predicates the roster relies on are the existing ones (documents what byte-identity protects)
+  // «Pausa» (approved): renderDriverNode gained ONE metaText branch so the «En pausa · N min» label survives
+  // connectivity/load status. Prove everything ELSE is byte-identical to base by stripping exactly that
+  // approved branch and comparing — so the roster's liveness logic + presentation stay provably untouched.
   const node = fnSrc(html, 'renderDriverNode');
+  const stripped = node.replace(/  \/\/ «Pausa»: the pause label[\s\S]*?\n  \}\n(?=  else if \(gpsDark\))/, '');
+  assert.strictEqual(stripped, fnSrc(baseHtml, 'renderDriverNode'), 'renderDriverNode byte-identical to base APART FROM the approved «Pausa» metaText branch (roster logic + presentation untouched)');
+  assert.notStrictEqual(stripped, node, 'the «Pausa» metaText branch is present (strip actually removed it)');
+  // the predicates the roster relies on are the existing ones (documents what byte-identity protects)
   for (const pred of ['XPD.isStalePing(', 'hasPushReachability(', 'staleDriverUids.has(', 'getOrdersForDriver(']) assert.ok(node.includes(pred), `roster uses existing predicate ${pred}`);
-  ok('roster renderDriverNode byte-identical — existing liveness predicates + presentation unchanged');
+  ok('roster renderDriverNode byte-identical to base except the approved «Pausa» branch — liveness predicates + presentation unchanged');
 }
 
 console.log(`\ndispatch-cash-recon: OK (${n} groups)`);
