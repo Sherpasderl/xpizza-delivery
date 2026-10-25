@@ -1747,7 +1747,7 @@ let slice1ReviewLatchKey = null;
 /* ===== SLICE2:IMPORT:START — stacked view + overview map (slice 2); pure builders in stacked-view.js / overview-map.js ===== */
 import { activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels,
          navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
-         pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo } from './stacked-view.js';
+         pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM } from './stacked-view.js';
 import { overviewMapSvg, isStaleFix } from './overview-map.js';
 import { cuentaHtml, navAppHtml } from './nav-view.js';   // R7 Cuenta + «App de navegación» pure builders
 // The display-only map-aging timer (SLICE2:MAP-LIFECYCLE): a ~30 s re-render that re-evaluates the driver
@@ -1818,7 +1818,7 @@ let drv2Cancel = null;      // { cancelledNum, cancelledName, cancelledAmount, s
 // ReferenceError at load that stops the app from booting (Codex r2 P1-1). 0 matches authGen's initial value;
 // the first real session (onAuth bumps authGen≥1) reconciles on the first render.
 let drv2RunAuthGen = 0;
-function drv2ResetRun() { drv2DoneRun = []; drv2PrevStops = []; drv2PendingTerminal = []; drv2Interlude = null; drv2Cancel = null; drv2InterludeShownFor = null; }
+function drv2ResetRun() { drv2DoneRun = []; drv2PrevStops = []; drv2PendingTerminal = []; drv2Interlude = null; drv2Cancel = null; drv2InterludeShownFor = null; drv2ResumenShownFor = null; }
 function drv2FirstWord(s) { return String(s || '').trim().split(/\s+/)[0] || ''; }
 function drv2NowHM() { const d = new Date(); return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); }
 function drv2DropDone(orderId) { drv2DoneRun = drv2DoneRun.filter((d) => d.orderId !== orderId); }
@@ -1997,7 +1997,14 @@ function drv2ShowInterlude() {
   const info = drv2Interlude;
   const board = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);
   const next = board[0];
-  if (!next || next.phase === 'awaiting_acceptance') { drv2DismissInterlude(); return; }   // nothing live to advance to → CLOSE any open overlay, don't just null the state (P2-8)
+  if (!next || next.phase === 'awaiting_acceptance') {
+    // END OF RUN — the FINAL «Entregado» of this run, nothing live to advance to. Show the resumen sheet
+    // (resumen / S16) on the way back to disponible — NEVER between stops (that is the apAvance interlude
+    // below). Dismissible with «Listo», no auto-advance timer. A bare idle render never reaches here because
+    // drv2Interlude is null unless an ACTIVE stop was just observed delivered (affirmative evidence only).
+    drv2ShowResumen(info);
+    return;
+  }
   if (drv2InterludeShownFor === info.orderId) return;   // already shown + timer armed; a re-render must NOT rebuild it or restart the 3-s expiry (P2-8)
   const nextOrder = next.order || {};
   let ov = $('drv2-interlude');
@@ -2012,6 +2019,47 @@ function drv2ShowInterlude() {
   drv2InterludeShownFor = info.orderId;
   if (drv2InterludeTimer != null) clearTimeout(drv2InterludeTimer);
   drv2InterludeTimer = setTimeout(drv2DismissInterlude, 3000);   // armed ONCE per interlude — fixed expiry
+}
+
+// SLICE3:RESUMEN — the end-of-run delivery summary (resumen / S16). Mounted by drv2ShowInterlude ONLY when the
+// FINAL «Entregado» of a run leaves no live stop to advance to. Dismissible («Listo» → disponible), no timer.
+// All money is DISPLAY-only: the per-delivery cobro comes from this order's own collectionFor (inside
+// deliverySummaryHtml); the day total «Efectivo a entregar hoy» REUSES the money-grade computeShiftCash().cashOwed
+// (the exact figure the cuadre submits), never re-derived here, and is HIDDEN behind the cuadre's own readiness
+// gate so a settling feed can never show a false L0.
+let drv2ResumenShownFor = null;   // orderId whose resumen is on screen — a re-render must NOT rebuild it (as P2-8)
+function drv2DismissResumen() {
+  drv2Interlude = null;            // the run's terminal state is consumed → a re-render won't re-open it
+  drv2InterludeShownFor = null;
+  drv2ResumenShownFor = null;
+  const ov = $('drv2-resumen'); if (ov) ov.classList.remove('open');
+}
+function drv2ShowResumen(info) {
+  if (drv2ResumenShownFor === info.orderId) return;   // already on screen — never rebuild on re-render (P2-8)
+  const order = (typeof allOrders === 'object' && allOrders && allOrders[info.orderId]) || {};
+  const ident = shiftIdentity();
+  // Gate identical to renderCuadreReceipt's readiness gate (§6/BC1): feed + cutover loaded, a valid shift
+  // identity, and no pending-handoff reconcile in flight. Until all hold, HIDE the day stat (dayCashOwed:null)
+  // rather than show a figure that would undercount — never a false L0 on the money surface.
+  const moneyReady = feedReady && cutoverLoaded && !!driverState
+    && !(driverFeed && driverFeed.hasPendingHandoff()) && ident.valid;
+  const dayCashOwed = moneyReady
+    ? computeShiftCash(allOrders, currentUser.uid, ident.start, driverIdentityCutoverMs).cashOwed
+    : null;
+  const di = $('drv2-interlude'); if (di) di.classList.remove('open');   // never stack over a lingering apAvance overlay
+  let ov = $('drv2-resumen');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'drv2-resumen'; ov.className = 'rs-overlay'; document.body.appendChild(ov); }
+  ov.innerHTML = deliverySummaryHtml({
+    order,
+    deliveredName: info.name,
+    time: readyTimeHHMM(order.delivered_at),   // exact delivery time (UTC-6); '' when the server field is absent
+    vuelto: info.vuelto,                        // cash-only + tendered≥total, computed by the observer
+    showEarnings: false,                        // «+L 70» / «Ganado hoy» HELD until Pagos ships (advisor R2)
+    dayCashOwed,
+  }, { ICONS, esc: escapeHtml });
+  ov.classList.add('open');
+  const done = ov.querySelector('#btn-resumen-done'); if (done) done.onclick = drv2DismissResumen;
+  drv2ResumenShownFor = info.orderId;
 }
 /* ===== SLICE2:IMPORT:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to

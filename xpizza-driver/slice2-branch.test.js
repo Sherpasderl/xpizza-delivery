@@ -23,9 +23,12 @@ import {
   incomingBannerHtml, activeCardHtml, queueHtml, queueDetailHtml,
   phaseStripHtml, stopNavInfo, resolveVisibleLabels,
   navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
-  pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo,
+  pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM,
 } from './stacked-view.js';
 import { overviewMapSvg, isStaleFix } from './overview-map.js';
+// REAL money-grade day total — the resumen stat REUSES computeShiftCash().cashOwed (never a stub), so a mutation
+// that re-derives the figure instead of reusing the cuadre's own computation goes red.
+import { computeShiftCash } from './cash-helpers.js';
 // Firebase-FREE real modules → imported REAL (not lifted): the writers' pure cores + the task/order constants.
 import { buildCompleteTaskUpdates, DRIVER_STATUS, ORDER_STATUS, TASK_STATUS, TASK_TYPE } from './driver-complete.js';
 import { stackedTasksToAccept } from './stacking-helpers.js';
@@ -295,8 +298,13 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     + 'function ensureSlice2MapAgeTimer(){ _rec.mapTimerEnsured++; }\n'
     + 'function stopSlice2MapAgeTimer(){ _rec.mapTimerStopped++; }\n'
     + 'const DRV2_CAN_NOTIFY_ARRIVAL=false; const DRV2_CAN_REPORT_PROBLEM=false;\n'
+    // SLICE3:RESUMEN money-grade readiness — the lets drv2ShowResumen gates on. Default money-ready so the day
+    // stat renders; a cell flips them via setFeed to prove the stat HIDES (never a false L0) when the feed is
+    // settling. driverIdentityCutoverMs=null is the legit pre-cutover mode computeShiftCash accepts.
+    + 'let feedReady=true, cutoverLoaded=true, driverFeed=null, driverIdentityCutoverMs=null;\n'
     + NAV_BLOCK + '\n'   // REAL drv2ReadNavPref/drv2WriteNavPref (not a Waze stub) — server-truth + per-uid hydration (Codex r1 P2-10)
     + DRV2_BLOCK + '\n'
+    + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate (reads driverState) — the resumen reuses it
     + liftFn(MY_SCRIPT, 'renderActiveAndQueue') + '\n'
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
     + liftFn(MY_SCRIPT, 'attachSlideConfirm') + '\n'
@@ -307,12 +315,13 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     + liftFn(MY_SCRIPT, 'attachIncomingBannerHandlers') + '\n'   // REAL banner handler (Codex r2 P2-3)
     // expose the lifted mutable state so a cell can feed the observer the LIVE mock + flip the session (P2-10)
     + 'return { render: renderActiveAndQueue, setDriver:(d)=>{driverState=d;}, syncState:(t,o)=>{allTasks=t;allOrders=o;}, bumpAuth:()=>{authGen++;},'
+    + ' setFeed:(f)=>{ if("feedReady" in f) feedReady=f.feedReady; if("cutoverLoaded" in f) cutoverLoaded=f.cutoverLoaded; if("driverFeed" in f) driverFeed=f.driverFeed; },'
     + ' getDoneRun:()=>drv2DoneRun, getInterlude:()=>drv2Interlude, getCancel:()=>drv2Cancel };';
   const names = ['document', 'window', '$', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'escapeHtml', 'ICONS', 'localStorage',
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
     'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml', 'pickupSubLabel',
-    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo',
+    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash',
     'renderIdleState', 'toast', 'resolveCompleteErrorMessage', 'CSS', '_driverState', '_rec'];
   const CSS = dom.window.CSS || { escape: (s) => String(s).replace(/[^\w-]/g, '\\$&') };
   const lsStore = {};   // per-harness in-memory localStorage (the real drv2ReadNavPref per-uid mirror)
@@ -321,7 +330,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
     navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
-    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo,
+    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash,
     renderIdleState, toast, resolveCompleteErrorMessage, CSS, driverState, rec);
   // Feed the observer the SAME live mock state getDriverOrders reads BEFORE every render (prod's allTasks/
   // allOrders are the live listener state; a captured ref would go stale when completeTask deletes the task legs).
@@ -398,7 +407,10 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     // dep-D capability gates + nav pref (R7): render reads these. The recent-completion machinery is lifted REAL.
     + 'const DRV2_CAN_NOTIFY_ARRIVAL=false; const DRV2_CAN_REPORT_PROBLEM=false;\n'
     + 'const drv2ReadNavPref=()=>\'Waze\';\n'
+    // SLICE3:RESUMEN money-grade readiness (see block 1): default money-ready; a cell flips via setFeed.
+    + 'let feedReady=true, cutoverLoaded=true, driverFeed=null, driverIdentityCutoverMs=null;\n'
     + DRV2_BLOCK + '\n'
+    + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate the resumen reuses
     + liftFn(MY_SCRIPT, 'renderActiveAndQueue') + '\n'
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
     + liftFn(MY_SCRIPT, 'attachSlideConfirm') + '\n'
@@ -409,12 +421,13 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     + 'return { render: renderActiveAndQueue, setDriver:(d)=>{driverState=d;}, getQueued:()=>queuedOrders,'
     + ' getLatch:()=>slice1ReviewLatchKey, getSliding:()=>slidingEl, getRenderPending:()=>renderPending, bumpAuth:()=>{ authGen+=1; },'
     + ' syncState:(t,o)=>{allTasks=t;allOrders=o;}, setPtr:(id)=>{ if(driverState) driverState.current_task_id=id; },'
+    + ' setFeed:(f)=>{ if("feedReady" in f) feedReady=f.feedReady; if("cutoverLoaded" in f) cutoverLoaded=f.cutoverLoaded; if("driverFeed" in f) driverFeed=f.driverFeed; },'
     + ' getDoneRun:()=>drv2DoneRun, getInterlude:()=>drv2Interlude, getCancel:()=>drv2Cancel };';
   const params = ['document', 'window', '$', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'escapeHtml', 'ICONS',
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
     'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml', 'pickupSubLabel',
-    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo',
+    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash',
     'attachIncomingBannerHandlers', 'renderIdleState', 'toast', 'resolveCompleteErrorMessage', '_driverState', '_rec',
     '_latchInit', '_authGen'];
   const fn = new Function(...params, body);
@@ -422,7 +435,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
     navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
-    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo,
+    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash,
     attachIncomingBannerHandlers, renderIdleState, toast, resolveCompleteErrorMessage, driverState, rec,
     latchInit, authGen);
 
@@ -1107,6 +1120,87 @@ t('P1-2 delivered: the active stop delivered through the real writer → recorde
   r.render();
   assert.ok(r.api.getDoneRun().some((x) => x.orderId === 'A'), 'A recorded done on the affirmative delivered status');
   assert.ok(r.api.getInterlude() && r.api.getInterlude().orderId === 'A', 'the interlude is armed for the delivered active stop');
+});
+
+// SLICE3:RESUMEN R1 — the FINAL «Entregado» of a run (no next stop) mounts the resumen sheet (S16), affirmative
+// only, dismissible with «Listo», and NEVER re-opens after dismiss. The apAvance interlude must NOT appear here.
+t('R1 resumen: the final delivery of a run mounts the resumen sheet (affirmative), «Listo» dismisses, no re-open', async () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Daniela' },
+  ]), dist: 10 });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();                  // A active + observed
+  const d = r.prep('btn-delivered'); r.down(d); r.move(1000); await r.up(1000);  // REAL completeTask(A_d)
+  assert.equal(r.read('orders/A').status, ORDER_STATUS.DELIVERED, 'A delivered through the real writer');
+  r.render();                                                                 // board now empty → end of run
+  const ov = r.document.getElementById('drv2-resumen');
+  assert.ok(ov && ov.classList.contains('open'), 'the resumen sheet is mounted + open after the final delivery');
+  const html = ov.innerHTML;
+  assert.ok(/Entregado/.test(html) && /Daniela/.test(html), 'affirmative «Entregado a Daniela» header');
+  assert.ok(/Cobraste/.test(html), 'a cash delivery → affirmative «Cobraste», never a negative instruction');
+  assert.ok(!/No cobr|Sin cobro|Pendiente/.test(html), 'no negative/pending cobro copy on a terminal cash delivery');
+  assert.ok(!r.document.querySelector('#drv2-interlude.open'), 'the apAvance interlude is NOT shown at the end of a run');
+  const done = ov.querySelector('#btn-resumen-done');
+  assert.ok(done, '«Listo» present');
+  done.dispatchEvent(new r.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  assert.ok(!ov.classList.contains('open'), '«Listo» closes the resumen → back to disponible');
+  assert.ok(!r.api.getInterlude(), 'the run terminal state is consumed on dismiss');
+  r.render();
+  assert.ok(!r.document.getElementById('drv2-resumen').classList.contains('open'), 'a re-render does NOT re-open the dismissed resumen (P2-8)');
+});
+
+// SLICE3:RESUMEN R2 — a delivery with a next stop behind it shows the apAvance INTERLUDE, never the resumen.
+// The resumen is strictly the end-of-run surface; it must never appear between stops.
+t('R2 resumen: a delivery with a next stop shows the apAvance interlude, NOT the resumen (never between stops)', async () => {
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Ana' },
+    { id: 'B', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 2, name: 'Beto' },
+  ]), dist: 10 });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();
+  const d = r.prep('btn-delivered'); r.down(d); r.move(1000); await r.up(1000);
+  r.render();
+  assert.ok(r.document.querySelector('#drv2-interlude.open'), 'the apAvance interlude mounts between stops');
+  assert.ok(!r.document.querySelector('#drv2-resumen.open'), 'the resumen does NOT appear while a next stop remains');
+});
+
+// SLICE3:RESUMEN R3 — the day stat «Efectivo a entregar hoy» REUSES the money-grade computeShiftCash().cashOwed
+// (the exact figure the cuadre submits), never a re-derived number, and is GATED exactly like the cuadre: a
+// settling feed HIDES the stat rather than show a false L0 — while the per-delivery cobro (this order's own
+// collectionFor) still shows. MUTATION-RED: swap the stat source off computeShiftCash().cashOwed, or drop the
+// readiness gate, and these go red.
+t('R3 resumen money-grade: the day stat equals computeShiftCash().cashOwed, hidden (no false L0) while the feed settles', async () => {
+  const shiftStart = Date.now() - 3600000;
+  const ds = () => ({ lat: 15.47, lng: -88.015, active: true, last_location_ts: Date.now(),
+    current_shift_id: 's1', shift_started_at: shiftStart });
+  // money-grade-ready at the moment of the final delivery → the stat shows the real cashOwed
+  const r = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Daniela' },
+  ]), driverState: ds(), dist: 10 });
+  r.read('drivers/drv').current_task_id = 'A_d'; r.render();   // A active + observed (the merge takes the mock pointer)
+  const d = r.prep('btn-delivered'); r.down(d); r.move(1000); await r.up(1000);
+  // The real writer stamps delivered_at with a serverTimestamp() sentinel; the server RESOLVES it to an epoch
+  // before the driver's feed carries it back — model that resolution so computeShiftCash sees a numeric ts.
+  r.read('orders/A').delivered_at = shiftStart + 60000;
+  r.render();
+  const expected = computeShiftCash(r.read('orders'), 'drv', shiftStart, null).cashOwed;
+  assert.ok(expected > 0, 'the delivered cash order yields a real money-grade cashOwed');
+  const stat = r.document.querySelector('#drv2-resumen .rs-stat');
+  assert.ok(stat, 'the day stat renders when money-grade-ready (feed + cutover + shift identity)');
+  assert.ok(stat.textContent.includes('L ' + expected.toLocaleString('es-HN')), 'the stat shows exactly computeShiftCash().cashOwed — never a re-derived figure');
+  assert.ok(/Efectivo a entregar hoy/.test(stat.textContent), 'labelled «Efectivo a entregar hoy»');
+
+  // a SECOND run whose feed is still settling at the final delivery → the stat HIDES (never a false L0)
+  const r2 = runReal({ seed: seed([
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1, name: 'Daniela' },
+  ]), driverState: ds(), dist: 10 });
+  r2.read('drivers/drv').current_task_id = 'A_d'; r2.render();
+  r2.api.setFeed({ feedReady: false });
+  const d2 = r2.prep('btn-delivered'); r2.down(d2); r2.move(1000); await r2.up(1000);
+  r2.read('orders/A').delivered_at = shiftStart + 60000;   // resolved server ts (as above)
+  r2.render();
+  const ov2 = r2.document.getElementById('drv2-resumen');
+  assert.ok(ov2 && ov2.classList.contains('open'), 'the resumen still shows the delivery itself while the feed settles');
+  assert.ok(!r2.document.querySelector('#drv2-resumen .rs-stat'), 'a settling feed HIDES the day stat — never a false L0');
+  assert.ok(/Cobraste/.test(ov2.innerHTML), 'the per-delivery cobro still shows — this order’s own collectionFor, not a day aggregate');
 });
 
 // P2-6 nav-pref hydration (kills the Waze stub / an un-hydrated read): driverState.nav_app = 'maps' → the lone
