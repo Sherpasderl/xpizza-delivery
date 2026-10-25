@@ -1429,6 +1429,13 @@
 .wa-tpl .ico { flex: none; width: 18px; height: 18px; margin-top: 1px; color: var(--green, #2F9E66); }
 .wa-tpl .wa-txt { display: block; font-size: 13.5px; line-height: 1.4; font-weight: 600; }
 .wa-tpl .wa-txt small { display: block; margin-top: 5px; font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--text-dim, #8A93A6); }
+/* SLICE3:OFERTA-EXPIRADA — dismissible «offer expired» banner on the disponible screen (amber/warn, not error) */
+#idle-offer-expired { margin: 0 16px 14px; }
+.oe-banner { display: flex; gap: 10px; align-items: flex-start; padding: 12px 13px; border-radius: 13px; background: var(--sv-warn-bg, #F6EEDD); color: var(--sv-warn, #8A5A00); font-size: 13px; line-height: 1.4; }
+.oe-banner .ico { flex: none; width: 18px; height: 18px; margin-top: 1px; }
+.oe-banner .ico svg { width: 18px; height: 18px; }
+.oe-banner b { display: block; margin-bottom: 2px; font-size: 14px; }
+.oe-banner .oe-x { margin-left: auto; flex: none; align-self: center; background: transparent; color: var(--sv-warn, #8A5A00); border: 1px solid currentColor; border-radius: 8px; padding: 6px 13px; font-weight: 800; font-size: 12px; font-family: inherit; cursor: pointer; }
 /* apCancelada banner (red, persistent until «Entendido») */
 .cancel-banner { display: flex; gap: 9px; align-items: flex-start; margin: 2px 16px 6px; padding: 11px 13px; border-radius: 12px; background: var(--sv-err-bg, #FBEAEA); color: var(--sv-err, #B9323A); font-size: 13px; line-height: 1.35; }
 .cancel-banner .ico { flex: none; width: 18px; height: 18px; margin-top: 1px; }
@@ -1756,7 +1763,7 @@ let slice1ReviewLatchKey = null;
 /* ===== SLICE2:IMPORT:START — stacked view + overview map (slice 2); pure builders in stacked-view.js / overview-map.js ===== */
 import { activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels,
          navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
-         pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, contactRowHtml, waTemplatesHtml } from './stacked-view.js';
+         pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml } from './stacked-view.js';
 import { overviewMapSvg, isStaleFix } from './overview-map.js';
 import { cuentaHtml, navAppHtml } from './nav-view.js';   // R7 Cuenta + «App de navegación» pure builders
 // The display-only map-aging timer (SLICE2:MAP-LIFECYCLE): a ~30 s re-render that re-evaluates the driver
@@ -1820,6 +1827,12 @@ async function drv2WriteNavPref(pref) {
 let drv2DoneRun = [];       // [{ orderId, label, time, lat, lng }] delivered this run
 let drv2PrevStops = [];     // [{ orderId, phase, isActive, o, order, name }] EVERY accepted stop (active + queued) of the previous render — the observer diffs them all (Codex r1 P1-2)
 let drv2PendingTerminal = [];  // [{ orderId, isActive, o, order, name }] stops that vanished without an affirmed terminal status yet — reconciled on later snapshots or a lifecycle boundary, never attributed on a bare disappearance (Codex r1 P1-2 / r2 P2-5)
+// SLICE3:OFERTA-EXPIRADA — offer-expiry memory. drv2PrevOffers snapshots the awaiting_acceptance offers shown
+// last render (+ their accept deadline); drv2OfferExpired is the pending disponible-screen banner, set when a
+// tracked offer left the board un-accepted AFTER its deadline passed. Client-only, no server signal. The banner
+// survives the idle-reset (it IS the idle-screen notice) — cleared on «Ok», on new work, or on an auth change.
+let drv2PrevOffers = [];    // [{ orderId, deadline, num }] awaiting_acceptance offers of the previous render
+let drv2OfferExpired = null;   // { num } pending «Se venció la oferta» banner, or null
 let drv2Interlude = null;   // { orderId, name, cash, vuelto } pending the 3-s interlude overlay
 let drv2Cancel = null;      // { cancelledNum, cancelledName, cancelledAmount, survivorName, cancelledBrand } banner, until «Entendido»
 // The auth session this run-state belongs to; a uid/login change clears it (P2-8). Init to a LITERAL, NOT
@@ -1827,7 +1840,10 @@ let drv2Cancel = null;      // { cancelledNum, cancelledName, cancelledAmount, s
 // ReferenceError at load that stops the app from booting (Codex r2 P1-1). 0 matches authGen's initial value;
 // the first real session (onAuth bumps authGen≥1) reconciles on the first render.
 let drv2RunAuthGen = 0;
-function drv2ResetRun() { drv2DoneRun = []; drv2PrevStops = []; drv2PendingTerminal = []; drv2Interlude = null; drv2Cancel = null; drv2InterludeShownFor = null; drv2ResumenShownFor = null; }
+// NOTE: drv2ResetRun clears the RUN memory, incl. the offer SNAPSHOT (drv2PrevOffers), but NOT drv2OfferExpired —
+// the expiry banner is the disponible-screen notice and must survive the idle-reset; it is cleared on «Ok», on new
+// work (board non-empty), or on an auth change (the explicit clear in drv2Observe's session-change guard).
+function drv2ResetRun() { drv2DoneRun = []; drv2PrevStops = []; drv2PendingTerminal = []; drv2PrevOffers = []; drv2Interlude = null; drv2Cancel = null; drv2InterludeShownFor = null; drv2ResumenShownFor = null; }
 function drv2FirstWord(s) { return String(s || '').trim().split(/\s+/)[0] || ''; }
 function drv2NowHM() { const d = new Date(); return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); }
 function drv2DropDone(orderId) { drv2DoneRun = drv2DoneRun.filter((d) => d.orderId !== orderId); }
@@ -1928,7 +1944,7 @@ function drv2ActionGuard(e) {
 //   order record absent entirely → unknowable → drop SILENTLY.
 // A bare disappearance NEVER invents a delivery or collected cash. `activeEntry` is the pointer-resolved active.
 function drv2Observe(orders, activeEntry) {
-  if (drv2RunAuthGen !== authGen) { drv2ResetRun(); drv2RunAuthGen = authGen; }   // session change → previous driver's run never carries over (P2-8)
+  if (drv2RunAuthGen !== authGen) { drv2ResetRun(); drv2OfferExpired = null; drv2RunAuthGen = authGen; }   // session change → previous driver's run + any pending expiry banner never carry over (P2-8)
   const myUid = currentUser && currentUser.uid;
   const liveIds = new Set((orders || []).map((o) => o && o.orderId));
   const recOf = (orderId) => ((typeof allOrders === 'object' && allOrders) ? allOrders[orderId] : null);
@@ -1987,6 +2003,27 @@ function drv2Observe(orders, activeEntry) {
     .map((o) => ({ orderId: o.orderId, phase: o.phase,
       isActive: !!(activeEntry && o.orderId === activeEntry.orderId),
       o, order: o.order || {}, name: (o.order && o.order.customer_name) || '' }));
+
+  // SLICE3:OFERTA-EXPIRADA — offer-expiry detection (client-only, truthful, no server signal). A PREVIOUS
+  // awaiting_acceptance offer that is no longer on my board raises the banner ONLY when it left un-accepted AFTER
+  // its countdown deadline passed. It is NOT an expiry when: I accepted it (now a live pickup/delivery stop), the
+  // order was cancelled, or it left before the deadline (dispatch pulled it) — those surface nothing.
+  const liveStopIds = new Set((orders || []).filter((o) => o && (o.phase === 'pickup' || o.phase === 'delivery')).map((o) => o.orderId));
+  const liveOfferIds = new Set((orders || []).filter((o) => o && o.phase === 'awaiting_acceptance').map((o) => o.orderId));
+  if (liveStopIds.size > 0) drv2OfferExpired = null;   // the driver has active work now → drop any pending expiry notice
+  for (const po of drv2PrevOffers) {
+    if (!po || liveOfferIds.has(po.orderId) || liveStopIds.has(po.orderId)) continue;   // still offered, or accepted → not an expiry
+    const st = statusOf(po.orderId);
+    if (st === 'cancelled' || st === 'canceled') continue;                              // cancelled, not expired → no banner
+    if (po.deadline != null && Date.now() >= po.deadline) drv2OfferExpired = { num: po.num };   // expired un-accepted
+    // else: left before the deadline (pulled early / unknowable) → surface nothing
+  }
+  // Snapshot THIS render's offers for the next diff.
+  drv2PrevOffers = (orders || [])
+    .filter((o) => o && o.phase === 'awaiting_acceptance')
+    .map((o) => ({ orderId: o.orderId,
+      deadline: (o.pickupTask && o.pickupTask.assignment_deadline) || null,
+      num: displayOrderLabel(o.order || {}) }));
 }
 
 // The 3-second post-delivery INTERLUDE (apAvance / S15): armed by the observer when a stop is delivered with a
@@ -3712,6 +3749,17 @@ function renderActiveAndQueue() {
     /* ===== SLICE2:IDLE-RESET:START — clear the per-run recent-completion memory + any interlude when the board is idle ===== */
     drv2DismissInterlude();
     drv2ResetRun();
+    // SLICE3:OFERTA-EXPIRADA — mount/clear the dismissible «offer expired» banner at the top of the disponible
+    // screen. drv2OfferExpired is set by the observer and survives drv2ResetRun; «Ok» clears it + re-renders.
+    {
+      let oe = $('idle-offer-expired');
+      if (drv2OfferExpired) {
+        if (!oe) { oe = document.createElement('div'); oe.id = 'idle-offer-expired'; idleSlot.insertBefore(oe, idleSlot.firstChild); }
+        oe.innerHTML = offerExpiredBannerHtml({ num: drv2OfferExpired.num }, { esc: escapeHtml });
+        const ok = oe.querySelector('#btn-offer-expired-ok');
+        if (ok) ok.onclick = () => { drv2OfferExpired = null; renderActiveAndQueue(); };
+      } else if (oe) { oe.remove(); }
+    }
     /* ===== SLICE2:IDLE-RESET:END ===== */
     renderIdleState();
     return;

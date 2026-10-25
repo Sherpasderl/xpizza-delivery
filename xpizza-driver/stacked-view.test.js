@@ -8,7 +8,7 @@ import {
   activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml,
   stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
   pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml,
-  contactRowHtml, waTemplatesHtml,
+  contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml,
 } from './stacked-view.js';
 
 let passed = 0;
@@ -421,6 +421,22 @@ t('waTemplatesHtml: 3 phase templates + a free message; brand-from-order + drive
 t('waTemplatesHtml: brand-agnostic — a different order brand flows straight through (no hardwired restaurant)', () => {
   const xp = waTemplatesHtml({ name: 'Ana', brand: 'X. Pizza', phone: '98887777', driverName: 'Leo' }, DEPS);
   assert.ok(xp.includes('su repartidor de X. Pizza') && !xp.includes('La Musa'), 'the X. Pizza brand, nothing hardwired');
+});
+
+// ---------- offerExpiredBannerHtml (ofertaExpirada / S.ofertaExpirada) ----------
+t('offerExpiredBannerHtml: «Se venció la oferta #N» + reassurance + «Ok»; MINUS the unknowable «pasó a otro repartidor»', () => {
+  const html = offerExpiredBannerHtml({ num: '#47' }, DEPS);
+  assert.ok(html.includes('Se venció la oferta #47'), 'names the expired offer');
+  assert.ok(html.includes('Seguís disponible; no afecta tu cuenta.'), 'truthful reassurance (an un-accepted offer never touched cash)');
+  assert.ok(html.includes('id="btn-offer-expired-ok"') && html.includes('>Ok<'), 'dismissible with «Ok»');
+  // the client cannot know the offer went to another driver (no server signal) → that prototype sentence is dropped
+  assert.ok(!/pas[oó] a otro repartidor/i.test(html), 'never claims it «se la pasó a otro repartidor» — unknowable client-side');
+  assert.ok(!/Despacho/.test(html), 'no dispatch-attribution the client cannot verify');
+});
+
+t('offerExpiredBannerHtml: no num → no dangling «#»', () => {
+  const html = offerExpiredBannerHtml({}, DEPS);
+  assert.ok(html.includes('Se venció la oferta<') && !html.includes('oferta #'), 'omits the number cleanly when absent');
 });
 
 // ---------- cancelBannerHtml (apCancelada / S17) ----------

@@ -24,12 +24,14 @@ import {
   phaseStripHtml, stopNavInfo, resolveVisibleLabels,
   navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
   pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM,
-  contactRowHtml, waTemplatesHtml,
+  contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml,
 } from './stacked-view.js';
 import { overviewMapSvg, isStaleFix } from './overview-map.js';
 // REAL money-grade day total — the resumen stat REUSES computeShiftCash().cashOwed (never a stub), so a mutation
 // that re-derives the figure instead of reusing the cuadre's own computation goes red.
 import { computeShiftCash } from './cash-helpers.js';
+// REAL displayOrderLabel — the observer's offer-expiry snapshot computes the banner's «#N» from it.
+import { displayOrderLabel } from './order-helpers.js';
 // Firebase-FREE real modules → imported REAL (not lifted): the writers' pure cores + the task/order constants.
 import { buildCompleteTaskUpdates, DRIVER_STATUS, ORDER_STATUS, TASK_STATUS, TASK_TYPE } from './driver-complete.js';
 import { stackedTasksToAccept } from './stacking-helpers.js';
@@ -317,12 +319,12 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     // expose the lifted mutable state so a cell can feed the observer the LIVE mock + flip the session (P2-10)
     + 'return { render: renderActiveAndQueue, setDriver:(d)=>{driverState=d;}, syncState:(t,o)=>{allTasks=t;allOrders=o;}, bumpAuth:()=>{authGen++;},'
     + ' setFeed:(f)=>{ if("feedReady" in f) feedReady=f.feedReady; if("cutoverLoaded" in f) cutoverLoaded=f.cutoverLoaded; if("driverFeed" in f) driverFeed=f.driverFeed; },'
-    + ' getDoneRun:()=>drv2DoneRun, getInterlude:()=>drv2Interlude, getCancel:()=>drv2Cancel };';
+    + ' getDoneRun:()=>drv2DoneRun, getInterlude:()=>drv2Interlude, getCancel:()=>drv2Cancel, getOfferExpired:()=>drv2OfferExpired };';
   const names = ['document', 'window', '$', 'XPD', 'currentUser', 'allTasks', 'allOrders', 'escapeHtml', 'ICONS', 'localStorage',
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
     'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml', 'pickupSubLabel',
-    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash', 'contactRowHtml', 'waTemplatesHtml',
+    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash', 'contactRowHtml', 'waTemplatesHtml', 'offerExpiredBannerHtml', 'displayOrderLabel',
     'renderIdleState', 'toast', 'resolveCompleteErrorMessage', 'CSS', '_driverState', '_rec'];
   const CSS = dom.window.CSS || { escape: (s) => String(s).replace(/[^\w-]/g, '\\$&') };
   const lsStore = {};   // per-harness in-memory localStorage (the real drv2ReadNavPref per-uid mirror)
@@ -331,7 +333,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
     navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
-    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash, contactRowHtml, waTemplatesHtml,
+    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash, contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml, displayOrderLabel,
     renderIdleState, toast, resolveCompleteErrorMessage, CSS, driverState, rec);
   // Feed the observer the SAME live mock state getDriverOrders reads BEFORE every render (prod's allTasks/
   // allOrders are the live listener state; a captured ref would go stale when completeTask deletes the task legs).
@@ -428,7 +430,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     'computeVuelto', 'scheduledBadge', 'singleOrderCardHtml', 'incomingBannerHtml', 'activeCardHtml', 'queueHtml',
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
     'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml', 'pickupSubLabel',
-    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash', 'contactRowHtml', 'waTemplatesHtml',
+    'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash', 'contactRowHtml', 'waTemplatesHtml', 'offerExpiredBannerHtml', 'displayOrderLabel',
     'attachIncomingBannerHandlers', 'renderIdleState', 'toast', 'resolveCompleteErrorMessage', '_driverState', '_rec',
     '_latchInit', '_authGen'];
   const fn = new Function(...params, body);
@@ -436,7 +438,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
     navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
-    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash, contactRowHtml, waTemplatesHtml,
+    pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash, contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml, displayOrderLabel,
     attachIncomingBannerHandlers, renderIdleState, toast, resolveCompleteErrorMessage, driverState, rec,
     latchInit, authGen);
 
@@ -1226,6 +1228,47 @@ t('R4 whatsapp: «WhatsApp» opens the template sheet; a template opens wa.me (5
   assert.equal(opened.length, 1, 'tapping a template opens WhatsApp once');
   assert.ok(/^https:\/\/wa\.me\/504\d+\?text=/.test(opened[0]), 'wa.me with a 504-normalized number + prefilled editable text');
   assert.ok(!sheet.classList.contains('open'), 'the sheet closes after launching WhatsApp');
+});
+
+// SLICE3:OFERTA-EXPIRADA — observer detection. renderIdleState is STUBBED in this harness, so these assert the
+// DETECTION state (drv2OfferExpired) the real renderIdleState then renders; the banner HTML is covered in
+// stacked-view.test.js. Truthful + client-only: a banner ONLY when an offer left un-accepted AFTER its deadline.
+const OE_PAST = Date.now() - 5000, OE_FUTURE = Date.now() + 60000;
+function offerRun(deadline) {
+  const r = runReal({ seed: seed([{ id: 'A', pickup: TASK_STATUS.ASSIGNED, delivery: TASK_STATUS.ASSIGNED, hub: HUBX, created: 1, name: 'Daniela' }]) });
+  r.read('tasks/A_p').assignment_deadline = deadline;
+  r.read('orders/A').display_number = 47;
+  r.render();   // the offer is on the board → the observer snapshots it (deadline + «#47»)
+  return r;
+}
+function leaveUnaccepted(r) {   // dispatch reassigns the offer away → it leaves MY board un-accepted
+  r.read('tasks/A_p').assigned_driver_id = 'other';
+  r.read('tasks/A_d').assigned_driver_id = 'other';
+  r.render();
+}
+t('E1 ofertaExpirada: an offer that leaves un-accepted AFTER its deadline → the expiry banner is raised («#47»)', () => {
+  const r = offerRun(OE_PAST);
+  assert.ok(!r.api.getOfferExpired(), 'no banner while the offer is still on the board');
+  leaveUnaccepted(r);
+  const oe = r.api.getOfferExpired();
+  assert.ok(oe && oe.num === '#47', 'the expiry banner is set for the gone-after-deadline offer, labelled «#47»');
+});
+t('E2 ofertaExpirada: an offer the driver ACCEPTS (becomes a live stop) raises NO banner', () => {
+  const r = offerRun(OE_PAST);
+  r.read('tasks/A_p').status = TASK_STATUS.ACCEPTED;   // accepted → phase pickup, stays on my board
+  r.render();
+  assert.ok(!r.api.getOfferExpired(), 'accepting the offer is never an expiry');
+});
+t('E3 ofertaExpirada: an offer that leaves BEFORE its deadline raises NO banner (pulled early, not expired)', () => {
+  const r = offerRun(OE_FUTURE);
+  leaveUnaccepted(r);
+  assert.ok(!r.api.getOfferExpired(), 'left before the deadline → not an expiry');
+});
+t('E4 ofertaExpirada: a CANCELLED offer raises NO banner even after the deadline', () => {
+  const r = offerRun(OE_PAST);
+  r.read('orders/A').status = ORDER_STATUS.CANCELLED;
+  leaveUnaccepted(r);
+  assert.ok(!r.api.getOfferExpired(), 'cancelled, not expired → no banner');
 });
 
 // P2-6 nav-pref hydration (kills the Waze stub / an un-hydrated read): driverState.nav_app = 'maps' → the lone

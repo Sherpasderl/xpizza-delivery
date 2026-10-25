@@ -782,6 +782,24 @@ export function deliverySummaryHtml(info = {}, deps = {}) {
     </div>`;
 }
 
+// SLICE3:OFERTA-EXPIRADA — a self-contained clock glyph (no ICONS key exists; index.html's ICONS object is
+// out-of-region, so the banner carries its own).
+const OE_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+/**
+ * SLICE3:OFERTA-EXPIRADA — the dismissible «offer expired» banner (prototype S.ofertaExpirada), shown on the
+ * disponible screen when an offer the driver was shown reached its countdown expiry AND left the board without
+ * being accepted. Copy follows the prototype MINUS «Despacho se la pasó a otro repartidor.» — the client cannot
+ * know the offer went to another driver (no server signal); it only knows it expired un-accepted. «no afecta tu
+ * cuenta» reassures (truthful: an un-accepted offer never touched cash or the cuadre). Pure.
+ */
+export function offerExpiredBannerHtml(info = {}, deps = {}) {
+  const { esc = String } = deps;
+  const { num = '' } = info;
+  return `<div class="oe-banner" role="status"><span class="ico">${OE_CLOCK}</span>`
+    + `<div><b>Se venció la oferta${num ? ' ' + esc(num) : ''}</b>Seguís disponible; no afecta tu cuenta.</div>`
+    + `<button type="button" class="oe-x" id="btn-offer-expired-ok">Ok</button></div>`;
+}
+
 /**
  * SLICE3:WHATSAPP — the contact row (Llamar + WhatsApp), shared by every post-accept card. «Llamar» stays a
  * tel: link; «WhatsApp» is now a BUTTON that opens the phase-template sheet (waTemplatesHtml) instead of jumping
