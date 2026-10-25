@@ -187,6 +187,7 @@
     "test:driver-ledger": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/driver-ledger.emulator.test.js\"",
     "test:capp-s1-money": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/capp-s1-money.emulator.test.js\"",
     "test:s3a-envio": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/s3a-envio.emulator.test.js\"",
+    "test:s2tip": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/s2tip.emulator.test.js\"",
     "test:s3b-return": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/s3b-return.emulator.test.js\"",
     "test:s5-ratings": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/s5-ratings.emulator.test.js\""
   }
