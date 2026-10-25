@@ -12,8 +12,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(here, 'index.html'), 'utf8');
 const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' }[c]));
 function fn(src, name) {
-  const at = src.indexOf(`function ${name}(`);
+  let at = src.indexOf(`function ${name}(`);
   if (at < 0) throw new Error('fn not found: ' + name);
+  if (src.slice(at - 6, at) === 'async ') at -= 6;   // keep the async keyword (body has await)
   let i = src.indexOf('{', at), d = 0;
   for (; i < src.length; i++) { if (src[i] === '{') d++; else if (src[i] === '}') { d--; if (!d) break; } }
   return src.slice(at, i + 1);
@@ -63,6 +64,7 @@ function renderRows(drivers) {
     return {
       uid: (b.match(/data-driver-uid="([^"]*)"/) || [])[1],
       disabled: /data-driver-uid="[^"]*" disabled/.test(b),
+      ariaDisabled: /aria-disabled="true"/.test(b),
       paused: /class="picker-row paused/.test(b),
       knum: (b.match(/<span class="knum" aria-hidden="true">(\d+)<\/span>/) || [])[1] || null,
       tag: (b.match(/<span class="status-pill [^"]*">([^<]*)<\/span>/) || [])[1],
@@ -77,6 +79,7 @@ test('picker row-map: paused rows disabled + «En pausa» tag + no knum; knum nu
   assert.deepEqual(rows.filter((r) => r.paused).map((r) => r.uid), ['p1', 'p3'], 'the paused rows are the on_break drivers');
   for (const r of rows.filter((r) => r.paused)) {
     assert.ok(r.disabled, `${r.uid} paused row is disabled`);
+    assert.ok(r.ariaDisabled, `${r.uid} paused row carries aria-disabled="true"`);
     assert.equal(r.knum, null, `${r.uid} paused row has NO knum badge`);
     assert.equal(r.tag, 'En pausa', `${r.uid} shows the «En pausa» tag`);
   }
@@ -99,4 +102,88 @@ test('assignFailMsg(on_break) → «El repartidor está en pausa»', () => {
   const assignFailMsg = new Function(`${fn(html, 'assignFailMsg')}; return assignFailMsg;`)();
   assert.equal(assignFailMsg('on_break'), 'El repartidor está en pausa');
   assert.equal(assignFailMsg('already_assigned'), 'Ya fue asignada a otro repartidor', 'other reasons unchanged');
+});
+
+// ── P2-1: EXECUTABLE keyboard — the REAL initial-focus snippet + the REAL overlay keydown handler driven
+// over a fake picker DOM (disabled .focus()/.click() are no-ops, as in the browser). Reverting either
+// selector to `.picker-row` (paused rows included) breaks focus/nav/digit alignment → red. ──
+function arrowBody(src, marker) { const at = src.indexOf(marker); let i = src.indexOf('{', at), d = 0; const s = i; for (; i < src.length; i++) { if (src[i] === '{') d++; else if (src[i] === '}') { d--; if (!d) break; } } return src.slice(s + 1, i); }
+const keydownBody = arrowBody(html, "$('picker-overlay').addEventListener('keydown', (e) => {");
+const initFocusSrc = html.slice(html.indexOf("const firstFocusable = $('picker-list').querySelector"), html.indexOf('firstFocusable.focus({ preventScroll: reduceMotion });') + 'firstFocusable.focus({ preventScroll: reduceMotion });'.length);
+const keyEvent = (key) => ({ key, preventDefault() {}, stopPropagation() {} });
+function pickerDom(specs, { remove = true } = {}) {
+  let active = null; const clicks = [];
+  const rows = specs.map((s) => ({ uid: s.uid, disabled: !!s.disabled, badge: s.badge ?? null, focus() { if (!this.disabled) active = this; }, click() { if (!this.disabled) clicks.push(this.uid); } }));
+  const removeRow = { uid: '__remove', focus() { active = this; }, click() {} };
+  const cancelBtn = { uid: '__cancel', focus() { active = this; }, click() {} };
+  const sel = (q) => (q.includes(':not([disabled])') ? rows.filter((r) => !r.disabled) : rows);
+  const pickerList = { querySelector: (q) => sel(q)[0] || null, querySelectorAll: (q) => sel(q) };
+  const $ = (id) => (id === 'picker-list' ? pickerList : id === 'picker-remove-row' ? (remove ? removeRow : null) : id === 'picker-cancel-btn' ? cancelBtn : { querySelectorAll: () => [] });
+  const doc = { get activeElement() { return active; } };
+  const runInitialFocus = () => new Function('$', 'reduceMotion', `${initFocusSrc}`)($, true);
+  const runKey = (key) => new Function('e', 'pickerOpen', 'closePicker', 'focusTrapTarget', '$', 'document', keydownBody)(keyEvent(key), true, () => {}, () => null, $, doc);
+  return { rows, removeRow, cancelBtn, clicks, setActive: (el) => { active = el; }, active: () => active, runInitialFocus, runKey };
+}
+
+test('EXECUTABLE keyboard — initial focus lands on the first ENABLED row; all-paused falls back to Quitar/Cancelar (P2-1)', () => {
+  // first row PAUSED → focus must skip it to the first enabled (a reverted `.picker-row` would try the paused row, a no-op)
+  const d1 = pickerDom([{ uid: 'p0', disabled: true }, { uid: 'a1' }, { uid: 'a2' }]);
+  d1.runInitialFocus();
+  assert.equal(d1.active()?.uid, 'a1', 'initial focus = first ENABLED row (not the leading paused one)');
+  // all-paused + a Quitar row present → Quitar
+  const d2 = pickerDom([{ uid: 'p0', disabled: true }, { uid: 'p1', disabled: true }], { remove: true });
+  d2.runInitialFocus();
+  assert.equal(d2.active()?.uid, '__remove', 'all-paused → focus falls to «Quitar repartidor»');
+  // all-paused, no Quitar row → Cancelar
+  const d3 = pickerDom([{ uid: 'p0', disabled: true }], { remove: false });
+  d3.runInitialFocus();
+  assert.equal(d3.active()?.uid, '__cancel', 'all-paused + no Quitar → focus falls to Cancelar');
+});
+
+test('EXECUTABLE keyboard — ↑/↓/j/k cycle ENABLED rows only; digits match the displayed badges (P2-1)', () => {
+  // mixed: enabled rows carry badges 1,2,3 (as the row-map numbers them); paused rows disabled, no badge
+  const d = pickerDom([{ uid: 'a0', badge: 1 }, { uid: 'p1', disabled: true }, { uid: 'a2', badge: 2 }, { uid: 'p3', disabled: true }, { uid: 'a4', badge: 3 }]);
+  const start = d.rows[0]; d.setActive(start);
+  const seq = [];
+  for (const k of ['ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowUp', 'j', 'k']) { d.runKey(k); seq.push(d.active().uid); }
+  assert.deepEqual(seq, ['a2', 'a4', 'a0', 'a4', 'a0', 'a4'], '↑/↓/j/k wrap among ENABLED rows only (paused skipped)');
+  // digits: key N focuses+clicks the Nth ENABLED row, whose badge is N
+  for (const key of ['1', '2', '3']) d.runKey(key);
+  assert.deepEqual(d.clicks, ['a0', 'a2', 'a4'], 'digits 1/2/3 click the 1st/2nd/3rd ENABLED rows (the ones showing badges 1/2/3)');
+  const clickedBadges = d.clicks.map((uid) => d.rows.find((r) => r.uid === uid).badge);
+  assert.deepEqual(clickedBadges, [1, 2, 3], 'each digit clicked the row that DISPLAYS that badge (digit↔badge aligned)');
+  d.runKey('4');   // only 3 enabled → out of range, no-op
+  assert.equal(d.clicks.length, 3, 'a digit past the enabled count assigns nothing');
+});
+
+test('EXECUTABLE keyboard — all-paused: arrows and digits assign nothing', () => {
+  const d = pickerDom([{ uid: 'p0', disabled: true }, { uid: 'p1', disabled: true }]);
+  d.setActive(d.removeRow);
+  for (const k of ['ArrowDown', 'ArrowUp', 'j', '1', '2']) d.runKey(k);
+  assert.equal(d.clicks.length, 0, 'no enabled rows → no clicks');
+  assert.equal(d.active().uid, '__remove', 'focus stays on Quitar (no enabled row to move to)');
+});
+
+// ── P2-2: refusal through the REAL result branches («A mí», assign, reassign + mobile commitAssign are in
+// the mobile file). Replacing the assignFailMsg call with generic copy breaks these (they run live source). ──
+test('REAL «A mí» + assign + reassign branches toast «El repartidor está en pausa» on {reason:on_break} (P2-2)', async () => {
+  const assignFailMsg = new Function(`${fn(html, 'assignFailMsg')}; return assignFailMsg;`)();
+  const refusal = { ok: false, reason: 'on_break' };
+  // «A mí» self-assign result branch
+  {
+    const amiSrc = html.slice(html.indexOf('const res = await XPD.assignOrderToDriver(oid, currentUser.uid);'), html.indexOf("toast('Asignado a ti', 'success');") + "toast('Asignado a ti', 'success');".length);
+    const toasts = [];
+    await new Function('XPD', 'oid', 'currentUser', 'toast', 'assignFailMsg', `return (async () => { ${amiSrc} })();`)(
+      { assignOrderToDriver: async () => refusal }, 'o1', { uid: 'me' }, (m, k) => toasts.push({ m, k }), assignFailMsg);
+    assert.deepEqual(toasts, [{ m: 'El repartidor está en pausa', k: 'error' }], '«A mí» → the pause toast, no success');
+  }
+  // assignOrder: assign AND reassign paths
+  for (const reassign of [false, true]) {
+    const toasts = [];
+    const assignOrder = new Function('XPD', 'pickerIsReassign', 'pickerFromDriver', 'toast', 'assignFailMsg', 'closePicker', 'allDrivers',
+      `${fn(html, 'assignOrder')}; return assignOrder;`)(
+      { reassignOrder: async () => refusal, assignOrderToDriver: async () => refusal }, reassign, 'from', (m, k) => toasts.push({ m, k }), assignFailMsg, () => {}, {});
+    await assignOrder('o1', 'd1');
+    assert.deepEqual(toasts, [{ m: 'El repartidor está en pausa', k: 'error' }], `${reassign ? 'reassign' : 'assign'} path → the pause toast`);
+  }
 });

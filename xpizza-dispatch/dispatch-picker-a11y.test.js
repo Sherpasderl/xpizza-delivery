@@ -108,7 +108,7 @@ const pickerJs = html.slice(openIdx, closeEnd);
   assert.match(pickerJs, /const paused = driver\.status === 'on_break'/, 'paused derives from on_break');
   const btnOpen = pickerJs.match(/<button type="button" class="picker-row[\s\S]*?>/);
   assert.ok(btnOpen, 'row button open-tag located');
-  assert.match(btnOpen[0], /\$\{paused \? 'disabled' : ''\}/, 'the row disabled attribute is gated on paused (on_break) only');
+  assert.match(btnOpen[0], /\$\{paused \? 'disabled aria-disabled="true"' : ''\}/, 'the row disabled + aria-disabled are gated on paused (on_break) only');
   assert.doesNotMatch(btnOpen[0], /requireConfirm \? 'disabled'|\sdisabled=|\sdisabled>|\sdisabled\s/, 'disabled is never unconditional nor gated on requireConfirm (confirm rows stay clickable)');
   assert.match(pickerJs, /class="picker-row \$\{paused \? 'paused' : requireConfirm \? 'needs-confirm' : ''\}/, 'paused wins the row class over needs-confirm');
   ok('needs-confirm amber warning stays clickable; «Pausa» rows carry disabled gated on on_break only');

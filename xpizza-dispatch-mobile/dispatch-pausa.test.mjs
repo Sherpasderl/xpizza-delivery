@@ -14,8 +14,9 @@ const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => 
 
 // Brace-match a `function NAME(...) { ... }` out of the source (balanced ${} templates OK).
 function fn(src, name) {
-  const at = src.indexOf(`function ${name}(`);
+  let at = src.indexOf(`function ${name}(`);
   if (at < 0) throw new Error('fn not found: ' + name);
+  if (src.slice(at - 6, at) === 'async ') at -= 6;   // keep the async keyword (body has await)
   let i = src.indexOf('{', at), d = 0;
   for (; i < src.length; i++) { if (src[i] === '{') d++; else if (src[i] === '}') { d--; if (!d) break; } }
   return src.slice(at, i + 1);
@@ -87,4 +88,20 @@ test('assignFailMsg(on_break) → «El repartidor está en pausa»', () => {
   const assignFailMsg = new Function(`${fn(html, 'assignFailMsg')}; return assignFailMsg;`)();
   assert.equal(assignFailMsg('on_break'), 'El repartidor está en pausa');
   assert.equal(assignFailMsg('write_failed'), 'No se pudo asignar (error de red) — reintentá', 'other reasons unchanged');
+});
+
+// ── P2-2: refusal through the REAL commitAssign result branch (assign AND reassign). Replacing the
+// assignFailMsg call with generic copy breaks this (it runs live source). ──
+test('REAL commitAssign branch toasts «El repartidor está en pausa» on {reason:on_break}, assign + reassign (P2-2)', async () => {
+  const assignFailMsg = new Function(`${fn(html, 'assignFailMsg')}; return assignFailMsg;`)();
+  const refusal = { ok: false, reason: 'on_break' };
+  for (const reassign of [false, true]) {
+    const toasts = [];
+    const commitAssign = new Function('$', 'XPD', 'STORE', 'document', 'pendingSettle', 'toast', 'assignFailMsg', 'closeSheet', 'pickerIsReassign', 'pickerFromDriver', 'Date',
+      `${fn(html, 'commitAssign')}; return commitAssign;`)(
+      () => ({ disabled: false, textContent: '' }), { reassignOrder: async () => refusal, assignOrderToDriver: async () => refusal }, { drivers: {} },
+      { querySelector: () => null }, null, (m, bad) => toasts.push({ m, bad }), assignFailMsg, () => {}, reassign, 'from', Date);
+    await commitAssign('o1', 'd1');
+    assert.deepEqual(toasts, [{ m: 'El repartidor está en pausa', bad: true }], `${reassign ? 'reassign' : 'assign'} path → the pause toast`);
+  }
 });

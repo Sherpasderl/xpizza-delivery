@@ -5848,7 +5848,7 @@ function openPicker(orderId, isReassign = false) {
       // layout is regrouped. The knum badge renders ONLY for the first 9 rows — i.e. only where the 1–9
       // direct-assign shortcut is live (no dead numbers).
       return `
-        <button type="button" class="picker-row ${paused ? 'paused' : requireConfirm ? 'needs-confirm' : ''}" data-driver-uid="${uid}" ${paused ? 'disabled' : ''}
+        <button type="button" class="picker-row ${paused ? 'paused' : requireConfirm ? 'needs-confirm' : ''}" data-driver-uid="${uid}" ${paused ? 'disabled aria-disabled="true"' : ''}
              ${full ? 'data-full="1"' : ''} ${enRoute ? 'data-enroute="1"' : ''} ${unreachable ? 'data-unreachable="1"' : ''}
              aria-label="${escapeHtml(String(ariaLabel))}">
           <span class="status-dot ${getDotClass(driver)}"></span>
