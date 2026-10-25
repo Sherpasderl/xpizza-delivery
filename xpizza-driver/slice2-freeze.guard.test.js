@@ -33,6 +33,7 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { SLICE3_REGIONS } from './slice3-regions.js';   // SLICE3 coexistence (see check-2): slice 3 supersedes, advisor 2026-10-25
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PFX = 'xpizza-driver/';
@@ -122,6 +123,11 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/slice2-freeze.proof.sh',          // the mutation-outside-regions → RED proof harness
   'xpizza-driver/nav-view.js',                     // R7 Cuenta/navApp pure builders
   'xpizza-driver/nav-view.test.js',                // R7 Cuenta/navApp builder tests
+  // SLICE3 coexistence: slice 3 supersedes slice 2 (same precedent as slice 2 over slice 1). These are ADDs vs
+  // the slice-2 baseline; their content is governed by slice3-freeze.guard, not here.
+  'xpizza-driver/slice3-regions.js',               // the shared SLICE3 region contract
+  'xpizza-driver/slice3-freeze.guard.test.js',     // the slice-3 freeze guard
+  'xpizza-driver/slice3-contrast.test.js',         // batch-3 fg/bg WCAG checks (added with the first batch-3 CSS)
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';
@@ -289,6 +295,25 @@ function regionRanges(lines) {
   return out;
 }
 
+// SLICE3 coexistence helper: locate the PRESENT SLICE3 regions (any subset — slice 3 is in progress) so check-2
+// can splice them too. Full SLICE3 validation (whitelist, nesting, pin integrity) is slice3-freeze.guard's job;
+// here we only pair the markers we need to splice. Returns [{ r, s, e }] for each paired, known SLICE3 region.
+function findSlice3Ranges(lines) {
+  const open = {}; const out = [];
+  const re = /SLICE3:([A-Za-z0-9-]+):(START|END)\b/;
+  lines.forEach((line, i) => {
+    const m = re.exec(line);
+    if (!m) return;
+    if (m[2] === 'START') open[m[1]] = i;
+    else if (open[m[1]] != null) {
+      const r = SLICE3_REGIONS.find((x) => x.name === m[1]);
+      if (r) out.push({ r, s: open[m[1]], e: i });
+      delete open[m[1]];
+    }
+  });
+  return out;
+}
+
 t('restore spans are present in the baseline (pin integrity)', () => {
   const baseHtml = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`);
   for (const r of REGIONS) {
@@ -303,8 +328,14 @@ t('index.html: strip SLICE2 regions + restore the replacement spans recovers bas
   const baseHtml = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`);
   const lines = current.split('\n');
   const ranges = regionRanges(lines);
-  // Splice each region out (descending by start so indices stay valid); replacements splice their span in.
-  const ordered = REGIONS.map((r) => ({ r, s: ranges[r.name][0], e: ranges[r.name][1] }))
+  // SLICE3 COEXISTENCE (slice 3 supersedes slice 2, advisor 2026-10-25): this guard's SLICE2 strip is blind to
+  // SLICE3 markers, so check-2 must ALSO splice PRESENT SLICE3 regions — inserts to nothing, replaces to their
+  // pinned span. Those spans are base code byte-identical in e2266b24 and 07e5ab38 (slice3-freeze check 5 proves
+  // it), so restoring them recovers THIS baseline too. slice2-freeze's own baseline + SLICE2 guarantees are
+  // unchanged. This block is load-bearing: without it a SLICE3 region leaks and this test goes RED (proven below).
+  const s3 = findSlice3Ranges(lines);
+  // Splice every region out (descending by start so indices stay valid); replacements splice their span in.
+  const ordered = [...REGIONS.map((r) => ({ r, s: ranges[r.name][0], e: ranges[r.name][1] })), ...s3]
     .sort((a, b) => b.s - a.s);
   for (const { r, s, e } of ordered) {
     lines.splice(s, e - s + 1, ...(r.kind === 'replace' ? r.restore : []));
@@ -317,6 +348,22 @@ t('index.html: strip SLICE2 regions + restore the replacement spans recovers bas
   }
   assert.equal(lines.join('\n'), expected,
     'strip+restore did NOT recover baseline (modulo the documented OUT_OF_REGION_ALLOW) — a change leaked OUTSIDE the SLICE2 regions, or a pinned span is wrong');
+});
+
+// The SLICE3 coexistence splice (in check-2 above) is LOAD-BEARING: with a SLICE3 region present, removing it
+// would leak those bytes and turn slice2-freeze RED. Proven by injecting a well-formed SLICE3 insert into the
+// baseline and showing the splice strips it back, while the un-spliced bytes do not match (advisor proof 2026-10-25).
+t('SLICE3 coexistence splice is load-bearing (inject a SLICE3 region → recovers only WITH the splice)', () => {
+  const baseHtml = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`);
+  const inj = baseHtml.split('\n');
+  inj.splice(2, 0, '/* ===== SLICE3:LOGIC-3:START ===== */', 'noop();', '/* ===== SLICE3:LOGIC-3:END ===== */');   // line 2 is outside every SLICE2 region
+  const injected = inj.join('\n');
+  assert.notEqual(injected, baseHtml, 'the injected SLICE3 region must actually change the bytes (so un-spliced ⇒ RED)');
+  const lines = injected.split('\n');
+  for (const { r, s, e } of findSlice3Ranges(lines).sort((a, b) => b.s - a.s)) {
+    lines.splice(s, e - s + 1, ...(r.kind === 'replace' ? r.restore : []));
+  }
+  assert.equal(lines.join('\n'), baseHtml, 'with the SLICE3 splice, the injected region strips back to baseline');
 });
 
 // ---------- 3b. the out-of-region allow is EXACTLY its documented line(s) — nothing else is exempt ----------
