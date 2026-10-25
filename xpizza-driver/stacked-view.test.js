@@ -7,7 +7,7 @@ import {
   bagTagClass, bagTagHtml, phaseStripHtml, navBtnHtml, queuedPreviewHtml, coloniaOf, readyTimeHHMM, readyTimeLabel, pickupSubLabel,
   activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml,
   stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
-  pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo,
+  pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml,
 } from './stacked-view.js';
 
 let passed = 0;
@@ -363,6 +363,28 @@ t('interludeHtml: «Parada 1 entregada» + cash/vuelto; +L70 HIDDEN (R2); 2nd na
 t('interludeHtml: earnings on → +L 70; live on → the live sentence', () => {
   const html = interludeHtml({ next: { name: 'Carlos' }, cash: 385, showEarnings: true, liveTracking: true }, DEPS);
   assert.ok(html.includes('+L 70') && html.includes('Carlos pasó a seguimiento en vivo.'));
+});
+
+// ---------- deliverySummaryHtml (resumen / S16 — end-of-run summary; Pagos gated; collectionFor-driven) ----------
+t('deliverySummaryHtml: cash — «Entregado a {first}», #/time, Cobraste + vuelto, day total; +L70/Ganado HIDDEN', () => {
+  const html = deliverySummaryHtml({ order: { payment_method: 'cash', total: 385, display_number: 47 }, deliveredName: 'Daniela Mejía', time: '7:43', vuelto: 115, showEarnings: false, dayCashOwed: 385 }, DEPS);
+  assert.ok(html.includes('Entregado a Daniela'), 'first name only in the title');
+  assert.ok(html.includes('#47') && html.includes('7:43'), 'order # + time');
+  assert.ok(html.includes('Cobraste') && html.includes('L 385') && html.includes('Efectivo que llevás para el cuadre'), 'cobro line (cash)');
+  assert.ok(html.includes('Diste de vuelto') && html.includes('L 115'), 'vuelto line');
+  assert.ok(html.includes('Efectivo a entregar hoy'), 'the money-grade day total (computeShiftCash.cashOwed)');
+  assert.ok(!html.includes('+ L 70') && !html.includes('Ganado hoy'), 'Pagos rows HIDDEN until it ships');
+  assert.ok(html.includes('id="btn-resumen-done"') && html.includes('Listo'), 'the «Listo» button');
+});
+t('deliverySummaryHtml: affirmative-only + Pagos gate — paid-online never «Cobraste»; vuelto cash-only; +L70 when earnings on', () => {
+  const paid = deliverySummaryHtml({ order: { payment_method: 'online', payment_status: 'confirmed', total: 410 }, deliveredName: 'Ana', vuelto: 50, dayCashOwed: 0 }, DEPS);
+  assert.ok(paid.includes('No cobraste nada') && paid.includes('Ya estaba pagado en línea'), 'paid online → affirmative, never «Cobraste L»');
+  assert.ok(!/Cobraste L/.test(paid), 'no «Cobraste L X» for a paid-online order');
+  assert.ok(!paid.includes('Diste de vuelto'), 'no vuelto row for a non-cash order even if a value is passed');
+  const pending = deliverySummaryHtml({ order: { payment_method: 'online', total: 410 }, deliveredName: 'Ana', dayCashOwed: 0 }, DEPS);
+  assert.ok(pending.includes('Sin cobro confirmado') && !/pagad/i.test(pending), 'pending online → never «pagado» (affirmative-only)');
+  const earn = deliverySummaryHtml({ order: { payment_method: 'cash', total: 385 }, deliveredName: 'Daniela', vuelto: 115, showEarnings: true, dayCashOwed: 385 }, DEPS);
+  assert.ok(earn.includes('+ L 70') && earn.includes('Tu pago por esta entrega'), 'earnings on → +L 70 shows');
 });
 
 // ---------- cancelBannerHtml (apCancelada / S17) ----------

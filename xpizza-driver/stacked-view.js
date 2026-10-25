@@ -747,6 +747,42 @@ export function interludeHtml(info = {}, deps = {}) {
 }
 
 /**
+ * The end-of-run DELIVERY SUMMARY overlay (resumen / S16) — shown after the FINAL «Entregado» of a run, on the way
+ * back to disponible (NEVER between stops; that is the interlude/apAvance). DISPLAY-only and affirmative-only: the
+ * per-delivery «Cobraste» line is collectionFor-driven (the single classification authority, same as the pay
+ * rows), «Diste de vuelto» is the caller's computeVuelto result, and «Efectivo a entregar hoy» is the money-grade
+ * computeShiftCash().cashOwed the caller passes in — NEVER re-derived, so the summary can never disagree with the
+ * cuadre. «Tu pago +L 70» and «Ganado hoy» are HIDDEN until Pagos ships (showEarnings, default false). Pure.
+ * `info` = { order, deliveredName, time, vuelto, showEarnings, dayCashOwed }.
+ */
+export function deliverySummaryHtml(info = {}, deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  const { order = {}, deliveredName = '', time = '', vuelto = null, showEarnings = false, dayCashOwed = null } = info;
+  const c = collectionFor(order);
+  const amt = `L ${(Number(order.total) || 0).toLocaleString('es-HN')}`;
+  let cobT, cobSub, cobV;
+  if (c.kind === 'cash') { cobT = 'Cobraste'; cobSub = 'Efectivo que llevás para el cuadre'; cobV = amt; }
+  else if (c.kind === 'card') { cobT = 'Cobraste'; cobSub = 'Con tarjeta, en la terminal'; cobV = amt; }   // card_delivery: collected, not cash owed
+  else if (c.kind === 'paid_online') { cobT = 'No cobraste nada'; cobSub = 'Ya estaba pagado en línea'; cobV = ''; }
+  else if (c.kind === 'free') { cobT = 'Pedido gratis'; cobSub = 'Nada que cobrar'; cobV = ''; }
+  else { cobT = 'Sin cobro confirmado'; cobSub = 'Consultá a despacho'; cobV = ''; }   // warning — never «cobraste»
+  const rsRow = (icon, t, sub, v) => `<div class="rs-row"><span class="ico">${icon}</span><div class="rs-rtext"><div class="rs-rt">${esc(t)}</div>${sub ? `<div class="rs-rd">${esc(sub)}</div>` : ''}</div>${v ? `<div class="rs-rv">${v}</div>` : ''}</div>`;
+  const vueltoRow = (c.kind === 'cash' && vuelto != null)
+    ? rsRow(ICONS.cash || '', 'Diste de vuelto', '', `L ${Number(vuelto).toLocaleString('es-HN')}`) : '';
+  const earnRow = showEarnings === true
+    ? rsRow(ICONS.wallet || ICONS.cash || '', 'Tu pago por esta entrega', 'Informativo · se paga aparte, no sale del efectivo', '<span class="rs-pos">+ L 70</span>') : '';
+  const stat = dayCashOwed != null
+    ? `<div class="rs-stat"><b>L ${Number(dayCashOwed).toLocaleString('es-HN')}</b><small>Efectivo a entregar hoy</small></div>` : '';
+  const sub = [displayOrderLabel(order), time].filter(Boolean).map(esc).join(' · ');
+  return `<div class="rs-sheet" role="dialog" aria-modal="true" aria-live="polite">
+      <div class="rs-head"><span class="rs-illus">${ICONS.check || '✓'}</span><div><div class="rs-title">Entregado${deliveredName ? ' a ' + esc(firstName(deliveredName)) : ''}</div>${sub ? `<div class="rs-sub">${sub}</div>` : ''}</div></div>
+      <div class="rs-card">${rsRow(ICONS.cash || '', cobT, cobSub, cobV)}${vueltoRow}${earnRow}</div>
+      ${stat}
+      <button class="rs-done" id="btn-resumen-done">Listo</button>
+    </div>`;
+}
+
+/**
  * The combined double-OFFER screen body (prototype apOferta; ledger S18). PRIVACY (R4): before accept it shows
  * the restaurant(s), the customer's COLONIA/area, the stop numbers and (when a real deliver-by exists) timings —
  * NEVER a customer name, phone, contact link or exact address. `offers` are the awaiting_acceptance wrappers in
