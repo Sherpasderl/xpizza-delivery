@@ -39,6 +39,7 @@ async function runBrandsAdmin({ rtdb, op, id, apply, nowMs, log }) {
     if (!apply) { log('(dry run — nothing written; add --apply)'); return 0; }
     if (!plan.changed) { log('(unchanged — nothing written)'); return 0; }
     const r = await S.applyPublish(rtdb, plan);
+    if (r.error) { log(`brands-admin: REFUSED (fenced) — ${r.error}`); return 1; }
     if (!r.ok) { log(`brands-admin: READ-BACK MISMATCH — read ${JSON.stringify(r.back)}`); return 1; }
     log('brands-admin: published and read back');
     return 0;

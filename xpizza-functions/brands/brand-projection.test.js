@@ -17,16 +17,16 @@ assert.strictEqual(r.ok, true, JSON.stringify(r.errors));
 assert.deepStrictEqual(r.projection, {
   name: 'Third',
   locations: {
-    tb_centro: { location_name: 'Centro', hub: { lat: 15.5, lng: -88.0 }, zone: { type: 'circle', radius_km: 5 }, hours: HOURS_OUT, prep_default_min: 20 },
-    tb_norte: { location_name: 'Norte', hub: { lat: 15.6, lng: -88.0 }, zone: { type: 'circle', radius_km: 5 }, hours: HOURS_OUT, prep_default_min: 20 },
+    tb_centro: { location_name: 'Centro', hub: { lat: 15.5, lng: -88.0 }, zone: { type: 'circle', radius_km: 5 }, hours: HOURS_OUT, prep_default_min: 20, active: true },
+    tb_norte: { location_name: 'Norte', hub: { lat: 15.6, lng: -88.0 }, zone: { type: 'circle', radius_km: 5 }, hours: HOURS_OUT, prep_default_min: 20, active: true },
   },
 });
-ok('exact shape: members only (retired omitted), hours filtered to open/start/end');
+ok('exact shape (v2, orchestration §6): members only (retired omitted), hours filtered to open/start/end, active');
 
 const s = JSON.stringify(r.projection);
-for (const leak of ['phone', 'whatsapp', 'secret-inst', 'version', 'display_name', 'Disp', 'active', 'brand_id', 'note', 'Viejo', 'Cfg'])
+for (const leak of ['phone', 'whatsapp', 'secret-inst', 'version', 'display_name', 'Disp', 'brand_id', 'note', 'Viejo', 'Cfg'])
   assert.ok(!s.includes(leak), `allowlist: ${leak} never projected`);
-ok('allowlist: phone / whatsapp / version / display_name / active / brand_id / unknown hour keys / retired / config name never appear');
+ok('allowlist: phone / whatsapp / version / display_name / brand_id / unknown hour keys / retired / config name never appear');
 
 const refused = (brandId, b, ids, why) => { const x = buildPublicBrand(brandId, b, ids); assert.strictEqual(x.ok, false, why); assert.ok(x.errors.length > 0, why); };
 refused('tb_brand', { ...TB, palette: {} }, IDS, 'invalid brand');
@@ -48,5 +48,20 @@ const eh = buildPublicBrand('tb_brand', { ...TB, locations: { tb_centro: 'member
 assert.strictEqual(eh.ok, true, JSON.stringify(eh.errors));
 assert.ok(!('hours' in eh.projection.locations.tb_centro), 'empty hours → no hours key');
 ok('empty representation: all-retired → {name}; empty hours → no hours key');
+
+// ── ORCHESTRATION O1a §6: projection v2 — address fields, active, staged never projected ──
+{
+  const B2 = { ...TB, locations: { tb_centro: 'member', tb_norte: 'member', tb_sur: 'staged' } };
+  const ids2 = { tb_centro: branch('Centro', { address_line: 'Blvd. 1', address_reference: 'Frente al parque', active: false }),
+    tb_norte: branch('Norte', { address_line: 'Calle 2' }), tb_sur: branch('Sur', { active: false, address_line: 'Hidden' }) };
+  const v2 = buildPublicBrand('tb_brand', B2, ids2);
+  assert.strictEqual(v2.ok, true, JSON.stringify(v2.errors));
+  assert.deepStrictEqual(Object.keys(v2.projection.locations), ['tb_centro', 'tb_norte'], 'staged never projected');
+  assert.deepStrictEqual([v2.projection.locations.tb_centro.active, v2.projection.locations.tb_centro.address_line, v2.projection.locations.tb_centro.address_reference],
+    [false, 'Blvd. 1', 'Frente al parque'], 'an inactive member is projected with active:false and its address');
+  assert.ok(!('address_reference' in v2.projection.locations.tb_norte), 'an absent reference is not emitted');
+  assert.ok(!JSON.stringify(v2.projection).includes('Hidden'), 'nothing of a staged branch leaks');
+}
+ok('projection v2: active + address_line / address_reference for members; staged never projected; absent fields omitted');
 
 console.log(`brand-projection: OK (${n})`);

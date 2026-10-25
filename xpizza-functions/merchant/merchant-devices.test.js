@@ -145,3 +145,21 @@ test('myLocations: owner → every member location of their brand; manager → o
   const broken = createFakeDb({}); broken.failReads.add('member_of');
   await rejectsCode(D.myLocations(deps(broken, fakeAuth()), human('own_tb'), {}), 'unavailable');
 });
+
+// ORCHESTRATION O1a T9 × train-3 membership (merge ruling 2026-10-21): myLocations is now the membership PAIRING-ELIGIBLE list (state
+// member + device.pair). A STAGED branch has no membership state/capability until O1b (plan r3.2 §3: resolveLocation 'staged' + capsFor),
+// so it is NOT listed yet — it was never pairable before O1b anyway. Retired still excluded. O1b flips this pin.
+test('O1a: myLocations does NOT list a STAGED branch until O1b grants staged capabilities; retired still excluded', async () => {
+  const g = { granted_at: 1, granted_by: 'x' };
+  const db = createFakeDb({
+    brands: { tb: { name: 'TB', active: true, activation: { state: 'on', since: 1 }, locations: { tb_centro: 'member', tb_sur: 'staged', tb_viejo: 'retired' } } },
+    brand_members: { tb: { owners: { own_tb: g }, managers: { tb_sur: { mgr_s: g } } } },
+    member_of: { own_tb: { brands: { tb: 'owner' } }, mgr_s: { locations: { tb_sur: 'manager' } } },
+    restaurants: { tb_centro: { identity: { brand_id: 'tb', location_name: 'Centro', prep_default_min: 18 } },
+      tb_sur: { identity: { brand_id: 'tb', location_name: 'Sur', prep_default_min: 20 } }, tb_viejo: { identity: { brand_id: 'tb', location_name: 'Viejo' } } },
+  });
+  const d = deps(db, fakeAuth());
+  assert.deepStrictEqual(await D.myLocations(d, human('own_tb'), {}), [
+    { rid: 'tb_centro', brand_id: 'tb', location_name: 'Centro', prep_default_min: 18 }], 'O1a-STAGED-UNLISTED owner: member only (staged → O1b)');
+  assert.deepStrictEqual(await D.myLocations(d, human('mgr_s'), {}), [], 'O1a-STAGED-UNLISTED a staged branch\'s manager has no pairing location yet');
+});

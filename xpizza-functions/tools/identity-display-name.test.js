@@ -1,6 +1,7 @@
 'use strict';
 // R3-FIX D12 — the owner's display-name CLI: the plan refuses what the reader would not show and never writes into a
-// non-routing-valid identity; apply writes ONE path and reads it back; the CLI refuses to run without a stated project.
+// non-routing-valid identity; apply changes ONE field (+ the version bump, orchestration O1a) in one identity transaction and
+// reads it back; the CLI refuses to run without a stated project.
 const assert = require('assert');
 const path = require('path');
 const { spawnSync } = require('child_process');
@@ -9,25 +10,15 @@ const { IDENTITIES } = require('../seed_identity');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
-function fakeRtdb(init = {}) {
-  const data = { ...init }; const writes = [];
-  const ref = (p) => ({
-    once: async () => ({ val: () => (p in data ? data[p] : null) }),
-    update: async (u) => { writes.push(u); for (const [k, v] of Object.entries(u)) { if (v === null) delete data[k]; else data[k] = v; } },
-    transaction: async (fn) => {   // the Admin SDK shape: a first pass on null, then the real value; undefined aborts
-      const real = p in data ? data[p] : null;
-      let next = fn(null);
-      if (next !== undefined && real !== null) next = fn(real);
-      if (next === undefined) return { committed: false, snapshot: { val: () => real } };
-      writes.push({ [p]: next }); data[p] = next;
-      return { committed: true, snapshot: { val: () => next } };
-    },
-  });
-  return { ref: (p) => ref(p || ''), data, writes };
-}
+// ORCHESTRATION O1a (advisor ruling: EVERY identity write bumps version) — the faithful Admin-SDK fake: the identity-level
+// transaction's cached-null first pass is exercised, and every committed write is logged as [kind, path, value].
+const { fakeRtdb } = require('../test/_fake-rtdb-sdk');
+const ID = 'restaurants/x_pizza/identity';
+const tree = (identity) => fakeRtdb({ restaurants: { x_pizza: { identity } } });
 
 (async () => {
   const X = { ...IDENTITIES.x_pizza, whatsapp_instance: 'i', display_name: null };   // a ROUTING-VALID identity
+  const XS = { ...X }; delete XS.display_name;   // as stored (RTDB never holds a null leaf)
   const p = planDisplayName({ op: 'set', rid: 'x_pizza', value: 'X. Pizza', current: X });
   assert.deepStrictEqual(p, { ok: true, row: { path: 'restaurants/x_pizza/identity/display_name', from: null, to: 'X. Pizza' }, label: { before: 'Recoger en X Pizza', after: 'Recoger en X. Pizza' } });
   assert.deepStrictEqual(planDisplayName({ op: 'delete', rid: 'x_pizza', current: { ...X, display_name: 'X. Pizza' } }).row, { path: 'restaurants/x_pizza/identity/display_name', from: 'X. Pizza', to: null });
@@ -41,22 +32,26 @@ function fakeRtdb(init = {}) {
   assert.strictEqual(planDisplayName({ op: 'rename', rid: 'x_pizza', value: 'A', current: X }).ok, false);
   ok('plan: set/delete one path with the before → after pickup line; refuses a value the reader would not show, a non-ROUTING-VALID identity (isRoutingValid), a bad rid, an unknown op');
 
-  const db = fakeRtdb({ 'restaurants/x_pizza/identity': X });
+  const db = tree(X);
   const cur = await readIdentity(db, 'x_pizza');
-  assert.deepStrictEqual(cur, X);
+  assert.deepStrictEqual(cur, XS);
   const res = await applyDisplayName(db, planDisplayName({ op: 'set', rid: 'x_pizza', value: 'X. Pizza', current: cur }));
-  assert.deepStrictEqual([res.ok, db.writes], [true, [{ 'restaurants/x_pizza/identity/display_name': 'X. Pizza' }]], 'ONE path written, read back');
-  const lying = fakeRtdb({ 'restaurants/x_pizza/identity': X }); lying.ref = ((r) => (p) => ({ ...r(p), once: async () => ({ val: () => 'other' }) }))(lying.ref);
+  assert.strictEqual(res.ok, true);
+  assert.deepStrictEqual(db.writes, [['txn', ID, { ...XS, display_name: 'X. Pizza', version: XS.version + 1 }]], 'ONE identity transaction: the field + version + 1, nothing else');
+  const lying = tree(X); lying.ref = ((r) => (p) => ({ ...r(p), once: async () => ({ val: () => 'other' }) }))(lying.ref);
   assert.strictEqual((await applyDisplayName(lying, planDisplayName({ op: 'set', rid: 'x_pizza', value: 'X. Pizza', current: cur }))).ok, false, 'a read-back mismatch is reported');
-  ok('apply: ONE multi-path update of the single field, then a read-back that must match');
+  const unversioned = tree({ ...XS, version: 'v1' });
+  const ru = await applyDisplayName(unversioned, planDisplayName({ op: 'set', rid: 'x_pizza', value: 'X. Pizza', current: XS }));
+  assert.deepStrictEqual([ru.ok, ru.error, unversioned.writes], [false, 'unversioned', []], 'an identity without a numeric version at COMMIT is refused, nothing written');
+  ok('apply: ONE identity transaction (the field + version + 1, every other field byte-equal), then a read-back that must match; an unversioned identity is refused at commit');
 
   // BRAND-AGNOSTIC SERVER (PLAN r3 §F): ABSENT-FILL ONLY — equal → no-op (nothing written); different → PRESERVED + refused
   const named = { ...X, display_name: 'X. Pizza' };
   const same = planDisplayName({ op: 'set', rid: 'x_pizza', value: 'X. Pizza', current: named });
   assert.strictEqual(same.ok && same.noop, true, 'an equal display_name is a no-op');
-  const dbSame = fakeRtdb({ 'restaurants/x_pizza/identity': named, 'restaurants/x_pizza/identity/display_name': 'X. Pizza' });
+  const dbSame = tree(named);
   assert.strictEqual((await applyDisplayName(dbSame, same)).ok, true, 'the no-op still reads the value back');
-  assert.deepStrictEqual(dbSame.writes, [], 'a no-op writes nothing');
+  assert.deepStrictEqual(dbSame.writes, [], 'a no-op writes nothing (no version bump)');
   const clash = planDisplayName({ op: 'set', rid: 'x_pizza', value: 'X Pizzeria', current: named });
   assert.deepStrictEqual([clash.ok, clash.conflict], [false, true], 'a different existing display_name is a conflict');
   assert.match(clash.error, /already "X. Pizza".*PRESERVED/, 'and is preserved');
@@ -75,33 +70,37 @@ function fakeRtdb(init = {}) {
   const markClash = planDisplayName({ op: 'set-mark', rid: 'tb_norte', value: 'X', current: marked });
   assert.deepStrictEqual([markClash.ok, markClash.conflict], [false, true], 'a different existing mark is a conflict');
   assert.match(markClash.error, /display_mark is already "M".*PRESERVED/);
-  const dbMark = fakeRtdb({ 'restaurants/x_pizza/identity': X });
+  const dbMark = tree(X);
   const resMark = await applyDisplayName(dbMark, planDisplayName({ op: 'set-mark', rid: 'x_pizza', value: 'X', current: X }));
-  assert.deepStrictEqual([resMark.ok, dbMark.writes], [true, [{ 'restaurants/x_pizza/identity/display_mark': 'X' }]], 'ONE leaf written, read back');
-  assert.deepStrictEqual(dbMark.data['restaurants/x_pizza/identity'], X, 'every other identity field is byte-equal');
+  assert.deepStrictEqual([resMark.ok, dbMark.writes], [true, [['txn', ID, { ...XS, display_mark: 'X', version: XS.version + 1 }]]], 'ONE identity transaction: the mark + version + 1, read back');
+  assert.deepStrictEqual(dbMark.get(ID), { ...XS, display_mark: 'X', version: XS.version + 1 }, 'every other identity field is byte-equal');
   // codex build r1 P2: absent-fill is enforced AT COMMIT (a leaf transaction) — a value written between plan and apply is PRESERVED
   {
-    const raceDb = fakeRtdb({ 'restaurants/x_pizza/identity': X });
+    const raceDb = tree(X);
+    const live = raceDb.root.restaurants.x_pizza.identity;
     const markPlan = planDisplayName({ op: 'set-mark', rid: 'x_pizza', value: 'N', current: X });   // planned while absent
-    raceDb.data['restaurants/x_pizza/identity/display_mark'] = 'Z';                                  // a concurrent writer
+    live.display_mark = 'Z';                                                                         // a concurrent writer
     const res = await applyDisplayName(raceDb, markPlan);
     assert.deepStrictEqual([res.ok, res.conflict, res.back], [false, true, 'Z'], 'a mark written meanwhile is preserved and reported as a conflict');
-    assert.strictEqual(raceDb.data['restaurants/x_pizza/identity/display_mark'], 'Z', 'never overwritten');
+    assert.deepStrictEqual([live.display_mark, raceDb.writes], ['Z', []], 'never overwritten, nothing written (no bump)');
     const namePlan = planDisplayName({ op: 'set', rid: 'x_pizza', value: 'X. Pizza', current: X });
-    raceDb.data['restaurants/x_pizza/identity/display_name'] = 'Otra';
+    live.display_name = 'Otra';
     const res2 = await applyDisplayName(raceDb, namePlan);
-    assert.deepStrictEqual([res2.ok, res2.conflict, raceDb.data['restaurants/x_pizza/identity/display_name']], [false, true, 'Otra'], 'a display_name written meanwhile is preserved');
-    raceDb.data['restaurants/x_pizza/identity/display_mark'] = 'N';                                  // equal meanwhile → success, no write
-    const before = raceDb.writes.length;
+    assert.deepStrictEqual([res2.ok, res2.conflict, raceDb.get(`${ID}/display_name`)], [false, true, 'Otra'], 'a display_name written meanwhile is preserved');
+    live.display_mark = 'N';                                                                         // equal meanwhile → success, no write
     assert.deepStrictEqual((await applyDisplayName(raceDb, markPlan)).ok, true, 'an equal value written meanwhile is a no-op success');
-    assert.strictEqual(raceDb.writes.length, before, 'and writes nothing');
+    assert.deepStrictEqual(raceDb.writes, [], 'and writes nothing');
     const del = planDisplayName({ op: 'delete', rid: 'x_pizza', current: { ...X, display_name: 'Otra' } });
     assert.strictEqual((await applyDisplayName(raceDb, del)).ok, true, 'delete stays the explicit replace path');
-    assert.strictEqual(raceDb.data['restaurants/x_pizza/identity/display_name'], undefined);
+    assert.strictEqual(raceDb.get(`${ID}/display_name`), null);
+    assert.strictEqual(raceDb.get(`${ID}/version`), XS.version + 1, 'delete bumps version (ONE bump)');
+    assert.strictEqual(raceDb.writes.length, 1);
+    assert.deepStrictEqual(await applyDisplayName(raceDb, del), { ok: true, back: null }, 'deleting an absent value is a no-op');
+    assert.strictEqual(raceDb.writes.length, 1, 'no write, no bump');
   }
-  ok('absent-fill at COMMIT (leaf transaction): a value written between plan and apply is preserved + conflict; an equal one is a no-op; delete stays explicit');
+  ok('absent-fill at COMMIT (identity transaction): a value written between plan and apply is preserved + conflict; an equal one is a no-op; delete stays explicit; only a real change bumps version (once)');
 
-  ok('set-mark: one-leaf write of a 1–2 character mark + read-back (every other identity field byte-equal); malformed / non-routing-valid refused; equal → no-op; a different existing mark PRESERVED (conflict)');
+  ok('set-mark: one-field write (+ version bump) of a 1–2 character mark + read-back (every other identity field byte-equal); malformed / non-routing-valid refused; equal → no-op; a different existing mark PRESERVED (conflict)');
 
   // 🔴 the spawned CLI can NEVER reach a real database, even if a regression let it past the guard: any RTDB traffic goes to
   // a dead local port and the credentials point nowhere (the refusal reason below proves WHICH guard answered)

@@ -35,6 +35,9 @@ const { releaseHold } = require('./order-control-state');
 
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 
+// ORCHESTRATION O1a §5 — the claim rollback the pause hold and the inactive hold SHARE (releasing → scheduled, ownership cleared)
+const rollbackClaim = (db, orderId, extra) => db.ref(`orders/${orderId}`).update({ status: S.SCHEDULED, release_claim_id: null, releasing_since: null, ...extra });
+
 // Atomic claim scheduled → releasing (null-first-safe). Aborts (no write) unless still a due, unblocked,
 // non-cancelling scheduled order. Returns { claimed, order }.
 async function claimForRelease(deps, orderId, now, claimId) {
@@ -60,12 +63,20 @@ async function finalizeRelease(deps, orderId, order, now) {
     if (hold) {
       const prev = order.control_held;
       const keep = prev && typeof prev === 'object' && prev.cause === hold.cause && isNum(prev.at);   // deduplicated
-      await db.ref(`orders/${orderId}`).update({
-        status: S.SCHEDULED, release_claim_id: null, releasing_since: null,
-        ...(keep ? {} : { control_held: { at: now, cause: hold.cause } }),
-      });
+      await rollbackClaim(db, orderId, keep ? {} : { control_held: { at: now, cause: hold.cause } });
       return { released: false, blocked: false, held: true, cause: hold.cause };
     }
+  }
+  // ORCHESTRATION O1a §5 — INACTIVE hold, after the pause return and before the hours check; ONLY on identity.active === false
+  // (absent / malformed / unreadable → today's path). One create-only dispatcher alert; the next sweep retries.
+  let active;
+  try { active = (await db.ref(`restaurants/${rid}/identity/active`).once('value')).val(); } catch (_) { active = undefined; }
+  if (active === false) {
+    await rollbackClaim(db, orderId, {});
+    try {
+      await db.ref(`dispatcher_alerts/scheduled_inactive_${orderId}`).transaction((cur) => (cur == null ? { type: 'scheduled_inactive', order_id: orderId, restaurant_id: rid, created_at: now } : undefined));
+    } catch (e) { console.error(`scheduled_inactive alert failed for ${orderId}`, e && e.message); }   // the hold stands; the next sweep re-alerts
+    return { released: false, blocked: false, held: true, cause: 'inactive' };
   }
   const hours = (await db.ref(`restaurants/${rid}/identity/hours`).once('value')).val() || null;
   const check = S.releaseTimeValid(hours, order, now);
