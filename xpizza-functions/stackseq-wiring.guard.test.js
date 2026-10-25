@@ -49,4 +49,21 @@ for (const w of ['exports.autoAssignOnOrderCreate', 'exports.sweepPendingOrders'
 }
 ok('ROUTES_API_KEY is bound to autoAssignOnOrderCreate and sweepPendingOrders only');
 
+// (iv) the pinned module cancel-order-core.js: base + exactly the flag-gated promotion entry (OFF = the base body verbatim)
+{
+  const { unapplyStackseqModule, HUNKS: MH } = require('./tools/stackseq-module-inverse');
+  const f = 'cancel-order-core.js';
+  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+  const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
+  assert.notStrictEqual(src, b, 'non-vacuity');
+  assert.strictEqual(unapplyStackseqModule(f, src), b, `🔴 ${f} minus the stackseq hunk is not ${BASE}:${f}`);
+  for (const h of MH) {
+    assert.throws(() => unapplyStackseqModule(f, src.replace(h.now, h.now.replace('SEQ_CANCEL', 'SEQ_CANCELX'))), /occurs 0 times/, 'a byte INSIDE the hunk');
+    assert.throws(() => unapplyStackseqModule(f, src + h.now), /occurs 2 times/, 'a duplicated hunk');
+  }
+  assert.notStrictEqual(unapplyStackseqModule(f, '\n' + src), b, 'a byte OUTSIDE the hunk');
+  assert.strictEqual(unapplyStackseqModule('other.js', 'x'), 'x', 'other files pass through');
+  ok(`${f}: base + exactly the flag-gated cancel-promotion entry (${MH.length} hunk); inside / outside / duplicated detected`);
+}
+
 console.log(`\nstackseq-wiring: OK (${n})`);

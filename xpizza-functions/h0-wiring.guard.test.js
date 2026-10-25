@@ -37,7 +37,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 {
   assert.deepStrictEqual([...FILES].sort(), ['cancel-order-core.js', 'pixelpay-hosted-webhook.js', 'resolve-manual.js']);
   for (const f of FILES) {
-    const src = require('./tools/brand-server-inverse').unapplyBrandServerModule(f, read(f));   // BRAND-AGNOSTIC SERVER (r3 §E; newest — resolve-manual.js) reversed first
+    const src = require('./tools/brand-server-inverse').unapplyBrandServerModule(f, require('./tools/stackseq-module-inverse').unapplyStackseqModule(f, read(f)));   // BRAND-AGNOSTIC SERVER (r3 §E; newest — resolve-manual.js) reversed first
     assert.notStrictEqual(unapplyH0Module(f, src), src, `non-vacuity: ${f} carries h0 hunks`);
     assert.strictEqual(unapplyH0Module(f, src), baseOf(f), `🔴 ${f} minus the h0 hunks is not ${BASE}:${f}`);
     const h = HUNKS.find((x) => x.file === f && /H0/.test(x.now));

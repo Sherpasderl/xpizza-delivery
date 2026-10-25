@@ -22,7 +22,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 // ── 1. the inverse ──
 assert.deepStrictEqual([...FILES].sort(), ['create-order-build.js', 'materialize.js']);
 // BRAND-AGNOSTIC SERVER (r3 §E; newest — materialize.js) is reversed first
-const bsRead = (f) => require('./tools/brand-server-inverse').unapplyBrandServerModule(f, read(f));
+const bsRead = (f) => require('./tools/brand-server-inverse').unapplyBrandServerModule(f, require('./tools/stackseq-module-inverse').unapplyStackseqModule(f, read(f)));
 for (const f of FILES) assert.strictEqual(unapplyD12b(f, bsRead(f)), baseOf(f), `🔴 ${f} minus the D12b hunks is not ${BASE}:${f}`);
 {
   const f = 'create-order-build.js'; const src = read(f);

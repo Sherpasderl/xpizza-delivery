@@ -107,7 +107,7 @@ const { unapplyH0Module, FILES: H0_FILES } = require('./tools/h0-inverse');
 const { unapplyA1Module, FILES: A1_FILES } = require('./tools/a1-inverse');
 // BRAND-AGNOSTIC SERVER (r3 §E) is the NEWEST change to pinned modules (materialize.js, pixelpay-confirm.js, resolve-manual.js): its
 // exact module inverse (tools/brand-server-inverse.js, proven by brand-server-wiring.guard) is reversed FIRST.
-const bsRead = (f) => require('./tools/brand-server-inverse').unapplyBrandServerModule(f, read(f));
+const bsRead = (f) => require('./tools/brand-server-inverse').unapplyBrandServerModule(f, require('./tools/stackseq-module-inverse').unapplyStackseqModule(f, read(f)));
 const a1Read = (f) => (A1_FILES.includes(f) ? unapplyA1Module(f, bsRead(f)) : bsRead(f));
 const h0Read = (f) => (H0_FILES.includes(f) ? unapplyH0Module(f, a1Read(f)) : a1Read(f));
 const s3Read = (f) => (S3_FILES.includes(f) ? unapplySerial3Module(f, h0Read(f)) : h0Read(f));
