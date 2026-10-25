@@ -53,13 +53,54 @@ const committed = (decided_at, pair = ['a', 'b']) => ({ state: 'committed', driv
 
   // ── 3. isolated inside runRetentionSweep: a failure never changes the task pass's result ──────────────────
   {
-    const seed = { config: { retention: { tasks_mode: 'dry_run' } }, tasks: {}, orders: {}, stacks: { r_old: refused(1) } };
+    const seed = { config: { retention: { tasks_mode: 'dry_run' }, stack_sequencing_enabled: true }, tasks: {}, orders: {}, stacks: { r_old: refused(1) } };
     const good = createFakeDb(seed); const a = await runRetentionSweep(good, { healTerminalStatuses: new Set(['cancelled']) });
     assert.strictEqual(good.get('stacks/r_old'), null, 'the stack pass ran from the sweep');
     const bad = createFakeDb(seed); bad.failReads.add('stacks');
     const b = await runRetentionSweep(bad, { healTerminalStatuses: new Set(['cancelled']) });
     assert.deepStrictEqual(b, a, 'a failing stack pass leaves the task pass result unchanged');
     ok('runRetentionSweep runs the stack pass in its own try/catch: it deletes, and a failure leaves the task pass result unchanged');
+  }
+
+  // ── 4. r1 P2: a COLD cache — the SDK's first transaction call is a speculative null; the delete still lands ─────────
+  {
+    // models the Admin SDK: fn(null) first; undefined → ABORT (nothing written); any other value on a non-null node → the
+    // server rejects it and the SDK re-runs fn with the real value (here: the fake's own transaction)
+    const cold = (db) => ({ ...db, ref: (p) => { const r = db.ref(p); if (!p.startsWith('stacks/')) return r; return { ...r, transaction: async (fn) => {
+      const spec = fn(null);
+      if (spec === undefined) return { committed: false, snapshot: { val: () => null } };
+      if (db.get(p) === null) { db.put(p, spec); return { committed: true, snapshot: { val: () => spec } }; }
+      return r.transaction(fn);
+    } }; } });
+    const db = createFakeDb({
+      stacks: { r_old: refused(NOW - 2 * DAY_MS), c_old: committed(NOW - 8 * DAY_MS, ['p1', 'q1']), r_live: refused(NOW + 60000), c_live: committed(NOW - 8 * DAY_MS, ['p2', 'q2']) },
+      tasks: { q2_delivery: { order_id: 'q2', type: 'delivery', status: 'accepted' } },
+    });
+    const r = await runStackPass(cold(db), NOW);
+    assert.deepStrictEqual(Object.keys(db.get('stacks')).sort(), ['c_live', 'r_live'], 'cold cache: both expired records deleted, the live ones kept');
+    assert.deepStrictEqual(r, { scanned: 4, deleted: 2, kept: 2 });
+    // a record re-written between the scan and the delete is still kept on a cold cache (the guards run on the real value)
+    const db2 = createFakeDb({ stacks: { r: refused(NOW - 2 * DAY_MS) } });
+    db2.hooks.onTxn = async () => { db2.put('stacks/r', committed(NOW)); };
+    await runStackPass(cold(db2), NOW);
+    assert.strictEqual(db2.get('stacks/r/state'), 'committed', 'cold cache: a re-written record is kept');
+    ok('a cold cache (speculative null first): expired records are deleted, live and re-written ones kept');
+  }
+
+  // ── 5. r1 P2: flag OFF (absent / false) → the sweep reads NOTHING under stacks/ and deletes nothing ──────────────────
+  {
+    for (const flag of ['ABSENT', false]) {
+      const config = { retention: { tasks_mode: 'dry_run' } }; if (flag !== 'ABSENT') config.stack_sequencing_enabled = flag;
+      const hist = { r_old: refused(1), c_old: committed(1, ['h1', 'h2']), r_mid: refused(NOW - 3 * DAY_MS) };
+      const db = createFakeDb({ config, tasks: {}, orders: {}, stacks: JSON.parse(JSON.stringify(hist)) });
+      const paths = []; const spy = { ...db, ref: (p) => { paths.push(String(p)); return db.ref(p); } };
+      const out = await runRetentionSweep(spy, { healTerminalStatuses: new Set(['cancelled']) });
+      assert.deepStrictEqual(paths.filter((p) => p.startsWith('stacks')), [], `flag ${flag}: zero reads / writes under stacks/`);
+      assert.deepStrictEqual(db.get('stacks'), hist, `flag ${flag}: zero deletes`);
+      const base = createFakeDb({ config, tasks: {}, orders: {} });
+      assert.deepStrictEqual(out, await runRetentionSweep(base, { healTerminalStatuses: new Set(['cancelled']) }), `flag ${flag}: the task pass result is today's`);
+    }
+    ok('flag absent / false: runRetentionSweep reads nothing under stacks/ and deletes no historical record; the task pass result unchanged');
   }
 
   FINISHED = true;

@@ -13,7 +13,7 @@ const HUNKS = [
  },
  {
   "file": "retention-sweep.js",
-  "now": "  // stacked-seq r5 T9 (D10): the stacks/ retention pass — isolated in its own try/catch, never affects the passes above\n  try {\n    const s = await require('./sequencing/retention').runStackPass(db, Date.now());\n    if (s.deleted) console.log(`retentionSweepTasks: stacks — deleted ${s.deleted}, kept ${s.kept} of ${s.scanned}`);\n  } catch (e) { console.warn('retentionSweepTasks: stack retention pass failed (task pass unaffected)', e && e.message); }\n",
+  "now": "  // stacked-seq r5 T9 (D10): the stacks/ retention pass — flag-gated (OFF → no stacks/ read, no delete), isolated in its own\n  // try/catch, never affects the passes above\n  try {\n    const s = await require('./sequencing/retention').runStackPassIfOn(db, Date.now());\n    if (s && s.deleted) console.log(`retentionSweepTasks: stacks — deleted ${s.deleted}, kept ${s.kept} of ${s.scanned}`);\n  } catch (e) { console.warn('retentionSweepTasks: stack retention pass failed (task pass unaffected)', e && e.message); }\n",
   "was": ""
  }
 ];

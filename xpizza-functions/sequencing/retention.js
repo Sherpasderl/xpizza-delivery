@@ -5,6 +5,7 @@
 //               detector and the reuse rule may still read it).
 // Each delete is ONE transaction that re-checks the record it scanned (state + the timestamp that qualified it), so a record
 // re-written meanwhile is never removed.
+const { readSeqFlagSafe } = require('./cancel-promotion');
 const DAY_MS = 24 * 3600 * 1000;
 const COMMITTED_TTL_MS = 7 * DAY_MS;
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -23,10 +24,19 @@ async function runStackPass(db, now) {
       if (live.some(Boolean)) continue;
       still = (c) => !!c && c.state === 'committed' && c.decided_at === rec.decided_at;
     } else continue;
-    const r = await db.ref(`stacks/${id}`).transaction((c) => (still(c) ? null : undefined));
+    // r1 P2: the Admin SDK's FIRST call may be a speculative null (cold cache) — return null (no-op / the server rejects and
+    // re-runs with the real value), never undefined (an abort would leave the expired record forever); a real record keeps the guards
+    const r = await db.ref(`stacks/${id}`).transaction((c) => (c === null ? null : (still(c) ? null : undefined)));
     if (r && r.committed) deleted++;
   }
   return { scanned, deleted, kept: scanned - deleted };
 }
 
-module.exports = { runStackPass, DAY_MS, COMMITTED_TTL_MS };
+// r1 P2: the pass runs ONLY with the flag ON (read once); absent / false / junk / a read error → nothing read under stacks/,
+// nothing deleted — the flag-OFF retention sweep is today's. Returns the pass result, or null when OFF.
+async function runStackPassIfOn(db, now) {
+  if (!(await readSeqFlagSafe(db))) return null;
+  return runStackPass(db, now);
+}
+
+module.exports = { runStackPass, runStackPassIfOn, DAY_MS, COMMITTED_TTL_MS };
