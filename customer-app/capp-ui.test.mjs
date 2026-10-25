@@ -28,7 +28,9 @@ const NOON = () => new Date(2026, 9, 20, 19, 5);
 const J = (x) => JSON.parse(JSON.stringify(x));   // values from the jsdom realm, compared in this one
 
 function boot(rid, extra = {}) {
-  const html = readFileSync(join(HERE, 'index.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '');
+  // the REAL stylesheet is inlined so visibility (display:none up the tree) is real in jsdom's cascade — focus may only land on what shows
+  const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
+  const html = readFileSync(join(HERE, 'index.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
@@ -302,5 +304,85 @@ test('r1 P2-7: cart actions keep an active search — query, results and focus s
   assert.equal(b.ui.cart.count(), 1);
   assert.equal(b.q('#sq') && b.q('#sq').value, 'Pork', '🔴 the query survives the cart action');
   assert.equal(b.qa('#sresults .row').length, hits, '🔴 the results survive');
-  assert.ok(b.w.document.activeElement && b.w.document.activeElement.dataset.id === id, '🔴 focus stays on the result');
+  const ae = b.w.document.activeElement;
+  assert.ok(ae && ae.dataset.id === id && b.q('#layer').contains(ae) && reach(b, ae), '🔴 focus stays on the result — in the search layer, never the inert store copy');
+});
+
+// ── Codex S1b r2 regressions (each fails on revert) ──
+// reachable as a user sees it: not inside an inert subtree, nothing display:none up the tree (the real capp.css is inlined)
+function reach(b, el) { if (!el || el.closest('[inert]')) return false; for (let n = el; n; n = n.parentElement) { if (n.hidden || b.w.getComputedStyle(n).display === 'none') return false; } return true; }
+const tabbables = (b, root) => [...root.querySelectorAll('button:not([disabled]),input,[tabindex]:not([tabindex="-1"]),a[href]')].filter((x) => reach(b, x));
+
+test('r2 #1: an EDIT into a choice is refused when its LAUNCHER is sold out (CTA and save)', () => {
+  const m = boot('la_musa').ui.menu; const [lk, g] = Object.entries(m.groups)[0]; const [ca, cb] = g.choices;
+  const sold = new Set();
+  const b = boot('la_musa', { unavailable: sold });
+  b.ui.cart.add(ca, [], 1); b.ui.render();
+  b.click('#cart-bar'); b.click(b.qa('.cline [data-act="edit"]')[0]);
+  sold.add(lk);
+  b.click(`.detail-variant-row[data-id="${cb}"]`);
+  assert.ok(b.q('#detail-cta').disabled, '🔴 the edit CTA is disabled while the launcher is sold out');
+  b.click('#detail-cta');
+  assert.deepEqual(J(b.ui.cart.lines().map((l) => l.key)), [ca], '🔴 the cart is unchanged');
+  assert.ok(b.q('#detail-modal').classList.contains('open'), 'the sheet stays open');
+});
+
+test('r2 #2: search focus is restored INSIDE the search layer — after its sheet closes and after a result «+»', () => {
+  const b = boot('la_musa');
+  b.click('[data-act="ssearch"]');
+  const inp = b.q('#sq'); inp.value = 'Pork'; inp.dispatchEvent(new b.w.Event('input', { bubbles: true }));
+  const open = b.q('#sresults .txtbtn'); const id = open.dataset.id; open.focus();
+  b.click(open);
+  assert.ok(b.q('#detail-modal').classList.contains('open'));
+  b.click('#detail-close');
+  const ae = b.w.document.activeElement;
+  assert.ok(b.q('#layer').contains(ae) && reach(b, ae) && ae.dataset.id === id, '🔴 closing the sheet returns focus to the search result, not the inert store');
+  const add = b.q(`#sresults .qty-add-btn[data-id="${id}"]`); add.focus(); b.click(add);
+  const ae2 = b.w.document.activeElement;
+  assert.ok(b.q('#layer').contains(ae2) && reach(b, ae2) && ae2.dataset.id === id, '🔴 after «+» focus is on a VISIBLE control of that result in the layer');
+  const minus = b.q(`#sresults .qty-ctrl-btn[data-act="dec"][data-id="${id}"]`); assert.ok(reach(b, minus), 'premise: «−» shows'); minus.focus(); b.click(minus);
+  assert.equal(b.ui.cart.count(), 0);
+  const ae3 = b.w.document.activeElement;
+  assert.ok(b.q('#layer').contains(ae3) && reach(b, ae3) && ae3.dataset.id === id, '🔴 «−» to zero hides «−»: focus moves to the VISIBLE «+», never the hidden control');
+});
+
+test('r2 #3: keyboard focus survives renderDetail() and render() while the sheet is open', () => {
+  const b = boot('x_pizza'); const m = b.ui.menu; const d = configurable(m); const [e1] = m.extrasFor(d.key);
+  b.ui.cart.add(d.key, [], 1); b.ui.render();
+  b.click(`.txtbtn[data-id="${d.key}"]`);
+  const sel = `.detail-extras-row[data-eid="${e1.key}"][data-inst="0"]`;
+  b.q(sel).focus(); key(b, 'Enter', sel);
+  assert.deepEqual(J(b.ui.cart.lines()[0].ex), [{ [e1.key]: 1 }]);
+  assert.equal(b.w.document.activeElement, b.q(sel), '🔴 focus stays on the toggled row after renderDetail()');
+  key(b, ' ', b.w.document.activeElement);
+  assert.deepEqual(J(b.ui.cart.lines()[0].ex), [{}], '🔴 …so a second Space toggles it back');
+  b.q(sel).focus(); b.ui.render();
+  assert.equal(b.w.document.activeElement, b.q(sel), '🔴 a full render() with the sheet open keeps focus on the row');
+});
+
+test('r2 #4: the cart «+» keeps focus on «+» (the descriptor carries the direction), so the next activation adds, never removes', () => {
+  const b = boot('la_musa'); const d = b.ui.menu.dishes.find((x) => !x.launcher && !x.variantOf && !b.ui.menu.pickupOnlyCats.has(String(x.cat)));
+  b.ui.cart.add(d.key, [], 2); b.ui.render();
+  b.click('#cart-bar');
+  const plus = b.q(`[data-act="rev"][data-rev="1"][data-key="${d.key}"]`); plus.focus(); b.click(plus);
+  assert.equal(b.ui.cart.count(), 3);
+  assert.equal(b.w.document.activeElement.dataset.rev, '1', '🔴 focus stays on «+»');
+  b.click(b.w.document.activeElement);
+  assert.equal(b.ui.cart.count(), 4, '🔴 the next activation adds again');
+  const minus = b.q(`[data-act="rev"][data-rev="-1"][data-key="${d.key}"]`); minus.focus(); b.click(minus);
+  assert.equal(b.w.document.activeElement.dataset.rev, '-1', 'and «−» keeps «−»');
+});
+
+test('r2 #5: the Tab trap counts only VISIBLE controls — a hidden «+» is never an endpoint', () => {
+  const b = boot('la_musa');
+  b.click('[data-act="ssearch"]');
+  const inp = b.q('#sq'); inp.value = 'Pork'; inp.dispatchEvent(new b.w.Event('input', { bubbles: true }));
+  const adds = b.qa('#sresults .qty-add-btn'); const lastAdd = adds[adds.length - 1]; const lid = lastAdd.dataset.id; lastAdd.focus(); b.click(lastAdd);
+  const L = b.q('#layer');
+  assert.equal(reach(b, L.querySelector(`.qty-add-btn[data-id="${lid}"]`)), false, 'premise: the added result\'s «+» is now hidden');
+  const f = tabbables(b, L); const first = f[0], last = f[f.length - 1];
+  last.focus(); key(b, 'Tab', last);
+  assert.equal(b.w.document.activeElement, first, '🔴 Tab from the last VISIBLE control wraps to the first');
+  first.focus(); first.dispatchEvent(new b.w.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
+  assert.equal(b.w.document.activeElement, last, '🔴 Shift+Tab from the first lands on the last VISIBLE control, never a hidden one');
 });

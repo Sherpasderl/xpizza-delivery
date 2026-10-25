@@ -178,15 +178,22 @@
 
     // ── focus (sheets are dialogs: focus moves in, Tab stays in, the background and a closed sheet are inert, focus returns) ──
     const FOCUSABLE = 'button:not([disabled]),input,[tabindex]:not([tabindex="-1"]),a[href]';
-    const descOf = (el) => (el && el.dataset ? { act: el.dataset.act, id: el.dataset.id, key: el.dataset.key, grp: el.dataset.grp, field: el.dataset.field, elId: el.id } : null);
+    // a control is described by its id + EVERY data-* attribute (act, id, key, grp, rev, eid, inst, delta …), so «+» never matches «−»
+    const descOf = (el) => (el && el.dataset && el !== doc.body ? { ds: { ...el.dataset }, elId: el.id } : null);
+    // only controls a user can reach: not inside an inert subtree, not display:none / hidden up the tree
+    const shown = (el) => { const win = doc.defaultView; for (let n = el; n && n !== app.parentNode; n = n.parentElement) { if (n.hidden) return false; try { if (win.getComputedStyle(n).display === 'none') return false; } catch (_) {} } return true; };
+    const reachable = (el) => !!el && !el.closest('[inert]') && shown(el);
+    const attrSel = (ds) => Object.entries(ds).map(([k, v]) => `[data-${k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}="${String(v).replace(/["\\]/g, '\\$&')}"]`).join('');
+    // focus is restored INSIDE the active dialog (the open sheet, else the open layer), else the page — never into an inert copy
     function refind(d) {
       if (!d) return null;
-      if (d.elId) { const e = $(d.elId); if (e) return e; }
-      if (d.field) return app.querySelector(`[data-field="${d.field}"]`);
-      if (!d.act) return null;
-      const sel = `[data-act="${d.act}"]` + (d.id != null ? `[data-id="${d.id}"]` : '') + (d.key != null ? `[data-key="${d.key}"]` : '') + (d.grp != null ? `[data-grp="${d.grp}"]` : '');
-      try { return app.querySelector(sel) || (d.act === 'inc' || d.act === 'dec' ? app.querySelector(`[data-act="badge"][data-id="${d.id}"]`) || app.querySelector(`[data-act="open"][data-id="${d.id}"]`) : null); } catch (_) { return null; }
+      const root = dialogEl() || app;
+      const pick = (sel) => { try { return [...root.querySelectorAll(sel)].find(reachable) || null; } catch (_) { return null; } };
+      if (d.elId) { const e = $(d.elId); if (e && root.contains(e) && reachable(e)) return e; }
+      const ds = d.ds || {}; if (!Object.keys(ds).length) return null;
+      return pick(attrSel(ds)) || (ds.act === 'inc' || ds.act === 'dec' ? pick(`[data-act="inc"]${attrSel({ id: ds.id })}`) || pick(`[data-act="badge"]${attrSel({ id: ds.id })}`) || pick(`[data-act="open"]${attrSel({ id: ds.id })}`) : null);
     }
+    const lost = () => !doc.activeElement || doc.activeElement === doc.body || !doc.contains(doc.activeElement);
     const focusTo = (el) => { if (el && el.focus) { try { el.focus(); } catch (_) {} } };
     const setInert = (el, on) => { if (!el) return; if (on) { el.setAttribute('inert', ''); el.setAttribute('aria-hidden', 'true'); } else { el.removeAttribute('inert'); el.removeAttribute('aria-hidden'); } };
     let returnTo = null;   // where focus goes back when the open dialog closes
@@ -212,7 +219,9 @@
       const sel = q > 0;
       return `<div class="detail-extras-row" data-act="${act}" ${attrs} role="checkbox" aria-checked="${sel}" tabindex="0"><span class="xrow-main"><span class="detail-extras-name">${esc(e.n)}</span><span class="xrow-price">+${money(e.p)}</span></span><div class="detail-extras-toggle ${sel ? 'selected' : ''}">${IC.check.replace('class="i"', '')}</div></div>`;
     }
-    function renderDetail() {
+    function renderDetail() { renderDetailBody(); if (detailHad && lost()) focusTo(refind(detailHad)); detailHad = null; }
+    let detailHad = null;
+    function renderDetailBody() {
       const o = S.open, it = find(o.id);
       $('detail-header-title').textContent = o.kind === 'edit' ? 'Editar' : it.n;
       const src = it.hero || it.img;
@@ -240,11 +249,12 @@
       }
       if (S.refusal) html += `<div class="cartnote">${IC.info}<span>${esc(S.refusal)}</span></div>`;
       html += '<div style="height:12px"></div>';
+      detailHad = $('detail-modal').contains(doc.activeElement) ? descOf(doc.activeElement) : null;
       const keep = $('detail-scroll').scrollTop; $('detail-scroll').innerHTML = html; $('detail-scroll').scrollTop = keep;
       const step = $('detail-step'), cta = $('detail-cta'); cta.disabled = false; cta.className = 'detail-cta';
       const stepper = (n, minusOk) => `<button class="detail-step-btn" data-act="qty" data-delta="-1" aria-label="Quitar una"${minusOk ? '' : ' disabled'}>−</button><span class="detail-step-num" aria-live="polite">${n}</span><button class="detail-step-btn" data-act="qty" data-delta="1" aria-label="Agregar una">+</button>`;
       const label = (verb, amount) => `<span>${verb}</span><span class="detail-cta-divider">·</span><span>${money(amount)}</span>`;
-      if (o.kind === 'edit') { step.hidden = true; step.innerHTML = ''; const base = o.staged.choice ? find(o.staged.choice).p : it.p; const target = o.staged.choice || o.key; if (soldOf(target)) { cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; } cta.innerHTML = label('Guardar', o.n * (base + instTotal(o.staged.ex))); return; }
+      if (o.kind === 'edit') { step.hidden = true; step.innerHTML = ''; const base = o.staged.choice ? find(o.staged.choice).p : it.p; const target = o.staged.choice || o.key; if (editSold(o)) { cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; } cta.innerHTML = label('Guardar', o.n * (base + instTotal(o.staged.ex))); return; }
       step.hidden = false;
       if (o.kind === 'launcher') { const c = it.group.choices.find((x) => x.id === o.staged.choice), n = o.staged.qty || 1; step.innerHTML = stepper(n, n > 1); if (c && (soldOf(c.id) || soldOf(it.id))) { cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; } if (!c) { cta.disabled = true; cta.innerHTML = `<span>Elegí tu ${esc(it.group.label.toLowerCase())}</span>`; } else cta.innerHTML = label('Agregar', n * (c.p + instTotal(o.staged.ex))); return; }
       const q = qtyOf(it.id);
@@ -267,9 +277,11 @@
       }
       renderDetail(); syncPill();
     }
+    // an edit is refused when its target is sold out OR, for a choice, its launcher is
+    const editSold = (o) => soldOf(o.staged.choice || o.key) || (o.staged.choice ? soldOf(o.id) : false);
     function saveEdit() {
       const o = S.open; const target = o.staged.choice || o.key;
-      if (soldOf(target)) { renderDetail(); return; }
+      if (editSold(o)) { renderDetail(); return; }
       if (!mutate(() => cart.edit(o.key, o.g, Object.keys(o.staged.ex), target))) { renderDetail(); return; }   // refused: the sheet stays open, the reason shown in it
       closeDetail();
     }
@@ -313,7 +325,7 @@
     function render() {
       app.classList.toggle('narrow', app.clientWidth > 0 && app.clientWidth < 375);
       const keepSearch = S.layerKind === 'ssearch' && $('layer') && $('layer').querySelector('#sq') ? $('layer') : null;
-      const had = keepSearch ? descOf(doc.activeElement) : null;
+      const had = app.contains(doc.activeElement) ? descOf(doc.activeElement) : null;
       const keepToast = $('toast');
       app.innerHTML = `<div class="screen">${storeHtml()}</div>${detailSkeleton()}<div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`;   // the prototype's mount (render())
       if (keepSearch) app.replaceChild(keepSearch, $('layer'));
@@ -321,7 +333,7 @@
       wireStore(); renderLayer();
       if (S.open) { renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); }
       syncInert();
-      if (had) focusTo(refind(had));
+      if (had && lost()) focusTo(refind(had));
     }
     function onClick(ev) {
       const t = ev.target.closest && ev.target.closest('[data-act]'); if (!t || !app.contains(t)) return;
@@ -334,8 +346,8 @@
       if (act === 'open') { returnTo = descOf(t); openDetail(id); return; }
       if (act === 'pill') { openLayer('cart'); return; }
       if (act === 'cartclose' || act === 'lclose') { closeLayer(); return; }
-      if (act === 'rev') { const k = t.dataset.key, g = t.dataset.grp || '', d = descOf(t); mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(k, g) : cart.lineDec(k, g))); renderStoreKeep(); renderLayer(); focusTo(refind(d) || $('layer').querySelector(FOCUSABLE)); return; }
-      if (act === 'edit') { S.layerKind = null; renderLayer(); returnTo = { act: 'pill' }; openEdit(t.dataset.key, t.dataset.grp || ''); return; }
+      if (act === 'rev') { const k = t.dataset.key, g = t.dataset.grp || '', d = descOf(t); mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(k, g) : cart.lineDec(k, g))); renderStoreKeep(); renderLayer(); focusTo(refind(d) || [...$('layer').querySelectorAll(FOCUSABLE)].find(reachable)); return; }
+      if (act === 'edit') { S.layerKind = null; renderLayer(); returnTo = { elId: 'cart-bar', ds: { act: 'pill' } }; openEdit(t.dataset.key, t.dataset.grp || ''); return; }
       if (act === 'mode') { S.mode = t.dataset.val; renderStoreKeep(); return; }
       if (act === 'jump') { jumpTo(t.dataset.jump); return; }
       if (act === 'menu') { openLayer('menu'); return; }
@@ -353,7 +365,7 @@
       if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[role="checkbox"][data-act], [role="radio"][data-act], .qty-badge')) { e.preventDefault(); e.target.click(); return; }
       if (e.key === 'Tab') {
         const dlg = dialogEl(); if (!dlg) return;
-        const f = [...dlg.querySelectorAll(FOCUSABLE)].filter((x) => !x.closest('[inert]'));
+        const f = [...dlg.querySelectorAll(FOCUSABLE)].filter(reachable);
         if (!f.length) { e.preventDefault(); return; }
         const first = f[0], last = f[f.length - 1];
         if (!dlg.contains(doc.activeElement)) { e.preventDefault(); focusTo(first); return; }
