@@ -266,7 +266,7 @@ t('pickupReviewHtml: review — number protagonist + name chip (R4 is pre-accept
   const html = pickupReviewHtml(PK, DEPS);
   assert.ok(html.includes('Número de pedido · decilo en ventanilla'), 'the «decilo en ventanilla» label');
   assert.ok(html.includes('sv-bignum') && html.includes('#47'), 'the order-number protagonist');
-  assert.ok(html.includes('Daniela'), 'the customer-name chip is KEPT (R4 restricts identity only before accept)');
+  assert.ok(html.includes('Daniela M.'), 'the customer-name chip is KEPT as first name + last initial (R4 is pre-accept only; «exactly as shown»)');
   assert.ok(html.includes('Pizza grande') && html.includes('Refrescos'), 'the structured items');
   assert.ok(html.includes('Revisá bebidas y salsas'), 'the reminder banner');
   assert.ok(html.includes('id="btn-pickup"') && html.includes('Recogí el pedido'), 'the server Recogí slide');

@@ -485,13 +485,17 @@ export function pickupReviewHtml(o, deps = {}) {
   const { ICONS = {}, esc = String } = deps;
   const order = o.order || {};
   const name = order.customer_name || (o.deliveryTask && o.deliveryTask.recipient_name) || '—';
+  // The name chip is first name + last initial «Daniela M.» (advisor «exactly as shown» — a privacy-minded short
+  // form, not the full surname). A single-token name shows alone.
+  const np = String(name).trim().split(/\s+/).filter(Boolean);
+  const nameChip = np.length > 1 ? `${np[0]} ${np[1][0]}.` : (np[0] || '—');
   const items = reviewItemsCardHtml(order, esc, ICONS);
   const reminder = items ? `<div class="sv-reminder">${ICONS.cup || ICONS.warn || ''}<div><b>Revisá bebidas y salsas</b><span>Son lo que más se olvida.</span></div></div>` : '';
   return `<div class="active-card">
       <div class="sv-review-top">
         <div class="sv-lbl">Número de pedido · decilo en ventanilla</div>
         <div class="sv-bignum">${esc(displayOrderLabel(order))}</div>
-        <div class="sv-review-chips">${rchip(order, esc)}<span class="rchip neutral">${esc(firstName(name))}</span></div>
+        <div class="sv-review-chips">${rchip(order, esc)}<span class="rchip neutral">${esc(nameChip)}</span></div>
       </div>
     </div>
     ${items}
