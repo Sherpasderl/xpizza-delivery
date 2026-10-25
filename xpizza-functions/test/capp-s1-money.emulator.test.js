@@ -200,56 +200,71 @@ async function oldBody(rid, build) {
   }
   ok('M money (x_pizza, la_musa, r3_synth; plain, ×3, toggles, two configurations, launcher choices): merchandise subtotal == quote total_cents; quote net == stored cash total_cents == captured PixelPay × 100; fee OFF and ON (envío L30); r3_synth card fail-closed (no orders deployment, S3b)');
 
-  // ── R. rewards on N per-instance lines (fee ON) ──
+  // ── R. rewards on N per-instance lines (fee ON) — exact money parity and exact reservation transitions ──
+  const { REDEMPTION_CONFIG, REDEEM_POINTS_PER_LEMPIRA } = require('../rewards-redeem-config');
+  const { REWARDS_CONFIG } = require('../rewards-core');
+  // the reward's cost, independently from the redemption CONFIG + the served catalog price (never from the order under test)
+  const expectedCost = (rid) => (REDEMPTION_CONFIG[rid].kind === 'punch' ? REDEMPTION_CONFIG[rid].cost
+    : REWARD[rid].items.reduce((s, it) => s + Math.round(Number((ENV[rid].menu.extras.find((e) => String(e.id) === it.id) || ENV[rid].menu.dishes.find((d) => String(d.id) === it.id)).price) * REDEEM_POINTS_PER_LEMPIRA) * it.qty, 0));
+  // the earn, independently from the earn CONFIG + the cart (punch: instances; points: floor(food / perCents) × pointsPer)
+  const expectedEarn = (rid, cart) => { const c = REWARDS_CONFIG[rid]; return c.kind === 'punch' ? cart.count() : Math.floor(cart.subtotalCents() / c.perCents) * c.pointsPer; };
+  const wallet = async (rid) => (await rtdb.ref(`user_rewards/${UID}/${rid}`).get()).val() || {};
+  const resv = async (rid, id) => ((await wallet(rid)).reservations || {})[id] || null;
   for (const rid of ['x_pizza', 'la_musa']) {
-    const m = MENU[rid]; const auth = { 'x-firebase-id-token': UID };
+    const m = MENU[rid]; const auth = { 'x-firebase-id-token': UID }; const cost = expectedCost(rid);
     const d = configurable(m) || orderableDish(m); const ex = m.extrasFor(d.key);
     const cart = createCart(m); cart.add(d.key, ex.length ? [ex[0].key] : [], 2); cart.inc(d.key);
-    const s = serialize(cart, m);
+    const s = serialize(cart, m); const paid = cart.subtotalCents(); const net = paid + 3000;
+    assert.ok(cost > 0 && BALANCE[rid] >= cost, `premise: the balance covers the reward (${cost})`);
+    await rtdb.ref(`user_rewards/${UID}/${rid}`).set({ balance: BALANCE[rid], reserved: 0 });
     await clean();
     const qr = await post(app.quoteRedemption, { restaurant_id: rid, items: s.items, redeem: REWARD[rid], mode: 'delivery', pin: { ...PIN, confirmed: true } }, auth);
-    assert.ok(qr.json && qr.json.ok, `${rid}: quoteRedemption on N instance lines — ${qr.text.slice(0, 220)}`);
-    // cash: the reward is applied; the free item is outside the paid total; the hold is consumed
-    const before = (await rtdb.ref(`user_rewards/${UID}/${rid}`).get()).val();
+    assert.ok(qr.json && qr.json.ok && typeof qr.json.quote_token === 'string' && qr.json.quote_token, `${rid}: quoteRedemption issues a SIGNED quote — ${qr.text.slice(0, 220)}`);
+    assert.deepStrictEqual([qr.json.total_cents, qr.json.net_total_cents, qr.json.total_cost], [paid, net, cost], `🔴 ${rid}: the reward quote: food == the PAID subtotal (free item excluded), net == food + envío, cost == the config`);
+    // cash: exact total; the reservation RESERVED for exactly the cost; balance untouched
     await clean();
-    const cb = bodyOf(rid, 'cash', cart, { redeem: REWARD[rid], ...(qr.json.quote_token ? { quote_token: qr.json.quote_token, expected_net_cents: qr.json.net_total_cents } : {}) });
+    const cb = bodyOf(rid, 'cash', cart, { redeem: REWARD[rid], quote_token: qr.json.quote_token, expected_net_cents: qr.json.net_total_cents });
     const c = await post(app.createOrder, cb, auth);
     assert.strictEqual(c.status, 200, `${rid} reward cash: ${c.text.slice(0, 220)}`);
     const co = await order(cb.order_id);
-    assert.ok(co.redemption, `${rid}: the cash order is bound to its reward`);
-    assert.ok(/\(Recompensa\)$/.test(co.items_text) && co.items_text.startsWith(s.items_text), `${rid}: the free line is the server's suffix on the client text`);
-    assert.ok(co.total_cents <= s.subtotal_cents + 3000, `${rid}: the free item is never charged (total ${co.total_cents} ≤ paid subtotal + envío)`);
-    const after = (await rtdb.ref(`user_rewards/${UID}/${rid}`).get()).val();
-    assert.ok((Number(after.reserved) || 0) > (Number(before.reserved) || 0) || (Number(after.balance) < Number(before.balance)), `${rid}: the reward is held or consumed by the cash order`);
-    // card: bound; the ISSUED body resumes the SAME checkout (bound reuse); confirm consumes
+    assert.ok(co.redemption && co.items_text.startsWith(s.items_text) && /^ \| \d+x .+ \(Recompensa\)$/.test(co.items_text.slice(s.items_text.length)), `${rid}: bound, the free line is exactly one server suffix on the client text`);
+    assert.strictEqual(co.total_cents, net, `🔴 ${rid}: the stored cash total == the quoted net EXACTLY (free item uncharged, no undercharge)`);
+    let r = await resv(rid, cb.order_id); let wl = await wallet(rid);
+    assert.deepStrictEqual([r && r.state, r && r.cost, wl.balance, wl.reserved], ['reserved', cost, BALANCE[rid], cost], `🔴 ${rid} cash: reservation reserved for exactly the cost; balance untouched`);
+    // card: bound; exact captured amount; the ISSUED body resumes the SAME checkout (same reservation, no second hold); confirm
+    // consumes exactly the cost; then a second reward checkout, cancelled → released exactly
     await rtdb.ref(`user_rewards/${UID}/${rid}`).set({ balance: BALANCE[rid], reserved: 0 });
     await clean(); CHARGED.length = 0;
-    const kb = bodyOf(rid, 'online', cart, { redeem: REWARD[rid] });
+    const qk = await post(app.quoteRedemption, { restaurant_id: rid, items: s.items, redeem: REWARD[rid], mode: 'delivery', pin: { ...PIN, confirmed: true } }, auth);
+    const kb = bodyOf(rid, 'online', cart, { redeem: REWARD[rid], quote_token: qk.json.quote_token, expected_net_cents: qk.json.net_total_cents });
     const issued = issuedSnapshot(kb);
     const k = await post(app.chargeOnlineOrder, kb, auth);
-    assert.ok(k.status === 200 && k.json.checkout_url, `${rid} reward card: ${k.text.slice(0, 220)}`);
+    assert.ok(k.status === 200 && k.json.checkout_url && CHARGED.length === 1, `${rid} reward card: ${k.text.slice(0, 220)}`);
+    assert.strictEqual(Math.round(CHARGED[0] * 100), net, `🔴 ${rid} reward card: the captured amount == the quoted net EXACTLY`);
     const ko = await order(kb.order_id);
-    assert.ok(ko.redemption && ko.payment_fingerprint, `${rid}: the card order is bound (redemption + payment fingerprint)`);
-    const heldAfterIssue = (await rtdb.ref(`user_rewards/${UID}/${rid}`).get()).val().reserved;
-    await clean();
+    assert.ok(ko.redemption && ko.payment_fingerprint && ko.charge_inputs_fp, `${rid}: the card order is bound (redemption + payment and charge-input fingerprints)`);
+    assert.strictEqual(ko.total_cents, net);
+    r = await resv(rid, kb.order_id); wl = await wallet(rid);
+    assert.deepStrictEqual([r && r.state, r && r.cost, r && r.order_fingerprint, wl.balance, wl.reserved], ['reserved', cost, ko.payment_fingerprint, BALANCE[rid], cost], `🔴 ${rid} card: reserved for exactly the cost, bound to the order's payment fingerprint`);
+    await clean(); CHARGED.length = 0;
     const again = await post(app.chargeOnlineOrder, resendBody(issued), auth);
     assert.deepStrictEqual([again.status, again.json && again.json.checkout_url], [200, k.json.checkout_url], `🔴 ${rid}: the ISSUED body resumes the SAME checkout (${again.text.slice(0, 160)})`);
-    assert.strictEqual((await rtdb.ref(`user_rewards/${UID}/${rid}`).get()).val().reserved, heldAfterIssue, `${rid}: no second hold`);
+    wl = await wallet(rid);
+    assert.deepStrictEqual([wl.balance, wl.reserved, (await resv(rid, kb.order_id)).state], [BALANCE[rid], cost, 'reserved'], `${rid}: no second hold on resume`);
     const conf = await confirmAndMaterialize(edgeDeps(rid), { orderId: kb.order_id, attemptId: ko.active_attempt_id, now: Date.now(), trackingToken: `TTR${rid}` });
-    const kc = await order(kb.order_id);
-    assert.strictEqual(kc.payment_status, 'confirmed', `${rid}: confirmed (${JSON.stringify(conf).slice(0, 160)})`);
-    const consumed = (await rtdb.ref(`user_rewards/${UID}/${rid}`).get()).val();
-    assert.ok(Number(consumed.balance) < BALANCE[rid], `${rid}: the confirm CONSUMES the reward (balance ${consumed.balance})`);
-    // release: a second reward checkout, cancelled → the hold is released
+    assert.strictEqual((await order(kb.order_id)).payment_status, 'confirmed', `${rid}: confirmed (${JSON.stringify(conf).slice(0, 160)})`);
+    r = await resv(rid, kb.order_id); wl = await wallet(rid);
+    assert.deepStrictEqual([r.state, r.debit_applied, wl.balance, wl.reserved], ['consumed', cost, BALANCE[rid] - cost, 0], `🔴 ${rid}: the confirm CONSUMES exactly the cost and leaves nothing reserved`);
     await rtdb.ref(`user_rewards/${UID}/${rid}`).set({ balance: BALANCE[rid], reserved: 0 });
     await clean();
-    const rb = bodyOf(rid, 'online', cart, { redeem: REWARD[rid] });
-    const r = await post(app.chargeOnlineOrder, rb, auth);
-    assert.ok(r.status === 200, `${rid} release setup: ${r.text.slice(0, 160)}`);
-    assert.ok((await rtdb.ref(`user_rewards/${UID}/${rid}`).get()).val().reserved > 0, 'premise: held');
+    const qc = await post(app.quoteRedemption, { restaurant_id: rid, items: s.items, redeem: REWARD[rid], mode: 'delivery', pin: { ...PIN, confirmed: true } }, auth);
+    const rb = bodyOf(rid, 'online', cart, { redeem: REWARD[rid], quote_token: qc.json.quote_token, expected_net_cents: qc.json.net_total_cents });
+    assert.strictEqual((await post(app.chargeOnlineOrder, rb, auth)).status, 200);
+    assert.deepStrictEqual([(await resv(rid, rb.order_id)).state, (await wallet(rid)).reserved], ['reserved', cost], 'premise: held');
     const cr = await cancelOrderCore(edgeDeps(rid), { orderId: rb.order_id, actor: 'test', reason: 'capp-s1', now: Date.now(), claimId: `cancel-${rb.order_id}` });
-    assert.strictEqual((await rtdb.ref(`user_rewards/${UID}/${rid}`).get()).val().reserved || 0, 0, `${rid}: the cancel RELEASES the hold (${JSON.stringify(cr).slice(0, 160)})`);
-    // earn parity with the OLD form's body for the same paid cart (a signed-in customer, no reward)
+    r = await resv(rid, rb.order_id); wl = await wallet(rid);
+    assert.deepStrictEqual([r.state, wl.balance, wl.reserved || 0], ['released', BALANCE[rid], 0], `🔴 ${rid}: the cancel RELEASES exactly — balance untouched, nothing reserved (${JSON.stringify(cr).slice(0, 120)})`);
+    // earn parity: populated, == the config-derived expectation, == the old live form's for the same paid cart
     const ob = await oldBody(rid, async (w, settle) => {
       w.chg(d.id, 3); await settle();
       if (ex.length) {
@@ -264,9 +279,12 @@ async function oldBody(rid, build) {
     assert.ok(ne.status === 200 && oe.status === 200, `earn setup: ${ne.text.slice(0, 120)} / ${oe.text.slice(0, 120)}`);
     const [no, oo] = [await order(newE.order_id), await order(oldE.order_id)];
     assert.strictEqual(no.total_cents, oo.total_cents, `🔴 ${rid}: the old form and the new renderer charge the same cart the same`);
-    assert.deepStrictEqual(no.earn_preview, oo.earn_preview, `🔴 ${rid}: earn == the old form's for the same cart`);
+    assert.ok(no.earn_preview && Number.isInteger(no.earn_preview.delta), `premise: the new order's earn_preview is populated (${JSON.stringify(no.earn_preview)})`);
+    assert.strictEqual(no.earn_preview.delta, expectedEarn(rid, cart), `🔴 ${rid}: the earn == the config-derived expectation`);
+    assert.ok(no.earn_preview.delta > 0, 'premise: a non-zero earn');
+    assert.deepStrictEqual(no.earn_preview, oo.earn_preview, `🔴 ${rid}: the earn == the old form's for the same cart`);
   }
-  ok('R rewards (x_pizza punch, la_musa points; N per-instance paid lines; envío ON): quoteRedemption ok; cash bound, the free line the server suffix, never charged, held/consumed; card bound, the ISSUED body resumes the SAME checkout with no second hold, confirm consumes, cancel releases; total and earn == the old live form\'s for the same cart');
+  ok('R rewards (x_pizza punch, la_musa points; N per-instance paid lines; envío ON): a SIGNED reward quote with food == the paid subtotal, net == food + envío, cost == the config; cash and card charged the net EXACTLY; the reservation reserved for exactly the cost (bound to the payment fingerprint), the ISSUED body resumes the SAME checkout with no second hold, confirm consumes exactly the cost, cancel releases exactly; earn populated == the config-derived value == the old live form\'s');
 
   // ── D + X. dedup and the cross-grammar residual (stamps NOT cleared within a scenario) ──
   await setPricing(false);
@@ -317,27 +335,49 @@ async function oldBody(rid, build) {
     const stamps = (await rtdb.ref(`recent_order_content/${rateLimitKey(ph)}`).get()).val() || {};
     for (const [k, v] of Object.entries(stamps)) if (v && v.at) await rtdb.ref(`recent_order_content/${rateLimitKey(ph)}/${k}/at`).set(v.at - 180000);
     const co = await order(card.order_id);
-    await confirmAndMaterialize(edgeDeps(rid), { orderId: card.order_id, attemptId: co.active_attempt_id, now: Date.now(), trackingToken: `TTX${card.order_id}` });
-    return { held: (await order(card.order_id)).payment_status === 'manual_reconciliation',
-      alerted: !!(await rtdb.ref(`dispatcher_alerts/duplicate_order_${cash.order_id}`).get()).val(), sameText: ob.items_text === nb.items_text };
+    const tok = `TTX${card.order_id}`;
+    const conf = await confirmAndMaterialize(edgeDeps(rid), { orderId: card.order_id, attemptId: co.active_attempt_id, now: Date.now(), trackingToken: tok });
+    const after = await order(card.order_id);
+    const cardAlert = (await rtdb.ref(`dispatcher_alerts/duplicate_order_${card.order_id}`).get()).val();     // the materialization guard's
+    const createAlert = (await rtdb.ref(`dispatcher_alerts/duplicate_order_${cash.order_id}`).get()).val();   // the cash intake's
+    const delivered = (await rtdb.ref(`tasks/${card.order_id}_delivery`).get()).exists();
+    const tracked = (await rtdb.ref(`order_tracking/${tok}`).get()).exists();
+    return { conf, after, cardAlert, createAlert, delivered, tracked, cashId: cash.order_id, sameText: ob.items_text === nb.items_text };
   }
+  // the TWO observable outcomes, asserted whole: HELD (no materialization, the hold reason + sibling, the guard's card alert) or
+  // MATERIALIZED (confirmed, its delivery task + tracking written, no guard alert) — a failed / pending confirm matches neither
+  function assertHeld(r, label) {
+    assert.strictEqual(r.conf && r.conf.outcome, 'held_duplicate_sibling', `🔴 ${label}: the confirm outcome (${JSON.stringify(r.conf)})`);
+    assert.deepStrictEqual([r.after.payment_status, r.after.blocked_reason, r.after.sibling_order_id, !!r.after.materialized_at], ['manual_reconciliation', 'duplicate_of_sibling', r.cashId, false], `🔴 ${label}: held for the dispatcher against the cash sibling`);
+    assert.deepStrictEqual([r.delivered, r.tracked], [false, false], `🔴 ${label}: nothing materialized (no delivery task, no tracking)`);
+    assert.deepStrictEqual(r.cardAlert && [r.cardAlert.kind, r.cardAlert.sibling_order_id], ['duplicate_of_sibling', r.cashId], `🔴 ${label}: the guard's card-order alert`);
+  }
+  function assertMaterialized(r, label) {
+    assert.strictEqual(r.conf && r.conf.outcome, 'confirmed', `${label}: the confirm outcome (${JSON.stringify(r.conf)})`);
+    assert.deepStrictEqual([r.after.payment_status, r.after.blocked_reason || null, r.delivered, r.tracked], ['confirmed', null, true, true], `${label}: confirmed AND materialized (delivery task + tracking)`);
+    assert.strictEqual(r.cardAlert, null, `${label}: no guard alert`);
+  }
+  const createAlerted = (r) => !!(r.createAlert && r.createAlert.kind === 'duplicate_of_sibling_create' && r.createAlert.order_id === r.cashId);
   for (const rid of ['x_pizza', 'la_musa']) {
     // the F3-covered ordering (card issued → cash → card confirmed late), across grammars, BOTH directions
     for (const [cardText, cashText] of [['new', 'old'], ['old', 'new']]) {
       const pl = await scenario(rid, { plain: true, cardText, cashText, sequence: 'card-first' });
       assert.ok(pl.sameText, `premise: a plain cart has the same text in both grammars (${rid})`);
-      assert.deepStrictEqual([pl.held, pl.alerted], [true, true], `🔴 ${rid} plain, ${cardText} card → ${cashText} cash → late confirm: HELD and alerted (identical text)`);
+      assertHeld(pl, `${rid} plain, ${cardText} card → ${cashText} cash → late confirm`);
+      assert.ok(createAlerted(pl), `🔴 ${rid} plain: the cash intake's create-side alert`);
       const cf = await scenario(rid, { plain: false, cardText, cashText, sequence: 'card-first' });
       assert.strictEqual(cf.sameText, false, `premise: a configured cart differs across grammars (${rid})`);
-      assert.deepStrictEqual([cf.held, cf.alerted], [false, false], `${rid} configured, ${cardText} card → ${cashText} cash: NOT held and NOT alerted — the stated cutover-window residual`);
+      assertMaterialized(cf, `${rid} configured, ${cardText} card → ${cashText} cash (the stated cutover-window residual)`);
+      assert.strictEqual(createAlerted(cf), false, `${rid} configured: no create-side alert (the residual)`);
     }
     const nn = await scenario(rid, { plain: false, cardText: 'new', cashText: 'new', sequence: 'card-first' });
-    assert.deepStrictEqual([nn.held, nn.alerted], [true, true], `🔴 ${rid} new ↔ new configured: HELD and alerted`);
+    assertHeld(nn, `${rid} new ↔ new configured`);
+    assert.ok(createAlerted(nn), `🔴 ${rid} new ↔ new: the create-side alert`);
     // PRE-EXISTING F3 scope (not S1): cash FIRST → card issued → confirm is not held for ANY grammar (the card's stamp
     // overwrites the cash sibling's) — old↔old and new↔new alike
     for (const g of ['old', 'new']) {
       const cf = await scenario(rid, { plain: false, cardText: g, cashText: g, sequence: 'cash-first' });
-      assert.strictEqual(cf.held, false, `${rid} ${g}↔${g}, cash first: not held — PRE-EXISTING F3 scope, the same for every grammar`);
+      assertMaterialized(cf, `${rid} ${g}↔${g}, cash first (PRE-EXISTING F3 scope, the same for every grammar)`);
     }
   }
   ok('X the cross-grammar residual exactly as stated (both restaurants; card issued → cash → card confirmed 180 s after the stamp): plain carts → identical text → HELD and alerted across grammars, both directions; configured carts → NOT held and NOT alerted, both directions; new↔new configured → HELD and alerted. PRE-EXISTING F3 scope documented: cash first → card → confirm is not held for any grammar (old↔old, new↔new)');
@@ -407,11 +447,17 @@ async function oldBody(rid, build) {
   }
   ok('P price change after the quote (la_musa, real republish): up → 409 price_increased on cash (nothing written) and card (no checkout), a re-quote succeeds; down → charged the lower net; L the 1,500 boundary: no reward → stored == client text (cash, card); reward → client text + exactly one complete suffix (cash, card)');
 
-  // ── F. factura: N-line x_pizza orders reconcile to the FOOD total, fee ON, with and without a reward ──
+  // ── F. factura: N-line x_pizza orders — every line amount checked against the CART, the comped line against the reward, the
+  // tax split and the rebaja against values derived independently from the food totals (zeroed line amounts cannot pass)
   await setPricing(true);
   {
+    const { orderBreakdownCents } = require('../order-money');
     const rid = 'x_pizza'; const m = MENU[rid]; const d = configurable(m); const [e1, e2] = m.extrasFor(d.key);
     const cart = createCart(m); cart.add(d.key, [e1.key], 2); cart.add(d.key, [e1.key, e2.key], 1); cart.inc(d.key);
+    const s = serialize(cart, m);
+    const expectLines = s.items.map((it) => ({ qty: 1, line_gross_cents: it.subtotal * 100 }));   // per instance: price + its extras
+    const paidL = cart.subtotalCents() / 100;
+    const freeDish = ENV[rid].menu.dishes.find((x) => x.name === REWARD[rid].item_id);
     for (const reward of [false, true]) {
       await rtdb.ref(`user_rewards/${UID}/${rid}`).set({ balance: BALANCE[rid], reserved: 0 });
       await clean();
@@ -419,37 +465,58 @@ async function oldBody(rid, build) {
       const r = await post(app.createOrder, b, { 'x-firebase-id-token': UID });
       assert.strictEqual(r.status, 200, `F reward=${reward}: ${r.text.slice(0, 160)}`);
       const o = await order(b.order_id);
-      const food = o.total_cents - ((Number(o.delivery_cents) || 0) - (Number(o.promo_discount_cents) || 0));
-      const rec = buildFacturaRecord({ order: { ...o, orderId: b.order_id, razon_social: o.razon_social || '', rtn_cliente: o.rtn_cliente || '' }, config: FACTURA_CONFIG, reserved: 1, now: 1760000000000 });
+      // paid lines (order.items): one per instance, each exactly price + its extras, in the cart's order
+      assert.deepStrictEqual(o.items.map((l) => ({ qty: l.qty, line_gross_cents: l.line_gross_cents })), expectLines, `🔴 F reward=${reward}: every paid line's gross == the cart instance`);
       const lines = o.factura_items || o.items;
-      assert.ok(Array.isArray(lines) && lines.length >= cart.count(), `premise: N structured lines (${lines && lines.length})`);
-      // the REAL record's own reconciliation: the line bases (tax-exclusive, from the tax-inclusive line gross) foot to the FULL
-      // net = subtotal + rebaja (the rebaja is a NET amount); subtotal + ISV == the record's total == the FOOD total
-      assert.strictEqual(rec.items.length, lines.length, 'one record line per structured line');
-      assert.strictEqual(rec.items.reduce((a, l) => a + l.base_cents, 0), rec.subtotal_cents + rec.desc_rebaja_cents, `🔴 F reward=${reward}: Σ line bases == subtotal + rebaja`);
-      assert.strictEqual(rec.subtotal_cents + rec.isv_total_cents, rec.total_cents, `F reward=${reward}: base + ISV == the record total`);
-      assert.strictEqual(rec.total_cents, food, `🔴 F reward=${reward}: the factura total == the FOOD total (net delivery excluded)`);
-      if (reward) assert.ok(rec.desc_rebaja_cents > 0, 'premise: the reward produces a rebaja');
+      if (reward) {
+        assert.strictEqual(lines.length, expectLines.length + 1, 'factura_items = the paid lines + the comped line');
+        const comp = lines[lines.length - 1];
+        assert.deepStrictEqual([comp.redeemed, comp.qty, comp.line_gross_cents], [true, 1, freeDish.price * 100], `🔴 F: the comped line == the reward dish at its catalog value`);
+      } else assert.strictEqual(o.factura_items, undefined, 'no reward → no factura_items');
+      // the expected split, derived independently from the food totals (tax-inclusive ISV): paid, and paid + comped
+      const paidB = orderBreakdownCents(paidL, rid);
+      const fullB = orderBreakdownCents(paidL + (reward ? freeDish.price : 0), rid);
+      const rec = buildFacturaRecord({ order: { ...o, orderId: b.order_id, razon_social: o.razon_social || '', rtn_cliente: o.rtn_cliente || '' }, config: FACTURA_CONFIG, reserved: 1, now: 1760000000000 });
+      assert.deepStrictEqual([rec.subtotal_cents, rec.isv_total_cents, rec.total_cents], [paidB.subtotal_cents, paidB.tax_cents, paidB.total_cents], `🔴 F reward=${reward}: base / ISV / total == the independently derived split of the FOOD total`);
+      assert.strictEqual(rec.total_cents, cart.subtotalCents(), 'the factura total == the food (envío excluded)');
+      assert.strictEqual(rec.desc_rebaja_cents, reward ? fullB.subtotal_cents - paidB.subtotal_cents : 0, `🔴 F reward=${reward}: the rebaja == the independently derived comped NET value`);
+      assert.strictEqual(rec.items.length, lines.length);
+      assert.strictEqual(rec.items.reduce((a, l) => a + l.base_cents, 0), rec.subtotal_cents + rec.desc_rebaja_cents, 'line bases foot to the full net');
+      rec.items.forEach((l, i) => assert.ok(Math.abs(l.base_cents - Math.round(lines[i].line_gross_cents / 1.15)) <= (i === rec.items.length - 1 ? lines.length : 0), `F line ${i}: base ≈ gross / 1.15 (the residual only on the last line)`));
     }
   }
   await setPricing(false);
-  ok('F factura (x_pizza, envío ON): N per-instance structured lines; the real record\'s line bases foot to subtotal + rebaja, base + ISV == its total == the FOOD total (net delivery excluded), with and without a reward');
+  ok('F factura (x_pizza, envío ON): every paid line == its cart instance, the comped line == the reward dish at catalog value; base / ISV / total == the independently derived split of the FOOD total; rebaja == the derived comped net; line bases ≈ gross / 1.15 with the residual on the last line — with and without a reward');
 
-  // ── C. the canonical branch on N-line bodies (the real canonicalCartNorm, a D4-a context from the served identities) ──
+  // ── C. identity claims: every serialized dish_id / extra_id is PRESENT and equals the AUTHORITATIVE identity registry's id for
+  // the line's pricing key (catalog/identity-registry lookupByLegacyKeys — never the adapter under test); the canonical branch
+  // (the real canonicalCartNorm) verifies the N-line bodies against a context built from that registry
   {
     const CB = require('../catalog/canonical-binding');
+    const { lookupByLegacyKeys } = require('../catalog/identity-registry');
     for (const rid of ['x_pizza', 'la_musa']) {
-      const m = MENU[rid]; const src = buildSourceFromCode(rid);
+      const mode = (await fs.collection('restaurants').doc(rid).get()).data().pricing_key_mode;   // DATA: which legacy field prices
+      assert.ok(mode === 'name' || mode === 'id', `premise: ${rid} pricing_key_mode is data (${mode})`);
+      const keyOf = (rec) => String(mode === 'id' ? rec.id : rec.name);
+      const src = buildSourceFromCode(rid);
+      const dishIds = await lookupByLegacyKeys(fs, { rid, kind: 'dish', legacyKeys: src.items.map((i) => String(i.key)) });
+      const extraIds = await lookupByLegacyKeys(fs, { rid, kind: 'extra', legacyKeys: src.extras.map((e) => String(e.key)) });
+      assert.ok(dishIds.size === src.items.length && extraIds.size === src.extras.length, `premise: the registry identifies every catalog dish and extra (${dishIds.size}/${src.items.length}, ${extraIds.size}/${src.extras.length})`);
       const ctx = { usableAsIdentity: true, objects: [
-        ...src.items.map((i) => ({ kind: 'dish', legacyKey: i.key, canonicalId: String((m.dishes.find((d) => String(d.id) === String(i.display.id)) || {}).dish_id), label: i.display.name })),
-        ...src.extras.map((e) => ({ kind: 'extra', legacyKey: e.key, canonicalId: String((m.extras.find((x) => String(x.id) === String(e.display.id)) || {}).extra_id), label: e.display.name }))] };
+        ...src.items.map((i) => ({ kind: 'dish', legacyKey: i.key, canonicalId: dishIds.get(String(i.key)), label: i.display.name })),
+        ...src.extras.map((e) => ({ kind: 'extra', legacyKey: e.key, canonicalId: extraIds.get(String(e.key)), label: e.display.name }))] };
       for (const [label, cart] of carts(rid)) {
-        const r = CB.canonicalCartNorm(serialize(cart, m).items, rid, ctx);
-        assert.ok(r && r.ok !== false, `🔴 ${rid} ${label}: the canonical branch verifies every dish_id / extra_id claim on the N lines (${JSON.stringify(r).slice(0, 200)})`);
+        const items = serialize(cart, MENU[rid]).items;
+        for (const it of items) {
+          assert.strictEqual(it.dish_id, dishIds.get(keyOf(it)), `🔴 ${rid} ${label}: the dish_id claim of «${it.name}» is PRESENT and == the registry's`);
+          for (const ex of it.extras) assert.strictEqual(ex.extra_id, extraIds.get(keyOf(ex)), `🔴 ${rid} ${label}: the extra_id claim of «${ex.name}» is PRESENT and == the registry's`);
+        }
+        const r = CB.canonicalCartNorm(items, rid, ctx);
+        assert.ok(r && r.ok !== false, `🔴 ${rid} ${label}: the canonical branch verifies the N-line bodies (${JSON.stringify(r).slice(0, 200)})`);
       }
     }
   }
-  ok('C the canonical branch (the real canonicalCartNorm) verifies every dish_id / extra_id claim on the N-line bodies of every cart, both restaurants');
+  ok('C identity: every serialized dish_id / extra_id claim is PRESENT and == the AUTHORITATIVE registry id for the line\'s pricing key (by pricing_key_mode data); the real canonicalCartNorm verifies every cart\'s N lines against a registry-built context, both restaurants');
 
   FINISHED = true;
   console.log(`\ncapp-s1-money(emulator): OK (${n})`);
