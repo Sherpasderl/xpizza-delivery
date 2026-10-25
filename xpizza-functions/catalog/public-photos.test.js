@@ -76,10 +76,12 @@ const BETA = { items: [item('b_01', { id: 'b_01', name: 'B1' }, true), item('b_0
   // ── 3. photosFor never throws: trouble → null (the caller omits the field) ──────────────────────────────────────
   {
     assert.deepStrictEqual(photosFor('tb_alpha', ALPHA, S), buildPhotos(ALPHA, 'https://orders.tb-alpha.test/'));
-    assert.strictEqual(photosFor('tb_gamma', ALPHA, S), null, 'no base → null');
-    assert.strictEqual(photosFor('tb_alpha', { items: 'x' }, S), null, 'a malformed catalog → null');
+    // a throw out of photosFor is itself the failure, named — never an uncaught error that only happens to fail the run
+    const call = (label, ...a) => { try { return photosFor(...a); } catch (e) { return assert.fail(`${label} — photosFor THREW (${e.message})`); } };
+    assert.strictEqual(call('no base → null', 'tb_gamma', ALPHA, S), null, 'no base → null');
+    assert.strictEqual(call('a malformed catalog → null', 'tb_alpha', { items: 'x' }, S), null, 'a malformed catalog → null');
     const exploding = { get items() { throw new Error('boom'); }, structure: {} };
-    assert.strictEqual(photosFor('tb_alpha', exploding, S), null, 'a throw → null');
+    assert.strictEqual(call('a throw → null', 'tb_alpha', exploding, S), null, 'a throw → null');
     ok('photosFor: the photos, or null on no base / a malformed catalog / a throw — it never throws');
   }
 
