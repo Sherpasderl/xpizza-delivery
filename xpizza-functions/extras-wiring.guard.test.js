@@ -37,8 +37,11 @@ const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-func
 // ── 1b. the pinned modules ──
 {
   assert.deepStrictEqual([...FILES].sort(), ['catalog/catalog-publish.js', 'catalog/source-store.js', 'menu-pricing.js']);
-  for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, read(f)), baseOf(f), `🔴 ${f} minus the extras hunks is not ${BASE}:${f}`);
-  const f = 'catalog/source-store.js'; const src = read(f);
+  // PLAN-public-menu-display landed later: its exact module inverse (proven by pmdisplay-wiring.guard) is reversed FIRST
+  const { unapplyPmdisplayModule } = require('./tools/pmdisplay-module-inverse');
+  const pmdRead = (f) => unapplyPmdisplayModule(f, read(f));
+  for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, pmdRead(f)), baseOf(f), `🔴 ${f} minus the extras hunks is not ${BASE}:${f}`);
+  const f = 'catalog/source-store.js'; const src = pmdRead(f);
   const h = HUNKS.find((x) => x.file === f && x.now.includes('deny_extras'));
   assert.throws(() => unapplyExtrasModule(f, src.replace(h.now, h.now.replace('deny_extras', 'deny_extraz'))), /occurs 0 times/, 'a byte INSIDE a hunk');
   assert.throws(() => unapplyExtrasModule(f, src + h.now), /occurs 2 times/, 'a duplicated hunk');

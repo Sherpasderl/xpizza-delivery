@@ -229,6 +229,12 @@ function validateSource(source, rid) {
     subcats: { required: false, type: 'string_array', unique: true },
     layout: { required: false, type: 'string', enum: ['list', 'grid'] },
   };
+  // PLAN-public-menu-display r2 T1: where names are OPTIONAL (the renderer prints none), they are all-or-nothing — a
+  // partially named set is never coherent. Where they are REQUIRED (above), the per-category rule already says more.
+  if (!contract.categoriesNamed) {
+    const namedCount = st.categories.filter((cat) => cat && cat.name !== undefined).length;
+    if (namedCount !== 0 && namedCount !== st.categories.length) fail(`${rid} — structure.categories names are all-or-nothing (${namedCount} of ${st.categories.length} named)`);
+  }
   for (const c of st.categories) {
     for (const [f, rule] of Object.entries(CATEGORY_RULES)) checkField(c && c[f], rule, `${rid}/cat ${c && c.id}`, f);
     // Each declared subcategory becomes its own grid; declaring one twice renders every dish in it

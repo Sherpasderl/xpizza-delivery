@@ -66,6 +66,8 @@
     "xpizza-functions/catalog/catalog-edit.test.js",
     "xpizza-functions/catalog/catalog-menu.test.js",
     "xpizza-functions/catalog/catalog-verifier.test.js",
+    "xpizza-functions/catalog/category-rename-flow.test.js",
+    "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
@@ -281,6 +283,8 @@
     "xpizza-functions/catalog/catalog-context.test.js",
     "xpizza-functions/catalog/catalog-edit.test.js",
     "xpizza-functions/catalog/catalog-verifier.test.js",
+    "xpizza-functions/catalog/category-rename-flow.test.js",
+    "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
@@ -497,6 +501,8 @@
     "xpizza-functions/catalog/catalog-edit.test.js",
     "xpizza-functions/catalog/catalog-menu.test.js",
     "xpizza-functions/catalog/catalog-verifier.test.js",
+    "xpizza-functions/catalog/category-rename-flow.test.js",
+    "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
@@ -707,6 +713,8 @@
     "xpizza-functions/catalog/catalog-context.test.js",
     "xpizza-functions/catalog/catalog-edit.test.js",
     "xpizza-functions/catalog/catalog-verifier.test.js",
+    "xpizza-functions/catalog/category-rename-flow.test.js",
+    "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
@@ -1686,14 +1694,17 @@
   "alert-prune.js",
   "assign-hub.js",
   "assignment-conflict.js",
+  "catalog/add-product.js",
   "catalog/bound-reuse.js",
   "catalog/canonical-binding.js",
   "catalog/catalog-edit-auth.js",
+  "catalog/catalog-edit.js",
   "catalog/edit-catalog-handler.js",
   "catalog/portal-reads.js",
   "catalog/publish-edited-handler.js",
   "catalog/publish-request.js",
   "catalog/reset-draft.js",
+  "catalog/source-store.js",
   "catalog/text-version.js",
   "createorder-classify.js",
   "driver-ingest.js",
@@ -1818,6 +1829,13 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/add-product.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/addproduct-b-wiring.guard.test.js",
+    "xpizza-portal/review.test.mjs"
+   ]
+  },
   "catalog/bound-reuse.js": {
    "pins": [],
    "lifts": [
@@ -1831,6 +1849,10 @@
    ]
   },
   "catalog/catalog-edit-auth.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/catalog-edit.js": {
    "pins": [],
    "lifts": []
   },
@@ -1856,6 +1878,31 @@
   },
   "catalog/reset-draft.js": {
    "pins": [],
+   "lifts": []
+  },
+  "catalog/source-store.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/identity-integrity-guards.test.js",
+     "inverses": [
+      "tools/extras-module-inverse.js",
+      "tools/pmdisplay-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/extras-wiring.guard.test.js",
+     "inverses": [
+      "tools/extras-module-inverse.js",
+      "tools/pmdisplay-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/pmdisplay-wiring.guard.test.js",
+     "inverses": [
+      "tools/pmdisplay-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": []
   },
   "catalog/text-version.js": {

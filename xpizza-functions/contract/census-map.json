@@ -274,6 +274,7 @@
   "brands/brand-projection.js#buildPublicBrand": "catalog",
   "catalog/add-product-io.js#syncKds": "catalog",
   "catalog/add-product.js#allocateAdditions": "catalog",
+  "catalog/add-product.js#changesNothingElse": "catalog",
   "catalog/add-product.js#classifyItems": "catalog",
   "catalog/add-product.js#compareToActive": "catalog",
   "catalog/add-product.js#constructor": "catalog",
