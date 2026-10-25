@@ -22,6 +22,10 @@
 //      mutation each turn the recovery/markers checks RED (shown by in-test injection, since no real violation exists).
 //
 // Mutating ANY byte outside a SLICE3 region — a frozen file, or index.html outside the regions — turns this RED.
+//
+// ACCEPTED RESIDUAL (Codex r2): this guard cannot independently protect its OWN bytes — it is an allowed ADD and is
+// self-editable, the same standalone posture slice2-freeze had. External review — the HIGH-effort Codex gate on
+// every change to this file — is the protector. (slice2-freeze additionally gains this guard's independent sha pin.)
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -29,16 +33,15 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { SLICE3_REGIONS, SLICE3_NAMES } from './slice3-regions.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PFX = 'xpizza-driver/';
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 
-// INDEPENDENT contract pins (Codex r1 P1): slice3-regions.js is an editable ADD, so the contract is pinned HERE as
-// hardcoded constants — NOT trusted from the module. A tampered contract (widened/dropped restore to swallow the
-// clock-out, an added EXTRA region, a set shrunk to only LOGIC-3, a changed kind) is caught by these pins even
-// though the shared file is editable. The file is ALSO byte-frozen (fileSha). slice2-freeze carries the same pins.
+// INDEPENDENT contract pins (Codex r1 P1): the contract is pinned HERE as hardcoded constants — NOT trusted from the
+// module. It is loaded as NON-EXECUTABLE DATA (slice3-regions.json), sha-verified BEFORE parse, never imported, so a
+// `process.exit(0)` appended to it cannot short-circuit this guard (Codex r2 P1). A tampered contract (widened/
+// dropped restore, added/removed/shrunk region, changed kind) is caught even though the file is editable.
 const SLICE3_PINS = {
   names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'HELP-HANDLER', 'CIERRE-REJECT'],
   kinds: ['insert', 'insert', 'insert', 'replace', 'replace'],
@@ -46,13 +49,21 @@ const SLICE3_PINS = {
     'HELP-HANDLER': 'e823efd01be83461f6b7b900e8e60a9065d9c44bfedb1b32c2624f1d6c00206f',
     'CIERRE-REJECT': '40de3c537ee20e27c307cd0f4cb735471fc144418be088a2b172c84c982b90a3',
   },
-  fileSha: '757acbc549bdecfd27d849819006b6469577ffdaa30a7a4cf715600038e66baa',
+  fileSha: '0f584edfdfc5356cd31fa3181e254119226c41d82029de2523c5b0dfc3b32982',
 };
+function loadContract() {   // bytes → sha pin FIRST → JSON.parse; no import/require of editable code (Codex r2 P1)
+  const bytes = readFileSync(join(__dir, 'slice3-regions.json'));
+  assert.equal(sha256(bytes), SLICE3_PINS.fileSha, 'slice3-regions.json byte-changed — the SLICE3 contract is frozen; re-gate at HIGH effort');
+  const data = JSON.parse(bytes);
+  assert.ok(data && Array.isArray(data.regions), 'slice3-regions.json has no regions array');
+  return data.regions;
+}
+const SLICE3_REGIONS = loadContract();
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = 'c4e84b523df66af238cac68befdf6264ee961fb7a4a658eb6ec2e59bb829e2a7';
-const SLICE2_GUARD_CHECKS = 13;   // a removed check drops this count (Codex r1 P3: removing the purity check ⇒ 12)
+const SLICE2_GUARD_SHA = 'cd1862860d144a5cc6e61fdc0d7f109580c3faaa08d1b6f373dd08bffeaeec20';
+const SLICE2_GUARD_CHECKS = 14;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 13)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
   assert.deepEqual(regions.map((r) => r.name), SLICE3_PINS.names, 'SLICE3 region names/order tampered (added/removed/shrunk region?)');
@@ -63,8 +74,8 @@ function assertContract(regions) {   // the names/kinds/restore-bytes half — r
   }
 }
 function verifySlice3Contract() {
-  assert.equal(sha256(readFileSync(join(__dir, 'slice3-regions.js'))), SLICE3_PINS.fileSha,
-    'slice3-regions.js byte-changed — the SLICE3 contract is frozen; re-gate any change at HIGH effort');
+  assert.equal(sha256(readFileSync(join(__dir, 'slice3-regions.json'))), SLICE3_PINS.fileSha,
+    'slice3-regions.json byte-changed — the SLICE3 contract is frozen; re-gate any change at HIGH effort');
   assertContract(SLICE3_REGIONS);
 }
 
@@ -84,7 +95,7 @@ const SLICE3_EDITABLE = new Set([
 const SLICE3_COEXIST_MODIFY = new Set(['xpizza-driver/slice2-freeze.guard.test.js']);
 // Everything slice 3 is allowed to ADD under xpizza-driver/.
 const ALLOWED_ADDS = new Set([
-  'xpizza-driver/slice3-regions.js',            // the shared SLICE3 region contract
+  'xpizza-driver/slice3-regions.json',          // the shared SLICE3 region contract (non-executable data)
   'xpizza-driver/slice3-freeze.guard.test.js',  // this guard
   'xpizza-driver/slice3-contrast.test.js',      // batch-3 fg/bg WCAG checks (added when the first batch-3 CSS lands)
 ]);
@@ -95,6 +106,15 @@ const gitStr = (...a) => git(...a).toString('utf8');
 
 let passed = 0;
 const t = (name, fn) => { fn(); passed += 1; };
+// Belt-and-braces (Codex r2 P1): force RED on ANY early exit — if fewer than the expected checks completed (an
+// injected process.exit, a thrown/short-circuited load, a skipped check), the process exit code is forced to 1.
+const EXPECTED_CHECKS = 16;
+process.on('exit', () => {
+  if (passed !== EXPECTED_CHECKS) {
+    console.error(`slice3-freeze.guard INCOMPLETE: ${passed}/${EXPECTED_CHECKS} checks ran — early exit / skipped check`);
+    process.exitCode = 1;
+  }
+});
 
 // ---------- shared mechanics (also exercised by the negative-proof cells on mutated inputs) ----------
 // Strict marker scan (Codex r1 P2): a CANDIDATE is marker-SHAPED — `${prefix}:` … ending in :START/:END (so a
@@ -102,10 +122,15 @@ const t = (name, fn) => { fn(); passed += 1; };
 // EVERY candidate must then be EXACTLY `${prefix}:<name>:<START|END>` — a malformed one (SLICE3:START, SLICE3::START,
 // SLICE3:BAD_NAME:START) is REJECTED before any name/pairing/nesting validation and before stripping. Whitelist optional.
 function strictMarks(lines, prefix, whitelist) {
-  const cand = new RegExp(prefix + ':(?:[A-Za-z0-9_:-]*:)?(?:START|END)\\b', 'g');
+  // Candidate detection is MAXIMALLY BROAD (Codex r2 P2): ANY `${prefix}:` up to a `:START`/`:END` on the same line
+  // is a candidate (names with a dot, space, slash or Unicode can't slip past). Each candidate must then validate
+  // EXACTLY as `${prefix}:<name>:<START|END>`, name in [A-Za-z0-9-]+ and (if given) whitelisted — else RED, before
+  // stripping. The ONLY non-marker is a bare `${prefix}:<word>` label with NO :START/:END suffix. CRLF-safe.
+  const cand = new RegExp(prefix + ':(?:.*?:)?(?:START|END)\\b', 'g');
   const strict = new RegExp('^' + prefix + ':([A-Za-z0-9-]+):(START|END)$');
   const marks = [];
-  lines.forEach((line, i) => {
+  lines.forEach((raw, i) => {
+    const line = raw.replace(/\r$/, '');   // CRLF-safe
     const hits = line.match(cand) || [];
     assert.ok(hits.length <= 1, `line ${i + 1}: more than one ${prefix} marker`);
     for (const tok of hits) {
@@ -307,6 +332,22 @@ t('NEG P2: malformed / unapproved SLICE3 markers are REJECTED (not silently igno
     /malformed SLICE3 marker/, 'a malformed marker nested in a valid region must be RED');
   // a descriptive `SLICE3:LABEL` comment (no :START/:END) is NOT a marker → ignored, no false positive
   assert.deepEqual(strictMarks(['/* SLICE3:RESUMEN — end-of-run summary */'], 'SLICE3', SLICE3_PINS.names), []);
+});
+
+// Codex r2 P2: names with a DOT, SPACE, SLASH or UNICODE, nested inside a valid LOGIC-3 region, across JS-block,
+// JS-line and HTML comment syntaxes and with CRLF — all must be RED via the full slice3Ranges path (not just strictMarks).
+t('NEG P2 (r2): dotted/spaced/slashed/Unicode marker names are REJECTED across comment syntaxes + CRLF', () => {
+  const badNames = ['BAD.NAME', 'BAD NAME', 'BAD/NAME', 'BÄDÑAME'];
+  const wraps = [(s) => `/* ===== ${s} ===== */`, (s) => `// ${s}`, (s) => `<!-- ${s} -->`];
+  for (const name of badNames) {
+    for (const w of wraps) {
+      const lines = [w('SLICE3:LOGIC-3:START'), w(`SLICE3:${name}:START`), '  injected payload', w(`SLICE3:${name}:END`), w('SLICE3:LOGIC-3:END')];
+      assert.throws(() => slice3Ranges(lines), /malformed SLICE3 marker/, `must reject name "${name}" via ${w('X')}`);
+      assert.throws(() => slice3Ranges(lines.map((l) => l + '\r')), /malformed SLICE3 marker/, `must reject name "${name}" (CRLF) via ${w('X')}`);
+    }
+  }
+  // the narrow label exception survives: a bare `SLICE3:<word>` with no :START/:END is still not a marker
+  assert.deepEqual(slice3Ranges(['// SLICE3:RESUMEN — see the batch-2 overlay']), {});
 });
 
 console.log(`✓ slice3-freeze.guard: ${passed} checks passed (baseline ${baseSha.slice(0, 10)})`);

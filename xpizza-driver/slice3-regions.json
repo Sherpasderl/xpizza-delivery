@@ -1,0 +1,47 @@
+{
+  "regions": [
+    {
+      "name": "PRESENTATION-3",
+      "kind": "insert"
+    },
+    {
+      "name": "IMPORT-3",
+      "kind": "insert"
+    },
+    {
+      "name": "LOGIC-3",
+      "kind": "insert"
+    },
+    {
+      "name": "HELP-HANDLER",
+      "kind": "replace",
+      "restore": [
+        "$('idle-help-link').addEventListener('click', () => {",
+        "  alert(",
+        "    'Posibles razones:\\n\\n' +",
+        "    '• Aún no se ha asignado un pedido a ti\\n' +",
+        "    '• Tu GPS está inactivo (revisa el indicador arriba)\\n' +",
+        "    '• Las notificaciones están desactivadas\\n\\n' +",
+        "    'Si crees que algo está mal, contacta al despachador.'",
+        "  );",
+        "});"
+      ]
+    },
+    {
+      "name": "CIERRE-REJECT",
+      "kind": "replace",
+      "restore": [
+        "  }).catch((err) => {",
+        "    if (!isLatest()) return;",
+        "    closeInFlight = false;",
+        "    // Server REJECTED (permission/validation/other) — never clock out; the cuadre is the whole point. Stay on",
+        "    // shift and surface it (this also surfaces a LATE rejection after the timeout message); the driver retries.",
+        "    console.warn('recordCuadre rejected (staying on shift):', err);",
+        "    toast(BLOCKED_CLOSE_TEXT, 'error');        // retry stays available (button re-enabled below); dispatch is the exit",
+        "    refreshOpenCashSurfaces();                 // re-render from settled orders so a retry submits the current amount",
+        "    reEnableConfirm();",
+        "  });"
+      ]
+    }
+  ]
+}
