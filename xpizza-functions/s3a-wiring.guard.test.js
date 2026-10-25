@@ -15,7 +15,7 @@ const { HUNKS, unapplyS3aIndex } = require('./tools/s3a-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const BASE = 'c2c3b815';   // the held S8 tip (r5) this slice branches from
-const live = require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))));   // S3b (newer) is reversed first
+const live = require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))));   // S3b (newer) is reversed first
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 assert.strictEqual(unapplyS3aIndex(live), baseIdx, `🔴 index.js minus the S3a hunks is not ${BASE}:index.js — something beyond the stated seams changed`);
@@ -46,7 +46,9 @@ ok('sensitivity: a byte inside a hunk, a duplicated hunk and a missing hunk are 
   const { unapplyS3aModule, FILES, HUNKS: MH } = require('./tools/s3a-module-inverse');
   assert.deepStrictEqual([...FILES].sort(), ['compute-server-net.js', 'quote-issue.js', 'rewards-redeem-intake.js', 'token-gate.js']);
   for (const f of FILES) {
-    const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+    const S2TM = require('./tools/s2tip-module-inverse');   // S2-srv-tip (newest) touched these modules too: its exact inverse is reversed first
+    const raw = fs.readFileSync(path.join(__dirname, f), 'utf8');
+    const src = S2TM.FILES.includes(f) ? S2TM.unapplyS2tipModule(f, raw) : raw;
     const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8' });
     assert.notStrictEqual(src, base, `non-vacuity: ${f} carries S3a hunks`);
     assert.strictEqual(unapplyS3aModule(f, src), base, `🔴 ${f} minus the S3a hunks is not ${BASE}:${f}`);

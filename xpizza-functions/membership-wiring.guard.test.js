@@ -15,7 +15,7 @@ const BASE = '2920b705';
 const { ROUTES } = require('./access/team-http-core');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))))));   // PORTAL-UI 1a landed on top: stripped first
+const real = require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))))));   // PORTAL-UI 1a landed on top: stripped first
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: path.join(__dirname, '..'), encoding: 'utf8', maxBuffer: 1 << 26 });
 
 assert.strictEqual(HUNKS.length, 1);

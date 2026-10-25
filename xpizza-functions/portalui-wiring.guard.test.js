@@ -12,7 +12,7 @@ const { execFileSync } = require('child_process');
 const { HUNKS, BASE, unapplyPortalUiIndex, unapplyPortalUiFold } = require('./tools/portalui-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))));
+const real = require('./tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('./tools/s3a-inverse').unapplyS3aIndex(require('./tools/s3b-inverse').unapplyS3bIndex(require('./tools/s3c-inverse').unapplyS3cIndex(require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))))));
 
 // 3a T-c (merged onto this slice in feat/portal-team) appended ONE export to the membership line after BASE — a same-line hunk,
 // folded out here so this pin keeps judging portal-ui's own two hunks against BASE (the membership inverse covers T-c's line)
