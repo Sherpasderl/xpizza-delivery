@@ -155,6 +155,10 @@
   }
  ],
  "timerReview": {
+  "xpizza-functions/sequencing/bounded.js:bounded>anon:setTimeout": {
+   "class": "io-deadline",
+   "reason": "BUILD-stacked-seq-server r5 (r4 P2-4): bounded() races each await of a stack decision (and the post-claim re-check) against the remaining decision budget (≤ 5 s planning, 3 s post-claim) — on expiry the writer goes single / rolls back; REAL"
+  },
   "xpizza-functions/index.js:chargeOnlineApp.all>anon:setTimeout": {
    "class": "io-deadline",
    "reason": "1500 ms guest-attribution deadline (index.js 'deadline → guest; never delay/fail a payment') — REAL"
@@ -429,6 +433,26 @@
   "index.js#quoteOrder": "intake",
   "index.js#quoteRedemption": "intake",
   "index.js#reassertAssignable": "dispatch",
+  "sequencing/post-claim.js#confirmIncumbent": "dispatch",
+  "sequencing/routes-client.js#wp": "dispatch",
+  "sequencing/routes-client.js#legsOf": "dispatch",
+  "sequencing/routes-client.js#computeMatrix": "dispatch",
+  "sequencing/routes-client.js#computeMatrix>anon": "dispatch",
+  "sequencing/writer.js#filterEligible>anon": "dispatch",
+  "index.js#isAssignable": "dispatch",
+  "sequencing/budget.js#reserve": "dispatch",
+  "sequencing/cancel-promotion.js#cleanupWithPromotion": "dispatch",
+  "sequencing/cancel-promotion.js#findSurvivor": "dispatch",
+  "sequencing/cancel-promotion.js#findSurvivor>anon": "dispatch",
+  "sequencing/cancel-promotion.js#pointerTxn>anon": "dispatch",
+  "sequencing/detector.js#detectOutOfSequence": "dispatch",
+  "sequencing/detector.js#isDeliveryCompletion": "dispatch",
+  "sequencing/gate.js#coords": "dispatch",
+  "sequencing/gate.js#stackGate": "dispatch",
+  "sequencing/plan-stack.js#otherOrders": "dispatch",
+  "sequencing/plan-stack.js#planStack": "dispatch",
+  "sequencing/plan-stack.js#planStack>anon": "dispatch",
+  "sequencing/post-claim.js#candidateState": "dispatch",
   "index.js#reconcilePayments": "payment",
   "index.js#refundReconciler": "payment",
   "index.js#releaseRewardHold": "rewards",
@@ -1391,6 +1415,96 @@
    "detail": "*",
    "fields": [],
    "reason": "F1: plan.row.path is always publicPath(brandId) = public/brands/<brandId> (planPublish is its only producer; brands-admin-core is the only caller) — the derived public brand projection, never /orders, so no order field is written. A new producer of the plan or a new path makes this resolution stale and the census RED until reviewed",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "fn": "autoAssignOnOrderCreate>anon",
+   "how": "computed-key-at-root",
+   "detail": "*/stack_id",
+   "fields": [],
+   "reason": "BUILD-stacked-seq-server r5 T5: autoAssignOnOrderCreate's finalize merges stackCopies(decision, uid) — its keys are always `tasks/<oid>_delivery/stack_id` for the two stack members (sequencing/plan-stack.js stackCopies is the only producer), never an /orders path, so no order field is written. A new producer or a new key shape makes this resolution stale and the census RED until reviewed",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "fn": "autoAssignOnOrderCreate>anon",
+   "how": "computed-key-at-root",
+   "detail": "*/stop_seq",
+   "fields": [],
+   "reason": "BUILD-stacked-seq-server r5 T5: autoAssignOnOrderCreate's finalize merges stackCopies(decision, uid) — its keys are always `tasks/<oid>_delivery/stop_seq` for the two stack members (sequencing/plan-stack.js stackCopies is the only producer), never an /orders path, so no order field is written. A new producer or a new key shape makes this resolution stale and the census RED until reviewed",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "fn": "autoAssignOnOrderCreate>anon",
+   "how": "computed-key-at-root",
+   "detail": "*/stack_uid",
+   "fields": [],
+   "reason": "BUILD-stacked-seq-server r5 T5: autoAssignOnOrderCreate's finalize merges stackCopies(decision, uid) — its keys are always `tasks/<oid>_delivery/stack_uid` for the two stack members (sequencing/plan-stack.js stackCopies is the only producer), never an /orders path, so no order field is written. A new producer or a new key shape makes this resolution stale and the census RED until reviewed",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "fn": "autoAssignOnOrderCreate>anon",
+   "how": "computed-key-at-root",
+   "detail": "*/stack_at",
+   "fields": [],
+   "reason": "BUILD-stacked-seq-server r5 T5: autoAssignOnOrderCreate's finalize merges stackCopies(decision, uid) — its keys are always `tasks/<oid>_delivery/stack_at` for the two stack members (sequencing/plan-stack.js stackCopies is the only producer), never an /orders path, so no order field is written. A new producer or a new key shape makes this resolution stale and the census RED until reviewed",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "fn": "autoAssignOnOrderCreate>anon",
+   "how": "computed-key-at-root",
+   "detail": "*/stack_plus_min",
+   "fields": [],
+   "reason": "BUILD-stacked-seq-server r5 T5: autoAssignOnOrderCreate's finalize merges stackCopies(decision, uid) — its keys are always `tasks/<oid>_delivery/stack_plus_min` for the two stack members (sequencing/plan-stack.js stackCopies is the only producer), never an /orders path, so no order field is written. A new producer or a new key shape makes this resolution stale and the census RED until reviewed",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "fn": "sweepPendingOrders>anon",
+   "how": "computed-key-at-root",
+   "detail": "*/stack_id",
+   "fields": [],
+   "reason": "BUILD-stacked-seq-server r5 T5: sweepPendingOrders's finalize merges stackCopies(decision, uid) — its keys are always `tasks/<oid>_delivery/stack_id` for the two stack members (sequencing/plan-stack.js stackCopies is the only producer), never an /orders path, so no order field is written. A new producer or a new key shape makes this resolution stale and the census RED until reviewed",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "fn": "sweepPendingOrders>anon",
+   "how": "computed-key-at-root",
+   "detail": "*/stop_seq",
+   "fields": [],
+   "reason": "BUILD-stacked-seq-server r5 T5: sweepPendingOrders's finalize merges stackCopies(decision, uid) — its keys are always `tasks/<oid>_delivery/stop_seq` for the two stack members (sequencing/plan-stack.js stackCopies is the only producer), never an /orders path, so no order field is written. A new producer or a new key shape makes this resolution stale and the census RED until reviewed",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "fn": "sweepPendingOrders>anon",
+   "how": "computed-key-at-root",
+   "detail": "*/stack_uid",
+   "fields": [],
+   "reason": "BUILD-stacked-seq-server r5 T5: sweepPendingOrders's finalize merges stackCopies(decision, uid) — its keys are always `tasks/<oid>_delivery/stack_uid` for the two stack members (sequencing/plan-stack.js stackCopies is the only producer), never an /orders path, so no order field is written. A new producer or a new key shape makes this resolution stale and the census RED until reviewed",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "fn": "sweepPendingOrders>anon",
+   "how": "computed-key-at-root",
+   "detail": "*/stack_at",
+   "fields": [],
+   "reason": "BUILD-stacked-seq-server r5 T5: sweepPendingOrders's finalize merges stackCopies(decision, uid) — its keys are always `tasks/<oid>_delivery/stack_at` for the two stack members (sequencing/plan-stack.js stackCopies is the only producer), never an /orders path, so no order field is written. A new producer or a new key shape makes this resolution stale and the census RED until reviewed",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "fn": "sweepPendingOrders>anon",
+   "how": "computed-key-at-root",
+   "detail": "*/stack_plus_min",
+   "fields": [],
+   "reason": "BUILD-stacked-seq-server r5 T5: sweepPendingOrders's finalize merges stackCopies(decision, uid) — its keys are always `tasks/<oid>_delivery/stack_plus_min` for the two stack members (sequencing/plan-stack.js stackCopies is the only producer), never an /orders path, so no order field is written. A new producer or a new key shape makes this resolution stale and the census RED until reviewed",
    "count": 1
   }
  ],
