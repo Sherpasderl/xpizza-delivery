@@ -1,7 +1,7 @@
 'use strict';
 // STACKED-DELIVERY SEQUENCING (BUILD-stacked-seq-server r5 T9) — the test-only INVERSE of this slice's index.js footprint: the
 // Routes secret + sequencing requires, pickEligibleDriver's {stackFilter} option, and the autoAssign + sweep hunks (flag read,
-// pre-claim planning, post-claim re-check, the task copies in the ONE finalize). monitorAssignmentTimeout has NO hunk (D12).
+// pre-claim planning, post-claim re-check, the task copies in the ONE finalize) and the out-of-sequence detector export (T7). monitorAssignmentTimeout has NO hunk (D12).
 // unapplyStackseqIndex(index.js) === acf32fc8:index.js byte-for-byte (stackseq-wiring.guard). Newest layer → applied INNERMOST in
 // every index.js fold consumer: unapplyPortalUiIndex(unapplyStackseqIndex(<source>)).
 // Each hunk must occur EXACTLY once, else this throws. GENERATED from base (acf32fc8) vs candidate; JSON-quoted [now, was] pairs.
@@ -10,6 +10,10 @@ const BASE = 'acf32fc8';
 const INDEX_HUNKS = [
  [
   "const { defineSecret } = require('firebase-functions/params');\nconst ROUTES_API_KEY = defineSecret('ROUTES_API_KEY');   // stacked-seq r5 T3: bound to autoAssign + sweep ONLY (D12: timeout never stacks)\nconst SEQ = require('./sequencing/writer');   // stacked-seq r5 T5: flag, D7 candidate filter, planning, post-claim checks\nconst { stackCopies } = require('./sequencing/plan-stack');\nconst routesKey = () => { try { return ROUTES_API_KEY.value() || ''; } catch (_) { return ''; } };   // empty → planStack refuses no_key\n",
+  ""
+ ],
+ [
+  "// stacked-seq r5 T7: the out-of-sequence detector — a whole-node task trigger that returns after ONE in-memory check unless the\n// write is a DELIVERY task's completion; then delivery-time evidence only, and ONE create-only alert (sequencing/detector.js)\nexports.detectOutOfSequence = onValueWritten({ ref: '/tasks/{taskId}', region: 'us-central1', retry: true }, async (event) => {\n  const before = event.data.before.val(); const after = event.data.after.val();\n  if (!require('./sequencing/detector').isDeliveryCompletion(event.params.taskId, before, after)) return;\n  await require('./sequencing/detector').detectOutOfSequence({ db: getDatabase(), taskId: event.params.taskId, before, after });\n});\n",
   ""
  ],
  [

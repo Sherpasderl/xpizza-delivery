@@ -4800,6 +4800,13 @@ async function trackerOnTask(event) {
   for (const uid of owners) await driverFanout(db, uid);
 }
 exports.trackerOnTaskOwner = onValueWritten({ ref: '/tasks/{taskId}/assigned_driver_id', region: 'us-central1', retry: true }, trackerOnTask);
+// stacked-seq r5 T7: the out-of-sequence detector — a whole-node task trigger that returns after ONE in-memory check unless the
+// write is a DELIVERY task's completion; then delivery-time evidence only, and ONE create-only alert (sequencing/detector.js)
+exports.detectOutOfSequence = onValueWritten({ ref: '/tasks/{taskId}', region: 'us-central1', retry: true }, async (event) => {
+  const before = event.data.before.val(); const after = event.data.after.val();
+  if (!require('./sequencing/detector').isDeliveryCompletion(event.params.taskId, before, after)) return;
+  await require('./sequencing/detector').detectOutOfSequence({ db: getDatabase(), taskId: event.params.taskId, before, after });
+});
 exports.trackerOnTaskStatus = onValueWritten({ ref: '/tasks/{taskId}/status', region: 'us-central1', retry: true }, async (event) => {
   const db = getDatabase();
   if (!(await trackerFixesEnabled(db))) return;
