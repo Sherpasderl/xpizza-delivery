@@ -29,6 +29,10 @@ const CHARGED = [];
 stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
 stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CHARGED.push({ amount: Number(q.amountLempiras), email: q.customerEmail || q.email || null }); return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
 stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
+// the P-C race (as test/s3a-envio.emulator.test.js): the live checkout EXPIRES after the handler's classify and before the acquire
+let EXPIRE_BEFORE_ACQUIRE = null;
+stub('../pixelpay-hosted-charge', (r) => ({ ...r, acquireHostedAttempt: async (db, orderId, ...a) => { if (EXPIRE_BEFORE_ACQUIRE) { const f = EXPIRE_BEFORE_ACQUIRE; EXPIRE_BEFORE_ACQUIRE = null; await f(orderId); } return r.acquireHostedAttempt(db, orderId, ...a); } }));
+const { orderFingerprint } = require('../pixelpay-charge');
 
 const app = require('../index.js');
 const admin = require('firebase-admin');
@@ -124,6 +128,7 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     const c = await cash({ extra: { tip_cents: 2000, quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents } });
     assert.strictEqual(c.status, 200, c.text.slice(0, 200));
     assert.deepStrictEqual([c.rec.total_cents, c.rec.tip_cents, c.rec.delivery_cents, Math.round(c.rec.total * 100), c.rec.subtotal_cents + c.rec.tax_cents], [food + 7000, 2000, 5000, food + 7000, food], 'recorded = quoted = food + envío + tip; total (lempiras) agrees; the FOOD split untouched');
+    assert.strictEqual(c.rec.payment_fingerprint, orderFingerprint(c.b.order_id, food, c.b.items_text, 'tp:2000'), 'the cash order\'s stored fingerprint binds the tip (tp:2000)');
     const task = (await rtdb.ref(`tasks/${c.b.order_id}_delivery`).get()).val();
     assert.strictEqual(Math.round(task.total * 100), food + 7000, 'the delivery task carries the full total (what the driver collects)');
     const promo = await cash({ extra: { tip_cents: 2000 } }, { 'x-firebase-id-token': 'member1' });
@@ -132,6 +137,7 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     const k = await card({ extra: { tip_cents: 2000, quote_token: qk.json.quote_token, expected_net_cents: qk.json.net_total_cents } });
     assert.ok(k.status === 200 && k.charged.length === 1, `card accepted (${k.text.slice(0, 200)})`);
     assert.deepStrictEqual([k.charged[0].amount * 100, k.rec.total_cents, k.rec.tip_cents], [food + 7000, food + 7000, 2000], 'PixelPay is asked for food + envío + tip; the pending order (what capture charges: total_cents / 100) carries the same');
+    assert.strictEqual(k.rec.payment_fingerprint, orderFingerprint(k.b.order_id, food + 7000, k.b.items_text, 'tp:2000'), 'the card order\'s stored fingerprint binds the tip (tp:2000)');
     tipped = k;
     const low = await cash({ extra: { tip_cents: 3000, quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents } });
     assert.deepStrictEqual([low.status, low.json && low.json.error, low.rec], [409, 'quote_invalid', null], 'a token signed for L20 never authorises a L30 tip (re-quote)');
@@ -195,9 +201,24 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     assert.ok(withEmail.status === 200 && withEmail.charged.length === 1, `a valid customer email needs no fallback (${withEmail.text.slice(0, 160)})`);
     const resumed = await card({ body: tipped.b });
     assert.deepStrictEqual([resumed.status, resumed.charged.length], [200, 0], 'an existing live checkout still resumes with the env unset');
+    // the RACE: classify sees a live checkout (reuse → the pre-check does not run), then it expires before the acquire, which
+    // would ROTATE to a fresh checkout → refused there: no new attempt, the existing attempt untouched, 503
+    process.env.PIXELPAY_MERCHANT_EMAIL = 'merchant@example.com';
+    const live = await card({ extra: { customer_email: '' } });
+    assert.ok(live.status === 200 && live.charged.length === 1, `premise: a live checkout (${live.text.slice(0, 160)})`);
+    const aid = live.rec.active_attempt_id;
+    delete process.env.PIXELPAY_MERCHANT_EMAIL;
+    let before = null;
+    EXPIRE_BEFORE_ACQUIRE = async (oid) => { await rtdb.ref(`payment_attempts/${aid}/hosted_expires_at`).set(1); before = (await rtdb.ref(`payment_attempts/${aid}`).get()).val(); };
+    const raced = await card({ body: live.b });
+    assert.strictEqual(EXPIRE_BEFORE_ACQUIRE, null, 'premise: the interleaving ran');
+    const after = await attemptsOf(live.b.order_id);
+    assert.deepStrictEqual([raced.status, raced.json && raced.json.error, raced.charged.length, after.length, (await rtdb.ref(`orders/${live.b.order_id}/active_attempt_id`).get()).val()],
+      [503, 'payer_email_unconfigured', 0, 1, aid], `P-C race: 503, no gateway call, no new attempt, the order still points at its attempt (${raced.text.slice(0, 160)})`);
+    assert.deepStrictEqual((await rtdb.ref(`payment_attempts/${aid}`).get()).val(), before, 'the existing attempt is byte-untouched (never retired or rotated)');
     process.env.PIXELPAY_MERCHANT_EMAIL = 'merchant@example.com';
   }
-  ok('P-C: no payer email (env missing / blank / malformed, none from the customer) → 503 payer_email_unconfigured with zero gateway calls, no attempt, no order; a customer email works; a live checkout still resumes');
+  ok('P-C: no payer email (env missing / blank / malformed, none from the customer) → 503 payer_email_unconfigured with zero gateway calls, no attempt, no order; a customer email works; a live checkout still resumes; the classify→acquire race is refused at the acquire with the existing attempt untouched');
 
   // ── 7. the APP quote: coverage = min(last band, radius); legacy unchanged ──
   {
