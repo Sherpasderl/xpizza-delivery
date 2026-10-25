@@ -11,13 +11,30 @@ import { dirname, join } from 'node:path';
 const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { adaptMenu, extraSupported } = require('./capp-menu.js');
-const { createCart, fromLegacy, sigOf } = require('./capp-cart.js');
+const { createCart, fromLegacy, sigOf, MAX_QTY } = require('./capp-cart.js');
 const { serialize, issuedSnapshot, resendBody, ITEMS_TEXT_LIMIT } = require('./capp-serialize.js');
 const { SYSTEM_VERSION } = require('./capp-version.js');
 const { computeServerTotal } = require(join(ROOT, 'xpizza-functions/menu-pricing.js'));
 const { pricedLineItems } = require(join(ROOT, 'xpizza-functions/factura/pricing.js'));
 const { provisionBrand, boot } = await import(join(ROOT, 'xpizza-functions/contract/capp/capture.mjs'));
 const { provisionThirdBrand } = await import(join(ROOT, 'xpizza-functions/contract/capp/third-brand-fork.mjs'));
+const { candidateFromSource } = require(join(ROOT, 'xpizza-functions/contract/third-brand.js'));
+const { buildSourceFromCode } = require(join(ROOT, 'xpizza-functions/tools/seed-source-store'));
+const { makeDb } = require(join(ROOT, 'xpizza-functions/catalog/firestore-fake'));
+const { publishVersion } = require(join(ROOT, 'xpizza-functions/catalog/catalog-publish'));
+const { buildPublicMenu } = require(join(ROOT, 'xpizza-functions/catalog/public-menu'));
+const { orderContentKey } = require(join(ROOT, 'xpizza-functions/order-dedup.js'));
+// a brand's REAL source with some extras' display names changed, published through the real publish path into an in-memory
+// catalog, served as getPublicMenu serves it
+async function publishRenamed(rid, map) {
+  const db = makeDb();
+  // the DISPLAY names only (the pricing keys stay: the identity bootstrap refuses an unpriced key)
+  const src = buildSourceFromCode(rid);
+  for (const e of src.extras) if (e.display && Object.prototype.hasOwnProperty.call(map, e.display.name)) e.display = { ...e.display, name: map[e.display.name] };
+  await quiet(() => publishVersion(db, rid, { ...candidateFromSource(rid, src), source_sha: 'capp-s1-renamed' }, { expected: { activeVersionId: null } }));
+  const m = await quiet(() => buildPublicMenu(db, rid, { known: new Set([rid]), isActive: async () => true }));
+  return { rid: m.rid, representation_version: m.representation_version, menu: m.body };
+}
 const { closeAll, settle } = await import(join(ROOT, 'form-harness.mjs'));
 
 const quiet = async (fn) => { const w = console.warn, l = console.log; console.warn = console.log = () => {}; try { return await fn(); } finally { console.warn = w; console.log = l; } };
@@ -171,11 +188,15 @@ test('serializer: items_text — one row per configuration group, " | " between 
 });
 
 test('serializer: refusals — an unsafe extra label, an empty cart, the 1,500-character limit (1,500 accepted, 1,501 refused)', () => {
-  const env = JSON.parse(JSON.stringify(PROV.la_musa.envelope));
-  env.menu.extras[0].name = 'Arroz, Blanco';
-  const m = adaptMenu(env); const d = m.dishes.find((x) => !x.launcher && m.extrasFor(x.key).some((e) => e.key === m.extras[0].key));
-  const c = createCart(m); c.add(d.key, [m.extras[0].key], 1);
-  assert.throws(() => serialize(c, m), (e) => e.code === 'unsafe_extra_label');
+  for (const bad of ['Arroz, Blanco', 'Arroz | Blanco', 'Arroz + Blanco', 'Arroz [Blanco]']) {
+    const env = JSON.parse(JSON.stringify(PROV.la_musa.envelope)); const k = String(env.menu.extras[0].extra_id);
+    const okm = adaptMenu(env); env.menu.extras[0].name = bad; const m = adaptMenu(env);
+    assert.equal(m.extra(k).supported, false, `${bad}: an unsafe label is never offered`);
+    const d = okm.dishes.find((x) => !x.launcher && okm.extrasFor(x.key).some((e) => e.key === k));
+    assert.throws(() => createCart(m).add(d.key, [k], 1), (e) => e.code === 'unsupported_extra_quantity');
+    const c = createCart(okm); c.add(d.key, [k], 1);   // built where the label was safe…
+    assert.throws(() => serialize({ lines: () => c.lines() }, m), (e) => e.code === 'unsupported_extra_quantity' || e.code === 'unsafe_extra_label', `${bad}: …refused at serialization`);
+  }
   assert.throws(() => serialize(createCart(MENU.la_musa), MENU.la_musa), (e) => e.code === 'empty_cart');
   // a cart whose text is EXACTLY the limit (one dish, its served name lengthened in a copy of the real envelope), then one more
   const pad = JSON.parse(JSON.stringify(PROV.x_pizza.envelope));
@@ -207,4 +228,64 @@ test('legacy: the REAL live La Musa page\'s line-level cart → instance 0 (tota
     const c2 = createCart(m); const r2 = c2.hydrate(fromLegacy({ lines: old2.cart.lines, extras: old2.extras }, dishOf, extraOf));
     assert.equal(r2.dropped, 2, 'a line-level quantity 2 (a stepper) cannot be carried by S1 → the line is dropped and counted');
   } finally { closeAll(); }
+});
+
+test('P1 regression (REAL publish): extras «B», «A» and «B + A» — the ambiguous label is refused, so two different configurations can never share a text / content key', async () => {
+  // the id-keyed restaurant: its display names are not pricing keys, so three real extras of one category can be relabelled
+  const cat = PROV.la_musa.envelope.menu.extras[0].cat;
+  const three = PROV.la_musa.envelope.menu.extras.filter((e) => e.cat === cat).slice(0, 3).map((e) => e.name);
+  assert.equal(three.length, 3, 'premise: three extras in one category');
+  const env = await publishRenamed('la_musa', { [three[0]]: 'B', [three[1]]: 'A', [three[2]]: 'B + A' });
+  const m = adaptMenu(env);
+  const [eB, eA, eBA] = ['B', 'A', 'B + A'].map((n) => m.extras.find((e) => e.name === n));
+  assert.ok(eB && eA && eBA, `premise: the published menu serves the three labels (${m.extras.map((e) => e.name).join(' / ')})`);
+  assert.equal(eBA.supported, false, 'the ambiguous label is not offered');
+  const d = m.dishes.find((x) => !x.launcher && [eB, eA, eBA].every((e) => m.extrasFor(x.key).some((y) => y.key === e.key)));
+  assert.ok(d, 'premise: one dish offers all three');
+  assert.throws(() => createCart(m).add(d.key, [eBA.key], 1), (e) => e.code === 'unsupported_extra_quantity');
+  const two = createCart(m); two.add(d.key, [eB.key, eA.key], 1);
+  const t = serialize(two, m).items_text;
+  assert.match(t, /\[(A \+ B|B \+ A)\]/);
+  // the collision Codex reproduced: the only text «B + A» could produce is the two-extra configuration's — it can no longer be built
+  const phone = '99887766';
+  assert.ok(orderContentKey({ phone, itemsText: t, orderType: 'delivery', scheduledFor: null }), 'premise: the two-extra configuration has its content key');
+});
+
+test('P2 adapter: per-item extra categories are UNIONED with the category defaults (the shipped forms\' rule)', () => {
+  const m = MENU.la_musa; const env = PROV.la_musa.envelope.menu;
+  const [itemId, extraCats] = Object.entries(env.extras_by_item)[0];
+  const d = m.dishes.find((x) => String(x.id) === itemId);
+  const want = new Set([...(env.extras_by_category[String(d.cat)] || []), ...extraCats]);
+  const got = new Set(m.extrasFor(d.key).map((e) => e.cat));
+  assert.deepEqual([...got].sort(), [...want].filter((c) => env.extras.some((e) => e.cat === c)).sort(), `${d.name}: category + per-item extra categories`);
+  const rice = m.extrasFor(d.key).find((e) => (env.extras_by_category[String(d.cat)] || []).includes(e.cat));
+  assert.ok(rice, `${d.name} keeps its category extras`);
+  const c = createCart(m); c.add(d.key, [rice.key], 2);
+  assert.deepEqual(createCart(m).hydrate(c.snapshot()), { dropped: 0 }, 'restoring two instances with a category extra drops nothing');
+});
+
+test('P2 cart: ONE quantity policy — every write refuses over MAX_QTY (no clamp), so "+" never reduces a quantity', () => {
+  const m = MENU.la_musa; const d = configurable(m); const [e1] = m.extrasFor(d.key); const p = plainDish(m, d.key);
+  assert.equal(MAX_QTY, 50);
+  const c = createCart(m);
+  assert.throws(() => c.add(d.key, [e1.key], 52), (e) => e.code === 'qty_limit');
+  assert.equal(c.count(), 0, 'a refused add leaves no line behind');
+  c.add(d.key, [e1.key], 50);
+  assert.throws(() => c.inc(d.key), (e) => e.code === 'qty_limit'); assert.equal(c.count(), 50, 'menu "+" at the limit: refused, never reduced');
+  assert.throws(() => c.lineInc(d.key, sigOf({ [e1.key]: 1 })), (e) => e.code === 'qty_limit'); assert.equal(c.count(), 50, 'line "+" at the limit: refused');
+  assert.throws(() => c.setQty(d.key, 51), (e) => e.code === 'qty_limit'); assert.equal(c.count(), 50);
+  c.dec(d.key); assert.equal(c.count(), 49, '"−" removes exactly one');
+  c.add(p.key, [], 2); assert.throws(() => c.edit(p.key, '', [], d.key), (e) => e.code === 'qty_limit');
+  assert.deepEqual(c.lines().map((l) => [l.key, l.qty]), [[d.key, 49], [p.key, 2]], 'an edit that would exceed the target line is refused BEFORE any write');
+  const over = { v: 2, lines: [{ key: d.key, qty: 51, ex: Array.from({ length: 51 }, () => ({})), added: 1 }] };
+  assert.deepEqual(createCart(m).hydrate(over), { dropped: 51 }, 'a restored line over the limit is dropped and counted');
+});
+
+test('P2 issued snapshot: deeply immutable — the resent body can never differ from what was issued', () => {
+  const m = MENU.x_pizza; const d = configurable(m); const c = createCart(m); c.add(d.key, [m.extrasFor(d.key)[0].key], 2);
+  const body = { ...serialize(c, m) }; const snap = issuedSnapshot(body); const before = JSON.stringify(resendBody(snap));
+  body.items[0].qty = 9;
+  const r = resendBody(snap); r.items[0].qty = 9;
+  assert.throws(() => { 'use strict'; snap.json = '{}'; }, TypeError);
+  assert.equal(JSON.stringify(resendBody(snap)), before, 'neither the source body nor a resent copy reaches the snapshot');
 });

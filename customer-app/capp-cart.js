@@ -13,6 +13,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
+  const MAX_QTY = 50;   // the server's per-line cap (menu-pricing qty 1..50) — ONE policy for every write: over it, refused
   const sigOf = (inst) => Object.keys(inst || {}).sort().join(',');
   const instOf = (keys) => { const o = {}; for (const k of [...keys].sort()) o[k] = 1; return o; };
   const err = (code, detail) => { const e = new Error(detail ? `${code}: ${detail}` : code); e.code = code; return e; };
@@ -38,46 +39,48 @@
       if (d.launcher) throw err('choice_required', String(key));
       return d;
     }
-    function lineFor(key) {
-      let l = lines.get(key);
-      if (!l) { l = { key, qty: 0, ex: [], added: ++seq }; lines.set(key, l); }
-      return l;
+    // the line for a dish — a NEW one is only registered by put() (so a refused write never leaves an empty line behind)
+    function lineFor(key) { return lines.get(key) || { key, qty: 0, ex: [], added: seq + 1 }; }
+    const claim = (l) => { if (l.added > seq) seq = l.added; };
+    // THE single write point: every change to a line's instances lands here. Over MAX_QTY → refused, the cart unchanged (so a
+    // "+" never reduces a quantity); an empty instance list deletes the line; qty is always ex.length (no instance ≥ qty).
+    function put(l, ex) {
+      if (ex.length > MAX_QTY) throw err('qty_limit', `${l.key} ${ex.length} > ${MAX_QTY}`);
+      if (ex.length === 0) { lines.delete(l.key); return; }
+      if (!lines.has(l.key)) lines.set(l.key, l);
+      l.ex = ex; l.qty = ex.length;
     }
-    // THE single quantity write point: pad with plain instances, truncate, delete at 0
+    // pad with plain instances / truncate to qty
     function setQty(key, qty) {
       const l = lines.get(String(key));
       if (!l) return;
-      const q = Math.max(0, Math.min(50, qty | 0));
-      if (q === 0) { lines.delete(l.key); return; }
+      const q = Math.max(0, qty | 0);
       const ex = l.ex.slice(0, q);
       while (ex.length < q) ex.push({});
-      l.ex = ex; l.qty = q;
+      put(l, ex);
     }
     // remove ONE instance at index i, re-indexing 0..qty-1 (the middle-removal case)
     function removeAt(key, i) {
       const l = lines.get(String(key));
       if (!l || i < 0 || i >= l.qty) return;
-      l.ex = l.ex.filter((_, j) => j !== i);
-      if (l.ex.length === 0) { lines.delete(l.key); return; }
-      l.qty = l.ex.length;
+      put(l, l.ex.filter((_, j) => j !== i));
     }
 
     const api = {
       // menu-card controls: "+" adds a plain instance, "−" drops the last instance
-      inc(key) { const d = orderable(key); const l = lineFor(d.key); setQty(d.key, l.qty + 1); },
+      inc(key) { const d = orderable(key); const l = lineFor(d.key); put(l, [...l.ex, {}]); claim(l); },
       dec(key) { const l = lines.get(String(key)); if (l) setQty(l.key, l.qty - 1); },
       // the item sheet's add: n instances of ONE configuration
       add(key, extraKeys = [], n = 1) {
         const d = orderable(key); const cfg = validConfig(d.key, extraKeys);
         const l = lineFor(d.key);
-        for (let i = 0; i < n; i++) l.ex.push(instOf(cfg));
-        l.qty = l.ex.length;
+        put(l, [...l.ex, ...Array.from({ length: Math.max(0, n | 0) }, () => instOf(cfg))]); claim(l);
       },
       // cart-line controls: "+" clones that configuration, "−" removes ONE instance OF THAT configuration (its last one)
       lineInc(key, sig) {
         const l = lines.get(String(key)); if (!l) return;
         const i = l.ex.findIndex((x) => sigOf(x) === sig); if (i < 0) return;
-        l.ex.push({ ...l.ex[i] }); l.qty = l.ex.length;
+        put(l, [...l.ex, { ...l.ex[i] }]);
       },
       lineDec(key, sig) {
         const l = lines.get(String(key)); if (!l) return;
@@ -88,11 +91,13 @@
         const l = lines.get(String(key)); if (!l) return;
         const n = l.ex.filter((x) => sigOf(x) === sig).length; if (!n) return;
         const d = orderable(targetKey); const cfg = validConfig(d.key, extraKeys);
-        l.ex = l.ex.filter((x) => sigOf(x) !== sig);
-        if (l.ex.length === 0) lines.delete(l.key); else l.qty = l.ex.length;
-        const t = lineFor(d.key);
-        for (let i = 0; i < n; i++) t.ex.push(instOf(cfg));
-        t.qty = t.ex.length;
+        const kept = l.ex.filter((x) => sigOf(x) !== sig);
+        const sameLine = d.key === l.key;
+        const t = sameLine ? l : lineFor(d.key);
+        const moved = [...(sameLine ? kept : t.ex), ...Array.from({ length: n }, () => instOf(cfg))];
+        if (moved.length > MAX_QTY) throw err('qty_limit', `${d.key} ${moved.length} > ${MAX_QTY}`);   // checked BEFORE any write
+        if (!sameLine) put(l, kept);
+        put(t, moved); claim(t);
       },
       setQty,
       // DERIVED display: lines in first-add order, groups in first-instance order
@@ -123,7 +128,7 @@
           try {
             const d = orderable(raw.key);
             const ex = Array.isArray(raw.ex) ? raw.ex : [];
-            if (!Number.isInteger(raw.qty) || raw.qty < 1 || raw.qty !== ex.length) throw err('bad_line');
+            if (!Number.isInteger(raw.qty) || raw.qty < 1 || raw.qty > MAX_QTY || raw.qty !== ex.length) throw err('bad_line');
             const inst = ex.map((x) => { const ks = Object.keys(x || {}); if (ks.some((k) => x[k] !== 1)) throw err('unsupported_extra_quantity'); return instOf(validConfig(d.key, ks)); });
             lines.set(d.key, { key: d.key, qty: inst.length, ex: inst, added: ++seq });
           } catch (_) { dropped += (raw && Number.isInteger(raw.qty) && raw.qty > 0) ? raw.qty : 1; }
@@ -157,5 +162,5 @@
     return out;
   }
 
-  return { createCart, fromLegacy, sigOf };
+  return { createCart, fromLegacy, sigOf, MAX_QTY };
 });

@@ -36,13 +36,26 @@ const kdsSrc = read('xpizza-kitchen/index.html');
 const kdsRender = new Function(`${extractFn(kdsSrc, 'escapeHtml')}\n${extractFn(kdsSrc, 'renderItems')}\nreturn renderItems;`)();
 const dmSrc = read('xpizza-dispatch-mobile/index.html');
 const dmRender = new Function(`${extractFn(dmSrc, 'escapeHtml')}\n${extractFn(dmSrc, 'renderOrderItems')}\nreturn renderOrderItems;`)();
-// dispatch + driver split their text INLINE: take the exact shipped split expressions (count-pinned) and run them
-const DISPATCH_SPLIT = "raw.split(raw.includes('|') ? '|' : ',').map(s => s.trim()).filter(Boolean)";
-const DRIVER_SPLIT = "order.items_text.split(',').map(s =>";
-assert.equal(read('xpizza-dispatch/index.html').split(DISPATCH_SPLIT).length - 1, 2, 'premise: dispatch splits at its two sites exactly so');
-assert.equal(read('xpizza-driver/index.html').split(DRIVER_SPLIT).length - 1, 2, 'premise: the driver splits at its two sites exactly so');
-const dispatchRows = new Function('raw', `return ${DISPATCH_SPLIT};`);
-const driverRows = (t) => t.split(',').map((s) => s.trim());
+// dispatch + driver render their rows INLINE (inside larger templates): the SHIPPED code fragments are cut out of the sources at
+// EVERY site and EXECUTED — the driver's `${order.items_text ? `…items-list…` : ''}` expression and dispatch's
+// `const itemRows = …;` statement — each with that page's own escapeHtml
+function sitesOf(src, start, endMark) {
+  const out = []; let i = src.indexOf(start);
+  while (i >= 0) { const j = src.indexOf(endMark, i); assert.ok(j > i, `premise: ${endMark} closes the fragment`); out.push(src.slice(i, j + endMark.length)); i = src.indexOf(start, j); }
+  return out;
+}
+const drvSrc = read('xpizza-driver/index.html'); const dspSrc = read('xpizza-dispatch/index.html');
+const DRV = sitesOf(drvSrc, 'order.items_text ? `<div class="items-list">', "` : ''");
+const DSP = sitesOf(dspSrc, "const itemRows = raw.split(", "join('');");
+assert.equal(DRV.length, 2, 'premise: the driver renders items at its two sites');
+assert.equal(DSP.length, 2, 'premise: dispatch renders items at its two sites');
+const drvRenderers = DRV.map((frag) => new Function('order', `${extractFn(drvSrc, 'escapeHtml')}\nreturn (${frag});`));
+const dspRenderers = DSP.map((frag) => new Function('order', `${extractFn(dspSrc, 'escapeHtml')}\nconst raw = String(order.items_text);\n${frag}\nreturn itemRows;`));
+const rowsOf = (html, open) => html.split(open).slice(1).map((r) => r.replace(/<\/div>.*$/s, '').trim());
+const unesc = (t) => t.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+// every site of each reader must agree; the result is the rows each one renders
+function dispatchRows(text) { const all = dspRenderers.map((r) => rowsOf(r({ items_text: text }), '<div>').map(unesc)); assert.deepEqual(all[1], all[0], 'both dispatch sites agree'); return all[0]; }
+function driverRows(text) { const all = drvRenderers.map((r) => rowsOf(r({ items_text: text }), '<div class="item">').map(unesc)); assert.deepEqual(all[1], all[0], 'both driver sites agree'); return all[0]; }
 const textOf = (html) => html.replace(/<[^>]+>/g, '|').split('|').map((s) => s.trim()).filter(Boolean);
 
 const quiet = async (fn) => { const w = console.warn, l = console.log; console.warn = console.log = () => {}; try { return await fn(); } finally { console.warn = w; console.log = l; } };
@@ -105,7 +118,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
   });
 }
 
-test('a cart at the 1,500-character limit reads through every reader (no truncation is ever produced)', () => {
+test('the 1,500-character limit, without and WITH the server\'s reward suffix, through EVERY reader (no truncation is ever produced)', () => {
   const env = JSON.parse(JSON.stringify(PROV.x_pizza.envelope));
   const m0 = adaptMenu(env); const d = m0.dishes.find((x) => !x.launcher);
   const base = `1x ${d.name} (L${d.price})`;
@@ -113,7 +126,14 @@ test('a cart at the 1,500-character limit reads through every reader (no truncat
   const m = adaptMenu(env); const c = createCart(m); c.inc(d.key);
   const t = serialize(c, m).items_text;
   assert.equal(t.length, ITEMS_TEXT_LIMIT);
-  assert.equal(enumerateItems(t).length, 1); assert.equal(orderView({ id: 'o', items_text: t }).items.length, 1);
-  assert.equal(dispatchRows(t).length, 1); assert.equal(driverRows(t).length, 1);
-  assert.equal(kdsRender(t).split('<div class="card-item"').length - 1, 1);
+  const reward = ` | 1x ${PROV.x_pizza.envelope.menu.dishes[0].name} (Recompensa)`;
+  for (const [text, rows] of [[t, 1], [t + reward, 2]]) {
+    assert.equal(enumerateItems(text).length, rows, 'rail');
+    assert.equal(orderView({ id: 'o', items_text: text }).items.length, rows, 'handheld');
+    assert.equal(kdsRender(text).split('<div class="card-item"').length - 1, rows, 'KDS');
+    assert.equal(dmRender({ items_text: text }).split('<div class="dl-item"').length - 1, rows, 'dispatch-mobile');
+    assert.equal(dispatchRows(text).length, rows, 'dispatch');
+    assert.deepEqual(driverRows(text), [text], 'driver: one row, the whole text');
+    assert.equal(enumerateItems(text)[0].qty, 1); assert.equal(enumerateItems(text)[0].name.length, ITEMS_TEXT_LIMIT - base.length + d.name.length, 'the 1,500-char group is read whole');
+  }
 });

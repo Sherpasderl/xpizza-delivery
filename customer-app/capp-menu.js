@@ -14,6 +14,9 @@
   'use strict';
 
   const QTY_FIELDS = ['max_qty', 'qty', 'step', 'min'];
+  // an extra label carrying a grammar / reader delimiter (',' driver, '|' groups, '+' extras, '[' ']' brackets) would make two
+  // different configurations read — and content-key — the same; such an extra is never offered (capp-serialize refuses it too)
+  const LABEL_UNSAFE = /[,|+[\]]/;
   // S1 = toggles only: `max` absent or exactly 1, and none of the other quantity fields
   function extraSupported(ex) {
     if (!ex || typeof ex !== 'object') return false;
@@ -29,7 +32,7 @@
     if (!envelope || typeof envelope !== 'object' || !envelope.menu || typeof envelope.menu !== 'object') throw new Error('capp-menu: no menu in the envelope');
     const m = envelope.menu;
     const extras = list(m.extras).map((e) => Object.freeze({ key: extraKeyOf(e), id: e.id, name: String(e.name || ''), extra_id: e.extra_id, price: Number(e.price),
-      cat: e.cat, supported: extraSupported(e) }));
+      cat: e.cat, supported: extraSupported(e) && !LABEL_UNSAFE.test(String(e.name || '')) }));
     const extraByKey = new Map(extras.map((e) => [e.key, e]));
     const variants = obj(m.variant_items);
     const choiceOf = new Map();
@@ -44,12 +47,14 @@
     const dishById = new Map(dishes.map((d) => [String(d.id), d]));
     const byCat = obj(m.extras_by_category); const byItem = obj(m.extras_by_item);
     const deny = obj(obj(m.extras_eligibility).deny);
-    // the extras a dish may carry: its per-item categories, else its category's; minus the version's eligibility deny list. The
-    // deny list is keyed by the brand's legacy keys, so BOTH of the dish's legacy fields and BOTH of each extra's are matched.
+    // the extras a dish may carry: its category's extra categories UNIONED with its per-item ones (category first — the shipped
+    // forms' extrasCatsForItem), minus the version's eligibility deny list. The deny list is keyed by the brand's legacy keys,
+    // so BOTH of the dish's legacy fields and BOTH of each extra's are matched.
     function extrasFor(dishKey) {
       const d = dishByKey.get(String(dishKey));
       if (!d) return [];
-      const cats = list(byItem[String(d.id)]).length ? list(byItem[String(d.id)]) : list(byCat[String(d.cat)]);
+      const fromCat = list(byCat[String(d.cat)]); const seen = new Set(fromCat);
+      const cats = [...fromCat, ...list(byItem[String(d.id)]).filter((c) => !seen.has(c))];
       const denied = new Set([...list(deny[String(d.id)]), ...list(deny[d.name])].map(String));
       return extras.filter((e) => cats.includes(e.cat) && !denied.has(String(e.id)) && !denied.has(e.name));
     }
@@ -69,5 +74,5 @@
     });
   }
 
-  return { adaptMenu, extraSupported };
+  return { adaptMenu, extraSupported, LABEL_UNSAFE };
 });

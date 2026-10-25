@@ -6,8 +6,9 @@
 //              (menu-pricing.js itemPricingKey / extraPricingKey). Unique toggle extras per line satisfy both server extra rules.
 //              subtotal = price + Σ that instance's extras (F1: the line total INCLUDING extras).
 //   items_text ONE row PER CONFIGURATION GROUP, groups joined by ' | ' (the KDS / rail / handheld / dispatch split):
-//              `${n}x ${name} (L${price})` + ` [${extra names joined by ' + '}]` when configured. No ',', '|', '[' or ']' inside a
-//              bracket (the driver splits on ',', dispatch on '|') — such an extra label is refused.
+//              `${n}x ${name} (L${price})` + ` [${extra names joined by ' + '}]` when configured. No ',', '|', '+', '[' or ']'
+//              inside a bracket (the driver splits on ',', dispatch on '|', extras join on '+' — «B + A» would read as two extras
+//              and collide with a real «B»+«A» configuration's text and content key) — such an extra label is refused.
 //   DETERMINISTIC: lines in first-add order, instances by index, extras sorted by key → re-serializing an unchanged cart is
 //   byte-identical (charge-input / payment fingerprints, quote tokens). LIMIT: items_text ≤ 1,500 characters, the server's own
 //   cap (index.js sanitizeText 1500) — over it the serializer refuses, so the server never truncates this text.
@@ -19,7 +20,7 @@
   'use strict';
 
   const ITEMS_TEXT_LIMIT = 1500;
-  const UNSAFE_LABEL = /[,|[\]]/;
+  const UNSAFE_LABEL = /[,|+[\]]/;   // the reader / grammar delimiters: ',' (driver) '|' (groups) '+' (extras) '[' ']' (brackets)
   const err = (code, detail) => { const e = new Error(detail ? `${code}: ${detail}` : code); e.code = code; return e; };
   const sigOf = (inst) => Object.keys(inst || {}).sort().join(',');
 
@@ -55,11 +56,12 @@
     return { items, items_text: itemsText, subtotal_cents: subtotalCents };
   }
 
-  // the ISSUED request is authoritative on resume: a frozen deep copy, resent byte-for-byte (an edited cart is a NEW order)
-  function issuedSnapshot(body) { return Object.freeze({ v: 1, body: JSON.parse(JSON.stringify(body)) }); }
+  // the ISSUED request is authoritative on resume: stored as its serialized JSON STRING (immutable), resent byte-for-byte — an
+  // edited cart is a NEW order; nothing can mutate what was issued
+  function issuedSnapshot(body) { return Object.freeze({ v: 1, json: JSON.stringify(body) }); }
   function resendBody(snapshot) {
-    if (!snapshot || snapshot.v !== 1 || !snapshot.body) throw err('bad_issued_snapshot');
-    return JSON.parse(JSON.stringify(snapshot.body));
+    if (!snapshot || snapshot.v !== 1 || typeof snapshot.json !== 'string') throw err('bad_issued_snapshot');
+    return JSON.parse(snapshot.json);
   }
 
   return { serialize, issuedSnapshot, resendBody, ITEMS_TEXT_LIMIT };
