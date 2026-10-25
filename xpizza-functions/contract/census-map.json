@@ -178,6 +178,10 @@
    "reason": "S2-srv-tip: tip.js's exported direct stored-tip compare (a module.exports key) — not an order field. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
   },
   {
+   "key": "validEmail",
+   "reason": "S2 P-C: payer-email.js exports its PixelPay payer-email VALIDATOR (a module.exports key) — the hosted charge's payer email, not an order-email sender; §1's 'no order email' stands (per-module entry, as normEmail's)"
+  },
+  {
    "key": "payerEmail",
    "reason": "S2 P-C: payer-email.js's exported PixelPay payer-email resolver (a module.exports key) — the hosted charge's payer email, not an order-email SENDER; §1's 'no order email' stands. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
   }
@@ -1447,7 +1451,7 @@
   }
  ],
  "moneyPathNonFactReads": {
-  "tip_cents@xpizza-functions/driver-ledger/ledger-core.js#computeWeek": "S2-srv-tip (PLAN-capp-S2-r4 §3.4, OWNER-CONFIRMED 2026-10-25): the S8 driver PAYABLE accrual — the order’s tip joins the driver’s base_cents (this week) / adjustments_cents (late) at delivered; never a customer-charged amount, a collection or a display (the charged total is total_cents, unchanged). Asserted by delivery/tip-consumers.test.mjs (6) + driver-ledger/ledger-core.test.js; the scope guard allows exactly this read. PROPOSED by the Customer App session for 2e review — 2e may instead register tip_cents in census FIELD_FACTS (delivery_cents precedent: writtenFields only, not FIELD_FACTS).",
+  "tip_cents@xpizza-functions/driver-ledger/ledger-core.js#computeWeek": "S2-srv-tip (PLAN-capp-S2-r4 §3.4, OWNER-CONFIRMED 2026-10-25): the S8 driver PAYABLE accrual — the order’s tip joins the driver’s base_cents (this week) / adjustments_cents (late) at delivered; never a customer-charged amount, a collection or a display (the charged total is total_cents, unchanged). Asserted by delivery/tip-consumers.test.mjs (6) + driver-ledger/ledger-core.test.js; the scope guard allows exactly this read. PROPOSED by the Customer App session for 2e review — ACCEPTED by 2e (review of 9757ac5c): the read IS the driver PAYABLE, asserted by delivery/tip-consumers.test.mjs; registering tip_cents in census FIELD_FACTS is a later 2e tooling chore, not this slice.",
   "active_attempt_id@xpizza-functions/delivery/delivery-wire.js#chargeContext": "S3a envío: decides only WHETHER the card request is a live-checkout reuse (its STORED economics are kept) — the money effect is asserted through the OUTCOME (the reused checkout's stored total_cents, test/s3a-envio.emulator.test.js §3.3 / P1-2), never through this field",
   "cancelled_at@xpizza-functions/tracking/reconcile-core.js#windowOrders": "the order's terminal TIMESTAMP — selects the reconcile window (terminal within 24 h); never an amount, a collector or a selector of money",
   "completed_at@xpizza-functions/tracking/reconcile-core.js#windowOrders": "the order's terminal TIMESTAMP — selects the reconcile window (terminal within 24 h); never an amount, a collector or a selector of money",
