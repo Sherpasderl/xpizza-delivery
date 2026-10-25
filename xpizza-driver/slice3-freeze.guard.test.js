@@ -28,10 +28,45 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { SLICE3_REGIONS, SLICE3_NAMES } from './slice3-regions.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PFX = 'xpizza-driver/';
+const sha256 = (s) => createHash('sha256').update(s).digest('hex');
+
+// INDEPENDENT contract pins (Codex r1 P1): slice3-regions.js is an editable ADD, so the contract is pinned HERE as
+// hardcoded constants — NOT trusted from the module. A tampered contract (widened/dropped restore to swallow the
+// clock-out, an added EXTRA region, a set shrunk to only LOGIC-3, a changed kind) is caught by these pins even
+// though the shared file is editable. The file is ALSO byte-frozen (fileSha). slice2-freeze carries the same pins.
+const SLICE3_PINS = {
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'HELP-HANDLER', 'CIERRE-REJECT'],
+  kinds: ['insert', 'insert', 'insert', 'replace', 'replace'],
+  restoreSha: {
+    'HELP-HANDLER': 'e823efd01be83461f6b7b900e8e60a9065d9c44bfedb1b32c2624f1d6c00206f',
+    'CIERRE-REJECT': '40de3c537ee20e27c307cd0f4cb735471fc144418be088a2b172c84c982b90a3',
+  },
+  fileSha: '757acbc549bdecfd27d849819006b6469577ffdaa30a7a4cf715600038e66baa',
+};
+// The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
+// protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
+const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
+const SLICE2_GUARD_SHA = 'c4e84b523df66af238cac68befdf6264ee961fb7a4a658eb6ec2e59bb829e2a7';
+const SLICE2_GUARD_CHECKS = 13;   // a removed check drops this count (Codex r1 P3: removing the purity check ⇒ 12)
+
+function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
+  assert.deepEqual(regions.map((r) => r.name), SLICE3_PINS.names, 'SLICE3 region names/order tampered (added/removed/shrunk region?)');
+  assert.deepEqual(regions.map((r) => r.kind), SLICE3_PINS.kinds, 'SLICE3 region kinds tampered');
+  for (const r of regions) if (r.kind === 'replace') {
+    assert.equal(sha256(r.restore.join('\n')), SLICE3_PINS.restoreSha[r.name],
+      `SLICE3 ${r.name} restore bytes tampered (widened to swallow adjacent code, or shrunk?)`);
+  }
+}
+function verifySlice3Contract() {
+  assert.equal(sha256(readFileSync(join(__dir, 'slice3-regions.js'))), SLICE3_PINS.fileSha,
+    'slice3-regions.js byte-changed — the SLICE3 contract is frozen; re-gate any change at HIGH effort');
+  assertContract(SLICE3_REGIONS);
+}
 
 // The slice-3 freeze point: the slice-2 LANDED tip where slice2-freeze is green (batch 2 + the whatsapp fixes).
 const BASELINE = '07e5ab38';
@@ -62,38 +97,45 @@ let passed = 0;
 const t = (name, fn) => { fn(); passed += 1; };
 
 // ---------- shared mechanics (also exercised by the negative-proof cells on mutated inputs) ----------
-function scanSlice3(lines) {
+// Strict marker scan (Codex r1 P2): a CANDIDATE is marker-SHAPED — `${prefix}:` … ending in :START/:END (so a
+// descriptive `${prefix}:LABEL` comment, e.g. the batch-2 `SLICE3:RESUMEN` section labels, is NOT a marker).
+// EVERY candidate must then be EXACTLY `${prefix}:<name>:<START|END>` — a malformed one (SLICE3:START, SLICE3::START,
+// SLICE3:BAD_NAME:START) is REJECTED before any name/pairing/nesting validation and before stripping. Whitelist optional.
+function strictMarks(lines, prefix, whitelist) {
+  const cand = new RegExp(prefix + ':(?:[A-Za-z0-9_:-]*:)?(?:START|END)\\b', 'g');
+  const strict = new RegExp('^' + prefix + ':([A-Za-z0-9-]+):(START|END)$');
   const marks = [];
-  const re = /SLICE3:([A-Za-z0-9-]+):(START|END)\b/g;
   lines.forEach((line, i) => {
-    let m, n = 0;
-    while ((m = re.exec(line)) !== null) { marks.push({ i, name: m[1], kind: m[2] }); n += 1; }
-    assert.ok(n <= 1, `line ${i + 1}: more than one SLICE3 marker on a line`);
+    const hits = line.match(cand) || [];
+    assert.ok(hits.length <= 1, `line ${i + 1}: more than one ${prefix} marker`);
+    for (const tok of hits) {
+      const m = strict.exec(tok);
+      assert.ok(m, `malformed ${prefix} marker: "${tok}" (line ${i + 1})`);
+      if (whitelist) assert.ok(whitelist.includes(m[1]), `unknown ${prefix} region: ${m[1]}`);
+      marks.push({ i, name: m[1], kind: m[2] });
+    }
   });
   return marks;
 }
 function scanSlice2Ranges(lines) {
-  // Every SLICE2 region's inclusive [start,end] line range — a SLICE3 marker may not land inside any of them.
-  const re = /SLICE2:([A-Za-z0-9-]+):(START|END)\b/g;
+  // Every SLICE2 region's inclusive [start,end] line range — a SLICE3 marker may not land inside any of them. SLICE2
+  // syntax is validated here too (a malformed SLICE2 marker that could skew the ranges is rejected); the SLICE2 NAME
+  // whitelist stays slice2-freeze's job, so no whitelist is passed.
   const open = {}; const ranges = [];
-  lines.forEach((line, i) => {
-    let m;
-    while ((m = re.exec(line)) !== null) {
-      if (m[2] === 'START') open[m[1]] = i;
-      else if (open[m[1]] != null) { ranges.push([open[m[1]], i, m[1]]); delete open[m[1]]; }
-    }
-  });
+  for (const { i, name, kind } of strictMarks(lines, 'SLICE2')) {
+    if (kind === 'START') open[name] = i;
+    else if (open[name] != null) { ranges.push([open[name], i, name]); delete open[name]; }
+  }
   return ranges;
 }
 // Validate the PRESENT SLICE3 markers: whitelist, pairing, ordering, non-nesting, non-overlap-with-SLICE2.
 // Returns the present regions as { name -> [startLine, endLine] }. Throws (RED) on any violation.
 function slice3Ranges(lines) {
-  const marks = scanSlice3(lines);
+  const marks = strictMarks(lines, 'SLICE3', SLICE3_PINS.names);   // rejects malformed/unapproved SLICE3 markers (Codex r1 P2)
   const s2 = scanSlice2Ranges(lines);
   const inSlice2 = (i) => s2.some(([a, b]) => i >= a && i <= b);
   let open = null; const started = new Set(), ended = new Set(); const out = {};
   for (const { i, name, kind } of marks) {
-    assert.ok(SLICE3_NAMES.includes(name), `unknown SLICE3 region: ${name}`);
     assert.ok(!inSlice2(i), `SLICE3:${name}:${kind} (line ${i + 1}) is nested inside / overlaps a SLICE2 region`);
     if (kind === 'START') {
       assert.equal(open, null, `region ${name} START while ${open} still open (nested)`);
@@ -127,6 +169,20 @@ t('baselines reachable (07e5ab38 slice-3, e2266b24 slice-2)', () => {
   baseSha = gitStr('rev-parse', '--verify', `${BASELINE}^{commit}`).trim();
   assert.match(baseSha, /^[0-9a-f]{40}$/, `baseline ${BASELINE} did not resolve`);
   assert.match(gitStr('rev-parse', '--verify', `${SLICE2_BASELINE}^{commit}`).trim(), /^[0-9a-f]{40}$/, `baseline ${SLICE2_BASELINE} did not resolve`);
+});
+
+// ---------- P1. independently pin the shared contract (slice3-regions.js is editable) ----------
+t('SLICE3 contract is byte-frozen + matches the independently-pinned names/kinds/restore bytes', () => {
+  verifySlice3Contract();
+});
+
+// ---------- P3. the coexistence exemption is bounded to the reviewed slice2-freeze revision ----------
+t('coexistence pin: slice2-freeze.guard.test.js is the approved revision + still reports its exact check count', () => {
+  assert.equal(sha256(readFileSync(join(__dir, SLICE2_GUARD))), SLICE2_GUARD_SHA,
+    'slice2-freeze.guard.test.js changed from the approved coexistence revision — its content is NOT free under the exemption; re-gate at HIGH effort');
+  const out = execFileSync('node', [join(__dir, SLICE2_GUARD)], { cwd: REPO }).toString('utf8');   // the guard runs as a plain script
+  assert.match(out, new RegExp(`slice2-freeze\\.guard: ${SLICE2_GUARD_CHECKS} checks passed`),
+    `slice2-freeze must still report exactly ${SLICE2_GUARD_CHECKS} checks — removing a check (e.g. the stacked-view.js purity check) drops the count`);
 });
 
 // ---------- 5. replace-span safety (proven first — the other checks rely on it) ----------
@@ -228,6 +284,29 @@ t('NEG: an out-of-region mutation → recovery RED', () => {
   const mutated = current.replace('<title>Sherpa Driver</title>', '<title>Sherpa Driver X</title>');
   assert.notEqual(mutated, current, 'the probe line must exist to mutate');
   assert.notEqual(recoverSlice3(mutated), baseHtml, 'an out-of-region edit must NOT recover the baseline (RED)');
+});
+
+// ---- Codex r1 bypass reproductions: each must now be RED ----
+t('NEG P1: widening a replace restore to swallow the clock-out → RED (restore-sha mismatch)', () => {
+  const cierre = SLICE3_REGIONS.find((r) => r.name === 'CIERRE-REJECT');
+  // the bypass Codex found: fold the successful-clock-out statements into CIERRE-REJECT.restore + drop finalizeEndShift
+  const widened = { ...cierre, restore: ['    await finalizeEndShift();', ...cierre.restore] };
+  assert.throws(() => assertContract(SLICE3_REGIONS.map((r) => (r.name === 'CIERRE-REJECT' ? widened : r))),
+    /restore bytes tampered/, 'a widened CIERRE-REJECT restore must be RED');
+});
+t('NEG P1: an added EXTRA region, or a set shrunk to only LOGIC-3 → RED (names mismatch)', () => {
+  assert.throws(() => assertContract([...SLICE3_REGIONS, { name: 'EXTRA', kind: 'insert' }]), /names\/order tampered/, 'an added region must be RED');
+  assert.throws(() => assertContract(SLICE3_REGIONS.filter((r) => r.name === 'LOGIC-3')), /names\/order tampered/, 'shrinking to only LOGIC-3 must be RED');
+});
+t('NEG P2: malformed / unapproved SLICE3 markers are REJECTED (not silently ignored); labels are not markers', () => {
+  for (const bad of ['/* SLICE3:START */', '/* SLICE3::START */', '/* SLICE3:UNAPPROVED_EXTRA:START */']) {
+    assert.throws(() => strictMarks([bad], 'SLICE3', SLICE3_PINS.names), /malformed SLICE3 marker|unknown SLICE3 region/, `must reject: ${bad}`);
+  }
+  // a nested malformed marker inside a valid region is caught too (the outer strip can't erase it — scan happens first)
+  assert.throws(() => strictMarks(['/* SLICE3:LOGIC-3:START */', '/* SLICE3:UNAPPROVED_EXTRA:START */', '/* SLICE3:LOGIC-3:END */'], 'SLICE3', SLICE3_PINS.names),
+    /malformed SLICE3 marker/, 'a malformed marker nested in a valid region must be RED');
+  // a descriptive `SLICE3:LABEL` comment (no :START/:END) is NOT a marker → ignored, no false positive
+  assert.deepEqual(strictMarks(['/* SLICE3:RESUMEN — end-of-run summary */'], 'SLICE3', SLICE3_PINS.names), []);
 });
 
 console.log(`✓ slice3-freeze.guard: ${passed} checks passed (baseline ${baseSha.slice(0, 10)})`);

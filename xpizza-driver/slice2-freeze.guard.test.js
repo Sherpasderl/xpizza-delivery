@@ -33,9 +33,54 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { SLICE3_REGIONS } from './slice3-regions.js';   // SLICE3 coexistence (see check-2): slice 3 supersedes, advisor 2026-10-25
 
 const __dir = dirname(fileURLToPath(import.meta.url));
+const sha256 = (s) => createHash('sha256').update(s).digest('hex');
+
+// SLICE3 contract pins (Codex r1 P1): slice3-regions.js is editable, so this guard pins the contract INDEPENDENTLY
+// — a tampered shared module (widened/dropped restore, added/removed region, changed kind) is caught HERE too, not
+// just in slice3-freeze. Mirror of slice3-freeze's SLICE3_PINS; both must agree with the byte-frozen contract file.
+const SLICE3_PINS = {
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'HELP-HANDLER', 'CIERRE-REJECT'],
+  kinds: ['insert', 'insert', 'insert', 'replace', 'replace'],
+  restoreSha: {
+    'HELP-HANDLER': 'e823efd01be83461f6b7b900e8e60a9065d9c44bfedb1b32c2624f1d6c00206f',
+    'CIERRE-REJECT': '40de3c537ee20e27c307cd0f4cb735471fc144418be088a2b172c84c982b90a3',
+  },
+  fileSha: '757acbc549bdecfd27d849819006b6469577ffdaa30a7a4cf715600038e66baa',
+};
+function verifySlice3Contract() {
+  assert.equal(sha256(readFileSync(join(__dir, 'slice3-regions.js'))), SLICE3_PINS.fileSha,
+    'slice3-regions.js byte-changed — the SLICE3 contract is frozen; re-gate any change at HIGH effort');
+  assert.deepEqual(SLICE3_REGIONS.map((r) => r.name), SLICE3_PINS.names, 'SLICE3 region names/order tampered');
+  assert.deepEqual(SLICE3_REGIONS.map((r) => r.kind), SLICE3_PINS.kinds, 'SLICE3 region kinds tampered');
+  for (const r of SLICE3_REGIONS) if (r.kind === 'replace') {
+    assert.equal(sha256(r.restore.join('\n')), SLICE3_PINS.restoreSha[r.name],
+      `SLICE3 ${r.name} restore bytes tampered (widened to swallow adjacent code, or shrunk?)`);
+  }
+}
+// Strict marker scan (Codex r1 P2): a marker CANDIDATE is marker-SHAPED — `${prefix}:` … ending in :START/:END
+// (so a descriptive `${prefix}:LABEL` comment, e.g. the batch-2 `SLICE3:RESUMEN` section labels, is NOT a marker).
+// EVERY candidate must then be EXACTLY `${prefix}:<name>:<START|END>` with a valid name — a malformed one
+// (SLICE3:START, SLICE3::START, SLICE3:BAD_NAME:START) is REJECTED, not silently ignored. Whitelist optional.
+function strictMarks(lines, prefix, whitelist) {
+  const cand = new RegExp(prefix + ':(?:[A-Za-z0-9_:-]*:)?(?:START|END)\\b', 'g');
+  const strict = new RegExp('^' + prefix + ':([A-Za-z0-9-]+):(START|END)$');
+  const marks = [];
+  lines.forEach((line, i) => {
+    const hits = line.match(cand) || [];
+    assert.ok(hits.length <= 1, `line ${i + 1}: more than one ${prefix} marker`);
+    for (const tok of hits) {
+      const m = strict.exec(tok);
+      assert.ok(m, `malformed ${prefix} marker: "${tok}" (line ${i + 1})`);
+      if (whitelist) assert.ok(whitelist.includes(m[1]), `unknown ${prefix} region: ${m[1]}`);
+      marks.push({ i, name: m[1], kind: m[2] });
+    }
+  });
+  return marks;
+}
 const PFX = 'xpizza-driver/';
 
 // The slice-2 freeze point: feat/driver-refresh-slice2 is a pure delta over this commit (the PROXY base =
@@ -192,6 +237,11 @@ t('baseline commit is reachable', () => {
   assert.match(baseSha, /^[0-9a-f]{40}$/, `baseline ${BASELINE} did not resolve to a commit`);
 });
 
+// Independently pin the SLICE3 contract used by the coexistence splice (Codex r1 P1) — see verifySlice3Contract.
+t('SLICE3 contract is byte-frozen + matches the independently-pinned names/kinds/restore bytes', () => {
+  verifySlice3Contract();
+});
+
 // ---------- 1. every baseline file except index.html byte-identical ----------
 // Strip every SLICE2:*:START..END region (inclusive) from a source — used to prove a REGION-BEARING frozen file
 // recovers baseline once its (pure-insert) region(s) are removed. Only xpizza-delivery.js carries one (NAV-SDK).
@@ -299,18 +349,17 @@ function regionRanges(lines) {
 // can splice them too. Full SLICE3 validation (whitelist, nesting, pin integrity) is slice3-freeze.guard's job;
 // here we only pair the markers we need to splice. Returns [{ r, s, e }] for each paired, known SLICE3 region.
 function findSlice3Ranges(lines) {
+  const marks = strictMarks(lines, 'SLICE3', SLICE3_PINS.names);   // rejects malformed/unapproved SLICE3 markers (Codex r1 P2)
   const open = {}; const out = [];
-  const re = /SLICE3:([A-Za-z0-9-]+):(START|END)\b/;
-  lines.forEach((line, i) => {
-    const m = re.exec(line);
-    if (!m) return;
-    if (m[2] === 'START') open[m[1]] = i;
-    else if (open[m[1]] != null) {
-      const r = SLICE3_REGIONS.find((x) => x.name === m[1]);
-      if (r) out.push({ r, s: open[m[1]], e: i });
-      delete open[m[1]];
+  for (const { i, name, kind } of marks) {
+    if (kind === 'START') { assert.equal(open[name], undefined, `SLICE3 region ${name} START while open (nested)`); open[name] = i; }
+    else {
+      assert.ok(open[name] != null, `SLICE3 region ${name} END without START`);
+      const r = SLICE3_REGIONS.find((x) => x.name === name);
+      if (r) out.push({ r, s: open[name], e: i });
+      delete open[name];
     }
-  });
+  }
   return out;
 }
 
