@@ -6,9 +6,13 @@
 // (staged → member + identity, resumable) and deactivation consequences, legacy enrichment. Run: node branches/branch-store.test.js
 const assert = require('assert');
 const S = require('./branch-store');
-// a lease 'until' includes the REAL time its holder ran (clockOf: now + elapsed) — an expiry probe must clear that by a wide margin,
-// never by 1 ms (that made the r3 interleaving cell timing-dependent)
-const EXPIRY_SLACK = 60000;
+// LOGICAL TIME (Codex flakefix r1; standing rule: lease / TTL tests never read the wall clock): every lifecycle call made here runs
+// on an injected clock pinned to its own `now`, so a lease's `until` is exactly now + LEASE_MS and an expiry probe is decided by
+// the logical times the test states — never by how long a holder or a probe actually ran.
+for (const k of ['createDraft', 'createBrandWithDraft', 'deleteBranchDraft', 'materializeBranch', 'resumeBranchOp', 'setBranchActive', 'activateBrand', 'deactivateBrand']) {
+  const f = S[k];
+  S[k] = (db, o = {}) => f(db, Number.isFinite(o.now) && typeof o.clock !== 'function' ? { ...o, clock: () => o.now } : o);
+}
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
@@ -78,16 +82,16 @@ const noInc = (v) => (v == null ? v : JSON.parse(JSON.stringify(v, (k, x) => (k 
     // interrupted (lease expired: «resume»); B's own retry after its lease takes the op over and finishes on the PERSISTED candidate
     const del = (now) => S.deleteBranchDraft(db, { rid: 'tb_brand_plaza_comercial', brandId: 'tb_brand', now });
     assert.deepStrictEqual(await del(NOW + 1), { ok: false, error: 'brand_busy', brand: 'tb_brand', holder: 'create_draft', interrupted: false }, 'A is refused while B\'s op is live');
-    // LIVE control: one ms before the lease's EARLIEST possible expiry (B's until ≥ NOW + LEASE_MS) is still live — the slack below
-    // widens only the EXPIRED probes and can never make a should-be-live probe read as interrupted
+    // LIVE control: on logical time B's lease ends EXACTLY at NOW + LEASE_MS — one ms before it is live, one ms after it is
+    // interrupted (both deterministic: no wall clock enters either lease computation)
     assert.deepStrictEqual(await del(NOW + S.LEASE_MS - 1), { ok: false, error: 'brand_busy', brand: 'tb_brand', holder: 'create_draft', interrupted: false }, 'still live just before the lease ends');
-    assert.deepStrictEqual(await del(NOW + S.LEASE_MS + EXPIRY_SLACK + 1), { ok: false, error: 'brand_busy', brand: 'tb_brand', holder: 'create_draft', interrupted: true }, 'and while it is interrupted (resume first)');
-    const rb = await S.createDraft(db, { input: { ...INPUT, location_name: 'Plaza Comercial Sur' }, opId: 'B', callerUid: 'own1', now: NOW + S.LEASE_MS + EXPIRY_SLACK + 2 });
+    assert.deepStrictEqual(await del(NOW + S.LEASE_MS + 1), { ok: false, error: 'brand_busy', brand: 'tb_brand', holder: 'create_draft', interrupted: true }, 'and while it is interrupted (resume first)');
+    const rb = await S.createDraft(db, { input: { ...INPUT, location_name: 'Plaza Comercial Sur' }, opId: 'B', callerUid: 'own1', now: NOW + S.LEASE_MS + 2 });
     assert.deepStrictEqual(rb, { ok: true, rid: 'tb_brand_plaza_comercial_2' }, 'B resumes on its PERSISTED candidate');
     const owned = Object.entries(db.get('rid_reservations')).filter(([, v]) => v.op_id === 'B').map(([k]) => k);
     assert.deepStrictEqual(owned, ['tb_brand_plaza_comercial_2'], 'B holds exactly ONE reservation');
     assert.strictEqual(db.get('restaurants/tb_brand_plaza_comercial_2/draft').location_name, 'Plaza Comercial Sur');
-    assert.deepStrictEqual(await del(NOW + S.LEASE_MS + EXPIRY_SLACK + 3), { ok: true }, 'then A deletes its draft (frees the base rid)');
+    assert.deepStrictEqual(await del(NOW + S.LEASE_MS + 3), { ok: true }, 'then A deletes its draft (frees the base rid)');
     assert.strictEqual(db.get('rid_reservations/tb_brand_plaza_comercial'), null);
   }
   {
@@ -99,7 +103,7 @@ const noInc = (v) => (v == null ? v : JSON.parse(JSON.stringify(v, (k, x) => (k 
     assert.strictEqual(db.get('branch_op_ids/tb_brand/B').candidate, 'tb_brand_plaza');
     assert.strictEqual(db.get('rid_reservations/tb_brand_plaza'), null, 'not reserved yet');
     db.root.rid_reservations = { tb_brand_plaza: { op_id: 'C', brand_id: 'tb_brand' } };
-    const rb = await S.createDraft(db, { input: { ...INPUT, location_name: 'Plaza' }, opId: 'B', callerUid: 'own1', now: NOW + S.LEASE_MS + EXPIRY_SLACK + 1 });
+    const rb = await S.createDraft(db, { input: { ...INPUT, location_name: 'Plaza' }, opId: 'B', callerUid: 'own1', now: NOW + S.LEASE_MS + 1 });
     assert.deepStrictEqual(rb, { ok: true, rid: 'tb_brand_plaza_2' }, 'B advanced forward from its persisted candidate');
     assert.deepStrictEqual(db.get('rid_reservations/tb_brand_plaza'), { op_id: 'C', brand_id: 'tb_brand' }, 'C keeps its reservation');
     assert.strictEqual(db.get('branch_op_ids/tb_brand/B').candidate, 'tb_brand_plaza_2');
@@ -138,7 +142,7 @@ const noInc = (v) => (v == null ? v : JSON.parse(JSON.stringify(v, (k, x) => (k 
     const busy = await S.materializeBranch(db, { rid: 'tb_brand_centro', location: LOC, now: NOW + 1000, callId: 'c2' });
     assert.deepStrictEqual(busy, { ok: false, error: 'brand_busy', brand: 'tb_brand', holder: 'materialize', interrupted: false }, 'another call cannot take an unexpired lease');
     assert.deepStrictEqual((await S.createDraft(db, { input: { ...INPUT, location_name: 'Sur' }, opId: 'op9', callerUid: 'own1', now: NOW + 1000 })).error, 'brand_busy', 'ANY lifecycle op on the brand waits');
-    const resumed = await S.resumeBranchOp(db, { rid: 'tb_brand_centro', now: NOW + S.LEASE_MS + EXPIRY_SLACK + 1000, callId: 'c3' });   // lease expired
+    const resumed = await S.resumeBranchOp(db, { rid: 'tb_brand_centro', now: NOW + S.LEASE_MS + 1000, callId: 'c3' });   // lease expired
     assert.deepStrictEqual(resumed, { ok: true, rid: 'tb_brand_centro', state: 'staged' }, 'resume from durable inputs (no request needed)');
     assert.strictEqual(db.get('brands/tb_brand/locations/tb_brand_centro'), 'staged');
     assert.strictEqual(db.get('brands/tb_brand/projection_gen'), 1, 'the membership change bumps projection_gen (once, across the crash + resume)');
@@ -236,7 +240,7 @@ const noInc = (v) => (v == null ? v : JSON.parse(JSON.stringify(v, (k, x) => (k 
     assert.strictEqual(db.get('brands/tb_brand/locations/tb_norte'), 'member');
     assert.strictEqual(db.get('brands/tb_brand/projection_gen'), 1, 'staged → member bumps projection_gen');
     assert.strictEqual(db.get('restaurants/tb_norte/identity/active'), false, 'identity not yet active');
-    const res = await S.resumeBranchOp(db, { rid: 'tb_norte', now: NOW + S.LEASE_MS + EXPIRY_SLACK + 1000, callId: 'c2' });
+    const res = await S.resumeBranchOp(db, { rid: 'tb_norte', now: NOW + S.LEASE_MS + 1000, callId: 'c2' });
     assert.deepStrictEqual(res, { ok: true, rid: 'tb_norte', state: 'active' });
     assert.deepStrictEqual([db.get('restaurants/tb_norte/identity/active'), db.get('restaurants/tb_norte/identity/version')], [true, 4]);
     assert.strictEqual(db.get('brands/tb_brand/projection_gen'), 1, 'the resumed brand step is a no-op (no second bump)');
@@ -278,13 +282,13 @@ const noInc = (v) => (v == null ? v : JSON.parse(JSON.stringify(v, (k, x) => (k 
     assert.deepStrictEqual([db.get('brands/tb_brand/activation'), db.get('brands/tb_brand/locations/tb_norte'), db.get('brands/tb_brand/projection_gen')], [{ state: 'on', since: NOW }, 'member', 1]);
     assert.strictEqual(db.get('restaurants/tb_norte/identity/active'), false);
     assert.deepStrictEqual((await S.activateBrand(db, { brandId: 'tb_brand', open: ['tb_norte'], now: NOW + 9, readers })).error, 'brand_busy', 'a re-run inside the crashed op\'s lease waits');
-    const again = await S.activateBrand(db, { brandId: 'tb_brand', open: ['tb_norte'], now: NOW + S.LEASE_MS + EXPIRY_SLACK + 9, readers });
+    const again = await S.activateBrand(db, { brandId: 'tb_brand', open: ['tb_norte'], now: NOW + S.LEASE_MS + 9, readers });
     assert.deepStrictEqual(again, { ok: true, opened: ['tb_norte'] }, 're-run after the lease takes the op over: brand step already matching, identity CAS completes');
     assert.deepStrictEqual([db.get('brands/tb_brand/activation/since'), db.get('brands/tb_brand/projection_gen')], [NOW, 1], 'no second brand write');
     assert.deepStrictEqual([db.get('restaurants/tb_norte/identity/active'), db.get('restaurants/tb_norte/identity/version')], [true, 4]);
     assert.strictEqual(db.get('restaurants/tb_norte/identity/active_changed_at'), NOW, 'the resumed op keeps its original time');
     const n0 = dataWrites(db).length;
-    assert.deepStrictEqual(await S.activateBrand(db, { brandId: 'tb_brand', open: ['tb_norte'], now: NOW + S.LEASE_MS + EXPIRY_SLACK + 20, readers }), { ok: true, opened: ['tb_norte'] }, 'a third run is a no-op');
+    assert.deepStrictEqual(await S.activateBrand(db, { brandId: 'tb_brand', open: ['tb_norte'], now: NOW + S.LEASE_MS + 20, readers }), { ok: true, opened: ['tb_norte'] }, 'a third run is a no-op');
     assert.strictEqual(dataWrites(db).length, n0, 'and writes nothing but its lock');
     assert.deepStrictEqual(await S.deactivateBrand(db, { brandId: 'tb_brand', now: NOW + 30 }), { ok: true });
     assert.deepStrictEqual([db.get('brands/tb_brand/activation'), db.get('brands/tb_brand/projection_gen'), db.get('brands/tb_brand/locations/tb_norte')], [{ state: 'off', since: NOW + 30 }, 2, 'member']);
@@ -294,7 +298,7 @@ const noInc = (v) => (v == null ? v : JSON.parse(JSON.stringify(v, (k, x) => (k 
       const d0 = init();
       d0.failAfter['brands/tb_brand'] = true;
       await assert.rejects(S.activateBrand(d0, { brandId: 'tb_brand', open: [], now: NOW, readers }));
-      assert.deepStrictEqual(await S.resumeBranchOp(d0, { brandId: 'tb_brand', now: NOW + S.LEASE_MS + EXPIRY_SLACK + 1, callId: 'r1' }), { ok: true, opened: [] }, 'PLAN-EMPTY-RESUME an empty-open activation resumes to completion');
+      assert.deepStrictEqual(await S.resumeBranchOp(d0, { brandId: 'tb_brand', now: NOW + S.LEASE_MS + 1, callId: 'r1' }), { ok: true, opened: [] }, 'PLAN-EMPTY-RESUME an empty-open activation resumes to completion');
       assert.deepStrictEqual([d0.get('brands/tb_brand/activation/state'), d0.get('brand_ops/tb_brand')], ['on', null]);
     }
     db = fakeRtdb({ brands: { tb_leg: { name: 'L', active: true, locations: { tb_leg: 'member', tb_leg_2: 'staged' }, activation: { state: 'legacy', since: 1 } } } });
@@ -325,7 +329,7 @@ const noInc = (v) => (v == null ? v : JSON.parse(JSON.stringify(v, (k, x) => (k 
     await assert.rejects(S.createBrandWithDraft(db, args));
     assert.strictEqual(db.get('brands/tb_nueva'), null, 'no brand yet');
     assert.strictEqual((await S.createBrandWithDraft(db, args)).error, 'brand_busy', 'a re-run inside the crashed op\'s lease waits');
-    assert.deepStrictEqual(await S.createBrandWithDraft(db, { ...args, now: NOW + S.LEASE_MS + EXPIRY_SLACK + 1 }), { ok: true, rid: 'tb_nueva_centro' }, 'a re-run after the lease resumes the same op (its original time kept)');
+    assert.deepStrictEqual(await S.createBrandWithDraft(db, { ...args, now: NOW + S.LEASE_MS + 1 }), { ok: true, rid: 'tb_nueva_centro' }, 'a re-run after the lease resumes the same op (its original time kept)');
     assert.deepStrictEqual(db.get('brands/tb_nueva'), { name: 'Nueva', active: true, locations: { tb_nueva_centro: 'staged' }, activation: { state: 'off', since: NOW }, projection_gen: 1 },
       'the brand is born OFF, listing its first branch — never empty');
     assert.deepStrictEqual(noInc(db.get('restaurants/tb_nueva_centro/draft')), { ...first, brand_id: 'tb_nueva', created_at: NOW, created_by: 'sherpa', op_id: 'create_tb_nueva' });
