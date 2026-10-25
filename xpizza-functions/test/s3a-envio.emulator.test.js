@@ -159,7 +159,7 @@ const DELIVERY_KEYS = ['delivery_cents', 'promo_discount_cents', 'delivery_snaps
   for (const rid of ['x_pizza', 'la_musa']) {
     const food = DARK[rid].total_cents;
     const q = await quote(rid, { mode: 'delivery', pin: { ...north(1), confirmed: true } });
-    assert.deepStrictEqual([q.json.ok, q.json.net_total_cents, q.json.total_cents, q.json.delivery], [true, food + 3000, food, { delivery_cents: 3000, promo_discount_cents: 0, policy_version: 1, mode: 'delivery' }]);
+    assert.deepStrictEqual([q.json.ok, q.json.net_total_cents, q.json.total_cents, q.json.delivery], [true, food + 3000, food, { delivery_cents: 3000, promo_discount_cents: 0, policy_version: 1, mode: 'delivery', from_cents: 3000, max_km: 7 }]);   // S2 §3.6: + the public { from_cents, max_km } (lowest band, last band)
     const same = await cash(rid, { km: 1, extra: { quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents } });
     assert.deepStrictEqual([same.status, same.rec.quote && same.rec.quote.charged_net_cents], [200, food + 3000], `${rid}: the quoted order is charged the signed net (${same.text.slice(0, 160)})`);
     const q2 = await quote(rid, { mode: 'delivery', pin: { ...north(1), confirmed: true } });

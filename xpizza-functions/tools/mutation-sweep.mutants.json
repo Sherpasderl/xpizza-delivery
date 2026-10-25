@@ -3231,11 +3231,14 @@
     "slice": "c1",
     "label": "tax-inclusive fiscal is ADDED on top — double-charging ISV on every x_pizza order",
     "file": "compute-server-net.js",
-    "from": "  const net_total_cents = netAfterReward + delivery_cents;",
-    "to": "  const net_total_cents = netAfterReward + delivery_cents + fiscal_cents;",
+    "from": "  const net_total_cents = netAfterReward + delivery_cents + tip_cents;",
+    "to": "  const net_total_cents = netAfterReward + delivery_cents + tip_cents + fiscal_cents;",
     "command": [
       "node",
       "compute-server-net.test.js"
+    ],
+    "kills_with": [
+      "net_total_cents must equal what the order charges TODAY"
     ]
   },
   {
@@ -3291,14 +3294,14 @@
     "slice": "c1",
     "label": "only the net is checked, not the components, so a NaN breakdown reaches the token",
     "file": "compute-server-net.js",
-    "from": "  const out = { net_total_cents, base_cents, reward_discount_cents, delivery_cents, fiscal_cents };",
+    "from": "  const out = { net_total_cents, base_cents, reward_discount_cents, delivery_cents, fiscal_cents, tip_cents };",
     "to": "  const out = { net_total_cents };",
     "command": [
       "node",
       "compute-server-net.test.js"
     ],
     "equivalent": true,
-    "why": "MEASURED, not assumed: I could not construct an input where a COMPONENT is non-safe while net_total_cents is safe. Every component is derived from the same lempira->centavos conversion as the net (base_cents from orderBreakdownCents, fiscal_cents its tax split, reward_discount_cents their difference, delivery_cents a literal 0), so a magnitude that corrupts one corrupts the net first — which c1-07 and c1-09 already kill. The component check is KEPT because the token carries the components as provenance: a NaN there would be a number nobody could later verify, and 'I could not build one' is weaker than 'none exists'. Revisit if a component ever gains its own arithmetic."
+    "why": "MEASURED, not assumed: I could not construct an input where a COMPONENT is non-safe while net_total_cents is safe. Every component is derived from the same lempira->centavos conversion as the net (base_cents from orderBreakdownCents, fiscal_cents its tax split, reward_discount_cents their difference, delivery_cents the net envío of a server ctx whose cents readPricing / storedCtx already require to be safe integers, and — since S2-srv-tip — tip_cents = tipCentsOf(ctx), which is a safe integer > 0 or 0 by construction), so a magnitude that corrupts one corrupts the net first — which c1-07 and c1-09 already kill. The component check is KEPT because the token carries the components as provenance: a NaN there would be a number nobody could later verify, and 'I could not build one' is weaker than 'none exists'. Revisit if a component ever gains its own arithmetic."
   },
   {
     "id": "c1-09",
