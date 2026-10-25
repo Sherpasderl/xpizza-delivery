@@ -112,4 +112,4 @@ for (const k of ['log', 'warn', 'error', 'info']) { const o = console[k]; consol
 
   FINISHED = true;
   console.log(`\nroutes-client: OK (${n})`);
-})().catch((e) => { console.error(String(e && e.stack).split(KEY).join('<KEY>')); process.exit(1); });
+})().catch((e) => { process.stderr.write(`${String(e && e.stack).split(KEY).join('<KEY>')}\n`); process.exit(1); });   // stderr directly: console.error is captured above

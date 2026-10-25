@@ -43,7 +43,7 @@ const alerts = (db) => db.get('dispatcher_alerts') || {};
     const db = world(); await run(db);
     db.put('tasks/ord_a_delivery', null); db.put('stacks', null);
     let reads = 0; const spy = { ...db, ref: (p) => { const r = db.ref(p); return { ...r, once: (...a) => { reads++; return r.once(...a); } }; } };
-    assert.strictEqual(await run(spy), 'exists'); assert.strictEqual(reads, 1, 'ONE read: the alert');
+    assert.strictEqual(await run(spy), 'exists', 'a retry exits on the existing alert'); assert.strictEqual(reads, 1, 'ONE read: the alert');
     ok('a retry after the alert committed exits on the existing alert with ONE read (the sibling evidence is not needed again)');
   }
 

@@ -59,7 +59,7 @@ const active = { d1: new Set(['o1']), d2: new Set(['o2']), d3: new Set(['o3']) }
     const ids = (xs) => xs.map((x) => x.driverId);
     // a tb_centro new order: d1 same-hub + prep → kept; d2 cross-hub → kept (today's rule); d3 same-hub no prep → dropped
     let db = world('tb_centro');
-    assert.deepStrictEqual(ids(await W.filterEligible(db, tasksOf(db), ELIGIBLE, active, 'nx')), ['d0', 'd1', 'd2']);
+    assert.deepStrictEqual(ids(await W.filterEligible(db, tasksOf(db), ELIGIBLE, active, 'nx')), ['d0', 'd1', 'd2'], 'D7: d1 same-hub kept, d2 cross-hub kept, d3 dropped');
     // a tb_norte new order: d2 is now same-hub (+prep) → kept; d1 and d3 are cross-hub → kept regardless of prep
     db = world('tb_norte');
     assert.deepStrictEqual(ids(await W.filterEligible(db, tasksOf(db), ELIGIBLE, active, 'nx')), ['d0', 'd1', 'd2', 'd3'], 'cross-hub pairs keep today’s rule even without prep (D7)');
