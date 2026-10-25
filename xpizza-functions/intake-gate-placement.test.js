@@ -11,7 +11,8 @@
  *   chargeOnlineOrder: classifyHostedAttempt(...)  BEFORE  checkRateLimit(...);  checkItemAvailability(...)
  *                      BEFORE checkRateLimit(...), BEFORE acquireHostedAttempt(...), BEFORE any payment_attempts/ write
  *   post-commitment:   the gate is NOT referenced anywhere else (materializeOnConfirm / scheduled-release
- *                      must NOT re-check — plan §4/§7). Enforced by an exact occurrence count.
+ *                      must NOT re-check — plan §4/§7). Enforced by an exact occurrence count (2 classify calls:
+ *                      the online classify + S2 P-C's pre-reserve re-check thunk, both scoped to chargeOnlineOrder).
  */
 const fs = require('fs');
 const assert = require('assert');
@@ -104,9 +105,18 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 // ── post-commitment paths must NOT re-check (plan §4/§7) ──
 {
   const availCount = (SRC.match(/checkItemAvailability\(/g) || []).length;    // 2 handler CALLS (require has no paren)
-  const classifyCount = (SRC.match(/classifyHostedAttempt\(/g) || []).length; // 1 handler CALL (require has no paren)
+  const classifyCount = (SRC.match(/classifyHostedAttempt\(/g) || []).length; // 2 handler CALLS, both online intake (require has no paren)
   assert.strictEqual(availCount, 2, `checkItemAvailability( should be CALLED exactly 2x (cash + online), got ${availCount}`);
-  assert.strictEqual(classifyCount, 1, `classifyHostedAttempt( should be CALLED exactly 1x (online), got ${classifyCount}`);
+  assert.strictEqual(classifyCount, 2, `classifyHostedAttempt( should be CALLED exactly 2x (online: the classify + P-C's re-check), got ${classifyCount}`);
+  // S2 P-C (codex S2-srv-tip r1 P2): the second call is the read-only re-check P-C runs when the first classify FAILED.
+  // Both calls live in the chargeOnlineOrder intake body; the re-check is the PE.refusesFresh thunk, before the reserve.
+  const online = slice("chargeOnlineApp.all('*'", 'chargeOnlineApp.use(');
+  assert.strictEqual((online.match(/classifyHostedAttempt\(/g) || []).length, 2, 'both classifyHostedAttempt( calls are inside the chargeOnlineOrder body');
+  const pc = online.indexOf('PE.refusesFresh(');
+  assert.ok(pc !== -1, 'P-C pre-reserve check present in chargeOnlineOrder');
+  const pcLine = online.slice(pc, online.indexOf('\n', pc));
+  assert.ok(/\(\) => classifyHostedAttempt\(/.test(pcLine), 'the second classifyHostedAttempt( is the PE.refusesFresh re-check thunk');
+  before(online, pcLine, 'reserveRedemption(', 'P-C re-check (classify thunk) before the reward reserve');
   // Prove absence inside the post-commitment handlers explicitly.
   const materialize = slice('exports.materializeOnConfirm', 'exports.');
   assert.ok(!/checkItemAvailability|classifyHostedAttempt/.test(materialize), 'materializeOnConfirm must NOT re-check availability');
