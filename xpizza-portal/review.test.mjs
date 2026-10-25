@@ -1034,7 +1034,7 @@ test('🔴 an EMPTY diff attests to nothing and publishes nothing', () => {
 
 
 // ── 1D add-product A — the add-only review, attestation, panels and receipt ─────────────────────────────────────
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 const ADD_DIFF = () => ({ added: [{ surface: 'item', key: 'Pizza Nueva', price: 420 }, { surface: 'extra', key: 'x', price: 5 }],
@@ -1084,6 +1084,14 @@ test('🔴 EVERY merchant-reachable add-product refusal has a designed panel —
   const { extrasCapabilities } = createRequire(import.meta.url)('../xpizza-functions/catalog/platform-extras.js');
   const EXTRAS_CODES = ['exposure_ref_mismatch', 'extras_not_supported_yet'];
   if (!extrasCapabilities().authoring) for (const c of EXTRAS_CODES) GENERIC_BY_DESIGN.add(c);
+  // PLAN-public-menu-display T1: a category rename beside another change (rename_not_alone) is unreachable from this portal
+  // ONLY while it has no category-rename control — it never writes a category's name. The exemption is TIED to that: the
+  // first portal source line that assigns a category `.name` turns this test red until the code has a designed panel.
+  const portalSrc = readdirSync(new URL('.', import.meta.url)).filter((f) => f.endsWith('.js') && !f.includes('.test.'))
+    .map((f) => readFileSync(new URL(f, import.meta.url), 'utf8')).join('\n');
+  // any `cat…` / `categor…` identifier's `.name` assigned — broad on purpose: a false hit only turns this red (the safe side)
+  const writesCategoryName = portalSrc.split('\n').some((l) => /\bcat\w*(?:\([^)]*\))?(?:\[[^\]]*\])?\.name\s*=[^=]/i.test(l) || (/categor/i.test(l) && /\.name\s*=[^=]/.test(l)));
+  if (!writesCategoryName) GENERIC_BY_DESIGN.add('rename_not_alone');
   const RESET = new Set(['existing_item_changed', 'existing_item_removed', 'extras_changed', 'item_order_changed', 'structure_changed']);
   for (const c of codes) {
     if (GENERIC_BY_DESIGN.has(c)) continue;
