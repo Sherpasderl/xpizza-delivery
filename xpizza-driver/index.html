@@ -1436,6 +1436,12 @@
 .oe-banner .ico svg { width: 18px; height: 18px; }
 .oe-banner b { display: block; margin-bottom: 2px; font-size: 14px; }
 .oe-banner .oe-x { margin-left: auto; flex: none; align-self: center; background: transparent; color: var(--sv-warn, #8A5A00); border: 1px solid currentColor; border-radius: 8px; padding: 6px 13px; font-weight: 800; font-size: 12px; font-family: inherit; cursor: pointer; }
+/* SLICE3:SPLASH — launch splash (splash / S.splash): Sola draw-in on the Sherpa navy, once per launch, never blocks auth */
+.splash { position: fixed; inset: 0; background: #14306B; display: grid; place-items: center; z-index: 400; opacity: 1; transition: opacity .42s ease; }
+.splash.sp-out { opacity: 0; pointer-events: none; }
+.splash .sp-mark { width: 120px; height: 120px; }
+.splash .sp-word { position: absolute; bottom: calc(64px + var(--safe-bottom)); left: 0; right: 0; text-align: center; color: #fff; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; opacity: 0; transition: opacity .5s ease; }
+.splash.sp-reduced .sp-word { opacity: 1; }   /* reduced-motion: the word is simply present (no fade-in orchestration) */
 /* apCancelada banner (red, persistent until «Entendido») */
 .cancel-banner { display: flex; gap: 9px; align-items: flex-start; margin: 2px 16px 6px; padding: 11px 13px; border-radius: 12px; background: var(--sv-err-bg, #FBEAEA); color: var(--sv-err, #B9323A); font-size: 13px; line-height: 1.35; }
 .cancel-banner .ico { flex: none; width: 18px; height: 18px; margin-top: 1px; }
@@ -1763,9 +1769,52 @@ let slice1ReviewLatchKey = null;
 /* ===== SLICE2:IMPORT:START — stacked view + overview map (slice 2); pure builders in stacked-view.js / overview-map.js ===== */
 import { activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels,
          navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
-         pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml } from './stacked-view.js';
+         pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml, splashHtml } from './stacked-view.js';
 import { overviewMapSvg, isStaleFix } from './overview-map.js';
 import { cuentaHtml, navAppHtml } from './nav-view.js';   // R7 Cuenta + «App de navegación» pure builders
+
+// SLICE3:SPLASH — the launch splash (prototype S.splash). Mounted ONCE per launch (this module evaluates once),
+// here in the non-lifted sliver of the IMPORT region so the branch harness never executes it. Fire-and-forget:
+// it mounts the overlay, orchestrates the Sola draw-in via the Web Animations API and fades out on its OWN timer.
+// It NEVER awaits auth — onAuth runs underneath, independent — so it cannot delay or block auth restore. Reduced
+// motion → the mark + word are simply present, then fade. Wrapped in try/catch: the splash is cosmetic and must
+// never affect boot. Placed before the let-declarations it is self-contained from (only drv2SplashDone + splashHtml).
+let drv2SplashDone = false;
+function drv2RunSplash() {
+  try {
+    if (drv2SplashDone || typeof document === 'undefined' || !document.body) return;
+    drv2SplashDone = true;
+    const host = document.createElement('div');
+    host.innerHTML = splashHtml();
+    const el = host.firstElementChild;
+    if (!el) return;
+    document.body.appendChild(el);
+    const finish = () => { el.classList.add('sp-out'); setTimeout(() => { try { el.remove(); } catch (_) { /* detached */ } }, 450); };
+    const ring = el.querySelector('.k-ring');
+    const reduce = (typeof matchMedia === 'function') && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !ring || typeof ring.animate !== 'function') {   // reduced motion OR no WAAPI → static, then fade (never a crash)
+      el.classList.add('sp-reduced');
+      setTimeout(finish, 900);
+      return;
+    }
+    const needle = el.querySelector('.k-needle');
+    const word = el.querySelector('#drv2-splash-word');
+    const len = 2 * Math.PI * 14.8;
+    ring.style.strokeDasharray = `${len} ${len + 2}`;
+    ring.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }], { duration: 420, easing: 'cubic-bezier(.5,0,.25,1)', fill: 'both' });
+    if (needle) {
+      needle.style.transformOrigin = '24px 24px';
+      const frames = [];
+      for (let i = 0; i <= 30; i++) { const t = i / 30; const a = -150 * Math.exp(-3.6 * t) * Math.cos(2 * Math.PI * 1.35 * t); frames.push({ transform: `rotate(${a.toFixed(2)}deg)`, offset: t }); }
+      frames[30].transform = 'rotate(0deg)';   // damped swing settles at north
+      needle.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, delay: 160, fill: 'both' });
+      needle.animate(frames, { duration: 820, delay: 160, fill: 'both' });
+    }
+    if (word) word.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: 520, fill: 'both' });
+    setTimeout(finish, 1400);   // independent timer — NEVER tied to auth
+  } catch (_) { /* splash is cosmetic — never let it affect boot */ }
+}
+drv2RunSplash();
 // The display-only map-aging timer (SLICE2:MAP-LIFECYCLE): a ~30 s re-render that re-evaluates the driver
 // fix-age (last_location_ts) and dims the dot when stale. It owns NO data — it only re-runs the EXISTING
 // render (slidingEl drag-suppression still guards it) — and self-clears when the tab is hidden so a

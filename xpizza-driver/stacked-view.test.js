@@ -8,7 +8,7 @@ import {
   activeCardHtml, queueHtml, queueDetailHtml, incomingBannerHtml,
   stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml,
   pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml,
-  contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml,
+  contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml, splashHtml,
 } from './stacked-view.js';
 
 let passed = 0;
@@ -437,6 +437,15 @@ t('offerExpiredBannerHtml: «Se venció la oferta #N» + reassurance + «Ok»; M
 t('offerExpiredBannerHtml: no num → no dangling «#»', () => {
   const html = offerExpiredBannerHtml({}, DEPS);
   assert.ok(html.includes('Se venció la oferta<') && !html.includes('oferta #'), 'omits the number cleanly when absent');
+});
+
+// ---------- splashHtml (splash / S.splash) ----------
+t('splashHtml: Sola compass (.k-ring + .k-needle, host-animatable) + «Sherpa», on the navy overlay', () => {
+  const html = splashHtml();
+  assert.ok(html.includes('id="drv2-splash"') && html.includes('class="splash"'), 'the launch overlay');
+  assert.ok(html.includes('class="k-ring"') && html.includes('class="k-needle"'), 'the compass ring + needle carry the classes the host animates');
+  assert.ok(html.includes('>Sherpa<'), 'the «Sherpa» wordmark');
+  assert.ok(/#8EC0FF/.test(html) && /#FFFFFF/.test(html), 'the established Sola palette (sky needle, white ring)');
 });
 
 // ---------- cancelBannerHtml (apCancelada / S17) ----------

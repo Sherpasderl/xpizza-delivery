@@ -782,6 +782,22 @@ export function deliverySummaryHtml(info = {}, deps = {}) {
     </div>`;
 }
 
+/**
+ * SLICE3:SPLASH — the launch splash (prototype S.splash): the Sola compass on the Sherpa navy, with «Sherpa»
+ * beneath. Pure markup only; the host animates the draw-in (ring stroke + damped needle swing) via the Web
+ * Animations API and fades it out on its own timer — NEVER awaiting auth. The compass paths carry .k-ring /
+ * .k-needle so the host can target them; colours match the established driver-app Sola mark (navy/white/sky).
+ */
+export function splashHtml() {
+  return `<div class="splash" id="drv2-splash" role="status" aria-label="Sherpa">`
+    + `<svg class="sp-mark" width="120" height="120" viewBox="0 0 48 48" aria-hidden="true">`
+    + `<path class="k-ring" d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="3.4" fill="none" stroke-linecap="round"/>`
+    + `<g class="k-needle"><path d="M24 12.6L27.3 24L20.7 24Z" fill="#8EC0FF"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="1.7" fill="#14306B"/></g>`
+    + `</svg>`
+    + `<div class="sp-word" id="drv2-splash-word">Sherpa</div>`
+    + `</div>`;
+}
+
 // SLICE3:OFERTA-EXPIRADA — a self-contained clock glyph (no ICONS key exists; index.html's ICONS object is
 // out-of-region, so the banner carries its own).
 const OE_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
