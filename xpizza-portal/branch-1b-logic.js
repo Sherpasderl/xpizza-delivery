@@ -62,10 +62,10 @@ export function hoursEditRows(hours) {
 export function reopenTimes(draftHours, loadedHours, key) {
   const own = isObj(loadedHours) ? loadedHours[key] : null;
   if (isObj(own) && own.open === true && dayError(own) === null) return { start: own.start, end: own.end };
-  const order = DAYS.map(([k]) => k);
-  const i = order.indexOf(key);
+  const dayKeys = DAYS.map(([k]) => k);
+  const i = dayKeys.indexOf(key);
   for (let j = 1; j < 7; j++) {
-    const h = isObj(draftHours) ? draftHours[order[(i - j + 7) % 7]] : null;
+    const h = isObj(draftHours) ? draftHours[dayKeys[(i - j + 7) % 7]] : null;
     if (isObj(h) && h.open === true && dayError(h) === null) return { start: h.start, end: h.end };
   }
   return { start: '', end: '' };
