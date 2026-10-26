@@ -29,7 +29,8 @@ function hours7Errors(hours) {
     if (!isObj(h) || typeof h.open !== 'boolean') { e.push(`${d}: {open} required`); continue; }
     if (Object.keys(h).some((k) => !['open', 'start', 'end'].includes(k))) e.push(`${d}: unknown key`);
     if (!h.open) { if ('start' in h || 'end' in h) e.push(`${d}: closed day has times`); continue; }
-    if (!HHMM.test(h.start) || !HHMM.test(h.end) || !(h.start < h.end)) e.push(`${d}: open day needs HH:MM start < end (same day)`);
+    // O1b T3d (Codex r1 #7): string times FIRST — an array / object / number never reaches the regex or the comparison
+    if (typeof h.start !== 'string' || typeof h.end !== 'string' || !HHMM.test(h.start) || !HHMM.test(h.end) || !(h.start < h.end)) e.push(`${d}: open day needs HH:MM start < end (same day)`);
   }
   return e;
 }
