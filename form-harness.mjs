@@ -145,7 +145,7 @@ export const loadAvail = async (w, map) => {
    generically: categories are included where the page's live apply carries them. `containers` is the page's
    own liveMenuContainers(). */
 const SITES = JSON.parse(readFileSync(new URL('./platform/sites.json', import.meta.url), 'utf8'));
-export const ORDER_FORM_DIRS = SITES.deployments.filter((d) => d.app === 'orders').map((d) => d.folder);
+export const ORDER_FORM_DIRS = SITES.deployments.filter((d) => d.app === 'orders' && d.context !== 'platform').map((d) => d.folder);   // the FORMS (the customer app, context 'platform', is not a form)
 /* 🔴 THE FOLDERS THIS RIG IS KNOWN TO COVER, by name — the anchor tools/form-source-inventory.js reads (a helper that names
    a form folder reaches it), and a guard: a new order form in the manifest must be added here (and so to the inventory)
    rather than silently joining a rig nobody re-inventoried. Folder names, not brand logic — nothing branches on them. */

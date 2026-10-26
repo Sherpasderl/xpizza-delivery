@@ -69,6 +69,15 @@ function validateManifest(m) {
       origins.add(o);
     }
   }
+  // S2 P-A: the customer APP's orders deployment (context 'platform', never a rid's own) — at most ONE, and it must carry a
+  // pay_return whose default is one of its OWN declared origins (pixelpay-return-url.js only ever returns to a declared origin)
+  const appDeps = deps.filter((d) => d && d.app === 'orders' && d.context === PLATFORM_CONTEXT);
+  if (appDeps.length > 1) errs.push('at most one orders deployment may have context platform');
+  for (const d of appDeps) {
+    const pr = d.pay_return;
+    if (!pr || typeof pr !== 'object' || pr.default === undefined) errs.push(`${JSON.stringify(d.id)}: the platform orders deployment needs pay_return with a default`);
+    else if (!Array.isArray(d.origins) || !d.origins.includes(pr.default)) errs.push(`${JSON.stringify(d.id)}: pay_return.default must be one of its own origins`);
+  }
   return errs;
 }
 

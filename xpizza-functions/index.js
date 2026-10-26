@@ -2021,7 +2021,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     console.error('chargeOnlineOrder: PixelPay config error', e.message);
     return res.status(500).json({ error: 'Payment not configured', detail: e.message });
   }
-  const returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });
+  const returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });
   if (returnBase.error) {
     console.error(`chargeOnlineOrder: ${returnBase.error} for ${orderId} (${restaurantId})`);
     return res.status(500).json({ error: 'Payment not configured', detail: 'return URL not configured for restaurant' });

@@ -1,6 +1,7 @@
 // Customer app S1 (PLAN-capp-S1.FINAL §0, §1, §5 Guards) — the slice's standing constraints, checked against the pinned base:
 //   1. no restaurant id / name in customer-app/ code (brand-agnostic: restaurants differ only in DATA)
-//   2. customer-app/ stays DARK — not a manifest site (both sites.json copies), no netlify.toml
+//   2. (S2-srv-app, PLAN-capp-S2-r4 §2.2) customer-app/ is the ONE `context:"platform"` orders deployment, with exactly the
+//      approved SHAPE — asserted from the manifest, never a host literal (the host is config: §2.1a)
 //   3. the live forms are byte-unchanged vs the base (both whole directories)
 //   4. NO server change — nothing under xpizza-functions/ changes except tests, fixtures, generated inventories and the
 //      package.json test chain (whose dependencies stay identical)
@@ -16,7 +17,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '2ce3198d';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 const LEAK = /x_pizza|la_musa|xpizza|lamusa|X\.? ?Pizza|La Musa/i;
-const codeFiles = () => readdirSync(join(ROOT, 'customer-app')).filter((f) => /\.(m?js|html|css)$/.test(f) && !/\.test\.m?js$/.test(f));
+// sherpa-client.js is the shared PLATFORM module, synced byte-for-byte into every manifest site (npm run sync:client); it is
+// not app code, so it is exempt from the literal scan ONLY while it stays identical to platform/client/sherpa-client.js
+const SYNCED = 'sherpa-client.js';
+const codeFiles = () => readdirSync(join(ROOT, 'customer-app')).filter((f) => /\.(m?js|html|css)$/.test(f) && !/\.test\.m?js$/.test(f) && f !== SYNCED);
 
 test('no restaurant id or name in customer-app/ code', () => {
   const files = codeFiles();
@@ -26,17 +30,26 @@ test('no restaurant id or name in customer-app/ code', () => {
     assert.equal(hit, null, `🔴 ${f} carries a restaurant literal: ${hit && hit[0]}`);
   }
   assert.ok(LEAK.test("rid === 'la_musa'") && LEAK.test('X. Pizza'), 'non-vacuity: the detector fires');
+  assert.ok(readFileSync(join(ROOT, 'customer-app', SYNCED)).equals(readFileSync(join(ROOT, 'platform', 'client', SYNCED))), `🔴 customer-app/${SYNCED} is not the platform copy — the literal-scan exemption no longer holds`);
 });
 
-test('customer-app/ stays dark: not a manifest site, no netlify.toml', () => {
-  for (const p of ['platform/sites.json', 'xpizza-functions/platform/sites.json']) {
-    const m = JSON.parse(readFileSync(join(ROOT, p), 'utf8'));
-    const folders = (m.deployments || []).map((d) => d.folder);
-    assert.ok(folders.length > 0, `premise: ${p} lists deployments`);
-    assert.ok(!folders.some((f) => String(f).replace(/\/$/, '') === 'customer-app'), `🔴 ${p} deploys customer-app/`);
-    assert.ok(!JSON.stringify(m).includes('customer-app'), `🔴 ${p} mentions customer-app`);
-  }
-  assert.equal(existsSync(join(ROOT, 'customer-app', 'netlify.toml')), false, '🔴 customer-app/ has a netlify.toml');
+test('customer-app/ is the one platform orders deployment, with exactly the approved shape (no host literal)', () => {
+  const copies = ['platform/sites.json', 'xpizza-functions/platform/sites.json'].map((p) => readFileSync(join(ROOT, p), 'utf8'));
+  assert.equal(copies[0], copies[1], 'premise: the bundled manifest is the canonical one');
+  const m = JSON.parse(copies[0]);
+  const app = m.deployments.filter((d) => d.app === 'orders' && d.context === 'platform');
+  assert.equal(app.length, 1, '🔴 exactly one platform orders deployment');
+  const d = app[0];
+  assert.equal(m.deployments.filter((x) => x.folder === 'customer-app').length, 1, 'customer-app/ is deployed exactly once');
+  assert.deepEqual([d.folder, d.entrypoints, d.context], ['customer-app', ['index.html'], 'platform']);
+  assert.ok(Array.isArray(d.origins) && d.origins.length >= 1, 'declares its origin(s)');
+  for (const o of d.origins) assert.equal(new URL(o).origin, o, `${o} is an exact origin`), assert.equal(new URL(o).protocol, 'https:');
+  assert.deepEqual(Object.keys(d.pay_return).sort(), ['default', 'env']);
+  assert.equal(d.pay_return.env, 'PIXELPAY_RETURN_URL_APP');
+  assert.ok(d.origins.includes(d.pay_return.default), 'pay_return.default is one of its own origins');
+  assert.ok(typeof d.netlify_site === 'string' && d.netlify_site.length > 0, 'names its Netlify site (the stamp keys on it)');
+  assert.ok(existsSync(join(ROOT, 'customer-app', 'netlify.toml')), 'the build stamp is wired (netlify.toml)');
+  assert.match(readFileSync(join(ROOT, 'customer-app', 'netlify.toml'), 'utf8'), /command = "node \.\.\/platform\/stamp-version\.js"/);
 });
 
 test(`the live forms are byte-unchanged vs ${BASE}`, () => {
@@ -46,14 +59,17 @@ test(`the live forms are byte-unchanged vs ${BASE}`, () => {
   assert.equal(untracked, '', `🔴 new files in the live forms: ${untracked}`);
 });
 
-// S2-srv-tip (PLAN-capp-S2-r4 §2.2: this guard is re-pointed per slice to that slice's EXACT allowlist): the server files the
+// PLAN-capp-S2-r4 §2.2: this guard is re-pointed per slice to that slice's EXACT allowlist. S2-srv-tip: the server files the
 // tip money core + P-C change, the slice's test-only inverses, the R3 contract files it regenerated, and the mutant catalogue.
+// S2-srv-app (added on top): the app deployment's manifest entry (+ bundled copy), its validator, the return resolver, the
+// sync-client filter and the slice's test-only inverse.
 const S2TIP_SERVER = new Set(['catalog/charge-inputs.js', 'compute-server-net.js', 'createorder-classify.js', 'delivery/delivery-pricing.js',
   'delivery/delivery-wire.js', 'driver-ledger/ledger-core.js', 'factura/build-record.js', 'index.js', 'order-exists.js', 'payer-email.js',
   'pixelpay-hosted-charge.js', 'quote-issue.js', 'rewards-redeem-intake.js', 'stats/stats-api.js', 'stats/stats-build.js', 'tip.js', 'whatsapp.js',
   'tools/s2tip-inverse.js', 'tools/s2tip-module-inverse.js', 'tools/mutation-sweep.mutants.json',
-  'contract/census-map.json', 'contract/census.json', 'contract/regions.json'].map((f) => `xpizza-functions/${f}`));
-test(`no server change beyond S2-srv-tip: xpizza-functions/ differs from ${BASE} only in tests, fixtures, generated inventories, the test chain and the S2-srv-tip allowlist`, () => {
+  'contract/census-map.json', 'contract/census.json', 'contract/regions.json',
+  'platform/sites.json', 'platform-manifest.js', 'pixelpay-return-url.js', 'tools/sync-client.js', 'tools/s2app-inverse.js'].map((f) => `xpizza-functions/${f}`));
+test(`no server change beyond S2-srv-tip + S2-srv-app: xpizza-functions/ differs from ${BASE} only in tests, fixtures, generated inventories, the test chain and the slices' allowlist`, () => {
   const changed = git('diff', '--name-only', BASE, '--', 'xpizza-functions').trim().split('\n').filter(Boolean)
     .concat(git('ls-files', '--others', '--exclude-standard', '--', 'xpizza-functions').trim().split('\n').filter(Boolean));
   const allowed = (p) => /\.test\.(m?js|cjs)$/.test(p) || /^xpizza-functions\/test\//.test(p) || /\.golden\.json$|\.expect\.json$/.test(p)

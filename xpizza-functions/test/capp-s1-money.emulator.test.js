@@ -31,7 +31,10 @@ process.env.OTP_SALT = process.env.OTP_SALT || 'c'.repeat(40);
 const stub = (rel, exportsOf) => { const p = require.resolve(rel); const real = require(rel); require.cache[p] = { id: p, filename: p, loaded: true, children: [], paths: [], exports: exportsOf(real) }; };
 const CHARGED = [];
 stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
-stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CHARGED.push(Number(q.amountLempiras)); return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
+const RETURNS = [];   // S2-srv-app: the complete URL each checkout was issued with
+const { PLATFORM: PLATFORM_M, PLATFORM_CONTEXT: PCTX } = require('../platform-manifest');
+const APP_RETURN_DEFAULT = PLATFORM_M.sites.deployments.find((d) => d.app === 'orders' && d.context === PCTX).pay_return.default;
+stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CHARGED.push(Number(q.amountLempiras)); RETURNS.push(q.completeUrl); return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
 stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
 
 const app = require('../index.js');
@@ -190,6 +193,19 @@ async function oldBody(rid, build) {
           // S3b: the hosted-checkout return base comes from the restaurant's OWN orders deployment in platform/sites.json — the
           // synthetic brand has none, so card is refused FAIL-CLOSED by design (pixelpay-return-url.js); nothing is charged
           assert.ok(k.status >= 400 && /return URL not configured/.test(k.text) && CHARGED.length === 0, `${rid} ${label} card: fail-closed without a deployment (${k.text.slice(0, 160)})`);
+          // S2-srv-app (PLAN-capp-S2-r4 §2.1): the SAME brand through the customer APP (entry_mode 'app', quoted as the app
+          // quotes) returns via the platform orders deployment — no rid deployment or brand read — so card ISSUES, for exactly
+          // the quoted net. The return base is the manifest's pay_return.default (read, never named here).
+          await clean(); CHARGED.length = 0; RETURNS.length = 0;
+          const qa = await post(app.quoteOrder, { restaurant_id: rid, items: s.items, mode: 'delivery', pin: { ...PIN, confirmed: true }, entry_mode: 'app' });
+          assert.ok(qa.json && qa.json.ok && qa.json.net_total_cents === q.json.net_total_cents, `${rid} ${label}: the app quote — ${qa.text.slice(0, 200)}`);
+          await clean();
+          const ab = bodyOf(rid, 'online', cart, { quote_token: qa.json.quote_token, expected_net_cents: qa.json.net_total_cents, entry_mode: 'app' });
+          const ak = await post(app.chargeOnlineOrder, ab);
+          assert.ok(ak.status === 200 && ak.json.checkout_url && CHARGED.length === 1, `🔴 ${rid} ${label} APP card: issues through the platform deployment (${ak.text.slice(0, 200)})`);
+          assert.strictEqual(Math.round(CHARGED[0] * 100), qa.json.net_total_cents, `🔴 ${rid} ${label} APP card: the captured PixelPay amount == the quote net`);
+          assert.strictEqual((await order(ab.order_id)).total_cents, qa.json.net_total_cents, `${rid} ${label} APP card: the pending order's total_cents == the net`);
+          assert.strictEqual(new URL(RETURNS[0]).origin, APP_RETURN_DEFAULT, `${rid} ${label} APP card: returns to the app deployment's declared default`);
           continue;
         }
         assert.ok(k.status === 200 && k.json.checkout_url && CHARGED.length === 1, `${rid} ${label} card: ${k.text.slice(0, 200)}`);
@@ -198,7 +214,31 @@ async function oldBody(rid, build) {
       }
     }
   }
-  ok('M money (x_pizza, la_musa, r3_synth; plain, ×3, toggles, two configurations, launcher choices): merchandise subtotal == quote total_cents; quote net == stored cash total_cents == captured PixelPay × 100; fee OFF and ON (envío L30); r3_synth card fail-closed (no orders deployment, S3b)');
+  ok('M money (x_pizza, la_musa, r3_synth; plain, ×3, toggles, two configurations, launcher choices): merchandise subtotal == quote total_cents; quote net == stored cash total_cents == captured PixelPay × 100; fee OFF and ON (envío L30); r3_synth DIRECT card fail-closed (no orders deployment, S3b), r3_synth APP card issues for the net through the platform deployment');
+
+  // S2-srv-app NEGATIVE: the app taking a third brand's card never bypasses the store gates — an INACTIVE store and one
+  // OUTSIDE its hours refuse the app card exactly as today's intake does, before any gateway call (identity restored after)
+  {
+    const cart = carts(THIRD)[0][1]; const s = serialize(cart, MENU[THIRD]);
+    await clean();
+    const qa = await post(app.quoteOrder, { restaurant_id: THIRD, items: s.items, mode: 'delivery', pin: { ...PIN, confirmed: true }, entry_mode: 'app' });
+    assert.ok(qa.json && qa.json.ok, `premise: the app quote (${qa.text.slice(0, 160)})`);
+    const idRef = rtdb.ref(`restaurants/${THIRD}/identity`);
+    const saved = (await idRef.get()).val();
+    const CLOSED = Object.fromEntries(Object.keys(HOURS).map((k) => [k, { open: false }]));
+    try {
+      for (const [label, patch, want] of [['inactive', { active: false }, 'Restaurant closed'], ['outside its hours', { hours: CLOSED }, 'Bad Request: Cerrado — programá tu pedido']]) {
+        await idRef.set({ ...saved, ...patch, version: saved.version + 1 });
+        await clean(); CHARGED.length = 0;
+        const ab = bodyOf(THIRD, 'online', cart, { quote_token: qa.json.quote_token, expected_net_cents: qa.json.net_total_cents, entry_mode: 'app' });
+        const r = await post(app.chargeOnlineOrder, ab);
+        const said = r.json && (r.json.error === 'Bad Request' ? `Bad Request: ${r.json.detail}` : r.json.error);
+        assert.deepStrictEqual([r.status, said, CHARGED.length, !!(await order(ab.order_id))], [400, want, 0, false],
+          `🔴 ${THIRD} APP card, store ${label}: refused by the intake gate before any gateway call or order (${r.text.slice(0, 160)})`);
+      }
+    } finally { await idRef.set(saved); }
+  }
+  ok('S2-srv-app negative: an app card for an INACTIVE store or one OUTSIDE its hours is refused (400 Restaurant closed / Cerrado) with no gateway call and no order — the app never bypasses the store gates');
 
   // ── R. rewards on N per-instance lines (fee ON) — exact money parity and exact reservation transitions ──
   const { REDEMPTION_CONFIG, REDEEM_POINTS_PER_LEMPIRA } = require('../rewards-redeem-config');

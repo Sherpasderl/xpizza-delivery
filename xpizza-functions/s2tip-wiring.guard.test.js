@@ -13,7 +13,7 @@ const MI = require('./tools/s2tip-module-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const show = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
-const live = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');   // the NEWEST slice: nothing composes on top
+const live = require('./tools/s2app-inverse').unapplyS2appIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // S2-srv-app composes on top of this slice (stripped first)
 const baseIdx = show('index.js');
 
 // ── 1. index.js: the exact inverse, same-line hunks only ──
@@ -32,7 +32,8 @@ assert.notStrictEqual(unapplyS2tipIndex(`\n${live}`), baseIdx, 'a byte OUTSIDE e
 ok('index.js sensitivity: a byte inside a hunk, a duplicated hunk and a missing hunk throw; a byte outside is caught');
 
 // ── 2. the pinned modules: the exact module inverse ──
-const changed = execFileSync('git', ['diff', '--diff-filter=M', '--name-only', BASE, '--', '.'], { cwd: __dirname, encoding: 'utf8' })
+const changed = execFileSync('git', ['diff', '--diff-filter=M', '--name-only', BASE, 'cb7e9bfd', '--', '.'],   // bounded at the approved S2-srv-tip tip: later slices' modules have their own guards
+   { cwd: __dirname, encoding: 'utf8' })
   .split('\n').filter(Boolean).map((f) => f.replace(/^xpizza-functions\//, ''))
   .filter((f) => f !== 'index.js' && /\.js$/.test(f) && !/\.test\.js$/.test(f) && !/^tools\//.test(f));
 assert.deepStrictEqual([...MI.FILES].sort(), [...changed].sort(), 'the module inverse covers EXACTLY the modules this slice modified (no more, no fewer)');

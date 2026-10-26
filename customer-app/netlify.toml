@@ -1,0 +1,6 @@
+[build]
+  publish = "."
+  command = "node ../platform/stamp-version.js"   # P-SELFUPDATE §1: /version.json + identity <meta>; never fails the build
+# Netlify secrets scanning runs because of the build command above. This folder carries no public client key yet, so no
+# SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES list: when one lands (the Maps key, S2b) it is listed here, kept equal to the
+# AIza… values in this folder by secrets-scan-omit.guard.test.js.

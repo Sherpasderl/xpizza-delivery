@@ -3,8 +3,10 @@
 // URLs handed to the (stubbed) PixelPay create carry the brand's base from platform/sites.json pay_return — byte-identical to
 // before for x_pizza (env || the netlify default) and la_musa (its env, fail-closed when unset) — and the cancel URL now
 // carries the SAME poll token as complete (a paid order landing on cancel verifies with its stash cleared). entry_mode
-// 'app' fails closed until an app deployment exists. (Branch-brand selection and the one precedence rule are unit-proven:
-// pixelpay-return-url.test.js.)
+// 'app' (S2 P-A, PLAN-capp-S2-r4 §2.1) resolves through the ONE `context:"platform"` orders deployment: the request's Origin
+// when declared, else env/default (which must be declared), never the rid's deployment — the hosts are read from the
+// manifest, never named here. (Branch-brand selection and the one precedence rule are unit-proven:
+// pixelpay-return-url.test.js; the domain swap: platform-domain-swap.test.js.)
 // Run: npm run test:s3b-return
 require('./_emulator-required')('database', 'firestore');
 
@@ -30,15 +32,19 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('s3b-return: FAILED — exited without completing'); process.exitCode = 1; } });
 
-function post(handler, body) {
+// http.request (not fetch), so an Origin header is sent exactly as given
+function post(handler, body, headers = {}) {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
-    const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
-      try {
-        const r = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}` }, body: JSON.stringify(body) });
-        const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
-        s.close(() => resolve({ status: r.status, json: j, text: t }));
-      } catch (e) { s.close(() => reject(e)); }
+    const s = http.createServer(w).listen(0, '127.0.0.1', () => {
+      const payload = JSON.stringify(body);
+      const rq = http.request({ host: '127.0.0.1', port: s.address().port, path: '/', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), Authorization: `Bearer ${process.env.MAKE_SECRET}`, ...headers } }, (r) => {
+        let t = ''; r.setEncoding('utf8'); r.on('data', (c) => { t += c; });
+        r.on('end', () => { let j = null; try { j = JSON.parse(t); } catch (_) {} s.close(() => resolve({ status: r.statusCode, json: j, text: t })); });
+      });
+      rq.on('error', (e) => s.close(() => reject(e)));
+      rq.end(payload);
     });
   });
 }
@@ -55,9 +61,9 @@ const LINE = { x_pizza: { name: 'Margherita', qty: 1, price: 0 }, la_musa: { id:
 let PH = 0;
 const body = (rid, extra = {}) => ({ restaurant_id: rid, order_id: `s3b_${rid}_${PH += 1}_${Date.now()}`, customer_name: 'S3b Return', customer_phone: `9977${String(PH).padStart(4, '0')}`,
   customer_email: 's3b@example.com', items_text: `1x ${LINE[rid].name}`, order_type: 'pickup', payment_method: 'online', items: [LINE[rid]], ...extra });
-async function card(rid, extra) {
+async function card(rid, extra, headers) {
   await rtdb.ref('rate_limits').remove(); await rtdb.ref('recent_order_content').remove(); HOSTED.length = 0;
-  const r = await post(app.chargeOnlineOrder, body(rid, extra));
+  const r = await post(app.chargeOnlineOrder, body(rid, extra), headers);
   return { ...r, hosted: HOSTED.slice() };
 }
 const urlOf = (s) => { const u = new URL(s); return { base: u.origin + u.pathname.replace(/\/$/, ''), pay: u.searchParams.get('pay'), order: u.searchParams.get('order'), t: u.searchParams.get('t') }; };
@@ -92,12 +98,51 @@ const urlOf = (s) => { const u = new URL(s); return { base: u.origin + u.pathnam
   assert.deepStrictEqual([d.status, d.json && d.json.error, d.hosted.length], [500, 'Payment not configured', 0], '🔴 la_musa unset → fail-closed (never the x_pizza base)');
   ok('la_musa: its env → its base; unset → 500 Payment not configured, no checkout (never X Pizza\'s site) — as before');
 
-  // 3. entry_mode 'app' → fail-closed until an app deployment exists; an unknown mode → direct
-  const e = await card('x_pizza', { entry_mode: 'app' });
-  assert.deepStrictEqual([e.status, e.hosted.length], [500, 0], `entry_mode app → fail-closed (${e.text.slice(0, 160)})`);
+  // 3. S2 P-A — entry_mode 'app' → the platform orders deployment (hosts read from the manifest, never named here)
+  const { PLATFORM, PLATFORM_CONTEXT } = require('../platform-manifest');
+  const APP = PLATFORM.sites.deployments.find((x) => x.app === 'orders' && x.context === PLATFORM_CONTEXT);
+  const A_ENV = APP.pay_return.env; const A_DEFAULT = APP.pay_return.default; const A0 = APP.origins[0];
+  const UNDECLARED = 'https://undeclared.example.test';
+  const both = (r) => [r.status, r.hosted.length && urlOf(r.hosted[0].complete).base, r.hosted.length && urlOf(r.hosted[0].cancel).base, r.hosted.length && urlOf(r.hosted[0].cancel).t === r.json.poll_token];
+  delete process.env[A_ENV];
+  for (const rid of ['x_pizza', 'la_musa']) {   // la_musa's own env is UNSET here: app never uses the rid's deployment
+    const e = await card(rid, { entry_mode: 'app' });
+    assert.deepStrictEqual(both(e), [200, A_DEFAULT, A_DEFAULT, true], `${rid} app, no Origin, env unset → the declared default (${e.text.slice(0, 160)})`);
+  }
+  const eu = await card('x_pizza', { entry_mode: 'app' }, { Origin: UNDECLARED });
+  assert.deepStrictEqual(both(eu), [200, A_DEFAULT, A_DEFAULT, true], 'an UNDECLARED Origin never steers the return');
+  const ed = await card('x_pizza', { entry_mode: 'app' }, { Origin: A0 });
+  assert.deepStrictEqual(both(ed), [200, A0, A0, true], 'a declared Origin → that origin');
+  process.env[A_ENV] = UNDECLARED;
+  const ee = await card('x_pizza', { entry_mode: 'app' });
+  assert.deepStrictEqual([ee.status, ee.json && ee.json.error, ee.hosted.length], [500, 'Payment not configured', 0], `env naming an undeclared origin → fail-closed, no checkout (${ee.text.slice(0, 160)})`);
+  delete process.env[A_ENV];
+  ok('app: no Origin → the declared default (even for a rid whose own env is unset); an undeclared Origin never steers; a declared Origin → it; an undeclared env → 500, no checkout');
+
+  // 4. the add-only DOMAIN TRANSITION on the real handler: a new origin ADDED (the old KEPT), the env moved to the new host.
+  //    The handler reads the manifest loaded at module start, so the transition is applied to that loaded copy in-process
+  //    (test-only, restored after). The caller's declared Origin wins whatever the env names.
+  const NEW = 'https://new.capp.test';
+  APP.origins.push(NEW);
+  try {
+    process.env[A_ENV] = NEW;
+    const old = await card('x_pizza', { entry_mode: 'app' }, { Origin: A0 });
+    assert.deepStrictEqual(both(old), [200, A0, A0, true], `🔴 an OLD-host request after the switch returns to the OLD host (${old.text.slice(0, 160)})`);
+    const nu = await card('x_pizza', { entry_mode: 'app' }, { Origin: NEW });
+    assert.deepStrictEqual(both(nu), [200, NEW, NEW, true], 'a NEW-host request returns to the new host');
+    const none = await card('x_pizza', { entry_mode: 'app' });
+    assert.deepStrictEqual(both(none), [200, NEW, NEW, true], 'no Origin → the env (declared)');
+    const und = await card('x_pizza', { entry_mode: 'app' }, { Origin: UNDECLARED });
+    assert.deepStrictEqual(both(und), [200, NEW, NEW, true], 'an undeclared Origin → the env (declared)');
+  } finally { APP.origins.pop(); delete process.env[A_ENV]; }
+  ok('domain transition (new origin added, old kept, env = new): old-host request → old host; new-host → new; no / undeclared Origin → the env');
+
+  // 5. direct ignores the Origin (byte-identical); an unknown mode → direct
+  const g = await card('x_pizza', {}, { Origin: A0 });
+  assert.deepStrictEqual([g.status, urlOf(g.hosted[0].complete).base], [200, 'https://xp.example'], 'direct + an app Origin → the brand base (Origin ignored)');
   const f = await card('x_pizza', { entry_mode: 'kiosk' });
   assert.deepStrictEqual([f.status, urlOf(f.hosted[0].complete).base], [200, 'https://xp.example'], 'an unknown entry_mode → direct');
-  ok('entry_mode: app → fail-closed (no app deployment yet); unknown → direct');
+  ok('direct ignores the request Origin; an unknown entry_mode → direct');
 
   FINISHED = true;
   console.log(`\ns3b-return: OK (${n})`);

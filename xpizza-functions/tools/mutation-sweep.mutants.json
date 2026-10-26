@@ -20074,5 +20074,126 @@
     "kills_with": [
       "P-C re-check (classify thunk) before the reward reserve"
     ]
+  },
+  {
+    "id": "s2app-u01",
+    "slice": "s2app",
+    "label": "the app resolver ignores the request Origin (env/default only)",
+    "file": "pixelpay-return-url.js",
+    "from": "  if (typeof requestOrigin === 'string' && origins.includes(requestOrigin)) return { base: requestOrigin, error: null };\n",
+    "to": "",
+    "command": [
+      "node",
+      "pixelpay-return-url.test.js"
+    ],
+    "kills_with": [
+      "two declared origins: an OLD-host Origin returns to the old host"
+    ]
+  },
+  {
+    "id": "s2app-u02",
+    "slice": "s2app",
+    "label": "the charge wrapper no longer short-circuits app first (an unreadable brand can refuse an app resume)",
+    "file": "pixelpay-return-url.js",
+    "from": "  if (entryMode === 'app') return resolveAppReturnBase(env || {}, requestOrigin, sites);\n",
+    "to": "",
+    "command": [
+      "node",
+      "pixelpay-return-url.test.js"
+    ],
+    "kills_with": [
+      "app resume with an unreadable brand"
+    ]
+  },
+  {
+    "id": "s2app-u03",
+    "slice": "s2app",
+    "label": "the env/default fallback is no longer checked against the declared origins",
+    "file": "pixelpay-return-url.js",
+    "from": "  if (!base || !origins.includes(base)) return",
+    "to": "  if (!base) return",
+    "command": [
+      "node",
+      "pixelpay-return-url.test.js"
+    ],
+    "kills_with": [
+      "env naming an undeclared origin"
+    ]
+  },
+  {
+    "id": "s2app-u04",
+    "slice": "s2app",
+    "label": "the validator allows two platform orders deployments",
+    "file": "platform-manifest.js",
+    "from": "  if (appDeps.length > 1) errs.push('at most one orders deployment may have context platform');\n",
+    "to": "",
+    "command": [
+      "node",
+      "pixelpay-return-url.test.js"
+    ],
+    "kills_with": [
+      "two platform orders deployments"
+    ]
+  },
+  {
+    "id": "s2app-u05",
+    "slice": "s2app",
+    "label": "the validator accepts a pay_return default outside the app's own origins",
+    "file": "platform-manifest.js",
+    "from": "    else if (!Array.isArray(d.origins) || !d.origins.includes(pr.default)) errs.push",
+    "to": "    else if (false) errs.push",
+    "command": [
+      "node",
+      "pixelpay-return-url.test.js"
+    ],
+    "kills_with": [
+      "default not one of its origins"
+    ]
+  },
+  {
+    "id": "s2app-u06",
+    "slice": "s2app",
+    "label": "a rid (or brand) named 'platform' borrows the app deployment on the direct path",
+    "file": "pixelpay-return-url.js",
+    "from": "(ctx === PLATFORM_CONTEXT ? [] : sites.deployments.filter(",
+    "to": "(false ? [] : sites.deployments.filter(",
+    "command": [
+      "node",
+      "pixelpay-return-url.test.js"
+    ],
+    "kills_with": [
+      "direct rid \"platform\""
+    ]
+  },
+  {
+    "id": "s2app-u07",
+    "slice": "s2app",
+    "label": "a NON-EXACT Origin (prefix match) is accepted as declared",
+    "file": "pixelpay-return-url.js",
+    "from": "typeof requestOrigin === 'string' && origins.includes(requestOrigin)",
+    "to": "typeof requestOrigin === 'string' && origins.some((o) => requestOrigin.startsWith(o))",
+    "command": [
+      "node",
+      "pixelpay-return-url.test.js"
+    ],
+    "kills_with": [
+      "a NON-EXACT Origin"
+    ]
+  },
+  {
+    "id": "s2app-e01",
+    "slice": "s2app",
+    "label": "chargeOnlineOrder no longer hands the request Origin to the return resolver",
+    "file": "index.js",
+    "from": "requestOrigin: req.get('origin'), ",
+    "to": "",
+    "command": [
+      "npm",
+      "run",
+      "test:s3b-return"
+    ],
+    "kills_with": [
+      "a declared Origin → that origin"
+    ]
   }
 ]

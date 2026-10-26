@@ -12,7 +12,7 @@ const { HUNKS, unapplyS3cIndex } = require('./tools/s3c-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const BASE = '786a328a';   // the HELD S3b tip this slice branches from
-const live = require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')));   // S5r (newer) is reversed first
+const live = require('./tools/s5r-inverse').unapplyS5rIndex(require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))));   // S5r (newer) is reversed first
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 assert.strictEqual(unapplyS3cIndex(live), baseIdx, `🔴 index.js minus the S3c hunks is not ${BASE}:index.js — something beyond the stated seams changed`);

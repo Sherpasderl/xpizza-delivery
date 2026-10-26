@@ -28,9 +28,17 @@ ok('the manifest and the compat generations validate');
 const LITERAL_ACCOUNT_ORIGINS = ['https://orders.xpizza.hn', 'https://orders.lamusa.hn'];
 const LITERAL_PUBLIC_MENU_ORIGINS = [/^http:\/\/localhost(:\d+)?$/, 'https://orders.xpizza.hn', 'https://orders.lamusa.hn'];
 const wire = (list) => JSON.stringify(list.map((o) => (o instanceof RegExp ? { re: o.source, flags: o.flags } : o)));
-assert.strictEqual(wire(M.PLATFORM.ACCOUNT_ORIGINS), wire(LITERAL_ACCOUNT_ORIGINS), '🔴 ACCOUNT_ORIGINS changed — production CORS must be unchanged');
-assert.strictEqual(wire(M.PLATFORM.PUBLIC_MENU_ORIGINS), wire(LITERAL_PUBLIC_MENU_ORIGINS), '🔴 PUBLIC_MENU_ORIGINS changed — production CORS must be unchanged');
-ok('derived ACCOUNT_ORIGINS / PUBLIC_MENU_ORIGINS are byte-identical (members AND order) to the ba29282 literals');
+// S2 P-A (PLAN-capp-S2-r4 §2.1a): the customer APP's origins are DATA — read from the single `context:"platform"` orders
+// deployment, never a host literal here — and follow the two frozen form origins (manifest order). A domain swap edits
+// sites.json only.
+const APP_DEPS = M.PLATFORM.sites.deployments.filter((d) => d.app === 'orders' && d.context === M.PLATFORM_CONTEXT);
+assert.strictEqual(APP_DEPS.length, 1, 'premise: exactly one platform orders deployment');
+const APP_ORIGINS = APP_DEPS[0].origins;
+assert.ok(APP_ORIGINS.length >= 1 && APP_ORIGINS.every((o) => !LITERAL_ACCOUNT_ORIGINS.includes(o)), 'the app declares its own origin(s), none a form origin');
+assert.strictEqual(wire(M.PLATFORM.ACCOUNT_ORIGINS), wire([...LITERAL_ACCOUNT_ORIGINS, ...APP_ORIGINS]), '🔴 ACCOUNT_ORIGINS changed — the form origins must be unchanged, plus only the app origins');
+assert.strictEqual(wire(M.PLATFORM.PUBLIC_MENU_ORIGINS), wire([...LITERAL_PUBLIC_MENU_ORIGINS, ...APP_ORIGINS]), '🔴 PUBLIC_MENU_ORIGINS changed — the form origins must be unchanged, plus only the app origins');
+assert.strictEqual(wire(M.PLATFORM.ACCOUNT_ORIGINS.slice(0, 2)), wire(LITERAL_ACCOUNT_ORIGINS), 'the two form origins stay first, byte-identical');
+ok('derived ACCOUNT_ORIGINS / PUBLIC_MENU_ORIGINS = the ba29282 literals (members AND order) + the app deployment\'s manifest origins');
 
 // 4. index.js CONSUMES the derived lists (no literal list left behind)
 const src = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
@@ -43,8 +51,8 @@ ok('index.js takes both lists from the manifest; no literal list remains');
 const synth = JSON.parse(JSON.stringify(M.PLATFORM.sites));
 synth.deployments.push({ id: 'orders-synth', app: 'orders', folder: 'synth-orders', entrypoints: ['index.html'], context: 'synthetic_3', origins: ['https://orders.synthetic.test'] });
 const P3 = M.loadPlatform(synth, M.PLATFORM.compat);
-assert.deepStrictEqual(P3.ACCOUNT_ORIGINS, [...LITERAL_ACCOUNT_ORIGINS, 'https://orders.synthetic.test']);
-assert.strictEqual(wire(P3.PUBLIC_MENU_ORIGINS), wire([...LITERAL_PUBLIC_MENU_ORIGINS, 'https://orders.synthetic.test']));
+assert.deepStrictEqual(P3.ACCOUNT_ORIGINS, [...LITERAL_ACCOUNT_ORIGINS, ...APP_ORIGINS, 'https://orders.synthetic.test']);
+assert.strictEqual(wire(P3.PUBLIC_MENU_ORIGINS), wire([...LITERAL_PUBLIC_MENU_ORIGINS, ...APP_ORIGINS, 'https://orders.synthetic.test']));
 assert.ok(P3.isValidCombination('orders', 'orders-synth', 'synthetic_3') && !P3.isValidCombination('orders', 'orders-synth', 'x_pizza'));
 ok('a synthetic third orders deployment adds its origin to BOTH lists and is a valid heartbeat combination');
 

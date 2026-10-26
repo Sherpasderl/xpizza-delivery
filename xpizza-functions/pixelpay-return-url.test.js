@@ -36,8 +36,7 @@ assert.equal(noFallback.base, null); assert.ok(noFallback.error); ok('la_musa ne
   ok('the return allowlist is manifest data; the resolver code carries no brand literal');
 
   for (const m of [undefined, null, 'direct', 'DIRECT', 'web', 7]) assert.deepStrictEqual(resolveReturnBase('x_pizza', ENV, { entryMode: m }), { base: 'https://x.app', error: null }, `entry_mode ${m} → direct`);
-  assert.deepStrictEqual(resolveReturnBase('x_pizza', ENV, { entryMode: 'app' }).base, null, 'app → fail-closed until an app deployment exists');
-  ok('entry_mode: absent / unknown → direct (byte-identical); app → fail-closed');
+  ok('entry_mode: absent / unknown → direct (byte-identical)');
 
   // (a) a BRANCH whose identity.brand_id is x_pizza returns to x_pizza's site; (b) a malformed brand_id fails closed
   assert.deepStrictEqual(resolveReturnBase('x_pizza_centro', ENV, { brandId: 'x_pizza' }), { base: 'https://x.app', error: null }, '(a) branch → its brand\'s base');
@@ -67,6 +66,77 @@ assert.equal(noFallback.base, null); assert.ok(noFallback.error); ok('la_musa ne
     assert.ok(M.validateManifest(withPR(id, pr)).some((e) => re.test(e)), `manifest rejects pay_return ${JSON.stringify(pr)} on ${id}`);
   }
   ok('the manifest rejects pay_return off an orders deployment, a bad env key, a non-https default and an unknown shape');
+
+  // ── S2 P-A: the customer APP's deployment (context 'platform') — Origin-selected base, add-only origins, fail-closed ──
+  const appDep = S.deployments.filter((d) => d.app === 'orders' && d.context === M.PLATFORM_CONTEXT);
+  assert.strictEqual(appDep.length, 1, 'premise: the manifest declares exactly one platform orders deployment');
+  const A = appDep[0]; const A_ENV = A.pay_return.env; const A0 = A.origins[0];
+  const withApp = (mut) => { const c = JSON.parse(JSON.stringify(S)); mut(c.deployments.find((d) => d.id === A.id), c); return c; };
+  const TWO = withApp((d) => { d.origins = [A0, 'https://new.app.test']; });
+  const app = (env, requestOrigin, sites = S) => resolveReturnBase('x_pizza', env, { entryMode: 'app', requestOrigin, sites });
+  assert.deepStrictEqual(app({}, undefined), { base: A.pay_return.default, error: null }, 'no env, no Origin → the declared default');
+  assert.deepStrictEqual(app({ [A_ENV]: `${A0}/` }, undefined), { base: A0, error: null }, 'env = a declared origin (slash stripped) → it');
+  assert.deepStrictEqual(app({}, 'https://evil.example'), { base: A.pay_return.default, error: null }, 'an UNDECLARED Origin never steers the return → the default');
+  assert.deepStrictEqual(app({ [A_ENV]: 'https://evil.example' }, undefined), { base: null, error: 'return_url_unconfigured: app base not a declared origin' }, 'env naming an undeclared origin → fail-closed');
+  assert.deepStrictEqual(app({ [A_ENV]: 'https://new.app.test' }, A0, TWO), { base: A0, error: null }, 'two declared origins: an OLD-host Origin returns to the old host whatever the env names');
+  assert.deepStrictEqual(app({ [A_ENV]: A0 }, 'https://new.app.test', TWO), { base: 'https://new.app.test', error: null }, 'and a NEW-host Origin to the new host');
+  assert.deepStrictEqual(app({ [A_ENV]: 'https://new.app.test' }, 'https://nope.test', TWO), { base: 'https://new.app.test', error: null }, 'an undeclared Origin → the env (declared)');
+  assert.deepStrictEqual(app({ [A_ENV]: 'https://new.app.test' }, null, TWO), { base: 'https://new.app.test', error: null }, 'no Origin → the env (declared)');
+  for (const o of [`${A0}/`, A0.toUpperCase(), `${A0}:443`, `${A0}.evil.test`, 7, {}]) assert.deepStrictEqual(app({}, o), { base: A.pay_return.default, error: null }, `a NON-EXACT Origin ${JSON.stringify(o)} is not a declared origin`);
+  const NOAPP = { ...S, deployments: S.deployments.filter((d) => d.id !== A.id) };
+  assert.deepStrictEqual(app({ [A_ENV]: A0 }, A0, NOAPP), { base: null, error: 'return_url_unconfigured: no app deployment' }, 'no app deployment → fail-closed');
+  ok('app: a declared Origin is the base; else env/default, which must be declared; undeclared/inexact Origins never steer; no deployment → fail-closed');
+
+  assert.ok(M.validateManifest(withApp((d, c) => { c.deployments.push({ ...d, id: 'orders-app2', origins: ['https://two.app.test'], pay_return: { env: 'X2', default: 'https://two.app.test' } }); })).some((e) => /at most one orders deployment may have context platform/.test(e)), 'two platform orders deployments → refused');
+  assert.ok(M.validateManifest(withApp((d) => { d.pay_return = { env: A_ENV, default: 'https://elsewhere.test' }; })).some((e) => /must be one of its own origins/.test(e)), 'default not one of its origins → refused');
+  assert.ok(M.validateManifest(withApp((d) => { d.pay_return = { env: A_ENV }; })).some((e) => /needs pay_return with a default/.test(e)), 'no default → refused');
+  assert.ok(M.validateManifest(withApp((d) => { delete d.pay_return; })).some((e) => /needs pay_return with a default/.test(e)), 'no pay_return → refused');
+  assert.throws(() => M.loadPlatform(withApp((d, c) => { c.deployments.push({ ...d, id: 'orders-app2', origins: ['https://two.app.test'], pay_return: { env: 'X2', default: 'https://two.app.test' } }); }), M.PLATFORM.compat), /at most one/);
+  ok('the validator refuses a second platform orders deployment and a pay_return default outside its own origins (at load)');
+
+  // the charge wrapper: app short-circuits FIRST — no brand read, even an unreadable / malformed brand never refuses it
+  let brandReads = 0;
+  const throwing = async () => { brandReads++; throw new Error('brand leaf unreadable'); };
+  for (const rid of ['x_pizza', 'la_musa', 'third_brand_centro']) {
+    assert.deepStrictEqual(await resolveReturnBaseForCharge(rid, {}, { identity: null, entryMode: 'app', readBrandId: throwing }), { base: A.pay_return.default, error: null }, `${rid}: app resume with an unreadable brand → resolves`);
+    assert.deepStrictEqual(await resolveReturnBaseForCharge(rid, {}, { identity: { brand_id: 'X!' }, entryMode: 'app', requestOrigin: A0 }), { base: A0, error: null }, `${rid}: app fresh with a malformed brand → resolves`);
+  }
+  assert.strictEqual(brandReads, 0, 'app never reads the brand leaf');
+  assert.deepStrictEqual(await resolveReturnBaseForCharge('x_pizza', ENV, { entryMode: 'direct', requestOrigin: A0 }), { base: 'https://x.app', error: null }, 'direct ignores the Origin');
+  ok('charge wrapper: app short-circuits before the own-deployment check and any brand read (third brand, unreadable leaf → resolves); direct ignores the Origin');
+
+  // a rid literally named 'platform' never borrows the app deployment on the direct path
+  assert.strictEqual(resolveReturnBase('platform', { [A_ENV]: A0 }).base, null, 'direct rid "platform" → no deployment');
+  assert.strictEqual(resolveReturnBase('x_pizza_centro', { [A_ENV]: A0 }, { brandId: 'platform' }).base, null, 'brand_id "platform" → no deployment');
+  ok('the platform context is never a rid\'s or a brand\'s own deployment on the direct path');
+
+  // DIFFERENTIAL — every direct case for both brands is byte-identical to the PRE-S2 resolver over the PRE-S2 manifest (276ed944)
+  const { execFileSync } = require('child_process');
+  const ROOT = require('path').join(__dirname, '..');
+  const gitShow = (f) => execFileSync('git', ['show', `276ed944:${f}`], { cwd: ROOT, encoding: 'utf8' });
+  const oldSites = JSON.parse(gitShow('platform/sites.json'));
+  const Mod = require('module');
+  const oldMod = new Mod(require.resolve('./pixelpay-return-url.js'), module);
+  oldMod.filename = require.resolve('./pixelpay-return-url.js'); oldMod.paths = module.paths;
+  const realReq = oldMod.require.bind(oldMod);
+  oldMod.require = (id) => (id === './platform-manifest' ? { ...M, PLATFORM: M.loadPlatform(oldSites, M.PLATFORM.compat) } : realReq(id));
+  oldMod._compile(gitShow('xpizza-functions/pixelpay-return-url.js'), oldMod.filename);
+  const OLD = oldMod.exports;
+  const RIDS = ['x_pizza', 'la_musa', 'x_pizza_centro', 'la_musa_sur', 'third_brand', 'platform'];
+  const ENVS = [{}, ENV, { PIXELPAY_RETURN_URL: 'https://foo.app/' }, { PIXELPAY_RETURN_URL_LA_MUSA: 'https://lm.app/' }, { [A_ENV]: A0 }];
+  const BRANDS = [undefined, null, 'x_pizza', 'la_musa', 'nobrand', 'X!', 'platform'];
+  const MODES = [undefined, null, 'direct', 'DIRECT', 'web', 7];
+  const ORIGINS = [undefined, A0, 'https://orders.xpizza.hn'];
+  let cases = 0;
+  for (const rid of RIDS) for (const env of ENVS) for (const brandId of BRANDS) for (const entryMode of MODES) for (const requestOrigin of ORIGINS) {
+    assert.deepStrictEqual(resolveReturnBase(rid, env, { brandId, entryMode, requestOrigin }), OLD.resolveReturnBase(rid, env, { brandId, entryMode }), `direct differential ${rid} ${JSON.stringify(env)} ${brandId} ${entryMode}`);
+    const ident = brandId === undefined ? null : { brand_id: brandId };
+    assert.deepStrictEqual(
+      await resolveReturnBaseForCharge(rid, env, { identity: ident, entryMode, requestOrigin, readBrandId: async () => brandId }),
+      await OLD.resolveReturnBaseForCharge(rid, env, { identity: ident, entryMode, readBrandId: async () => brandId }), `charge differential ${rid}`);
+    cases++;
+  }
+  ok(`DIFFERENTIAL: ${cases} direct cases × (resolver + charge wrapper) byte-identical to the pre-S2 resolver over the pre-S2 manifest (276ed944)`);
 
   console.log(`pixelpay-return-url: OK (${n} cases)`);
 })().catch((e) => { console.error(e); process.exit(1); });
