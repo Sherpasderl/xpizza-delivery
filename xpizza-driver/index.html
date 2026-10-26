@@ -33,6 +33,16 @@
 .help-rt { font-weight: 700; font-size: 14.5px; color: var(--text, #0D1424); }
 .help-rd { font-size: 12.5px; color: var(--text-soft, #546078); margin-top: 2px; line-height: 1.3; }
 .help-done { margin-top: 2px; width: 100%; background: var(--accent, #2F5FB8); color: #fff; border: none; border-radius: 14px; padding: 14px; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 15px; }
+/* cierreRechazado (S.cierreRechazado) — the close-REJECTION screen, rendered inside the #cuadre-receipt card. */
+.rc-reject-banner { display: flex; gap: 11px; align-items: flex-start; text-align: left; padding: 12px 13px; border-radius: 13px; margin-bottom: 14px; font-size: 13.5px; line-height: 1.35; background: var(--sv-err-bg, #FBEAEA); color: var(--sv-err, #B9323A); }
+.rc-reject-banner b { display: block; font-family: 'Red Hat Display', sans-serif; font-size: 14.5px; margin-bottom: 2px; }
+.rc-reject-ico { flex: none; margin-top: 1px; color: var(--sv-err, #B9323A); }
+.rc-reject-ico svg { width: 20px; height: 20px; display: block; }
+.rc-big.rc-reject-amt { background: var(--surface-2, #F1F4F8); }
+.rc-big.rc-reject-amt .l { color: var(--text-soft, #5A6473); }
+.rc-big.rc-reject-amt .v { color: var(--text, #1F2733); }
+.rc-retry { width: 100%; padding: 15px; border-radius: 15px; background: var(--sv-err, #B9323A); color: #fff; font-weight: 800; font-size: 14.5px; border: none; font-family: inherit; margin-top: 16px; cursor: pointer; }
+.rc-retry:disabled { opacity: .6; }
 /* ===== SLICE3:PRESENTATION-3:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -2197,7 +2207,7 @@ function openWhatsappSheet(btn) {
 }
 /* ===== SLICE2:IMPORT:END ===== */
 /* ===== SLICE3:IMPORT-3:START — batch-3 pure builders ===== */
-import { helpDiagnosisHtml } from './stacked-view.js';
+import { helpDiagnosisHtml, cierreRechazadoHtml } from './stacked-view.js';
 /* ===== SLICE3:IMPORT-3:END ===== */
 /* ===== SLICE3:LOGIC-3:START — batch-3 module logic (help diagnosis sheet; gpsoff / cierreRechazado / offline to follow) ===== */
 // SLICE3:HELP — the «¿Por qué no veo pedidos?» diagnosis sheet (prototype S.help), mounted on demand (reusing the
@@ -2212,6 +2222,24 @@ function openHelpSheet() {
   ov.innerHTML = helpDiagnosisHtml({ gpsAgeMs: ageMs, gpsLive }, { ICONS, esc: escapeHtml });
   ov.onclick = (e) => { if (e.target === ov || (e.target.closest && e.target.closest('#btn-help-done'))) ov.classList.remove('open'); };
   ov.classList.add('open');
+}
+
+// SLICE3:CIERRE-REJECT — render the close-REJECTION screen (prototype S.cierreRechazado) into the ALREADY-open cuadre
+// card. Called from the recordCuadre .catch (CIERRE-REJECT region) on a server rejection. It reuses the amount the
+// submit already computed + displayed (screen._cash.cashOwed) — no new money math — and the live receipt's date
+// format. «Volver al turno» is #cuadre-back, handled by the existing #cuadre-screen click listener (supersede +
+// close). «Reintentar cierre» is #cuadre-retry, wired HERE (the frozen listener ignores it): it clears the surface
+// latch and re-opens the NORMAL receipt (showCuadre recomputes from current orders), so a retry re-confirms the
+// current amount — exactly the proto's «Reintentar cierre» → cuadre, and the same "retry submits the current
+// amount" intent as the refreshOpenCashSurfaces call this screen replaces.
+function showCierreRechazado() {
+  const screen = $('cuadre-screen');
+  const now = new Date();
+  // Same format the live receipt builds (renderCuadreReceipt): «Hoy · 9:12 p. m.». Not invented.
+  const dateStr = `Hoy · ${now.toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit' })}`;
+  $('cuadre-receipt').innerHTML = cierreRechazadoHtml(screen._cash, dateStr);
+  const retry = $('cuadre-retry');
+  if (retry) retry.addEventListener('click', () => { closeInFlight = false; showCuadre(); });
 }
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
@@ -3417,16 +3445,20 @@ $('cuadre-screen').addEventListener('click', async (e) => {
       optimisticShift = false; render();
       await finalizeEndShift();                 // ordinary clock-out via the existing endDriverShift callable
     } finally { shiftBusy = false; }
+/* ===== SLICE3:CIERRE-REJECT:START — on a server REJECTION, show the cierreRechazado screen (prototype S.cierreRechazado) in place of the bare toast ===== */
   }).catch((err) => {
     if (!isLatest()) return;
-    closeInFlight = false;
     // Server REJECTED (permission/validation/other) — never clock out; the cuadre is the whole point. Stay on
     // shift and surface it (this also surfaces a LATE rejection after the timeout message); the driver retries.
     console.warn('recordCuadre rejected (staying on shift):', err);
-    toast(BLOCKED_CLOSE_TEXT, 'error');        // retry stays available (button re-enabled below); dispatch is the exit
-    refreshOpenCashSurfaces();                 // re-render from settled orders so a retry submits the current amount
-    reEnableConfirm();
+    // LATCH closeInFlight TRUE (do NOT reset here): it keeps the observer-driven refreshOpenCashSurfaces() from
+    // clobbering this terminal rejection screen with the normal receipt before the driver acts. Both exits reset it
+    // — #cuadre-back (frozen handler) and #cuadre-retry (its LOGIC-3 listener) — and handleEndShift clears it on any
+    // re-open, so the latch can't leak. The screen shows the amount that was rejected (screen._cash); a retry
+    // re-opens the normal receipt, which recomputes from current orders (the intent of the replaced refresh call).
+    showCierreRechazado();
   });
+/* ===== SLICE3:CIERRE-REJECT:END ===== */
 
   // UI-only: if no ack within the window, tell the driver to retry. We do NOT finalize or discard the op here
   // — the observer above still owns its late outcome (unless a retry supersedes it).

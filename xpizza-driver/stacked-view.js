@@ -839,6 +839,33 @@ export function helpDiagnosisHtml(info = {}, deps = {}) {
     </div>`;
 }
 
+// SLICE3:CIERRE-REJECT — a self-contained warning triangle (the prototype's I.warn); index.html's ICONS object is
+// out-of-region, so the banner carries its own, same posture as OE_CLOCK / HELP_GPS_SVG.
+const CR_WARN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>';
+/**
+ * SLICE3:CIERRE-REJECT — the cuadre close-REJECTION screen (prototype S.cierreRechazado). The host renders this into
+ * the already-open #cuadre-receipt card ONLY when recordCuadre is REJECTED by the server; a no-ack TIMEOUT is NOT a
+ * rejection (it keeps today's toast — saying «el servidor rechazó» on a timeout would be a lie). Pure. It reuses the
+ * EXACT cash already computed + shown for the submit (screen._cash) — so the amount is the one the server rejected,
+ * with ZERO new money math — and the receipt date string the live cuadre already builds (no invented format). The
+ * hero amount is NEUTRAL (.rc-reject-amt), not the green «owed-confirmed» of the normal receipt: this cash was NOT
+ * recorded. The buttons reuse the cuadre click contract: «Reintentar cierre» = #cuadre-retry (→ the normal receipt
+ * to re-confirm, = prototype data-go "cuadre"); «Volver al turno» = #cuadre-back (supersede + back to shift, =
+ * prototype data-go "disponible"). Foot order: danger retry THEN txt volver, exactly as the prototype foot.
+ */
+export function cierreRechazadoHtml(cash, dateStr = '') {
+  // cash.cashOwed is already money-grade (computeShiftCash); render blank rather than a fabricated number if absent.
+  const owed = (cash && Number.isFinite(cash.cashOwed)) ? cash.cashOwed.toLocaleString('es-HN') : '';
+  return `
+    <div class="rc-reject-banner" role="alert"><span class="rc-reject-ico">${CR_WARN}</span><div><b>No se pudo cerrar el turno</b>El servidor rechazó el cierre. Tu efectivo NO quedó registrado y seguís en turno. Reintentá; si sigue, llamá a despacho.</div></div>
+    <div class="rc-title">Cierre de turno</div>
+    <div class="rc-date">${dateStr}</div>
+    <hr class="dash">
+    <div class="rc-big rc-reject-amt"><div class="l">Efectivo a entregar</div><div class="v"><span>L</span> ${owed}</div></div>
+    <button class="rc-retry" id="cuadre-retry">Reintentar cierre</button>
+    <button class="rc-back" id="cuadre-back">Volver al turno</button>`;
+}
+
 // SLICE3:OFERTA-EXPIRADA — a self-contained clock glyph (no ICONS key exists; index.html's ICONS object is
 // out-of-region, so the banner carries its own).
 const OE_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
