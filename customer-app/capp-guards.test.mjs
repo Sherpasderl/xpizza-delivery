@@ -88,3 +88,18 @@ test(`no server change beyond S2-srv-tip + S2-srv-app: xpizza-functions/ differs
     assert.deepEqual(strip(now), strip(was), '🔴 package.json changed beyond the test chain / the capp-s1 test scripts');
   }
 });
+
+// S2b r2 (the order-intake key): the app builds the Authorization header in ONE place, and each real-handler suite keeps at least
+// one cell whose headers come from the app (CappUI.mount + ctxBase), so a hand-built ctx.headers can never again hide a missing key
+test('the intake key: one builder in the app, no literal; each real-handler suite has a cell through the real UI', () => {
+  const ui = readFileSync(join(ROOT, 'customer-app/capp-ui.js'), 'utf8');
+  assert.equal((ui.match(/Authorization/g) || []).length, 1, 'capp-ui builds the header once (intakeHeaders)');
+  assert.match(ui, /const intakeHeaders = \(\) => \(\{ Authorization: 'Bearer ' \+ cfg\.intakeKey \}\);/, 'from config only');
+  assert.match(ui, /c = \{ \.\.\.ctxBase\(\), headers: intakeHeaders\(\) \}/, 'and only on the placement ctx (the quote ctx stays bare)');
+  for (const f of codeFiles()) assert.ok(!/Bearer [A-Za-z0-9_-]{6,}/.test(readFileSync(join(ROOT, 'customer-app', f), 'utf8')), `no key literal in ${f}`);
+  for (const suite of ['xpizza-functions/test/capp-s2a.emulator.test.js', 'xpizza-functions/test/capp-domain-transition.emulator.test.js']) {
+    const src = readFileSync(join(ROOT, suite), 'utf8');
+    assert.match(src, /CappUI\.mount\(/, `${suite}: a cell mounts the real UI`);
+    assert.match(src, /intakeKey: /, `${suite}: …with the key as config (its headers built by ctxBase)`);
+  }
+});

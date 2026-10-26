@@ -20963,5 +20963,21 @@
     "kills_with": [
       "«Reintentar» asks again"
     ]
+  },
+  {
+    "id": "s2b-e01",
+    "slice": "s2b-e",
+    "label": "the UI's order request drops the order-intake key (ctxBase only)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "let c; try { c = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { return; }",
+    "to": "let c; try { c = ctxBase(); } catch (_) { return; }",
+    "command": [
+      "npm",
+      "run",
+      "test:capp-s2a"
+    ],
+    "kills_with": [
+      "the UI's request carries the intake key"
+    ]
   }
 ]

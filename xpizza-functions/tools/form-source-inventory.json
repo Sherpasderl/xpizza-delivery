@@ -1255,6 +1255,7 @@
     "xpizza-functions/menus.test.mjs",
     "xpizza-functions/platform-sync.guard.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
+    "xpizza-functions/test/capp-s2a.emulator.test.js",
     "xpizza-functions/test/d4b-readers.emulator.test.js"
    ],
    "via_helper": [

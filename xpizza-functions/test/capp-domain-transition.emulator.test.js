@@ -15,6 +15,9 @@
 //      unresolved (the app adapter), and allowed once it is resolved; a header-less request ⇒ 426.
 //      F3 (S2a r2 P2 #6): the floor rises between the quote and the FIRST placement ⇒ that send is 426'd before any server write
 //      ⇒ its just-minted record is cleared ⇒ the update path DOES reload (nothing unresolved blocks it).
+//   U  (S2b r2) the REAL UI in the REAL browser — CappUI mounted on the page, its own clicks, ctxBase + the order-intake key;
+//      the device fix from Chrome's geolocation (no pin step); the cash order is admitted, recorded at the fix and the Total
+//      shown. The one browser cell whose request headers are built by the app, not by the test.
 // Run: npm run test:capp-s2a-browser          (CHROME_BIN overrides the browser binary; needs openssl for the throwaway cert)
 require('./_emulator-required')('database', 'firestore');
 
@@ -96,7 +99,7 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
   });
   web.use(express.json());
   // a CORS preflight (OPTIONS) names the headers in Access-Control-Request-Headers but never carries their values ⇒ not recorded
-  web.use((req, res, next) => { if (req.method !== 'OPTIONS' && /^\/(createOrder|chargeOnlineOrder|quoteOrder)/.test(req.path)) HDRS.push({ ep: req.path.split('/')[1], app: req.headers['x-client-app'] || null, dep: req.headers['x-client-deployment'] || null, compat: req.headers['x-client-compat'] || null }); next(); });
+  web.use((req, res, next) => { if (req.method !== 'OPTIONS' && /^\/(createOrder|chargeOnlineOrder|quoteOrder)/.test(req.path)) HDRS.push({ ep: req.path.split('/')[1], auth: req.headers.authorization === `Bearer ${process.env.MAKE_SECRET}`, app: req.headers['x-client-app'] || null, dep: req.headers['x-client-deployment'] || null, compat: req.headers['x-client-compat'] || null }); next(); });
   for (const k of ['quoteOrder', 'createOrder', 'chargeOnlineOrder', 'paymentStatus']) web.use(`/${k}`, app[k]);
   const OPENH = { open: true, start: '00:00', end: '24:00' };
   const HOURS = { sun: OPENH, mon: OPENH, tue: OPENH, wed: OPENH, thu: OPENH, fri: OPENH, sat: OPENH };
@@ -146,7 +149,7 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
     };
     const loaded = async (pred = 'true') => { for (let i = 0; i < 200; i++) { try { if (await ev(`document.readyState === 'complete' && !!window.CappApi && (${pred})`)) return; } catch (_) {} await new Promise((x) => setTimeout(x, 50)); } throw new Error('page not ready'); };
     const go = async (u) => { await send('Page.navigate', { url: u }, sessionId); await loaded(`location.href.startsWith(${JSON.stringify(u.split('?')[0])})`); };
-    return { ev, go, loaded, close: () => send('Target.closeTarget', { targetId }) };
+    return { ev, go, loaded, sid: sessionId, close: () => send('Target.closeTarget', { targetId }) };
   }
   // the page-side app: the REAL modules, the REAL SherpaClient.fetch (stamped ⇒ X-Client headers)
   const API = (pay) => `CappApi.createApi({ config: { restaurantId: 'x_pizza', orderIdPrefix: 'TR', pendingPayKey: 'tr_pending_pay', hours: Array.from({ length: 7 }, () => [0, 0, 23, 59]),
@@ -214,6 +217,46 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
     const ctl = await run(NEW);
     assert.deepStrictEqual([ctl.landed.origin, !!ctl.landed.stash, ctl.landed.out.kind], [NEW, true, 'placed'], `control: the new host lands on the new host (${JSON.stringify(ctl.landed)})`);
     ok('T4 control: the same flow from the new host lands on the new host');
+
+    // ── U: the REAL UI on the page (its ctxBase builds the headers) ──
+    {
+      await clean(); HDRS.length = 0;
+      const FIX = { lat: HUB.lat + 1.3 / 111.195, lng: HUB.lng + 0.4 / 111.195 };
+      const u = await tab();
+      try {
+        await send('Browser.grantPermissions', { permissions: ['geolocation'], origin: NEW });
+        await send('Emulation.setGeolocationOverride', { latitude: FIX.lat, longitude: FIX.lng, accuracy: 5 }, u.sid);
+        await u.go(`${NEW}/`);
+        const r = await u.ev(`(async () => {
+          const wait = async (p, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (p()) return true; await new Promise((x) => setTimeout(x, 50)); } return false; };
+          const $ = (s) => document.querySelector(s);
+          const click = async (s) => { if (!(await wait(() => $(s) && !$(s).disabled))) throw new Error('missing or disabled ' + s); $(s).dispatchEvent(new MouseEvent('click', { bubbles: true })); await new Promise((x) => setTimeout(x, 40)); };
+          const type = (s, v) => { $(s).value = v; $(s).dispatchEvent(new Event('input', { bubbles: true })); };
+          const ev = [];
+          const ui = CappUI.mount(document, { envelope: ${JSON.stringify(ENVELOPE)}, onEvent: (n, d) => ev.push([n, d && d.order_id]), navigate: () => {},
+            config: { name: 'x_pizza', unit: ['pizza', 'pizzas'], hours: Array.from({ length: 7 }, () => [0, 0, 23, 59]), addr: 'Calle 1', etaDel: [30, 45], etaPick: [15, 20],
+              restaurantId: 'x_pizza', orderIdPrefix: 'TU', pendingPayKey: 'tu_pending_pay', intakeKey: '${process.env.MAKE_SECRET}',
+              endpoints: { quoteOrder: '${FN}/quoteOrder', createOrder: '${FN}/createOrder', chargeOnlineOrder: '${FN}/chargeOnlineOrder', paymentStatus: '${FN}/paymentStatus' } } });
+          ui.cart.inc(${JSON.stringify(DISH)}); ui.render();
+          await click('#cart-bar'); await click('[data-act="checkout"]');
+          if (!(await wait(() => ui.state.flow && ui.state.flow.pin && ui.state.flow.pin.confirmed === true))) return { err: 'no device fix', geo: ui.state.geo };
+          type('#f-details', 'Portón negro'); type('#f-name', 'Ana UI'); type('#f-phone', '9944${String(PH += 1).padStart(4, '0')}');
+          await click('[data-act="pay"][data-val="cash"]'); await click('#cta'); await click('[data-act="tipc"][data-val="0"]');
+          await click('[data-act="tip-place"]'); await click('#layer [data-act="placing-go"]');
+          await wait(() => ev.some((e) => e[0] === 'placed'));
+          const placed = ev.find((e) => e[0] === 'placed');
+          return { id: placed ? placed[1] : null, pin: ui.state.flow.pin, pinStepOk: ui.state.pinStepOk, total: ui.state.sendTotals && ui.state.sendTotals.total };
+        })()`);
+        assert.ok(r.id, `🔴 the real UI placed the order (${JSON.stringify(r)})`);
+        assert.deepStrictEqual([r.pin.lat, r.pin.lng, r.pinStepOk], [FIX.lat, FIX.lng, false], 'the device fix from the browser, no pin step');
+        const create = HDRS.filter((h) => h.ep === 'createOrder');
+        assert.ok(create.length === 1 && create[0].auth === true, `🔴 the app's ctxBase sent the intake key (${JSON.stringify(create.map((h) => h.auth))})`);
+        assert.ok(HDRS.filter((h) => h.ep === 'quoteOrder').every((h) => h.auth === false), 'the public quote gets nothing extra');
+        const o = (await rtdb.ref(`orders/${r.id}`).get()).val();
+        assert.deepStrictEqual([Number(o.lat), Number(o.lng), o.total_cents], [FIX.lat, FIX.lng, r.total], 'recorded at the fix, at the displayed Total');
+      } finally { await u.close(); }
+      ok('U the REAL UI in the REAL browser: the device fix (no pin step), its own ctxBase + intake key ⇒ the cash order admitted, recorded at the fix and the Total shown');
+    }
 
     // ── F: the client floor ENABLED ──
     const COMPAT = Number(VERSION.compat);

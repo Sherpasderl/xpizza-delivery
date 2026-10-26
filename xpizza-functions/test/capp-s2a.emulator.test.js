@@ -27,7 +27,8 @@
 //   B   a 200 whose body is lost ⇒ unresolved; the changed cart is never re-sent (rule ii)
 //   K   202 (a concurrent request creating this identity) → the floor rises → 426 ⇒ the identity is KEPT (rule iii)
 //   V   (r4) card → provider-loss 502 → cash (the real order_exists) → card: the cash answer never settles the card send
-//   G   (S2b) a detected GPS fix (no pin step, pin_confirmed:true) is accepted by the real handlers (DECISIONS:2072)
+//   G   (S2b r2) the REAL UI (jsdom): a detected GPS fix through its geolocation callback (no pin step, DECISIONS:2072) goes out
+//       through ctxBase with the order-intake key and is accepted (cash + card); a key-less request is the exact 401
 // Run: npm run test:capp-s2a
 require('./_emulator-required')('database', 'firestore');
 
@@ -84,11 +85,15 @@ async function startServer() {
   await new Promise((r) => SERVER.listen(0, '127.0.0.1', r));
   BASE = `http://127.0.0.1:${SERVER.address().port}`;
 }
+const LOG = [];   // { ep, auth (the intake key present — never its value), status, json, body }
 const realFetch = async (url, init) => {
   const ep = Object.keys(ROUTES).find((k) => url.startsWith(`${BASE}/${k}`));
   CALLS.push(ep);
   if (BEFORE_SEND && BEFORE_SEND.ep === ep) { const h = BEFORE_SEND; BEFORE_SEND = null; await h.run(url, init); }
   const r = await fetch(url, init);
+  const hd = (init && init.headers) || {};
+  LOG.push({ ep, auth: hd.Authorization === `Bearer ${process.env.MAKE_SECRET}`, status: r.status, json: await r.clone().json().catch(() => null),
+    body: init && typeof init.body === 'string' ? JSON.parse(init.body) : null });
   if (DROP_NEXT === ep) { DROP_NEXT = null; await r.text(); throw new TypeError('Failed to fetch (response lost)'); }
   if (FAIL_STORAGE_AFTER === ep) { FAIL_STORAGE_AFTER = null; STORAGE_FAIL = true; }
   if (BREAK_BODY_NEXT === ep && r.status === 200) { BREAK_BODY_NEXT = null; await r.text(); return { status: 200, ok: true, json: async () => { throw new TypeError('body stream lost'); } }; }
@@ -122,7 +127,8 @@ const edgeDeps = (rid, identity = { active: true, hours: HOURS }) => ({ db: rtdb
   voidOrRefund: async () => ({ ok: true, voided: true, outcome: 'voided', ref: 'VR' }) });
 
 const MENU = {};
-async function serve(rid) { const m = await buildPublicMenu(fs, rid, { known: new Set([rid]), isActive: async () => true }); MENU[rid] = adaptMenu({ rid: m.rid, representation_version: m.representation_version, menu: m.body }); }
+const ENV = {};
+async function serve(rid) { const m = await buildPublicMenu(fs, rid, { known: new Set([rid]), isActive: async () => true }); ENV[rid] = { rid: m.rid, representation_version: m.representation_version, menu: m.body }; MENU[rid] = adaptMenu(ENV[rid]); }
 const dishOf = (m, skip = 0) => m.dishes.filter((d) => !d.launcher && !(m.weekendOnlyCats.has(String(d.cat)) || m.pickupOnlyCats.has(String(d.cat))))[skip];
 
 // ── the app: one page = one api instance over a storage; a reload = a new instance over the SAME storage ──
@@ -150,6 +156,25 @@ async function quoteAndPlace(pg, f, cart, { sheet, sigOverride, expected } = {})
   assert.ok(T.ready, `premise: a Total to show (${JSON.stringify(T)})`);
   const out = await pg.api.place({ flow: f, ctx, sig: sigOverride || q.record.sig, expectedNetCents: expected == null ? T.total : expected, totals: T, sheet });
   return { out, T, q, ctx };
+}
+// the REAL UI (customer-app/capp-ui.js, jsdom) over the REAL handlers: its own clicks, its own ctxBase, its own geolocation callback
+const { JSDOM } = require('jsdom');
+const fsys = require('fs');
+const until = async (pred, ms = 8000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (pred()) return true; await new Promise((r) => setTimeout(r, 25)); } return false; };
+function mountUi(rid, { geo, storage = memStorage() } = {}) {
+  const html = fsys.readFileSync(path.join(ROOT, 'customer-app/index.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '');   // the REAL page, its modules evaluated below
+  const w = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true }).window;
+  for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-ui.js']) w.eval(fsys.readFileSync(path.join(ROOT, 'customer-app', f), 'utf8'));
+  const events = []; const nav = [];
+  const ui = w.CappUI.mount(w.document, { envelope: ENV[rid], onEvent: (n, d) => events.push([n, d]), navigate: (u) => nav.push(u),
+    geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: geo.lat, longitude: geo.lng } }) },
+    config: { name: rid, unit: ['pizza', 'pizzas'], hours: APP_HOURS, addr: 'Calle 1', etaDel: [30, 45], etaPick: [15, 20], restaurantId: rid, orderIdPrefix: 'TS',
+      pendingPayKey: `${rid}_s2a_pending_pay`, endpoints: Object.fromEntries(Object.keys(ROUTES).map((k) => [k, `${BASE}/${k}`])), intakeKey: process.env.MAKE_SECRET },
+    CappCheckout: C, CappApi: A, apiOpts: { fetch: (u, i) => sherpa.fetch(u, i), storage, sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 50))) } });
+  const q = (sel) => w.document.querySelector(sel);
+  const click = async (sel) => { assert.ok(await until(() => q(sel) && !q(sel).disabled), `premise: ${sel} is there and enabled`); q(sel).dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await new Promise((r) => setTimeout(r, 30)); };
+  const type = async (sel, v) => { assert.ok(await until(() => q(sel)), `premise: ${sel}`); q(sel).value = v; q(sel).dispatchEvent(new w.Event('input', { bubbles: true })); };
+  return { w, ui, q, click, type, events, nav, storage };
 }
 const stashOf = (pg) => JSON.parse(pg.storage.getItem(`${pg.rid}_s2a_pending_pay`) || 'null');
 const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_place`) || 'null');
@@ -494,19 +519,38 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     ok('B a 200 whose body is lost: unresolved ⇒ the recovery sheet; the changed cart is never re-sent and the stored economics stay — no displayed/charged divergence');
   }
 
-  // ── G (S2b, OWNER 2026-10-21 DECISIONS:2072): a DETECTED GPS fix — set exactly as the S2b geolocation success handler sets it,
-  //    with NO pin step — is accepted by the REAL handlers (quote + cash + card) and recorded at the device's coordinates ──
+  // ── G (S2b r2: Codex r1 P2-8 + the order-intake key): the REAL UI — a DETECTED fix through its geolocation callback (no pin
+  //    step, OWNER 2026-10-21 DECISIONS:2072), its own clicks, its own ctxBase + the intake key — accepted by the REAL handlers ──
   {
     const FIX = { lat: HUB.lat + 1.3 * KM, lng: HUB.lng + 0.4 * KM };   // the device's fix (not a tapped/confirmed-on-map point)
+    // control: the key is what admits — without it the exact unauthorized() refusal (index.js:237, :750-760)
+    const bare = await fetch(`${BASE}/createOrder`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    assert.deepStrictEqual([bare.status, await bare.json()], [401, { error: 'Unauthorized', detail: 'invalid bearer token' }], 'control: a key-less request is the exact 401');
     for (const pay of ['cash', 'online']) {
       await clean();
-      const pg = page('x_pizza'); const f = flowOf(pay); C.setPin(f, FIX.lat, FIX.lng, true);   // capp-ui: getCurrentPosition ⇒ setPin(…, true)
-      const g = await quoteAndPlace(pg, f, cartOf('x_pizza'));
-      assert.strictEqual(g.out.kind, pay === 'cash' ? 'placed' : 'redirect', `🔴 the detected-fix body is ACCEPTED (${pay}) (${JSON.stringify(g.out)})`);
-      const o = await order(g.out.order_id);
-      assert.deepStrictEqual([Number(o.lat), Number(o.lng), o.total_cents], [FIX.lat, FIX.lng, g.T.total], `${pay}: recorded at the device fix, at the displayed Total`);
+      const ep = pay === 'cash' ? 'createOrder' : 'chargeOnlineOrder';
+      const u = mountUi('x_pizza', { geo: FIX });
+      u.ui.cart.inc(dishOf(MENU.x_pizza).key); u.ui.render();
+      await u.click('#cart-bar'); await u.click('[data-act="checkout"]');
+      const f = u.ui.state.flow;
+      assert.ok(await until(() => f.pin && f.pin.confirmed === true), 'the fix arrives through the geolocation callback');
+      assert.deepStrictEqual([f.pin.lat, f.pin.lng, u.ui.state.pinStepOk], [FIX.lat, FIX.lng, false], 'the device fix, with NO pin step');
+      await u.type('#f-details', 'Portón negro'); await u.type('#f-name', 'Ana UI'); await u.type('#f-phone', `9955${String(PH += 1).padStart(4, '0')}`);
+      await u.click(`[data-act="pay"][data-val="${pay}"]`);
+      await u.click('#cta'); await u.click('[data-act="tipc"][data-val="20"]');
+      await u.click('[data-act="tip-place"]'); await u.click('#layer [data-act="placing-go"]');
+      assert.ok(await until(() => LOG.some((x) => x.ep === ep && x.body && x.body.customer_name === 'Ana UI' && x.body.lat === FIX.lat)), `premise: the UI sent ${ep}`);
+      const sent = LOG.filter((x) => x.ep === ep).at(-1);
+      assert.deepStrictEqual([sent.auth, sent.status], [true, 200], `🔴 the UI's request carries the intake key and is admitted (${pay}: ${sent.status} ${JSON.stringify(sent.json)})`);
+      const quotes = LOG.filter((x) => x.ep === 'quoteOrder');
+      assert.ok(quotes.length && quotes.every((x) => x.auth === false), 'the public quote is sent nothing extra');
+      if (pay === 'cash') assert.ok(await until(() => u.events.some((e) => e[0] === 'placed')), '🔴 cash: placed');
+      else assert.ok(await until(() => u.nav.length === 1), '🔴 card: redirected to the hosted checkout');
+      const o = await order(sent.body.order_id);
+      assert.deepStrictEqual([Number(o.lat), Number(o.lng), o.total_cents], [FIX.lat, FIX.lng, u.ui.state.sendTotals.total], `${pay}: recorded at the device fix, at the displayed Total`);
+      u.ui.destroy();
     }
-    ok('G a detected GPS fix (no pin step) is accepted by the real quote / cash / card handlers and recorded at the device coordinates');
+    ok('G the REAL UI: a detected GPS fix (no pin step) goes out through ctxBase with the intake key and is accepted by the real quote / cash / card handlers, recorded at the device coordinates; a key-less request is the exact 401');
   }
 
   // ── V (r4): a cash answer never settles an unresolved card send — card → provider-loss 502 → cash (the REAL order_exists) → card ──

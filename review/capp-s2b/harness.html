@@ -34,7 +34,7 @@
     hours: [[12, 0, 19, 45], [12, 0, 19, 45], [12, 0, 19, 45], [12, 0, 19, 45], [12, 0, 20, 45], [12, 0, 20, 45], [12, 0, 20, 45]],
     addr: 'Blvd. Los Próceres 1ra Calle, 20 Ave. N.O., San Pedro Sula', branch: 'Los Próceres', loc: { lat: 15.5075, lng: -88.0398 }, zoneKm: 7,
     etaDel: [30, 45], etaPick: [15, 20], feeFromCents: 4500, assetBase: '/xpizza-orders/', entry: 'link',
-    restaurantId: 'rid_review', orderIdPrefix: 'XPZ', pendingPayKey: 'review_pending_pay',
+    restaurantId: 'rid_review', orderIdPrefix: 'XPZ', pendingPayKey: 'review_pending_pay', intakeKey: 'k_review',
     endpoints: { quoteOrder: 'https://fn.review/quoteOrder', createOrder: 'https://fn.review/createOrder', chargeOnlineOrder: 'https://fn.review/chargeOnlineOrder', paymentStatus: 'https://fn.review/paymentStatus' } };
   const clockMin = state === 'closed' ? 22 * 60 + 30 : 19 * 60 + 5;
   const now = () => new Date(2026, 9, 20, Math.floor(clockMin / 60), clockMin % 60);   // martes 20 oct (the prototype's clock)
@@ -60,6 +60,13 @@
     const t = now().getTime(), id = 'XPZ261020-190000-A7K2WXYZ';
     localStorage.setItem('capp:rid_review:pending_place', JSON.stringify({ order_id: id, method: 'online', body_sig: null, expected_net_cents: null, totals: null, dispatched: 1, unresolved: true, card: true, admitted: false, issued: false, ts: t, last_send: t, expires_at: t + 3600000 }));
     localStorage.setItem('review_pending_pay', JSON.stringify({ order_id: id, t: 'pt', order: {}, form: null, ts: t }));
+  }
+  if (state === 'payfail') {   // a card send that reached PixelPay: its record and the body the app's own writer built (orderBody)
+    const t = now().getTime(), id = 'XPZ261020-190000-A7K2WXYZ';
+    const fb = CappCheckout.freshFlow(null); CappCheckout.setPin(fb, 15.5209, -88.0401, true);
+    Object.assign(fb, { details: 'Portón negro', name: 'Ana', phone: '9612-3344', pay: 'online' }); CappCheckout.chooseTip(fb, 20);
+    localStorage.setItem('capp:rid_review:pending_place', JSON.stringify({ order_id: id, method: 'online', body_sig: null, expected_net_cents: null, totals: null, dispatched: 1, unresolved: false, card: true, admitted: true, issued: true, checkout_url: 'https://pay.review/x', checkout_at: t, ts: t, last_send: t, expires_at: t + 3600000 }));
+    localStorage.setItem('review_pending_pay', JSON.stringify({ order_id: id, t: 'pt', order: CappCheckout.orderBody(fb, { restaurantId: 'rid_review', items: [], itemsText: '', orderId: id }), form: null, ts: t }));
   }
   if (state === 'pending') {   // a card send whose cancel return the server still calls pending
     const t = now().getTime(), id = 'XPZ261020-190000-A7K2WXYZ';
