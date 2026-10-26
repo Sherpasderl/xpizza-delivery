@@ -45,6 +45,17 @@ const CAPABILITIES = Object.freeze({
   'brand.settings':      { owner: true },
 });
 const CAP_NAMES = Object.freeze(Object.keys(CAPABILITIES));
+// ORCHESTRATION O1b T1 (plan r3.2 §3, PLAN-orch-o1b r3): a STAGED branch (materialized, not yet opened) — pairing, its team, its
+// profile / hours / prep / contact and availability; never pause (meaningless before opening), stats or catalog. Device list +
+// revoke ride with pair (advisor: a manager who can pair can see and revoke).
+const STAGED_CAPS = Object.freeze({
+  owner: Object.freeze(['availability.set', 'device.pair', 'device.revoke', 'device.list', 'location.hours', 'location.prep', 'location.contact', 'location.profile', 'team.invite', 'team.revoke']),
+  manager: Object.freeze(['availability.set', 'device.pair', 'device.revoke', 'device.list', 'location.hours', 'location.prep', 'location.contact']),
+});
+// BRAND-scope capabilities (O1b T1): a SEPARATE table — never derived from a location (capsFor) nor from a role (can's fallback).
+const BRAND_CAPABILITIES = Object.freeze({
+  'brand.locations': { owner: true },   // create / activate / deactivate branches, drafts (PLAN-orch-o1b §2)
+});
 
 // UID_RE gates NEW membership grants (writers). The resolver accepts any verified uid that is safe to put in a path
 // (dispatchers / kitchen staff are authorized today whatever their uid shape — no regression).
@@ -63,7 +74,8 @@ function capsFor(facts, state) {
   if (facts.manager && facts.manager_menu && state === 'member') cols.push('manager_menu');
   if (facts.dispatcher) cols.push('dispatcher');
   if (facts.staff) cols.push('staff');
-  return CAP_NAMES.filter((c) => cols.some((col) => CAPABILITIES[c][col] === true));
+  const staged = new Set(state === 'staged' ? [...(facts.owner ? STAGED_CAPS.owner : []), ...(facts.manager ? STAGED_CAPS.manager : [])] : []);
+  return CAP_NAMES.filter((c) => staged.has(c) || cols.some((col) => CAPABILITIES[c][col] === true));
 }
 
 // For an authorization result that carries only a legacy `role` (test stubs, older callers): the role's column at a member
@@ -81,7 +93,7 @@ const val = async (db, p) => (await db.ref(p).once('value')).val();
 
 // A location's brand and its state in that brand's roster: F1's brandIdOf over the identity + the legacy singleton record,
 // then the resolved brand record must validate and list the location (checkMembership), the identity naming that brand.
-// Same derivation as merchant/merchant-brand.js, plus the roster STATE. → { brandId, state: 'member'|'retired'|'unknown', rec }
+// Same derivation as merchant/merchant-brand.js, plus the roster STATE. → { brandId, state: 'member'|'retired'|'staged'|'unknown', rec }
 async function resolveLocation(db, rid) {
   if (!isLoc(rid)) return { brandId: F1.UNKNOWN, state: 'unknown', rec: null };
   // least privilege: only the brand_id leaf (never the identity node — it carries the hub, phone and WhatsApp instance)
@@ -96,7 +108,7 @@ async function resolveLocation(db, rid) {
     .filter((f) => f.code === 'brand_invalid' || f.rid === rid);
   if (findings.length) return { brandId: F1.UNKNOWN, state: 'unknown', rec: null };
   const st = isObj(rec.locations) ? rec.locations[rid] : undefined;
-  return { brandId: b, state: st === 'member' || st === 'retired' ? st : 'unknown', rec };
+  return { brandId: b, state: st === 'member' || st === 'retired' || st === 'staged' ? st : 'unknown', rec };
 }
 
 // The verified-context precondition, shared by every entry point. Before any read.
@@ -166,7 +178,7 @@ async function myLocations({ db, onStale = () => {} }, ctx) {
     const grant = await val(db, `brand_members/${loc.brandId}/managers/${rid}/${uid}`);
     if (grant == null) { onStale({ kind: 'stale_manager', id: rid }); continue; }
     if (out.has(rid)) continue;                       // owner already lists it (dedup; owner wins)
-    if (loc.state !== 'member') continue;             // a manager of a retired location has no capability there
+    if (loc.state !== 'member' && loc.state !== 'staged') continue;   // a manager of a retired location has no capability there
     const perms = await val(db, `brand_members/${loc.brandId}/manager_perms/${uid}`);
     out.set(rid, { rid, brand_id: loc.brandId, role: 'manager', state: loc.state,
       caps: capsFor({ manager: true, manager_menu: isObj(perms) && perms.can_edit_menu === true }, loc.state) });
@@ -174,4 +186,40 @@ async function myLocations({ db, onStale = () => {} }, ctx) {
   return [...out.values()].sort((a, z) => (a.rid < z.rid ? -1 : a.rid > z.rid ? 1 : 0));
 }
 
-module.exports = { CAPABILITIES, CAP_NAMES, capsFor, can, resolveAccess, resolveLocation, myLocations, refuseContext, isUid, isPathUid, UID_RE };
+// "My brands" (O1b T1b): the brands this uid OWNS — member_of.brands DISCOVERS, the forward grant brand_members/{b}/owners/{uid}
+// AUTHORIZES, the brand record must validate. Independent of locations, so a brand whose only branch is a draft is listed.
+// Stale / malformed entries are dropped via onStale. → [{ brand_id, activation }] sorted. A failure THROWS (an outage).
+async function myOwnerBrands({ db, onStale = () => {} }, ctx) {
+  const refused = refuseContext(ctx);
+  if (refused) { const e = new Error(refused.code); e.code = refused.code; throw e; }
+  const idx = (await val(db, `member_of/${ctx.uid}`)) || {};
+  const brands = isObj(idx.brands) ? idx.brands : {};
+  const out = [];
+  for (const b of Object.keys(brands).sort()) {
+    if (!F1.isBrandId(b) || brands[b] !== 'owner') { onStale({ kind: 'malformed_brand_entry', id: b }); continue; }
+    if ((await val(db, `brand_members/${b}/owners/${ctx.uid}`)) == null) { onStale({ kind: 'stale_owner', id: b }); continue; }
+    const rec = await val(db, `brands/${b}`);
+    if (!isObj(rec) || !F1.validateBrand(b, rec).ok) { onStale({ kind: 'invalid_brand', id: b }); continue; }
+    out.push({ brand_id: b, activation: isObj(rec.activation) && typeof rec.activation.state === 'string' ? rec.activation.state : null });
+  }
+  return out;
+}
+
+// BRAND scope (O1b T1): the brand's OWNER by the forward grant brand_members/{b}/owners/{uid}, over a VALID brand record —
+// independent of locations, so a brand whose only branch is staged / a draft resolves. A read failure → 'unavailable'.
+async function resolveBrandAccess({ db }, ctx, brandId) {
+  const refused = refuseContext(ctx);
+  if (refused) return refused;
+  if (!F1.isBrandId(brandId)) return deny('bad_brand');
+  try {
+    const rec = await val(db, `brands/${brandId}`);
+    if (!isObj(rec) || !F1.validateBrand(brandId, rec).ok) return deny('forbidden');
+    if ((await val(db, `brand_members/${brandId}/owners/${ctx.uid}`)) == null) return deny('forbidden');
+    const activation = isObj(rec.activation) && typeof rec.activation.state === 'string' ? rec.activation.state : null;
+    return { ok: true, uid: ctx.uid, brandId, caps: Object.keys(BRAND_CAPABILITIES).filter((c) => BRAND_CAPABILITIES[c].owner === true), activation };
+  } catch (_) {
+    return deny('unavailable');
+  }
+}
+
+module.exports = { CAPABILITIES, CAP_NAMES, STAGED_CAPS, BRAND_CAPABILITIES, capsFor, can, resolveAccess, resolveBrandAccess, resolveLocation, myLocations, myOwnerBrands, refuseContext, isUid, isPathUid, UID_RE };

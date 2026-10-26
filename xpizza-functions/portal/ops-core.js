@@ -30,6 +30,7 @@ const { revokeDevice } = require('../merchant/merchant-devices');   // slice 2 E
 const { pairingEnabled, surfaceOf } = require('../merchant/merchant-gate');   // the SAME source of truth as the team writes (PLAN-portal-team-invites §4.1)
 const { authorizeManager } = require('../merchant/merchant-scope');   // E7: the H1 revoke's own gate, run before E7 writes
 const OCC = require('../tools/order-control-core');   // E7: order_control's version (a manual change voids an owed pause)
+const { extendE1 } = require('./branch-read-model');   // ORCHESTRATION O1b T8: E1+'s additive read model
 
 const reply = (status, body) => ({ status, body });
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -169,6 +170,11 @@ async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), lo
       return { brand_id: b, name: typeof n === 'string' && n.trim() ? n : b };
     }));
   } catch (e) {
+    return reply(503, { error: 'read_unavailable', retryable: true });
+  }
+  // ORCHESTRATION O1b T8: the ADDITIVE slice-1b read model (portal/branch-read-model.js) — every field above is unchanged
+  try { ({ brands } = await extendE1(db, v.ctx, { brands, branches })); } catch (e) {
+    log.warn('portal_ops_unavailable', JSON.stringify({ fn: 'getMyBranches', error: String((e && e.message) || e).slice(0, 160) }));
     return reply(503, { error: 'read_unavailable', retryable: true });
   }
   return reply(200, { brands, branches, membership_writes_enabled: (await writesFlag) === true });

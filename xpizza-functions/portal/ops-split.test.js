@@ -19,11 +19,11 @@ const { spawnSync } = require('child_process');
 const FN = path.join(__dirname, '..');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(FN, f), 'utf8');
-const OPS = ['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice'];
+const OPS = ['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice', 'createBranchDraft', 'updateBranchProfile', 'setBranchActive', 'deleteBranchDraft'];
 
 // ── 1. ROUTING ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 const idx = read('index.js');
-const OPS_BRANCH = " const PORTAL_OPS_TARGETS = Object.freeze(new Set(['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice']));"
+const OPS_BRANCH = " const PORTAL_OPS_TARGETS = Object.freeze(new Set(['getMyBranches', 'updateBranch', 'setBranchPause', 'getBranchAvailability', 'setBranchAvailability', 'getBranchDevices', 'revokeBranchDevice', 'createBranchDraft', 'updateBranchProfile', 'setBranchActive', 'deleteBranchDraft']));"
   + " if (PORTAL_OPS_TARGETS.has(process.env.FUNCTION_TARGET)) { console.log('portal_ops_entry', process.env.FUNCTION_TARGET); module.exports = require('./portal/ops-functions'); return; }";
 const setLine = idx.split('\n').find((l) => l.startsWith('const PORTAL_ISOLATED_TARGETS = '));
 assert.ok(setLine, 'premise: the portal Set line');
@@ -83,6 +83,10 @@ const EXPECTED = [
   'merchant/merchant-control.js', 'tools/order-control-core.js', 'order-control-state.js', 'scheduled-orders.js', 'avail-key.js', 'availability-reset.js',
   'catalog/catalog-firestore.js', 'catalog/catalog-menu.js', 'catalog/catalog-transform.js', 'catalog/catalog-integrity.js', 'catalog/content-hash.js', 'catalog/canonical-json.js',
   'catalog/form-menu-source.js', 'catalog/redeem-source.js', 'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'menu-pricing.js', 'price-valid.js', 'rewards-redeem-config.js',
+  /* ORCHESTRATION O1b T8: E1+'s additive read model (readiness via the O1a writers' own facts + planner) */
+  'portal/branch-read-model.js', 'branches/branch-ops.js', 'branches/branch-store.js', 'branches/drafts.js', 'branches/readiness-readers.js', 'branches/rid-alloc.js', 'sweep-pending.js',
+  /* ORCHESTRATION O1b T7/T9: the lifecycle endpoints E6 / E7 / E8 / E10 (cores, Q10 phone, the fenced publish) */
+  'portal/branch-lifecycle-core.js', 'portal/branch-phone.js', 'brands/brand-store.js', 'brands/brand-projection.js',
 ].sort();
 const CONDITIONAL = ['lib/emulator-endpoint.js'];   // reached via lib/admin.js only when an emulator env var is set
 const FORBIDDEN = /^(catalog\/catalog-publish\.js|catalog\/portal-reads\.js|stats\/.*|factura\/.*|index\.js|merchant\/merchant-location\.js|merchant\/merchant-orders\.js|portal\/functions\.js)$/;

@@ -40,6 +40,9 @@ const task = (oid, type, status) => ({ order_id: oid, type, status, assigned_dri
     await db.ref('public/other').set({ x: 1 });
     await db.ref('restaurants/tb_centro/identity').set(BRANDED);
     await db.ref('restaurants/leg_x/identity').set(IDENT);
+    // O1a T6: a LEGACY brand's own (enriched) branch — the one branded identity a client may still edit (version + 1)
+    await db.ref('brands/leg_b').set({ name: 'Leg', active: true, locations: { leg_b: 'member' }, activation: { state: 'legacy', since: 1 } });
+    await db.ref('restaurants/leg_b/identity').set({ ...IDENT, brand_id: 'leg_b' });
     await db.ref('orders/O1').set(order('O1', BOTH));
     await db.ref('orders/O2').set(order('O2', {}));
     await db.ref('orders/O3').set(order('O3', BOTH));
@@ -76,25 +79,36 @@ const task = (oid, type, status) => ({ order_id: oid, type, status, assigned_dri
   // ── I: identity branch fields; brand_id is Admin-only ──
   const idp = (rid) => `restaurants/${rid}/identity`;
   await ok('I1: dispatcher whole-identity write, legacy (no branch fields)', disp.ref(idp('leg_x')).set({ ...IDENT, version: 2 }));
-  await ok('I2: branch fields on unbranded leg_x (location_name, zone, prep_default_min)', disp.ref(idp('leg_x')).update({ location_name: 'Centro', zone: { type: 'circle', radius_km: 5 }, prep_default_min: 20 }));
-  await no('I3: zone polygon', disp.ref(`${idp('leg_x')}/zone`).set({ type: 'polygon', radius_km: 5 }));
-  await no('I4: zone radius 0', disp.ref(`${idp('leg_x')}/zone`).set({ type: 'circle', radius_km: 0 }));
-  await no('I5: zone radius 51', disp.ref(`${idp('leg_x')}/zone`).set({ type: 'circle', radius_km: 51 }));
-  await no('I6: zone extra key', disp.ref(`${idp('leg_x')}/zone`).set({ type: 'circle', radius_km: 5, pts: 1 }));
-  await no('I7: prep 4', disp.ref(`${idp('leg_x')}/prep_default_min`).set(4));
-  await no('I7b: prep 20.5', disp.ref(`${idp('leg_x')}/prep_default_min`).set(20.5));
-  await no("I8: location_name ''", disp.ref(`${idp('leg_x')}/location_name`).set(''));
-  await no('I9: client CREATES brand_id on unbranded leg_x', disp.ref(`${idp('leg_x')}/brand_id`).set('tb_brand'));
-  await no('I10: client CHANGES brand_id', disp.ref(`${idp('tb_centro')}/brand_id`).set('other_b'));
-  await no('I11: client DELETES brand_id (child set(null))', disp.ref(`${idp('tb_centro')}/brand_id`).set(null));
-  await ok('I12: whole-identity replacement, version+1, SAME brand_id', disp.ref(idp('tb_centro')).set({ ...BRANDED, version: 2 }));
-  const { brand_id: _drop, ...noBrand } = BRANDED;
-  await no('I13: whole-identity replacement WITHOUT brand_id', disp.ref(idp('tb_centro')).set({ ...noBrand, version: 3 }));
-  await no('I14: whole-identity replacement with a DIFFERENT brand_id', disp.ref(idp('tb_centro')).set({ ...BRANDED, brand_id: 'other_b', version: 3 }));
-  await no('I15: client DELETES the whole branded identity', disp.ref(idp('tb_centro')).remove());
+  await ok('I2: branch fields on unbranded leg_x (location_name, zone, prep_default_min) + version + 1', disp.ref(idp('leg_x')).update({ location_name: 'Centro', zone: { type: 'circle', radius_km: 5 }, prep_default_min: 20, version: 3 }));
+  // every denial below carries a VALID version + 1 (leg_x is at 3), so the validator under test is what denies it
+  const at = (rid, fields, v) => disp.ref(idp(rid)).update({ ...fields, version: v });
+  await no('I3: zone polygon', at('leg_x', { zone: { type: 'polygon', radius_km: 5 } }, 4));
+  await no('I4: zone radius 0', at('leg_x', { zone: { type: 'circle', radius_km: 0 } }, 4));
+  await no('I5: zone radius 51', at('leg_x', { zone: { type: 'circle', radius_km: 51 } }, 4));
+  await no('I6: zone extra key', at('leg_x', { zone: { type: 'circle', radius_km: 5, pts: 1 } }, 4));
+  await no('I7: prep 4', at('leg_x', { prep_default_min: 4 }, 4));
+  await no('I7b: prep 20.5', at('leg_x', { prep_default_min: 20.5 }, 4));
+  await no("I8: location_name ''", at('leg_x', { location_name: '' }, 4));
+  await no('I9: client CREATES brand_id on unbranded leg_x', at('leg_x', { brand_id: 'tb_brand' }, 4));
+  // brand_id immutability on the one branded identity a client may edit (a LEGACY brand's own branch, version 1)
+  await no('I10: client CHANGES brand_id (legacy-brand branch)', at('leg_b', { brand_id: 'other_b' }, 2));
+  await no('I11: client DELETES brand_id (legacy-brand branch)', at('leg_b', { brand_id: null }, 2));
+  await ok('I12: whole-identity replacement, version + 1, SAME brand_id (legacy-brand branch)', disp.ref(idp('leg_b')).set({ ...IDENT, brand_id: 'leg_b', version: 2 }));
+  await no('I13: whole-identity replacement WITHOUT brand_id', disp.ref(idp('leg_b')).set({ ...IDENT, version: 3 }));
+  await no('I14: whole-identity replacement with a DIFFERENT brand_id', disp.ref(idp('leg_b')).set({ ...IDENT, brand_id: 'other_b', version: 3 }));
+  await no('I15: client DELETES the whole branded identity', disp.ref(idp('leg_b')).remove());
   await no('I17: client CREATES a whole identity carrying brand_id', disp.ref(idp('new_rid')).set(BRANDED));
-  await ok('I18: unrelated child update (active) on branded tb_centro', disp.ref(`${idp('tb_centro')}/active`).set(false));
-  assert.strictEqual(await raw(`${idp('tb_centro')}/brand_id`), 'tb_brand'); pass('I: tb_centro still bound to tb_brand after every denied attempt');
+  await ok('I18: unrelated child update (active) + version + 1 on the legacy-brand branch', at('leg_b', { active: false }, 3));
+  // O1a T6: a branch of a NON-legacy brand is Sherpa-admin only — even a well-formed, version + 1, same-brand write is refused
+  await no('I19: dispatcher whole-identity replacement of a NON-legacy branch (version + 1, same brand_id)', disp.ref(idp('tb_centro')).set({ ...BRANDED, version: 2 }));
+  await no('I20: dispatcher child update (active) + version + 1 on a NON-legacy branch', at('tb_centro', { active: false }, 2));
+  await no('I21: dispatcher pin move on a NON-legacy branch (Sherpa-admin only)', at('tb_centro', { hub_lat: 15.6 }, 2));
+  // O1a T6 (advisor ruling): EVERY non-admin identity write bumps version by EXACTLY 1
+  await no('I22: an UNBUMPED dispatcher write is DENIED (leg_x active, version unchanged)', disp.ref(`${idp('leg_x')}/active`).set(false));
+  await no('I23: a +2 version jump is DENIED', at('leg_x', { active: false }, 5));
+  await ok('I24: the same edit with version + 1 is allowed', at('leg_x', { active: false }, 4));
+  assert.strictEqual(await raw(`${idp('tb_centro')}/brand_id`), 'tb_brand'); assert.strictEqual(await raw(`${idp('leg_b')}/brand_id`), 'leg_b');
+  pass('I: tb_centro and leg_b keep their brand_id after every denied attempt');
   await ok('I16: client deletes an UNBRANDED identity (today\'s behaviour)', disp.ref(idp('leg_x')).remove());
 
   // ── R: order location immutability ──
@@ -146,7 +160,8 @@ const task = (oid, type, status) => ({ order_id: oid, type, status, assigned_dri
     const br = { ...IDENT, brand_id: 'tb_brand', location_name: 'Centro', zone: { type: 'circle', radius_km: 5 }, prep_default_min: 20 };
     for (const [label, brand, ident] of [
       ['all-retired brand', { name: 'Third', active: true, locations: { tb_centro: 'retired' }, activation: { state: 'on', since: 1 } }, br],
-      ['member with empty hours', { name: 'Third', active: true, locations: { tb_centro: 'member' }, activation: { state: 'on', since: 1 } }, { ...br, hours: {} }],
+      // same public path as the case above: gaining a member moves projection_gen (the fence: same gen + different members = incomparable)
+      ['member with empty hours', { name: 'Third', active: true, locations: { tb_centro: 'member' }, activation: { state: 'on', since: 1 }, projection_gen: 1 }, { ...br, hours: {} }],
     ]) {
       const plan = S.planPublish({ brandId: 'tb_brand', brand, identities: { tb_centro: ident }, current: null });
       assert.strictEqual(plan.ok, true, JSON.stringify(plan.errors));

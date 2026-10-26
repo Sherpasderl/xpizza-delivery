@@ -63,7 +63,7 @@ async function createInvite(deps, ctx, { brandId, rids, can_edit_menu = false, e
     if (!(await isOwner(db, brandId, ctx.uid))) return fail('forbidden');   // only the owner invites
     for (const rid of rids) {
       const loc = await resolveLocation(db, rid);
-      if (loc.brandId !== brandId || loc.state !== 'member') return fail('location_not_member');
+      if (loc.brandId !== brandId || (loc.state !== 'member' && loc.state !== 'staged')) return fail('location_not_member');   // O1b T1: a staged branch gets its team before opening
     }
     const id = randomToken();
     if (!INVITE_ID_RE.test(id)) return fail('unavailable');

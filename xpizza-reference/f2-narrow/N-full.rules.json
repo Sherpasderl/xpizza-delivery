@@ -185,6 +185,26 @@
       ".read": false,
       ".write": false
     },
+    "brand_ops": {
+      ".read": false,
+      ".write": false
+    },
+    "branch_op_ids": {
+      ".read": false,
+      ".write": false
+    },
+    "rid_reservations": {
+      ".read": false,
+      ".write": false
+    },
+    "brand_branch_names": {
+      ".read": false,
+      ".write": false
+    },
+    "route_pins": {
+      ".read": false,
+      ".write": false
+    },
     "brand_members": {
       ".read": false,
       ".write": false
@@ -550,22 +570,48 @@
         },
         "identity": {
           ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true",
-          ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists() && (newData.exists() || !data.child('brand_id').exists()) && (newData.exists() || !data.child('uses_platform_factura').exists())",
-          ".validate": "newData.hasChildren(['name','hub_lat','hub_lng','phone','whatsapp_instance','whatsapp_enabled','delivery_radius_km','hours','active','version']) && newData.child('brand_id').val() === data.child('brand_id').val() && newData.child('uses_platform_factura').val() === data.child('uses_platform_factura').val()",
+          ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists() && (newData.exists() || !data.child('brand_id').exists()) && (newData.exists() || !data.child('uses_platform_factura').exists()) && (!data.child('brand_id').exists() || root.child('brands').child($restaurant_id).child('activation').child('state').val() === 'legacy')",
+          ".validate": "newData.hasChildren(['name','hub_lat','hub_lng','phone','whatsapp_instance','whatsapp_enabled','delivery_radius_km','hours','active','version']) && newData.child('brand_id').val() === data.child('brand_id').val() && newData.child('uses_platform_factura').val() === data.child('uses_platform_factura').val() && (!data.exists() || newData.child('version').val() === data.child('version').val() + 1)",
           "display_mark": {
             ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 2"
           },
           "hub_lat": {
-            ".validate": "newData.isNumber()"
+            ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
           },
           "hub_lng": {
-            ".validate": "newData.isNumber()"
+            ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
           },
           "active": {
             ".validate": "newData.isBoolean()"
           },
           "version": {
-            ".validate": "newData.isNumber() && (!data.exists() || newData.val() > data.val())"
+            ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val() + 1)"
+          },
+          "active_changed_at": {
+            ".validate": "newData.isNumber()"
+          },
+          "address_line": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 120"
+          },
+          "address_reference": {
+            ".validate": "newData.isString() && newData.val().length <= 120"
+          },
+          "hours": {
+            "$day": {
+              ".validate": "($day === 'sun' || $day === 'mon' || $day === 'tue' || $day === 'wed' || $day === 'thu' || $day === 'fri' || $day === 'sat') && newData.child('open').isBoolean() && (newData.child('open').val() === false ? !newData.hasChildren(['start']) && !newData.hasChildren(['end']) : (newData.child('start').isString() && newData.child('end').isString() && newData.child('start').val().matches(/^([01][0-9]|2[0-3]):[0-5][0-9]$/) && newData.child('end').val().matches(/^([01][0-9]|2[0-3]):[0-5][0-9]$/) && newData.child('start').val() < newData.child('end').val()))",
+              "open": {
+                ".validate": "newData.isBoolean()"
+              },
+              "start": {
+                ".validate": "newData.isString()"
+              },
+              "end": {
+                ".validate": "newData.isString()"
+              },
+              "$other": {
+                ".validate": false
+              }
+            }
           },
           "whatsapp_enabled": {
             ".validate": "newData.isBoolean()"
@@ -597,6 +643,10 @@
           ".write": false
         },
         "order_surface": {
+          ".read": false,
+          ".write": false
+        },
+        "draft": {
           ".read": false,
           ".write": false
         },

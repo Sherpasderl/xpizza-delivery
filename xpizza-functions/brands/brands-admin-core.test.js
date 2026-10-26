@@ -35,6 +35,15 @@ const run = async (db, op, id, apply) => { const lines = []; const code = await 
   assert.strictEqual(r.code, 0); assert.strictEqual(writes(db), 2, 'unchanged publish: 0 writes');
   ok('re-runs: identical seed and unchanged publish write nothing');
 
+  // orchestration §6: a stored projection stamped NEWER than this read is never overwritten — exit 1, named, nothing written
+  db.data.public.brands.tb_brand.source = { gen: 0, versions: { tb_centro: 9 } };
+  db.data.restaurants.tb_centro.identity.location_name = 'Viejo';
+  const before = JSON.stringify(db.data.public.brands.tb_brand);
+  r = await run(db, 'publish', 'tb_brand', true);
+  assert.strictEqual(r.code, 1, r.out); assert.match(r.out, /REFUSED \(fenced\) — superseded/);
+  assert.strictEqual(JSON.stringify(db.data.public.brands.tb_brand), before, 'the newer projection is untouched');
+  ok('publish over a NEWER stored projection: exit 1 "REFUSED (fenced) — superseded", nothing overwritten');
+
   r = await run(db, 'status', undefined, false);
   assert.strictEqual(r.code, 0, r.out); assert.deepStrictEqual(JSON.parse(r.out).findings, []);
   db = fakeRtdb({ ...seedState(), restaurants: { tb_centro: { identity: branch({ brand_id: 'other_b' }) } } });

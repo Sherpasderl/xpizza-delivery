@@ -58,3 +58,16 @@ test('a read failure propagates (callers map it to unavailable)', async () => {
   db2.failReads.add('brands/tb');
   await assert.rejects(() => resolveBrand(db2, 'tb_norte'), undefined, 'the membership read failing also propagates');
 });
+
+// ORCHESTRATION O1a T9 (plan r3.1 §3, P-B): a STAGED branch resolves to its brand (so its handheld can pair and its managers be
+// granted before opening) — both for a new brand and for the staged sibling of a LEGACY brand, whose own branch is unchanged.
+test('O1a: a staged branch resolves to its brand (new brand and a legacy brand\'s staged sibling); the legacy branch is unchanged', async () => {
+  const db = createFakeDb({
+    restaurants: { tb_sur: { identity: { brand_id: 'tb' } }, tb_leg: { identity: {} }, tb_leg_2: { identity: { brand_id: 'tb_leg' } }, tb_leg_3: { identity: { brand_id: 'tb_leg' } } },
+    brands: { tb: brand({ tb_norte: 'member', tb_sur: 'staged' }, 'off'), tb_leg: { ...legacy('tb_leg'), locations: { tb_leg: 'member', tb_leg_2: 'staged' } } },
+  });
+  assert.strictEqual(await resolveBrand(db, 'tb_sur'), 'tb', 'staged in a new (off) brand');
+  assert.strictEqual(await resolveBrand(db, 'tb_leg_2'), 'tb_leg', 'the staged sibling of a legacy brand');
+  assert.strictEqual(await resolveBrand(db, 'tb_leg'), 'tb_leg', 'the legacy branch itself still resolves (legacy singleton rule over MEMBER entries)');
+  assert.strictEqual(await resolveBrand(db, 'tb_leg_3'), 'unknown', 'an unlisted sibling stays unknown');
+});

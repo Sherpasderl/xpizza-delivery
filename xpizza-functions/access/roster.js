@@ -66,7 +66,7 @@ async function validateTarget(db, brandId, op) {
     for (const rid of op.rids) {
       if (held.has(rid)) continue;
       const loc = await resolveLocation(db, rid);
-      if (loc.brandId !== brandId || loc.state !== 'member') return fail('location_not_member');   // an ADDED branch: a CURRENT member
+      if (loc.brandId !== brandId || (loc.state !== 'member' && loc.state !== 'staged')) return fail('location_not_member');   // an ADDED branch: a CURRENT member (or staged, O1b T1)
       validated.push(rid);
     }
     return { ok: true, validatedAdds: validated };
@@ -76,7 +76,7 @@ async function validateTarget(db, brandId, op) {
     if (op.can_edit_menu !== undefined && typeof op.can_edit_menu !== 'boolean') return fail('bad_perms');
     for (const rid of op.rids) {
       const loc = await resolveLocation(db, rid);
-      if (loc.brandId !== brandId || loc.state !== 'member') return fail('location_not_member');   // grant: CURRENT members
+      if (loc.brandId !== brandId || (loc.state !== 'member' && loc.state !== 'staged')) return fail('location_not_member');   // grant: CURRENT members (or staged, O1b T1)
     }
   }
   if (op.type === 'revoke_manager' && op.rid !== undefined && !F1.isBrandId(op.rid)) return fail('bad_rid');   // works after retirement
