@@ -20701,5 +20701,35 @@
       "node",
       "tools/deploy-dotenv-guard.test.js"
     ]
+  },
+  {
+    "slice": "drv-c-secrets",
+    "id": "dotenv-follow-config",
+    "label": "the guard follows a firebase.json in the deployed dir to another source (codex r1 P2 repro)",
+    "file": "tools/deploy-dotenv-guard.js",
+    "from": "  return fs.readdirSync(dir).sort()",
+    "to": "  try { const fb = JSON.parse(fs.readFileSync(path.join(dir, 'firebase.json'), 'utf8')); if (fb && fb.functions) dir = path.resolve(dir, [].concat(fb.functions)[0].source || '.'); } catch (_) { /* none */ }\n  return fs.readdirSync(dir).sort()",
+    "kills_with": [
+      "DOTENV-NESTED"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-dotenv-guard.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c-secrets",
+    "id": "dotenv-empty-root-passes",
+    "label": "an empty --root / unset $RESOURCE_DIR resolves to the cwd instead of blocking",
+    "file": "tools/deploy-dotenv-guard.js",
+    "from": "if (typeof raw !== 'string' || raw === '')",
+    "to": "if (typeof raw !== 'string')",
+    "kills_with": [
+      "DOTENV-FAILCLOSED"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-dotenv-guard.test.js"
+    ]
   }
 ]

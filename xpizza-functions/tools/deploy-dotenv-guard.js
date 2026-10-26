@@ -9,33 +9,37 @@
  * AND as a secret env var. With no dotenv the CLI copies nothing: existing functions keep their deployed env
  * (prepare.js inferDetailsFromExisting) and notifyArrivedOnTap gets no plain env at all.
  *
- * A predeploy hook is not told which functions the deploy selected (--only), so this FAILS CLOSED: any dotenv file in a
- * functions source dir — `.env`, `.env.<project>`, `.env.<alias>`, `.env.local`, any `.env.<x>` except the committed
+ * A predeploy hook is not told which functions the deploy selected (--only), so this FAILS CLOSED: any dotenv file in the
+ * deployed functions source — `.env`, `.env.<project>`, `.env.<alias>`, `.env.local`, any `.env.<x>` except the committed
  * `.env.example` — blocks every functions deploy. Only FILE NAMES are reported; a dotenv file is never opened.
- *   node tools/deploy-dotenv-guard.js [--root <functions-dir>]   → exit 0 clean, 1 if a dotenv file is present
+ * The scanned dir is $RESOURCE_DIR ITSELF (codex r1 P2): the CLI gives the hook the functions source being deployed, and
+ * that dir's own files are what prepare.js loads — a firebase.json found there is NEVER followed (a nested config pointing
+ * elsewhere would scan the wrong dir and pass). An unset, empty, missing or non-directory root BLOCKS.
+ *   node tools/deploy-dotenv-guard.js --root <functions-source-dir>   (else $RESOURCE_DIR) → exit 0 clean, 1 otherwise
  */
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = path.join(__dirname, '..');
 const DOTENV = /^\.env(\..+)?$/;
 
-function dotenvFiles(root = ROOT) {
-  const fb = JSON.parse(fs.readFileSync(path.join(root, 'firebase.json'), 'utf8'));
-  const out = [];
-  for (const f of [].concat(fb.functions || [])) {
-    const dir = path.resolve(root, f.source || '.');
-    for (const name of fs.readdirSync(dir).sort()) {
-      if (DOTENV.test(name) && name !== '.env.example') out.push(path.relative(root, path.join(dir, name)) || name);
-    }
-  }
-  return out;
+// the dotenv files in the deployed source dir itself (names relative to it), sorted
+function dotenvFiles(dir) {
+  return fs.readdirSync(dir).sort().filter((name) => DOTENV.test(name) && name !== '.env.example');
 }
 
-function main({ argv = process.argv, out = (m) => console.log(m), err = (m) => console.error(m) } = {}) {
+// the deployed dir: --root's value when --root is given (even empty), else $RESOURCE_DIR; it must be an existing directory
+function deployedDir(argv, env) {
+  const ri = argv.indexOf('--root');
+  const raw = ri > -1 ? argv[ri + 1] : env.RESOURCE_DIR;
+  if (typeof raw !== 'string' || raw === '') { const e = new Error('no deployed dir'); e.code = 'ENOROOT'; throw e; }
+  const dir = path.resolve(raw);
+  if (!fs.statSync(dir).isDirectory()) { const e = new Error('not a directory'); e.code = 'ENOTDIR'; throw e; }
+  return dir;
+}
+
+function main({ argv = process.argv, env = process.env, out = (m) => console.log(m), err = (m) => console.error(m) } = {}) {
   try {
-    const ri = argv.indexOf('--root');
-    const found = dotenvFiles(ri > -1 ? path.resolve(argv[ri + 1]) : ROOT);
+    const found = dotenvFiles(deployedDir(argv, env));
     if (found.length) {
       err(`\n🔴 DEPLOY DOTENV GUARD — dotenv file(s) in the functions deploy dir:\n   ${found.join('\n   ')}`);
       err('   The CLI copies a dotenv into EVERY function (prepare.js:104-116): notifyArrivedOnTap would carry its Secret Manager');
@@ -50,5 +54,5 @@ function main({ argv = process.argv, out = (m) => console.log(m), err = (m) => c
   }
 }
 
-module.exports = { dotenvFiles, main };
+module.exports = { dotenvFiles, deployedDir, main };
 if (require.main === module) process.exitCode = main() === 0 ? 0 : 1;
