@@ -380,7 +380,7 @@ const STEPS = {
       const [brand, handhelds] = [await val(db, `brands/${brandId}`), await val(db, `restaurants/${rid}/handhelds`)];
       const facts = await readinessFacts(db, rid, brandId, brand, unrevoked(handhelds), ctx.readers || {});
       const p = P.planSetActive({ identity, active: true, facts, now: op.at, expectedVersion: ev });
-      if (!p.ok) return fail(db, op, callId, p.error, p.unmet ? { unmet: p.unmet } : {});
+      if (!p.ok) return fail(db, op, callId, p.error, p.unmet ? { unmet: p.unmet, ...(p.identity_gaps ? { identity_gaps: p.identity_gaps } : {}) } : {});   // O1b T6: + identity_gaps
       plan = { patch: p.patch, membership_to: p.membershipTo || 'none' };
       if (!(await renew(db, op, callId, clk, 'planned', plan))) return LOST;
     }
@@ -606,16 +606,22 @@ async function activationReadiness(db, brandId, open, now, readers) {
   const locs = isObj(brand.locations) ? brand.locations : {};
   const bad = open.filter((rid) => locs[rid] !== 'staged' && locs[rid] !== 'member');
   if (bad.length) return { ok: false, error: 'not_staged', extra: { rids: bad } };
-  const unmet = {}; const seen = {};
+  const unmet = {}; const gaps = {}; const seen = {};
   for (const rid of open) {
     const identity = await val(db, `restaurants/${rid}/identity`);
     seen[rid] = isObj(identity) ? identity.version : null;
     if (isObj(identity) && identity.active === true) continue;
     const facts = await readinessFacts(db, rid, brandId, brand, unrevoked(await val(db, `restaurants/${rid}/handhelds`)), readers);
-    const plan = P.planSetActive({ identity, active: true, facts: { ...facts, brandState: 'on' }, now, expectedVersion: isObj(identity) ? identity.version : undefined });
-    if (!plan.ok) unmet[rid] = plan.unmet || [plan.error];
+    const plan = P.planSetActive({ identity, active: true, facts: { ...facts, brandState: 'on', brandId }, now, expectedVersion: isObj(identity) ? identity.version : undefined });
+    if (!plan.ok) {
+      // O1b T6 (ruling 2026-10-21): `unmet` holds ONLY the six readiness codes — a planner ERROR (stale_branch, noop, …) is returned
+      // top-level with its rid, never inside unmet
+      if (plan.error !== 'not_ready') return { ok: false, error: plan.error, extra: { rid } };
+      unmet[rid] = plan.unmet;
+      if (plan.identity_gaps) gaps[rid] = plan.identity_gaps;
+    }
   }
-  if (Object.keys(unmet).length) return { ok: false, error: 'not_ready', extra: { unmet } };
+  if (Object.keys(unmet).length) return { ok: false, error: 'not_ready', extra: Object.keys(gaps).length ? { unmet, identity_gaps: gaps } : { unmet } };
   return { ok: true, seen, gen: brand.projection_gen || 0 };
 }
 

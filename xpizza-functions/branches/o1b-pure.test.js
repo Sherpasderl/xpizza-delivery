@@ -57,6 +57,40 @@ const g = { granted_at: 1, granted_by: 'x' };
     ok('hours7Errors: string times first (arrays / objects / numbers refused) + overnight, equal, missing / extra keys; accepted hours always validate as an identity');
   }
 
+  // ── T6 readiness from the RAW identity: identity_gaps, ordered; integrity catches everything else (incl. a malformed active) ──
+  {
+    const ID = { name: 'TB', brand_id: 'tb', location_name: 'Sur', phone: '+50431234567', hub_lat: 15.5, hub_lng: -88.0, delivery_radius_km: 5, zone: { type: 'circle', radius_km: 5 }, prep_default_min: 20, version: 3, active: false, hours: H7 };
+    assert.deepStrictEqual(O.READINESS_CODES, ['identity_invalid', 'not_a_branch', 'brand_not_on', 'no_handheld_online', 'no_owner_or_manager', 'menu_not_published']);
+    assert.deepStrictEqual(O.IDENTITY_GAPS, ['location', 'zone', 'hours', 'prep', 'integrity']);
+    assert.deepStrictEqual(O.readinessOf(ID), { gaps: [] }, 'a complete identity has no gap');
+    const cases = {
+      location: [{ hub_lat: 95 }, { hub_lng: 'x' }, { hub_lat: undefined }],
+      zone: [{ zone: { type: 'circle', radius_km: 6 } }, { zone: { type: 'circle', radius_km: 60 }, delivery_radius_km: 60 }, { zone: undefined }, { zone: { type: 'square', radius_km: 5 } }],
+      hours: [{ hours: withDay('fri', { open: true, start: '22:00', end: '02:00' }) }, { hours: undefined }],
+      prep: [{ prep_default_min: 4 }, { prep_default_min: 20.5 }, { prep_default_min: undefined }],
+      integrity: [{ active: 'broken' }, { brand_id: 'other' }, { location_name: ' Sur' }, { phone: 504 }, { name: '' }, { version: 'x' }],
+    };
+    for (const [gap, overs] of Object.entries(cases)) {
+      for (const o of overs) {
+        const id = { ...ID, ...o }; for (const k of Object.keys(o)) if (o[k] === undefined) delete id[k];
+        assert.deepStrictEqual(O.readinessOf(id, 'tb').gaps, [gap], `GAP-${gap.toUpperCase()} ${JSON.stringify(o)}`);
+      }
+    }
+    // combinations stay in the published order; address is never a gap
+    assert.deepStrictEqual(O.readinessOf({ ...ID, prep_default_min: 1, hub_lat: 99, active: 'x', hours: undefined }).gaps, ['location', 'hours', 'prep', 'integrity'], 'GAPS-ORDERED');
+    assert.deepStrictEqual(O.readinessOf({ ...ID, address_line: undefined, address_reference: 42 }).gaps, [], 'GAP-NO-ADDRESS');
+    assert.deepStrictEqual(O.readinessOf(null).gaps, ['location', 'zone', 'hours', 'prep', 'integrity'], 'no identity → every gap');
+    // planSetActive: identity_invalid ⇔ gaps; the malformed-active probe (Codex r1 #8) no longer passes
+    const facts = { membership: 'staged', brandState: 'on', handheldSeen: true, teamCount: 1, menuPublished: true };
+    const act = (id) => O.planSetActive({ identity: id, active: true, facts, now: 9, expectedVersion: 3 });
+    assert.strictEqual(act(ID).ok, true, 'a ready identity activates');
+    assert.deepStrictEqual(act({ ...ID, active: 'broken' }), { ok: false, error: 'not_ready', unmet: ['identity_invalid'], identity_gaps: ['integrity'] }, 'RAW-ACTIVE malformed active → identity_invalid + integrity');
+    assert.deepStrictEqual(act({ ...ID, hub_lat: 95 }), { ok: false, error: 'not_ready', unmet: ['identity_invalid'], identity_gaps: ['location'] });
+    const noGaps = act({ ...ID }); assert.ok(!('identity_gaps' in noGaps));
+    assert.deepStrictEqual(O.planSetActive({ identity: ID, active: true, facts: { ...facts, teamCount: 0 }, now: 9, expectedVersion: 3 }), { ok: false, error: 'not_ready', unmet: ['no_owner_or_manager'] }, 'GAPS-ONLY-WITH-IDENTITY-INVALID');
+    ok('readinessOf: the raw identity (active not masked) → ordered gaps location / zone / hours / prep / integrity; address never; planSetActive: identity_invalid ⇔ gaps');
+  }
+
   FINISHED = true;
   console.log(`\no1b-pure: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

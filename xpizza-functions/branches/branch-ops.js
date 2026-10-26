@@ -130,6 +130,25 @@ function planProfilePatch({ current, patch, expectedVersion }) {
   return { ok: true, patch: { ...out, version: cur.version + 1 }, groups };
 }
 
+// O1b T6 (plan r3.2 §5, Codex r1 #8) — the PUBLISHED readiness vocabulary (exactly six codes, in check order) and the
+// identity_gaps sub-reasons of identity_invalid (a closed, ordered set). readinessOf validates the RAW stored identity — nothing
+// masked (a malformed `active` is an integrity gap): location / zone / hours / prep each by its own predicate; `integrity` =
+// anything else validateBranchIdentity rejects once those four are replaced by valid stand-ins. Address is never a gap.
+const READINESS_CODES = Object.freeze(['identity_invalid', 'not_a_branch', 'brand_not_on', 'no_handheld_online', 'no_owner_or_manager', 'menu_not_published']);
+const IDENTITY_GAPS = Object.freeze(['location', 'zone', 'hours', 'prep', 'integrity']);
+const STAND_IN_HOURS = Object.fromEntries(DAYS.map((d) => [d, { open: false }]));
+function readinessOf(identity, brandId) {   // brandId: the brand the branch belongs to (default: its own brand_id)
+  const id = isObj(identity) ? identity : {};
+  const gaps = [];
+  if (!(Number.isFinite(id.hub_lat) && Number.isFinite(id.hub_lng) && Math.abs(id.hub_lat) <= 90 && Math.abs(id.hub_lng) <= 180)) gaps.push('location');
+  if (validateZone(id.zone).length || !Number.isFinite(id.delivery_radius_km) || id.zone.radius_km !== id.delivery_radius_km) gaps.push('zone');
+  if (hours7Errors(id.hours).length) gaps.push('hours');
+  if (!isPrep(id.prep_default_min)) gaps.push('prep');
+  const standIn = { ...id, hub_lat: 0, hub_lng: 0, delivery_radius_km: DEFAULT_ZONE_KM, zone: { type: 'circle', radius_km: DEFAULT_ZONE_KM }, hours: STAND_IN_HOURS, prep_default_min: 20 };
+  if (!isObj(identity) || !validateBranchIdentity('branch', standIn, brandId === undefined ? id.brand_id : brandId).ok) gaps.push('integrity');
+  return { gaps };
+}
+
 // activate (readiness) / deactivate (always) — facts are read by the writer
 function planSetActive({ identity, active, facts, now, expectedVersion }) {
   const id = identity || {}; const f = facts || {};
@@ -138,13 +157,14 @@ function planSetActive({ identity, active, facts, now, expectedVersion }) {
   const patch = { active: active === true, active_changed_at: now, version: id.version + 1 };
   if (active !== true) return { ok: true, patch, membershipTo: null };
   const unmet = [];
-  if (!validateBranchIdentity('branch', { ...id, active: true }, id.brand_id).ok || hours7Errors(id.hours).length) unmet.push('identity_invalid');
+  const { gaps } = readinessOf(identity, f.brandId);   // O1b T6: the RAW identity — no { ...id, active: true } masking
+  if (gaps.length) unmet.push('identity_invalid');
   if (f.membership !== 'staged' && f.membership !== 'member') unmet.push('not_a_branch');
   if (f.brandState !== 'on') unmet.push('brand_not_on');
   if (f.handheldSeen !== true) unmet.push('no_handheld_online');
   if (!(f.teamCount >= 1)) unmet.push('no_owner_or_manager');
   if (f.menuPublished !== true) unmet.push('menu_not_published');
-  if (unmet.length) return { ok: false, error: 'not_ready', unmet };
+  if (unmet.length) return gaps.length ? { ok: false, error: 'not_ready', unmet, identity_gaps: gaps } : { ok: false, error: 'not_ready', unmet };
   return { ok: true, patch, membershipTo: f.membership === 'staged' ? 'member' : null };
 }
 
@@ -167,5 +187,5 @@ function planEnrichLegacy({ rid, identity, brand, input, expectedVersion }) {
   return { ok: true, patch: { ...patch, version: id.version + 1 } };
 }
 
-module.exports = { draftErrors, hours7Errors, planMaterialize, planSetLocation, planProfilePatch, planSetActive, planEnrichLegacy,
+module.exports = { READINESS_CODES, IDENTITY_GAPS, readinessOf, draftErrors, hours7Errors, planMaterialize, planSetLocation, planProfilePatch, planSetActive, planEnrichLegacy,
   MOVE_QUIET_MS, DEFAULT_ZONE_KM, DAYS };
