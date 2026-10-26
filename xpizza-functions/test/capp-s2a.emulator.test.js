@@ -16,7 +16,7 @@
 //   X   refusal mapping: outside_delivery_bands, pin_required, both closure refusals, the radius 400, price_increased (the sheet,
 //       agreed ⇒ the same id stands behind the new ceiling), quote_invalid (silent, one attempt)
 //   S2a r2 (Codex FULL r1):
-//   Z   a CHANGED issued card placement (pin / mode / delivery price-promo) is resolved first and RESUMED through the stored
+//   Z   a CHANGED issued card placement (pin / mode / delivery price) is resolved first and RESUMED through the stored
 //       checkout URL with the ORIGINAL economics — zero re-sends, one gateway call, the server order and the stash untouched
 //   L   money writes are never auto-retried: provider-response loss (the gateway created the checkout, its answer lost ⇒ 502)
 //       and browser-response loss (the server issued, the app's response lost) are each ONE gateway call and the recovery sheet;
@@ -379,7 +379,9 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     const variants = [
       ['pin', (f) => C.setPin(f, HUB.lat + 3 * KM, HUB.lng, true), null],
       ['mode', (f) => C.setMode(f, 'pickup'), null],
-      ['delivery price / promo', () => {}, { policy_version: 2, bands: BANDS, restaurants: { x_pizza: { active: true, free_delivery: true } } }],
+      // the delivery price changes under the same cart + pin (the promo branch needs a signed-in customer; it moves only the
+      // expected net too, the same resolve-first branch — covered by the unit cell)
+      ['delivery price', () => {}, { policy_version: 2, bands: [{ max_km: 2, cents: 4000 }, ...BANDS.slice(1)], restaurants: { x_pizza: { active: true, free_delivery: false } } }],
     ];
     for (const [what, change, pricing] of variants) {
       await clean(); CHARGED.length = 0;
@@ -401,7 +403,7 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
       assert.deepStrictEqual([after.lat, after.order_type, after.total_cents], [before.lat, before.order_type, before.total_cents], `${what}: the server order is untouched`);
       assert.strictEqual(pg.storage.getItem('x_pizza_s2a_pending_pay'), stash0, `${what}: the stash is untouched`);
     }
-    ok('Z changed issued card placement (pin / mode / delivery price-promo): resolved first, resumed through the stored checkout URL with the ORIGINAL economics; zero re-sends, one gateway call, the server order and the stash untouched');
+    ok('Z changed issued card placement (pin / mode / delivery price): resolved first, resumed through the stored checkout URL with the ORIGINAL economics; zero re-sends, one gateway call, the server order and the stash untouched');
   }
 
   // ── L (r2 P1 #4): money writes are never auto-retried — provider-response loss vs browser-response loss ──
