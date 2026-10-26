@@ -33,6 +33,14 @@
       "kind": "insert"
     },
     {
+      "name": "OFFLINE-START-GEN-3",
+      "kind": "insert"
+    },
+    {
+      "name": "RENDER-OFFLINE-3",
+      "kind": "insert"
+    },
+    {
       "name": "HELP-HANDLER",
       "kind": "replace",
       "restore": [

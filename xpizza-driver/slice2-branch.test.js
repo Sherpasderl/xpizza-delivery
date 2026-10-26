@@ -988,6 +988,7 @@ function runLifecycle() {
     + 'function drv2ResetRun(){ _spies.runReset += 1; drv2DoneRun = []; }\n'
     + liftFn(MY_SCRIPT, 'ensureSlice2MapAgeTimer') + '\n'
     + liftFn(MY_SCRIPT, 'stopSlice2MapAgeTimer') + '\n'
+    + 'let shiftSessionGen = 0;\n'   // the OFFLINE-TEARDOWN-3 splice bumps this (cleanupShift); the offline banner's own tests cover it
     + 'function stopOfflineBanner(){ _spies.offlineTeardown = (_spies.offlineTeardown||0) + 1; }\n'   // the OFFLINE-TEARDOWN-3 splice in cleanupShift (its own behaviour is covered in offline-banner.test.js)
     + liftFn(MY_SCRIPT, 'cleanupShift') + '\n'
     + liftVisibilityHandler(MY_SCRIPT) + '\n'

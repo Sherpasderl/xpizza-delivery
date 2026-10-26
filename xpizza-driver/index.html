@@ -63,17 +63,21 @@
 .offline-foot-note { text-align: center; font-size: 12px; color: var(--text-dim, #A2ABBA); margin-top: 8px; line-height: 1.35; }
 /* in .delivering mode the slide is a FIXED bottom bar — the note becomes a fixed strip directly UNDER it (prototype
    S.offline .foot: slide, then the centred tiny line); the bar lifts and the body padding grows so nothing crops. */
+/* the slide bar lifts by the note's REAL measured height (--offline-foot-h, set by applyOfflineBanner incl. the
+   safe-area inset + any wrapping); the 34px fallback only applies before the first measure. */
 #screen-onshift.delivering.offline-foot #active-order-slot .sv-actions,
-#screen-onshift.delivering.offline-foot #active-order-slot .action-zone { bottom: 30px; padding-bottom: 10px; }
+#screen-onshift.delivering.offline-foot #active-order-slot .action-zone { bottom: var(--offline-foot-h, 34px); padding-bottom: 10px; }
 #screen-onshift.delivering.offline-foot #offline-foot-note {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 19; margin: 0;
   padding: 6px 16px calc(9px + env(safe-area-inset-bottom)); background: var(--bg, #F4F2EE);
 }
-#screen-onshift.delivering.offline-foot #onshift-content { padding-bottom: 142px; }
-/* gpsoff — the full-screen «Activá tu ubicación» state over the idle screen (prototype S.gpsoff) */
-.gpsoff-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 13px; padding: 20px 6px 0; }
-.gpsoff-illus { width: 56px; height: 56px; border-radius: 16px; background: #FEF3E2; color: var(--warn, #f59e0b); display: flex; align-items: center; justify-content: center; }
-.gpsoff-illus svg { width: 30px; height: 30px; }
+#screen-onshift.delivering.offline-foot #onshift-content { padding-bottom: calc(104px + var(--offline-foot-h, 34px)); }
+/* gpsoff — the full-screen «Activá tu ubicación» state over the idle screen (prototype S.gpsoff): the body centres in
+   the available height (gap 16px), and the foot sits at the screen bottom. #idle-state is already flex:1 column. */
+.gpsoff-state { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.gpsoff-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; }
+.gpsoff-illus { width: 104px; height: 104px; border-radius: 30px; background: #FEF3E2; color: var(--warn, #f59e0b); display: flex; align-items: center; justify-content: center; }
+.gpsoff-illus svg { width: 52px; height: 52px; }
 .gpsoff-h { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 20px; color: var(--text, #0D1424); }
 .gpsoff-sub { font-size: 13.5px; color: var(--text-soft, #546078); line-height: 1.4; max-width: 300px; }
 .gpsoff-card { width: 100%; background: var(--surface, #fff); border-radius: 14px; padding: 2px 14px; margin-top: 2px; }
@@ -83,7 +87,7 @@
 .go-rtext { flex: 1; min-width: 0; } .go-rt { font-size: 14px; font-weight: 700; color: var(--text, #0D1424); } .go-rd { font-size: 12.5px; color: var(--text-soft, #546078); margin-top: 1px; }
 .go-chip { flex: none; font-size: 12px; font-weight: 800; padding: 3px 9px; border-radius: 999px; }
 .go-chip.ok { color: #1F7A4D; background: #E3F3EA; } .go-chip.err { color: #B3261E; background: #FBE6E4; }
-.gpsoff-foot { width: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
+.gpsoff-foot { width: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: auto; padding-top: 16px; padding-bottom: env(safe-area-inset-bottom); }   /* pinned to the screen bottom below the flex:1 body */
 .gpsoff-foot .big-btn { text-transform: none; }   /* prototype buttons are sentence case, not the legacy .big-btn uppercase */
 .gpsoff-foot .big-btn.txt { background: transparent; color: var(--text-soft, #546078); box-shadow: none; }
 /* ===== SLICE3:PRESENTATION-3:END ===== */
@@ -2421,6 +2425,10 @@ function startOfferRepeat(offer) {
 // polling), and torn down at shift end / sign-out. The banner + the prototype foot line are PERSISTENT siblings in
 // #onshift-content, so a card re-render never wipes them; applyOfflineBanner re-reads the DOM for the in-hand slide.
 let offlineBannerConnUnsub = null, offlineBannerHandler = null;
+// The SHIFT SESSION generation: bumped on every teardown (cleanupShift). ensureOfflineBanner subscribes at most once
+// per session, and a pending shift-start (OFFLINE-INIT-3, which runs AFTER its awaits) bails if the session it began
+// in has ended — so a start resolving after a sign-out never re-attaches listeners (Codex r1 P2-2).
+let shiftSessionGen = 0, offlineBannerSessionGen = -1;
 const OFFLINE_WIFI = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 8.5a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>';
 function offlineInHand() {   // an ACCEPTED order with a queued server slide is on screen (never idle, never an offer)
   const slot = $('active-order-slot');
@@ -2432,11 +2440,22 @@ function applyOfflineBanner() {
   banner.classList.toggle('hidden', !show);
   const note = $('offline-foot-note'); if (note) note.classList.toggle('hidden', !show);
   // `.offline-foot` lifts the fixed slide bar + grows the body padding so the «5 min» note sits in the fixed foot
-  // directly UNDER the slide (prototype S.offline .foot), without cropping (CSS in PRESENTATION-3).
-  const screen = $('screen-onshift'); if (screen) screen.classList.toggle('offline-foot', show);
+  // directly UNDER the slide (prototype S.offline .foot). The lift is the note's REAL rendered height (incl.
+  // safe-area-inset-bottom + wrapping), measured here — never a constant — so the slide never covers it (P2-4).
+  const screen = $('screen-onshift'); if (screen) {
+    screen.classList.toggle('offline-foot', show);
+    if (show && note) screen.style.setProperty('--offline-foot-h', note.offsetHeight + 'px');
+    else screen.style.removeProperty('--offline-foot-h');
+  }
 }
-function initOfflineBanner() {
-  const content = $('onshift-content'); if (!content) return;
+// Idempotent, once per shift session. Injects the persistent banner + foot-note siblings and subscribes to the RTDB
+// connection edge + window events. Re-subscribes after a teardown (stopOfflineBanner nulls the handles and bumps the
+// session gen). A null currentUser (signed out) bails — the session-validity check (P2-2). Driven from BOTH the
+// shift-start path (OFFLINE-INIT-3) AND every render into an active shift (RENDER-OFFLINE-3, for app reopen/restore).
+function ensureOfflineBanner() {
+  const content = $('onshift-content'); if (!content || !currentUser) return;
+  if (offlineBannerSessionGen === shiftSessionGen && offlineBannerHandler) { applyOfflineBanner(); return; }
+  offlineBannerSessionGen = shiftSessionGen;
   if (!$('offline-banner')) {
     const b = document.createElement('div');
     b.id = 'offline-banner'; b.className = 'offline-banner hidden'; b.setAttribute('role', 'status');
@@ -2462,8 +2481,10 @@ function initOfflineBanner() {
 function stopOfflineBanner() {
   if (offlineBannerHandler) { window.removeEventListener('online', offlineBannerHandler); window.removeEventListener('offline', offlineBannerHandler); offlineBannerHandler = null; }
   if (offlineBannerConnUnsub) { try { offlineBannerConnUnsub(); } catch (_) {} offlineBannerConnUnsub = null; }
+  offlineBannerSessionGen = -1;
   const b = $('offline-banner'); if (b) b.classList.add('hidden');
   const n = $('offline-foot-note'); if (n) n.classList.add('hidden');
+  const s = $('screen-onshift'); if (s) { s.classList.remove('offline-foot'); s.style.removeProperty('--offline-foot-h'); }
 }
 
 // SLICE3 gpsoff — the location-off idle state (ruling (C): Transistorsoft stays DORMANT). Detection is READ-ONLY:
@@ -3291,6 +3312,9 @@ window.addEventListener('native-push-received', (e) => {
 // ============================================================
 async function handleStartShift() {
   if (!currentUser) return;
+  /* ===== SLICE3:OFFLINE-START-GEN-3:START — capture the shift-session gen BEFORE the awaited startup work, so a start that resolves after a sign-out/teardown (which bumped the gen) does NOT re-attach the offline banner (P2-2) ===== */
+  const offlineStartGen = shiftSessionGen;
+  /* ===== SLICE3:OFFLINE-START-GEN-3:END ===== */
   try {
     // Unlock iOS audio: must play in response to a direct user tap.
     // After this, $('chime').play() works for the rest of the session.
@@ -3318,8 +3342,8 @@ async function handleStartShift() {
     }
     toast(trackingOk ? 'Turno iniciado' : 'Turno iniciado · problema con ubicación, reintentá',
           trackingOk ? 'success' : 'error');
-    /* ===== SLICE3:OFFLINE-INIT-3:START — on-shift init: inject the offline banner element + subscribe ONCE to the connection edge (idempotent; torn down in cleanupShift) ===== */
-    initOfflineBanner();
+    /* ===== SLICE3:OFFLINE-INIT-3:START — on-shift init, gen-guarded: only if THIS start's session is still current (sign-out/teardown during the awaited startup bumped the gen → bail, no listeners) ===== */
+    if (offlineStartGen === shiftSessionGen) ensureOfflineBanner();
     /* ===== SLICE3:OFFLINE-INIT-3:END ===== */
   } catch (e) {
     // Only the SERVER clock-in throwing reaches here → the shift didn't start → revert the optimistic screen.
@@ -3840,7 +3864,8 @@ async function cleanupShift() {
     try { await wakeLock.release(); } catch {}
     wakeLock = null;
   }
-  /* ===== SLICE3:OFFLINE-TEARDOWN-3:START — tear down the offline banner's connectivity subscription on shift end / sign-out (cleanupShift is the common teardown for both) ===== */
+  /* ===== SLICE3:OFFLINE-TEARDOWN-3:START — tear down the offline banner's subscription on shift end / sign-out (cleanupShift is the common teardown for both); BUMP the session gen so any pending shift-start init bails (P2-2) ===== */
+  shiftSessionGen += 1;
   stopOfflineBanner();
   /* ===== SLICE3:OFFLINE-TEARDOWN-3:END ===== */
 }
@@ -4101,6 +4126,10 @@ function render() {
     renderStatusBar();
     renderActiveAndQueue();
   }
+  /* ===== SLICE3:RENDER-OFFLINE-3:START — EVERY entry into an active shift (fresh start AND app reopen/restore via auth/feed → render) initializes the offline banner once per session (P2-1); applyOfflineBanner runs after the completed board render — active, offer OR idle — so visibility never goes stale across card changes (P2-3) ===== */
+  ensureOfflineBanner();
+  applyOfflineBanner();
+  /* ===== SLICE3:RENDER-OFFLINE-3:END ===== */
   startKeepAlive();
 }
 

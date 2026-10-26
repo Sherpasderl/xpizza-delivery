@@ -873,7 +873,7 @@ export function gpsoffHtml(info = {}, deps = {}) {
   // details (to grant permission). On web there is no opener → «Más tarde» only.
   const cause = providerOff ? 'provider' : 'permission';
   const openBtn = native ? `<button class="big-btn primary" id="gpsoff-settings" data-cause="${cause}">Abrir ajustes de ubicación</button>` : '';
-  return `<div class="gpsoff-top">
+  return `<div class="gpsoff-center">
       <div class="gpsoff-illus">${GPSOFF_GPS}</div>
       <div class="gpsoff-h">Activá tu ubicación</div>
       <div class="gpsoff-sub">Despacho necesita verte en el mapa para asignarte pedidos. Sin GPS no se bloquea nada que ya tengás en mano.</div>

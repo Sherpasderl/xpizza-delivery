@@ -23,6 +23,12 @@ function liftFn(name) {
   }
   throw new Error(`unbalanced ${name}`);
 }
+function regionBody(name) {
+  const s = SCRIPT.indexOf(`SLICE3:${name}:START`);
+  const bodyStart = SCRIPT.indexOf('\n', s) + 1;
+  const end = SCRIPT.indexOf(`SLICE3:${name}:END`, bodyStart);
+  return SCRIPT.slice(bodyStart, SCRIPT.lastIndexOf('/*', end));
+}
 const esc = (s) => String(s == null ? '' : s);
 
 let passed = 0;
@@ -55,13 +61,29 @@ function build() {
   const dom = new JSDOM('<!doctype html><body><div id="idle-state"><div class="idle-top"><div id="idle-msg"></div><button id="idle-help-link">¿Por qué?</button></div><div class="statbar" id="idle-statbar"></div></div></body>');
   const { document, window } = dom.window;
   const $ = (id) => document.getElementById(id);
-  const deps = { document, window, $, gpsoffHtml, escapeHtml: esc };
-  const body = 'let gpsoffState = null, gpsoffDismissed = false;\n'
-    + liftFn('gpsoffActive') + '\n' + liftFn('applyGpsoff') + '\n'
-    + 'return { apply: applyGpsoff, active: gpsoffActive, setState: (s) => { gpsoffState = s; }, setDismissed: (d) => { gpsoffDismissed = d; }, dismissed: () => gpsoffDismissed };';
+  // mock OS surfaces: native OemSettings (getLocationStatus/getStatus + the two openers) and the web Permissions API
+  const opens = { location: 0, app: 0 };
+  let locStatus = { permission: 'denied', providerEnabled: true };   // what the native plugin reports
+  let permState = 'denied';                                           // what navigator.permissions reports (web)
+  window.Capacitor = { Plugins: { OemSettings: {
+    getLocationStatus: () => Promise.resolve(locStatus),
+    getStatus: () => Promise.resolve({ batteryUnrestricted: true }),
+    openLocationSettings: () => { opens.location += 1; },
+    openAppDetails: () => { opens.app += 1; },
+  } } };
+  window.navigator.permissions = { query: () => Promise.resolve({ state: permState }) };
+  let nativeFlag = true;
+  const deps = { document, window, navigator: window.navigator, $, gpsoffHtml, escapeHtml: esc, isNative: () => nativeFlag };
+  const body = 'let gpsoffState = null, gpsoffDismissed = false, gpsoffChecking = false;\n'
+    + liftFn('checkLocationStatus') + '\n' + liftFn('gpsoffActive') + '\n' + liftFn('applyGpsoff') + '\n'
+    + 'function hostResume() {\n' + regionBody('GPSOFF-RESUME-3') + '\n}\n'          // app-resume trigger (clears dismiss + re-checks)
+    + 'function hostDenied() {\n const err = { code: 1, PERMISSION_DENIED: 1 };\n' + regionBody('GPSOFF-DENIED-3') + '\n}\n'          // web PERMISSION_DENIED trigger (err = the watchPosition error cb param)
+    + 'return { check: checkLocationStatus, apply: applyGpsoff, active: gpsoffActive, resume: hostResume, denied: hostDenied,'
+    + ' setState: (s) => { gpsoffState = s; }, setDismissed: (d) => { gpsoffDismissed = d; }, dismissed: () => gpsoffDismissed };';
   const names = Object.keys(deps);
   const api = new Function(...names, body)(...names.map((n) => deps[n]));
-  return { api, $, document,
+  return { api, $, document, opens,
+    setNative: (v) => { nativeFlag = v; }, setLocStatus: (s) => { locStatus = s; }, setPermState: (s) => { permState = s; },
     cardShown: () => { const c = $('gpsoff-state'); return !!(c && !c.classList.contains('hidden')); },
     idleTopHidden: () => $('idle-state').querySelector('.idle-top').classList.contains('hidden') };
 }
@@ -99,6 +121,90 @@ t('apply: «Más tarde» dismisses the card (until the next recheck re-sets it)'
   h.$('gpsoff-later').click();   // the real handler sets gpsoffDismissed = true + re-applies
   assert.equal(h.cardShown(), false, 'dismissed → hidden');
   assert.equal(h.api.dismissed(), true, 'the dismiss flag latched');
+});
+
+// ---------- copy pins (owner-approved, byte-for-byte; never-change) ----------
+t('COPY PIN: every gpsoff string is exactly as the prototype draws it / the owner approved', () => {
+  // permission denied + provider off + battery restricted → all rows + both causes present
+  const h = gpsoffHtml({ native: true, permission: 'denied', providerEnabled: false, batteryUnrestricted: false }, { esc });
+  for (const s of [
+    'Activá tu ubicación',
+    'Despacho necesita verte en el mapa para asignarte pedidos. Sin GPS no se bloquea nada que ya tengás en mano.',
+    'Permiso de ubicación', '“Permitir siempre”', 'Negado',          // curly “Permitir siempre” (U+201C/U+201D)
+    'Ubicación del teléfono', 'Encendé el GPS', 'Apagada',                      // owner-approved provider-off row
+    'Batería', 'Sin restricción', 'Revisar',                                    // owner-approved battery-err chip
+    'Abrir ajustes de ubicación', 'Más tarde',
+  ]) assert.ok(h.includes(s), `gpsoff copy must contain exactly: ${s}`);
+  // the good-state chips
+  const ok = gpsoffHtml({ native: true, permission: 'granted', providerEnabled: true, batteryUnrestricted: true }, { esc });
+  assert.ok(ok.includes('>Ok<'), 'granted/unrestricted → «Ok» chip');
+  assert.ok(!ok.includes('Ubicación del teléfono'), 'the provider row appears ONLY when the switch is off');
+});
+
+// ---------- (3) the REAL detection + routing + triggers (P2-6) ----------
+async function at(name, fn) { await fn(); passed += 1; console.log('  ok -', name); }
+
+await at('detection NATIVE: getLocationStatus denied → card shows; granted+on → card clears (mutant: detection removed → RED)', async () => {
+  const h = build();
+  h.setLocStatus({ permission: 'denied', providerEnabled: true });
+  await h.api.check();
+  assert.equal(h.cardShown(), true, 'a real denied read shows the card');
+  assert.equal(h.api.active(), true);
+  h.setLocStatus({ permission: 'granted', providerEnabled: true });
+  await h.api.check();
+  assert.equal(h.cardShown(), false, 'a real granted+provider-on read clears it');
+});
+
+await at('detection DARK-SAFE: native with no getLocationStatus method → no card, no state (old binary)', async () => {
+  const h = build();
+  delete h.$('idle-state').ownerDocument.defaultView.Capacitor.Plugins.OemSettings.getLocationStatus;
+  await h.api.check();
+  assert.equal(h.cardShown(), false, 'absent method → never a card on native');
+  assert.equal(h.api.active(), false);
+});
+
+await at('detection WEB: no native, navigator.permissions denied → card (permission cause only)', async () => {
+  const h = build();
+  h.setNative(false);
+  h.setPermState('denied');
+  await h.api.check();
+  assert.equal(h.cardShown(), true, 'web permission-denied shows the card');
+});
+
+await at('routing: «Abrir ajustes» opens LOCATION settings for a provider-off cause, APP details for a permission cause (mutant: routing removed → RED)', async () => {
+  const h = build();
+  h.setLocStatus({ permission: 'granted', providerEnabled: false });   // provider off
+  await h.api.check();
+  h.$('gpsoff-settings').click();
+  assert.equal(h.opens.location, 1, 'provider cause → openLocationSettings');
+  assert.equal(h.opens.app, 0);
+  const h2 = build();
+  h2.setLocStatus({ permission: 'denied', providerEnabled: true });     // permission denied
+  await h2.api.check();
+  h2.$('gpsoff-settings').click();
+  assert.equal(h2.opens.app, 1, 'permission cause → openAppDetails');
+  assert.equal(h2.opens.location, 0);
+});
+
+await at('trigger GPSOFF-DENIED-3: a web PERMISSION_DENIED re-checks → the card appears', async () => {
+  const h = build();
+  h.setNative(false); h.setPermState('denied');
+  h.api.denied();                 // the real region body calls checkLocationStatus()
+  await Promise.resolve(); await Promise.resolve();   // let the async check settle
+  assert.equal(h.cardShown(), true, 'PERMISSION_DENIED triggered the detection → card');
+});
+
+await at('trigger GPSOFF-RESUME-3: app resume clears a «Más tarde» dismiss and re-checks', async () => {
+  const h = build();
+  h.setLocStatus({ permission: 'denied', providerEnabled: true });
+  await h.api.check();
+  h.$('gpsoff-later').click();    // dismiss
+  assert.equal(h.cardShown(), false, 'dismissed');
+  try { Object.defineProperty(h.$('idle-state').ownerDocument, 'visibilityState', { value: 'visible', configurable: true }); } catch (_) {}
+  h.api.resume();                 // the real region: clears dismiss + re-checks
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(h.api.dismissed(), false, 'resume cleared the dismiss');
+  assert.equal(h.cardShown(), true, 'and the card is back after the re-check');
 });
 
 console.log(`✓ gpsoff: ${passed} checks passed`);
