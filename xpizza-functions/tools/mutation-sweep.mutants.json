@@ -21107,7 +21107,8 @@
       "test:capp-s2a"
     ],
     "kills_with": [
-      "the UI shows the paused held state for the real 423"
+      "the UI shows the paused held state for the real 423",
+      "the real 423 shows a sheet"
     ]
   },
   {
@@ -21123,7 +21124,8 @@
       "test:capp-s2a"
     ],
     "kills_with": [
-      "the UI shows the generic held state for the real 401"
+      "the UI shows the generic held state for the real 401",
+      "the real 401 shows a sheet"
     ]
   }
 ]

@@ -573,7 +573,7 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     let l0 = LOG.length;
     const w = mountUi('x_pizza', { geo: FIX, cfg: { intakeKey: 'not-the-key' } });
     await uiCash(w, 'Ana Q401');
-    assert.ok(await until(() => w.q('#layer .errsheet h2')), 'premise: a sheet');
+    assert.ok(await until(() => w.q('#layer .errsheet h2')), '🔴 the real 401 shows a sheet');
     const r401 = LOG.slice(l0).filter((x) => x.ep === 'createOrder');
     assert.deepStrictEqual(r401.map((x) => [x.status, x.json]), [[401, { error: 'Unauthorized', detail: 'invalid bearer token' }]], '🔴 the real 401, exactly');
     assert.strictEqual(w.q('#layer .errsheet h2').textContent, 'No pudimos enviar tu pedido', '🔴 the UI shows the generic held state for the real 401');
@@ -588,7 +588,7 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     await clean(); l0 = LOG.length;
     const p = mountUi('x_pizza', { geo: FIX });
     await uiCash(p, 'Ana Q423');
-    assert.ok(await until(() => p.q('#layer .errsheet h2')), 'premise: a sheet');
+    assert.ok(await until(() => p.q('#layer .errsheet h2')), '🔴 the real 423 shows a sheet');
     const r423 = LOG.slice(l0).filter((x) => x.ep === 'createOrder');
     assert.deepStrictEqual(r423.map((x) => [x.status, x.json && x.json.error]), [[423, 'ordering_paused']], '🔴 the real 423');
     assert.strictEqual(p.q('#layer .errsheet h2').textContent, 'x_pizza no está recibiendo pedidos en este momento', '🔴 the UI shows the paused held state for the real 423');
