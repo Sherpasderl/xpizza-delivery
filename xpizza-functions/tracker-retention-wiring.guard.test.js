@@ -10,7 +10,7 @@ const { execFileSync } = require('child_process');
 const { unapplyTrackerRetention, HUNKS } = require('./tools/tracker-retention-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const live = fs.readFileSync(path.join(__dirname, 'retention-sweep.js'), 'utf8');
+const live = require('./tools/stackseq-module-inverse').unapplyStackseqModule('retention-sweep.js', fs.readFileSync(path.join(__dirname, 'retention-sweep.js'), 'utf8'));   // stacked-seq (newer layer) folded out first
 const BASE = execFileSync('git', ['show', 'e8e77e24:xpizza-functions/retention-sweep.js'], { cwd: __dirname, encoding: 'utf8' });
 
 assert.strictEqual(unapplyTrackerRetention(live), BASE, '🔴 retention-sweep.js minus the T6 hunks is not e8e77e24:retention-sweep.js');

@@ -1386,6 +1386,7 @@
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/driver-ingest.js#functions": 4,
+      "xpizza-functions/sequencing/gate.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -1518,6 +1519,7 @@
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/driver-ingest.js#functions": 4,
+      "xpizza-functions/sequencing/gate.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -1650,6 +1652,7 @@
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/driver-ingest.js#functions": 4,
+      "xpizza-functions/sequencing/gate.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -1782,6 +1785,7 @@
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/driver-ingest.js#functions": 4,
+      "xpizza-functions/sequencing/gate.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -1914,6 +1918,7 @@
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/driver-ingest.js#functions": 4,
+      "xpizza-functions/sequencing/gate.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -2046,6 +2051,7 @@
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/driver-ingest.js#functions": 4,
+      "xpizza-functions/sequencing/gate.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -3837,6 +3843,7 @@
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/driver-ingest.js#functions": 4,
+      "xpizza-functions/sequencing/gate.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -3941,6 +3948,7 @@
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/driver-ingest.js#functions": 4,
+      "xpizza-functions/sequencing/gate.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -4109,6 +4117,7 @@
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/driver-ingest.js#functions": 4,
+      "xpizza-functions/sequencing/gate.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },
@@ -4213,6 +4222,7 @@
       "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
       "xpizza-functions/driver-ingest.js#functions": 4,
+      "xpizza-functions/sequencing/gate.js#functions": 4,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
      }
     },

@@ -22,6 +22,8 @@ const H0 = require('./superseded-capture');   // PLAN-H0 §4 — never auto-clos
 // Idempotent, best-effort task-cancel + driver release (NON-money). onOrderCancelled is the durable backstop.
 async function cleanupTasksAndDriver(deps, orderId, order, now) {
   const { db } = deps;
+  const SEQ_CANCEL = require('./sequencing/cancel-promotion');   // stacked-seq r5 T8 (D11 a): the flag-gated cancel promotion; OFF = the body below, verbatim
+  if (order && order.order_type === 'delivery' && await SEQ_CANCEL.readSeqFlagSafe(db)) return SEQ_CANCEL.cleanupWithPromotion(db, orderId);
   const updates = {};
   if (order && order.order_type === 'delivery') {
     const pickupTaskId = `${orderId}_pickup`, deliveryTaskId = `${orderId}_delivery`;

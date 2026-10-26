@@ -18,9 +18,10 @@ const { unapplyD12b, FILES: D12B_FILES } = require('./tools/d12b-inverse');
 // PLAN-H0 (newest; resolve-manual.js) is reversed FIRST, then D12b, so any byte outside the H0 / D12b / D12 seams still fails.
 const { unapplyH0Module, FILES: H0_FILES } = require('./tools/h0-inverse');
 // BRAND-AGNOSTIC SERVER (r3 §E; newest — materialize.js / pixelpay-confirm.js / resolve-manual.js) is reversed before H0
-// ORCHESTRATION O1a (newest; scheduled-release-core.js) is reversed INNERMOST, before the brand-server inverse
+// ORCHESTRATION O1a (scheduled-release-core.js) is reversed before the brand-server inverse; train: the stackseq module
+// inverse (newest) INNERMOST
 const { unapplyOrchO1aModule } = require('./tools/orch-o1a-inverse');
-const readRaw = (f) => { const src = require('./tools/brand-server-inverse').unapplyBrandServerModule(f, unapplyOrchO1aModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))); return H0_FILES.includes(f) ? unapplyH0Module(f, src) : src; };
+const readRaw = (f) => { const src = require('./tools/brand-server-inverse').unapplyBrandServerModule(f, unapplyOrchO1aModule(f, require('./tools/stackseq-module-inverse').unapplyStackseqModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))); return H0_FILES.includes(f) ? unapplyH0Module(f, src) : src; };
 const readD12 = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, readRaw(f)) : readRaw(f));
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
