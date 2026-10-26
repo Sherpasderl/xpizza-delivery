@@ -411,7 +411,7 @@ function scripted(script) {
   };
   return { fetch, calls, of: (ep) => calls.filter((c) => c.ep === ep) };
 }
-function fakeTimers() { let id = 0; const q = new Map(); return { setTimeout: (f) => { q.set(++id, f); return id; }, clearTimeout: (h) => q.delete(h), setInterval: () => ++id, clearInterval: () => {}, flush() { const fs = [...q.values()]; q.clear(); for (const f of fs) f(); }, get size() { return q.size; } }; }
+function fakeTimers() { let id = 0; const q = new Map(); const ms = new Map(); return { ms, setTimeout: (f, d) => { q.set(++id, f); ms.set(id, d); return id; }, clearTimeout: (h) => q.delete(h), setInterval: () => ++id, clearInterval: () => {}, flush() { const fs = [...q.values()]; q.clear(); for (const f of fs) f(); }, get size() { return q.size; } }; }
 const tick = () => new Promise((r) => setImmediate(r));
 const settle = async (n = 25) => { for (let i = 0; i < n; i++) await tick(); };
 const GEO_OK = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) };
@@ -761,4 +761,70 @@ test('S2b map: a configured Maps key ⇒ a live-map container inside the drawn c
   assert.equal(scripts().length, 1, 'loaded once');
   const n = bootCo(); await toCheckout(n);
   assert.equal(n.qa('script[src*="maps.googleapis.com"]').length, 0);
+});
+
+test('S2b r2: «Entrega & Pago» has NO back control (P:1884-1885) — only the tip step has «Volver a Entrega y Pago»', async () => {
+  const b = bootCo(); await filled(b);
+  assert.equal(b.q('.flowbar').querySelectorAll('button').length, 0, '🔴 the checkout flowbar has no button');
+  assert.equal(b.text('.flowbar'), 'Entrega & Pago');
+  await b.click('#cta');
+  assert.equal(b.q('.topbar [data-act="back"]').getAttribute('aria-label'), 'Volver a Entrega y Pago');
+});
+
+test('S2b r2: the pin toast lives the prototype\'s 2.2 s (P toast() :1377) and is gone before a sheet opens', async () => {
+  const b = bootCo({ script: { createOrder: ['network'] } }); await toCheckout(b);
+  await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  assert.equal(b.text('#toast'), 'Pin confirmado');
+  assert.ok(b.q('#toast').classList.contains('on'));
+  const ids = [...b.timers.ms.entries()].filter(([, d]) => d === 2200);
+  assert.equal(ids.length, 1, '🔴 the toast timer is 2200 ms');
+  b.timers.flush();
+  assert.ok(!b.q('#toast').classList.contains('on'), 'the toast is hidden after its lifetime');
+  await b.type('#f-details', 'Portón'); await b.type('#f-name', 'Ana'); await b.type('#f-phone', '99990000');
+  await b.click('[data-act="pay"][data-val="cash"]'); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]');
+  await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.text('#layer .errsheet h2'), 'Sin conexión');
+  assert.ok(!b.q('#toast').classList.contains('on'), '🔴 no toast over the open sheet');
+});
+
+const popped = async () => { await new Promise((r) => setTimeout(r, 30)); await settle(); };   // jsdom fires popstate from a timer task
+test('S2b r2: device back (history) — tip → «Entrega & Pago» → the cart → the menu; the tip «←» walks the same history', async () => {
+  const b = bootCo(); const H = b.w.history;
+  b.ui.cart.inc(b.plain.key); b.ui.render();
+  const n0 = H.length;
+  await b.click('#cart-bar');
+  assert.equal(H.length, n0 + 1, 'the cart is a back step (pushState)');
+  await b.click('[data-act="checkout"]');
+  assert.equal(H.length, n0 + 2);
+  await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  await b.type('#f-details', 'Portón'); await b.type('#f-name', 'Ana'); await b.type('#f-phone', '99990000'); await b.click('[data-act="pay"][data-val="cash"]');
+  await b.click('#cta');
+  assert.ok(b.q('.tipwrap')); assert.equal(H.length, n0 + 3);
+  await b.click('.topbar [data-act="back"]'); await popped();   // its history.back() lands (the skipped popstate)
+  assert.ok(b.q('.screen .flow'), 'the tip «←» → «Entrega & Pago»');
+  assert.equal(H.length >= n0 + 3 && H.state.ca, 2, 'the history is back in step');
+  assert.equal(b.ui.state.flow.name, 'Ana', 'every field survives');
+  await b.click('#cta'); assert.ok(b.q('.tipwrap'));
+  H.back(); await popped();
+  assert.ok(b.q('.screen .flow'), '🔴 device back from the tip step → «Entrega & Pago»');
+  H.back(); await popped();
+  assert.ok(b.q('.screen .storewrap') && b.q('#layer .sheet[aria-label="Tu pedido"]'), '🔴 device back from «Entrega & Pago» → the store with the cart open');
+  H.back(); await popped();
+  assert.ok(b.q('.screen .storewrap') && !b.q('#layer .sheet'), '🔴 device back from the cart → the menu');
+  await b.click('#cart-bar'); await b.click('[data-act="cartclose"]');
+  assert.ok(!b.q('#layer .sheet'), 'the cart X is a back step too');
+});
+
+test('S2b r2: «Agregar más platos» → the menu (history walked back); a device back during «Realizando pedido…» = «Volver» (nothing sent)', async () => {
+  const b = bootCo(); await toCheckout(b);
+  await b.click('[data-act="sumtoggle"]'); await b.click('[data-act="addmore"]');
+  assert.ok(b.q('.screen .storewrap') && !b.q('#layer .sheet'));
+  assert.equal(b.ui.state.stack.length, 0);
+  const c = bootCo({ script: { createOrder: [{ status: 200, json: { ok: true, order_id: 'X' } }] } });
+  await filled(c); await c.click('#cta'); await c.click('[data-act="tipc"][data-val="0"]'); await c.click('[data-act="tip-place"]');
+  assert.ok(c.q('#layer .placing'));
+  c.w.history.back(); await popped();
+  assert.ok(!c.q('#layer .placing'));
+  c.timers.flush(); await settle();
+  assert.equal(c.srv.of('createOrder').length, 0, '🔴 nothing sent');
 });

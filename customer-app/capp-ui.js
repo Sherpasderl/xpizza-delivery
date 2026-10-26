@@ -133,7 +133,7 @@
     const app = $('app');
     const S = { mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
       // S2b
-      screen: 'store', flow: null, q: null, qKey: null, askedKey: null, outZone: false, closedRefused: false, geo: null, err: null, tipDraft: '',
+      screen: 'store', stack: [], flow: null, q: null, qKey: null, askedKey: null, outZone: false, closedRefused: false, geo: null, err: null, tipDraft: '',
       backScreen: null, sendHint: null, sendTotals: null, pinDraft: null, pinToast: false, lastDelivery: null };
 
     // ── the view model: the served menu as the prototype's item shape ──
@@ -188,7 +188,9 @@
 
     // a refusal is shown WHERE the action happened: inside the open sheet, in the cart sheet, else as the prototype's toast
     let toastT = null;
-    function toast(msg) { const t = $('toast'); if (!t) return; t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 4000); }
+    // S1's refusal toast stays 4 s (S1-approved); the S2b toasts take the prototype's toast() lifetime, 2.2 s (P:1377)
+    const TOAST_MS = 2200;
+    function toast(msg, ms = 4000) { const tm = opts.timers || { setTimeout: (f, d) => setTimeout(f, d), clearTimeout: (h) => clearTimeout(h) }; const t = $('toast'); if (!t) return; t.textContent = msg; t.classList.add('on'); if (toastT !== null) tm.clearTimeout(toastT); toastT = tm.setTimeout(() => { toastT = null; t.classList.remove('on'); }, ms); }
     function showRefusal() { if (S.open) renderDetail(); else if (S.layerKind === 'cart') renderLayer(); else toast(S.refusal); }
     const tooLong = () => { if (!cart.count()) return false; try { CappSerialize.serialize(cart, menu); return false; } catch (e) { return !!(e && e.code === 'cart_text_too_long'); } };
 
@@ -388,7 +390,7 @@
       const nq = norm(q).trim(); const hits = nq ? sections.flatMap((s) => s.items).filter((it) => norm(it.n + ' ' + (it.d || '')).includes(nq)) : [];
       box.innerHTML = !nq ? '' : hits.length ? `<div class="rcount">${hits.length} resultado${hits.length === 1 ? '' : 's'}</div>${hits.map(rowHtml).join('')}` : `<div class="noresults">Nada con «${esc(q)}». Probá otra palabra.</div>`;
     }
-    function openLayer(kind) { returnTo = descOf(doc.activeElement); S.layerKind = kind; renderLayer(true); }
+    function openLayer(kind) { if (kind === 'cart' && S.layerKind !== 'cart') pushHist(); returnTo = descOf(doc.activeElement); S.layerKind = kind; renderLayer(true); }   // the cart is a back step (P openCart :1752)
     function closeLayer() { if (S.layerKind === 'placing') placingStop(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); }
     function renderLayer(fresh) {
       const L = $('layer'); if (!L) return; const k = S.layerKind;
@@ -453,7 +455,7 @@
       if (r.kind === 'ok') { S.q = r.record; S.qKey = key; if (f.mode === 'delivery') { S.outZone = false; if (r.record.resp.delivery) S.lastDelivery = r.record.resp.delivery; } }
       else if (r.kind === 'out_of_zone') { S.outZone = true; }
       // pin / offline / try_again / refused / update_required: no amount is shown (never a guess); the refusal UIs are held (U1/U3)
-      if (S.pinToast && f.mode === 'delivery') { S.pinToast = false; if (r.kind === 'ok') toast('Pin confirmado'); else if (r.kind === 'out_of_zone') toast('Ese punto queda fuera de la zona'); }
+      if (S.pinToast && f.mode === 'delivery') { S.pinToast = false; if (r.kind === 'ok') toast('Pin confirmado', TOAST_MS); else if (r.kind === 'out_of_zone') toast('Ese punto queda fuera de la zona', TOAST_MS); }
       if (S.screen === 'checkout' || S.screen === 'tip') render();
     }
     // ── gates (capp-checkout missingStep, G0 first) ──
@@ -652,7 +654,12 @@
       beatT = T_.setTimeout(() => { beatT = null; emit('placed', out); }, 600);
     }
     // back to where the customer tapped (closure / out-of-zone: to «Entrega & Pago», where those gates live)
-    function backTo(screen) { S.screen = screen || S.backScreen || 'checkout'; render(); }
+    function backTo(screen) {
+      const target = screen || S.backScreen || 'checkout';
+      // landing on the screen the stack would return to (tip → «Entrega & Pago»): walk back, so history stays in step
+      if (S.backScreen === 'tip' && target === 'checkout' && S.stack.length && S.stack[S.stack.length - 1].screen === 'checkout') { S.screen = 'tip'; back(); return; }
+      S.screen = target; render();
+    }
     function showErr(e) { S.err = e; openLayer('err'); }
     const ERR = {
       offline: () => ({ title: 'Sin conexión', body: 'No pudimos enviar tu pedido. Revisá tu conexión e intentá de nuevo; tu pedido está intacto.', icon: 'warn', acts: [{ act: 'err-retry', label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
@@ -682,8 +689,8 @@
         if (out.clearable === false) return;   // TODO(U5 held): a cancel return the server still calls pending — no sheet until ruled
         showErr(ERR.payFailed()); return;
       }
-      if (k === 'refunded') { backTo(); showErr(ERR.refunded(out.refunded_total_cents)); return; }
-      if (k === 'existing_order') { backTo(); showErr(ERR.exists(out.reference)); return; }   // also a kept identity after a 426 (update_required: true)
+      if (k === 'refunded') { backTo('checkout'); showErr(ERR.refunded(out.refunded_total_cents)); return; }
+      if (k === 'existing_order') { backTo('checkout'); showErr(ERR.exists(out.reference)); return; }   // also a kept identity after a 426 (update_required: true)
       // held (U1/U3, pending rulings): paused (423), stash_failed, try_again, refused, error, payment_not_completed — no UI yet;
       // update_required (426) is the shared self-update module's «Actualización pendiente»; price_declined: the ported sheet was answered
       backTo();
@@ -708,12 +715,43 @@
       if (!S.flow) S.flow = C.freshFlow(member());
       C.setMode(S.flow, S.mode);
       S.layerKind = null; S.cartNote = null; S.refusal = null; returnTo = null;
+      // the cart stays on the stack: device back from «Entrega & Pago» reopens it (P :2298-2301)
+      S.stack.push({ screen: 'store', layer: 'cart' }); S.stack = S.stack.slice(-12); pushHist();
       S.screen = 'checkout'; render();
       const sc = $('flow'); if (sc) sc.scrollTop = 0;
       if (S.flow.mode === 'delivery' && !finitePin(S.flow.pin) && S.geo === null) requestGeo();
       return true;
     }
-    function toStore() { S.screen = 'store'; S.layerKind = null; render(); }
+    // «Agregar más platos», the last line removed, a pickup-only purge: straight to the MENU (P toMenu :1993-2001), the history walked back with it
+    function toStore() {
+      const i = S.stack.map((x) => x.screen).lastIndexOf('store');
+      S.layerKind = null;
+      if (i >= 0) { const k = S.stack.length - i; S.stack = S.stack.slice(0, i); if (ownHist()) { skipPop++; histN -= k; try { hist().go(-k); } catch (_) {} } }
+      S.screen = 'store'; render();
+    }
+    // ── device / browser back (P pushHist / back / backInternal / popstate :1352-1371): «Entrega & Pago» has no back control;
+    //    device back → the cart → the menu; the tip step's back → «Entrega & Pago» ──
+    let histN = 0, skipPop = 0;
+    const hist = () => doc.defaultView && doc.defaultView.history;
+    function pushHist() { histN++; try { hist().pushState({ ca: histN }, ''); } catch (_) {} }
+    const ownHist = () => { try { const h = hist(); return histN > 0 && !!h.state && h.state.ca === histN; } catch (_) { return false; } };
+    function go(screen) { S.stack.push({ screen: S.screen }); S.stack = S.stack.slice(-12); pushHist(); S.screen = screen; render(); const sc = $('flow'); if (sc) sc.scrollTop = 0; }
+    function backInternal() {
+      if (S.layerKind === 'cart') { closeLayer(); return; }   // closing the cart → the menu
+      if (S.layerKind === 'placing') { placingStop(); closeLayer(); return; }   // a back during «Realizando pedido…» = «Volver» (nothing sent)
+      if (S.screen === 'sending' || !S.stack.length) return;   // «Enviando» is not a back step
+      const top = S.stack.pop();
+      if (S.layerKind) { S.layerKind = null; S.err = null; }
+      S.screen = top.screen; render();
+      if (top.layer) openLayerNoPush(top.layer);
+    }
+    function openLayerNoPush(kind) { returnTo = null; S.layerKind = kind; renderLayer(true); }
+    function back() { if (ownHist()) { skipPop++; histN--; try { hist().back(); } catch (_) {} } backInternal(); }
+    function onPop(e) {
+      if (skipPop > 0) { skipPop--; return; }
+      const n = e && e.state && typeof e.state.ca === 'number' ? e.state.ca : 0;
+      if (n < histN) { histN = n; backInternal(); }   // a forward move is ignored: only walks back
+    }
     function checkoutAct(t) {
       const f = S.flow, a = t.dataset.act, v = t.dataset.val;
       if (a === 'type') { S.mode = v === 'pickup' ? 'pickup' : 'delivery'; C.setMode(f, S.mode); if (S.mode === 'delivery' && !finitePin(f.pin) && S.geo === null) requestGeo(); render(); return true; }
@@ -731,12 +769,12 @@
       if (a === 'loc-on') { S.geo = null; requestGeo(); return true; }
       if (a === 'feeinfo') { openLayer('feeinfo'); return true; }
       if (a === 'signin') { emit('signin', { ctx: t.dataset.ctx || 'checkout' }); return true; }
-      if (a === 'confirm') { if (ctaOff(totalsNow())) return true; if (f.mode === 'delivery') { S.screen = 'tip'; render(); } else placeTap(); return true; }
+      if (a === 'confirm') { if (ctaOff(totalsNow())) return true; if (f.mode === 'delivery') go('tip'); else placeTap(); return true; }
       return false;
     }
     function tipAct(t) {
       const f = S.flow, a = t.dataset.act;
-      if (a === 'back') { S.screen = 'checkout'; render(); return true; }
+      if (a === 'back') { back(); return true; }
       if (a === 'tipc') { const v = t.dataset.val; if (v === 'other') { S.tipDraft = f.tipChoice && f.tipChoice.kind === 'other' && f.tipCents ? String(f.tipCents / 100) : ''; openLayer('tipother'); return true; } C.chooseTip(f, Number(v)); render(); return true; }
       if (a === 'tip-place') { if (!tipReady(totalsNow())) return true; placeTap(); return true; }
       return false;
@@ -806,7 +844,8 @@
       if (act === 'badge') { S.expanded.add(id); renderStoreKeep(); return; }
       if (act === 'open') { returnTo = descOf(t); openDetail(id); return; }
       if (act === 'pill') { openLayer('cart'); return; }
-      if (act === 'cartclose' || act === 'lclose') { closeLayer(); return; }
+      if (act === 'cartclose') { back(); return; }   // closing the cart is a back step → the menu (P :2297)
+      if (act === 'lclose') { closeLayer(); return; }
       if (act === 'rev') { const k = t.dataset.key, g = t.dataset.grp || '', d = descOf(t); mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(k, g) : cart.lineDec(k, g))); renderStoreKeep(); renderLayer(); focusTo(refind(d) || [...$('layer').querySelectorAll(FOCUSABLE)].find(reachable)); return; }
       if (act === 'edit') { S.layerKind = null; renderLayer(); returnTo = { elId: 'cart-bar', ds: { act: 'pill' } }; openEdit(t.dataset.key, t.dataset.grp || ''); return; }
       if (act === 'mode') { S.mode = t.dataset.val; renderStoreKeep(); return; }
@@ -837,6 +876,7 @@
         if (S.open) { e.preventDefault(); closeDetail(); return; }
         // an alert sheet without «Cerrar» / «Volver» (the refund sheet) is answered by its button, never dismissed
         if (S.layerKind === 'err' && !(S.err && S.err.acts.some((a) => a.act === 'lclose'))) { e.preventDefault(); return; }
+        if (S.layerKind === 'cart') { e.preventDefault(); back(); return; }
         if (S.layerKind) { e.preventDefault(); closeLayer(); return; }
       }
       if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[role="checkbox"][data-act], [role="radio"][data-act], .qty-badge')) { e.preventDefault(); e.target.click(); return; }
@@ -854,6 +894,7 @@
     doc.addEventListener('click', onClick);
     doc.addEventListener('input', onInput);
     doc.addEventListener('keydown', onKey);
+    if (doc.defaultView) doc.defaultView.addEventListener('popstate', onPop);
     render();
     // S2b: a hosted-checkout return (?pay=…)
     const search = opts.search != null ? String(opts.search) : (doc.defaultView && doc.defaultView.location ? doc.defaultView.location.search : '');
@@ -861,7 +902,7 @@
     return {
       cart, menu, render, state: S, openCheckout, returning,
       restore(snapshot) { const r = cart.hydrate(snapshot); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
-      destroy() { doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); },
+      destroy() { doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); if (doc.defaultView) doc.defaultView.removeEventListener('popstate', onPop); },
     };
   }
 
