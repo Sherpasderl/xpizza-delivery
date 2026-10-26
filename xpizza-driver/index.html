@@ -2920,23 +2920,25 @@ function renderOemOnboarding(svc, needBattery, needAppLaunch) {
 /* ===== SLICE3:CHIME-FRESH:START — chime on a newly-assigned 2nd order whatever its swipe status (same-hub stacks arrive 'accepted', not 'assigned') ===== */
 function detectNewAssignments(tasks) {
   if (!currentUser) return;
-  const newIds = new Set();
+  const owned = new Set();     // EVERY own pickup id this poll, ANY status
+  const offered = new Set();   // own pickup ids at a PRE-PICKUP assignment status (assigned|accepted) this poll
   for (const [id, t] of Object.entries(tasks || {})) {
-    // A new order assigned to ME, pre-pickup. The server sets 'assigned' for a cross-hub OFFER (swipe) and
-    // 'accepted' for a same-hub auto-accept stack (no swipe) — both are "a new order just landed", so chime on
-    // EITHER (the old code only saw 'assigned', so a same-hub 2nd order appeared silently). Terminal / in-progress
-    // statuses are excluded so a late-syncing completed order never false-chimes. "Fresh" = the id is NEW this poll
-    // (the assigned_driver_id null→me transition), so a status change of an order already seen never re-chimes.
-    if (t.assigned_driver_id === currentUser.uid && t.type === 'pickup' && (t.status === 'assigned' || t.status === 'accepted')) {
-      newIds.add(id);
+    if (t.assigned_driver_id === currentUser.uid && t.type === 'pickup') {
+      owned.add(id);
+      // The server sets 'assigned' for a cross-hub OFFER (swipe) and 'accepted' for a same-hub auto-accept stack
+      // (no swipe) — both are "a new order just landed", so chime on EITHER (the old code only saw 'assigned', so a
+      // same-hub 2nd order appeared silently). in_progress / terminal statuses never chime.
+      if (t.status === 'assigned' || t.status === 'accepted') offered.add(id);
     }
   }
-  // Find newly-added IDs since last poll
-  const fresh = [...newIds].filter(id => !knownTaskIds.has(id));
-  // Chime on any genuinely-new order AFTER the first snapshot. The old guard
-  // (knownTaskIds.size > 0) silently skipped the FIRST order of a no-orders
-  // shift; the initialAssignmentsLoaded flag fixes that while still not chiming
-  // for orders already assigned when the app loads.
+  // CHIME only on an id's FIRST appearance as mine this session, at a pre-pickup status. knownTaskIds is a grow-only
+  // SEEN-SET: it accumulates every own pickup id (ANY status) and is NEVER replaced by the current snapshot, so a
+  // transient empty/error snapshot ({} — driver-feed.js onTasksError fails closed to ownTasks={}) can't forget an
+  // order and make a reconnect re-chime it (Codex chime-r2 P2-1). A status change on a seen id (assigned→accepted,
+  // in_progress→accepted) never chimes; an id first seen at in_progress never chimes at a later accepted. The
+  // initialAssignmentsLoaded gate keeps boot silent while still chiming the FIRST order of a no-orders shift. The
+  // set resets only per session connect (subscribeToFirebase) — the sign-out/sign-in boundary.
+  const fresh = [...offered].filter(id => !knownTaskIds.has(id));
   if (fresh.length > 0 && initialAssignmentsLoaded) {
     if (soundOn) { const c = $('chime'); c.currentTime = 0; c.play().catch(() => {}); }
     toast('¡Nuevo pedido asignado!', 'success');
@@ -2944,7 +2946,7 @@ function detectNewAssignments(tasks) {
       if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
     } catch {}
   }
-  knownTaskIds = newIds;
+  for (const id of owned) knownTaskIds.add(id);   // ACCUMULATE, never replace — survives a transient empty/error snapshot
   initialAssignmentsLoaded = true;
 }
 /* ===== SLICE3:CHIME-FRESH:END ===== */

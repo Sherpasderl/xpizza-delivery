@@ -1,9 +1,13 @@
 // New-assignment CHIME — HANDLER test. run: `node chime-fresh.test.js` (invoked from xpizza-functions in the npm
 // chain). EXECUTES the REAL shipped detectNewAssignments (CHIME-FRESH region, lifted via new Function — the
-// endshift-confirm.test.js idiom) against a REAL jsdom DOM. Proves the chime-gap fix: a 2nd order that lands with
-// status 'accepted' (a SAME-HUB auto-accept stack) chimes just like a status-'assigned' cross-hub OFFER, which the
-// old 'status === assigned'-only code missed. Boot stays silent; a known order never re-chimes; terminal statuses
-// never chime. Mutant: revert the status filter to only 'assigned' ⇒ the same-hub 'accepted' check goes RED.
+// endshift-confirm.test.js idiom) against a REAL jsdom DOM, driven with the EXACT snapshot sequences the live feed
+// produces (incl. the {} that driver-feed.js onTasksError publishes). Proves the chime-gap fix + Codex chime-r2:
+//   - a SAME-HUB 2nd order (status 'accepted', auto-accepted) chimes like a cross-hub 'assigned' OFFER;
+//   - a transient empty/error snapshot never forgets an order → a reconnect does NOT re-chime (P2-1);
+//   - a status change on a seen id (in_progress→accepted, assigned→accepted) never chimes;
+//   - boot is silent, but the FIRST order of a no-orders shift DOES chime.
+// Mutants these kill on their markers: the old knownTaskIds.size>0 gate; forgetting ids (repeat chime); dropping the
+// ownership or pickup-type filter; allowing in_progress/cancelled; ignoring soundOn.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -26,63 +30,94 @@ function liftFn(name) {
   throw new Error(`unbalanced ${name}`);
 }
 
-function build() {
+function build({ soundOn = true } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><audio id="chime"></audio></body></html>');
   const { document, window } = dom.window;
   const $ = (id) => document.getElementById(id);
   const calls = { chime: 0, toasts: [], vibrates: [] };
-  const chimeEl = $('chime');
-  chimeEl.play = () => { calls.chime++; return Promise.resolve(); };
+  $('chime').play = () => { calls.chime++; return Promise.resolve(); };
   Object.defineProperty(window.navigator, 'vibrate', { value: (p) => { calls.vibrates.push(p); return true; }, configurable: true });
-
-  const deps = { document, window, navigator: window.navigator, $, currentUser: { uid: 'drv' }, soundOn: true, toast: (m) => calls.toasts.push(m) };
+  const deps = { document, window, navigator: window.navigator, $, currentUser: { uid: 'drv' }, soundOn, toast: (m) => calls.toasts.push(m) };
   const body = 'let knownTaskIds = new Set(); let initialAssignmentsLoaded = false;\n'
     + liftFn('detectNewAssignments') + '\n'
-    + 'return { detectNewAssignments, getKnown: () => knownTaskIds, loaded: () => initialAssignmentsLoaded };';
+    + 'return { detectNewAssignments, seenSize: () => knownTaskIds.size };';
   const names = Object.keys(deps);
-  const fn = new Function(...names, body);
-  return { api: fn(...names.map((n) => deps[n])), calls };
+  return { api: (new Function(...names, body))(...names.map((n) => deps[n])), calls };
 }
 
-const pickup = (status) => ({ assigned_driver_id: 'drv', type: 'pickup', status });
+const own = (status) => ({ assigned_driver_id: 'drv', type: 'pickup', status });
 let passed = 0;
 function t(name, fn) { fn(); passed++; console.log('  ok -', name); }
 
-t('BOOT is silent: the first snapshot never chimes (initialAssignmentsLoaded gate)', () => {
+t('BOOT silent, then the FIRST order of a no-orders shift CHIMES (initialAssignmentsLoaded gate, not size>0)', () => {
   const h = build();
-  h.api.detectNewAssignments({ A_pickup: pickup('assigned') });
-  assert.equal(h.calls.chime, 0, 'no chime on the first snapshot');
-  assert.ok(h.api.loaded(), 'initialAssignmentsLoaded set after the first snapshot');
+  h.api.detectNewAssignments({});                               // empty boot
+  assert.equal(h.calls.chime, 0, 'silent boot');
+  h.api.detectNewAssignments({ A_pickup: own('assigned') });    // first order ever
+  assert.equal(h.calls.chime, 1, 'the first order after an empty boot chimes (kills the size>0 gate)');
 });
 
-t('a SAME-HUB 2nd order (status "accepted", no swipe) CHIMES + toasts + vibrates — the gap this fix closes', () => {
+t('a SAME-HUB 2nd order (status "accepted", no swipe) CHIMES + toasts + vibrates — the gap this closes', () => {
   const h = build();
-  h.api.detectNewAssignments({ A_pickup: pickup('accepted') });                 // boot (silent)
-  h.api.detectNewAssignments({ A_pickup: pickup('accepted'), B_pickup: pickup('accepted') });   // B newly appears
-  assert.equal(h.calls.chime, 1, 'the same-hub accepted 2nd order chimed');
+  h.api.detectNewAssignments({ A_pickup: own('accepted') });    // boot
+  h.api.detectNewAssignments({ A_pickup: own('accepted'), B_pickup: own('accepted') });
+  assert.equal(h.calls.chime, 1, 'same-hub accepted 2nd order chimed');
   assert.ok(h.calls.toasts.includes('¡Nuevo pedido asignado!'), 'toasted');
   assert.deepEqual(h.calls.vibrates, [[200, 100, 200]], 'vibrated');
 });
 
-t('a CROSS-HUB 2nd order (status "assigned", offer) still chimes', () => {
+t('a CROSS-HUB 2nd order (status "assigned", offer) chimes', () => {
   const h = build();
-  h.api.detectNewAssignments({ A_pickup: pickup('accepted') });
-  h.api.detectNewAssignments({ A_pickup: pickup('accepted'), B_pickup: pickup('assigned') });
-  assert.equal(h.calls.chime, 1, 'the cross-hub assigned offer chimed');
+  h.api.detectNewAssignments({ A_pickup: own('accepted') });
+  h.api.detectNewAssignments({ A_pickup: own('accepted'), B_pickup: own('assigned') });
+  assert.equal(h.calls.chime, 1, 'cross-hub assigned offer chimed');
 });
 
-t('a KNOWN order never re-chimes (fresh = the null→me transition, not a status change)', () => {
+t('P2-1: a query-error {} snapshot never forgets an order → a RECONNECT does not re-chime', () => {
   const h = build();
-  h.api.detectNewAssignments({ A_pickup: pickup('assigned') });                  // boot
-  h.api.detectNewAssignments({ A_pickup: pickup('accepted') });                  // SAME id, status assigned→accepted
-  assert.equal(h.calls.chime, 0, 'a status change of a known order does not chime');
+  h.api.detectNewAssignments({ A_pickup: own('accepted') });    // boot: A seen (silent)
+  h.api.detectNewAssignments({});                               // driver-feed onTasksError publishes {} — must NOT forget A
+  h.api.detectNewAssignments({ A_pickup: own('accepted') });    // reconnect re-emits A
+  assert.equal(h.calls.chime, 0, 'A is still seen across the {} — no false re-chime on reconnect');
 });
 
-t('a TERMINAL-status own pickup never chimes (a late-syncing completed order stays silent)', () => {
+t('a status change on a SEEN id never chimes (assigned→accepted, and in_progress→accepted)', () => {
   const h = build();
-  h.api.detectNewAssignments({ A_pickup: pickup('accepted') });                  // boot
-  h.api.detectNewAssignments({ A_pickup: pickup('accepted'), C_pickup: pickup('completed') });
-  assert.equal(h.calls.chime, 0, 'a newly-appearing completed pickup does not chime');
+  h.api.detectNewAssignments({ A_pickup: own('assigned') });    // boot: A seen
+  h.api.detectNewAssignments({ A_pickup: own('accepted') });    // assigned→accepted, same id
+  assert.equal(h.calls.chime, 0, 'assigned→accepted does not chime');
+  const h2 = build();
+  h2.api.detectNewAssignments({ B_pickup: own('in_progress') });// boot: B seen (owned, not a chime candidate)
+  h2.api.detectNewAssignments({ B_pickup: own('accepted') });   // in_progress→accepted, same id
+  assert.equal(h2.calls.chime, 0, 'in_progress→accepted does not chime (B was already seen)');
+});
+
+t('ownership + pickup-type + status filters: another driver / a delivery task / in_progress never chime', () => {
+  const h = build();
+  h.api.detectNewAssignments({ X: own('assigned') });           // boot
+  h.api.detectNewAssignments({ X: own('assigned'), Y_other: { assigned_driver_id: 'OTHER', type: 'pickup', status: 'assigned' } });
+  assert.equal(h.calls.chime, 0, "another driver's order never chimes (ownership)");
+  h.api.detectNewAssignments({ X: own('assigned'), Z_deliv: { assigned_driver_id: 'drv', type: 'delivery', status: 'assigned' } });
+  assert.equal(h.calls.chime, 0, 'a delivery task never chimes (pickup-type)');
+  h.api.detectNewAssignments({ X: own('assigned'), W_inprog: own('in_progress') });
+  assert.equal(h.calls.chime, 0, 'a fresh in_progress pickup never chimes (status)');
+});
+
+t('a KNOWN order never re-chimes (no forgetting after the chime)', () => {
+  const h = build();
+  h.api.detectNewAssignments({ A_pickup: own('accepted') });    // boot
+  h.api.detectNewAssignments({ A_pickup: own('accepted'), B_pickup: own('accepted') });   // B chimes
+  assert.equal(h.calls.chime, 1);
+  h.api.detectNewAssignments({ A_pickup: own('accepted'), B_pickup: own('accepted') });   // same again
+  assert.equal(h.calls.chime, 1, 'no repeat chime for a known order');
+});
+
+t('soundOn=false: toast + vibrate fire, but NO chime sound', () => {
+  const h = build({ soundOn: false });
+  h.api.detectNewAssignments({ A_pickup: own('accepted') });    // boot
+  h.api.detectNewAssignments({ A_pickup: own('accepted'), B_pickup: own('accepted') });
+  assert.equal(h.calls.chime, 0, 'no chime sound when soundOn is false');
+  assert.ok(h.calls.toasts.includes('¡Nuevo pedido asignado!') && h.calls.vibrates.length === 1, 'still toasts + vibrates');
 });
 
 console.log(`✓ chime-fresh: ${passed} checks passed`);
