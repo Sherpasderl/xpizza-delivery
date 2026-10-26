@@ -79,7 +79,9 @@ async function call(r, { db = fakeDb(), registry = REG, now = () => T0 } = {}) {
     const { db } = await call(req(body({ reasons: ['repriced', 'repriced', 'option', 'repriced'] })));
     assert.deepStrictEqual(db.store, { ...db.store, 'form_signals/2026-10-26/la_musa/send/_count': 1, 'form_signals/2026-10-26/la_musa/send/repriced': 1, 'form_signals/2026-10-26/la_musa/send/option': 1 });
     assert.strictEqual(counterKeys(db).length, 3);
-    ok('duplicate reasons count once each for the refusal (two repriced lines = one "repriced")');
+    // the write's object keys would collapse duplicates on their own — the validated signal itself is deduped too
+    assert.deepStrictEqual(FS.validateStructure({ rid: 'la_musa', event: 'send', reasons: ['repriced', 'repriced', 'option', 'repriced'] }).signal.reasons, ['repriced', 'option']);
+    ok('duplicate reasons count once each for the refusal (two repriced lines = one "repriced"); the validated signal is deduped');
   }
   // ── 3. steps 0–2: every refusal → 204 (or 405/413) and ZERO database calls ──
   {
