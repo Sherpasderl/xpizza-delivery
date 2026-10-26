@@ -63,8 +63,18 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/public-menu.js",
-  "now": "// diff by eye, and an operator comparing two responses is a real thing that happens).\nconst CARRIED_FROM_STRUCTURE = Object.freeze(['extras_by_category', 'extras_by_item', 'badges', 'badge_priority']);\n\n",
+  "now": "// diff by eye, and an operator comparing two responses is a real thing that happens).\nconst CARRIED_FROM_STRUCTURE = Object.freeze(['extras_by_category', 'extras_by_item', 'badges', 'badge_priority']);\n\n// PLAN 4 r3 gap resolution (A, advisor 2026-10-26) — THE ONE COMPOSER of a menu's catalog fields: the generator's bundle +\n// the fields CARRIED from the structure. buildPublicMenu serves it (then adds eligibility, photos and identity), and the\n// committed form bundle is composed by it too (generate-form-bundle.mjs, tools/splice-form-bundle.js, the 1c gates) — so the\n// bundle a form carries before a bake has exactly the shape the bake writes, and there is no second projection.\nfunction composeServedMenu(restaurantId, menu, generate = generateFormBundle) {\n  const body = generate(restaurantId, menu);\n  for (const f of CARRIED_FROM_STRUCTURE) {\n    if (menu.structure[f] !== undefined) body[f] = menu.structure[f];\n  }\n  return body;\n}\n\n",
   "was": "// diff by eye, and an operator comparing two responses is a real thing that happens).\nconst CARRIED_FROM_STRUCTURE = Object.freeze(['extras_by_category', 'extras_by_item', 'badges']);\n\n"
+ },
+ {
+  "file": "catalog/public-menu.js",
+  "now": "  try {\n    body = composeServedMenu(restaurantId, menu, generate);\n    if (menu.eligibility) body.extras_eligibility = menu.eligibility;\n",
+  "was": "  try {\n    body = generate(restaurantId, menu);\n    for (const f of CARRIED_FROM_STRUCTURE) {\n      if (menu.structure[f] !== undefined) body[f] = menu.structure[f];\n    }\n    if (menu.eligibility) body.extras_eligibility = menu.eligibility;\n"
+ },
+ {
+  "file": "catalog/public-menu.js",
+  "now": "\nmodule.exports = { buildPublicMenu, composeServedMenu, CARRIED_FROM_STRUCTURE, defaultIsActive, assertWholeBody, publicMenuErrorResponse, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };\n",
+  "was": "\nmodule.exports = { buildPublicMenu, defaultIsActive, assertWholeBody, publicMenuErrorResponse, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };\n"
  }
 ]);
 

@@ -17,6 +17,7 @@ const { readFileSync } = require('fs');
 const { join } = require('path');
 const { formSource, readLiteral, readSetLiteral } = require('./catalog/form-menu-source');
 const { catalogSnapshot, generateFormBundle, serialize } = require('./catalog/generate-form-bundle');
+const { composeServedMenu, CARRIED_FROM_STRUCTURE } = require('./catalog/public-menu');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const REPO_ROOT = join(__dirname, '..');
@@ -54,13 +55,37 @@ for (const rid of ['x_pizza', 'la_musa']) {
 // ── 2. COMMITTED ARTIFACT: the checked-in bundle is exactly what generation produces (not stale) ───
 for (const rid of ['x_pizza', 'la_musa']) {
   const committed = readFileSync(BUNDLE_PATH[rid], 'utf8');
-  const fresh = serialize(generateFormBundle(rid, catalogSnapshot(rid)));
+  const fresh = serialize(composeServedMenu(rid, catalogSnapshot(rid)));   // PLAN 4 (A): the committed bundle is the PUBLISHED shape
   assert.strictEqual(committed, fresh,
     `${rid}: committed menu-bundle.generated.json is stale — re-run \`node generate-form-bundle.mjs\``);
   // and the committed bytes really carry the whole form menu (byte-parity down to the actual file)
   assert.deepStrictEqual(JSON.parse(committed).dishes, readLiteral(formSource(rid), 'MENU'),
     `${rid}: committed bundle dishes == the form MENU (byte parity of the shipped artifact)`);
   ok(`committed artifact ${rid}: menu-bundle.generated.json == fresh generation == the form MENU`);
+}
+
+// ── 2b. PLAN 4 (gap resolution A) — the committed bundle takes the PUBLISHED shape, and the shape change is VALUES-EQUAL ──
+//    The composed carried fields are exactly today's literals (the forms then boot them from the bundle, not the literal),
+//    and everything else is the generator's bundle, unchanged.
+{
+  const lm = composeServedMenu('la_musa', catalogSnapshot('la_musa')); const lsrc = formSource('la_musa');
+  assert.deepStrictEqual(lm.extras, readLiteral(lsrc, 'EXTRAS'), 'la_musa extras == the EXTRAS literal');
+  assert.deepStrictEqual(lm.extras_by_category, readLiteral(lsrc, 'EXTRAS_BY_CATEGORY', '{', '}'), 'la_musa extras_by_category == EXTRAS_BY_CATEGORY');
+  assert.deepStrictEqual(lm.extras_by_item, readLiteral(lsrc, 'EXTRAS_BY_ITEM', '{', '}'), 'la_musa extras_by_item == EXTRAS_BY_ITEM');
+  assert.deepStrictEqual(lm.badges, readLiteral(lsrc, 'TAG_BADGES', '{', '}'), 'la_musa badges == TAG_BADGES');
+  assert.strictEqual(lm.badge_priority, undefined, 'the bootstrap authors no badge_priority (it arrives by the migration)');
+  const xp = composeServedMenu('x_pizza', catalogSnapshot('x_pizza')); const xsrc = formSource('x_pizza');
+  assert.deepStrictEqual(xp.extras, readLiteral(xsrc, 'EXTRAS'), 'x_pizza extras == the EXTRAS literal');
+  // x_pizza has no map literal: its renderer offers EVERY extra category, in EXTRAS order, to every dish category
+  const allCats = [...new Set(readLiteral(xsrc, 'EXTRAS').map((e) => e.cat))];
+  assert.deepStrictEqual(xp.extras_by_category, Object.fromEntries(xp.categories.map((c) => [c.id, allCats])), 'x_pizza extras_by_category == every extra category for every dish category (today\'s renderer)');
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const composed = composeServedMenu(rid, catalogSnapshot(rid)); const gen = generateFormBundle(rid, catalogSnapshot(rid));
+    const extra = Object.keys(composed).filter((k) => !(k in gen));
+    assert.ok(extra.every((k) => CARRIED_FROM_STRUCTURE.includes(k)), `${rid}: only carried fields are added (${extra})`);
+    for (const k of Object.keys(gen)) assert.deepStrictEqual(composed[k], gen[k], `${rid}: ${k} is the generator's, unchanged`);
+  }
+  ok('committed bundle = the published shape: the generator\'s fields unchanged + carried fields VALUE-EQUAL to today\'s literals (la_musa EXTRAS_BY_* / TAG_BADGES; x_pizza every-category map)');
 }
 
 // ── 3. NON-VACUITY + SENTINEL: a change to the snapshot RECORDS flows into the bundle ──────────────

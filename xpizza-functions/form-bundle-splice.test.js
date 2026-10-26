@@ -9,7 +9,10 @@ const { readFileSync } = require('fs');
 const { join } = require('path');
 const S = require('./catalog/splice-form-bundle');
 const { readLiteral, readSetLiteral } = require('./catalog/form-menu-source');
-const { catalogSnapshot, generateFormBundle } = require('./catalog/generate-form-bundle');
+const { catalogSnapshot } = require('./catalog/generate-form-bundle');
+// PLAN 4 (gap resolution A): the spliced bundle is the PUBLISHED shape — the ONE composer getPublicMenu serves
+const { composeServedMenu } = require('./catalog/public-menu');
+const generateFormBundle = composeServedMenu;
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 const ROOT = join(__dirname, '..');

@@ -635,5 +635,66 @@
     "starter_04",
     "starter_05",
     "starter_06"
-  ]
+  ],
+  "extras_by_category": {
+    "dim_sum": [
+      "Acompañamientos",
+      "Salsas"
+    ],
+    "starters": [
+      "Acompañamientos",
+      "Salsas"
+    ],
+    "house_specials": [
+      "Acompañamientos",
+      "Salsas"
+    ],
+    "crudo": [
+      "Acompañamientos",
+      "Salsas"
+    ],
+    "noodles": [
+      "Acompañamientos",
+      "Salsas"
+    ],
+    "rice": [
+      "Acompañamientos",
+      "Salsas"
+    ],
+    "soups_salads": [
+      "Acompañamientos",
+      "Salsas"
+    ]
+  },
+  "extras_by_item": {
+    "rice_03": [
+      "Proteínas"
+    ]
+  },
+  "badges": {
+    "signature_special": {
+      "label": "Especial de la casa",
+      "cls": "menu-badge--bronze"
+    },
+    "chefs_pick": {
+      "label": "Selección del chef",
+      "cls": "menu-badge--bronze"
+    },
+    "must_try": {
+      "label": "Imperdible",
+      "cls": "menu-badge--red"
+    },
+    "crowd_favourite": {
+      "label": "Favorito",
+      "cls": "menu-badge--red"
+    },
+    "most_ordered": {
+      "label": "Más pedido",
+      "cls": "menu-badge--jade"
+    },
+    "price_pending": {
+      "label": "Precio próximamente",
+      "cls": "menu-badge--muted"
+    }
+  }
 }

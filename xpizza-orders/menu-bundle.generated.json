@@ -332,5 +332,17 @@
   ],
   "weekend_only_cats": [
     "ny"
-  ]
+  ],
+  "extras_by_category": {
+    "individual": [
+      "Salsas & Queso",
+      "Carnes",
+      "Vegetales & Hierbas"
+    ],
+    "ny": [
+      "Salsas & Queso",
+      "Carnes",
+      "Vegetales & Hierbas"
+    ]
+  }
 }

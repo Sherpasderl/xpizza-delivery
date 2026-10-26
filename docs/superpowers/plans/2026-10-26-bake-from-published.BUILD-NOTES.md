@@ -46,3 +46,22 @@ The migration therefore uses the measured pattern from `upgradeDraftInPlace`: a 
   - X. Pizza: `p.cat === 'individual'`.
   - La Musa: membership in `CAT`, the `beer_` exclusion, the section labels, and the `Acompañamientos` extra category.
   - Server-side redemption eligibility is already catalog data (`redeem_eligible_*`). The picker's own grouping is not.
+
+## 4. Resolving an r3 gap: the committed bundle takes the PUBLISHED shape. Advisor: APPROVED (A)
+
+r3 §3 boots every form consumer from `window.__FORM_MENU_BUNDLE__` and never from a literal. But the bundle each form COMMITS was the generator's output, which excludes the structure-carried `extras_by_category`, `extras_by_item`, `badges` and `badge_priority`. Every harness test, golden and local run boots that committed bundle, so they would have lost La Musa's option groups and badges.
+
+Resolution: ONE composer, `composeServedMenu` in `catalog/public-menu.js` (the generator's bundle plus `CARRIED_FROM_STRUCTURE`).
+- `buildPublicMenu` serves it.
+- `generate-form-bundle.mjs`, `tools/splice-form-bundle.js` and the 1c gates compose the committed bundle with it.
+
+Proofs:
+- `buildPublicMenu`'s body is unchanged for every rid, before and after the extraction. Checked on the real published fixtures, both brands, with and without the migrated fields, comparing the body with the per-publish random identity tokens stripped.
+- `catalog-form-bundle.test.js` §2b pins the composed fields VALUE-EQUAL to today's literals: La Musa's `EXTRAS_BY_*` and `TAG_BADGES`, and X. Pizza's every-category map. The generator's fields are unchanged.
+- All 92 repo-root form tests in the npm chain, goldens included, pass on the reshaped committed forms.
+
+## 5. Dispatcher copy for the rebuild alarms. Advisor: FOLLOW-UP + ACTIVATION PREREQUISITE
+
+The `payment_form_rebake_{stuck,bad_hook,missing_hook}` alerts reach the desktop Torre through `paymentAlert`. With no case in `alertContent`, they render through the unknown-type fallback as «Alerta — form rebake stuck»: English, with no restaurant named and no action. This is not payment copy (category «otros»), but it is not acceptable dispatcher copy either.
+- **Follow-up (the dispatch lane, owner mockup):** Spanish title and detail for the three types, naming the restaurant and giving the action.
+- **ACTIVATION PREREQUISITE:** `FORM_BUILD_HOOKS` stays UNSET, so the feature stays dormant, until that dispatch copy ships.

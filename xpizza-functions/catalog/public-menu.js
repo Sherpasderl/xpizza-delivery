@@ -125,6 +125,18 @@ function assertWholeBody(restaurantId, body, menu) {
 // diff by eye, and an operator comparing two responses is a real thing that happens).
 const CARRIED_FROM_STRUCTURE = Object.freeze(['extras_by_category', 'extras_by_item', 'badges', 'badge_priority']);
 
+// PLAN 4 r3 gap resolution (A, advisor 2026-10-26) — THE ONE COMPOSER of a menu's catalog fields: the generator's bundle +
+// the fields CARRIED from the structure. buildPublicMenu serves it (then adds eligibility, photos and identity), and the
+// committed form bundle is composed by it too (generate-form-bundle.mjs, tools/splice-form-bundle.js, the 1c gates) — so the
+// bundle a form carries before a bake has exactly the shape the bake writes, and there is no second projection.
+function composeServedMenu(restaurantId, menu, generate = generateFormBundle) {
+  const body = generate(restaurantId, menu);
+  for (const f of CARRIED_FROM_STRUCTURE) {
+    if (menu.structure[f] !== undefined) body[f] = menu.structure[f];
+  }
+  return body;
+}
+
 // The rid the platform will serve. Deliberately NOT resolveRestaurantId(): that function defaults a
 // blank id to x_pizza, which is right for a form that has always posted none and wrong here, where
 // the rid IS the request. Defaulting would serve one brand's menu to anyone who asked badly.
@@ -204,10 +216,7 @@ async function buildPublicMenu(db, rid, deps = {}) {
   // worse than no menu, because it renders.
   let body;
   try {
-    body = generate(restaurantId, menu);
-    for (const f of CARRIED_FROM_STRUCTURE) {
-      if (menu.structure[f] !== undefined) body[f] = menu.structure[f];
-    }
+    body = composeServedMenu(restaurantId, menu, generate);
     if (menu.eligibility) body.extras_eligibility = menu.eligibility;
   } catch (e) {
     fail('public_menu_unavailable', `${restaurantId}: the live catalog does not project to a servable menu — ${String((e && e.message) || e).slice(0, 160)}`);
@@ -277,4 +286,4 @@ function publicMenuErrorResponse(e) {
   return { status: 500, log: 'public_menu_failed', payload: { error: 'error' } };
 }
 
-module.exports = { buildPublicMenu, defaultIsActive, assertWholeBody, publicMenuErrorResponse, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };
+module.exports = { buildPublicMenu, composeServedMenu, CARRIED_FROM_STRUCTURE, defaultIsActive, assertWholeBody, publicMenuErrorResponse, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };

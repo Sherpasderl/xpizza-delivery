@@ -712,8 +712,8 @@
   "slice": "b1",
   "label": "the exposure maps and badges are not carried",
   "file": "catalog/public-menu.js",
-  "from": "      if (menu.structure[f] !== undefined) body[f] = menu.structure[f];",
-  "to": "      void f;"
+  "from": "    if (menu.structure[f] !== undefined) body[f] = menu.structure[f];",
+  "to": "    void f;"
  },
  {
   "id": "b1-11",

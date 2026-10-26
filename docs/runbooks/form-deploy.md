@@ -60,6 +60,9 @@ manual bootstrap-sync procedure above is now only for the in-repo bootstrap (the
   - A malformed entry raises `form_rebake_bad_hook {rid}`; a brand with an orders site but no hook raises
     `form_rebake_missing_hook {rid}`. Each fires once per configuration.
 
+> **ACTIVATION PREREQUISITE:** keep `FORM_BUILD_HOOKS` UNSET until the dispatcher copy for the three `payment_form_rebake_*`
+> alert types ships (the dispatch lane's follow-up). Until then the alerts would render as an English «Alerta — form rebake …».
+
 ### Operator repair (a `form_rebake_stuck` or `form_rebake_*_hook` alert)
 
 1. Read `form_rebake/{rid}` in the RTDB console: `attempts`, `stuck`, `last_class` (`ok` / `hook_rejected` /

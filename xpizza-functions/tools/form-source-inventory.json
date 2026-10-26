@@ -1735,6 +1735,7 @@
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
   "catalog/form-menu-source.js",
+  "catalog/form-rebake.js",
   "catalog/portal-reads.js",
   "catalog/public-menu.js",
   "catalog/public-photos.js",
@@ -1912,6 +1913,10 @@
      ]
     }
    ],
+   "lifts": []
+  },
+  "catalog/form-rebake.js": {
+   "pins": [],
    "lifts": []
   },
   "catalog/portal-reads.js": {
