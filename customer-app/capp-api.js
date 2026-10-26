@@ -4,17 +4,31 @@
 // restaurant difference (id, order-id prefix, stash key, endpoint URLs, hours) is CONFIG — no restaurant literal (guarded).
 //
 // THE PLACEMENT IDENTITY (r2–r4, Codex P1 #9 / P2): ONE order_id per placement. The unresolved placement is persisted to
-// `capp:{restaurant_id}:pending_place` = { order_id, method, body_sig, ts, last_send, expires_at } BEFORE the first send, and
-// `last_send` is re-persisted BEFORE EVERY send (a failed write ⇒ no send). A fresh id is minted ONLY when there is no live
-// record, which happens only after a proven-safe outcome cleared it (the EXHAUSTIVE list, §5.2):
+// `capp:{restaurant_id}:pending_place` = { order_id, method, body_sig, expected_net_cents, totals, issued, ambiguous,
+// checkout_url, checkout_at, ts, last_send, expires_at } BEFORE the first send. BEFORE EVERY send the record of THAT outgoing identity is re-written and
+// re-read (S2a r2 P1 #3): absent, expired or replaced ⇒ the send is STOPPED and the placement goes to recovery; a failed
+// write ⇒ no send. A fresh id is minted ONLY when there is no live record, which happens only after a proven-safe outcome
+// cleared it (the EXHAUSTIVE list, §5.2) — and every clearing removes the record ONLY if it still holds the resolved order_id
+// (S2a r2 P1 #2: an old return / a delayed response never deletes a newer placement):
 //   1 cash 200 / idempotent 200 ⇒ placed           5 (S1) cash legacy 409 order_conflict ⇒ cleared, ONE resend on a fresh id
 //   2 card paymentStatus paid / scheduled_paid      6 (S2) paymentStatus cancelled / failed ⇒ cleared (the next placement mints)
 //   3 card 409 Already paid ⇒ paid_unverified       7 the hard expiry: max(min(closing, ts + 12 h), last_send + 60 min)
 //   4 card paymentStatus closed_refunded ⇒ refund sheet (and the pay stash)
+//   + a 426 on the FIRST send of a just-minted identity (refused before any server write; S2a r2 P2 #6)
 // NEVER cleared by a reload, a cart edit / discard, dismissing a sheet, order_exists (any reason), order_context_changed,
 // verifying / pending / scheduled_review / the poll timeout, a 403, a network failure or a 5xx. If in doubt, never mint: the
 // customer is sent to the existing order. 60 min = the server's hosted-checkout window (HOSTED_TTL_MS, 45 min) + 15 min margin,
 // pinned by a test against the real server export.
+//
+// MONEY WRITES ARE NEVER AUTO-RETRIED (DECISIONS 2026-10-24, S2a r2 P1 #4): createOrder and chargeOnlineOrder are sent ONCE per
+// tap. Cash: a network error / 5xx ⇒ 'offline' and the customer's «Reintentar» re-sends the SAME id (idempotent server-side, no
+// gateway). Card: a network error / 5xx / a checkout whose creds cannot be stored marks the placement AMBIGUOUS — that identity
+// is never charged again; recovery is one poll with the creds, else the recovery sheet. Only quotes (read-only) retry.
+// A CHANGED placement never resumes an older checkout at new numbers (S2a r2 P1 #1): the server returns a live checkout at its
+// STORED economics before any gate, so when an ISSUED card placement's economics (cartSig or the expected net) differ, the
+// existing placement is resolved first; still live ⇒ it is RESUMED through the STORED credentials only — a redirect to the
+// stored checkout URL (while inside its hosted window) showing the ORIGINAL economics; nothing is re-sent (a re-send could
+// meet an expired attempt and mint a fresh checkout at the old pin). No usable credentials ⇒ the recovery sheet.
 (function (root, factory) {
   const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -22,9 +36,10 @@
 })(typeof self !== 'undefined' ? self : this, function (root) {
   'use strict';
 
-  const CAPP_SEND_GRACE_MS = 60 * 60 * 1000;
+  const HOSTED_CHECKOUT_MS = 45 * 60 * 1000;             // the server's hosted-checkout window (HOSTED_TTL_MS, pinned by a test)
+  const CAPP_SEND_GRACE_MS = HOSTED_CHECKOUT_MS + 15 * 60 * 1000;
   const MAX_PLACEMENT_MS = 12 * 60 * 60 * 1000;
-  const MAX_TRIES = 3;                                   // the forms' policy (createOrder MAX_TRIES): 2 retries, 1.5 s then 3 s
+  const MAX_TRIES = 3;                                   // READ-ONLY calls only (the quote): 2 retries, 1.5 s then 3 s
   const BACKOFF_MS = (attempt) => attempt * 1500;
   const IN_PROGRESS_TRIES = 8;                           // 202 in_progress: re-send the SAME identity, bounded
   const POLL_DEADLINE_MS = 90000, POLL_EVERY_MS = 2500;  // the forms' return cadence
@@ -82,15 +97,35 @@
       if (now() >= r.expires_at) { removeKey(PLACE_KEY); return null; }
       return r;
     }
-    function clearPlace() { removeKey(PLACE_KEY); }
-    // write FIRST, then send: `last_send` (and the record itself) persisted before every send of this identity
-    function beginSend(method, bodySig) {
-      const t = now();
-      const r = readPlace() || { order_id: genOrderId(), method, body_sig: bodySig == null ? null : String(bodySig), ts: t };
-      r.method = method; r.last_send = t; r.expires_at = expiresAtOf(r.ts, t);
-      if (!writeJSON(PLACE_KEY, r)) { const e = new Error('placement_write_failed'); e.code = 'placement_write_failed'; throw e; }
-      return r.order_id;
+    // a clearing outcome removes the record ONLY while it still holds THAT order (a newer placement is never deleted)
+    function clearPlace(id) {
+      const r = readJSON(PLACE_KEY);
+      if (r && typeof r === 'object' && r.order_id === id) removeKey(PLACE_KEY);
     }
+    const fail = (code) => { const e = new Error(code); e.code = code; return e; };
+    // a live record is re-written for THIS outgoing identity, then re-read: absent / expired / replaced ⇒ placement_lost
+    function patchPlace(id, fields) {
+      const r = readPlace();
+      if (!r || r.order_id !== id) throw fail('placement_lost');
+      Object.assign(r, fields || {});
+      if (!writeJSON(PLACE_KEY, r)) throw fail('placement_write_failed');
+      const back = readPlace();
+      if (!back || back.order_id !== id) throw fail('placement_lost');
+      return back;
+    }
+    // BEFORE EVERY send: `last_send` (and the expiry it extends) persisted for the specific outgoing identity
+    function confirmSend(id, fields) { const t = now(); return patchPlace(id, { ...(fields || {}), last_send: t, expires_at: expiresAtOf(readPlace() ? readPlace().ts : t, t) }); }
+    // a fresh record (a new id) — only when there is no live one
+    function mintPlace(method, p) {
+      const t = now();
+      const r = { order_id: genOrderId(), method, body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(p.expectedNetCents),
+        totals: p.totals || null, issued: false, ambiguous: false, ts: t, last_send: t, expires_at: expiresAtOf(t, t) };
+      if (!writeJSON(PLACE_KEY, r)) throw fail('placement_write_failed');
+      return r;
+    }
+    const num = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+    // the economics a placement stands behind: the cart signature (cart / mode / pin / tip / auth) and the agreed net
+    const sameEconomics = (r, p) => r.body_sig === (p.sig == null ? null : String(p.sig)) && r.expected_net_cents === num(p.expectedNetCents);
 
     // ── the pay stash: the minimal legacy shape { order_id, t, order, form, ts } under the config's key ──
     const readPay = () => readJSON(PAY_KEY);
@@ -112,11 +147,12 @@
       let j = null; try { j = await r.json(); } catch (_) { j = null; }
       return { status: r.status, json: j || {} };
     }
-    // network / 5xx (incl. 503) ⇒ up to MAX_TRIES with backoff; `before` runs before EVERY attempt (the last_send write)
-    async function withRetry(fn, before) {
+    // ONE send; a thrown fetch is reported, never retried
+    async function sendOnce(url, body, extraHeaders) { try { return await post(url, body, extraHeaders); } catch (e) { return { network: true, error: e }; } }
+    // READ-ONLY calls only (the quote): network / 5xx (incl. 503) ⇒ up to MAX_TRIES with backoff
+    async function withRetry(fn) {
       let last = null;
       for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
-        if (before) { try { before(); } catch (_) { return { stashFailed: true }; } }   // the write failed ⇒ this attempt is not sent
         try { const r = await fn(); if (r.status < 500) return r; last = r; } catch (e) { last = { network: true, error: e }; }
         if (attempt < MAX_TRIES) await sleep(BACKOFF_MS(attempt));
       }
@@ -155,24 +191,25 @@
         return { state: r.ok && j.state ? j.state : 'pending', json: j };
       } catch (_) { return { state: 'pending', json: {}, network: true }; }
     }
-    // a terminal poll state → the outcome, applying the clearing rules
+    // a poll state (payment-poll-state.js) → the outcome, applying the clearing rules to THAT order only
     function outcomeOfState(id, st, j) {
-      if (PAID_STATES.has(st)) { clearPlace(); clearPayFor(id); return { kind: 'placed', order_id: id, scheduled: st === 'scheduled_paid', tracking_token: (j && j.tracking_token) || null, scheduled_for: (j && j.scheduled_for) || null }; }
-      if (st === 'closed_refunded') { clearPlace(); clearPayFor(id); return { kind: 'refunded', order_id: id, refunded_total_cents: j && Number.isFinite(j.refunded_total_cents) ? j.refunded_total_cents : null }; }
-      if (st === 'cancelled' || st === 'failed') { clearPlace(); return { kind: 'payment_failed', order_id: id, state: st }; }   // (S2): the next placement mints
-      return { kind: 'confirming', order_id: id, state: st };   // verifying / pending / scheduled_review — creds kept, no payment offer
+      if (PAID_STATES.has(st)) { clearPlace(id); clearPayFor(id); return { kind: 'placed', order_id: id, scheduled: st === 'scheduled_paid', tracking_token: (j && j.tracking_token) || null, scheduled_for: (j && j.scheduled_for) || null }; }
+      if (st === 'closed_refunded') { clearPlace(id); clearPayFor(id); return { kind: 'refunded', order_id: id, refunded_total_cents: j && Number.isFinite(j.refunded_total_cents) ? j.refunded_total_cents : null }; }
+      if (st === 'cancelled' || st === 'failed') { clearPlace(id); return { kind: 'payment_failed', order_id: id, state: st }; }   // (S2): the next placement mints
+      return { kind: 'confirming', order_id: id, state: CONFIRMING_STATES.has(st) ? st : 'pending' };   // creds kept, no payment offer
     }
+    const recoverySheet = (id) => ({ kind: 'existing_order', order_id: id, reference: ref4(id) });   // no mint, no payment action
     async function resolveExisting(id) {
       const t = credsFor(id);
       if (t) {
         const p = await pollOnce(id, t);
         if (!p.forbidden) return outcomeOfState(id, p.state, p.json);
       }
-      return { kind: 'existing_order', order_id: id, reference: ref4(id) };   // the recovery sheet; no mint, no payment action
+      return recoverySheet(id);
     }
 
     // the refusals both order paths share → an outcome, or null when the path must handle it
-    function commonRefusal(r, id) {
+    function commonRefusal(r) {
       const j = r.json || {};
       if (r.status === 426) return { kind: 'update_required' };
       if (r.status === 400 && (j.error === 'Restaurant closed' || (j.error === 'Bad Request' && j.detail === 'Cerrado — programá tu pedido'))) return { kind: 'closed' };
@@ -181,65 +218,102 @@
       return null;
     }
     const isExisting = (r) => r.status === 409 && (r.json.error === 'order_exists' || r.json.error === 'order_context_changed');
+    // a card result whose outcome is unknown: the gateway attempt may exist (and could rotate on a resend)
+    const ambiguousCard = (r) => !r || r.network || (r.status >= 500 && !(r.status === 500 && r.json && r.json.error === 'Payment not configured'));
+    const placeErr = (e, id) => (e && e.code === 'placement_write_failed' ? { kind: 'stash_failed', order_id: id }
+      : e && e.code === 'placement_lost' ? null : { kind: 'error', order_id: id, error: String((e && e.message) || e) });
 
-    // ── one placement: build → (beginSend → send) with the ported module's token discipline ──
-    // p: { flow, ctx: { restaurantId, items, itemsText, member, headers }, sig, expectedNetCents, sheet }
+    // ── one placement ──
+    // p: { flow, ctx: { restaurantId, items, itemsText, member, headers }, sig, expectedNetCents, totals, sheet }
     async function place(p) {
       const method = p.flow.pay === 'online' ? 'online' : 'cash';
+      const live = readPlace();
+      if (live && live.method === 'online' && method === 'online') {
+        if (live.ambiguous) return resolveExisting(live.order_id);                        // never charged again (P1 #4)
+        if (live.issued && !sameEconomics(live, p)) {                                     // P1 #1: resolve the existing placement first
+          const t = credsFor(live.order_id);
+          if (!t) return recoverySheet(live.order_id);
+          const pr = await pollOnce(live.order_id, t);
+          if (pr.forbidden) return recoverySheet(live.order_id);
+          if (pr.state === 'pending') return resume(live);
+          const out = outcomeOfState(live.order_id, pr.state, pr.json);
+          if (out.kind !== 'payment_failed') return out;                                  // placed / refunded / confirming
+          // cancelled / failed: cleared ⇒ the changed cart is a NEW placement (falls through and mints)
+        }
+      }
       let expected = p.expectedNetCents;
       let healed = false; let silentRetried = false;
       for (let guard = 0; guard < 4; guard++) {
-        let id;
-        try { id = beginSend(method, p.sig); } catch (e) {   // a failed write ⇒ no send; anything else is an error, never mislabelled
-          return e && e.code === 'placement_write_failed' ? { kind: 'stash_failed' } : { kind: 'error', error: String((e && e.message) || e) };
-        }
+        let rec; let minted = false;
+        try {
+          rec = readPlace();
+          if (!rec) { rec = mintPlace(method, p); minted = true; }
+          // an un-issued identity carries the method + economics of the body actually sent (an issued one keeps its checkout's)
+          rec = confirmSend(rec.order_id, rec.issued ? {} : { method, body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(expected), totals: p.totals || rec.totals || null });
+        } catch (e) { const pe = placeErr(e, rec && rec.order_id); return pe || (rec ? resolveExisting(rec.order_id) : { kind: 'error', error: 'placement_lost' }); }
+        const id = rec.order_id;
         const body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
         cq.send(body, p.sig, expected);
-        const r = method === 'cash' ? await sendCash(body, p.ctx) : await sendCard(body, p.ctx);
-        if (r && r.stashFailed) return { kind: 'stash_failed', order_id: id };
-        if (!r || r.network) return { kind: 'offline', order_id: id };   // «Reintentar» re-sends the SAME id
-        const j = r.json || {};
-        if (method === 'cash' && r.status === 200 && j.ok) { clearPlace(); return { kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent }; }
-        if (method === 'online' && r.status === 200 && j.checkout_url) return cardIssued(id, body, j);
-        if (method === 'online' && r.status === 202) return { kind: 'try_again', order_id: id };   // in_progress exhausted (bounded)
-        if (method === 'online' && r.status === 409 && j.error === 'Already paid') return alreadyPaid(id);
-        if (method === 'cash' && r.status === 409 && j.error === 'order_conflict') {
-          if (healed) return { kind: 'error', order_id: id, error: 'order_conflict' };
-          healed = true; clearPlace(); continue;   // (S1): proven terminal-safe — ONE resend on a fresh id
+        const r = method === 'cash' ? await sendOnce(E.createOrder, body, p.ctx.headers) : await sendCard(id, body, p.ctx);
+        if (r && r.stop) return r.stop;
+        const j = (r && r.json) || {};
+        if (method === 'cash') {
+          if (!r || r.network || r.status >= 500) return { kind: 'offline', order_id: id };   // «Reintentar» re-sends the SAME id (no auto-retry)
+          if (r.status === 200 && j.ok) { clearPlace(id); return { kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent }; }
+          if (r.status === 409 && j.error === 'order_conflict') {
+            if (healed) return { kind: 'error', order_id: id, error: 'order_conflict' };
+            healed = true; clearPlace(id); continue;   // (S1): proven terminal-safe — ONE resend on a fresh id
+          }
+        } else {
+          if (ambiguousCard(r)) { markAmbiguous(id); return resolveExisting(id); }      // P1 #4: recovery, never a resend
+          if (r.status === 200 && j.checkout_url) return cardIssued(id, body, j);
+          if (r.status === 202) { markIssued(id); return { kind: 'try_again', order_id: id }; }   // in_progress exhausted (bounded)
+          if (r.status === 409 && j.error === 'Already paid') return alreadyPaid(id);
         }
         if (isExisting(r)) return resolveExisting(id);
-        const cr = commonRefusal(r, id); if (cr) return { ...cr, order_id: id };
-        const rec = await cq.handleRejection({ err: j, shownCents: expected, hasReward: false, retried: silentRetried, sheet: p.sheet });
-        if (rec && rec.handled) {
-          if (!rec.resend) return { kind: rec.declined ? 'price_declined' : 'error', order_id: id };
-          if (typeof rec.expectedNetCents === 'number') expected = rec.expectedNetCents;   // the body now stands behind THIS number
-          if (rec.silent) silentRetried = true;
+        const cr = commonRefusal(r);
+        if (cr) {
+          if (cr.kind === 'update_required' && minted) clearPlace(id);   // P2 #6: refused before any server write — this identity never existed
+          return { ...cr, order_id: id };
+        }
+        const rj = await cq.handleRejection({ err: j, shownCents: expected, hasReward: false, retried: silentRetried, sheet: p.sheet });
+        if (rj && rj.handled) {
+          if (!rj.resend) return { kind: rj.declined ? 'price_declined' : 'error', order_id: id };
+          if (typeof rj.expectedNetCents === 'number') expected = rj.expectedNetCents;   // the body now stands behind THIS number
+          if (rj.silent) silentRetried = true;
           continue;   // the SAME identity (mintNewOrderId is reward-only, never in S2)
         }
-        if (method === 'online' && r.status === 500) return { kind: 'payment_not_completed', order_id: id };   // the app deployment absent
-        if (method === 'online' && r.status >= 500) return { kind: 'payment_not_completed', order_id: id };
+        if (method === 'online' && r.status === 500) return { kind: 'payment_not_completed', order_id: id };   // 'Payment not configured'
         return { kind: 'error', order_id: id, status: r.status, error: j.error || null };
       }
       return { kind: 'error', error: 'loop_guard' };
     }
-    function sendCash(body, ctx) { return withRetry(() => post(E.createOrder, body, ctx.headers), () => touchSend()); }
-    async function sendCard(body, ctx) {
+    // P1 #1 RESUME, through the stored credentials ONLY: the stored checkout URL while it is inside its hosted window (from
+    // when this placement first saw it), with the ORIGINAL economics — never a re-send, never the new quote
+    function resume(live) {
+      const id = live.order_id;
+      if (typeof live.checkout_url !== 'string' || !live.checkout_url || !Number.isFinite(live.checkout_at) || now() >= live.checkout_at + HOSTED_CHECKOUT_MS) return recoverySheet(id);
+      return { kind: 'redirect', order_id: id, url: live.checkout_url, resumed: true, expected_net_cents: live.expected_net_cents, totals: live.totals || null };
+    }
+    // 202 in_progress ⇒ the SAME identity re-sent (bounded); EVERY send gated by a confirmed write of THAT identity (P1 #3)
+    async function sendCard(id, body, ctx) {
       for (let i = 0; i < IN_PROGRESS_TRIES; i++) {
-        const r = await withRetry(() => post(E.chargeOnlineOrder, body, ctx.headers), () => touchSend());
-        if (!r || r.network || r.stashFailed || r.status !== 202) return r;
-        await sleep(BACKOFF_MS(Math.min(i + 1, 2)));   // 202 in_progress: never poll without a token, never mint — re-send
+        if (i > 0) { try { confirmSend(id); } catch (e) { return { stop: placeErr(e, id) || await resolveExisting(id) }; } }
+        const r = await sendOnce(E.chargeOnlineOrder, body, ctx.headers);
+        if (r.network || r.status !== 202) return r;
+        await sleep(BACKOFF_MS(Math.min(i + 1, 2)));   // never poll without a token, never mint — re-send
       }
       return { status: 202, json: { status: 'in_progress' } };
     }
-    // `last_send` re-persisted before EVERY attempt of the same identity; a failed write stops that attempt
-    function touchSend() {
-      const r = readPlace(); if (!r) return;
-      const t = now(); r.last_send = t; r.expires_at = expiresAtOf(r.ts, t);
-      if (!writeJSON(PLACE_KEY, r)) { const e = new Error('placement_write_failed'); e.code = 'placement_write_failed'; throw e; }
-    }
-    // fresh / reuse 200: persist the creds AFTER the response and BEFORE the redirect (a failed write ⇒ no redirect)
+    const markIssued = (id, extra) => { try { patchPlace(id, { issued: true, ...(extra || {}) }); } catch (_) {} };
+    const markAmbiguous = (id) => { try { patchPlace(id, { issued: true, ambiguous: true }); } catch (_) {} };
+    // fresh / reuse 200: persist the creds AFTER the response and BEFORE the redirect (a failed write ⇒ no redirect, and the
+    // placement is ambiguous: the checkout exists but cannot be polled)
     function cardIssued(id, body, j) {
-      if (!j.poll_token || !writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now() })) return { kind: 'stash_failed', order_id: id };
+      if (!j.poll_token || !writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now() })) { markAmbiguous(id); return { kind: 'stash_failed', order_id: id }; }
+      const r = readPlace();
+      const seenAt = r && r.order_id === id && r.checkout_url === j.checkout_url && Number.isFinite(r.checkout_at) ? r.checkout_at : now();
+      markIssued(id, { checkout_url: j.checkout_url, checkout_at: seenAt });   // a reused checkout keeps the time it was first seen
       return { kind: 'redirect', order_id: id, url: j.checkout_url };
     }
     // 409 Already paid: payment recovery, never «Pago no completado», never a new payment
@@ -249,7 +323,7 @@
         const p = await pollOnce(id, t);
         if (!p.forbidden) return outcomeOfState(id, p.state, p.json);
       }
-      clearPlace();   // (3): the server has said the order is paid; no token ⇒ never poll
+      clearPlace(id);   // (3): the server has said the order is paid; no token ⇒ never poll
       return { kind: 'paid_unverified', order_id: id };
     }
 
@@ -264,14 +338,15 @@
       if (pay === 'cancel') {
         if (!id || !t) return { kind: 'payment_failed', order_id: id || null, state: 'cancelled' };
         const p = await Promise.race([pollOnce(id, t), timeout(CANCEL_CHECK_MS).then(() => ({ state: 'pending', json: {} }))]);
-        if (p && !p.forbidden && (PAID_STATES.has(p.state) || p.state === 'closed_refunded')) return outcomeOfState(id, p.state, p.json);
-        return { kind: 'payment_failed', order_id: id, state: 'cancelled', clearable: false };   // a genuine cancel: «Pago no completado»
+        // the authoritative poll state wins (P2 #5); only a server that still says pending is the genuine-cancel screen
+        if (p && !p.forbidden && p.state !== 'pending') return outcomeOfState(id, p.state, p.json);
+        return { kind: 'payment_failed', order_id: id, state: 'cancelled', clearable: false };   // «Pago no completado»; record kept
       }
       if (pay !== 'complete' || !id || !t) return { kind: 'confirming', order_id: id || null, state: 'pending' };
       const deadline = now() + POLL_DEADLINE_MS;
       while (now() < deadline) {
         const p = await pollOnce(id, t);
-        if (p.forbidden) return { kind: 'existing_order', order_id: id, reference: ref4(id) };
+        if (p.forbidden) return recoverySheet(id);
         if (p.state !== 'pending') {
           const out = outcomeOfState(id, p.state, p.json);
           if (out.kind !== 'confirming' || p.state === 'verifying' || p.state === 'scheduled_review') return out;
@@ -285,5 +360,5 @@
       confirmQuote: cq, PLACE_KEY };
   }
 
-  return { createApi, CAPP_SEND_GRACE_MS, MAX_PLACEMENT_MS, MAX_TRIES };
+  return { createApi, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES };
 });

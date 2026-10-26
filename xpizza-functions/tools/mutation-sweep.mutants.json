@@ -20313,8 +20313,8 @@
     "slice": "s2a",
     "label": "a retry mints a new order id",
     "file": "../customer-app/capp-api.js",
-    "from": "      const r = readPlace() || { order_id: genOrderId(),",
-    "to": "      const r = { order_id: genOrderId(),",
+    "from": "          if (!rec) { rec = mintPlace(method, p); minted = true; }",
+    "to": "          rec = mintPlace(method, p); minted = true;",
     "command": [
       "node",
       "--test",
@@ -20345,15 +20345,15 @@
     "slice": "s2a",
     "label": "the record write is no longer required before the send",
     "file": "../customer-app/capp-api.js",
-    "from": "      if (!writeJSON(PLACE_KEY, r)) { const e = new Error('placement_write_failed'); e.code = 'placement_write_failed'; throw e; }\n      return r.order_id;",
-    "to": "      writeJSON(PLACE_KEY, r);\n      return r.order_id;",
+    "from": "      if (!writeJSON(PLACE_KEY, r)) throw fail('placement_write_failed');\n      const back = readPlace();",
+    "to": "      writeJSON(PLACE_KEY, r);\n      const back = readPlace();",
     "command": [
       "node",
       "--test",
       "../customer-app/capp-api.test.mjs"
     ],
     "kills_with": [
-      "a failed record write ⇒ stash_failed"
+      "no send without a persisted last_send"
     ]
   },
   {
@@ -20409,7 +20409,7 @@
     "slice": "s2a",
     "label": "closed_refunded does not clear pending_place",
     "file": "../customer-app/capp-api.js",
-    "from": "      if (st === 'closed_refunded') { clearPlace(); clearPayFor(id);",
+    "from": "      if (st === 'closed_refunded') { clearPlace(id); clearPayFor(id);",
     "to": "      if (st === 'closed_refunded') { clearPayFor(id);",
     "command": [
       "node",
@@ -20441,7 +20441,7 @@
     "slice": "s2a",
     "label": "202 treated as a final answer (no same-identity re-send)",
     "file": "../customer-app/capp-api.js",
-    "from": "        if (!r || r.network || r.stashFailed || r.status !== 202) return r;",
+    "from": "        if (r.network || r.status !== 202) return r;",
     "to": "        return r;",
     "command": [
       "node",
@@ -20457,8 +20457,8 @@
     "slice": "s2a",
     "label": "Already paid treated as failure",
     "file": "../customer-app/capp-api.js",
-    "from": "        if (method === 'online' && r.status === 409 && j.error === 'Already paid') return alreadyPaid(id);",
-    "to": "        if (method === 'online' && r.status === 409 && j.error === 'Already paid') return { kind: 'payment_not_completed', order_id: id };",
+    "from": "          if (r.status === 409 && j.error === 'Already paid') return alreadyPaid(id);",
+    "to": "          if (r.status === 409 && j.error === 'Already paid') return { kind: 'payment_not_completed', order_id: id };",
     "command": [
       "node",
       "--test",
@@ -20473,8 +20473,8 @@
     "slice": "s2a",
     "label": "verifying treated as failure",
     "file": "../customer-app/capp-api.js",
-    "from": "      if (st === 'cancelled' || st === 'failed') { clearPlace();",
-    "to": "      if (st === 'cancelled' || st === 'failed' || st === 'verifying') { clearPlace();",
+    "from": "      if (st === 'cancelled' || st === 'failed') { clearPlace(id);",
+    "to": "      if (st === 'cancelled' || st === 'failed' || st === 'verifying') { clearPlace(id);",
     "command": [
       "node",
       "--test",
@@ -20489,7 +20489,7 @@
     "slice": "s2a",
     "label": "the card creds are not required before the redirect",
     "file": "../customer-app/capp-api.js",
-    "from": "      if (!j.poll_token || !writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now() })) return { kind: 'stash_failed', order_id: id };",
+    "from": "      if (!j.poll_token || !writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now() })) { markAmbiguous(id); return { kind: 'stash_failed', order_id: id }; }",
     "to": "      writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now() });",
     "command": [
       "node",
@@ -20537,8 +20537,8 @@
     "slice": "s2a",
     "label": "a brand literal in the transport",
     "file": "../customer-app/capp-api.js",
-    "from": "  const CAPP_SEND_GRACE_MS = 60 * 60 * 1000;",
-    "to": "  const CAPP_SEND_GRACE_MS = 60 * 60 * 1000; const HOME = 'x_pizza';",
+    "from": "  const HOSTED_CHECKOUT_MS = 45 * 60 * 1000;",
+    "to": "  const HOSTED_CHECKOUT_MS = 45 * 60 * 1000; const HOME = 'x_pizza';",
     "command": [
       "node",
       "--test",
@@ -20562,6 +20562,182 @@
     ],
     "kills_with": [
       "unresolved payment state"
+    ]
+  },
+  {
+    "id": "s2a-u24",
+    "slice": "s2a",
+    "label": "r2 P1#1: a changed issued card placement is not resolved first",
+    "file": "../customer-app/capp-api.js",
+    "from": "    const sameEconomics = (r, p) => r.body_sig === (p.sig == null ? null : String(p.sig)) && r.expected_net_cents === num(p.expectedNetCents);",
+    "to": "    const sameEconomics = (r, p) => true;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "the SAME live checkout, resumed"
+    ]
+  },
+  {
+    "id": "s2a-u25",
+    "slice": "s2a",
+    "label": "r2 P1#1: a resume ignores the stored checkout's hosted window",
+    "file": "../customer-app/capp-api.js",
+    "from": "!Number.isFinite(live.checkout_at) || now() >= live.checkout_at + HOSTED_CHECKOUT_MS) return recoverySheet(id);",
+    "to": "!Number.isFinite(live.checkout_at)) return recoverySheet(id);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "an expired stored checkout"
+    ]
+  },
+  {
+    "id": "s2a-u26",
+    "slice": "s2a",
+    "label": "r2 P1#1: a cash attempt strips the issued card record's method",
+    "file": "../customer-app/capp-api.js",
+    "from": "          rec = confirmSend(rec.order_id, rec.issued ? {} : { method,",
+    "to": "          rec = confirmSend(rec.order_id, false ? {} : { method,",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "keeps its method across a cash attempt"
+    ]
+  },
+  {
+    "id": "s2a-u27",
+    "slice": "s2a",
+    "label": "r2 P1#2: a clearing outcome deletes whatever record is stored",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (r && typeof r === 'object' && r.order_id === id) removeKey(PLACE_KEY);",
+    "to": "      removeKey(PLACE_KEY);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "old return left B"
+    ]
+  },
+  {
+    "id": "s2a-u28",
+    "slice": "s2a",
+    "label": "r2 P1#3: a replaced record does not stop the send",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (!r || r.order_id !== id) throw fail('placement_lost');",
+    "to": "      if (!r) throw fail('placement_lost');",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "the newer record is untouched"
+    ]
+  },
+  {
+    "id": "s2a-u29",
+    "slice": "s2a",
+    "label": "r2 P1#3: a 202 re-send is not gated by a confirmed write",
+    "file": "../customer-app/capp-api.js",
+    "from": "        if (i > 0) { try { confirmSend(id); }",
+    "to": "        if (false) { try { confirmSend(id); }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "the expired identity is NOT re-sent"
+    ]
+  },
+  {
+    "id": "s2a-u30",
+    "slice": "s2a",
+    "label": "r2 P1#4: an ambiguous card result is not marked (a later tap re-sends)",
+    "file": "../customer-app/capp-api.js",
+    "from": "          if (ambiguousCard(r)) { markAmbiguous(id); return resolveExisting(id); }",
+    "to": "          if (ambiguousCard(r)) { return resolveExisting(id); }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "the placement is AMBIGUOUS"
+    ]
+  },
+  {
+    "id": "s2a-u31",
+    "slice": "s2a",
+    "label": "r2 P1#4: createOrder auto-retried",
+    "file": "../customer-app/capp-api.js",
+    "from": "await sendOnce(E.createOrder, body, p.ctx.headers)",
+    "to": "await withRetry(() => post(E.createOrder, body, p.ctx.headers))",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "createOrder is NEVER auto-retried"
+    ]
+  },
+  {
+    "id": "s2a-u32",
+    "slice": "s2a",
+    "label": "r2 P2#5: a cancel return ignores the authoritative poll state",
+    "file": "../customer-app/capp-api.js",
+    "from": "        if (p && !p.forbidden && p.state !== 'pending') return outcomeOfState(id, p.state, p.json);",
+    "to": "        if (p && !p.forbidden && (PAID_STATES.has(p.state) || p.state === 'closed_refunded')) return outcomeOfState(id, p.state, p.json);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "cancel + verifying ⇒ confirming"
+    ]
+  },
+  {
+    "id": "s2a-u33",
+    "slice": "s2a",
+    "label": "r2 P2#6: a refused first send keeps its record (self-update blocked)",
+    "file": "../customer-app/capp-api.js",
+    "from": "          if (cr.kind === 'update_required' && minted) clearPlace(id);",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "the refused first send leaves no record"
+    ]
+  },
+  {
+    "id": "s2a-u34",
+    "slice": "s2a",
+    "label": "r2 P2#6: a 426 clears an EARLIER unresolved send",
+    "file": "../customer-app/capp-api.js",
+    "from": "          if (cr.kind === 'update_required' && minted) clearPlace(id);",
+    "to": "          if (cr.kind === 'update_required') clearPlace(id);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "an unresolved EARLIER send keeps its record"
     ]
   },
   {
