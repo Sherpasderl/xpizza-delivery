@@ -10,7 +10,7 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 
 export function mountBranches(root, ctx) {
   const V = { det: null, draft: null, saving: false, stale: null, err: null,
-    p: null, locked: false, fieldErr: null, modal: null, nv: null };   // 1b (W on): the profile draft, the post-write lock (§3.5), a server field refusal
+    p: null, locked: false, fieldErr: null, modal: null, nv: null, listErr: null };   // 1b (W on): the profile draft, the post-write lock (§3.5), a server field refusal
   const W = () => B.writesOn(ctx.e1);
 
   const branches = () => (ctx.sel ? ctx.sel.brand.branches : []);
@@ -31,6 +31,7 @@ export function mountBranches(root, ctx) {
     const list = branches();
     const { top } = topBlock('Sucursales', 'Cada sucursal tiene su zona, su horario, su tiempo de preparación y sus equipos.');
     root.replaceChildren(top);
+    if (V.listErr) root.append(errBox(V.listErr[0], V.listErr[1]));   // 1b only: a «Nueva sucursal» discarded when W turned off
     if (!list.length) { root.append(emptyState('Todavía no hay sucursales', 'Sherpa te ayuda a agregar la primera.')); return; }
     const cards = el('div', 'cards');
     const now = Date.now();
@@ -51,7 +52,7 @@ export function mountBranches(root, ctx) {
       );
       card.append(head, meta);
       if (L.prepMissing(b)) card.append(callout('Falta el tiempo de preparación normal.', ' Sin él no se puede vincular un equipo.'));
-      card.addEventListener('click', () => { V.det = b.rid; V.draft = null; V.p = null; V.fieldErr = null; V.stale = null; V.err = null; render(); window.scrollTo && window.scrollTo(0, 0); });
+      card.addEventListener('click', () => { V.det = b.rid; V.draft = null; V.p = null; V.fieldErr = null; V.stale = null; V.err = null; V.listErr = null; render(); window.scrollTo && window.scrollTo(0, 0); });
       cards.append(card);
     }
     root.append(cards);
@@ -218,6 +219,17 @@ export function mountBranches(root, ctx) {
     return { phone: has(d, 'phone') ? d.phone : pr.phone, hours: has(d, 'hours') ? d.hours : pr.hours, prep: has(d, 'prep_default_min') ? d.prep_default_min : pr.prep_default_min };
   };
   const patchOf = (b) => { const d = draftFor(b); return d ? B.profilePatch(profileOf(b), d) : {}; };
+  // codex 1b r1 #4 (§3.1): Guardar needs EVERY editable value valid — a loaded landline / reversed hours that the draft did not fix
+  // keeps it off, even when only another group is dirty. A null phone is «not set», not invalid (the editor shows it empty).
+  const editableErrors = (b) => {
+    const ed = b.lifecycle === 'draft' ? { phone: true, hours: true, prep_default_min: true } : B.editorsOf(b);
+    const cur = curOf(b);
+    const e = {};
+    if (ed.phone && typeof cur.phone === 'string' && !B.validPhone(cur.phone)) e.phone = true;
+    if (ed.hours && !B.validHours(cur.hours)) e.hours = true;
+    if (ed.prep_default_min && !L.validPrep(cur.prep)) e.prep_default_min = true;
+    return e;
+  };
   const lockedOf = () => V.saving || V.locked || !!V.stale;
   const nameOf = (b) => b.name || (b.profile && b.profile.location_name) || b.rid;
 
@@ -421,7 +433,7 @@ export function mountBranches(root, ctx) {
   // the «Cambios sin guardar» bar (S6 + D-c): labels, or the drawn fix-it line per invalid group; Guardar off while invalid
   function paintBar1b(b) {
     const patch = patchOf(b);
-    const perr = B.patchErrors(patch);
+    const perr = { ...editableErrors(b), ...B.patchErrors(patch) };
     const labels = B.dirtyLabels1b(patch);
     const dirty = labels.length > 0;
     setDirty(dirty);
@@ -442,7 +454,10 @@ export function mountBranches(root, ctx) {
     const d = b ? draftFor(b) : null;
     if (!b || !d || V.saving || V.locked) return;
     const patch = B.profilePatch(profileOf(b), d);
-    if (!Object.keys(patch).length || Object.keys(B.patchErrors(patch)).length) return;
+    if (!Object.keys(patch).length || Object.keys(B.patchErrors(patch)).length || Object.keys(editableErrors(b)).length) return;
+    // codex 1b r1 #1: re-check the CURRENT eligibility right before sending (W, the row's caps, the draft's brand)
+    const ed = b.lifecycle === 'draft' ? (owned(b.brand_id) ? { phone: true, hours: true, prep_default_min: true } : {}) : B.editorsOf(b);
+    if (!W() || Object.keys(patch).some((k) => !ed[k])) { V.p = null; setDirty(false); V.err = [...B.saveErrorCopy(patch)]; render(); return; }
     const gen = ctx.gen();
     V.saving = true; V.err = null; V.errRetry = false; V.fieldErr = null;
     ctx.setBusy('suc-save', true);
@@ -487,9 +502,10 @@ export function mountBranches(root, ctx) {
   // ══ PORTAL-UI 1b commit (b) — the lifecycle: S2 list + drafts, S7 / S8 / S8b / S8c, S9 Nueva, S10 drafts, s3-legacy ══════════
   const owned = (brandId) => B.ownsBrand(ctx.e1, brandId);
   const draftsHere = () => (ctx.sel && owned(ctx.sel.brand_id) ? B.draftsOf(ctx.e1, ctx.sel.brand_id) : []);
+  const findRowAny = (rid) => branches().find((x) => x.rid === rid) || null;
   const findRow = (rid) => branches().find((x) => x.rid === rid) || (W() ? draftsHere().find((x) => x.rid === rid) : null) || null;
-  const addTop = () => { const a = el('button', 'btn accent'); a.type = 'button'; a.append(svg('M12 5v14M5 12h14'), document.createTextNode('Agregar sucursal')); a.addEventListener('click', () => openNueva()); return a; };
-  const addCard = () => { const a = el('button', 'addcard1b'); a.type = 'button'; a.append(svg('M12 5v14M5 12h14'), document.createTextNode('Agregar otra sucursal')); a.addEventListener('click', () => openNueva()); return a; };
+  const addTop = () => { const a = el('button', 'btn accent'); a.type = 'button'; a.id = 'suc1b-add'; a.append(svg('M12 5v14M5 12h14'), document.createTextNode('Agregar sucursal')); a.addEventListener('click', () => openNueva('suc1b-add')); return a; };
+  const addCard = () => { const a = el('button', 'addcard1b'); a.type = 'button'; a.id = 'suc1b-addcard'; a.append(svg('M12 5v14M5 12h14'), document.createTextNode('Agregar otra sucursal')); a.addEventListener('click', () => openNueva('suc1b-addcard')); return a; };
   const LIST_LEDE = 'Cada sucursal tiene su horario, su tiempo de preparación y sus equipos. La ubicación, la zona de entrega y la tarifa de envío las define Sherpa. El menú y los precios son los mismos para toda la marca.';
 
   function renderList1b() {
@@ -500,6 +516,7 @@ export function mountBranches(root, ctx) {
     if (mine) acts.push(addTop());
     const { top } = topBlock('Sucursales', LIST_LEDE, acts);
     const frag = [top];
+    if (V.listErr) frag.push(errBox(V.listErr[0], V.listErr[1]));
     if (V.err) frag.push(errBox(V.err[0], V.err[1], V.errRetry ? () => { window.location.reload(); } : undefined));
     if (rows.length) {
       const cards = el('div', 'cards');
@@ -534,7 +551,7 @@ export function mountBranches(root, ctx) {
     card.append(meta);
     if (m.hint) card.append(hintCallout(m.hint));
     else if (!m.draft && L.prepMissing(b)) card.append(callout('Falta el tiempo de preparación normal.', ' Sin él no se puede vincular un equipo.'));   // 1a D2
-    card.addEventListener('click', () => { V.det = b.rid; V.draft = null; V.p = null; V.fieldErr = null; V.stale = null; V.err = null; render(); window.scrollTo && window.scrollTo(0, 0); });
+    card.addEventListener('click', () => { V.det = b.rid; V.draft = null; V.p = null; V.fieldErr = null; V.stale = null; V.err = null; V.listErr = null; render(); window.scrollTo && window.scrollTo(0, 0); });
     return card;
   }
   function hintCallout(h) {
@@ -590,7 +607,7 @@ export function mountBranches(root, ctx) {
     if (b.lifecycle === 'draft') {
       const s = sec1b('Eliminar borrador');
       s.append(el('p', 'help', 'Solo mientras sea borrador. Se borra lo que escribiste y Sherpa no configura su ubicación. Podés crearla de nuevo cuando querás.'));
-      const x = button('btn danger', 'Eliminar borrador', () => openModal('delete', b)); x.disabled = locked;
+      const x = button('btn danger', 'Eliminar borrador', () => openModal('delete', b, 'suc1b-del')); x.id = 'suc1b-del'; x.disabled = locked;
       const d = el('div'); d.append(x); s.append(d);
       out.push(s);
       return out;
@@ -601,7 +618,7 @@ export function mountBranches(root, ctx) {
     if (b.lifecycle === 'active') {
       const s = sec1b('Desactivar sucursal');
       s.append(el('p', 'help', 'Deja de recibir pedidos. Sus ventas, su historial y sus equipos se conservan. Es reversible: la activás de nuevo cuando querás.'));
-      const x = button('btn danger', `Desactivar ${b.name}`, () => openModal('deactivate', b)); x.disabled = locked;
+      const x = button('btn danger', `Desactivar ${b.name}`, () => openModal('deactivate', b, 'suc1b-deact')); x.id = 'suc1b-deact'; x.disabled = locked;
       const d = el('div'); d.append(x); s.append(d);
       out.push(s);
     } else if (b.lifecycle === 'inactive' && B.canActivate(b)) {   // s3-inactive
@@ -619,17 +636,60 @@ export function mountBranches(root, ctx) {
   // ── the confirm modal (S7 Desactivar, S10 Eliminar borrador, S9 Nueva) — opening / Cancelar / Escape / backdrop send NOTHING ──
   const scrim = $('sucscrim');
   const modal = $('sucmodal');
-  function openModal(kind, b) {
+  // codex 1b r1 #5: focus is kept across repaints (restored by element id), Tab is contained in the modal, and closing returns it
+  // to the control that opened the modal (by its stable id — the list / detail may have been repainted meanwhile).
+  function openModal(kind, b, invokerId) {
     if (V.saving || V.locked) return;
-    V.modal = { kind, rid: b ? b.rid : null };
+    V.modal = { kind, rid: b ? b.rid : null, invokerId: invokerId || null };
     paintModal();
     scrim.classList.add('show');
-    const first = modal.querySelector('button');
+    const first = focusables()[0];
     if (first && first.focus) first.focus();
   }
-  function closeModal() { V.modal = null; V.nv = null; scrim.classList.remove('show'); modal.replaceChildren(); }
+  function closeModal() {
+    const back = V.modal && V.modal.invokerId;
+    V.modal = null; V.nv = null; V.nvGo = null;
+    ctx.setDirty('suc-new', false);
+    scrim.classList.remove('show'); modal.replaceChildren();
+    if (back) { const n = $(back); if (n && typeof n.focus === 'function') n.focus(); }
+  }
+  function repaintModal(fn) {
+    const a = document.activeElement;
+    const fid = a && a.id && modal.contains && modal.contains(a) ? a.id : null;
+    fn();
+    if (fid) { const n = $(fid); if (n && typeof n.focus === 'function') n.focus(); }
+  }
+  const focusables = () => Array.from(modal.querySelectorAll('input, button')).filter((n) => !n.disabled);
   if (scrim) scrim.addEventListener('click', (e) => { if (e.target === scrim && !(V.nv && V.nv.sending)) closeModal(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && V.modal && !(V.nv && V.nv.sending)) closeModal(); });
+  document.addEventListener('keydown', (e) => {
+    if (!V.modal) return;
+    if (e.key === 'Escape' && !(V.nv && V.nv.sending)) { closeModal(); return; }
+    if (e.key !== 'Tab') return;
+    const f = focusables();
+    if (!f.length) { e.preventDefault(); return; }
+    const i = f.indexOf(document.activeElement);
+    if (e.shiftKey && (i <= 0)) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+  });
+  // codex 1b r1 #1: any eligibility change from a fresh E1 (W, caps, ownership, the row itself) closes an open 1b modal; a filled
+  // «Nueva sucursal» is discarded with G4's generic save copy. Called on every render (a fresh E1 always repaints the views).
+  function modalEligible() {
+    const m = V.modal;
+    if (!m || !W()) return !m;
+    if (m.kind === 'nueva') return !!(V.nv && ctx.sel && ctx.sel.brand_id === V.nv.brandId && owned(V.nv.brandId));
+    const b = findRow(m.rid);
+    if (!b || !owned(b.brand_id)) return false;
+    if (m.kind === 'deactivate') return b.lifecycle === 'active' && b.legacy !== true;
+    return b.lifecycle === 'draft';
+  }
+  function checkModal() {
+    if (!V.modal || modalEligible()) return;
+    const dirty = V.modal.kind === 'nueva' && nvDirty(V.nv);
+    const busy = V.nv && V.nv.sending;
+    if (busy) return;   // a send in flight settles first; its own refusal path speaks
+    closeModal();
+    if (dirty) V.listErr = [...B.GENERIC_SAVE_ERR];   // shown above the list (W on or off) until the next navigation
+  }
   function paintModal() {
     const m = V.modal;
     if (!m) return;
@@ -650,26 +710,37 @@ export function mountBranches(root, ctx) {
         const cq = el('div', 'cq1b'); const tt = el('div', 'cqt1b'); tt.append(el('b', null, bold), el('span', null, text)); cq.append(tt); cqs.append(cq);
       }
       mb.append(cqs, el('p', 'cqfoot1b', 'Mientras esté desactivada no recibe pedidos. Sus ventas y su historial se conservan.'));
-      mf.append(button('btn ghost', 'Cancelar', closeModal), button('btn danger solid', `Desactivar ${b.name}`, () => setActive(b, false)));
+      const c = button('btn ghost', 'Cancelar', closeModal); c.id = 'suc1b-mcancel';
+      const go = button('btn danger solid', `Desactivar ${b.name}`, () => setActive(b, false)); go.id = 'suc1b-mgo';
+      mf.append(c, go);
     } else {   // S10 Eliminar borrador (D-d)
       const name = (b.profile && b.profile.location_name) || b.rid;
       const t = el('div', 'mt', `¿Eliminar el borrador «${name}»?`); t.id = 'suctitle';
       mh.append(t, el('div', 'ms', 'Todavía no tiene ubicación ni recibió pedidos.'));
       mb.append(el('p', 'mtext1b', 'Se borra lo que escribiste' + ' (nombre, WhatsApp, horario y preparación) y Sherpa deja de configurar su ubicación. No afecta a las demás sucursales. Podés crearla de nuevo cuando querás.'));
-      mf.append(button('btn ghost', 'Cancelar', closeModal), button('btn danger solid', 'Eliminar borrador', () => deleteDraft(b)));
+      const c = button('btn ghost', 'Cancelar', closeModal); c.id = 'suc1b-mcancel';
+      const go = button('btn danger solid', 'Eliminar borrador', () => deleteDraft(b)); go.id = 'suc1b-mgo';
+      mf.append(c, go);
     }
-    modal.replaceChildren(mh, mb, mf);
+    repaintModal(() => modal.replaceChildren(mh, mb, mf));
   }
 
   // ── S9 «Nueva sucursal» (E6): one op_id per intent, reused on «Reintentar» ──
-  function openNueva() {
-    if (V.saving || V.locked || !ctx.sel || !owned(ctx.sel.brand_id)) return;
-    V.nv = { opId: B.newOpId(), name: '', phoneRaw: '', phone: '', choice: 0, prep: 20, err: null, nameErr: null, phoneErr: false, sending: false };
-    openModal('nueva', null);
+  function openNueva(invokerId) {
+    if (V.saving || V.locked || !W() || !ctx.sel || !owned(ctx.sel.brand_id)) return;
+    // payload: null, or the EXACT body of an unresolved E6 (codex 1b r1 #2) — a retry re-sends it byte for byte under the same
+    // op_id and the fields stay read-only; only a DEFINITIVE answer releases it (and a changed form is then a new intent / op_id)
+    V.nv = { opId: B.newOpId(), brandId: ctx.sel.brand_id, name: '', phoneRaw: '', phone: '', choice: 0, prep: 20, err: null, nameErr: null, phoneErr: false, sending: false, payload: null };
+    openModal('nueva', null, invokerId);
   }
-  function paintNueva() {
+  // codex 1b r1 #3: a filled form is unsaved work — it joins the shell's dirty set (canLeave / the guarded reload)
+  const nvDirty = (m) => !!(m && (m.payload || m.name.trim() !== '' || m.phoneRaw.trim() !== '' || m.choice !== 0 || m.prep !== 20));
+  const nvFrozen = (m) => !!(m && (m.sending || m.payload));
+  function paintNueva() { repaintModal(paintNuevaNow); }
+  function paintNuevaNow() {
     const m = V.nv;
     if (!m) return;
+    const frozen = nvFrozen(m);
     const choices = B.newHoursChoices(branches());
     modal.classList.remove('sm');
     const mh = el('div', 'mh');
@@ -680,34 +751,36 @@ export function mountBranches(root, ctx) {
     const fr = el('div', 'frow1b');
     const fn = el('div', 'fld');
     const ln = el('label', null, 'Nombre de la sucursal'); ln.htmlFor = 'nv1b-nombre';
-    const iname = el('input'); iname.className = 'nvin1b'; iname.type = 'text'; iname.id = 'nv1b-nombre'; iname.placeholder = 'p. ej. Col. Los Andes'; iname.value = m.name; iname.disabled = m.sending; iname.maxLength = B.NAME_MAX + 10;
-    iname.addEventListener('input', () => { m.name = iname.value; m.nameErr = null; paintNuevaGo(); });
+    const iname = el('input'); iname.className = 'nvin1b'; iname.type = 'text'; iname.id = 'nv1b-nombre'; iname.placeholder = 'p. ej. Col. Los Andes'; iname.value = m.name; iname.disabled = frozen; iname.maxLength = B.NAME_MAX + 10;
+    iname.addEventListener('input', () => { if (nvFrozen(m)) { iname.value = m.name; return; } m.name = iname.value; m.nameErr = null; paintNuevaGo(); });
     fn.append(ln, iname);
     const fp = el('div', 'fld');
     const lp = el('label', null, 'WhatsApp de la sucursal'); lp.htmlFor = 'nv1b-tel';
     const bad = m.phoneErr || (m.phoneRaw.trim() !== '' && !B.validPhone(m.phone) && m.phoneTouched);
-    const itel = el('input'); itel.className = `tel1b${bad ? ' telbad1b' : ''}`; itel.type = 'tel'; itel.id = 'nv1b-tel'; itel.placeholder = B.PHONE_PLACEHOLDER; itel.value = m.phoneRaw; itel.disabled = m.sending;
+    const itel = el('input'); itel.className = `tel1b${bad ? ' telbad1b' : ''}`; itel.type = 'tel'; itel.id = 'nv1b-tel'; itel.placeholder = B.PHONE_PLACEHOLDER; itel.value = m.phoneRaw; itel.disabled = frozen;
     itel.setAttribute('aria-invalid', bad ? 'true' : 'false');
     if (bad) itel.setAttribute('aria-describedby', 'nv1b-tel-err');
-    itel.addEventListener('input', () => { m.phoneRaw = itel.value; m.phone = B.normalizePhone(itel.value); m.phoneErr = false; paintNuevaGo(); });
-    itel.addEventListener('change', () => { m.phoneTouched = true; if (B.validPhone(m.phone)) m.phoneRaw = B.phoneDisplay(m.phone); paintNueva(); });
+    itel.addEventListener('input', () => { if (nvFrozen(m)) { itel.value = m.phoneRaw; return; } m.phoneRaw = itel.value; m.phone = B.normalizePhone(itel.value); m.phoneErr = false; paintNuevaGo(); });
+    itel.addEventListener('change', () => { if (nvFrozen(m)) return; m.phoneTouched = true; if (B.validPhone(m.phone)) m.phoneRaw = B.phoneDisplay(m.phone); paintNueva(); });
     fp.append(lp, itel);
     if (bad) { const e = el('div', 'ferr1b'); e.id = 'nv1b-tel-err'; e.append(icon('err'), el('span', null, PHONE_ERR)); fp.append(e); }
     fr.append(fn, fp);
     const fh = el('div', 'fld');
     const chips = el('div', 'chips1b');
     choices.forEach((c, i) => {
-      const ch = button(`chip1b${i === m.choice ? ' chipon1b' : ''}`, c.label, () => { m.choice = i; paintNueva(); });
-      ch.setAttribute('aria-pressed', i === m.choice ? 'true' : 'false'); ch.disabled = m.sending;
+      const ch = button(`chip1b${i === m.choice ? ' chipon1b' : ''}`, c.label, () => { if (nvFrozen(m)) return; m.choice = i; paintNueva(); });
+      ch.id = `nv1b-chip-${i}`;
+      ch.setAttribute('aria-pressed', i === m.choice ? 'true' : 'false'); ch.disabled = frozen;
       chips.append(ch);
     });
     fh.append(el('span', 'lab', 'Horario'), chips, el('span', 'fnote', 'Lo ajustás después, día por día. Mismo día, sin pasar la medianoche.'));
     const fpr = el('div', 'fld');
     const step = el('div', 'step');
     const val = el('div', 'val', String(m.prep)); val.append(el('span', null, 'min')); val.setAttribute('aria-live', 'polite');
-    const down = button('stepb', '−', () => { m.prep = L.stepPrep(m.prep, -1); paintNueva(); }, { aria: 'Menos 5 minutos' });
-    const up = button('stepb', '+', () => { m.prep = L.stepPrep(m.prep, +1); paintNueva(); }, { aria: 'Más 5 minutos' });
-    down.disabled = m.sending || m.prep <= L.PREP_MIN; up.disabled = m.sending || m.prep >= L.PREP_MAX;
+    const down = button('stepb', '−', () => { if (nvFrozen(m)) return; m.prep = L.stepPrep(m.prep, -1); paintNueva(); }, { aria: 'Menos 5 minutos' });
+    const up = button('stepb', '+', () => { if (nvFrozen(m)) return; m.prep = L.stepPrep(m.prep, +1); paintNueva(); }, { aria: 'Más 5 minutos' });
+    down.id = 'nv1b-down'; up.id = 'nv1b-up';
+    down.disabled = frozen || m.prep <= L.PREP_MIN; up.disabled = frozen || m.prep >= L.PREP_MAX;
     step.append(down, val, up);
     fpr.append(el('span', 'lab', 'Tiempo de preparación normal'), step, el('span', 'fnote', 'Entre 5 y 120 min. Se puede cambiar después.'));
     const q = el('div', 'callout calloutquiet1b');
@@ -717,7 +790,8 @@ export function mountBranches(root, ctx) {
     const mf = el('div', 'mf');
     const go = button('btn accent', 'Crear sucursal', () => createDraft());
     go.id = 'nv1b-go';
-    mf.append(button('btn ghost', 'Cancelar', () => { if (!m.sending) closeModal(); }), go);
+    const cancel = button('btn ghost', 'Cancelar', () => { if (!m.sending) closeModal(); }); cancel.id = 'nv1b-cancel';
+    mf.append(cancel, go);
     modal.replaceChildren(mh, mb, mf);
     V.nvGo = go;
     paintNuevaGo();
@@ -725,22 +799,25 @@ export function mountBranches(root, ctx) {
   function paintNuevaGo() {
     const m = V.nv; const go = V.nvGo;
     if (!m || !go) return;
-    go.disabled = m.sending || !B.validName(B.cleanName(m.name)) || !B.validPhone(m.phone);
+    ctx.setDirty('suc-new', nvDirty(m));
+    go.disabled = m.sending || (!m.payload && (!B.validName(B.cleanName(m.name)) || !B.validPhone(m.phone)));
   }
   async function createDraft() {
     const m = V.nv;
     if (!m || m.sending || !ctx.sel) return;
-    const name = B.cleanName(m.name);
-    if (!B.validName(name) || !B.validPhone(m.phone)) return;
-    const choices = B.newHoursChoices(branches());
-    const hours = B.cleanHours((choices[m.choice] || choices[0]).hours);
-    const brandId = ctx.sel.brand_id;
+    if (!modalEligible()) { checkModal(); render(); return; }   // codex 1b r1 #1: W / ownership re-checked at submit
+    if (!m.payload) {   // a NEW intent: the body is fixed now (copied hours captured once) and every retry re-sends exactly it
+      const name = B.cleanName(m.name);
+      if (!B.validName(name) || !B.validPhone(m.phone)) return;
+      const choices = B.newHoursChoices(branches());
+      m.payload = { opId: m.opId, brandId: m.brandId, locationName: name, phone: m.phone, hours: B.cleanHours((choices[m.choice] || choices[0]).hours), prepDefaultMin: m.prep };
+    }
     const gen = ctx.gen();
     m.sending = true; m.err = null;
     ctx.setBusy('suc-new', true);
     paintNueva();
     try {
-      const out = await createBranchDraft({ opId: m.opId, brandId, locationName: name, phone: m.phone, hours, prepDefaultMin: m.prep, token: ctx.token });
+      const out = await createBranchDraft({ ...m.payload, token: ctx.token });
       m.sending = false;
       ctx.setBusy('suc-new', false);
       if (!ctx.alive(gen)) return;
@@ -754,17 +831,23 @@ export function mountBranches(root, ctx) {
       ctx.setBusy('suc-new', false);
       if (!ctx.alive(gen) || V.nv !== m) return;
       const code = e && e.code;
-      if (code === 'bad_phone') m.phoneErr = true;
-      else if (e && e.kind === 'Unavailable' && code !== 'writes_disabled') m.err = [...OFFLINE];
-      else if (code === 'writes_disabled') { closeModal(); V.err = [...B.GENERIC_SAVE_ERR]; await reconcile(gen, true); return; }
-      else m.err = [...B.GENERIC_SAVE_ERR];   // op_conflict / name_taken / … — shown, never a silent second draft (the op_id is kept)
+      const unresolved = (e && e.kind === 'Unavailable' && code !== 'writes_disabled') || code === 'interrupted' || code === 'lease_lost';
+      if (code === 'writes_disabled') { closeModal(); V.err = [...B.GENERIC_SAVE_ERR]; await reconcile(gen, true); return; }
+      if (unresolved) m.err = e && e.kind === 'Unavailable' ? [...OFFLINE] : [...B.GENERIC_SAVE_ERR];   // the payload stays frozen: «Crear» re-sends it
+      else {   // DEFINITIVE: the intent is over — the form is editable again and the next «Crear» is a new intent with a new op_id
+        m.payload = null; m.opId = B.newOpId();
+        if (code === 'bad_phone') m.phoneErr = true;
+        else m.err = [...B.GENERIC_SAVE_ERR];   // op_conflict / name_taken / … (name copy pending the owner) — never a silent second draft
+      }
       paintNueva();
     }
   }
 
   // ── E8 / E10 ──
-  async function setActive(b, active) {
-    if (V.saving || V.locked || !Number.isSafeInteger(b.version)) return;   // B8: a double tap sends exactly one E8
+  async function setActive(b0, active) {
+    if (V.saving || V.locked) return;   // B8: a double tap sends exactly one E8
+    const b = findRow(b0.rid);   // codex 1b r1 #1: the CURRENT row (a fresh E1 may have changed it), W and ownership, at submit
+    if (!W() || !b || !owned(b.brand_id) || b.legacy === true || !Number.isSafeInteger(b.version) || (active ? b.lifecycle === 'active' : b.lifecycle !== 'active')) { if (V.modal) closeModal(); render(); return; }
     const gen = ctx.gen();
     V.saving = true; V.err = null; V.errRetry = false;
     ctx.setBusy('suc-life', true);
@@ -778,8 +861,10 @@ export function mountBranches(root, ctx) {
       await reconcile(gen);
     } catch (e) { await lifecycleRefusal(e, gen); }
   }
-  async function deleteDraft(b) {
-    if (V.saving || V.locked || typeof b.version !== 'string') return;
+  async function deleteDraft(b0) {
+    if (V.saving || V.locked) return;
+    const b = findRow(b0.rid);   // codex 1b r1 #1: the current draft row, W and ownership, at submit
+    if (!W() || !b || b.lifecycle !== 'draft' || !owned(b.brand_id) || typeof b.version !== 'string') { if (V.modal) closeModal(); render(); return; }
     const gen = ctx.gen();
     V.saving = true; V.err = null; V.errRetry = false;
     ctx.setBusy('suc-life', true);
@@ -808,10 +893,12 @@ export function mountBranches(root, ctx) {
   }
 
   function render() {
+    checkModal();
+    if (!W() && V.p) { const pb = findRowAny(V.p.rid); const pp = pb ? B.profilePatch(profileOf(pb), V.p) : {}; V.p = null; if (Object.keys(pp).length) V.err = [...B.saveErrorCopy(pp)]; }
     if (!ctx.sel) { root.replaceChildren(skeleton()); return; }
     const rid = detRid();
     const b = rid ? findRow(rid) : null;
-    if (isOwner() && !b) { setDirty(false); if (W()) renderList1b(); else renderList(); return; }
+    if (isOwner() && !b) { setDirty(false); if (W()) renderKeepingFocus(renderList1b); else renderList(); return; }
     if (!b) { setDirty(false); root.replaceChildren(emptyState('Todavía no hay sucursales', 'Sherpa te ayuda a agregar la primera.')); return; }
     if (W()) { renderKeepingFocus(() => renderDetail1b(b)); return; }
     renderDetail(b);

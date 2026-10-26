@@ -1828,7 +1828,9 @@
   },
   "access/membership.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-portal/branches-1b-focus.test.mjs"
+   ]
   },
   "access/portal-account.js": {
    "pins": [],

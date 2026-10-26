@@ -186,7 +186,7 @@ test('S9 Nueva: the E6 body is exactly E6_KEYS for the CURRENT brand; the first 
   installStorage();
   let e6 = 0;
   const P = page([E1([row('r_a', { name: 'Centro' })])], (fn) => {
-    if (fn === 'createBranchDraft') { e6 += 1; return e6 === 1 ? errJson(409, { error: 'op_conflict' }) : okJson({ rid: 'r_new', state: 'draft', version: 'd.x.1.1' }); }
+    if (fn === 'createBranchDraft') { e6 += 1; return e6 === 1 ? errJson(503, { error: 'unavailable', retryable: true }) : okJson({ rid: 'r_new', state: 'draft', version: 'd.x.1.1' }); }
     if (fn === 'getMyBranches' && e6 >= 2) return okJson(E1([row('r_a', { name: 'Centro' })], [BRAND([draftOf('r_new', 'Andes')])]));
     return undefined;
   });
@@ -205,13 +205,13 @@ test('S9 Nueva: the E6 body is exactly E6_KEYS for the CURRENT brand; the first 
   assert.equal(go().disabled, false);
   go().click();
   await settle(15);
-  assert.ok(textOf(P.modal()).includes('No se guardaron los cambios'), 'op_conflict is shown, never a silent second draft');
+  assert.ok(textOf(P.modal()).includes('Sin conexión con Sherpa'), 'an unresolved create is shown; the retry below re-sends it');
   go().click();
   await settle(20);
   const reqs = P.calls.filter((c) => c.fn === 'createBranchDraft');
   assert.equal(reqs.length, 2);
   assert.deepEqual(Object.keys(reqs[0].body).sort(), [...E6_KEYS].sort());
-  assert.equal(reqs[0].body.op_id, reqs[1].body.op_id, 'the retry reuses the op_id');
+  assert.deepEqual(reqs[1].body, reqs[0].body, 'the retry of an UNRESOLVED create is the same bytes under the same op_id');
   assert.deepEqual({ ...reqs[0].body, op_id: 'X' }, { op_id: 'X', brand_id: 'marca_s', location_name: 'Andes', phone: '+50433905521', hours: WEEK, prep_default_min: 20 });
   assert.equal(P.byId.get('sucscrim').classList.contains('show'), false);
   const t = textOf(P.view());
@@ -380,4 +380,106 @@ test('W off: the nav count is 1a\'s (operational rows only; drafts never counted
   const P = page([E1([row('r_a'), row('r_b')], [BRAND([draftOf('r_d', 'Jardines')])], false)]);
   await boot(P);
   assert.equal(textOf(P.byId.get('navsuccount')), '2');
+});
+
+// ══ codex 1b r1 ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+test('r1 #1: cached W on → «Nueva» open and filled → a fresh E1 with W off closes it (G4 copy) → «Crear» sends ZERO E6', async () => {
+  installStorage({ 'sherpa.portal.branches.uOwnerLife': E1([row('r_a', { name: 'Centro' })]) });
+  let release;
+  const fresh = new Promise((r) => { release = r; });
+  const P = page([E1([row('r_a', { name: 'Centro' })])], (fn) => (fn === 'getMyBranches' ? fresh : undefined));
+  const mods = await boot(P);
+  mods.shell.goto('suc'); await settle(5);
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Norte');
+  fire(byIdIn(P.modal(), 'nv1b-tel'), 'input', '3390 5521');
+  const go = byIdIn(P.modal(), 'nv1b-go');
+  release(okJson(E1([row('r_a', { name: 'Centro' })], [BRAND()], false)));
+  await settle(20);
+  assert.equal(P.byId.get('sucscrim').classList.contains('show'), false, 'the modal closed on the eligibility change');
+  go.click();
+  await settle(10);
+  assert.equal(P.count('createBranchDraft'), 0, 'zero E6');
+  assert.ok(textOf(P.view()).includes('No se guardaron los cambios'), 'the filled form was discarded with G4\'s copy');
+  assert.equal(mods.shell.canLeave(), true, 'nothing left dirty');
+});
+
+test('r1 #1: the S7 / S10 confirms re-check at submit — a row no longer active (fresh E1) sends no E8', async () => {
+  installStorage({ 'sherpa.portal.branches.uOwnerLife': E1([row('r_a', { name: 'Centro' })]) });
+  let release;
+  const fresh = new Promise((r) => { release = r; });
+  const P = page([E1([row('r_a', { name: 'Centro' })])], (fn) => (fn === 'getMyBranches' ? fresh : undefined));
+  const mods = await boot(P);
+  mods.shell.goto('suc', { rid: 'r_a' }); await settle(5);
+  byText(P.view(), 'button', 'Desactivar Centro').click();
+  const go = byText(P.modal(), 'button', 'Desactivar Centro');
+  release(okJson(E1([inactive('r_a', { unmet: [] }, { name: 'Centro' })])));
+  await settle(20);
+  assert.equal(P.byId.get('sucscrim').classList.contains('show'), false);
+  go.click();
+  await settle(10);
+  assert.equal(P.count('setBranchActive'), 0);
+});
+
+test('r1 #2: an unresolved E6 freezes its payload — the retry re-sends the SAME bytes under the same op_id; the Norte→Sur edit cannot ride it', async () => {
+  installStorage();
+  let e6 = 0;
+  const P = page([E1([row('r_a', { name: 'Centro' })])], (fn) => {
+    if (fn === 'createBranchDraft') { e6 += 1; return e6 === 1 ? errJson(503, { error: 'unavailable', retryable: true }) : e6 === 2 ? errJson(409, { error: 'op_conflict' }) : okJson({ rid: 'r_sur', state: 'draft', version: 'd.y.1.1' }); }
+    return undefined;
+  });
+  const mods = await openSuc(P);
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Norte');
+  fire(byIdIn(P.modal(), 'nv1b-tel'), 'input', '3390 5521');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(15);
+  assert.ok(textOf(P.modal()).includes('Sin conexión con Sherpa'), 'unresolved → the outage copy, the modal stays');
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre').disabled, true, 'the fields are read-only until it resolves');
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Sur');                     // a forced edit is ignored
+  byText(P.modal(), 'button', 'Lun–Dom 11:00–22:00').click();                  // so is another hours choice
+  byAria(P.modal(), 'Más 5 minutos').click();
+  assert.equal(mods.shell.canLeave(), false, 'an unresolved create is unsaved work');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(15);
+  const [a, b] = P.calls.filter((c) => c.fn === 'createBranchDraft').map((c) => c.body);
+  assert.deepEqual(b, a, 'the retry is byte-identical (name, hours, prep, op_id)');
+  assert.equal(a.location_name, 'Norte');
+  // op_conflict is DEFINITIVE → the form is editable again; the next «Crear» is a NEW intent (new op_id) with the new data
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre').disabled, false);
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Sur');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(15);
+  const c3 = P.calls.filter((c) => c.fn === 'createBranchDraft')[2].body;
+  assert.equal(c3.location_name, 'Sur');
+  assert.notEqual(c3.op_id, a.op_id, 'different data never rides the first op_id');
+});
+
+test('r1 #3: a filled «Nueva sucursal» is unsaved work — canLeave() is false until it is sent or discarded', async () => {
+  installStorage();
+  const P = page([E1([row('r_a', { name: 'Centro' })])]);
+  const mods = await openSuc(P);
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  assert.equal(mods.shell.canLeave(), true, 'an untouched form is not dirty');
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Norte');
+  assert.equal(mods.shell.canLeave(), false);
+  byText(P.modal(), 'button', 'Cancelar').click();
+  assert.equal(mods.shell.canLeave(), true, 'discarded');
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  byText(P.modal(), 'button', 'Copiar de Centro').click();
+  byAria(P.modal(), 'Más 5 minutos').click();
+  assert.equal(mods.shell.canLeave(), false, 'the prep / hours choice counts too');
+});
+
+test('r1 #1 (submit guard, defense in depth): W flipped off in the shell\'s state WITHOUT a repaint → «Crear» still sends ZERO E6', async () => {
+  installStorage();
+  const P = page([E1([row('r_a', { name: 'Centro' })])]);
+  const mods = await openSuc(P);
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Norte');
+  fire(byIdIn(P.modal(), 'nv1b-tel'), 'input', '3390 5521');
+  mods.shell._shellState.e1.membership_writes_enabled = false;   // no render: only the submit-time check can stop it
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(10);
+  assert.equal(P.count('createBranchDraft'), 0);
 });

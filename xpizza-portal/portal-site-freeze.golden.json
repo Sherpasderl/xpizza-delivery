@@ -24,6 +24,7 @@
   "branch-logic.test.mjs",
   "branches-1b-aa.test.mjs",
   "branches-1b-copytruth.test.mjs",
+  "branches-1b-focus.test.mjs",
   "branches-1b-life.test.mjs",
   "branches-1b.test.mjs",
   "branches-view.js",

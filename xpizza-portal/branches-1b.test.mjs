@@ -5,6 +5,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { installDom, installFetch, loadModules, okJson, errJson, settle, textOf, findAll } from './ventas-harness.mjs';
 
 const require = createRequire(import.meta.url);
@@ -83,18 +87,45 @@ test('W on, owner: the v2 detail renders the editors + the approved truths (§2f
   for (const s of NEVER) assert.ok(!t.includes(s), `never-ship «${s}»`);
 });
 
-test('W OFF: the detail is byte-identical to 1a — an E1+ reply with W off renders exactly as the 1a-shaped reply', async () => {
-  const strip = (r) => { const { lifecycle, profile, location, version, legacy, readiness, ...a } = r; return a; };
-  const snap = async (e1) => {
+// codex 1b r1 #8: the W-off oracle is the BASE 1a implementation itself — shell.js + branches-view.js exactly as committed at
+// 76f3a160 (git show), loaded over the same harness; every other module they import is unchanged since that base (asserted).
+const BASE_SHA = '76f3a160';
+const gitShow = (f) => execFileSync('git', ['show', `${BASE_SHA}:xpizza-portal/${f}`], { cwd: dirname(fileURLToPath(import.meta.url)), encoding: 'utf8', maxBuffer: 1 << 26 });
+async function openWith(P, transforms) {
+  const mods = await loadModules(['app', 'ventas', 'shell'], transforms);
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'uOwner1b' } }));
+  document.dispatchEvent(new CustomEvent('portal:signed-in'));
+  await settle(20);
+  return mods;
+}
+test('W OFF: the portal renders BYTE-IDENTICALLY to the base 1a implementation (76f3a160) — list, detail and chrome', async () => {
+  for (const f of ['branch-logic.js', 'ops-dom.js', 'pausas.js', 'availability.js', 'equipos.js', 'app.js', 'ventas.js', 'auth-errors.js']) {
+    assert.equal(readFileSync(new URL(`./${f}`, import.meta.url), 'utf8'), gitShow(f), `${f} unchanged since the base (the oracle composes it)`);
+  }
+  const dir = dirname(fileURLToPath(import.meta.url));
+  const tag = `${process.pid}.${Date.now()}`;
+  const baseView = join(dir, `__base-branches-view.${tag}.mjs`);
+  writeFileSync(baseView, gitShow('branches-view.js'));
+  const asBase = { shell: () => gitShow('shell.js').replace(/from '\.\/branches-view\.js'/, `from './__base-branches-view.${tag}.mjs'`) };
+  const e1 = E1([row('r_a'), row('r_b', { lifecycle: 'inactive', control: { state: 'inactive', paused_until: null, pause_reason: null, pause_since: null } })], { w: false,
+    brands: [{ brand_id: 'marca_s', name: 'Marca S', caps: ['brand.locations'], activation: 'on', drafts: [{ rid: 'r_d', brand_id: 'marca_s', lifecycle: 'draft', profile: { location_name: 'Borrador', phone: '+50433905521', hours: WEEK, prep_default_min: 20 }, location: null, pending_location: true, version: 'd.x.1.1' }] }] });
+  const ids = ['viewsuc', 'navsuc', 'navsuccount', 'navpausas', 'navequipos', 'mnsuc', 'shopname', 'shopsub', 'scopewrap', 'switchmenu', 'sucbar', 'sucbartxt'];
+  const snap = async (transforms, rid) => {
     installStorage();
     const P = page([e1]);
-    await open(P);
-    return JSON.stringify(all(P.view()).map((n) => [n.tag, n._class, n.textContent, n.attrs, n.disabled]));
+    const mods = await openWith(P, transforms);
+    mods.shell.goto('suc', rid ? { rid } : {});
+    await settle(5);
+    return JSON.stringify(ids.map((id) => [id, P.byId.get(id)._class, all(P.byId.get(id)).map((n) => [n.tag, n._class, n.textContent, n.attrs, n.disabled, n.id])]));
   };
-  const plus = await snap(E1([row('r_a')], { w: false }));
-  const plain = await snap({ brands: [{ brand_id: 'marca_s', name: 'Marca S' }], branches: [strip(row('r_a'))] });
-  assert.equal(plus, plain);
-  assert.ok(!plus.includes('f1b-tel') && plus.includes('Solo lectura'), 'non-vacuity: the 1a read-only detail');
+  try {
+    for (const rid of [null, 'r_a', 'r_b']) {
+      const base = await snap(asBase, rid);
+      const now = await snap({}, rid);
+      assert.equal(now, base, `W off, ${rid || 'list'}: identical to 1a`);
+      assert.ok(rid ? base.includes('Solo lectura') : base.includes('Radio'), 'non-vacuity: the 1a screen rendered');
+    }
+  } finally { try { unlinkSync(baseView); } catch (_) { /* best effort */ } }
 });
 
 test('single writer: W on, a prep-only save is ONE updateBranchProfile and ZERO updateBranch; W off it is the reverse', async () => {
@@ -340,4 +371,21 @@ test('a valid WhatsApp shows as «+504 NNNN-NNNN» once the field is left (D-lab
   assert.equal(byIdIn(P.view(), 'f1b-tel').value, '+504 3390-5521');
   fire(byIdIn(P.view(), 'f1b-tel'), 'input', '2234 567'); fire(byIdIn(P.view(), 'f1b-tel'), 'change');
   assert.equal(byIdIn(P.view(), 'f1b-tel').value, '2234 567');
+});
+
+test('r1 #4 (§3.1): a LOADED landline + reversed hours keep Guardar off even when only prep changed — zero E7', async () => {
+  installStorage();
+  const P = page([E1([row('r_a', { profile: { phone: '+50422345678', hours: { ...WEEK, mon: { open: true, start: '22:00', end: '11:00' } } } })])]);
+  await open(P);
+  byAria(P.view(), 'Más 5 minutos').click();
+  assert.equal(P.byId.get('sucsave').disabled, true);
+  const bar = textOf(P.byId.get('sucbartxt'));
+  assert.ok(bar.includes('· horario · corregí las horas marcadas en rojo para guardar') && bar.includes('· contacto · corregí el número marcado en rojo para guardar'));
+  P.byId.get('sucsave').click();
+  await settle(10);
+  assert.equal(P.count('updateBranchProfile'), 0);
+  // fixing both makes the same save valid: ONE E7 with all three groups
+  fire(byIdIn(P.view(), 'f1b-tel'), 'input', '3390 5521'); fire(byIdIn(P.view(), 'f1b-tel'), 'change');
+  fire(byIdIn(P.view(), 'h1b-mon-end'), 'change', '23:00');
+  assert.equal(P.byId.get('sucsave').disabled, false);
 });
