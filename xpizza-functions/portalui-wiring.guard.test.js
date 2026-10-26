@@ -12,7 +12,7 @@ const { execFileSync } = require('child_process');
 const { HUNKS, BASE, unapplyPortalUiIndex, unapplyPortalUiFold } = require('./tools/portalui-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))));   // train: drvc (newest) innermost, then drvf, stackseq, O1b, PLAN 2
+const real = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))))));   // train: wahealth (newest) innermost, then drvc, drvf, stackseq, O1b, PLAN 2
 
 // 3a T-c (merged onto this slice in feat/portal-team) appended ONE export to the membership line after BASE — a same-line hunk,
 // folded out here so this pin keeps judging portal-ui's own two hunks against BASE (the membership inverse covers T-c's line)

@@ -7626,3 +7626,9 @@ exports.notifyArrivedOnTap = onValueCreated(
   }
 );
 /* drvc:end */
+
+/* wahealth:begin */
+// WhatsApp gateway health (OWNER-approved 2026-10-22) — every 30 min, ONE severity=ERROR line per UNLINKED UltraMsg instance
+// (the owner's error alert emails it). Logic in whatsapp/instance-health.js; the restaurant ids come from the registry (data).
+exports.whatsappInstanceHealth = require('./whatsapp/instance-health').makeHealthFunction({ registry: restaurantRegistry, getDb: getDatabase });
+/* wahealth:end */
