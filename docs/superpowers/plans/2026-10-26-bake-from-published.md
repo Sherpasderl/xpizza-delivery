@@ -41,7 +41,10 @@
 
 ## Not covered / follow-ups
 - **Phase B, other structures.** The form also reads other display structures from its own literals (`EXTRAS_BY_CATEGORY`/`EXTRAS_BY_ITEM`, `TAG_BADGES`, `PICKUP_ONLY_CATS`/`WEEKEND_ONLY_CATS`). The live apply already replaces some of them (`LIVE_MENU_GLOBALS`). Baking them too completes the one-source rule; that's a separate plan, because it changes what the form reads at boot.
-- **x_pizza NY Plain Slice.** After A, the published NY product is baked in, and its weekend-only display then depends on Phase B (the gate literals). Owner question still open: is NY Plain Slice weekend-only?
+- **x_pizza NY Plain Slice: resolved 2026-10-26.** The owner confirmed it is WEEKEND-ONLY (recorded 2026-10-12). It is enforced by DATA: live dishes 25-28 are in `cat: 'ny'`, the server's catalog-derived `weekendOnlyKeys` covers them (index.js:1004/:1785), and the form gates by category (`WEEKEND_ONLY_CATS = ['ny']`). The bake copies each dish verbatim except the identity keys, so `cat` survives.
+  Acceptance cases when A is built:
+  - a weekend-only category survives the bake, and the client gate still applies;
+  - a new portal-authored dish (for example the upcoming 12" «Plain Slice», cat individual, L 299, daily) appears in the baked menu with no code change.
 - **Mid-session publishes (W4).** A publish landing while the customer already has a cart is not addressed by any baking scheme. That's covered by the cart backstop plus the item 5 copy.
 
 ## Sequencing
