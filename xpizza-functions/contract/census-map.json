@@ -1567,7 +1567,6 @@
   "created_at@xpizza-dashboard/index.html<script@0>#renderRevision>anon": "SELECTS which orders enter the dashboard Revisión period (created_at in [from, to)) — the panel shows COUNTS and DURATIONS (orders, delivered, avg prep / delivery time), not money: R7's count / duration cells assert them against the oracle's period rule, so a wrong selector field fails those cells (wording corrected per codex rebase-r3 P2)",
   "created_at@xpizza-dispatch-mobile/index.html<script@0>#timelineHTML": "a lifecycle timestamp for display / aging / ordering — not an amount or a money selector",
   "created_at@xpizza-dispatch/index.html<script@0>#closedTime": "a lifecycle timestamp for display / aging / ordering — not an amount or a money selector",
-  "created_at@xpizza-dispatch/index.html<script@0>#colaCard": "a lifecycle timestamp for display / aging / ordering — not an amount or a money selector",
   "created_at@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal": "a lifecycle timestamp for display / aging / ordering — not an amount or a money selector",
   "created_at@xpizza-dispatch/index.html<script@0>#renderReconciliationSection>anon": "a lifecycle timestamp for display / aging / ordering — not an amount or a money selector",
   "created_at@xpizza-dispatch/index.html<script@0>#showLookupPin": "a lifecycle timestamp for display / aging / ordering — not an amount or a money selector",
