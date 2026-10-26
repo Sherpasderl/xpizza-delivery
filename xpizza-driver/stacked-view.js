@@ -864,7 +864,7 @@ export function gpsoffHtml(info = {}, deps = {}) {
   const chip = (ok, txt) => `<span class="go-chip ${ok ? 'ok' : 'err'}">${esc(txt)}</span>`;
   const row = (icon, title, sub, chipHtml) => `<div class="go-row"><span class="go-ic">${icon}</span><div class="go-rtext"><div class="go-rt">${esc(title)}</div><div class="go-rd">${esc(sub)}</div></div>${chipHtml}</div>`;
   // permission row (the prototype's first row) — shown wherever we can read permission (native + web)
-  const permRow = row(GPSOFF_GPS, 'Permiso de ubicación', '«Permitir siempre»', chip(!permDenied, permDenied ? 'Negado' : 'Ok'));
+  const permRow = row(GPSOFF_GPS, 'Permiso de ubicación', '“Permitir siempre”', chip(!permDenied, permDenied ? 'Negado' : 'Ok'));
   // provider row (native only) — shown when the phone's location switch is OFF (the second real cause)
   const provRow = providerOff ? row(GPSOFF_GPS, 'Ubicación del teléfono', 'Encendé el GPS', chip(false, 'Apagada')) : '';
   // battery row (native only, when known) — the prototype's second row
