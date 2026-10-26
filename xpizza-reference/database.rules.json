@@ -109,6 +109,7 @@
     "config": {
       ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true",
       ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()",
+      "dispatch_contact": { ".validate": "newData.isString() && newData.val().matches(/^\\+[1-9][0-9]{7,14}$/)" },
       "rewards_public": {
         "redemption_live": { ".read": true }
       }
@@ -140,6 +141,21 @@
       ".indexOn": ["created_at"],
       "$alert_id": {
         ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()"
+      }
+    },
+
+    "driver_problems": {
+      ".read": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()",
+      "$oid": {
+        "$pushId": {
+          ".write": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && !data.exists() && newData.child('by').val() === auth.uid && (root.child('tasks').child($oid + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($oid + '_pickup').child('assigned_driver_id').val() === auth.uid)",
+          ".validate": "newData.hasChildren(['reason', 'by', 'at'])",
+          "reason": { ".validate": "newData.val() === 'waiting_restaurant' || newData.val() === 'not_ready_incomplete' || newData.val() === 'customer_no_answer' || newData.val() === 'address_not_found' || newData.val() === 'restaurant_closed' || newData.val() === 'other'" },
+          "note": { ".validate": "newData.isString() && newData.val().length <= 200" },
+          "by": { ".validate": "newData.isString()" },
+          "at": { ".validate": "newData.isNumber() && newData.val() === now" },
+          "$other": { ".validate": false }
+        }
       }
     },
 

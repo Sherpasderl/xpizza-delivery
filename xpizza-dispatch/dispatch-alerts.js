@@ -18,7 +18,22 @@ const REGISTRY = {
   payment_aged_refund_pending:     { category: 'payment',     severity: 'neutral', iconId: 'i-card' },
   paid_superseded:                 { category: 'payment',     severity: 'red',     iconId: 'i-card' },   // PLAN-H0
   reversal_uncertain:              { category: 'payment',     severity: 'red',     iconId: 'i-card' },   // PLAN-H0
+  driver_problem:                  { category: 'driver-problem', severity: 'amber', iconId: 'i-alert' },  // DRIVER F
 };
+
+// DRIVER F — «Problema con este pedido»: the driver app's six reasons (the APPROVED prototype copy, verbatim), keyed by the ids
+// the server validates. The alert carries the id; the Torre shows the label. An id outside the six never renders raw.
+const DRIVER_PROBLEM_REASON_LABELS = Object.freeze({
+  waiting_restaurant:   'Estoy esperando en el restaurante',
+  not_ready_incomplete: 'El pedido no está listo o está incompleto',
+  customer_no_answer:   'El cliente no contesta',
+  address_not_found:    'No encuentro la dirección',
+  restaurant_closed:    'El local está cerrado',
+  other:                'Otro',
+});
+export function driverProblemReasonLabel(reason) {
+  return Object.prototype.hasOwnProperty.call(DRIVER_PROBLEM_REASON_LABELS, reason) ? DRIVER_PROBLEM_REASON_LABELS[reason] : DRIVER_PROBLEM_REASON_LABELS.other;
+}
 
 export function classifyAlert(alert) {
   const type = alert && typeof alert.type === 'string' ? alert.type : '';

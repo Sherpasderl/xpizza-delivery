@@ -12,7 +12,7 @@ const { execFileSync } = require('child_process');
 const { HUNKS, BASE, unapplyPortalUiIndex, unapplyPortalUiFold } = require('./tools/portalui-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))));   // train: stackseq (newest) innermost, then O1b, then PLAN 2
+const real = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))));   // train: drvf (newest) innermost, then stackseq, O1b, PLAN 2
 
 // 3a T-c (merged onto this slice in feat/portal-team) appended ONE export to the membership line after BASE — a same-line hunk,
 // folded out here so this pin keeps judging portal-ui's own two hunks against BASE (the membership inverse covers T-c's line)
@@ -61,7 +61,7 @@ ok(`SAME-LINE: index.js has the base's ${bl.length} lines; exactly lines ${diffe
 
 // ── 3. the fold variant ──
 const { foldPortalSplit } = require('./tools/portal-split');
-const fold = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bFold(foldPortalSplit()));   // train: O1b fold (newest) innermost, then PLAN 2
+const fold = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bFold(require('./tools/drvf-inverse').unapplyDrvfIndex(foldPortalSplit())));   // train: drvf (newest) innermost, then the O1b fold, then PLAN 2
 assert.ok(!fold.includes('PORTAL_OPS_TARGETS'), 'foldPortalSplit drops the early-branch region (with the ops branch in it)');
 assert.ok(fold.includes(HUNKS[1].now), 'premise: the re-export hunk survives the portal fold');
 const folded = unapplyPortalUiFold(fold);

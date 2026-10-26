@@ -255,7 +255,8 @@
   "access": "owner ACCESS-CENSUS / kitchen-roster CLI (PLATFORM F2 Q1) — read-only audit of order ownership, KDS parity, attribution counts and history size; no customer or staff surface, never a writer of /orders",
   "prepstats": "S5 daily prep summary (prepStatsDaily) — reads order_timelines + exactly two order leaves per candidate (restaurant_id, customer_phone) for ATTRIBUTION and the ready-time EXCLUSIONS only; publishes per restaurant × bucket aggregates {median_min, p80_min, n} — never an order fact, an amount or a phone",
   "merchant": "merchant HANDHELD writer (H1a, PLAN-H1a r2 + amendment A-R1) — device-scoped order transitions on orders/{oid} (status CAS + prep + handheld_answered + handheld_ops receipts + reject_intent in ONE transaction), the reject executor (the EXISTING cancelOrderCore, injected) and its op-matched reject_outcome, the reject repair pass (reads persisted reject/cancel/payment state only to decide a dispatch notice — never displays or moves money), busy / pause / agotado; its reads only GATE its own writes — no customer display; persisted outputs covered as writer evidence (census writtenFields / opaqueWriteResolutions). PROPOSED by the handheld session for 2e review (D6).",
-  "branches": "branch LIFECYCLE writer + Sherpa-admin CLI (ORCHESTRATION O1a) — identity / brand membership / reservations / op records; reads an order's STATUS only to COUNT live orders (the pin-move guard and the deactivation consequences) — never displayed as an order fact, never a writer of /orders"
+  "branches": "branch LIFECYCLE writer + Sherpa-admin CLI (ORCHESTRATION O1a) — identity / brand membership / reservations / op records; reads an order's STATUS only to COUNT live orders (the pin-move guard and the deactivation consequences) — never displayed as an order fact, never a writer of /orders",
+  "driverreport": "DRIVER F «Problema con este pedido» alert WRITER (alertOnDriverProblem) — reads exactly two order leaves (display_number, restaurant_id) only to LABEL an internal dispatcher_alerts row for the Torre; no customer surface, never a writer of /orders or /tasks"
  },
  "serverFunctions": {
   "alert-prune.js#alertOrderIds": "infra",
@@ -691,7 +692,8 @@
   "sequencing/plan-stack.js#otherOrders": "dispatch",
   "sequencing/plan-stack.js#planStack": "dispatch",
   "sequencing/plan-stack.js#planStack>anon": "dispatch",
-  "sequencing/post-claim.js#candidateState": "dispatch"
+  "sequencing/post-claim.js#candidateState": "dispatch",
+  "driver-problem-alert.js#alertOnDriverProblem": "driverreport"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
