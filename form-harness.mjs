@@ -33,6 +33,97 @@ export const settle = async () => { for (let i = 0; i < 6; i++) await new Promis
 // transitions, so the fallback is what moves the stage — and the test has to outlast it.
 export const stageSettle = async () => { await new Promise((r) => setTimeout(r, 240)); await settle(); };
 
+/* LOGICAL TIME (opt-in: `loadForm(dir, { clock })`; without it a page runs on real timers, exactly as before). A suite that
+   waits out the page's own timers in REAL time (stageSettle's 240 ms × hundreds, retry backoffs) is load-dependent and mostly
+   idle: g2 measured 68 s of a 99 s run asleep. With a clock, the page's setTimeout / setInterval and its Date read ONE
+   logical time that moves only when the suite says `await clock.advance(ms)`:
+     · a timer fires iff logical time passes its deadline, in deadline order (ties: the order each instance was ARMED — a re-armed interval queues behind earlier timers, as browsers do), each in its own
+       macrotask followed by the same real turns settle() gives — so promise chains a timer starts run before the next;
+     · a 0-delay timer stays a REAL macrotask (settle() still flushes it, as every suite expects);
+     · Date.now() / new Date() = the clock's start + the logical time — a `while (Date.now() < deadline)` poll advances with
+       the timers, never against the wall;
+     · `await clock.sleep(ms)` is the suite's wait (concurrent sleeps OVERLAP, as real ones do); `advance(ms)` is an explicit,
+       serialized jump for single-actor code.
+   One clock may serve several windows: advancing it runs every window's due timers.
+   ⚠️ DEADLOCK BY DESIGN: logical time moves ONLY while a sleep() waits. A test that awaits a PAGE promise directly (e.g.
+   `await w.submitOrder()`) while that page path awaits a logical timer (a retry backoff, a poll sleep) HANGS until the
+   suite's watchdog — real time would have settled it. Race such an await against the clock instead:
+   `await Promise.race([pagePromise, clock.sleep(ms)])` (or sleep, then assert on the settled state). */
+export function makeLogicalClock(start = Date.now()) {
+  let offset = 0; let seq = 0; let chain = Promise.resolve();
+  const timers = new Map();
+  const realTurn = () => new Promise((r) => setTimeout(r, 0));
+  const fire = (t) => {
+    try { if (typeof t.fn === 'function') t.fn(...t.args); } catch (e) { t.sink.push(e && e.message ? e.message : String(e)); }
+  };
+  const add = (fn, ms, args, sink, every) => {
+    const id = ++seq; const d = Math.max(0, Number(ms) || 0);
+    if (d === 0 && !every) {   // a REAL macrotask, so settle() keeps flushing it
+      const t = { fn, args, sink, real: null };
+      t.real = setTimeout(() => { if (timers.get(id) === t) { timers.delete(id); fire(t); } }, 0);
+      timers.set(id, t); return id;
+    }
+    timers.set(id, { id, order: ++seq, due: offset + d, every: every ? Math.max(1, d) : 0, fn, args, sink });
+    return id;
+  };
+  const clear = (id) => { const t = timers.get(id); if (t && t.real) clearTimeout(t.real); timers.delete(id); };
+  async function run(target) {
+    for (;;) {
+      let next = null;
+      for (const t of timers.values()) if (!t.real && t.due <= target && (!next || t.due < next.due || (t.due === next.due && t.order < next.order))) next = t;
+      if (!next) break;
+      offset = next.due;
+      if (next.every) { next.due += next.every; next.order = ++seq; } else timers.delete(next.id);   // a re-armed interval queues behind timers armed earlier
+      fire(next);
+      for (let i = 0; i < 6; i++) await realTurn();
+    }
+    offset = target;
+    for (let i = 0; i < 6; i++) await realTurn();
+  }
+  /* sleep(ms) — the suite's own wait, AS A LOGICAL TIMER: it wakes at (now + ms), and time jumps to the earliest pending
+     event only once the process is idle (the same 6 real turns settle() trusts). So CONCURRENT sleeps OVERLAP, as real
+     sleeps do — 16 cells each waiting 240 ms cost 240 logical ms, not 16 × 240 (a serialized advance() runs time fast and
+     fires page timers early). The driver runs only while a sleeper waits: between waits, page timers never fire. */
+  let sleepers = 0; let driving = false;
+  async function drive() {
+    if (driving) return; driving = true;
+    try {
+      while (sleepers > 0) {
+        for (let i = 0; i < 6; i++) await realTurn();
+        let next = null;
+        for (const t of timers.values()) if (!t.real && (!next || t.due < next.due || (t.due === next.due && t.order < next.order))) next = t;
+        if (!next) break;
+        await run(next.due);
+      }
+    } finally { driving = false; }
+  }
+  return {
+    now: () => start + offset,
+    elapsed: () => offset,
+    pending: () => [...timers.values()].filter((t) => !t.real).length,
+    sleeping: () => sleepers,
+    advance(ms) { const p = chain.then(() => run(offset + Math.max(0, Number(ms) || 0))); chain = p.catch(() => {}); return p; },
+    sleep(ms) {
+      return new Promise((resolve) => {
+        sleepers++;
+        add(() => { sleepers--; resolve(); }, Math.max(1, Number(ms) || 0), [], [], false);
+        drive();
+      });
+    },
+    install(window, sink) {
+      window.setTimeout = (fn, ms, ...args) => add(fn, ms, args, sink, false);
+      window.setInterval = (fn, ms, ...args) => add(fn, ms, args, sink, true);
+      window.clearTimeout = clear; window.clearInterval = clear;
+      const RealDate = window.Date; const clock = this;
+      class LogicalDate extends RealDate {
+        constructor(...a) { if (a.length) super(...a); else super(clock.now()); }
+        static now() { return clock.now(); }
+      }
+      window.Date = LogicalDate;
+    },
+  };
+}
+
 // The endpoint's real envelope, exactly as index.js sends it.
 /* The version is a PARAMETER with the historical default, because the representation-gate fix made it
    observability rather than a gate: a suite that wants to drive an unexpected representation through
@@ -47,7 +138,7 @@ export const envelope = (rid, menu, representationVersion = '1b.1') => ({ rid, r
 /* `transforms` ({ 'account.js': (code) => code }) rewrites ONE local script before it is inlined — for a seam the page has
    no other way to offer (account.js loads the Firebase SDK by dynamic https import, which jsdom cannot run). A transform
    must replace only the unreachable dependency; everything around it runs as shipped. */
-export function loadForm(dir, { omit = [], transforms = {} } = {}) {
+export function loadForm(dir, { omit = [], transforms = {}, clock = null } = {}) {
   let html = readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8');
   html = html.replace(/<script src="(?!https?:)([^"]+)"><\/script>/g, (m, src) => {
     if (omit.indexOf(src) !== -1) return '';
@@ -77,7 +168,9 @@ export function loadForm(dir, { omit = [], transforms = {} } = {}) {
   const vc = new VirtualConsole();          // swallow the page's own console noise
   const jsdomErrors = [];
   vc.on('jsdomError', (e) => jsdomErrors.push(e.message));
-  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://orders.test/', pretendToBeVisual: true, virtualConsole: vc });
+  // `clock` (makeLogicalClock): installed BEFORE parse, so the timers the page arms while it boots are logical too
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://orders.test/', pretendToBeVisual: true, virtualConsole: vc,
+    ...(clock ? { beforeParse: (win) => clock.install(win, jsdomErrors) } : {}) });
   const w = dom.window;
   /* The default responder NEVER SETTLES, rather than rejecting. A rejected background fetch is not
      inert: the server-quote refresh clears its own cache when its request fails, so a rejection landing
