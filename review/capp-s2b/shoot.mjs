@@ -22,7 +22,7 @@ const OUT = path.join(HERE, 'shots');
 const W = 390, H = 844;
 // [state, title, reference: 'proto' | mockup figure id | 'forms']
 const STATES = [
-  ['asap-width', 'OWNER DECISION — the ASAP card alone in the drawn .opts grid', 'proto'],
+  ['asap-width', 'ASAP card alone in the drawn .opts grid (owner ruled: half width)', 'proto'],
   ['checkout-guest', 'Guest checkout · delivery', 'proto'],
   ['checkout-guest-bottom', 'Guest checkout · delivery, scrolled to Tu pedido / Pago', 'proto'],
   ['checkout-member', 'Member checkout', 'proto'],
