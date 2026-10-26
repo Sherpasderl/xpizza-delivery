@@ -230,6 +230,7 @@
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
+    "xpizza-functions/test/portal-1b.emulator.test.js",
     "xpizza-functions/test/portal-handlers.emulator.test.js",
     "xpizza-functions/test/portal-ops.emulator.test.js",
     "xpizza-functions/test/preparing-ready.emulator.test.js",
@@ -265,6 +266,7 @@
     "xpizza-orders/form-safe-render.test.mjs",
     "xpizza-orders/form-serial-order.copy.test.mjs",
     "xpizza-orders/form-serial-order.test.mjs",
+    "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -421,6 +423,7 @@
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
+    "xpizza-functions/test/portal-1b.emulator.test.js",
     "xpizza-functions/test/portal-handlers.emulator.test.js",
     "xpizza-functions/test/portal-ops.emulator.test.js",
     "xpizza-functions/test/preparing-ready.emulator.test.js",
@@ -442,7 +445,8 @@
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
-    "xpizza-functions/tools/verify-first-group.test.js"
+    "xpizza-functions/tools/verify-first-group.test.js",
+    "xpizza-portal/branch-1b-logic.test.mjs"
    ]
   },
   "la-musa-orders": {
@@ -671,6 +675,7 @@
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
+    "xpizza-functions/test/portal-1b.emulator.test.js",
     "xpizza-functions/test/portal-handlers.emulator.test.js",
     "xpizza-functions/test/portal-ops.emulator.test.js",
     "xpizza-functions/test/preparing-ready.emulator.test.js",
@@ -699,6 +704,7 @@
     "xpizza-orders/form-identity-strip.copy.test.mjs",
     "xpizza-orders/form-live-menu.copy.test.mjs",
     "xpizza-orders/form-serial-order.copy.test.mjs",
+    "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -863,6 +869,7 @@
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
     "xpizza-functions/test/pickup-ready.emulator.test.js",
+    "xpizza-functions/test/portal-1b.emulator.test.js",
     "xpizza-functions/test/portal-handlers.emulator.test.js",
     "xpizza-functions/test/portal-ops.emulator.test.js",
     "xpizza-functions/test/preparing-ready.emulator.test.js",
@@ -884,7 +891,8 @@
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
-    "xpizza-groupless-golden.test.mjs"
+    "xpizza-groupless-golden.test.mjs",
+    "xpizza-portal/branch-1b-logic.test.mjs"
    ]
   },
   "xpizza-kitchen": {
