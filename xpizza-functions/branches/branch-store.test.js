@@ -9,6 +9,9 @@ const S = require('./branch-store');
 // LOGICAL TIME (Codex flakefix r1; standing rule: lease / TTL tests never read the wall clock): every lifecycle call made here runs
 // on an injected clock pinned to its own `now`, so a lease's `until` is exactly now + LEASE_MS and an expiry probe is decided by
 // the logical times the test states — never by how long a holder or a probe actually ran.
+// STANDING proof (Codex flakefix r2): the whole file runs with the wall clock DISABLED — any lease computation (or anything else)
+// that reads Date.now() here throws and turns the run RED, so a future call that forgets its logical `now` cannot pass silently.
+Date.now = () => { throw new Error('branch-store.test: Date.now() read — every lifecycle call here runs on logical time'); };
 for (const k of ['createDraft', 'createBrandWithDraft', 'deleteBranchDraft', 'materializeBranch', 'resumeBranchOp', 'setBranchActive', 'activateBrand', 'deactivateBrand']) {
   const f = S[k];
   S[k] = (db, o = {}) => f(db, Number.isFinite(o.now) && typeof o.clock !== 'function' ? { ...o, clock: () => o.now } : o);
@@ -114,16 +117,16 @@ const noInc = (v) => (v == null ? v : JSON.parse(JSON.stringify(v, (k, x) => (k 
   {
     const db = base();
     await S.createDraft(db, { input: INPUT, opId: 'op1', callerUid: 'own1', now: NOW });
-    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_brand_centro', brandId: 'tb_brand' }), { ok: true });
+    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_brand_centro', brandId: 'tb_brand', now: NOW + 1 }), { ok: true });
     for (const p of ['restaurants/tb_brand_centro', 'rid_reservations/tb_brand_centro', 'branch_op_ids/tb_brand/op1']) assert.strictEqual(db.get(p), null, `${p} removed`);
     assert.deepStrictEqual(db.get('brand_branch_names/tb_brand'), null, 'name reservation released');
-    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_norte', brandId: 'tb_brand' }), { ok: false, error: 'not_a_draft' });
+    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_norte', brandId: 'tb_brand', now: NOW + 1 }), { ok: false, error: 'not_a_draft' });
     await S.createDraft(db, { input: { ...INPUT, location_name: 'Este' }, opId: 'op5', callerUid: 'own1', now: NOW });
     db.root.rid_reservations.tb_brand_este = { op_id: 'other', brand_id: 'tb_brand' };   // a reservation this draft's op does not own
     db.root.brand_branch_names.tb_brand.este = { op_id: 'other' };
-    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_brand_este', brandId: 'tb_brand' }), { ok: true });
+    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_brand_este', brandId: 'tb_brand', now: NOW + 1 }), { ok: true });
     assert.deepStrictEqual([db.get('rid_reservations/tb_brand_este'), db.get('brand_branch_names/tb_brand/este')], [{ op_id: 'other', brand_id: 'tb_brand' }, { op_id: 'other' }], 'never frees a reservation another op owns');
-    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_brand_centro', brandId: 'other' }), { ok: false, error: 'not_a_draft' });
+    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_brand_centro', brandId: 'other', now: NOW + 1 }), { ok: false, error: 'not_a_draft' });
   }
   ok('deleteBranchDraft: removes the draft + its rid / name reservations + op-id mapping; refuses a non-draft or another brand; never frees a reservation another op owns');
 
@@ -348,7 +351,7 @@ const noInc = (v) => (v == null ? v : JSON.parse(JSON.stringify(v, (k, x) => (k 
     const db = fakeRtdb({ brands: { tb_brand: BRAND } });
     const first = { location_name: 'Centro', phone: '+50499990000', hours: H7, prep_default_min: 20 };
     await S.createBrandWithDraft(db, { brandId: 'tb_nueva', brandName: 'Nueva', input: first, opId: 'create_tb_nueva', callerUid: 'sherpa', now: NOW });
-    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_nueva_centro', brandId: 'tb_nueva' }), { ok: true });
+    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_nueva_centro', brandId: 'tb_nueva', now: NOW + 1 }), { ok: true });
     for (const p of ['brands/tb_nueva', 'restaurants/tb_nueva_centro', 'rid_reservations/tb_nueva_centro', 'brand_branch_names/tb_nueva', 'branch_op_ids/tb_nueva', 'brand_ops/tb_nueva']) assert.strictEqual(db.get(p), null, `${p} removed (the never-opened brand is abandoned whole)`);
     assert.deepStrictEqual(db.get('brands/tb_brand'), BRAND, 'other brands untouched');
   }
