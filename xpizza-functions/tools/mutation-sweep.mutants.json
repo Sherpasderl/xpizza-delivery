@@ -19689,5 +19689,80 @@
    "node",
    "../xpizza-driver/slice2-branch.test.js"
   ]
+ },
+ {
+  "id": "formcheck-01",
+  "slice": "formcheck",
+  "label": "identity keys the forms accept-and-ignore are compared, so every published menu reads as drifted",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "const strip = (r) => Object.fromEntries(Object.entries(r || {}).filter(([k]) => !IDENTITY_KEYS.has(k)));",
+  "to": "const strip = (r) => Object.fromEntries(Object.entries(r || {}));",
+  "kills_with": [
+   "identical menus (+ identity keys) pass clean"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
+ },
+ {
+  "id": "formcheck-02",
+  "slice": "formcheck",
+  "label": "a baked dish the brand no longer publishes passes the check",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "if (!live.has(k)) { out.fail.push(`${label} ${k}: baked but absent from the published menu`); continue; }",
+  "to": "if (!live.has(k)) continue;",
+  "kills_with": [
+   "a baked dish missing from the published menu fails"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
+ },
+ {
+  "id": "formcheck-03",
+  "slice": "formcheck",
+  "label": "a published-only addition fails the deploy instead of warning",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "for (const [k, l] of live) if (!baked.has(k)) out.warn.push(",
+  "to": "for (const [k, l] of live) if (!baked.has(k)) out.fail.push(",
+  "kills_with": [
+   "a published-only dish does NOT fail"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
+ },
+ {
+  "id": "formcheck-04",
+  "slice": "formcheck",
+  "label": "a repriced dish passes the check (the la_musa incident)",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "if (!same(bb[f], l[f])) out.fail.push(",
+  "to": "if (false) out.fail.push(",
+  "kills_with": [
+   "a repriced dish fails"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
+ },
+ {
+  "id": "formcheck-05",
+  "slice": "formcheck",
+  "label": "a form folder carrying a baked menu but missing from the registry is not reported",
+  "file": "tools/form-bundle-live-check.js",
+  "from": " && !registered.has(p.replace(/\\\\/g, '/')));",
+  "to": ");",
+  "kills_with": [
+   "every form that carries a baked menu is in the splice registry"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
  }
 ]

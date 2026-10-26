@@ -244,6 +244,7 @@
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/form-bundle-live-check.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
     "xpizza-groupless-golden.test.mjs",
@@ -430,6 +431,7 @@
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/form-bundle-live-check.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
     "xpizza-functions/tools/verify-first-group.test.js"
    ]
@@ -674,6 +676,7 @@
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/form-bundle-live-check.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
     "xpizza-groupless-golden.test.mjs",
     "xpizza-orders/form-cart.copy.test.mjs",
@@ -861,6 +864,7 @@
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/form-bundle-live-check.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
     "xpizza-groupless-golden.test.mjs"
    ]
@@ -1277,6 +1281,7 @@
   "xpizza-functions/tools/app-suites.js",
   "xpizza-functions/tools/draft-drift-report.js",
   "xpizza-functions/tools/extras-baseline-audit.js",
+  "xpizza-functions/tools/form-bundle-live-check.js",
   "xpizza-functions/tools/menus-divergence-report.js",
   "xpizza-functions/tools/migrate-catalog-display.js",
   "xpizza-functions/tools/publish-version.js",
@@ -1284,6 +1289,7 @@
   "xpizza-functions/tools/registry-writers.js",
   "xpizza-functions/tools/seed-catalog.js",
   "xpizza-functions/tools/seed-source-store.js",
+  "xpizza-functions/tools/splice-form-bundle.js",
   "xpizza-functions/tools/verify-first-group-core.js"
  ],
  "seed": [
