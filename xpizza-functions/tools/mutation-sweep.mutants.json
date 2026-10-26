@@ -19694,8 +19694,8 @@
   "id": "formcheck-01",
   "slice": "formcheck",
   "label": "identity keys the forms accept-and-ignore are compared, so every published menu reads as drifted",
-  "file": "tools/form-bundle-live-check.js",
-  "from": "const strip = (r) => Object.fromEntries(Object.entries(r || {}).filter(([k]) => !IDENTITY_KEYS.has(k)));",
+  "file": "catalog/bundle-compare.js",
+  "from": "const strip = (r) => Object.fromEntries(Object.entries(r || {}).filter(([k]) => !IGNORED.has(k)));",
   "to": "const strip = (r) => Object.fromEntries(Object.entries(r || {}));",
   "kills_with": [
    "identical menus (+ identity keys) pass clean"
@@ -19709,7 +19709,7 @@
   "id": "formcheck-02",
   "slice": "formcheck",
   "label": "a baked dish the brand no longer publishes passes the check",
-  "file": "tools/form-bundle-live-check.js",
+  "file": "catalog/bundle-compare.js",
   "from": "if (!live.has(k)) { out.fail.push(`${label} ${k}: baked but absent from the published menu`); continue; }",
   "to": "if (!live.has(k)) continue;",
   "kills_with": [
@@ -19724,7 +19724,7 @@
   "id": "formcheck-03",
   "slice": "formcheck",
   "label": "a published-only addition fails the deploy instead of warning",
-  "file": "tools/form-bundle-live-check.js",
+  "file": "catalog/bundle-compare.js",
   "from": "for (const [k, l] of live) if (!baked.has(k)) out.warn.push(",
   "to": "for (const [k, l] of live) if (!baked.has(k)) out.fail.push(",
   "kills_with": [
@@ -19739,7 +19739,7 @@
   "id": "formcheck-04",
   "slice": "formcheck",
   "label": "a repriced dish passes the check (the la_musa incident)",
-  "file": "tools/form-bundle-live-check.js",
+  "file": "catalog/bundle-compare.js",
   "from": "if (!same(bb[f], l[f])) out.fail.push(",
   "to": "if (false) out.fail.push(",
   "kills_with": [
@@ -20312,54 +20312,6 @@
   ]
  },
  {
-  "id": "fb-27",
-  "slice": "formbake",
-  "label": "PLAN 4 §3: an option value naming nothing is baked",
-  "file": "tools/bake-form-bundle.js",
-  "from": "      for (const v of vals) if (!extraCats.has(v) && !extraKeys.has(v)) r.push(`bake_option_map_value: ${field}.${k} → ${v}`);",
-  "to": "",
-  "command": [
-   "node",
-   "tools/bake-form-bundle.test.js"
-  ]
- },
- {
-  "id": "fb-28",
-  "slice": "formbake",
-  "label": "PLAN 4 §3: a gate naming no category is baked",
-  "file": "tools/bake-form-bundle.js",
-  "from": "    for (const c of m[field]) if (!catIds.has(c)) r.push(`bake_gate_unknown_category: ${field} → ${c}`);",
-  "to": "",
-  "command": [
-   "node",
-   "tools/bake-form-bundle.test.js"
-  ]
- },
- {
-  "id": "fb-29",
-  "slice": "formbake",
-  "label": "PLAN 4 §3: a badge priority naming no badge is baked",
-  "file": "tools/bake-form-bundle.js",
-  "from": "    else for (const k of m.badge_priority) if (!isObj(m.badges) || !Object.prototype.hasOwnProperty.call(m.badges, k)) r.push(`bake_badge_priority_unknown: ${k}`);",
-  "to": "",
-  "command": [
-   "node",
-   "tools/bake-form-bundle.test.js"
-  ]
- },
- {
-  "id": "fb-30",
-  "slice": "formbake",
-  "label": "PLAN 4 §3: an off-set reward icon is baked",
-  "file": "tools/bake-form-bundle.js",
-  "from": "    recs.forEach((x, i) => { if (isObj(x) && x.reward_icon !== undefined && !REWARD_ICONS.includes(x.reward_icon)) r.push(`bake_reward_icon: ${coll}@${i}`); });",
-  "to": "",
-  "command": [
-   "node",
-   "tools/bake-form-bundle.test.js"
-  ]
- },
- {
   "id": "fb-31",
   "slice": "formbake",
   "label": "PLAN 4 §3: the shared picker's variant rule is not applied to the bake",
@@ -20387,7 +20339,7 @@
   "id": "fb-33",
   "slice": "formbake",
   "label": "PLAN 4 §3: the live check stops comparing badge_priority",
-  "file": "tools/form-bundle-live-check.js",
+  "file": "catalog/bundle-compare.js",
   "from": "  compareKeyed('badge_priority', whole(baked.badge_priority), whole(published.badge_priority), out);",
   "to": "",
   "command": [
@@ -20399,7 +20351,7 @@
   "id": "fb-34",
   "slice": "formbake",
   "label": "PLAN 4 §3: the live check stops comparing extras_by_category",
-  "file": "tools/form-bundle-live-check.js",
+  "file": "catalog/bundle-compare.js",
   "from": "  compareKeyed('extras_by_category', byKey(baked.extras_by_category), byKey(published.extras_by_category), out);",
   "to": "",
   "command": [
@@ -20411,7 +20363,7 @@
   "id": "fb-35",
   "slice": "formbake",
   "label": "PLAN 4 §3: the live check stops comparing the weekend gate",
-  "file": "tools/form-bundle-live-check.js",
+  "file": "catalog/bundle-compare.js",
   "from": "  compareKeyed('weekend_only', asSet(baked.weekend_only_cats), asSet(published.weekend_only_cats), out);",
   "to": "",
   "command": [
@@ -20609,6 +20561,186 @@
   "command": [
    "node",
    "formbake-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "fb-27",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: an option value naming nothing is baked / applied (the shared rule)",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "      map[k].forEach(function (v) { if (!extraCats.has(v) && !extraNamed(extras, v)) throw new Error(\"apply_option_map_value:\" + f + \".\" + k + \"=\" + v); });",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-28",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: a gate naming no category is baked / applied (the shared rule)",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "    g.forEach(function (c) { if (!catIds.has(c)) throw new Error(\"apply_gate_unknown_category:\" + f + \"=\" + c); });",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-29",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: a badge priority naming no badge is baked / applied (the shared rule)",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "    body.badge_priority.forEach(function (k) { if (!isPlainObj(body.badges) || !Object.prototype.hasOwnProperty.call(body.badges, k)) throw new Error(\"apply_badge_priority_unknown:\" + k); });",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-30",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: an off-set reward icon is baked / applied (the shared rule)",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "    pair[1].forEach(function (x, i) { if (x && x.reward_icon !== undefined && REWARD_ICONS.indexOf(x.reward_icon) === -1) throw new Error(\"apply_reward_icon:\" + pair[0] + \"@\" + i); });",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-60",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.3: the shared resolver ignores an extra-key map value (only categories render)",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "    else { const e = extraNamed(extras, v); if (e) { const g = groupOf(e.cat); if (g.extras.indexOf(e) === -1) g.extras.push(e); } }",
+  "to": "",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-61",
+  "slice": "formbake",
+  "label": "PLAN 4 §1: x_pizza's options go back to 'every category of EXTRAS' (the published map ignored)",
+  "file": "../xpizza-orders/index.html",
+  "from": "  return GroupPicker.offeredExtraGroups(dish, EXTRAS, EXTRAS_BY_CATEGORY, EXTRAS_BY_ITEM);",
+  "to": "  return [...new Set(EXTRAS.map(e => e.cat))].map(cat => ({ cat, extras: EXTRAS.filter(e => e.cat === cat) }));",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-62",
+  "slice": "formbake",
+  "label": "PLAN 4 §1: x_pizza's EXTRAS boot falls back to the literal",
+  "file": "../xpizza-orders/index.html",
+  "from": "let EXTRAS = _bootSelect('extras', _okRecords, [], true);",
+  "to": "let EXTRAS = _bootSelect('extras', _okRecords, FALLBACK_EXTRAS, true);",
+  "command": [
+   "node",
+   "form-runtime-literals.guard.test.js"
+  ]
+ },
+ {
+  "id": "fb-63",
+  "slice": "formbake",
+  "label": "PLAN 4 §1: la_musa's badge choice ignores the published priority (TAG_PRIORITY)",
+  "file": "../la-musa-orders/index.html",
+  "from": "  for (const t of BADGE_PRIORITY) {",
+  "to": "  for (const t of TAG_PRIORITY) {",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-64",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.4: x_pizza's live apply stops running the shared display rule (a malformed map applies)",
+  "file": "../xpizza-orders/index.html",
+  "from": "  // PLAN 4 r3 §8.4: the option maps, gates, badges, priority and reward icons by the SAME shared rule the bake ran\n  GroupPicker.validateDisplayStructures(body);\n  const isMap",
+  "to": "  const isMap",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-65",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.4: la_musa's live apply keeps the old badge definitions",
+  "file": "../la-musa-orders/index.html",
+  "from": "    TAG_BADGES: (body.badges && typeof body.badges === 'object' && !Array.isArray(body.badges)) ? body.badges : TAG_BADGES,",
+  "to": "    TAG_BADGES: TAG_BADGES,",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-66",
+  "slice": "formbake",
+  "label": "PLAN 4 §1: x_pizza's reward picker ignores the published reward_icon",
+  "file": "../xpizza-orders/index.html",
+  "from": "icon:p.reward_icon||ICON[p.name]||'slice' }));",
+  "to": "icon:ICON[p.name]||'slice' }));",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-67",
+  "slice": "formbake",
+  "label": "PLAN 4 §1: la_musa's reward picker ignores the published reward_icon",
+  "file": "../la-musa-orders/index.html",
+  "from": "section:c[0], icon:p.reward_icon||c[1] }); });",
+  "to": "section:c[0], icon:c[1] }); });",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-68",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: an unusable boot structure is not announced",
+  "file": "../xpizza-orders/index.html",
+  "from": "  const go = () => { try { announceMenuBroken(); } catch(_){} };",
+  "to": "  const go = () => {};",
+  "command": [
+   "node",
+   "form-bundle-splice.test.js"
+  ]
+ },
+ {
+  "id": "fb-69",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: a REQUIRED structure absent from the bundle is not treated as broken",
+  "file": "../xpizza-orders/index.html",
+  "from": "  if (v === undefined && !required) return empty;",
+  "to": "  if (v === undefined) return empty;",
+  "command": [
+   "node",
+   "form-bundle-splice.test.js"
+  ]
+ },
+ {
+  "id": "fb-70",
+  "slice": "formbake",
+  "label": "PLAN 4 §4: overlayIdentity:false is ignored — the reconciler's read carries identity keys the deployed bundle never has (every rid reads as stale forever)",
+  "file": "catalog/public-menu.js",
+  "from": "  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, body);",
+  "to": "  const enriched = await applyIdentityToServedBody(db, restaurantId, body);",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
   ]
  }
 ]

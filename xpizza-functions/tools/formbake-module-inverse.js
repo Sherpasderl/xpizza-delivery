@@ -73,6 +73,11 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/public-menu.js",
+  "now": "     exactly the menu served today, because in D1 nothing reads them. */\n  // PLAN 4 r3 §4: the reconciler compares the DEPLOYED bundle (baked, overlay-free) with the published menu read with\n  // `overlayIdentity: false` — the same body minus the overlay. Every other caller (the endpoint) gets the overlay, unchanged.\n  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, body);\n  body = enriched.body;\n",
+  "was": "     exactly the menu served today, because in D1 nothing reads them. */\n  const enriched = await applyIdentityToServedBody(db, restaurantId, body);\n  body = enriched.body;\n"
+ },
+ {
+  "file": "catalog/public-menu.js",
   "now": "\nmodule.exports = { buildPublicMenu, composeServedMenu, CARRIED_FROM_STRUCTURE, defaultIsActive, assertWholeBody, publicMenuErrorResponse, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };\n",
   "was": "\nmodule.exports = { buildPublicMenu, defaultIsActive, assertWholeBody, publicMenuErrorResponse, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };\n"
  }

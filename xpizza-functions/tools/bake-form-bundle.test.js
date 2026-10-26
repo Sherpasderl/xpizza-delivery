@@ -150,21 +150,21 @@ const loopbackFetch = (url, opts) => getJson(url, { ...opts, get: http.get, time
         ['a duplicate category', (e) => { e.menu.categories.push(clone(e.menu.categories[0])); }, /bake_category_duplicate/],
         ['a malformed category', (e) => { e.menu.categories[0] = { id: '' }; }, /bake_category_malformed@0/],
         ['an off-policy extras_policy', (e) => { e.menu.dishes[0].extras_policy = 'some'; }, /bake_apply_dish_extras_policy@0/],
-        ['a reward_icon outside the set', (e) => { e.menu.dishes[0].reward_icon = 'pizza'; }, /bake_reward_icon: dish@0/],
-        ['an extra reward_icon outside the set', (e) => { e.menu.extras[0].reward_icon = 'gift'; }, /bake_reward_icon: extra@0/],
-        ['a gate naming no category', (e) => { e.menu.weekend_only_cats = ['ghost']; }, /bake_gate_unknown_category: weekend_only_cats → ghost/],
-        ['a malformed gate', (e) => { e.menu.pickup_only_cats = 'ny'; }, /bake_gate_malformed: pickup_only_cats/],
+        ['a reward_icon outside the set', (e) => { e.menu.dishes[0].reward_icon = 'pizza'; }, /bake_apply_reward_icon:dish@0/],
+        ['an extra reward_icon outside the set', (e) => { e.menu.extras[0].reward_icon = 'gift'; }, /bake_apply_reward_icon:extra@0/],
+        ['a gate naming no category', (e) => { e.menu.weekend_only_cats = ['ghost']; }, /bake_apply_gate_unknown_category:weekend_only_cats=ghost/],
+        ['a malformed gate', (e) => { e.menu.pickup_only_cats = 'ny'; }, /bake_apply_gate_malformed:pickup_only_cats/],
         ['a variantOf naming no dish', (e) => { e.menu.dishes[0].variantOf = 9999; }, /bake_variantOf_orphan@0/],
         ['an unknown has_photo shape', (e) => { e.menu.has_photo = 'x'; }, /bake_has_photo_malformed/],
       ];
       const RLM = [
         ['a variant group naming no dish', (e) => { const k = Object.keys(e.menu.variant_items)[0]; e.menu.variant_items[k].variantIds = ['ghost_dish']; }, /bake_apply_variant_id_orphan@bake/],
-        ['an option map keyed by no category', (e) => { e.menu.extras_by_category = { ...e.menu.extras_by_category, ghost: [] }; }, /bake_option_map_key: extras_by_category\.ghost/],
-        ['an option map keyed by no dish', (e) => { e.menu.extras_by_item = { ...(e.menu.extras_by_item || {}), ghost_dish: [] }; }, /bake_option_map_key: extras_by_item\.ghost_dish/],
-        ['an option value naming neither a category nor an extra', (e) => { const k = Object.keys(e.menu.extras_by_category)[0]; e.menu.extras_by_category[k] = ['nothing']; }, /bake_option_map_value: extras_by_category\..+ → nothing/],
-        ['a malformed badge', (e) => { e.menu.badges = { ...e.menu.badges, bad: { cls: '' } }; }, /bake_badge_malformed: bad/],
-        ['a priority naming no badge', (e) => { e.menu.badge_priority = ['ghost']; }, /bake_badge_priority_unknown: ghost/],
-        ['a duplicate priority entry', (e) => { e.menu.badge_priority = ['must_try', 'must_try']; }, /bake_badge_priority_malformed/],
+        ['an option map keyed by no category', (e) => { e.menu.extras_by_category = { ...e.menu.extras_by_category, ghost: [] }; }, /bake_apply_option_map_key:extras_by_category\.ghost/],
+        ['an option map keyed by no dish', (e) => { e.menu.extras_by_item = { ...(e.menu.extras_by_item || {}), ghost_dish: [] }; }, /bake_apply_option_map_key:extras_by_item\.ghost_dish/],
+        ['an option value naming neither a category nor an extra', (e) => { const k = Object.keys(e.menu.extras_by_category)[0]; e.menu.extras_by_category[k] = ['nothing']; }, /bake_apply_option_map_value:extras_by_category\..+=nothing/],
+        ['a malformed badge', (e) => { e.menu.badges = { ...e.menu.badges, bad: { cls: '' } }; }, /bake_apply_badge_malformed:bad/],
+        ['a priority naming no badge', (e) => { e.menu.badge_priority = ['ghost']; }, /bake_apply_badge_priority_unknown:ghost/],
+        ['a duplicate priority entry', (e) => { e.menu.badge_priority = ['must_try', 'must_try']; }, /bake_apply_badge_priority_malformed/],
       ];
       let count = 0;
       for (const [rid, rows] of [['x_pizza', R], ['la_musa', RLM]]) {

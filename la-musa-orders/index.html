@@ -1936,7 +1936,8 @@ const FALLBACK_CATEGORIES = [
 // Multiple tags per item allowed in data; only the highest-priority one
 // renders to keep the card visually clean. To show a different label,
 // edit TAG_BADGES; to change priority, reorder TAG_PRIORITY.
-const TAG_BADGES = {
+// PLAN 4: the in-repo seed / test bootstrap only — the page boots TAG_BADGES from the bundle's `badges`
+const FALLBACK_TAG_BADGES = {
   signature_special: { label: 'Especial de la casa', cls: 'menu-badge--bronze' },
   chefs_pick:        { label: 'Selección del chef',  cls: 'menu-badge--bronze' },
   must_try:          { label: 'Imperdible',          cls: 'menu-badge--red'    },
@@ -1950,8 +1951,8 @@ const TAG_PRIORITY = [
 ];
 function pickBadge(tags) {
   if (!tags || !tags.length) return null;
-  for (const t of TAG_PRIORITY) {
-    if (tags.includes(t)) return TAG_BADGES[t];
+  for (const t of BADGE_PRIORITY) {   // PLAN 4: the published order (TAG_PRIORITY only until the GATED commit)
+    if (tags.includes(t) && TAG_BADGES[t]) return TAG_BADGES[t];
   }
   return null;
 }
@@ -2026,7 +2027,8 @@ function getNextOpenText() {
 // detail modal only shows applicable categories per item (see
 // EXTRAS_BY_CATEGORY below). Edit prices/names inline; ids are
 // stable slugs that survive POS sync.
-let EXTRAS = [
+// PLAN 4: the in-repo seed / test bootstrap only — the page boots EXTRAS from the bundle
+const FALLBACK_EXTRAS = [
   { id:"rice_white", cat:"Acompañamientos", name:"Arroz Blanco", price:50 },
   { id:"rice_chinese", cat:"Acompañamientos", name:"Arroz Chino", price:85 },
   { id:"papas_fritas", cat:"Acompañamientos", name:"Papas Fritas", price:75 },
@@ -2046,7 +2048,8 @@ let EXTRAS = [
 // Maps menu item-category → list of modifier-categories that
 // apply at the category level. Items in unlisted categories may
 // still have modifiers via EXTRAS_BY_ITEM below.
-let EXTRAS_BY_CATEGORY = {
+// PLAN 4: seed / test bootstrap only — the page boots the map from the bundle's `extras_by_category`
+const FALLBACK_EXTRAS_BY_CATEGORY = {
   "dim_sum": [
     "Acompañamientos",
     "Salsas"
@@ -2081,7 +2084,8 @@ let EXTRAS_BY_CATEGORY = {
 // when a single item exposes options no sibling does — e.g.,
 // Chicken Fried Rice (rice_03) accepts extra proteins while
 // other rice dishes do not.
-let EXTRAS_BY_ITEM = {
+// PLAN 4: seed / test bootstrap only — the page boots the map from the bundle's `extras_by_item`
+const FALLBACK_EXTRAS_BY_ITEM = {
   "rice_03": [
     "Proteínas"
   ]
@@ -2102,13 +2106,10 @@ function itemIsVariant(p)  { return GroupPicker.isVariant(p); }
 // is tappable) and by renderDetailModal (to scope the modifier
 // list to the right categories). Combine cat-level and per-item
 // extras, with cat-level rendered first.
-function extrasCatsForItem(item) {
-  if (GroupPicker.noExtras(item)) return [];   // 1D add-product B: extras_policy 'none' — no extras anywhere this item is offered
-  const fromCat  = EXTRAS_BY_CATEGORY[item.cat] || [];
-  const fromItem = EXTRAS_BY_ITEM[item.id] || [];
-  const seen = new Set(fromCat);
-  return [...fromCat, ...fromItem.filter(c => !seen.has(c))];
-}
+// PLAN 4 r3 §8.3 — ONE shared resolver (form-group-picker.js offeredExtraGroups): a map value is an option category (all its
+// extras) OR one extra; the category's entries first, then the item's; extras_policy 'none' offers nothing.
+function extrasGroupsForItem(item) { return GroupPicker.offeredExtraGroups(item, EXTRAS, EXTRAS_BY_CATEGORY, EXTRAS_BY_ITEM); }
+function extrasCatsForItem(item) { return extrasGroupsForItem(item).map(g => g.cat); }
 
 // LA_MUSA_DISH_PHOTOS — items that have a real photo on disk.
 // Rendered conditionally in the card and modal; missing items
@@ -2125,6 +2126,34 @@ const _okDishes = (a) => Array.isArray(a) && a.length > 0 && a.every((d) => d &&
 const _okCats = (a) => Array.isArray(a) && a.length > 0 && a.every((c) => c && typeof c.id === 'string');
 const _okObj = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
 const _okStrArr = (a) => Array.isArray(a) && a.every((s) => typeof s === 'string');
+/* ── PLAN 4 (bake from published, r3 §3) — THE BUNDLE IS THE ONLY BOOT SOURCE ─────────────────────────────────────────────
+   Every deploy BAKES the bundle above from the brand's published catalog, and the bake refuses (the build fails, the previous
+   deploy stays live) anything this page's own rules would refuse — so an unusable structure cannot reach a deployed page. If
+   one does anyway, the page never substitutes a literal: that structure boots EMPTY, the page says so (announceMenuBroken,
+   once the page is ready) and waits for the live menu, whose apply replaces it. A REQUIRED collection that is absent is
+   unusable; an OPTIONAL one that is absent is simply none. The literal declarations in this file stay ONLY as the in-repo
+   seed / test bootstrap the catalog readers read by name; xpizza-functions/form-runtime-literals.guard.test.js fails any runtime reference. */
+const _BOOT_BROKEN = [];
+const _DISPLAY_OK = (function(){
+  try { GroupPicker.validateDisplayStructures(_BUNDLE); return true; }
+  catch (e) { _BOOT_BROKEN.push(String(e && e.message)); return false; }
+})();
+function _bootSelect(field, ok, empty, required){
+  const v = _BUNDLE[field];
+  if (v === undefined && !required) return empty;
+  if (ok(v)) return v;
+  _BOOT_BROKEN.push('boot_' + field);
+  return empty;
+}
+const _okRecords = (a) => Array.isArray(a) && a.every((r) => r && r.id != null && String(r.id) !== '' && r.name && typeof r.price === 'number' && isFinite(r.price) && r.price > 0);
+const _okMap = (o) => !!o && typeof o === 'object' && !Array.isArray(o) && _DISPLAY_OK;
+function _announceBootBroken(){
+  if (!_BOOT_BROKEN.length) return;
+  try { console.error('menu_boot_broken', JSON.stringify(_BOOT_BROKEN)); } catch(_){}
+  const go = () => { try { announceMenuBroken(); } catch(_){} };
+  if (typeof document === 'undefined') return;
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+}
 /* 1D D1 — the catalog id is stripped where served records become BROWSER records. Both boundaries
    are covered (this one and liveMenuPrepare below) rather than only the one that carries ids today:
    the spliced bundle is built offline and so has none, but "which boundary happens to be id-less
@@ -2175,17 +2204,25 @@ function _legacyCartForSig(items) {
     return out;
   });
 }
-let MENU = _okDishes(_BUNDLE.dishes) ? _BUNDLE.dishes : FALLBACK_MENU;   // 1D D2 — un-stripped: the id rides into the cart
-let CATEGORIES = _okCats(_BUNDLE.categories) ? _BUNDLE.categories : FALLBACK_CATEGORIES;
-let VARIANT_ITEMS = _okObj(_BUNDLE.variant_items) ? _BUNDLE.variant_items : FALLBACK_VARIANT_ITEMS;
-let HAS_PHOTO = new Set(_okStrArr(_BUNDLE.has_photo) ? _BUNDLE.has_photo : FALLBACK_HAS_PHOTO);
+let MENU = _bootSelect('dishes', _okDishes, [], true);   // 1D D2 — un-stripped: the id rides into the cart. PLAN 4: never a literal
+let CATEGORIES = _bootSelect('categories', _okCats, [], true);
+let VARIANT_ITEMS = _bootSelect('variant_items', _okObj, {}, false);
+let HAS_PHOTO = new Set(_bootSelect('has_photo', _okStrArr, [], false));
+let EXTRAS = _bootSelect('extras', _okRecords, [], true);
+// PLAN 4 r3 §1 / §8.3 — the option groups each dish offers: the published maps (a value is an option category or one extra)
+let EXTRAS_BY_CATEGORY = _bootSelect('extras_by_category', _okMap, {}, false);
+let EXTRAS_BY_ITEM = _bootSelect('extras_by_item', _okMap, {}, false);
+// PLAN 4 r3 §1 — the badge DEFINITIONS and the ORDER they are chosen in. Until the published menu carries a priority (the
+// §8.2 migration), the in-form TAG_PRIORITY orders them; the GATED commit removes that runtime use.
+let TAG_BADGES = _bootSelect('badges', _okMap, {}, false);
+let BADGE_PRIORITY = _bootSelect('badge_priority', (v) => _okStrArr(v) && _DISPLAY_OK, TAG_PRIORITY, false);
+_announceBootBroken();   // PLAN 4: after the LAST boot selection — one announcement for every unusable structure
 
 function itemHasExtras(item) {
   return extrasCatsForItem(item).length > 0;
 }
 function extrasForItem(item) {
-  const cats = extrasCatsForItem(item);
-  return EXTRAS.filter(e => cats.includes(e.cat));
+  return extrasGroupsForItem(item).reduce((all, g) => all.concat(g.extras), []);
 }
 
 // Track extras per pizza: { pizzaId: { extraId: qty } }
@@ -2618,7 +2655,7 @@ function liveMenuRid(){ return RESTAURANT_ID; }
 /* 🔴 A REFERENCE MARKER, NOT A GATE. Kept only so validateSnapshot can say out loud when the served
    representation is not the one this form was written against. It refuses nothing — see the note at
    that comparison for what that trades away and what covers it. */
-const LIVE_MENU_REPRESENTATION = '1d.1';
+const LIVE_MENU_REPRESENTATION = '1d.3';   // PLAN 4 r3 §8.1: the served marker (1d.1 / 1d.2 bodies still apply, with the existing warning)
 /* 🔴 THE PRICED-MENU VERSION — what a reward quote was actually computed against.
    The gate asked for representation_version in the reward signature. That field is the FORMAT marker
    above ('1d.1'); it is constant across publishes, so including it would have changed nothing and the
@@ -2639,7 +2676,7 @@ function liveMenuPriceVersion(){
   } catch (_) { return null; }
 }
 try { window.__LIVE_MENU_PRICE_VERSION = liveMenuPriceVersion; } catch (_) {}
-const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'CATEGORIES', 'VARIANT_ITEMS', 'HAS_PHOTO', 'EXTRAS_BY_CATEGORY', 'EXTRAS_BY_ITEM'];
+const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'CATEGORIES', 'VARIANT_ITEMS', 'HAS_PHOTO', 'EXTRAS_BY_CATEGORY', 'EXTRAS_BY_ITEM', 'TAG_BADGES', 'BADGE_PRIORITY'];   // PLAN 4 §8.4: + the badges and their order
 function liveMenuGlobalGet(n){
   switch (n) {
     case 'MENU': return MENU;
@@ -2648,6 +2685,8 @@ function liveMenuGlobalGet(n){
     case 'VARIANT_ITEMS': return VARIANT_ITEMS;
     case 'HAS_PHOTO': return HAS_PHOTO;
     case 'EXTRAS_BY_CATEGORY': return EXTRAS_BY_CATEGORY;
+    case 'TAG_BADGES': return TAG_BADGES;
+    case 'BADGE_PRIORITY': return BADGE_PRIORITY;
     default: return EXTRAS_BY_ITEM;
   }
 }
@@ -2659,6 +2698,8 @@ function liveMenuGlobalSet(n, v){
     case 'VARIANT_ITEMS': VARIANT_ITEMS = v; break;
     case 'HAS_PHOTO': HAS_PHOTO = v; break;
     case 'EXTRAS_BY_CATEGORY': EXTRAS_BY_CATEGORY = v; break;
+    case 'TAG_BADGES': TAG_BADGES = v; break;
+    case 'BADGE_PRIORITY': BADGE_PRIORITY = v; break;
     default: EXTRAS_BY_ITEM = v; break;
   }
 }
@@ -2739,6 +2780,8 @@ function liveMenuPrepare(body){
   } else if (variantItems && Object.keys(variantItems).length) {
     validateVariantBlock(variantItems, 'retained');
   }
+  // PLAN 4 r3 §8.4: the option maps, gates, badges, priority and reward icons by the SAME shared rule the bake ran
+  GroupPicker.validateDisplayStructures(body);
   return {
     // 1D D1 — the SECOND boundary: the live refresh. This one really does carry ids (the served body
     // is overlaid), and it is the path that replaces MENU/EXTRAS under a running form.
@@ -2751,6 +2794,9 @@ function liveMenuPrepare(body){
     HAS_PHOTO: Array.isArray(body.has_photo) ? new Set(body.has_photo) : HAS_PHOTO,
     EXTRAS_BY_CATEGORY: (body.extras_by_category && typeof body.extras_by_category === 'object') ? body.extras_by_category : EXTRAS_BY_CATEGORY,
     EXTRAS_BY_ITEM: (body.extras_by_item && typeof body.extras_by_item === 'object') ? body.extras_by_item : EXTRAS_BY_ITEM,
+    // PLAN 4 §8.4 — absent keeps what is in force; present is published, validated above
+    TAG_BADGES: (body.badges && typeof body.badges === 'object' && !Array.isArray(body.badges)) ? body.badges : TAG_BADGES,
+    BADGE_PRIORITY: Array.isArray(body.badge_priority) ? body.badge_priority : BADGE_PRIORITY,
   };
 }
 
@@ -3886,8 +3932,8 @@ function buildRedeemCatalog(){
   const CAT={ dim_sum:['Dim Sum','dumpling'], starters:['Starters','skewer'], soups_salads:['Sopas y ensaladas','soup'], noodles:['Noodles','noodle'], rice:['Rice','rice'], crudo:['Crudo','fish'], house_specials:['Especiales','star'], bebidas:['Bebidas','glass'] };
   const out=[];
   // 1D add-product B: eligibility is this brand's data (its categories, no alcohol); the shared rule drops launchers
-  GroupPicker.rewardDishes(MENU, VARIANT_ITEMS, p => String(p.id).indexOf('beer_')!==0 && !!CAT[p.cat]).forEach(p=>{ const c=CAT[p.cat]; out.push({ key:p.id, name:p.name, price_cents:Math.round(p.price*100), section:c[0], icon:c[1] }); });
-  (typeof EXTRAS!=='undefined'?EXTRAS:[]).forEach(e=>{ if(e.cat!=='Acompañamientos') return; out.push({ key:e.id, name:e.name, price_cents:Math.round(e.price*100), section:'Acompañamientos', icon:'rice' }); });
+  GroupPicker.rewardDishes(MENU, VARIANT_ITEMS, p => String(p.id).indexOf('beer_')!==0 && !!CAT[p.cat]).forEach(p=>{ const c=CAT[p.cat]; out.push({ key:p.id, name:p.name, price_cents:Math.round(p.price*100), section:c[0], icon:p.reward_icon||c[1] }); });   // PLAN 4: the published reward_icon first
+  (typeof EXTRAS!=='undefined'?EXTRAS:[]).forEach(e=>{ if(e.cat!=='Acompañamientos') return; out.push({ key:e.id, name:e.name, price_cents:Math.round(e.price*100), section:'Acompañamientos', icon:e.reward_icon||'rice' }); });   // PLAN 4: the published reward_icon first
   return out;
 }
 
@@ -6008,11 +6054,10 @@ function renderDetailModal() {
   // scoped to the modifier categories that apply to this item's category.
   // Items with no applicable extras (beer, soft drinks) skip this block.
   if (pizzaQty > 0 && itemHasExtras(pizza)) {  // LA_MUSA_EXTRAS_STEPPER
-    const allowedCats = extrasCatsForItem(pizza);
+    const allowedGroups = extrasGroupsForItem(pizza);
     /* LA_MUSA_PURE_XP_MODAL — extras read from cart. */
     const itemExtras  = pizzaExtras[pizzaId] || {};
-    allowedCats.forEach(cat => {
-      const inCat = EXTRAS.filter(e => e.cat === cat);
+    allowedGroups.forEach(({ cat, extras: inCat }) => {
       if (!inCat.length) return;
       html += `<div class="detail-cat-label">${escapeHtml(cat)}</div>`;
       html += `<div class="detail-extras-list">`;
@@ -6085,8 +6130,8 @@ function renderLauncherModal(pizza) {
   html += `</div>`;
 
   // Optional extras (staged, always visible)
-  extrasCatsForItem(pizza).forEach(cat => {
-    const inCat = EXTRAS.filter(e => e.cat === cat); if (!inCat.length) return;
+  extrasGroupsForItem(pizza).forEach(({ cat, extras: inCat }) => {
+    if (!inCat.length) return;
     html += `<div class="detail-cat-label">${escapeHtml(cat)}</div><div class="detail-extras-list">`;
     inCat.forEach(e => {
       const q = stagedExtras[e.id] || 0;

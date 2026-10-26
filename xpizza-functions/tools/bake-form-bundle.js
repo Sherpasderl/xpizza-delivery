@@ -11,8 +11,8 @@
 //
 // ENVELOPE CONTRACT (P2-5): every failed rule is a NAMED refusal; ANY refusal means NO file changes and a non-zero exit, so
 // the build fails and the previous deploy stays live. The rules mirror the forms' own liveMenuPrepare (both forms) and the
-// shared picker's validators — loaded from the form's OWN shipped form-group-picker.js — so a bake can never ship what the
-// live apply would refuse.
+// shared rules — loaded from the form's OWN shipped form-group-picker.js (validateVariantBlock, validateExtrasPolicy,
+// validateDisplayStructures) — so a bake can never ship what the live apply would refuse.
 //
 // PROJECTION: the published `menu`, verbatim, minus the identity keys (identity_id / dish_id / extra_id) on dish and extra
 // records — pre-apply order payloads stay byte-identical to today's, and the live apply adds the ids exactly as now.
@@ -21,8 +21,6 @@ const { join, dirname } = require('path');
 const { readFileSync } = require('fs');
 const { spliceFormFile } = require('../catalog/splice-form-bundle');
 const { selectForms, publicMenuUrl, getJson, IDENTITY_KEYS } = require('./form-bundle-live-check');
-const { REWARD_ICONS } = require('../catalog/reward-icons');
-const { pricingKeyOf, extrasKeyOf } = require('../catalog/form-menu-source');
 
 // Every representation a consumer accepts during the rollout (r3 §8.1): the bake, the live check and the forms' adapter.
 const KNOWN_REPRESENTATIONS = Object.freeze(['1d.1', '1d.2', '1d.3']);
@@ -72,41 +70,10 @@ function validateEnvelope(env, rid, { groupPicker }) {
     if (isObj(d) && d.variantOf !== undefined && d.variantOf !== null && !D.some((x) => isObj(x) && groupPicker.sameDishId(x.id, d.variantOf))) r.push(`bake_variantOf_orphan@${i}`);
   });
 
-  // option maps: keys are known categories / dishes; values name an option CATEGORY or an individual EXTRA KEY (§8.3)
-  const extraCats = new Set(E.filter(isObj).map((e) => e.cat));
-  const extraKeys = new Set(E.filter(isObj).map((e) => String(extrasKeyOf(rid, e))));
-  const dishKeys = new Set(D.filter(isObj).map((d) => String(pricingKeyOf(rid, d))));
-  for (const [field, keys] of [['extras_by_category', catIds], ['extras_by_item', dishKeys]]) {
-    if (m[field] === undefined) continue;
-    if (!isObj(m[field])) { r.push(`bake_option_map_malformed: ${field}`); continue; }
-    for (const [k, vals] of Object.entries(m[field])) {
-      if (!keys.has(k)) r.push(`bake_option_map_key: ${field}.${k}`);
-      if (!isStrArray(vals) || new Set(vals).size !== vals.length) { r.push(`bake_option_map_value_malformed: ${field}.${k}`); continue; }
-      for (const v of vals) if (!extraCats.has(v) && !extraKeys.has(v)) r.push(`bake_option_map_value: ${field}.${k} → ${v}`);
-    }
-  }
-
-  // gates: arrays of known categories
-  for (const field of ['pickup_only_cats', 'weekend_only_cats']) {
-    if (m[field] === undefined) continue;
-    if (!isStrArray(m[field])) { r.push(`bake_gate_malformed: ${field}`); continue; }
-    for (const c of m[field]) if (!catIds.has(c)) r.push(`bake_gate_unknown_category: ${field} → ${c}`);
-  }
-
-  // badges {cls,label}; badge_priority = badge keys only
-  if (m.badges !== undefined) {
-    if (!isObj(m.badges)) r.push('bake_badges_malformed');
-    else for (const [k, b] of Object.entries(m.badges)) if (!isObj(b) || typeof b.cls !== 'string' || !b.cls || typeof b.label !== 'string' || !b.label) r.push(`bake_badge_malformed: ${k}`);
-  }
-  if (m.badge_priority !== undefined) {
-    if (!isStrArray(m.badge_priority) || new Set(m.badge_priority).size !== m.badge_priority.length) r.push('bake_badge_priority_malformed');
-    else for (const k of m.badge_priority) if (!isObj(m.badges) || !Object.prototype.hasOwnProperty.call(m.badges, k)) r.push(`bake_badge_priority_unknown: ${k}`);
-  }
-
-  // the reward picker's icon, on a dish or an extra: the closed set
-  for (const [coll, recs] of [['dish', D], ['extra', E]]) {
-    recs.forEach((x, i) => { if (isObj(x) && x.reward_icon !== undefined && !REWARD_ICONS.includes(x.reward_icon)) r.push(`bake_reward_icon: ${coll}@${i}`); });
-  }
+  // option maps (a value is an option CATEGORY or one EXTRA by id or name, §8.3), gates, badges, badge_priority, reward
+  // icons: the form's OWN shared rule (form-group-picker.js validateDisplayStructures) — the one its boot and every live apply
+  // run, so the bake and the live apply cannot disagree. Its first problem is the refusal.
+  try { groupPicker.validateDisplayStructures(m); } catch (e) { r.push(`bake_${e.message}`); }
   if (m.has_photo !== undefined && !isStrArray(m.has_photo)) r.push('bake_has_photo_malformed');
   return r;
 }

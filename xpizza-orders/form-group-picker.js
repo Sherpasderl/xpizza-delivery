@@ -174,8 +174,86 @@ function ctaDecision(opts) {
   return { kind: "add", total: (v ? v.price : 0) + extrasSum };
 }
 
+/* ── PLAN 4 (bake from published, r3 §3 / §8.3 / §8.4) — THE MENU'S DISPLAY STRUCTURES, ONE RULE ─────────────────────────
+   The bake (tools/bake-form-bundle.js loads THIS file from the form it bakes), the form's boot and every live apply ask the
+   same questions of the same fields, so a bake can never ship what a live apply would refuse, and no form keeps a private
+   copy of the rule. Brand-agnostic: a dish or an extra is named by its id OR its name (one brand keys by id, another by name).
+   REWARD_ICONS is the sprite's row-icon set; catalog/reward-icons.js holds the server's copy and a test pins them equal. */
+const REWARD_ICONS = ["bacon", "cheese", "chili", "dumpling", "fish", "glass", "leaf", "meat", "mushroom", "noodle", "rice",
+  "skewer", "slice", "soup", "star", "tomato"];
+const isPlainObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+const isNameList = (v) => Array.isArray(v) && v.every(x => typeof x === "string" && x !== "") && new Set(v).size === v.length;
+function extraNamed(extras, v) {
+  return extras.find(e => e && String(e.id) === v) || extras.find(e => e && e.name === v) || null;
+}
+function dishNamed(dishes, k) { return dishes.some(d => d && (String(d.id) === k || d.name === k)); }
+
+/* Throws the FIRST problem as an apply-rejection code; returns nothing when the structures are drawable. */
+function validateDisplayStructures(body) {
+  const dishes = Array.isArray(body.dishes) ? body.dishes : [];
+  const extras = Array.isArray(body.extras) ? body.extras : [];
+  const catIds = new Set((Array.isArray(body.categories) ? body.categories : []).map(c => c && c.id));
+  const extraCats = new Set(extras.map(e => e && e.cat));
+  ["extras_by_category", "extras_by_item"].forEach(function (f) {
+    const map = body[f];
+    if (map === undefined) return;
+    if (!isPlainObj(map)) throw new Error("apply_option_map_malformed:" + f);
+    Object.keys(map).forEach(function (k) {
+      if (f === "extras_by_category" ? !catIds.has(k) : !dishNamed(dishes, k)) throw new Error("apply_option_map_key:" + f + "." + k);
+      if (!isNameList(map[k])) throw new Error("apply_option_map_value_malformed:" + f + "." + k);
+      map[k].forEach(function (v) { if (!extraCats.has(v) && !extraNamed(extras, v)) throw new Error("apply_option_map_value:" + f + "." + k + "=" + v); });
+    });
+  });
+  ["pickup_only_cats", "weekend_only_cats"].forEach(function (f) {
+    const g = body[f];
+    if (g === undefined) return;
+    if (!isNameList(g)) throw new Error("apply_gate_malformed:" + f);
+    g.forEach(function (c) { if (!catIds.has(c)) throw new Error("apply_gate_unknown_category:" + f + "=" + c); });
+  });
+  if (body.badges !== undefined) {
+    if (!isPlainObj(body.badges)) throw new Error("apply_badges_malformed");
+    Object.keys(body.badges).forEach(function (k) {
+      const b = body.badges[k];
+      if (!isPlainObj(b) || typeof b.cls !== "string" || !b.cls || typeof b.label !== "string" || !b.label) throw new Error("apply_badge_malformed:" + k);
+    });
+  }
+  if (body.badge_priority !== undefined) {
+    if (!isNameList(body.badge_priority)) throw new Error("apply_badge_priority_malformed");
+    body.badge_priority.forEach(function (k) { if (!isPlainObj(body.badges) || !Object.prototype.hasOwnProperty.call(body.badges, k)) throw new Error("apply_badge_priority_unknown:" + k); });
+  }
+  [["dish", dishes], ["extra", extras]].forEach(function (pair) {
+    pair[1].forEach(function (x, i) { if (x && x.reward_icon !== undefined && REWARD_ICONS.indexOf(x.reward_icon) === -1) throw new Error("apply_reward_icon:" + pair[0] + "@" + i); });
+  });
+}
+
+/* The extras a dish offers, GROUPED by option category: the dish category's entries first, then the dish's own, each value
+   EITHER an option category (all its extras, in EXTRAS order) OR one extra named by id or name (§8.3). [] = none offered. */
+function offeredExtraGroups(dish, extras, byCategory, byItem) {
+  if (!dish || noExtras(dish)) return [];
+  const fromCat = (isPlainObj(byCategory) && byCategory[dish.cat]) || [];
+  const fromItem = (isPlainObj(byItem) && (byItem[String(dish.id)] || byItem[dish.name])) || [];
+  const vals = [];
+  fromCat.concat(fromItem).forEach(function (v) { if (vals.indexOf(v) === -1) vals.push(v); });
+  const cats = new Set(extras.map(e => e && e.cat));
+  const groups = [];
+  const groupOf = function (c) { let g = groups.find(x => x.cat === c); if (!g) { g = { cat: c, extras: [] }; groups.push(g); } return g; };
+  vals.forEach(function (v) {
+    if (cats.has(v)) { const g = groupOf(v); extras.forEach(function (e) { if (e.cat === v && g.extras.indexOf(e) === -1) g.extras.push(e); }); }
+    else { const e = extraNamed(extras, v); if (e) { const g = groupOf(e.cat); if (g.extras.indexOf(e) === -1) g.extras.push(e); } }
+  });
+  return groups.filter(g => g.extras.length);
+}
+
+/* The badge a dish shows: the first of `priority` its tags carry, resolved against `badges`. */
+function pickBadge(tags, badges, priority) {
+  if (!Array.isArray(tags) || !tags.length || !isPlainObj(badges) || !Array.isArray(priority)) return null;
+  for (let i = 0; i < priority.length; i += 1) if (tags.indexOf(priority[i]) !== -1 && badges[priority[i]]) return badges[priority[i]];
+  return null;
+}
+
 const GroupPicker = { GROUP_PICKER_V1, RECOMMENDED_LABEL, sameDishId, isLauncher, isVariant, validateVariantBlock, priceRange, priceText, choiceDelta,
   promptText, isRecommended, choiceRows, noExtras, validateExtrasPolicy, rewardDishes, parentOf, soldOutWithParent, ctaDecision,
-  markLauncherLines, launcherKeys, launcherQty, reChooseText, CHOICE_INPUT_CLASS, choiceInputHtml, choiceHasFocus, refocusChoice, wireChoiceKeys };
+  markLauncherLines, launcherKeys, launcherQty, reChooseText, CHOICE_INPUT_CLASS, choiceInputHtml, choiceHasFocus, refocusChoice, wireChoiceKeys,
+  REWARD_ICONS, validateDisplayStructures, offeredExtraGroups, pickBadge };
 if (typeof module !== "undefined" && module.exports) module.exports = GroupPicker;
 if (typeof window !== "undefined") { window.GroupPicker = GroupPicker; }

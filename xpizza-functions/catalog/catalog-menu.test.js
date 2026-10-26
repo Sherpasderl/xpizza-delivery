@@ -22,6 +22,8 @@ const { publishVersion } = require('./catalog-publish');
 const { getRestaurantMenu, readVersionMenu, readFlatMenu } = require('./catalog-menu');
 const { seedCatalog } = require('./seed-catalog-core');
 const { catalogSnapshot, generateFormBundle, generateKdsManifest, serialize } = require('./generate-form-bundle');
+// PLAN 4 (gap resolution A): the committed bundle is the PUBLISHED shape — the ONE composer getPublicMenu serves
+const { composeServedMenu } = require('./public-menu');
 const { contentHash } = require('./content-hash');
 const { makeDb } = require('./firestore-fake');
 
@@ -485,9 +487,9 @@ const inputsFor = (rid, over = {}) => {
     const fromStore = await getRestaurantMenu(db, rid);
     const fromBootstrap = catalogSnapshot(rid);
     const committed = readFileSync(BUNDLE_PATH[rid], 'utf8');
-    assert.strictEqual(serialize(generateFormBundle(rid, fromStore)), committed,
+    assert.strictEqual(serialize(composeServedMenu(rid, fromStore)), committed,
       `🔴 ${rid}: the bundle generated off the PUBLISHED VERSION is not the committed artifact`);
-    assert.strictEqual(serialize(generateFormBundle(rid, fromBootstrap)), committed,
+    assert.strictEqual(serialize(composeServedMenu(rid, fromBootstrap)), committed,
       `${rid}: ...nor is the bootstrap one`);
     const bundle = generateFormBundle(rid, fromStore);
     assert.deepStrictEqual(bundle.extras, readLiteral(formSource(rid), 'EXTRAS'),

@@ -242,7 +242,9 @@ async function buildPublicMenu(db, rid, deps = {}) {
      applyIdentityToServedBody never throws and never blocks: on a registry error or a slow read it
      returns the body it was given, unchanged, and the customer is served a menu with no ids — which is
      exactly the menu served today, because in D1 nothing reads them. */
-  const enriched = await applyIdentityToServedBody(db, restaurantId, body);
+  // PLAN 4 r3 §4: the reconciler compares the DEPLOYED bundle (baked, overlay-free) with the published menu read with
+  // `overlayIdentity: false` — the same body minus the overlay. Every other caller (the endpoint) gets the overlay, unchanged.
+  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, body);
   body = enriched.body;
   if (!enriched.applied) {
     // A diagnostic, never a decision — no caller branches on it and no response changes shape.

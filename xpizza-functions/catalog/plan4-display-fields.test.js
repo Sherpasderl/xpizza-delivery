@@ -115,6 +115,20 @@ const refuses = (fn, re, label) => assert.throws(fn, (e) => re.test(String(e && 
     ok('served at 1d.3: la_musa carries badge_priority (absent when unauthored; inside the etag); x_pizza\'s dish carries reward_icon');
   }
 
+  // ── 5b. the reconciler's read (overlayIdentity:false) is the served body minus EXACTLY the identity overlay ──
+  {
+    for (const [rid, src] of [['x_pizza', XP2], ['la_musa', LM2]]) {
+      const db = await publish(rid, src);
+      const full = await buildPublicMenu(db, rid, deps);
+      const bare = await buildPublicMenu(db, rid, { ...deps, overlayIdentity: false });
+      const strip = (b) => { const c = clone(b); for (const k of ['dishes', 'extras']) c[k] = c[k].map((r) => Object.fromEntries(Object.entries(r).filter(([f]) => !['identity_id', 'dish_id', 'extra_id'].includes(f)))); return c; };
+      assert.deepStrictEqual(bare.body, strip(full.body), `${rid}: the same body, minus only the identity overlay`);
+      assert.ok(full.body.dishes.some((d) => d.dish_id !== undefined || d.identity_id !== undefined), `premise: the endpoint's default still overlays (${rid})`);
+      assert.ok(bare.body.dishes.every((d) => d.dish_id === undefined && d.identity_id === undefined));
+    }
+    ok('overlayIdentity:false (the reconciler\'s read) = the served body minus exactly the identity overlay; the endpoint default still overlays');
+  }
+
   // ── 6. assertWholeBody refuses a body whose new facts would render nothing ──
   {
     const menu = { structure: { badges: {}, badge_priority: [] }, items: [] };

@@ -1667,6 +1667,34 @@ const FALLBACK_MENU = [
 const _BUNDLE = (typeof window !== 'undefined' && window.__FORM_MENU_BUNDLE__) || {};
 const _okDishes = (a) => Array.isArray(a) && a.length > 0 && a.every((d) => d && d.id != null && d.name);
 const _okStrArr = (a) => Array.isArray(a) && a.every((s) => typeof s === 'string');
+/* ── PLAN 4 (bake from published, r3 §3) — THE BUNDLE IS THE ONLY BOOT SOURCE ─────────────────────────────────────────────
+   Every deploy BAKES the bundle above from the brand's published catalog, and the bake refuses (the build fails, the previous
+   deploy stays live) anything this page's own rules would refuse — so an unusable structure cannot reach a deployed page. If
+   one does anyway, the page never substitutes a literal: that structure boots EMPTY, the page says so (announceMenuBroken,
+   once the page is ready) and waits for the live menu, whose apply replaces it. A REQUIRED collection that is absent is
+   unusable; an OPTIONAL one that is absent is simply none. The literal declarations in this file stay ONLY as the in-repo
+   seed / test bootstrap the catalog readers read by name; xpizza-functions/form-runtime-literals.guard.test.js fails any runtime reference. */
+const _BOOT_BROKEN = [];
+const _DISPLAY_OK = (function(){
+  try { GroupPicker.validateDisplayStructures(_BUNDLE); return true; }
+  catch (e) { _BOOT_BROKEN.push(String(e && e.message)); return false; }
+})();
+function _bootSelect(field, ok, empty, required){
+  const v = _BUNDLE[field];
+  if (v === undefined && !required) return empty;
+  if (ok(v)) return v;
+  _BOOT_BROKEN.push('boot_' + field);
+  return empty;
+}
+const _okRecords = (a) => Array.isArray(a) && a.every((r) => r && r.id != null && String(r.id) !== '' && r.name && typeof r.price === 'number' && isFinite(r.price) && r.price > 0);
+const _okMap = (o) => !!o && typeof o === 'object' && !Array.isArray(o) && _DISPLAY_OK;
+function _announceBootBroken(){
+  if (!_BOOT_BROKEN.length) return;
+  try { console.error('menu_boot_broken', JSON.stringify(_BOOT_BROKEN)); } catch(_){}
+  const go = () => { try { announceMenuBroken(); } catch(_){} };
+  if (typeof document === 'undefined') return;
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+}
 /* 1D D1 — the catalog id is stripped where served records become BROWSER records. Both boundaries
    are covered (this one and liveMenuPrepare below) rather than only the one that carries ids today:
    the spliced bundle is built offline and so has none, but "which boundary happens to be id-less
@@ -1717,7 +1745,7 @@ function _legacyCartForSig(items) {
     return out;
   });
 }
-let MENU = _okDishes(_BUNDLE.dishes) ? _BUNDLE.dishes : FALLBACK_MENU;   // 1D D2 — un-stripped: the id rides into the cart
+let MENU = _bootSelect('dishes', _okDishes, [], true);   // 1D D2 — un-stripped: the id rides into the cart. PLAN 4: never a literal
 /* 1D add-product B — REQUIRED-CHOICE GROUPS, the shared picker's model (form-group-picker.js): a LAUNCHER dish, its priced
    VARIANT dishes (`variantOf`, `choice`) and this map. Absent ⇒ no groups — today's form, unchanged. A bundled map the
    shared rule refuses is dropped WHOLE (never half-read), and the grid then hides every dish of a group it cannot draw
@@ -1797,7 +1825,8 @@ function getNextOpenText() {
   return 'Con gusto los atendemos pronto';
 }
 
-let EXTRAS = [
+// PLAN 4: the in-repo seed / test bootstrap only (the catalog reads it by name) — the page boots EXTRAS from the bundle
+const FALLBACK_EXTRAS = [
   { id:'e1',  cat:'Salsas & Queso',    name:'Salsa Roja',          price:39  },
   { id:'e2',  cat:'Salsas & Queso',    name:'Salsa Blanca',        price:39  },
   { id:'e3',  cat:'Salsas & Queso',    name:'Salsa Calabrian Chili', price:49 },
@@ -1813,6 +1842,10 @@ let EXTRAS = [
   { id:'e13', cat:'Vegetales & Hierbas', name:'Hongos',            price:61  },
   { id:'e14', cat:'Vegetales & Hierbas', name:'Basil Pesto',       price:33  },
 ];
+let EXTRAS = _bootSelect('extras', _okRecords, [], true);
+// PLAN 4 r3 §1 / §8.3 — the option groups each dish offers: the published maps (a value is an option category or one extra)
+let EXTRAS_BY_CATEGORY = _bootSelect('extras_by_category', _okMap, {}, false);
+let EXTRAS_BY_ITEM = _bootSelect('extras_by_item', _okMap, {}, false);
 
 // Track extras per pizza: { pizzaId: { extraId: qty } }
 const pizzaExtras = {};
@@ -2278,7 +2311,7 @@ function liveMenuRid(){ return AVAIL_RID; }
 /* 🔴 A REFERENCE MARKER, NOT A GATE. Kept only so validateSnapshot can say out loud when the served
    representation is not the one this form was written against. It refuses nothing — see the note at
    that comparison for what that trades away and what covers it. */
-const LIVE_MENU_REPRESENTATION = '1d.1';
+const LIVE_MENU_REPRESENTATION = '1d.3';   // PLAN 4 r3 §8.1: the served marker (1d.1 / 1d.2 bodies still apply, with the existing warning)
 /* 🔴 THE PRICED-MENU VERSION — what a reward quote was actually computed against.
    The gate asked for representation_version in the reward signature. That field is the FORMAT marker
    above ('1d.1'); it is constant across publishes, so including it would have changed nothing and the
@@ -2299,15 +2332,18 @@ function liveMenuPriceVersion(){
   } catch (_) { return null; }
 }
 try { window.__LIVE_MENU_PRICE_VERSION = liveMenuPriceVersion; } catch (_) {}
-const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS', 'VARIANT_ITEMS'];
+const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS', 'VARIANT_ITEMS', 'EXTRAS_BY_CATEGORY', 'EXTRAS_BY_ITEM'];   // PLAN 4 §8.4: + the option maps
 function liveMenuGlobalGet(n){
-  return n === 'MENU' ? MENU : n === 'EXTRAS' ? EXTRAS : n === 'PICKUP_ONLY_CATS' ? PICKUP_ONLY_CATS : n === 'VARIANT_ITEMS' ? VARIANT_ITEMS : WEEKEND_ONLY_CATS;
+  return n === 'MENU' ? MENU : n === 'EXTRAS' ? EXTRAS : n === 'PICKUP_ONLY_CATS' ? PICKUP_ONLY_CATS : n === 'VARIANT_ITEMS' ? VARIANT_ITEMS
+    : n === 'EXTRAS_BY_CATEGORY' ? EXTRAS_BY_CATEGORY : n === 'EXTRAS_BY_ITEM' ? EXTRAS_BY_ITEM : WEEKEND_ONLY_CATS;
 }
 function liveMenuGlobalSet(n, v){
   if (n === 'MENU') MENU = v;
   else if (n === 'EXTRAS') EXTRAS = v;
   else if (n === 'PICKUP_ONLY_CATS') PICKUP_ONLY_CATS = v;
   else if (n === 'VARIANT_ITEMS') VARIANT_ITEMS = v;
+  else if (n === 'EXTRAS_BY_CATEGORY') EXTRAS_BY_CATEGORY = v;
+  else if (n === 'EXTRAS_BY_ITEM') EXTRAS_BY_ITEM = v;
   else WEEKEND_ONLY_CATS = v;
 }
 function liveMenuContainers(){ return ['menu-individual', 'menu-ny']; }
@@ -2352,6 +2388,9 @@ function liveMenuPrepare(body){
   } else {
     GroupPicker.validateVariantBlock(variantItems, dishes, 'retained');
   }
+  // PLAN 4 r3 §8.4: the option maps, gates, badges, priority and reward icons by the SAME shared rule the bake ran
+  GroupPicker.validateDisplayStructures(body);
+  const isMap = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
   return {
     // 1D D1 — the SECOND boundary: the live refresh. This one really does carry ids (the served body
     // is overlaid), and it is the path that replaces MENU/EXTRAS under a running form.
@@ -2368,6 +2407,9 @@ function liveMenuPrepare(body){
     PICKUP_ONLY_CATS: Array.isArray(body.pickup_only_cats) ? body.pickup_only_cats : PICKUP_ONLY_CATS,
     WEEKEND_ONLY_CATS: Array.isArray(body.weekend_only_cats) ? body.weekend_only_cats : WEEKEND_ONLY_CATS,
     VARIANT_ITEMS: variantItems,
+    // PLAN 4 §8.4 — absent keeps what is in force (la_musa's rule for its maps); present is the published map, validated above
+    EXTRAS_BY_CATEGORY: isMap(body.extras_by_category) ? body.extras_by_category : EXTRAS_BY_CATEGORY,
+    EXTRAS_BY_ITEM: isMap(body.extras_by_item) ? body.extras_by_item : EXTRAS_BY_ITEM,
   };
 }
 
@@ -2701,13 +2743,14 @@ function bootLiveMenu(){
 
 // 18" NY pizzas are pickup-only. Data-driven: add a category here to make it pickup-only.
 const FALLBACK_PICKUP_ONLY = ['ny'];
-let PICKUP_ONLY_CATS = _okStrArr(_BUNDLE.pickup_only_cats) ? _BUNDLE.pickup_only_cats : FALLBACK_PICKUP_ONLY;
+let PICKUP_ONLY_CATS = _bootSelect('pickup_only_cats', (v) => _okStrArr(v) && _DISPLAY_OK, [], false);   // PLAN 4: never a literal
 const isPickupOnlyItem = (p) => PICKUP_ONLY_CATS.includes(p.cat);
 const cartHasPickupOnly = () => cartItems().some(p => isPickupOnlyItem(p));
 // 18" NY pizzas are a WEEKEND special (Fri/Sat/Sun) — mirrors the server X_PIZZA_WEEKEND_ONLY /
 // weekendOnlyViolation (menu-pricing.js). Data-driven membership kept in sync (both = the 'ny' cat).
 const FALLBACK_WEEKEND_ONLY = ['ny'];
-let WEEKEND_ONLY_CATS = _okStrArr(_BUNDLE.weekend_only_cats) ? _BUNDLE.weekend_only_cats : FALLBACK_WEEKEND_ONLY;
+let WEEKEND_ONLY_CATS = _bootSelect('weekend_only_cats', (v) => _okStrArr(v) && _DISPLAY_OK, [], false);   // PLAN 4: never a literal
+_announceBootBroken();   // PLAN 4: after the LAST boot selection — one announcement for every unusable structure
 
 const isWeekendOnlyItem = (p) => WEEKEND_ONLY_CATS.includes(p.cat);
 const cartHasWeekendOnly = () => cartItems().some(p => isWeekendOnlyItem(p));
@@ -3447,7 +3490,7 @@ function successTotalCents(o){
 function buildRedeemCatalog(){
   const ICON={'Anchovies':'fish','Shrimp Scampi':'fish','Pistaccio Mortadella':'meat','Prosciutto':'meat','Sopressatta Chili Honey':'meat','Carnivora':'meat','Crispy Bacon':'bacon','Pancetta Vodka Sauce':'tomato','Mushroom':'mushroom','Sweet Corn & Calabrian Chili':'chili','Spinach':'leaf','Pepperoni':'slice','Potato & Dill Sausage':'meat','Margherita':'tomato','Cacio e Pepe':'cheese','Ham':'meat','Nutella':'slice'};
   // 1D add-product B: eligibility is this brand's data (12" individual pizzas); the shared rule drops launchers
-  return GroupPicker.rewardDishes(MENU, VARIANT_ITEMS, p=>p.cat==='individual').map(p=>({ key:p.name, name:p.name, price_cents:Math.round(p.price*100), icon:ICON[p.name]||'slice' }));
+  return GroupPicker.rewardDishes(MENU, VARIANT_ITEMS, p=>p.cat==='individual').map(p=>({ key:p.name, name:p.name, price_cents:Math.round(p.price*100), icon:p.reward_icon||ICON[p.name]||'slice' }));   // PLAN 4: the published reward_icon first
 }
 
 function calcTotal(){
@@ -5682,7 +5725,8 @@ const GRP_ICON_WARN = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="fa
 const GRP_ICON_DONE = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 function extrasOfferedFor(dish) {
   if (!dish || dish.name === 'Nutella' || GroupPicker.noExtras(dish)) return null;
-  return [...new Set(EXTRAS.map(e => e.cat))].map(cat => ({ cat, extras: EXTRAS.filter(e => e.cat === cat) }));
+  // PLAN 4 r3 §8.3: the PUBLISHED option maps (a category, or one extra), through the shared rule — no longer "every category"
+  return GroupPicker.offeredExtraGroups(dish, EXTRAS, EXTRAS_BY_CATEGORY, EXTRAS_BY_ITEM);
 }
 
 /* 1D add-product B — a LAUNCHER's picker, exactly the approved mock: photo, name, description, the derived price, then the

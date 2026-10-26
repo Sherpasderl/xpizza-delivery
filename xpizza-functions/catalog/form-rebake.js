@@ -18,7 +18,7 @@
 // Unset (rollout steps 1–3, before the owner creates the hooks) the whole mechanism is DORMANT: no reads, no requests, no alarms.
 // The POST carries no body and no trigger_branch, so the hook's own configured branch (main) builds.
 const crypto = require('crypto');
-const { compareBundle } = require('../tools/form-bundle-live-check');
+const { compareBundle } = require('./bundle-compare');   // the live check's own comparator, as a pure library
 const { extractBundle } = require('./splice-form-bundle');
 const { assetBaseFor } = require('./public-photos');
 const { RID_RE } = require('../platform-manifest');
@@ -33,14 +33,9 @@ const HOOK_PATH_RE = /^\/build_hooks\/[0-9a-f]{24}$/;
 
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const sorted = (v) => (isObj(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted(v[k])])) : Array.isArray(v) ? v.map(sorted) : v);
-const IDENTITY_KEYS = new Set(['identity_id', 'dish_id', 'extra_id']);
-const stripIds = (menu) => {
-  const m = JSON.parse(JSON.stringify(menu));
-  for (const c of ['dishes', 'extras']) if (Array.isArray(m[c])) m[c] = m[c].map((r) => (isObj(r) ? Object.fromEntries(Object.entries(r).filter(([k]) => !IDENTITY_KEYS.has(k))) : r));
-  return m;
-};
-// The published MENU's identity for "the version changed": a hash of what a bake would write (ids stripped).
-const menuVersion = (menu) => crypto.createHash('sha256').update(JSON.stringify(sorted(stripIds(menu)))).digest('hex').slice(0, 24);
+// The published MENU's identity for "the version changed": a hash of the menu as read (WITHOUT the identity overlay — see
+// readPublished in index.js — so it is exactly what a bake would write, and this module names no identity field).
+const menuVersion = (menu) => crypto.createHash('sha256').update(JSON.stringify(sorted(menu))).digest('hex').slice(0, 24);
 
 function isHookUrl(url) {
   if (typeof url !== 'string') return false;
