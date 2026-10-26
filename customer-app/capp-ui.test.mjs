@@ -1025,7 +1025,7 @@ test('S2b r1 P1-2: «Listo» confirms the ACTIVE map\'s centre at the tap (no id
   assert.deepEqual(J(b.ui.state.flow.pin), { lat: 15.54, lng: -88.06, confirmed: true }, '🔴 the visible centre is the confirmed pin');
   assert.deepEqual(J(b.srv.of('quoteOrder').at(-1).body.pin), { lat: 15.54, lng: -88.06, confirmed: true }, '🔴 …and the quoted one');
   m.pan(15.6, -88.1); m.idle();   // the closed map's late idle
-  await b.type('#f-details', 'Portón'); await settle();
+  b.ui.render(); await settle();   // a fresh preview map is centred from the app's state
   assert.deepEqual(J(b.ui.state.flow.pin), { lat: 15.54, lng: -88.06, confirmed: true });
   const pv = maps.filter((x) => x.el.dataset.gmap === 'preview').at(-1);
   assert.deepEqual(J(pv.c), { lat: 15.54, lng: -88.06 }, '🔴 the preview is centred on the confirmed pin, not the stale draft');

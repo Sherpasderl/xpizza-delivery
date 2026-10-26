@@ -20867,5 +20867,101 @@
     "kills_with": [
       "an old-host submission AFTER the switch returns to the OLD origin"
     ]
+  },
+  {
+    "id": "s2b-u01",
+    "slice": "s2b",
+    "label": "the pending lock not enforced after the sheet is dismissed / on reload (place() ignores pay_pending)",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (live && live.pay_pending === true) return lockedOutcome(live.order_id);   // locked: zero writes until a definitive poll\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "zero chargeOnlineOrder / createOrder while pending"
+    ]
+  },
+  {
+    "id": "s2b-u02",
+    "slice": "s2b",
+    "label": "a pending cancel return never locks the record",
+    "file": "../customer-app/capp-api.js",
+    "from": "        lockPending(id);\n        return pendingSheet(id);",
+    "to": "        return pendingSheet(id);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the lock is on the record"
+    ]
+  },
+  {
+    "id": "s2b-u03",
+    "slice": "s2b",
+    "label": "«Listo» takes the idle draft, not the live map centre",
+    "file": "../customer-app/capp-ui.js",
+    "from": "        const live = pinMap && pinMap.gen === pinGen && pinMap.el.isConnected ? pinMap.m.getCenter() : null;",
+    "to": "        const live = null;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the visible centre is the confirmed pin"
+    ]
+  },
+  {
+    "id": "s2b-u04",
+    "slice": "s2b",
+    "label": "an obsolete map's idle still writes the draft",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (gen !== pinGen || dead) return;",
+    "to": "if (dead) return;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the preview is centred on the confirmed pin"
+    ]
+  },
+  {
+    "id": "s2b-u05",
+    "slice": "s2b",
+    "label": "destroy() does not cancel the armed placement",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      destroy() { dead = true; placingStop();",
+    "to": "      destroy() {",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "nothing is sent after teardown"
+    ]
+  },
+  {
+    "id": "s2b-u06",
+    "slice": "s2b",
+    "label": "a failed quote keeps askedKey (no retry possible)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "{ S.askedKey = null; S.quoteErr = key; quoteFailed(); }",
+    "to": "{ S.quoteErr = key; quoteFailed(); }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "«Reintentar» asks again"
+    ]
   }
 ]
