@@ -23,7 +23,8 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   const { getActivePointer, readVersionDocs } = require('../catalog/catalog-firestore');
   const { buildTablesFromDocs } = require('../catalog/catalog-transform');
   const { sourceRefOf, canonicalize, encodeUpdateTime } = require('../catalog/source-store');
-  const { candidateFromSource } = require('../contract/third-brand');
+  const { sourceToBuildInputs } = require('../catalog/source-store');
+  const { buildCatalogV2 } = require('../catalog/form-menu-source');
   const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
   const { createSnapshotFallback, makeRtdbMirrorReader } = require('../catalog/snapshot-fallback');
   const { createIdentityVerifier } = require('../catalog/identity-record-verifier');
@@ -40,27 +41,37 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     if (typeof it.key === 'string' && !map[it.key]) map[it.key] = `${tag}${it.key}`;
     if (it.display && typeof it.display.name === 'string' && !map[it.display.name]) map[it.display.name] = `${tag}${it.display.name}`;
   }
+  // the EXTRAS too (Codex r1 P2: an empty extras table is stored by RTDB as an OMITTED node — the fixture must be publishable
+  // with real extras, and their names carry the unsafe characters as well)
+  let j = 0;
+  for (const e of t.extras) {
+    const tag = CH[j++ % CH.length];
+    if (typeof e.key === 'string' && !map[e.key]) map[e.key] = `${tag}${e.key}`;
+    if (e.display && typeof e.display.name === 'string' && !map[e.display.name]) map[e.display.name] = `${tag}${e.display.name}`;
+  }
   const rename = (o) => (typeof o === 'string' ? (map[o] || o) : Array.isArray(o) ? o.map(rename) : o && typeof o === 'object' ? Object.fromEntries(Object.entries(o).map(([k, v]) => [map[k] || k, rename(v)])) : o);
   const src = rename(t);
-  src.extras = [];
-  src.structure = { ...src.structure, extra_categories: [], extras_by_category: Object.fromEntries(Object.keys(src.structure.extras_by_category || {}).map((k) => [k, []])),
-    exposure: { ...(src.structure.exposure || {}), category_allow: Object.fromEntries(Object.keys((src.structure.exposure || {}).category_allow || {}).map((k) => [k, []])), item_overrides: {} } };
-  for (const it of src.items) { if (it.display) delete it.display.identity_id; }
+  for (const it of [...src.items, ...src.extras]) { if (it.display) delete it.display.identity_id; }
   await sourceRefOf(fs, RID).set(canonicalize(src));
   const snap = await sourceRefOf(fs, RID).get();
-  await publishVersion(fs, RID, { ...candidateFromSource(RID, snap.data()), source_sha: 'mirror-keys' },
+  // the candidate as contract/third-brand builds it, plus the renamed extras' own price table (buildCatalogV2 opts.extrasTable)
+  const inputs = sourceToBuildInputs(snap.data());
+  const built = buildCatalogV2(RID, { formData: inputs.formData, priceTable: inputs.priceTable, extrasTable: inputs.extras });
+  const candidate = { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: (snap.data().extras || []).map((e) => ({ key: e.key, price: e.price, display: e.display })) };
+  await publishVersion(fs, RID, { ...candidate, source_sha: 'mirror-keys' },
     { expected: { activeVersionId: null, draftRevision: encodeUpdateTime(snap.updateTime) }, mirror: makeRtdbMirror(rtdb) });
   const ptr = await getActivePointer(fs, RID);
   const { itemDocs, extraDocs, seq } = await readVersionDocs(fs, RID, ptr.version);
   const served = buildTablesFromDocs(itemDocs, extraDocs);
   assert.ok(Object.keys(served.menu).some((k) => k.startsWith('N.Y. ')) && Object.keys(served.menu).every((k) => UNSAFE.test(k)), 'premise: every served menu key carries an RTDB-unsafe character');
-  ok(`published ${RID} through publishVersion with ${Object.keys(served.menu).length} RTDB-unsafe dish keys (. # $ / [ ])`);
+  assert.ok(Object.keys(served.extras).length > 0 && Object.keys(served.extras).every((k) => UNSAFE.test(k)), 'premise: NON-empty extras, every key RTDB-unsafe');
+  ok(`published ${RID} through publishVersion with ${Object.keys(served.menu).length} dish + ${Object.keys(served.extras).length} extra keys, all RTDB-unsafe (. # $ / [ ])`);
 
   // M1
   const stored = (await rtdb.ref(`catalog_snapshot/${RID}`).get()).val();
   assert.ok(stored, 'M1 the mirror LANDED (in production it failed with catalog_mirror_write_failed)');
   assert.deepStrictEqual([stored.key_encoding, stored.version, stored.seq], ['uri1', ptr.version, seq]);
-  for (const k of Object.keys(stored.menu)) assert.ok(!UNSAFE.test(k), `M1 stored key RTDB-safe: ${k}`);
+  for (const k of [...Object.keys(stored.menu), ...Object.keys(stored.extras)]) assert.ok(!UNSAFE.test(k), `M1 stored key RTDB-safe: ${k}`);
   ok('M1 the mirror landed: key_encoding uri1, every stored key RTDB-safe, version / seq = the active pointer\'s');
 
   // M2
