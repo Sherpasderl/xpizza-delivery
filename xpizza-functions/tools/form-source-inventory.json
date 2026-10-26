@@ -249,6 +249,7 @@
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
     "xpizza-groupless-golden.test.mjs",
@@ -438,6 +439,7 @@
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
     "xpizza-functions/tools/verify-first-group.test.js"
    ]
@@ -687,6 +689,7 @@
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
     "xpizza-groupless-golden.test.mjs",
     "xpizza-orders/form-cart.copy.test.mjs",
@@ -877,6 +880,7 @@
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
     "xpizza-groupless-golden.test.mjs"
    ]
@@ -1295,6 +1299,8 @@
   "xpizza-functions/tools/extras-baseline-audit.js",
   "xpizza-functions/tools/menus-divergence-report.js",
   "xpizza-functions/tools/migrate-catalog-display.js",
+  "xpizza-functions/tools/migrate-menu-structure.js",
+  "xpizza-functions/tools/migrations/gen-menu-structure-2026-10-26.js",
   "xpizza-functions/tools/publish-version.js",
   "xpizza-functions/tools/record-evidence-boundary.js",
   "xpizza-functions/tools/registry-writers.js",

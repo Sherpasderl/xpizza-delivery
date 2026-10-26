@@ -90,7 +90,10 @@ const D = {
     // requireProject({ requireFlag: true }) before any client
     'handheld-push-probe',
     // TRACKER FIXES — the owner-run flag-transition tool: requireProject({ requireFlag: true }) before any client
-    'tracker-reconcile'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
+    'tracker-reconcile',
+    // PLAN 4 r3 §8.2 — the additive menu-structure migration (dry run by default; --write is the owner's):
+    // requireProject({ requireFlag: true }) before any client
+    'migrate-menu-structure'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/set-driver-enforcement-mode.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',

@@ -19797,5 +19797,89 @@
    "node",
    "catalog/plan4-display-fields.test.js"
   ]
+ },
+ {
+  "id": "fb-10",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: the migration OVERWRITES a present value (a merchant edit) instead of preserving it",
+  "file": "tools/migrate-menu-structure.js",
+  "from": "    if (!has(target, field)) { target[field] = clone(want); added.push(at); return; }",
+  "to": "    if (!has(target, field) || !same(target[field], want)) { target[field] = clone(want); added.push(at); return; }",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
+ },
+ {
+  "id": "fb-11",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: the write skips the explicit revision comparison — a merchant save between plan and write is replaced",
+  "file": "tools/migrate-menu-structure.js",
+  "from": "        if (nowRevision !== revision) {",
+  "to": "        if (false) {",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
+ },
+ {
+  "id": "fb-12",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: the planned document is not validated — an off-set icon or a ghost priority would be written",
+  "file": "tools/migrate-menu-structure.js",
+  "from": "  validateSource(next, rid);   // THROWS on an invalid result — nothing is written",
+  "to": "",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
+ },
+ {
+  "id": "fb-13",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: a row whose dish is gone is silently dropped instead of reported",
+  "file": "tools/migrate-menu-structure.js",
+  "from": "        if (!rec || !rec.display || typeof rec.display !== 'object') { missing.push(at); continue; }",
+  "to": "        if (!rec || !rec.display || typeof rec.display !== 'object') { continue; }",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
+ },
+ {
+  "id": "fb-14",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: the dry run writes (the --write opt-in ignored)",
+  "file": "tools/migrate-menu-structure.js",
+  "from": "    if (!plan.added.length || !write) return report;",
+  "to": "    if (!plan.added.length) return report;",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
+ },
+ {
+  "id": "fb-15",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: a refused (moved) write is not re-planned — the migration gives up on the first concurrent save",
+  "file": "tools/migrate-menu-structure.js",
+  "from": "      if (e && e.code === 'migrate_menu_structure_moved' && attempt < MAX_TRIES) {",
+  "to": "      if (false) {",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
+ },
+ {
+  "id": "fb-16",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: the generator offers icons for alcohol (beer_*) too — rows the picker never shows",
+  "file": "tools/migrations/gen-menu-structure-2026-10-26.js",
+  "from": "        if (String(d.id).indexOf('beer_') === 0 || !Object.prototype.hasOwnProperty.call(CAT, d.cat)) continue;",
+  "to": "        if (!Object.prototype.hasOwnProperty.call(CAT, d.cat)) continue;",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
  }
 ]
