@@ -52,7 +52,7 @@ httpRequest.requestMethod="GET"
 - **Caveat:** these are dev-machine numbers, not a Honduran mobile connection. They are a relative before/after measure, so they're also taken before deploy as the baseline.
 
 **Post-deploy smoke (immediately after the deploy, by me, read-only):**
-- `gcloud functions describe getPublicMenu --gen2 --region us-central1` shows `minInstances: 1`.
+- `gcloud functions describe getPublicMenu --gen2 --project xpizza-delivery --region us-central1 --format='value(serviceConfig.minInstanceCount)'` prints `1` (codex plan r2).
 - One B-run per form passes.
 - Both forms' `form-bundle-live-check.js --this-form` stay green.
 

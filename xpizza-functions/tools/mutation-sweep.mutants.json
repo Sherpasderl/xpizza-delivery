@@ -19809,5 +19809,20 @@
    "node",
    "tools/form-bundle-live-check.test.js"
   ]
+ },
+ {
+  "id": "menuwarm-01",
+  "slice": "menuwarm",
+  "label": "plan 2: getPublicMenu loses its warm instance (cold starts return to the live-menu path)",
+  "file": "index.js",
+  "from": "maxInstances: 20, minInstances: 1 },   // PLAN 2",
+  "to": "maxInstances: 20 },   // PLAN 2",
+  "kills_with": [
+   "getPublicMenu keeps one warm instance"
+  ],
+  "command": [
+   "node",
+   "cors-preflight.test.js"
+  ]
  }
 ]

@@ -1909,6 +1909,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1b-inverse.js",
@@ -1931,6 +1932,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -1957,6 +1959,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -1975,6 +1978,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js"
      ]
     },
@@ -1994,6 +1998,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2018,6 +2023,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2035,6 +2041,7 @@
      "inverses": [
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js"
      ]
     },
@@ -2049,6 +2056,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2070,6 +2078,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2088,6 +2097,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
@@ -2102,6 +2112,7 @@
       "tools/dlite-push-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
@@ -2113,7 +2124,14 @@
      "file": "xpizza-functions/membership-wiring.guard.test.js",
      "inverses": [
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/menu-warm-wiring.guard.test.js",
+     "inverses": [
+      "tools/menu-warm-inverse.js"
      ]
     },
     {
@@ -2131,6 +2149,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2159,6 +2178,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2175,6 +2195,7 @@
      "file": "xpizza-functions/portalui-wiring.guard.test.js",
      "inverses": [
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js"
      ]
     },
@@ -2184,6 +2205,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js"
      ]
@@ -2197,6 +2219,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2216,6 +2239,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2234,6 +2258,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s5-inverse.js",
@@ -2252,6 +2277,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2269,6 +2295,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
@@ -2289,6 +2316,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2337,6 +2365,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/tracker-fixes-inverse.js"
@@ -2348,6 +2377,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2365,6 +2395,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
