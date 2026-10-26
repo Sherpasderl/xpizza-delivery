@@ -1,6 +1,6 @@
 # Plan 4: Every form shows ONLY the published catalog (bake at build, rebuild on publish, reconcile)
 
-**Status:** PLAN r2 (§8 folds in Codex scoped r2: 1 P1, 3 P2, plus the owner's reward-icon ruling (a), 2026-10-26). r1 answered Codex plan r1 (3 P1, 4 P2, 1 P3). The advisor accepted all eight on 2026-10-26: the plan must be COMPLETE under the owner rule, with no deferral of display consumers. Codex FULL.
+**Status:** PLAN r3, APPROVED once the version-collision ruling (§8.1) is folded in; build only after 7f72757f is on main. r2 (§8) folded in Codex scoped r2: 1 P1, 3 P2, plus the owner's reward-icon ruling (a), 2026-10-26). r1 answered Codex plan r1 (3 P1, 4 P2, 1 P3). The advisor accepted all eight on 2026-10-26: the plan must be COMPLETE under the owner rule, with no deferral of display consumers. Codex FULL.
 **Owner rule** (standing 2026-10-20, restated 2026-10-25): the merchant portal's published catalog is the ONE source of truth for every restaurant's menu, with no per-brand fallbacks.
 
 ## Problem (chronology corrected, P3)
@@ -120,7 +120,12 @@ After this plan, the literals (`FALLBACK_*`, `EXTRAS`, `EXTRAS_BY_*`, `TAG_BADGE
 
 **8.1 Register the new fields everywhere a body is checked (P1).** `badge_priority` (structure) and `reward_icon` (dish display field) are added to:
 - **the public body contract:** `BODY_CONTRACT` (catalog/public-menu.js:60), so `assertWholeBody` (:81) never 500s the public menu on them. `badge_priority` is an optional string array of badge keys; `reward_icon` is an optional string from a closed set.
-- **the representation version:** `REPRESENTATION_VERSION` goes `'1d.1'` → `'1d.2'` (:41). Every consumer accepts both while forms built before the change remain deployed: the forms' live-menu adapter, the bake contract (§3) and form-bundle-live-check.
+- **the representation version (r3 ruling: version collision):** the held public-menu display change 7f72757f (photos + category rename) already claims `'1d.2'`, and it lands FIRST in the next train.
+  - Plan 4 is built only after it is on main, rebased onto the integrated main.
+  - It advances `REPRESENTATION_VERSION` `'1d.2'` → `'1d.3'`.
+  - It MERGES `BODY_CONTRACT`: it keeps 7f72757f's optional photo fields and category-rename validation, and adds `badge_priority` and `reward_icon`.
+  - During rollout every consumer accepts `'1d.1'`, `'1d.2'` and `'1d.3'`: the forms' live-menu adapter, the bake contract (§3) and form-bundle-live-check.
+  - A combined-body test drives one body carrying photos, a renamed category, `badge_priority` and `reward_icon` through all three paths: serve (`buildPublicMenu` + `assertWholeBody`), bake (§3 contract + splice) and live-apply (`liveMenuPrepare`/commit). Each must accept it, and each field must reach its consumer.
 - **the source schema:** `validateSource` (catalog/source-store.js: the structure field list at :51 and the carried fields at :745) gains `badge_priority`; `badge_priority` entries must name declared badges. The dish display schema gains `reward_icon`.
 - **tests:** the public-menu body-contract test, the source-store schema tests, and the existing representation-version tests. The money and fingerprint pins stay byte-unchanged, because display fields are not pricing inputs. An existing test already proves that; it gets extended to the new fields.
 
