@@ -516,6 +516,28 @@ const ctx = {
     renderChrome();
     renderViews();
   },
+  // PORTAL-UI 1b (PLAN r4 §3.5): E1 is the ONLY authority after a 1b write — re-read it under the generation guard and repaint.
+  // → 'applied' | 'reload' (the selection's caps changed: the existing one-time guarded reload, as at boot) | 'failed' (an
+  // error or a partial answer: nothing is guessed, the caller keeps its controls locked) | 'obsolete' (an auth change since).
+  async refresh() {
+    const gen = S.gen;
+    const uid = S.uid;
+    let fresh;
+    try {
+      fresh = await getMyBranches({ token, assertLive: () => { if (gen !== S.gen) throw Object.assign(new Error('obsolete'), { kind: 'obsolete' }); } });
+    } catch (err) {
+      return gen !== S.gen || (err && err.kind === 'obsolete') ? 'obsolete' : 'failed';
+    }
+    if (gen !== S.gen) return 'obsolete';
+    if (!fresh || !Array.isArray(fresh.branches) || fresh.branches.some((b) => b && b.degraded)) return 'failed';
+    store.set(CACHE_KEY(uid), fresh);
+    const sel = L.resolveSelection(fresh, store.get(SEL_KEY(uid)));
+    if (!sel || (decisionOf(sel) !== S.decision && !S.reloadedOnce)) { S.reloadedOnce = true; requestReload(); return 'reload'; }
+    S.e1 = fresh; S.sel = sel;
+    renderChrome();
+    renderViews();
+    return 'applied';
+  },
 };
 
 function renderViews() {

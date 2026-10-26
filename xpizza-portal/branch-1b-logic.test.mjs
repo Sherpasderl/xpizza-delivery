@@ -1,0 +1,184 @@
+// PORTAL-UI 1b — the pure branch-profile decisions. Run: node --test xpizza-portal/branch-1b-logic.test.mjs
+// The validation tables are checked against the REAL O1b server validators (branch-ops.js hours7Errors, branch-phone.js
+// HN_MOBILE), loaded read-only — the client mirrors the server, so the server is the oracle. Fixtures are synthetic
+// (marca_s), brand-agnostic.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import * as B from './branch-1b-logic.js';
+import { E6_KEYS, E7_PATCH_KEYS } from './api.js';
+
+const require = createRequire(import.meta.url);
+const OPS = require('../xpizza-functions/branches/branch-ops.js');
+const PHONE = require('../xpizza-functions/portal/branch-phone.js');
+const CORE = require('../xpizza-functions/portal/branch-lifecycle-core.js');
+
+const WEEK = (start = '11:00', end = '22:00') => Object.fromEntries(B.HOUR_KEYS.map((k) => [k, { open: true, start, end }]));
+
+test('the write gate is exactly E1.membership_writes_enabled === true', () => {
+  assert.equal(B.writesOn({ membership_writes_enabled: true }), true);
+  for (const v of [false, 'true', 1, null, undefined]) assert.equal(B.writesOn({ membership_writes_enabled: v }), false, String(v));
+  assert.equal(B.writesOn(null), false);
+});
+
+test('phone: the client regex IS the server literal (branch-phone.js HN_MOBILE)', () => {
+  assert.equal(B.HN_MOBILE.source, PHONE.HN_MOBILE.source);
+  assert.equal(B.HN_MOBILE.flags, PHONE.HN_MOBILE.flags);
+});
+
+test('phone normalisation (§5): the four accepted spellings → +504NNNNNNNN; refused inputs fail the SERVER check too', () => {
+  for (const raw of ['9795-2893', '+504 9795-2893', '50497952893', '+50497952893', '(504) 9795.2893', ' 9795 2893 ']) {
+    const n = B.normalizePhone(raw);
+    assert.equal(n, '+50497952893', raw);
+    assert.equal(B.validPhone(n), true, raw);
+    assert.equal(PHONE.isHnMobile(n), true, `server accepts ${raw}`);
+  }
+  for (const raw of ['2234-5678', '9795-289', '+1 555 123 4567', '', '+504 1234-5678', 'abc', '504979528931']) {
+    const n = B.normalizePhone(raw);
+    assert.equal(B.validPhone(n), false, raw);
+    assert.equal(PHONE.isHnMobile(n), false, `server refuses ${raw} too`);
+  }
+  for (const first of ['3', '7', '8', '9']) assert.equal(B.validPhone(`+504${first}1234567`), true, first);
+});
+
+test('phone display: «+504 NNNN-NNNN» for a +504 number; anything else exactly as stored (never rewritten)', () => {
+  assert.equal(B.phoneDisplay('+50497952893'), '+504 9795-2893');
+  assert.equal(B.phoneDisplay('+50422345678'), '+504 2234-5678', 'a stored landline is shown, then flagged invalid by the view');
+  assert.equal(B.phoneDisplay('+15551234567'), '+15551234567');
+  assert.equal(B.phoneDisplay(null), '');
+  assert.equal(B.PHONE_PLACEHOLDER, '+504 ____-____');
+});
+
+test('hours: validHours agrees with the SERVER hours7Errors on every case (§5)', () => {
+  const cases = {
+    week: WEEK(),
+    fullDay: WEEK('00:00', '23:59'),
+    equal: { ...WEEK(), mon: { open: true, start: '11:00', end: '11:00' } },
+    overMidnight: { ...WEEK(), fri: { open: true, start: '23:00', end: '01:00' } },
+    missingDay: (() => { const h = WEEK(); delete h.sun; return h; })(),
+    closedOk: { ...WEEK(), wed: { open: false } },
+    closedWithTimes: { ...WEEK(), wed: { open: false, start: '11:00', end: '22:00' } },
+    extraKey: { ...WEEK(), mon: { open: true, start: '11:00', end: '22:00', note: 'x' } },
+    unknownDay: { ...WEEK(), hol: { open: false } },
+    badTime: { ...WEEK(), tue: { open: true, start: '9:00', end: '22:00' } },
+    h24: { ...WEEK(), tue: { open: true, start: '11:00', end: '24:00' } },
+    numberTime: { ...WEEK(), tue: { open: true, start: 1100, end: 2200 } },
+    openNoBool: { ...WEEK(), tue: { open: 'yes', start: '11:00', end: '22:00' } },
+    notObject: null,
+    array: [],
+  };
+  for (const [name, h] of Object.entries(cases)) {
+    assert.equal(B.validHours(h), OPS.hours7Errors(h).length === 0, name);
+  }
+  assert.equal(B.validHours(cases.week), true, 'non-vacuity: a valid week passes');
+  assert.equal(B.validHours(cases.overMidnight), false, 'non-vacuity: same-day only');
+});
+
+test('hours: the day error kinds — only start ≥ end gets the drawn S5 message', () => {
+  assert.equal(B.dayError({ open: true, start: '11:00', end: '22:00' }), null);
+  assert.equal(B.dayError({ open: true, start: '22:00', end: '11:00' }), 'order');
+  assert.equal(B.dayError({ open: true, start: '11:00', end: '11:00' }), 'order');
+  assert.equal(B.dayError({ open: true, start: '', end: '22:00' }), 'shape');
+  assert.equal(B.dayError({ open: false }), null);
+  assert.equal(B.dayError(undefined), 'shape');
+});
+
+test('hours: the edit rows are Monday first; an undefined day is «Sin definir» (not an error row)', () => {
+  const h = { ...WEEK(), wed: { open: false }, fri: { open: true, start: '23:00', end: '01:00' } };
+  delete h.sun;
+  const rows = B.hoursEditRows(h);
+  assert.deepEqual(rows.map((r) => r.d), ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']);
+  assert.deepEqual(rows.map((r) => [r.state, r.err]), [['open', null], ['open', null], ['closed', null], ['open', null], ['open', 'order'], ['open', null], ['undef', null]]);
+});
+
+test('hours: cleanHours builds EXACTLY the server shape (all present days, no extra keys)', () => {
+  const dirty = { ...WEEK(), mon: { open: true, start: '11:00', end: '22:00', note: 'x' }, tue: { open: false, start: '1', end: '2' }, hol: { open: false } };
+  const c = B.cleanHours(dirty);
+  assert.deepEqual(Object.keys(c).sort(), [...B.HOUR_KEYS].sort());
+  assert.deepEqual(c.mon, { open: true, start: '11:00', end: '22:00' });
+  assert.deepEqual(c.tue, { open: false });
+  assert.equal(OPS.hours7Errors(c).length, 0, 'the server accepts the cleaned shape');
+});
+
+test('hours: switching a day open takes its own loaded times, else the nearest earlier open day; closed drops the times', () => {
+  const loaded = { ...WEEK(), wed: { open: false } };
+  let d = B.editDay(loaded, loaded, 'wed', { open: true });
+  assert.deepEqual(d.wed, { open: true, start: '11:00', end: '22:00' }, 'from Tuesday (the nearest earlier open day)');
+  const own = { ...WEEK(), wed: { open: true, start: '12:00', end: '20:00' } };
+  d = B.editDay(B.editDay(own, own, 'wed', { open: false }), own, 'wed', { open: true });
+  assert.deepEqual(d.wed, { open: true, start: '12:00', end: '20:00' }, 'its own loaded times come back');
+  d = B.editDay(loaded, loaded, 'mon', { open: false });
+  assert.deepEqual(d.mon, { open: false });
+  d = B.editDay(loaded, loaded, 'mon', { end: '23:30' });
+  assert.deepEqual(d.mon, { open: true, start: '11:00', end: '23:30' });
+  const none = Object.fromEntries(B.HOUR_KEYS.map((k) => [k, { open: false }]));
+  assert.deepEqual(B.editDay(none, none, 'mon', { open: true }).mon, { open: true, start: '', end: '' }, 'nothing to copy → empty (red until filled)');
+  assert.equal(loaded.wed.open, false, 'the input is never mutated');
+});
+
+test('hours: typed times normalise to HH:MM when they are one', () => {
+  assert.equal(B.normalizeTime('1130'), '11:30');
+  assert.equal(B.normalizeTime('9:00'), '09:00');
+  assert.equal(B.normalizeTime('930'), '09:30');
+  assert.equal(B.normalizeTime(' 22:00 '), '22:00');
+  assert.equal(B.normalizeTime('25:00'), '25:00', 'kept as typed → the validation refuses it');
+  assert.equal(B.normalizeTime('abc'), 'abc');
+});
+
+test('the patch carries ONLY the changed groups, ⊆ {phone, hours, prep_default_min} — never a name / location key', () => {
+  const base = { location_name: 'Sucursal Uno', phone: '+50497952893', hours: WEEK(), prep_default_min: 20 };
+  assert.deepEqual(B.profilePatch(base, { phone: '+50497952893', hours: WEEK(), prep_default_min: 20 }), {});
+  assert.deepEqual(B.profilePatch(base, { prep_default_min: 25 }), { prep_default_min: 25 });
+  const p = B.profilePatch(base, { rid: 'r_s', base: 3, phone: '+50433905521', phoneRaw: '3390-5521', hours: { ...WEEK(), wed: { open: false } }, location_name: 'Otro', hub: { lat: 1, lng: 2 } });
+  assert.deepEqual(Object.keys(p).sort(), ['hours', 'phone']);
+  for (const k of Object.keys(p)) assert.ok(B.PATCH_KEYS.includes(k), k);
+  assert.deepEqual([...B.PATCH_KEYS].sort(), [...E7_PATCH_KEYS].sort(), 'the view and the request builder share one allowlist');
+  assert.deepEqual(Object.keys(CORE.GROUP_CAP).filter((k) => k !== 'location_name').sort(), [...E7_PATCH_KEYS].sort(), 'and it is the server E7 group map minus the name');
+  assert.deepEqual([...E6_KEYS], [...CORE.E6_KEYS], 'E6 keys are the server list, exactly');
+});
+
+test('patch errors: per group; a valid patch has none', () => {
+  assert.deepEqual(B.patchErrors({ phone: '+50497952893', hours: WEEK(), prep_default_min: 25 }), {});
+  assert.deepEqual(B.patchErrors({ phone: '+50422345678' }), { phone: true });
+  assert.deepEqual(B.patchErrors({ hours: { ...WEEK(), mon: { open: true, start: '22:00', end: '11:00' } } }), { hours: true });
+  assert.deepEqual(B.patchErrors({ prep_default_min: 500 }), { prep_default_min: true });
+});
+
+test('the bar labels, in the drawn order', () => {
+  assert.deepEqual(B.dirtyLabels1b({ phone: 'x', prep_default_min: 5, hours: {} }), ['horario', 'preparación', 'contacto']);
+  assert.deepEqual(B.dirtyLabels1b({}), []);
+});
+
+test('G4: the save-error copy is chosen by the fields the save carried', () => {
+  assert.deepEqual([...B.saveErrorCopy({ prep_default_min: 25 })], ['No se guardó el tiempo de preparación', 'Revisá el valor y volvé a intentar; si sigue igual, escribinos por WhatsApp.']);
+  for (const p of [{ phone: 'x' }, { hours: {} }, { phone: 'x', prep_default_min: 25 }, { hours: {}, prep_default_min: 25 }, {}, null]) {
+    assert.deepEqual([...B.saveErrorCopy(p)], ['No se guardaron los cambios', 'Revisá el valor y volvé a intentar; si sigue igual, escribinos por WhatsApp.'], JSON.stringify(p));
+  }
+});
+
+test('T7: the detail lede by lifecycle; no address → no lede (never a guess)', () => {
+  const loc = { address_line: 'Calle 1, local 2', address_reference: null, hub: null, zone_radius_km: 5 };
+  assert.equal(B.ledeOf({ lifecycle: 'active', location: loc }), 'Calle 1, local 2');
+  assert.equal(B.ledeOf({ lifecycle: 'inactive', location: loc }), 'Calle 1, local 2 · desactivada');
+  assert.equal(B.ledeOf({ lifecycle: 'staged', location: loc }), 'Calle 1, local 2 · todavía no recibe pedidos');
+  assert.equal(B.ledeOf({ lifecycle: 'draft', location: null }), 'Sherpa está configurando la ubicación · todavía no recibe pedidos');
+  assert.equal(B.ledeOf({ lifecycle: 'active', location: { address_line: null } }), null);
+  assert.equal(B.ledeOf({ lifecycle: 'active' }), null);
+});
+
+test('T6: «Copiar horario de» = the same brand\'s OTHER identity rows with VALID hours, by name, + the literal preset', () => {
+  const row = (rid, name, hours) => ({ rid, brand_id: 'marca_s', profile: { location_name: name, phone: null, hours, prep_default_min: 20 } });
+  const rows = [row('r_c', 'Centro', WEEK('10:00', '21:00')), row('r_a', 'Alameda', WEEK()), row('r_self', 'Esta', WEEK()), row('r_bad', 'Rota', { mon: { open: true } }), { rid: 'r_x', brand_id: 'marca_s' }];
+  const s = B.copySources(rows, 'r_self');
+  assert.deepEqual(s.map((x) => x.label), ['Alameda', 'Centro']);
+  assert.deepEqual(s[1].hours.mon, { open: true, start: '10:00', end: '21:00' });
+  assert.equal(B.PRESET_LABEL, 'Lun–Dom 11:00–22:00');
+  assert.equal(B.validHours(B.PRESET_HOURS), true);
+  assert.equal(OPS.hours7Errors(B.cleanHours(B.PRESET_HOURS)).length, 0);
+});
+
+test('editors: per capability on an identity row (all-or-none for real roles; a partial row is a SYNTHETIC fixture)', () => {
+  assert.deepEqual(B.editorsOf({ caps: ['location.contact', 'location.hours', 'location.prep'] }), { phone: true, hours: true, prep_default_min: true });
+  assert.deepEqual(B.editorsOf({ caps: ['availability.set'] }), { phone: false, hours: false, prep_default_min: false });
+  assert.deepEqual(B.editorsOf({ caps: ['location.hours'] }), { phone: false, hours: true, prep_default_min: false }, 'SYNTHETIC partial caps');
+});

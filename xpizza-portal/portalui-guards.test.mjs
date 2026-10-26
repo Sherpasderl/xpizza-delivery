@@ -133,7 +133,7 @@ test('the editor, review, render, auth and logic modules are byte-identical to t
 const LITERALS = [/x_pizza/i, /la_musa/i, /\bX\.? ?Pizza\b/i, /\bLa Musa\b/i, /15\.5074/, /-88\.0398/, /15\.50414/, /-88\.03848/, /97952893/, /93736607/];
 const hits = (src) => LITERALS.reduce((n, re) => n + (src.match(new RegExp(re.source, `${re.flags.replace('g', '')}g`)) || []).length, 0);
 const NEW_PORTAL = ['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'branch-logic.js', 'ops-dom.js',
-  'team.js', 'team-logic.js', 'invite-mail.js', 'pubreq.js', 'aceptar.js', 'equipos.js'];   // + 3a's T-b / T-c / T-d modules (aceptar-boot.js holds the
+  'team.js', 'team-logic.js', 'invite-mail.js', 'pubreq.js', 'aceptar.js', 'equipos.js', 'branch-1b-logic.js'];   // + 1b   // + 3a's T-b / T-c / T-d modules (aceptar-boot.js holds the
   // Functions BASE URL — the GCP project id, exactly as api.js does — so it is not a zero-literal module)
 const NEW_SERVER = ['portal/ops-core.js', 'portal/ops-functions.js', 'portal/location-name.js', 'portal/pause-reasons.js', 'portal/reset-list.js', 'lib/hn-date.js'];
 const EXISTING = ['index.html', 'styles.css', 'app.js', 'api.js', 'boot.js', 'ventas.js', 'render.js', 'editor.js', 'review.js', 'portal-logic.js', 'ventas-logic.js'];
