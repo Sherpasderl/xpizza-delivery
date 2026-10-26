@@ -637,6 +637,13 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .review-body{padding:0 16px 14px;border-top:1px solid var(--border)}
 /* A6: Stage-2 order summary — reuses the .review-item / .review-total machinery inside a card. */
 .order-summary-s2{margin:4px 16px 10px;border:1px solid var(--border);border-radius:14px;padding:6px 16px 12px;background:#fff}
+/* PLAN 5 — the cart price-change notice (owner-approved mockup v2): calm, the form's own tokens, never an error tone. */
+.price-change-notice{background:var(--cream);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;margin:0 0 12px;color:var(--charcoal);font-size:14px;line-height:1.45}
+.price-change-notice>div+div{margin-top:4px}
+.price-change-slot{margin:4px 16px 0}
+.price-change-slot .price-change-notice{margin:0 0 8px}
+.price-change-was{color:var(--muted);font-weight:400;font-size:.82em;margin-right:6px}
+.price-change-was--stacked{display:block;text-align:right;line-height:1.1;margin-right:0}
 .order-summary-s2:empty{display:none}
 .s2-summary-head{font-family:var(--display);font-size:16px;font-weight:700;color:var(--charcoal);padding:12px 0 4px}
 /* Redemption v2 order-summary (2c): Premio chip + savings (gold literals — brand-neutral, match the ticket) */
@@ -1421,6 +1428,7 @@ body.s5-active .header{display:none}
     <div id="acct-s2-summary"></div>
 
     <!-- A6: Stage-2 order summary (items + Envío + reward GRATIS line + SERVER discounted total) — filled by renderStage2Summary(); empty when the cart is empty. -->
+    <div class="price-change-slot" id="s2-price-notice" hidden></div>
     <div class="order-summary-s2" id="s2-summary"></div>
 
     <!-- REWARDS redeem affordance + review (B2 Task 4) — RELOCATED above "Forma de pago" (order summary → redeem row → pago); filled by window.__ACCOUNT.renderRedeem; server-authoritative discount, gated on redemption_live/canary. Mount id unchanged — renderRedeem/apply wiring untouched. --><div id="acct-redeem"></div>
@@ -2139,6 +2147,71 @@ function refuseConflictedSend(where){
 }
 // 🔴 THE SUBMIT GATE — every line whose dish OR any of whose options stopped resolving.
 function cartConflicts(){ return cartLines().filter(l => l.blocked); }
+/* ── PLAN 5 — THE CART PRICE-CHANGE NOTICE (owner-approved mockup v2, DECISIONS 2026-10-26) ──────────────────
+   When EVERY blocked line is only a dish whose price changed, the cart ADOPTS the live prices and DISCLOSES them
+   — never silently. Adoption happens only at two VISIBLE render moments (the cart sheet once it is open; the pay
+   step as it is entered), as one synchronous block: adopt → render → confirm the FINAL render shows every change
+   → otherwise roll back to today's block. Never at the send, never in the background. Every other conflict
+   (options, availability, choice, a resumed payment, a reward) keeps today's block: form-cart.js decides.
+   The notice and the struck price are rebuilt from CART.disclosed() on EVERY render of the sheet and the pay-step
+   summary, so a later re-render cannot erase a disclosure while its line is in the cart. */
+function priceNoticeChanges(){
+  let ctx = true;
+  try { ctx = !!window.__resumeOrderId || serialPinLive() || !!(window.__ACCOUNT && typeof window.__ACCOUNT.getRedeemPayload === 'function' && window.__ACCOUNT.getRedeemPayload()); } catch (_) { ctx = true; }
+  return CART.priceNoticeChanges(cartLines(), {
+    blockedByContext: ctx,
+    isUnavailable: (rec) => { try { return !!isSoldOut(rec); } catch (_) { return true; } },
+    isLauncher: (l) => { try { return GroupPicker.isLauncher(l.live, VARIANT_ITEMS); } catch (_) { return true; } },
+  });
+}
+function priceNoticeText(e){ return 'Cambió el precio de ' + e.name + ': antes L ' + Number(e.from).toFixed(0) + ', ahora L ' + Number(e.to).toFixed(0) + '.'; }
+function priceNoticeHtml(){
+  const d = CART.disclosed();
+  return d.length ? '<div class="price-change-notice" role="status">' + d.map(e => '<div>' + safeText(priceNoticeText(e)) + '</div>').join('') + '</div>' : '';
+}
+// The struck price beside a changed line's subtotal: the OLD subtotal at the same quantity and options.
+function priceWasHtml(id, subtotal, n, stacked){
+  const e = CART.disclosed().find(x => x.key === String(id));
+  if (!e) return '';
+  const was = Number(subtotal) - (Number(e.to) - Number(e.from)) * Number(n);
+  return '<s class="price-change-was' + (stacked ? ' price-change-was--stacked' : '') + '" data-was="' + safeText(e.key) + '">L ' + was.toFixed(0) + '</s>';
+}
+// Shown = attached, and no ancestor is [hidden] or display:none (works under jsdom too, which has no layout).
+function priceNoticeShown(el){
+  if (!el || !el.isConnected) return false;
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    if (n.hidden) return false;
+    try { if (getComputedStyle(n).display === 'none') return false; } catch (_) { return false; }
+  }
+  return true;
+}
+function priceNoticeShows(noticeBox, linesBox, changes){
+  if (!noticeBox || !noticeBox.isConnected || !linesBox || !linesBox.isConnected) return false;
+  const n = noticeBox.querySelector('.price-change-notice');
+  if (!priceNoticeShown(n)) return false;
+  const txt = n.textContent || '';
+  const struck = new Set([...linesBox.querySelectorAll('s.price-change-was')].map(x => x.getAttribute('data-was')));
+  return changes.every(c => txt.includes(priceNoticeText(c)) && struck.has(String(c.key)));
+}
+function priceNoticeMoment(target){
+  if (target === 's2') { const sb = document.getElementById('s2-summary'); if (activeStageId() !== 's2' || !priceNoticeShown(sb)) return false; }
+  if (target === 'cart') { const sh = document.getElementById('cart-review-sheet'); if (!sh || !sh.classList.contains('open')) return false; }
+  const changes = priceNoticeChanges();
+  if (!changes) return false;
+  const rollback = CART.adoptPrices(changes);
+  if (!rollback) return false;
+  let ok = false;
+  try {
+    if (target === 'cart') { updateCartReviewBody(); const b = document.getElementById('cart-review-body'); ok = priceNoticeShows(b, b, changes); }
+    else { renderStage2Summary(); ok = priceNoticeShows(document.getElementById('s2-price-notice'), document.getElementById('s2-summary'), changes); }
+  } catch (_) { ok = false; }
+  if (!ok) {
+    rollback();
+    try { if (target === 'cart') updateCartReviewBody(); else renderStage2Summary(); } catch (_) {}
+  }
+  try { updateCart(); } catch (_) {}
+  return ok;
+}
 // Tasks 6/7 own the rendered conflict UI. What must be true HERE is that a blocked submit is never
 // silent: the customer is told, with the lines named, and the form stays usable so they can act.
 function announceCartConflicts(conflicts){
@@ -3424,6 +3497,7 @@ function renderStage2Summary(){
     if(__confirmQuote && _onPay) __confirmQuote.scheduleRefresh();
   }catch(_){}
   const box=document.getElementById('s2-summary'); if(!box) return;
+  { const pn=document.getElementById('s2-price-notice'); if(pn){ const h=priceNoticeHtml(); pn.innerHTML=h; pn.hidden=!h; } }   // PLAN 5: rebuilt on every render
   const lines=cartLines();   // 🔴 X. Pizza keeps extras PER PIZZA INSTANCE (pizzaExtras[key] = {0:{extraId:1},1:{…}}): read flat, the summary showed no extras and its lines left them out while the Total had them
   if(!lines.length){ box.innerHTML=''; return; }   // (2× Carnivora + Pepperoni on pizza 1: "2x Carnivora L 680 · Total L 730"). Now each pizza's extras, in the cart review's "Pizza n: …" format,
   const rows=lines.map(line=>{   // priced exactly as calcTotal() prices them (every instance, each option through lineExtra), so the lines add up to the pre-reward total
@@ -3431,7 +3505,7 @@ function renderStage2Summary(){
     const perPizza=Array.from({length:n},(_,i)=>{ const inst=instances[i]; if(!inst||typeof inst!=='object') return null; const names=Object.entries(inst).filter(([,q])=>q>0).map(([eid])=>{ const ex=lineExtra(line,eid); return ex?ex.name:null; }).filter(Boolean); return names.length?(n>1?'Pizza '+(i+1)+': ':'')+names.join(', '):null; }).filter(Boolean);
     let extrasTotal=0; Object.values(instances).forEach(inst=>{ if(typeof inst!=='object') return; Object.entries(inst).forEach(([eid,q])=>{ const ex=lineExtra(line,eid); if(ex) extrasTotal+=ex.price*q; }); });
     const subtotal=p.price*n+extrasTotal;
-    return '<div class="review-item"><div class="review-item-left"><div class="review-item-name">'+n+'x '+escapeHtml(p.name)+'</div>'+perPizza.map(l=>'<div class="review-item-extras">+ '+escapeHtml(l)+'</div>').join('')+'</div><div class="review-item-price">L '+subtotal.toFixed(0)+'</div></div>';
+    return '<div class="review-item"><div class="review-item-left"><div class="review-item-name">'+n+'x '+escapeHtml(p.name)+'</div>'+perPizza.map(l=>'<div class="review-item-extras">+ '+escapeHtml(l)+'</div>').join('')+'</div><div class="review-item-price">'+priceWasHtml(p.id, subtotal, n, false)+'L '+subtotal.toFixed(0)+'</div></div>';
   }).join('');
   const envio = orderType==='delivery' ? '<div class="review-item"><div class="review-item-left"><div class="review-item-name" style="color:var(--green)">Envío</div></div><div class="review-item-price" style="color:var(--green)">Gratis</div></div>' : '';
   let reward='';
@@ -3464,6 +3538,7 @@ function openCartReview(){
   updateCartReviewBody();
   document.getElementById('cart-overlay').classList.add('open');
   document.getElementById('cart-review-sheet').classList.add('open');
+  priceNoticeMoment('cart');   // PLAN 5: disclose AFTER the sheet is open (it is the visible moment)
   document.body.style.overflow = 'hidden';
 }
 
@@ -3471,6 +3546,7 @@ function chgFromCart(id, d){
   chg(id, d);
   // If item removed completely, refresh the whole body
   updateCartReviewBody();
+  priceNoticeMoment('cart');   // PLAN 5: a removal can make a mixed cart eligible
   // Update the total display
   const totalEl=document.getElementById('cart-review-total');
   if(totalEl) totalEl.textContent='L '+calcTotal().toFixed(0);
@@ -3540,7 +3616,7 @@ function updateCartReviewBody(){
     body.innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Agrega pizzas para ver tu pedido aquí.</div>';
     return;
   }
-  body.innerHTML=items.map(p=>{
+  body.innerHTML=priceNoticeHtml()+items.map(p=>{   // PLAN 5: the notice is rebuilt on every render
     const instances=pizzaExtras[p.id]||{};
     // Build per-pizza extras summary
     const perPizzaLines=Array.from({length:qty[p.id]},(_,i)=>{
@@ -3573,7 +3649,7 @@ function updateCartReviewBody(){
       +'<span class="cart-qty-num">'+safeText(qty[p.id])+'</span>'
       +'<button class="cart-qty-btn" data-act="review-inc" data-id="'+safeText(p.id)+'">+</button>'
       +'</div>'
-      +'<div class="cart-review-item-price">L '+subtotal.toFixed(0)+'</div>'
+      +'<div class="cart-review-item-price">'+priceWasHtml(p.id, subtotal, qty[p.id], true)+'L '+subtotal.toFixed(0)+'</div>'
       +'</div>'
       +'</div>';
   }).join('') + freeDeliveryRowHTML();
@@ -3618,7 +3694,7 @@ function _showStageSwap(id,pct,_t){
   // pill never covers the pay buttons.
   const cartBar=document.getElementById('cart-bar');
   if(cartBar) cartBar.style.display=(id==='s1'||id==='s2')?'flex':'none';
-  if(id==='s2'){ try{ renderStage2Summary(); }catch(_){} }   // A6: render the order summary on entering the pay step
+  if(id==='s2'){ try{ renderStage2Summary(); }catch(_){} try{ priceNoticeMoment('s2'); }catch(_){} }   // A6: render the order summary on entering the pay step
 }
 
 // Collapse the pinned account chip to just the avatar circle once scrolled past the hero on paso 1
