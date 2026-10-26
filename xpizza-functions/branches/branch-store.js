@@ -174,6 +174,30 @@ const STEPS = {
     if (m.stop) return fail(db, op, callId, m.stop);
     let mapping = m.value || {};
 
+    // (1b) O1b T3a (Codex r1 #4): a COMPLETE op is recognised HERE, before anything is re-reserved from the ORIGINAL payload — the
+    // mapping's rid holds this brand's identity (materialized) or this op's draft (possibly renamed since). A takeover re-stamps only
+    // what the op owns NOW: the rid reservation, the draft, and the reservation of the draft's CURRENT name (never the payload's).
+    if (mapping.rid) {
+      const doneRid = mapping.rid;
+      const idDone = await val(db, `restaurants/${doneRid}/identity`);
+      if (idDone != null) {
+        if (!(isObj(idDone) && idDone.brand_id === brandId)) return fail(db, op, callId, 'rid_conflict');
+        return (await finish(db, op, callId)) ? { ok: true, rid: doneRid } : LOST;
+      }
+      const dDone = await val(db, `restaurants/${doneRid}/draft`);
+      if (isObj(dDone) && dDone.op_id === opId && dDone.brand_id === brandId) {
+        if (ctx.takeover) {
+          for (const [path, mine] of [[`rid_reservations/${doneRid}`, (c) => c.op_id === opId && c.brand_id === brandId],
+            [`restaurants/${doneRid}/draft`, (c) => c.op_id === opId && c.brand_id === brandId],
+            [`brand_branch_names/${brandId}/${nameKey(dDone.location_name)}`, (c) => c.op_id === opId]]) {
+            if (!(await guard())) return LOST;
+            await txn(db, path, (cur) => (cur != null && mine(cur) ? restamp(cur) : undefined));
+          }
+        }
+        return (await finish(db, op, callId)) ? { ok: true, rid: doneRid } : LOST;
+      }
+    }
+
     // (2) the name, reserved before any rid (owned when op_id matches)
     const nk = nameKey(draft.location_name);
     if (!(await guard())) return LOST;

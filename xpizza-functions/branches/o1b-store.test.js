@@ -57,6 +57,34 @@ const world = (sur = SUR, brandState = 'on') => fakeRtdb({
     ok('activateBrand: per-rid unmet holds only the six codes, identity_gaps per rid');
   }
 
+  // ── T3a: a retried create recognises its COMPLETED op before re-reserving the ORIGINAL name (Codex r1 #4) ──
+  {
+    const INPUT = { brand_id: 'tb_brand', location_name: 'Centro', phone: '+50431234567', hours: H7, prep_default_min: 20 };
+    // a rename as a future slice / the CLI would leave it: the draft's name changed and its reservation MOVED (same value)
+    const renameFixture = (db, rid, from, to, name) => {
+      const v = db.get(`brand_branch_names/tb_brand/${from}`);
+      db.root.brand_branch_names.tb_brand[to] = v; delete db.root.brand_branch_names.tb_brand[from];
+      db.root.restaurants[rid].draft.location_name = name;
+    };
+    const db = world();
+    assert.deepStrictEqual(await S.createDraft(db, { input: INPUT, opId: 'opC', callerUid: 'ownerTB', now: NOW }), { ok: true, rid: 'tb_brand_centro' });
+    renameFixture(db, 'tb_brand_centro', 'centro', 'plaza', 'Plaza');
+    assert.deepStrictEqual(await S.createDraft(db, { input: INPUT, opId: 'opC', callerUid: 'ownerTB', now: NOW + 1 }), { ok: true, rid: 'tb_brand_centro' }, 'REPLAY-COMPLETE the original create retried → ok, same rid');
+    assert.deepStrictEqual(Object.keys(db.get('brand_branch_names/tb_brand')), ['plaza'], 'REPLAY-NO-OLD-NAME the old name is NOT re-reserved');
+    assert.deepStrictEqual(await S.deleteBranchDraft(db, { rid: 'tb_brand_centro', brandId: 'tb_brand', now: NOW + 2 }), { ok: true });
+    assert.deepStrictEqual([db.get('brand_branch_names/tb_brand'), db.get('rid_reservations/tb_brand_centro'), db.get('branch_op_ids/tb_brand/opC')], [null, null, null], 'REPLAY-THEN-DELETE nothing of the branch remains');
+    // the old name taken by ANOTHER create meanwhile → the original create's retry is still ok (never name_taken)
+    const db2 = world();
+    assert.deepStrictEqual(await S.createDraft(db2, { input: INPUT, opId: 'opC', callerUid: 'ownerTB', now: NOW }), { ok: true, rid: 'tb_brand_centro' });
+    renameFixture(db2, 'tb_brand_centro', 'centro', 'plaza', 'Plaza');
+    assert.deepStrictEqual(await S.createDraft(db2, { input: INPUT, opId: 'opD', callerUid: 'ownerTB', now: NOW + 1 }), { ok: true, rid: 'tb_brand_centro_2' }, 'another op takes the old name');
+    assert.deepStrictEqual(await S.createDraft(db2, { input: INPUT, opId: 'opC', callerUid: 'ownerTB', now: NOW + 2 }), { ok: true, rid: 'tb_brand_centro' }, 'REPLAY-OLD-NAME-REUSED still ok, not name_taken');
+    assert.strictEqual(db2.get('brand_branch_names/tb_brand/centro').op_id, 'opD', 'the other op keeps the name');
+    // a different payload under the same op id is still op_conflict (payload-bound idempotency first)
+    assert.deepStrictEqual(await S.createDraft(db2, { input: { ...INPUT, prep_default_min: 30 }, opId: 'opC', callerUid: 'ownerTB', now: NOW + 3 }), { ok: false, error: 'op_conflict' }, 'REPLAY-PAYLOAD-BOUND');
+    ok('createDraft replay: a completed op (draft renamed, or the old name reused elsewhere) → ok with the same rid; the original name is never re-reserved; payload-bound conflict first');
+  }
+
   FINISHED = true;
   console.log(`\no1b-store: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
