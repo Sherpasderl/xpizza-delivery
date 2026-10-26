@@ -116,7 +116,7 @@ const H7 = { sun: DAY, mon: { open: false }, tue: DAY, wed: DAY, thu: DAY, fri: 
     assert.strictEqual(e6.status, 200, e6.text); assert.strictEqual(e6.json.rid, 'tb_nuevo_norte');
     assert.deepStrictEqual((await call(ops.deleteBranchDraft, { uid: OWNER, body: { rid: 'tb_nuevo_norte', expectedVersion: e6.json.version } })).json, { ok: true });
     // Sherpa materializes the first draft → the draft screen's token is stale
-    const m = await S.materializeBranch(db, { rid: 'tb_nuevo_centro', location: { hub: { lat: 15.51, lng: -88.03 }, address_line: 'Blvd 1' }, now: Date.now() });
+    const m = await S.materializeBranch(db, { rid: 'tb_nuevo_centro', location: { hub: { lat: 15.51, lng: -88.03 }, address_line: 'Blvd 1' }, now: Date.now(), callId: 'materialize_o1b_test' });   // O1a: the CLI always passes a callId
     assert.strictEqual(m.ok, true, JSON.stringify(m));
     assert.deepStrictEqual((await call(ops.updateBranchProfile, { uid: OWNER, body: { rid: 'tb_nuevo_centro', expectedVersion: e7.json.version, patch: { prep_default_min: 30 } } })).json, { error: 'stale_branch' }, 'a stale DRAFT screen after materialize');
     assert.deepStrictEqual((await call(ops.deleteBranchDraft, { uid: OWNER, body: { rid: 'tb_nuevo_centro', expectedVersion: e7.json.version } })).json, { error: 'not_a_draft' });
