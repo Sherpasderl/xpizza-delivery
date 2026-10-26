@@ -14,6 +14,7 @@ import { counter, settle, envelope, loadForm, res, serve, BRAND, closeAll } from
 
 const require = createRequire(new URL('./xpizza-functions/x.js', import.meta.url));
 const { computeServerTotal } = require('./menu-pricing');
+const { computeServerNet } = require('./compute-server-net');
 const { orderFingerprint } = require('./pixelpay-charge');
 const { chargeInputsFingerprint } = require('./catalog/charge-inputs');
 const { ok } = counter();
@@ -43,6 +44,10 @@ function respondWith(w, rid, getMenu, c, sent) {
 async function boot(dir) {
   const B = BRAND[dir], c = CASES[dir];
   const w = loadForm(dir);
+  // jsdom has no layout. A layout-free stand-in for getClientRects IN THIS TEST WINDOW ONLY (codex r1 P2: the production
+  // check is not weakened): a box exists exactly when the element is attached and no ancestor is [hidden] / display:none.
+  // visibility:hidden is NOT faked here — the production check reads it itself, and a test proves it refuses.
+  w.Element.prototype.getClientRects = function () { if (!this.isConnected) return []; for (let n = this; n && n.nodeType === 1; n = n.parentElement) { if (n.hidden || w.getComputedStyle(n).display === 'none') return []; } return [{}]; };
   await settle();
   let menu = B.menu(w);
   await serve(w, envelope(B.rid, menu));
@@ -63,9 +68,9 @@ const priceOf = (w, id) => w.eval('MENU').find((d) => String(d.id) === String(id
 const err = (w) => { const e = w.document.getElementById('err3') || w.document.getElementById('err1'); return e ? e.textContent : ''; };
 const noticeIn = (w, sel) => { const n = w.document.querySelector(`${sel} .price-change-notice`); return n ? n.textContent : null; };
 const expected = (name, from, to) => `Cambió el precio de ${name}: antes L ${from}, ahora L ${to}.`;
-async function send(w, sent, path) {
+async function send(w, sent, path, { reselect = true } = {}) {
   const before = sent.length;
-  w.selectPay(path === 'cash' ? 'cash' : 'online');
+  if (reselect) w.selectPay(path === 'cash' ? 'cash' : 'online');   // the oracle passes reselect:false — no reselection may mask stale widgets
   w.requestServerQuote(); await settle();
   assert.ok(w.buildOrder(), `premise — the cart composes an order (${path})`);
   if (path === 'cash') { try { await w.submitOrder('confirmed'); } catch (_) {} } else { const p = w.processPixelPay(); if (p && p.catch) p.catch(() => {}); }
@@ -123,10 +128,12 @@ for (const dir of Object.keys(CASES)) {
   }
 
   // ── 3. INELIGIBLE → today's block, byte-identical message, nothing adopted ──
-  const todayCase = async (label, setup) => {
+  const CONFLICT_MSG = (name) => `Algunos productos de tu carrito cambiaron: ${name}. Revisalos antes de continuar.`;
+  const REWARD_MSG = () => 'Estamos actualizando tu premio. Esperá un momento y volvé a intentar.';
+  const todayCase = async (label, setup, msgFor = CONFLICT_MSG) => {
     const { w, c, reprice } = await boot(dir);
     w.chg(c.X, 1); await settle();
-    const from = priceOf(w, c.X);
+    const from = priceOf(w, c.X), name = w.eval('MENU').find((d) => String(d.id) === String(c.X)).name;
     const extraChanges = await setup(w, c);
     reprice([[c.X, 'dish', from + 7], ...(extraChanges || [])]);
     w.openCartReview(); await settle();
@@ -134,13 +141,13 @@ for (const dir of Object.keys(CASES)) {
     assert.deepStrictEqual(plain(w.eval('CART.disclosed()')), [], `${dir} ${label}: 🔴 nothing adopted`);
     assert.strictEqual(w.document.getElementById('s2-price-notice').hidden, true, `${dir} ${label}: no notice`);
     assert.strictEqual(w.refuseConflictedSend('createOrder'), true, `${dir} ${label}: the send is refused`);
-    assert.ok(/^Algunos productos de tu carrito cambiaron: |^Agotado: |^Estamos actualizando tu premio\./.test(err(w)), `${dir} ${label}: one of today's block messages (${err(w)})`);
+    assert.strictEqual(err(w), msgFor(name), `${dir} ${label}: today's message, EXACT bytes`);
     return w;
   };
   await todayCase('repriced + UNAVAILABLE', async (w, c) => { w.isSoldOut = (rec) => !!rec && String(rec.id) === String(c.X); });
   await todayCase('repriced dish + repriced OPTION', async (w, c) => { c.extra(w); await settle(); const ex = w.eval('EXTRAS').find((e) => String(e.id) === c.extraId); return [[c.extraId, 'extra', ex.price + 5]]; });
   await todayCase('payment RESUME pending', async (w) => { w.__resumeOrderId = 'ORD-resume-1'; });
-  await todayCase('a REWARD attached', async (w) => { w.__ACCOUNT = Object.assign({}, w.__ACCOUNT, { getRedeemPayload: () => ({ type: 'points_ala_carte', items: [] }) }); });
+  await todayCase('a REWARD attached', async (w) => { w.__ACCOUNT = Object.assign({}, w.__ACCOUNT, { getRedeemPayload: () => ({ type: 'points_ala_carte', items: [] }) }); }, REWARD_MSG);
   ok(`${dir}: repriced+unavailable, +option reprice, a pending resume, an attached reward → today's block, nothing adopted`);
 
   // ── 4. MIXED: a repriced dish + a dish gone from the menu → today's block; removing the gone one discloses the rest ──
@@ -166,6 +173,10 @@ for (const dir of Object.keys(CASES)) {
   for (const [label, inject] of [
     ['the renderer throws', (w) => { const real = w.updateCartReviewBody; let n = 0; w.updateCartReviewBody = function () { if (n++ === 1) throw new Error('boom');   /* call 0 = openCartReview's own pre-open render; call 1 = the FINAL render inside the moment */ return real.apply(this, arguments); }; }],
     ['the notice does not render', (w) => { w.priceNoticeHtml = () => ''; }],
+    ['a clear-and-throw in the redraw', (w) => { const real = w.updateCartReviewBody; let n = 0; w.updateCartReviewBody = function () { if (n++ === 1) { w.document.getElementById('cart-review-body').innerHTML = ''; throw new Error('boom'); } return real.apply(this, arguments); }; }],
+    ['the notice is visibility:hidden', (w) => { const st = w.document.createElement('style'); st.textContent = '.price-change-notice{visibility:hidden}'; w.document.head.append(st); }],
+    ['an EMPTY strike', (w) => { w.priceWasHtml = (id) => '<s class="price-change-was" data-was="' + String(id) + '"></s>'; }],
+    ['a WRONG strike value', (w) => { w.priceWasHtml = (id) => '<s class="price-change-was" data-was="' + String(id) + '">L 1</s>'; }],
   ]) {
     const { w, c, reprice, sent } = await boot(dir);
     w.chg(c.X, 1); await settle();
@@ -181,31 +192,85 @@ for (const dir of Object.keys(CASES)) {
     }
     assert.strictEqual(sent.length, 0, `${dir} (${label}): no request left the page on either endpoint`);
   }
-  ok(`${dir}: a failed final render (throw / notice missing) rolls back; cash and card both still refuse`);
+  {   // the PAY-STEP moment: the summary render throws (updateTotal swallows it) → the notice never shows → rolled back
+    const { w, c, reprice } = await boot(dir);
+    w.chg(c.X, 1); await settle();
+    reprice([[c.X, 'dish', priceOf(w, c.X) + 4]]);
+    w.renderStage2Summary = () => { throw new Error('summary boom'); };
+    await toStage(w, 's2', 66);
+    assert.deepStrictEqual(plain(w.eval('CART.disclosed()')), [], `${dir} (pay-step summary throws): rolled back`);
+    assert.strictEqual(w.refuseConflictedSend('createOrder'), true, `${dir} (pay-step summary throws): the send still refuses`);
+  }
+  ok(`${dir}: a failed final render — throw, clear-and-throw, notice missing / visibility:hidden, empty or wrong strike, a throwing pay-step summary — rolls back; cash and card both still refuse`);
 
-  // ── 6. THE ORACLE: adopted cart ≡ the same cart freshly added at the new price (cash + card) ──
+  // ── 5b. PAYMENT CHOSEN BEFORE THE ADOPTION: the widgets follow it, no reselection (codex r1 P1) ──
+  for (const mode of ['card', 'cash-exact', 'cash-custom']) {
+    const { w, c, reprice } = await boot(dir);
+    w.chg(c.X, 1); await settle();
+    await toStage(w, 's2', 66);
+    w.selectPay(mode === 'card' ? 'online' : 'cash'); await settle();
+    if (mode === 'cash-exact') w.setCashTendered(w.redeemAdjustedTotal());
+    if (mode === 'cash-custom') w.setCashTendered(1000);
+    await toStage(w, 's1', 33);
+    const from = priceOf(w, c.X);
+    reprice([[c.X, 'dish', from + 17]]);
+    w.openCartReview(); await settle();
+    assert.strictEqual(plain(w.eval('CART.disclosed()')).length, 1, `${dir} ${mode}: premise — adopted`);
+    const want = w.redeemAdjustedTotal();
+    if (mode === 'card') assert.strictEqual(w.document.getElementById('pixelpay-amount').textContent, 'L ' + want.toFixed(2), `${dir} card: 🔴 the PixelPay amount shows the ADOPTED total without reselecting`);
+    if (mode === 'cash-exact') assert.ok(Math.abs(Number(w.document.getElementById('cash-tendered').value) - want) < 0.005, `${dir} cash Pago exacto: 🔴 the tender follows the ADOPTED total`);
+    if (mode === 'cash-custom') assert.strictEqual(Number(w.document.getElementById('cash-tendered').value), 1000, `${dir} cash custom: the customer's own tender is NOT rewritten`);
+  }
+  ok(`${dir}: payment chosen before the adoption — PixelPay amount and Pago exacto follow the adopted total; a custom tender is kept`);
+
+  // ── 6. THE ORACLE: adopted cart ≡ the same cart freshly added at the new price (cash + card), payment chosen BEFORE the
+  //       adoption and never reselected; real server functions; the DISPLAYED totals too (codex r1 P2) ──
   for (const path of ['cash', 'card']) {
-    const a = await boot(dir);
+    const a = await boot(dir), rid = BRAND[dir].rid;
     a.w.chg(a.c.X, 1); await settle(); a.c.extra(a.w); await settle();
+    await toStage(a.w, 's2', 66);
+    a.w.selectPay(path === 'cash' ? 'cash' : 'online'); await settle();
+    if (path === 'cash') a.w.setCashTendered(a.w.redeemAdjustedTotal());   // Pago exacto
+    await toStage(a.w, 's1', 33);
     const from = priceOf(a.w, a.c.X);
     a.reprice([[a.c.X, 'dish', from + 21]]);
-    await toStage(a.w, 's2', 66);      // disclosed at the pay step
+    await toStage(a.w, 's2', 66);                                  // disclosed at the pay step
     assert.strictEqual(plain(a.w.eval('CART.disclosed()')).length, 1, `premise — adopted at the pay step (${path})`);
-    const adopted = await send(a.w, a.sent, path);
+    a.w.requestServerQuote(); await settle();
+    const aKey = a.w.serverQuoteCartKey();
+    const aShown = { summary: a.w.document.querySelector('#s2-summary .review-total span:last-child').textContent,
+      pay: path === 'card' ? a.w.document.getElementById('pixelpay-amount').textContent : Number(a.w.document.getElementById('cash-tendered').value) };
+    const adopted = await send(a.w, a.sent, path, { reselect: false });
 
     const f = await boot(dir);
     f.reprice([[f.c.X, 'dish', from + 21]]);                       // the new price is on the menu BEFORE the customer adds
     f.w.chg(f.c.X, 1); await settle(); f.c.extra(f.w); await settle();
     await toStage(f.w, 's2', 66);
-    const fresh = await send(f.w, f.sent, path);
+    f.w.selectPay(path === 'cash' ? 'cash' : 'online'); await settle();
+    if (path === 'cash') f.w.setCashTendered(f.w.redeemAdjustedTotal());
+    f.w.requestServerQuote(); await settle();
+    const fKey = f.w.serverQuoteCartKey();
+    const fresh = await send(f.w, f.sent, path, { reselect: false });
 
-    for (const k of ['items', 'items_text', 'total', 'payment_method', 'expected_net_cents']) assert.deepStrictEqual(adopted[k], fresh[k], `${dir} ${path}: 🔴 ${k} differs between the adopted and the fresh cart`);
+    for (const k of ['items', 'items_text', 'total', 'payment_method', 'expected_net_cents', 'cash_tendered']) assert.deepStrictEqual(adopted[k], fresh[k], `${dir} ${path}: 🔴 ${k} differs between the adopted and the fresh cart`);
+    assert.strictEqual(aKey, fKey, `${dir} ${path}: the quote cart fingerprint (serverQuoteCartKey)`);
     assert.strictEqual(orderFingerprint('O', Math.round(Number(adopted.total) * 100), adopted.items_text), orderFingerprint('O', Math.round(Number(fresh.total) * 100), fresh.items_text), `${dir} ${path}: orderFingerprint`);
     assert.strictEqual(chargeInputsFingerprint({ ...adopted, order_id: 'O' }), chargeInputsFingerprint({ ...fresh, order_id: 'O' }), `${dir} ${path}: chargeInputsFingerprint`);
-    const st = computeServerTotal(adopted.items, BRAND[dir].rid, tablesOf(BRAND[dir].rid, a.menuNow(), a.c));
-    assert.ok(!st.error && st.total === Number(adopted.total), `${dir} ${path}: the server total from the served menu equals the displayed/sent total (${st.total} vs ${adopted.total})`);
+    const tables = tablesOf(rid, a.menuNow(), a.c);
+    const netA = computeServerNet({ items: adopted.items, reward: null, rid, tables }), netF = computeServerNet({ items: fresh.items, reward: null, rid, tables });
+    assert.deepStrictEqual(netA, netF, `${dir} ${path}: computeServerNet`);
+    const st = computeServerTotal(adopted.items, rid, tables);
+    assert.ok(!st.error && st.total === Number(adopted.total), `${dir} ${path}: the server total equals the sent total`);
+    assert.strictEqual(aShown.summary, `L ${st.total.toFixed(0)}`, `${dir} ${path}: 🔴 the DISPLAYED summary total equals the server total`);
+    if (path === 'card') assert.strictEqual(aShown.pay, `L ${st.total.toFixed(2)}`, `${dir} card: 🔴 the DISPLAYED PixelPay amount equals the server total`);
+    else assert.ok(Math.abs(aShown.pay - st.total) < 0.005, `${dir} cash: 🔴 the DISPLAYED Pago exacto tender equals the server total`);
+    if (path === 'cash') {
+      await sleep(260); await settle();
+      assert.strictEqual(a.w.activeStageId(), 's5', `${dir}: premise — the cash order completed (s5)`);
+      assert.deepStrictEqual(plain(a.w.eval('CART.disclosed()')), [], `${dir}: 🔴 the disclosure is cleared at order completion (s5)`);
+    }
   }
-  ok(`${dir}: ORACLE — an adopted cart sends exactly what the fresh cart at the new price sends (items, items_text, total, net, both fingerprints, server total), cash and card`);
+  ok(`${dir}: ORACLE — payment chosen before the adoption, never reselected: items, items_text, total, net, cash tender, quote key, orderFingerprint, chargeInputsFingerprint, computeServerNet and the DISPLAYED summary / PixelPay / tender all equal the fresh cart and the server`);
 }
 
 closeAll();

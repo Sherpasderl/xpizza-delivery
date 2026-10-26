@@ -2518,22 +2518,44 @@ function priceWasHtml(id, subtotal, n, stacked){
   const was = Number(subtotal) - (Number(e.to) - Number(e.from)) * Number(n);
   return '<s class="price-change-was' + (stacked ? ' price-change-was--stacked' : '') + '" data-was="' + safeText(e.key) + '">L ' + was.toFixed(0) + '</s>';
 }
-// Shown = attached, and no ancestor is [hidden] or display:none (works under jsdom too, which has no layout).
+// SHOWN = laid out (getClientRects) AND not hidden by any ancestor (the [hidden] attribute, display:none, visibility:
+// hidden/collapse). jsdom has no layout: the tests shim getClientRects in their OWN window; this check is not weakened.
 function priceNoticeShown(el){
   if (!el || !el.isConnected) return false;
+  try { if (!el.getClientRects().length) return false; } catch (_) { return false; }
   for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
     if (n.hidden) return false;
-    try { if (getComputedStyle(n).display === 'none') return false; } catch (_) { return false; }
+    try { const cs = getComputedStyle(n); if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return false; } catch (_) { return false; }
   }
   return true;
 }
+// The FINAL render shows the disclosure: the notice carries every change's exact sentence, and every changed line strikes
+// the OLD subtotal it should — re-derived from what the line now DISPLAYS (new subtotal − (to − from) × qty), visibly.
 function priceNoticeShows(noticeBox, linesBox, changes){
-  if (!noticeBox || !noticeBox.isConnected || !linesBox || !linesBox.isConnected) return false;
+  if (!noticeBox || !linesBox) return false;
   const n = noticeBox.querySelector('.price-change-notice');
   if (!priceNoticeShown(n)) return false;
   const txt = n.textContent || '';
-  const struck = new Set([...linesBox.querySelectorAll('s.price-change-was')].map(x => x.getAttribute('data-was')));
-  return changes.every(c => txt.includes(priceNoticeText(c)) && struck.has(String(c.key)));
+  for (const c of changes) {
+    if (!txt.includes(priceNoticeText(c))) return false;
+    const struck = [...linesBox.querySelectorAll('s.price-change-was')].filter((x) => x.getAttribute('data-was') === String(c.key));
+    if (!struck.length) return false;
+    for (const s of struck) {
+      if (!priceNoticeShown(s) || !s.parentElement) return false;
+      const shownNew = Number(String(s.parentElement.textContent || '').replace(s.textContent || '', '').replace(/[^0-9.]/g, ''));
+      const want = shownNew - (Number(c.to) - Number(c.from)) * CART.qtyOf(String(c.key));
+      if (!Number.isFinite(shownNew) || s.textContent !== 'L ' + want.toFixed(0)) return false;
+    }
+  }
+  return true;
+}
+// The payment widgets show the ADOPTED total (codex r1 P1): the PixelPay amount when card is chosen; the cash box when on
+// "Pago exacto". A custom cash tender is the customer's own figure and is never rewritten (updateTotal re-validates it).
+function priceNoticePayShows(){
+  const want = redeemAdjustedTotal();
+  if (selectedPayment === 'online') { const pa = document.getElementById('pixelpay-amount'); return !pa || pa.textContent === 'L ' + want.toFixed(2); }
+  if (selectedPayment === 'cash' && cashExactMode) { const t = document.getElementById('cash-tendered'); return !t || Math.abs(Number(t.value) - want) < 0.005; }
+  return true;
 }
 function priceNoticeMoment(target){
   if (target === 's2') { const sb = document.getElementById('s2-summary'); if (activeStageId() !== 's2' || !priceNoticeShown(sb)) return false; }
@@ -2544,14 +2566,14 @@ function priceNoticeMoment(target){
   if (!rollback) return false;
   let ok = false;
   try {
-    if (target === 'cart') { updateCartReviewBody(); const b = document.getElementById('cart-review-body'); ok = priceNoticeShows(b, b, changes); }
-    else { renderStage2Summary(); ok = priceNoticeShows(document.getElementById('s2-price-notice'), document.getElementById('s2-summary'), changes); }
+    // EVERY redraw happens HERE, before the one confirmation — the form's own after-edit redraw: totals, pill, the open
+    // sheet, the payment widgets (custom tender preserved), the redeem UI and the pay-step summary. Nothing redraws after.
+    updateTotal();
+    if (target === 'cart') { const b = document.getElementById('cart-review-body'); ok = priceNoticeShows(b, b, changes); }
+    else ok = priceNoticeShows(document.getElementById('s2-price-notice'), document.getElementById('s2-summary'), changes);
+    ok = ok && priceNoticePayShows();
   } catch (_) { ok = false; }
-  if (!ok) {
-    rollback();
-    try { if (target === 'cart') updateCartReviewBody(); else renderStage2Summary(); } catch (_) {}
-  }
-  try { updateCart(); } catch (_) {}
+  if (!ok) { rollback(); try { updateTotal(); } catch (_) {} }
   return ok;
 }
 function announceCartConflicts(conflicts){
@@ -4113,7 +4135,8 @@ function _showStageSwap(id,pct,_t){
   // pill never covers the pay buttons.
   const cartBar=document.getElementById('cart-bar');
   if(cartBar) cartBar.style.display=(id==='s1'||id==='s2')?'flex':'none';
-  if(id==='s2'){ try{ renderStage2Summary(); }catch(_){} try{ priceNoticeMoment('s2'); }catch(_){} }   // A6: render the order summary on entering the pay step
+  if(id==='s2'){ try{ renderStage2Summary(); }catch(_){} try{ priceNoticeMoment('s2'); }catch(_){} }
+  if(id==='s5'){ try{ CART.clearDisclosed(); }catch(_){} }   // PLAN 5 (codex r1 P3): the disclosure ends with the order   // A6: render the order summary on entering the pay step
 }
 
 // Collapse the pinned account chip to just the avatar circle once scrolled past the hero on paso 1

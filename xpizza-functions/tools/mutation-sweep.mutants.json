@@ -19959,5 +19959,65 @@
    "node",
    "../price-notice.test.mjs"
   ]
+ },
+ {
+  "id": "pricenotice-10",
+  "slice": "pricenotice",
+  "label": "la_musa (codex r1 P1): the moment redraws only the sheet/summary — the payment widgets keep the OLD total",
+  "file": "../la-musa-orders/index.html",
+  "from": "    updateTotal();\n    if (target === 'cart') { const b = document.getElementById('cart-review-body'); ok = priceNoticeShows(b, b, changes); }",
+  "to": "    if (target === 'cart') updateCartReviewBody(); else renderStage2Summary();\n    if (target === 'cart') { const b = document.getElementById('cart-review-body'); ok = priceNoticeShows(b, b, changes); }",
+  "kills_with": [
+   "card: premise — adopted"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-11",
+  "slice": "pricenotice",
+  "label": "la_musa (codex r1 P2): a visibility:hidden notice counts as shown",
+  "file": "../la-musa-orders/index.html",
+  "from": "cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse'",
+  "to": "cs.display === 'none'",
+  "kills_with": [
+   "(the notice is visibility:hidden): 🔴 rolled back"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-12",
+  "slice": "pricenotice",
+  "label": "la_musa (codex r1 P2): a strike showing the wrong old subtotal is accepted",
+  "file": "../la-musa-orders/index.html",
+  "from": "      if (!Number.isFinite(shownNew) || s.textContent !== 'L ' + want.toFixed(0)) return false;\n",
+  "to": "",
+  "kills_with": [
+   "(an EMPTY strike): 🔴 rolled back"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-13",
+  "slice": "pricenotice",
+  "label": "la_musa (codex r1 P3): the disclosure survives order completion",
+  "file": "../la-musa-orders/index.html",
+  "from": "\n  if(id==='s5'){ try{ CART.clearDisclosed(); }catch(_){} }   // PLAN 5 (codex r1 P3): the disclosure ends with the order",
+  "to": "",
+  "kills_with": [
+   "cleared at order completion (s5)"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
  }
 ]

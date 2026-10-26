@@ -294,6 +294,9 @@ function createCart(options) {
     return restore;
   }
 
+  // The order is complete: what was disclosed for it has nothing more to say (the lines themselves are the form's to reset).
+  const clearDisclosed = () => disclosed.clear();
+
   const disclosedList = () => [...disclosed.entries()].map(([key, e]) => ({ key, name: e.name, from: e.from, to: e.to }));
 
   // 🔴 THE CART MUST SURVIVE LEAVING THE PAGE. Online payment sends the customer to a hosted checkout
@@ -352,7 +355,7 @@ function createCart(options) {
     setQty, setQtyByKey, qtyOf, has, keys, clear, reset, remove,
     noteExtra, extraAddedRecord, extraAgreed, classifyExtra, acceptExtra,
     resolve, accept, classify, snapshot, hydrate,
-    priceNoticeChanges, adoptPrices, disclosed: disclosedList,
+    priceNoticeChanges, adoptPrices, disclosed: disclosedList, clearDisclosed,
   };
 }
 
