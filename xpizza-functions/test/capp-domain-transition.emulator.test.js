@@ -93,7 +93,8 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
     res.set('cache-control', 'no-store'); return res.sendFile(file);
   });
   web.use(express.json());
-  web.use((req, res, next) => { if (/^\/(createOrder|chargeOnlineOrder|quoteOrder)/.test(req.path)) HDRS.push({ ep: req.path.split('/')[1], app: req.headers['x-client-app'] || null, dep: req.headers['x-client-deployment'] || null, compat: req.headers['x-client-compat'] || null }); next(); });
+  // a CORS preflight (OPTIONS) names the headers in Access-Control-Request-Headers but never carries their values ⇒ not recorded
+  web.use((req, res, next) => { if (req.method !== 'OPTIONS' && /^\/(createOrder|chargeOnlineOrder|quoteOrder)/.test(req.path)) HDRS.push({ ep: req.path.split('/')[1], app: req.headers['x-client-app'] || null, dep: req.headers['x-client-deployment'] || null, compat: req.headers['x-client-compat'] || null }); next(); });
   for (const k of ['quoteOrder', 'createOrder', 'chargeOnlineOrder', 'paymentStatus']) web.use(`/${k}`, app[k]);
   const OPENH = { open: true, start: '00:00', end: '24:00' };
   const HOURS = { sun: OPENH, mon: OPENH, tue: OPENH, wed: OPENH, thu: OPENH, fri: OPENH, sat: OPENH };
@@ -214,13 +215,18 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
       assert.deepStrictEqual([bare.s, bare.j.error], [426, 'client_update_required'], '🔴 a header-less request ⇒ 426 (the wrapper is the only admitted path)');
       ok('F1 floor enabled at the page compat: the page\'s quote + create carry X-Client-* and are admitted; a header-less request ⇒ 426');
 
+      // F2 premise: an UNRESOLVED card payment, started while still admitted (pending_place + pay stash written, not returned yet)
+      await clean();
+      const card = await t.ev(startCheckout('online'));
+      assert.strictEqual(card.out && card.out.kind, 'redirect', `premise: a card checkout admitted at the floor (${JSON.stringify(card)})`);
       await rtdb.ref('platform_config/client_floor/orders').set(COMPAT + 1);
       await new Promise((r) => setTimeout(r, 31000));
       await clean(); SERVE_STALE = true;
       await t.ev(`(window.__marker = 'alive', CappSelfUpdate.register(SherpaClient, { state: () => ({ screen: 'checkout', placing: false, sheetOpen: false }),
         unresolved: () => !!localStorage.getItem('capp:x_pizza:pending_place') || !!localStorage.getItem('tr_pending_pay'), search: () => location.search, snapshot: () => ({}), restore() {} }), true)`);
+      // the server refuses a below-floor QUOTE 426 before any pricing (index.js P-SELFUPDATE §5) ⇒ the checkout stops at the quote
       const below = await t.ev(startCheckout('online'));
-      assert.strictEqual(below.out && below.out.kind, 'update_required', `below the floor ⇒ 426 ⇒ the update path (${JSON.stringify(below)})`);
+      assert.strictEqual(below.q && below.q.kind, 'update_required', `below the floor ⇒ 426 ⇒ the update path (${JSON.stringify(below)})`);
       await t.ev('SherpaClient.check().then(() => SherpaClient.poke())');
       await new Promise((r) => setTimeout(r, 1500));
       const still = await t.ev(`({ marker: window.__marker, stale: SherpaClient.isStale(), place: !!localStorage.getItem('capp:x_pizza:pending_place') })`);

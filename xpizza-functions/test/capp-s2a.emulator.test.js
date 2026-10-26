@@ -59,7 +59,8 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('capp-s2a(
 // ── the four REAL handlers behind one local server; the app's URLs point at it ──
 const ROUTES = { quoteOrder: app.quoteOrder, createOrder: app.createOrder, chargeOnlineOrder: app.chargeOnlineOrder, paymentStatus: app.paymentStatus };
 let BASE = null; let SERVER = null;
-const CALLS = []; let DROP_NEXT = null;   // DROP_NEXT: an endpoint whose next response is lost AFTER the server handled it
+const CALLS = []; let DROP_NEXT = null; let DROP_LEFT = 0;   // DROP_NEXT: an endpoint whose responses are lost AFTER the server handled them —
+// every attempt of ONE placement (the client's own retries re-send the same id and would otherwise land the idempotent 200)
 async function startServer() {
   const w = express(); w.use(express.json());
   for (const [k, h] of Object.entries(ROUTES)) w.use(`/${k}`, h);
@@ -71,7 +72,7 @@ const realFetch = async (url, init) => {
   const ep = Object.keys(ROUTES).find((k) => url.startsWith(`${BASE}/${k}`));
   CALLS.push(ep);
   const r = await fetch(url, init);
-  if (DROP_NEXT === ep) { DROP_NEXT = null; await r.text(); throw new TypeError('Failed to fetch (response lost)'); }
+  if (DROP_NEXT === ep) { if (DROP_LEFT === 0) DROP_LEFT = A.MAX_TRIES; if (--DROP_LEFT === 0) DROP_NEXT = null; await r.text(); throw new TypeError('Failed to fetch (response lost)'); }
   return r;
 };
 // the REAL shared module, unstamped ⇒ inert: its fetch passes through (no X-Client headers; the floor cells live in S2a-e)
