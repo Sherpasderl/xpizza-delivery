@@ -208,6 +208,24 @@
   .st b{ font-weight:600 }
   .st q{ font-weight:400; color:var(--ink3); quotes:none }
   .st q::before{ content:", " }
+  /* Persistent «Programado · <slot>» chip on a released scheduled order. Lilac = the board's
+     existing "watch / scheduled" hue (same tokens as the pre-release slot label and the Programados
+     slot headers), so it reads as one vocabulary. Pill radius 999 (the shell's pill role). It is a
+     third, lighter line under the status; never fights the aging number or the driver line. */
+  .sched{ display:inline-flex; align-items:center; gap:6px; margin-top:6px; height:19px; padding:0 9px 0 7px;
+    border-radius:999px; background:var(--lilac-bg); color:var(--lilac-ink);
+    font-size:11.5px; font-weight:700; letter-spacing:-.1px; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis }
+  .sched svg{ flex:0 0 auto }
+  .sched .dot{ opacity:.55; font-weight:600 }
+  /* A card carrying the chip peeks ~20px taller; the chip is its own row at the bottom of the peek,
+     left-aligned with the name column, free to run under the avatar so it never ellipsizes behind
+     the order number. layoutDecks() reveals each card by its own .peek height, so only badge cards grow. */
+  .peek.has-sched{ height:100px; position:relative }
+  .peek.has-sched .sched{ position:absolute; left:82px; bottom:9px; max-width:calc(100% - 98px); margin-top:0 }
+  /* On a lilac-tinted (watch) card the chip sits on the card surface so it still separates. */
+  .lv-watch .sched{ background:var(--card) }
+  /* Sheet: same chip, one size up, under the customer name. */
+  .sheet .sched{ margin-top:10px; height:24px; font-size:13px; padding:0 11px 0 9px }
   .peek .av{ flex:0 0 auto; width:42px; height:42px; border-radius:50%; display:grid; place-items:center;
     font-size:16px; font-weight:700; background:var(--sunken); color:var(--ink) }
   .lv-act .av, .lv-watch .av{ background:var(--card) }
@@ -824,6 +842,11 @@ const brandKey = (o) => (o && o.restaurant_id === 'la_musa' ? 'lm' : 'xp');
 const brandMark = (o) => (brandKey(o) === 'lm' ? 'M' : 'X');
 const brandName = (o) => (brandKey(o) === 'lm' ? 'La Musa' : 'X. Pizza');
 const slotLabelSafe = (ms) => { try { return slotLabel(Number(ms), Date.now()); } catch { return ''; } };
+// Status-independent: a scheduled order keeps `scheduled_for` after it releases to a live status,
+// so the slot is known on every appearance, not only while status === 'scheduled'. A finite POSITIVE
+// epoch — matching the old `Number(scheduled_for)` truthiness — so an absent/null/0 field (ASAP, or
+// `Number(null) === 0`) never renders a spurious 1970 badge.
+const hasSlot = (o) => { const n = Number(o && o.scheduled_for); return Number.isFinite(n) && n > 0; };
 const minutesOf = (o) => Math.floor(agingSeconds(agingBaselineMs(o), Date.now()) / 60);
 // When an order actually finished. delivered_at is stamped on delivery completion
 // (xpizza-delivery.js completeTask); pickups fall back through picked_up_at to created_at.
@@ -958,6 +981,8 @@ const IC_STORE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" st
 const IC_CHECK = '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="var(--ink3)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
 const IC_CHEV  = '<svg class="chev" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
 const IC_BACK  = '<svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>';
+// Small clock for the «Programado» chip; `sz` so the card (12) and sheet (13) pills match the mockup.
+const icClock = (sz) => `<svg viewBox="0 0 24 24" width="${sz}" height="${sz}" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>`;
 
 // ── liveness pill ──
 function renderLive(){
@@ -982,6 +1007,9 @@ function passHTML(id, order){
   const d = drvId ? (STORE.drivers[drvId] || {}) : null;
   const isOpen = openPass === id;
   const isProg = order.status === 'scheduled';
+  // Released scheduled order: keep the live time column, add the persistent slot badge. Pre-release
+  // (isProg) already shows the slot in the time column, so it carries no badge; ASAP has no slot.
+  const showSched = hasSlot(order) && !isProg;
 
   let right;
   if (done) right = '';
@@ -1016,8 +1044,12 @@ function passHTML(id, order){
     <div class="pacts">${callBtn}<button class="pact" type="button" data-detail="${escapeHtml(id)}">Ver pedido</button>${assignBtn}</div>
   </div>`;
 
+  const schedBadge = showSched
+    ? `<span class="sched">${icClock(12)}Programado<span class="dot">·</span>${escapeHtml(slotLabelSafe(order.scheduled_for))}</span>`
+    : '';
+
   return `<div class="pass lv-${lv}${isOpen ? ' open' : ''}" data-pass="${escapeHtml(id)}">
-    <button class="peek" type="button" data-toggle="${escapeHtml(id)}" aria-expanded="${isOpen}">
+    <button class="peek${showSched ? ' has-sched' : ''}" type="button" data-toggle="${escapeHtml(id)}" aria-expanded="${isOpen}">
       ${timeCol}
       <span class="m">
         <span class="r1">
@@ -1025,7 +1057,7 @@ function passHTML(id, order){
           <span class="bm" style="background:var(--${brandKey(order)})">${brandMark(order)}</span>
           <span class="onum num">${escapeHtml(displayLabel(id, order))}</span>
         </span>
-        <span class="st">${done ? '' : `<i style="background:${dotVar(id, order)}"></i>`}<b>${escapeHtml(stateParts(id, order).lead)}</b>${stateParts(id, order).tail ? `<q>${escapeHtml(stateParts(id, order).tail)}</q>` : ''}</span>
+        <span class="st">${done ? '' : `<i style="background:${dotVar(id, order)}"></i>`}<b>${escapeHtml(stateParts(id, order).lead)}</b>${stateParts(id, order).tail ? `<q>${escapeHtml(stateParts(id, order).tail)}</q>` : ''}</span>${schedBadge}
       </span>
       ${right}
     </button>${body}
@@ -1070,7 +1102,11 @@ function layoutDecks(){
     passes.forEach((p, i) => {
       if (i === 0) { p.style.marginTop = '0px'; return; }
       const prev = passes[i - 1];
-      p.style.marginTop = prev.classList.contains('open') ? '0px' : `${-(prev.offsetHeight - PEEK)}px`;
+      // Reveal each collapsed card by its OWN peek height, so a badge card (100px peek) shows its
+      // third row in full while every normal/ASAP card stays at the 80px peek, pixel-unchanged.
+      const prevPeek = prev.querySelector('.peek');
+      const reveal = prevPeek ? prevPeek.offsetHeight : PEEK;
+      p.style.marginTop = prev.classList.contains('open') ? '0px' : `${-(prev.offsetHeight - reveal)}px`;
     });
   });
 }
@@ -1389,7 +1425,9 @@ function openDetail(orderId, fetched){
   const actionable = canReassign(order, orderId, STORE.tasks);   // action: board-model's predicate, unchanged
   const lv = levelOf(orderId, order);
   const m = minutesOf(order);
-  const slot = isScheduled && Number(order.scheduled_for) ? slotLabelSafe(order.scheduled_for) : '';
+  // Compute the slot whenever the order carries one (pre-release AND released), so the released
+  // sheet can show the persistent badge; the pre-release top-right chip keeps using it unchanged.
+  const slot = hasSlot(order) ? slotLabelSafe(order.scheduled_for) : '';
   const direccion = order.address_detected || order.address_details || '—';
   const phoneRaw = String(order.customer_phone || order.phone || '');
   const phone = phoneRaw.replace(/[^+\d]/g, '');
@@ -1424,7 +1462,7 @@ function openDetail(orderId, fetched){
           <span style="font-size:14.5px;font-weight:600;color:var(--ink2)">${order.order_type === 'pickup' ? 'Pickup' : 'Entrega'} en ${brandName(order)}</span>
           <span class="num" style="margin-left:auto;font-size:14.5px;font-weight:600;color:var(--ink3)">${escapeHtml(displayLabel(orderId, order))}</span>
         </div>
-        <h2 id="sheet-title" class="sh-h rd" style="margin-top:9px">${escapeHtml(order.customer_name || 'Cliente')}</h2>
+        <h2 id="sheet-title" class="sh-h rd" style="margin-top:9px">${escapeHtml(order.customer_name || 'Cliente')}</h2>${hasSlot(order) && !isScheduled ? `<span class="sched">${icClock(13)}Programado<span class="dot">·</span>${escapeHtml(slot)}</span>` : ''}
       </div>
       <div class="rd num" style="flex:0 0 auto;text-align:center;border-radius:18px;padding:11px 14px;background:${chipBg};color:${chipIn}">
         ${isScheduled
