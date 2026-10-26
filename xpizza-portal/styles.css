@@ -1122,4 +1122,6 @@
   #sucmodal .stepb{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card);font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;color:var(--ink);cursor:pointer}
   #sucmodal .callout{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:12px;font-size:13px;line-height:1.5;color:var(--ink);border:1px solid var(--line);background:var(--board-2)}
   #sucmodal .callout svg{width:17px;height:17px;stroke:var(--mute);fill:none;stroke-width:2;flex:none;margin-top:2px}
+  /* side-by-side s2-empty / s2-onedraft at 390: a short ops page must not stretch the stacked shell rows (top bar, nav) */
+  @media(max-width:920px){ .app.opsview{align-content:start} }
   @media(max-width:920px){ .ops .secwide1b{grid-column:auto} .frow1b{grid-template-columns:1fr} .ops .brows1b{grid-template-columns:1fr} .ops .brow1b{flex-wrap:wrap} .ops .bt1b{min-width:60%} }
