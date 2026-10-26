@@ -1032,7 +1032,8 @@
 /* ═══ PORTAL-UI 1b — Sucursales v2 detail: editable WhatsApp / hours / prep (PLAN-portal-ui-slice1b-sucursales r4 §2) ═════
    Ported from the owner-approved «Sucursales · v2» frames + the 2026-10-25 / 2026-10-26 deltas (canvas CvvXXuDUijMvA1pRZ4L2rd).
    ADDITIONS ONLY: every colour-setting rule targets a NEW single 1b class (no crossing with an existing class), so no existing
-   selector's meaning changes and the AA sweep models every pair. Tokens are the portal's own. */
+   selector's meaning changes and the AA sweep models every pair. Tokens are the portal's own. Small secondary text on a card
+   surface is --mute, not --mute2 (dark --mute2 on --card is 4.46:1; AA gate 2026-10-26) — branches-1b-aa.test.mjs, both themes. */
   .ops .tel1b{background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:14px;color:var(--ink);width:100%;min-height:42px;transition:border-color .15s;font-family:inherit}
   .ops .tel1b:focus{outline:none;border-color:var(--accent)}
   .ops .tel1b:disabled{opacity:.6;cursor:not-allowed}
@@ -1046,7 +1047,7 @@
   .ops .htime1b:focus{outline:none;border-color:var(--accent)}
   .ops .htime1b:disabled{opacity:.6}
   .ops .htimebad1b{border-color:var(--red);background:var(--red-soft)}
-  .ops .hoff1b{min-height:36px;padding:7px 10px;font-size:13px;color:var(--mute2);display:flex;align-items:center;justify-content:center;grid-column:span 2;border:1px dashed var(--line);border-radius:10px;background:var(--card)}
+  .ops .hoff1b{min-height:36px;padding:7px 10px;font-size:13px;color:var(--mute);display:flex;align-items:center;justify-content:center;grid-column:span 2;border:1px dashed var(--line);border-radius:10px;background:var(--card)}
   .ops .hmiss1b{color:var(--amber);border-color:var(--amber-line);background:var(--amber-soft)}
   .ops .hrow1b .tog{border:none;padding:0}
   .ops .hrow1b .tog:disabled{opacity:.42;cursor:not-allowed}
@@ -1058,7 +1059,7 @@
   .ops .chip1b:disabled{opacity:.42;cursor:not-allowed}
   .ops .sherpa1b{position:absolute;right:10px;top:10px;font-size:11px;font-weight:650;color:var(--mute);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:4px 8px;display:inline-flex;align-items:center;gap:5px}
   .ops .sherpa1b svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2}
-  .ops .lock1b{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute2);font-weight:600}
+  .ops .lock1b{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute);font-weight:600}
   .ops .lock1b svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
   .pillstaged1b{color:var(--amber);background:var(--amber-soft);border-color:var(--amber-line)}.pillstaged1b i{background:var(--amber)}
   .pillinactive1b{color:var(--mute);background:var(--board-2)}
@@ -1089,7 +1090,7 @@
   .ops .browwait1b{border-style:dashed}
   .ops .bt1b{flex:1;min-width:0}
   .ops .bt1b b{display:block;font-weight:650}
-  .ops .bt1b span{font-size:12px;color:var(--mute2)}
+  .ops .bt1b span{font-size:12px;color:var(--mute)}
   .pillok1b{color:var(--green-text);background:var(--green-soft);border-color:var(--green-line)}
   .pillwarn1b{color:var(--amber);background:var(--amber-soft);border-color:var(--amber-line)}
   .pillwait1b{color:var(--mute);background:var(--card);border-style:dashed}.pillwait1b i{background:transparent;border:1.5px dashed var(--mute2)}
@@ -1114,8 +1115,8 @@
   #sucmodal .ferr1b{display:flex;gap:7px;align-items:flex-start;color:var(--red-text);font-size:12px;line-height:1.45}
   #sucmodal .ferr1b svg{width:14px;height:14px;stroke:var(--red-text);fill:none;stroke-width:2;flex:none;margin-top:2px}
   #sucmodal .telbad1b{border-color:var(--red)}
-  #sucmodal .fld .lab{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute2)}
-  #sucmodal .fnote{font-size:12px;color:var(--mute2);line-height:1.45}
+  #sucmodal .fld .lab{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute)}
+  #sucmodal .fnote{font-size:12px;color:var(--mute);line-height:1.45}
   #sucmodal .step{display:flex;align-items:center;gap:10px}
   #sucmodal .step .val{font-family:var(--disp);font-size:30px;font-weight:800;letter-spacing:-.04em;min-width:88px;font-variant-numeric:tabular-nums}
   #sucmodal .step .val span{font-family:var(--body);font-size:13px;font-weight:600;color:var(--mute);margin-left:6px;letter-spacing:0}
