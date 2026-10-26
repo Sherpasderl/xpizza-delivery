@@ -18,7 +18,8 @@
       "source": ".",
       "codebase": "default",
       "predeploy": [
-        "node \"$RESOURCE_DIR/tools/deploy-env-guard.js\" --root \"$RESOURCE_DIR\""
+        "node \"$RESOURCE_DIR/tools/deploy-env-guard.js\" --root \"$RESOURCE_DIR\"",
+        "node \"$RESOURCE_DIR/tools/deploy-dotenv-guard.js\" --root \"$RESOURCE_DIR\""
       ],
       "runtime": "nodejs22",
       "ignore": [

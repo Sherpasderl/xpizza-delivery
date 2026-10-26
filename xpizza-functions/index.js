@@ -7547,9 +7547,14 @@ exports.alertOnDriverProblem = onValueCreated(
 // DRIVER C (PLAN-driver-server-C-llegue r3, Codex r4 APPROVE) — «Llegué · avisar a {Nombre}»: the driver's create of
 // tasks/{oid}_delivery/arrived → at most ONE customer notice (arrived-notify.js): claim in arrived_notices/{oid}, a full recheck,
 // the tracker mirror bound to the TAPPING driver, the approved WhatsApp, a winner-only final outcome. retry:false — never a resend.
+// Its 6 keys come from Secret Manager (owner ruling 2026-10-26), bound to THIS function only. A bound secret is injected into the
+// container's env at start ("you'll be able to access it like any other environment variable"), so the process.env reads here
+// and whatsapp.js's load-time reads are unchanged. Deploy carries no dotenv (tools/deploy-dotenv-guard.js): no plain/secret overlap.
 const { notifyArrived } = require('./arrived-notify');
+const { defineSecret: drvcSecret } = require('firebase-functions/params');
+const ARRIVED_SECRETS = ['MAKE_SECRET', 'ULTRAMSG_INSTANCE_ID', 'ULTRAMSG_TOKEN', 'ULTRAMSG_INSTANCE_ID_LA_MUSA', 'ULTRAMSG_TOKEN_LA_MUSA', 'TRACKING_BASE_LA_MUSA'].map((k) => drvcSecret(k));
 exports.notifyArrivedOnTap = onValueCreated(
-  { ref: '/tasks/{taskId}/arrived', region: 'us-central1', retry: false },
+  { ref: '/tasks/{taskId}/arrived', region: 'us-central1', retry: false, secrets: ARRIVED_SECRETS },
   async (event) => {
     await notifyArrived(getDatabase(), { taskId: event.params.taskId, arrived: event.data.val(), now: Date.now() }, {
       wa: { sendMessage: whatsapp.sendMessage, isSendConfirmed: whatsapp.isSendConfirmed, instanceFor: whatsapp.instanceFor,

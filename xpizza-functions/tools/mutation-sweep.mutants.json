@@ -11129,7 +11129,7 @@
     "id": "r1-26",
     "slice": "r1",
     "file": "firebase.json",
-    "from": "      \"predeploy\": [\n        \"node \\\"$RESOURCE_DIR/tools/deploy-env-guard.js\\\" --root \\\"$RESOURCE_DIR\\\"\"\n      ],\n",
+    "from": "      \"predeploy\": [\n        \"node \\\"$RESOURCE_DIR/tools/deploy-env-guard.js\\\" --root \\\"$RESOURCE_DIR\\\"\",\n        \"node \\\"$RESOURCE_DIR/tools/deploy-dotenv-guard.js\\\" --root \\\"$RESOURCE_DIR\\\"\"\n      ],\n",
     "to": "",
     "label": "the deploy guard is not on the deploy path (no functions predeploy hook)",
     "kills_with": "the deploy-env guard is not the FIRST functions predeploy hook",
@@ -20324,8 +20324,8 @@
     "id": "drvc-wire-retry",
     "label": "the arrival trigger retries (a resend)",
     "file": "index.js",
-    "from": "{ ref: '/tasks/{taskId}/arrived', region: 'us-central1', retry: false }",
-    "to": "{ ref: '/tasks/{taskId}/arrived', region: 'us-central1', retry: true }",
+    "from": "{ ref: '/tasks/{taskId}/arrived', region: 'us-central1', retry: false, secrets: ARRIVED_SECRETS }",
+    "to": "{ ref: '/tasks/{taskId}/arrived', region: 'us-central1', retry: true, secrets: ARRIVED_SECRETS }",
     "kills_with": [
       "DRVC-WIRE-NORETRY"
     ],
@@ -20580,6 +20580,126 @@
     "command": [
       "node",
       "arrived-notify.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c-secrets",
+    "id": "drvcs-unbind",
+    "label": "notifyArrivedOnTap binds no secrets",
+    "file": "index.js",
+    "from": "retry: false, secrets: ARRIVED_SECRETS }",
+    "to": "retry: false }",
+    "kills_with": [
+      "DRVC-SEC-EXACT"
+    ],
+    "command": [
+      "node",
+      "drvc-secrets.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c-secrets",
+    "id": "drvcs-drop-one",
+    "label": "one of the 6 secrets is not bound (TRACKING_BASE_LA_MUSA)",
+    "file": "index.js",
+    "from": "'ULTRAMSG_TOKEN_LA_MUSA', 'TRACKING_BASE_LA_MUSA'].map((k) => drvcSecret(k));",
+    "to": "'ULTRAMSG_TOKEN_LA_MUSA'].map((k) => drvcSecret(k));",
+    "kills_with": [
+      "DRVC-SEC-EXACT"
+    ],
+    "command": [
+      "node",
+      "drvc-secrets.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c-secrets",
+    "id": "drvcs-other-export",
+    "label": "another export (alertOnDriverProblem) also binds the 6",
+    "file": "index.js",
+    "from": "{ ref: '/driver_problems/{oid}/{pid}', region: 'us-central1', retry: true }",
+    "to": "{ ref: '/driver_problems/{oid}/{pid}', region: 'us-central1', retry: true, secrets: ['MAKE_SECRET', 'ULTRAMSG_TOKEN'].map((k) => require('firebase-functions/params').defineSecret(k)) }",
+    "kills_with": [
+      "DRVC-SEC-ONLY"
+    ],
+    "command": [
+      "node",
+      "drvc-secrets.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c-secrets",
+    "id": "dotenv-example-blocks",
+    "label": "the committed .env.example is treated as a deploy dotenv (every deploy blocked)",
+    "file": "tools/deploy-dotenv-guard.js",
+    "from": "DOTENV.test(name) && name !== '.env.example'",
+    "to": "DOTENV.test(name)",
+    "kills_with": [
+      "DOTENV-EXAMPLE"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-dotenv-guard.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c-secrets",
+    "id": "dotenv-only-plain",
+    "label": "only a bare .env is found (.env.<project> / .env.local slip through)",
+    "file": "tools/deploy-dotenv-guard.js",
+    "from": "const DOTENV = /^\\.env(\\..+)?$/;",
+    "to": "const DOTENV = /^\\.env$/;",
+    "kills_with": [
+      "DOTENV-FIND"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-dotenv-guard.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c-secrets",
+    "id": "dotenv-pass",
+    "label": "a present dotenv does not block (exit 0)",
+    "file": "tools/deploy-dotenv-guard.js",
+    "from": "Deploy from a fresh worktree with NO dotenv.\\n');\n      return 1;",
+    "to": "Deploy from a fresh worktree with NO dotenv.\\n');\n      return 0;",
+    "kills_with": [
+      "DOTENV-BLOCK"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-dotenv-guard.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c-secrets",
+    "id": "dotenv-hook-off",
+    "label": "the dotenv guard is not on the deploy path",
+    "file": "firebase.json",
+    "from": ",\n        \"node \\\"$RESOURCE_DIR/tools/deploy-dotenv-guard.js\\\" --root \\\"$RESOURCE_DIR\\\"\"\n",
+    "to": "\n",
+    "kills_with": [
+      "DOTENV-HOOK"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-dotenv-guard.test.js"
+    ]
+  },
+  {
+    "slice": "drv-c-secrets",
+    "id": "dotenv-failopen",
+    "label": "an internal error passes the deploy",
+    "file": "tools/deploy-dotenv-guard.js",
+    "from": "deploy BLOCKED (${e && typeof e.code === 'string' ? e.code : 'unexpected'})\\n`);\n    return 1;",
+    "to": "deploy BLOCKED (${e && typeof e.code === 'string' ? e.code : 'unexpected'})\\n`);\n    return 0;",
+    "kills_with": [
+      "DOTENV-FAILCLOSED"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-dotenv-guard.test.js"
     ]
   }
 ]
