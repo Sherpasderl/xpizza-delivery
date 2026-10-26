@@ -50,6 +50,8 @@ test('G0 + every gate, IN ORDER, with the prototype copy (missingStep :1812-1824
   }
   assert.equal(C.missingStep(ready(), { ...OPEN, closedRefused: true }), C.COPY.closed, 'a placement refused for closure also holds G0');
   assert.equal(C.COPY.closed, 'No disponible · cerrado', 'G0 = the prototype ASAP card copy (:1838)');
+  assert.deepEqual([C.CLOSED_SHEET.title('Tienda', '10:00 p.m.'), C.CLOSED_SHEET.body], ['Tienda cerró a las 10:00 p.m.', 'Tu pedido no se envió.'], 'the closure sheet (:1974) WITHOUT the Programar sentence (owner 2026-10-26)');
+  assert.ok(!C.CLOSED_SHEET.body.includes(C.CLOSED_SHEET.scheduleHint), 'the S4 sentence is kept apart, not rendered in S2');
   // pickup skips the delivery-only gates; a member skips name / phone unless editing
   const p = ready(); C.setMode(p, 'pickup'); p.pin.confirmed = false; p.details = '';
   assert.equal(C.missingStep(p, { ...OPEN, pickupOnlyCount: 3, outZone: true }), '', 'pickup ignores pin / details / zone / pickup-only');

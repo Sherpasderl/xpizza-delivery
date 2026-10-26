@@ -34,11 +34,12 @@
     pay: 'Elegí cómo pagar',
     rtn: 'Completá tu RTN (14 dígitos)',
   };
-  // the closure-refusal sheet (placeTap :1974). The BODY is ONE constant on purpose: it promises «Programar», which S2 hides
-  // until S4 — the advisor has it with the owner; S2b renders whatever is ruled, changing only this string
+  // the closure-refusal sheet (placeTap :1974). OWNER 2026-10-26 (DECISIONS.md): S2 DROPS the sentence promising «Programar»
+  // (hidden until S4); it is kept here as `scheduleHint` so S4 re-enables it by appending it to `body` again
   const CLOSED_SHEET = {
     title: (name, closes) => `${name} cerró a las ${closes}`,
-    body: 'Tu pedido no se envió. Podés programarlo para el próximo horario disponible.',
+    body: 'Tu pedido no se envió.',
+    scheduleHint: 'Podés programarlo para el próximo horario disponible.',   // S4 only
   };
   const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;   // the prototype's check (:1821)
   const localPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^504/, '');
