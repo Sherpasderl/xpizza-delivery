@@ -39,7 +39,9 @@ const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-func
   assert.deepStrictEqual([...FILES].sort(), ['catalog/catalog-publish.js', 'catalog/source-store.js', 'menu-pricing.js']);
   // PLAN-public-menu-display landed later: its exact module inverse (proven by pmdisplay-wiring.guard) is reversed FIRST
   const { unapplyPmdisplayModule } = require('./tools/pmdisplay-module-inverse');
-  const pmdRead = (f) => unapplyPmdisplayModule(f, read(f));
+  // PLAN 4 landed after public-menu-display: its exact module inverse (proven by formbake-module-wiring.guard) is reversed FIRST
+  const { unapplyFormbakeModule } = require('./tools/formbake-module-inverse');
+  const pmdRead = (f) => unapplyPmdisplayModule(f, unapplyFormbakeModule(f, read(f)));
   for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, pmdRead(f)), baseOf(f), `🔴 ${f} minus the extras hunks is not ${BASE}:${f}`);
   const f = 'catalog/source-store.js'; const src = pmdRead(f);
   const h = HUNKS.find((x) => x.file === f && x.now.includes('deny_extras'));

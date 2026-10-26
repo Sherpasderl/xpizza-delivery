@@ -69,6 +69,7 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/platform-extras.js',             // per-product extras: the platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/platform-groups.js',             // 1D add-product B: the ONE platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/portal-reads.js', 'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',
+  'catalog/reward-icons.js',                // plan 4 r3 §8.1: the closed reward_icon set, via source-store.js (a frozen list; no I/O)
   'catalog/seed-catalog-core.js', 'catalog/source-store.js',
   'factura/eligibility.js',                 // usesPlatformFactura (getEditableCatalog's fiscal capability) — pure
   'index.js',                               // the entry: only its early branch runs

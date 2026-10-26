@@ -259,6 +259,9 @@ function buildCatalogV2(restaurantId, opts = {}) {
   // The namespace is DERIVED from the extras' own categories when the form is the source, exactly as
   // the seed derives it, so both bootstrap paths produce the same ordering.
   carryStructure('badges', () => readLiteral(src, 'TAG_BADGES', '{', '}'));
+  // PLAN 4 r3 §8.1 — the ORDER badges are chosen in: STORE-ONLY. It reaches the store through the additive migration
+  // (§8.2), never the bootstrap text, so the text path stays byte-identical (and so do the goldens it feeds).
+  carryStructure('badge_priority', () => undefined);
   // 🔴 THE STORE WINS ONCE IT HAS AUTHORED ONE. This read `structure.extra_categories === undefined`
   // without ever COPYING fd.extra_categories, so the check always fell through and a merchant who
   // reordered their option groups had that order silently replaced by first-appearance .cat order.

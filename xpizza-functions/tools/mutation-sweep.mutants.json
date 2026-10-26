@@ -19689,5 +19689,101 @@
    "node",
    "../xpizza-driver/slice2-branch.test.js"
   ]
+ },
+ {
+  "id": "fb-1",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: validateSource stops checking that a badge_priority entry names a declared badge — a priority entry would select a badge that renders nothing",
+  "file": "catalog/source-store.js",
+  "from": "      if (!st.badges || !Object.prototype.hasOwnProperty.call(st.badges, k)) fail(",
+  "to": "      if (false) fail(",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-2",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: the dish reward_icon is no longer bound to the closed sprite set — an icon that draws nothing is accepted",
+  "file": "catalog/source-store.js",
+  "from": "    reward_icon: { required: false, type: 'string', enum: REWARD_ICONS },",
+  "to": "    reward_icon: { required: false, type: 'string' },",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-3",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: badge_priority duplicates are accepted (the unique rule dropped)",
+  "file": "catalog/source-store.js",
+  "from": "    checkField(st.badge_priority, { required: false, type: 'string_array', unique: true }, `${rid}`, 'structure.badge_priority');",
+  "to": "    checkField(st.badge_priority, { required: false, type: 'string_array' }, `${rid}`, 'structure.badge_priority');",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-4",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: the store path stops carrying badge_priority into the built structure — a published version silently loses the priority",
+  "file": "catalog/form-menu-source.js",
+  "from": "  carryStructure('badge_priority', () => undefined);",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-5",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: getPublicMenu stops carrying badge_priority from the structure — the body would be refused as a half-menu (or never serve the order)",
+  "file": "catalog/public-menu.js",
+  "from": "const CARRIED_FROM_STRUCTURE = Object.freeze(['extras_by_category', 'extras_by_item', 'badges', 'badge_priority']);",
+  "to": "const CARRIED_FROM_STRUCTURE = Object.freeze(['extras_by_category', 'extras_by_item', 'badges']);",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-6",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: assertWholeBody stops checking badge_priority entries against the served badges",
+  "file": "catalog/public-menu.js",
+  "from": "    if (bad.length) problems.push(`badge_priority names ${bad.length} key(s) that are not served badges`);",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-7",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: assertWholeBody stops checking a dish reward_icon against the closed set",
+  "file": "catalog/public-menu.js",
+  "from": "    if (badIcon.length) problems.push(`${badIcon.length} dish(es) carry a reward_icon outside the closed set`);",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-8",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: the representation version is not advanced — a body with the new fields keeps the 1d.2 cache key",
+  "file": "catalog/public-menu.js",
+  "from": "const REPRESENTATION_VERSION = '1d.3';",
+  "to": "const REPRESENTATION_VERSION = '1d.2';",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
  }
 ]

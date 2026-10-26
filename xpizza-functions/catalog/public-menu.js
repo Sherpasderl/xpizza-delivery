@@ -31,6 +31,7 @@ const { generateFormBundle } = require('./generate-form-bundle');
 const { canonicalJson } = require('./canonical-json');
 const { applyIdentityToServedBody } = require('./identity-overlay');
 const { photosFor } = require('./public-photos');
+const { REWARD_ICONS } = require('./reward-icons');
 
 // Bumped whenever THIS module's projection changes — a field added, a shape altered, a generator
 // change that moves the bundle. It is inside the etag, so a redeploy that changes the body also
@@ -41,7 +42,9 @@ const { photosFor } = require('./public-photos');
    change that is supposed to be additive-and-immediate would instead be invisible for a TTL. */
 /* PLAN-public-menu-display r2 (D3 RULED): bumped because the served body can now carry `photos`. The forms keep their own
    '1d.1' marker (they stay byte-identical) and log menu_representation_changed on a mismatch — a console warning only. */
-const REPRESENTATION_VERSION = '1d.2';
+/* PLAN 4 r3 §8.1 (version collision ruled): advanced 1d.2 → 1d.3 because the body can now carry `badge_priority` and a
+   dish's `reward_icon`. 7f72757f's photo field and its category-rename validation are kept as they were. */
+const REPRESENTATION_VERSION = '1d.3';
 
 // EVERY field this endpoint serves, and what has to be true of it. One table, because the list of
 // what may appear and the rules for what must appear are the same fact — kept apart they drift, and
@@ -71,6 +74,8 @@ const BODY_CONTRACT = Object.freeze({
   extras_by_category: { type: 'object', fromSource: (menu) => menu.structure.extras_by_category !== undefined },
   extras_by_item: { type: 'object', fromSource: (menu) => menu.structure.extras_by_item !== undefined },
   badges: { type: 'object', fromSource: (menu) => menu.structure.badges !== undefined },
+  // PLAN 4 r3 §8.1: the ORDER badges are chosen in — badge keys only (assertWholeBody checks each names a served badge)
+  badge_priority: { type: 'array', fromSource: (menu) => menu.structure.badge_priority !== undefined },
   // per-product extras (PLAN rev 2.1 §7): the DENSE public complement { version, deny: { itemKey: [extraKey…] } } of the
   // version's eligibility document — present exactly when that version carries one (a pre-feature version does not)
   extras_eligibility: { type: 'object', fromSource: (menu) => menu.eligibility != null },
@@ -98,6 +103,17 @@ function assertWholeBody(restaurantId, body, menu) {
   }
   const undeclared = Object.keys(body).filter((f) => !PUBLIC_MENU_BODY_FIELDS.includes(f));
   for (const f of undeclared) problems.push(`${f} is served but undeclared`);
+  // PLAN 4 r3 §8.1 — the two new display facts, checked against what renders them: a priority entry must name a served
+  // badge, and a dish's reward_icon must be one the reward picker's sprite draws.
+  if (Array.isArray(body.badge_priority)) {
+    const served = isType(body.badges, 'object') ? body.badges : {};
+    const bad = body.badge_priority.filter((k) => typeof k !== 'string' || !Object.prototype.hasOwnProperty.call(served, k));
+    if (bad.length) problems.push(`badge_priority names ${bad.length} key(s) that are not served badges`);
+  }
+  if (Array.isArray(body.dishes)) {
+    const badIcon = body.dishes.filter((d) => d && d.reward_icon !== undefined && !REWARD_ICONS.includes(d.reward_icon));
+    if (badIcon.length) problems.push(`${badIcon.length} dish(es) carry a reward_icon outside the closed set`);
+  }
   if (problems.length) {
     fail('public_menu_unavailable', `${restaurantId}: the projection is not a whole menu — ${problems.join('; ')}`);
   }
@@ -106,7 +122,7 @@ function assertWholeBody(restaurantId, body, menu) {
 // Carried from `structure` — the fields the generator leaves there. Order fixed so the body's own
 // key order is stable across builds (the etag is over canonical JSON, but a stable body is easier to
 // diff by eye, and an operator comparing two responses is a real thing that happens).
-const CARRIED_FROM_STRUCTURE = Object.freeze(['extras_by_category', 'extras_by_item', 'badges']);
+const CARRIED_FROM_STRUCTURE = Object.freeze(['extras_by_category', 'extras_by_item', 'badges', 'badge_priority']);
 
 // The rid the platform will serve. Deliberately NOT resolveRestaurantId(): that function defaults a
 // blank id to x_pizza, which is right for a form that has always posted none and wrong here, where

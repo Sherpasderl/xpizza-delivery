@@ -105,6 +105,7 @@
     "xpizza-functions/catalog/menu-order.test.js",
     "xpizza-functions/catalog/migration-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
+    "xpizza-functions/catalog/plan4-display-fields.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
     "xpizza-functions/catalog/public-menu.test.js",
@@ -542,6 +543,7 @@
     "xpizza-functions/catalog/menu-order.test.js",
     "xpizza-functions/catalog/migration-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
+    "xpizza-functions/catalog/plan4-display-fields.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
     "xpizza-functions/catalog/public-menu.test.js",
@@ -1707,6 +1709,7 @@
   "catalog/catalog-edit.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
+  "catalog/form-menu-source.js",
   "catalog/portal-reads.js",
   "catalog/public-menu.js",
   "catalog/public-photos.js",
@@ -1873,6 +1876,17 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/form-menu-source.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/formbake-module-wiring.guard.test.js",
+     "inverses": [
+      "tools/formbake-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
+  },
   "catalog/portal-reads.js": {
    "pins": [],
    "lifts": [
@@ -1880,7 +1894,14 @@
    ]
   },
   "catalog/public-menu.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/formbake-module-wiring.guard.test.js",
+     "inverses": [
+      "tools/formbake-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": []
   },
   "catalog/public-photos.js": {
@@ -1907,6 +1928,7 @@
      "file": "xpizza-functions/catalog/identity-integrity-guards.test.js",
      "inverses": [
       "tools/extras-module-inverse.js",
+      "tools/formbake-module-inverse.js",
       "tools/pmdisplay-module-inverse.js"
      ]
     },
@@ -1914,12 +1936,20 @@
      "file": "xpizza-functions/extras-wiring.guard.test.js",
      "inverses": [
       "tools/extras-module-inverse.js",
+      "tools/formbake-module-inverse.js",
       "tools/pmdisplay-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/formbake-module-wiring.guard.test.js",
+     "inverses": [
+      "tools/formbake-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/pmdisplay-wiring.guard.test.js",
      "inverses": [
+      "tools/formbake-module-inverse.js",
       "tools/pmdisplay-module-inverse.js"
      ]
     }

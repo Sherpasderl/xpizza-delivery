@@ -945,6 +945,9 @@ const GOOD = () => ({
     ['validateSource :: !contract.categoriesNamed', 'requiredness', 'selects the optional-names branch: all-or-nothing applies only where the renderer contract does not already require every name'],
     ['validateSource :: cat', 'requiredness', 'counts the categories whose name is PRESENT (undefined only is absence, as checkField reads it); every element is still typed by CATEGORY_RULES just below'],
     ['validateSource :: namedCount !== 0 && namedCount !== st.categories.length', 'requiredness', 'the all-or-nothing rule itself: some but not all category names present is refused'],
+    // ── PLAN 4 r3 §8.1: badge_priority — optional, typed, and every entry names a badge this document declares ──
+    ['validateSource :: st.badge_priority !== undefined', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
+    ['validateSource :: !st.badges || !Object.prototype.hasOwnProperty.call(st.badges, k)', 'post-type', 'membership of an already-typed priority entry in the declared badges; no declared badges refuses every entry (fail closed)'],
   ];
   const RULED = new Map(RULINGS.map(([k, kind, why]) => [k, { kind, why }]));
 
@@ -956,7 +959,7 @@ const GOOD = () => ({
     ...enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8')),
     ...enumeratePredicates(readFileSync(join(__dirname, 'canonical-json.js'), 'utf8')),
   ];
-  assert.strictEqual(preds.length, 173, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
+  assert.strictEqual(preds.length, 175, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
   const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);
   assert.deepStrictEqual(unruled, [],
@@ -970,7 +973,7 @@ const GOOD = () => ({
   }
   const counts = {};
   for (const p of preds) counts[RULED.get(p.key).kind] = (counts[RULED.get(p.key).kind] || 0) + 1;
-  assert.deepStrictEqual(counts, { requiredness: 24, 'post-type': 77, shape: 50, 'not-a-presence-test': 22 },   // public-menu-display T1: +3 requiredness (all-or-nothing names); add-product B: +10 group rules; +5 choiceBadges (net); per-product extras: +8 post-type, +1 requiredness, +1 shape (typed deny_extras, no variant list, no unknown field, no ambiguous legacy entry)
+  assert.deepStrictEqual(counts, { requiredness: 25, 'post-type': 78, shape: 50, 'not-a-presence-test': 22 },   // plan 4: +1 requiredness, +1 post-type (badge_priority); public-menu-display T1: +3 requiredness (all-or-nothing names); add-product B: +10 group rules; +5 choiceBadges (net); per-product extras: +8 post-type, +1 requiredness, +1 shape (typed deny_extras, no variant list, no unknown field, no ambiguous legacy entry)
     'the mix of rulings moved — a predicate changed meaning, which is a thing to look at rather than re-pin');
   ok(`all ${preds.length} control predicates ruled (${counts.requiredness} requiredness, ${counts['post-type']} post-type, ${counts.shape} shape, ${counts['not-a-presence-test']} not-a-presence-test)`);
 
