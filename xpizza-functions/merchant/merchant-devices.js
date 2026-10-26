@@ -96,7 +96,7 @@ async function myLocations(deps, auth, _data) {
   try {
     const locs = await M.myLocations({ db }, { uid: auth.uid, token: t });
     for (const l of locs) {
-      if (l.state !== 'member' || !l.caps.includes('device.pair')) continue;
+      if ((l.state !== 'member' && l.state !== 'staged') || !l.caps.includes('device.pair')) continue;   // O1b T1: a staged branch pairs before opening
       const name = await val(`restaurants/${l.rid}/identity/location_name`);
       const base = V.vPrepBase(await val(`restaurants/${l.rid}/identity/prep_default_min`));
       out.push({ rid: l.rid, brand_id: l.brand_id, location_name: typeof name === 'string' ? name : null, prep_default_min: base });

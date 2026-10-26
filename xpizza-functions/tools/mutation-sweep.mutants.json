@@ -17875,8 +17875,8 @@
   "slice": "membership",
   "label": "team endpoints: the cleanup ops skip retired locations again (the owner of a retired-only brand cannot revoke)",
   "file": "access/team-http-core.js",
-  "from": "    if (rec.locations[rid] !== 'member' && rec.locations[rid] !== 'retired') continue;",
-  "to": "    if (rec.locations[rid] !== 'member') continue;",
+  "from": "    if (rec.locations[rid] !== 'member' && rec.locations[rid] !== 'retired' && rec.locations[rid] !== 'staged') continue;   // O1b T1: + staged",
+  "to": "    if (rec.locations[rid] !== 'member' && rec.locations[rid] !== 'staged') continue;   // O1b T1: + staged",
   "kills_with": [
    "the owner still lists the team"
   ],
@@ -17999,8 +17999,8 @@
   "slice": "membership",
   "label": "T-a G2: update_manager may add a non-member branch",
   "file": "access/roster.js",
-  "from": "      if (loc.brandId !== brandId || loc.state !== 'member') return fail('location_not_member');   // an ADDED branch: a CURRENT member",
-  "to": "      if (loc.brandId !== brandId) return fail('location_not_member');   // an ADDED branch: a CURRENT member",
+  "from": "      if (loc.brandId !== brandId || (loc.state !== 'member' && loc.state !== 'staged')) return fail('location_not_member');   // an ADDED branch: a CURRENT member (or staged, O1b T1)",
+  "to": "      if (loc.brandId !== brandId) return fail('location_not_member');   // an ADDED branch: a CURRENT member (or staged, O1b T1)",
   "kills_with": [
    "ADDING a retired branch is refused"
   ],

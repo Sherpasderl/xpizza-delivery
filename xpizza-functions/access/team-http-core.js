@@ -52,7 +52,7 @@ async function canAtBrand(db, ctx, brandId, cap) {
   const rec = await val(db, `brands/${brandId}`);
   if (!rec || !isObj(rec.locations)) return { ok: false, status: 403, error: 'forbidden' };
   for (const rid of Object.keys(rec.locations).sort()) {
-    if (rec.locations[rid] !== 'member' && rec.locations[rid] !== 'retired') continue;
+    if (rec.locations[rid] !== 'member' && rec.locations[rid] !== 'retired' && rec.locations[rid] !== 'staged') continue;   // O1b T1: + staged
     const a = await resolveAccess({ db }, ctx, rid);
     if (!a.ok) return a.code === 'unavailable' ? { ok: false, status: 503, error: 'unavailable' } : { ok: false, status: 403, error: 'forbidden' };
     if (a.brandId === brandId && can(a, cap)) return { ok: true };
