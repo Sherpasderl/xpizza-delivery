@@ -623,3 +623,84 @@ test('item 6: op_conflict still shows the G4 box, never a name line', async () =
   assert.equal(byIdIn(P.modal(), 'nv1b-nombre-err'), undefined);
   assert.equal(byIdIn(P.modal(), 'nv1b-go').disabled, false, 'op_conflict does not lock «Crear» on the name');
 });
+
+// ══ codex 1b r3 #2: Codex's two reproductions, the portal's E6 answered by the REAL core over the faithful fake RTDB ════════════════
+const CORE = require('../xpizza-functions/portal/branch-lifecycle-core.js');
+const { fakeRtdb } = require('../xpizza-functions/test/_fake-rtdb-sdk.js');
+const RID = require('../xpizza-functions/branches/rid-alloc.js');
+const T0 = 1_800_000_000_000;
+const SIDENT = (name) => ({ name: 'Marca S', brand_id: 'marca_s', location_name: name, phone: '+50431234567', hours: WEEK, prep_default_min: 20, hub_lat: 15.6, hub_lng: -88,
+  zone: { type: 'circle', radius_km: 5 }, delivery_radius_km: 5, whatsapp_instance: '', whatsapp_enabled: false, active: true, active_changed_at: 1, version: 7 });
+const serverWorld = (restaurants = {}) => fakeRtdb({
+  platform_config: { membership_writes_enabled: true },
+  brands: { marca_s: { name: 'Marca S', active: true, locations: { r_a: 'member' }, activation: { state: 'on', since: 1 }, projection_gen: 2 } },
+  restaurants: { r_a: { identity: SIDENT('Centro') }, ...restaurants },
+  brand_members: { marca_s: { owners: { uOwnerLife: { granted_at: 1, granted_by: 'x' } } } },
+  member_of: { uOwnerLife: { brands: { marca_s: 'owner' } } },
+});
+let clk = 0;
+const realE6 = (db, b) => CORE.createBranchDraftCore({ db, verifyIdToken: async (tok) => ({ uid: tok }), now: () => T0 + (++clk), clock: () => T0 + clk, log: { warn() {}, log() {} } },
+  { method: 'POST', body: b, get: (h) => (h === 'authorization' ? 'Bearer uOwnerLife' : undefined) });
+const asResponse = (r) => (r.status < 400 ? okJson(r.body) : errJson(r.status, r.body));
+const draftsOf = (db) => Object.entries(db.get('restaurants') || {}).filter(([, v]) => v && v.draft && v.draft.brand_id === 'marca_s').map(([rid, v]) => ({ rid, op_id: v.draft.op_id, name: v.draft.location_name }));
+
+test('r3 #2 (Codex repro 1): the retry meets brand_busy while the ORIGINAL E6 still holds the lease → still locked, same op_id; the original completes; ONE draft', async () => {
+  installStorage();
+  const db = serverWorld();
+  const cand = RID.ridCandidates('marca_s', 'Norte')[0];
+  let release; const gate = new Promise((r) => { release = r; });
+  db.hooks[`restaurants/${cand}/draft`] = () => gate;   // the original call pauses holding the brand lease, right before its draft write
+  let original = null; const answers = [];
+  const P = page([E1([row('r_a', { name: 'Centro' })])], (fn, calls) => {
+    if (fn !== 'createBranchDraft') return undefined;
+    const b = calls[calls.length - 1].body;
+    if (!original) { original = realE6(db, b); return errJson(503, { error: 'unavailable', retryable: true }); }   // its response is lost
+    return realE6(db, b).then((r) => { answers.push(r.body.error || 'ok'); return asResponse(r); });
+  });
+  await openSuc(P);
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Norte');
+  fire(byIdIn(P.modal(), 'nv1b-tel'), 'input', '3390 5521');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(15);
+  byIdIn(P.modal(), 'nv1b-go').click();   // the retry, while the original still holds the lease
+  await settle(15);
+  assert.deepEqual(answers, ['brand_busy'], 'non-vacuity: the real server answered brand_busy');
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre').disabled, true, 'brand_busy is UNRESOLVED: the form stays locked');
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Otra');   // a forced edit cannot ride a new intent
+  release(); assert.equal((await original).status, 200, 'the original completes server-side');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(20);
+  assert.deepEqual(answers, ['brand_busy', 'ok'], 'the same op is recognised complete');
+  const bodies = P.calls.filter((c) => c.fn === 'createBranchDraft').map((c) => c.body);
+  assert.equal(bodies.length, 3);
+  assert.deepEqual(bodies[1], bodies[0]); assert.deepEqual(bodies[2], bodies[0]);
+  assert.deepEqual(draftsOf(db), [{ rid: cand, op_id: bodies[0].op_id, name: 'Norte' }], 'exactly ONE draft, the original op');
+});
+
+test('r3 #2 (Codex repro 2): draft_conflict is terminal (the server released the lock) → the form is released with the G4 box; the corrected name is a new op and succeeds', async () => {
+  installStorage();
+  const cand = RID.ridCandidates('marca_s', 'Norte')[0];
+  const db = serverWorld({ [cand]: { draft: { brand_id: 'marca_s', location_name: 'Vieja', phone: '+50433905521', hours: WEEK, prep_default_min: 20, op_id: 'op_stray', inc: 'c0', created_at: 1, created_by: 'x' } } });
+  const answers = [];
+  const P = page([E1([row('r_a', { name: 'Centro' })])], (fn, calls) => (fn === 'createBranchDraft'
+    ? realE6(db, calls[calls.length - 1].body).then((r) => { answers.push(r.body.error || 'ok'); return asResponse(r); }) : undefined));
+  await openSuc(P);
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Norte');
+  fire(byIdIn(P.modal(), 'nv1b-tel'), 'input', '3390 5521');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(15);
+  assert.deepEqual(answers, ['draft_conflict'], 'non-vacuity: the real server answered draft_conflict');
+  assert.equal(db.get('brand_ops/marca_s'), null, 'and released its lock');
+  assert.ok(textOf(P.modal()).includes('No se guardaron los cambios'), 'the G4 box (no new copy)');
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre').disabled, false, 'the form is released');
+  assert.equal(byIdIn(P.modal(), 'nv1b-go').disabled, false);
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Sur');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(20);
+  assert.deepEqual(answers, ['draft_conflict', 'ok']);
+  const [a, b] = P.calls.filter((c) => c.fn === 'createBranchDraft').map((c) => c.body);
+  assert.notEqual(b.op_id, a.op_id, 'a new intent, a new op_id');
+  assert.ok(draftsOf(db).some((d) => d.name === 'Sur' && d.op_id === b.op_id), 'the corrected create succeeded server-side');
+});

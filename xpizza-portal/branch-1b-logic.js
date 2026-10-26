@@ -290,15 +290,33 @@ export function missingText(r) {
 export const canActivate = (row) => { const r = readinessRows(row); return r.kind === 'list' && r.unmet === 0; };
 
 // ── S9 «Nueva sucursal» (E6) ──────────────────────────────────────────────────────────────────────────────────────────────
-// codex 1b r2 #2: the E6 refusals that END an intent (a 4xx carrying one of these codes). Anything else — a 5xx, a network failure,
-// an unknown code, interrupted / lease_lost — leaves it unresolved: the same body is retried under the same op_id.
-export const E6_DEFINITIVE = Object.freeze(['bad_request', 'forbidden_field', 'bad_brand', 'bad_phone', 'bad_name', 'bad_hours', 'bad_prep', 'bad_draft',
-  'not_authorized', 'invalid_credentials', 'name_taken', 'op_conflict', 'brand_busy', 'brand_not_found', 'rid_conflict', 'rid_exhausted', 'identity_conflict',
-  'brand_lists_draft', 'brand_has_drafts']);
-// the 4xx kinds api.js types (400 / 401 / 403 / 404 / 409). Every definitive code arrives on one of them (branch-lifecycle-core.js
-// STATUS / statusOf); an untyped 4xx is 'Failed' like a 5xx, so it stays unresolved — the safe side.
+// codex 1b r3 #2 — THE E6 OUTCOME ORACLE, audited from the server at 76f3a160 (every refusal the createBranchDraft path can return:
+// portal/branch-lifecycle-core.js createBranchDraftCore + gateAndToken + brandOwner, portal/ops-core.js verifiedContext,
+// branches/branch-store.js createDraft → draftInputs → runOp → acquire → STEPS.create_draft, branches/branch-ops.js draftErrors).
+// 'definitive' = the intent is OVER: refused before the brand lock (nothing written), or refused through fail(), which releases the
+// lock (a refusal is terminal) — the form is released and the next «Crear» is a new op_id. 'unresolved' = the op may still be
+// running or may still complete: the same body is retried under the same op_id. A code not in this table is unresolved.
+// branch-1b-logic.test.mjs extracts the server's codes from those functions and fails when one is added without a row here.
+export const E6_OUTCOME = Object.freeze({
+  // before the lock — nothing written
+  forbidden_field: 'definitive', bad_request: 'definitive', bad_brand: 'definitive', bad_phone: 'definitive',   // core whole-body checks
+  writes_disabled: 'definitive',   // the gate (503; the view closes «Nueva» on it by name — the write gate is off)
+  missing_bearer_token: 'definitive', invalid_credentials: 'definitive', not_authorized: 'definitive',   // auth / brand.locations
+  bad_draft: 'definitive', bad_name: 'definitive', bad_prep: 'definitive', bad_hours: 'definitive', bad_op_id: 'definitive',   // draftInputs
+  not_a_branch: 'definitive',   // runOp without a brand id
+  // after the lock, through fail() — the lock is released, terminal
+  op_conflict: 'definitive', brand_not_found: 'definitive', brand_exists: 'definitive', name_taken: 'definitive', rid_conflict: 'definitive',
+  rid_exhausted: 'definitive', op_lost: 'definitive', brand_invalid: 'definitive', draft_conflict: 'definitive',
+  // the op may still be running or complete
+  brand_busy: 'unresolved',   // acquire: another op — possibly OUR original E6 — holds the brand lease (live, or interrupted)
+  lease_lost: 'unresolved',   // LOST: another call took this op over; it may still finish it
+  unavailable: 'unresolved',  // an outage, a store throw, or a replay whose identity could not be read
+});
+export const E6_DEFINITIVE = Object.freeze(Object.keys(E6_OUTCOME).filter((c) => E6_OUTCOME[c] === 'definitive'));
+// the 4xx kinds api.js types (400 / 401 / 403 / 404 / 409). An untyped 4xx is 'Failed' like a 5xx, so it stays unresolved — the safe
+// side. writes_disabled (503) is handled by the view by name, never here.
 const E6_4XX_KINDS = Object.freeze(['BadRequest', 'NotSignedIn', 'NotAuthorized', 'NotFound', 'Conflict']);
-export const e6Definitive = (e) => !!e && E6_4XX_KINDS.includes(e.kind) && E6_DEFINITIVE.includes(e.code);
+export const e6Definitive = (e) => !!e && E6_4XX_KINDS.includes(e.kind) && E6_OUTCOME[e.code] === 'definitive';
 export const NAME_MAX = 60;
 // item 6 (OWNER-APPROVED 2026-10-26, D-b inline under the name): the two E6 name refusals. bad_name is defensive — the client already
 // sends only validName names. The error stands while the field still holds the refused name; «Crear» is off until the name changes.

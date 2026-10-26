@@ -287,28 +287,103 @@ test('S9: the name rule mirrors the server isText(…, 60); the hours chips have
   assert.notEqual(B.newOpId(), B.newOpId());
 });
 
-// codex 1b r2 #2 — which E6 refusals END an intent. The replies come from the REAL server: the core itself for the refusals it
-// makes before the gate, and the core's own STATUS / statusOf table (evaluated from its source; not exported) for the rest. Each is
-// turned into the client's error by the REAL api.js readResponse — the classifier never sees a hand-built error.
-const asClientError = async ({ status, body }) => {
-  try { await readResponse({ ok: status < 400, status, json: async () => body }); } catch (e) { return e; }
+// codex 1b r3 #2 — the E6 outcome oracle (B.E6_OUTCOME) is checked against the SERVER two ways:
+//   (1) completeness: every refusal code the createBranchDraft path can return, extracted from the server functions themselves,
+//       has exactly one row — a code added on the server without a classification fails here;
+//   (2) behaviour: the REAL core over the faithful fake RTDB produces each reachable refusal (incl. Codex's brand_busy and
+//       draft_conflict), and the REAL api.js readResponse turns it into the client's error; the rest use the core's own statusOf.
+const FN = require('../xpizza-functions/test/_fake-rtdb-sdk.js');
+const RID = require('../xpizza-functions/branches/rid-alloc.js');
+const src = (rel) => readFileSync(new URL(`../xpizza-functions/${rel}`, import.meta.url), 'utf8');
+const body = (text, head, next) => { const i = text.indexOf(head); assert.ok(i >= 0, `server function ${head}`); const j = text.indexOf(next, i + head.length); return text.slice(i, j < 0 ? undefined : j); };
+const codes = (text, re) => [...text.matchAll(re)].map((m) => m[1]);
+const coreSrc = src('portal/branch-lifecycle-core.js');
+const storeSrc = src('branches/branch-store.js');
+const statusOf = new Function(`${/const STATUS = \{[\s\S]*?\};/.exec(coreSrc)[0]}\n${/const statusOf = .*;/.exec(coreSrc)[0]}\nreturn statusOf;`)();
+// the store's internal stop() codes that never leave it: 'taken' (a rid candidate held by another op → advance to the next)
+const INTERNAL = ['taken'];
+// acquire's no_op / bad_op_record are returned only when `inputs` is absent (a resume); createDraft always passes inputs
+const UNREACHABLE = ['no_op', 'bad_op_record'];
+function serverE6Codes() {
+  const core = body(coreSrc, 'async function createBranchDraftCore', '\nasync function ') + body(coreSrc, 'async function gateAndToken', '\n}') + body(coreSrc, 'async function brandOwner', '\n}');
+  const auth = body(src('portal/ops-core.js'), 'async function verifiedContext', '\n}');
+  const store = body(storeSrc, 'function draftInputs', '\n}') + body(storeSrc, 'async function createDraft(', '\n}') + body(storeSrc, 'async function runOp', '\n}')
+    + body(storeSrc, 'async function acquire', '\n}') + body(storeSrc, 'async create_draft(', 'async edit_draft(');
+  const ops = body(src('branches/branch-ops.js'), 'function draftErrors', '\n}');
+  const all = new Set([
+    ...codes(core, /refuse\('([a-z_]+)'/g), ...codes(auth, /error: '([a-z_]+)'/g),
+    ...codes(store, /error: '([a-z_]+)'/g), ...codes(store, /stop\('([a-z_]+)'\)/g), ...codes(store, /fail\(db, op, callId, '([a-z_]+)'/g),
+    ...codes(ops, /(?:push|return \[)\('?([a-z_]+)'/g), ...codes(ops, /return \['([a-z_]+)'\]/g),
+    ...(/return LOST/.test(store) ? ['lease_lost'] : []),
+  ]);
+  for (const c of [...INTERNAL, ...UNREACHABLE]) assert.ok(all.has(c), `non-vacuity: «${c}» is really in the server source`), all.delete(c);
+  return [...all].sort();
+}
+test('r3 #2 completeness: the oracle has exactly one row per E6 refusal the server can return (a new server code fails here)', () => {
+  const server = serverE6Codes();
+  assert.ok(server.length >= 25 && server.includes('brand_busy') && server.includes('draft_conflict'), `non-vacuity: ${server}`);
+  assert.deepEqual(Object.keys(B.E6_OUTCOME).sort(), server);
+  for (const v of Object.values(B.E6_OUTCOME)) assert.ok(v === 'definitive' || v === 'unresolved');
+});
+
+const asClientError = async ({ status, body: b }) => {
+  try { await readResponse({ ok: status < 400, status, json: async () => b }); } catch (e) { return e; }
   assert.fail(`status ${status} did not throw`);
 };
-const coreSrc = readFileSync(new URL('../xpizza-functions/portal/branch-lifecycle-core.js', import.meta.url), 'utf8');
-const statusOf = new Function(`${/const STATUS = \{[\s\S]*?\};/.exec(coreSrc)[0]}\n${/const statusOf = .*;/.exec(coreSrc)[0]}\nreturn statusOf;`)();
-test('r2 #2: every definitive E6 code reaches the client as a typed 4xx and ends the intent; outages and unknown codes do not', async () => {
-  const E6 = { op_id: 'op_1', brand_id: 'marca_s', location_name: 'Norte', phone: '+50433905521', hours: WEEK(), prep_default_min: 20 };
-  const pre = { forbidden_field: { ...E6, extra: 1 }, bad_request: { op_id: 'op_1' }, bad_brand: { ...E6, brand_id: '' }, bad_phone: { ...E6, phone: '22345678' } };
-  for (const [code, body] of Object.entries(pre)) {
-    const r = await CORE.createBranchDraftCore({}, { method: 'POST', body });
-    assert.equal(r.body.error, code, `non-vacuity: the real core refuses ${code}`);
-    assert.equal(B.e6Definitive(await asClientError(r)), true, code);
+const NOWS = 1_800_000_000_000;
+const g = { granted_at: 1, granted_by: 'x' };
+const ident = (name) => ({ name: 'Marca S', brand_id: 'marca_s', location_name: name, phone: '+50431234567', hours: WEEK(), prep_default_min: 20, hub_lat: 15.6, hub_lng: -88,
+  zone: { type: 'circle', radius_km: 5 }, delivery_radius_km: 5, whatsapp_instance: '', whatsapp_enabled: false, active: true, active_changed_at: 1, version: 3 });
+function e6World(over = {}) {
+  return FN.fakeRtdb({
+    platform_config: { membership_writes_enabled: true },
+    brands: { marca_s: { name: 'Marca S', active: true, locations: { r_a: 'member' }, activation: { state: 'on', since: 1 }, projection_gen: 2 } },
+    restaurants: { r_a: { identity: ident('Centro') } },
+    brand_members: { marca_s: { owners: { uOwner: g } } },
+    member_of: { uOwner: { brands: { marca_s: 'owner' } } },
+    ...over,
+  });
+}
+let tick = 0;
+const coreDeps = (db, extra = {}) => ({ db, verifyIdToken: async (tok) => ({ uid: tok }), now: () => NOWS + (++tick), clock: () => NOWS + tick, log: { warn() {}, log() {} }, ...extra });
+const coreReq = (uid, b) => ({ method: 'POST', body: b, get: (h) => (h === 'authorization' && uid ? `Bearer ${uid}` : undefined) });
+const E6B = (over = {}) => ({ op_id: 'op_1', brand_id: 'marca_s', location_name: 'Norte', phone: '+50433905521', hours: WEEK(), prep_default_min: 20, ...over });
+test('r3 #2 behaviour: the REAL core produces each reachable refusal; the client classifies it by the oracle (brand_busy unresolved, draft_conflict definitive)', async () => {
+  const cand = RID.ridCandidates('marca_s', 'Norte')[0];
+  const cases = [
+    ['forbidden_field', e6World(), 'uOwner', { ...E6B(), extra: 1 }], ['bad_request', e6World(), 'uOwner', { op_id: 'op_1' }],
+    ['bad_brand', e6World(), 'uOwner', E6B({ brand_id: '' })], ['bad_phone', e6World(), 'uOwner', E6B({ phone: '22345678' })],
+    ['writes_disabled', e6World({ platform_config: { membership_writes_enabled: false } }), 'uOwner', E6B()],
+    ['missing_bearer_token', e6World(), null, E6B()], ['not_authorized', e6World(), 'uStranger', E6B()],
+    ['bad_name', e6World(), 'uOwner', E6B({ location_name: ' Norte' })], ['bad_prep', e6World(), 'uOwner', E6B({ prep_default_min: 500 })],
+    ['bad_op_id', e6World(), 'uOwner', E6B({ op_id: 'no spaces' })],
+    ['name_taken', e6World({ brand_branch_names: { marca_s: { [RID.nameKey('Norte')]: { op_id: 'op_other', inc: 'c0' } } } }), 'uOwner', E6B()],
+    ['op_conflict', e6World({ branch_op_ids: { marca_s: { op_1: { payload_hash: 'another', inc: 'c0' } } } }), 'uOwner', E6B()],
+    // Codex r3: another op (here: our own original E6, still inside its lease) holds the brand lock
+    ['brand_busy', e6World({ brand_ops: { marca_s: { kind: 'create_draft', op_id: 'call_orig', brand_id: 'marca_s', payload_hash: 'h0', step: 'start', at: 1,
+      inputs: { draft: { brand_id: 'marca_s', location_name: 'Norte', phone: '+50433905521', hours: WEEK(), prep_default_min: 20 }, op_id: 'op_1', brand_name: null, caller_uid: 'uOwner' },
+      lease: { call_id: 'call_orig', until: NOWS + 10 * 60 * 1000 }, started_at: 1, updated_at: 1 } } }), 'uOwner', E6B()],
+    // Codex r3: a stray draft sits at the rid this op allocates → draft_conflict, and fail() releases the lock
+    ['draft_conflict', e6World({ restaurants: { r_a: { identity: ident('Centro') }, [cand]: { draft: { brand_id: 'marca_s', location_name: 'Otra', phone: '+50433905521', hours: WEEK(), prep_default_min: 20, op_id: 'op_stray', inc: 'c0', created_at: 1, created_by: 'x' } } } }), 'uOwner', E6B()],
+  ];
+  const seen = [];
+  for (const [code, db, uid, b] of cases) {
+    const r = await CORE.createBranchDraftCore(coreDeps(db), coreReq(uid, b));
+    assert.equal(r.body && r.body.error, code, `non-vacuity: the real core answers ${code} (got ${JSON.stringify(r.body)})`);
+    const e = await asClientError(r);
+    assert.equal(B.e6Definitive(e), code !== 'writes_disabled' && B.E6_OUTCOME[code] === 'definitive', `${code} (${r.status}, ${e.kind})`);
+    if (code === 'draft_conflict') assert.equal(db.get('brand_ops/marca_s'), null, 'draft_conflict released the brand lock (terminal)');
+    if (code === 'brand_busy') assert.ok(db.get('brand_ops/marca_s'), 'brand_busy: the original op still holds the lock');
+    seen.push(code);
   }
-  for (const code of B.E6_DEFINITIVE) assert.equal(B.e6Definitive(await asClientError({ status: statusOf(code), body: { error: code } })), true, `${code} (${statusOf(code)})`);
-  for (const code of ['unavailable', 'writes_disabled', 'interrupted', 'lease_lost', 'some_future_code']) {
-    assert.equal(B.e6Definitive(await asClientError({ status: statusOf(code), body: { error: code } })), false, `${code} (${statusOf(code)}) stays unresolved`);
+  // the rest of the table by the core's own status table — every definitive code arrives as a typed 4xx
+  for (const code of Object.keys(B.E6_OUTCOME).filter((c) => !seen.includes(c) && c !== 'invalid_credentials')) {
+    const e = await asClientError({ status: statusOf(code), body: { error: code } });
+    assert.equal(B.e6Definitive(e), B.E6_OUTCOME[code] === 'definitive', `${code} (${statusOf(code)} ${e.kind})`);
   }
-  for (const status of [500, 502, 504, 422, 429]) assert.equal(B.e6Definitive(await asClientError({ status, body: { error: 'name_taken' } })), false, `${status} + a known code stays unresolved`);
+  assert.equal(B.e6Definitive(await asClientError({ status: 401, body: { error: 'invalid_credentials' } })), true, 'invalid_credentials (ops-core 401)');
+  for (const code of ['interrupted', 'some_future_code']) assert.equal(B.e6Definitive(await asClientError({ status: statusOf(code), body: { error: code } })), false, `${code}: not in the table → unresolved`);
+  for (const status of [500, 502, 504, 422, 429]) assert.equal(B.e6Definitive(await asClientError({ status, body: { error: 'name_taken' } })), false, `${status} + a definitive code stays unresolved`);
   assert.equal(B.e6Definitive(new TypeError('Failed to fetch')), false, 'a network failure');
   assert.equal(B.e6Definitive(null), false);
 });

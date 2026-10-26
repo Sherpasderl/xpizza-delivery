@@ -267,6 +267,7 @@
     "xpizza-orders/form-serial-order.copy.test.mjs",
     "xpizza-orders/form-serial-order.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
+    "xpizza-portal/branches-1b-life.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -446,7 +447,8 @@
     "xpizza-functions/tools/extras-baseline-audit.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
-    "xpizza-portal/branch-1b-logic.test.mjs"
+    "xpizza-portal/branch-1b-logic.test.mjs",
+    "xpizza-portal/branches-1b-life.test.mjs"
    ]
   },
   "la-musa-orders": {
@@ -705,6 +707,7 @@
     "xpizza-orders/form-live-menu.copy.test.mjs",
     "xpizza-orders/form-serial-order.copy.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
+    "xpizza-portal/branches-1b-life.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -892,7 +895,8 @@
     "xpizza-functions/tools/extras-baseline-audit.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
     "xpizza-groupless-golden.test.mjs",
-    "xpizza-portal/branch-1b-logic.test.mjs"
+    "xpizza-portal/branch-1b-logic.test.mjs",
+    "xpizza-portal/branches-1b-life.test.mjs"
    ]
   },
   "xpizza-kitchen": {
@@ -1900,7 +1904,9 @@
   },
   "branches/rid-alloc.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-portal/branch-1b-logic.test.mjs"
+   ]
   },
   "brands/brand-model.js": {
    "pins": [],
@@ -2695,9 +2701,7 @@
   },
   "portal/branch-lifecycle-core.js": {
    "pins": [],
-   "lifts": [
-    "xpizza-portal/branch-1b-logic.test.mjs"
-   ]
+   "lifts": []
   },
   "portal/branch-phone.js": {
    "pins": [],
