@@ -84,7 +84,7 @@ const H7 = { sun: DAY, mon: { open: false }, tue: DAY, wed: DAY, thu: DAY, fri: 
   await db.ref('platform_config').set({ membership_writes_enabled: true, handheld_pairing_enabled: true, service_bounds: { min_lat: 13, max_lat: 17, min_lng: -90, max_lng: -83 } });
   const cb = await S.createBrandWithDraft(db, { brandId: 'tb_nuevo', brandName: 'Nuevo', input: { location_name: 'Centro', phone: '+50431234567', hours: H7, prep_default_min: 20 }, opId: 'create_tb_nuevo', callerUid: 'sherpa', now: Date.now() });
   assert.deepStrictEqual(cb, { ok: true, rid: 'tb_nuevo_centro' });
-  const cli = { kind: 'cli', uid: 'cli:op' };
+  const cli = { kind: 'cli', operator: 'orch-o1b-test' };   // the roster's CLI actor shape (as test/portal-ops.emulator.test.js)
   assert.ok((await mutateRoster({ db }, 'tb_nuevo', cli, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'Dueña Nueva', email: 'duena@o1b.test' } })).ok);
   // a legacy singleton (as seed-legacy + enrich-legacy leave it)
   const legId = { name: 'Leg', brand_id: 'tb_leg', location_name: 'Leg', phone: '+50422223333', hours: H7, prep_default_min: 20, hub_lat: 15.5, hub_lng: -88.0,
