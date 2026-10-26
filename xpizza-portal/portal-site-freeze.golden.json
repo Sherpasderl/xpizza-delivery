@@ -21,6 +21,7 @@
   "branch-logic.js",
   "branch-logic.test.mjs",
   "branches-view.js",
+  "category-name.browser.test.mjs",
   "editor.js",
   "editor.test.mjs",
   "equipos.js",
@@ -36,6 +37,7 @@
   "portal-look.test.mjs",
   "portal-site-freeze.golden.json",
   "portal-wiring.test.mjs",
+  "portalui-guards.t1-hunks.json",
   "portalui-guards.test.mjs",
   "pubreq.js",
   "pubreq.test.mjs",
@@ -76,8 +78,8 @@
    "bytes": 5819
   },
   "index.html": {
-   "sha256": "0516143e18d2041917ab3731165f6e2848efad58aee3df2c9f215f63dd65abf5",
-   "bytes": 10276
+   "sha256": "27be1b754b3bc8b4d6797f8de07f987bc41958042a0055ade13afe45e72d91d2",
+   "bytes": 10716
   },
   "netlify.toml": {
    "sha256": "fe3ef565e42ad144919fa416dd111b322958d83486746116dd07c228faed22ee",
@@ -91,9 +93,13 @@
    "sha256": "ca999494e69e1dafcc4bc513a34c82bdb08d819401688ead7af94aeff865c3ef",
    "bytes": 443
   },
+  "portalui-guards.t1-hunks.json": {
+   "sha256": "7eb5d5f0db0b58401358b3dabe9d4579405b3178542961afe62a5a4a0b84657d",
+   "bytes": 35199
+  },
   "styles.css": {
-   "sha256": "6ae2646fa7c8f8c78a2df3f91a34cf395ba578d5384966f4bebcc771ee2dfd41",
-   "bytes": 89444
+   "sha256": "4ead038d1053564038b56f44c1f491ca5d4ca266d2718d09090dbead7966490e",
+   "bytes": 93271
   }
  },
  "diff_aid": {
@@ -186,6 +192,12 @@
     "#pausemodal .plab",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    "#seccall",
+    "background",
+    "var(--card)"
    ],
    [
     "",
@@ -2646,6 +2658,120 @@
     ".search input:focus",
     "border-color",
     "var(--accent)"
+   ],
+   [
+    "",
+    ".seccallic",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".seccallic",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".seccalltx span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".seccnt",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".secerr",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".secin",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".secin",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".secmfnote",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".secnmid",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".secnmk",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".secnmk",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".secnote",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".secnote",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".secren",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".secren",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".secren:disabled:hover",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".secren:disabled:hover",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".secren:hover",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".secren:hover",
+    "color",
+    "var(--ink)"
    ],
    [
     "",

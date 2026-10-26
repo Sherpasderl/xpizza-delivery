@@ -58,7 +58,33 @@ function withoutFs(src) {
   }
   return out;
 }
-const appJs = () => withoutFs(read('app.js'));
+// ── PLAN-public-menu-display T1 (portal-ui, owner-approved mockup «Cambiar nombre de sección» 2026-10-25): a section's display
+// NAME. app.js / editor.js / review.js / render.js gain EXACTLY the hunks named in portalui-guards.t1-hunks.json — each [now,
+// was] pair occurs once — and folding them back out gives the T1 base (5f's 7f72757f) byte-for-byte. Every older pin below
+// then keeps judging the folded file against its own base, so nothing outside the named hunks can move unnoticed.
+const T1_BASE = '7f72757f';
+const T1_HUNKS = JSON.parse(readFileSync(join(DIR, 'portalui-guards.t1-hunks.json'), 'utf8'));
+function withoutT1(f, src) {
+  let out = src;
+  for (const [now, was] of T1_HUNKS[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `${f}: T1 hunk occurs exactly once: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const appJs = () => withoutFs(withoutT1('app.js', read('app.js')));
+test('T1 (PLAN-public-menu-display): exactly the named hunks — folding them out gives the T1 base byte-for-byte', () => {
+  for (const f of ['app.js', 'editor.js', 'review.js', 'render.js']) {
+    const was = execFileSync('git', ['show', `${T1_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.ok((T1_HUNKS[f] || []).length > 0, `${f}: the fold is not empty`);
+    assert.equal(withoutT1(f, read(f)), was, `${f} minus the T1 hunks ≠ ${T1_BASE}`);
+    // non-vacuity: a stray extra edit survives the fold
+    assert.notEqual(withoutT1(f, read(f) + '\n// stray\n'), was);
+  }
+  // the DRAFT side writes a section's NAME and nothing else: editor.js's only new property assignment is `cat.name = …`
+  const writes = T1_HUNKS['editor.js'].flatMap(([now]) => [...now.matchAll(/\b\w+\.\w+\s*=[^=>]/g)].map((m) => m[0].replace(/\s*=.*$/, '')));
+  assert.deepEqual(writes, ['cat.name'], `editor.js T1 writes: ${writes.join(', ')}`);
+});
 test('app.js field state (train-3 follow-up): exactly the four named lines; no field toggles the global .err block', () => {
   assert.ok(withoutFs(read('app.js')) !== read('app.js'), 'non-vacuity: the fold changes something');
   assert.ok(!/classList\.(add|toggle)\('err'/.test(read('app.js')), 'no app.js element is given the global .err class');
@@ -125,7 +151,7 @@ test('ventas.js: exactly one added line — the A3 owner-only early return in it
 
 test('the editor, review, render, auth and logic modules are byte-identical to the base', () => {
   for (const f of ['editor.js', 'review.js', 'render.js', 'auth.js', 'auth-errors.js', 'firebase.js', 'portal-logic.js', 'ventas-logic.js', 'sherpa-client.js']) {
-    assert.equal(read(f), base(f), `${f} changed`);
+    assert.equal(withoutT1(f, read(f)), base(f), `${f} changed`);   // T1's own hunks are judged by the T1 test above
   }
 });
 

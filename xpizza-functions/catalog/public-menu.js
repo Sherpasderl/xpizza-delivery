@@ -30,6 +30,7 @@ const { getRestaurantMenu } = require('./catalog-menu');
 const { generateFormBundle } = require('./generate-form-bundle');
 const { canonicalJson } = require('./canonical-json');
 const { applyIdentityToServedBody } = require('./identity-overlay');
+const { photosFor } = require('./public-photos');
 
 // Bumped whenever THIS module's projection changes — a field added, a shape altered, a generator
 // change that moves the bundle. It is inside the etag, so a redeploy that changes the body also
@@ -38,7 +39,9 @@ const { applyIdentityToServedBody } = require('./identity-overlay');
 /* 1D D1: bumped because the served body can now carry dish_id/extra_id. The marker is inside the
    etag, so without the bump a cache would keep serving the id-less body under the old key — and a
    change that is supposed to be additive-and-immediate would instead be invisible for a TTL. */
-const REPRESENTATION_VERSION = '1d.1';
+/* PLAN-public-menu-display r2 (D3 RULED): bumped because the served body can now carry `photos`. The forms keep their own
+   '1d.1' marker (they stay byte-identical) and log menu_representation_changed on a mismatch — a console warning only. */
+const REPRESENTATION_VERSION = '1d.2';
 
 // EVERY field this endpoint serves, and what has to be true of it. One table, because the list of
 // what may appear and the rules for what must appear are the same fact — kept apart they drift, and
@@ -71,6 +74,9 @@ const BODY_CONTRACT = Object.freeze({
   // per-product extras (PLAN rev 2.1 §7): the DENSE public complement { version, deny: { itemKey: [extraKey…] } } of the
   // version's eligibility document — present exactly when that version carries one (a pre-feature version does not)
   extras_eligibility: { type: 'object', fromSource: (menu) => menu.eligibility != null },
+  // PLAN-public-menu-display r2 T2: absolute dish photo URLs, { [String(dish.id)]: { card, hero } }. Declared but NEVER
+  // required — a decoration omitted on any trouble (catalog/public-photos.js), so its absence is not a half-menu.
+  photos: { type: 'object' },
 });
 const PUBLIC_MENU_BODY_FIELDS = Object.freeze(Object.keys(BODY_CONTRACT));
 
@@ -191,6 +197,13 @@ async function buildPublicMenu(db, rid, deps = {}) {
   }
 
   assertWholeBody(restaurantId, body, menu);
+
+  /* PLAN-public-menu-display r2 T2 — PHOTOS, after the body is whole and before identity. A separate top-level field (never
+     on a dish record: the cart serializes records into the order), and a decoration that cannot fail the serve —
+     photosFor returns null on any trouble. The default manifest is the one index.js already loaded at module load. */
+  const photos = photosFor(restaurantId, menu, deps.sites !== undefined ? deps.sites : require('../platform-manifest').PLATFORM.sites);
+  if (photos) body = { ...body, photos };
+  else console.warn('public_menu_photos_absent', JSON.stringify({ rid: restaurantId }));
 
   /* ── 1D D1 — IDENTITY, APPLIED LAST AND ABLE TO FAIL ALONE ──────────────────────────────────────
      The body is already whole and already correct at this point: the version's hash was verified by

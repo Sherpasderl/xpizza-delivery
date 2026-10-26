@@ -941,6 +941,10 @@ const GOOD = () => ({
     ['validateSource :: m.display.name !== `${launcher.display.name} - ${ch}`', 'not-a-presence-test', 'a business comparison: the variant\'s full name is "{launcher name} - {choice}"'],
     ['validateSource :: it.display.extras_policy === undefined', 'post-type', 'absence normalised to "no policy" for the consistency comparison; the value itself was typed by DISPLAY_RULES'],
     ['validateSource :: members.some((m) => pol(m) !== pol(launcher))', 'not-a-presence-test', 'a business comparison: one extras_policy across the launcher and every variant'],
+    // ── PLAN-public-menu-display r2 T1: category names all-or-nothing where the renderer does not require them ──
+    ['validateSource :: !contract.categoriesNamed', 'requiredness', 'selects the optional-names branch: all-or-nothing applies only where the renderer contract does not already require every name'],
+    ['validateSource :: cat', 'requiredness', 'counts the categories whose name is PRESENT (undefined only is absence, as checkField reads it); every element is still typed by CATEGORY_RULES just below'],
+    ['validateSource :: namedCount !== 0 && namedCount !== st.categories.length', 'requiredness', 'the all-or-nothing rule itself: some but not all category names present is refused'],
   ];
   const RULED = new Map(RULINGS.map(([k, kind, why]) => [k, { kind, why }]));
 
@@ -952,7 +956,7 @@ const GOOD = () => ({
     ...enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8')),
     ...enumeratePredicates(readFileSync(join(__dirname, 'canonical-json.js'), 'utf8')),
   ];
-  assert.strictEqual(preds.length, 170, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
+  assert.strictEqual(preds.length, 173, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
   const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);
   assert.deepStrictEqual(unruled, [],
@@ -966,7 +970,7 @@ const GOOD = () => ({
   }
   const counts = {};
   for (const p of preds) counts[RULED.get(p.key).kind] = (counts[RULED.get(p.key).kind] || 0) + 1;
-  assert.deepStrictEqual(counts, { requiredness: 21, 'post-type': 77, shape: 50, 'not-a-presence-test': 22 },   // add-product B: +10 group rules; +5 choiceBadges (net); per-product extras: +8 post-type, +1 requiredness, +1 shape (typed deny_extras, no variant list, no unknown field, no ambiguous legacy entry)
+  assert.deepStrictEqual(counts, { requiredness: 24, 'post-type': 77, shape: 50, 'not-a-presence-test': 22 },   // public-menu-display T1: +3 requiredness (all-or-nothing names); add-product B: +10 group rules; +5 choiceBadges (net); per-product extras: +8 post-type, +1 requiredness, +1 shape (typed deny_extras, no variant list, no unknown field, no ambiguous legacy entry)
     'the mix of rulings moved — a predicate changed meaning, which is a thing to look at rather than re-pin');
   ok(`all ${preds.length} control predicates ruled (${counts.requiredness} requiredness, ${counts['post-type']} post-type, ${counts.shape} shape, ${counts['not-a-presence-test']} not-a-presence-test)`);
 

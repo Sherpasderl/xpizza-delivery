@@ -142,6 +142,17 @@ function catalogDiff(liveBuilt, draftBuilt) {
     }
   }
 
+  // ── category names (PLAN-public-menu-display r2 T1): the one category field the edit path may change, so the one
+  // category change the review must show. Paired by id; anything else about a category is refused upstream.
+  const liveCats = ((liveBuilt && liveBuilt.structure && liveBuilt.structure.categories) || []);
+  const draftCats = new Map(((draftBuilt && draftBuilt.structure && draftBuilt.structure.categories) || []).map((c) => [c && c.id, c]));
+  for (const lc of liveCats) {
+    const dc = lc && draftCats.get(lc.id);
+    if (!dc) continue;
+    const o = lc.name === undefined ? null : lc.name, nx = dc.name === undefined ? null : dc.name;
+    if (o !== nx) changed.push({ key: lc.id, surface: 'category', field: 'name', old: o, new: nx });
+  }
+
   const itemPairs = pairRenames(rawRemovedItems, rawAddedItems, 'item');
   const extraPairs = pairRenames(rawRemovedEx, rawAddedEx, 'extra');
   added.push(...itemPairs.added, ...extraPairs.added);
