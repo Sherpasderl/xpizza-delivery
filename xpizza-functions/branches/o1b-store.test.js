@@ -123,6 +123,14 @@ const world = (sur = SUR, brandState = 'on') => fakeRtdb({
     await S.createDraft(db2, { input: INPUT, opId: 'opG', callerUid: 'ownerTB', now: NOW + 2 });
     assert.strictEqual(db2.get('restaurants/tb_brand_centro/draft/op_id'), 'opG', 'the SAME rid was re-allocated');
     assert.deepStrictEqual(await S.updateBranchProfile(db2, { rid: 'tb_brand_centro', patch: { prep_default_min: 33 }, expected: old, now: NOW + 3 }), { ok: false, error: 'stale_branch' }, 'TOKEN-(b) a stale screen after delete + recreate');
+    // the SAME op_id re-created after a delete (the mapping went with the delete): only the incarnation tells the tokens apart
+    const db3 = world();
+    await S.createDraft(db3, { input: INPUT, opId: 'opH', callerUid: 'ownerTB', now: NOW });
+    const oldH = P.draftToken(db3.get('restaurants/tb_brand_centro/draft'));
+    assert.deepStrictEqual(await S.deleteBranchDraft(db3, { rid: 'tb_brand_centro', brandId: 'tb_brand', now: NOW + 1, bind: true }), { ok: true });
+    await S.createDraft(db3, { input: INPUT, opId: 'opH', callerUid: 'ownerTB', now: NOW + 2 });
+    assert.notStrictEqual(P.draftToken(db3.get('restaurants/tb_brand_centro/draft')), oldH, 'TOKEN-SAME-OP new incarnation → a new token');
+    assert.deepStrictEqual(await S.updateBranchProfile(db3, { rid: 'tb_brand_centro', patch: { prep_default_min: 33 }, expected: oldH, now: NOW + 3 }), { ok: false, error: 'stale_branch' }, 'TOKEN-SAME-OP the old screen is stale');
     // a draft whose mapping points away is not editable (re-bound under the lock)
     db2.root.branch_op_ids.tb_brand.opG.rid = 'tb_elsewhere';
     assert.deepStrictEqual(await S.updateBranchProfile(db2, { rid: 'tb_brand_centro', patch: { prep_default_min: 33 }, expected: P.draftToken(db2.get('restaurants/tb_brand_centro/draft')), now: NOW + 4 }), { ok: false, error: 'not_a_draft' }, 'DRAFT-EDIT-REBIND');
