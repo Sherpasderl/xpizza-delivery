@@ -104,12 +104,16 @@ async function run(dir, body) {
     ok(`${dir}: with photos + named categories the REAL page commits the same globals, paints the same page and sends the same createOrder/quote bodies and fingerprint; a renamed dish moves all three`);
   }
 
-  // the forms themselves: byte-identical to the base
+  // the forms themselves: THIS SLICE never edited them. Stated as a fact about the slice's own commits (BASE → its tip
+  // SLICE_TIP), not as "the working tree equals BASE": later slices on the integrated tree (plan 5, the la_musa bundle sync,
+  // plan 4) edit the forms legitimately, and a whole-file pin on today's bytes would fail on THEIR change, not on this one.
+  const SLICE_TIP = '486f71aa';
   for (const dir of DIRS) {
-    const now = readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8');
     const was = execFileSync('git', ['show', `${BASE}:${dir}/index.html`], { cwd: new URL('.', import.meta.url).pathname, encoding: 'utf8', maxBuffer: 1 << 27 });
-    assert.strictEqual(now, was, `🔴 ${dir}/index.html changed`);
+    const tip = execFileSync('git', ['show', `${SLICE_TIP}:${dir}/index.html`], { cwd: new URL('.', import.meta.url).pathname, encoding: 'utf8', maxBuffer: 1 << 27 });
+    assert.strictEqual(tip, was, `🔴 ${dir}/index.html changed inside the public-menu-display slice (${BASE}..${SLICE_TIP})`);
+    assert.ok(readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8').length > 0, 'non-vacuity: the form exists');
   }
-  ok(`both form files are byte-identical to ${BASE}`);
+  ok(`both form files are byte-identical across the public-menu-display slice (${BASE}..486f71aa)`);
   console.log(`\npublic-menu-display-noop: OK (${count()})`);
 })().catch((e) => { console.error(e); process.exit(1); });
