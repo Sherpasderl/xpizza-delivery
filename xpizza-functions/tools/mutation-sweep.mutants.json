@@ -21093,5 +21093,37 @@
       "no render after teardown",
       "the agreed re-send never leaves a torn-down page"
     ]
+  },
+  {
+    "id": "s2b-e02",
+    "slice": "s2b-e",
+    "label": "the real 423 ordering_paused gets no sheet (paused not mapped)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (k === 'paused') { backTo('checkout'); showErr(ERR.paused()); return; }",
+    "to": "",
+    "command": [
+      "npm",
+      "run",
+      "test:capp-s2a"
+    ],
+    "kills_with": [
+      "the UI shows the paused held state for the real 423"
+    ]
+  },
+  {
+    "id": "s2b-e03",
+    "slice": "s2b-e",
+    "label": "a real refusal (the 401) gets no sheet (error not mapped to the generic held state)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (k === 'stash_failed' || k === 'try_again' || k === 'refused' || k === 'error' || k === 'payment_not_completed') {",
+    "to": "if (k === 'stash_failed' || k === 'try_again' || k === 'refused' || k === 'payment_not_completed') {",
+    "command": [
+      "npm",
+      "run",
+      "test:capp-s2a"
+    ],
+    "kills_with": [
+      "the UI shows the generic held state for the real 401"
+    ]
   }
 ]

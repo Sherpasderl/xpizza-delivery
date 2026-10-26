@@ -29,6 +29,8 @@
 //   V   (r4) card → provider-loss 502 → cash (the real order_exists) → card: the cash answer never settles the card send
 //   G   (S2b r2) the REAL UI (jsdom): a detected GPS fix through its geolocation callback (no pin step, DECISIONS:2072) goes out
 //       through ctxBase with the order-intake key and is accepted (cash + card); a key-less request is the exact 401
+//   Q   (S2b r3) the UI's refusal sheets from the REAL handlers: a wrong intake key ⇒ the real 401 ⇒ «No pudimos enviar tu pedido»;
+//       a pause by the REAL writer (merchant-control writePause) ⇒ the real 423 ⇒ «{name} no está recibiendo pedidos…»
 // Run: npm run test:capp-s2a
 require('./_emulator-required')('database', 'firestore');
 
@@ -161,7 +163,7 @@ async function quoteAndPlace(pg, f, cart, { sheet, sigOverride, expected } = {})
 const { JSDOM } = require('jsdom');
 const fsys = require('fs');
 const until = async (pred, ms = 8000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (pred()) return true; await new Promise((r) => setTimeout(r, 25)); } return false; };
-function mountUi(rid, { geo, storage = memStorage() } = {}) {
+function mountUi(rid, { geo, storage = memStorage(), cfg = {} } = {}) {
   const html = fsys.readFileSync(path.join(ROOT, 'customer-app/index.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '');   // the REAL page, its modules evaluated below
   const w = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true }).window;
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-ui.js']) w.eval(fsys.readFileSync(path.join(ROOT, 'customer-app', f), 'utf8'));
@@ -169,12 +171,21 @@ function mountUi(rid, { geo, storage = memStorage() } = {}) {
   const ui = w.CappUI.mount(w.document, { envelope: ENV[rid], onEvent: (n, d) => events.push([n, d]), navigate: (u) => nav.push(u),
     geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: geo.lat, longitude: geo.lng } }) },
     config: { name: rid, unit: ['pizza', 'pizzas'], hours: APP_HOURS, addr: 'Calle 1', etaDel: [30, 45], etaPick: [15, 20], restaurantId: rid, orderIdPrefix: 'TS',
-      pendingPayKey: `${rid}_s2a_pending_pay`, endpoints: Object.fromEntries(Object.keys(ROUTES).map((k) => [k, `${BASE}/${k}`])), intakeKey: process.env.MAKE_SECRET },
+      pendingPayKey: `${rid}_s2a_pending_pay`, endpoints: Object.fromEntries(Object.keys(ROUTES).map((k) => [k, `${BASE}/${k}`])), intakeKey: process.env.MAKE_SECRET, ...cfg },
     CappCheckout: C, CappApi: A, apiOpts: { fetch: (u, i) => sherpa.fetch(u, i), storage, sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 50))) } });
   const q = (sel) => w.document.querySelector(sel);
   const click = async (sel) => { assert.ok(await until(() => q(sel) && !q(sel).disabled), `premise: ${sel} is there and enabled`); q(sel).dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await new Promise((r) => setTimeout(r, 30)); };
   const type = async (sel, v) => { assert.ok(await until(() => q(sel)), `premise: ${sel}`); q(sel).value = v; q(sel).dispatchEvent(new w.Event('input', { bubbles: true })); };
   return { w, ui, q, click, type, events, nav, storage };
+}
+// through the UI to a cash placement: the device fix, the form, «Continuar», no tip, «Hacer pedido», «Se ve bien»
+async function uiCash(u, name) {
+  u.ui.cart.inc(dishOf(MENU.x_pizza).key); u.ui.render();
+  await u.click('#cart-bar'); await u.click('[data-act="checkout"]');
+  assert.ok(await until(() => u.ui.state.flow.pin && u.ui.state.flow.pin.confirmed === true), 'premise: the device fix');
+  await u.type('#f-details', 'Portón negro'); await u.type('#f-name', name); await u.type('#f-phone', `9955${String(PH += 1).padStart(4, '0')}`);
+  await u.click('[data-act="pay"][data-val="cash"]'); await u.click('#cta'); await u.click('[data-act="tipc"][data-val="0"]');
+  await u.click('[data-act="tip-place"]'); await u.click('#layer [data-act="placing-go"]');
 }
 const stashOf = (pg) => JSON.parse(pg.storage.getItem(`${pg.rid}_s2a_pending_pay`) || 'null');
 const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_place`) || 'null');
@@ -552,6 +563,39 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
       u.ui.destroy();
     }
     ok('G the REAL UI: a detected GPS fix (no pin step) goes out through ctxBase with the intake key and is accepted by the real quote / cash / card handlers, recorded at the device coordinates; a key-less request is the exact 401');
+  }
+
+  // ── Q (S2b r3, Codex r2 P2-8): the UI's refusal sheets from the REAL handlers' refusals ──
+  {
+    const FIX = { lat: HUB.lat + 1.3 * KM, lng: HUB.lng + 0.4 * KM };
+    await clean();
+    let l0 = LOG.length;
+    const w = mountUi('x_pizza', { geo: FIX, cfg: { intakeKey: 'not-the-key' } });
+    await uiCash(w, 'Ana Q401');
+    assert.ok(await until(() => w.q('#layer .errsheet h2')), 'premise: a sheet');
+    const r401 = LOG.slice(l0).filter((x) => x.ep === 'createOrder');
+    assert.deepStrictEqual(r401.map((x) => [x.status, x.json]), [[401, { error: 'Unauthorized', detail: 'invalid bearer token' }]], '🔴 the real 401, exactly');
+    assert.strictEqual(w.q('#layer .errsheet h2').textContent, 'No pudimos enviar tu pedido', '🔴 the UI shows the generic held state for the real 401');
+    w.ui.destroy();
+    // a pause by the REAL writer (the handheld / portal one)
+    const MC = require('../merchant/merchant-control');
+    const OCR = require('../order-control');
+    let seq = 0; const ocDeps = { db: rtdb, now: () => Date.now(), timestamp: () => admin.database.ServerValue.TIMESTAMP, newOpId: () => `oc_q_${Date.now().toString(36)}_${++seq}` };
+    const pz = await MC.writePause(ocDeps, 'x_pizza', { op: 'pause', forMs: 30 * 60000, reason: 'Cocina llena', actor: 'test', principal: 'test' });
+    assert.strictEqual(pz.ok, true, `premise: paused by the real writer (${JSON.stringify(pz)})`);
+    OCR._resetForTests();   // the handlers' shared reader re-reads order_control
+    await clean(); l0 = LOG.length;
+    const p = mountUi('x_pizza', { geo: FIX });
+    await uiCash(p, 'Ana Q423');
+    assert.ok(await until(() => p.q('#layer .errsheet h2')), 'premise: a sheet');
+    const r423 = LOG.slice(l0).filter((x) => x.ep === 'createOrder');
+    assert.deepStrictEqual(r423.map((x) => [x.status, x.json && x.json.error]), [[423, 'ordering_paused']], '🔴 the real 423');
+    assert.strictEqual(p.q('#layer .errsheet h2').textContent, 'x_pizza no está recibiendo pedidos en este momento', '🔴 the UI shows the paused held state for the real 423');
+    p.ui.destroy();
+    const rs = await MC.writePause(ocDeps, 'x_pizza', { op: 'resume', reason: 'fin', actor: 'test', principal: 'test' });
+    assert.strictEqual(rs.ok, true, `resumed (${JSON.stringify(rs)})`);
+    OCR._resetForTests();
+    ok('Q the UI\'s refusal sheets from the REAL handlers: a wrong intake key ⇒ the exact 401 ⇒ «No pudimos enviar tu pedido»; a real pause (writePause) ⇒ 423 ⇒ «{name} no está recibiendo pedidos en este momento»');
   }
 
   // ── V (r4): a cash answer never settles an unresolved card send — card → provider-loss 502 → cash (the REAL order_exists) → card ──
