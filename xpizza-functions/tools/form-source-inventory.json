@@ -18,6 +18,7 @@
     "d4b-availability.test.mjs",
     "d4b-reorder.test.mjs",
     "extras-parity-current.test.mjs",
+    "form-harness-clock.test.mjs",
     "form-live-menu-representation.test.mjs",
     "g2-order-exists-recovery.test.mjs",
     "group-card-count.test.mjs",
@@ -264,6 +265,7 @@
    "via_helper": [
     "charge-boundary.test.mjs",
     "confirm-quote-wiring.test.mjs",
+    "form-harness-clock.test.mjs",
     "group-picker-golden.test.mjs",
     "group-picker-lamusa.test.mjs",
     "stage-race.test.mjs",
@@ -449,6 +451,7 @@
     "d4b-availability.test.mjs",
     "d4b-reorder.test.mjs",
     "extras-parity-current.test.mjs",
+    "form-harness-clock.test.mjs",
     "form-live-menu-representation.test.mjs",
     "g2-order-exists-recovery.test.mjs",
     "group-card-count.test.mjs",
@@ -686,6 +689,7 @@
    ],
    "via_helper": [
     "confirm-quote-wiring.test.mjs",
+    "form-harness-clock.test.mjs",
     "group-picker-xpizza.test.mjs",
     "order-control-client.test.mjs",
     "order-exists-client.test.mjs",

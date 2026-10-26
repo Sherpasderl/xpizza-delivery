@@ -53,6 +53,19 @@ export function makeLogicalClock(start = Date.now()) {
   let offset = 0; let seq = 0; let chain = Promise.resolve();
   const timers = new Map();
   const realTurn = () => new Promise((r) => setTimeout(r, 0));
+  /* IDLE (codex 2e-g2clock r1 P2-1): a fixed number of real turns does not prove idleness — a page's chain of nested
+     0-delay timers outlasts any fixed count. Every 0-delay page timer is a REAL macrotask counted in realPending, so
+     quiesce() turns the real loop until none is pending (each awaited turn also drains the microtask queue), and only
+     then may logical time move. A page that re-arms 0-delay forever is reported, never spun on silently. */
+  let realPending = 0;
+  const MAX_QUIESCE_TURNS = 100000;
+  async function quiesce() {
+    for (let i = 0; i < 6; i++) await realTurn();
+    for (let i = 0; realPending > 0; i++) {
+      if (i >= MAX_QUIESCE_TURNS) throw new Error(`logical clock: ${realPending} zero-delay page timer(s) still re-arming after ${MAX_QUIESCE_TURNS} real turns — never idle`);
+      await realTurn();
+    }
+  }
   const fire = (t) => {
     try { if (typeof t.fn === 'function') t.fn(...t.args); } catch (e) { t.sink.push(e && e.message ? e.message : String(e)); }
   };
@@ -60,14 +73,16 @@ export function makeLogicalClock(start = Date.now()) {
     const id = ++seq; const d = Math.max(0, Number(ms) || 0);
     if (d === 0 && !every) {   // a REAL macrotask, so settle() keeps flushing it
       const t = { fn, args, sink, real: null };
-      t.real = setTimeout(() => { if (timers.get(id) === t) { timers.delete(id); fire(t); } }, 0);
+      realPending++;
+      t.real = setTimeout(() => { if (timers.get(id) === t) { timers.delete(id); realPending--; fire(t); } }, 0);
       timers.set(id, t); return id;
     }
     timers.set(id, { id, order: ++seq, due: offset + d, every: every ? Math.max(1, d) : 0, fn, args, sink });
     return id;
   };
-  const clear = (id) => { const t = timers.get(id); if (t && t.real) clearTimeout(t.real); timers.delete(id); };
+  const clear = (id) => { const t = timers.get(id); if (t && t.real) { clearTimeout(t.real); realPending--; } timers.delete(id); };
   async function run(target) {
+    await quiesce();
     for (;;) {
       let next = null;
       for (const t of timers.values()) if (!t.real && t.due <= target && (!next || t.due < next.due || (t.due === next.due && t.order < next.order))) next = t;
@@ -75,10 +90,10 @@ export function makeLogicalClock(start = Date.now()) {
       offset = next.due;
       if (next.every) { next.due += next.every; next.order = ++seq; } else timers.delete(next.id);   // a re-armed interval queues behind timers armed earlier
       fire(next);
-      for (let i = 0; i < 6; i++) await realTurn();
+      await quiesce();
     }
     offset = target;
-    for (let i = 0; i < 6; i++) await realTurn();
+    await quiesce();
   }
   /* sleep(ms) — the suite's own wait, AS A LOGICAL TIMER: it wakes at (now + ms), and time jumps to the earliest pending
      event only once the process is idle (the same 6 real turns settle() trusts). So CONCURRENT sleeps OVERLAP, as real
@@ -89,7 +104,7 @@ export function makeLogicalClock(start = Date.now()) {
     if (driving) return; driving = true;
     try {
       while (sleepers > 0) {
-        for (let i = 0; i < 6; i++) await realTurn();
+        await quiesce();
         let next = null;
         for (const t of timers.values()) if (!t.real && (!next || t.due < next.due || (t.due === next.due && t.order < next.order))) next = t;
         if (!next) break;
@@ -114,11 +129,21 @@ export function makeLogicalClock(start = Date.now()) {
       window.setTimeout = (fn, ms, ...args) => add(fn, ms, args, sink, false);
       window.setInterval = (fn, ms, ...args) => add(fn, ms, args, sink, true);
       window.clearTimeout = clear; window.clearInterval = clear;
+      /* Date on logical time (codex 2e-g2clock r1 P2-2): `Date()` CALLED returns the string of NOW (it ignores its
+         arguments, per spec); `new Date()` is NOW and `new Date(x…)` the real parse; Date.now is logical; parse / UTC
+         are the real ones; instances keep the window's own Date.prototype, so instanceof and .constructor hold. */
       const RealDate = window.Date; const clock = this;
-      class LogicalDate extends RealDate {
-        constructor(...a) { if (a.length) super(...a); else super(clock.now()); }
-        static now() { return clock.now(); }
+      function LogicalDate(...a) {
+        if (!new.target) return new RealDate(clock.now()).toString();
+        const d = a.length ? new RealDate(...a) : new RealDate(clock.now());
+        return new.target === LogicalDate ? d : Reflect.construct(RealDate, a.length ? a : [clock.now()], new.target);
       }
+      LogicalDate.prototype = RealDate.prototype;
+      Object.defineProperty(RealDate.prototype, 'constructor', { value: LogicalDate, writable: true, configurable: true });
+      LogicalDate.now = () => clock.now();
+      LogicalDate.parse = RealDate.parse; LogicalDate.UTC = RealDate.UTC;
+      Object.defineProperty(LogicalDate, 'length', { value: RealDate.length });
+      Object.defineProperty(LogicalDate, 'name', { value: 'Date' });
       window.Date = LogicalDate;
     },
   };
