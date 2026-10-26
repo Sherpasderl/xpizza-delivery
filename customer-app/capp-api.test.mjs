@@ -174,7 +174,8 @@ test('409 Already paid: a stashed token ⇒ poll recovery; NO token / a REJECTED
   const X = rig({ script: { chargeOnlineOrder: [CHECKOUT, AP], paymentStatus: [{ status: 403, json: {} }] } });
   await X.api.place(placeArgs('online'));
   const x = await X.api.place(placeArgs('online'));
-  assert.deepEqual([x.kind, X.srv.of('paymentStatus').length, X.srv.of('chargeOnlineOrder').length], ['paid_unverified', 1, 2], 'a rejected token ⇒ paid_unverified, nothing more');
+  // S2b r2 (advisor-approved): an issued card record is polled FIRST — a rejected token never learned «paid» ⇒ the recovery sheet
+  assert.deepEqual([x.kind, X.srv.of('paymentStatus').length, X.srv.of('chargeOnlineOrder').length], ['existing_order', 1, 1], 'a rejected token ⇒ paid_unverified, nothing more');
 });
 
 test('the return: paid ⇒ placed (cleared); cancelled / failed ⇒ «Pago no completado» (S2: cleared); verifying / pending / timeout ⇒ confirming (KEPT) — across a reload', async () => {
@@ -457,7 +458,8 @@ test('r2 P1 #4: NO automatic retry on a money write — an ambiguous card result
   const K = rig({ script: { chargeOnlineOrder: [CHECKOUT, 'network'], paymentStatus: [PS('pending')] } });
   await K.api.place(placeArgs('online'));
   const k = await K.api.place(placeArgs('online'));
-  assert.deepEqual([k.kind, K.srv.of('chargeOnlineOrder').length, K.srv.of('paymentStatus').length], ['confirming', 2, 1], 'with creds: one poll, no further send');
+  // S2b r2 (advisor-approved): poll FIRST — still pending ⇒ resume ITS stored checkout (inside the window); no second charge
+  assert.deepEqual([k.kind, K.srv.of('chargeOnlineOrder').length, K.srv.of('paymentStatus').length], ['redirect', 1, 1], 'with creds: one poll, no further send');
   // 500 'Payment not configured' is definitive, not ambiguous
   const NC = rig({ script: { chargeOnlineOrder: [{ status: 500, json: { error: 'Payment not configured' } }] } });
   assert.equal((await NC.api.place(placeArgs('online'))).kind, 'payment_not_completed');

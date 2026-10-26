@@ -392,7 +392,7 @@
       box.innerHTML = !nq ? '' : hits.length ? `<div class="rcount">${hits.length} resultado${hits.length === 1 ? '' : 's'}</div>${hits.map(rowHtml).join('')}` : `<div class="noresults">Nada con «${esc(q)}». Probá otra palabra.</div>`;
     }
     function openLayer(kind) { if (kind === 'cart' && S.layerKind !== 'cart') pushHist(); returnTo = descOf(doc.activeElement); S.layerKind = kind; renderLayer(true); }   // the cart is a back step (P openCart :1752)
-    function closeLayer() { if (S.layerKind === 'placing') placingStop(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
+    function closeLayer() { if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'pin') dropPinMap(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
     // a quote that failed while another layer was open: its sheet once that layer closes (still the same failed state)
     function closeLayerThen() { if (S.quoteErrSheet && !S.layerKind && (S.screen === 'checkout' || S.screen === 'tip')) { S.quoteErrSheet = false; if (S.quoteErr && S.quoteErr === stateKey()) showErr(ERR.generic('err-requote')); } }
     function renderLayer(fresh) {
@@ -504,6 +504,8 @@
     const mapCenter = () => { const p = S.pinDraft || (S.flow && S.flow.pin); return finitePin(p) ? { lat: p.lat, lng: p.lng } : (cfg.loc && finitePin(cfg.loc) ? { lat: cfg.loc.lat, lng: cfg.loc.lng } : null); };
     const gmapBox = (kind) => (cfg.mapsKey ? `<div class="gmap" data-gmap="${kind}" style="position:absolute;inset:0"></div>` : '');   // TODO(owner ruling): style the live map; S2b keeps the drawn chrome on top
     let pinGen = 0, pinMap = null;   // S2b r1 P1-2: the ACTIVE pin map; an obsolete instance's callbacks are dropped
+    // the pin step closing — «Listo», «Cancelar», device back — makes its map obsolete: a late idle never reaches the checkout
+    function dropPinMap() { pinGen++; pinMap = null; S.pinDraft = null; }
     function wireMaps() {
       const els = [...app.querySelectorAll('[data-gmap]')]; if (!els.length) return;
       const p = loadMaps(); if (!p) return;
@@ -661,7 +663,7 @@
       // S2b r1 P2-7: an accepted price change ⇒ «Enviando» shows the ceiling actually sent
       const onExpected = (cents) => { if (dead || !Number.isFinite(cents)) return; S.sendTotals = { total: cents, tip: T.tip }; if (S.screen === 'sending') render(); };
       let out;
-      try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, expectedNetCents: T.total, totals: T, sheet: priceSheet, onExpected }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
+      try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, expectedNetCents: T.total, totals: T, sheet: priceSheet, onExpected, alive: () => !dead }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
       if (!dead) onOutcome(out);
     }
     // the 600 ms happy beat: the spinner becomes the green check, then the host takes over (S5)
@@ -772,7 +774,7 @@
       if (S.layerKind === 'placing') { placingStop(); closeLayer(); return; }   // a back during «Realizando pedido…» = «Volver» (nothing sent)
       if (S.screen === 'sending' || !S.stack.length) return;   // «Enviando» is not a back step
       const top = S.stack.pop();
-      if (S.layerKind) { S.layerKind = null; S.err = null; }
+      if (S.layerKind) { if (S.layerKind === 'pin') dropPinMap(); S.layerKind = null; S.err = null; }
       S.screen = top.screen; render();
       if (top.layer) openLayerNoPush(top.layer);
     }
@@ -820,7 +822,7 @@
         // the ACTIVE map's centre at the tap (an `idle` may not have fired yet); no live map ⇒ the draft
         const live = pinMap && pinMap.gen === pinGen && pinMap.el.isConnected ? pinMap.m.getCenter() : null;
         const d = live ? { lat: live.lat(), lng: live.lng() } : S.pinDraft;
-        pinGen++; pinMap = null; S.pinDraft = null;   // the closing map is obsolete from here
+        dropPinMap();   // the closing map is obsolete from here
         if (d && finitePin(d)) {
           C.setPin(S.flow, d.lat, d.lng, true); S.pinStepOk = true;
           // P :2272 toasts on every «Listo»: after the re-quote when the point moved, at once when it did not (no re-quote runs)
@@ -977,7 +979,11 @@
     return {
       cart, menu, render, state: S, openCheckout, returning,
       restore(snapshot) { const r = cart.hydrate(snapshot); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
-      destroy() { dead = true; placingStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; } doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); if (doc.defaultView) doc.defaultView.removeEventListener('popstate', onPop); },
+      destroy() {
+        dead = true; placingStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }
+        S.layerKind = null; const L = $('layer'); if (L) L.innerHTML = '';
+        for (const el of [...doc.querySelectorAll('.cq-sheet')]) el.remove();   // the ported «El precio cambió» sheet (capp-confirm-quote)
+        doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); if (doc.defaultView) doc.defaultView.removeEventListener('popstate', onPop); },
     };
   }
 

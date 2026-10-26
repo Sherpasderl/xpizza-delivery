@@ -418,18 +418,18 @@ const GEO_OK = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, lon
 const GEO_NO = { getCurrentPosition: (_ok, no) => no({ code: 1 }) };
 let RB = 0;
 const INTAKE = 'k_intake_test';   // a test value; production's is deploy-time config, never committed
-function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre } = {}) {
+function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre, realSheet = false } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(HERE, 'index.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const w = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true }).window;
-  for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+  for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-ui.js', ...(realSheet ? ['capp-confirm-quote.js'] : [])]) w.eval(readFileSync(join(HERE, f), 'utf8'));
   if (pre) pre(w);   // window stubs the page has before the app boots (google.maps, console)
   const srv = scripted({ quoteOrder: [QUOTE], ...script });
   const events = []; const nav = []; const timers = fakeTimers(); const sheets = [];
   const ui = w.CappUI.mount(w.document, { envelope: PROV[rid].envelope, now: NOON, onEvent: (n, d) => events.push([n, d]),
     config: { ...CONFIG[rid], restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: EP, branch: 'Centro', intakeKey: INTAKE, ...config },
     CappCheckout: CK, CappApi: CA, member, geolocation: geo, navigate: (u) => nav.push(u), search, timers,
-    priceSheet: priceSheet || ((o) => { sheets.push(o); return Promise.resolve(false); }),
+    priceSheet: realSheet ? undefined : priceSheet || ((o) => { sheets.push(o); return Promise.resolve(false); }),   // realSheet: the ported confirmPriceSheet
     apiOpts: { fetch: srv.fetch, storage, now: () => NOON().getTime(), sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RB++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} } });
   const q = (sel) => w.document.querySelector(sel); const qa = (sel) => [...w.document.querySelectorAll(sel)];
   const click = async (sel) => { const el = typeof sel === 'string' ? q(sel) : sel; assert.ok(el, `premise: ${sel} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle(); };
@@ -782,6 +782,7 @@ test('S2b ?pay= return: the server still calls it PENDING ⇒ «Tu pago todavía
   // the card again, through the real buttons
   await h.click('#cta'); await h.click('[data-act="tip-place"]'); await h.click('#layer [data-act="placing-go"]');
   assert.equal(writes(h), 0, '🔴 zero chargeOnlineOrder / createOrder while pending');
+  assert.equal(h.nav.length, 0, '🔴 the lock is recovery only — never back into the checkout');
   assert.equal(h.srv.of('paymentStatus').length, polls0 + 1, 'recovery only: one poll');
   assert.equal(h.q('#layer .sheet').getAttribute('aria-label'), 'Tu pago todavía está en verificación');
   // cash on the same page
@@ -793,6 +794,7 @@ test('S2b ?pay= return: the server still calls it PENDING ⇒ «Tu pago todavía
   const r = bootCo({ storage, script: { paymentStatus: [PEND] } }); r.ui.restore(snap);
   await placeVia(r, 'online');
   assert.equal(writes(r), 0, '🔴 a reload never re-opens payment');
+  assert.equal(r.nav.length, 0, '🔴 a reload keeps the pending lock — recovery only, never back into the checkout');
   assert.equal(r.q('#layer .sheet').getAttribute('aria-label'), 'Tu pago todavía está en verificación');
   assert.deepEqual([placeRec(storage).order_id, placeRec(storage).pay_pending], [id, true], 'the identity is retained');
   r.ui.destroy();
@@ -1041,8 +1043,10 @@ test('S2b r1 P2-3: destroy() during «Realizando pedido…» cancels the placeme
   const b = bootCo();
   await filled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]');
   assert.equal(b.q('#layer .sheet').getAttribute('aria-label'), 'Realizando pedido', 'premise: the 2 s auto-send is armed');
-  const ev0 = b.events.length; const html = b.q('#app').innerHTML;
+  const ev0 = b.events.length;
   b.ui.destroy();
+  assert.equal(b.q('#layer').innerHTML, '', 'teardown takes every sheet off the page');
+  const html = b.q('#app').innerHTML;
   b.timers.flush(); await settle();
   assert.equal(b.srv.of('createOrder').length, 0, '🔴 nothing is sent after teardown');
   assert.equal(b.events.length, ev0);
@@ -1096,4 +1100,76 @@ test('S2b r1 intake key: createOrder and chargeOnlineOrder carry it, the quote a
   const pk = bootCo({ config: { intakeKey: '' } }); await toCheckout(pk); await pk.click('[data-act="type"][data-val="pickup"]'); await settle();
   await pk.type('#f-name', 'Ana'); await pk.type('#f-phone', '9999 0000'); await pk.click('[data-act="pay"][data-val="cash"]'); await settle();
   assert.ok(pk.q('#cta').disabled, 'the pickup CTA (it places) is disabled too');
+});
+
+// ── S2b r2 (Codex) ──
+test('S2b r2 P1-1: the lock write FAILS ⇒ still locked in this page (dismiss → card and cash: zero writes); a reload derives it from the card record — one poll first, zero sends', async () => {
+  const storage = memStore();
+  const { id, snap } = await cardRedirected(storage);
+  const set = storage.setItem; let failPlace = false;
+  storage.setItem = (k, v) => { if (failPlace && k === 'capp:rid_a:pending_place') throw new Error('quota'); return set(k, v); };
+  failPlace = true;
+  const PEND = { status: 200, json: { ok: true, state: 'pending' } };
+  const h = await returned(storage, RET('cancel', id), { paymentStatus: [PEND] }, snap);
+  assert.equal(h.q('#layer .sheet').getAttribute('aria-label'), 'Tu pago todavía está en verificación');
+  assert.notEqual(placeRec(storage).pay_pending, true, 'premise: the lock write failed');
+  await h.click('#layer [data-act="lclose"]');
+  await h.click('#cta'); await h.click('[data-act="tip-place"]'); await h.click('#layer [data-act="placing-go"]');
+  assert.equal(h.nav.length, 0, '🔴 the unpersisted lock: recovery only — never back into the checkout');
+  await h.click('#layer [data-act="lclose"]');
+  await h.click('[data-act="pay"][data-val="cash"]'); await h.click('#cta'); await h.click('[data-act="tip-place"]'); await h.click('#layer [data-act="placing-go"]');
+  assert.equal(writes(h), 0, '🔴 an unpersisted lock still blocks every send in this page');
+  h.ui.destroy(); failPlace = false;
+  // reload: no pay_pending on the record — the card attempt on it is enough
+  const r = bootCo({ storage, script: { paymentStatus: [PEND] } }); r.ui.restore(snap);
+  await placeVia(r);   // cash
+  assert.deepEqual([writes(r), r.srv.of('paymentStatus').length], [0, 1], '🔴 a reload: one poll FIRST, zero createOrder');
+  r.ui.destroy();
+  const o = bootCo({ storage, script: { paymentStatus: [PEND] } }); o.ui.restore(snap);
+  await placeVia(o, 'online');
+  assert.deepEqual([writes(o), o.srv.of('paymentStatus').length, o.nav], [0, 1, ['https://pay.example/c']], '🔴 card: one poll, then back to ITS checkout — zero charges');
+});
+
+test('S2b r2 P1-2: «Cancelar» makes the pin-step map obsolete — a late idle never moves the pin or the preview', async () => {
+  let maps;
+  const b = bootCo({ config: { mapsKey: 'k_test' }, pre: (w) => { maps = gmaps(w); } });
+  await toCheckout(b); await settle();
+  const pin0 = J(b.ui.state.flow.pin);
+  await b.click('[data-act="pin"]'); await settle();
+  const m = maps.filter((x) => x.el.dataset.gmap === 'pin').at(-1);
+  m.pan(16, -89);
+  await b.click('.pinstep [data-act="lclose"]'); await settle();   // «Cancelar»
+  m.idle();   // the detached map's late idle
+  b.ui.render(); await settle();
+  assert.deepEqual(J(b.ui.state.flow.pin), pin0, 'the pin is unchanged');
+  const pv = maps.filter((x) => x.el.dataset.gmap === 'preview').at(-1);
+  assert.deepEqual(J(pv.c), { lat: pin0.lat, lng: pin0.lng }, '🔴 the preview stays on the pin after «Cancelar»');
+});
+
+test('S2b r2 P2-3: destroy() takes the REAL «El precio cambió» sheet off the page and the transport never sends after it — a surviving «Confirmar» click sends nothing', async () => {
+  const b = bootCo({ realSheet: true, script: { createOrder: [{ status: 409, json: { error: 'price_increased', net_total_cents: 99900 } }, { status: 200, json: { ok: true, order_id: 'X' } }] } });
+  await placeVia(b);
+  const sheet = b.q('.cq-sheet'); assert.ok(sheet, 'premise: the ported sheet is open');
+  const confirm = [...sheet.querySelectorAll('button')].at(-1);
+  b.ui.destroy();
+  assert.equal(b.q('.cq-sheet'), null, '🔴 teardown removes the price sheet');
+  confirm.dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle();
+  assert.equal(b.srv.of('createOrder').length, 1, '🔴 the agreed re-send never leaves a torn-down page');
+});
+
+test('S2b r2 OWNER (B): a cancel return with NO record and NO creds ⇒ the pending sheet ONCE, no poll; «Volver al pedido» ⇒ an UNLOCKED checkout (a new placement goes out); the sheet does not come back', async () => {
+  const storage = memStore();
+  const c = await returned(storage, '?pay=cancel', {});
+  assert.equal(c.srv.calls.length, 0, 'nothing to poll');
+  assert.equal(c.q('#layer .sheet').getAttribute('aria-label'), 'Tu pago todavía está en verificación');
+  assert.ok(!/no autorizó/.test(c.text('#layer') || ''));
+  await c.click('#layer [data-act="lclose"]');
+  c.ui.render(); await settle();
+  assert.equal(c.q('#layer').innerHTML, '', 'shown once: a re-render does not bring it back');
+  assert.equal(placeRec(storage), null, 'nothing locked');
+  c.ui.cart.inc(c.plain.key); c.ui.openCheckout(); await settle();   // the cart's «Ir a pagar» path (asks for the location)
+  await c.type('#f-details', 'Portón negro'); await c.type('#f-name', 'Ana'); await c.type('#f-phone', '9999 0000');
+  await c.click('[data-act="pay"][data-val="cash"]'); await c.click('#cta'); await c.click('[data-act="tipc"][data-val="0"]');
+  await c.click('[data-act="tip-place"]'); await c.click('#layer [data-act="placing-go"]');
+  assert.equal(c.srv.of('createOrder').length, 1, '🔴 (B): the checkout is unlocked — a new placement goes out');
 });

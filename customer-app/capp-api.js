@@ -227,7 +227,11 @@
     // S2b r1 P1-1 / P2-5: a cancel return the server still calls pending (or one without usable creds) LOCKS the order — kept on
     // its record (`pay_pending`), so a dismissal or a reload never re-opens payment: only the poll and the pending held state
     const pendingSheet = (id) => ({ kind: 'payment_failed', order_id: id, state: 'cancelled', clearable: false });
+    // r2 P1-1: the lock is held IN MEMORY for this page first, so a failed write still fails closed (a reload derives it from the
+    // S2a record: a card attempt that may hold a checkout needs a definitive poll before any send — place() below)
+    let memLock = null;
     function lockPending(id) {
+      memLock = id;
       const r = readPlace();
       if (r && r.order_id === id) { try { patchPlace(id, { pay_pending: true }); } catch (_) {} return; }
       if (r) return;   // a newer placement is never replaced
@@ -240,6 +244,7 @@
       const p = await pollOnce(id, t);
       if (p.forbidden) return recoverySheet(id);
       if (p.state === 'pending') return pendingSheet(id);
+      if (memLock === id) memLock = null;
       return outcomeOfState(id, p.state, p.json);   // a definitive answer releases the lock (cancelled / failed clear the record)
     }
     async function resolveExisting(id) {
@@ -281,23 +286,25 @@
     async function place(p) {
       const method = p.flow.pay === 'online' ? 'online' : 'cash';
       const live = readPlace();
+      if (memLock) return lockedOutcome(memLock);                                         // this page's lock (even if its write failed)
       if (live && live.pay_pending === true) return lockedOutcome(live.order_id);   // locked: zero writes until a definitive poll
       if (live && live.card === true && live.unresolved && (method === 'online' || lockInterruptedCard)) return resolveExisting(live.order_id);   // rule ii: never charged again
-      if (live && live.card === true && method === 'online') {
-        if (live.issued && !sameEconomics(live, p)) {                                     // r2 P1 #1: resolve the existing placement first
-          const t = credsFor(live.order_id);
-          if (!t) return recoverySheet(live.order_id);
-          const pr = await pollOnce(live.order_id, t);
-          if (pr.forbidden) return recoverySheet(live.order_id);
-          if (pr.state === 'pending') return resume(live);
-          const out = outcomeOfState(live.order_id, pr.state, pr.json);
-          if (out.kind !== 'payment_failed') return out;                                  // placed / refunded / confirming
-          // cancelled / failed: cleared ⇒ the changed cart is a NEW placement (falls through and mints)
-        }
+      // S2b r2 P1-1: a card attempt that may hold a checkout (admitted / issued) ⇒ a DEFINITIVE poll before ANY send for its id —
+      // the dispatch rule applied on boot, so a lost pay_pending write cannot re-open payment after a reload
+      if (live && live.card === true && (live.issued || live.admitted) && (method === 'online' || lockInterruptedCard)) {
+        const t = credsFor(live.order_id);
+        if (!t) return recoverySheet(live.order_id);
+        const pr = await pollOnce(live.order_id, t);
+        if (pr.forbidden) return recoverySheet(live.order_id);
+        if (pr.state === 'pending' && method === 'online' && live.issued) return resume(live);   // back to ITS checkout — never a send
+        const out = outcomeOfState(live.order_id, pr.state, pr.json);
+        if (out.kind !== 'payment_failed') return out;                                    // placed / refunded / confirming
+        // cancelled / failed: cleared ⇒ a NEW placement (falls through and mints)
       }
       let expected = p.expectedNetCents;
       let healed = false; let silentRetried = false;
       for (let guard = 0; guard < 4; guard++) {
+        if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded' };   // r2 P2-3: a torn-down page never sends
         let rec;
         try {
           rec = readPlace() || mintPlace(method, p);
@@ -393,7 +400,9 @@
       if (s && (!id || s.order_id === id)) { id = id || s.order_id; t = t || s.t; }
       if (pay === 'cancel') {
         // no usable creds: never «Tu banco no autorizó» without an authoritative answer — recovery, locked (S2b r1 P2-5)
-        if (!id || !t) { const r = readPlace(); const lid = id || (r && r.card === true ? r.order_id : null); if (lid) lockPending(lid); return pendingSheet(lid); }
+        // OWNER (B), 2026-10-26: NO record and NO creds ⇒ the pending sheet once, nothing locked (a cancel almost surely charged
+        // nothing); a card record on file keeps the fail-closed lock
+        if (!id || !t) { const r = readPlace(); const lid = r && r.card === true ? r.order_id : null; if (lid) lockPending(lid); return pendingSheet(lid || id || null); }
         const p = await Promise.race([pollOnce(id, t), timeout(CANCEL_CHECK_MS).then(() => ({ state: 'pending', json: {} }))]);
         // the authoritative poll state wins (P2 #5); a server that still says pending LOCKS the order (the pending held state)
         if (p && !p.forbidden && p.state !== 'pending') return outcomeOfState(id, p.state, p.json);

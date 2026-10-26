@@ -20881,7 +20881,7 @@
       "../customer-app/capp-ui.test.mjs"
     ],
     "kills_with": [
-      "zero chargeOnlineOrder / createOrder while pending"
+      "a reload keeps the pending lock — recovery only, never back into the checkout"
     ]
   },
   {
@@ -20935,16 +20935,17 @@
   {
     "id": "s2b-u05",
     "slice": "s2b",
-    "label": "destroy() does not cancel the armed placement",
+    "label": "destroy() cancels nothing (neither the dead flag, the placing timer nor the open card)",
     "file": "../customer-app/capp-ui.js",
-    "from": "      destroy() { dead = true; placingStop();",
-    "to": "      destroy() {",
+    "from": "        dead = true; placingStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }\n        S.layerKind = null; const L = $('layer'); if (L) L.innerHTML = '';\n",
+    "to": "        if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }\n",
     "command": [
       "node",
       "--test",
       "../customer-app/capp-ui.test.mjs"
     ],
     "kills_with": [
+      "teardown takes every sheet off the page",
       "nothing is sent after teardown"
     ]
   },
@@ -20978,6 +20979,119 @@
     ],
     "kills_with": [
       "the UI's request carries the intake key"
+    ]
+  },
+  {
+    "id": "s2b-u07",
+    "slice": "s2b",
+    "label": "the page's in-memory lock is not consulted (an unpersisted lock lets a send through)",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (memLock) return lockedOutcome(memLock);                                         // this page's lock (even if its write failed)\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the unpersisted lock: recovery only — never back into the checkout"
+    ]
+  },
+  {
+    "id": "s2b-u08",
+    "slice": "s2b",
+    "label": "no poll-first for a card record on boot (a lost pay_pending re-opens payment after a reload)",
+    "file": "../customer-app/capp-api.js",
+    "from": "if (live && live.card === true && (live.issued || live.admitted) && (method === 'online' || lockInterruptedCard)) {",
+    "to": "if (false) {",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a reload: one poll FIRST, zero createOrder"
+    ]
+  },
+  {
+    "id": "s2b-u09",
+    "slice": "s2b",
+    "label": "«Cancelar» leaves the pin-step map live",
+    "file": "../customer-app/capp-ui.js",
+    "from": "placingStop(); if (S.layerKind === 'pin') dropPinMap(); S.layerKind = null; S.cartNote",
+    "to": "placingStop(); S.layerKind = null; S.cartNote",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the preview stays on the pin after «Cancelar»"
+    ]
+  },
+  {
+    "id": "s2b-u10",
+    "slice": "s2b",
+    "label": "teardown leaves the ported price sheet on the page",
+    "file": "../customer-app/capp-ui.js",
+    "from": "        for (const el of [...doc.querySelectorAll('.cq-sheet')]) el.remove();",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "teardown removes the price sheet"
+    ]
+  },
+  {
+    "id": "s2b-u11",
+    "slice": "s2b",
+    "label": "the transport sends after teardown (no liveness gate)",
+    "file": "../customer-app/capp-api.js",
+    "from": "        if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded' };   // r2 P2-3: a torn-down page never sends\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the agreed re-send never leaves a torn-down page"
+    ]
+  },
+  {
+    "id": "s2b-u12",
+    "slice": "s2b",
+    "label": "OWNER (B) applied when a card record exists (no lock)",
+    "file": "../customer-app/capp-api.js",
+    "from": "const lid = r && r.card === true ? r.order_id : null;",
+    "to": "const lid = null;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "locked on its record"
+    ]
+  },
+  {
+    "id": "s2b-u13",
+    "slice": "s2b",
+    "label": "destroy() never marks the instance dead (late callbacks still render / send)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "        dead = true; placingStop(); if (beatT",
+    "to": "        placingStop(); if (beatT",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "no render after teardown",
+      "the agreed re-send never leaves a torn-down page"
     ]
   }
 ]
