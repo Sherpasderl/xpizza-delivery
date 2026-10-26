@@ -20,13 +20,30 @@ import { createRequire } from 'node:module';
 import { readFileSync, mkdirSync, writeFileSync, rmSync, rmdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { counter, settle, stageSettle, envelope, loadForm, res, serve, BRAND, closeAll } from './form-harness.mjs';
+import { counter, settle, envelope, loadForm, res, serve, BRAND, closeAll, makeLogicalClock } from './form-harness.mjs';
 
 const require = createRequire(new URL('./xpizza-functions/x.js', import.meta.url));
 const OE = require('./order-exists');
 const OEX = require('../xpizza-orders/form-order-exists.js');
-const { ok, count } = counter();
+const { ok: tick, count } = counter();
 const WATCHDOG = setTimeout(() => { console.error('g2-order-exists-recovery: FAILED — watchdog'); process.exit(1); }, 300000);
+/* LOGICAL TIME (2e, measured): the pages' timers and Date run on ONE logical clock that moves only while a CLOCK.sleep waits — the
+   showStage 170 ms fallback, the client-retry backoffs, the payment-return poll. Real-time waiting was 68 s of a 99 s run
+   (event loop 27% busy) and made the suite load-dependent; a logical sleep costs only the CPU its timers use. Sleeps
+   OVERLAP like real ones: the concurrent cells of §1 / §3 wait 240 ms together, not 240 ms each. */
+const CLOCK = makeLogicalClock();
+// showStage cross-dissolves wait for transitionend with a 170 ms fallback; jsdom fires no transitions, so outlast it LOGICALLY
+const stageSettle = async () => { await CLOCK.sleep(240); await settle(); };
+/* PER-CELL PROGRESS WATCHDOG (re-armed at every ok()): a hang — an awaited promise nothing will settle — trips it after
+   CELL_WATCHDOG_MS without a passing cell. The 300 s whole-run WATCHDOG above stays as the backstop. */
+const CELL_WATCHDOG_MS = 120000;
+let cellDog = null;
+const armCell = () => { clearTimeout(cellDog); cellDog = setTimeout(() => {
+  // self-diagnosing: a hang with logical timers armed and NO sleeper waiting is the clock deadlock (form-harness makeLogicalClock)
+  console.error(`g2-order-exists-recovery: FAILED — no cell passed for ${CELL_WATCHDOG_MS / 1000} s after cell ${count()} (cell watchdog); logical clock: ${CLOCK.pending()} timer(s) pending at +${CLOCK.elapsed()} ms, ${CLOCK.sleeping() ? `${CLOCK.sleeping()} sleeper(s) waiting` : 'no sleeper waiting — a direct await on a page promise whose path awaits a logical timer? race it against CLOCK.sleep'}`);
+  process.exit(1); }, CELL_WATCHDOG_MS); };
+const ok = (l) => { tick(l); armCell(); };
+armCell();
 const CHARGE_RE = /createOrder|chargeOnlineOrder/;
 const BACKOFF_MS = 1500 + 3000 + 300;
 const STASH = { 'xpizza-orders': 'xpizza_pending_pay', 'la-musa-orders': 'lamusa_pending_pay' };
@@ -37,7 +54,7 @@ const okFor = (url, body) => res(/chargeOnlineOrder/.test(url) ? { ok: true, che
 // Boot a page; `reply(n, url, body)` answers the n-th charge request (1-based).
 async function boot(dir, reply, { reward = false } = {}) {
   const B = BRAND[dir];
-  const w = loadForm(dir);
+  const w = loadForm(dir, { clock: CLOCK });
   const sent = [];
   const idle = new Promise(() => {});
   w.__respond = (url, init) => {
@@ -124,7 +141,7 @@ for (const dir of Object.keys(BRAND)) {
       })());
     }
     const done = await Promise.all(runs);
-    await new Promise((r) => setTimeout(r, BACKOFF_MS)); await settle();
+    await CLOCK.sleep(BACKOFF_MS); await settle();
     for (const s of done) {
       assert.strictEqual(s.sent.length, 1, `${s.label}: exactly one request`);
       const id = s.sent[0].body.order_id;
@@ -178,7 +195,7 @@ for (const dir of Object.keys(BRAND)) {
       await send(w, method);
       await back(w);
       await send(w, method);
-      await new Promise((r) => setTimeout(r, BACKOFF_MS)); await stageSettle();
+      await CLOCK.sleep(BACKOFF_MS); await stageSettle();
       const v = view(w);
       assert.ok(!v.block, `${dir}/${method}: no recovery block for item_unavailable`);
       assert.ok(/Pizza Rara/.test(v.text), `${dir}/${method}: item_unavailable shows its own message`);
@@ -233,7 +250,7 @@ for (const dir of Object.keys(BRAND)) {
       await send(b.w, method);
       return { ...b, label: `${dir}/${method}/${status}/${JSON.stringify(body)}` };
     }));
-    await new Promise((r) => setTimeout(r, BACKOFF_MS)); await stageSettle();
+    await CLOCK.sleep(BACKOFF_MS); await stageSettle();
     for (const r of runs) assert.ok(!view(r.w).block, `${r.label}: NOT the recovery screen`);
     const paid = runs[0];
     assert.strictEqual(view(paid.w).stage, 's5', `${paid.label}: Already paid → success (unchanged control)`);
@@ -243,7 +260,7 @@ for (const dir of Object.keys(BRAND)) {
   // ── 5. serialization: multi-line + extra + reward → refused → Back → resend: identical items and pin ──
   for (const method of ['cash', 'card']) {
     const B = BRAND[dir];
-    const w = loadForm(dir);
+    const w = loadForm(dir, { clock: CLOCK });
     const sent = [];
     await settle();
     const menu = B.menu(w);
@@ -311,7 +328,7 @@ const STASHKEY = STASH;
 async function realCheckoutStash(dir) {
   const B = BRAND[dir]; const C = SER[dir];
   materializeOld(dir);
-  const w = loadForm(`${OLD_DIR}/${dir}`); await settle();   // the stash is written by the PRE-§3 page itself
+  const w = loadForm(`${OLD_DIR}/${dir}`, { clock: CLOCK }); await settle();   // the stash is written by the PRE-§3 page itself
   const menu = B.menu(w); await serve(w, envelope(B.rid, menu));
   w.__respond = (url, init) => {
     if (url.includes('/menu/')) return res(envelope(B.rid, menu));
@@ -328,7 +345,7 @@ async function realCheckoutStash(dir) {
   w.requestServerQuote(); await settle();
   w.selectPay('online'); assert.ok(w.buildOrder());
   const p = w.processPixelPay(); if (p && p.catch) p.catch(() => {});
-  for (let i = 0; i < 40 && !w.localStorage.getItem(STASHKEY[dir]); i++) await new Promise((r) => setTimeout(r, 25));
+  for (let i = 0; i < 40 && !w.localStorage.getItem(STASHKEY[dir]); i++) await CLOCK.sleep(25);
   const raw = w.localStorage.getItem(STASHKEY[dir]); assert.ok(raw, `${dir}: premise — the real checkout stashed`);
   return { raw, stash: JSON.parse(raw), menu };
 }
@@ -339,7 +356,7 @@ for (const dir of Object.keys(BRAND)) {
   assert.ok(stash.order.redeem, `${dir}: premise — the stashed order carries the reward`);
   assert.ok(stash.order.items.some((it) => (Array.isArray(it.extras) && it.extras.length) || (Array.isArray(it.options) && it.options.length)), `${dir}: premise — the stashed order carries the extra`);
   for (const method of ['cash', 'card']) {
-    const w = loadForm(dir); await settle();
+    const w = loadForm(dir, { clock: CLOCK }); await settle();
     await serve(w, envelope(B.rid, menu));
     const sent = [];
     w.__respond = (url, init) => {
@@ -380,7 +397,7 @@ for (const dir of Object.keys(BRAND)) {
 // ── 10. (codex build r1 P2-2) the REAL processPayment() wrapper: locked while pending, unlocked after the refusal, and a
 // later success NAVIGATES (card: window.location.href = checkout_url; cash: s5) ──
 for (const dir of Object.keys(BRAND)) for (const method of ['cash', 'card']) {
-  const B = BRAND[dir]; const w = loadForm(dir);
+  const B = BRAND[dir]; const w = loadForm(dir, { clock: CLOCK });
   // The forms' hard-coded delivery HOURS (isOpen) disable ASAP outside the shop's hours, so the real pay tap would never
   // send after closing time; this cell is about the payment wrapper, not the hours → pin the page OPEN for this cell.
   w.isOpen = () => true;
@@ -427,6 +444,6 @@ for (const dir of Object.keys(BRAND)) for (const method of ['cash', 'card']) {
 }
 ok('the REAL processPayment() wrapper (codex build r1 P2-2), both brands × cash/card: LOCKED while pending (and a re-tap sends nothing), UNLOCKED after the order_exists refusal, and a later success NAVIGATES (card: location.href → the checkout, after the stash; cash: s5)');
 
-clearTimeout(WATCHDOG);
+clearTimeout(WATCHDOG); clearTimeout(cellDog);
 closeAll();
 console.log(`\ng2-order-exists-recovery: OK (${count()})`);
