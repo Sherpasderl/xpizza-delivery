@@ -238,6 +238,36 @@
         "  }",
         "});"
       ]
+    },
+    {
+      "name": "CHIME-FRESH",
+      "kind": "replace",
+      "restore": [
+        "function detectNewAssignments(tasks) {",
+        "  if (!currentUser) return;",
+        "  const newIds = new Set();",
+        "  for (const [id, t] of Object.entries(tasks || {})) {",
+        "    if (t.assigned_driver_id === currentUser.uid && t.type === 'pickup' && t.status === 'assigned') {",
+        "      newIds.add(id);",
+        "    }",
+        "  }",
+        "  // Find newly-added IDs since last poll",
+        "  const fresh = [...newIds].filter(id => !knownTaskIds.has(id));",
+        "  // Chime on any genuinely-new order AFTER the first snapshot. The old guard",
+        "  // (knownTaskIds.size > 0) silently skipped the FIRST order of a no-orders",
+        "  // shift; the initialAssignmentsLoaded flag fixes that while still not chiming",
+        "  // for orders already assigned when the app loads.",
+        "  if (fresh.length > 0 && initialAssignmentsLoaded) {",
+        "    if (soundOn) { const c = $('chime'); c.currentTime = 0; c.play().catch(() => {}); }",
+        "    toast('¡Nuevo pedido asignado!', 'success');",
+        "    try {",
+        "      if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);",
+        "    } catch {}",
+        "  }",
+        "  knownTaskIds = newIds;",
+        "  initialAssignmentsLoaded = true;",
+        "}"
+      ]
     }
   ]
 }

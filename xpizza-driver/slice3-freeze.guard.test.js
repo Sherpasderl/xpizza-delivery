@@ -43,16 +43,17 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 // `process.exit(0)` appended to it cannot short-circuit this guard (Codex r2 P1). A tampered contract (widened/
 // dropped restore, added/removed/shrunk region, changed kind) is caught even though the file is editable.
 const SLICE3_PINS = {
-  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT'],
-  kinds: ['insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace'],
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH'],
+  kinds: ['insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace'],
   restoreSha: {
     'HELP-HANDLER': 'e823efd01be83461f6b7b900e8e60a9065d9c44bfedb1b32c2624f1d6c00206f',
     'CUADRE-CSS': '41327b6fa5e535b774d323c235e755019b6020516a10ac20340b004667f8a4ec',
     'CUADRE-DOM': 'ec70f01fe5711aacff4fc4e88ff0fd873bf715abf8ba178d30092c7ec34c2dab',
     'CUADRE-RENDER': 'a285b81838c946e23f46a401786b07a62976ca93f25c3d8152640404021eeaaa',
     'CUADRE-SUBMIT': '06a225a4158eae7c797d0775fec2def67fb01283467b3c6352cff7dc55e8466b',
+    'CHIME-FRESH': 'e86e31b5350d14f892d99d38e7bf84fcf2358c262d03d9354bf663864e0de4c9',
   },
-  fileSha: 'f159e687bc89cc055d5e6e2a832bae5c2f60c1f564b8aabfbc303dda78e99c33',
+  fileSha: '4972a5013300a1f3d134907ebd5d46cde331a07421911b9036591672cce00e06',
 };
 function loadContract() {   // bytes → sha pin FIRST → JSON.parse; no import/require of editable code (Codex r2 P1)
   const bytes = readFileSync(join(__dir, 'slice3-regions.json'));
@@ -65,7 +66,7 @@ const SLICE3_REGIONS = loadContract();
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = '2bacd8ebb8c01aa553f40d7b90644dd370b76a7fb34dadd96f745d08cb24d7ee';
+const SLICE2_GUARD_SHA = 'afdf14141776dad480ad09e9673eb92c5b7b3a5423271d17c46e28f7e3c468fe';
 const SLICE2_GUARD_CHECKS = 15;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -102,6 +103,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/slice3-freeze.guard.test.js',  // this guard
   'xpizza-driver/slice3-contrast.test.js',      // batch-3 fg/bg WCAG checks (added when the first batch-3 CSS lands)
   'xpizza-driver/cuadre-submit.test.js',        // cuadre slide-to-confirm money-submit handler test (lift-real idiom)
+  'xpizza-driver/chime-fresh.test.js',          // new-assignment chime (same-hub 'accepted' stacks) handler test
 ]);
 
 const REPO = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: __dir }).toString('utf8').trim();

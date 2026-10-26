@@ -2917,11 +2917,17 @@ function renderOemOnboarding(svc, needBattery, needAppLaunch) {
   bd.classList.add('open');
 }
 
+/* ===== SLICE3:CHIME-FRESH:START — chime on a newly-assigned 2nd order whatever its swipe status (same-hub stacks arrive 'accepted', not 'assigned') ===== */
 function detectNewAssignments(tasks) {
   if (!currentUser) return;
   const newIds = new Set();
   for (const [id, t] of Object.entries(tasks || {})) {
-    if (t.assigned_driver_id === currentUser.uid && t.type === 'pickup' && t.status === 'assigned') {
+    // A new order assigned to ME, pre-pickup. The server sets 'assigned' for a cross-hub OFFER (swipe) and
+    // 'accepted' for a same-hub auto-accept stack (no swipe) — both are "a new order just landed", so chime on
+    // EITHER (the old code only saw 'assigned', so a same-hub 2nd order appeared silently). Terminal / in-progress
+    // statuses are excluded so a late-syncing completed order never false-chimes. "Fresh" = the id is NEW this poll
+    // (the assigned_driver_id null→me transition), so a status change of an order already seen never re-chimes.
+    if (t.assigned_driver_id === currentUser.uid && t.type === 'pickup' && (t.status === 'assigned' || t.status === 'accepted')) {
       newIds.add(id);
     }
   }
@@ -2941,6 +2947,7 @@ function detectNewAssignments(tasks) {
   knownTaskIds = newIds;
   initialAssignmentsLoaded = true;
 }
+/* ===== SLICE3:CHIME-FRESH:END ===== */
 
 // ============================================================
 // Login
