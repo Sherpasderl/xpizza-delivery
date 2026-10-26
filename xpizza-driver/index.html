@@ -61,6 +61,15 @@
 .offline-banner .ob-ic svg { width: 20px; height: 20px; }
 .offline-banner .ob-tx b { font-weight: 800; }
 .offline-foot-note { text-align: center; font-size: 12px; color: var(--text-dim, #A2ABBA); margin-top: 8px; line-height: 1.35; }
+/* in .delivering mode the slide is a FIXED bottom bar — the note becomes a fixed strip directly UNDER it (prototype
+   S.offline .foot: slide, then the centred tiny line); the bar lifts and the body padding grows so nothing crops. */
+#screen-onshift.delivering.offline-foot #active-order-slot .sv-actions,
+#screen-onshift.delivering.offline-foot #active-order-slot .action-zone { bottom: 30px; padding-bottom: 10px; }
+#screen-onshift.delivering.offline-foot #offline-foot-note {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 19; margin: 0;
+  padding: 6px 16px calc(9px + env(safe-area-inset-bottom)); background: var(--bg, #F4F2EE);
+}
+#screen-onshift.delivering.offline-foot #onshift-content { padding-bottom: 142px; }
 /* ===== SLICE3:PRESENTATION-3:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -2406,6 +2415,9 @@ function applyOfflineBanner() {
   const show = offerIsOffline() && offlineInHand();
   banner.classList.toggle('hidden', !show);
   const note = $('offline-foot-note'); if (note) note.classList.toggle('hidden', !show);
+  // `.offline-foot` lifts the fixed slide bar + grows the body padding so the «5 min» note sits in the fixed foot
+  // directly UNDER the slide (prototype S.offline .foot), without cropping (CSS in PRESENTATION-3).
+  const screen = $('screen-onshift'); if (screen) screen.classList.toggle('offline-foot', show);
 }
 function initOfflineBanner() {
   const content = $('onshift-content'); if (!content) return;

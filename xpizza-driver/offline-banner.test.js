@@ -30,7 +30,7 @@ let passed = 0;
 function t(name, fn) { fn(); passed += 1; console.log('  ok -', name); }
 
 function build({ rtdb = true, online = true } = {}) {
-  const dom = new JSDOM('<!doctype html><body><main id="onshift-content"><div id="idle-state" class="hidden"></div><div id="active-order-slot"></div><div id="queue-slot"></div></main></body>');
+  const dom = new JSDOM('<!doctype html><body><div id="screen-onshift"><main id="onshift-content"><div id="idle-state" class="hidden"></div><div id="active-order-slot"></div><div id="queue-slot"></div></main></div></body>');
   const { document, window } = dom.window;
   const $ = (id) => document.getElementById(id);
   Object.defineProperty(window.navigator, 'onLine', { value: online, configurable: true });
@@ -63,6 +63,7 @@ t('offline + an order in hand → the banner AND the «5 min» foot line show, a
   assert.match(b.textContent, /Sin conexión · lo que deslicés se envía al volver la señal\. No cierres la app\./, 'the OWNER copy verbatim');
   assert.ok(!/desde hace/.test(b.textContent), 'no «desde hace N s» (not in the owner copy)');
   assert.ok(b.compareDocumentPosition(h.$('active-order-slot')) & h.window.Node.DOCUMENT_POSITION_FOLLOWING, 'the banner sits ABOVE the order card');
+  assert.ok(h.$('screen-onshift').classList.contains('offline-foot'), 'the .offline-foot class lifts the fixed slide so the note sits under it');
 });
 
 t('online + an order in hand → hidden (connected, nothing to warn about)', () => {
@@ -71,6 +72,7 @@ t('online + an order in hand → hidden (connected, nothing to warn about)', () 
   h.api.init();
   assert.equal(h.api.shown(), false);
   assert.equal(h.api.noteShown(), false);
+  assert.ok(!h.$('screen-onshift').classList.contains('offline-foot'), 'no .offline-foot when connected');
 });
 
 t('offline but NO order in hand (idle / offer screen) → hidden (only «while an order is in hand»)', () => {
