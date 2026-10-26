@@ -432,7 +432,11 @@ function reviewItemsCardHtml(order, esc, ICONS) {
     count = parts.length;
     body = parts.map((s) => { const m = s.match(/^(\d+)\s*[x×]?\s+(.*)$/i); const qty = m ? m[1] : '1'; const nm = m ? m[2] : s; return `<div class="item"><b>${esc(qty)}×</b> <span>${esc(nm)}</span></div>`; }).join('');
   } else { return ''; }
-  return `<div class="items-card"><div class="items-head"><span class="lbl">${count} artículo${count === 1 ? '' : 's'}</span><span class="items-brand">${rchip(order, esc, 'sm')}<span class="order-num">${esc(displayOrderLabel(order))}</span></span></div><div class="items-list">${body}</div></div>`;
+  // Single-order review: the header right is the «1 bolsa» bag indicator (one order = one bag, same convention as the
+  // stacked bag tags — advisor 2026-10-26), and the «Revisá bebidas y salsas» reminder is NESTED inside the card with
+  // the cup glyph (the app ICONS has no 'cup' key, so reuse CUP_SVG — the same fallback the combined pickup uses).
+  const reminder = `<div class="sv-reminder">${ICONS.cup || CUP_SVG}<div><b>Revisá bebidas y salsas</b><span>Son lo que más se olvida.</span></div></div>`;
+  return `<div class="items-card"><div class="items-head"><span class="lbl">${count} artículo${count === 1 ? '' : 's'}</span><span class="bag-chip">1 bolsa</span></div><div class="items-list">${body}</div>${reminder}</div>`;
 }
 
 // The solo-pickup review pay row, DISPLAY-only and driven by collectionFor (the single classification source —
@@ -443,13 +447,13 @@ function reviewItemsCardHtml(order, esc, ICONS) {
 function reviewPayRowHtml(order, esc, ICONS) {
   const c = collectionFor(order);
   const amt = `L ${(Number(order.total) || 0).toLocaleString('es-HN')}`;
-  let t, d;
-  if (c.kind === 'cash') { t = `Cobrar ${amt} al entregar`; d = 'No cobrés aquí; el restaurante no recibe efectivo del cliente'; }
-  else if (c.kind === 'card') { t = `Cobrar ${amt} al entregar`; d = 'Con tarjeta; no cobrés aquí'; }   // card_delivery is COLLECTED at delivery (P1-3)
-  else if (c.kind === 'paid_online') { t = 'Pagado en línea'; d = 'No cobrés nada'; }
-  else if (c.kind === 'free') { t = 'Pedido gratis'; d = 'Nada que cobrar'; }
-  else { t = 'Pago no confirmado'; d = 'Consultá a despacho'; }
-  return `<div class="pay-ro-card"><span class="ico">${ICONS.cash || ''}</span><div><div class="pay-ro-t">${esc(t)}</div><div class="pay-ro-d">${esc(d)}</div></div></div>`;
+  let t, d, ic;   // ic = the icon tile tint: green for the collect cases (prototype), amber for the unconfirmed one
+  if (c.kind === 'cash') { t = `Cobrar ${amt} al entregar`; d = 'No cobrés aquí; el restaurante no recibe efectivo del cliente'; ic = 'ok'; }
+  else if (c.kind === 'card') { t = `Cobrar ${amt} al entregar`; d = 'Con tarjeta; no cobrés aquí'; ic = 'ok'; }   // card_delivery is COLLECTED at delivery (P1-3)
+  else if (c.kind === 'paid_online') { t = 'Pagado en línea'; d = 'No cobrés nada'; ic = ''; }
+  else if (c.kind === 'free') { t = 'Pedido gratis'; d = 'Nada que cobrar'; ic = ''; }
+  else { t = 'Pago no confirmado'; d = 'Consultá a despacho'; ic = 'warn'; }
+  return `<div class="pay-ro-card"><span class="ico ${ic}">${ICONS.cash || ''}</span><div><div class="pay-ro-t">${esc(t)}</div><div class="pay-ro-d">${esc(d)}</div></div></div>`;
 }
 
 /**
@@ -478,7 +482,7 @@ export function pickupToRestaurantHtml(o, deps = {}) {
       ${scheduledBadge(order)}
       ${rt ? `<div class="ac-hr"></div><div class="sv-sub">Cocina: listo ${esc(rt)}.</div>` : ''}
     </div>
-    ${navBtnHtml(target, navPref, '', { ...deps, navTaskId })}
+    ${navBtnHtml(target, navPref, brandLabel(order) || 'el restaurante', { ...deps, navTaskId })}
     <div class="action-zone">${slideConfirmHtml('btn-at-restaurant', 'at-restaurant', 'Ya estoy en el restaurante')}</div>`;
 }
 
@@ -498,8 +502,7 @@ export function pickupReviewHtml(o, deps = {}) {
   // form, not the full surname). A single-token name shows alone.
   const np = String(name).trim().split(/\s+/).filter(Boolean);
   const nameChip = np.length > 1 ? `${np[0]} ${np[1][0]}.` : (np[0] || '—');
-  const items = reviewItemsCardHtml(order, esc, ICONS);
-  const reminder = items ? `<div class="sv-reminder">${ICONS.cup || ICONS.warn || ''}<div><b>Revisá bebidas y salsas</b><span>Son lo que más se olvida.</span></div></div>` : '';
+  const items = reviewItemsCardHtml(order, esc, ICONS);   // carries the «1 bolsa» chip + the nested cup reminder
   return `<div class="active-card">
       <div class="sv-review-top">
         <div class="sv-lbl">Número de pedido · decilo en ventanilla</div>
@@ -508,7 +511,6 @@ export function pickupReviewHtml(o, deps = {}) {
       </div>
     </div>
     ${items}
-    ${reminder}
     ${reviewPayRowHtml(order, esc, ICONS)}
     <div class="action-zone">${actionSlide('pickup')}</div>`;
 }
