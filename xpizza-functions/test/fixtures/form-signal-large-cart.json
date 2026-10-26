@@ -1,0 +1,4 @@
+{
+ "x_pizza": "{\"rid\":\"x_pizza\",\"event\":\"send\",\"reasons\":[\"repriced\",\"unavailable\"]}",
+ "la_musa": "{\"rid\":\"la_musa\",\"event\":\"send\",\"reasons\":[\"repriced\",\"unavailable\"]}"
+}

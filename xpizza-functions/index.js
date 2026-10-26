@@ -7529,3 +7529,31 @@ exports.merchantPendingOrders = merchantPushFunctions.merchantPendingOrders;
 exports.merchantPushOnStatus = merchantPushFunctions.merchantPushOnStatus;
 exports.merchantPushOnAnswered = merchantPushFunctions.merchantPushOnAnswered;
 /* h1c:end */
+
+/* formsignal:begin */
+// ── PLAN 3 — formSignal: the server-visible COUNT of order-form cart blocks (docs/superpowers/plans/2026-10-26-form-signal-counter.md)
+// Public: every order site beacons it (navigator.sendBeacon, text/plain — a CORS-simple POST). Untrusted observations
+// under a strict schema, never authority. A dedicated fail-CLOSED limiter (form_signal_limits), one atomic update under
+// form_signals/{HN day}/{rid}/{event}. Core + tests: form-signal.js / form-signal.test.js / form-signal.emulator.test.js.
+// The audience is the order sites' exact origins, derived from the manifest (the ACCOUNT_ORIGINS list — no localhost).
+const FORM_SIGNAL_ORIGINS = require('./platform-manifest').PLATFORM.ACCOUNT_ORIGINS;
+exports.formSignal = onRequest(
+  { region: 'us-central1', cors: FORM_SIGNAL_ORIGINS, timeoutSeconds: 10, memory: '128MiB', maxInstances: 5, concurrency: 40 },
+  async (req, res) => {
+    try {
+      return await require('./form-signal').handleSignal(req, res, { db: getDatabase(), ServerValue, registry: restaurantRegistry() });
+    } catch (e) {
+      console.error('formSignal', e && e.message);
+      return res.status(204).end();
+    }
+  },
+);
+// The sweep: day keys past the 90-day retention, and expired limiter windows, in bounded batches.
+exports.sweepFormSignals = onSchedule(
+  { schedule: '20 3 * * *', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const out = await require('./form-signal').sweepFormSignals({ db: getDatabase() });
+    if (out.days || out.limits) console.log(`sweepFormSignals: ${JSON.stringify(out)}`);
+  },
+);
+/* formsignal:end */

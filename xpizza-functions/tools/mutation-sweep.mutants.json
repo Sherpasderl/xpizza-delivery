@@ -1268,8 +1268,8 @@
   "slice": "b4",
   "label": "the submit gate is gone",
   "file": "../xpizza-orders/index.html",
-  "from": "  if(_conflicts.length){ announceCartConflicts(_conflicts); return; }",
-  "to": "  if(false){ announceCartConflicts(_conflicts); return; }",
+  "from": "  if(_conflicts.length){ announceCartConflicts(_conflicts); sendFormSignal('submit', formSignalReasons(_conflicts)); return; }",
+  "to": "  if(false){ announceCartConflicts(_conflicts); sendFormSignal('submit', formSignalReasons(_conflicts)); return; }",
   "command": [
    "node",
    "../cart-decoupling.test.mjs"
@@ -1342,8 +1342,8 @@
   "slice": "b4",
   "label": "la_musa: the submit gate is gone",
   "file": "../la-musa-orders/index.html",
-  "from": "  if(_conflicts.length){ announceCartConflicts(_conflicts); return; }",
-  "to": "  if(false){ announceCartConflicts(_conflicts); return; }",
+  "from": "  if(_conflicts.length){ announceCartConflicts(_conflicts); sendFormSignal('submit', formSignalReasons(_conflicts)); return; }",
+  "to": "  if(false){ announceCartConflicts(_conflicts); sendFormSignal('submit', formSignalReasons(_conflicts)); return; }",
   "command": [
    "node",
    "../cart-decoupling.test.mjs"
@@ -1402,7 +1402,7 @@
   "slice": "b4",
   "label": "the chokepoint gate in buildOrder is gone — the online path is ungated again",
   "file": "../xpizza-orders/index.html",
-  "from": "  const _conflicts = cartConflicts();\n  if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }\n",
+  "from": "  const _conflicts = cartConflicts();\n  if(_conflicts.length){ announceCartConflicts(_conflicts); sendFormSignal('build', formSignalReasons(_conflicts)); return false; }\n",
   "to": "",
   "command": [
    "node",
@@ -1427,7 +1427,7 @@
   "slice": "b4",
   "label": "la_musa: the chokepoint gate in buildOrder is gone",
   "file": "../la-musa-orders/index.html",
-  "from": "  const _conflicts = cartConflicts();\n  if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }\n",
+  "from": "  const _conflicts = cartConflicts();\n  if(_conflicts.length){ announceCartConflicts(_conflicts); sendFormSignal('build', formSignalReasons(_conflicts)); return false; }\n",
   "to": "",
   "command": [
    "node",
@@ -1660,8 +1660,8 @@
   "slice": "b4",
   "label": "the send gate reports a conflict but sends anyway",
   "file": "../xpizza-orders/index.html",
-  "from": "  if(conflicts.length) announceCartConflicts(conflicts);\n  return true;",
-  "to": "  if(conflicts.length) announceCartConflicts(conflicts);\n  return false;",
+  "from": "  if(conflicts.length) announceCartConflicts(conflicts); sendFormSignal('send', conflicts.length ? formSignalReasons(conflicts) : ['empty']);\n  return true;",
+  "to": "  if(conflicts.length) announceCartConflicts(conflicts); sendFormSignal('send', conflicts.length ? formSignalReasons(conflicts) : ['empty']);\n  return false;",
   "command": [
    "node",
    "../cart-decoupling.test.mjs"
@@ -20033,6 +20033,342 @@
   "command": [
    "node",
    "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "fs-1",
+  "slice": "formsignal",
+  "label": "the registry is no longer awaited — a cold instance decides on the compiled floor (r3 #3)",
+  "file": "form-signal.js",
+  "from": "await deps.registry.ready(); known = deps.registry.known();",
+  "to": "known = deps.registry.known();",
+  "command": [
+   "node",
+   "form-signal.test.js"
+  ]
+ },
+ {
+  "id": "fs-2",
+  "slice": "formsignal",
+  "label": "the limiter fails OPEN — a failed limiter is treated as over-quota, never dropped with 503",
+  "file": "form-signal.js",
+  "from": "  if (lim.failed) return res.status(503).json({ dropped: true });\n",
+  "to": "",
+  "command": [
+   "node",
+   "form-signal.test.js"
+  ]
+ },
+ {
+  "id": "fs-3",
+  "slice": "formsignal",
+  "label": "the ip key is the LEFTMOST X-Forwarded-For entry (client-spoofable)",
+  "file": "form-signal.js",
+  "from": "  return parts.length ? parts[parts.length - 1] : '';",
+  "to": "  return parts.length ? parts[0] : '';",
+  "command": [
+   "node",
+   "form-signal.test.js"
+  ]
+ },
+ {
+  "id": "fs-4",
+  "slice": "formsignal",
+  "label": "the size cap is off by one (513 bytes accepted)",
+  "file": "form-signal.js",
+  "from": "  if (rawLength(req) > MAX_BODY_BYTES) return res.status(413).end();",
+  "to": "  if (rawLength(req) > MAX_BODY_BYTES + 1) return res.status(413).end();",
+  "command": [
+   "node",
+   "form-signal.test.js"
+  ]
+ },
+ {
+  "id": "fs-5",
+  "slice": "formsignal",
+  "label": "any content type is accepted (not only the beacon shape)",
+  "file": "form-signal.js",
+  "from": "  return ct === 'text/plain';",
+  "to": "  return true;",
+  "command": [
+   "node",
+   "form-signal.test.js"
+  ]
+ },
+ {
+  "id": "fs-6",
+  "slice": "formsignal",
+  "label": "the structural rid check is gone — an ill-formed rid reaches the registry",
+  "file": "form-signal.js",
+  "from": "  if (typeof rid !== 'string' || !RID_RE.test(rid)) return { ok: false, error: 'rid' };",
+  "to": "  if (typeof rid !== 'string') return { ok: false, error: 'rid' };",
+  "command": [
+   "node",
+   "form-signal.test.js"
+  ]
+ },
+ {
+  "id": "fs-7",
+  "slice": "formsignal",
+  "label": "registry membership is not checked",
+  "file": "form-signal.js",
+  "from": "  if (!(known && known.has(v.signal.rid))) return res.status(204).end();",
+  "to": "  if (!known) return res.status(204).end();",
+  "command": [
+   "node",
+   "form-signal.test.js"
+  ]
+ },
+ {
+  "id": "fs-8",
+  "slice": "formsignal",
+  "label": "mixed valid + invalid reasons are partly accepted (all-or-nothing broken)",
+  "file": "form-signal.js",
+  "from": "  if (!reasons.every((r) => typeof r === 'string' && REASONS.has(r))) return { ok: false, error: 'reason' };",
+  "to": "  if (!reasons.some((r) => typeof r === 'string' && REASONS.has(r))) return { ok: false, error: 'reason' };",
+  "command": [
+   "node",
+   "form-signal.test.js"
+  ]
+ },
+ {
+  "id": "fs-9",
+  "slice": "formsignal",
+  "label": "the server stops deduping reasons",
+  "file": "form-signal.js",
+  "from": "  return { ok: true, signal: { rid, event, reasons: [...new Set(reasons)] } };",
+  "to": "  return { ok: true, signal: { rid, event, reasons } };",
+  "command": [
+   "node",
+   "form-signal.test.js"
+  ]
+ },
+ {
+  "id": "fs-10",
+  "slice": "formsignal",
+  "label": "an unknown event is accepted",
+  "file": "form-signal.js",
+  "from": "  if (typeof event !== 'string' || !EVENTS.has(event)) return { ok: false, error: 'event' };",
+  "to": "  if (typeof event !== 'string') return { ok: false, error: 'event' };",
+  "command": [
+   "node",
+   "form-signal.test.js"
+  ]
+ },
+ {
+  "id": "fs-11",
+  "slice": "formsignal",
+  "label": "the reason count is unbounded above",
+  "file": "form-signal.js",
+  "from": "  if (!Array.isArray(reasons) || reasons.length < 1 || reasons.length > MAX_REASONS) return { ok: false, error: 'reasons' };",
+  "to": "  if (!Array.isArray(reasons) || reasons.length < 1) return { ok: false, error: 'reasons' };",
+  "command": [
+   "node",
+   "form-signal.test.js"
+  ]
+ },
+ {
+  "id": "fs-12",
+  "slice": "formsignal",
+  "label": "a write failure escapes the handler (no 204, no single log line)",
+  "file": "form-signal.js",
+  "from": "    console.error('form_signal_write_failed', (e && e.code) || 'error');",
+  "to": "    throw e;",
+  "command": [
+   "node",
+   "form-signal.test.js"
+  ]
+ },
+ {
+  "id": "fs-13",
+  "slice": "formsignal",
+  "label": "the day key is UTC, not Honduras time",
+  "file": "form-signal.js",
+  "from": "  const D = hnDateISO(now);",
+  "to": "  const D = new Date(now).toISOString().slice(0, 10);",
+  "command": [
+   "node",
+   "form-signal.test.js"
+  ]
+ },
+ {
+  "id": "fs-14",
+  "slice": "formsignal",
+  "label": "form_signals is readable by clients",
+  "file": "../xpizza-reference/database.rules.json",
+  "from": "    \"form_signals\":          { \".read\": false, \".write\": false },",
+  "to": "    \"form_signals\":          { \".read\": \"auth != null\", \".write\": false },",
+  "command": [
+   "node",
+   "form-signal-rules.guard.test.js"
+  ]
+ },
+ {
+  "id": "fsc-x_pizza-1",
+  "slice": "formsignal",
+  "label": "the client stops deduping reasons — a 9+-line refusal is refused by the server (r3 NEW P2)",
+  "file": "../xpizza-orders/index.html",
+  "from": "    const r = [...new Set(reasons || [])];",
+  "to": "    const r = reasons || [];",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
+  ]
+ },
+ {
+  "id": "fsc-x_pizza-2",
+  "slice": "formsignal",
+  "label": "the send gate stops signalling",
+  "file": "../xpizza-orders/index.html",
+  "from": "  if(conflicts.length) announceCartConflicts(conflicts); sendFormSignal('send', conflicts.length ? formSignalReasons(conflicts) : ['empty']);",
+  "to": "  if(conflicts.length) announceCartConflicts(conflicts);",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
+  ]
+ },
+ {
+  "id": "fsc-x_pizza-3",
+  "slice": "formsignal",
+  "label": "the empty-cart refusal signals no reason",
+  "file": "../xpizza-orders/index.html",
+  "from": "conflicts.length ? formSignalReasons(conflicts) : ['empty']",
+  "to": "conflicts.length ? formSignalReasons(conflicts) : []",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
+  ]
+ },
+ {
+  "id": "fsc-x_pizza-4",
+  "slice": "formsignal",
+  "label": "buildOrder stops signalling",
+  "file": "../xpizza-orders/index.html",
+  "from": "  if(_conflicts.length){ announceCartConflicts(_conflicts); sendFormSignal('build', formSignalReasons(_conflicts)); return false; }",
+  "to": "  if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
+  ]
+ },
+ {
+  "id": "fsc-x_pizza-5",
+  "slice": "formsignal",
+  "label": "submitOrder stops signalling",
+  "file": "../xpizza-orders/index.html",
+  "from": "  if(_conflicts.length){ announceCartConflicts(_conflicts); sendFormSignal('submit', formSignalReasons(_conflicts)); return; }",
+  "to": "  if(_conflicts.length){ announceCartConflicts(_conflicts); return; }",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
+  ]
+ },
+ {
+  "id": "fsc-x_pizza-6",
+  "slice": "formsignal",
+  "label": "the restore refusal stops signalling",
+  "file": "../xpizza-orders/index.html",
+  "from": "announceCartConflicts(_restoreConflicts); sendFormSignal('restore', formSignalReasons(_restoreConflicts));",
+  "to": "announceCartConflicts(_restoreConflicts);",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
+  ]
+ },
+ {
+  "id": "fsc-x_pizza-7",
+  "slice": "formsignal",
+  "label": "a throwing beacon escapes and changes the refusal",
+  "file": "../xpizza-orders/index.html",
+  "from": "  } catch (_) {}\n}\n",
+  "to": "  } catch (_) { throw _; }\n}\n",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
+  ]
+ },
+ {
+  "id": "fsc-la_musa-1",
+  "slice": "formsignal",
+  "label": "la_musa: the client stops deduping reasons — a 9+-line refusal is refused by the server (r3 NEW P2)",
+  "file": "../la-musa-orders/index.html",
+  "from": "    const r = [...new Set(reasons || [])];",
+  "to": "    const r = reasons || [];",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
+  ]
+ },
+ {
+  "id": "fsc-la_musa-2",
+  "slice": "formsignal",
+  "label": "la_musa: the send gate stops signalling",
+  "file": "../la-musa-orders/index.html",
+  "from": "  if(conflicts.length) announceCartConflicts(conflicts); sendFormSignal('send', conflicts.length ? formSignalReasons(conflicts) : ['empty']);",
+  "to": "  if(conflicts.length) announceCartConflicts(conflicts);",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
+  ]
+ },
+ {
+  "id": "fsc-la_musa-3",
+  "slice": "formsignal",
+  "label": "la_musa: the empty-cart refusal signals no reason",
+  "file": "../la-musa-orders/index.html",
+  "from": "conflicts.length ? formSignalReasons(conflicts) : ['empty']",
+  "to": "conflicts.length ? formSignalReasons(conflicts) : []",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
+  ]
+ },
+ {
+  "id": "fsc-la_musa-4",
+  "slice": "formsignal",
+  "label": "la_musa: buildOrder stops signalling",
+  "file": "../la-musa-orders/index.html",
+  "from": "  if(_conflicts.length){ announceCartConflicts(_conflicts); sendFormSignal('build', formSignalReasons(_conflicts)); return false; }",
+  "to": "  if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
+  ]
+ },
+ {
+  "id": "fsc-la_musa-5",
+  "slice": "formsignal",
+  "label": "la_musa: submitOrder stops signalling",
+  "file": "../la-musa-orders/index.html",
+  "from": "  if(_conflicts.length){ announceCartConflicts(_conflicts); sendFormSignal('submit', formSignalReasons(_conflicts)); return; }",
+  "to": "  if(_conflicts.length){ announceCartConflicts(_conflicts); return; }",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
+  ]
+ },
+ {
+  "id": "fsc-la_musa-6",
+  "slice": "formsignal",
+  "label": "la_musa: the restore refusal stops signalling",
+  "file": "../la-musa-orders/index.html",
+  "from": "announceCartConflicts(_restoreConflicts); sendFormSignal('restore', formSignalReasons(_restoreConflicts));",
+  "to": "announceCartConflicts(_restoreConflicts);",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
+  ]
+ },
+ {
+  "id": "fsc-la_musa-7",
+  "slice": "formsignal",
+  "label": "la_musa: a throwing beacon escapes and changes the refusal",
+  "file": "../la-musa-orders/index.html",
+  "from": "  } catch (_) {}\n}\n",
+  "to": "  } catch (_) { throw _; }\n}\n",
+  "command": [
+   "node",
+   "../form-signal-client.test.mjs"
   ]
  }
 ]

@@ -10,7 +10,7 @@ const { execFileSync } = require('child_process');
 const { BASE, HUNKS, unapplyMenuWarmIndex } = require('./tools/menu-warm-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const real = require('./tools/formsignal-inverse').unapplyFormSignalIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // PLAN 3 landed on top: stripped first
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.strictEqual(HUNKS.length, 1, 'one hunk');
 assert.notStrictEqual(unapplyMenuWarmIndex(real), real, 'non-vacuity: the hunk is present and swapped back');
@@ -22,7 +22,7 @@ assert.throws(() => unapplyMenuWarmIndex(real + h.now), /occurs 2 times/, 'a dup
 assert.notStrictEqual(unapplyMenuWarmIndex(real.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'a byte OUTSIDE the hunk survives (the base pin catches it)');
 ok(`index.js: unapplyMenuWarmIndex → ${BASE}:index.js byte-for-byte (1 same-line hunk); inside / duplicate / outside each caught`);
 const { foldPortalSplit } = require('./tools/portal-split');
-const fold = foldPortalSplit();
+const fold = require('./tools/formsignal-inverse').unapplyFormSignalIndex(foldPortalSplit());
 assert.ok(fold.includes(h.now), 'premise: the hunk survives the portal fold');
 assert.ok(!unapplyMenuWarmIndex(fold).includes('minInstances: 1 }'), 'the same inverse strips it from a fold');
 ok('FOLD: the hunk survives foldPortalSplit and unapplyMenuWarmIndex strips it there too');

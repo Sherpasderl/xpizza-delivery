@@ -14,7 +14,7 @@ const { execFileSync } = require('child_process');
 const { unapplyBrandServerIndex, unapplyBrandServerModule, INDEX_HUNKS, MODULE_HUNKS, FILES } = require('./tools/brand-server-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const idx = require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))));   // DISPATCH-LITE PUSH (newer layer) reversed first
+const idx = require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))));   // DISPATCH-LITE PUSH (newer layer) reversed first
 const BASE = execFileSync('git', ['show', 'df4a1bdb:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.strictEqual(unapplyBrandServerIndex(idx), BASE, '🔴 index.js minus the brand-server hunks is not df4a1bdb:index.js');
