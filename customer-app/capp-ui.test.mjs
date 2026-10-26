@@ -736,3 +736,29 @@ test('S2b sheets are dialogs: the screen is inert behind them, focus moves in, T
   key(r, 'Escape', r.q('#layer button'));
   assert.ok(r.q('#layer .errsheet'), 'the refund sheet stays until «Volver al inicio»');
 });
+
+test('S2b 426: a refused FIRST dispatch is the shared self-update path (no sheet here); a 426 after an admission keeps the identity ⇒ the recovery sheet', async () => {
+  const a = bootCo({ script: { createOrder: [{ status: 426, json: { error: 'update_required' } }] } });
+  await filled(a); await a.click('#cta'); await a.click('[data-act="tipc"][data-val="0"]');
+  await a.click('[data-act="tip-place"]'); await a.click('#layer [data-act="placing-go"]');
+  assert.equal(a.q('#layer').innerHTML, '', 'no S2b sheet for update_required');
+  assert.ok(a.q('.screen .tipwrap'));
+  const b = bootCo({ script: { chargeOnlineOrder: [{ status: 202, json: { ok: true, status: 'in_progress' } }, { status: 426, json: {} }] } });
+  await filled(b, 'online'); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]');
+  await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.text('#layer .errsheet h2'), 'Necesitamos revisar tu pedido', 'the kept identity (update_required: true) shows the recovery sheet as drawn');
+  assert.equal(b.nav.length, 0);
+});
+
+test('S2b map: a configured Maps key ⇒ a live-map container inside the drawn chrome + ONE loader script; no key ⇒ nothing loads', async () => {
+  const b = bootCo({ config: { mapsKey: 'k_test' } }); await toCheckout(b);
+  assert.ok(b.q('button.map [data-gmap="preview"]') && b.q('button.map .pin') && b.q('button.map .adj'), 'the container sits inside the drawn chrome');
+  const scripts = () => b.qa('script[src^="https://maps.googleapis.com/maps/api/js"]');
+  assert.equal(scripts().length, 1);
+  assert.ok(scripts()[0].src.includes('key=k_test'));
+  await b.click('[data-act="pin"]');
+  assert.ok(b.q('#layer .pinstep [data-gmap="pin"]'));
+  assert.equal(scripts().length, 1, 'loaded once');
+  const n = bootCo(); await toCheckout(n);
+  assert.equal(n.qa('script[src*="maps.googleapis.com"]').length, 0);
+});
