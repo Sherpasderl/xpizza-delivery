@@ -121,6 +121,10 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
   const calcFn    = grab(html, /\nfunction calcTotal\(\)\{[\s\S]*?\n\}\n/, 'calcTotal()');
   const redeemFn  = grab(html, /\nfunction redeemCartItems\(\)\{[\s\S]*?\n\}\n/, 'redeemCartItems()');
   const sigFn     = grab(html, /\nfunction cartSig\(\)\{[\s\S]*?\n\}\n/, 'cartSig()');
+  // PLAN 3: the REAL formSignal helpers the refusal points now call (lifted, not stubbed). This harness has no
+  // navigator.sendBeacon, so they are inert here; form-signal-client.test.mjs drives them on the real page.
+  const signalFns = grab(html, /\nfunction formSignalReasons\(conflicts\)\{[^\n]*\}\n/, 'formSignalReasons()')
+    + grab(html, /\nfunction sendFormSignal\(event, reasons\)\{[\s\S]*?\n\}\n/, 'sendFormSignal()');
   // The guard itself, verbatim — and separately, proof of WHERE it sits. A gate that ran after
   // orderSubmitting was set, or after the payload was built, would pass a "it refused" assertion while
   // leaving the form wedged; the bounded match below is what pins it to the top of submitOrder.
@@ -225,11 +229,13 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     let orderType = 'delivery', pickupTimeType = 'standard', pickupScheduledTime = null;
     let selectedPayment = 'cash', tendered = '', rtnOn = false, lat = null, lng = null, __scheduledFor = null;
     const fullPhone = () => '+50499999999';
+    const navigator = {}, FORMSIGNAL_URL = 'http://test/formSignal', liveMenuRid = () => ctx.rid;   // PLAN 3: no beacon in this harness
     ${cartBlock}
     ${chgFn}
     ${calcFn}
     ${redeemFn}
     ${sigFn}
+    ${signalFns}
     ${submitFn}
     ${dispatchFn}
     ${fallbackFn}

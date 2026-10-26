@@ -1790,7 +1790,7 @@ function setupScrollSpy() {
 // limiter are the real defense). No PixelPay creds here — chargeOnlineOrder returns the checkout_url.
 const CREATEORDER_URL   = 'https://us-central1-xpizza-delivery.cloudfunctions.net/createOrder';
 // 1B — the live catalog. Cache isolation is by rid IN THE PATH, never a Vary header.
-const PUBLICMENU_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/getPublicMenu';
+const PUBLICMENU_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/getPublicMenu';  const FORMSIGNAL_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/formSignal';   // PLAN 3
 const QUOTEORDER_URL   = 'https://us-central1-xpizza-delivery.cloudfunctions.net/quoteOrder';   // 1d 2a: read-only server price for the checkout display
 const CHARGEORDER_URL   = 'https://us-central1-xpizza-delivery.cloudfunctions.net/chargeOnlineOrder';
 const PAYMENTSTATUS_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/paymentStatus';
@@ -2381,7 +2381,7 @@ function cartRestore(stashedCart){
   const bare = GroupPicker.launcherKeys(CART.keys(), VARIANT_ITEMS);
   if (bare.length) {
     console.warn('cart_restore_launcher_blocked', JSON.stringify({ keys: bare }));
-    announceCartConflicts(cartConflicts());
+    const _restoreConflicts = cartConflicts(); announceCartConflicts(_restoreConflicts); sendFormSignal('restore', formSignalReasons(_restoreConflicts));
   }
   // qty follows the cart here too — one rule, every writer. Rebuilt from MENU first so every rendered
   // card has an entry, then overlaid with what the cart actually holds (including a line whose dish the
@@ -2485,7 +2485,7 @@ function refuseConflictedSend(where){
   if(!conflicts.length && !empty) return false;
   console.warn('cart_conflict_blocked_send', JSON.stringify({
     at: where, empty, lines: conflicts.map(l => (l.record && l.record.name) || l.key) }));
-  if(conflicts.length) announceCartConflicts(conflicts);
+  if(conflicts.length) announceCartConflicts(conflicts); sendFormSignal('send', conflicts.length ? formSignalReasons(conflicts) : ['empty']);
   return true;
 }
 function cartConflicts(){ return cartLines().filter(l => l.blocked); }
@@ -4847,7 +4847,7 @@ var __orderSigAtBuild = null;
 var __orderNetAtBuild = null;   // 1C T8 — the displayed net that backs a degraded send
 function buildOrder(){
   const _conflicts = cartConflicts();
-  if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }
+  if(_conflicts.length){ announceCartConflicts(_conflicts); sendFormSignal('build', formSignalReasons(_conflicts)); return false; }
   /* 1D add-product B — THE SEND BOUNDARY: no body is built while the RAW cart (not its resolution) holds a bare launcher. */
   if(GroupPicker.launcherKeys(CART.keys(), VARIANT_ITEMS).length){
     console.warn('cart_blocked_build_launcher', JSON.stringify({ keys: GroupPicker.launcherKeys(CART.keys(), VARIANT_ITEMS) }));
@@ -5314,7 +5314,7 @@ async function submitOrder(paymentStatus){
      is never submitted, never silently dropped, and never silently re-priced: the customer decides what
      happens to it. Before orderSubmitting is set, so a refusal leaves the form usable. */
   const _conflicts = cartConflicts();
-  if(_conflicts.length){ announceCartConflicts(_conflicts); return; }
+  if(_conflicts.length){ announceCartConflicts(_conflicts); sendFormSignal('submit', formSignalReasons(_conflicts)); return; }
   orderSubmitting = true;
   showStage('s4',90);
   setSending(paymentStatus==='confirmed'&&selectedPayment==='online'
@@ -6658,6 +6658,18 @@ updateTotal();
 updateCart();
 initCardFormatting();
 
+/* PLAN 3 — formSignal: ONE fire-and-forget beacon per cart refusal, so the server can COUNT how often a customer is
+   blocked (per restaurant, refusal point, reason and Honduras day). Never awaited, its result never read; it never
+   touches the DOM, the cart or any order state, so it can never change a refusal. The reasons are deduped HERE, before
+   serializing: a refusal over 9+ blocked lines is still ONE signal the server accepts. The restaurant is the form's own
+   identity (liveMenuRid), never a new literal. */
+function formSignalReasons(conflicts){ return conflicts.map(l => l.unresolved || 'option'); }
+function sendFormSignal(event, reasons){
+  try {
+    const r = [...new Set(reasons || [])];
+    if (r.length && navigator.sendBeacon) navigator.sendBeacon(FORMSIGNAL_URL, JSON.stringify({ rid: liveMenuRid(), event, reasons: r }));
+  } catch (_) {}
+}
 
 </script>
 <!-- Fullscreen map overlay -->

@@ -218,9 +218,9 @@
    "delaySrc": "attempt*1500",
    "bound": 3000,
    "reachesAsserted": true,
-   "reason": "the createOrder retry BACKOFF (attempt*1500 with attempt ≤ MAX_TRIES − 1 = 2 → ≤ 3000 ms): ON the asserted submit path, only after a failed attempt (S1’s first createOrder answers 200); bound 3000 ms is within the 10 s horizon",
+   "reason": "the createOrder retry BACKOFF (attempt*1500 with attempt ≤ MAX_TRIES − 1 = 2 → ≤ 3000 ms): ON the asserted submit path, only after a failed attempt (S1’s first createOrder answers 200); bound 3000 ms is within the 10 s horizon — PLAN 3 formSignal re-review (f338a9dd): submitOrder gains ONE synchronous sendFormSignal (navigator.sendBeacon, never awaited, no timer) inside the cart-conflict early return, before orderSubmitting / any timer; no loop, retry limit or delay changed → bound unchanged",
    "sha": "de6c6db54ecf5d11861a4f726e1404d6942127f9803bb48080293b05be0098f3",
-   "ctrlSha": "da840dcfd005673190e7dc30f2d1edfe94eefbe5269f0fd898d0564b7f3bd60c"
+   "ctrlSha": "088f732f8281763143bb25845ec09de0d4930670b651ef7c3087aa75bbc0425d"
   },
   {
    "key": "xpizza-orders/form-order-number.js#next:setTimeout#0",
@@ -714,9 +714,9 @@
    "repeats": false,
    "repeatLimit": 3,
    "reachesAsserted": true,
-   "reason": "processPayment’s awaited steps: the address-pick cap (only while an address pick is in flight — not on S1’s GPS-OK path), then submitOrder’s token race (≤ 1500 ms) and retry backoff (≤ 1500 + 3000 ms, MAX_TRIES 3); the demo-branch and PixelPay steps are not on the cash path. On S1’s path the bound is 6000 ms, within the 10 s horizon — 6f353ed: submitOrder now also races the createOrder body for the tracking token (confirmTokenOf, ≤ 1500 ms, once on success) → bound 7500 ms ≤ the horizon",
+   "reason": "processPayment’s awaited steps: the address-pick cap (only while an address pick is in flight — not on S1’s GPS-OK path), then submitOrder’s token race (≤ 1500 ms) and retry backoff (≤ 1500 + 3000 ms, MAX_TRIES 3); the demo-branch and PixelPay steps are not on the cash path. On S1’s path the bound is 6000 ms, within the 10 s horizon — 6f353ed: submitOrder now also races the createOrder body for the tracking token (confirmTokenOf, ≤ 1500 ms, once on success) → bound 7500 ms ≤ the horizon — PLAN 3 formSignal re-review (f338a9dd): submitOrder gains ONE synchronous sendFormSignal (navigator.sendBeacon, never awaited, no timer) inside the cart-conflict early return, before orderSubmitting / any timer; no loop, retry limit or delay changed → bound unchanged",
    "sha": "9ca9222901cc40dfd5f6822a0063cc3d5e028a95237bfa6f6a73d5b58608bab1",
-   "ctrlSha": "6dfed26d789a106620a11850cc44016e3c7c8f2992090dd5f63d7a65247d7df4"
+   "ctrlSha": "fae70eb18547b48c09b94ab902fb76fb21ee64665f21b32ff183ee2323891205"
   },
   {
    "key": "await@xpizza-orders/index.html<script@2>:4761 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#1",
@@ -734,9 +734,9 @@
    "repeats": true,
    "repeatLimit": 3,
    "reachesAsserted": true,
-   "reason": "submitOrder's awaited steps on the real submit: the ID-token race (≤ 1500 ms), the retry backoff (1500, 3000 ms; MAX_TRIES 3) and — 6f353ed — the tracking-token race on the createOrder 200 body (confirmTokenOf, ≤ 1500 ms, once) before showSuccess; the 1500 ms demo sleep is the unconfigured-endpoint branch only. Bound 7500 ms ≤ the horizon; S1's first attempt succeeds",
+   "reason": "submitOrder's awaited steps on the real submit: the ID-token race (≤ 1500 ms), the retry backoff (1500, 3000 ms; MAX_TRIES 3) and — 6f353ed — the tracking-token race on the createOrder 200 body (confirmTokenOf, ≤ 1500 ms, once) before showSuccess; the 1500 ms demo sleep is the unconfigured-endpoint branch only. Bound 7500 ms ≤ the horizon; S1's first attempt succeeds — PLAN 3 formSignal re-review (f338a9dd): submitOrder gains ONE synchronous sendFormSignal (navigator.sendBeacon, never awaited, no timer) inside the cart-conflict early return, before orderSubmitting / any timer; no loop, retry limit or delay changed → bound unchanged",
    "sha": "87eca4668459cc1fd137eb3ec8c0421e93df3f9c91ad0fce86b9abfd60ace384",
-   "ctrlSha": "963bff57553b6b97099921e99e5b8ba2cd38fde5026a9d42230f0ffb33ff608b"
+   "ctrlSha": "40f1bad46d8b56d3306e1a4d0c1b413c255e4645d9f8e61f8af6069f6c2eb93e"
   },
   {
    "key": "xpizza-orders/form-order-number.js#next:setTimeout#0 → xpizza-orders/form-order-number.js#next:setTimeout#0",
