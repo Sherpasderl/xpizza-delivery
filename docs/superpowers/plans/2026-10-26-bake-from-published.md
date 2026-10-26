@@ -1,6 +1,6 @@
 # Plan 4: Every form shows ONLY the published catalog (bake at build, rebuild on publish, reconcile)
 
-**Status:** PLAN r1. It answers Codex plan r1 (3 P1, 4 P2, 1 P3). The advisor accepted all eight on 2026-10-26: the plan must be COMPLETE under the owner rule, with no deferral of display consumers. Codex FULL.
+**Status:** PLAN r2 (§8 folds in Codex scoped r2: 1 P1, 3 P2, plus the owner's reward-icon ruling (a), 2026-10-26). r1 answered Codex plan r1 (3 P1, 4 P2, 1 P3). The advisor accepted all eight on 2026-10-26: the plan must be COMPLETE under the owner rule, with no deferral of display consumers. Codex FULL.
 **Owner rule** (standing 2026-10-20, restated 2026-10-25): the merchant portal's published catalog is the ONE source of truth for every restaurant's menu, with no per-brand fallbacks.
 
 ## Problem (chronology corrected, P3)
@@ -25,7 +25,7 @@ Two gaps remain:
 | **badges** | **literal `TAG_BADGES` (:1931)** | — | `badges` | **boot from the bake** |
 | **badge priority** | **literal `TAG_PRIORITY` (:1939)** | — | **none** (published `badges` arrive in canonical key order) | **catalog addition:** `structure.badge_priority` (an array of badge keys), seeded from today's `TAG_PRIORITY`, carried by public-menu.js `CARRIED_FROM_STRUCTURE` (:103), then baked |
 | **pickup / weekend gates, P1-2** | — | bundle, else `FALLBACK_PICKUP_ONLY` / `FALLBACK_WEEKEND_ONLY` (:2598/:2604) | `pickup_only_cats`, `weekend_only_cats` | **bake keeps them.** The check is extended to compare them. |
-| **reward-picker icons** | — | **name-keyed `ICON` map in `buildRedeemCatalog` (:3343), fallback `'slice'`** | **none** | **OWNER QUESTION:** (a) a dish field `reward_icon`, seeded from the map and carried in the projection (my recommendation; a new dish gets `'slice'` until set), or (b) keep it as brand decoration outside the menu. |
+| **reward-picker icons** | — | **name-keyed `ICON` map in `buildRedeemCatalog` (:3343), fallback `'slice'`** | **dish field `reward_icon` (OWNER RULING (a), 2026-10-26)** | migrated per §8; `buildRedeemCatalog` reads `p.reward_icon \|\| 'slice'`; the map is deleted once the published menu verifiably carries the field |
 | branch hours (`HOURS`) | literal | literal | n/a | **out of scope.** Operating hours, not the menu; owned by Sherpa ops. |
 
 After this plan, the literals (`FALLBACK_*`, `EXTRAS`, `EXTRAS_BY_*`, `TAG_BADGES`, `TAG_PRIORITY`, the `ICON` map if (a)) stay in each form file only as the **seed/test bootstrap**. `buildCatalogV2`'s `readLiteral` reads them by name, and the 1c parity gates and seed tests use them. **No runtime code path references them.** A new guard asserts that: it scans each form's runtime for references to these names outside the bootstrap block and fails on any.
@@ -116,14 +116,51 @@ After this plan, the literals (`FALLBACK_*`, `EXTRAS`, `EXTRAS_BY_*`, `TAG_BADGE
 - **public-menu.js / seed changes:** their existing pins and inverses get the same treatment, and the money-path pins stay byte-unchanged.
 - **Also:** form-source-inventory regen, plus the 2e pins client-form edits re-open; mutation entries for every refusal, the reconciler branches and the runtime-literal guard; the R3 regen, mutation-anchors, and a full `npm test` in the heavy slot.
 
+## 8. r2 additions (Codex scoped r2 and the owner ruling)
+
+**8.1 Register the new fields everywhere a body is checked (P1).** `badge_priority` (structure) and `reward_icon` (dish display field) are added to:
+- **the public body contract:** `BODY_CONTRACT` (catalog/public-menu.js:60), so `assertWholeBody` (:81) never 500s the public menu on them. `badge_priority` is an optional string array of badge keys; `reward_icon` is an optional string from a closed set.
+- **the representation version:** `REPRESENTATION_VERSION` goes `'1d.1'` → `'1d.2'` (:41). Every consumer accepts both while forms built before the change remain deployed: the forms' live-menu adapter, the bake contract (§3) and form-bundle-live-check.
+- **the source schema:** `validateSource` (catalog/source-store.js: the structure field list at :51 and the carried fields at :745) gains `badge_priority`; `badge_priority` entries must name declared badges. The dish display schema gains `reward_icon`.
+- **tests:** the public-menu body-contract test, the source-store schema tests, and the existing representation-version tests. The money and fingerprint pins stay byte-unchanged, because display fields are not pricing inputs. An existing test already proves that; it gets extended to the new fields.
+
+**8.2 Additive, edit-preserving migration (P2), never today's whole-source `seedSourceStore`.**
+- **New CLI `tools/migrate-menu-structure.js`, driven by a reviewed data file** `tools/migrations/2026-10-26-menu-structure.json`. The file is generated from the bootstrap literals by a committed script, then reviewed:
+  - `la_musa.structure.badge_priority` = today's `TAG_PRIORITY`;
+  - `x_pizza.items[<key>].display.reward_icon` = today's `ICON` map;
+  - `x_pizza.items['Nutella'].display.extras_policy = 'none'`.
+- **For each rid**, the CLI:
+  1. reads `{ source, revision }` with `readSource` (source-store.js:764);
+  2. adds ONLY fields that are absent;
+  3. treats a field that is present with a DIFFERENT value as a merchant edit: it is preserved and reported, never overwritten;
+  4. validates the result with `validateSource`;
+  5. writes with a `lastUpdateTime == revision` precondition, the edit-catalog-handler pattern (catalog/edit-catalog-handler.js:14-28). A concurrent edit makes the write fail, and the CLI re-reads and re-plans.
+- Its default is a dry-run diff. `--write` is run by the owner, or by the advisor with the owner's approval; never by an executor.
+- **Unit tests** (fake Firestore):
+  - only absent fields are added;
+  - a merchant-edited value survives untouched;
+  - a stale revision refuses and writes nothing;
+  - a second run is a no-op;
+  - an invalid result refuses.
+- **Then:** the owner publishes once through the portal. Then verify that `getPublicMenu` for each rid carries `badge_priority`, every mapped `reward_icon`, and Nutella's `extras_policy: 'none'` (a read-only GET plus a script, logged in the hand-back). **Only after that verification** does the forms commit delete the Nutella name check (:5575), the `ICON` map and the runtime use of `TAG_PRIORITY`. The extended form-bundle-live-check makes a deploy before the data is published fail rather than regress.
+
+**8.3 Option maps accept BOTH namespaces (P2).** The bake validator and the extended check accept an `extras_by_category` / `extras_by_item` value that is EITHER a declared option category OR an individual extra key, exactly as source-store's `legalExposureValue` does (source-store.js:415). Both forms' option renderers handle both value kinds; X. Pizza's switches from "all categories of EXTRAS" (:5576) to the published map. Tests render a category-valued entry and an extra-key-valued entry in each form.
+
+**8.4 Live apply covers the newly migrated globals (P2).**
+- **Coverage:** `LIVE_MENU_GLOBALS` and the prepare / capture / commit / restore transaction (form apply) extend to `TAG_BADGES` + `TAG_PRIORITY` (La Musa), `EXTRAS_BY_CATEGORY` / `EXTRAS_BY_ITEM` (X. Pizza, which today lists only MENU / EXTRAS / gates / VARIANT_ITEMS, :2197) and the reward icons, which ride on `MENU` as a dish field. `liveMenuPrepare` validates each one with the bake's contract.
+- **Tests:**
+  - a later publish that changes badges, badge priority, an option map or a reward icon applies live without a reload;
+  - a malformed value refuses and rolls back to the last good menu (the existing recovery path);
+  - pre-apply, the baked values are shown.
+
 ## 7. Rollout order
 
 1. Functions deploy (§2 projection fields, §4 trigger and reconciler, still with no hooks configured).
-2. The owner publishes once, so the new structure fields are live, and sets Nutella's `extras_policy` to none.
+2. The owner runs (or approves) the §8.2 migration `--write`, publishes once, and the published fields are verified by a read-only check.
 3. Forms deploy: the bake and the boot changes, with the extended check.
 4. The owner creates the hooks on `main`, and `FORM_BUILD_HOOKS` is set.
 5. Verify: publish a harmless change, and within about 2 minutes the deployed bundle equals published. The reconciler stays quiet.
 
-## Open question for the owner
+## Owner rulings
 
-The reward-picker icons: (a) a catalog field (recommended), or (b) leave them as brand decoration outside the menu.
+Reward-picker icons: (a), a catalog dish field `reward_icon` (DECISIONS.md 2026-10-26).

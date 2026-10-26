@@ -1,6 +1,6 @@
 # Plan 5: Cart price-change notice (Amazon style), the owner-approved build target, every restaurant
 
-**Status:** PLAN r1. It answers Codex FULL r1 (3 P1, 2 P2), per the advisor's rulings of 2026-10-26 under the owner's simplicity rule: **narrow the scope to the common case, and keep TODAY's block for every rare one.**
+**Status:** PLAN r2. r2 folds in Codex scoped r2 (1 P1, 1 P2); r1 answered Codex FULL r1 (3 P1, 2 P2). It answers Codex FULL r1 (3 P1, 2 P2), per the advisor's rulings of 2026-10-26 under the owner's simplicity rule: **narrow the scope to the common case, and keep TODAY's block for every rare one.**
 - **Build target:** the owner-approved mockup v2, recorded in DECISIONS.md 2026-10-26. It is the exact build target.
 - **Delivery:** money-adjacent, so plan → Codex → build. Brand-agnostic: the rule lives in the shared, byte-identical `form-cart.js`, and each form only renders. No dependency on plan 4.
 
@@ -37,22 +37,26 @@ The forms call a new pure predicate, `priceNoticeEligibility()`. It reads; it ne
     - Under the simplicity ruling, ANY attached reward keeps today's block, so no reservation is ever re-priced under.
 - **Output:** `{ eligible: true, changes: [{ key, name, from: line.added.price, to: live.price }] }`, or `{ eligible: false }`. Ineligible means nothing happens and today's code path runs unchanged.
 
-## The atomic render → adopt boundary (P1-2)
+## The notice is part of the renderer; the adopt boundary is the FINAL render (P1-2, r2)
 
-Adoption happens ONLY at two explicit, visible render moments. It never happens in `liveMenuPaint`, `liveMenuCommit`, `chg`/`chgFromCart`, `restoreOrderForm`, a hidden or background summary refresh, `refuseConflictedSend`, `buildOrder` or `submitOrder`. The two moments:
-- **(A)** the cart sheet is rendered while open: `updateCartReviewBody`, with `#cart-review-sheet.open`;
-- **(B)** the checkout summary is rendered while the `s2` stage is active AND `#s2-summary` is visible (`getClientRects().length > 0`).
+**The notice and the struck price are RECONSTRUCTED from `CART.disclosed()` inside every render** of the cart sheet (`updateCartReviewBody`) and of the checkout summary (`renderStage2Summary`). They're a persistent part of those renderers, not a one-off insert. So a later re-render, a quantity change on another line, or a quote refresh redraws them, and nothing can erase a disclosure while its entry exists. Codex r2 P1: step 5 of r1 replaced `#cart-review-body`'s innerHTML and erased the inserted notice.
+- **Copy:** `textContent` only. Tokens `--cream`, `--border2`, `--charcoal`, radius 10, padding 12/14, 14 px, `role="status"`.
+- **Placement:** the cart sheet gets it at the top of `#cart-review-body`; the checkout gets it immediately above `#s2-summary`, inside its margins.
+- **Struck price:** the old UNIT price, stacked in the sheet and inline in the summary.
 
-At those moments, `discloseAndAdopt(target)` runs in this order:
+**Adoption happens ONLY at two explicit, visible moments.** Never in `liveMenuPaint`, `liveMenuCommit`, `chg`/`chgFromCart`, `restoreOrderForm`, a hidden or background summary refresh, `refuseConflictedSend`, `buildOrder` or `submitOrder`. The two moments:
+- **(A)** the cart sheet, AFTER `#cart-review-sheet` has `.open`. Codex r2 P2: today `openCartReview` renders before it adds `.open`, so disclosure is wired after the class is set, in `openCartReview` and in `chgFromCart` while the sheet is open;
+- **(B)** the checkout summary, while the `s2` stage is active AND `#s2-summary` is visible (`getClientRects().length > 0`).
+
+At those moments, `discloseAndAdopt(target)` runs as ONE synchronous block (no `await`, so no send can interleave):
 1. `e = priceNoticeEligibility()`. If not eligible, return. Today's path is untouched.
-2. **Render the notice first,** from `e.changes`, into the target: the top of `#cart-review-body`, or immediately above `#s2-summary` inside its margins. `textContent` only; tokens `--cream`, `--border2`, `--charcoal`; `role="status"`.
-3. **Confirm it rendered:** the target exists, no exception was thrown, and `notice.isConnected` with a non-empty text that contains every change's name. If any of that fails, remove any partial node and return without adopting. Today's block stays.
-4. **Adopt:** snapshot each line's captured record, then call `CART.accept(key, live)` for each change (form-cart.js:224, today unwired).
-   - If any `accept` returns false or throws, roll back every line to its snapshot via `accept(key, snapshot)`, remove the notice and return.
-   - Record `disclosed[key] = { name, from, to }`.
-5. Re-run the target's existing line and total rendering. The struck old unit price is drawn from `disclosed`.
-- **Invariant:** every adoption follows a confirmed, rendered notice whose `from` is the price captured immediately before that adoption.
-- **Return-to-original:** if the price later returns, that is simply a NEW change (`from` = the adopted price, `to` = the original). It gets its own rendered notice before adoption, so the invariant has no exception (P2-5).
+2. Snapshot each changing line's captured record, plus the current `disclosed` map.
+3. Tentatively adopt each change with `CART.accept(key, live)` (form-cart.js:224, today unwired) and record `disclosed[key] = { name, from, to }`. If any `accept` returns false or throws, go to rollback.
+4. **The FINAL render:** run the target's renderer, which draws lines, totals, the notice and the struck prices from the cart and `disclosed`.
+5. **Confirm the final render:** the target exists and the renderer threw nothing. The rendered notice `isConnected`, its text contains every change's name and both amounts, and each changed line shows its struck old price.
+6. **Rollback, on any failure in 3–5:** restore every line's snapshot via `accept(key, snapshot)`, restore the `disclosed` map, and render again. The lines are repriced and blocked once more, the notice is gone, and today's block stays at both send endpoints.
+- **Invariant:** every adoption that survives is accompanied by a confirmed final render showing its notice. Its `from` is the price captured immediately before the adoption.
+- **Return-to-original:** if the price later returns, that's a NEW change (`from` = the adopted price, `to` = the original), with the same boundary, so the invariant has no exception.
 
 ## The `disclosed` map: lifecycle (P2-4)
 
@@ -81,6 +85,10 @@ At those moments, `discloseAndAdopt(target)` runs in this order:
   - an uncaptured option;
   - a pending resume (`__resumeOrderId`, a live pin);
   - any attached reward.
+- **Persistent notice (r2):**
+  - after adoption, a later re-render of the sheet and of the summary, a quantity change on another line, and a quote refresh all still show the notice and the struck prices;
+  - removing the dish clears its entry, and its notice line disappears on the next render.
+- **Opening (r2):** opening a repriced cart with no other edit (pill → sheet) discloses, because disclosure runs after `.open`. The same cart with the sheet never opened and checkout never rendered adopts nothing.
 - **Atomic boundary, with failure injection:**
   - a missing target, the renderer throwing, the notice failing the confirm check, and `accept` throwing halfway (rollback);
   - in each case nothing is adopted, the notice is absent, and BOTH send endpoints (`createOrder` cash via `submitOrder`, `chargeOnlineOrder` card) refuse exactly as today;
