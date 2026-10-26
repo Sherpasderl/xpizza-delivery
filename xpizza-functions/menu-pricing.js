@@ -72,7 +72,7 @@ function weekendOnlyViolation(items, restaurantId, fulfillmentMs, weekendOnlyKey
 // the factura), so no tax rate is encoded here — this is purely the cart price source.
 const LA_MUSA_MENU = {
   // dim_sum
-  dimsum_01: 223, dimsum_02: 248, dimsum_03: 198, dimsum_04: 237, dimsum_05: 260,
+  dimsum_01: 249, dimsum_02: 248, dimsum_03: 286, dimsum_04: 288, dimsum_05: 260,
   // starters
   starter_01: 262, starter_02: 252, starter_03: 265, starter_04: 378, starter_05: 413, starter_06: 409,
   // house_specials (no special_03 in the menu)

@@ -41,7 +41,9 @@ process.on('exit', () => { try { rmSync(`${ROOT}${OLD_DIR}`, { recursive: true, 
 // per brand: two plain dishes, X before Y on the MENU, and an extra the form toggles on X by its own control
 const CASES = {
   'xpizza-orders': { X: 2, Y: 19, extra: (w) => w.toggleDetailExtra('e4', 2, 0) },
-  'la-musa-orders': { X: 'dimsum_01', Y: 'dimsum_03', extra: (w) => w.chgDetailExtra('rice_white', 'dimsum_01', 1) },
+  // dishes whose price is the SAME at OLD_SHA and today: the deploy-spanning case serves the old page its own baked menu while the
+  // server prices from today's tables, so a repriced dish makes the old page refuse its card build (correctly) and voids the premise
+  'la-musa-orders': { X: 'dimsum_02', Y: 'dimsum_05', extra: (w) => w.chgDetailExtra('rice_white', 'dimsum_02', 1) },
 };
 
 function respondWith(w, rid, menu, sent) {
@@ -227,7 +229,7 @@ for (const dir of Object.keys(CASES)) {
   // ── 4b. …with a REWARD pending: the resumed reward quote and the body serialize exactly the old page's payload ──
   {
     const REWARD = { 'xpizza-orders': { type: 'free_pizza_choice', item_id: 'Carnivora', name: 'Carnivora' },
-                     'la-musa-orders': { type: 'points_ala_carte', items: [{ id: 'dimsum_03', qty: 1, name: 'Wonton' }] } }[dir];
+                     'la-musa-orders': { type: 'points_ala_carte', items: [{ id: 'dimsum_05', qty: 1, name: 'Wonton' }] } }[dir];
     const old = await boot(dir, { old: true, account: true });
     await fill(old.w, c);
     old.w.__ACCOUNT.restoreRedeem(REWARD, null, null);

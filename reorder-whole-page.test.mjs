@@ -26,8 +26,8 @@ const ENTRY = {
 const BRANDS = [
   { dir: 'xpizza-orders', rid: 'x_pizza', marker: 'xpizza_acct', lines: [[2, 2], [19, 1]], total: 2 * 340 + 624 + 39, cards: [2, 19], noCard: [],
     extra: { id: 'e1', price: 39, on: 19, toggle: (w) => w.toggleDetailExtra('e1', 19, 0) }, other: { id: 3, price: 337 } },
-  { dir: 'la-musa-orders', rid: 'la_musa', marker: 'lamusa_acct', lines: [['dimsum_01', 2], ['noodle_01_pollo', 1]], total: 2 * 223 + 50 + 342, cards: ['dimsum_01'], noCard: ['noodle_01_pollo'],
-    extra: { id: 'rice_white', price: 50, on: 'dimsum_01', toggle: (w) => w.chgDetailExtra('rice_white', 'dimsum_01', 1) }, other: { id: 'dimsum_03', price: 198 } },
+  { dir: 'la-musa-orders', rid: 'la_musa', marker: 'lamusa_acct', lines: [['dimsum_01', 2], ['noodle_01_pollo', 1]], total: 2 * 249 + 50 + 342, cards: ['dimsum_01'], noCard: ['noodle_01_pollo'],
+    extra: { id: 'rice_white', price: 50, on: 'dimsum_01', toggle: (w) => w.chgDetailExtra('rice_white', 'dimsum_01', 1) }, other: { id: 'dimsum_03', price: 286 } },
 ];
 
 function fakeFirebase(rid) {

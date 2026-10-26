@@ -58,6 +58,9 @@ const EXTRA = (process.env.CORS_EXTRA_ENDPOINTS || '').split(',').filter(Boolean
     }
     ok(`${ep}: cors:true reflects every order origin incl. the synthetic third, X-Client-* headers allowed`);
   }
-  console.log(`cors-preflight: OK (${n})`);
+  // PLAN 2: the live menu keeps one warm instance — asserted on the REAL export's endpoint metadata.
+assert.strictEqual(app.getPublicMenu.__endpoint.minInstances, 1, 'getPublicMenu keeps one warm instance (minInstances: 1)');
+ok('getPublicMenu: minInstances 1 on the real export');
+console.log(`cors-preflight: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('cors-preflight FAILED:', e); process.exit(1); });

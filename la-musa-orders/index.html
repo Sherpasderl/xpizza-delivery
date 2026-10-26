@@ -633,6 +633,13 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .review-body{padding:0 16px 14px;border-top:1px solid var(--border)}
 /* A6: Stage-2 order summary — reuses the .review-item / .review-total machinery inside a card. */
 .order-summary-s2{margin:4px 16px 10px;border:1px solid var(--border);border-radius:14px;padding:6px 16px 12px;background:#fff}
+/* PLAN 5 — the cart price-change notice (owner-approved mockup v2): calm, the form's own tokens, never an error tone. */
+.price-change-notice{background:var(--cream);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;margin:0 0 12px;color:var(--charcoal);font-size:14px;line-height:1.45}
+.price-change-notice>div+div{margin-top:4px}
+.price-change-slot{margin:4px 16px 0}
+.price-change-slot .price-change-notice{margin:0 0 8px}
+.price-change-was{color:var(--muted);font-weight:400;font-size:.82em;margin-right:6px}
+.price-change-was--stacked{display:block;text-align:right;line-height:1.1;margin-right:0}
 .order-summary-s2:empty{display:none}
 .s2-summary-head{font-family:var(--display);font-size:16px;font-weight:700;color:var(--charcoal);padding:12px 0 4px}
 /* Redemption v2 order-summary (2c): Premio chip + savings + points sub-line (gold literals — brand-neutral) */
@@ -1544,6 +1551,7 @@ body.s5-active .header{display:none}
     <div id="acct-s2-summary"></div>
 
     <!-- A6: Stage-2 order summary (items + Envío + reward GRATIS line + SERVER discounted total) — filled by renderStage2Summary(); empty when the cart is empty. -->
+    <div class="price-change-slot" id="s2-price-notice" hidden></div>
     <div class="order-summary-s2" id="s2-summary"></div>
 
     <!-- REWARDS redeem affordance + review (B2 Task 4) — RELOCATED above "Forma de pago" (order summary → redeem row → pago); filled by window.__ACCOUNT.renderRedeem; server-authoritative discount, gated on redemption_live/canary. Mount id unchanged — renderRedeem/apply wiring untouched. --><div id="acct-redeem"></div>
@@ -1707,7 +1715,7 @@ body.s5-active .header{display:none}
 <script src="form-apply.js"></script>
 <script src="account.js"></script>
 <!-- FORM-MENU-BUNDLE:BEGIN -->
-<script id="form-menu-bundle">window.__FORM_MENU_BUNDLE__ = {"dishes":[{"id":"dimsum_01","cat":"dim_sum","name":"Sichuan Spicy Wonton","price":223,"desc":"Wonton de cerdo, aceite de chili, vinagre Chinkiang y soya","tags":["chefs_pick","most_ordered"],"color":"#A8814E","emoji":"🥟"},{"id":"dimsum_02","cat":"dim_sum","name":"Pork Belly Buns","price":248,"desc":"Bao al vapor, panceta braseada, hoisin, daikon encurtido","tags":["must_try"],"color":"#A8814E","emoji":"🥟"},{"id":"dimsum_03","cat":"dim_sum","name":"Shrimp Dumplings","price":198,"desc":"Dumplings al vapor, camaron, hongo shiitake, sésamo, soya con jengibre","tags":[],"color":"#A8814E","emoji":"🥟"},{"id":"dimsum_04","cat":"dim_sum","name":"Fried Wontons","price":237,"desc":"Wonton frito de cerdo, hongos shiitake, salsa sweet chili","tags":[],"color":"#A8814E","emoji":"🥟"},{"id":"dimsum_05","cat":"dim_sum","name":"Shrimp Tempura Buns","price":260,"desc":"Bao al vapor, tempura crocante, sriracha mayo","tags":[],"color":"#A8814E","emoji":"🥟"},{"id":"starter_01","cat":"starters","name":"Korean BBQ Wings","price":262,"desc":"Glaseadas con gochujang, sésamo, cebollín, kewpie","tags":["crowd_favourite"],"color":"#13100E","emoji":"🍢"},{"id":"starter_02","cat":"starters","name":"Chorizo Parrillero","price":252,"desc":"A la parrilla, mostaza dijon","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"starter_03","cat":"starters","name":"Costillitas Chinas","price":265,"desc":"Costillas de cerdo glaseadas, hoisin, cinco especias, sésamo","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"starter_04","cat":"starters","name":"Camaron Que Se Duerme","price":378,"desc":"A la parrilla, aji amarillo","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"starter_05","cat":"starters","name":"Camaron Asiatico","price":413,"desc":"Camarones salteados, frijol negro, ajo, chile","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"starter_06","cat":"starters","name":"Spicy Camaron Tempura","price":409,"desc":"Camarones tempura crocantes, mayo picante, cítricos","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"special_01","cat":"house_specials","name":"Cantonese Lobster Tail","price":588,"desc":"Langosta al wok, jengibre, cebollín, salsa de ostras, crispy garlic","tags":["signature_special"],"color":"#B61218","emoji":"✦"},{"id":"special_02","cat":"house_specials","name":"Tuna Tartare","price":478,"desc":"Atún yellowfin, aceite de sésamo, aguacate, jengibre, chips wonton","tags":["must_try"],"color":"#B61218","emoji":"✦"},{"id":"special_04","cat":"house_specials","name":"Asado de Tira","price":624,"desc":"Costilla corta braseada, adobo asiático, ají amarillo","tags":[],"color":"#B61218","emoji":"✦"},{"id":"special_05","cat":"house_specials","name":"Filete La Muse","price":384,"desc":"Filete sellado, mantequilla miso, jengibre encurtido, microverdes","tags":[],"color":"#B61218","emoji":"✦"},{"id":"crudo_01","cat":"crudo","name":"Tuna Crudo","price":452,"desc":"Atún laminado, leche de tigre, ají amarillo, microverdes","tags":["must_try"],"color":"#2D5447","emoji":"🐟"},{"id":"crudo_02","cat":"crudo","name":"Ceviche Peruano","price":346,"desc":"Pescado fresco, leche de tigre, cebolla morada, camote, choclo","tags":[],"color":"#2D5447","emoji":"🐟"},{"id":"crudo_03","cat":"crudo","name":"Ceviche de Camaron","price":337,"desc":"Camarones tigre, leche de tigre, ají amarillo, pepino","tags":[],"color":"#2D5447","emoji":"🐟"},{"id":"noodle_01","cat":"noodles","name":"Pad Thai","price":414,"desc":"Fideos wok, tamarindo, maní, brotes, huevo","tags":["most_ordered"],"color":"#8A7B6B","emoji":"🍜"},{"id":"noodle_01_sin","cat":"noodles","name":"Pad Thai - Sin Proteína","price":307,"color":"#8A7B6B","emoji":"🍜","variantOf":"noodle_01","choice":"Sin Proteína"},{"id":"noodle_01_pollo","cat":"noodles","name":"Pad Thai - Pollo","price":342,"color":"#8A7B6B","emoji":"🍜","variantOf":"noodle_01","choice":"Pollo"},{"id":"noodle_01_camaron","cat":"noodles","name":"Pad Thai - Camarones","price":414,"color":"#8A7B6B","emoji":"🍜","variantOf":"noodle_01","choice":"Camarones"},{"id":"noodle_02","cat":"noodles","name":"Broccoli Beef","price":492,"desc":"Res tierna, brócoli, salsa de ostras y jengibre","tags":[],"color":"#8A7B6B","emoji":"🍜"},{"id":"noodle_03","cat":"noodles","name":"Hunan Chicken","price":340,"desc":"Pollo salteado, chiles secos, frijol negro, bok choy","tags":[],"color":"#8A7B6B","emoji":"🍜"},{"id":"rice_01","cat":"rice","name":"General Tso Chicken","price":270,"desc":"Pollo crocante al wok, salsa Tso dulce-picante, sésamo, arroz jazmín","tags":["most_ordered"],"color":"#A8814E","emoji":"🍚"},{"id":"rice_02","cat":"rice","name":"Mongolian Beef","price":456,"desc":"Res al wok, hoisin, jengibre, cebollín, arroz","tags":[],"color":"#A8814E","emoji":"🍚"},{"id":"rice_03","cat":"rice","name":"Chicken Fried Rice","price":448,"desc":"Arroz jazmín al wok, huevo, vegetales, salsa de ostras","tags":[],"color":"#A8814E","emoji":"🍚"},{"id":"rice_04","cat":"rice","name":"Broccoli Chicken","price":392,"desc":"lascas de pollo, brócoli salteado, salsa de ostras preparada","tags":[],"color":"#A8814E","emoji":"🍚"},{"id":"rice_05","cat":"rice","name":"Lap Cheong","price":292,"desc":"longaniza china, arroz blanco, arvejas chinas salteadas","tags":[],"color":"#A8814E","emoji":"🍚"},{"id":"soup_01","cat":"soups_salads","name":"Cantonese Noodle Soup","price":255,"desc":"Caldo de huesos, fideos de huevo, char siu, bok choy","tags":[],"color":"#2D5447","emoji":"🥣"},{"id":"soup_02","cat":"soups_salads","name":"Wonton Soup","price":288,"desc":"Wonton de cerdo y camarón, caldo de la casa, jengibre, cebollín","tags":[],"color":"#2D5447","emoji":"🥣"},{"id":"soup_03","cat":"soups_salads","name":"Sunomono Salad","price":192,"desc":"Pepino japonés, wakame, sésamo, vinagre de arroz","tags":[],"color":"#2D5447","emoji":"🥣"},{"id":"beer_01","cat":"bebidas","name":"Corona","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_02","cat":"bebidas","name":"Miller Draft","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_03","cat":"bebidas","name":"Miller Lite","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_04","cat":"bebidas","name":"Toña","price":98,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_05","cat":"bebidas","name":"Michelob Ultra","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_06","cat":"bebidas","name":"Coors Light","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_07","cat":"bebidas","name":"Salvavida","price":81,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_08","cat":"bebidas","name":"Imperial","price":81,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"soft_01","cat":"bebidas","name":"Coca Cola","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas"},{"id":"soft_02","cat":"bebidas","name":"Coca Cola Zero","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas"},{"id":"soft_03","cat":"bebidas","name":"Sprite","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas"},{"id":"soft_04","cat":"bebidas","name":"Agua","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas"}],"extras":[{"id":"rice_white","cat":"Acompañamientos","name":"Arroz Blanco","price":50},{"id":"rice_chinese","cat":"Acompañamientos","name":"Arroz Chino","price":85},{"id":"papas_fritas","cat":"Acompañamientos","name":"Papas Fritas","price":75},{"id":"sauce_chili_oil","cat":"Salsas","name":"Aceite Hot Chili","price":30},{"id":"sauce_aioli","cat":"Salsas","name":"Salsa Aioli","price":30},{"id":"sauce_chipotle","cat":"Salsas","name":"Salsa Chipotle","price":30},{"id":"sauce_dumpling","cat":"Salsas","name":"Salsa Dumplings","price":30},{"id":"sauce_wonton","cat":"Salsas","name":"Salsa Wontons","price":30},{"id":"sauce_pad_thai","cat":"Salsas","name":"Salsa Pad Thai","price":30},{"id":"sauce_spicy_mayo","cat":"Salsas","name":"Salsa Spicy Mayo","price":30},{"id":"sauce_tuna_tartar","cat":"Salsas","name":"Salsa Tuna Tartar","price":30},{"id":"protein_chicken","cat":"Proteínas","name":"Extra Pollo","price":65},{"id":"protein_beef","cat":"Proteínas","name":"Extra Filete Res","price":155},{"id":"protein_shrimp","cat":"Proteínas","name":"Extra Camaron","price":135}],"categories":[{"id":"dim_sum","name":"Dim Sum"},{"id":"starters","name":"Starters"},{"id":"house_specials","name":"House Specials"},{"id":"crudo","name":"Crudo"},{"id":"noodles","name":"Noodles"},{"id":"rice","name":"Rice"},{"id":"soups_salads","name":"Soups & Salads"},{"id":"bebidas","name":"Bebidas","subcats":["Sodas","Cervezas"],"layout":"list"}],"variant_items":{"noodle_01":{"label":"Proteína","basePrice":307,"variantIds":["noodle_01_sin","noodle_01_pollo","noodle_01_camaron"]}},"has_photo":["crudo_01","crudo_02","crudo_03","dimsum_01","dimsum_02","dimsum_03","dimsum_04","dimsum_05","noodle_01","noodle_02","noodle_03","rice_01","rice_02","rice_03","rice_04","rice_05","soup_01","soup_03","special_01","special_02","special_04","special_05","starter_01","starter_02","starter_03","starter_04","starter_05","starter_06"]};</script>
+<script id="form-menu-bundle">window.__FORM_MENU_BUNDLE__ = {"dishes":[{"id":"dimsum_01","cat":"dim_sum","name":"Sichuan Spicy Wonton","price":249,"desc":"Wonton de cerdo, aceite de chili, vinagre Chinkiang y soya","tags":["chefs_pick","most_ordered"],"color":"#A8814E","emoji":"🥟"},{"id":"dimsum_02","cat":"dim_sum","name":"Pork Belly Buns","price":248,"desc":"Bao al vapor, panceta braseada, hoisin, daikon encurtido","tags":["must_try"],"color":"#A8814E","emoji":"🥟"},{"id":"dimsum_03","cat":"dim_sum","name":"Shrimp Dumplings","price":286,"desc":"Dumplings al vapor, camaron, hongo shiitake, sésamo, soya con jengibre","tags":[],"color":"#A8814E","emoji":"🥟"},{"id":"dimsum_04","cat":"dim_sum","name":"Fried Wontons","price":288,"desc":"Wonton frito de cerdo, hongos shiitake, salsa sweet chili","tags":[],"color":"#A8814E","emoji":"🥟"},{"id":"dimsum_05","cat":"dim_sum","name":"Shrimp Tempura Buns","price":260,"desc":"Bao al vapor, tempura crocante, sriracha mayo","tags":[],"color":"#A8814E","emoji":"🥟"},{"id":"starter_01","cat":"starters","name":"Korean BBQ Wings","price":262,"desc":"Glaseadas con gochujang, sésamo, cebollín, kewpie","tags":["crowd_favourite"],"color":"#13100E","emoji":"🍢"},{"id":"starter_02","cat":"starters","name":"Chorizo Parrillero","price":252,"desc":"A la parrilla, mostaza dijon","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"starter_03","cat":"starters","name":"Costillitas Chinas","price":265,"desc":"Costillas de cerdo glaseadas, hoisin, cinco especias, sésamo","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"starter_04","cat":"starters","name":"Camaron Que Se Duerme","price":378,"desc":"A la parrilla, aji amarillo","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"starter_05","cat":"starters","name":"Camaron Asiatico","price":413,"desc":"Camarones salteados, frijol negro, ajo, chile","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"starter_06","cat":"starters","name":"Spicy Camaron Tempura","price":409,"desc":"Camarones tempura crocantes, mayo picante, cítricos","tags":[],"color":"#13100E","emoji":"🍢"},{"id":"special_01","cat":"house_specials","name":"Cantonese Lobster Tail","price":588,"desc":"Langosta al wok, jengibre, cebollín, salsa de ostras, crispy garlic","tags":["signature_special"],"color":"#B61218","emoji":"✦"},{"id":"special_02","cat":"house_specials","name":"Tuna Tartare","price":478,"desc":"Atún yellowfin, aceite de sésamo, aguacate, jengibre, chips wonton","tags":["must_try"],"color":"#B61218","emoji":"✦"},{"id":"special_04","cat":"house_specials","name":"Asado de Tira","price":624,"desc":"Costilla corta braseada, adobo asiático, ají amarillo","tags":[],"color":"#B61218","emoji":"✦"},{"id":"special_05","cat":"house_specials","name":"Filete La Muse","price":384,"desc":"Filete sellado, mantequilla miso, jengibre encurtido, microverdes","tags":[],"color":"#B61218","emoji":"✦"},{"id":"crudo_01","cat":"crudo","name":"Tuna Crudo","price":452,"desc":"Atún laminado, leche de tigre, ají amarillo, microverdes","tags":["must_try"],"color":"#2D5447","emoji":"🐟"},{"id":"crudo_02","cat":"crudo","name":"Ceviche Peruano","price":346,"desc":"Pescado fresco, leche de tigre, cebolla morada, camote, choclo","tags":[],"color":"#2D5447","emoji":"🐟"},{"id":"crudo_03","cat":"crudo","name":"Ceviche de Camaron","price":337,"desc":"Camarones tigre, leche de tigre, ají amarillo, pepino","tags":[],"color":"#2D5447","emoji":"🐟"},{"id":"noodle_01","cat":"noodles","name":"Pad Thai","price":414,"desc":"Fideos wok, tamarindo, maní, brotes, huevo","tags":["most_ordered"],"color":"#8A7B6B","emoji":"🍜"},{"id":"noodle_01_sin","cat":"noodles","name":"Pad Thai - Sin Proteína","price":307,"color":"#8A7B6B","emoji":"🍜","variantOf":"noodle_01","choice":"Sin Proteína"},{"id":"noodle_01_pollo","cat":"noodles","name":"Pad Thai - Pollo","price":342,"color":"#8A7B6B","emoji":"🍜","variantOf":"noodle_01","choice":"Pollo"},{"id":"noodle_01_camaron","cat":"noodles","name":"Pad Thai - Camarones","price":414,"color":"#8A7B6B","emoji":"🍜","variantOf":"noodle_01","choice":"Camarones"},{"id":"noodle_02","cat":"noodles","name":"Broccoli Beef","price":492,"desc":"Res tierna, brócoli, salsa de ostras y jengibre","tags":[],"color":"#8A7B6B","emoji":"🍜"},{"id":"noodle_03","cat":"noodles","name":"Hunan Chicken","price":340,"desc":"Pollo salteado, chiles secos, frijol negro, bok choy","tags":[],"color":"#8A7B6B","emoji":"🍜"},{"id":"rice_01","cat":"rice","name":"General Tso Chicken","price":270,"desc":"Pollo crocante al wok, salsa Tso dulce-picante, sésamo, arroz jazmín","tags":["most_ordered"],"color":"#A8814E","emoji":"🍚"},{"id":"rice_02","cat":"rice","name":"Mongolian Beef","price":456,"desc":"Res al wok, hoisin, jengibre, cebollín, arroz","tags":[],"color":"#A8814E","emoji":"🍚"},{"id":"rice_03","cat":"rice","name":"Chicken Fried Rice","price":448,"desc":"Arroz jazmín al wok, huevo, vegetales, salsa de ostras","tags":[],"color":"#A8814E","emoji":"🍚"},{"id":"rice_04","cat":"rice","name":"Broccoli Chicken","price":392,"desc":"lascas de pollo, brócoli salteado, salsa de ostras preparada","tags":[],"color":"#A8814E","emoji":"🍚"},{"id":"rice_05","cat":"rice","name":"Lap Cheong","price":292,"desc":"longaniza china, arroz blanco, arvejas chinas salteadas","tags":[],"color":"#A8814E","emoji":"🍚"},{"id":"soup_01","cat":"soups_salads","name":"Cantonese Noodle Soup","price":255,"desc":"Caldo de huesos, fideos de huevo, char siu, bok choy","tags":[],"color":"#2D5447","emoji":"🥣"},{"id":"soup_02","cat":"soups_salads","name":"Wonton Soup","price":288,"desc":"Wonton de cerdo y camarón, caldo de la casa, jengibre, cebollín","tags":[],"color":"#2D5447","emoji":"🥣"},{"id":"soup_03","cat":"soups_salads","name":"Sunomono Salad","price":192,"desc":"Pepino japonés, wakame, sésamo, vinagre de arroz","tags":[],"color":"#2D5447","emoji":"🥣"},{"id":"beer_01","cat":"bebidas","name":"Corona","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_02","cat":"bebidas","name":"Miller Draft","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_03","cat":"bebidas","name":"Miller Lite","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_04","cat":"bebidas","name":"Toña","price":98,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_05","cat":"bebidas","name":"Michelob Ultra","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_06","cat":"bebidas","name":"Coors Light","price":102,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_07","cat":"bebidas","name":"Salvavida","price":81,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"beer_08","cat":"bebidas","name":"Imperial","price":81,"desc":"","tags":[],"color":"#13100E","emoji":"🍺","subcat":"Cervezas"},{"id":"soft_01","cat":"bebidas","name":"Coca Cola","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas"},{"id":"soft_02","cat":"bebidas","name":"Coca Cola Zero","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas"},{"id":"soft_03","cat":"bebidas","name":"Sprite","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas"},{"id":"soft_04","cat":"bebidas","name":"Agua","price":40,"desc":"","tags":[],"color":"#8A7B6B","emoji":"🥤","subcat":"Sodas"}],"extras":[{"id":"rice_white","cat":"Acompañamientos","name":"Arroz Blanco","price":50},{"id":"rice_chinese","cat":"Acompañamientos","name":"Arroz Chino","price":85},{"id":"papas_fritas","cat":"Acompañamientos","name":"Papas Fritas","price":75},{"id":"sauce_chili_oil","cat":"Salsas","name":"Aceite Hot Chili","price":30},{"id":"sauce_aioli","cat":"Salsas","name":"Salsa Aioli","price":30},{"id":"sauce_chipotle","cat":"Salsas","name":"Salsa Chipotle","price":30},{"id":"sauce_dumpling","cat":"Salsas","name":"Salsa Dumplings","price":30},{"id":"sauce_wonton","cat":"Salsas","name":"Salsa Wontons","price":30},{"id":"sauce_pad_thai","cat":"Salsas","name":"Salsa Pad Thai","price":30},{"id":"sauce_spicy_mayo","cat":"Salsas","name":"Salsa Spicy Mayo","price":30},{"id":"sauce_tuna_tartar","cat":"Salsas","name":"Salsa Tuna Tartar","price":30},{"id":"protein_chicken","cat":"Proteínas","name":"Extra Pollo","price":65},{"id":"protein_beef","cat":"Proteínas","name":"Extra Filete Res","price":155},{"id":"protein_shrimp","cat":"Proteínas","name":"Extra Camaron","price":135}],"categories":[{"id":"dim_sum","name":"Dim Sum"},{"id":"starters","name":"Starters"},{"id":"house_specials","name":"House Specials"},{"id":"crudo","name":"Crudo"},{"id":"noodles","name":"Noodles"},{"id":"rice","name":"Rice"},{"id":"soups_salads","name":"Soups & Salads"},{"id":"bebidas","name":"Bebidas","subcats":["Sodas","Cervezas"],"layout":"list"}],"variant_items":{"noodle_01":{"label":"Proteína","basePrice":307,"variantIds":["noodle_01_sin","noodle_01_pollo","noodle_01_camaron"]}},"has_photo":["crudo_01","crudo_02","crudo_03","dimsum_01","dimsum_02","dimsum_03","dimsum_04","dimsum_05","noodle_01","noodle_02","noodle_03","rice_01","rice_02","rice_03","rice_04","rice_05","soup_01","soup_03","special_01","special_02","special_04","special_05","starter_01","starter_02","starter_03","starter_04","starter_05","starter_06"]};</script>
 <!-- FORM-MENU-BUNDLE:END -->
 <script>
 /* ── Category tab switching ── */
@@ -1837,10 +1845,10 @@ const FALLBACK_MENU = [
   // string slugs (dim_sum_01 etc) so they survive POS sync. Tags
   // drive chunk-2 badge rendering. emoji+color are per-category
   // fallbacks used until real photography exists.
-  { id:"dimsum_01", cat:"dim_sum", name:"Sichuan Spicy Wonton", price:223, desc:"Wonton de cerdo, aceite de chili, vinagre Chinkiang y soya", tags:["chefs_pick","most_ordered"], color:"#A8814E", emoji:"🥟" },
+  { id:"dimsum_01", cat:"dim_sum", name:"Sichuan Spicy Wonton", price:249, desc:"Wonton de cerdo, aceite de chili, vinagre Chinkiang y soya", tags:["chefs_pick","most_ordered"], color:"#A8814E", emoji:"🥟" },
   { id:"dimsum_02", cat:"dim_sum", name:"Pork Belly Buns", price:248, desc:"Bao al vapor, panceta braseada, hoisin, daikon encurtido", tags:["must_try"], color:"#A8814E", emoji:"🥟" },
-  { id:"dimsum_03", cat:"dim_sum", name:"Shrimp Dumplings", price:198, desc:"Dumplings al vapor, camaron, hongo shiitake, sésamo, soya con jengibre", tags:[], color:"#A8814E", emoji:"🥟" },
-  { id:"dimsum_04", cat:"dim_sum", name:"Fried Wontons", price:237, desc:"Wonton frito de cerdo, hongos shiitake, salsa sweet chili", tags:[], color:"#A8814E", emoji:"🥟" },
+  { id:"dimsum_03", cat:"dim_sum", name:"Shrimp Dumplings", price:286, desc:"Dumplings al vapor, camaron, hongo shiitake, sésamo, soya con jengibre", tags:[], color:"#A8814E", emoji:"🥟" },
+  { id:"dimsum_04", cat:"dim_sum", name:"Fried Wontons", price:288, desc:"Wonton frito de cerdo, hongos shiitake, salsa sweet chili", tags:[], color:"#A8814E", emoji:"🥟" },
   { id:"dimsum_05", cat:"dim_sum", name:"Shrimp Tempura Buns", price:260, desc:"Bao al vapor, tempura crocante, sriracha mayo", tags:[], color:"#A8814E", emoji:"🥟" },
   { id:"starter_01", cat:"starters", name:"Korean BBQ Wings", price:262, desc:"Glaseadas con gochujang, sésamo, cebollín, kewpie", tags:["crowd_favourite"], color:"#13100E", emoji:"🍢" },
   { id:"starter_02", cat:"starters", name:"Chorizo Parrillero", price:252, desc:"A la parrilla, mostaza dijon", tags:[], color:"#13100E", emoji:"🍢" },
@@ -2481,6 +2489,103 @@ function refuseConflictedSend(where){
   return true;
 }
 function cartConflicts(){ return cartLines().filter(l => l.blocked); }
+/* ── PLAN 5 — THE CART PRICE-CHANGE NOTICE (owner-approved mockup v2, DECISIONS 2026-10-26) ──────────────────
+   When EVERY blocked line is only a dish whose price changed, the cart ADOPTS the live prices and DISCLOSES them
+   — never silently. Adoption happens only at two VISIBLE render moments (the cart sheet once it is open; the pay
+   step as it is entered), as one synchronous block: adopt → render → confirm the FINAL render shows every change
+   → otherwise roll back to today's block. Never at the send, never in the background. Every other conflict
+   (options, availability, choice, a resumed payment, a reward) keeps today's block: form-cart.js decides.
+   The notice and the struck price are rebuilt from CART.disclosed() on EVERY render of the sheet and the pay-step
+   summary, so a later re-render cannot erase a disclosure while its line is in the cart. */
+function priceNoticeChanges(){
+  let ctx = true;
+  try { ctx = !!window.__resumeOrderId || serialPinLive() || !!(window.__ACCOUNT && typeof window.__ACCOUNT.getRedeemPayload === 'function' && window.__ACCOUNT.getRedeemPayload()); } catch (_) { ctx = true; }
+  return CART.priceNoticeChanges(cartLines(), {
+    blockedByContext: ctx,
+    isUnavailable: (rec) => { try { return !!isSoldOut(rec); } catch (_) { return true; } },
+    isLauncher: (l) => { try { return GroupPicker.isLauncher(l.live, VARIANT_ITEMS); } catch (_) { return true; } },
+  });
+}
+function priceNoticeText(e){ return 'Cambió el precio de ' + e.name + ': antes L ' + Number(e.from).toFixed(0) + ', ahora L ' + Number(e.to).toFixed(0) + '.'; }
+function priceNoticeHtml(){
+  const d = CART.disclosed();
+  return d.length ? '<div class="price-change-notice" role="status">' + d.map(e => '<div>' + safeText(priceNoticeText(e)) + '</div>').join('') + '</div>' : '';
+}
+// The struck price beside a changed line's subtotal: the OLD subtotal at the same quantity and options.
+function priceWasHtml(id, subtotal, n, stacked){
+  const e = CART.disclosed().find(x => x.key === String(id));
+  if (!e) return '';
+  const was = Number(subtotal) - (Number(e.to) - Number(e.from)) * Number(n);
+  return '<s class="price-change-was' + (stacked ? ' price-change-was--stacked' : '') + '" data-was="' + safeText(e.key) + '">L ' + was.toFixed(0) + '</s>';
+}
+// SHOWN = laid out (getClientRects) AND not hidden by any ancestor (the [hidden] attribute, display:none, visibility:
+// hidden/collapse). jsdom has no layout: the tests shim getClientRects in their OWN window; this check is not weakened.
+function priceNoticeShown(el){
+  if (!el || !el.isConnected) return false;
+  try { if (!el.getClientRects().length) return false; } catch (_) { return false; }
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    if (n.hidden) return false;
+    try { const cs = getComputedStyle(n); if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return false; } catch (_) { return false; }
+  }
+  return true;
+}
+// The FINAL render shows the disclosure: the notice carries every change's exact sentence, and every changed line strikes
+// the OLD subtotal it should — re-derived from what the line now DISPLAYS (new subtotal − (to − from) × qty), visibly.
+function priceNoticeShows(noticeBox, linesBox, changes){
+  if (!noticeBox || !linesBox) return false;
+  const n = noticeBox.querySelector('.price-change-notice');
+  if (!priceNoticeShown(n)) return false;
+  const txt = n.textContent || '';
+  for (const c of changes) {
+    if (!txt.includes(priceNoticeText(c))) return false;
+    const struck = [...linesBox.querySelectorAll('s.price-change-was')].filter((x) => x.getAttribute('data-was') === String(c.key));
+    if (!struck.length) return false;
+    for (const s of struck) {
+      if (!priceNoticeShown(s) || !s.parentElement) return false;
+      const shownNew = Number(String(s.parentElement.textContent || '').replace(s.textContent || '', '').replace(/[^0-9.]/g, ''));
+      const want = shownNew - (Number(c.to) - Number(c.from)) * CART.qtyOf(String(c.key));
+      if (!Number.isFinite(shownNew) || s.textContent !== 'L ' + want.toFixed(0)) return false;
+    }
+  }
+  return true;
+}
+// The payment widgets show the ADOPTED total (codex r1 P1): the PixelPay amount when card is chosen; the cash box when on
+// "Pago exacto". A custom cash tender is the customer's own figure and is never rewritten (updateTotal re-validates it).
+function priceNoticePayShows(){
+  const want = redeemAdjustedTotal();
+  if (selectedPayment === 'online') { const pa = document.getElementById('pixelpay-amount'); return !pa || pa.textContent === 'L ' + want.toFixed(2); }
+  if (selectedPayment === 'cash' && cashExactMode) { const t = document.getElementById('cash-tendered'); return !t || Math.abs(Number(t.value) - want) < 0.005; }
+  return true;
+}
+function priceNoticeMoment(target){
+  if (target === 's2') { const sb = document.getElementById('s2-summary'); if (activeStageId() !== 's2' || !priceNoticeShown(sb)) return false; }
+  if (target === 'cart') { const sh = document.getElementById('cart-review-sheet'); if (!sh || !sh.classList.contains('open')) return false; }
+  const changes = priceNoticeChanges();
+  if (!changes) return false;
+  // The customer's cash tender and its exact/custom mode, as they stand BEFORE the attempt (codex r2): a redraw at the
+  // temporary total can flip the mode (a custom tender that happens to equal the new total reads as exact), and the
+  // rollback redraw would then rewrite the tender to the OLD total. Both are restored exactly after a rollback.
+  const tenderEl = document.getElementById('cash-tendered');
+  const savedTender = tenderEl ? tenderEl.value : null, savedExact = cashExactMode;
+  const rollback = CART.adoptPrices(changes);
+  if (!rollback) return false;
+  let ok = false;
+  try {
+    // EVERY redraw happens HERE, before the one confirmation — the form's own after-edit redraw: totals, pill, the open
+    // sheet, the payment widgets (custom tender preserved), the redeem UI and the pay-step summary. Nothing redraws after.
+    updateTotal();
+    if (target === 'cart') { const b = document.getElementById('cart-review-body'); ok = priceNoticeShows(b, b, changes); }
+    else ok = priceNoticeShows(document.getElementById('s2-price-notice'), document.getElementById('s2-summary'), changes);
+    ok = ok && priceNoticePayShows();
+  } catch (_) { ok = false; }
+  if (!ok) {
+    rollback();
+    try { updateTotal(); } catch (_) {}
+    if (tenderEl) { tenderEl.value = savedTender; try { onCashTenderedInput(); } catch (_) {} }
+    cashExactMode = savedExact;
+  }
+  return ok;
+}
 function announceCartConflicts(conflicts){
   const names = conflicts.map(l => (l.record && l.record.name) || l.key);
   console.warn('cart_conflict_blocked_submit', JSON.stringify({
@@ -3864,6 +3969,7 @@ function renderStage2Summary(){
     if(__confirmQuote && _onPay) __confirmQuote.scheduleRefresh();
   }catch(_){}
   const box=document.getElementById('s2-summary'); if(!box) return;
+  { const pn=document.getElementById('s2-price-notice'); if(pn){ const h=priceNoticeHtml(); pn.innerHTML=h; pn.hidden=!h; } }   // PLAN 5: rebuilt on every render
   const items=cartItems();
   if(!items.length){ box.innerHTML=''; return; }
   const rows=items.map(p=>{
@@ -3871,7 +3977,7 @@ function renderStage2Summary(){
     const extrasArr=Object.entries(extras).filter(([,q])=>q>0).map(([eid,q])=>{ const ex=EXTRAS.find(e=>e.id===eid); return ex?(q>1?q+'x ':'')+ex.name:null; }).filter(Boolean);
     const extrasTotal=Object.entries(extras).reduce((s,[eid,q])=>{ const ex=EXTRAS.find(e=>e.id===eid); return s+(ex?ex.price*q:0); },0);
     const subtotal=p.price*qty[p.id]+extrasTotal;
-    return '<div class="review-item"><div class="review-item-left"><div class="review-item-name">'+qty[p.id]+'x '+escapeHtml(p.name)+'</div>'+(extrasArr.length?'<div class="review-item-extras">+ '+escapeHtml(extrasArr.join(', '))+'</div>':'')+'</div><div class="review-item-price">L '+subtotal.toFixed(0)+'</div></div>';
+    return '<div class="review-item"><div class="review-item-left"><div class="review-item-name">'+qty[p.id]+'x '+escapeHtml(p.name)+'</div>'+(extrasArr.length?'<div class="review-item-extras">+ '+escapeHtml(extrasArr.join(', '))+'</div>':'')+'</div><div class="review-item-price">'+priceWasHtml(p.id, subtotal, qty[p.id], false)+'L '+subtotal.toFixed(0)+'</div></div>';
   }).join('');
   const envio = orderType==='delivery' ? '<div class="review-item"><div class="review-item-left"><div class="review-item-name" style="color:var(--green)">Envío</div></div><div class="review-item-price" style="color:var(--green)">Gratis</div></div>' : '';
   let reward='';
@@ -3908,6 +4014,7 @@ function openCartReview(){
   updateCartReviewBody();
   document.getElementById('cart-overlay').classList.add('open');
   document.getElementById('cart-review-sheet').classList.add('open');
+  priceNoticeMoment('cart');   // PLAN 5: disclose AFTER the sheet is open (it is the visible moment)
   document.body.style.overflow = 'hidden';
 }
 
@@ -3915,6 +4022,7 @@ function chgFromCart(id, d){
   chg(id, d);
   // If item removed completely, refresh the whole body
   updateCartReviewBody();
+  priceNoticeMoment('cart');   // PLAN 5: a removal can make a mixed cart eligible
   // Update the total display
   const totalEl=document.getElementById('cart-review-total');
   if(totalEl) totalEl.textContent='L '+calcTotal().toFixed(0);
@@ -3962,7 +4070,7 @@ function updateCartReviewBody(){
     body.innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Agrega items para ver tus pedidos aquí.</div>';
     return;
   }
-  body.innerHTML=items.map(p=>{
+  body.innerHTML=priceNoticeHtml()+items.map(p=>{   // PLAN 5: the notice is rebuilt on every render
     const itemExtras = pizzaExtras[p.id] || {};
     const extraNames = Object.entries(itemExtras).filter(([,q]) => q > 0)
       .map(([eid,q]) => {
@@ -3992,7 +4100,7 @@ function updateCartReviewBody(){
       +'<span class="cart-qty-num">'+safeText(qty[p.id])+'</span>'
       +'<button class="cart-qty-btn" data-act="review-inc" data-id="'+safeText(p.id)+'">+</button>'
       +'</div>'
-      +'<div class="cart-review-item-price">L '+subtotal.toFixed(0)+'</div>'
+      +'<div class="cart-review-item-price">'+priceWasHtml(p.id, subtotal, qty[p.id], true)+'L '+subtotal.toFixed(0)+'</div>'
       +'</div>'
       +'</div>';
   }).join('');
@@ -4037,7 +4145,8 @@ function _showStageSwap(id,pct,_t){
   // pill never covers the pay buttons.
   const cartBar=document.getElementById('cart-bar');
   if(cartBar) cartBar.style.display=(id==='s1'||id==='s2')?'flex':'none';
-  if(id==='s2'){ try{ renderStage2Summary(); }catch(_){} }   // A6: render the order summary on entering the pay step
+  if(id==='s2'){ try{ renderStage2Summary(); }catch(_){} try{ priceNoticeMoment('s2'); }catch(_){} }
+  if(id==='s5'){ try{ CART.clearDisclosed(); }catch(_){} }   // PLAN 5 (codex r1 P3): the disclosure ends with the order   // A6: render the order summary on entering the pay step
 }
 
 // Collapse the pinned account chip to just the avatar circle once scrolled past the hero on paso 1

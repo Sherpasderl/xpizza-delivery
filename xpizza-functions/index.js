@@ -7050,7 +7050,7 @@ const sendJson = (res, status, payload) => {
 };
 
 exports.getPublicMenu = onRequest(
-  { region: 'us-central1', cors: PUBLIC_MENU_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 20 },
+  { region: 'us-central1', cors: PUBLIC_MENU_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 20, minInstances: 1 },   // PLAN 2: one warm instance — the live menu must not wait on a cold start
   async (req, res) => {
     // Two headers on EVERY response, including the failures: a cache that varies by origin must be
     // told so even when the answer is an error, and a browser cannot read the validator it is

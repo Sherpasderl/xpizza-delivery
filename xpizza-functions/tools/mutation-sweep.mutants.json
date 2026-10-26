@@ -19691,6 +19691,351 @@
   ]
  },
  {
+  "id": "formcheck-01",
+  "slice": "formcheck",
+  "label": "identity keys the forms accept-and-ignore are compared, so every published menu reads as drifted",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "const strip = (r) => Object.fromEntries(Object.entries(r || {}).filter(([k]) => !IDENTITY_KEYS.has(k)));",
+  "to": "const strip = (r) => Object.fromEntries(Object.entries(r || {}));",
+  "kills_with": [
+   "identical menus (+ identity keys) pass clean"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
+ },
+ {
+  "id": "formcheck-02",
+  "slice": "formcheck",
+  "label": "a baked dish the brand no longer publishes passes the check",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "if (!live.has(k)) { out.fail.push(`${label} ${k}: baked but absent from the published menu`); continue; }",
+  "to": "if (!live.has(k)) continue;",
+  "kills_with": [
+   "a baked dish missing from the published menu fails"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
+ },
+ {
+  "id": "formcheck-03",
+  "slice": "formcheck",
+  "label": "a published-only addition fails the deploy instead of warning",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "for (const [k, l] of live) if (!baked.has(k)) out.warn.push(",
+  "to": "for (const [k, l] of live) if (!baked.has(k)) out.fail.push(",
+  "kills_with": [
+   "a published-only dish does NOT fail"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
+ },
+ {
+  "id": "formcheck-04",
+  "slice": "formcheck",
+  "label": "a repriced dish passes the check (the la_musa incident)",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "if (!same(bb[f], l[f])) out.fail.push(",
+  "to": "if (false) out.fail.push(",
+  "kills_with": [
+   "a repriced dish fails"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
+ },
+ {
+  "id": "formcheck-05",
+  "slice": "formcheck",
+  "label": "a form folder carrying a baked menu but missing from the registry is not reported",
+  "file": "tools/form-bundle-live-check.js",
+  "from": " && !registered.has(p.replace(/\\\\/g, '/')));",
+  "to": ");",
+  "kills_with": [
+   "every form that carries a baked menu is in the splice registry"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
+ },
+ {
+  "id": "formcheck-06",
+  "slice": "formcheck",
+  "label": "--this-form is ignored, so one brand's drift fails every brand's Netlify build",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "  if (!argv.includes('--this-form')) return Object.entries(forms);\n",
+  "to": "  return Object.entries(forms);\n",
+  "kills_with": [
+   "--this-form in its folder checks ONLY that form"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
+ },
+ {
+  "id": "formcheck-07",
+  "slice": "formcheck",
+  "label": "codex r1 P1: a response cut off after its headers is not detected (only a deadline, if any, ends it)",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "      res.on('aborted', () => reject('response aborted before it ended'));\n      res.on('error', (e) => reject(`response failed: ${e && e.message}`));\n      res.on('close', () => { if (!ended) reject('connection closed before the response ended'); });\n",
+  "to": "",
+  "kills_with": [
+   "a response cut off after its headers: names the cause"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
+ },
+ {
+  "id": "formcheck-08",
+  "slice": "formcheck",
+  "label": "codex r1 P2: no total deadline — a server dribbling bytes forever holds the build open",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "    deadline = setTimeout(() => reject(`did not complete within ${totalMs} ms`), totalMs);\n",
+  "to": "",
+  "kills_with": [
+   "a response that dribbles data forever: names the cause"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
+ },
+ {
+  "id": "menuwarm-01",
+  "slice": "menuwarm",
+  "label": "plan 2: getPublicMenu loses its warm instance (cold starts return to the live-menu path)",
+  "file": "index.js",
+  "from": "maxInstances: 20, minInstances: 1 },   // PLAN 2",
+  "to": "maxInstances: 20 },   // PLAN 2",
+  "kills_with": [
+   "getPublicMenu keeps one warm instance"
+  ],
+  "command": [
+   "node",
+   "cors-preflight.test.js"
+  ]
+ },
+ {
+  "id": "pricenotice-01",
+  "slice": "pricenotice",
+  "label": "a resume/reward context no longer blocks adoption",
+  "file": "../xpizza-orders/form-cart.js",
+  "from": "    if (c.blockedByContext) return null;\n",
+  "to": "",
+  "kills_with": [
+   "context (resume/reward) → null"
+  ],
+  "command": [
+   "node",
+   "../form-cart-disclosure.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-02",
+  "slice": "pricenotice",
+  "label": "an option conflict elsewhere no longer blocks adoption",
+  "file": "../xpizza-orders/form-cart.js",
+  "from": "    if (resolved.some((l) => l && Array.isArray(l.extras) && l.extras.some((x) => x && x.unresolved))) return null;\n",
+  "to": "",
+  "kills_with": [
+   "any option conflict anywhere → null"
+  ],
+  "command": [
+   "node",
+   "../form-cart-disclosure.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-03",
+  "slice": "pricenotice",
+  "label": "a repriced AND unavailable dish is adopted (the classifier hides availability behind 'repriced')",
+  "file": "../xpizza-orders/form-cart.js",
+  "from": "      if (isUnavailable(l.live) || isLauncher(l)) return null;\n",
+  "to": "      if (isLauncher(l)) return null;\n",
+  "kills_with": [
+   "repriced + unavailable → null"
+  ],
+  "command": [
+   "node",
+   "../form-cart-disclosure.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-04",
+  "slice": "pricenotice",
+  "label": "a failed adoption part-way leaves the earlier lines adopted (not all-or-nothing)",
+  "file": "../xpizza-orders/form-cart.js",
+  "from": "!accept(ch.key, ch.live)) { restore(); return null; }",
+  "to": "!accept(ch.key, ch.live)) { return null; }",
+  "kills_with": [
+   "…and nothing changed (all or nothing)"
+  ],
+  "command": [
+   "node",
+   "../form-cart-disclosure.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-05",
+  "slice": "pricenotice",
+  "label": "a stale disclosure survives a restore",
+  "file": "../xpizza-orders/form-cart.js",
+  "from": "        if (lines.get(d.key).added.price !== d.to) continue;\n",
+  "to": "",
+  "kills_with": [
+   "…it is dropped"
+  ],
+  "command": [
+   "node",
+   "../form-cart-disclosure.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-06",
+  "slice": "pricenotice",
+  "label": "removing a dish keeps its disclosure",
+  "file": "../xpizza-orders/form-cart.js",
+  "from": "    if (qty <= 0) { lines.delete(key); disclosed.delete(key); return; }",
+  "to": "    if (qty <= 0) { lines.delete(key); return; }",
+  "kills_with": [
+   "setQty 0 drops it"
+  ],
+  "command": [
+   "node",
+   "../form-cart-disclosure.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-07",
+  "slice": "pricenotice",
+  "label": "la_musa: the final render is not confirmed before the adoption stands",
+  "file": "../la-musa-orders/index.html",
+  "from": "ok = priceNoticeShows(b, b, changes); }",
+  "to": "ok = true; }",
+  "kills_with": [
+   "(the notice does not render): 🔴 rolled back"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-08",
+  "slice": "pricenotice",
+  "label": "la_musa: opening the cart sheet no longer discloses",
+  "file": "../la-musa-orders/index.html",
+  "from": "  priceNoticeMoment('cart');   // PLAN 5: disclose AFTER the sheet is open (it is the visible moment)\n",
+  "to": "",
+  "kills_with": [
+   "the notice, exact copy, in the cart sheet"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-09",
+  "slice": "pricenotice",
+  "label": "la_musa: the struck value is the old UNIT price, not the old subtotal",
+  "file": "../la-musa-orders/index.html",
+  "from": "  const was = Number(subtotal) - (Number(e.to) - Number(e.from)) * Number(n);\n",
+  "to": "  const was = Number(e.from);\n",
+  "kills_with": [
+   "qty 2 → the struck value is the old SUBTOTAL"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-10",
+  "slice": "pricenotice",
+  "label": "la_musa (codex r1 P1): the moment redraws only the sheet/summary — the payment widgets keep the OLD total",
+  "file": "../la-musa-orders/index.html",
+  "from": "    updateTotal();\n    if (target === 'cart') { const b = document.getElementById('cart-review-body'); ok = priceNoticeShows(b, b, changes); }",
+  "to": "    if (target === 'cart') updateCartReviewBody(); else renderStage2Summary();\n    if (target === 'cart') { const b = document.getElementById('cart-review-body'); ok = priceNoticeShows(b, b, changes); }",
+  "kills_with": [
+   "card: premise — adopted"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-11",
+  "slice": "pricenotice",
+  "label": "la_musa (codex r1 P2): a visibility:hidden notice counts as shown",
+  "file": "../la-musa-orders/index.html",
+  "from": "cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse'",
+  "to": "cs.display === 'none'",
+  "kills_with": [
+   "(the notice is visibility:hidden): 🔴 rolled back"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-12",
+  "slice": "pricenotice",
+  "label": "la_musa (codex r1 P2): a strike showing the wrong old subtotal is accepted",
+  "file": "../la-musa-orders/index.html",
+  "from": "      if (!Number.isFinite(shownNew) || s.textContent !== 'L ' + want.toFixed(0)) return false;\n",
+  "to": "",
+  "kills_with": [
+   "(an EMPTY strike): 🔴 rolled back"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-13",
+  "slice": "pricenotice",
+  "label": "la_musa (codex r1 P3): the disclosure survives order completion",
+  "file": "../la-musa-orders/index.html",
+  "from": "\n  if(id==='s5'){ try{ CART.clearDisclosed(); }catch(_){} }   // PLAN 5 (codex r1 P3): the disclosure ends with the order",
+  "to": "",
+  "kills_with": [
+   "cleared at order completion (s5)"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-14",
+  "slice": "pricenotice",
+  "label": "la_musa (codex r2): a rollback rewrites a custom tender that equalled the temporary total",
+  "file": "../la-musa-orders/index.html",
+  "from": "    if (tenderEl) { tenderEl.value = savedTender; try { onCashTenderedInput(); } catch (_) {} }\n    cashExactMode = savedExact;\n",
+  "to": "",
+  "kills_with": [
+   "the customer's custom tender survives the rollback"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
+ },
+ {
   "id": "fb-1",
   "slice": "formbake",
   "label": "PLAN 4 §8.1: validateSource stops checking that a badge_priority entry names a declared badge — a priority entry would select a badge that renders nothing",

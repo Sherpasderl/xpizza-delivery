@@ -18,6 +18,7 @@
     "d4b-availability.test.mjs",
     "d4b-reorder.test.mjs",
     "extras-parity-current.test.mjs",
+    "form-cart-disclosure.test.mjs",
     "form-live-menu-representation.test.mjs",
     "g2-order-exists-recovery.test.mjs",
     "group-card-count.test.mjs",
@@ -37,6 +38,7 @@
     "picker-extras-combos.test.mjs",
     "picker-extras-money.test.mjs",
     "picker-extras.test.mjs",
+    "price-notice.test.mjs",
     "public-menu-display-noop.test.mjs",
     "qty-stepper-outside-click.test.mjs",
     "reorder-whole-page.test.mjs",
@@ -249,6 +251,7 @@
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/form-bundle-live-check.test.js",
     "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
@@ -439,6 +442,7 @@
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/form-bundle-live-check.test.js",
     "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
     "xpizza-functions/tools/verify-first-group.test.js"
@@ -478,6 +482,7 @@
     "picker-extras-combos.test.mjs",
     "picker-extras-money.test.mjs",
     "picker-extras.test.mjs",
+    "price-notice.test.mjs",
     "public-menu-display-noop.test.mjs",
     "qty-stepper-outside-click.test.mjs",
     "reorder-whole-page.test.mjs",
@@ -689,6 +694,7 @@
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/form-bundle-live-check.test.js",
     "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
     "xpizza-groupless-golden.test.mjs",
@@ -880,6 +886,7 @@
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/form-bundle-live-check.test.js",
     "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
     "xpizza-groupless-golden.test.mjs"
@@ -1297,6 +1304,7 @@
   "xpizza-functions/tools/app-suites.js",
   "xpizza-functions/tools/draft-drift-report.js",
   "xpizza-functions/tools/extras-baseline-audit.js",
+  "xpizza-functions/tools/form-bundle-live-check.js",
   "xpizza-functions/tools/menus-divergence-report.js",
   "xpizza-functions/tools/migrate-catalog-display.js",
   "xpizza-functions/tools/migrate-menu-structure.js",
@@ -1306,6 +1314,7 @@
   "xpizza-functions/tools/registry-writers.js",
   "xpizza-functions/tools/seed-catalog.js",
   "xpizza-functions/tools/seed-source-store.js",
+  "xpizza-functions/tools/splice-form-bundle.js",
   "xpizza-functions/tools/verify-first-group-core.js"
  ],
  "seed": [
@@ -1733,6 +1742,7 @@
   "lib/emulator-endpoint.js",
   "lib/hn-date.js",
   "materialize.js",
+  "menu-pricing.js",
   "merchant/_fake-db.js",
   "merchant/merchant-brand.js",
   "merchant/merchant-control.js",
@@ -2011,6 +2021,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1b-inverse.js",
@@ -2033,6 +2044,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2059,6 +2071,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2077,6 +2090,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js"
      ]
     },
@@ -2096,6 +2110,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2120,6 +2135,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2137,6 +2153,7 @@
      "inverses": [
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js"
      ]
     },
@@ -2151,6 +2168,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2172,6 +2190,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2190,6 +2209,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
@@ -2204,6 +2224,7 @@
       "tools/dlite-push-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
@@ -2215,7 +2236,14 @@
      "file": "xpizza-functions/membership-wiring.guard.test.js",
      "inverses": [
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/menu-warm-wiring.guard.test.js",
+     "inverses": [
+      "tools/menu-warm-inverse.js"
      ]
     },
     {
@@ -2233,6 +2261,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2261,6 +2290,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2277,6 +2307,7 @@
      "file": "xpizza-functions/portalui-wiring.guard.test.js",
      "inverses": [
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js"
      ]
     },
@@ -2286,6 +2317,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js"
      ]
@@ -2299,6 +2331,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2318,6 +2351,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2336,6 +2370,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s5-inverse.js",
@@ -2354,6 +2389,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2371,6 +2407,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
@@ -2391,6 +2428,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2439,6 +2477,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/tracker-fixes-inverse.js"
@@ -2450,6 +2489,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2467,6 +2507,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/menu-warm-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2569,6 +2610,25 @@
    "lifts": [
     "xpizza-functions/brand-server-wiring.guard.test.js"
    ]
+  },
+  "menu-pricing.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/identity-record-guards.test.js",
+     "inverses": [
+      "tools/extras-module-inverse.js",
+      "tools/price-sync-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/extras-wiring.guard.test.js",
+     "inverses": [
+      "tools/extras-module-inverse.js",
+      "tools/price-sync-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
   },
   "merchant/_fake-db.js": {
    "pins": [],
