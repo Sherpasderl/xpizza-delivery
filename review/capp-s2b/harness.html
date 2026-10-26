@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="es-HN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>S2b harness (review only)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@500;600;700&family=Red+Hat+Text:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/customer-app/capp.css">
+<style>html,body{margin:0;height:100%}body{position:relative;overflow:hidden}</style>
+</head>
+<body>
+<!-- REVIEW ONLY: mounts the REAL customer-app/ modules (the same script set as customer-app/index.html) on the REAL served envelope
+     (envelopes.json, written by shoot.mjs) with a store-config FIXTURE (the prototype's own X. Pizza facts, as data) and a SCRIPTED
+     fetch (no network), then drives one state through the UI's own controls. -->
+<div class="app" id="app"></div>
+<script src="/customer-app/sherpa-client.js"></script>
+<script src="/customer-app/capp-version.js"></script>
+<script src="/customer-app/capp-menu.js"></script>
+<script src="/customer-app/capp-cart.js"></script>
+<script src="/customer-app/capp-serialize.js"></script>
+<script src="/customer-app/capp-confirm-quote.js"></script>
+<script src="/customer-app/capp-checkout.js"></script>
+<script src="/customer-app/capp-api.js"></script>
+<script src="/customer-app/capp-ui.js"></script>
+<script>
+(async () => {
+  const state = new URLSearchParams(location.search).get('state');
+  try { localStorage.clear(); } catch (_) {}
+  const env = (await (await fetch('/review/capp-s2b/envelopes.json')).json()).x_pizza;
+  const P = '/proto/img/';
+  const MEMBER = { uid: 'u_ana', idToken: 'tok', name: 'Ana Pérez', phone: '9612-3344', email: 'ana.perez@gmail.com', lastPay: 'cash', details: 'Portón negro, segundo piso · Llamar al llegar' };
+  const member = state.startsWith('checkout-member') ? MEMBER : null;
+  const CFG = { name: 'X. Pizza', kicker: 'Pizzería', logo: P + 'xp-logo.webp', hero: P + 'xp-hero.jpg', unit: ['pizza', 'pizzas'],
+    hours: [[12, 0, 19, 45], [12, 0, 19, 45], [12, 0, 19, 45], [12, 0, 19, 45], [12, 0, 20, 45], [12, 0, 20, 45], [12, 0, 20, 45]],
+    addr: 'Blvd. Los Próceres 1ra Calle, 20 Ave. N.O., San Pedro Sula', branch: 'Los Próceres', loc: { lat: 15.5075, lng: -88.0398 }, zoneKm: 7,
+    etaDel: [30, 45], etaPick: [15, 20], feeFromCents: 4500, assetBase: '/xpizza-orders/', entry: 'link',
+    restaurantId: 'rid_review', orderIdPrefix: 'XPZ', pendingPayKey: 'review_pending_pay',
+    endpoints: { quoteOrder: 'https://fn.review/quoteOrder', createOrder: 'https://fn.review/createOrder', chargeOnlineOrder: 'https://fn.review/chargeOnlineOrder', paymentStatus: 'https://fn.review/paymentStatus' } };
+  const clockMin = state === 'closed' ? 22 * 60 + 30 : 19 * 60 + 5;
+  const now = () => new Date(2026, 9, 20, Math.floor(clockMin / 60), clockMin % 60);   // martes 20 oct (the prototype's clock)
+  const FEE = 4500;
+  const QUOTE = (b) => { const food = b.items.reduce((a, i) => a + Math.round(i.subtotal * 100), 0); const del = b.mode === 'delivery'; const promo = del && member ? FEE : 0;
+    return { status: 200, json: { ok: true, total_cents: food, net_total_cents: food + (del ? FEE - promo : 0) + (b.tip_cents || 0), ...(del ? { delivery: { mode: 'delivery', delivery_cents: FEE, promo_discount_cents: promo, policy_version: 'p1', from_cents: 4500, max_km: 7 } } : {}) } }; };
+  const NEVER = () => new Promise(() => {});
+  const script = { quoteOrder: [state === 'out-of-zone' ? { status: 200, json: { ok: false, error: 'outside_delivery_bands' } } : QUOTE],
+    createOrder: [state === 'sending-spinner' ? NEVER : state === 'offline' ? 'network' : state === 'closure' ? { status: 400, json: { error: 'Restaurant closed' } }
+      : state === 'price' ? { status: 409, json: { error: 'price_increased', net_total_cents: 99900 } } : state === 'exists' ? { status: 409, json: { error: 'order_exists', reason: 'live' } } : { status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }],
+    chargeOnlineOrder: [{ status: 200, json: { checkout_url: 'https://pay.review/x', poll_token: 'pt', attempt_id: 'a' } }],
+    paymentStatus: [{ status: 200, json: { ok: true, state: state === 'sending-confirming' ? 'verifying' : state === 'refund' ? 'closed_refunded' : 'cancelled', refunded_total_cents: 48500 } }] };
+  const sfetch = async (url, init) => {
+    const ep = Object.keys(script).find((k) => url.indexOf(k) >= 0); const body = init && init.body ? JSON.parse(init.body) : null;
+    const q = script[ep]; const r = q.length > 1 ? q.shift() : q[0];
+    if (r === 'network') throw new TypeError('Failed to fetch');
+    const res = typeof r === 'function' ? await r(body) : r;
+    return { status: res.status, ok: res.status >= 200 && res.status < 300, json: async () => res.json };
+  };
+  // the «Realizando pedido…» card stays put (its 2 s auto-proceed is frozen, as the prototype's rail freezes it); every other timer is real
+  const timers = { setTimeout: (f, ms) => (ms === 2000 && state === 'placing' ? 0 : setTimeout(f, ms)), clearTimeout: (h) => clearTimeout(h), setInterval: (f, ms) => (state === 'placing' ? 0 : setInterval(f, ms)), clearInterval: (h) => clearInterval(h) };
+  if (state === 'sending-confirming') {   // an interrupted card send with its creds: the transport resolves it first (one poll ⇒ verifying)
+    const t = now().getTime(), id = 'XPZ261020-190000-A7K2WXYZ';
+    localStorage.setItem('capp:rid_review:pending_place', JSON.stringify({ order_id: id, method: 'online', body_sig: null, expected_net_cents: null, totals: null, dispatched: 1, unresolved: true, card: true, admitted: false, issued: false, ts: t, last_send: t, expires_at: t + 3600000 }));
+    localStorage.setItem('review_pending_pay', JSON.stringify({ order_id: id, t: 'pt', order: {}, form: null, ts: t }));
+  }
+  const geo = state === 'geo-denied' ? { getCurrentPosition: (_ok, no) => no({ code: 1 }) } : { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.5209, longitude: -88.0401 } }) };
+  const search = state === 'payfail' ? '?pay=cancel' : state === 'refund' ? '?pay=complete&order=XPZ261020-190000-A7K2WXYZ&t=pt' : '';
+  const ui = CappUI.mount(document, { envelope: env, config: CFG, now, member, geolocation: geo, navigate: () => {}, search, timers, apiOpts: { fetch: sfetch, sleep: async () => {}, now: () => now().getTime() } });
+  window.__ui = ui;
+  const $ = (s) => document.querySelector(s);
+  const nap = (ms = 150) => new Promise((r) => setTimeout(r, ms));
+  const click = async (s) => { const el = typeof s === 'string' ? $(s) : s; if (!el) throw new Error('missing ' + s); el.dispatchEvent(new MouseEvent('click', { bubbles: true })); await nap(); };
+  const type = async (s, v) => { const el = $(s); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); await nap(40); };
+  const m = ui.menu, byName = (n) => m.dishes.find((d) => d.name === n);
+  try {
+    // the prototype's sampleCart('xp'): 2× Carnivora (Pepperoni on pizza 2) + 1× Margherita
+    const c = byName('Carnivora'); ui.cart.add(c.key, [], 2); ui.cart.setInstance(c.key, 1, [m.extras.find((e) => e.name === 'Pepperoni').key]); ui.cart.inc(byName('Margherita').key);
+    if (state === 'payfail' || state === 'refund') { ui.render(); await nap(400); }
+    else {
+      if (state === 'pickup') ui.state.mode = 'pickup';
+      ui.render(); await click('#cart-bar'); await click('[data-act="checkout"]'); await nap(250);
+      if (state === 'pin') await click('[data-act="pin"]');
+      const toTip = ['tip-empty', 'tip-chosen', 'tip-other', 'placing', 'sending-spinner', 'sending-check', 'sending-confirming', 'offline', 'closure', 'price', 'exists'].includes(state);
+      if (toTip) {
+        await click('[data-act="pin"]'); await click('[data-act="pin-done"]');
+        await type('#f-details', 'Portón negro'); await type('#f-name', 'Ana'); await type('#f-phone', '9612-3344');
+        await click(`[data-act="pay"][data-val="${state === 'sending-confirming' ? 'online' : 'cash'}"]`);
+        await nap(2400);   // the «Pin confirmado» toast lives its real 2.2 s
+        await click('#cta');
+        if (state !== 'tip-empty') await click('[data-act="tipc"][data-val="20"]');
+        await nap(250);
+        if (state === 'tip-other') { await click('[data-act="tipc"][data-val="other"]'); for (const k of ['1', '5', '0']) await click(`#layer [data-act="tk"][data-val="${k}"]`); }
+        if (['placing', 'sending-spinner', 'sending-check', 'sending-confirming', 'offline', 'closure', 'price', 'exists'].includes(state)) {
+          await click('[data-act="tip-place"]');
+          if (state !== 'placing') await click('#layer [data-act="placing-go"]');
+          await nap(state === 'sending-check' ? 250 : 400);
+        }
+      }
+    }
+    if (/-bottom$/.test(state)) { const f = document.getElementById('flow'); f.scrollTop = f.scrollHeight; await nap(100); }
+  } catch (e) { document.getElementById('app').insertAdjacentHTML('afterbegin', `<pre>harness error ${String(e && e.stack || e)}</pre>`); }
+  window.__ready = true;
+})();
+</script>
+</body>
+</html>

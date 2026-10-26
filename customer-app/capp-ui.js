@@ -682,10 +682,10 @@
       if (k === 'placed' || k === 'paid_unverified') { if (S.screen !== 'sending') { S.screen = 'sending'; render(); } beat(out); return; }
       if (k === 'confirming') { S.screen = 'sending'; S.sendHint = CONFIRMING_HINT; render(); return; }
       if (k === 'offline') { backTo(); showErr(ERR.offline()); return; }
-      if (k === 'closed') { S.closedRefused = true; backTo('checkout'); showErr(ERR.closed()); return; }
+      if (k === 'closed') { S.closedRefused = true; backTo(); showErr(ERR.closed()); return; }   // over the screen of the tap (P placeTap :1975)
       if (k === 'out_of_zone') { S.outZone = true; backTo('checkout'); return; }
       if (k === 'payment_failed') {
-        backTo();
+        backTo('checkout');   // P pixelPay :2016 — back() to «Entrega & Pago», then the sheet
         if (out.clearable === false) return;   // TODO(U5 held): a cancel return the server still calls pending — no sheet until ruled
         showErr(ERR.payFailed()); return;
       }

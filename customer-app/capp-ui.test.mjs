@@ -633,8 +633,10 @@ test('S2b closure: the sheet is «{name} cerró a las …» + «Tu pedido no se 
   assert.equal(b.text('#layer .errsheet p'), 'Tu pedido no se envió.');
   assert.deepEqual(b.qa('#layer .errsheet .acts button').map((x) => x.textContent), ['Cerrar']);
   assert.ok(!b.text('#layer').includes(CK.CLOSED_SHEET.scheduleHint) && !/Programar/.test(b.text('#layer')));
-  assert.ok(b.q('.screen .flow'), 'back on «Entrega & Pago»');
+  assert.ok(b.q('.screen .tipwrap'), 'over the screen of the tap (P placeTap)');
   await b.click('#layer [data-act="lclose"]');
+  assert.ok(b.q('[data-act="tip-place"]').disabled, 'G0: «Hacer pedido» is off');
+  await b.click('.topbar [data-act="back"]');
   assert.equal(cta(b), 'No disponible · cerrado', 'G0 closedRefused');
 });
 
