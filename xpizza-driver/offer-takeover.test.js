@@ -52,9 +52,12 @@ function build({ online = true } = {}) {
   const { document, window } = dom.window;
   const $ = (id) => document.getElementById(id);
   Object.defineProperty(window.navigator, 'onLine', { value: online, configurable: true });
-  Object.defineProperty(window.navigator, 'vibrate', { value: () => true, configurable: true });
 
-  const calls = { acceptSecond: 0, acceptTask: 0, attachActive: 0, attachBanner: 0 };
+  const calls = { acceptSecond: 0, acceptTask: 0, attachActive: 0, attachBanner: 0, vibrate: 0, chime: 0 };
+  Object.defineProperty(window.navigator, 'vibrate', { value: () => { calls.vibrate++; return true; }, configurable: true });
+  document.getElementById('chime').play = () => { calls.chime++; return Promise.resolve(); };   // jsdom has no media playback
+  // controllable interval: capture the 5 s callback so a test fires it on demand, and observe clearInterval.
+  const timers = { cb: null, id: 0, cleared: false };
   const XPD = {
     acceptSecondOrder: () => { calls.acceptSecond++; return Promise.resolve({ ok: true }); },
     acceptTask: () => { calls.acceptTask++; return Promise.resolve({ ok: true }); },
@@ -66,21 +69,30 @@ function build({ online = true } = {}) {
     singleOrderCardHtml, currentUser: { uid: 'drv' }, soundOn: true, allTasks: { B_pickup: { assigned_driver_id: 'drv', type: 'pickup', status: 'assigned' } },
     scheduledBadge: () => '', computeVuelto: () => null, drv2ReadNavPref: () => 'Waze',
     overviewMapSvg: () => '<svg id="ofmap"></svg>', coloniaOf: () => '', readyTimeLabel: () => '',   // S.oferta deps the OFFER-TAKEOVER branch now computes
+    setInterval: (cb) => { timers.cb = cb; timers.cleared = false; return ++timers.id; },
+    clearInterval: (id) => { if (id === timers.id) timers.cleared = true; },
   };
   const body = 'let queuedOrders = []; let slidingEl = null; let renderPending = false; function renderActiveAndQueue() {}\n'
     + 'const mapDriver2 = { lat: 15.47, lng: -88.01, heading: 40 }, mapStale2 = false;\n'   // computed in the SLICE2 stacked branch (lifted-out of scope here)
-    + 'let offerTakeoverGen = 0, offerTakeoverTimer = null, offerTakeoverTaskId = null;\n'   // module state the lifted takeover fns close over
+    + 'let offerTakeoverGen = 0, offerTakeoverTimer = null, offerTakeoverTaskId = null, offerConnHandler = null;\n'   // module state the lifted takeover fns close over
     + 'const bannerSlot = $("incoming-banner-slot"), activeSlot = $("active-order-slot"), queueSlot = $("queue-slot");\n'
     + 'function attachActiveCardHandlers(o) { CALLS.attachActive++; }\n'   // count-only spy: if called in takeover, exclusivity is broken
     + 'function attachIncomingBannerHandlers(o) { CALLS.attachBanner++; }\n'
+    + 'function toast(m) { (CALLS.toasts = CALLS.toasts || []).push(m); }\n'   // spy: attachSlideConfirm toasts err._userMessage on a thrown submit
     + liftFn('attachSlideConfirm') + '\n'
+    + liftFn('applyOfferSlideConn') + '\n'
     + liftFn('mountOfferTakeover') + '\n' + liftFn('startOfferRepeat') + '\n' + liftFn('stopOfferTakeover') + '\n'
     + 'function renderBranch(active, pendingAccept) {\n' + regionBody('OFFER-TAKEOVER') + '\n}\n'
-    + 'return { renderBranch, hasTimer: () => offerTakeoverTimer != null };';
+    + 'return { renderBranch, hasTimer: () => offerTakeoverTimer != null, slideOff: () => { const s = $("btn-accept"); return !!(s && s.classList.contains("sv-slide-off")); } };';
   const names = [...Object.keys(deps), 'CALLS'];
   const fn = new Function(...names, body);
   const api = fn(...names.map((n) => (n === 'CALLS' ? calls : deps[n])));
-  return { api, calls, $, document, window };
+  const setConn = (isOnline) => {   // flip connectivity the way the app sees it, then fire the matching window edge
+    Object.defineProperty(window.navigator, 'onLine', { value: isOnline, configurable: true });
+    window.dispatchEvent(new window.Event(isOnline ? 'online' : 'offline'));
+  };
+  const fireTick = () => { if (timers.cb) timers.cb(); };
+  return { api, calls, $, document, window, setConn, fireTick, timers };
 }
 
 function slide(h) {
@@ -138,5 +150,63 @@ await t('«otro hub» never ships: the incoming banner render carries no «otro 
   assert.ok(!/otro hub/.test(html), 'the legacy «otro hub» string is gone from the banner render');
 });
 
+// ---- P1 (Codex r1): offline gating FOLLOWS connectivity, live, with a submit-time recheck ----
+await t('CONNECTIVITY EDGE: an online-mounted slide disables on `offline` and re-enables on `online` — no re-render', async () => {
+  const h = build({ online: true });
+  h.api.renderBranch(ACTIVE, [OFFER]);
+  assert.equal(h.api.slideOff(), false, 'mounted online → the slide is enabled');
+  h.setConn(false);                                    // window `offline` edge, NO re-render
+  assert.equal(h.api.slideOff(), true, 'going offline disables the slide immediately (sv-slide-off)');
+  h.setConn(true);                                     // window `online` edge, NO re-render
+  assert.equal(h.api.slideOff(), false, 'reconnecting re-enables the slide without waiting for a render');
+});
+
+await t('SUBMIT RECHECK: connectivity dropped after mount (class not yet toggled) → the slide does NOT accept, it toasts', async () => {
+  const h = build({ online: true });
+  h.api.renderBranch(ACTIVE, [OFFER]);
+  Object.defineProperty(h.window.navigator, 'onLine', { value: false, configurable: true });   // dropped, but NO edge fired yet
+  slide(h); await tick();
+  assert.equal(h.calls.acceptSecond, 0, 'the submit-time recheck blocks acceptSecondOrder when offline');
+  assert.ok((h.calls.toasts || []).some((m) => /Sin conexión/.test(m)), 'the driver is told why (toast)');
+});
+
+// ---- P2 (Codex r1): the repeat alert self-terminates on expiry and on unmount ----
+await t('LIFECYCLE: a live tick chimes+vibrates (positive control); a tick past the real deadline does NEITHER and clears the interval', async () => {
+  const live = build();
+  live.api.renderBranch(ACTIVE, [OFFER]);              // future deadline, still offered, mounted
+  live.fireTick();
+  assert.equal(live.calls.chime, 1, 'a live tick chimes'); assert.equal(live.calls.vibrate, 1, 'and vibrates');
+  assert.equal(live.timers.cleared, false, 'the interval keeps running while live');
+
+  const expired = build();
+  const PAST = { ...OFFER, pickupTask: { ...OFFER.pickupTask, assignment_deadline: Date.now() - 1000 } };
+  expired.api.renderBranch(ACTIVE, [PAST]);            // allTasks still says 'assigned' (a stale feed), but the deadline passed
+  expired.fireTick();
+  assert.equal(expired.calls.chime, 0, 'past the deadline: NO chime'); assert.equal(expired.calls.vibrate, 0, 'and NO vibrate');
+  assert.equal(expired.timers.cleared, true, 'the interval is cleared (self-terminate on expiry)');
+});
+
+await t('LIFECYCLE: the offer card removed from the DOM → the next tick clears the interval (no orphan alerts)', async () => {
+  const h = build();
+  h.api.renderBranch(ACTIVE, [OFFER]);
+  h.$('active-order-slot').innerHTML = '';             // DOM gone WITHOUT a stopOfferTakeover render
+  h.fireTick();
+  assert.equal(h.calls.chime, 0, 'no chime once the card is gone'); assert.equal(h.calls.vibrate, 0, 'no vibrate');
+  assert.equal(h.timers.cleared, true, 'the interval is cleared on DOM removal');
+});
+
+// ---- P5 (Codex r1): the km chip needs EVERY leg's coordinates, and reads «{X} km» (never «km total») ----
+await t('KM: all three points valid → a «{X} km» chip; a leg missing coordinates → NO chip (no misleading total)', async () => {
+  const ok = build();
+  ok.api.renderBranch(ACTIVE, [OFFER]);                // driver + hub + stop all have coords (haversine stub = 9999 m)
+  const okHtml = ok.$('active-order-slot').innerHTML;
+  assert.ok(/of-dist/.test(okHtml) && / km</.test(okHtml) && !/km total/.test(okHtml), 'valid legs → «{X} km» chip, never «km total»');
+
+  const bad = build();
+  const NOCOORDS = { ...OFFER, order: { ...OFFER.order, lat: undefined, lng: undefined }, deliveryTask: {} };
+  bad.api.renderBranch(ACTIVE, [NOCOORDS]);            // the stop has no coordinates → an incomplete leg
+  assert.ok(!/of-dist/.test(bad.$('active-order-slot').innerHTML), 'an incomplete leg omits the km chip entirely');
+});
+
 console.log(`✓ offer-takeover: ${passed} checks passed`);
-process.exit(passed === 5 ? 0 : 1);   // force-exit past any lingering interval
+process.exit(passed === 10 ? 0 : 1);   // force-exit past any lingering interval

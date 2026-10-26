@@ -77,15 +77,26 @@ t('phaseStripHtml: NO trailing time when none supplied (R1 — no invented deadl
 t('phaseStripHtml: cancelled segment', () => assert.ok(phaseStripHtml([{ n: 1, state: 'cancelled', label: 'X' }, { n: 2, state: 'on', label: 'Y' }], esc).includes('st cancelled')));
 
 // ---------- coloniaOf (R4 / P1-4 / Codex r2 P2-8 — returns '' UNCONDITIONALLY; no address split, no alias) ----------
-t('coloniaOf: returns "" unconditionally — never splits the address, never guesses an unverified alias', () => {
-  // There is NO verified locality field today, and coloniaOf never guesses one: not a comma-split of the
-  // formatted address (its first segment can be the exact house → address leak), and not an unverified alias.
+t('coloniaOf: reads ONLY order.address_area (verified field); applies the display rule; never splits the raw address (R4)', () => {
+  // R4 privacy: the raw/formatted address is NEVER split or exposed — only the verified address_area is read.
   assert.equal(coloniaOf({ order: { address_detected: 'Col. Trejo, casa 1215' } }), '', 'address_detected is NOT split');
   assert.equal(coloniaOf({ order: { address_detected: 'Casa 14 Calle 3, Colonia Trejo, SPS' } }), '', 'a house-first address is never exposed');
   assert.equal(coloniaOf({ deliveryTask: { destination_address: 'Res. Los Robles, bloque C' } }), '', 'the destination address is NOT split either');
   assert.equal(coloniaOf({ order: { colonia: 'Col. Trejo' } }), '', 'an UNVERIFIED colonia alias is NOT read (Codex r2 P2-8)');
   assert.equal(coloniaOf({ order: { locality: 'Los Robles' } }), '', 'no locality alias either');
   assert.equal(coloniaOf({ order: {} }), '', 'empty when there is nothing');
+  // R4 privacy, crucial: even WITH a populated raw address, only address_area surfaces — the raw address never leaks.
+  assert.equal(coloniaOf({ order: { address_area: 'Trejo', address_detected: 'Casa 14 Calle 3, SPS' } }), 'Col. Trejo', 'only address_area surfaces; the raw address is ignored');
+  // display rule (parity with the customer app): a bare name gets «Col. », an existing locality prefix is kept as-is.
+  assert.equal(coloniaOf({ order: { address_area: 'Trejo' } }), 'Col. Trejo', 'bare name → «Col. {X}»');
+  assert.equal(coloniaOf({ order: { address_area: '  Las Hadas  ' } }), 'Col. Las Hadas', 'trimmed, then «Col. »');
+  for (const [raw, out] of [
+    ['Col. Trejo', 'Col. Trejo'], ['Colonia Kennedy', 'Colonia Kennedy'], ['Barrio El Centro', 'Barrio El Centro'],
+    ['Bo. Abajo', 'Bo. Abajo'], ['Residencial Las Hadas', 'Residencial Las Hadas'], ['Res. Los Robles', 'Res. Los Robles'],
+    ['COL. Trejo', 'COL. Trejo'], ['residéncial Palmira', 'residéncial Palmira'],   // case- and accent-insensitive prefix match → kept as given
+  ]) assert.equal(coloniaOf({ order: { address_area: raw } }), out, `prefix «${raw}» kept as given`);
+  assert.equal(coloniaOf({ order: { address_area: '   ' } }), '', 'whitespace-only address_area → ""');
+  assert.equal(coloniaOf({ order: { address_area: 42 } }), '', 'non-string address_area → ""');
 });
 
 // ---------- readyTimeHHMM / readyTimeLabel (Owner ruling #2 — pickup ready time from orders/{id}/prep/ready_at) ----------

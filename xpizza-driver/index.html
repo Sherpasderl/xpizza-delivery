@@ -48,7 +48,8 @@
 .of2-tic svg { width: 15px; height: 15px; }
 .of2-dim { color: var(--text-dim, #A2ABBA); }
 .of2-row { display: flex; gap: 11px; align-items: flex-start; padding-top: 2px; }
-.of2-ic { flex: none; width: 24px; height: 24px; color: var(--text-soft, #5A6473); } .of2-ic.ok { color: var(--green, #2F9E66); }
+.of2-ic { flex: none; width: 24px; height: 24px; color: var(--text-soft, #5A6473); } .of2-ic.ok { color: var(--green, #2F9E66); } .of2-ic.of2-ic-warn { color: var(--warn, #f59e0b); }
+.of2-row.of2-warn .of2-t { color: var(--warn, #f59e0b); font-weight: 700; }
 .of2-ic svg { width: 22px; height: 22px; }
 .of2-tx { flex: 1; min-width: 0; }
 .of2-t { font-size: 14px; color: var(--text, #1F2733); } .of2-t b { font-weight: 800; }
@@ -2307,19 +2308,36 @@ function showCierreRechazado(attemptCash) {
 // construction: the stacked branch SKIPS attachActiveCardHandlers in takeover mode) — and drives the owner-ruled 5 s
 // repeat alert while the offer is mounted. acceptSecondOrder uses runTransaction (NOT queued offline), so when
 // OFFLINE the slide is disabled with a truthful state and is NOT wired; single-write actions stay enabled elsewhere.
-let offerTakeoverGen = 0, offerTakeoverTimer = null, offerTakeoverTaskId = null;
+let offerTakeoverGen = 0, offerTakeoverTimer = null, offerTakeoverTaskId = null, offerConnHandler = null;
+// LIVE offline state for the mounted accept slide. sv-slide-off is pointer-events:none, so toggling it disables/enables
+// the slide with NO re-render — offline it can't be dragged at all (effectively unwired), online it drags again.
+function applyOfferSlideConn() {
+  const slide = $('btn-accept');
+  if (!slide) return;
+  const txt = slide.querySelector('.slide-text');
+  if (navigator.onLine === false) {
+    slide.classList.add('sv-slide-off');
+    if (txt) txt.textContent = 'Sin conexión — aceptá al reconectar';
+  } else {
+    slide.classList.remove('sv-slide-off');
+    if (txt && txt.textContent !== 'Aceptar pedido') txt.textContent = 'Aceptar pedido';
+  }
+}
 function mountOfferTakeover(offer) {
   const slide = $('btn-accept');
   if (slide) {
-    if (navigator.onLine === false) {
-      // TRUTHFUL offline state — acceptSecondOrder can't reach the server; do NOT wire it, show why.
-      slide.classList.add('sv-slide-off');
-      const txt = slide.querySelector('.slide-text'); if (txt) txt.textContent = 'Sin conexión — aceptá al reconectar';
-    } else {
-      attachSlideConfirm('btn-accept', async () => {
-        const r = await XPD.acceptSecondOrder(currentUser.uid, offer.pickupTask.id);   // keeps current_task_id / the in-progress hub
-        if (!(r && r.ok)) throw new Error('accept failed');   // attachSlideConfirm resets the slider on a throw
-      });
+    // Wire ONCE (idempotent per element); the submit handler RECHECKS connectivity right before the transaction, and
+    // the live online/offline listener toggles sv-slide-off so the slide follows connectivity WITHOUT a re-render.
+    attachSlideConfirm('btn-accept', async () => {
+      if (navigator.onLine === false) { const e = new Error('offline'); e._userMessage = 'Sin conexión — aceptá al reconectar'; throw e; }   // recheck AT submit (acceptSecondOrder is runTransaction, not queued)
+      const r = await XPD.acceptSecondOrder(currentUser.uid, offer.pickupTask.id);   // keeps current_task_id / the in-progress hub
+      if (!(r && r.ok)) throw new Error('accept failed');   // attachSlideConfirm resets the slider on a throw
+    });
+    applyOfferSlideConn();   // initial state for this render's slide element
+    if (!offerConnHandler) {
+      offerConnHandler = () => applyOfferSlideConn();   // reads the CURRENT $('btn-accept') each edge → always the live element
+      window.addEventListener('online', offerConnHandler);
+      window.addEventListener('offline', offerConnHandler);
     }
   }
   startOfferRepeat(offer);
@@ -2327,22 +2345,27 @@ function mountOfferTakeover(offer) {
 function stopOfferTakeover() {
   offerTakeoverGen++; offerTakeoverTaskId = null;
   if (offerTakeoverTimer) { clearInterval(offerTakeoverTimer); offerTakeoverTimer = null; }
+  if (offerConnHandler) { window.removeEventListener('online', offerConnHandler); window.removeEventListener('offline', offerConnHandler); offerConnHandler = null; }
 }
 function startOfferRepeat(offer) {
   const taskId = offer && offer.pickupTask && offer.pickupTask.id;
+  const deadline = Number(offer && offer.pickupTask && offer.pickupTask.assignment_deadline);
   if (offerTakeoverTimer && offerTakeoverTaskId === taskId) return;   // already ticking for THIS offer — a re-render must not reset the 5 s cadence
-  stopOfferTakeover();
+  if (offerTakeoverTimer) { clearInterval(offerTakeoverTimer); offerTakeoverTimer = null; }   // a DIFFERENT offer: swap the interval (keep the conn listeners)
   offerTakeoverTaskId = taskId;
   const myGen = ++offerTakeoverGen;   // ONE interval only; a stale tick (older gen) clears itself
   // Owner ruling: repeat chime + vibration every 5 s while the offer is mounted. The FIRST alert is the arrival chime
-  // (detectNewAssignments, t=0); this ticks from t=5 s so they never double up. Data-driven self-terminate: when the
-  // offer is no longer mine-at-'assigned' in allTasks (accepted / expired / withdrawn / signed-out / shift-end), stop
-  // — robust against every exit even if no re-render cleared us. soundOn gates the chime; vibration always.
+  // (detectNewAssignments, t=0); this ticks from t=5 s so they never double up. Each tick SELF-TERMINATES (clears the
+  // interval) the moment ANY of these fails: the offer card is gone from the DOM, its real deadline has passed, or it
+  // is no longer mine-at-'assigned' in allTasks (accepted / expired / withdrawn / signed-out / shift-end) — robust
+  // against every exit even if no re-render cleared us. soundOn gates the chime; vibration always.
   offerTakeoverTimer = setInterval(() => {
     if (myGen !== offerTakeoverGen) { clearInterval(offerTakeoverTimer); offerTakeoverTimer = null; return; }
+    const mounted = !!$('btn-accept');                                           // DOM presence
+    const live = !(Number.isFinite(deadline) && deadline > 0) || Date.now() <= deadline;   // real deadline not passed
     const t = taskId && allTasks[taskId];
     const stillOffered = !!(t && currentUser && t.assigned_driver_id === currentUser.uid && t.type === 'pickup' && t.status === 'assigned');
-    if (!stillOffered) { stopOfferTakeover(); return; }
+    if (!mounted || !live || !stillOffered) { stopOfferTakeover(); return; }
     if (soundOn) { const c = $('chime'); if (c) { c.currentTime = 0; c.play().catch(() => {}); } }
     try { if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]); } catch {}
   }, 5000);
@@ -4157,13 +4180,14 @@ function renderActiveAndQueue() {
           const ofDriver = (driverState && driverState.lat != null && driverState.lng != null) ? { lat: driverState.lat, lng: driverState.lng, heading: driverState.heading } : null;
           const ofHub = { lat: soloOrder.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat, lng: soloOrder.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng };
           const ofStop = { lat: (soloOrder.order && soloOrder.order.lat) || (soloOrder.deliveryTask && soloOrder.deliveryTask.destination_lat), lng: (soloOrder.order && soloOrder.order.lng) || (soloOrder.deliveryTask && soloOrder.deliveryTask.destination_lng) };
-          const ofHav = (a, b) => (a && b && a.lat != null && a.lng != null && b.lat != null && b.lng != null) ? XPD.haversineDistance(a.lat, a.lng, b.lat, b.lng) : 0;
-          const ofKm = ofHav(ofDriver, ofHub) + ofHav(ofHub, ofStop);
+          const ofValid = (p) => !!(p && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+          const ofHav = (a, b) => (ofValid(a) && ofValid(b)) ? XPD.haversineDistance(a.lat, a.lng, b.lat, b.lng) : 0;
+          const ofKm = ofHav(ofDriver, ofHub) + ofHav(ofHub, ofStop);   // km shows ONLY when EVERY leg has real coords (driver→hub AND hub→stop)
           return { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,
             RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: drv2ReadNavPref(),
             nowMs: Date.now(),   // offer ring countdown: elapsed drives the tick (display-only)
             mapHtml: overviewMapSvg({ driver: ofDriver, hubs: [{ ...ofHub, on: true }], stops: [{ ...ofStop, n: 1, on: false }], phase: 'pickup', stale: isStaleFix(driverState && driverState.last_location_ts, Date.now()) }),
-            area: coloniaOf(soloOrder), ready: readyTimeLabel(soloOrder.order || {}), offerKm: (ofDriver && ofKm > 0) ? `${(Math.round(ofKm / 100) / 10).toFixed(1)} km total` : '' };
+            area: coloniaOf(soloOrder), ready: readyTimeLabel(soloOrder.order || {}), offerKm: (ofValid(ofDriver) && ofValid(ofHub) && ofValid(ofStop)) ? `${(Math.round(ofKm / 100) / 10).toFixed(1)} km` : '' };
         })());
       /* ===== SLICE3DEPS:OFFER-RENDER:END ===== */
     // The review step (enRestaurante) has no map — the prototype drops it; the to-restaurant step keeps it.
@@ -4332,11 +4356,12 @@ function renderActiveAndQueue() {
     // S.oferta deps (REAL values only): the overview map, the R4 colonia, the R1 ready time, and «X km» only when computed.
     const ofHub = { lat: offer.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat, lng: offer.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng };
     const ofStop = { lat: (offer.order && offer.order.lat) || (offer.deliveryTask && offer.deliveryTask.destination_lat), lng: (offer.order && offer.order.lng) || (offer.deliveryTask && offer.deliveryTask.destination_lng) };
-    const ofHav = (a, b) => (a && b && a.lat != null && a.lng != null && b.lat != null && b.lng != null) ? XPD.haversineDistance(a.lat, a.lng, b.lat, b.lng) : 0;
-    const ofKm = ofHav(mapDriver2, ofHub) + ofHav(ofHub, ofStop);
+    const ofValid = (p) => !!(p && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+    const ofHav = (a, b) => (ofValid(a) && ofValid(b)) ? XPD.haversineDistance(a.lat, a.lng, b.lat, b.lng) : 0;
+    const ofKm = ofHav(mapDriver2, ofHub) + ofHav(ofHub, ofStop);   // km shows ONLY when EVERY leg has real coords (driver→hub AND hub→stop)
     activeSlot.innerHTML = singleOrderCardHtml(offer, { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: XPD.RESTAURANT, arrived: false, atRestaurant: false, navPref: drv2ReadNavPref(), nowMs: Date.now(),
       mapHtml: overviewMapSvg({ driver: mapDriver2, hubs: [{ ...ofHub, on: true }], stops: [{ ...ofStop, n: 1, on: false }], phase: 'pickup', stale: mapStale2 }),
-      area: coloniaOf(offer), ready: readyTimeLabel(offer.order || {}), offerKm: (mapDriver2 && ofKm > 0) ? `${(Math.round(ofKm / 100) / 10).toFixed(1)} km total` : '' });
+      area: coloniaOf(offer), ready: readyTimeLabel(offer.order || {}), offerKm: (ofValid(mapDriver2) && ofValid(ofHub) && ofValid(ofStop)) ? `${(Math.round(ofKm / 100) / 10).toFixed(1)} km` : '' });
     mountOfferTakeover(offer);   // btn-accept → acceptSecondOrder (offline-gated) + the 5 s repeat alert
   } else {
     stopOfferTakeover();         // not in takeover → clear the 5 s repeat

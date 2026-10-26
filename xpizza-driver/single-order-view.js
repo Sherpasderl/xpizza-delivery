@@ -254,6 +254,10 @@ export function singleOrderCardHtml(o, deps) {
       cashRow = `<div class="of2-row"><span class="of2-ic">${OF_CASH}</span><div class="of2-tx"><div class="of2-t">Cobrar <b>L ${Number(c.amount).toLocaleString('es-HN')}</b> con tarjeta</div></div></div>`;
     } else if (c.kind === 'paid_online') {
       cashRow = `<div class="of2-row"><span class="of2-ic">${OF_CASH}</span><div class="of2-tx"><div class="of2-t">Pagado en línea</div><div class="of2-d">No cobrés nada en la puerta</div></div></div>`;
+    } else if (c.kind === 'free') {
+      cashRow = `<div class="of2-row"><span class="of2-ic">${OF_CASH}</span><div class="of2-tx"><div class="of2-t">Sin costo</div></div></div>`;
+    } else {   // 'warning' — unconfirmed/unknown payment: NEVER a collect amount, send to dispatch (R11 live safety; same copy as svPay)
+      cashRow = `<div class="of2-row of2-warn"><span class="of2-ic of2-ic-warn">${OF_CASH}</span><div class="of2-tx"><div class="of2-t">Pago no confirmado</div><div class="of2-d">Revisar</div></div></div>`;
     }
     // R2: «Tu pago por esta entrega · + L 70» stays HIDDEN until Pagos ships (deps.showEarnings, default false). The
     // mount is kept so Pagos flips it on with the real rate — never a fabricated amount here.

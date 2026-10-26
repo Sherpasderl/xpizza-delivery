@@ -191,14 +191,21 @@ export function queuedPreviewHtml(next, ordinal, deps = {}) {
  * omits the location line today and a real colonia field wires in later ADDITIVELY (advisor 2026-10-24). Pure.
  */
 export function coloniaOf(o) {
-  // Returns '' UNCONDITIONALLY today (Codex r2 P2-8). There is NO verified locality field on the order, and we
-  // never GUESS one: not a comma-split of the formatted address (its first segment can be the exact house, e.g.
-  // «Casa 14 Calle 3», which would leak the address pre-accept), and not an unverified alias like
-  // order.colonia/locality/barrio (none exists in the schema). So every caller OMITS the location line — the
-  // offer never invents «Zona por confirmar»; post-accept the subtitle is name-only. ADDITIVE: when a real,
-  // verified locality field is confirmed, read THAT one here and the whole app surfaces it at once.
-  void o;
-  return '';
+  // The ONE verified locality field is order.address_area (the customer-app geo field; the SERVER privacy filter is
+  // the authority on what it may contain). Read ONLY that — never a comma-split of the formatted address (its first
+  // segment can be the exact house, «Casa 14 Calle 3», leaking the address pre-accept) and never an unverified alias
+  // (order.colonia/locality/barrio). Absent → '' and every caller OMITS the line. ADDITIVE: the whole app surfaces it
+  // at once now the field exists (advisor 2026-10-26).
+  const raw = o && o.order && typeof o.order.address_area === 'string' ? o.order.address_area.trim() : '';
+  return raw ? formatColonia(raw) : '';
+}
+// displayArea parity (same rule as the customer app, advisor 2026-10-26): if the value already opens with a locality
+// word — Colonia / Col. / Barrio / Bo. / Residencial / Res. (whole FIRST word, case- and accent-insensitive) — show it
+// verbatim; otherwise prepend «Col. ». Never fabricates when empty (caller guards that). Pure.
+function formatColonia(v) {
+  const first = (String(v).split(/\s+/)[0] || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\.$/, '');
+  const PREFIXES = ['colonia', 'col', 'barrio', 'bo', 'residencial', 'res'];
+  return PREFIXES.includes(first) ? v : 'Col. ' + v;
 }
 
 /**

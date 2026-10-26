@@ -26,9 +26,9 @@ t('header: Sola + «Nuevo pedido» + the countdown ring (accept-countdown on the
 });
 
 t('card: rchip + #num + «X km» only when computed; timeline Recoger/Entregar; R1 omits times, R4 renders the colonia', () => {
-  const withKm = singleOrderCardHtml(offer(), { ...DEPS, nowMs: 1760000000000, offerKm: '1.6 km total', area: 'Col. Trejo' });
+  const withKm = singleOrderCardHtml(offer(), { ...DEPS, nowMs: 1760000000000, offerKm: '1.6 km', area: 'Col. Trejo' });
   assert.ok(withKm.includes('of2-onum') && withKm.includes('>#9<'), 'the order #');
-  assert.ok(withKm.includes('1.6 km total'), 'the km chip when computed');
+  assert.ok(withKm.includes('1.6 km') && !/km total/.test(withKm), 'the km chip reads «{X} km» (single-offer chip, never «km total»)');
   assert.ok(/Recoger<\/span>/.test(withKm) && !/~/.test(withKm), 'R1: no ready field → «Recoger» with NO time');
   assert.ok(withKm.includes('Entregar') && withKm.includes('· Col. Trejo'), 'R4: the colonia renders on the Entregar row');
   const noKm = singleOrderCardHtml(offer(), { ...DEPS, nowMs: 1760000000000 });
@@ -47,6 +47,15 @@ t('items + cash: «N artículos · 1 bolsa» + «Cobrar L 385 en efectivo» / «
   assert.ok(h.includes('Cobrar <b>L 385</b> en efectivo'), 'the cash amount from collectionFor');
   assert.ok(h.includes('Paga con <b>L 500</b> · llevá vuelto'), 'the declared tender from computeVuelto');
   assert.ok(!/1,430/.test(h), 'no foreign amounts');
+});
+
+t('cash safety (R11): collectionFor «warning» → «Pago no confirmado / Revisar» (no amount); «free» → «Sin costo» — same copy as svPay, never dropped', () => {
+  const warn = singleOrderCardHtml(offer({ payment_method: 'online', payment_status: 'pending' }), { ...DEPS, nowMs: 1760000000000 });
+  assert.ok(warn.includes('Pago no confirmado') && warn.includes('Revisar'), 'an unconfirmed-online order shows the warning row (not a blank payment slot)');
+  assert.ok(/of2-warn/.test(warn) && !/Cobrar/.test(warn), 'warning carries its warn styling and NEVER a collect amount');
+  const free = singleOrderCardHtml(offer({ free_order: true, total: 0 }), { ...DEPS, nowMs: 1760000000000 });
+  assert.ok(free.includes('Sin costo') && !/Cobrar/.test(free), 'a free order shows «Sin costo», no collect amount');
+  // mutant: dropping either branch falls through to '' — these includes() assertions go RED, so the safety rows can't silently vanish.
 });
 
 t('R2: the «Tu pago» earnings block stays HIDDEN (no «+ L 70», no «Tu pago»)', () => {

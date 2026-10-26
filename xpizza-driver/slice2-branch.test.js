@@ -308,7 +308,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     + NAV_BLOCK + '\n'   // REAL drv2ReadNavPref/drv2WriteNavPref (not a Waze stub) — server-truth + per-uid hydration (Codex r1 P2-10)
     + DRV2_BLOCK + '\n'
     + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate (reads driverState) — the resumen reuses it
-    + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null; function readyTimeLabel(){ return ""; } function mountOfferTakeover(){} function stopOfferTakeover(){}\n'
+    + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null,offerConnHandler=null; function readyTimeLabel(){ return ""; } function mountOfferTakeover(){} function stopOfferTakeover(){}\n'
     + liftFn(MY_SCRIPT, 'renderActiveAndQueue') + '\n'
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
     + liftFn(MY_SCRIPT, 'attachSlideConfirm') + '\n'
@@ -417,7 +417,8 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate the resumen reuses
     // REAL offer-takeover wiring so the cross-hub 2nd-order accept drives the REAL acceptSecondOrder over the mock;
     // only the 5 s repeat is stubbed (its own interval is tested in offer-takeover.test.js).
-    + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null; function readyTimeLabel(){ return ""; } let soundOn=false; function startOfferRepeat(){}\n'
+    + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null,offerConnHandler=null; function readyTimeLabel(){ return ""; } let soundOn=false; function startOfferRepeat(){}\n'
+    + liftFn(MY_SCRIPT, 'applyOfferSlideConn') + '\n'
     + liftFn(MY_SCRIPT, 'mountOfferTakeover') + '\n'
     + liftFn(MY_SCRIPT, 'stopOfferTakeover') + '\n'
     + liftFn(MY_SCRIPT, 'renderActiveAndQueue') + '\n'
