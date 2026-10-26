@@ -196,6 +196,9 @@ export function resolveSelection1b(e1, stored) {
   if (ops) return ops;
   return life.length ? pick(life[0]) : null;
 }
+// the S2 list order (frame): live branches, then Desactivada, then Por activar — each by name (1a's order within a group)
+const LIFE_RANK = Object.freeze({ active: 0, inactive: 1, staged: 2 });
+export const listOrder = (rows) => (rows || []).map((r, i) => [r, i]).sort((a, z) => ((LIFE_RANK[a[0].lifecycle] ?? 0) - (LIFE_RANK[z[0].lifecycle] ?? 0)) || (a[1] - z[1])).map(([r]) => r);
 export const brandCount = (n) => `${n} ${n === 1 ? 'sucursal' : 'sucursales'}`;
 
 // ── S2 cards (B2, B3) ─────────────────────────────────────────────────────────────────────────────────────────────────────

@@ -331,3 +331,13 @@ test('lifecycle pill + lede: staged «Por activar» / inactive «Desactivada» w
     assert.ok(t.includes(pillText) && t.includes(lede), life);
   }
 });
+
+test('a valid WhatsApp shows as «+504 NNNN-NNNN» once the field is left (D-label); an invalid one is kept as typed', async () => {
+  installStorage();
+  const P = page([E1([row('r_a')])]);
+  await open(P);
+  fire(byIdIn(P.view(), 'f1b-tel'), 'input', '50433905521'); fire(byIdIn(P.view(), 'f1b-tel'), 'change');
+  assert.equal(byIdIn(P.view(), 'f1b-tel').value, '+504 3390-5521');
+  fire(byIdIn(P.view(), 'f1b-tel'), 'input', '2234 567'); fire(byIdIn(P.view(), 'f1b-tel'), 'change');
+  assert.equal(byIdIn(P.view(), 'f1b-tel').value, '2234 567');
+});

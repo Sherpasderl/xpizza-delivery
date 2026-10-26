@@ -361,3 +361,23 @@ test('§3.4 case 6: W turns off while a lifecycle-only brand is selected → the
   assert.ok(textOf(P.byId.get('detail')).includes('Tu cuenta no administra ningún local todavía'));
   assert.ok(P.byId.get('navsuc').classList.contains('hidden'));
 });
+
+test('side-by-side fixes: the list order (live → Desactivada → Por activar → drafts), the nav count includes drafts (W on, owner), the Nueva phone formats on blur', async () => {
+  installStorage();
+  const P = page([E1([staged('r_s', { unmet: [] }, { name: 'Andes' }), inactive('r_i', { unmet: [] }, { name: 'Bulevar' }), row('r_z', { name: 'Zeta' }), row('r_a', { name: 'Alfa' })], [BRAND([draftOf('r_d', 'Jardines')])])]);
+  await openSuc(P);
+  const labels = all(P.view()).filter((n) => n.tag === 'button' && n.attrs['aria-label'] && n.attrs['aria-label'].includes(' · ')).map((n) => n.attrs['aria-label'].split(' · ')[0]);
+  assert.deepEqual(labels, ['Alfa', 'Zeta', 'Bulevar', 'Andes', 'Jardines']);
+  assert.equal(textOf(P.byId.get('navsuccount')), '5', 'every card the list shows');
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  fire(byIdIn(P.modal(), 'nv1b-tel'), 'input', '33905521'); fire(byIdIn(P.modal(), 'nv1b-tel'), 'change');
+  assert.equal(byIdIn(P.modal(), 'nv1b-tel').value, '+504 3390-5521');
+  assert.equal(byText(P.modal(), 'button', 'Copiar de Alfa').attrs['aria-pressed'], 'true');
+});
+
+test('W off: the nav count is 1a\'s (operational rows only; drafts never counted)', async () => {
+  installStorage();
+  const P = page([E1([row('r_a'), row('r_b')], [BRAND([draftOf('r_d', 'Jardines')])], false)]);
+  await boot(P);
+  assert.equal(textOf(P.byId.get('navsuccount')), '2');
+});

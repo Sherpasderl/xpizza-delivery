@@ -260,8 +260,10 @@ function renderChrome() {
   $('navsuc').classList.remove('hidden');
   $('navsuctext').textContent = nav.sucLabel;
   const cnt = $('navsuccount');
-  cnt.classList.toggle('hidden', nav.sucCount === null);
-  cnt.textContent = nav.sucCount === null ? '' : String(nav.sucCount);
+  // PORTAL-UI 1b (frame S2): with W on, an owner's count is every card the list shows — the brand's drafts included
+  const sucCount = nav.sucCount === null ? null : nav.sucCount + (B.writesOn(S.e1) && B.ownsBrand(S.e1, sel.brand_id) ? B.draftsOf(S.e1, sel.brand_id).length : 0);
+  cnt.classList.toggle('hidden', sucCount === null);
+  cnt.textContent = sucCount === null ? '' : String(sucCount);
   $('navpausas').classList.toggle('hidden', !nav.pause);
   $('mnsuc').classList.remove('hidden');
   $('mnsuc').textContent = nav.sucLabel;

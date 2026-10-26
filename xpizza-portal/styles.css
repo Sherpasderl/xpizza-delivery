@@ -1077,13 +1077,13 @@
   .ops .addcard1b:hover{border-color:var(--accent);color:var(--accent)}
   .addcard1b{cursor:pointer}
   .ops .addcard1b svg,.ops .topact .btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2}
-  .ops .empty1b{padding:28px 0 8px;display:flex;flex-direction:column;gap:6px}
-  .ops .empty1b p{font-size:14px;line-height:1.5;color:var(--ink)}
-  .ops .empty1b .fnote{font-size:12.5px}
+  .ops .empty1b{margin-top:24px;padding:28px 0 8px;display:flex;flex-direction:column;gap:6px}
+  .ops .emptyline1b{font-size:14px;line-height:1.5;color:var(--ink)}
+  .ops .emptynote1b{font-size:12.5px;line-height:1.45;color:var(--mute2)}
   .ops .legend1b{margin-top:18px;padding:13px 16px;border:1px dashed var(--line);border-radius:12px;font-size:12.5px;color:var(--mute);line-height:1.5}
   .ops .secwide1b{grid-column:1/-1}
   .ops .actrow1b{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-  .ops .brows1b{display:flex;flex-direction:column;gap:8px}
+  .ops .brows1b{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .ops .brow1b{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line2);border-radius:11px}
   .ops .browmiss1b{border-color:var(--amber-line)}
   .ops .browwait1b{border-style:dashed}
@@ -1110,6 +1110,7 @@
   #sucmodal .tel1b{background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:14px;color:var(--ink);width:100%;min-height:42px;font-family:inherit}
   #sucmodal .chips1b{display:flex;gap:8px;flex-wrap:wrap}
   #sucmodal .chip1b{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:650;min-height:44px;display:inline-flex;align-items:center;color:var(--ink);cursor:pointer;font-family:inherit}
+  #sucmodal .chip1b.chipon1b{border-color:var(--accent);background:var(--tint);color:var(--accent)}
   #sucmodal .ferr1b{display:flex;gap:7px;align-items:flex-start;color:var(--red-text);font-size:12px;line-height:1.45}
   #sucmodal .ferr1b svg{width:14px;height:14px;stroke:var(--red-text);fill:none;stroke-width:2;flex:none;margin-top:2px}
   #sucmodal .telbad1b{border-color:var(--red)}
@@ -1121,4 +1122,4 @@
   #sucmodal .stepb{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card);font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;color:var(--ink);cursor:pointer}
   #sucmodal .callout{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:12px;font-size:13px;line-height:1.5;color:var(--ink);border:1px solid var(--line);background:var(--board-2)}
   #sucmodal .callout svg{width:17px;height:17px;stroke:var(--mute);fill:none;stroke-width:2;flex:none;margin-top:2px}
-  @media(max-width:920px){ .ops .secwide1b{grid-column:auto} .frow1b{grid-template-columns:1fr} .ops .brow1b{flex-wrap:wrap} .ops .bt1b{min-width:60%} }
+  @media(max-width:920px){ .ops .secwide1b{grid-column:auto} .frow1b{grid-template-columns:1fr} .ops .brows1b{grid-template-columns:1fr} .ops .brow1b{flex-wrap:wrap} .ops .bt1b{min-width:60%} }

@@ -97,8 +97,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "0e1304499eae214c9aab2c088eb0404430f01439cf219e44f6c1c11eac422391",
-   "bytes": 98390
+   "sha256": "1f52e97e7798044cf9db550360fcff088a3dbc315e5b72945807d2f2fa2a5e72",
+   "bytes": 98606
   }
  },
  "diff_aid": {
@@ -215,6 +215,24 @@
     "#sucmodal .chip1b",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b.chipon1b",
+    "background",
+    "var(--tint)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b.chipon1b",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b.chipon1b",
+    "color",
+    "var(--accent)"
    ],
    [
     "",
@@ -1958,9 +1976,15 @@
    ],
    [
     "",
-    ".ops .empty1b p",
+    ".ops .emptyline1b",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .emptynote1b",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",

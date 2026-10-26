@@ -404,7 +404,7 @@ export function mountBranches(root, ctx) {
     i.setAttribute('aria-invalid', bad ? 'true' : 'false');
     i.setAttribute('aria-describedby', bad ? 'f1b-tel-err f1b-tel-note' : 'f1b-tel-note');
     i.addEventListener('input', () => { const x = startDraft(b); x.phoneRaw = i.value; x.phone = B.normalizePhone(i.value); V.fieldErr = null; paintBar1b(b); });
-    i.addEventListener('change', () => { render(); });
+    i.addEventListener('change', () => { const x = draftFor(b); if (x && B.validPhone(x.phone)) x.phoneRaw = B.phoneDisplay(x.phone); render(); });   // a valid number shows as «+504 NNNN-NNNN» (D-label)
     f.append(lab, i);
     if (bad) { const e = el('div', 'ferr1b'); e.id = 'f1b-tel-err'; e.append(icon('err'), el('span', null, PHONE_ERR)); f.append(e); }
     const n = el('span', 'fnote', PHONE_NOTE); n.id = 'f1b-tel-note';
@@ -495,7 +495,7 @@ export function mountBranches(root, ctx) {
   function renderList1b() {
     const sel = ctx.sel;
     const mine = owned(sel.brand_id);
-    const rows = [...branches(), ...draftsHere().slice().sort((a, z) => String(a.profile && a.profile.location_name).localeCompare(String(z.profile && z.profile.location_name), 'es'))];
+    const rows = [...B.listOrder(branches()), ...draftsHere().slice().sort((a, z) => String(a.profile && a.profile.location_name).localeCompare(String(z.profile && z.profile.location_name), 'es'))];
     const acts = [];
     if (mine) acts.push(addTop());
     const { top } = topBlock('Sucursales', LIST_LEDE, acts);
@@ -509,7 +509,7 @@ export function mountBranches(root, ctx) {
     } else {   // s2-empty (owner-approved copy)
       const e = el('div', 'empty1b');
       e.setAttribute('role', 'status');
-      e.append(el('p', null, `Todavía no hay sucursales en ${sel.brand.name}.`), el('p', 'fnote', 'Agregá la primera. Sherpa configura la ubicación y la zona de entrega.'));
+      e.append(el('p', 'emptyline1b', `Todavía no hay sucursales en ${sel.brand.name}.`), el('p', 'emptynote1b', 'Agregá la primera. Sherpa configura la ubicación y la zona de entrega.'));
       frag.push(e);
     }
     if (mine && rows.length) frag.push(addCard());
@@ -690,7 +690,7 @@ export function mountBranches(root, ctx) {
     itel.setAttribute('aria-invalid', bad ? 'true' : 'false');
     if (bad) itel.setAttribute('aria-describedby', 'nv1b-tel-err');
     itel.addEventListener('input', () => { m.phoneRaw = itel.value; m.phone = B.normalizePhone(itel.value); m.phoneErr = false; paintNuevaGo(); });
-    itel.addEventListener('change', () => { m.phoneTouched = true; paintNueva(); });
+    itel.addEventListener('change', () => { m.phoneTouched = true; if (B.validPhone(m.phone)) m.phoneRaw = B.phoneDisplay(m.phone); paintNueva(); });
     fp.append(lp, itel);
     if (bad) { const e = el('div', 'ferr1b'); e.id = 'nv1b-tel-err'; e.append(icon('err'), el('span', null, PHONE_ERR)); fp.append(e); }
     fr.append(fn, fp);
