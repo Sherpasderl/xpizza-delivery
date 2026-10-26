@@ -717,8 +717,10 @@
   .cuadre-slide .slide-fill{ position:absolute; left:0; top:0; bottom:0; width:60px; border-radius:16px; background:rgba(255,255,255,.14); opacity:0; z-index:1; transition:width .2s ease; }
   .cuadre-slide.completed .slide-fill{ opacity:1; }
   .cuadre-slide.dragging .slide-fill{ transition:none; }
-  .cuadre-slide .slide-text{ position:absolute; inset:0; z-index:2; display:flex; align-items:center; justify-content:center; padding-left:50px; padding-right:58px; white-space:nowrap; font-family:'Red Hat Display', sans-serif; font-weight:700; font-size:14px; letter-spacing:.01em; color:#fff; -webkit-text-fill-color:#fff; }
-  .cuadre-slide .slide-hint{ position:absolute; right:14px; z-index:2; font:600 10.5px 'Red Hat Text', sans-serif; opacity:.7; letter-spacing:.06em; text-transform:uppercase; color:#fff; }
+  /* The prototype slide label collides with the hint at 390 (its own flaw); we fit it clear of both the knob and the
+     «DESLIZÁ» hint — slightly smaller than the prototype's 15px — so it never overlaps (Codex r2 P3). */
+  .cuadre-slide .slide-text{ position:absolute; left:56px; right:74px; top:0; bottom:0; z-index:2; display:flex; align-items:center; justify-content:center; white-space:nowrap; font-family:'Red Hat Display', sans-serif; font-weight:700; font-size:12px; letter-spacing:0; text-transform:none; color:#fff; -webkit-text-fill-color:#fff; }
+  .cuadre-slide .slide-hint{ position:absolute; right:14px; top:0; bottom:0; display:flex; align-items:center; z-index:2; font:600 10.5px 'Red Hat Text', sans-serif; opacity:.7; letter-spacing:.06em; text-transform:uppercase; color:#fff; pointer-events:none; }
   .cuadre-slide.completed .slide-hint, .cuadre-slide.dragging .slide-hint{ opacity:0; }
   .cuadre-slide .slide-thumb{ position:absolute; left:5px; top:5px; bottom:5px; width:50px; border-radius:12px; background:rgba(255,255,255,.22); display:grid; place-items:center; cursor:grab; z-index:3; touch-action:none; box-shadow:none; }
   .cuadre-slide .slide-thumb svg{ width:22px; height:22px; color:#fff; }
@@ -2263,14 +2265,17 @@ function openHelpSheet() {
 // duration — matches the prototype). Foot: danger «Reintentar cierre» (.cuadre-reintentar → showCuadre recomputes +
 // re-confirms) then txt «Volver al turno» (.cuadre-volver → back to shift). LATCHES closeInFlight so an observer
 // refreshOpenCashSurfaces() can't clobber this terminal screen; .cuadre-volver, .cuadre-reintentar and handleEndShift reset it.
-function showCierreRechazado() {
+function showCierreRechazado(attemptCash) {
   const screen = $('cuadre-screen');
   closeInFlight = true;   // pin the surface against observer re-renders until the driver acts
+  // Render the amount the REJECTED attempt submitted (Codex r2 P2) — never a refreshed screen._cash. The caller
+  // (onCuadreConfirm.catch) passes the attempt's cash; fall back to screen._cash only if ever called without it.
+  const cash = (attemptCash != null) ? attemptCash : screen._cash;
   const now = new Date();
   const dateOnly = `${CUADRE_WD[now.getDay()]} ${now.getDate()} ${CUADRE_MO[now.getMonth()]}`;   // «Dom 19 oct», real close date
   screen.innerHTML = cuadreShellHtml({
     backClass: 'cuadre-reintentar',
-    bodyHtml: cierreRechazadoHtml(screen._cash, dateOnly),
+    bodyHtml: cierreRechazadoHtml(cash, dateOnly),
     footHtml: `<button class="rc-retry cuadre-reintentar" type="button">Reintentar cierre</button>`
       + `<button class="rc-volver cuadre-volver" type="button">Volver al turno</button>`,
   });
@@ -3184,6 +3189,9 @@ const CUADRE_ARROW_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 // the driver app has none today, so NEVER fabricate L70×deliveries here. The card's mount (cuadreEarnCardHtml) is
 // kept so Pagos flips this true and feeds the rate.
 const CUADRE_SHOW_EARNINGS = false;
+// Each confirm-slide MOUNT gets a generation (Codex r2 P2). A cash refresh replaces the slide; a release from the
+// OLD (stale) slide is a no-op, so a mid-drag refresh can never submit a superseded amount — the driver re-slides.
+let cuadreSlideGen = 0;
 // Prototype date line «Dom 19 oct · 7:16 – 9:12 · 1 h 56 min». Real values only: the close DATE (now) + the shift
 // START (ident.start) → END (now) window + duration. es-HN abbrevs vary by ICU build, so the day/month abbreviations
 // are pinned here to match the prototype EXACTLY; the numbers are all real. If ident.start is unknown, show the date
@@ -3215,7 +3223,11 @@ function cuadreEarnCardHtml() {
   return CUADRE_SHOW_EARNINGS ? '' : '';   // mount point only; HIDDEN until Pagos ships (R2) — never a fabricated rate
 }
 function cuadreConfirmFootHtml() {
-  return `<div class="slide-confirm cuadre-slide" id="cuadre-confirm"><div class="slide-fill"></div>`
+  // NO .slide-confirm class (Codex r2 P3): the later slice-2 .slide-confirm rules (margin / label layout /
+  // animation:none!important) would override the prototype steel-blue slide. attachSlideConfirm binds by
+  // .slide-thumb/.slide-fill, not the class, so the mechanics are unaffected. role="button" tabindex="0" per the
+  // prototype .slide (keyboard Enter/Space confirms through the same gates — wired in renderCuadreReceipt).
+  return `<div class="cuadre-slide" id="cuadre-confirm" role="button" tabindex="0" aria-label="Confirmar entrega de efectivo"><div class="slide-fill"></div>`
     + `<div class="slide-text">Confirmar entrega de efectivo</div><div class="slide-hint">deslizá</div>`
     + `<div class="slide-thumb">${CUADRE_ARROW_SVG}</div></div>`
     + `<button class="rc-volver cuadre-volver" type="button">Volver al turno</button>`;
@@ -3280,7 +3292,14 @@ function renderCuadreReceipt(bound) {
       ${cuadreEarnCardHtml()}`,
     footHtml: cuadreConfirmFootHtml(),
   });
-  attachSlideConfirm('cuadre-confirm', onCuadreConfirm);
+  // Stamp THIS mount with a fresh slide generation; the pointer slide AND the keyboard path both carry it, so a
+  // release/keypress from a slide that a refresh has replaced is rejected by onCuadreConfirm (Codex r2 P2).
+  const slideGen = ++cuadreSlideGen;
+  attachSlideConfirm('cuadre-confirm', () => onCuadreConfirm(slideGen));
+  const slideEl = $('cuadre-confirm');
+  if (slideEl) slideEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); onCuadreConfirm(slideGen); }
+  });
   return cash;
 }
 /* ===== SLICE3:CUADRE-RENDER:END ===== */
@@ -3457,7 +3476,11 @@ $('cuadre-screen').addEventListener('click', (e) => {
 // driver swiped; this covers a FRESH slide that a mid-submit re-render mounts). Every outcome closes the overlay,
 // shows cierreRechazado, or re-renders (mounting a fresh slide for the retry) — so onCuadreConfirm resolves in all
 // known cases; attachSlideConfirm's own reset is only a fallback for an unexpected throw.
-async function onCuadreConfirm() {
+async function onCuadreConfirm(slideGen) {
+  // STALE-SLIDE GUARD (Codex r2 P2): a release/keypress from a slide that a cash refresh has REPLACED is a no-op —
+  // its generation is behind the current mount, so it can never submit the superseded amount. The driver re-slides
+  // on the fresh slide (which carries the current gen). `slideGen` is undefined only for a programmatic call → allow.
+  if (slideGen != null && slideGen !== cuadreSlideGen) return;
   if (closeInFlight) return;   // a close is already in flight — ONE recordCuadre only (slide double-submit guard)
 
   // Re-validate identity now; bind the whole operation to it.
@@ -3526,9 +3549,11 @@ async function onCuadreConfirm() {
     // Server REJECTED (permission/validation/other) — never clock out; the cuadre is the whole point. Show the
     // cierreRechazado screen (prototype S.cierreRechazado) in place of a bare toast. showCierreRechazado LATCHES
     // closeInFlight so an observer refreshOpenCashSurfaces() can't clobber the rejection screen before the driver
-    // acts; .cuadre-volver, .cuadre-reintentar and handleEndShift all reset it, so the latch can't leak.
+    // acts; .cuadre-volver, .cuadre-reintentar and handleEndShift all reset it, so the latch can't leak. It renders
+    // the amount THIS attempt submitted (`cash`), NOT the possibly-refreshed screen._cash (Codex r2 P2): a late
+    // rejection after a timeout+refresh must show what was rejected, not a newer figure.
     console.warn('recordCuadre rejected (staying on shift):', err);
-    showCierreRechazado();
+    showCierreRechazado(cash);
   });
 
   // UI-only: if no ack within the window, tell the driver to retry. We do NOT finalize or discard the op here — the
