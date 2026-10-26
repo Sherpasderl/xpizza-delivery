@@ -15,6 +15,13 @@
 //   M   the proven-safe mints: legacy order_conflict ⇒ a fresh id + a second order; paymentStatus cancelled ⇒ cash on a fresh id
 //   X   refusal mapping: outside_delivery_bands, pin_required, both closure refusals, the radius 400, price_increased (the sheet,
 //       agreed ⇒ the same id stands behind the new ceiling), quote_invalid (silent, one attempt)
+//   S2a r2 (Codex FULL r1):
+//   Z   a CHANGED issued card placement (pin / mode / delivery price-promo) is resolved first and RESUMED through the stored
+//       checkout URL with the ORIGINAL economics — zero re-sends, one gateway call, the server order and the stash untouched
+//   L   money writes are never auto-retried: provider-response loss (the gateway created the checkout, its answer lost ⇒ 502)
+//       and browser-response loss (the server issued, the app's response lost) are each ONE gateway call and the recovery sheet;
+//       a later card tap never re-sends
+//   O   an OLD paid return never deletes a newer unresolved placement (conditional clearing); the newer one keeps its id
 // Run: npm run test:capp-s2a
 require('./_emulator-required')('database', 'firestore');
 
@@ -27,9 +34,9 @@ process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'capp-s2a-secret';
 process.env.QUOTE_TOKEN_SECRET = process.env.QUOTE_TOKEN_SECRET || 'capp-s2a-quote-secret';
 process.env.PIXELPAY_MERCHANT_EMAIL = process.env.PIXELPAY_MERCHANT_EMAIL || 'pagos@example.com';
 const stub = (rel, exportsOf) => { const p = require.resolve(rel); const real = require(rel); require.cache[p] = { id: p, filename: p, loaded: true, children: [], paths: [], exports: exportsOf(real) }; };
-const CHARGED = []; const RETURNS = []; let HOSTED_GATE = null;
+const CHARGED = []; const RETURNS = []; let HOSTED_GATE = null; let PROVIDER_LOSS = false;   // PROVIDER_LOSS: the gateway creates the checkout, its answer is lost
 stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
-stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { if (HOSTED_GATE) await HOSTED_GATE.p; CHARGED.push(Number(q.amountLempiras)); RETURNS.push(q.completeUrl); return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
+stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { if (HOSTED_GATE) await HOSTED_GATE.p; CHARGED.push(Number(q.amountLempiras)); RETURNS.push(q.completeUrl); if (PROVIDER_LOSS) { PROVIDER_LOSS = false; throw new Error('provider response lost'); } return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
 
 const app = require('../index.js');
 const admin = require('firebase-admin');
@@ -59,8 +66,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('capp-s2a(
 // ── the four REAL handlers behind one local server; the app's URLs point at it ──
 const ROUTES = { quoteOrder: app.quoteOrder, createOrder: app.createOrder, chargeOnlineOrder: app.chargeOnlineOrder, paymentStatus: app.paymentStatus };
 let BASE = null; let SERVER = null;
-const CALLS = []; let DROP_NEXT = null; let DROP_LEFT = 0;   // DROP_NEXT: an endpoint whose responses are lost AFTER the server handled them —
-// every attempt of ONE placement (the client's own retries re-send the same id and would otherwise land the idempotent 200)
+const CALLS = []; let DROP_NEXT = null;   // DROP_NEXT: an endpoint whose next response is lost AFTER the server handled it
 async function startServer() {
   const w = express(); w.use(express.json());
   for (const [k, h] of Object.entries(ROUTES)) w.use(`/${k}`, h);
@@ -72,7 +78,7 @@ const realFetch = async (url, init) => {
   const ep = Object.keys(ROUTES).find((k) => url.startsWith(`${BASE}/${k}`));
   CALLS.push(ep);
   const r = await fetch(url, init);
-  if (DROP_NEXT === ep) { if (DROP_LEFT === 0) DROP_LEFT = A.MAX_TRIES; if (--DROP_LEFT === 0) DROP_NEXT = null; await r.text(); throw new TypeError('Failed to fetch (response lost)'); }
+  if (DROP_NEXT === ep) { DROP_NEXT = null; await r.text(); throw new TypeError('Failed to fetch (response lost)'); }
   return r;
 };
 // the REAL shared module, unstamped ⇒ inert: its fetch passes through (no X-Client headers; the floor cells live in S2a-e)
@@ -129,7 +135,7 @@ async function quoteAndPlace(pg, f, cart, { sheet, sigOverride, expected } = {})
   assert.strictEqual(q.kind, 'ok', `premise: the quote (${JSON.stringify(q)})`);
   const T = C.totals(f, q.record, ctx.subtotal, await C.cartSig(f, ctx));
   assert.ok(T.ready, `premise: a Total to show (${JSON.stringify(T)})`);
-  const out = await pg.api.place({ flow: f, ctx, sig: sigOverride || q.record.sig, expectedNetCents: expected == null ? T.total : expected, sheet });
+  const out = await pg.api.place({ flow: f, ctx, sig: sigOverride || q.record.sig, expectedNetCents: expected == null ? T.total : expected, totals: T, sheet });
   return { out, T, q, ctx };
 }
 const stashOf = (pg) => JSON.parse(pg.storage.getItem(`${pg.rid}_s2a_pending_pay`) || 'null');
@@ -241,9 +247,11 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
       } else {
         assert.deepStrictEqual([out.kind, out.state], ['confirming', 'verifying'], `verifying ⇒ «Estamos confirmando tu pago» (${JSON.stringify(out)})`);
         assert.ok(placeOf(back) && stashOf(back), 'verifying keeps the placement and the creds (no cash offer)');
+        const cx = await back.reload().api.handleReturn(`?pay=cancel&order=${encodeURIComponent(r.out.order_id)}&t=${encodeURIComponent(s.t)}`);
+        assert.deepStrictEqual([cx.kind, cx.state, !!placeOf(back)], ['confirming', 'verifying', true], `🔴 a CANCEL return on verifying ⇒ confirming, kept (r2 P2 #5) (${JSON.stringify(cx)})`);
       }
     }
-    ok('R paid after close: closed_refunded ⇒ the refund with refunded_total_cents == the Total (placement + stash cleared); a refund that could not run ⇒ verifying ⇒ «Estamos confirmando tu pago», creds kept');
+    ok('R paid after close: closed_refunded ⇒ the refund with refunded_total_cents == the Total (placement + stash cleared); a refund that could not run ⇒ verifying ⇒ «Estamos confirmando tu pago», creds kept — on a cancel return too');
   }
 
   // ── D: the lost-response duplicate (Codex r2 P1 #9) and the order_exists family ──
@@ -364,6 +372,77 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     assert.deepStrictEqual([qi.kind, sheetCalls.length], ['placed', 0], `quote_invalid ⇒ recovered silently (${JSON.stringify(qi)})`);
     assert.strictEqual((await order(qi.order_id)).total_cents, TB.total);
     ok('X refusals from the REAL server: outside_delivery_bands, pin_required, inactive + outside hours ⇒ G0, the radius 400 ⇒ out-of-zone, price_increased ⇒ the sheet (old → new) then the same id at the new ceiling, quote_invalid ⇒ silent');
+  }
+
+  // ── Z (r2 P1 #1): a changed issued card placement ⇒ resolved first ⇒ resumed through the stored URL, ORIGINAL economics ──
+  {
+    const variants = [
+      ['pin', (f) => C.setPin(f, HUB.lat + 3 * KM, HUB.lng, true), null],
+      ['mode', (f) => C.setMode(f, 'pickup'), null],
+      ['delivery price / promo', () => {}, { policy_version: 2, bands: BANDS, restaurants: { x_pizza: { active: true, free_delivery: true } } }],
+    ];
+    for (const [what, change, pricing] of variants) {
+      await clean(); CHARGED.length = 0;
+      const pg = page('x_pizza'); const f = flowOf('online'); const cart = cartOf('x_pizza');
+      const first = await quoteAndPlace(pg, f, cart);
+      assert.strictEqual(first.out.kind, 'redirect', JSON.stringify(first.out));
+      const id = first.out.order_id; const before = await order(id); const stash0 = pg.storage.getItem('x_pizza_s2a_pending_pay');
+      change(f);
+      if (pricing) await rtdb.ref('platform_config/delivery_pricing').set(pricing);
+      await clean();
+      const ch0 = count('chargeOnlineOrder');
+      const second = await quoteAndPlace(pg.reload(), f, cart);
+      if (pricing) await rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 3, bands: BANDS, restaurants: { x_pizza: { active: true, free_delivery: false } } });
+      assert.notStrictEqual(second.T.total, first.T.total, `premise (${what}): the new quote differs (${first.T.total} → ${second.T.total})`);
+      assert.deepStrictEqual([second.out.kind, second.out.order_id, second.out.url, second.out.resumed], ['redirect', id, first.out.url, true], `🔴 ${what}: the SAME live checkout, resumed (${JSON.stringify(second.out)})`);
+      assert.deepStrictEqual([second.out.expected_net_cents, second.out.totals && second.out.totals.total], [first.T.total, first.T.total], `🔴 ${what}: the ORIGINAL economics are shown, never the new quote`);
+      assert.deepStrictEqual([count('chargeOnlineOrder') - ch0, CHARGED.length], [0, 1], `🔴 ${what}: zero re-sends, ONE gateway call`);
+      const after = await order(id);
+      assert.deepStrictEqual([after.lat, after.order_type, after.total_cents], [before.lat, before.order_type, before.total_cents], `${what}: the server order is untouched`);
+      assert.strictEqual(pg.storage.getItem('x_pizza_s2a_pending_pay'), stash0, `${what}: the stash is untouched`);
+    }
+    ok('Z changed issued card placement (pin / mode / delivery price-promo): resolved first, resumed through the stored checkout URL with the ORIGINAL economics; zero re-sends, one gateway call, the server order and the stash untouched');
+  }
+
+  // ── L (r2 P1 #4): money writes are never auto-retried — provider-response loss vs browser-response loss ──
+  {
+    for (const [what, arm] of [['provider-response loss', () => { PROVIDER_LOSS = true; }], ['browser-response loss', () => { DROP_NEXT = 'chargeOnlineOrder'; }]]) {
+      await clean(); CHARGED.length = 0;
+      const pg = page('x_pizza'); const f = flowOf('online'); const cart = cartOf('x_pizza');
+      const ch0 = count('chargeOnlineOrder');
+      arm();
+      const a = await quoteAndPlace(pg, f, cart);
+      assert.deepStrictEqual([a.out.kind, count('chargeOnlineOrder') - ch0, CHARGED.length], ['existing_order', 1, 1], `🔴 ${what}: ONE send, ONE gateway call, the recovery sheet (${JSON.stringify(a.out)})`);
+      assert.strictEqual(placeOf(pg).ambiguous, true, `${what}: the placement is AMBIGUOUS`);
+      await clean();
+      const b = await quoteAndPlace(pg.reload(), f, cart);
+      assert.deepStrictEqual([b.out.kind, b.out.order_id, count('chargeOnlineOrder') - ch0, CHARGED.length], ['existing_order', a.out.order_id, 1, 1], `🔴 ${what}: a later card tap never re-sends (no second gateway attempt)`);
+    }
+    ok('L no auto-retry on money writes: provider-response loss (gateway created, answer lost ⇒ 502) and browser-response loss (issued, app response lost) are each ONE gateway call and the recovery sheet; a later card tap never re-sends');
+  }
+
+  // ── O (r2 P1 #2): an OLD paid return never deletes a newer unresolved placement ──
+  {
+    await clean();
+    const pg = page('x_pizza'); const kf = flowOf('online');
+    const a = await quoteAndPlace(pg, kf, cartOf('x_pizza'));
+    const ao = await order(a.out.order_id);
+    await confirmAndMaterialize(edgeDeps('x_pizza'), { orderId: a.out.order_id, attemptId: ao.active_attempt_id, now: Date.now(), trackingToken: 'TTO' });
+    const at = stashOf(pg).t;
+    const paid = await pg.reload().api.handleReturn(`?pay=complete&order=${encodeURIComponent(a.out.order_id)}&t=${encodeURIComponent(at)}`);
+    assert.strictEqual(paid.kind, 'placed', 'premise: A is paid');
+    await clean();
+    const cf = flowOf('cash');
+    DROP_NEXT = 'createOrder';
+    const b = await quoteAndPlace(pg, cf, cartOf('x_pizza'));
+    assert.strictEqual(b.out.kind, 'offline', 'premise: B unresolved (its response lost)');
+    const again = await pg.reload().api.handleReturn(`?pay=complete&order=${encodeURIComponent(a.out.order_id)}&t=${encodeURIComponent(at)}`);   // A's return URL reopened
+    assert.strictEqual(again.kind, 'placed');
+    assert.strictEqual((placeOf(pg) || {}).order_id, b.out.order_id, '🔴 A\'s old return left B\'s record');
+    await clean();
+    const b2 = await quoteAndPlace(pg.reload(), cf, cartOf('x_pizza'));
+    assert.deepStrictEqual([b2.out.kind, b2.out.order_id, b2.out.idempotent], ['placed', b.out.order_id, true], '🔴 B\'s retry keeps B\'s id (no second order)');
+    ok('O an old paid return never deletes a newer unresolved placement; the newer one keeps its id and resolves idempotently');
   }
 
   FINISHED = true;

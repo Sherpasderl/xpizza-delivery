@@ -13,6 +13,8 @@
 //   F  PLAN-capp-S2-r4 §2.4 — the client floor ENABLED (platform_config/client_floor/orders): the page's quote / create carry the
 //      X-Client-* headers and are admitted; below the floor ⇒ 426 ⇒ the update path, but the reload is REFUSED while a payment is
 //      unresolved (the app adapter), and allowed once it is resolved; a header-less request ⇒ 426.
+//      F3 (S2a r2 P2 #6): the floor rises between the quote and the FIRST placement ⇒ that send is 426'd before any server write
+//      ⇒ its just-minted record is cleared ⇒ the update path DOES reload (nothing unresolved blocks it).
 // Run: npm run test:capp-s2a-browser          (CHROME_BIN overrides the browser binary; needs openssl for the throwaway cert)
 require('./_emulator-required')('database', 'firestore');
 
@@ -150,6 +152,20 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
   const API = (pay) => `CappApi.createApi({ config: { restaurantId: 'x_pizza', orderIdPrefix: 'TR', pendingPayKey: 'tr_pending_pay', hours: Array.from({ length: 7 }, () => [0, 0, 23, 59]),
     endpoints: { quoteOrder: '${FN}/quoteOrder', createOrder: '${FN}/createOrder', chargeOnlineOrder: '${FN}/chargeOnlineOrder', paymentStatus: '${FN}/paymentStatus' } } })`;
   let PH = 0;
+  // a quote only (the first placement comes later): the flow, ctx and quote are kept on the page
+  const quoteOnly = (pay) => `(async () => {
+    const menu = CappMenu.adaptMenu(${JSON.stringify(ENVELOPE)}); const cart = CappCart.createCart(menu); cart.inc(${JSON.stringify(DISH)});
+    const s = CappSerialize.serialize(cart, menu);
+    window.__api = ${API(pay)};
+    const f = CappCheckout.freshFlow(null); CappCheckout.setPin(f, ${HUB.lat + 1 / 111.195}, ${HUB.lng}, true);
+    Object.assign(f, { details: 'Portón negro', name: 'Ana TR', phone: '9977${String(PH += 1).padStart(4, '0')}', pay: '${pay}' }); CappCheckout.chooseTip(f, 0);
+    const ctx = { restaurantId: 'x_pizza', items: s.items, itemsText: s.items_text, member: null, headers: { Authorization: 'Bearer ${process.env.MAKE_SECRET}' } };
+    const q = await window.__api.quote(f, ctx);
+    window.__f = f; window.__ctx = ctx; window.__q = q;
+    return { kind: q.kind };
+  })()`;
+  const placeOnly = `window.__api.place({ flow: window.__f, ctx: window.__ctx, sig: window.__q.record.sig, expectedNetCents: window.__q.record.resp.net_total_cents })
+    .then((o) => ({ kind: o.kind, place: !!localStorage.getItem('capp:x_pizza:pending_place') }))`;
   const startCheckout = (pay) => `(async () => {
     const menu = CappMenu.adaptMenu(${JSON.stringify(ENVELOPE)}); const cart = CappCart.createCart(menu); cart.inc(${JSON.stringify(DISH)});
     const s = CappSerialize.serialize(cart, menu);
@@ -204,7 +220,7 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
     await rtdb.ref('platform_config/client_floor/orders').set(COMPAT);
     await new Promise((r) => setTimeout(r, 31000));   // the floor cache TTL (client-floor.js FLOOR_TTL_MS)
     await clean(); HDRS.length = 0;
-    const t = await tab();
+    const t = await tab(); let t2 = null;
     try {
       await t.go(`${OLD}/`);
       const cash = await t.ev(startCheckout('cash'));
@@ -219,6 +235,11 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
       await clean();
       const card = await t.ev(startCheckout('online'));
       assert.strictEqual(card.out && card.out.kind, 'redirect', `premise: a card checkout admitted at the floor (${JSON.stringify(card)})`);
+      // F3 premise, on the OTHER host (its own origin storage, nothing unresolved): a quote while admitted, no placement yet
+      t2 = await tab();
+      await t2.go(`${NEW}/`);
+      const quoted = await t2.ev(quoteOnly('cash'));
+      assert.strictEqual(quoted.kind, 'ok', `premise: the F3 quote admitted at the floor (${JSON.stringify(quoted)})`);
       await rtdb.ref('platform_config/client_floor/orders').set(COMPAT + 1);
       await new Promise((r) => setTimeout(r, 31000));
       await clean(); SERVE_STALE = true;
@@ -236,7 +257,28 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
       for (let i = 0; i < 60 && !reloaded; i++) { await new Promise((r) => setTimeout(r, 100)); try { reloaded = (await t.ev('window.__marker')) !== 'alive'; } catch (_) {} }
       assert.ok(reloaded, 'non-vacuity: once nothing is unresolved, the same update path DOES reload');
       ok('F2 below the floor: the page gets 426 ⇒ the update path; the reload is REFUSED while a payment is unresolved and happens once it is resolved');
-    } finally { await t.close().catch(() => {}); await rtdb.ref('platform_config/client_floor/orders').remove(); }
+
+      // F3: the floor rose between the quote and the FIRST placement ⇒ 426 before any server write ⇒ the record is cleared ⇒ reload
+      await clean();
+      const n0 = Object.keys((await rtdb.ref('orders').get()).val() || {}).length;
+      await t2.ev(`(window.__marker = 'alive', CappSelfUpdate.register(SherpaClient, { state: () => ({ screen: 'checkout', placing: false, sheetOpen: false }),
+        unresolved: () => !!localStorage.getItem('capp:x_pizza:pending_place') || !!localStorage.getItem('tr_pending_pay'), search: () => location.search, snapshot: () => ({}), restore() {} }), true)`);
+      assert.strictEqual(await t2.ev(`!!(window.__q && window.__q.kind === 'ok' && window.__f)`), true, 'premise: the page that quoted is still the page placing');
+      let first = null;
+      try { first = await t2.ev(placeOnly); } catch (e) {                                  // the 426 transition may reload mid-evaluate
+        assert.match(String(e && e.message), /context was destroyed|navigated|Cannot find context|Target closed/i, `only a NAVIGATION may interrupt the placement (${e && e.message})`);
+        first = { navigated: true };
+      }
+      if (first && first.kind) assert.deepStrictEqual(first, { kind: 'update_required', place: false }, `🔴 the refused first placement leaves no record (${JSON.stringify(first)})`);
+      await t2.ev('SherpaClient.check().then(() => SherpaClient.poke())').catch(() => {});
+      let reloaded3 = false;
+      for (let i = 0; i < 80 && !reloaded3; i++) { await new Promise((r) => setTimeout(r, 100)); try { reloaded3 = (await t2.ev('window.__marker')) !== 'alive'; } catch (_) {} }
+      assert.ok(reloaded3, '🔴 nothing unresolved ⇒ the update path DOES reload after a refused first placement');
+      await t2.loaded();
+      assert.strictEqual(await t2.ev(`localStorage.getItem('capp:x_pizza:pending_place')`), null, 'no placement record survives the reload');
+      assert.strictEqual(Object.keys((await rtdb.ref('orders').get()).val() || {}).length, n0, 'and the server wrote nothing');
+      ok('F3 the floor rises between the quote and the FIRST placement: the send is 426\'d before any server write, its record is cleared, and the update path reloads');
+    } finally { await t.close().catch(() => {}); if (t2) await t2.close().catch(() => {}); await rtdb.ref('platform_config/client_floor/orders').remove(); }
 
     FINISHED = true; code = 0;
     console.log(`\ncapp-domain-transition (emulator + Chrome): ${n} passed`);
