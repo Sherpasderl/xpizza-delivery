@@ -487,6 +487,17 @@
       ".read": false,
       ".write": false
     },
+    "form_signals": {
+      ".read": false,
+      ".write": false
+    },
+    "form_signal_limits": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "window_start"
+      ]
+    },
     "payment_attempts": {
       ".read": false,
       ".write": false,
