@@ -13,6 +13,7 @@ import { getMyBranches } from './api.js';
 import { token } from './auth.js';
 import { openEditor, editorCanLeave } from './app.js';
 import * as L from './branch-logic.js';
+import * as B from './branch-1b-logic.js';
 import { $, el, icon, svg, errBox, OFFLINE } from './ops-dom.js';
 import { mountBranches } from './branches-view.js';
 import { mountPausas } from './pausas.js';
@@ -138,7 +139,7 @@ async function boot() {
   if (!partial) store.set(CACHE_KEY(uid), fresh);
   if (!S.e1) { apply(fresh, { persist: !partial }); return; }
   if (partial) return;
-  const sel = L.resolveSelection(fresh, store.get(SEL_KEY(uid)));
+  const sel = B.resolveSelection1b(fresh, store.get(SEL_KEY(uid)));
   if (decisionOf(sel) !== S.decision && !S.reloadedOnce) { S.reloadedOnce = true; requestReload(); return; }   // the caps changed
   S.e1 = fresh; S.sel = sel;
   renderChrome();
@@ -148,7 +149,7 @@ async function boot() {
 function apply(e1, { persist = true } = {}) {
   S.e1 = e1;
   S.partial = !persist;
-  const sel = L.resolveSelection(e1, store.get(SEL_KEY(S.uid)));
+  const sel = B.resolveSelection1b(e1, store.get(SEL_KEY(S.uid)));
   S.sel = sel;
   S.decision = decisionOf(sel);
   if (!sel) { if (persist) showNoBranches(); else showBootError({ kind: 'Unavailable' }); return; }
@@ -160,6 +161,13 @@ function apply(e1, { persist = true } = {}) {
     if (hit) { S.sel = null; showBootError({ kind: 'Unavailable' }); return; }
   }
   if (persist) store.set(SEL_KEY(S.uid), { brand_id: sel.brand_id, scope: sel.scope });
+  if (sel.lifecycleOnly) {   // PORTAL-UI 1b §3.4: an owned brand with no operational branch — Sucursales only, no editor
+    S.editorRid = null; S.sales = false;
+    renderChrome();
+    renderViews();
+    goto('suc');
+    return;
+  }
   const remembered = store.get(EDITOR_KEY(S.uid, sel.brand_id));
   const rid = L.editorRidFor(sel, remembered);
   S.editorRid = rid;
@@ -204,7 +212,8 @@ function hideOpsChrome() {
 function renderChrome() {
   const sel = S.sel;
   if (!sel) return;
-  const brands = L.brandsOf(S.e1);
+  if (sel.lifecycleOnly) { renderLifecycleChrome(sel); return; }
+  const brands = B.brandsOf1b(S.e1);
   const label = L.scopeLabel(sel);
   // the footer's role label (index.html says «Dueño» by default)
   const role = $('whorole');
@@ -222,7 +231,7 @@ function renderChrome() {
   for (const b of brands) {
     const it = el('button', `switchmenu-item${b.brand_id === sel.brand_id ? ' on' : ''}`);
     it.type = 'button';
-    it.append(document.createTextNode(b.name), el('span', null, `${b.branches.length} ${b.branches.length === 1 ? 'sucursal' : 'sucursales'}`));
+    it.append(document.createTextNode(b.name), el('span', null, B.brandCount(brandSize(b))));
     it.addEventListener('click', () => { closeMenus(); if (b.brand_id !== sel.brand_id) select({ brand_id: b.brand_id, scope: null }); });
     menu.append(it);
   }
@@ -269,6 +278,46 @@ function renderChrome() {
   renderRegistered();
   for (const id of badges.keys()) paintBadge(id);   // codex follow-up r1: a label rewrite above (mnsuc) drops its badge → re-apply
 }
+// PORTAL-UI 1b §3.4 (owner-approved frames s2-empty / s2-onedraft): the lifecycle-only shell — the brand in the switcher, the nav
+// = «Sucursales» only (section labels hidden), the ops chrome hidden, the brand line «N sucursal(es)» counting its drafts.
+const brandSize = (b) => (b.lifecycleOnly ? B.draftsOf(S.e1, b.brand_id).length : b.branches.length);
+function renderLifecycleChrome(sel) {
+  const brands = B.brandsOf1b(S.e1);
+  const n = brandSize(sel.brand);
+  const role = $('whorole'); if (role) role.textContent = 'Dueño';
+  $('shopname').textContent = sel.brand.name;
+  $('shopsub').textContent = B.brandCount(n);
+  const sw = $('switcher');
+  const multiBrand = brands.length > 1;
+  sw.classList.toggle('locked', !multiBrand);
+  const chev = sw.querySelector('.chev'); if (chev) chev.classList.toggle('hidden', !multiBrand);
+  sw.setAttribute('aria-expanded', 'false');
+  const menu = $('switchmenu');
+  menu.replaceChildren();
+  for (const b of brands) {
+    const it = el('button', `switchmenu-item${b.brand_id === sel.brand_id ? ' on' : ''}`);
+    it.type = 'button';
+    it.append(document.createTextNode(b.name), el('span', null, B.brandCount(brandSize(b))));
+    it.addEventListener('click', () => { closeMenus(); if (b.brand_id !== sel.brand_id) select({ brand_id: b.brand_id, scope: null }); });
+    menu.append(it);
+  }
+  for (const id of ['scopewrap', 'navmenulabel', 'navprod', 'navopslabel', 'navpausas', 'navequipos', 'navbiz', 'navventas', 'mnprod', 'mnpausas', 'mnequipos', 'mnventas', 'availstrip', 'menulock']) { const x = $(id); if (x) x.classList.add('hidden'); }
+  $('navsuc').classList.remove('hidden');
+  $('navsuctext').textContent = 'Sucursales';
+  const cnt = $('navsuccount');
+  cnt.classList.toggle('hidden', n === 0);
+  cnt.textContent = n === 0 ? '' : String(n);
+  $('mtop').classList.remove('hidden');
+  $('mbrand').textContent = sel.brand.name;
+  $('mscope').textContent = B.brandCount(n);
+  $('mchev').classList.toggle('hidden', !multiBrand);
+  fillScopeMenu($('mscopemenu'), 'msi', true);
+  $('mnsuc').classList.remove('hidden');
+  $('mnsuc').textContent = 'Sucursales';
+  $('mnav').classList.add('show');
+  renderRegistered();
+  for (const id of badges.keys()) paintBadge(id);
+}
 function spanIcon(name) { const s = el('span', 'lk'); s.append(icon(name)); return s; }
 function dotFor(b) {
   const d = el('span', 'scdot');
@@ -282,7 +331,7 @@ function fillScopeMenu(menu, itemCls, withBrands) {
   const list = sel.brand.branches;
   // codex 1a r1 P2-5: a locked BRANCH (one-branch manager) never hides the other BRANDS on mobile — the lock is within a brand
   if (withBrands) {
-    for (const b of L.brandsOf(S.e1)) {
+    for (const b of B.brandsOf1b(S.e1)) {
       if (b.brand_id === sel.brand_id) continue;
       const it = el('button', `scopeitem ${itemCls}`, b.name);
       it.type = 'button';
@@ -321,7 +370,7 @@ function toggleMenu(m, b) {
   closeMenus();
   if (open) { menu.classList.remove('hidden'); btn.setAttribute('aria-expanded', 'true'); }
 }
-$('switcher').addEventListener('click', (e) => { e.stopPropagation(); if (S.sel && L.brandsOf(S.e1).length > 1) toggleMenu('switchmenu', 'switcher'); });
+$('switcher').addEventListener('click', (e) => { e.stopPropagation(); if (S.sel && B.brandsOf1b(S.e1).length > 1) toggleMenu('switchmenu', 'switcher'); });
 $('scopebtn').addEventListener('click', (e) => { e.stopPropagation(); if (S.sel && !S.sel.locked) toggleMenu('scopemenu', 'scopebtn'); });
 $('mswitch').addEventListener('click', (e) => { e.stopPropagation(); if (S.sel) toggleMenu('mscopemenu', 'mswitch'); });
 document.addEventListener('click', (e) => { if (!e.target.closest || (!e.target.closest('.switchwrap') && !e.target.closest('#mtop') && !e.target.closest('#mscopemenu'))) closeMenus(); });
@@ -512,7 +561,7 @@ const ctx = {
     if (!b) return;
     Object.assign(b, patch);
     if (!S.partial) store.set(CACHE_KEY(S.uid), S.e1);   // a partial (degraded) list is never cached
-    S.sel = L.resolveSelection(S.e1, store.get(SEL_KEY(S.uid)));
+    S.sel = B.resolveSelection1b(S.e1, store.get(SEL_KEY(S.uid)));
     renderChrome();
     renderViews();
   },
@@ -531,7 +580,7 @@ const ctx = {
     if (gen !== S.gen) return 'obsolete';
     if (!fresh || !Array.isArray(fresh.branches) || fresh.branches.some((b) => b && b.degraded)) return 'failed';
     store.set(CACHE_KEY(uid), fresh);
-    const sel = L.resolveSelection(fresh, store.get(SEL_KEY(uid)));
+    const sel = B.resolveSelection1b(fresh, store.get(SEL_KEY(uid)));
     if (!sel || (decisionOf(sel) !== S.decision && !S.reloadedOnce)) { S.reloadedOnce = true; requestReload(); return 'reload'; }
     S.e1 = fresh; S.sel = sel;
     renderChrome();

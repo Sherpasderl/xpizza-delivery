@@ -182,3 +182,106 @@ test('editors: per capability on an identity row (all-or-none for real roles; a 
   assert.deepEqual(B.editorsOf({ caps: ['availability.set'] }), { phone: false, hours: false, prep_default_min: false });
   assert.deepEqual(B.editorsOf({ caps: ['location.hours'] }), { phone: false, hours: true, prep_default_min: false }, 'SYNTHETIC partial caps');
 });
+
+// ══ commit (b) ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+const LOC = { address_line: 'Calle 1, local 2', address_reference: null, hub: { lat: 1, lng: 2 }, zone_radius_km: 5 };
+const life = (lifecycle, readiness, extra = {}) => ({ rid: 'r_x', brand_id: 'marca_s', role: 'owner', name: 'Sucursal X', lifecycle, location: LOC,
+  profile: { location_name: 'Sucursal X', phone: '+50497952893', hours: WEEK(), prep_default_min: 20 }, editable: { prep_default_min: 20 },
+  readonly: { radius_km: 5 }, devices: 0, last_order_today: null, control: { state: 'inactive' }, ...(readiness ? { readiness } : {}), ...extra });
+
+test('§2c orphan test: every server readiness code / gap maps to EXACTLY one S8 row or to the one S8c notice — no orphans either way', () => {
+  const rowFor = (unmet, gaps) => B.readinessRows(life('staged', { unmet, ...(gaps ? { identity_gaps: gaps } : {}) }));
+  const owners = new Map();
+  for (const code of OPS.READINESS_CODES) {
+    if (code === 'identity_invalid') continue;
+    const r = rowFor([code]);
+    const target = r.kind === 'blocked' ? 'NOTICE' : r.rows.filter((x) => x.cls !== 'ok').map((x) => x.id).join(',');
+    assert.ok(target && !target.includes(','), `${code} → exactly one target (${target})`);
+    owners.set(code, target);
+  }
+  for (const gap of OPS.IDENTITY_GAPS) {
+    const r = rowFor(['identity_invalid'], [gap]);
+    const target = r.kind === 'blocked' ? 'NOTICE' : r.rows.filter((x) => x.cls !== 'ok').map((x) => x.id).join(',');
+    assert.ok(target && !target.includes(','), `gap ${gap} → exactly one target (${target})`);
+    owners.set(`gap:${gap}`, target);
+  }
+  assert.deepEqual(Object.fromEntries(owners), {
+    not_a_branch: 'NOTICE', brand_not_on: 'NOTICE', no_handheld_online: 'device', no_owner_or_manager: 'team', menu_not_published: 'menu',
+    'gap:location': 'location', 'gap:zone': 'zone', 'gap:hours': 'hours', 'gap:prep': 'prep', 'gap:integrity': 'NOTICE',
+  });
+  const rowsUsed = new Set([...owners.values()].filter((t) => t !== 'NOTICE'));
+  assert.deepEqual([...rowsUsed].sort(), B.READY_ROWS.map((r) => r.id).sort(), 'every drawn row has a source (no orphan row)');
+  assert.equal(rowFor(['some_future_code']).kind, 'blocked', 'an unknown code fails closed to the notice');
+  assert.equal(rowFor(['identity_invalid'], ['some_future_gap']).kind, 'blocked');
+  assert.equal(rowFor(['identity_invalid']).kind, 'blocked', 'identity_invalid without gaps → notice');
+});
+
+test('S8 rows: met / unmet / Sherpa-pending states and the computable subs (B5); no sub without data', () => {
+  let r = B.readinessRows(life('staged', { unmet: [] }));
+  assert.equal(r.unmet, 0);
+  assert.deepEqual(r.rows.map((x) => [x.state, x.sub]), [['Lista', 'Calle 1, local 2'], ['Lista', '5 km a la redonda · la define Sherpa'], ['Listo', 'Los 7 días definidos'],
+    ['Listo', '20 min'], ['Listo', ''], ['Listo', ''], ['Listo', '']]);
+  const h = WEEK(); delete h.sat; delete h.sun;
+  r = B.readinessRows(life('staged', { unmet: ['identity_invalid', 'no_handheld_online'], identity_gaps: ['location', 'zone', 'hours'] }, { profile: { location_name: 'X', hours: h, prep_default_min: 20 } }));
+  assert.deepEqual(r.rows.slice(0, 3).map((x) => [x.state, x.name, x.sub]), [['Pendiente', 'Ubicación · pendiente — Sherpa la configura', ''],
+    ['Pendiente', 'Zona de entrega · pendiente — Sherpa la configura', ''], ['Falta', 'Horario de los 7 días', 'Definí sábado y domingo, aunque sea «Cerrado»']]);
+  assert.deepEqual([r.rows[4].state, r.rows[4].sub], ['Falta', 'Vinculá un handheld desde el equipo y encendelo una vez']);
+  assert.equal(B.readyCountText(r), '4 de 7 pendientes');
+  r = B.readinessRows(life('staged', { unmet: ['no_owner_or_manager', 'menu_not_published'] }));
+  assert.deepEqual(r.rows.slice(5).map((x) => [x.state, x.sub]), [['Falta', ''], ['Falta', '']], 'undrawn unmet subs are omitted');
+  assert.equal(B.readinessRows(life('staged', null)).kind, 'unknown', 'G3: an omitted readiness is unknown (fail closed)');
+});
+
+test('B4: «Le falta: …» = the unmet row names (first letter lower-cased), « · », a final «.» — each code → exactly one name', () => {
+  const r = B.readinessRows(life('staged', { unmet: ['identity_invalid', 'no_handheld_online'], identity_gaps: ['hours'] }));
+  assert.equal(B.missingText(r), 'horario de los 7 días · al menos un equipo vinculado.');
+  const all = B.readinessRows(life('staged', { unmet: ['identity_invalid', 'no_handheld_online', 'no_owner_or_manager', 'menu_not_published'], identity_gaps: ['location', 'zone', 'hours', 'prep'] }));
+  assert.equal(B.missingText(all), 'ubicación definida por Sherpa · zona de entrega · horario de los 7 días · tiempo de preparación normal · al menos un equipo vinculado · alguien con acceso a la sucursal · menú de la marca publicado.');
+});
+
+test('S2 card model (B2 / B3): pills, subs, meta (no «Próximo»; drafts unnumbered), hints', () => {
+  const now = Date.parse('2026-10-26T18:00:00Z');
+  let m = B.cardModel(life('inactive', { unmet: [] }), now);
+  assert.deepEqual([m.pill.label, m.sub], ['Desactivada', 'Calle 1, local 2 · desactivada']);
+  assert.deepEqual(m.meta, [['Zona', '5 km'], ['Preparación', '20 min'], ['Equipos', '0'], ['Último pedido de hoy', 'Sin pedidos hoy']]);
+  assert.deepEqual(m.hint, { kind: 'ok', bold: 'Lista para activar.', text: 'Horario, preparación y equipo en orden. Al activarla vuelve a recibir pedidos.' });
+  m = B.cardModel(life('staged', { unmet: ['no_handheld_online'] }), now);
+  assert.deepEqual([m.pill.label, m.sub, m.hint.kind, m.hint.text], ['Por activar', 'Calle 1, local 2', 'warn', 'al menos un equipo vinculado.']);
+  m = B.cardModel(life('staged', null), now);
+  assert.equal(m.hint, null, 'G3: no readiness → no hint');
+  m = B.cardModel({ rid: 'r_d', brand_id: 'marca_s', lifecycle: 'draft', profile: { location_name: 'Nueva', phone: '+50433905521', hours: WEEK(), prep_default_min: 25 }, location: null, version: 'd.op.1.1' }, now);
+  assert.deepEqual([m.name, m.pill.label, m.sub, m.hint.text], ['Nueva', 'Borrador', 'Sherpa está configurando la ubicación', B.DRAFT_HINT]);
+  assert.deepEqual(m.meta, [['Zona', '—'], ['Preparación', '25 min'], ['Equipos', '—']], 'a draft has no numbering');
+  m = B.cardModel(life('active', null, { legacy: true, control: { state: 'open', paused_until: null, pause_reason: null, pause_since: null }, last_order_today: 641 }), now);
+  assert.deepEqual([m.pill.label, m.hint, m.meta[3][1]], ['Abierta', null, '#641']);
+});
+
+test('§3.4 selection: W off is exactly 1a; W on adds the OWNED brands without an operational row (lifecycle-only)', async () => {
+  const L = await import('./branch-logic.js');
+  const op = { rid: 'r_a', brand_id: 'marca_a', role: 'owner', state: 'member', caps: ['location.prep'], name: 'A1', control: { state: 'open' } };
+  const brands = [{ brand_id: 'marca_a', name: 'Marca A', caps: ['brand.locations'], drafts: [] }, { brand_id: 'marca_s', name: 'Marca S', caps: ['brand.locations'], drafts: [{ rid: 'r_d', lifecycle: 'draft' }] },
+    { brand_id: 'marca_m', name: 'Marca M', caps: [], drafts: [] }];
+  const off = { brands, branches: [op], membership_writes_enabled: false };
+  assert.deepEqual(B.brandsOf1b(off), L.brandsOf(off));
+  assert.deepEqual(B.resolveSelection1b(off, { brand_id: 'marca_s', scope: null }), L.resolveSelection(off, { brand_id: 'marca_s', scope: null }));
+  const on = { ...off, membership_writes_enabled: true };
+  assert.deepEqual(B.brandsOf1b(on).map((b) => [b.brand_id, !!b.lifecycleOnly]), [['marca_a', false], ['marca_s', true]], 'a brand the caller only manages is never added');
+  assert.equal(B.resolveSelection1b(on, { brand_id: 'marca_s', scope: null }).lifecycleOnly, true, 'a stored lifecycle-only brand is honoured');
+  assert.equal(B.resolveSelection1b(on, null).brand_id, 'marca_a', 'otherwise 1a\'s choice');
+  const onlyLife = { ...on, branches: [] };
+  assert.deepEqual([B.resolveSelection1b(onlyLife, null).brand_id, B.resolveSelection1b(onlyLife, null).lifecycleOnly], ['marca_a', true], 'no operational brand → the first owned brand by name (lifecycle-only)');
+  assert.equal(B.resolveSelection1b({ ...onlyLife, membership_writes_enabled: false }, null), null, 'W off → «no administra ningún local» (1a)');
+  assert.equal(B.brandCount(0), '0 sucursales'); assert.equal(B.brandCount(1), '1 sucursal');
+});
+
+test('S9: the name rule mirrors the server isText(…, 60); the hours chips have no «Definir después» (B6); op_id fits OP_ID_RE', () => {
+  assert.equal(B.validName(B.cleanName('  Col. Nueva ')), true);
+  for (const bad of ['', '   ', 'x'.repeat(61)]) assert.equal(B.validName(B.cleanName(bad)), false, JSON.stringify(bad));
+  assert.equal(B.validName('x'.repeat(60)), true);
+  const ch = B.newHoursChoices([{ rid: 'r_a', profile: { location_name: 'Centro', hours: WEEK() } }]);
+  assert.deepEqual(ch.map((c) => c.label), ['Copiar de Centro', 'Lun–Dom 11:00–22:00']);
+  assert.deepEqual(B.newHoursChoices([]).map((c) => c.label), ['Lun–Dom 11:00–22:00']);
+  for (const c of ch) assert.equal(OPS.hours7Errors(B.cleanHours(c.hours)).length, 0, `${c.label} is a valid E6 hours`);
+  for (let i = 0; i < 20; i++) assert.match(B.newOpId(), /^[A-Za-z0-9_-]{1,64}$/);
+  assert.notEqual(B.newOpId(), B.newOpId());
+});

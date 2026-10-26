@@ -18,8 +18,12 @@
   "auth.js",
   "availability.js",
   "boot.js",
+  "branch-1b-logic.js",
+  "branch-1b-logic.test.mjs",
   "branch-logic.js",
   "branch-logic.test.mjs",
+  "branches-1b-life.test.mjs",
+  "branches-1b.test.mjs",
   "branches-view.js",
   "editor.js",
   "editor.test.mjs",
@@ -76,8 +80,8 @@
    "bytes": 5819
   },
   "index.html": {
-   "sha256": "0516143e18d2041917ab3731165f6e2848efad58aee3df2c9f215f63dd65abf5",
-   "bytes": 10276
+   "sha256": "e83de98990fdfdcb6e0511cebec739796bf3a715cba99927d95e1f1d80f4ab75",
+   "bytes": 10572
   },
   "netlify.toml": {
    "sha256": "fe3ef565e42ad144919fa416dd111b322958d83486746116dd07c228faed22ee",
@@ -92,8 +96,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "6ae2646fa7c8f8c78a2df3f91a34cf395ba578d5384966f4bebcc771ee2dfd41",
-   "bytes": 89444
+   "sha256": "0e1304499eae214c9aab2c088eb0404430f01439cf219e44f6c1c11eac422391",
+   "bytes": 98390
   }
  },
  "diff_aid": {
@@ -186,6 +190,84 @@
     "#pausemodal .plab",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    "#sucmodal .callout",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    "#sucmodal .callout",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    "#sucmodal .chip1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#sucmodal .ferr1b",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    "#sucmodal .fld .lab",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    "#sucmodal .fnote",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    "#sucmodal .step .val span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    "#sucmodal .stepb",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    "#sucmodal .stepb",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#sucmodal .tel1b",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    "#sucmodal .tel1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    "#sucmodal .telbad1b",
+    "border-color",
+    "var(--red)"
    ],
    [
     "",
@@ -513,6 +595,24 @@
    ],
    [
     "",
+    ".chipon1b",
+    "background",
+    "var(--tint)"
+   ],
+   [
+    "",
+    ".chipon1b",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".chipon1b",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
     ".cicon.info",
     "background",
     "var(--tint2)"
@@ -556,6 +656,18 @@
    [
     "",
     ".conflict p",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".cqfoot1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".cqt1b span",
     "color",
     "var(--mute)"
    ],
@@ -1545,6 +1657,24 @@
    ],
    [
     "",
+    ".nvin1b",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".nvin1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".nvin1b:focus",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
     ".oav",
     "color",
     "#fff"
@@ -1659,6 +1789,42 @@
    ],
    [
     "",
+    ".ops .addcard1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".ops .addcard1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .addcard1b:hover",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".ops .addcard1b:hover",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".ops .browmiss1b",
+    "border-color",
+    "var(--amber-line)"
+   ],
+   [
+    "",
+    ".ops .bt1b span",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".ops .callout b",
     "color",
     "var(--amber)"
@@ -1677,6 +1843,42 @@
    ],
    [
     "",
+    ".ops .calloutok1b b",
+    "color",
+    "var(--green-text)"
+   ],
+   [
+    "",
+    ".ops .calloutok1b",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
+    ".ops .calloutok1b",
+    "border-color",
+    "var(--green-line)"
+   ],
+   [
+    "",
+    ".ops .calloutquiet1b b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .calloutquiet1b",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".ops .calloutquiet1b",
+    "border-color",
+    "var(--line)"
+   ],
+   [
+    "",
     ".ops .card",
     "background",
     "var(--card)"
@@ -1692,6 +1894,30 @@
     ".ops .card.clk:hover",
     "border-color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".ops .chip1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".ops .chip1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .chip1b:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".ops .chipq1b",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -1725,6 +1951,18 @@
    ],
    [
     "",
+    ".ops .csub1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .empty1b p",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
     ".ops .errbox b,#detail .errbox b",
     "color",
     "var(--red-text)"
@@ -1743,6 +1981,12 @@
    ],
    [
     "",
+    ".ops .ferr1b",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
     ".ops .fld .lab",
     "color",
     "var(--mute2)"
@@ -1755,9 +1999,81 @@
    ],
    [
     "",
+    ".ops .hday1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .herr1b",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".ops .hmiss1b",
+    "background",
+    "var(--amber-soft)"
+   ],
+   [
+    "",
+    ".ops .hmiss1b",
+    "border-color",
+    "var(--amber-line)"
+   ],
+   [
+    "",
+    ".ops .hmiss1b",
+    "color",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".ops .hoff1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".ops .hoff1b",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".ops .hrow .d",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .htime1b",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".ops .htime1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .htime1b:focus",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".ops .htimebad1b",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".ops .htimebad1b",
+    "border-color",
+    "var(--red)"
    ],
    [
     "",
@@ -1782,6 +2098,18 @@
     ".ops .inval.inro",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .legend1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ops .lock1b",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",
@@ -1818,6 +2146,18 @@
     ".ops .sec",
     "background",
     "var(--card)"
+   ],
+   [
+    "",
+    ".ops .sherpa1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".ops .sherpa1b",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -1884,6 +2224,30 @@
     ".ops .stepb:hover",
     "border-color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".ops .tel1b",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".ops .tel1b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ops .tel1b:focus",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".ops .telbad1b",
+    "border-color",
+    "var(--red)"
    ],
    [
     "",
@@ -2163,6 +2527,114 @@
    ],
    [
     "",
+    ".pilldraft1b i",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".pilldraft1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".pilldraft1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".pillinactive1b",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".pillinactive1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".pillok1b",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
+    ".pillok1b",
+    "border-color",
+    "var(--green-line)"
+   ],
+   [
+    "",
+    ".pillok1b",
+    "color",
+    "var(--green-text)"
+   ],
+   [
+    "",
+    ".pillstaged1b i",
+    "background",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".pillstaged1b",
+    "background",
+    "var(--amber-soft)"
+   ],
+   [
+    "",
+    ".pillstaged1b",
+    "border-color",
+    "var(--amber-line)"
+   ],
+   [
+    "",
+    ".pillstaged1b",
+    "color",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".pillwait1b i",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".pillwait1b",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".pillwait1b",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".pillwarn1b",
+    "background",
+    "var(--amber-soft)"
+   ],
+   [
+    "",
+    ".pillwarn1b",
+    "border-color",
+    "var(--amber-line)"
+   ],
+   [
+    "",
+    ".pillwarn1b",
+    "color",
+    "var(--amber)"
+   ],
+   [
+    "",
     ".premove",
     "color",
     "var(--mute2)"
@@ -2388,6 +2860,12 @@
     ".rbar",
     "background",
     "var(--rbar-bg)"
+   ],
+   [
+    "",
+    ".rbdoterr1b",
+    "background",
+    "var(--red)"
    ],
    [
     "",

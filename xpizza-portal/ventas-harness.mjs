@@ -22,7 +22,9 @@ export const IDS = ['switcher', 'switchmenu', 'discard', 'review', 'pubback', 'p
   'mtop', 'mswitch', 'mbrand', 'mscope', 'mchev', 'mscopemenu', 'mnsuc', 'mnpausas', 'menulede', 'menulock', 'availstrip',
   'viewsuc', 'viewpausas', 'sucbar', 'sucbartxt', 'sucdiscard', 'sucsave', 'pausescrim', 'pausemodal', 'availdrawer', 'availscrim', 'opstoast', 'whorole',
   // PORTAL-UI slice 2: Equipos
-  'navequipos', 'navequiposcount', 'mnequipos', 'viewequipos', 'devscrim', 'devmodal'];
+  'navequipos', 'navequiposcount', 'mnequipos', 'viewequipos', 'devscrim', 'devmodal',
+  // PORTAL-UI 1b: the Menú section label (hidden in the lifecycle-only shell) and the Sucursales confirm modal
+  'navmenulabel', 'sucscrim', 'sucmodal'];
 // the classes index.html gives them, so `hidden` / `on` start where the real page starts
 const INITIAL_CLASS = {
   navprod: 'nav on', navbiz: 'nlabel hidden', navventas: 'nav hidden', mnav: 'mnav', mnprod: 'mn on', mnventas: 'mn',

@@ -2,7 +2,7 @@
 // the write gate, the profile validation / normalisation (mirrors the O1b server exactly), the single-writer patch, the
 // save-error copy (G4), the detail lede (T7) and the «Copiar horario de» sources (T6). No DOM, no fetch, no clock.
 // Node-tested in branch-1b-logic.test.mjs. Brand-agnostic: every name and value comes from getMyBranches data.
-import { DAYS, validPrep } from './branch-logic.js';
+import { DAYS, validPrep, brandsOf, resolveSelection, stateModel, kmText, lastOrderText } from './branch-logic.js';
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -164,4 +164,143 @@ export function ledeOf(row) {
 const cap = (b, c) => !!(b && Array.isArray(b.caps) && b.caps.includes(c));
 export function editorsOf(row) {
   return { phone: cap(row, 'location.contact'), hours: cap(row, 'location.hours'), prep_default_min: cap(row, 'location.prep') };
+}
+
+// ══ commit (b) — the lifecycle (PLAN r4 §3.2, §3.4, §2c, §2e, §2f B1–B8) ════════════════════════════════════════════════════
+
+// ── §3.4 selection: W on, an OWNED brand with no operational row is selectable as a lifecycle-only brand ──────────────────
+export const brandRec = (e1, brandId) => (e1 && Array.isArray(e1.brands) ? e1.brands.find((b) => b && b.brand_id === brandId) : null) || null;
+export const ownsBrand = (e1, brandId) => { const r = brandRec(e1, brandId); return !!(r && Array.isArray(r.caps) && r.caps.includes('brand.locations')); };
+export const draftsOf = (e1, brandId) => { const r = brandRec(e1, brandId); return r && Array.isArray(r.drafts) ? r.drafts.filter((d) => d && typeof d.rid === 'string') : []; };
+const byName = (a, z) => String(a.name).localeCompare(String(z.name), 'es');
+// 1a's operational brands + the owned brands without an operational row ({branches: [], lifecycleOnly: true}). W off → 1a.
+export function brandsOf1b(e1) {
+  const ops = brandsOf(e1);
+  if (!writesOn(e1)) return ops;
+  const seen = new Set(ops.map((b) => b.brand_id));
+  const extra = (e1 && Array.isArray(e1.brands) ? e1.brands : [])
+    .filter((b) => b && !seen.has(b.brand_id) && ownsBrand(e1, b.brand_id))
+    .map((b) => ({ brand_id: b.brand_id, name: typeof b.name === 'string' && b.name ? b.name : b.brand_id, branches: [], lifecycleOnly: true }));
+  return [...ops, ...extra].sort(byName);
+}
+// W off → exactly 1a's resolveSelection. W on: a stored lifecycle-only brand is honoured; with no operational brand at all the
+// first owned brand is chosen (instead of «no administra ningún local»); otherwise 1a's choice.
+export function resolveSelection1b(e1, stored) {
+  if (!writesOn(e1)) return resolveSelection(e1, stored);
+  const all = brandsOf1b(e1);
+  const life = all.filter((b) => b.lifecycleOnly);
+  const pick = (b) => ({ brand_id: b.brand_id, scope: null, locked: false, owner: true, brand: b, lifecycleOnly: true });
+  const storedLife = stored && life.find((b) => b.brand_id === stored.brand_id);
+  if (storedLife) return pick(storedLife);
+  const ops = resolveSelection(e1, stored);
+  if (ops) return ops;
+  return life.length ? pick(life[0]) : null;
+}
+export const brandCount = (n) => `${n} ${n === 1 ? 'sucursal' : 'sucursales'}`;
+
+// ── S2 cards (B2, B3) ─────────────────────────────────────────────────────────────────────────────────────────────────────
+const addrOf = (row) => (isObj(row.location) && typeof row.location.address_line === 'string' && row.location.address_line.trim() ? row.location.address_line : null);
+export const DRAFT_HINT = 'Vas a poder activarla cuando Sherpa termine de configurar la ubicación y la zona de entrega.';
+export const READY_HINT_INACTIVE = 'Horario, preparación y equipo en orden. Al activarla vuelve a recibir pedidos.';
+export function pillOf(row, nowMs) {
+  if (row.lifecycle === 'draft') return { cls: 'pilldraft1b', label: 'Borrador' };
+  if (row.lifecycle === 'staged') return { cls: 'pillstaged1b', label: 'Por activar' };
+  if (row.lifecycle === 'inactive') return { cls: 'pillinactive1b', label: 'Desactivada' };
+  const st = stateModel(row, nowMs);
+  return { cls: st.pillCls, label: st.label };
+}
+export function cardModel(row, nowMs) {
+  const draft = row.lifecycle === 'draft';
+  const prof = isObj(row.profile) ? row.profile : {};
+  const a = addrOf(row);
+  const sub = draft ? 'Sherpa está configurando la ubicación' : (a ? (row.lifecycle === 'inactive' ? `${a} · desactivada` : a) : '');
+  const prep = draft ? prof.prep_default_min : (row.editable ? row.editable.prep_default_min : null);
+  const km = isObj(row.location) && Number.isFinite(row.location.zone_radius_km) ? row.location.zone_radius_km : (row.readonly ? row.readonly.radius_km : null);
+  const meta = [
+    ['Zona', draft || !Number.isFinite(km) ? '—' : `${kmText(km)} km`],
+    ['Preparación', validPrep(prep) ? `${prep} min` : 'Falta'],
+    ['Equipos', draft ? '—' : String(Number.isInteger(row.devices) ? row.devices : 0)],
+  ];
+  if (!draft) meta.push(['Último pedido de hoy', lastOrderText(row.last_order_today)]);   // B2 / 1a D12; drafts: no numbering
+  let hint = null;
+  if (draft) hint = { kind: 'quiet', text: DRAFT_HINT };
+  else if ((row.lifecycle === 'staged' || row.lifecycle === 'inactive') && !row.legacy && isObj(row.readiness) && Array.isArray(row.readiness.unmet)) {
+    const r = readinessRows(row);
+    if (r.kind === 'list' && r.unmet === 0) hint = { kind: 'ok', bold: 'Lista para activar.', text: row.lifecycle === 'inactive' ? READY_HINT_INACTIVE : '' };
+    else if (r.kind === 'list') hint = { kind: 'warn', bold: 'Le falta:', text: missingText(r) };
+  }
+  return { rid: row.rid, name: row.name || prof.location_name || row.rid, draft, pill: pillOf(row, nowMs), sub, meta, hint };
+}
+
+// ── S8 checklist ↔ readiness (§2c, B5) ────────────────────────────────────────────────────────────────────────────────────
+// The ONE row per (code, gap); everything else (not_a_branch, brand_not_on, gap integrity, any unknown code) is the S8c notice.
+export const READY_ROWS = Object.freeze([
+  { id: 'location', gap: 'location', name: 'Ubicación definida por Sherpa', pending: 'Ubicación · pendiente — Sherpa la configura', ok: 'Lista' },
+  { id: 'zone', gap: 'zone', name: 'Zona de entrega', pending: 'Zona de entrega · pendiente — Sherpa la configura', ok: 'Lista' },
+  { id: 'hours', gap: 'hours', name: 'Horario de los 7 días', ok: 'Listo' },
+  { id: 'prep', gap: 'prep', name: 'Tiempo de preparación normal', ok: 'Listo' },
+  { id: 'device', code: 'no_handheld_online', name: 'Al menos un equipo vinculado', ok: 'Listo', unmetSub: 'Vinculá un handheld desde el equipo y encendelo una vez' },
+  { id: 'team', code: 'no_owner_or_manager', name: 'Alguien con acceso a la sucursal', ok: 'Listo' },
+  { id: 'menu', code: 'menu_not_published', name: 'Menú de la marca publicado', ok: 'Listo' },
+]);
+const ROW_GAPS = new Set(READY_ROWS.filter((r) => r.gap).map((r) => r.gap));
+const ROW_CODES = new Set(READY_ROWS.filter((r) => r.code).map((r) => r.code));
+const DAY_WORDS = Object.freeze({ mon: 'lunes', tue: 'martes', wed: 'miércoles', thu: 'jueves', fri: 'viernes', sat: 'sábado', sun: 'domingo' });
+const joinY = (xs) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`);
+// → { kind: 'list', rows: [{id, state, cls, rowCls, name, sub}], unmet } | { kind: 'blocked' } | { kind: 'unknown' } (G3)
+export function readinessRows(row) {
+  const rd = row && row.readiness;
+  if (!isObj(rd) || !Array.isArray(rd.unmet)) return { kind: 'unknown' };
+  const unmet = new Set(rd.unmet);
+  const gaps = new Set(Array.isArray(rd.identity_gaps) ? rd.identity_gaps : []);
+  for (const c of unmet) if (c !== 'identity_invalid' && !ROW_CODES.has(c)) return { kind: 'blocked' };   // not_a_branch, brand_not_on, unknown
+  if (unmet.has('identity_invalid') && (!gaps.size || [...gaps].some((g) => !ROW_GAPS.has(g)))) return { kind: 'blocked' };   // integrity / unknown gap
+  const prof = isObj(row.profile) ? row.profile : {};
+  const a = addrOf(row);
+  const km = isObj(row.location) && Number.isFinite(row.location.zone_radius_km) ? row.location.zone_radius_km : null;
+  const rows = READY_ROWS.map((r) => {
+    const miss = r.gap ? gaps.has(r.gap) : unmet.has(r.code);
+    if (miss && r.pending) return { id: r.id, state: 'Pendiente', cls: 'wait', name: r.pending, sub: '' };   // S8b: Sherpa-owned
+    if (miss) {
+      let sub = r.unmetSub || '';
+      if (r.id === 'hours') {
+        const undef = DAYS.map(([k]) => k).filter((k) => !(isObj(prof.hours) && isObj(prof.hours[k]) && typeof prof.hours[k].open === 'boolean'));
+        sub = undef.length ? `Definí ${joinY(undef.map((k) => DAY_WORDS[k]))}, aunque sea «Cerrado»` : '';
+      }
+      return { id: r.id, state: 'Falta', cls: 'warn', name: r.name, sub };
+    }
+    let sub = '';
+    if (r.id === 'location') sub = a || '';
+    if (r.id === 'zone') sub = Number.isFinite(km) ? `${kmText(km)} km a la redonda · la define Sherpa` : '';
+    if (r.id === 'hours') sub = 'Los 7 días definidos';
+    if (r.id === 'prep') sub = validPrep(prof.prep_default_min) ? `${prof.prep_default_min} min` : '';
+    return { id: r.id, state: r.ok, cls: 'ok', name: r.name, sub };
+  });
+  return { kind: 'list', rows, unmet: rows.filter((r) => r.cls !== 'ok').length };
+}
+export const readyCountText = (r) => `${r.unmet} de ${r.rows.length} pendientes`;
+// B4: «Le falta: …» = the unmet row names, first letter lower-cased (proper nouns keep their case), joined « · », + «.»
+const lowerFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+export function missingText(r) {
+  return `${READY_ROWS.filter((x) => r.rows.some((y) => y.id === x.id && y.cls !== 'ok')).map((x) => lowerFirst(x.name)).join(' · ')}.`;
+}
+export const canActivate = (row) => { const r = readinessRows(row); return r.kind === 'list' && r.unmet === 0; };
+
+// ── S9 «Nueva sucursal» (E6) ──────────────────────────────────────────────────────────────────────────────────────────────
+export const NAME_MAX = 60;
+// the server's isText(…, 60) on the TRIMMED name the client sends
+export const cleanName = (raw) => String(raw === null || raw === undefined ? '' : raw).trim();
+export const validName = (s) => typeof s === 'string' && s.length >= 1 && s.length <= NAME_MAX && s.trim() === s;
+// the hours chips (B6: no «Definir después»): the siblings «Copiar de {name}» + the preset; the first is pre-selected
+export function newHoursChoices(rows) {
+  return [...copySources(rows, null).map((x) => ({ label: `Copiar de ${x.label}`, hours: x.hours })), { label: PRESET_LABEL, hours: PRESET_HOURS }];
+}
+// a fresh op_id per «Crear sucursal» INTENT (reused on retry). The server's OP_ID_RE is /^[A-Za-z0-9_-]{1,64}$/.
+export function newOpId(rand) {
+  const c = globalThis.crypto;
+  if (typeof rand !== 'function' && c && typeof c.randomUUID === 'function') return c.randomUUID().replace(/-/g, '');
+  const r = typeof rand === 'function' ? rand : Math.random;
+  let s = '';
+  for (let i = 0; i < 32; i++) s += '0123456789abcdef'[Math.floor(r() * 16) % 16];
+  return s;
 }
