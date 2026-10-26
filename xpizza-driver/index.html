@@ -36,6 +36,24 @@
 /* cierreRechazado + the whole cuadre shell CSS now lives in SLICE3:CUADRE-CSS (the cuadre was rebuilt full-screen). */
 /* OFFER-TAKEOVER: the cross-hub offer's accept slide, disabled offline (acceptSecondOrder can't be queued). */
 .sv-slide-off { opacity: .55; pointer-events: none; filter: saturate(.6); }
+/* S.oferta single-offer card (prototype :581) — header/map/ring reuse the of-head/of-ring rules; this is the content. */
+.of2-card { display: flex; flex-direction: column; gap: 10px; }
+.of2-chiprow { display: flex; align-items: center; gap: 8px; }
+.of2-onum { font-weight: 700; color: var(--text-soft, #5A6473); font-size: 13px; }
+.of2-card .of-dist { margin-left: auto; }
+.of2-timeline { border: 1px dashed var(--line, #EEF1F5); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; }
+.of2-trow { display: flex; gap: 9px; align-items: center; font-size: 13.5px; color: var(--text, #1F2733); }
+.of2-trow b { font-weight: 800; }
+.of2-tic { flex: none; width: 26px; height: 26px; border-radius: 8px; background: #E3ECFB; color: #2F5FB8; display: grid; place-items: center; }
+.of2-tic svg { width: 15px; height: 15px; }
+.of2-dim { color: var(--text-dim, #A2ABBA); }
+.of2-row { display: flex; gap: 11px; align-items: flex-start; padding-top: 2px; }
+.of2-ic { flex: none; width: 24px; height: 24px; color: var(--text-soft, #5A6473); } .of2-ic.ok { color: var(--green, #2F9E66); }
+.of2-ic svg { width: 22px; height: 22px; }
+.of2-tx { flex: 1; min-width: 0; }
+.of2-t { font-size: 14px; color: var(--text, #1F2733); } .of2-t b { font-weight: 800; }
+.of2-d { font-size: 12.5px; color: var(--text-soft, #5A6473); margin-top: 1px; }
+.of2-foot-note { text-align: center; font-size: 12px; color: var(--text-dim, #A2ABBA); margin-top: 2px; line-height: 1.35; }
 /* ===== SLICE3:PRESENTATION-3:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -2242,7 +2260,7 @@ function openWhatsappSheet(btn) {
 }
 /* ===== SLICE2:IMPORT:END ===== */
 /* ===== SLICE3:IMPORT-3:START — batch-3 pure builders ===== */
-import { helpDiagnosisHtml, cierreRechazadoHtml } from './stacked-view.js';
+import { helpDiagnosisHtml, cierreRechazadoHtml, readyTimeLabel } from './stacked-view.js';   // readyTimeLabel: R1 ready time for the S.oferta offer
 /* ===== SLICE3:IMPORT-3:END ===== */
 /* ===== SLICE3:LOGIC-3:START — batch-3 module logic (help diagnosis sheet; gpsoff / cierreRechazado / offline to follow) ===== */
 // SLICE3:HELP — the «¿Por qué no veo pedidos?» diagnosis sheet (prototype S.help), mounted on demand (reusing the
@@ -4302,7 +4320,14 @@ function renderActiveAndQueue() {
     bannerSlot.innerHTML = '';
     queueSlot.innerHTML = '';
     queuedOrders = [];
-    activeSlot.innerHTML = singleOrderCardHtml(offer, { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: XPD.RESTAURANT, arrived: false, atRestaurant: false, navPref: drv2ReadNavPref(), nowMs: Date.now() });
+    // S.oferta deps (REAL values only): the overview map, the R4 colonia, the R1 ready time, and «X km» only when computed.
+    const ofHub = { lat: offer.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat, lng: offer.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng };
+    const ofStop = { lat: (offer.order && offer.order.lat) || (offer.deliveryTask && offer.deliveryTask.destination_lat), lng: (offer.order && offer.order.lng) || (offer.deliveryTask && offer.deliveryTask.destination_lng) };
+    const ofHav = (a, b) => (a && b && a.lat != null && a.lng != null && b.lat != null && b.lng != null) ? XPD.haversineDistance(a.lat, a.lng, b.lat, b.lng) : 0;
+    const ofKm = ofHav(mapDriver2, ofHub) + ofHav(ofHub, ofStop);
+    activeSlot.innerHTML = singleOrderCardHtml(offer, { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: XPD.RESTAURANT, arrived: false, atRestaurant: false, navPref: drv2ReadNavPref(), nowMs: Date.now(),
+      mapHtml: overviewMapSvg({ driver: mapDriver2, hubs: [{ ...ofHub, on: true }], stops: [{ ...ofStop, n: 1, on: false }], phase: 'pickup', stale: mapStale2 }),
+      area: coloniaOf(offer), ready: readyTimeLabel(offer.order || {}), offerKm: (mapDriver2 && ofKm > 0) ? `${(Math.round(ofKm / 100) / 10).toFixed(1)} km total` : '' });
     mountOfferTakeover(offer);   // btn-accept → acceptSecondOrder (offline-gated) + the 5 s repeat alert
   } else {
     stopOfferTakeover();         // not in takeover → clear the 5 s repeat

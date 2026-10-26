@@ -29,12 +29,12 @@ const pickup = { orderId: 'A', phase: 'pickup', pickupTask: { destination_lat: 1
 const delivery = { orderId: 'A', phase: 'delivery', deliveryTask: { destination_lat: 15.4, destination_lng: -88.0, destination_address: 'fallback addr' }, order: xpOrder };
 
 // ---------- phase → correct slide/tap IDs (match attachActiveCardHandlers) ----------
-t('offer: .sv-offer, #btn-accept slide, ring w/ deadline, no-reject footnote, NO other slide', () => {
+t('offer (S.oferta rebuild): «Nuevo pedido» header + of-ring on the deadline + #btn-accept + no-reject footnote, NO other slide', () => {
   const doc = build(offer);
-  assert.ok(doc.querySelector('.sv-offer'));
-  assert.ok(doc.querySelector('#btn-accept.sv-slide'));
-  assert.equal(doc.querySelector('.sv-ring').getAttribute('data-deadline'), String(offer.pickupTask.assignment_deadline));
-  assert.match(doc.querySelector('.sv-foot-note').textContent, /reasigna/);
+  assert.ok(doc.querySelector('.of-head') && /Nuevo pedido/.test(doc.querySelector('.of-title').textContent), 'the S.oferta header');
+  assert.ok(doc.querySelector('#btn-accept.sv-slide'), 'the accept slide');
+  assert.equal(doc.querySelector('.of-ring-num.accept-countdown').getAttribute('data-deadline'), String(offer.pickupTask.assignment_deadline));
+  assert.match(doc.querySelector('.of2-foot-note').textContent, /reasigna/);
   assert.equal(doc.querySelector('#btn-pickup'), null);
   assert.equal(doc.querySelector('#btn-delivered'), null);
 });
@@ -63,39 +63,42 @@ t('to-customer (delivery): #btn-delivered, customer name, promoted reference, NO
   assert.equal([...doc.querySelectorAll('*')].some((e) => /Llegué|Problema con/.test(e.textContent || '')), false);
 });
 
-// ---------- offer ring tracks assignment_deadline (codex r1 P2-2): resume, don't restart ----------
-t('ring: animation resumes from elapsed (negative animation-delay) — a re-render mid-way continues, not restarts', () => {
+// ---------- offer ring + footnote track assignment_deadline (S.oferta: tick-driven of-ring, not CSS resume) ----------
+t('ring: of-ring is tick-driven (data-deadline + data-total), footnote secsLeft tracks nowMs, no clock → OFFER_RING_SECS, never NaN', () => {
   const base = 1_000_000_000_000;
   const o60 = { ...offer, pickupTask: { ...offer.pickupTask, assignment_deadline: base + 60000 } };
   const run = o60.pickupTask.assignment_deadline;
-  // at t0 (full 60 s left): duration = window, delay ≈ -0s
-  const s0 = build(o60, { nowMs: base }).querySelector('.sv-ring-run').getAttribute('style');
-  assert.match(s0, /animation-duration:60s/);
-  assert.match(s0, /animation-delay:-0\.000s/);
-  // re-render at +30 s: the ring has drained 30 s → delay ≈ -30s (RESUMES; it does not restart at -0s)
-  const s30 = build(o60, { nowMs: base + 30000 }).querySelector('.sv-ring-run').getAttribute('style');
-  assert.match(s30, /animation-duration:60s/);
-  assert.match(s30, /animation-delay:-30\.000s/);
-  // deadline passed → fully drained (elapsed clamped to the window)
-  const sEnd = build(o60, { nowMs: run + 5000 }).querySelector('.sv-ring-run').getAttribute('style');
-  assert.match(sEnd, /animation-delay:-60\.000s/);
-  // no clock supplied → full ring (delay -0s), never NaN
-  const sNo = build(o60).querySelector('.sv-ring-run').getAttribute('style');
-  assert.match(sNo, /animation-delay:-0\.000s/);
-  assert.ok(!/NaN/.test(s0 + s30 + sEnd + sNo), 'no NaN in any ring style');
+  // the ring markup is static (the live JS tick drives it); it carries the deadline + total for the tick to read
+  const d0 = build(o60, { nowMs: base });
+  const num = d0.querySelector('.of-ring-num.accept-countdown');
+  assert.equal(num.getAttribute('data-deadline'), String(run), 'the tick reads the real deadline');
+  assert.equal(num.getAttribute('data-total'), '60', 'the arc total is OFFER_RING_SECS');
+  assert.ok(d0.querySelector('.of-ring-svg .of-ring-arc'), 'the arc circle is present');
+  // the footnote countdown resolves from nowMs: full window at t0, drained at +30 s
+  assert.match(d0.querySelector('.of2-foot-note').textContent, /en 60 s/);
+  const d30 = build(o60, { nowMs: base + 30000 });
+  assert.match(d30.querySelector('.of2-foot-note').textContent, /en 30 s/);
+  // deadline passed → clamped to 0, never negative
+  const dEnd = build(o60, { nowMs: run + 5000 });
+  assert.match(dEnd.querySelector('.of2-foot-note').textContent, /en 0 s/);
+  // no clock supplied → OFFER_RING_SECS, never NaN
+  const dNo = build(o60);
+  assert.match(dNo.querySelector('.of2-foot-note').textContent, /en 60 s/);
+  const all = d0.querySelector('.of2-foot-note').textContent + d30.querySelector('.of2-foot-note').textContent + dEnd.querySelector('.of2-foot-note').textContent + dNo.querySelector('.of2-foot-note').textContent;
+  assert.ok(!/NaN/.test(all), 'no NaN in any footnote countdown');
 });
 
-// ---------- items from summary_lines (discount excluded), items_text fallback — shown on offer + review ----------
-t('items: summary_lines → qty× articles, discount line excluded, count = Σqty', () => {
-  const doc = build(offer);
+// ---------- items from summary_lines (discount excluded), items_text fallback — the per-line list lives in the review (svItems) ----------
+t('items (review): summary_lines → qty× articles, discount line excluded, count = Σqty', () => {
+  const doc = build(pickup, { atRestaurant: true });
   const items = [...doc.querySelectorAll('.sv-item')];
   assert.equal(items.length, 1);                        // the discount line is not an article
   assert.match(items[0].textContent, /2×/);
   assert.match(doc.querySelector('.sv-items-h').textContent, /2 artículos/);
 });
-t('items: absent summary_lines → items_text fallback, split on commas', () => {
-  const o = { ...offer, order: { ...xpOrder, summary_lines: undefined, items_text: 'Pizza, Coca-Cola, Salsa' } };
-  assert.equal(build(o).querySelectorAll('.sv-item').length, 3);
+t('items (review): absent summary_lines → items_text fallback, split on commas', () => {
+  const o = { ...pickup, order: { ...xpOrder, summary_lines: undefined, items_text: 'Pizza, Coca-Cola, Salsa' } };
+  assert.equal(build(o, { atRestaurant: true }).querySelectorAll('.sv-item').length, 3);
 });
 t('items: delivery (alCliente) shows NO items list (matches prototype)', () => {
   assert.equal(build(delivery).querySelector('.sv-items'), null);

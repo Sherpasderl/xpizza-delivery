@@ -195,6 +195,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/cuadre-submit.test.js',           // cuadre slide-to-confirm money-submit handler test (SLICE3)
   'xpizza-driver/chime-fresh.test.js',             // new-assignment chime handler test (SLICE3)
   'xpizza-driver/offer-takeover.test.js',          // cross-hub S.oferta takeover handler test (SLICE3)
+  'xpizza-driver/oferta-offer.test.js',            // S.oferta offer-branch rebuild output test (SLICE3)
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';
@@ -261,7 +262,7 @@ const t = (name, fn) => {
 };
 // Belt-and-braces (Codex r2 P1): force RED on ANY early exit — if fewer than the expected checks completed (an
 // injected process.exit, a thrown/short-circuited load, a skipped check), the process exit code is forced to 1.
-const EXPECTED_CHECKS = 15;
+const EXPECTED_CHECKS = 16;
 process.on('exit', () => {
   if (passed !== EXPECTED_CHECKS) {
     console.error(`slice2-freeze.guard INCOMPLETE: ${passed}/${EXPECTED_CHECKS} checks ran — early exit / skipped check`);
@@ -297,6 +298,16 @@ function stripSlice2Regions(text) {
 // region is still region-contained; this only exempts the file from the raw byte-identity check (it is verified
 // byte-identical AFTER stripping). index.html is handled by the region-restoration test, not here.
 const ALLOWED_REGION_BEARING = new Set(['xpizza-driver/xpizza-delivery.js']);
+// single-order-view.js is editable ONLY inside the SLICE3:OFERTA-OFFER region (the offer branch rebuilt to S.oferta).
+// Everything else — svChip/svItems/svPay (money display) + the nav/cash helpers — is pinned: strip the region and the
+// rest must hash to the baseline with the old offer branch removed (byte-identical in both baselines).
+const SOV_REST_SHA = 'bb7dedaf72355416049accae5d65e854e7089c53b844afb9b1052ca09aafbfa6';
+function sovRestHash(text) {
+  const lines = text.split('\n');
+  const marks = strictMarks(lines, 'SLICE3', ['OFERTA-OFFER']);
+  if (marks.length !== 2 || marks[0].kind !== 'START' || marks[1].kind !== 'END') return null;
+  return sha256([...lines.slice(0, marks[0].i), ...lines.slice(marks[1].i + 1)].join('\n'));
+}
 
 t('frozen: every baseline file under xpizza-driver/ (except index.html) is byte-identical (region-bearing files strip to baseline)', () => {
   const baseFiles = gitStr('ls-tree', '-r', '--name-only', BASELINE, '--', 'xpizza-driver')
@@ -316,7 +327,12 @@ t('frozen: every baseline file under xpizza-driver/ (except index.html) is byte-
     // A region-bearing file is OK iff stripping its SLICE2 region(s) recovers baseline byte-for-byte.
     if (ALLOWED_REGION_BEARING.has(repoPath)
         && Buffer.from(stripSlice2Regions(diskBytes.toString('utf8'))).equals(baseBytes)) continue;
-    drift.push(`${repoPath} (byte-changed${ALLOWED_REGION_BEARING.has(repoPath) ? ' — region strip did NOT recover baseline' : ''})`);
+    // single-order-view.js: editable ONLY in the SLICE3:OFERTA-OFFER region — the rest must hash to the baseline.
+    if (repoPath === 'xpizza-driver/single-order-view.js' && sovRestHash(diskBytes.toString('utf8')) === SOV_REST_SHA) continue;
+    // single-order-card.test.js: a SLICE3-editable TEST (its offer cases updated for the S.oferta rebuild); its
+    // content is governed by slice3-freeze.guard, not here (same posture as the SLICE2_TEST_MODIFY companion test).
+    if (repoPath === 'xpizza-driver/single-order-card.test.js') continue;
+    drift.push(`${repoPath} (byte-changed${ALLOWED_REGION_BEARING.has(repoPath) ? ' — region strip did NOT recover baseline' : (repoPath.endsWith('single-order-view.js') ? ' — edited OUTSIDE the OFERTA-OFFER region' : '')})`);
   }
   assert.deepEqual(drift, [], `frozen files changed:\n  ${drift.join('\n  ')}`);
 });
@@ -336,6 +352,14 @@ t('region-bearing frozen files carry only the allowed SLICE2 region(s)', () => {
     const names = new Set(marks.map((m) => m.replace(/SLICE2:|:(START|END)/g, '')));
     assert.deepEqual([...names], ['NAV-SDK'], `${repoPath} may only carry the NAV-SDK region, found: ${[...names].join(', ')}`);
   }
+});
+
+// Probe: a svPay edit (OUTSIDE the OFERTA-OFFER region) must change the rest-hash — proof the single-order-view.js pin bites.
+t('NEG: an edit to single-order-view.js OUTSIDE the OFERTA-OFFER region (svPay) changes the rest-hash → RED', () => {
+  const text = readFileSync(join(__dir, 'single-order-view.js'), 'utf8');
+  const probed = text.replace('function svPay(order, esc, computeVuelto) {', 'function svPay(order, esc, computeVuelto) { /* probe */');
+  assert.notEqual(probed, text, 'the svPay probe anchor must exist');
+  assert.notEqual(sovRestHash(probed), SOV_REST_SHA, 'a probe edit to svPay (outside the region) must change the rest-hash → RED');
 });
 
 // ---------- 2 & 3. markers well-formed + restoration recovers baseline ----------
@@ -508,7 +532,7 @@ t('file-level: only index.html modified; only the slice-2 allowlist added; nothi
   assert.deepEqual(otherOps, [], `forbidden op(s) (unlisted delete/rename/copy/type):\n  ${otherOps.join('\n  ')}`);
   // The sole free-form MODIFY is index.html; a region-bearing file (xpizza-delivery.js, NAV-SDK) may also be
   // modified, but ONLY within its region — verified byte-identical-after-strip by the frozen-files test above.
-  const expectedModified = [ALLOWED_MODIFY, ...ALLOWED_REGION_BEARING, ...SLICE2_TEST_MODIFY].sort();
+  const expectedModified = [ALLOWED_MODIFY, ...ALLOWED_REGION_BEARING, ...SLICE2_TEST_MODIFY, 'xpizza-driver/single-order-view.js', 'xpizza-driver/single-order-card.test.js'].sort();   // SLICE3: OFERTA-OFFER region + its test
   assert.deepEqual(modified.slice().sort(), expectedModified, `modified set must be exactly [${expectedModified.join(', ')}], got: ${modified.join(', ')}`);
   assert.deepEqual(deleted.sort(), [...ALLOWED_DELETE].sort(), `deleted set must be exactly the allowed-DELETE list, got: ${deleted.join(', ')}`);
   const strayAdds = added.filter((p) => !ALLOWED_ADDS.has(p));

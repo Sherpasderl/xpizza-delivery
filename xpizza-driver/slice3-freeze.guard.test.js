@@ -67,8 +67,8 @@ const SLICE3_REGIONS = loadContract();
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = 'f743df25788bc8243f1b392e3586ee4e132ee5cc3f1c3f4986559363881302ff';
-const SLICE2_GUARD_CHECKS = 15;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
+const SLICE2_GUARD_SHA = '13441acc709c1c08f33a9036e4f5346697aa55019a1a9069ed045b9aeb8b0854';
+const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
   assert.deepEqual(regions.map((r) => r.name), SLICE3_PINS.names, 'SLICE3 region names/order tampered (added/removed/shrunk region?)');
@@ -95,7 +95,24 @@ const SLICE3_EDITABLE = new Set([
   'xpizza-driver/stacked-view.js',
   'xpizza-driver/stacked-view.test.js',
   'xpizza-driver/slice2-branch.test.js',
+  // single-order-view.js is editable ONLY within the SLICE3:OFERTA-OFFER region (the awaiting_acceptance offer
+  // branch, rebuilt to S.oferta). Everything else — svChip/svItems/svPay (money display) and the nav/cash helpers —
+  // is pinned by the OFERTA-OFFER rest-hash check below; an edit anywhere else turns this guard RED.
+  'xpizza-driver/single-order-view.js',
+  'xpizza-driver/single-order-card.test.js',   // its OFFER cases updated for the S.oferta rebuild (other cases unchanged)
 ]);
+// single-order-view.js: SLICE3 may change ONLY the OFERTA-OFFER region. This is the sha256 of the baseline file with
+// the offer branch stripped (byte-identical in both baselines); the check strips the current region and must match.
+const SOV = 'xpizza-driver/single-order-view.js';
+const SOV_REST_SHA = 'bb7dedaf72355416049accae5d65e854e7089c53b844afb9b1052ca09aafbfa6';
+function sovRest() {   // the current single-order-view.js with the SLICE3:OFERTA-OFFER region removed (markers + body)
+  const lines = readFileSync(join(__dir, 'single-order-view.js'), 'utf8').split('\n');
+  const marks = strictMarks(lines, 'SLICE3', ['OFERTA-OFFER']);   // validates the markers (shape + whitelist)
+  assert.equal(marks.length, 2, 'single-order-view.js must have exactly the OFERTA-OFFER START + END markers');
+  assert.deepEqual([marks[0].kind, marks[1].kind], ['START', 'END'], 'OFERTA-OFFER markers out of order');
+  const [s, e] = [marks[0].i, marks[1].i];
+  return [...lines.slice(0, s), ...lines.slice(e + 1)].join('\n');
+}
 // The ONE guard this slice-3 guard commit also edits: slice2-freeze's coexistence splice (see slice3-regions.js).
 const SLICE3_COEXIST_MODIFY = new Set(['xpizza-driver/slice2-freeze.guard.test.js']);
 // Everything slice 3 is allowed to ADD under xpizza-driver/.
@@ -106,6 +123,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/cuadre-submit.test.js',        // cuadre slide-to-confirm money-submit handler test (lift-real idiom)
   'xpizza-driver/chime-fresh.test.js',          // new-assignment chime (same-hub 'accepted' stacks) handler test
   'xpizza-driver/offer-takeover.test.js',       // cross-hub 2nd-order S.oferta takeover: acceptSecondOrder-not-acceptTask exclusivity
+  'xpizza-driver/oferta-offer.test.js',         // S.oferta offer-branch rebuild output test
 ]);
 
 const REPO = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: __dir }).toString('utf8').trim();
@@ -124,7 +142,7 @@ const t = (name, fn) => {
 };
 // Belt-and-braces (Codex r2 P1): force RED on ANY early exit — if fewer than the expected checks completed (an
 // injected process.exit, a thrown/short-circuited load, a skipped check), the process exit code is forced to 1.
-const EXPECTED_CHECKS = 17;
+const EXPECTED_CHECKS = 19;
 process.on('exit', () => {
   if (passed !== EXPECTED_CHECKS) {
     console.error(`slice3-freeze.guard INCOMPLETE: ${passed}/${EXPECTED_CHECKS} checks ran — early exit / skipped check`);
@@ -276,6 +294,20 @@ t('index.html: strip SLICE3 regions + restore the replace spans recovers 07e5ab3
   const baseHtml = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`);
   assert.equal(recoverSlice3(current), baseHtml,
     'strip+restore did NOT recover 07e5ab38 — a change leaked OUTSIDE the SLICE3 regions, or a pinned span is wrong');
+});
+
+// single-order-view.js is editable ONLY inside the OFERTA-OFFER region: the rest (svChip/svItems/svPay money
+// display + the helpers) must still hash to the baseline. A probe edit to svPay proves the pin bites (advisor).
+t('single-order-view.js: everything OUTSIDE the OFERTA-OFFER region is byte-pinned to the baseline', () => {
+  assert.equal(sha256(sovRest()), SOV_REST_SHA,
+    'single-order-view.js changed OUTSIDE the OFERTA-OFFER region (svChip/svItems/svPay or a helper?) — re-gate at HIGH effort');
+});
+t('NEG: an edit to single-order-view.js OUTSIDE the region (svPay) → RED', () => {
+  const lines = readFileSync(join(__dir, 'single-order-view.js'), 'utf8').split('\n');
+  const probe = lines.map((l) => l.includes('function svPay(order, esc, computeVuelto) {') ? l + ' /* probe */' : l);
+  const marks = strictMarks(probe, 'SLICE3', ['OFERTA-OFFER']);
+  const rest = [...probe.slice(0, marks[0].i), ...probe.slice(marks[1].i + 1)].join('\n');
+  assert.notEqual(sha256(rest), SOV_REST_SHA, 'a probe edit to svPay (outside the region) must change the rest-hash → RED');
 });
 
 // ---------- 4. file-level ----------

@@ -65,8 +65,10 @@ function build({ online = true } = {}) {
     document, window, navigator: window.navigator, $, XPD, ICONS, escapeHtml,
     singleOrderCardHtml, currentUser: { uid: 'drv' }, soundOn: true, allTasks: { B_pickup: { assigned_driver_id: 'drv', type: 'pickup', status: 'assigned' } },
     scheduledBadge: () => '', computeVuelto: () => null, drv2ReadNavPref: () => 'Waze',
+    overviewMapSvg: () => '<svg id="ofmap"></svg>', coloniaOf: () => '', readyTimeLabel: () => '',   // S.oferta deps the OFFER-TAKEOVER branch now computes
   };
   const body = 'let queuedOrders = []; let slidingEl = null; let renderPending = false; function renderActiveAndQueue() {}\n'
+    + 'const mapDriver2 = { lat: 15.47, lng: -88.01, heading: 40 }, mapStale2 = false;\n'   // computed in the SLICE2 stacked branch (lifted-out of scope here)
     + 'let offerTakeoverGen = 0, offerTakeoverTimer = null, offerTakeoverTaskId = null;\n'   // module state the lifted takeover fns close over
     + 'const bannerSlot = $("incoming-banner-slot"), activeSlot = $("active-order-slot"), queueSlot = $("queue-slot");\n'
     + 'function attachActiveCardHandlers(o) { CALLS.attachActive++; }\n'   // count-only spy: if called in takeover, exclusivity is broken
