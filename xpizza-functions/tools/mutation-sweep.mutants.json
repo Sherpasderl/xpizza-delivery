@@ -20193,7 +20193,7 @@
       "test:s3b-return"
     ],
     "kills_with": [
-      "a declared Origin → that origin"
+      "an OLD-host request after the switch returns to the OLD host"
     ]
   }
 ]

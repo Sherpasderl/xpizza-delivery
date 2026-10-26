@@ -112,7 +112,7 @@ const urlOf = (s) => { const u = new URL(s); return { base: u.origin + u.pathnam
   const eu = await card('x_pizza', { entry_mode: 'app' }, { Origin: UNDECLARED });
   assert.deepStrictEqual(both(eu), [200, A_DEFAULT, A_DEFAULT, true], 'an UNDECLARED Origin never steers the return');
   const ed = await card('x_pizza', { entry_mode: 'app' }, { Origin: A0 });
-  assert.deepStrictEqual(both(ed), [200, A0, A0, true], 'a declared Origin → that origin');
+  assert.deepStrictEqual(both(ed), [200, A0, A0, true], 'a declared Origin → that origin (here also the default: the Origin itself is discriminated in cell 4)');
   process.env[A_ENV] = UNDECLARED;
   const ee = await card('x_pizza', { entry_mode: 'app' });
   assert.deepStrictEqual([ee.status, ee.json && ee.json.error, ee.hosted.length], [500, 'Payment not configured', 0], `env naming an undeclared origin → fail-closed, no checkout (${ee.text.slice(0, 160)})`);
