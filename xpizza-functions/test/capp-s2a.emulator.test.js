@@ -529,6 +529,7 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     for (const pay of ['cash', 'online']) {
       await clean();
       const ep = pay === 'cash' ? 'createOrder' : 'chargeOnlineOrder';
+      const l0 = LOG.length;   // this cell's requests only (the transport cells above hand-build their ctx)
       const u = mountUi('x_pizza', { geo: FIX });
       u.ui.cart.inc(dishOf(MENU.x_pizza).key); u.ui.render();
       await u.click('#cart-bar'); await u.click('[data-act="checkout"]');
@@ -540,9 +541,9 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
       await u.click('#cta'); await u.click('[data-act="tipc"][data-val="20"]');
       await u.click('[data-act="tip-place"]'); await u.click('#layer [data-act="placing-go"]');
       assert.ok(await until(() => LOG.some((x) => x.ep === ep && x.body && x.body.customer_name === 'Ana UI' && x.body.lat === FIX.lat)), `premise: the UI sent ${ep}`);
-      const sent = LOG.filter((x) => x.ep === ep).at(-1);
+      const sent = LOG.slice(l0).filter((x) => x.ep === ep).at(-1);
       assert.deepStrictEqual([sent.auth, sent.status], [true, 200], `🔴 the UI's request carries the intake key and is admitted (${pay}: ${sent.status} ${JSON.stringify(sent.json)})`);
-      const quotes = LOG.filter((x) => x.ep === 'quoteOrder');
+      const quotes = LOG.slice(l0).filter((x) => x.ep === 'quoteOrder');
       assert.ok(quotes.length && quotes.every((x) => x.auth === false), 'the public quote is sent nothing extra');
       if (pay === 'cash') assert.ok(await until(() => u.events.some((e) => e[0] === 'placed')), '🔴 cash: placed');
       else assert.ok(await until(() => u.nav.length === 1), '🔴 card: redirected to the hosted checkout');
