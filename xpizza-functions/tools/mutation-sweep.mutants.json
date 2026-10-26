@@ -19824,5 +19824,140 @@
    "node",
    "cors-preflight.test.js"
   ]
+ },
+ {
+  "id": "pricenotice-01",
+  "slice": "pricenotice",
+  "label": "a resume/reward context no longer blocks adoption",
+  "file": "../xpizza-orders/form-cart.js",
+  "from": "    if (c.blockedByContext) return null;\n",
+  "to": "",
+  "kills_with": [
+   "context (resume/reward) → null"
+  ],
+  "command": [
+   "node",
+   "../form-cart-disclosure.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-02",
+  "slice": "pricenotice",
+  "label": "an option conflict elsewhere no longer blocks adoption",
+  "file": "../xpizza-orders/form-cart.js",
+  "from": "    if (resolved.some((l) => l && Array.isArray(l.extras) && l.extras.some((x) => x && x.unresolved))) return null;\n",
+  "to": "",
+  "kills_with": [
+   "any option conflict anywhere → null"
+  ],
+  "command": [
+   "node",
+   "../form-cart-disclosure.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-03",
+  "slice": "pricenotice",
+  "label": "a repriced AND unavailable dish is adopted (the classifier hides availability behind 'repriced')",
+  "file": "../xpizza-orders/form-cart.js",
+  "from": "      if (isUnavailable(l.live) || isLauncher(l)) return null;\n",
+  "to": "      if (isLauncher(l)) return null;\n",
+  "kills_with": [
+   "repriced + unavailable → null"
+  ],
+  "command": [
+   "node",
+   "../form-cart-disclosure.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-04",
+  "slice": "pricenotice",
+  "label": "a failed adoption part-way leaves the earlier lines adopted (not all-or-nothing)",
+  "file": "../xpizza-orders/form-cart.js",
+  "from": "!accept(ch.key, ch.live)) { restore(); return null; }",
+  "to": "!accept(ch.key, ch.live)) { return null; }",
+  "kills_with": [
+   "…and nothing changed (all or nothing)"
+  ],
+  "command": [
+   "node",
+   "../form-cart-disclosure.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-05",
+  "slice": "pricenotice",
+  "label": "a stale disclosure survives a restore",
+  "file": "../xpizza-orders/form-cart.js",
+  "from": "        if (lines.get(d.key).added.price !== d.to) continue;\n",
+  "to": "",
+  "kills_with": [
+   "…it is dropped"
+  ],
+  "command": [
+   "node",
+   "../form-cart-disclosure.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-06",
+  "slice": "pricenotice",
+  "label": "removing a dish keeps its disclosure",
+  "file": "../xpizza-orders/form-cart.js",
+  "from": "    if (qty <= 0) { lines.delete(key); disclosed.delete(key); return; }",
+  "to": "    if (qty <= 0) { lines.delete(key); return; }",
+  "kills_with": [
+   "setQty 0 drops it"
+  ],
+  "command": [
+   "node",
+   "../form-cart-disclosure.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-07",
+  "slice": "pricenotice",
+  "label": "la_musa: the final render is not confirmed before the adoption stands",
+  "file": "../la-musa-orders/index.html",
+  "from": "ok = priceNoticeShows(b, b, changes); }",
+  "to": "ok = true; }",
+  "kills_with": [
+   "(the notice does not render): 🔴 rolled back"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-08",
+  "slice": "pricenotice",
+  "label": "la_musa: opening the cart sheet no longer discloses",
+  "file": "../la-musa-orders/index.html",
+  "from": "  priceNoticeMoment('cart');   // PLAN 5: disclose AFTER the sheet is open (it is the visible moment)\n",
+  "to": "",
+  "kills_with": [
+   "the notice, exact copy, in the cart sheet"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "pricenotice-09",
+  "slice": "pricenotice",
+  "label": "la_musa: the struck value is the old UNIT price, not the old subtotal",
+  "file": "../la-musa-orders/index.html",
+  "from": "  const was = Number(subtotal) - (Number(e.to) - Number(e.from)) * Number(n);\n",
+  "to": "  const was = Number(e.from);\n",
+  "kills_with": [
+   "qty 2 → the struck value is the old SUBTOTAL"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
  }
 ]
