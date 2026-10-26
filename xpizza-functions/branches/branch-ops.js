@@ -130,6 +130,12 @@ function planProfilePatch({ current, patch, expectedVersion }) {
   return { ok: true, patch: { ...out, version: cur.version + 1 }, groups };
 }
 
+// O1b T3c (Codex r1 #6) — the draft CAS token: `d.<op_id>.<inc>.<n>` (allocation op + incarnation + the draft's own integer
+// version, absent = 0). A string never equals an identity's integer version, and a delete / recreate changes op_id or inc — so a
+// token never repeats across materialization or recreation. Compared WHOLE.
+const draftVersion = (d) => (isObj(d) && Number.isInteger(d.version) && d.version >= 0 ? d.version : 0);
+const draftToken = (d) => `d.${d.op_id}.${d.inc}.${draftVersion(d)}`;
+
 // O1b T6 (plan r3.2 §5, Codex r1 #8) — the PUBLISHED readiness vocabulary (exactly six codes, in check order) and the
 // identity_gaps sub-reasons of identity_invalid (a closed, ordered set). readinessOf validates the RAW stored identity — nothing
 // masked (a malformed `active` is an integrity gap): location / zone / hours / prep each by its own predicate; `integrity` =
@@ -187,5 +193,5 @@ function planEnrichLegacy({ rid, identity, brand, input, expectedVersion }) {
   return { ok: true, patch: { ...patch, version: id.version + 1 } };
 }
 
-module.exports = { READINESS_CODES, IDENTITY_GAPS, readinessOf, draftErrors, hours7Errors, planMaterialize, planSetLocation, planProfilePatch, planSetActive, planEnrichLegacy,
+module.exports = { draftToken, draftVersion, READINESS_CODES, IDENTITY_GAPS, readinessOf, draftErrors, hours7Errors, planMaterialize, planSetLocation, planProfilePatch, planSetActive, planEnrichLegacy,
   MOVE_QUIET_MS, DEFAULT_ZONE_KM, DAYS };

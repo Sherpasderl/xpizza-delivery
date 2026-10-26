@@ -92,6 +92,7 @@ const INPUTS_OK = {
   create_draft: (i) => isObj(i) && isObj(i.draft) && P.draftErrors(i.draft).length === 0 && typeof i.op_id === 'string' && OP_ID_RE.test(i.op_id)
     && (i.brand_name == null || validBrandName(i.brand_name)),
   delete_draft: (i) => isObj(i) && isStr(i.rid),
+  edit_draft: (i) => isObj(i) && isStr(i.rid) && isObj(i.patch) && isStr(i.token),   // O1b T3c
   materialize: (i) => isObj(i) && isStr(i.rid) && isObj(i.location),
   activate: (i) => isObj(i) && isStr(i.rid) && Number.isFinite(i.expected_version),
   activate_brand: (i) => i == null || (isObj(i) && (i.open == null || (Array.isArray(i.open) && i.open.every(isStr)))),
@@ -276,6 +277,26 @@ const STEPS = {
     const dw = await txn(db, `restaurants/${rid}/draft`, (cur, stop) => (cur == null ? { ...draft, created_at: op.at, created_by: callerUid, op_id: opId, inc } : (cur.op_id === opId && cur.brand_id === brandId ? restamp(cur) : stop('draft_conflict'))));
     if (dw.stop) return fail(db, op, callId, dw.stop);
     return (await finish(db, op, callId)) ? { ok: true, rid } : LOST;
+  },
+
+  // ── O1b T3c: a portal edit of a DRAFT's profile, under the brand lock — re-bound (the op-id mapping points back to this rid),
+  // CAS on the WHOLE draft token, ONE write (version + 1). A resume never re-plans (interrupted: the UI refetches).
+  async edit_draft(db, op, callId, clk, ctx) {
+    const brandId = op.brand_id; const { rid, patch, token } = op.inputs || {};
+    if (!(await renew(db, op, callId, clk))) return LOST;
+    if (!ctx.live) return fail(db, op, callId, 'interrupted');
+    const d = await val(db, `restaurants/${rid}/draft`);
+    if ((await val(db, `restaurants/${rid}/identity`)) != null) return fail(db, op, callId, 'stale_branch');   // materialized since
+    const mapping = isObj(d) && typeof d.op_id === 'string' && OP_ID_RE.test(d.op_id) ? await val(db, `branch_op_ids/${brandId}/${d.op_id}`) : null;
+    if (!boundDraft(brandId, rid, d, null, mapping)) return fail(db, op, callId, 'not_a_draft');
+    if (P.draftToken(d) !== token) return fail(db, op, callId, 'stale_branch');
+    const v = P.draftVersion(d);
+    const plan = P.planProfilePatch({ current: { ...d, version: v }, patch, expectedVersion: v });
+    if (!plan.ok) return fail(db, op, callId, plan.errors[0]);
+    if (!(await renew(db, op, callId, clk))) return LOST;   // renew-and-verify right before the write
+    const w = await txn(db, `restaurants/${rid}/draft`, (cur, stop) => (same(cur, d) ? { ...cur, ...plan.patch } : stop('stale_branch')));
+    if (w.stop) return fail(db, op, callId, w.stop);
+    return (await finish(db, op, callId)) ? { ok: true, lifecycle: 'draft', version: P.draftToken({ ...d, ...plan.patch }) } : LOST;
   },
 
   // ── abandoned-draft cleanup, under the brand lock ──
@@ -571,6 +592,26 @@ async function casIdentity(db, rid, expectedVersion, patch) {
   return r.stop ? { ok: false, error: r.stop } : { ok: true, version: patch.version };
 }
 
+// O1b T3 / T3c — the portal PROFILE writer (E7). A name change is refused (rename_cli_only, plan r3). An INTEGER token edits the
+// identity (staged / member) by one unlocked version CAS; a STRING token edits a draft under the brand lock (edit_draft). The token's
+// lifecycle must match the rid's: a draft token against an identity (materialized since) or an integer against a draft → stale.
+async function updateBranchProfile(db, { rid, patch, expected, now, callId = newCallId('edit'), clock }) {
+  if (isObj(patch) && Object.prototype.hasOwnProperty.call(patch, 'location_name')) return { ok: false, error: 'rename_cli_only' };
+  if (typeof expected === 'string') {
+    const brandId = await brandOfRid(db, rid);
+    if ((await val(db, `restaurants/${rid}/identity`)) != null) return { ok: false, error: 'stale_branch' };
+    if (!brandId) return { ok: false, error: 'not_a_draft' };
+    return runOp(db, brandId, { kind: 'edit_draft', inputs: { rid, patch: isObj(patch) ? patch : {}, token: expected }, at: now }, callId, now, clock, { live: true });
+  }
+  if (!Number.isSafeInteger(expected) || expected < 0) return { ok: false, error: 'bad_version' };
+  const identity = await val(db, `restaurants/${rid}/identity`);
+  if (!isObj(identity)) return { ok: false, error: (await val(db, `restaurants/${rid}/draft`)) != null ? 'stale_branch' : 'not_a_branch' };
+  const plan = P.planProfilePatch({ current: identity, patch, expectedVersion: expected });
+  if (!plan.ok) return { ok: false, error: plan.errors[0] };
+  const w = await casIdentity(db, rid, expected, plan.patch);
+  return w.ok ? { ok: true, lifecycle: 'identity', version: w.version } : w;
+}
+
 // Sherpa admin: move pin / address (OFF ≥ 10 min, zero live orders) or change the radius
 async function setBranchLocation(db, { rid, input, expectedVersion, now }) {
   const identity = await val(db, `restaurants/${rid}/identity`);
@@ -664,4 +705,4 @@ async function deactivateBrand(db, { brandId, now, callId = newCallId('deactivat
 // projection resync (advisor ruling): a version-only identity bump, so the fenced publish carries an unversioned earlier write
 const bumpIdentityVersion = (db, { rid, expectedVersion }) => casIdentity(db, rid, expectedVersion, { version: expectedVersion + 1 });
 
-module.exports = { createBrandWithDraft, liveOrders, activateBrand, deactivateBrand, bumpIdentityVersion, createDraft, deleteBranchDraft, materializeBranch, resumeBranchOp, setBranchLocation, setBranchActive, enrichLegacyIdentity, LEASE_MS, opBrandOf };
+module.exports = { updateBranchProfile, createBrandWithDraft, liveOrders, activateBrand, deactivateBrand, bumpIdentityVersion, createDraft, deleteBranchDraft, materializeBranch, resumeBranchOp, setBranchLocation, setBranchActive, enrichLegacyIdentity, LEASE_MS, opBrandOf };
