@@ -11,6 +11,22 @@
 //                AND at action time, never snapshotted (the live reader itself is wired by the host)
 //   onEvent(name, detail): the controls whose screens land in later slices — 'back' (the in-app close X, S7), 'checkout' (S2),
 //                          'schedule' (S2) — are host events, never dead buttons.
+//
+// S2b — the CHECKOUT UI (prototype APPROVED-v6 checkoutHtml / tipHtml / placingHtml / sendingHtml / pinStepHtml / errSheet + the
+// approved Q9 mockup's refund and existing-order sheets) over the S2a modules: capp-checkout (the flow model, gates, totals) and
+// capp-api (the transport). A minimal screen router: S.screen = 'store' | 'checkout' | 'tip' | 'sending' (the «Realizando
+// pedido…» card is a LAYER over checkout / tip, as in the prototype). Every screen renders inside <div class="screen">.
+//   more config (all optional DATA): restaurantId, orderIdPrefix, pendingPayKey, endpoints { quoteOrder, createOrder,
+//             chargeOnlineOrder, paymentStatus } (the capp-api config), branch (the «· sucursal» suffix), loc { lat, lng } (the
+//             branch pin: the geo-denied fallback), zoneKm (fallback for the quote's max_km), mapsKey (a Google Maps JS key: a
+//             real map inside the drawn map chrome; absent ⇒ the prototype's schematic map)
+//   more opts: CappCheckout, CappApi (default window.CappCheckout / window.CappApi), apiOpts (extra createApi options — tests
+//             script the server through apiOpts.fetch / storage), api (a prebuilt transport), member (the optional signed-in
+//             context, capp-checkout's shape), geolocation (default navigator.geolocation), navigate(url) (default
+//             location.assign), search (default location.search — a ?pay= hosted-checkout return), timers { setTimeout,
+//             clearTimeout, setInterval, clearInterval }, priceSheet (default the ported confirmPriceSheet)
+//   more host events: 'placed' (the outcome), 'home' (the refund sheet), 'signin' («¿Ya tenés cuenta? Entrá»), 'pay-cash'
+//             («Pago no completado» → «Pagar en efectivo»; ruling pending)
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -35,7 +51,67 @@
     bag: I('<path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>'), clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
     info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>'), alert: I('<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/>'),
     bike: I('<circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M8.5 17h7"/><path d="M14 6h3l2.5 8.5"/><path d="M4 11h7l2 6"/>'),
+    // S2b (the prototype's IC, verbatim)
+    back: I('<path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/>'), chev: I('<path d="M9 6l6 6-6 6"/>'), down: I('<path d="M6 9l6 6 6-6"/>'),
+    plus: I('<path d="M12 5v14"/><path d="M5 12h14"/>'), home: I('<path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/>'),
+    user: I('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'), pin: I('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/>'),
+    pinfill: '<svg width="38" height="38" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>',
+    store: I('<path d="M4 9.5V20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9.5"/><path d="M2.5 9.5 4.1 4a1 1 0 0 1 1-.7h13.8a1 1 0 0 1 1 .7l1.6 5.5a2.5 2.5 0 0 1-4.8 1.2 2.5 2.5 0 0 1-4.8 0 2.5 2.5 0 0 1-4.8 0 2.5 2.5 0 0 1-4.8-1.2Z"/><path d="M9 21v-5h6v5"/>'),
+    card: I('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/>'), cash: I('<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9h.01M18 15h.01"/>'),
+    locoff: I('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><path d="M4 4l16 16"/>'),
   };
+  const BKSP = I('<path d="M9 5h11a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9l-6-7z"/><path d="m12 9 5 5"/><path d="m17 9-5 5"/>');
+  // the tip step's rider (prototype RIDER :1918-1952, verbatim) and the sending screen's live variant (RIDER_LIVE :2023-2026)
+  const RIDER = `<svg class="rider" viewBox="0 0 360 210" aria-hidden="true">
+  <defs><clipPath id="skyclip"><rect x="0" y="62" width="360" height="110" rx="18"/></clipPath></defs>
+  <!-- skyline band: tints of the Cuadra blue→teal promo family -->
+  <rect x="0" y="62" width="360" height="110" rx="18" fill="var(--il-sky-a)"/>
+  <g clip-path="url(#skyclip)">
+    <g fill="var(--il-sky-c)"><rect x="18" y="104" width="30" height="70"/><rect x="66" y="92" width="22" height="82"/><rect x="118" y="98" width="44" height="76"/><rect x="206" y="84" width="26" height="90"/><rect x="258" y="100" width="22" height="74"/><rect x="304" y="94" width="36" height="80"/></g>
+    <g fill="var(--il-sky-b)"><rect x="0" y="122" width="42" height="52"/><rect x="94" y="116" width="32" height="58"/><rect x="170" y="110" width="24" height="64"/><rect x="236" y="120" width="40" height="54"/><rect x="322" y="112" width="38" height="62"/></g>
+    <g fill="var(--il-sky-a)" opacity=".9"><rect x="8" y="130" width="5" height="6"/><rect x="18" y="130" width="5" height="6"/><rect x="8" y="142" width="5" height="6"/><rect x="102" y="124" width="5" height="6"/><rect x="112" y="124" width="5" height="6"/><rect x="102" y="136" width="5" height="6"/><rect x="244" y="128" width="5" height="6"/><rect x="254" y="128" width="5" height="6"/><rect x="332" y="120" width="5" height="6"/><rect x="342" y="120" width="5" height="6"/><rect x="332" y="132" width="5" height="6"/></g>
+  </g>
+  <!-- ground shadow -->
+  <ellipse cx="186" cy="186" rx="132" ry="6" fill="var(--ink)" opacity=".09"/>
+  <!-- rear wheel -->
+  <circle cx="100" cy="162" r="24" fill="var(--il-tyre)"/><circle cx="100" cy="162" r="13" fill="var(--surf2)"/><circle cx="100" cy="162" r="4" fill="var(--il-tyre)"/>
+  <!-- scooter: rear cowl, rack, box, floorboard, seat -->
+  <path d="M78 150 C70 118 100 104 150 108 L176 108 C186 124 182 150 170 150 Z" fill="var(--acc)"/>
+  <rect x="52" y="118" width="62" height="6" rx="3" fill="var(--il-tyre)"/>
+  <rect x="72" y="62" width="18" height="10" rx="5" fill="var(--pop-fill)"/><rect x="50" y="70" width="62" height="50" rx="8" fill="var(--pop-fill)"/><path d="M50 78 a8 8 0 0 1 8 -8 h46 a8 8 0 0 1 8 8 v6 H50 Z" fill="var(--pop-bg)"/>
+  <rect x="132" y="148" width="94" height="14" rx="7" fill="var(--acc)"/>
+  <rect x="110" y="96" width="72" height="14" rx="7" fill="var(--ink)"/>
+  <!-- rider legs (behind the leg shield), shoe on the floorboard -->
+  <path d="M166 104 L200 122 L204 150" fill="none" stroke="var(--il-pants)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="208" cy="153" rx="11" ry="5" fill="var(--ink)"/>
+  <!-- leg shield, fork, front wheel, fender, handlebar, mirror -->
+  <path d="M212 160 C236 136 240 106 244 80 L264 80 C260 110 254 142 236 162 Z" fill="var(--acc)"/>
+  <path d="M254 86 L270 158" stroke="var(--acc)" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="272" cy="162" r="24" fill="var(--il-tyre)"/><circle cx="272" cy="162" r="13" fill="var(--surf2)"/><circle cx="272" cy="162" r="4" fill="var(--il-tyre)"/>
+  <path d="M240 150 A32 32 0 0 1 304 150 L296 154 A24 24 0 0 0 248 154 Z" fill="var(--acc)"/>
+  <rect x="230" y="70" width="46" height="9" rx="4.5" fill="var(--ink)"/><circle cx="266" cy="92" r="6" fill="var(--surf2)"/>
+  <path d="M268 70 L278 58" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round"/><circle cx="279" cy="56" r="4.5" fill="var(--ink)"/>
+  <!-- rider: jacket, arm + hand, head, helmet + visor -->
+  <path d="M140 108 C132 84 140 58 156 52 L180 56 C190 76 190 98 182 110 Z" fill="var(--il-jacket)"/>
+  <path d="M174 64 L250 76" fill="none" stroke="var(--il-jacket)" stroke-width="13" stroke-linecap="round"/><circle cx="252" cy="76" r="6.5" fill="var(--il-skin)"/>
+  <circle cx="176" cy="40" r="15" fill="var(--il-skin)"/>
+  <path d="M157 42 A19 19 0 0 1 195 42 L195 46 L157 46 Z" fill="var(--ink)"/><rect x="180" y="38" width="17" height="10" rx="4" fill="var(--acc)"/>
+</svg>`;
+  const RIDER_LIVE = RIDER.replace('class="rider"', 'class="rider live"')
+    .replace(/(<circle cx="(100|272)" cy="162" r="24"[^>]*\/><circle cx="\2" cy="162" r="13"[^>]*\/>)(<circle cx="\2" cy="162" r="4"[^>]*\/>)/g, (m, rims, cx, hub) => `<g class="wh" style="transform-origin:${cx}px 162px">${rims}<path d="M${cx} 150v24M${Number(cx) - 12} 162h24" stroke="var(--il-tyre)" stroke-width="2.4" stroke-linecap="round"/>${hub}</g>`)
+    .replace('<!-- rear wheel -->', '<g class="speed" aria-hidden="true"><path d="M14 118h40"/><path d="M4 136h30"/><path d="M20 152h44"/></g><g class="mover">')
+    .replace('</svg>', '</g></svg>');
+  const CHECK_OK = `<span class="sok">${IC.check}</span>`;
+  // the schematic map (prototype mapSvg :1796-1806, light theme; S1 ships no dark toggle) — the fallback when no Maps key is configured
+  const MAP_SVG = (() => {
+    const road = '#FFFFFF', minor = '#F4F6F1', park = '#DCE6D4', water = '#D6E4EA';
+    return `<svg class="mapsvg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <rect x="62" y="56" width="30" height="26" rx="3" fill="${park}"/><path d="M-5 92 C 20 80, 40 96, 70 86 S 100 76, 110 84 L110 110 L-5 110 Z" fill="${water}"/>
+    <g stroke="${minor}" stroke-width="1.6" stroke-linecap="round" vector-effect="non-scaling-stroke">${[10, 34, 56, 78].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}${[10, 36, 62, 86].map((x) => `<path d="M${x} -5V105"/>`).join('')}</g>
+    <g stroke="${road}" stroke-width="3.4" stroke-linecap="round" fill="none">${[22, 50, 74].map((x) => `<path d="M${x} -5V105"/>`).join('')}${[22, 42, 64].map((y) => `<path d="M-5 ${y}H105"/>`).join('')}<path d="M-5 100 L45 60 L105 20"/></g></svg>`;
+  })();
+  // the «confirming» line on the approved «Enviando tu pedido…» screen (Q9, no sheet, no button)
+  const CONFIRMING_HINT = 'Estamos confirmando tu pago con el banco.';
   const CART_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M1 1h3l2 11h11l2-7H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="20" r="1.5" fill="currentColor"/><circle cx="17" cy="20" r="1.5" fill="currentColor"/></svg>';
   const TRASH = (s = 12) => `<svg width="${s}" height="${s}" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1 3h12M5 3V2h4v1M2 3l1 9h6l1-9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   // the catalog's own marks (the prototype's priority + colours); the LABEL is the served one when the envelope carries badges
@@ -55,7 +131,10 @@
     const cart = CappCart.createCart(menu);
     const $ = (id) => doc.getElementById(id);
     const app = $('app');
-    const S = { mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link' };
+    const S = { mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
+      // S2b
+      screen: 'store', flow: null, q: null, qKey: null, askedKey: null, outZone: false, closedRefused: false, geo: null, err: null, tipDraft: '',
+      backScreen: null, sendHint: null, sendTotals: null, pinDraft: null, pinToast: false, lastDelivery: null };
 
     // ── the view model: the served menu as the prototype's item shape ──
     const photo = (d) => (d && d.img && cfg.assetBase ? cfg.assetBase.replace(/\/?$/, '/') + String(d.img).replace(/^\.?\//, '') : '');
@@ -310,36 +389,418 @@
       box.innerHTML = !nq ? '' : hits.length ? `<div class="rcount">${hits.length} resultado${hits.length === 1 ? '' : 's'}</div>${hits.map(rowHtml).join('')}` : `<div class="noresults">Nada con «${esc(q)}». Probá otra palabra.</div>`;
     }
     function openLayer(kind) { returnTo = descOf(doc.activeElement); S.layerKind = kind; renderLayer(true); }
-    function closeLayer() { S.layerKind = null; S.cartNote = null; S.refusal = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar')); }
+    function closeLayer() { if (S.layerKind === 'placing') placingStop(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); }
     function renderLayer(fresh) {
       const L = $('layer'); if (!L) return; const k = S.layerKind;
       if (!k) { L.innerHTML = ''; syncInert(); return; }
+      const keep = !fresh && L.contains(doc.activeElement) ? descOf(doc.activeElement) : null;   // S2b: a keypad tap keeps its key focused
       if (k === 'ssearch' && !fresh && L.querySelector('#sq')) { runStoreSearch(S.searchQ); syncInert(); return; }   // an open search keeps its query, results and focus
       if (k === 'cart') L.innerHTML = `<div class="scrim" data-act="cartclose"></div><div class="sheet" role="dialog" aria-label="Tu pedido" style="padding-bottom:0"><div class="grab"></div>${cartInner()}</div>`;
       else if (k === 'menu') { const total = sections.reduce((a, s) => a + s.items.length, 0); L.innerHTML = `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Menú completo"><div class="grab"></div><div class="sheethead"><div><h2>Menú</h2><small>${isOpen() ? 'Abierto hoy · cierra ' + esc(closesText()) : 'Cerrado · ' + esc(opensText())} · ${total} platos</small></div><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div><nav aria-label="Secciones">${sections.map((s) => `<button class="navrow${s.id === S.activeSec ? ' on' : ''}" data-act="goto" data-goto="${esc(s.id)}">${esc(s.name)}<span>${s.items.length}</span></button>`).join('')}</nav></div>`; }
       else if (k === 'ssearch') { L.innerHTML = `<div class="search" role="dialog" aria-label="Buscar en el menú"><div class="searchbar"><label for="sq">${IC.search}<input id="sq" type="search" placeholder="Buscar platos" autocomplete="off" data-field="sq" value="${esc(S.searchQ)}"></label><button class="textbtn" data-act="lclose">Cancelar</button></div><div class="results" id="sresults"></div></div>`; runStoreSearch(S.searchQ); }
+      // S2b layers (the prototype's renderLayer kinds)
+      else if (k === 'err') L.innerHTML = errSheet(S.err);
+      else if (k === 'placing') L.innerHTML = placingHtml();
+      else if (k === 'tipother') L.innerHTML = tipOtherHtml();
+      else if (k === 'pin') L.innerHTML = pinStepHtml();
+      else if (k === 'feeinfo') L.innerHTML = feeInfoHtml();
       syncInert();
       if (fresh) { const first = k === 'ssearch' ? $('sq') : L.querySelector(FOCUSABLE); focusTo(first); }
+      else if (keep && lost()) focusTo(refind(keep));
+      if (k === 'pin') wireMaps();
+    }
+
+    // ═══ S2b: CHECKOUT ═══
+    const T_ = opts.timers || { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (h) => clearTimeout(h), setInterval: (f, ms) => setInterval(f, ms), clearInterval: (h) => clearInterval(h) };
+    const navigate = opts.navigate || ((url) => { doc.defaultView.location.assign(url); });
+    const member = () => opts.member || null;
+    // the modules are resolved LAZILY (the S1 host may load the page without them): no modules ⇒ the store keeps S1's host event
+    let C = null, api = null;
+    function mods() {
+      if (C && api) return true;
+      try {
+        C = opts.CappCheckout || (typeof self !== 'undefined' && self.CappCheckout) || require('./capp-checkout.js');
+        const A = opts.CappApi || (typeof self !== 'undefined' && self.CappApi) || require('./capp-api.js');
+        api = opts.api || A.createApi({ config: { restaurantId: cfg.restaurantId, orderIdPrefix: cfg.orderIdPrefix, pendingPayKey: cfg.pendingPayKey, endpoints: cfg.endpoints, hours: cfg.hours },
+          CappCheckout: C, member, ...(opts.apiOpts || {}) });
+        return true;
+      } catch (_) { C = null; api = null; return false; }
+    }
+    // the ported «El precio cambió» sheet (capp-confirm-quote.js confirmPriceSheet), passed through place({ sheet }) unrestyled
+    const priceSheet = opts.priceSheet || ((o) => { const fn = (typeof self !== 'undefined' && self.confirmPriceSheet) || (doc.defaultView && doc.defaultView.confirmPriceSheet); return fn ? fn({ document: doc, oldCents: o.oldCents, newCents: o.newCents }) : Promise.resolve(false); });
+    // cents → «L 485» (whole) / «L 485.50»
+    const moneyC = (c) => { const n = Number(c) || 0; return n % 100 === 0 ? money(n / 100) : 'L ' + (n / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    const storeLine = () => esc(cfg.name || '') + (cfg.branch ? ' · ' + esc(cfg.branch) : '');
+    const logoChip = (cls) => (cfg.logo ? `<span class="${cls}${cfg.logoWide ? ' wide' : ''}"><img src="${esc(cfg.logo)}" alt=""></span>` : `<span class="${cls} txt" aria-hidden="true">${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}</span>`);
+    const finitePin = (p) => !!p && Number.isFinite(p.lat) && Number.isFinite(p.lng);
+
+    // ── the order context, the state key (what a quote stands for) and the totals of the CURRENT state ──
+    function ctxBase() { const s = CappSerialize.serialize(cart, menu); return { restaurantId: cfg.restaurantId, items: s.items, itemsText: s.items_text, member: member() }; }
+    function stateKey() { const f = S.flow; const m = member(); return JSON.stringify([f.mode, f.mode === 'delivery' ? f.pin : null, C.tipCentsOf(f), cart.snapshot().lines, m && m.uid ? m.uid : null]); }
+    function totalsNow() { if (!S.flow || !S.q || S.qKey !== stateKey()) return { ready: false }; return C.totals(S.flow, S.q, cart.subtotalCents(), S.q.sig); }
+    // delivery is quoted only once there is an address to price: a confirmed pin, or the device location (never the branch fallback)
+    const quotable = (f) => f.mode !== 'delivery' || (finitePin(f.pin) && (f.pin.confirmed === true || S.geo === 'ok'));
+    // ONE quote per state: entry, mode / pin / tip / cart change (newer-wins is capp-api's)
+    async function requote() {
+      if (!S.flow || !mods() || !cart.count() || S.screen === 'store' || S.screen === 'sending') return;
+      const f = S.flow; const key = stateKey();
+      if (key === S.askedKey) return;
+      S.askedKey = key;
+      if (!quotable(f)) { S.q = null; S.qKey = null; return; }
+      let c; try { c = ctxBase(); } catch (_) { return; }
+      const r = await api.quote(f, c);
+      if (r.kind === 'superseded') return;
+      if (r.kind === 'ok') { S.q = r.record; S.qKey = key; if (f.mode === 'delivery') { S.outZone = false; if (r.record.resp.delivery) S.lastDelivery = r.record.resp.delivery; } }
+      else if (r.kind === 'out_of_zone') { S.outZone = true; }
+      // pin / offline / try_again / refused / update_required: no amount is shown (never a guess); the refusal UIs are held (U1/U3)
+      if (S.pinToast && f.mode === 'delivery') { S.pinToast = false; if (r.kind === 'ok') toast('Pin confirmado'); else if (r.kind === 'out_of_zone') toast('Ese punto queda fuera de la zona'); }
+      if (S.screen === 'checkout' || S.screen === 'tip') render();
+    }
+    // ── gates (capp-checkout missingStep, G0 first) ──
+    const poKeys = new Set(); for (const s of sections) if (s.pickupOnly) for (const it of s.items) { poKeys.add(it.id); if (it.group) for (const c of it.group.choices) poKeys.add(c.id); }
+    const poLines = () => cart.lines().filter((l) => poKeys.has(l.key));
+    const sectionOfKey = (k) => sections.find((s) => s.items.some((it) => it.id === k || (it.group && it.group.choices.some((c) => c.id === k))));
+    const gateCtx = () => ({ open: isOpen(), closedRefused: S.closedRefused, pickupOnlyCount: poLines().length, outZone: S.outZone, member: member() });
+    const need = () => C.missingStep(S.flow, gateCtx());
+    function ctaLabel(T) {
+      const n = need(); if (n) return n;
+      if (S.flow.mode === 'delivery') return 'Continuar';   // delivery continues to the tip step
+      const amt = T.ready ? ' · ' + moneyC(T.total) : '';   // pickup places from here (no tip); no amount until the quote is ready
+      return S.flow.pay === 'online' ? 'Pagar' + amt : 'Confirmar pedido' + amt;
+    }
+    const ctaOff = (T) => !!need() || (S.flow.mode !== 'delivery' && !T.ready);
+    function syncCta() { const b = $('cta'); if (!b || !S.flow) return; const T = totalsNow(); b.disabled = ctaOff(T); b.textContent = ctaLabel(T); }
+
+    // ── the map: the drawn chrome; a real Google map inside it when a key is configured, else the schematic SVG ──
+    let mapsP = null;
+    function loadMaps() {
+      if (!cfg.mapsKey) return null;
+      const w = doc.defaultView; if (!w) return null;
+      if (w.google && w.google.maps && w.google.maps.Map) return Promise.resolve(w.google.maps);
+      if (mapsP) return mapsP;
+      mapsP = new Promise((resolve, reject) => {
+        w.__cappMapsReady = () => resolve(w.google.maps);
+        const s = doc.createElement('script'); s.async = true;
+        s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(cfg.mapsKey) + '&loading=async&callback=__cappMapsReady';
+        s.onerror = () => { mapsP = null; reject(new Error('maps_load_failed')); };
+        doc.head.appendChild(s);
+      });
+      return mapsP;
+    }
+    const mapCenter = () => { const p = S.pinDraft || (S.flow && S.flow.pin); return finitePin(p) ? { lat: p.lat, lng: p.lng } : (cfg.loc && finitePin(cfg.loc) ? { lat: cfg.loc.lat, lng: cfg.loc.lng } : null); };
+    const gmapBox = (kind) => (cfg.mapsKey ? `<div class="gmap" data-gmap="${kind}" style="position:absolute;inset:0"></div>` : '');   // TODO(owner ruling): style the live map; S2b keeps the drawn chrome on top
+    function wireMaps() {
+      const els = [...app.querySelectorAll('[data-gmap]')]; if (!els.length) return;
+      const p = loadMaps(); if (!p) return;
+      p.then((gm) => {
+        for (const el of els) {
+          const c = mapCenter(); if (!el.isConnected || el.__map || !c) continue;
+          const big = el.dataset.gmap === 'pin';
+          const m = new gm.Map(el, { center: c, zoom: 17, disableDefaultUI: true, clickableIcons: false, gestureHandling: big ? 'greedy' : 'none', keyboardShortcuts: big });
+          el.__map = m;
+          if (big) m.addListener('idle', () => { const cc = m.getCenter(); if (cc) S.pinDraft = { lat: cc.lat(), lng: cc.lng() }; });
+        }
+      }).catch(() => {});
+    }
+    // the device location (unconfirmed until «Listo»); denied / unavailable ⇒ the drawn «Ubicación desactivada» row
+    const geoApi = () => (opts.geolocation !== undefined ? opts.geolocation : (doc.defaultView && doc.defaultView.navigator && doc.defaultView.navigator.geolocation) || null);
+    function requestGeo() {
+      const g = geoApi(); const f = S.flow;
+      const denied = () => { S.geo = 'denied'; if (!finitePin(f.pin) && cfg.loc && finitePin(cfg.loc)) C.setPin(f, cfg.loc.lat, cfg.loc.lng, false); if (S.screen === 'checkout') render(); };
+      if (!g || typeof g.getCurrentPosition !== 'function') { denied(); return; }
+      try {
+        g.getCurrentPosition((pos) => { S.geo = 'ok'; if (!(f.pin && f.pin.confirmed)) C.setPin(f, pos.coords.latitude, pos.coords.longitude, false); if (S.screen === 'checkout') render(); }, denied, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+      } catch (_) { denied(); }
+    }
+
+    // ── «Entrega & Pago» (prototype checkoutHtml :1828-1888) ──
+    function feeRowHtml(T, info) {
+      if (S.flow.mode !== 'delivery') return '';
+      const d = S.lastDelivery;
+      const ib = info && d && Number.isFinite(d.from_cents) && Number.isFinite(d.max_km) ? `<button class="infobtn" data-act="feeinfo" aria-label="Cómo se calcula el envío">${IC.info}</button>` : '';
+      // the promotion state (struck price + «Gratis»); the prototype's «Envío gratis · {promo}» note needs a promo label the quote does not carry
+      if (T.ready && T.envioFree) return `<div class="sumrow"><span>Envío${ib}</span><span><span class="strike">${moneyC(T.envio)}</span><span class="free">Gratis</span></span></div>`;
+      if (!T.ready) return `<div class="sumrow"><span>Envío${ib} <span class="mute">· según tu dirección</span></span><span></span></div>`;   // no address yet: the amount comes after the pin
+      return `<div class="sumrow"><span>Envío${ib}</span><span>${moneyC(T.envio)}</span></div>`;
+      // the guest «Creá tu cuenta y tu envío es gratis» line needs a promo flag the quote does not carry (not rendered)
+    }
+    function checkoutHtml() {
+      const f = S.flow, del = f.mode === 'delivery', m = member(), open = isOpen(), po = poLines(), T = totalsNow();
+      const poNames = [...new Set(po.map((l) => { const s = sectionOfKey(l.key); return s ? s.name : l.key; }))].join(', ');
+      const geoDenied = S.geo === 'denied' && !m;
+      const pinOk = !!(f.pin && f.pin.confirmed);
+      const chev = IC.chev.replace('class="i"', 'class="i chev"');
+      const zoneKm = (S.lastDelivery && Number.isFinite(S.lastDelivery.max_km) ? S.lastDelivery.max_km : cfg.zoneKm);
+      // Entrega — ASAP only (scheduling, the «Programar» card, is S4)
+      const timeCards = `<div class="opts"><button class="opt" aria-pressed="${open}" data-act="time" data-val="asap"${open ? '' : ' disabled'}><b>Lo antes posible</b><span>${open ? esc(etaTxt(del ? 'delivery' : 'pickup')) : 'No disponible · cerrado'}</span></button></div>`;
+      const mapBlock = `<button class="map${S.outZone && del ? ' out' : ''}" data-act="pin" aria-label="Ajustar el pin en el mapa">${MAP_SVG}${gmapBox('preview')}<span class="pin">${IC.pinfill}</span><span class="tag">${geoDenied ? 'Pin en el restaurante' : pinOk ? 'Pin confirmado' : 'Tu ubicación'}</span><span class="adj">Ajustar pin</span></button>
+    ${geoDenied ? `<div class="locrow">${IC.locoff}<span>Ubicación desactivada</span><button data-act="loc-on">Activar</button></div>` : ''}
+    ${S.outZone && del ? `<div class="gate" role="alert"><b>${esc(cfg.name || '')} no llega a esta dirección</b><span class="note">${Number.isFinite(zoneKm) && cfg.branch ? `Entregamos hasta ${esc(zoneKm)} km de ${esc(cfg.branch)}. ` : ''}Mové el pin a una dirección dentro de la zona, o recogé en tienda.</span><div class="row2"><button class="btn2" data-act="pin">Cambiar dirección</button><button class="btn2 dark" data-act="type" data-val="pickup">Recoger en tienda</button></div></div>` : ''}`;
+      // a guest's address line: no reverse geocoding in S2b — the map tag's own copy stands in for the prototype's sample street
+      const addrRow = `<button class="urow" data-act="pin">${IC.pin}<span class="t"><b>${geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
+      const detailsFld = `<div class="fld"><label for="f-details">Detalles adicionales <span class="req">*</span></label><input id="f-details" data-field="details" value="${esc(f.details)}" placeholder="Colonia, portón, piso, referencia…" autocomplete="off"></div>`;
+      const detailsRow = m && !S.editDetails && (f.details || '').trim().length >= 3 ? `<div class="urow">${IC.home}<span class="t"><b>${esc(f.details)}</b><span>Detalles adicionales</span></span><button class="act" data-act="editdetails">Cambiar</button></div>` : '';
+      const entrega = `<section class="fsec" aria-label="Entrega"><h2>Entrega</h2>
+    <div class="seg" role="group" aria-label="Tipo de pedido"><button aria-pressed="${del}" data-act="type" data-val="delivery">Delivery</button><button aria-pressed="${!del}" data-act="type" data-val="pickup">Pickup</button></div>
+    ${del && po.length ? `<div class="gate"><b>«${esc(poNames)}» es solo para Pickup</b><div class="row2"><button class="btn2" data-act="rm-po">Quitar del pedido</button><button class="btn2 dark" data-act="type" data-val="pickup">Cambiar a Pickup</button></div></div>` : ''}
+    ${timeCards}
+    ${del ? `${mapBlock}<div class="urows">${addrRow}${detailsRow}</div>${detailsRow ? '' : detailsFld}` : `<div class="urows"><div class="urow">${IC.store}<span class="t"><b>${storeLine()}</b><span>${esc(cfg.addr || '')}</span></span></div></div><div class="note">Te avisamos por WhatsApp cuando esté listo.</div>`}</section>`;
+      // Tus datos — TODO(fiscal flag): «factura / » + the RTN fields render ONLY behind a server flag; no such config key exists yet
+      const moreRow = `<button class="urow" data-act="more">${IC.plus}<span class="t"><b>Agregar email / notas</b></span>${chev}</button>`;
+      const moreFields = `<div class="fld"><label for="f-email">Correo <span class="mute">(opcional · para tu recibo)</span></label><input id="f-email" data-field="email" type="email" value="${esc(f.email)}" placeholder="tu@correo.com" autocomplete="email"></div>
+       <div class="fld"><label for="f-notes">Notas para el restaurante</label><textarea id="f-notes" data-field="notes" placeholder="Sin cebolla, extra salsa… (opcional)">${esc(f.notes)}</textarea></div>`;
+      const datos = `<section class="fsec" aria-label="Tus datos"><h2>Tus datos</h2>
+    ${m && !f.editWho ? `<div class="urows"><div class="urow">${IC.user}<span class="t"><b>${esc(m.name)}</b><span>${esc(C.fullPhone(m.phone))}</span></span><button class="act" data-act="editwho">Cambiar</button></div>${S.more ? '' : moreRow}</div>`
+      : `<div class="fld"><label for="f-name">Nombre <span class="req">*</span></label><input id="f-name" data-field="name" value="${esc(f.name)}" placeholder="Tu nombre" autocomplete="name"></div>
+         <div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(f.phone)}" placeholder="+504 9999-9999" autocomplete="tel"></div>
+         ${!m ? `<div class="line" style="font-size:14px"><span class="mute">¿Ya tenés cuenta?</span><button class="lnk" data-act="signin" data-ctx="checkout">Entrá</button></div>` : ''}${S.more ? '' : `<div class="urows">${moreRow}</div>`}`}
+    ${S.more ? moreFields : ''}</section>`;
+      // Tu pedido (the redeem / «Descuento» row is pending a ruling — not rendered)
+      const lines = displayLines(), nItems = cart.count();
+      const sumRow = `<button class="urow" data-act="sumtoggle" aria-expanded="${!!S.sumOpen}">${logoChip('lg')}<span class="t"><b>${storeLine()}</b><span>${esc(unitOf(nItems))}${S.sumOpen ? '' : ' · ' + esc(lines.map((d) => d.n + '× ' + d.item.n).join(', '))}</span></span>${IC.down.replace('class="i"', 'class="i chev"')}</button>`;
+      const sumBody = S.sumOpen ? `<div class="sumbody">${lines.map((d) => `<div class="osline">${lineName(d, 'n')}${lineStep(d)}<span class="p">${money(d.total)}</span></div>`).join('')}<button class="addmore" data-act="addmore">${IC.plus}Agregar más platos</button></div>` : '';
+      const tip = T.ready ? T.tip : C.tipCentsOf(f);
+      const pedido = `<section class="fsec" aria-label="Resumen del pedido"><h2>Tu pedido</h2>
+    <div class="osum flat">${sumRow}${sumBody}
+      <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : ''}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
+      // Pago
+      const payOpts = `<div class="optrow" role="radiogroup" aria-label="Forma de pago">
+      <button class="opt" aria-pressed="${f.pay === 'online'}" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea<span class="rec">Recomendado</span></b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).</span></span></button>
+      <button class="opt" aria-pressed="${f.pay === 'cash'}" data-act="pay" data-val="cash"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Efectivo ${del ? 'al entregar' : 'al recoger'}</b><span>${del ? 'Pagás cuando llegue tu pedido.' : 'Pagás en tienda al recoger.'}</span></span></button></div>`;
+      const pago = `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
+        ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D Secure'}</span></span><button class="act" data-act="showpay">Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
+      const bar = `<div class="paybar"><button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button></div>`;
+      // the prototype's footer «¿Problemas con tu pedido? Escribinos al …» (:1886) is omitted — pending a ruling
+      return `<div class="flow" id="flow"><div class="flowbar plain"><h1>Entrega &amp; Pago</h1></div>
+    <div class="col-a">${entrega}${datos}${pedido}${pago}</div>${bar}</div>`;
+    }
+    // the cash panel: chips + the change line against the QUOTED Total (no chips until that Total exists)
+    const tenderNote = (T) => { const f = S.flow; if (!T.ready || !f.tendered) return ''; const ch = C.changeCents(f, T.total); return ch === null ? 'Ese monto es menor que el total (' + moneyC(T.total) + ').' : ch > 0 ? 'Tu cambio: ' + moneyC(ch) : 'Pago exacto, sin cambio.'; };
+    function cashPanel(T) {
+      const f = S.flow; if (f.pay !== 'cash') return '';
+      const tot = T.ready ? T.total / 100 : null; let base = tot === null ? null : Math.ceil(tot / 500) * 500; if (base !== null && base <= tot) base += 500;
+      const tender = Number(f.tendered);
+      const chips = tot === null ? '' : `<div class="chips">${[{ l: 'Pago exacto', v: tot }, { l: money(base), v: base }].map((c) => `<button class="chip" aria-pressed="${tender === c.v}" data-act="tender" data-val="${c.v}">${c.l}</button>`).join('')}</div>`;
+      return `<div class="fld"><label for="f-tender">¿Con cuánto vas a pagar? <span class="mute">(para llevarte el cambio exacto)</span></label>${chips}<input id="f-tender" data-field="tendered" inputmode="numeric" value="${esc(f.tendered)}" placeholder="Otro monto (L)"><span class="note" id="tender-note">${esc(tenderNote(T))}</span></div>`;
+    }
+
+    // ── the tip step (prototype tipHtml :1954-1961) ──
+    const tipKey = () => { const c = S.flow.tipChoice; return c === null ? null : c.kind === 'none' ? 0 : c.kind === 'other' ? 'other' : c.lempiras; };
+    const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need();
+    function tipHtml() {
+      const f = S.flow, T = totalsNow(), c = tipKey();
+      const chip = (v, label) => `<button class="chip" aria-pressed="${c === v}" data-act="tipc" data-val="${v}">${label}</button>`;
+      const tot = T.ready ? moneyC(T.total) : '—';
+      return `<div class="topbar"><button class="iconbtn" data-act="back" aria-label="Volver a Entrega y Pago">${IC.back}</button><h1></h1><span class="sp"></span></div>
+    <div class="tipwrap"><div class="tiphero">${RIDER}<h1>Agregá una propina</h1><p>La propina va completa a tu repartidor.</p></div>
+    <div class="tipchips" role="group" aria-label="Propina">${C.TIP_PRESETS.map((v) => chip(v, v ? money(v) : 'Sin propina')).join('')}${chip('other', 'Otro')}</div>
+    <div class="tipfoot"><div class="sumrow"><span>Propina</span><span>${c === null ? '—' : f.tipCents ? moneyC(f.tipCents) : 'Sin propina'}</span></div><div class="sumrow tot"><span>Total</span><span>${tot}</span></div><button class="primary" data-act="tip-place"${tipReady(T) ? '' : ' disabled'}>Hacer pedido · ${tot}</button></div></div>`;
+    }
+    const tipOtherHtml = () => { const d = S.tipDraft || ''; return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Otro monto"><div class="grab"></div><div class="sheethead"><div><h2>Otro monto</h2><small>Propina para tu repartidor</small></div><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div><div class="tipother"><label class="tipamt"><span>L</span><input inputmode="numeric" data-field="tipOther" value="${esc(d || '0')}" style="width:calc(${Math.max(1, (d || '0').length)}ch + 6px)" aria-label="Monto de la propina"></label><div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button data-act="tk" data-val="${n}">${n}</button>`).join('')}<span></span><button data-act="tk" data-val="0">0</button><button data-act="tk" data-val="del" aria-label="Borrar">${BKSP}</button></div><button class="primary" data-act="tip-save">Guardar</button></div></div>`; };
+    // the draft never exceeds the server's cap (TIP_MAX_LEMPIRAS): a digit that would is refused
+    const capDraft = (s, prev) => { const d = String(s).replace(/\D/g, '').replace(/^0+(?=\d)/, ''); return Number(d || 0) > C.TIP_MAX_LEMPIRAS ? prev : d; };
+
+    // ── «Realizando pedido…» (prototype placeTap / placingHtml :1972-1991) — «Volver» sends nothing ──
+    let placingT = null, placingI = null, beatT = null;
+    function placingStop() { if (placingI !== null) T_.clearInterval(placingI); if (placingT !== null) T_.clearTimeout(placingT); placingI = placingT = null; }
+    const etaRange = (mode) => { const e = mode === 'delivery' ? cfg.etaDel : cfg.etaPick; if (!e) return null; const r5 = (x) => Math.round(x / 5) * 5; const n = clock().min; return { k: mode === 'delivery' ? 'Llega' : 'Listo para recoger', v: fmtMin(r5(n + e[0])) + ' – ' + fmtMin(r5(n + e[1])) }; };
+    const prow = (ic, b, s) => `<div class="prow">${ic}<span class="t"><b>${b}</b>${s ? `<span>${s}</span>` : ''}</span></div>`;
+    // the delivery address line: the customer's own «Detalles adicionales» (no reverse geocoding in S2b)
+    const addrText = () => esc((S.flow.details || '').trim() || 'Tu ubicación');
+    function placingHtml() {
+      const f = S.flow, del = f.mode === 'delivery', T = totalsNow(), e = etaRange(f.mode), lines = displayLines();
+      return `<div class="scrim"></div><div class="sheet" role="dialog" aria-label="Realizando pedido"><div class="grab"></div><div class="placing"><h2>Realizando pedido…</h2>
+    ${e ? prow(IC.clock, esc(e.k) + ' ' + esc(e.v), del ? 'Delivery' : 'Pickup') : ''}
+    ${prow(IC.store, storeLine(), del ? addrText() : esc(cfg.addr || ''))}
+    ${prow(IC.bag, esc(unitOf(cart.count())), esc(lines.map((d) => d.n + '× ' + d.item.n).join(', ')))}
+    ${prow(f.pay === 'online' ? IC.card : IC.cash, f.pay === 'online' ? 'Tarjeta · PixelPay' : 'Efectivo ' + (del ? 'al entregar' : 'al recoger'), 'Total ' + moneyC(T.total) + (T.tip ? ' · incluye propina ' + moneyC(T.tip) : ''))}
+    <div class="acts"><button class="primary okbtn" data-act="placing-go"><i class="fill" aria-hidden="true"></i><span>Se ve bien (<span class="cd">0:02</span>)</span></button><button class="btn2 wide" data-act="placing-back">Volver</button></div></div></div>`;
+    }
+    function placeTap() {
+      if (!S.flow || need() || !C.tipChosen(S.flow) || !totalsNow().ready) return;
+      placingStop(); S.backScreen = S.screen; openLayer('placing');
+      let left = 2;
+      placingI = T_.setInterval(() => { left = Math.max(0, left - 1); const cd = doc.querySelector('[data-act="placing-go"] .cd'); if (cd) cd.textContent = '0:0' + left; }, 1000);
+      placingT = T_.setTimeout(placingGo, 2000);
+    }
+    function placingGo() { placingStop(); if (S.layerKind !== 'placing') return; S.layerKind = null; renderLayer(); send(); }
+
+    // ── «Enviando tu pedido…» (prototype sendingHtml :2029-2042) while place() is in flight ──
+    function sendingHtml() {
+      const f = S.flow, del = f.mode === 'delivery', lines = displayLines();
+      const st = S.sendTotals || { total: null, tip: 0 };
+      return `<div class="sending" aria-live="polite"><div class="shero">${RIDER_LIVE}</div>
+    <div class="sndcard"><div class="shd"><h2>Enviando tu pedido…</h2><span class="sspin" id="sspin"><i class="ring" aria-hidden="true"></i></span></div>
+      ${prow(IC.pin, del ? addrText() : 'Pickup · ' + storeLine(), del ? 'Entrega' : esc(cfg.addr || ''))}
+      <div class="prow">${logoChip('lg')}<span class="t"><b>${storeLine()}</b><span>${esc(lines.map((d) => d.n + '× ' + d.item.n).join(', '))}</span></span></div>
+      ${prow(f.pay === 'online' ? IC.card : IC.cash, (f.pay === 'online' ? 'Tarjeta · PixelPay' : 'Efectivo ' + (del ? 'al entregar' : 'al recoger')) + (st.total !== null ? ' · ' + moneyC(st.total) : ''), st.tip ? 'Incluye propina ' + moneyC(st.tip) : 'Pago')}
+      <p class="shint">${esc(S.sendHint || 'Esto toma unos segundos')}</p></div></div>`;
+    }
+    async function send() {
+      const f = S.flow, T = totalsNow();
+      if (!T.ready || !mods()) return;
+      let c; try { c = ctxBase(); } catch (_) { return; }
+      S.screen = 'sending'; S.sendHint = null; S.sendTotals = { total: T.total, tip: T.tip }; render();
+      let out;
+      try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, expectedNetCents: T.total, totals: T, sheet: priceSheet }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
+      onOutcome(out);
+    }
+    // the 600 ms happy beat: the spinner becomes the green check, then the host takes over (S5)
+    function beat(out) {
+      const sp = $('sspin'); if (sp) { sp.innerHTML = CHECK_OK; sp.classList.add('done'); }
+      if (beatT !== null) T_.clearTimeout(beatT);
+      beatT = T_.setTimeout(() => { beatT = null; emit('placed', out); }, 600);
+    }
+    // back to where the customer tapped (closure / out-of-zone: to «Entrega & Pago», where those gates live)
+    function backTo(screen) { S.screen = screen || S.backScreen || 'checkout'; render(); }
+    function showErr(e) { S.err = e; openLayer('err'); }
+    const ERR = {
+      offline: () => ({ title: 'Sin conexión', body: 'No pudimos enviar tu pedido. Revisá tu conexión e intentá de nuevo; tu pedido está intacto.', icon: 'warn', acts: [{ act: 'err-retry', label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
+      // S2 drops the «Programar» button and the schedule sentence (OWNER 2026-10-26; CLOSED_SHEET.scheduleHint is S4's)
+      closed: () => ({ title: C.CLOSED_SHEET.title(cfg.name || '', closesText()), body: C.CLOSED_SHEET.body, icon: 'warn', acts: [{ act: 'lclose', label: 'Cerrar' }] }),
+      // TODO(ruling pending): «Pagar en efectivo» is a host event only
+      payFailed: () => ({ title: 'Pago no completado', body: 'Tu banco no autorizó el pago. Podés intentar con otra tarjeta o pagar en efectivo; tu pedido está intacto.', acts: [{ act: 'err-cash', label: 'Pagar en efectivo', primary: true }, { act: 'err-card', label: 'Usar otra tarjeta' }] }),
+      // the approved Q9 mockup #mk-refunded
+      refunded: (cents) => ({ title: 'Te reembolsamos tu pago', body: `${cfg.name || ''} ya había cerrado cuando se confirmó tu pago. Te devolvimos el total completo${Number.isFinite(cents) ? ', ' + moneyC(cents) : ''}; no se te cobrará.`, icon: 'ok', acts: [{ act: 'home', label: 'Volver al inicio', primary: true }] }),
+      // the approved Q9 mockup #mk-exists — «Escribir a la tienda» hidden (no public restaurant contact in the app data)
+      exists: (ref) => ({ title: 'Necesitamos revisar tu pedido', body: 'Ya existe un pedido con este número, así que no lo enviamos de nuevo para no duplicarlo. Escríbenos y lo revisamos.', icon: 'calm', note: `Referencia <b>#${esc(ref || '')}</b>`, acts: [{ act: 'lclose', label: 'Volver al pedido' }] }),
+    };
+    function onOutcome(out) {
+      const k = out && out.kind;
+      if (k === 'redirect') {
+        // a RESUMED checkout shows the STORED economics (never the current quote), then leaves for the stored URL
+        if (out.resumed) { const t = out.totals || {}; S.sendTotals = { total: Number.isFinite(out.expected_net_cents) ? out.expected_net_cents : (Number.isFinite(t.total) ? t.total : null), tip: Number.isFinite(t.tip) ? t.tip : 0 }; S.screen = 'sending'; render(); }
+        navigate(out.url); return;
+      }
+      if (k === 'placed' || k === 'paid_unverified') { if (S.screen !== 'sending') { S.screen = 'sending'; render(); } beat(out); return; }
+      if (k === 'confirming') { S.screen = 'sending'; S.sendHint = CONFIRMING_HINT; render(); return; }
+      if (k === 'offline') { backTo(); showErr(ERR.offline()); return; }
+      if (k === 'closed') { S.closedRefused = true; backTo('checkout'); showErr(ERR.closed()); return; }
+      if (k === 'out_of_zone') { S.outZone = true; backTo('checkout'); return; }
+      if (k === 'payment_failed') {
+        backTo();
+        if (out.clearable === false) return;   // TODO(U5 held): a cancel return the server still calls pending — no sheet until ruled
+        showErr(ERR.payFailed()); return;
+      }
+      if (k === 'refunded') { backTo(); showErr(ERR.refunded(out.refunded_total_cents)); return; }
+      if (k === 'existing_order') { backTo(); showErr(ERR.exists(out.reference)); return; }   // also a kept identity after a 426 (update_required: true)
+      // held (U1/U3, pending rulings): paused (423), stash_failed, try_again, refused, error, payment_not_completed — no UI yet;
+      // update_required (426) is the shared self-update module's «Actualización pendiente»; price_declined: the ported sheet was answered
+      backTo();
+    }
+    function errSheet(e) {
+      const acts = e.acts.map((a) => `<button class="${a.primary ? 'primary' : 'btn2 wide'}" data-act="${a.act}">${esc(a.label)}</button>`).join('');
+      const ic = e.icon === 'ok' ? IC.check : e.icon === 'warn' || e.icon === 'calm' ? IC.alert : IC.close;
+      return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${esc(e.title)}"><div class="grab"></div><div class="errsheet"><div class="icon${e.icon ? ' ' + e.icon : ''}">${ic}</div><h2>${esc(e.title)}</h2><p>${esc(e.body)}</p>${e.note ? `<p class="note">${e.note}</p>` : ''}<div class="acts">${acts}</div></div></div>`;
+    }
+    const feeInfoHtml = () => { const d = S.lastDelivery || {}; return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Envío"><div class="grab"></div><div class="errsheet"><h2>Envío</h2><p>Sherpa calcula el envío según la distancia entre la sucursal y tu dirección. Desde ${moneyC(d.from_cents)}; zona de entrega hasta ${esc(d.max_km)} km de ${storeLine()}.</p><div class="acts"><button class="btn2 wide" data-act="lclose">Entendido</button></div></div></div>`; };
+    // ── the full-screen pin step (prototype pinStepHtml :2186-2190; the prototype-only «Simulación» strip dropped) ──
+    function pinStepHtml() {
+      const zoneKm = (S.lastDelivery && Number.isFinite(S.lastDelivery.max_km) ? S.lastDelivery.max_km : cfg.zoneKm);
+      const out = S.outZone;
+      return `<div class="pinstep" role="dialog" aria-label="Confirmá dónde entregamos"><div class="mapwrap">${MAP_SVG}${gmapBox('pin')}<div class="store-nav" style="position:absolute"><button class="iconbtn" data-act="lclose" aria-label="Cancelar">${IC.close}</button><span></span></div><div class="hint">Mové el mapa hasta que el pin quede en tu puerta</div><span class="pin">${IC.pinfill}</span></div>
+    <div class="foot"><b>Confirmá dónde entregamos</b><span class="sub">${out && Number.isFinite(zoneKm) && cfg.branch ? `${esc(cfg.name || '')} entrega hasta ${esc(zoneKm)} km de ${esc(cfg.branch)}; este punto queda fuera.` : 'Las direcciones aquí se describen con referencias: el pin es la dirección, los detalles son la referencia.'}</span><button class="primary" data-act="pin-done">Listo</button></div></div>`;
+    }
+
+    // ── navigation ──
+    function openCheckout() {
+      if (!mods()) return false;
+      if (!S.flow) S.flow = C.freshFlow(member());
+      C.setMode(S.flow, S.mode);
+      S.layerKind = null; S.cartNote = null; S.refusal = null; returnTo = null;
+      S.screen = 'checkout'; render();
+      const sc = $('flow'); if (sc) sc.scrollTop = 0;
+      if (S.flow.mode === 'delivery' && !finitePin(S.flow.pin) && S.geo === null) requestGeo();
+      return true;
+    }
+    function toStore() { S.screen = 'store'; S.layerKind = null; render(); }
+    function checkoutAct(t) {
+      const f = S.flow, a = t.dataset.act, v = t.dataset.val;
+      if (a === 'type') { S.mode = v === 'pickup' ? 'pickup' : 'delivery'; C.setMode(f, S.mode); if (S.mode === 'delivery' && !finitePin(f.pin) && S.geo === null) requestGeo(); render(); return true; }
+      if (a === 'rm-po') { for (const l of poLines()) mutate(() => cart.setQty(l.key, 0)); if (!cart.count()) toStore(); else render(); return true; }
+      if (a === 'editwho') { f.editWho = true; render(); return true; }
+      if (a === 'more') { S.more = true; render(); return true; }
+      if (a === 'editdetails') { S.editDetails = true; render(); return true; }
+      if (a === 'sumtoggle') { S.sumOpen = !S.sumOpen; render(); return true; }
+      if (a === 'pay') { f.pay = v === 'online' ? 'online' : 'cash'; S.showPay = false; render(); return true; }
+      if (a === 'showpay') { S.showPay = true; render(); return true; }
+      if (a === 'tender') { f.tendered = v; render(); return true; }
+      if (a === 'addmore') { toStore(); return true; }
+      if (a === 'time') return true;   // ASAP is the only option in S2
+      if (a === 'pin') { S.pinDraft = finitePin(f.pin) ? { lat: f.pin.lat, lng: f.pin.lng } : (cfg.loc && finitePin(cfg.loc) ? { lat: cfg.loc.lat, lng: cfg.loc.lng } : null); openLayer('pin'); return true; }
+      if (a === 'loc-on') { S.geo = null; requestGeo(); return true; }
+      if (a === 'feeinfo') { openLayer('feeinfo'); return true; }
+      if (a === 'signin') { emit('signin', { ctx: t.dataset.ctx || 'checkout' }); return true; }
+      if (a === 'confirm') { if (ctaOff(totalsNow())) return true; if (f.mode === 'delivery') { S.screen = 'tip'; render(); } else placeTap(); return true; }
+      return false;
+    }
+    function tipAct(t) {
+      const f = S.flow, a = t.dataset.act;
+      if (a === 'back') { S.screen = 'checkout'; render(); return true; }
+      if (a === 'tipc') { const v = t.dataset.val; if (v === 'other') { S.tipDraft = f.tipChoice && f.tipChoice.kind === 'other' && f.tipCents ? String(f.tipCents / 100) : ''; openLayer('tipother'); return true; } C.chooseTip(f, Number(v)); render(); return true; }
+      if (a === 'tip-place') { if (!tipReady(totalsNow())) return true; placeTap(); return true; }
+      return false;
+    }
+    function layerAct(t) {
+      const a = t.dataset.act;
+      if (a === 'tk') { const v = t.dataset.val; S.tipDraft = v === 'del' ? (S.tipDraft || '').slice(0, -1) : capDraft((S.tipDraft || '') + v, S.tipDraft || ''); renderLayer(); return true; }
+      if (a === 'tip-save') { const n = Number(S.tipDraft) || 0; C.chooseTip(S.flow, { other: Math.min(n, C.TIP_MAX_LEMPIRAS) }); closeLayer(); render(); return true; }
+      if (a === 'placing-go') { placingGo(); return true; }
+      if (a === 'placing-back') { placingStop(); closeLayer(); return true; }
+      if (a === 'pin-done') { const d = S.pinDraft; if (d && finitePin(d)) { C.setPin(S.flow, d.lat, d.lng, true); S.outZone = false; S.pinToast = true; } closeLayer(); render(); return true; }
+      if (a === 'err-retry') { closeLayer(); send(); return true; }   // the SAME placement (capp-api keeps the id)
+      if (a === 'err-cash') { closeLayer(); emit('pay-cash', {}); return true; }   // TODO(ruling pending)
+      if (a === 'err-card') { closeLayer(); placeTap(); return true; }   // a new card attempt goes through the same placing card
+      if (a === 'home') { closeLayer(); emit('home'); return true; }
+      return false;
+    }
+    // ?pay= — the hosted-checkout return
+    async function handlePayReturn(search) {
+      if (!mods()) return;
+      if (!S.flow) { S.flow = C.freshFlow(member()); C.setMode(S.flow, S.mode); S.flow.pay = 'online'; }
+      const rec = api.readPlace();
+      S.backScreen = 'checkout'; S.screen = 'sending'; S.sendHint = null;
+      S.sendTotals = rec ? { total: Number.isFinite(rec.expected_net_cents) ? rec.expected_net_cents : null, tip: rec.totals && Number.isFinite(rec.totals.tip) ? rec.totals.tip : 0 } : null;
+      render();
+      let out; try { out = await api.handleReturn(search); } catch (e) { out = { kind: 'error' }; }
+      if (out) onOutcome(out);
     }
 
     function render() {
       app.classList.toggle('narrow', app.clientWidth > 0 && app.clientWidth < 375);
       const keepSearch = S.layerKind === 'ssearch' && $('layer') && $('layer').querySelector('#sq') ? $('layer') : null;
-      const had = app.contains(doc.activeElement) ? descOf(doc.activeElement) : null;
+      const ae = doc.activeElement;
+      const had = app.contains(ae) ? descOf(ae) : null;
+      const caret = had && ae && ae.id && typeof ae.selectionStart === 'number' ? [ae.id, ae.selectionStart, ae.selectionEnd] : null;   // S2b: typing survives a quote landing
       const keepToast = $('toast');
-      app.innerHTML = `<div class="screen">${storeHtml()}</div>${detailSkeleton()}<div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`;   // the prototype's mount (render())
+      const prevFlow = $('flow'); const flowY = prevFlow ? prevFlow.scrollTop : null; const prevScreen = app.dataset.screen;
+      // the S2b router: every screen inside <div class="screen"> (the prototype's mount)
+      const html = S.screen === 'checkout' ? checkoutHtml() : S.screen === 'tip' ? tipHtml() : S.screen === 'sending' ? sendingHtml() : storeHtml();
+      app.innerHTML = `<div class="screen">${html}</div>${detailSkeleton()}<div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`;   // the prototype's mount (render())
+      app.dataset.screen = S.screen;
       if (keepSearch) app.replaceChild(keepSearch, $('layer'));
       if (keepToast) app.replaceChild(keepToast, $('toast'));   // a live refusal toast survives the re-render that follows it
-      wireStore(); renderLayer();
+      if (S.screen === 'store') wireStore();
+      if (S.screen === 'checkout' && flowY !== null && prevScreen === 'checkout' && $('flow')) $('flow').scrollTop = flowY;
+      renderLayer();
       if (S.open) { renderDetail(); $('detail-overlay').classList.add('open'); $('detail-modal').classList.add('open'); }
       syncInert();
-      if (had && lost()) focusTo(refind(had));
+      if (had && lost()) { focusTo(refind(had)); if (caret && doc.activeElement && doc.activeElement.id === caret[0]) { try { doc.activeElement.setSelectionRange(caret[1], caret[2]); } catch (_) {} } }
+      if (S.screen === 'checkout') wireMaps();
+      if (S.screen === 'checkout' || S.screen === 'tip') requote();
     }
     function onClick(ev) {
       const t = ev.target.closest && ev.target.closest('[data-act]'); if (!t || !app.contains(t)) return;
       const act = t.dataset.act, id = t.dataset.id;
       if (S.open && ['qty', 'extra', 'variant', 'staged', 'dcta'].includes(act)) { detailAct(t); return; }
       if (act === 'dclose') { closeDetail(); return; }
+      // S2b: the open layer's controls, then the current screen's
+      if (S.layerKind && ['err', 'placing', 'tipother', 'pin', 'feeinfo'].includes(S.layerKind)) { if (act === 'lclose') { closeLayer(); return; } if (layerAct(t)) return; }
+      if (S.screen === 'checkout' && !S.layerKind) {
+        if (act === 'rev') { mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(t.dataset.key, t.dataset.grp || '') : cart.lineDec(t.dataset.key, t.dataset.grp || ''))); if (!cart.count()) toStore(); else render(); return; }
+        if (checkoutAct(t)) return;
+      }
+      if (S.screen === 'tip' && !S.layerKind && tipAct(t)) return;
       if (act === 'inc') { const it = find(id); if (it && it.group) { openDetail(id); return; } if (!it || isSold(it)) { renderStoreKeep(); return; } if (mutate(() => cart.inc(id))) { S.expanded.add(id); bumpPill(); } renderStoreKeep(); return; }
       if (act === 'dec') { const it = find(id); if (it && it.group) { openLayer('cart'); return; } mutate(() => cart.dec(id)); renderStoreKeep(); return; }
       if (act === 'badge') { S.expanded.add(id); renderStoreKeep(); return; }
@@ -354,14 +815,30 @@
       if (act === 'goto') { closeLayer(); jumpTo(t.dataset.goto); return; }
       if (act === 'ssearch') { openLayer('ssearch'); return; }
       if (act === 'back') { emit('back'); return; }
-      if (act === 'checkout') { let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return; } emit('checkout', { body, mode: S.mode }); return; }
+      if (act === 'checkout') { let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return; } emit('checkout', { body, mode: S.mode }); openCheckout(); return; }
       if (act === 'closed-sched') { emit('schedule'); return; }
     }
-    function onInput(ev) { const t = ev.target; if (t && t.dataset && t.dataset.field === 'sq') { S.searchQ = t.value; runStoreSearch(t.value); } }
+    const FLOW_FIELDS = ['details', 'name', 'phone', 'email', 'notes', 'tendered'];
+    function onInput(ev) {
+      const t = ev.target; if (!t || !t.dataset) return;
+      const fld = t.dataset.field;
+      if (fld === 'sq') { S.searchQ = t.value; runStoreSearch(t.value); return; }
+      if (fld === 'tipOther') { S.tipDraft = capDraft(t.value, S.tipDraft || ''); t.value = S.tipDraft || '0'; t.style.width = `calc(${Math.max(1, t.value.length)}ch + 6px)`; return; }
+      if (S.flow && FLOW_FIELDS.includes(fld)) {
+        S.flow[fld] = t.value;
+        if (fld === 'tendered') { const n = $('tender-note'); if (n) n.textContent = tenderNote(totalsNow()); }
+        syncCta();
+      }
+    }
     // the prototype's keyboard handler (Escape closes; Enter / Space activate the checkbox / radio rows and the badge) + Tab containment
     function onKey(e) {
       if (!app.contains(e.target) && e.target !== doc.body) return;
-      if (e.key === 'Escape') { if (S.open) { e.preventDefault(); closeDetail(); return; } if (S.layerKind) { e.preventDefault(); closeLayer(); return; } }
+      if (e.key === 'Escape') {
+        if (S.open) { e.preventDefault(); closeDetail(); return; }
+        // an alert sheet without «Cerrar» / «Volver» (the refund sheet) is answered by its button, never dismissed
+        if (S.layerKind === 'err' && !(S.err && S.err.acts.some((a) => a.act === 'lclose'))) { e.preventDefault(); return; }
+        if (S.layerKind) { e.preventDefault(); closeLayer(); return; }
+      }
       if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[role="checkbox"][data-act], [role="radio"][data-act], .qty-badge')) { e.preventDefault(); e.target.click(); return; }
       if (e.key === 'Tab') {
         const dlg = dialogEl(); if (!dlg) return;
@@ -378,8 +855,11 @@
     doc.addEventListener('input', onInput);
     doc.addEventListener('keydown', onKey);
     render();
+    // S2b: a hosted-checkout return (?pay=…)
+    const search = opts.search != null ? String(opts.search) : (doc.defaultView && doc.defaultView.location ? doc.defaultView.location.search : '');
+    const returning = /[?&]pay=/.test(search || '') ? handlePayReturn(search) : null;
     return {
-      cart, menu, render, state: S,
+      cart, menu, render, state: S, openCheckout, returning,
       restore(snapshot) { const r = cart.hydrate(snapshot); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
       destroy() { doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); },
     };

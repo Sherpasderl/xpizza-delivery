@@ -386,3 +386,353 @@ test('r2 #5: the Tab trap counts only VISIBLE controls — a hidden «+» is nev
   first.focus(); first.dispatchEvent(new b.w.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
   assert.equal(b.w.document.activeElement, last, '🔴 Shift+Tab from the first lands on the last VISIBLE control, never a hidden one');
 });
+
+// ══ S2b — the checkout UI over the REAL capp-checkout + capp-api against a SCRIPTED server (capp-api.test.mjs's server() pattern) ══
+const CK = require('./capp-checkout.js');
+const CA = require('./capp-api.js');
+const EP = { quoteOrder: 'https://fn.test/quoteOrder', createOrder: 'https://fn.test/createOrder', chargeOnlineOrder: 'https://fn.test/chargeOnlineOrder', paymentStatus: 'https://fn.test/paymentStatus' };
+const memStore = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), _m: m }; };
+const FEE = 4500;
+// the quote answers from the body actually sent: food = Σ line subtotals; net deliberately ≠ food + fee + tip (+ 7 cents) so a
+// UI that adds anything itself shows the wrong Total
+const QUOTE = (body) => { const food = body.items.reduce((a, i) => a + Math.round(i.subtotal * 100), 0); const fee = body.mode === 'delivery' ? FEE : 0; const tip = body.tip_cents || 0;
+  return { status: 200, json: { ok: true, total_cents: food, net_total_cents: food + fee + tip + 7, ...(body.mode === 'delivery' ? { delivery: { mode: 'delivery', delivery_cents: fee, promo_discount_cents: 0, policy_version: 'p1', from_cents: 3500, max_km: 6 } } : {}) } }; };
+function scripted(script) {
+  const calls = [];
+  const fetch = async (url, init) => {
+    const ep = Object.keys(EP).find((k) => url.startsWith(EP[k]));
+    const body = init && init.body ? JSON.parse(init.body) : null;
+    calls.push({ ep, body, url });
+    const q = script[ep] || []; const r = q.length > 1 ? q.shift() : q[0];
+    if (!r) throw new Error(`unscripted ${ep}`);
+    if (r === 'network') throw new TypeError('Failed to fetch');
+    const res = typeof r === 'function' ? r(body, url) : r;
+    return { status: res.status, ok: res.status >= 200 && res.status < 300, json: async () => res.json };
+  };
+  return { fetch, calls, of: (ep) => calls.filter((c) => c.ep === ep) };
+}
+function fakeTimers() { let id = 0; const q = new Map(); return { setTimeout: (f) => { q.set(++id, f); return id; }, clearTimeout: (h) => q.delete(h), setInterval: () => ++id, clearInterval: () => {}, flush() { const fs = [...q.values()]; q.clear(); for (const f of fs) f(); }, get size() { return q.size; } }; }
+const tick = () => new Promise((r) => setImmediate(r));
+const settle = async (n = 25) => { for (let i = 0; i < n; i++) await tick(); };
+const GEO_OK = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) };
+const GEO_NO = { getCurrentPosition: (_ok, no) => no({ code: 1 }) };
+let RB = 0;
+function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza' } = {}) {
+  const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
+  const html = readFileSync(join(HERE, 'index.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
+  const w = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true }).window;
+  for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+  const srv = scripted({ quoteOrder: [QUOTE], ...script });
+  const events = []; const nav = []; const timers = fakeTimers(); const sheets = [];
+  const ui = w.CappUI.mount(w.document, { envelope: PROV[rid].envelope, now: NOON, onEvent: (n, d) => events.push([n, d]),
+    config: { ...CONFIG[rid], restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: EP, branch: 'Centro', ...config },
+    CappCheckout: CK, CappApi: CA, member, geolocation: geo, navigate: (u) => nav.push(u), search, timers,
+    priceSheet: priceSheet || ((o) => { sheets.push(o); return Promise.resolve(false); }),
+    apiOpts: { fetch: srv.fetch, storage, now: () => NOON().getTime(), sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RB++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} } });
+  const q = (sel) => w.document.querySelector(sel); const qa = (sel) => [...w.document.querySelectorAll(sel)];
+  const click = async (sel) => { const el = typeof sel === 'string' ? q(sel) : sel; assert.ok(el, `premise: ${sel} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle(); };
+  const type = async (sel, v) => { const el = q(sel); assert.ok(el, `premise: ${sel}`); el.value = v; el.dispatchEvent(new w.Event('input', { bubbles: true })); await settle(); };
+  const text = (sel) => { const el = typeof sel === 'string' ? q(sel) : sel; if (!el) return null; const tw = w.document.createTreeWalker(el, 4); const out = []; for (let nd = tw.nextNode(); nd; nd = tw.nextNode()) { const t = nd.nodeValue.replace(/\s+/g, ' ').trim(); if (t) out.push(t); } return out.join(' '); };
+  const m = ui.menu;
+  const plain = m.dishes.find((x) => !x.launcher && !x.variantOf && !m.pickupOnlyCats.has(String(x.cat)));
+  const pickOnly = m.dishes.find((x) => !x.launcher && !x.variantOf && m.pickupOnlyCats.has(String(x.cat)));
+  return { w, ui, q, qa, click, type, text, events, nav, timers, srv, storage, sheets, plain, pickOnly };
+}
+const cta = (b) => b.text('#cta');
+// to «Entrega & Pago» with one plain dish (delivery, the device location known)
+async function toCheckout(b, extra) { b.ui.cart.inc(b.plain.key); if (extra) extra(b); b.ui.render(); await b.click('#cart-bar'); await b.click('[data-act="checkout"]'); }
+// a guest delivery checkout filled up to the payment method
+async function filled(b, pay = 'cash') {
+  await toCheckout(b);
+  await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  await b.type('#f-details', 'Portón negro'); await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000');
+  await b.click(`[data-act="pay"][data-val="${pay}"]`);
+}
+const L_ = (cents) => 'L ' + (cents % 100 === 0 ? (cents / 100).toLocaleString('en-US') : (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2 }));
+
+test('S2b checkout: a guest delivery renders the drawn «Entrega & Pago» inside .screen — ASAP only, the map chrome, no footer, no factura', async () => {
+  const b = bootCo(); await toCheckout(b);
+  assert.ok(b.q('.screen > .flow#flow'), 'the checkout renders inside <div class="screen">');
+  assert.equal(b.text('.flowbar h1'), 'Entrega & Pago');
+  assert.deepEqual(b.qa('.fsec > h2').map((h) => h.textContent), ['Entrega', 'Tus datos', 'Tu pedido', 'Pago']);
+  assert.equal(b.qa('.opts .opt').length, 1, 'ASAP only — no «Programar» card (S4)');
+  assert.equal(b.text('.opts .opt'), `Lo antes posible ≈ ${CONFIG.x_pizza.etaDel[0]} min`);
+  assert.ok(!/Programar/.test(b.text('.screen')), 'no «Programar» anywhere');
+  assert.ok(b.q('button.map .pin') && b.text('button.map .tag') === 'Tu ubicación' && b.text('button.map .adj') === 'Ajustar pin', 'the drawn map chrome');
+  assert.ok(b.q('button.map svg.mapsvg') && !b.q('[data-gmap]'), 'no Maps key ⇒ the schematic map, no live map container');
+  assert.equal(b.text('[data-act="more"]'), 'Agregar email / notas', 'no «factura / » (no fiscal flag)');
+  assert.ok(!/factura|RTN/i.test(b.text('.screen')), 'no factura / RTN UI');
+  assert.ok(!/Escribinos al/.test(b.w.document.body.textContent), 'no «¿Problemas con tu pedido? Escribinos al …» footer');
+  assert.equal(b.text('.line'), '¿Ya tenés cuenta? Entrá');
+  await b.click('[data-act="signin"]');
+  assert.deepEqual(J(b.events.at(-1)), ['signin', { ctx: 'checkout' }], '«Entrá» is a host event');
+  assert.equal(b.srv.of('quoteOrder').length, 1, 'one quote on entry (the device location is known)');
+  assert.equal(b.srv.of('quoteOrder')[0].body.mode, 'delivery');
+});
+
+test('S2b gates: every missingStep copy on the CTA, in the prototype order, then «Continuar»', async () => {
+  const b = bootCo({ geo: GEO_NO });
+  await toCheckout(b, (x) => x.ui.cart.inc(x.pickOnly.key));
+  assert.equal(cta(b), 'Quitá los platos solo para Pickup');
+  assert.ok(b.q('#cta').disabled);
+  assert.ok(b.text('.gate b').endsWith('es solo para Pickup'));
+  await b.click('[data-act="rm-po"]');
+  assert.equal(b.ui.cart.count(), 1, '«Quitar del pedido» removed the pickup-only line');
+  assert.equal(cta(b), 'Ajustá el pin a tu dirección');
+  assert.ok(b.text('.locrow').startsWith('Ubicación desactivada'), 'geo denied ⇒ the drawn row');
+  assert.equal(b.srv.of('quoteOrder').length, 0, 'no address ⇒ no delivery quote (never a guessed Envío)');
+  assert.ok(b.text('.ostot').includes('Envío · según tu dirección'));
+  await b.click('[data-act="pin"]');
+  assert.ok(b.q('#layer .pinstep'), 'the full-screen pin step');
+  assert.ok(!b.q('.simstrip') && !/Simulación/.test(b.text('#layer')), 'the prototype-only strip is dropped');
+  b.ui.state.pinDraft = { lat: 15.5, lng: -88 };   // the schematic map has no pan: the draft a live map would report
+  await b.click('[data-act="pin-done"]');
+  assert.equal(b.text('button.map .tag'), 'Pin en el restaurante');
+  assert.equal(cta(b), 'Agregá Detalles adicionales');
+  await b.type('#f-details', 'Portón negro');
+  assert.equal(cta(b), 'Escribí tu nombre');
+  await b.type('#f-name', 'Ana');
+  assert.equal(cta(b), 'Escribí tu WhatsApp');
+  await b.type('#f-phone', '9999 0000');
+  assert.equal(cta(b), 'Elegí cómo pagar');
+  await b.click('[data-act="more"]');
+  await b.type('#f-email', 'ana@');
+  assert.equal(cta(b), 'Revisá tu correo');
+  await b.type('#f-email', 'ana@correo.com');
+  await b.click('[data-act="pay"][data-val="cash"]');
+  assert.equal(cta(b), 'Continuar');
+  assert.ok(!b.q('#cta').disabled);
+});
+
+test('S2b G0: a closed store — ASAP «No disponible · cerrado» disabled and the CTA gate', async () => {
+  const b = bootCo({ config: { hours: Array(7).fill([8, 0, 9, 0]) } });
+  await toCheckout(b);
+  assert.ok(b.q('.opts .opt').disabled);
+  assert.equal(b.text('.opts .opt span'), 'No disponible · cerrado');
+  assert.equal(cta(b), 'No disponible · cerrado');
+  assert.ok(b.q('#cta').disabled);
+});
+
+test('S2b pickup: the branch row; «Confirmar pedido · L x» (cash) / «Pagar · L x» (card) from the QUOTED Total', async () => {
+  const b = bootCo(); await toCheckout(b);
+  await b.click('[data-act="type"][data-val="pickup"]');
+  assert.equal(b.text('.urows .urow b'), `${CONFIG.x_pizza.name} · Centro`);
+  assert.equal(b.srv.of('quoteOrder').at(-1).body.mode, 'pickup', 're-quoted on the mode change');
+  await b.type('#f-name', 'Ana'); await b.type('#f-phone', '99990000');
+  await b.click('[data-act="pay"][data-val="cash"]');
+  const net = b.plain.price * 100 + 7;
+  assert.equal(cta(b), `Confirmar pedido · ${L_(net)}`);
+  await b.click('[data-act="pay"][data-val="online"]');
+  assert.equal(cta(b), `Pagar · ${L_(net)}`);
+  assert.ok(!b.text('.ostot').includes('Envío'), 'no Envío row for pickup');
+});
+
+test('S2b out of zone: the quote refusal ⇒ the drawn gate and the CTA copy; «Recoger en tienda» switches to pickup', async () => {
+  const b = bootCo({ script: { quoteOrder: [{ status: 200, json: { ok: false, error: 'outside_delivery_bands' } }, QUOTE] } });
+  await toCheckout(b);
+  assert.equal(cta(b), 'Fuera de la zona de delivery');
+  assert.equal(b.text('.gate b'), `${CONFIG.x_pizza.name} no llega a esta dirección`);
+  assert.ok(b.q('button.map.out'));
+  await b.click('.gate [data-act="type"][data-val="pickup"]');
+  assert.equal(b.ui.state.flow.mode, 'pickup');
+  assert.ok(!b.q('.gate'));
+});
+
+test('S2b totals: Subtotal / Envío / Total come from the quote — Total = net_total_cents, never net + tip; Propina only > 0', async () => {
+  const b = bootCo(); await filled(b);
+  const food = b.plain.price * 100;
+  const rows = b.qa('.ostot .sumrow').map((r) => b.text(r));
+  assert.deepEqual(rows, [`Subtotal ${L_(food)}`, `Envío ${L_(FEE)}`, `Total ${L_(food + FEE + 7)}`], 'no Propina row at 0; Total = the quote');
+  assert.ok(b.q('.ostot [data-act="feeinfo"]'), 'the ⓘ shows once the quote carries from / max_km');
+  await b.click('[data-act="feeinfo"]');
+  assert.ok(b.text('#layer .errsheet p').includes('Desde L 35; zona de entrega hasta 6 km de'), b.text('#layer .errsheet p'));
+  await b.click('#layer [data-act="lclose"]');
+  await b.click('#cta');
+  await b.click('[data-act="tipc"][data-val="40"]');
+  assert.equal(b.srv.of('quoteOrder').at(-1).body.tip_cents, 4000, 're-quoted FOR the tip');
+  assert.equal(b.text('.tipfoot .sumrow.tot'), `Total ${L_(food + FEE + 4000 + 7)}`, '🔴 the tip quote\'s net — not net + tip');
+  await b.click('[data-act="back"]');
+  assert.ok(b.qa('.ostot .sumrow').some((r) => b.text(r) === `Propina ${L_(4000)}`), 'Propina shows once > 0');
+  assert.equal(b.text('.ostot .sumrow.tot'), `Total ${L_(food + FEE + 4000 + 7)}`);
+});
+
+test('S2b tip step: presets from TIP_PRESETS + «Otro»; «Hacer pedido» disabled until a choice AND its quote; «Otro» capped at TIP_MAX', async () => {
+  const b = bootCo(); await filled(b); await b.click('#cta');
+  assert.ok(b.q('.screen .tipwrap'), 'the tip screen inside .screen');
+  assert.deepEqual(b.qa('.tipchips .chip').map((c) => c.textContent), [...CK.TIP_PRESETS.map((v) => (v ? `L ${v}` : 'Sin propina')), 'Otro']);
+  assert.ok(b.q('[data-act="tip-place"]').disabled, 'nothing chosen ⇒ disabled');
+  assert.equal(b.text('.tipfoot .sumrow'), 'Propina —');
+  await b.click('[data-act="tipc"][data-val="0"]');
+  assert.ok(!b.q('[data-act="tip-place"]').disabled, '«Sin propina» is a choice');
+  assert.equal(b.text('.tipfoot .sumrow'), 'Propina Sin propina');
+  await b.click('[data-act="tipc"][data-val="other"]');
+  for (const k of ['1', '9', '9', '9', '9']) await b.click(`#layer [data-act="tk"][data-val="${k}"]`);
+  assert.equal(b.q('#layer [data-field="tipOther"]').value, '1999', '🔴 the digit past L 2,000 is refused');
+  await b.click('#layer [data-act="tk"][data-val="del"]'); await b.click('#layer [data-act="tk"][data-val="del"]');
+  await b.click('#layer [data-act="tip-save"]');
+  assert.deepEqual(J(b.ui.state.flow.tipChoice), { kind: 'other', lempiras: 19 });
+  assert.equal(b.srv.of('quoteOrder').at(-1).body.tip_cents, 1900);
+  const net = b.plain.price * 100 + FEE + 1900 + 7;
+  assert.equal(b.text('[data-act="tip-place"]'), `Hacer pedido · ${L_(net)}`);
+  assert.ok(!b.q('[data-act="tip-place"]').disabled);
+});
+
+test('S2b placing: «Realizando pedido…»; «Volver» sends NOTHING; «Se ve bien» → Enviando → createOrder with the displayed Total → the check beat → «placed»', async () => {
+  const b = bootCo({ script: { createOrder: [{ status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }] } });
+  await filled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="20"]');
+  await b.click('[data-act="tip-place"]');
+  assert.equal(b.text('#layer .placing h2'), 'Realizando pedido…');
+  assert.equal(b.q('#layer [data-act="placing-go"]').textContent, 'Se ve bien (0:02)');
+  await b.click('#layer [data-act="placing-back"]');
+  assert.equal(b.q('#layer').innerHTML, '');
+  b.timers.flush(); await settle();
+  assert.equal(b.srv.of('createOrder').length, 0, '🔴 «Volver» = zero requests (the 2 s timer is cancelled too)');
+  await b.click('[data-act="tip-place"]');
+  b.timers.flush(); await settle();   // the 2 s fill
+  assert.ok(b.q('.screen .sending'));
+  assert.equal(b.srv.of('createOrder').length, 1);
+  const net = b.plain.price * 100 + FEE + 2000 + 7;
+  assert.ok(b.text('.sndcard').includes(`Efectivo al entregar · ${L_(net)}`) && b.text('.sndcard').includes('Incluye propina L 20'));
+  assert.ok(b.q('#sspin .sok'), 'the check beat');
+  assert.equal(b.events.filter((e) => e[0] === 'placed').length, 0, 'the beat runs first');
+  b.timers.flush();
+  assert.equal(J(b.events.at(-1))[0], 'placed');
+  assert.equal(b.events.at(-1)[1].kind, 'placed');
+});
+
+test('S2b card: Enviando → redirect — navigate gets the checkout URL, the creds are stashed first', async () => {
+  const b = bootCo({ script: { chargeOnlineOrder: [{ status: 200, json: { checkout_url: 'https://pay.test/1', poll_token: 'pt_1', attempt_id: 'a1' } }] } });
+  await filled(b, 'online'); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]');
+  await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.deepEqual(b.nav, ['https://pay.test/1']);
+  const stash = JSON.parse(b.storage.getItem('ta_pending_pay'));
+  assert.equal(stash.t, 'pt_1', 'the poll token is stashed before the redirect');
+  assert.equal(b.srv.of('chargeOnlineOrder')[0].body.payment_method, 'online');
+});
+
+test('S2b card RESUMED: an issued checkout at OTHER economics ⇒ Enviando shows the STORED totals, then the stored URL', async () => {
+  const storage = memStore(); const t = NOON().getTime(); const id = 'TA261020-190000-OLDOLDOL';
+  storage.setItem('capp:rid_a:pending_place', JSON.stringify({ order_id: id, method: 'online', body_sig: 'older-cart', expected_net_cents: 12345, totals: { ready: true, total: 12345, tip: 500 },
+    dispatched: 1, unresolved: false, card: true, admitted: false, issued: true, checkout_url: 'https://pay.test/old', checkout_at: t, ts: t, last_send: t, expires_at: t + 3600000 }));
+  storage.setItem('ta_pending_pay', JSON.stringify({ order_id: id, t: 'pt_old', order: {}, form: null, ts: t }));
+  const b = bootCo({ storage, script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'pending' } }] } });
+  await filled(b, 'online'); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]');
+  await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.deepEqual(b.nav, ['https://pay.test/old']);
+  assert.equal(b.srv.of('chargeOnlineOrder').length, 0, 'nothing re-sent');
+  assert.ok(b.q('.screen .sending'));
+  assert.ok(b.text('.sndcard').includes('Tarjeta · PixelPay · L 123.45'), '🔴 the STORED net, not the current quote: ' + b.text('.sndcard'));
+  assert.ok(b.text('.sndcard').includes('Incluye propina L 5'));
+});
+
+test('S2b closure: the sheet is «{name} cerró a las …» + «Tu pedido no se envió.» with ONE «Cerrar» — no «Programar», no schedule hint; G0 marked', async () => {
+  const b = bootCo({ script: { createOrder: [{ status: 400, json: { error: 'Restaurant closed' } }] } });
+  await filled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]');
+  await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.text('#layer .errsheet h2'), `${CONFIG.x_pizza.name} cerró a las 9:45 p.m.`);
+  assert.equal(b.text('#layer .errsheet p'), 'Tu pedido no se envió.');
+  assert.deepEqual(b.qa('#layer .errsheet .acts button').map((x) => x.textContent), ['Cerrar']);
+  assert.ok(!b.text('#layer').includes(CK.CLOSED_SHEET.scheduleHint) && !/Programar/.test(b.text('#layer')));
+  assert.ok(b.q('.screen .flow'), 'back on «Entrega & Pago»');
+  await b.click('#layer [data-act="lclose"]');
+  assert.equal(cta(b), 'No disponible · cerrado', 'G0 closedRefused');
+});
+
+test('S2b «Sin conexión»: a network drop ⇒ the drawn sheet; «Reintentar» re-sends the SAME order id', async () => {
+  const b = bootCo({ script: { createOrder: ['network', { status: 200, json: { ok: true, order_id: 'X' } }] } });
+  await filled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]');
+  await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.text('#layer .errsheet h2'), 'Sin conexión');
+  assert.equal(b.text('#layer .errsheet p'), 'No pudimos enviar tu pedido. Revisá tu conexión e intentá de nuevo; tu pedido está intacto.');
+  assert.deepEqual(b.qa('#layer .errsheet .acts button').map((x) => x.textContent), ['Reintentar', 'Cerrar']);
+  assert.ok(b.q('.screen .tipwrap'), 'back where the customer tapped');
+  await b.click('#layer [data-act="err-retry"]');
+  const [a, c] = b.srv.of('createOrder');
+  assert.equal(c.body.order_id, a.body.order_id, '🔴 the same placement identity');
+  assert.ok(b.q('#sspin .sok'));
+});
+
+test('S2b existing order: the Q9 recovery sheet — copy, «Referencia #ABCD», NO «Escribir a la tienda», «Volver al pedido»', async () => {
+  const b = bootCo({ script: { createOrder: [{ status: 409, json: { error: 'order_exists', reason: 'live' } }] } });
+  await filled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]');
+  await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  const id = b.srv.of('createOrder')[0].body.order_id;
+  assert.equal(b.q('#layer .sheet').getAttribute('aria-label'), 'Necesitamos revisar tu pedido');
+  assert.ok(b.q('#layer .errsheet .icon.calm'));
+  assert.equal(b.text('#layer .errsheet p'), 'Ya existe un pedido con este número, así que no lo enviamos de nuevo para no duplicarlo. Escríbenos y lo revisamos.');
+  assert.equal(b.text('#layer .errsheet p.note'), `Referencia #${id.slice(-4).toUpperCase()}`);
+  assert.ok(!/Escribir a la tienda/.test(b.text('#layer')) && !b.q('#layer [data-act="wa"]'));
+  assert.deepEqual(b.qa('#layer .errsheet .acts button').map((x) => [x.className, x.textContent]), [['btn2 wide', 'Volver al pedido']]);
+  await b.click('#layer [data-act="lclose"]');
+  assert.equal(b.q('#layer').innerHTML, '');
+});
+
+test('S2b «El precio cambió»: the ported sheet is passed through place({ sheet }) with the DISPLAYED Total; agreed ⇒ the SAME id re-sent', async () => {
+  const sheets = [];
+  const b = bootCo({ priceSheet: (o) => { sheets.push(o); return Promise.resolve(true); }, script: { createOrder: [{ status: 409, json: { error: 'price_increased', net_total_cents: 99900 } }, { status: 200, json: { ok: true, order_id: 'X' } }] } });
+  await filled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]');
+  await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.deepEqual(sheets, [{ oldCents: b.plain.price * 100 + FEE + 7, newCents: 99900 }]);
+  const [a, c] = b.srv.of('createOrder');
+  assert.equal(c.body.order_id, a.body.order_id);
+});
+
+const RET = (pay, id = 'TA261020-190500-ABCDWXYZ') => `?pay=${pay}&order=${id}&t=pt_9`;
+test('S2b ?pay= return: paid ⇒ the check beat then «placed»; verifying ⇒ Enviando with the EXACT confirming line', async () => {
+  const p = bootCo({ search: RET('complete'), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'paid', tracking_token: 'tt' } }] } });
+  await p.ui.returning; await settle();
+  assert.ok(p.q('.screen .sending') && p.q('#sspin .sok'));
+  p.timers.flush();
+  assert.equal(p.events.at(-1)[0], 'placed');
+  const v = bootCo({ search: RET('complete'), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'verifying' } }] } });
+  await v.ui.returning; await settle();
+  assert.ok(v.q('.screen .sending'));
+  assert.equal(v.text('.shint'), 'Estamos confirmando tu pago con el banco.');
+  assert.equal(v.q('#layer').innerHTML, '', 'no sheet, no button');
+  assert.equal(v.q('.sndcard button'), null);
+});
+
+test('S2b ?pay= return: closed_refunded ⇒ the Q9 refund sheet (name + amount, ONE «Volver al inicio» → «home»)', async () => {
+  const b = bootCo({ search: RET('complete'), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'closed_refunded', refunded_total_cents: 48500 } }] } });
+  await b.ui.returning; await settle();
+  assert.equal(b.text('#layer .errsheet h2'), 'Te reembolsamos tu pago');
+  assert.ok(b.q('#layer .errsheet .icon.ok'));
+  assert.equal(b.text('#layer .errsheet p'), `${CONFIG.x_pizza.name} ya había cerrado cuando se confirmó tu pago. Te devolvimos el total completo, L 485; no se te cobrará.`);
+  assert.deepEqual(b.qa('#layer .errsheet .acts button').map((x) => [x.className, x.textContent]), [['primary', 'Volver al inicio']]);
+  await b.click('#layer [data-act="home"]');
+  assert.deepEqual(b.events.at(-1), ['home', undefined]);
+});
+
+test('S2b ?pay= return: a definitive cancel ⇒ «Pago no completado» (drawn; «Pagar en efectivo» = host event); a cancel the server still calls pending ⇒ NO sheet (U5 held); a 403 ⇒ recovery', async () => {
+  const c = bootCo({ search: RET('cancel'), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'cancelled' } }] } });
+  await c.ui.returning; await settle();
+  assert.equal(c.text('#layer .errsheet h2'), 'Pago no completado');
+  assert.equal(c.text('#layer .errsheet p'), 'Tu banco no autorizó el pago. Podés intentar con otra tarjeta o pagar en efectivo; tu pedido está intacto.');
+  assert.deepEqual(c.qa('#layer .errsheet .acts button').map((x) => x.textContent), ['Pagar en efectivo', 'Usar otra tarjeta']);
+  await c.click('#layer [data-act="err-cash"]');
+  assert.equal(c.events.at(-1)[0], 'pay-cash');
+  const h = bootCo({ search: RET('cancel'), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'pending' } }] } });
+  await h.ui.returning; await settle();
+  assert.equal(h.q('#layer').innerHTML, '', '🔴 U5 held: no «Pago no completado» while the server says pending');
+  assert.ok(h.q('.screen .flow'));
+  const f = bootCo({ search: RET('complete', 'TA261020-190500-QRST'), script: { paymentStatus: [{ status: 403, json: {} }] } });
+  await f.ui.returning; await settle();
+  assert.equal(f.text('#layer .errsheet h2'), 'Necesitamos revisar tu pedido');
+  assert.equal(f.text('#layer .errsheet p.note'), 'Referencia #QRST');
+});
+
+test('S2b sheets are dialogs: the screen is inert behind them, focus moves in, Tab stays in; Escape never dismisses the refund sheet', async () => {
+  const b = bootCo({ script: { createOrder: ['network'] } });
+  await filled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]');
+  await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.ok(b.q('.screen').hasAttribute('inert') && !b.q('#layer').hasAttribute('inert'));
+  assert.ok(b.q('#layer').contains(b.w.document.activeElement), 'focus moved into the sheet');
+  const f = tabbables(b, b.q('#layer')); f.at(-1).focus(); key(b, 'Tab', f.at(-1));
+  assert.equal(b.w.document.activeElement, f[0], 'Tab wraps inside');
+  key(b, 'Escape', f[0]);
+  assert.equal(b.q('#layer').innerHTML, '', 'Escape closes «Sin conexión» (it has «Cerrar»)');
+  const r = bootCo({ search: RET('complete'), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'closed_refunded', refunded_total_cents: 100 } }] } });
+  await r.ui.returning; await settle();
+  key(r, 'Escape', r.q('#layer button'));
+  assert.ok(r.q('#layer .errsheet'), 'the refund sheet stays until «Volver al inicio»');
+});
