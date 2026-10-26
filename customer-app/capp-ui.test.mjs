@@ -705,7 +705,7 @@ test('S2b ?pay= return: closed_refunded ⇒ the Q9 refund sheet (name + amount, 
   assert.deepEqual(b.events.at(-1), ['home', undefined]);
 });
 
-test('S2b ?pay= return: a definitive cancel ⇒ «Pago no completado» (drawn; «Pagar en efectivo» = host event); a cancel the server still calls pending ⇒ NO sheet (U5 held); a 403 ⇒ recovery', async () => {
+test('S2b ?pay= return: a definitive cancel ⇒ «Pago no completado» (drawn; «Pagar en efectivo» = host event); a cancel the server still calls pending ⇒ «Tu pago todavía está en verificación» (the order stays locked); a 403 ⇒ recovery', async () => {
   const c = bootCo({ search: RET('cancel'), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'cancelled' } }] } });
   await c.ui.returning; await settle();
   assert.equal(c.text('#layer .errsheet h2'), 'Pago no completado');
@@ -715,12 +715,64 @@ test('S2b ?pay= return: a definitive cancel ⇒ «Pago no completado» (drawn; �
   assert.equal(c.events.at(-1)[0], 'pay-cash');
   const h = bootCo({ search: RET('cancel'), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'pending' } }] } });
   await h.ui.returning; await settle();
-  assert.equal(h.q('#layer').innerHTML, '', '🔴 U5 held: no «Pago no completado» while the server says pending');
-  assert.ok(h.q('.screen .flow'));
+  assert.equal(h.q('#layer .sheet').getAttribute('aria-label'), 'Tu pago todavía está en verificación', '🔴 never «Pago no completado» while the server says pending');
+  assert.ok(h.q('#layer .errsheet .icon.calm svg circle'), 'the calm tint + the clock (#mk-pending)');
+  assert.equal(h.text('#layer .errsheet p'), 'Estamos confirmando tu pago con el banco. No hace falta pagar de nuevo; esperá un momento mientras termina.');
+  assert.deepEqual(h.qa('#layer .errsheet .acts button').map((x) => [x.className, x.textContent]), [['primary', 'Volver al pedido']]);
+  await h.click('#layer [data-act="lclose"]');
+  assert.equal(h.q('#layer').innerHTML, '');
+  assert.ok(h.q('.screen .flow'), '«Volver al pedido» lands on «Entrega & Pago»');
   const f = bootCo({ search: RET('complete', 'TA261020-190500-QRST'), script: { paymentStatus: [{ status: 403, json: {} }] } });
   await f.ui.returning; await settle();
   assert.equal(f.text('#layer .errsheet h2'), 'Necesitamos revisar tu pedido');
   assert.equal(f.text('#layer .errsheet p.note'), 'Referencia #QRST');
+});
+
+// the owner-approved held-states mockup (MOCKUP-capp-S2b-held-states.html)
+const sheetOf = (b) => ({ label: b.q('#layer .sheet').getAttribute('aria-label'), h2: b.text('#layer .errsheet h2'), p: b.text('#layer .errsheet p'),
+  icon: b.q('#layer .errsheet .icon').className, clock: !!b.q('#layer .errsheet .icon svg circle'), acts: b.qa('#layer .errsheet .acts button').map((x) => [x.className, x.textContent, x.dataset.act]) });
+async function placeVia(b, pay = 'cash') {
+  await filled(b, pay); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]');
+  await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+}
+test('S2b #mk-paused: a 423 ordering_paused ⇒ «{name} no está recibiendo pedidos…», amber clock, ONE «Entendido» that keeps the checkout intact', async () => {
+  const b = bootCo({ script: { createOrder: [{ status: 423, json: { error: 'ordering_paused' } }] } });
+  await placeVia(b);
+  assert.deepEqual(sheetOf(b), { label: `${CONFIG.x_pizza.name} no está recibiendo pedidos en este momento`, h2: `${CONFIG.x_pizza.name} no está recibiendo pedidos en este momento`,
+    p: 'Tu pedido no se envió ni se cobró nada; está intacto para que lo intentés en unos minutos.', icon: 'icon warn', clock: true, acts: [['primary', 'Entendido', 'lclose']] });
+  const lines = J(b.ui.cart.lines());
+  await b.click('#layer [data-act="lclose"]');
+  assert.equal(b.q('#layer').innerHTML, '');
+  assert.deepEqual(J(b.ui.cart.lines()), lines, 'the cart is untouched');
+  assert.ok(b.q('.screen .flow') && !b.q('.screen .tipwrap'), 'over «Entrega & Pago», as drawn');
+  assert.equal(b.q('#f-details').value, 'Portón negro', 'the details are untouched');
+});
+test('S2b #mk-generic: an unexpected refusal, a card checkout not opened, a payment reference not saved ⇒ ONE «No pudimos enviar tu pedido» (red ✕, «Reintentar» + «Cerrar»)', async () => {
+  const G = { label: 'No pudimos enviar tu pedido', h2: 'No pudimos enviar tu pedido', p: 'Intentá de nuevo en un momento; tu pedido está intacto.', icon: 'icon', clock: false,
+    acts: [['primary', 'Reintentar', 'err-retry'], ['btn2 wide', 'Cerrar', 'lclose']] };
+  const e = bootCo({ script: { createOrder: [{ status: 418, json: { error: 'teapot' } }] } });
+  await placeVia(e);
+  assert.deepEqual(sheetOf(e), G, 'kind error');
+  assert.ok(e.q('#f-details') && !e.q('.screen .tipwrap'), 'over «Entrega & Pago», as drawn');
+  const n = bootCo({ script: { chargeOnlineOrder: [{ status: 500, json: { error: 'Payment not configured' } }] } });
+  await placeVia(n, 'online');
+  assert.deepEqual(sheetOf(n), G, 'kind payment_not_completed');
+  assert.equal(n.nav.length, 0);
+  const store = memStore(); const setItem = store.setItem; store.setItem = (k, v) => { if (k === 'ta_pending_pay') throw new Error('quota'); return setItem(k, v); };
+  const s = bootCo({ storage: store, script: { chargeOnlineOrder: [{ status: 200, json: { ok: true, checkout_url: 'https://pay.example/c', poll_token: 'pt_1' } }] } });
+  await placeVia(s, 'online');
+  assert.deepEqual(sheetOf(s), G, 'kind stash_failed');
+  assert.equal(s.nav.length, 0, '🔴 no redirect without the stored reference');
+  await e.click('#layer [data-act="lclose"]');
+  assert.equal(e.q('#layer').innerHTML, '', '«Cerrar» closes');
+});
+test('S2b #mk-generic «Reintentar» re-sends the SAME order id', async () => {
+  const b = bootCo({ script: { createOrder: [{ status: 418, json: { error: 'teapot' } }, { status: 200, json: { ok: true, order_id: 'X' } }] } });
+  await placeVia(b);
+  await b.click('#layer [data-act="err-retry"]'); await settle();
+  const [a, c] = b.srv.of('createOrder');
+  assert.ok(c, 'a second send');
+  assert.equal(c.body.order_id, a.body.order_id);
 });
 
 test('S2b sheets are dialogs: the screen is inert behind them, focus moves in, Tab stays in; Escape never dismisses the refund sheet', async () => {

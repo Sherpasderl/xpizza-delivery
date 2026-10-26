@@ -454,7 +454,7 @@
       if (r.kind === 'superseded') return;
       if (r.kind === 'ok') { S.q = r.record; S.qKey = key; if (f.mode === 'delivery') { S.outZone = false; if (r.record.resp.delivery) S.lastDelivery = r.record.resp.delivery; } }
       else if (r.kind === 'out_of_zone') { S.outZone = true; }
-      // pin / offline / try_again / refused / update_required: no amount is shown (never a guess); the refusal UIs are held (U1/U3)
+      // pin / offline / try_again / refused / update_required: no amount is shown (never a guess); a refused QUOTE has no sheet; the placement's sheets are below (onOutcome)
       if (S.pinToast && f.mode === 'delivery') { S.pinToast = false; if (r.kind === 'ok') toast('Pin confirmado', TOAST_MS); else if (r.kind === 'out_of_zone') toast('Ese punto queda fuera de la zona', TOAST_MS); }
       if (S.screen === 'checkout' || S.screen === 'tip') render();
     }
@@ -672,6 +672,10 @@
       // the approved Q9 mockup #mk-refunded
       refunded: (cents) => ({ title: 'Te reembolsamos tu pago', body: `${cfg.name || ''} ya había cerrado cuando se confirmó tu pago. Te devolvimos el total completo${Number.isFinite(cents) ? ', ' + moneyC(cents) : ''}; no se te cobrará.`, icon: 'ok', acts: [{ act: 'home', label: 'Volver al inicio', primary: true }] }),
       // the approved Q9 mockup #mk-exists — «Escribir a la tienda» hidden (no public restaurant contact in the app data)
+      // the owner-approved held-states mockup (MOCKUP-capp-S2b-held-states.html #mk-paused / #mk-generic / #mk-pending)
+      paused: () => ({ title: `${cfg.name || ''} no está recibiendo pedidos en este momento`, body: 'Tu pedido no se envió ni se cobró nada; está intacto para que lo intentés en unos minutos.', icon: 'warn', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
+      generic: () => ({ title: 'No pudimos enviar tu pedido', body: 'Intentá de nuevo en un momento; tu pedido está intacto.', acts: [{ act: 'err-retry', label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
+      pending: () => ({ title: 'Tu pago todavía está en verificación', body: 'Estamos confirmando tu pago con el banco. No hace falta pagar de nuevo; esperá un momento mientras termina.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Volver al pedido', primary: true }] }),
       exists: (ref) => ({ title: 'Necesitamos revisar tu pedido', body: 'Ya existe un pedido con este número, así que no lo enviamos de nuevo para no duplicarlo. Escríbenos y lo revisamos.', icon: 'calm', note: `Referencia <b>#${esc(ref || '')}</b>`, acts: [{ act: 'lclose', label: 'Volver al pedido' }] }),
     };
     function onOutcome(out) {
@@ -688,18 +692,22 @@
       if (k === 'out_of_zone') { S.outZone = true; backTo('checkout'); return; }
       if (k === 'payment_failed') {
         backTo('checkout');   // P pixelPay :2016 — back() to «Entrega & Pago», then the sheet
-        if (out.clearable === false) return;   // TODO(U5 held): a cancel return the server still calls pending — no sheet until ruled
+        if (out.clearable === false) { showErr(ERR.pending()); return; }   // a cancel return the server still calls pending: the order stays locked
         showErr(ERR.payFailed()); return;
       }
       if (k === 'refunded') { backTo('checkout'); showErr(ERR.refunded(out.refunded_total_cents)); return; }
       if (k === 'existing_order') { backTo('checkout'); showErr(ERR.exists(out.reference)); return; }   // also a kept identity after a 426 (update_required: true)
-      // held (U1/U3, pending rulings): paused (423), stash_failed, try_again, refused, error, payment_not_completed — no UI yet;
+      // the held-states mockup draws both sheets over «Entrega & Pago» (#mk-paused / #mk-generic)
+      if (k === 'paused') { backTo('checkout'); showErr(ERR.paused()); return; }
+      // one sheet for the failures the customer can't tell apart: the card checkout not opened, the payment reference not saved,
+      // a generic refusal, an unexpected error
+      if (k === 'stash_failed' || k === 'try_again' || k === 'refused' || k === 'error' || k === 'payment_not_completed') { backTo('checkout'); showErr(ERR.generic()); return; }
       // update_required (426) is the shared self-update module's «Actualización pendiente»; price_declined: the ported sheet was answered
       backTo();
     }
     function errSheet(e) {
       const acts = e.acts.map((a) => `<button class="${a.primary ? 'primary' : 'btn2 wide'}" data-act="${a.act}">${esc(a.label)}</button>`).join('');
-      const ic = e.icon === 'ok' ? IC.check : e.icon === 'warn' || e.icon === 'calm' ? IC.alert : IC.close;
+      const ic = e.ic ? IC[e.ic] : e.icon === 'ok' ? IC.check : e.icon === 'warn' || e.icon === 'calm' ? IC.alert : IC.close;
       return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${esc(e.title)}"><div class="grab"></div><div class="errsheet"><div class="icon${e.icon ? ' ' + e.icon : ''}">${ic}</div><h2>${esc(e.title)}</h2><p>${esc(e.body)}</p>${e.note ? `<p class="note">${e.note}</p>` : ''}<div class="acts">${acts}</div></div></div>`;
     }
     const feeInfoHtml = () => { const d = S.lastDelivery || {}; return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Envío"><div class="grab"></div><div class="errsheet"><h2>Envío</h2><p>Sherpa calcula el envío según la distancia entre la sucursal y tu dirección. Desde ${moneyC(d.from_cents)}; zona de entrega hasta ${esc(d.max_km)} km de ${storeLine()}.</p><div class="acts"><button class="btn2 wide" data-act="lclose">Entendido</button></div></div></div>`; };
