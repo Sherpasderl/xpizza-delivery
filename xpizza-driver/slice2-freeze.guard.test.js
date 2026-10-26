@@ -45,13 +45,16 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 // — a tampered shared module (widened/dropped restore, added/removed region, changed kind) is caught HERE too, not
 // just in slice3-freeze. Mirror of slice3-freeze's SLICE3_PINS; both must agree with the byte-frozen contract file.
 const SLICE3_PINS = {
-  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'HELP-HANDLER', 'CIERRE-REJECT'],
-  kinds: ['insert', 'insert', 'insert', 'replace', 'replace'],
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT'],
+  kinds: ['insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace'],
   restoreSha: {
     'HELP-HANDLER': 'e823efd01be83461f6b7b900e8e60a9065d9c44bfedb1b32c2624f1d6c00206f',
-    'CIERRE-REJECT': '40de3c537ee20e27c307cd0f4cb735471fc144418be088a2b172c84c982b90a3',
+    'CUADRE-CSS': '41327b6fa5e535b774d323c235e755019b6020516a10ac20340b004667f8a4ec',
+    'CUADRE-DOM': 'ec70f01fe5711aacff4fc4e88ff0fd873bf715abf8ba178d30092c7ec34c2dab',
+    'CUADRE-RENDER': 'a285b81838c946e23f46a401786b07a62976ca93f25c3d8152640404021eeaaa',
+    'CUADRE-SUBMIT': '06a225a4158eae7c797d0775fec2def67fb01283467b3c6352cff7dc55e8466b',
   },
-  fileSha: '0f584edfdfc5356cd31fa3181e254119226c41d82029de2523c5b0dfc3b32982',
+  fileSha: 'f159e687bc89cc055d5e6e2a832bae5c2f60c1f564b8aabfbc303dda78e99c33',
 };
 // Load the contract as DATA: read bytes → verify the sha256 pin FIRST → only then JSON.parse (Codex r2 P1). No
 // require/import of editable code; a tampered or executable contract fails the sha (and JSON.parse) before use.
@@ -187,6 +190,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/slice3-regions.json',             // the shared SLICE3 region contract (non-executable data)
   'xpizza-driver/slice3-freeze.guard.test.js',     // the slice-3 freeze guard
   'xpizza-driver/slice3-contrast.test.js',         // batch-3 fg/bg WCAG checks (added with the first batch-3 CSS)
+  'xpizza-driver/cuadre-submit.test.js',           // cuadre slide-to-confirm money-submit handler test (SLICE3)
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';

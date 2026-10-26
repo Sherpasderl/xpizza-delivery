@@ -33,16 +33,7 @@
 .help-rt { font-weight: 700; font-size: 14.5px; color: var(--text, #0D1424); }
 .help-rd { font-size: 12.5px; color: var(--text-soft, #546078); margin-top: 2px; line-height: 1.3; }
 .help-done { margin-top: 2px; width: 100%; background: var(--accent, #2F5FB8); color: #fff; border: none; border-radius: 14px; padding: 14px; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 15px; }
-/* cierreRechazado (S.cierreRechazado) — the close-REJECTION screen, rendered inside the #cuadre-receipt card. */
-.rc-reject-banner { display: flex; gap: 11px; align-items: flex-start; text-align: left; padding: 12px 13px; border-radius: 13px; margin-bottom: 14px; font-size: 13.5px; line-height: 1.35; background: var(--sv-err-bg, #FBEAEA); color: var(--sv-err, #B9323A); }
-.rc-reject-banner b { display: block; font-family: 'Red Hat Display', sans-serif; font-size: 14.5px; margin-bottom: 2px; }
-.rc-reject-ico { flex: none; margin-top: 1px; color: var(--sv-err, #B9323A); }
-.rc-reject-ico svg { width: 20px; height: 20px; display: block; }
-.rc-big.rc-reject-amt { background: var(--surface-2, #F1F4F8); }
-.rc-big.rc-reject-amt .l { color: var(--text-soft, #5A6473); }
-.rc-big.rc-reject-amt .v { color: var(--text, #1F2733); }
-.rc-retry { width: 100%; padding: 15px; border-radius: 15px; background: var(--sv-err, #B9323A); color: #fff; font-weight: 800; font-size: 14.5px; border: none; font-family: inherit; margin-top: 16px; cursor: pointer; }
-.rc-retry:disabled { opacity: .6; }
+/* cierreRechazado + the whole cuadre shell CSS now lives in SLICE3:CUADRE-CSS (the cuadre was rebuilt full-screen). */
 /* ===== SLICE3:PRESENTATION-3:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -683,23 +674,61 @@
   .vt-result .l{ font-size:13px; font-weight:800; color:var(--green); } .vt-result .v{ font-size:28px; font-weight:800; color:var(--green); letter-spacing:-.02em; font-variant-numeric:tabular-nums; } .vt-result .v span{ font-size:17px; }
   .vt-done{ width:100%; padding:14px; border-radius:14px; background:var(--surface-2); color:var(--text); font-weight:800; font-size:14px; border:none; font-family:inherit; cursor:pointer; }
 
-  /* ==================== CLOCK-OUT CUADRE (P3) ==================== */
-  #cuadre-screen{ position:fixed; inset:0; background:var(--canvas); z-index:250; display:none; flex-direction:column; justify-content:center; overflow-y:auto; padding:calc(28px + var(--safe-top)) 18px calc(20px + var(--safe-bottom)); }
+/* ===== SLICE3:CUADRE-CSS:START — cuadre shell rebuilt to the prototype (full-screen hdr/body/foot; S.cuadre + S.cierreRechazado) ===== */
+  /* ==================== CLOCK-OUT CUADRE (P3) — full-screen, prototype S.cuadre / S.cierreRechazado ==================== */
+  #cuadre-screen{ position:fixed; inset:0; background:var(--canvas); z-index:250; display:none; flex-direction:column; padding-top:var(--safe-top); }
   #cuadre-screen.open{ display:flex; }
-  .receipt{ background:var(--surface); border-radius:18px; box-shadow:0 1px 2px rgba(20,30,50,.04),0 10px 26px rgba(20,30,50,.08); padding:20px 18px; border:1px solid rgba(20,30,50,.05); max-width:360px; width:100%; margin:auto; }
-  .rc-title{ text-align:center; font-size:13px; letter-spacing:.16em; font-weight:800; color:var(--text); text-transform:uppercase; margin-bottom:3px; }
-  .rc-date{ text-align:center; font-size:11.5px; color:var(--text-dim); margin-bottom:16px; }
-  .dash{ border:none; border-top:1.5px dashed #DDE2E9; margin:14px 0; }
-  .rc-row{ display:flex; align-items:center; justify-content:space-between; padding:6px 0; }
-  .rc-row .l{ font-size:13px; color:var(--text-soft); font-weight:600; } .rc-row .v{ font-size:14px; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }
+  /* hdr (prototype .top): back chevron + title */
+  .cuadre-top{ flex:none; display:flex; align-items:center; gap:10px; padding:6px 16px 10px; }
+  .cuadre-back{ width:34px; height:34px; border-radius:50%; background:var(--surface); border:1px solid var(--line); display:grid; place-items:center; color:var(--text); cursor:pointer; flex:none; padding:0; }
+  .cuadre-back svg{ width:22px; height:22px; }
+  .cuadre-ttl{ font-family:'Red Hat Display', sans-serif; font-weight:700; font-size:18px; letter-spacing:-.015em; color:var(--text); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cuadre-spacer{ width:34px; flex:none; }
+  /* body (prototype .body): scrolls; foot stays pinned */
+  .cuadre-body{ flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:4px 16px 16px; display:flex; flex-direction:column; gap:12px; overscroll-behavior:contain; }
+  /* foot (prototype .foot): pinned, slide + txt */
+  .cuadre-foot{ flex:none; padding:10px 16px calc(12px + var(--safe-bottom)); display:flex; flex-direction:column; gap:9px; background:var(--canvas); }
+  .receipt{ background:var(--surface); border-radius:18px; box-shadow:0 1px 2px rgba(20,30,50,.04),0 10px 26px rgba(20,30,50,.08); padding:16px 18px; border:1px solid rgba(20,30,50,.05); }
+  .rc-title{ text-align:center; font-family:'Red Hat Display', sans-serif; font-size:12px; letter-spacing:.14em; font-weight:800; color:var(--text); text-transform:uppercase; }
+  .rc-date{ text-align:center; font-size:12px; color:var(--text-dim); margin-top:2px; }
+  .dash{ border:none; border-top:1.5px dashed #DDE2E9; margin:12px 0; }
+  .rc-row{ display:flex; align-items:center; justify-content:space-between; font-size:14px; padding:5px 0; }
+  .rc-row .l{ color:var(--text-soft); font-weight:600; } .rc-row .v{ font-family:'Red Hat Display', sans-serif; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }
   .rc-row.rc-muted .l, .rc-row.rc-muted .v{ color:var(--text-dim); font-weight:600; }
-  .rc-big{ background:var(--green-bg); border-radius:14px; padding:16px; text-align:center; margin:6px 0 4px; }
-  .rc-big .l{ font-size:10.5px; letter-spacing:.12em; font-weight:800; color:var(--green); text-transform:uppercase; margin-bottom:5px; }
-  .rc-big .v{ font-size:34px; font-weight:800; color:var(--green); letter-spacing:-.025em; font-variant-numeric:tabular-nums; } .rc-big .v span{ font-size:20px; }
+  /* hero (prototype .rbig/.big): NEUTRAL dark number inside the white receipt — NOT the green owed-confirmed card */
+  .rc-big{ display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0 2px; text-align:center; margin:0; background:none; border-radius:0; }
+  .rc-big .l{ font-size:10.5px; letter-spacing:.12em; font-weight:800; color:var(--text-soft); text-transform:uppercase; margin-bottom:0; }
+  .rc-big .v{ font-family:'Red Hat Display', sans-serif; font-size:46px; font-weight:800; color:var(--text); letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums; }
+  .rc-big .v span{ font-size:22px; color:var(--text-dim); font-weight:700; vertical-align:top; margin-right:3px; line-height:1.6; }
+  .rc-sub{ text-align:center; font-size:12px; color:var(--text-dim); margin-top:3px; line-height:1.4; }
   .rc-note{ text-align:center; font-size:12px; color:var(--text-dim); margin:13px 6px 0; line-height:1.4; }
-  .rc-confirm{ width:100%; padding:15px; border-radius:15px; background:linear-gradient(180deg,#FB5616,#F23E00); color:#fff; font-weight:800; font-size:14.5px; border:none; font-family:inherit; box-shadow:0 6px 16px rgba(242,62,0,.32); margin-top:16px; cursor:pointer; }
-  .rc-confirm:disabled{ opacity:.6; }
-  .rc-back{ width:100%; padding:12px; background:none; border:none; color:var(--text-dim); font-weight:700; font-size:13px; font-family:inherit; margin-top:6px; cursor:pointer; }
+  /* «Ganado hoy» informational card — HIDDEN until Pagos ships (showEarnings:false); mount kept */
+  .cuadre-earn{ background:transparent; border:1px solid var(--line); border-radius:14px; padding:2px 14px; }
+  /* rejection banner (cierreRechazado) — sibling ABOVE the receipt */
+  .rc-reject-banner{ display:flex; gap:11px; align-items:flex-start; text-align:left; padding:12px 13px; border-radius:13px; font-size:13.5px; line-height:1.35; background:var(--sv-err-bg, #FBEAEA); color:var(--sv-err, #B9323A); }
+  .rc-reject-banner b{ display:block; font-family:'Red Hat Display', sans-serif; font-size:14.5px; margin-bottom:2px; }
+  .rc-reject-ico{ flex:none; margin-top:1px; color:var(--sv-err, #B9323A); }
+  .rc-reject-ico svg{ width:20px; height:20px; display:block; }
+  /* confirm slide (prototype .slide): steel-blue bar #2F5FB8 (Cuadra azul-acero = prototype --p-p, the brand-agnostic
+     primary — NOT the X. Pizza brand orange), translucent knob, «deslizá» hint + reduced-motion nudge. Reuses the
+     live attachSlideConfirm mechanics (.slide-fill / .slide-thumb). */
+  .cuadre-slide{ position:relative; height:60px; margin:0; border-radius:16px; background:#2F5FB8; border:none; box-shadow:none; overflow:hidden; user-select:none; }
+  .cuadre-slide::before{ display:none; }
+  .cuadre-slide .slide-fill{ position:absolute; left:0; top:0; bottom:0; width:60px; border-radius:16px; background:rgba(255,255,255,.14); opacity:0; z-index:1; transition:width .2s ease; }
+  .cuadre-slide.completed .slide-fill{ opacity:1; }
+  .cuadre-slide.dragging .slide-fill{ transition:none; }
+  .cuadre-slide .slide-text{ position:absolute; inset:0; z-index:2; display:flex; align-items:center; justify-content:center; padding-left:50px; padding-right:58px; white-space:nowrap; font-family:'Red Hat Display', sans-serif; font-weight:700; font-size:14px; letter-spacing:.01em; color:#fff; -webkit-text-fill-color:#fff; }
+  .cuadre-slide .slide-hint{ position:absolute; right:14px; z-index:2; font:600 10.5px 'Red Hat Text', sans-serif; opacity:.7; letter-spacing:.06em; text-transform:uppercase; color:#fff; }
+  .cuadre-slide.completed .slide-hint, .cuadre-slide.dragging .slide-hint{ opacity:0; }
+  .cuadre-slide .slide-thumb{ position:absolute; left:5px; top:5px; bottom:5px; width:50px; border-radius:12px; background:rgba(255,255,255,.22); display:grid; place-items:center; cursor:grab; z-index:3; touch-action:none; box-shadow:none; }
+  .cuadre-slide .slide-thumb svg{ width:22px; height:22px; color:#fff; }
+  .cuadre-slide .slide-thumb:active{ cursor:grabbing; }
+  @media (prefers-reduced-motion:no-preference){ .cuadre-slide:not(.dragging):not(.completed) .slide-thumb{ animation:cuadre-nudge 2.4s ease-in-out infinite; } }
+  @keyframes cuadre-nudge{ 0%,100%{ transform:translateX(0); } 50%{ transform:translateX(8px); } }
+  /* «Volver al turno» txt + «Reintentar cierre» danger (rejection) */
+  .rc-volver{ width:100%; padding:12px; background:none; border:none; color:var(--text-dim); font-weight:700; font-size:13px; font-family:inherit; cursor:pointer; }
+  .rc-retry{ width:100%; padding:15px; border-radius:16px; background:var(--sv-err, #B9323A); color:#fff; font-weight:800; font-size:15px; border:none; font-family:'Red Hat Display', sans-serif; cursor:pointer; }
+/* ===== SLICE3:CUADRE-CSS:END ===== */
 
   /* ==================== NOTIFICATION BANNER ==================== */
   .notif-banner {
@@ -1744,7 +1773,9 @@
 <!-- O4 end-shift confirmation: created on demand in openEndShiftSheet() (never in the static DOM), removed on close -->
 
 <!-- Clock-out cuadre (cash handoff) -->
-<div id="cuadre-screen"><div class="receipt" id="cuadre-receipt"></div></div>
+<!-- ===== SLICE3:CUADRE-DOM:START — showCuadre builds the full prototype shell (hdr + body + foot) into this container ===== -->
+<div id="cuadre-screen"></div>
+<!-- ===== SLICE3:CUADRE-DOM:END ===== -->
 
 <!-- C2: OEM-settings onboarding (first launch, native only; dismissible/informational) -->
 <div class="sheet-backdrop" id="oem-onboarding"><div class="sheet" id="oem-onboarding-body"></div></div>
@@ -2224,22 +2255,26 @@ function openHelpSheet() {
   ov.classList.add('open');
 }
 
-// SLICE3:CIERRE-REJECT — render the close-REJECTION screen (prototype S.cierreRechazado) into the ALREADY-open cuadre
-// card. Called from the recordCuadre .catch (CIERRE-REJECT region) on a server rejection. It reuses the amount the
-// submit already computed + displayed (screen._cash.cashOwed) — no new money math — and the live receipt's date
-// format. «Volver al turno» is #cuadre-back, handled by the existing #cuadre-screen click listener (supersede +
-// close). «Reintentar cierre» is #cuadre-retry, wired HERE (the frozen listener ignores it): it clears the surface
-// latch and re-opens the NORMAL receipt (showCuadre recomputes from current orders), so a retry re-confirms the
-// current amount — exactly the proto's «Reintentar cierre» → cuadre, and the same "retry submits the current
-// amount" intent as the refreshOpenCashSurfaces call this screen replaces.
+// SLICE3:CIERRE-REJECT — render the close-REJECTION screen (prototype S.cierreRechazado) into the open cuadre shell.
+// Called from onCuadreConfirm's recordCuadre .catch on a server rejection. Builds the SAME full-screen shell as the
+// cuadre, with the hdr back → cuadre («Reintentar cierre») and the rejection BODY (the err banner as a SIBLING above
+// the white receipt, which reuses the amount already computed + displayed for the submit — screen._cash.cashOwed, NO
+// new money math). The receipt date is DATE-ONLY «Dom 19 oct» (the shift did NOT close, so there's no end-time /
+// duration — matches the prototype). Foot: danger «Reintentar cierre» (.cuadre-reintentar → showCuadre recomputes +
+// re-confirms) then txt «Volver al turno» (.cuadre-volver → back to shift). LATCHES closeInFlight so an observer
+// refreshOpenCashSurfaces() can't clobber this terminal screen; .cuadre-volver, .cuadre-reintentar and handleEndShift reset it.
 function showCierreRechazado() {
   const screen = $('cuadre-screen');
+  closeInFlight = true;   // pin the surface against observer re-renders until the driver acts
   const now = new Date();
-  // Same format the live receipt builds (renderCuadreReceipt): «Hoy · 9:12 p. m.». Not invented.
-  const dateStr = `Hoy · ${now.toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit' })}`;
-  $('cuadre-receipt').innerHTML = cierreRechazadoHtml(screen._cash, dateStr);
-  const retry = $('cuadre-retry');
-  if (retry) retry.addEventListener('click', () => { closeInFlight = false; showCuadre(); });
+  const dateOnly = `${CUADRE_WD[now.getDay()]} ${now.getDate()} ${CUADRE_MO[now.getMonth()]}`;   // «Dom 19 oct», real close date
+  screen.innerHTML = cuadreShellHtml({
+    backClass: 'cuadre-reintentar',
+    bodyHtml: cierreRechazadoHtml(screen._cash, dateOnly),
+    footHtml: `<button class="rc-retry cuadre-reintentar" type="button">Reintentar cierre</button>`
+      + `<button class="rc-volver cuadre-volver" type="button">Volver al turno</button>`,
+  });
+  screen.classList.add('open');
 }
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
@@ -3141,41 +3176,69 @@ function refreshOpenCashSurfaces() {
   if ($('history-modal').classList.contains('shown')) renderHistoryModal();
 }
 
+/* ===== SLICE3:CUADRE-RENDER:START — cuadre shell + receipt rebuilt to the prototype S.cuadre (full-screen hdr/body/foot; slide-to-confirm) ===== */
+// Self-contained glyphs (index.html's ICONS is fine to use at runtime, but these keep the cuadre shell legible).
+const CUADRE_BACK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>';
+const CUADRE_ARROW_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>';
+// «Ganado hoy» stays HIDDEN until Pagos ships: earnings need a real, server-delivered pay-rate source (advisor R2);
+// the driver app has none today, so NEVER fabricate L70×deliveries here. The card's mount (cuadreEarnCardHtml) is
+// kept so Pagos flips this true and feeds the rate.
+const CUADRE_SHOW_EARNINGS = false;
+// Prototype date line «Dom 19 oct · 7:16 – 9:12 · 1 h 56 min». Real values only: the close DATE (now) + the shift
+// START (ident.start) → END (now) window + duration. es-HN abbrevs vary by ICU build, so the day/month abbreviations
+// are pinned here to match the prototype EXACTLY; the numbers are all real. If ident.start is unknown, show the date
+// alone — never an invented start.
+const CUADRE_WD = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const CUADRE_MO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+function cuadreDateStr(ident) {
+  const now = new Date();
+  const datePart = `${CUADRE_WD[now.getDay()]} ${now.getDate()} ${CUADRE_MO[now.getMonth()]}`;
+  const start = (ident && ident.valid) ? ident.start : null;
+  if (!(typeof start === 'number' && Number.isFinite(start) && start > 0 && start <= now.getTime())) return datePart;
+  const hhmm = (ms) => new Date(ms).toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit', hour12: false });
+  const durMin = Math.round((now.getTime() - start) / 60000);
+  const h = Math.floor(durMin / 60), m = durMin % 60;
+  const dur = h > 0 ? (m > 0 ? `${h} h ${m} min` : `${h} h`) : `${m} min`;
+  return `${datePart} · ${hhmm(start)} – ${hhmm(now.getTime())} · ${dur}`;
+}
+// The full-screen prototype shell: hdr «Cierre de turno» + a back control, a scrollable body, a pinned foot. The
+// back control carries a behaviour class (cuadre-volver → back to shift / cuadre-reintentar → back to the receipt)
+// that the #cuadre-screen click handler reads — same behaviour as the matching foot button.
+function cuadreShellHtml({ backClass = 'cuadre-volver', bodyHtml = '', footHtml = '' }) {
+  return `<div class="cuadre-top">`
+    + `<button class="cuadre-back ${backClass}" type="button" aria-label="Volver">${CUADRE_BACK_SVG}</button>`
+    + `<div class="cuadre-ttl">Cierre de turno</div><span class="cuadre-spacer"></span></div>`
+    + `<div class="cuadre-body">${bodyHtml}</div>`
+    + `<div class="cuadre-foot">${footHtml}</div>`;
+}
+function cuadreEarnCardHtml() {
+  return CUADRE_SHOW_EARNINGS ? '' : '';   // mount point only; HIDDEN until Pagos ships (R2) — never a fabricated rate
+}
+function cuadreConfirmFootHtml() {
+  return `<div class="slide-confirm cuadre-slide" id="cuadre-confirm"><div class="slide-fill"></div>`
+    + `<div class="slide-text">Confirmar entrega de efectivo</div><div class="slide-hint">deslizá</div>`
+    + `<div class="slide-thumb">${CUADRE_ARROW_SVG}</div></div>`
+    + `<button class="rc-volver cuadre-volver" type="button">Volver al turno</button>`;
+}
+
 function showCuadre() {
   const screen = $('cuadre-screen');
-  const now = new Date();
-  const dateStr = `Hoy · ${now.toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit' })}`;
   const ident = shiftIdentity();
+  const dateStr = cuadreDateStr(ident);
 
-  // READINESS GATE (plan §5): never compute cash before the orders feed AND the cutover config have loaded,
-  // and never without a valid shift identity. Show "cargando…" instead of a false L0; the subscriptions
-  // re-call showCuadre as they arrive. A loaded-but-identity-less shift (legacy, pre-2.5.0) is a distinct,
-  // explicit state — not cargando — because it will not resolve on its own.
-  // §6/BC1: continuous readiness gate. Hold "cargando" while the feed is not ready (initial load OR a reconnect
-  // re-sync) OR the cutover config has not loaded OR a pending-handoff order is awaiting its fresh history
-  // reconcile — a just-delivered order mid-handoff must never let the cuadre undercount.
-  if (!feedReady || !cutoverLoaded || !driverState || (driverFeed && driverFeed.hasPendingHandoff())) {
+  // READINESS GATE (plan §5, UNCHANGED): never compute cash before the orders feed AND the cutover config have
+  // loaded, and never without a valid shift identity. Show "cargando…" / the blocked-close text instead of a false
+  // L0; the subscriptions re-call showCuadre as they arrive. §6/BC1: continuous gate — hold while the feed is not
+  // ready, the cutover is unloaded, or a pending-handoff order awaits its fresh history reconcile (undercount guard).
+  const notReady = (!feedReady || !cutoverLoaded || !driverState || (driverFeed && driverFeed.hasPendingHandoff()));
+  if (notReady || !ident.valid) {
     screen._ident = null;
-    $('cuadre-receipt').innerHTML = `
-      <div class="rc-title">Cierre de turno</div>
-      <div class="rc-date">${dateStr}</div>
-      <hr class="dash">
-      <div class="rc-note">Cargando el resumen del turno…</div>
-      <button class="rc-back" id="cuadre-back">Volver</button>`;
-    screen.classList.add('open');
-    return;
-  }
-  if (!ident.valid) {
-    // No valid shift identity (e.g. a shift active across the 2.5.0 upgrade with no current_shift_id). The core
-    // cuadre needs a shift id to record under; the driver ends + restarts the shift so the next close records
-    // correctly. (The emergency close for an unidentified shift is a separate future slice.)
-    screen._ident = null;
-    $('cuadre-receipt').innerHTML = `
-      <div class="rc-title">Cierre de turno</div>
-      <div class="rc-date">${dateStr}</div>
-      <hr class="dash">
-      <div class="rc-note">${BLOCKED_CLOSE_TEXT}</div>
-      <button class="rc-back" id="cuadre-back">Volver</button>`;
+    const note = notReady ? 'Cargando el resumen del turno…' : BLOCKED_CLOSE_TEXT;   // identity-less: a distinct, non-cargando state
+    screen.innerHTML = cuadreShellHtml({
+      backClass: 'cuadre-volver',
+      bodyHtml: `<div class="receipt"><div class="rc-title">Cierre de turno</div><div class="rc-date">${dateStr}</div><hr class="dash"><div class="rc-note">${note}</div></div>`,
+      footHtml: `<button class="rc-volver cuadre-volver" type="button">Volver al turno</button>`,   // no slide until the receipt is real
+    });
     screen.classList.add('open');
     return;
   }
@@ -3185,36 +3248,42 @@ function showCuadre() {
   screen.classList.add('open');
 }
 
-// THE single source for the receipt: compute the cash from the CURRENT settled orders, render it,
-// and stash it on the screen as `_cash` + `_bound`. The confirm/escape actions submit screen._cash — so what is
-// DISPLAYED is exactly what is SUBMITTED, every render. Returns the computed cash.
+// THE single source for the receipt: compute the cash from the CURRENT settled orders, render it into the full
+// prototype shell, and stash it on the screen as `_cash` + `_bound`. The confirm slide submits screen._cash — so
+// what is DISPLAYED is exactly what is SUBMITTED, every render. Returns the computed cash. The confirm SLIDE
+// (prototype S.cuadre) is wired to onCuadreConfirm via attachSlideConfirm (same recordCuadre money path as before).
 function renderCuadreReceipt(bound) {
   const screen = $('cuadre-screen');
   const cash = computeShiftCash(allOrders, bound.uid, bound.start, driverIdentityCutoverMs);
   screen._cash = cash;
   screen._bound = bound;
-  const now = new Date();
-  const dateStr = `Hoy · ${now.toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit' })}`;
-  const provisionalNote = cash.provisional
-    ? `<div class="rc-row rc-muted"><span class="l">Entregas por confirmar</span><span class="v">${cash.legacy_provisional_count + cash.unresolved_count}</span></div>
-       <div class="rc-note">Algunas entregas aún no están confirmadas por el servidor; el cuadre se marcará como provisional.</div>`
+  const dateStr = cuadreDateStr(shiftIdentity());
+  const provisionalRows = cash.provisional
+    ? `<div class="rc-row rc-muted"><span class="l">Entregas por confirmar</span><span class="v">${cash.legacy_provisional_count + cash.unresolved_count}</span></div>`
+      + `<div class="rc-note">Algunas entregas aún no están confirmadas por el servidor; el cuadre se marcará como provisional.</div>`
     : '';
-  $('cuadre-receipt').innerHTML = `
-    <div class="rc-title">Cierre de turno</div>
-    <div class="rc-date">${dateStr}</div>
-    <hr class="dash">
-    <div class="rc-row"><span class="l">Entregas</span><span class="v">${cash.deliveries}</span></div>
-    <div class="rc-row"><span class="l">Total cobrado</span><span class="v">L ${cash.totalCollected.toLocaleString('es-HN')}</span></div>
-    ${cash.paidOnlineTotal > 0 ? `<div class="rc-row rc-muted"><span class="l">Pagado en línea</span><span class="v">L ${cash.paidOnlineTotal.toLocaleString('es-HN')}</span></div>` : ''}
-    <div class="rc-row"><span class="l">Pedidos en efectivo</span><span class="v">${cash.cashOrderCount}</span></div>
-    ${provisionalNote}
-    <hr class="dash">
-    <div class="rc-big"><div class="l">Efectivo a entregar</div><div class="v"><span>L</span> ${cash.cashOwed.toLocaleString('es-HN')}</div></div>
-    <div class="rc-note">Mostrá esta pantalla a quien recibe el efectivo.</div>
-    <button class="rc-confirm" id="cuadre-confirm">Confirmar entrega de efectivo</button>
-    <button class="rc-back" id="cuadre-back">Volver</button>`;
+  screen.innerHTML = cuadreShellHtml({
+    backClass: 'cuadre-volver',
+    bodyHtml: `
+      <div class="receipt">
+        <div class="rc-title">Cierre de turno</div>
+        <div class="rc-date">${dateStr}</div>
+        <hr class="dash">
+        <div class="rc-row"><span class="l">Entregas</span><span class="v">${cash.deliveries}</span></div>
+        <div class="rc-row"><span class="l">Total cobrado</span><span class="v">L ${cash.totalCollected.toLocaleString('es-HN')}</span></div>
+        <div class="rc-row rc-muted"><span class="l">Pagado en línea</span><span class="v">L ${cash.paidOnlineTotal.toLocaleString('es-HN')}</span></div>
+        <div class="rc-row"><span class="l">Pedidos en efectivo</span><span class="v">${cash.cashOrderCount}</span></div>
+        ${provisionalRows}
+        <hr class="dash">
+        <div class="rc-big"><div class="l">Efectivo a entregar</div><div class="v"><span>L</span> ${cash.cashOwed.toLocaleString('es-HN')}</div><div class="rc-sub">Mostrá esta pantalla a quien recibe el efectivo.</div></div>
+      </div>
+      ${cuadreEarnCardHtml()}`,
+    footHtml: cuadreConfirmFootHtml(),
+  });
+  attachSlideConfirm('cuadre-confirm', onCuadreConfirm);
   return cash;
 }
+/* ===== SLICE3:CUADRE-RENDER:END ===== */
 
 async function finalizeEndShift() {
   try {
@@ -3368,20 +3437,28 @@ function identityMatches(bound) {
   const cur = shiftIdentity();
   return !!(currentUser && cur.valid && cur.shiftId === bound.shiftId && cur.start === bound.start && currentUser.uid === bound.uid);
 }
-function reEnableConfirm() {
-  const b = $('cuadre-confirm');
-  if (b) { b.disabled = false; b.textContent = 'Confirmar entrega de efectivo'; }
-}
+/* ===== SLICE3:CUADRE-SUBMIT:START — the cuadre confirm is now a SLIDE (prototype S.cuadre); hdr/foot buttons drive back/retry; the money submit (onCuadreConfirm) keeps the SAME recordCuadre path, generations and gates ===== */
+// Cuadre screen (prototype S.cuadre / S.cierreRechazado): the confirm is a SLIDE, wired by renderCuadreReceipt via
+// attachSlideConfirm → onCuadreConfirm. This delegated handler only drives the hdr/foot BUTTONS, by behaviour class:
+//   .cuadre-volver     — «Volver al turno» (hdr chevron on the cuadre screen + both foot «Volver al turno») → back to
+//                        the shift; SUPERSEDES any in-flight close (closeGen++ ; closeInFlight=false ; close overlay)
+//                        so a late ack can't finalize a shift the driver chose to stay on.
+//   .cuadre-reintentar — «Reintentar cierre» (hdr chevron on cierreRechazado + its foot danger button) → clears the
+//                        latch and re-opens the NORMAL receipt (showCuadre recomputes from current orders, so a retry
+//                        submits the current amount — exactly the prototype's «Reintentar cierre» → cuadre).
+$('cuadre-screen').addEventListener('click', (e) => {
+  if (e.target.closest('.cuadre-volver')) { closeGen++; closeInFlight = false; $('cuadre-screen').classList.remove('open'); return; }
+  if (e.target.closest('.cuadre-reintentar')) { closeInFlight = false; showCuadre(); return; }
+});
 
-// Cuadre screen: Volver cancels, Confirmar records a SERVER-ACKED cuadre THEN ends the shift.
-$('cuadre-screen').addEventListener('click', async (e) => {
-  // Volver — and backing out supersedes any in-flight close so a late ack can't finalize a shift the driver
-  // chose to stay on.
-  if (e.target.id === 'cuadre-back') { closeGen++; closeInFlight = false; $('cuadre-screen').classList.remove('open'); return; }
-  if (e.target.id !== 'cuadre-confirm') return;
-  const btn = e.target;
-  if (btn.disabled) return;
-  btn.disabled = true;
+// The money submit — SAME recordCuadre path, generations, and identity/readiness gates as the button flow; only the
+// TRIGGER is a slide. closeInFlight is the double-submit guard the advisor required: a second slide while a close is
+// in flight returns immediately → exactly ONE recordCuadre (the slide's own `confirmed` latch covers the element the
+// driver swiped; this covers a FRESH slide that a mid-submit re-render mounts). Every outcome closes the overlay,
+// shows cierreRechazado, or re-renders (mounting a fresh slide for the retry) — so onCuadreConfirm resolves in all
+// known cases; attachSlideConfirm's own reset is only a fallback for an unexpected throw.
+async function onCuadreConfirm() {
+  if (closeInFlight) return;   // a close is already in flight — ONE recordCuadre only (slide double-submit guard)
 
   // Re-validate identity now; bind the whole operation to it.
   const ident = shiftIdentity();
@@ -3396,39 +3473,38 @@ $('cuadre-screen').addEventListener('click', async (e) => {
   const myGen = ++closeGen;
   const isLatest = () => myGen === closeGen;
   closeInFlight = true;   // block surface refresh for the whole operation (incl. the settle wait below)
+  cuadreSubmitting('Guardando…');
 
   // P1-2: wait (bounded) for any in-flight completeTask writes to SETTLE before computing. A completion can
   // optimistically stamp an order locally then be REJECTED server-side (e.g. reassigned); its rejection rolls
   // back the optimistic order, so recomputing from allOrders only AFTER settlement can't bank rejected cash.
   if (pendingCompletions.size) {
-    btn.textContent = 'Guardando…';
     const settled = await Promise.race([
       Promise.allSettled([...pendingCompletions]).then(() => true),
       new Promise((r) => setTimeout(() => r(false), COMPLETION_SETTLE_TIMEOUT_MS)),
     ]);
     if (!isLatest()) return;                                   // superseded by a newer confirm while waiting (it owns closeInFlight)
-    if (!settled) { closeInFlight = false; toast(BLOCKED_CLOSE_TEXT, 'error'); refreshOpenCashSurfaces(); return; }   // P2-6 catch-up; retry stays available (confirm re-rendered)
+    if (!settled) { closeInFlight = false; toast(BLOCKED_CLOSE_TEXT, 'error'); refreshOpenCashSurfaces(); return; }   // re-render → fresh slide
   }
   // P1-3: the shift may have changed while we waited — re-validate before touching money.
   if (!identityMatches(bound)) { closeInFlight = false; toast('El turno cambió — volvé a abrir el cierre', 'error'); $('cuadre-screen').classList.remove('open'); return; }
 
   // §6/BC1: re-check COMBINED feed readiness at confirm time. If the feed re-synced (a reconnect dropped it to
   // loading) or a just-delivered order is mid-handoff, the receipt could undercount — do NOT finalize; stay on
-  // shift, re-render (→ "cargando"), and leave retry available.
+  // shift, re-render (→ "cargando"), and leave retry available (the driver re-slides once it's ready).
   if (!feedReady || !driverState || (driverFeed && driverFeed.hasPendingHandoff())) {
     closeInFlight = false;
     toast('Un momento — actualizando el resumen del turno…', '');
     refreshOpenCashSurfaces();
-    reEnableConfirm();
     return;
   }
 
   // RECOMPUTE + REDISPLAY together from the now-settled orders (codex r3 E): renderCuadreReceipt rewrites the
   // receipt AND stashes screen._cash, and we submit that exact value — so what is DISPLAYED is what is SUBMITTED
   // (a completion rollback during the settle wait can't leave the shown amount ahead of the recorded one).
-  const cash = renderCuadreReceipt(bound);
+  const cash = renderCuadreReceipt(bound);   // re-renders + re-attaches a FRESH slide
+  cuadreSubmitting('Guardando…');            // lock the fresh slide's look during the in-flight window (closeInFlight already blocks a re-slide)
   const closeOpId = makeOpId();
-  const btn2 = $('cuadre-confirm'); if (btn2) { btn2.disabled = true; btn2.textContent = 'Guardando…'; }   // re-render replaced the button
 
   // ONE authoritative closing operation. Its outcome — whether it acks in-time or LATE (after the UI timeout)
   // — is handled exactly once, HERE, and only while this attempt is still the latest (not superseded by a
@@ -3438,36 +3514,41 @@ $('cuadre-screen').addEventListener('click', async (e) => {
   p.then(async () => {
     if (!isLatest()) return;                                   // a newer attempt owns the close now
     closeInFlight = false;
-    if (!identityMatches(bound)) { toast('El turno cambió — no se cerró el turno.', 'error'); reEnableConfirm(); return; }
+    if (!identityMatches(bound)) { toast('El turno cambió — no se cerró el turno.', 'error'); return; }
     shiftBusy = true;
     try {
       $('cuadre-screen').classList.remove('open');
       optimisticShift = false; render();
       await finalizeEndShift();                 // ordinary clock-out via the existing endDriverShift callable
     } finally { shiftBusy = false; }
-/* ===== SLICE3:CIERRE-REJECT:START — on a server REJECTION, show the cierreRechazado screen (prototype S.cierreRechazado) in place of the bare toast ===== */
   }).catch((err) => {
     if (!isLatest()) return;
-    // Server REJECTED (permission/validation/other) — never clock out; the cuadre is the whole point. Stay on
-    // shift and surface it (this also surfaces a LATE rejection after the timeout message); the driver retries.
+    // Server REJECTED (permission/validation/other) — never clock out; the cuadre is the whole point. Show the
+    // cierreRechazado screen (prototype S.cierreRechazado) in place of a bare toast. showCierreRechazado LATCHES
+    // closeInFlight so an observer refreshOpenCashSurfaces() can't clobber the rejection screen before the driver
+    // acts; .cuadre-volver, .cuadre-reintentar and handleEndShift all reset it, so the latch can't leak.
     console.warn('recordCuadre rejected (staying on shift):', err);
-    // LATCH closeInFlight TRUE (do NOT reset here): it keeps the observer-driven refreshOpenCashSurfaces() from
-    // clobbering this terminal rejection screen with the normal receipt before the driver acts. Both exits reset it
-    // — #cuadre-back (frozen handler) and #cuadre-retry (its LOGIC-3 listener) — and handleEndShift clears it on any
-    // re-open, so the latch can't leak. The screen shows the amount that was rejected (screen._cash); a retry
-    // re-opens the normal receipt, which recomputes from current orders (the intent of the replaced refresh call).
     showCierreRechazado();
   });
-/* ===== SLICE3:CIERRE-REJECT:END ===== */
 
-  // UI-only: if no ack within the window, tell the driver to retry. We do NOT finalize or discard the op here
-  // — the observer above still owns its late outcome (unless a retry supersedes it).
+  // UI-only: if no ack within the window, tell the driver to retry. We do NOT finalize or discard the op here — the
+  // .then/.catch above still own a LATE outcome (unless a retry supersedes it via closeGen). Reset the latch and
+  // re-render so a fresh slide is available; a late ack still finalizes (success) or latches rejection (reject).
   const raced = await Promise.race([p.then(() => 'acked', () => 'failed'), new Promise((r) => setTimeout(() => r('timeout'), CUADRE_ACK_TIMEOUT_MS))]);
   if (raced === 'timeout' && isLatest()) {
-    toast(BLOCKED_CLOSE_TEXT, 'error');   // no ack yet; retry stays available, dispatch is the exit; a late ack of THIS op still finalizes via the observer
-    reEnableConfirm();
+    closeInFlight = false;
+    toast(BLOCKED_CLOSE_TEXT, 'error');   // no ack yet; retry stays available, dispatch is the exit
+    refreshOpenCashSurfaces();            // re-render → a fresh slide for the retry
   }
-});
+}
+// Lock the confirm slide's look while a submit is in flight (parity with the old «Guardando…» disabled button): the
+// closeInFlight gate already blocks a re-slide, this just shows it. A re-render replaces the slide and clears this.
+function cuadreSubmitting(label) {
+  const el = $('cuadre-confirm'); if (!el) return;
+  el.classList.add('completed');
+  const t = el.querySelector('.slide-text'); if (t) t.textContent = label;
+}
+/* ===== SLICE3:CUADRE-SUBMIT:END ===== */
 
 async function cleanupShift() {
   /* ===== SLICE2:SHIFT-CLEANUP:START — stop the map-aging timer on shift/session disposal (Codex r1 P2-7) ===== */

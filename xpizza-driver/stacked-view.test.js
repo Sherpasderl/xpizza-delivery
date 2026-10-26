@@ -468,28 +468,26 @@ t('helpDiagnosisHtml: 3 rows (on-shift OK, REAL GPS freshness, dispatch reassura
   assert.ok(noFix.includes('No se ve tu GPS') && !/hace/.test(noFix), 'no fix → no fabricated age');
 });
 
-// ---------- cierreRechazadoHtml (cierreRechazado / S.cierreRechazado) ----------
-t('cierreRechazadoHtml: rejection banner + the SUBMITTED amount (screen._cash.cashOwed) + Reintentar/Volver', () => {
-  const html = cierreRechazadoHtml({ cashOwed: 1430, totalCollected: 2200, deliveries: 7 }, 'Hoy · 9:12 p. m.');
+// ---------- cierreRechazadoHtml (cierreRechazado / S.cierreRechazado) — body only; the host wraps it in the cuadre shell ----------
+t('cierreRechazadoHtml: rejection banner as a SIBLING above the receipt + the SUBMITTED amount (screen._cash.cashOwed)', () => {
+  const html = cierreRechazadoHtml({ cashOwed: 1430, totalCollected: 2200, deliveries: 7 }, 'Dom 19 oct');
   // the prototype banner copy, verbatim
   assert.ok(html.includes('<b>No se pudo cerrar el turno</b>'), 'banner title');
   assert.ok(html.includes('El servidor rechazó el cierre. Tu efectivo NO quedó registrado y seguís en turno. Reintentá; si sigue, llamá a despacho.'), 'banner body, verbatim');
   assert.ok(html.includes('role="alert"'), 'the banner announces as an alert');
+  // the banner is a SIBLING ABOVE the white receipt card (prototype), not inside it
+  assert.ok(html.indexOf('rc-reject-banner') < html.indexOf('class="receipt"'), 'banner sits above the receipt card');
   // the hero shows cashOwed (not any other money field) formatted es-HN; mutant cashOwed→totalCollected is caught
   assert.ok(html.includes('Efectivo a entregar') && /<span>L<\/span>\s*1,430/.test(html), 'hero = cashOwed, formatted es-HN');
   assert.ok(!/2,200/.test(html), 'the hero must be cashOwed, never totalCollected');
-  assert.ok(html.includes('rc-reject-amt'), 'hero carries the NEUTRAL (not-recorded) class, not the green owed-confirmed look');
-  // the real date string the host passes (not an invented «Dom 19 oct»)
-  assert.ok(html.includes('Hoy · 9:12 p. m.'), 'uses the receipt date string the live cuadre builds');
-  assert.ok(!/Dom 19 oct/.test(html), 'no sample date');
-  // the two buttons, by the ids the cuadre click contract uses, in the prototype foot order (danger retry THEN volver)
-  assert.ok(html.includes('id="cuadre-retry"') && html.includes('>Reintentar cierre<'), 'retry → re-confirm (#cuadre-retry)');
-  assert.ok(html.includes('id="cuadre-back"') && html.includes('>Volver al turno<'), 'volver → back to shift (#cuadre-back)');
-  assert.ok(html.indexOf('Reintentar cierre') < html.indexOf('Volver al turno'), 'danger retry comes before txt volver, as the prototype foot');
+  // the real date string the host passes (date-only on the rejection screen — the shift did not close)
+  assert.ok(html.includes('Dom 19 oct'), 'uses the date the host passes');
+  // body-only: the foot buttons live in the shell (showCierreRechazado), NOT in this builder
+  assert.ok(!html.includes('Reintentar cierre') && !html.includes('Volver al turno'), 'no foot buttons in the body builder');
 });
 t('cierreRechazadoHtml: no fabricated amount when cash is absent/malformed (blank, never «L 0»)', () => {
   for (const bad of [undefined, null, {}, { cashOwed: NaN }, { cashOwed: 'x' }]) {
-    const html = cierreRechazadoHtml(bad, 'Hoy · 9:12 p. m.');
+    const html = cierreRechazadoHtml(bad, 'Dom 19 oct');
     assert.ok(!/<span>L<\/span>\s*0\b/.test(html), `no fabricated L 0 for ${JSON.stringify(bad)}`);
     assert.ok(html.includes('No se pudo cerrar el turno'), 'the banner still renders');
   }

@@ -43,13 +43,16 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 // `process.exit(0)` appended to it cannot short-circuit this guard (Codex r2 P1). A tampered contract (widened/
 // dropped restore, added/removed/shrunk region, changed kind) is caught even though the file is editable.
 const SLICE3_PINS = {
-  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'HELP-HANDLER', 'CIERRE-REJECT'],
-  kinds: ['insert', 'insert', 'insert', 'replace', 'replace'],
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT'],
+  kinds: ['insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace'],
   restoreSha: {
     'HELP-HANDLER': 'e823efd01be83461f6b7b900e8e60a9065d9c44bfedb1b32c2624f1d6c00206f',
-    'CIERRE-REJECT': '40de3c537ee20e27c307cd0f4cb735471fc144418be088a2b172c84c982b90a3',
+    'CUADRE-CSS': '41327b6fa5e535b774d323c235e755019b6020516a10ac20340b004667f8a4ec',
+    'CUADRE-DOM': 'ec70f01fe5711aacff4fc4e88ff0fd873bf715abf8ba178d30092c7ec34c2dab',
+    'CUADRE-RENDER': 'a285b81838c946e23f46a401786b07a62976ca93f25c3d8152640404021eeaaa',
+    'CUADRE-SUBMIT': '06a225a4158eae7c797d0775fec2def67fb01283467b3c6352cff7dc55e8466b',
   },
-  fileSha: '0f584edfdfc5356cd31fa3181e254119226c41d82029de2523c5b0dfc3b32982',
+  fileSha: 'f159e687bc89cc055d5e6e2a832bae5c2f60c1f564b8aabfbc303dda78e99c33',
 };
 function loadContract() {   // bytes → sha pin FIRST → JSON.parse; no import/require of editable code (Codex r2 P1)
   const bytes = readFileSync(join(__dir, 'slice3-regions.json'));
@@ -62,7 +65,7 @@ const SLICE3_REGIONS = loadContract();
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = 'd54555ae883001bda2612c4d43fad203212e1b23ac96bbe16f65663aea190866';
+const SLICE2_GUARD_SHA = '2bacd8ebb8c01aa553f40d7b90644dd370b76a7fb34dadd96f745d08cb24d7ee';
 const SLICE2_GUARD_CHECKS = 15;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -98,6 +101,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/slice3-regions.json',          // the shared SLICE3 region contract (non-executable data)
   'xpizza-driver/slice3-freeze.guard.test.js',  // this guard
   'xpizza-driver/slice3-contrast.test.js',      // batch-3 fg/bg WCAG checks (added when the first batch-3 CSS lands)
+  'xpizza-driver/cuadre-submit.test.js',        // cuadre slide-to-confirm money-submit handler test (lift-real idiom)
 ]);
 
 const REPO = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: __dir }).toString('utf8').trim();
@@ -320,12 +324,12 @@ t('NEG: an out-of-region mutation → recovery RED', () => {
 });
 
 // ---- Codex r1 bypass reproductions: each must now be RED ----
-t('NEG P1: widening a replace restore to swallow the clock-out → RED (restore-sha mismatch)', () => {
-  const cierre = SLICE3_REGIONS.find((r) => r.name === 'CIERRE-REJECT');
-  // the bypass Codex found: fold the successful-clock-out statements into CIERRE-REJECT.restore + drop finalizeEndShift
-  const widened = { ...cierre, restore: ['    await finalizeEndShift();', ...cierre.restore] };
-  assert.throws(() => assertContract(SLICE3_REGIONS.map((r) => (r.name === 'CIERRE-REJECT' ? widened : r))),
-    /restore bytes tampered/, 'a widened CIERRE-REJECT restore must be RED');
+t('NEG P1: widening a replace restore to swallow adjacent code → RED (restore-sha mismatch)', () => {
+  const sub = SLICE3_REGIONS.find((r) => r.name === 'CUADRE-SUBMIT');
+  // the bypass Codex found: fold an adjacent statement (here cleanupShift's opener) into the restore to move frozen code
+  const widened = { ...sub, restore: [...sub.restore, 'async function cleanupShift() {'] };
+  assert.throws(() => assertContract(SLICE3_REGIONS.map((r) => (r.name === 'CUADRE-SUBMIT' ? widened : r))),
+    /restore bytes tampered/, 'a widened CUADRE-SUBMIT restore must be RED');
 });
 t('NEG P1: an added EXTRA region, or a set shrunk to only LOGIC-3 → RED (names mismatch)', () => {
   assert.throws(() => assertContract([...SLICE3_REGIONS, { name: 'EXTRA', kind: 'insert' }]), /names\/order tampered/, 'an added region must be RED');
