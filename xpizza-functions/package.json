@@ -185,6 +185,7 @@
     "test:release-race-heal": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/release-race-heal.emulator.test.js\"",
     "test:handheld-client": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/handheld-client.emulator.test.js\"",
     "test:merchant-push": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant-push.emulator.test.js\"",
+    "test:orch-o1b": "node tools/emulator-run.js --only database,auth --project demo-xpizza \"node test/orch-o1b.emulator.test.js\"",
     "test:branch-ops": "node tools/emulator-run.js --only firestore,database,auth --project demo-xpizza \"node test/portal-ops.emulator.test.js\""
   }
 }
