@@ -207,10 +207,37 @@ try {
     // TOTAL schedule bound (codex build r1 B2): listing + restaurant-cursor read + run budget + last-restaurant slack + final CAS
     const total = Wm.IDENTITY_LIST_DEADLINE_MS + Wm.CURSOR_OP_DEADLINE_MS + Wm.IDENTITY_RUN_BUDGET_MS + 50 + Wm.CURSOR_OP_DEADLINE_MS;
     assert.ok(total < Wm.IDENTITY_RECONCILE_TIMEOUT_S * 1000 && total < Vm.IDENTITY_VERIFY_TIMEOUT_S * 1000, `both schedules' total bound ${total} ms < their 300 s function timeout`);
-    // checkpoint reserve (codex build r2 B1): inside the restaurant budget (never adds to the total), work gets the rest
-    const wd = Wm.workDeadline(Wm.makeDeadline(Wm.IDENTITY_RESTAURANT_BUDGET_MS), Wm.CURSOR_OP_DEADLINE_MS);
-    assert.ok(wd.reserve === Wm.CURSOR_OP_DEADLINE_MS && wd.remaining() <= Wm.IDENTITY_RESTAURANT_BUDGET_MS - wd.reserve && wd.remaining() > 0, 'reserve = one cursor-op deadline (5 s) inside the 60 s restaurant budget');
-    assert.strictEqual(Wm.workDeadline(Wm.makeDeadline(100), 5000).reserve, 50, 'a small budget: the reserve is at most half, so work still happens');
+    // checkpoint reserve (codex build r2 B1): inside the restaurant budget (never adds to the total), work gets the rest.
+    // LOGICAL time: every deadline here reads an injected clock that stands still, and the real Date.now THROWS for the
+    // whole block — so the exact values below cannot depend on machine load (a real-clock 100 ms budget read 1 ms late
+    // gave reserve 49), and a deadline that silently fell back to the wall clock fails loudly instead.
+    const realNow = Date.now;
+    Date.now = () => { throw new Error('🔴 identity-record-guards: a deadline read the REAL clock — inject the logical one'); };
+    try {
+      const clock = () => 1_000_000;
+      const wd = Wm.workDeadline(Wm.makeDeadline(Wm.IDENTITY_RESTAURANT_BUDGET_MS, clock), Wm.CURSOR_OP_DEADLINE_MS);
+      assert.ok(wd.reserve === Wm.CURSOR_OP_DEADLINE_MS && wd.remaining() === Wm.IDENTITY_RESTAURANT_BUDGET_MS - wd.reserve && !wd.stopped(), 'reserve = one cursor-op deadline (5 s) inside the 60 s restaurant budget; work gets exactly the rest');
+      const small = Wm.workDeadline(Wm.makeDeadline(100, clock), 5000);
+      assert.deepStrictEqual([small.reserve, small.remaining()], [50, 50], 'a small budget: the reserve is at most half, so work still happens');
+      // the work deadline stops AT the reserve, before the hard deadline (logical time advanced to each edge, never slept)
+      let t = 0; const tick = () => t;
+      const edge = Wm.workDeadline(Wm.makeDeadline(100, tick), 5000);
+      const at = (ms) => { t = ms; return [edge.stopped(), edge.remaining()]; };
+      assert.deepStrictEqual([at(49), at(50), at(100)], [[false, 1], [true, 0], [true, 0]], 'work stops when only the reserve is left (t = 50 of 100), not at the hard deadline');
+      // the reserve is never negative (a negative request → 0) and rounds DOWN on an odd budget (codex 2e-idguard r1)
+      t = 0;
+      assert.deepStrictEqual([Wm.workDeadline(Wm.makeDeadline(100, tick), -10).reserve, Wm.workDeadline(Wm.makeDeadline(100, tick), -10).remaining()], [0, 100], 'a negative reserve request is capped at 0 — work gets the whole budget');
+      const odd = Wm.workDeadline(Wm.makeDeadline(101, tick), 5000);
+      assert.deepStrictEqual([odd.reserve, odd.remaining()], [50, 51], 'an odd budget: the reserve is floor(101 / 2) = 50, work gets 51');
+      // the HARD deadline itself (unmasked by any reserve): expired AT `until`, not one tick later
+      const hard = Wm.makeDeadline(100, tick);
+      t = 99; assert.deepStrictEqual([hard.stopped(), hard.remaining()], [false, 1], 'one tick before the hard deadline: running');
+      assert.doesNotThrow(() => hard(), 'stop() passes before the deadline');
+      t = 100; assert.deepStrictEqual([hard.stopped(), hard.remaining()], [true, 0], 'AT the hard deadline: stopped');
+      assert.throws(() => hard(), (e) => e && e.abandoned === true, 'stop() throws Abandoned AT the hard deadline');
+    } finally {
+      Date.now = realNow;
+    }
     // own resources: the D4-a invokers' options are unchanged (index.js pin above) and the new ones are separate exports
     assert.ok(!/contextWriter\(\)/.test(block), 'the new functions never call the D4-a writer');
     // NOT on the request path: only index.js's lazy inits and the three modules import them
