@@ -277,5 +277,19 @@
         "  pendingAccept.forEach(attachIncomingBannerHandlers);"
       ]
     }
+  ],
+  "deps": [
+    {
+      "name": "OFFER-RENDER",
+      "kind": "slice3deps",
+      "parent": "SINGLE-ORDER-MOUNT",
+      "restore": [
+        "      : singleOrderCardHtml(soloOrder, {",
+        "          ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,",
+        "          RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: drv2ReadNavPref(),",
+        "          nowMs: Date.now(),   // offer ring: elapsed drives the resume (negative animation-delay); display-only",
+        "        });"
+      ]
+    }
   ]
 }

@@ -237,8 +237,8 @@ export function singleOrderCardHtml(o, deps) {
     const mapHtml = d.mapHtml || '';
     const area = d.area ? esc(d.area) : '';
     const kmChip = d.offerKm ? `<span class="of-dist">${esc(d.offerKm)}</span>` : '';   // only if computed from real coords
-    const recoger = d.ready ? `Recoger <b>~${esc(d.ready)}</b>` : 'Recoger';              // R1: time only with a real ready field
-    const entregar = (d.deliverBy ? `Entregar <b>antes de ${esc(d.deliverBy)}</b>` : 'Entregar') + (area ? ` <span class="of2-dim">· ${area}</span>` : '');
+    const recoger = d.ready ? `Recoger <b>${esc(d.ready)}</b>` : 'Recoger';                // R1: readyTimeLabel already carries «~H:MM»; shown only with a real prep.ready_at
+    const entregar = 'Entregar' + (area ? ` <span class="of2-dim">· ${area}</span>` : '');  // R4: no deliver-by field exists; colonia only when coloniaOf resolves (today '')
     const lines = itemLines(order);
     const count = lines ? lines.reduce((a, l) => a + l.qty, 0) : (order && order.items_text ? String(order.items_text).split(',').map((s) => s.trim()).filter(Boolean).length : 0);
     const itemsSummary = (order && order.items_text) ? esc(order.items_text) : (lines ? esc(lines.map((l) => l.name).join(', ')) : '');

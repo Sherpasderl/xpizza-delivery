@@ -4152,11 +4152,20 @@ function renderActiveAndQueue() {
       ? pickupToRestaurantHtml(soloOrder, spCardDeps)
       : spStopScreen
       ? activeCardHtml(soloOrder, spCardDeps, { ordinal: spOrdinal, solo: false, showActualPill: true, arrived: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()), navLabel: stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: '' })
-      : singleOrderCardHtml(soloOrder, {
-          ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,
-          RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: drv2ReadNavPref(),
-          nowMs: Date.now(),   // offer ring: elapsed drives the resume (negative animation-delay); display-only
-        });
+      /* ===== SLICE3DEPS:OFFER-RENDER:START (registered carve-out; parent region SINGLE-ORDER-MOUNT) — the FRESH single offer gets the prototype S.oferta deps: the overview map (driver + restaurant + stop, REAL coords only), «X km total» (haversine), R4 colonia + R1 ready time — symmetric with the OFFER-TAKEOVER region. slice3-freeze recovery splices this back to the pinned 07e5ab38 branch, so everything else still recovers byte-for-byte. ===== */
+      : singleOrderCardHtml(soloOrder, (() => {
+          const ofDriver = (driverState && driverState.lat != null && driverState.lng != null) ? { lat: driverState.lat, lng: driverState.lng, heading: driverState.heading } : null;
+          const ofHub = { lat: soloOrder.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat, lng: soloOrder.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng };
+          const ofStop = { lat: (soloOrder.order && soloOrder.order.lat) || (soloOrder.deliveryTask && soloOrder.deliveryTask.destination_lat), lng: (soloOrder.order && soloOrder.order.lng) || (soloOrder.deliveryTask && soloOrder.deliveryTask.destination_lng) };
+          const ofHav = (a, b) => (a && b && a.lat != null && a.lng != null && b.lat != null && b.lng != null) ? XPD.haversineDistance(a.lat, a.lng, b.lat, b.lng) : 0;
+          const ofKm = ofHav(ofDriver, ofHub) + ofHav(ofHub, ofStop);
+          return { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto,
+            RESTAURANT: XPD.RESTAURANT, arrived: spArrived, atRestaurant: spAtRestaurant, navPref: drv2ReadNavPref(),
+            nowMs: Date.now(),   // offer ring countdown: elapsed drives the tick (display-only)
+            mapHtml: overviewMapSvg({ driver: ofDriver, hubs: [{ ...ofHub, on: true }], stops: [{ ...ofStop, n: 1, on: false }], phase: 'pickup', stale: isStaleFix(driverState && driverState.last_location_ts, Date.now()) }),
+            area: coloniaOf(soloOrder), ready: readyTimeLabel(soloOrder.order || {}), offerKm: (ofDriver && ofKm > 0) ? `${(Math.round(ofKm / 100) / 10).toFixed(1)} km total` : '' };
+        })());
+      /* ===== SLICE3DEPS:OFFER-RENDER:END ===== */
     // The review step (enRestaurante) has no map — the prototype drops it; the to-restaurant step keeps it.
     activeSlot.innerHTML = spHeader + spCancel + spStrip + (spShowReview ? '' : soloMapHtml) + spCardHtml;
     // The slice-1 OFFER card (singleOrderCardHtml, awaiting_acceptance only) needs the «→ {destino}» nav line +

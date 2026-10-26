@@ -54,20 +54,35 @@ const SLICE3_PINS = {
     'CHIME-FRESH': 'e86e31b5350d14f892d99d38e7bf84fcf2358c262d03d9354bf663864e0de4c9',
     'OFFER-TAKEOVER': '88bdef966a96defc21a3b6bc407f595201c0808456016662832f6ae14c60a855',
   },
-  fileSha: 'a964cc72281a7108e796b6625ce7d60f744c22c5c4ec3bf61f7fd0ee7ae4d22a',
+  fileSha: 'bb29c60d4266c2ae1fc3a7bd34581693cf0f55c2a1da148e8d3d6fe5314fc30c',
+};
+// SLICE3DEPS carve-outs (advisor 2026-10-26): a REGISTERED exception to the non-nesting rule — a tiny span that MAY
+// live inside its declared SLICE2 parent, so slice 3 can edit slice-2-added host code (the fresh-offer deps object)
+// without un-freezing the whole SLICE2 region. Each carve is pinned HERE (name / kind / exact parent / baseline sha),
+// recovery splices it back to its 07e5ab38 bytes before the SLICE3 strip, and a probe proves an edit just OUTSIDE the
+// carve (still inside the parent) still goes RED. An UNREGISTERED carve, or one in the wrong parent / partially
+// overlapping / double-nested, FAILS (negative self-tests below).
+const SLICE3_DEPS_PINS = {
+  names: ['OFFER-RENDER'],
+  kinds: ['slice3deps'],
+  parents: ['SINGLE-ORDER-MOUNT'],
+  restoreSha: { 'OFFER-RENDER': 'f7bd685aa3efa75a6bd3df1757c120d16538876645961bfe5f68cf63170a9c3e' },
 };
 function loadContract() {   // bytes → sha pin FIRST → JSON.parse; no import/require of editable code (Codex r2 P1)
   const bytes = readFileSync(join(__dir, 'slice3-regions.json'));
   assert.equal(sha256(bytes), SLICE3_PINS.fileSha, 'slice3-regions.json byte-changed — the SLICE3 contract is frozen; re-gate at HIGH effort');
   const data = JSON.parse(bytes);
   assert.ok(data && Array.isArray(data.regions), 'slice3-regions.json has no regions array');
-  return data.regions;
+  assert.ok(Array.isArray(data.deps), 'slice3-regions.json has no deps array (SLICE3DEPS carve-outs)');
+  return data;
 }
-const SLICE3_REGIONS = loadContract();
+const CONTRACT = loadContract();
+const SLICE3_REGIONS = CONTRACT.regions;
+const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = '13441acc709c1c08f33a9036e4f5346697aa55019a1a9069ed045b9aeb8b0854';
+const SLICE2_GUARD_SHA = 'ecd0b863cb4a2fb13de6723348d1c4f1cad1da3b8ba6efb48da4d6b4239d462c';
 const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -78,10 +93,18 @@ function assertContract(regions) {   // the names/kinds/restore-bytes half — r
       `SLICE3 ${r.name} restore bytes tampered (widened to swallow adjacent code, or shrunk?)`);
   }
 }
+function assertDepsContract(deps) {   // the SLICE3DEPS registry: names/kinds/parents/restore-bytes, independently pinned
+  assert.deepEqual(deps.map((d) => d.name), SLICE3_DEPS_PINS.names, 'SLICE3DEPS carve names/order tampered (added/removed carve?)');
+  assert.deepEqual(deps.map((d) => d.kind), SLICE3_DEPS_PINS.kinds, 'SLICE3DEPS carve kinds tampered');
+  assert.deepEqual(deps.map((d) => d.parent), SLICE3_DEPS_PINS.parents, 'SLICE3DEPS carve parents tampered (re-pointed to another SLICE2 region?)');
+  for (const d of deps) assert.equal(sha256(d.restore.join('\n')), SLICE3_DEPS_PINS.restoreSha[d.name],
+    `SLICE3DEPS ${d.name} restore bytes tampered (widened/shrunk, or not the 07e5ab38 branch?)`);
+}
 function verifySlice3Contract() {
   assert.equal(sha256(readFileSync(join(__dir, 'slice3-regions.json'))), SLICE3_PINS.fileSha,
     'slice3-regions.json byte-changed — the SLICE3 contract is frozen; re-gate any change at HIGH effort');
   assertContract(SLICE3_REGIONS);
+  assertDepsContract(SLICE3_DEPS);
 }
 
 // The slice-3 freeze point: the slice-2 LANDED tip where slice2-freeze is green (batch 2 + the whatsapp fixes).
@@ -142,7 +165,7 @@ const t = (name, fn) => {
 };
 // Belt-and-braces (Codex r2 P1): force RED on ANY early exit — if fewer than the expected checks completed (an
 // injected process.exit, a thrown/short-circuited load, a skipped check), the process exit code is forced to 1.
-const EXPECTED_CHECKS = 19;
+const EXPECTED_CHECKS = 22;
 process.on('exit', () => {
   if (passed !== EXPECTED_CHECKS) {
     console.error(`slice3-freeze.guard INCOMPLETE: ${passed}/${EXPECTED_CHECKS} checks ran — early exit / skipped check`);
@@ -209,9 +232,47 @@ function slice3Ranges(lines) {
   assert.equal(open, null, `region ${open} never closed`);
   return out;
 }
-// Strip the present SLICE3 regions (inserts → nothing; replaces → their pinned restore span) → recovered text.
+// Validate the PRESENT SLICE3DEPS carve markers: whitelist, pairing, ordering, non-nesting among themselves, AND each
+// carve FULLY inside its DECLARED SLICE2 parent (strictly between that parent's START and END). A carve with an
+// unknown name, in the wrong parent, partially overlapping a parent, or outside every parent is RED. Returns
+// { name -> [startLine, endLine] }. (SLICE3DEPS markers are invisible to the `SLICE3:`/`SLICE2:` scans — distinct
+// token — so this is the ONLY place they are seen; an unregistered one cannot slip through unchecked.)
+function slice3DepsRanges(lines) {
+  const marks = strictMarks(lines, 'SLICE3DEPS', SLICE3_DEPS_PINS.names);
+  const s2 = scanSlice2Ranges(lines);
+  const parentOf = Object.fromEntries(SLICE3_DEPS.map((d) => [d.name, d.parent]));
+  let open = null; const started = new Set(), ended = new Set(); const out = {};
+  for (const { i, name, kind } of marks) {
+    if (kind === 'START') {
+      assert.equal(open, null, `SLICE3DEPS ${name} START while ${open} still open (nested)`);
+      assert.ok(!started.has(name), `SLICE3DEPS ${name} START appears twice`);
+      started.add(name); open = name; out[name] = [i, null];
+    } else {
+      assert.equal(open, name, `SLICE3DEPS ${name} END without a matching open START`);
+      assert.ok(!ended.has(name), `SLICE3DEPS ${name} END appears twice`);
+      ended.add(name); out[name][1] = i; open = null;
+    }
+  }
+  assert.equal(open, null, `SLICE3DEPS ${open} never closed`);
+  for (const [name, [s, e]] of Object.entries(out)) {
+    const parent = parentOf[name];
+    const pr = s2.find(([, , n]) => n === parent);
+    assert.ok(pr, `SLICE3DEPS ${name}: its declared parent SLICE2:${parent} is not present`);
+    assert.ok(s > pr[0] && e < pr[1], `SLICE3DEPS ${name} is not FULLY inside its declared parent SLICE2:${parent} (wrong parent / partial overlap?)`);
+  }
+  return out;
+}
+
+// Strip the present SLICE3 regions (inserts → nothing; replaces → their pinned restore span) → recovered text. The
+// registered SLICE3DEPS carves are spliced back to their pinned baseline FIRST (they live inside SLICE2 regions, so a
+// change there would otherwise leak past the SLICE3 strip); then the SLICE3 regions recover as before.
 function recoverSlice3(current) {
-  const lines = current.split('\n');
+  let lines = current.split('\n');
+  const depRanges = slice3DepsRanges(lines);   // validates markers + parent containment (RED on any violation)
+  const depByName = Object.fromEntries(SLICE3_DEPS.map((d) => [d.name, d]));
+  const depsPresent = Object.entries(depRanges).map(([name, [s, e]]) => ({ d: depByName[name], s, e }))
+    .sort((a, b) => b.s - a.s);   // descending so splice indices stay valid
+  for (const { d, s, e } of depsPresent) lines.splice(s, e - s + 1, ...d.restore);
   const ranges = slice3Ranges(lines);
   const byName = Object.fromEntries(SLICE3_REGIONS.map((r) => [r.name, r]));
   const present = Object.entries(ranges).map(([name, [s, e]]) => ({ r: byName[name], s, e }))
@@ -281,11 +342,19 @@ t('markers: only whitelisted SLICE3 names, paired/ordered/non-nested, none neste
   slice3Ranges(lines);   // throws on any violation
 });
 
+t('SLICE3DEPS markers: only registered carves, paired/ordered, each FULLY inside its declared SLICE2 parent', () => {
+  const lines = readFileSync(join(__dir, 'index.html'), 'utf8').split('\n');
+  slice3DepsRanges(lines);   // throws on unknown name / wrong parent / partial overlap / double-nest
+});
+
 t('restore spans are present in the 07e5ab38 baseline (pin integrity)', () => {
   const baseHtml = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`);
   for (const r of SLICE3_REGIONS) {
     if (r.kind !== 'replace') continue;
     assert.ok(baseHtml.includes(r.restore.join('\n')), `pinned span for ${r.name} not found in 07e5ab38 — stale pin`);
+  }
+  for (const d of SLICE3_DEPS) {
+    assert.equal(baseHtml.split(d.restore.join('\n')).length - 1, 1, `SLICE3DEPS ${d.name} baseline span must occur exactly once in 07e5ab38 (stale/ambiguous pin)`);
   }
 });
 
@@ -308,6 +377,46 @@ t('NEG: an edit to single-order-view.js OUTSIDE the region (svPay) → RED', () 
   const marks = strictMarks(probe, 'SLICE3', ['OFERTA-OFFER']);
   const rest = [...probe.slice(0, marks[0].i), ...probe.slice(marks[1].i + 1)].join('\n');
   assert.notEqual(sha256(rest), SOV_REST_SHA, 'a probe edit to svPay (outside the region) must change the rest-hash → RED');
+});
+
+// The SLICE3DEPS carve must NOT give cover to edits ELSEWHERE in its SLICE2 parent. Probe: mutate a line that is
+// inside SINGLE-ORDER-MOUNT but OUTSIDE the OFFER-RENDER carve (the spCardDeps line) → recovery must NOT recover 07e5ab38.
+t('NEG: an edit inside the SLICE2 parent but OUTSIDE the OFFER-RENDER carve → recovery RED', () => {
+  const current = readFileSync(join(__dir, 'index.html'), 'utf8');
+  const baseHtml = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`);
+  const probeLine = '    const spCardDeps = { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: XPD.RESTAURANT, navPref: drv2ReadNavPref(), collapsedBanners };';
+  assert.ok(current.includes(probeLine), 'the spCardDeps anchor line must exist inside SINGLE-ORDER-MOUNT (outside the carve)');
+  const mutated = current.replace(probeLine, probeLine + '  /* probe */');
+  assert.notEqual(recoverSlice3(mutated), baseHtml, 'an edit inside the parent but outside the carve must NOT recover the baseline (RED)');
+});
+
+// A registered carve is the ONLY permitted SLICE3DEPS marker. Each of these shapes must be RED via slice3DepsRanges.
+t('NEG: SLICE3DEPS carve that is unregistered / wrong parent / partially overlapping / double-nested → RED', () => {
+  const base = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`).split('\n');
+  const s2 = scanSlice2Ranges(base);
+  const parentRange = s2.find(([, , n]) => n === 'SINGLE-ORDER-MOUNT');
+  assert.ok(parentRange, 'baseline has the SINGLE-ORDER-MOUNT region to carve inside');
+  const [ps, pe] = parentRange;
+  const otherRange = s2.find(([, , n]) => n !== 'SINGLE-ORDER-MOUNT');
+  // (i) unregistered carve name
+  const unreg = base.slice();
+  unreg.splice(ps + 1, 0, '/* SLICE3DEPS:NOT-REGISTERED:START */', 'x();', '/* SLICE3DEPS:NOT-REGISTERED:END */');
+  assert.throws(() => slice3DepsRanges(unreg), /unknown SLICE3DEPS region: NOT-REGISTERED/, 'an unregistered carve must be RED');
+  // (ii) right name, WRONG parent (inside a different SLICE2 region, or outside all)
+  if (otherRange) {
+    const wrong = base.slice();
+    wrong.splice(otherRange[0] + 1, 0, '/* SLICE3DEPS:OFFER-RENDER:START */', 'x();', '/* SLICE3DEPS:OFFER-RENDER:END */');
+    assert.throws(() => slice3DepsRanges(wrong), /not FULLY inside its declared parent/, 'OFFER-RENDER in the wrong SLICE2 parent must be RED');
+  }
+  // (iii) partial overlap: START inside the parent, END after the parent's END
+  const partial = base.slice();
+  partial.splice(pe + 2, 0, '/* SLICE3DEPS:OFFER-RENDER:END */');   // END below the parent
+  partial.splice(pe - 1, 0, '/* SLICE3DEPS:OFFER-RENDER:START */');  // START inside the parent
+  assert.throws(() => slice3DepsRanges(partial), /not FULLY inside its declared parent|never closed|without a matching/, 'a carve straddling the parent boundary must be RED');
+  // (iv) double-nested (two STARTs for the same carve)
+  const dbl = base.slice();
+  dbl.splice(ps + 1, 0, '/* SLICE3DEPS:OFFER-RENDER:START */', '/* SLICE3DEPS:OFFER-RENDER:START */', 'x();', '/* SLICE3DEPS:OFFER-RENDER:END */');
+  assert.throws(() => slice3DepsRanges(dbl), /START appears twice|START while/, 'a double-opened carve must be RED');
 });
 
 // ---------- 4. file-level ----------

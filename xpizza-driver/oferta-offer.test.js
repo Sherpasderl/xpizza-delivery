@@ -6,6 +6,7 @@
 // math); the hidden «Tu pago» mount (R2); the foot slide + the REAL-deadline reassign note.
 import assert from 'node:assert/strict';
 import { singleOrderCardHtml } from './single-order-view.js';
+import { readyTimeLabel } from './stacked-view.js';   // the REAL R1 formatter the host passes as deps.ready
 
 const computeVuelto = (total, tendered) => (tendered != null && tendered >= total) ? (tendered - total) : null;
 const DEPS = { ICONS: {}, esc: (s) => String(s == null ? '' : s), scheduledBadge: () => '', computeVuelto, RESTAURANT: {} };
@@ -32,8 +33,12 @@ t('card: rchip + #num + «X km» only when computed; timeline Recoger/Entregar; 
   assert.ok(withKm.includes('Entregar') && withKm.includes('· Col. Trejo'), 'R4: the colonia renders on the Entregar row');
   const noKm = singleOrderCardHtml(offer(), { ...DEPS, nowMs: 1760000000000 });
   assert.ok(!noKm.includes('km total') && !noKm.includes('of-dist'), 'no km chip when not computed');
-  const withReady = singleOrderCardHtml(offer(), { ...DEPS, nowMs: 1760000000000, ready: '7:22' });
-  assert.ok(withReady.includes('Recoger <b>~7:22</b>'), 'R1: a real ready field → «Recoger ~7:22»');
+  // ready ORIGINATES from the real formatter the host passes (readyTimeLabel → «~H:MM»); the render must show it
+  // verbatim with NO doubled «~» (regression: the branch used to prepend its own ~).
+  const readyLabel = readyTimeLabel({ prep: { ready_at: 1760000000000 } });
+  assert.ok(readyLabel.startsWith('~') && readyLabel.length > 1, 'readyTimeLabel carries the «~H:MM» prefix');
+  const withReady = singleOrderCardHtml(offer(), { ...DEPS, nowMs: 1760000000000, ready: readyLabel });
+  assert.ok(withReady.includes('Recoger <b>' + readyLabel + '</b>') && !withReady.includes('~~'), 'R1: a real ready field → «Recoger ~H:MM», never a doubled ~');
 });
 
 t('items + cash: «N artículos · 1 bolsa» + «Cobrar L 385 en efectivo» / «Paga con L 500 · llevá vuelto» (same values, no new math)', () => {
