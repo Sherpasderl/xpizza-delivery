@@ -58,10 +58,14 @@ function build({ online = true } = {}) {
   document.getElementById('chime').play = () => { calls.chime++; return Promise.resolve(); };   // jsdom has no media playback
   // controllable interval: capture the 5 s callback so a test fires it on demand, and observe clearInterval.
   const timers = { cb: null, id: 0, cleared: false };
+  // the RTDB connection state (XPD.getDiagConnState / .info/connected) — THE app offline signal; onLine only ADDs offline-ness
+  let rtdbConn = online;                 // true = connected, false = socket down, null = unknown-until-first
+  const connCbs = [];                    // the .info/connected onValue subscribers
   const XPD = {
     acceptSecondOrder: () => { calls.acceptSecond++; return Promise.resolve({ ok: true }); },
     acceptTask: () => { calls.acceptTask++; return Promise.resolve({ ok: true }); },
     RESTAURANT: { lat: 15.507, lng: -88.04 }, haversineDistance: () => 9999,
+    getDiagConnState: () => rtdbConn, getDb: () => ({}),
   };
   const ICONS = {}; const escapeHtml = (s) => String(s == null ? '' : s);
   const deps = {
@@ -71,15 +75,17 @@ function build({ online = true } = {}) {
     overviewMapSvg: () => '<svg id="ofmap"></svg>', coloniaOf: () => '', readyTimeLabel: () => '',   // S.oferta deps the OFFER-TAKEOVER branch now computes
     setInterval: (cb) => { timers.cb = cb; timers.cleared = false; return ++timers.id; },
     clearInterval: (id) => { if (id === timers.id) timers.cleared = true; },
+    fbRef: (db, path) => ({ db, path }), fbOnValue: (ref, cb) => { connCbs.push(cb); cb(); return () => { const i = connCbs.indexOf(cb); if (i >= 0) connCbs.splice(i, 1); }; },
   };
   const body = 'let queuedOrders = []; let slidingEl = null; let renderPending = false; function renderActiveAndQueue() {}\n'
     + 'const mapDriver2 = { lat: 15.47, lng: -88.01, heading: 40 }, mapStale2 = false;\n'   // computed in the SLICE2 stacked branch (lifted-out of scope here)
-    + 'let offerTakeoverGen = 0, offerTakeoverTimer = null, offerTakeoverTaskId = null, offerConnHandler = null;\n'   // module state the lifted takeover fns close over
+    + 'let offerTakeoverGen = 0, offerTakeoverTimer = null, offerTakeoverTaskId = null, offerConnHandler = null, offerConnUnsub = null;\n'   // module state the lifted takeover fns close over
     + 'const bannerSlot = $("incoming-banner-slot"), activeSlot = $("active-order-slot"), queueSlot = $("queue-slot");\n'
     + 'function attachActiveCardHandlers(o) { CALLS.attachActive++; }\n'   // count-only spy: if called in takeover, exclusivity is broken
     + 'function attachIncomingBannerHandlers(o) { CALLS.attachBanner++; }\n'
     + 'function toast(m) { (CALLS.toasts = CALLS.toasts || []).push(m); }\n'   // spy: attachSlideConfirm toasts err._userMessage on a thrown submit
     + liftFn('attachSlideConfirm') + '\n'
+    + liftFn('offerIsOffline') + '\n'
     + liftFn('applyOfferSlideConn') + '\n'
     + liftFn('mountOfferTakeover') + '\n' + liftFn('startOfferRepeat') + '\n' + liftFn('stopOfferTakeover') + '\n'
     + 'function renderBranch(active, pendingAccept) {\n' + regionBody('OFFER-TAKEOVER') + '\n}\n'
@@ -87,12 +93,14 @@ function build({ online = true } = {}) {
   const names = [...Object.keys(deps), 'CALLS'];
   const fn = new Function(...names, body);
   const api = fn(...names.map((n) => (n === 'CALLS' ? calls : deps[n])));
-  const setConn = (isOnline) => {   // flip connectivity the way the app sees it, then fire the matching window edge
-    Object.defineProperty(window.navigator, 'onLine', { value: isOnline, configurable: true });
-    window.dispatchEvent(new window.Event(isOnline ? 'online' : 'offline'));
+  const setOnline = (v) => {   // navigator.onLine edge (ADDs offline-ness only)
+    Object.defineProperty(window.navigator, 'onLine', { value: v, configurable: true });
+    window.dispatchEvent(new window.Event(v ? 'online' : 'offline'));
   };
+  const setRtdb = (v) => { rtdbConn = v; connCbs.slice().forEach((cb) => cb()); };   // the .info/connected edge (THE signal)
+  const setConn = (v) => { setRtdb(v); setOnline(v); };   // both move together
   const fireTick = () => { if (timers.cb) timers.cb(); };
-  return { api, calls, $, document, window, setConn, fireTick, timers };
+  return { api, calls, $, document, window, setConn, setRtdb, setOnline, fireTick, timers };
 }
 
 function slide(h) {
@@ -170,6 +178,21 @@ await t('SUBMIT RECHECK: connectivity dropped after mount (class not yet toggled
   assert.ok((h.calls.toasts || []).some((m) => /Sin conexión/.test(m)), 'the driver is told why (toast)');
 });
 
+// Codex r2 R1-1: THE signal is the RTDB connection state — navigator.onLine can lie (a WebView says online with the
+// socket down). A mutant that gated on navigator.onLine ONLY would leave the slide live here → this cell is RED for it.
+await t('RTDB SIGNAL: onLine=true but the RTDB socket is DOWN → the slide disables live + accepts nothing; reconnect re-enables (no re-render)', async () => {
+  const h = build({ online: true });
+  h.api.renderBranch(ACTIVE, [OFFER]);
+  assert.equal(h.api.slideOff(), false, 'connected → enabled');
+  h.setRtdb(false);                                    // RTDB drops; navigator.onLine stays TRUE (no window edge)
+  assert.equal(h.window.navigator.onLine, true, 'the WebView still reports online — only the RTDB socket is down');
+  assert.equal(h.api.slideOff(), true, 'the slide disables on the RTDB edge alone (onLine-only gating would miss this)');
+  slide(h); await tick();
+  assert.equal(h.calls.acceptSecond, 0, 'and the submit recheck blocks acceptSecondOrder while the socket is down');
+  h.setRtdb(true);                                     // socket back
+  assert.equal(h.api.slideOff(), false, 'reconnect re-enables the slide without a re-render');
+});
+
 // ---- P2 (Codex r1): the repeat alert self-terminates on expiry and on unmount ----
 await t('LIFECYCLE: a live tick chimes+vibrates (positive control); a tick past the real deadline does NEITHER and clears the interval', async () => {
   const live = build();
@@ -209,4 +232,4 @@ await t('KM: all three points valid → a «{X} km» chip; a leg missing coordin
 });
 
 console.log(`✓ offer-takeover: ${passed} checks passed`);
-process.exit(passed === 10 ? 0 : 1);   // force-exit past any lingering interval
+process.exit(passed === 11 ? 0 : 1);   // force-exit past any lingering interval

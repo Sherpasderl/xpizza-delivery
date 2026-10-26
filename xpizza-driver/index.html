@@ -2262,6 +2262,7 @@ function openWhatsappSheet(btn) {
 /* ===== SLICE2:IMPORT:END ===== */
 /* ===== SLICE3:IMPORT-3:START — batch-3 pure builders ===== */
 import { helpDiagnosisHtml, cierreRechazadoHtml, readyTimeLabel } from './stacked-view.js';   // readyTimeLabel: R1 ready time for the S.oferta offer
+import { ref as fbRef, onValue as fbOnValue } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';   // same module instance XPD uses — subscribe to the RTDB connection edge for the offer slide gate
 /* ===== SLICE3:IMPORT-3:END ===== */
 /* ===== SLICE3:LOGIC-3:START — batch-3 module logic (help diagnosis sheet; gpsoff / cierreRechazado / offline to follow) ===== */
 // SLICE3:HELP — the «¿Por qué no veo pedidos?» diagnosis sheet (prototype S.help), mounted on demand (reusing the
@@ -2308,14 +2309,20 @@ function showCierreRechazado(attemptCash) {
 // construction: the stacked branch SKIPS attachActiveCardHandlers in takeover mode) — and drives the owner-ruled 5 s
 // repeat alert while the offer is mounted. acceptSecondOrder uses runTransaction (NOT queued offline), so when
 // OFFLINE the slide is disabled with a truthful state and is NOT wired; single-write actions stay enabled elsewhere.
-let offerTakeoverGen = 0, offerTakeoverTimer = null, offerTakeoverTaskId = null, offerConnHandler = null;
+let offerTakeoverGen = 0, offerTakeoverTimer = null, offerTakeoverTaskId = null, offerConnHandler = null, offerConnUnsub = null;
+// THE offline signal for the whole app is the RTDB connection state the app already observes (XPD.getDiagConnState,
+// .info/connected). acceptSecondOrder is a runTransaction that never queues, so a WebView that reports navigator.onLine
+// true while the RTDB socket is down must still disable the slide. navigator.onLine may only ADD offline-ness (offline
+// if EITHER says offline), never establish online. getDiagConnState() is null until the first .info/connected fires →
+// null is NOT offline (navigator.onLine decides until we know).
+function offerIsOffline() { return XPD.getDiagConnState() === false || navigator.onLine === false; }
 // LIVE offline state for the mounted accept slide. sv-slide-off is pointer-events:none, so toggling it disables/enables
 // the slide with NO re-render — offline it can't be dragged at all (effectively unwired), online it drags again.
 function applyOfferSlideConn() {
   const slide = $('btn-accept');
   if (!slide) return;
   const txt = slide.querySelector('.slide-text');
-  if (navigator.onLine === false) {
+  if (offerIsOffline()) {
     slide.classList.add('sv-slide-off');
     if (txt) txt.textContent = 'Sin conexión — aceptá al reconectar';
   } else {
@@ -2326,10 +2333,11 @@ function applyOfferSlideConn() {
 function mountOfferTakeover(offer) {
   const slide = $('btn-accept');
   if (slide) {
-    // Wire ONCE (idempotent per element); the submit handler RECHECKS connectivity right before the transaction, and
-    // the live online/offline listener toggles sv-slide-off so the slide follows connectivity WITHOUT a re-render.
+    // Wire ONCE (idempotent per element); the submit handler RECHECKS the combined signal right before the transaction,
+    // and the live listeners (the RTDB .info/connected edge AND the window online/offline edges) toggle sv-slide-off so
+    // the slide follows connectivity WITHOUT a re-render.
     attachSlideConfirm('btn-accept', async () => {
-      if (navigator.onLine === false) { const e = new Error('offline'); e._userMessage = 'Sin conexión — aceptá al reconectar'; throw e; }   // recheck AT submit (acceptSecondOrder is runTransaction, not queued)
+      if (offerIsOffline()) { const e = new Error('offline'); e._userMessage = 'Sin conexión — aceptá al reconectar'; throw e; }   // recheck AT submit (acceptSecondOrder is runTransaction, not queued)
       const r = await XPD.acceptSecondOrder(currentUser.uid, offer.pickupTask.id);   // keeps current_task_id / the in-progress hub
       if (!(r && r.ok)) throw new Error('accept failed');   // attachSlideConfirm resets the slider on a throw
     });
@@ -2339,6 +2347,10 @@ function mountOfferTakeover(offer) {
       window.addEventListener('online', offerConnHandler);
       window.addEventListener('offline', offerConnHandler);
     }
+    if (!offerConnUnsub) {
+      // onValue fires immediately with the current value and on EVERY connection edge (both directions) → no polling.
+      offerConnUnsub = fbOnValue(fbRef(XPD.getDb(), '.info/connected'), () => applyOfferSlideConn());
+    }
   }
   startOfferRepeat(offer);
 }
@@ -2346,6 +2358,7 @@ function stopOfferTakeover() {
   offerTakeoverGen++; offerTakeoverTaskId = null;
   if (offerTakeoverTimer) { clearInterval(offerTakeoverTimer); offerTakeoverTimer = null; }
   if (offerConnHandler) { window.removeEventListener('online', offerConnHandler); window.removeEventListener('offline', offerConnHandler); offerConnHandler = null; }
+  if (offerConnUnsub) { try { offerConnUnsub(); } catch (_) {} offerConnUnsub = null; }
 }
 function startOfferRepeat(offer) {
   const taskId = offer && offer.pickupTask && offer.pickupTask.id;

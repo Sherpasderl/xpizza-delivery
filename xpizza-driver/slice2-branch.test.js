@@ -388,7 +388,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     getDriverOrders: () => ctx.orders,
     RESTAURANT: { lat: 15.5, lng: -88.03 },
     haversineDistance: () => dist,                                 // per-run distance (m) for the <50 m arrived threshold
-    emitDiag: () => {}, getDiagConnState: () => true, isActingDispatcher: () => false,
+    emitDiag: () => {}, getDiagConnState: () => true, getDb: () => ({}), isActingDispatcher: () => false,
     acceptTask: () => (writes.accept = deferred()).promise,
     pickupComplete: (uid, taskId) => { writes.pickup = { taskId, ...deferred() }; return writes.pickup.promise; },
     completeTask: (uid, taskId) => { writes.complete = { taskId, ...deferred() }; return writes.complete.promise; },
@@ -417,7 +417,9 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate the resumen reuses
     // REAL offer-takeover wiring so the cross-hub 2nd-order accept drives the REAL acceptSecondOrder over the mock;
     // only the 5 s repeat is stubbed (its own interval is tested in offer-takeover.test.js).
-    + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null,offerConnHandler=null; function readyTimeLabel(){ return ""; } let soundOn=false; function startOfferRepeat(){}\n'
+    + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null,offerConnHandler=null,offerConnUnsub=null; function readyTimeLabel(){ return ""; } let soundOn=false; function startOfferRepeat(){}\n'
+    + 'const fbRef=(db,path)=>({db,path}); const fbOnValue=(ref,cb)=>{ cb(); return ()=>{}; };\n'   // .info/connected subscribe stub (connected by default via getDiagConnState)
+    + liftFn(MY_SCRIPT, 'offerIsOffline') + '\n'
     + liftFn(MY_SCRIPT, 'applyOfferSlideConn') + '\n'
     + liftFn(MY_SCRIPT, 'mountOfferTakeover') + '\n'
     + liftFn(MY_SCRIPT, 'stopOfferTakeover') + '\n'
