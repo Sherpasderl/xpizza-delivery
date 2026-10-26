@@ -221,6 +221,17 @@ try {
       const edge = Wm.workDeadline(Wm.makeDeadline(100, tick), 5000);
       const at = (ms) => { t = ms; return [edge.stopped(), edge.remaining()]; };
       assert.deepStrictEqual([at(49), at(50), at(100)], [[false, 1], [true, 0], [true, 0]], 'work stops when only the reserve is left (t = 50 of 100), not at the hard deadline');
+      // the reserve is never negative (a negative request → 0) and rounds DOWN on an odd budget (codex 2e-idguard r1)
+      t = 0;
+      assert.deepStrictEqual([Wm.workDeadline(Wm.makeDeadline(100, tick), -10).reserve, Wm.workDeadline(Wm.makeDeadline(100, tick), -10).remaining()], [0, 100], 'a negative reserve request is capped at 0 — work gets the whole budget');
+      const odd = Wm.workDeadline(Wm.makeDeadline(101, tick), 5000);
+      assert.deepStrictEqual([odd.reserve, odd.remaining()], [50, 51], 'an odd budget: the reserve is floor(101 / 2) = 50, work gets 51');
+      // the HARD deadline itself (unmasked by any reserve): expired AT `until`, not one tick later
+      const hard = Wm.makeDeadline(100, tick);
+      t = 99; assert.deepStrictEqual([hard.stopped(), hard.remaining()], [false, 1], 'one tick before the hard deadline: running');
+      assert.doesNotThrow(() => hard(), 'stop() passes before the deadline');
+      t = 100; assert.deepStrictEqual([hard.stopped(), hard.remaining()], [true, 0], 'AT the hard deadline: stopped');
+      assert.throws(() => hard(), (e) => e && e.abandoned === true, 'stop() throws Abandoned AT the hard deadline');
     } finally {
       Date.now = realNow;
     }
