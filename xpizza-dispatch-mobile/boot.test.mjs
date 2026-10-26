@@ -139,7 +139,7 @@ function moduleSource() {
       return `const { ${destructured} } = globalThis.__FB_STUB__;`;
     })
     // The six pure modules are imported for real; absolutise them so a data: URL can resolve them.
-    .replace(/from '\.\/([\w.-]+\.js)'/g, (_, f) => `from '${pathToFileURL(join(here, f)).href}'`);
+    .replace(/from '\.\/([\w.-]+\.js)(?:\?[\w=]+)?'/g, (_, f) => `from '${pathToFileURL(join(here, f)).href}'`)   // tolerate a ?v= cache-buster (dispatch-alerts.js?v=N);
 }
 
 test('every element id the module reaches for exists in the markup', () => {

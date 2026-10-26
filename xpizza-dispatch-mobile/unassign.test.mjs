@@ -141,7 +141,7 @@ function buildApp(stub, opts = {}) {
     '$', 'STORE', 'escapeHtml', 'driverColorVar', 'IC_BACK', 'IC_PLUS', 'displayLabel', 'XPD', 'toast',
     'document', 'window', 'crypto', 'setTimeout', 'replay', 'openPicker', 'commitAssign',
     'HUBS', 'driverPickList', 'fmtDist', 'minutesOf',
-    `let lastFocus = null, sheetDir = null, pickerFromDriver = 'd1', pickerIsReassign = true;\n`
+    `let lastFocus = null, sheetDir = null, pickerFromDriver = 'd1', pickerIsReassign = true, alertsSheetOwner = false, alertNavToken = 0;\n`
     + `${sheetSpan}\n${confirmSrc}\n${openConfirmSrc}\n${delegationStmt}\n`
     + `function renderGate(orderId, pickerIsReassign){\n${gateSrc}\n; return removeBlock; }\n`
     + `; return { openUnassignConfirm, commitUnassign, openConfirm, openSheet, closeSheet, renderGate };`,

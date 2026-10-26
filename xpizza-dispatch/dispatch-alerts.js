@@ -35,6 +35,22 @@ export function driverProblemReasonLabel(reason) {
   return Object.prototype.hasOwnProperty.call(DRIVER_PROBLEM_REASON_LABELS, reason) ? DRIVER_PROBLEM_REASON_LABELS[reason] : DRIVER_PROBLEM_REASON_LABELS.other;
 }
 
+// DRIVER F — the title/detail for a driver_problem alert, ONE pure builder for BOTH Torres. Injection-based
+// (no DOM, no firebase, no globals): `label(ordRef)` → the FULL, escaped «Pedido #N» order label (the caller
+// owns the whole phrase, so mobile can make it the violet tap-cue while desktop renders it plain — both
+// byte-identical), `resolveDriverName(alert)` → the raw driver name from the caller's own store, `escapeHtml`
+// → the escaper. Desktop's alertContent and the mobile sheet both call this, so content lives in one place.
+export function driverProblemContent(alert, { label, resolveDriverName, escapeHtml }) {
+  const a = alert || {};
+  const name = escapeHtml(resolveDriverName(a));
+  const note = typeof a.note === 'string' && a.note ? ` — ${escapeHtml(a.note)}` : '';
+  const ord = Number.isFinite(a.display_number) ? { order_id: a.order_id, display_number: a.display_number } : a.order_id;
+  return {
+    title: 'Problema con el pedido',
+    detail: `${label(ord)} · ${escapeHtml(driverProblemReasonLabel(a.reason))} · ${name}${note}`,
+  };
+}
+
 export function classifyAlert(alert) {
   const type = alert && typeof alert.type === 'string' ? alert.type : '';
   const hit = REGISTRY[type];
