@@ -73,6 +73,7 @@ const cli = async (db, apply) => { const lines = []; const code = await runBrand
     db.beforeTxn = () => { db.data.dispatcher_alerts[A] = { ...db.data.dispatcher_alerts[A], reason: 'refused', at: 700, count: 2 }; };
     r = await B.publishBrandProjection(db, 'tb_brand', { now: 800 });
     assert.strictEqual(r.ok, true);
+    assert.ok(alert(db), 'CLEAR-CONDITIONAL-RERAISED a re-raised alert survives (present)');
     assert.deepStrictEqual([alert(db).count, alert(db).reason], [2, 'refused'], 'CLEAR-CONDITIONAL-RERAISED a re-raised alert survives');
     // (c) the same through the CLI publish
     db = fakeRtdb(seed());
