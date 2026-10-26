@@ -44,7 +44,8 @@ function regionBody(name) {   // the source BETWEEN a SLICE3 region's START/END 
 function deferred() { let resolve, reject; const promise = new Promise((res, rej) => { resolve = res; reject = rej; }); return { promise, resolve, reject }; }
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-function build() {
+function build(opts = {}) {
+  const ackTimeout = opts.ackTimeout != null ? opts.ackTimeout : 100000;
   const dom = new JSDOM('<!doctype html><html><body><div id="cuadre-screen"></div></body></html>', { pretendToBeVisual: true });
   const { document, window } = dom.window;
   const $ = (id) => document.getElementById(id);
@@ -83,7 +84,7 @@ function build() {
     + regionBody('CUADRE-SUBMIT') + '\n'
     + 'return { showCuadre, onCuadreConfirm, showCierreRechazado, refreshOpenCashSurfaces, setInFlight: (v) => { closeInFlight = v; }, getGen: () => closeGen, getInFlight: () => closeInFlight };';
   const names = Object.keys(deps);
-  const fn = new Function(...names, 'let CUADRE_ACK_TIMEOUT_MS = 100000;\n' + body);
+  const fn = new Function(...names, 'let CUADRE_ACK_TIMEOUT_MS = ' + ackTimeout + ';\n' + body);
   const api = fn(...names.map((n) => deps[n]));
   return {
     api, calls, document, window, $, screen: $('cuadre-screen'),
@@ -157,6 +158,20 @@ await t('server REJECTION shows cierreRechazado (no finalize) with the ATTEMPT a
   assert.ok(/1,430/.test(html) && !/2,000/.test(html), 'renders the SUBMITTED amount (1,430), not the refreshed 2,000');
 });
 
+await t('LATE rejection after a REAL ack-timeout+refresh shows the ATTEMPT amount (1,430), not the refreshed screen._cash (2,000)', async () => {
+  const h = build({ ackTimeout: 10 });
+  h.api.showCuadre();
+  slideToComplete(h); await tick();                 // submits cashOwed 1,430; screen._cash = 1,430
+  h.setCash({ deliveries: 9, totalCollected: 2000, paidOnlineTotal: 260, cashOrderCount: 8, cashOwed: 2000, provisional: false, legacy_provisional_count: 0, unresolved_count: 0 });
+  await new Promise((r) => setTimeout(r, 40));       // the REAL 10ms ack-timeout fires → closeInFlight=false → refreshOpenCashSurfaces re-renders screen._cash = 2,000
+  assert.ok(/2,000/.test(h.screen.innerHTML), 'after the timeout refresh the NORMAL receipt now shows 2,000 (screen._cash moved)');
+  h.rejectRecord(new Error('permission denied'));    // the LATE rejection of the original attempt
+  await tick();
+  const html = h.screen.innerHTML;
+  assert.ok(/No se pudo cerrar el turno/.test(html), 'cierreRechazado shown on the late rejection');
+  assert.ok(/1,430/.test(html) && !/2,000/.test(html), 'renders the SUBMITTED amount (1,430), NOT the refreshed 2,000 — kills showCierreRechazado() w/o the attempt cash');
+});
+
 await t('a STALE slide release (replaced by a cash refresh mid-drag) is a NO-OP (generation guard)', async () => {
   const h = build();
   h.api.showCuadre();
@@ -200,4 +215,4 @@ await t('showCierreRechazado LATCHES the surface so an observer refresh cannot c
 });
 
 console.log(`✓ cuadre-submit: ${passed} checks passed`);
-process.exit(passed === 7 ? 0 : 1);   // force-exit past the lifted handler's lingering ack-timeout timers
+process.exit(passed === 8 ? 0 : 1);   // force-exit past the lifted handler's lingering ack-timeout timers
