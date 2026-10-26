@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Sucursales v2 · cambios 2026-10-26</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600..800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0A6E3E}a:hover{color:#095C34}
+/* ── tokens: identical to Main.dc.html (Bold Editorial, light default) ── */
+.pt{--board:#FFFFFF;--board-2:#F6F6F2;--panel:#FFFFFF;--line:#E7E7E1;--line2:#F0F0EB;--card:#FFFFFF;--card-2:#F6F6F2;--ink:#0A0A0B;--mute:#6C6C70;--mute2:#6E6E72;--accent:#0A6E3E;--accent-2:#095C34;--accent-ink:#fff;--accent-line:#BEE6CE;--gold:#8A6A12;--gold-line:#E3D2A0;--gold-soft:#FBF4E1;--green:#0E9F5B;--green-soft:#E7F5EC;--green-line:#BEE6CE;--red:#D23425;--red-soft:#FCEBE9;--red-line:#EFC9C2;--green-text:#0B7C47;--red-text:#C73123;--amber:#8A5200;--amber-soft:#FBF0DC;--amber-line:#EBD6A6;--tint:rgba(14,159,91,.07);--tint2:rgba(14,159,91,.13);--shadow:0 1px 2px rgba(10,10,11,.05),0 16px 40px -30px rgba(10,10,11,.26);--shadow-lg:0 44px 96px -40px rgba(10,10,11,.34);--body:'Söhne','Helvetica Neue',system-ui,-apple-system,'Segoe UI',sans-serif;--disp:'Archivo','Söhne','Helvetica Neue',system-ui,sans-serif;--focus:0 0 0 2px var(--board),0 0 0 4px var(--ink)}
+.pt{background:var(--board);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;min-height:100vh;position:relative}
+.pt *{box-sizing:border-box;margin:0}
+.pt button,.pt input,.pt select,.pt textarea{font-family:inherit;color:inherit}
+.pt button{cursor:pointer}
+.pt :focus-visible{outline:none;box-shadow:var(--focus)}
+.pt ::selection{background:var(--tint2)}
+.pt svg{display:block}
+.ic{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round}
+.ic.s{width:14px;height:14px}
+/* ── shell ── */
+.app{display:grid;grid-template-columns:238px minmax(0,1fr);min-height:100vh}
+.side{background:var(--panel);border-right:1px solid var(--line);padding:20px 16px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh;overflow:auto}
+.brand{display:flex;align-items:center;gap:11px;padding:2px 8px 20px}
+.bmark{width:32px;height:32px;border-radius:9px;background:var(--ink);display:flex;align-items:center;justify-content:center;flex:none}
+.bmark svg{width:26px;height:26px}
+.bname{font-family:var(--disp);font-weight:800;letter-spacing:-.04em;font-size:19px}
+.switchwrap{position:relative}
+.switch{margin:2px 0 8px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);display:flex;align-items:center;gap:11px;width:100%;text-align:left;transition:border-color .18s}
+.switch:hover{border-color:var(--mute2)}
+.switch.locked{cursor:default}
+.shop{width:30px;height:30px;border-radius:8px;background:var(--board-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--mute);flex:none}
+.shop svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8}
+.sinfo{min-width:0;flex:1}
+.sinfo b{font-family:var(--disp);font-weight:750;font-size:14px;letter-spacing:-.02em;color:var(--ink);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sinfo .cv{color:var(--mute);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.chev{color:var(--mute2);font-size:11px}
+.scope{margin:0 0 14px;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--board-2);display:flex;align-items:center;gap:9px;width:100%;text-align:left;font-size:13px;font-weight:650;color:var(--ink)}
+.scope:hover{border-color:var(--mute2)}
+.scope .lk{color:var(--mute2);display:flex}
+.scope .lk svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2}
+.scope .sl{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scope.locked{cursor:default;background:var(--card)}
+.scope .dot{width:8px;height:8px;border-radius:50%;flex:none}
+.nlabel{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute2);padding:14px 8px 6px;font-weight:750}
+.nav{display:flex;align-items:center;gap:12px;padding:9px 11px;border-radius:9px;color:var(--mute);font-weight:600;font-size:13.5px;background:none;border:none;width:100%;text-align:left;transition:background .18s,color .18s}
+.nav:hover{color:var(--ink);background:var(--card-2)}
+.nav.on{background:var(--tint2);color:var(--accent)}
+.nav .nt{flex:1;min-width:0;white-space:nowrap}
+.ncount{margin-left:auto;font-size:11px;color:var(--mute);background:var(--board-2);border:1px solid var(--line2);min-width:22px;height:22px;padding:0 7px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-weight:650;font-variant-numeric:tabular-nums}
+.nav.on .ncount{color:var(--accent);border-color:var(--accent-line);background:var(--tint)}
+.sfoot{margin-top:auto;padding-top:14px;border-top:1px solid var(--line2);display:flex;align-items:center;gap:11px}
+.av{width:30px;height:30px;border-radius:50%;background:var(--card-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--ink);flex:none}
+/* annotations */
+.ann{display:inline-flex;align-items:center;font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;border-radius:5px;margin-left:8px;vertical-align:middle;flex:none}
+.ann.nuevo{color:var(--green-text);background:var(--green-soft);border:1px solid var(--green-line)}
+.ann.v2{color:var(--accent);background:var(--tint);border:1px solid var(--accent-line)}
+.annote{display:flex;gap:10px;align-items:flex-start;margin:14px 0 0;padding:11px 13px;border:1px dashed var(--green-line);border-radius:11px;background:var(--green-soft);font-size:12.5px;color:var(--ink);line-height:1.45}
+.annote b{color:var(--green-text);font-weight:750;flex:none}
+/* ── main ── */
+.main{padding:26px 34px 120px;max-width:1120px;min-width:0}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.pt h1{font-family:var(--disp);font-size:44px;font-weight:800;letter-spacing:-.045em;line-height:1.02;display:flex;align-items:center;flex-wrap:wrap}
+.lede{color:var(--mute);font-size:14px;margin-top:11px;max-width:54ch;line-height:1.5}
+.topact{display:flex;gap:9px;flex:none;flex-wrap:wrap}
+.crumb{display:inline-flex;align-items:center;gap:6px;color:var(--mute);font-size:13px;font-weight:650;background:none;border:none;padding:0;margin-bottom:10px}
+.crumb:hover{color:var(--accent)}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:9px 15px;font-size:13px;font-weight:650;display:inline-flex;align-items:center;gap:8px;min-height:38px;transition:border-color .15s,background .18s;text-decoration:none}
+.btn:hover{border-color:var(--mute2);background:var(--card-2)}
+.btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.btn.accent{background:var(--ink);border-color:var(--ink);color:var(--board)}
+.btn.accent:hover{opacity:.86;background:var(--ink)}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--red-text);border-color:var(--red-line)}
+.btn.danger:hover{background:var(--red-soft);border-color:var(--red-text)}
+.btn.danger.solid{background:var(--red);border-color:var(--red);color:#fff}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+.btn.sm{padding:6px 11px;min-height:32px;font-size:12.5px}
+.tbtn{width:36px;height:36px;padding:0;justify-content:center}
+/* cards / grids */
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;min-width:0}
+.card.clk{cursor:pointer;text-align:left;width:100%;transition:border-color .15s}
+.card.clk:hover{border-color:var(--mute2)}
+.card.draft{border-style:dashed}
+.chead{display:flex;align-items:flex-start;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.ctitle{font-family:var(--disp);font-size:19px;font-weight:800;letter-spacing:-.03em;flex:1;min-width:0}
+.csub{color:var(--mute);font-size:13px;line-height:1.5}
+.cmeta{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--mute);font-variant-numeric:tabular-nums}
+.cmeta b{color:var(--ink);font-weight:650}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:750;letter-spacing:.04em;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mute);background:var(--board-2);white-space:nowrap}
+.pill i{width:7px;height:7px;border-radius:50%;display:block;background:var(--mute2)}
+.pill.open{color:var(--green-text);background:var(--green-soft);border-color:var(--green-line)}.pill.open i{background:var(--green)}
+.pill.busy{color:var(--amber);background:var(--amber-soft);border-color:var(--amber-line)}.pill.busy i{background:var(--amber)}
+.pill.paused{color:var(--red-text);background:var(--red-soft);border-color:var(--red-line)}.pill.paused i{background:var(--red)}
+.pill.inactive{color:var(--mute);background:var(--board-2)}
+.pill.staged{color:var(--amber);background:var(--amber-soft);border-color:var(--amber-line)}.pill.staged i{background:var(--amber)}
+.pill.draft{color:var(--mute);background:var(--card);border-style:dashed}.pill.draft i{background:transparent;border:1.5px dashed var(--mute2)}
+.pill.warn{color:var(--amber);background:var(--amber-soft);border-color:var(--amber-line)}
+.pill.ok{color:var(--green-text);background:var(--green-soft);border-color:var(--green-line)}
+.pill.off{color:var(--mute)}
+.addcard{margin-top:16px;display:flex;align-items:center;gap:9px;justify-content:center;padding:16px;border:1.5px dashed var(--line);border-radius:14px;color:var(--mute);font-weight:650;font-size:13px;background:none;width:100%}
+.addcard:hover{border-color:var(--accent);color:var(--accent)}
+.addcard svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2}
+/* forms */
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:24px;align-items:start}
+.sec{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.sec.wide{grid-column:1/-1}
+.sec h3{font-family:var(--disp);font-size:16px;font-weight:800;letter-spacing:-.03em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sec h3 .hint{margin-left:auto;font-family:var(--body);font-size:12px;font-weight:600;color:var(--mute2);letter-spacing:0;display:inline-flex;align-items:center;gap:5px}
+.sec h3 .hint svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
+.sec p.help{color:var(--mute);font-size:12.5px;line-height:1.5}
+.fld{display:flex;flex-direction:column;gap:7px;min-width:0}
+.fld label,.fld .lab{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute2)}
+.fld input,.fld select,.fld textarea,.inval{background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:14px;color:var(--ink);width:100%;min-height:42px;display:flex;align-items:center}
+.fld input:focus,.fld select:focus{border-color:var(--accent);box-shadow:none}
+.fld.err input{border-color:var(--red)}
+.inval.ro{color:var(--mute);background:var(--card);border-style:dashed}
+.frow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.fnote{font-size:12px;color:var(--mute2);line-height:1.45}
+.fnote.err{color:var(--red-text)}
+.hours{display:flex;flex-direction:column;gap:6px}
+.hrow{display:grid;grid-template-columns:52px 1fr 1fr 40px;gap:8px;align-items:center;font-size:13px}
+.hrow .d{font-weight:700;color:var(--mute)}
+.hrow input{background:var(--board-2);border:1px solid var(--line);border-radius:10px;min-height:36px;padding:7px 10px;font-variant-numeric:tabular-nums;font-size:13px;text-align:center;width:100%;color:var(--ink)}
+.hrow input:focus{border-color:var(--accent)}
+.hrow.err input{border-color:var(--red);background:var(--red-soft)}
+.hrow .inval{min-height:36px;padding:7px 10px;font-variant-numeric:tabular-nums;font-size:13px}
+.hrow .inval.off{color:var(--mute2);text-align:center;justify-content:center;grid-column:span 2;border-style:dashed}
+.hrow .inval.miss{color:var(--amber);border-color:var(--amber-line);background:var(--amber-soft)}
+.tog{width:40px;height:23px;border-radius:999px;background:var(--green);position:relative;border:none;padding:0;flex:none;transition:background .2s}
+.tog.off{background:var(--line)}
+.tog i{position:absolute;top:2px;left:19px;width:19px;height:19px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.35);display:block}
+.tog.off i{left:2px}
+.herr{grid-column:1/-1;display:flex;gap:7px;align-items:flex-start;color:var(--red-text);font-size:12px;line-height:1.45;padding:0 0 4px 60px}
+.herr svg{width:14px;height:14px;stroke:var(--red-text);fill:none;stroke-width:2;flex:none;margin-top:2px}
+.ferr{display:flex;gap:7px;align-items:flex-start;color:var(--red-text);font-size:12px;line-height:1.45}
+.ferr svg{width:14px;height:14px;stroke:var(--red-text);fill:none;stroke-width:2;flex:none;margin-top:2px}
+.step{display:flex;align-items:center;gap:10px}
+.step .val{font-family:var(--disp);font-size:30px;font-weight:800;letter-spacing:-.04em;min-width:88px;font-variant-numeric:tabular-nums}
+.step .val span{font-family:var(--body);font-size:13px;font-weight:600;color:var(--mute);margin-left:6px;letter-spacing:0}
+.stepb{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--card);font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.stepb:hover{border-color:var(--mute2)}
+.lock{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute2);font-weight:600}
+.lock svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
+/* map (read-only schematic) */
+.map{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#EEF1EC;aspect-ratio:16/9}
+.map svg{width:100%;height:100%;display:block}
+.map .mz{position:absolute;left:10px;bottom:10px;font-size:11.5px;font-weight:650;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:4px 8px}
+.map .sherpa{position:absolute;right:10px;top:10px;font-size:11px;font-weight:650;color:var(--mute);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:4px 8px;display:inline-flex;align-items:center;gap:5px}
+.map .sherpa svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2}
+/* chips */
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:650;min-height:36px;display:inline-flex;align-items:center;gap:6px}
+.chip:hover{border-color:var(--mute2)}
+.chip.on{border-color:var(--accent);background:var(--tint);color:var(--accent)}
+.chip.q{border-style:dashed;color:var(--mute)}
+/* callouts */
+.callout{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:12px;border:1px solid var(--amber-line);background:var(--amber-soft);font-size:13px;line-height:1.5}
+.callout svg{width:17px;height:17px;stroke:var(--amber);fill:none;stroke-width:2;flex:none;margin-top:2px}
+.callout b{color:var(--amber)}
+.callout .btn{margin-left:auto;flex:none}
+.callout.green{border-color:var(--green-line);background:var(--green-soft)}.callout.green svg{stroke:var(--green-text)}.callout.green b{color:var(--green-text)}
+.callout.quiet{border-color:var(--line);background:var(--board-2)}.callout.quiet svg{stroke:var(--mute)}.callout.quiet b{color:var(--ink)}
+.quiet{margin-top:18px;padding:13px 16px;border:1px dashed var(--line);border-radius:12px;font-size:12.5px;color:var(--mute);line-height:1.5}
+/* S2-empty · one calm line in place of the cards */
+.empty{padding:28px 0 8px;display:flex;flex-direction:column;gap:6px}
+.empty p{font-size:14px;line-height:1.5;color:var(--ink)}
+.empty p.fnote{font-size:12.5px;color:var(--mute2)}
+/* readiness + consequences */
+.brow{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line2);border-radius:11px}
+.brow .bt{flex:1;min-width:0}.brow .bt b{display:block;font-weight:650}.brow .bt span{font-size:12px;color:var(--mute2)}
+.brow.miss{border-color:var(--amber-line)}
+.brow.wait{border-style:dashed;color:var(--mute)}.brow.wait .bt b{color:var(--mute)}
+.pill.wait{color:var(--mute);background:var(--card);border-style:dashed}.pill.wait i{background:transparent;border:1.5px dashed var(--mute2)}
+.code{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:var(--mute2);background:var(--board-2);border:1px solid var(--line2);border-radius:6px;padding:2px 6px;white-space:nowrap;flex:none}
+.cq{display:flex;gap:14px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line2)}
+.cq:last-child{border-bottom:none}
+.cq .n{font-family:var(--disp);font-size:26px;font-weight:800;letter-spacing:-.04em;min-width:34px;text-align:right;font-variant-numeric:tabular-nums;line-height:1}
+.cq .t{flex:1;min-width:0;font-size:13.5px;line-height:1.5}.cq .t b{display:block;font-weight:700}.cq .t span{color:var(--mute);font-size:12.5px}
+/* review bar */
+.rbar{position:sticky;bottom:0;margin:24px -34px -120px;background:var(--panel);border-top:1px solid var(--line);padding:15px 34px;display:flex;align-items:center;gap:16px;z-index:6;flex-wrap:wrap}
+.rb-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+.rb-dot.err{background:var(--red)}
+.rb-t{font-size:13.5px;font-weight:650}.rb-t span{color:var(--mute);font-weight:400}
+.rb-sp{margin-left:auto;display:flex;gap:10px;align-items:center}
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--board);padding:12px 20px;border-radius:12px;font-weight:650;font-size:13.5px;z-index:40;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:9px;max-width:calc(100% - 32px)}
+.toast svg{width:17px;height:17px;stroke:var(--green);fill:none;stroke-width:2.6;flex:none}
+/* modal */
+.scrim{position:fixed;inset:0;background:rgba(8,7,6,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px;z-index:20}
+.modal{background:var(--card);border:1px solid var(--line);border-radius:18px;width:100%;max-width:540px;max-height:88vh;display:flex;flex-direction:column;box-shadow:var(--shadow-lg);color:var(--ink)}
+.modal.sm{max-width:440px}
+.mh{padding:22px 24px 16px;border-bottom:1px solid var(--line2)}
+.mt{font-family:var(--disp);font-size:23px;font-weight:800;letter-spacing:-.03em}
+.ms{color:var(--mute);font-size:12.5px;margin-top:4px;line-height:1.5}
+.mb{padding:18px 24px;overflow:auto;display:flex;flex-direction:column;gap:14px}
+.mf{padding:15px 24px 20px;border-top:1px solid var(--line2);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.mf .left{margin-right:auto;color:var(--mute2);font-size:12.5px;align-self:center}
+/* mobile top bar + nav (shown by the `narrow` prop, as in Main.dc.html) */
+.mtop{display:none}
+.mnav{display:none}
+.pt.narrow .app{grid-template-columns:1fr}
+.pt.narrow .side{display:none}
+.pt.narrow .mtop{display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:8;background:var(--panel);border-bottom:1px solid var(--line);padding:11px 16px}
+.pt.narrow .mtop .bmark{width:30px;height:30px}
+.pt.narrow .mtop .switch{margin:0;flex:1;padding:8px 11px}
+.pt.narrow .mtop .switchwrap{flex:1;min-width:0}
+.pt.narrow .mtop .miconbtn{width:44px;height:44px;border-radius:11px;border:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;color:var(--mute);flex:none}
+.pt.narrow .mtop .miconbtn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.9}
+.pt.narrow .mnav{display:flex;gap:6px;padding:10px 16px 0;overflow-x:auto;scrollbar-width:none}
+.pt.narrow .mnav .mn{padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--mute);font-size:13px;font-weight:650;min-height:40px;display:flex;align-items:center;white-space:nowrap;flex:none}
+.pt.narrow .mnav .mn.on{background:var(--tint2);border-color:var(--accent);color:var(--accent)}
+.pt.narrow .main{padding:18px 16px 110px}
+.pt.narrow h1{font-size:32px}
+.pt.narrow .cards,.pt.narrow .grid2,.pt.narrow .frow{grid-template-columns:1fr}
+.pt.narrow .rbar{margin:24px -16px -110px;padding:12px 16px}
+.pt.narrow .herr{padding-left:0}
+.pt.narrow .brow{flex-wrap:wrap}.pt.narrow .brow .bt{min-width:60%}
+.pt.narrow .scrim{padding:12px}
+@media(max-width:920px){
+  .app{grid-template-columns:1fr}
+  .side{display:none}
+  .mtop{display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:8;background:var(--panel);border-bottom:1px solid var(--line);padding:11px 16px}
+  .mtop .bmark{width:30px;height:30px}
+  .mtop .switch{margin:0;flex:1;padding:8px 11px}
+  .mtop .switchwrap{flex:1;min-width:0}
+  .mtop .miconbtn{width:44px;height:44px;border-radius:11px;border:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;color:var(--mute);flex:none}
+  .mtop .miconbtn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.9}
+  .mnav{display:flex;gap:6px;padding:10px 16px 0;overflow-x:auto;scrollbar-width:none}
+  .mnav .mn{padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--mute);font-size:13px;font-weight:650;min-height:40px;display:flex;align-items:center;white-space:nowrap;flex:none}
+  .mnav .mn.on{background:var(--tint2);border-color:var(--accent);color:var(--accent)}
+  .main{padding:18px 16px 110px}
+  .pt h1{font-size:32px}
+  .cards,.grid2,.frow{grid-template-columns:1fr}
+  .rbar{margin:24px -16px -110px;padding:12px 16px}
+  .herr{padding-left:0}
+  .brow{flex-wrap:wrap}.brow .bt{min-width:60%}
+}
+</style>
+</helmet>
+<div class="pt {{narrowCls}}" data-theme="light">
+<div class="app">
+
+<!-- ══ SIDEBAR (same as the approved prototype) ══ -->
+<aside class="side">
+  <div class="brand">
+    <div class="bmark"><svg viewBox="0 0 48 48" role="img" aria-label="Sherpa"><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#F4F4F2" stroke-width="4.4" fill="none"></path><path d="M24 12.4 L28 24 L20 24 Z" fill="#8EC0FF"></path><path d="M28 24 L24 31.8 L20 24 Z" fill="#F4F4F2"></path><circle cx="24" cy="24" r="2.1" fill="#0A0A0B"></circle></svg></div>
+    <div class="bname">Sherpa</div>
+  </div>
+  <div class="switchwrap">
+    <button class="switch {{switchLockCls}}" type="button" aria-haspopup="listbox" aria-expanded="false">
+      <div class="shop"><svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11a2 2 0 0 1-2 1.8H6.5a2 2 0 0 1-2-1.8Z"></path><path d="M8 9V6a4 4 0 0 1 8 0v3"></path></svg></div>
+      <div class="sinfo"><b>Pizzería Del Valle</b><span class="cv">{{brandSub}}</span></div>
+      <sc-if value="{{isOwner}}" hint-placeholder-val="{{ true }}"><div class="chev">▾</div></sc-if>
+    </button>
+  </div>
+  <sc-if value="{{showOps}}" hint-placeholder-val="{{ true }}">
+  <div class="switchwrap">
+    <button class="scope {{scopeLockCls}}" type="button">
+      <sc-if value="{{isManager}}" hint-placeholder-val="{{ false }}"><span class="lk"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg></span><span class="dot" style="background: #8A5200"></span></sc-if>
+      <sc-if value="{{isOwner}}" hint-placeholder-val="{{ true }}"><span class="lk"><svg viewBox="0 0 24 24"><path d="M3 10h18M3 14h18M10 3v18M14 3v18"></path></svg></span></sc-if>
+      <span class="sl">{{scopeLabel}}</span>
+      <sc-if value="{{isOwner}}" hint-placeholder-val="{{ true }}"><span class="chev">▾</span></sc-if>
+    </button>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{showOps}}" hint-placeholder-val="{{ true }}">
+  <div class="nlabel">Menú y ventas</div>
+  <button class="nav" type="button"><svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"></path></svg><span class="nt">Productos</span></button>
+  <button class="nav" type="button"><svg class="ic" viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15l4-5 3 3 5-6"></path></svg><span class="nt">Ventas</span></button>
+  <div class="nlabel">Operación</div>
+  </sc-if>
+  <button class="nav on" type="button"><svg class="ic" viewBox="0 0 24 24"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"></path></svg><span class="nt">{{navSucLabel}}</span><sc-if value="{{showNavCount}}" hint-placeholder-val="{{ true }}"><span class="ncount">{{navCount}}</span></sc-if></button>
+  <sc-if value="{{showOps}}" hint-placeholder-val="{{ true }}">
+  <button class="nav" type="button"><svg class="ic" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"></path></svg><span class="nt">Pausar pedidos</span></button>
+  <button class="nav" type="button"><svg class="ic" viewBox="0 0 24 24"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM12 18h.01"></path></svg><span class="nt">Equipos</span><span class="ncount">{{devCount}}</span></button>
+  <sc-if value="{{isOwner}}" hint-placeholder-val="{{ true }}">
+    <div class="nlabel">Negocio</div>
+    <button class="nav" type="button"><svg class="ic" viewBox="0 0 24 24"><path d="M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0zM4 21a8 8 0 0 1 16 0"></path></svg><span class="nt">Equipo de trabajo</span></button>
+    <button class="nav" type="button"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3l2.5 5 5.5.8-4 3.9.9 5.5-4.9-2.6L7.1 18.2l.9-5.5-4-3.9 5.5-.8z"></path></svg><span class="nt">Marca</span></button>
+  </sc-if>
+  </sc-if>
+
+  <div class="sfoot">
+    <div class="av">{{userInitials}}</div>
+    <div class="sinfo"><b>{{userName}}</b><span class="cv">{{userRole}}</span></div>
+    <button class="btn ghost tbtn" type="button" aria-label="Cerrar sesión"><svg viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 3H5v18h7"></path></svg></button>
+  </div>
+</aside>
+
+<!-- ══ MAIN ══ -->
+<div style="min-width:0">
+<div class="mtop">
+  <div class="bmark"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#F4F4F2" stroke-width="4.4" fill="none"></path><path d="M24 12.4 L28 24 L20 24 Z" fill="#8EC0FF"></path><path d="M28 24 L24 31.8 L20 24 Z" fill="#F4F4F2"></path><circle cx="24" cy="24" r="2.1" fill="#0A0A0B"></circle></svg></div>
+  <div class="switchwrap"><button class="switch {{switchLockCls}}" type="button"><div class="sinfo"><b>Pizzería Del Valle</b><span class="cv">{{mtopSub}}</span></div><sc-if value="{{isOwner}}" hint-placeholder-val="{{ true }}"><div class="chev">▾</div></sc-if></button></div>
+  <button class="miconbtn" type="button" aria-label="Cuenta"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg></button>
+</div>
+<div class="mnav">
+  <sc-if value="{{showOps}}" hint-placeholder-val="{{ true }}"><button class="mn" type="button">Productos</button><button class="mn" type="button">Ventas</button></sc-if><button class="mn on" type="button">{{navSucLabel}}</button><sc-if value="{{showOps}}" hint-placeholder-val="{{ true }}"><button class="mn" type="button">Pausar</button><button class="mn" type="button">Equipos</button>
+  <sc-if value="{{isOwner}}" hint-placeholder-val="{{ true }}"><button class="mn" type="button">Equipo de trabajo</button><button class="mn" type="button">Marca</button></sc-if></sc-if>
+</div>
+
+<main class="main">
+
+<!-- ══ S2 · LISTA ══ -->
+<sc-if value="{{sList}}" hint-placeholder-val="{{ true }}">
+  <div class="top">
+    <div><h1>Sucursales<span class="ann v2">v2</span></h1><p class="lede">Cada sucursal tiene su horario, su tiempo de preparación y sus equipos. La ubicación, la zona de entrega y la tarifa de envío las define Sherpa. El menú y los precios son los mismos para toda la marca.</p></div>
+    <div class="topact"><button class="btn accent" type="button"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>Agregar sucursal</button></div>
+  </div>
+  <div class="cards">
+    <sc-for list="{{cards}}" as="b" hint-placeholder-count="5">
+      <button class="card clk {{b.cardCls}}" type="button">
+        <div class="chead"><div class="ctitle">{{b.name}}</div><span class="pill {{b.pill}}"><i></i>{{b.pillLabel}}</span></div>
+        <div class="csub">{{b.addr}}</div>
+        <div class="cmeta"><span>Zona <b>{{b.zone}}</b></span><span>Preparación <b>{{b.prep}}</b></span><span>Equipos <b>{{b.devices}}</b></span><span>{{b.numLabel}} <b>{{b.num}}</b></span></div>
+        <sc-if value="{{b.hintWarn}}" hint-placeholder-val="{{ false }}"><div class="callout" style="margin-top:14px"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg><div><b>Le falta:</b> {{b.hint}}</div></div></sc-if>
+        <sc-if value="{{b.hintOk}}" hint-placeholder-val="{{ false }}"><div class="callout green" style="margin-top:14px"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"></path></svg><div><b>Lista para activar.</b> {{b.hint}}</div></div></sc-if>
+        <sc-if value="{{b.hintQuiet}}" hint-placeholder-val="{{ false }}"><div class="callout quiet" style="margin-top:14px"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg><div>{{b.hint}}</div></div></sc-if>
+      </button>
+    </sc-for>
+  </div>
+  <sc-if value="{{sEmpty}}" hint-placeholder-val="{{ false }}"><div class="empty" role="status"><p>Todavía no hay sucursales en Pizzería Del Valle.</p><p class="fnote">Agregá la primera. Sherpa configura la ubicación y la zona de entrega.</p></div></sc-if>
+  <sc-if value="{{showAddCard}}" hint-placeholder-val="{{ true }}"><button class="addcard" type="button"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>Agregar otra sucursal</button></sc-if>
+  <div class="quiet">Estados: <b>Abierta / Ocupada / Pausada</b> recibe pedidos según su horario · <b>Desactivada</b> no recibe pedidos, la podés activar cuando querás · <b>Por activar</b> ya tiene ubicación, falta completarla · <b>Borrador</b> Sherpa está configurando la ubicación.</div>
+</sc-if>
+
+<!-- ══ DETALLE (S3–S5, S7, S8, S9b, S10, S11) ══ -->
+<sc-if value="{{sDetail}}" hint-placeholder-val="{{ false }}">
+  <sc-if value="{{isOwner}}" hint-placeholder-val="{{ true }}"><button class="crumb" type="button"><svg class="ic s" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"></path></svg>Sucursales</button></sc-if>
+  <div class="top">
+    <div><h1>{{det.name}}<span class="pill {{det.pill}}" style="margin-left:14px;font-size:12px"><i></i>{{det.pillLabel}}</span></h1><p class="lede">{{det.lede}}</p></div>
+    <div class="topact">
+      <sc-if value="{{det.showPausa}}" hint-placeholder-val="{{ true }}"><button class="btn" type="button">Ocupado / Pausa</button></sc-if>
+      <sc-if value="{{det.showEquipos}}" hint-placeholder-val="{{ true }}"><button class="btn" type="button">Equipos · {{det.devices}}</button></sc-if>
+    </div>
+  </div>
+
+  <!-- S11b · refresh banner for the manager -->
+  <sc-if value="{{det.banner}}" hint-placeholder-val="{{ false }}">
+    <div class="callout quiet" style="margin-top:22px" role="status" aria-live="polite"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6"></path></svg><div><b>Esta pantalla se actualizó.</b> Marcela Pineda (dueña) desactivó {{det.name}} hace un momento. Ya no recibe pedidos. Podés seguir ajustando el horario, la preparación y el teléfono.</div></div>
+  </sc-if>
+
+  <div class="grid2">
+
+    <!-- S8 · Antes de activar -->
+    <sc-if value="{{det.showReady}}" hint-placeholder-val="{{ false }}">
+      <div class="sec wide">
+        <h3>Antes de activar<span class="hint">{{det.readyCount}}</span></h3>
+        <p class="help">Para activar {{det.name}} tiene que estar todo en orden. Lo que falta se resuelve acá o en el equipo; la ubicación y la zona de entrega las define Sherpa.</p>
+        <div class="frow" style="gap:8px">
+          <sc-for list="{{det.ready}}" as="c" hint-placeholder-count="7"><div class="brow {{c.rowCls}}"><span class="pill {{c.cls}}"><i></i>{{c.state}}</span><div class="bt"><b>{{c.name}}</b><span>{{c.sub}}</span></div><span class="code">{{c.code}}</span></div></sc-for>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button class="btn accent" type="button" disabled="{{ true }}">Activar {{det.name}}</button><span class="fnote">Se habilita cuando todo esté listo. Al activarla empieza a recibir pedidos.</span></div>
+        <span class="fnote">Los códigos en gris son provisionales <b>[pendiente]</b> hasta que el servidor publique el vocabulario definitivo.</span>
+        <sc-if value="{{det.readyProvisional}}" hint-placeholder-val="{{ false }}"><span class="fnote">Los textos de las filas «pendiente — Sherpa la configura» son provisionales <b>[pendiente]</b> · los revisa el dueño.</span></sc-if>
+      </div>
+    </sc-if>
+
+    <!-- S8c · Bloqueada por Sherpa: aviso en lugar de la lista -->
+    <sc-if value="{{det.showBlocked}}" hint-placeholder-val="{{ false }}">
+      <div class="sec wide">
+        <h3>Antes de activar</h3>
+        <div class="callout quiet" role="status"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg><div>Sherpa está terminando de configurar esta sucursal. Todavía no se puede activar.</div></div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button class="btn accent" type="button" disabled="{{ true }}">Activar {{det.name}}</button><span class="fnote">Se habilita cuando todo esté listo.</span></div>
+        <span class="fnote">El texto del aviso es provisional <b>[pendiente]</b> · lo revisa el dueño.</span>
+      </div>
+    </sc-if>
+
+    <!-- Datos -->
+    <div class="sec">
+      <h3>Datos<sc-if value="{{isManager}}" hint-placeholder-val="{{ false }}"><span class="hint"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>El nombre lo cambia el dueño</span></sc-if></h3>
+      <div class="fld">
+        <label for="f-nombre">Nombre de la sucursal</label>
+        <sc-if value="{{isOwner}}" hint-placeholder-val="{{ true }}"><div class="inval ro" id="f-nombre">{{det.name}}</div><span class="fnote">Para cambiar el nombre, escribinos.</span></sc-if>
+        <sc-if value="{{isManager}}" hint-placeholder-val="{{ false }}"><div class="inval ro" id="f-nombre">{{det.name}}</div></sc-if>
+        <span class="fnote">Lo ve el cliente: «Tu pedido lo prepara Pizzería Del Valle · {{det.name}}».</span>
+      </div>
+      <sc-if value="{{det.hasLocation}}" hint-placeholder-val="{{ true }}">
+        <div class="fld"><span class="lab">Dirección</span><div class="inval ro">{{det.addr}}</div></div>
+        <div class="fld"><span class="lab">Referencia para repartidores</span><div class="inval ro">{{det.ref}}</div></div>
+        <span class="fnote"><span class="lock"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Definida por Sherpa.</span> Para cambiar la ubicación, escribinos.</span>
+      </sc-if>
+      <sc-if value="{{det.isDraft}}" hint-placeholder-val="{{ false }}">
+        <div class="fld"><span class="lab">Dirección</span><div class="inval ro">Sherpa la está configurando</div></div>
+        <span class="fnote">La ubicación, la zona de entrega y la tarifa de envío las define Sherpa. Cuando estén listas, vas a poder activarla acá.</span>
+      </sc-if>
+    </div>
+
+    <!-- Zona de entrega (S4) / Ubicación en borrador (S10) -->
+    <sc-if value="{{det.hasLocation}}" hint-placeholder-val="{{ true }}">
+      <div class="sec">
+        <h3>Zona de entrega<span class="hint"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Definida por Sherpa</span></h3>
+        <div class="map">
+          <svg viewBox="0 0 320 180" role="img" aria-label="Mapa con el pin de la sucursal y su zona de entrega, solo lectura">
+            <g stroke="#CFD6CC" stroke-width="1"><path d="M0 40H320M0 95H320M0 140H320M50 0V180M120 0V180M200 0V180M265 0V180"></path></g>
+            <g stroke="#B9C3B5" stroke-width="2.5"><path d="M0 70 C80 60 140 80 320 65"></path><path d="M160 0 V180"></path></g>
+            <circle cx="160" cy="92" r="{{det.rpx}}" fill="rgba(14,159,91,.14)" stroke="#0E9F5B" stroke-width="1.5" stroke-dasharray="4 3"></circle>
+            <path d="M160 72 c-7 0-12 5-12 12 0 9 12 20 12 20s12-11 12-20c0-7-5-12-12-12z" fill="#0A0A0B"></path><circle cx="160" cy="84" r="4" fill="#fff"></circle>
+          </svg>
+          <span class="mz">{{det.radius}} km a la redonda</span>
+          <span class="sherpa"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Solo lectura</span>
+        </div>
+        <span class="fnote">Ubicación, zona de entrega y tarifa de envío: <b>definidas por Sherpa</b>. Si la zona de dos sucursales se cruza, el pedido va a la más cercana al cliente.</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{det.isDraft}}" hint-placeholder-val="{{ false }}">
+      <div class="sec">
+        <h3>Ubicación y zona de entrega<span class="hint"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Las define Sherpa</span></h3>
+        <div class="callout quiet"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg><div><b>Sherpa está configurando la ubicación.</b> Cuando esté lista, esta sucursal pasa a «Por activar» y acá vas a ver la dirección y la zona.</div></div>
+        <span class="fnote">Si la dirección que le pasaste a Sherpa cambió, escribinos.</span>
+      </div>
+    </sc-if>
+
+    <!-- Horario (S5) -->
+    <div class="sec">
+      <h3>Horario por día<span class="hint">Mismo día · sin pasar la medianoche</span></h3>
+      <div class="hours">
+        <sc-for list="{{det.hours}}" as="h" hint-placeholder-count="7">
+          <div class="hrow {{h.rowCls}}">
+            <span class="d">{{h.d}}</span>
+            <sc-if value="{{h.open}}" hint-placeholder-val="{{ true }}"><input type="text" inputmode="numeric" aria-label="{{h.d}}, abre" value="{{h.from}}"><input type="text" inputmode="numeric" aria-label="{{h.d}}, cierra" value="{{h.to}}"></sc-if>
+            <sc-if value="{{h.closed}}" hint-placeholder-val="{{ false }}"><span class="inval off">Cerrado</span></sc-if>
+            <sc-if value="{{h.undef}}" hint-placeholder-val="{{ false }}"><span class="inval off miss">Sin definir</span></sc-if>
+            <button class="tog {{h.togCls}}" type="button" aria-label="Abre el {{h.d}}" aria-pressed="{{h.open}}"><i></i></button>
+            <sc-if value="{{h.err}}" hint-placeholder-val="{{ false }}"><div class="herr"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg><span>La hora de cierre tiene que ser después de la de apertura, el mismo día.</span></div></sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <sc-if value="{{isOwner}}" hint-placeholder-val="{{ true }}"><div class="fld"><span class="lab">Copiar horario de</span><div class="chips"><button class="chip" type="button">Centro</button><button class="chip" type="button">Col. Trejo</button><button class="chip q" type="button">Lun–Dom 11:00–22:00</button></div></div></sc-if>
+      <span class="fnote">Fuera de horario la sucursal no recibe pedidos para ahora. Los pedidos programados sí se aceptan si caen dentro del horario. Los 7 días tienen que estar definidos, aunque sea «Cerrado».</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <div class="sec">
+        <h3>Tiempo de preparación normal</h3>
+        <p class="help">Cuántos minutos tarda un pedido normal en estar listo. Es la base del «listo en N min» que ve el cliente y que confirma el equipo.</p>
+        <div class="step"><button class="stepb" type="button" aria-label="Menos 5 minutos">−</button><div class="val">{{det.prep}}<span>min</span></div><button class="stepb" type="button" aria-label="Más 5 minutos">+</button></div>
+        <span class="fnote">Entre 5 y 120 min. El equipo ajusta pedido por pedido (−5 … +15) y el modo Ocupado suma encima.</span>
+      </div>
+      <div class="sec">
+        <h3>Contacto</h3>
+        <div class="fld {{phoneErrCls}}"><label for="f-tel">WhatsApp de la sucursal</label><input id="f-tel" type="tel" value="{{det.phone}}" aria-invalid="{{phoneBad}}" aria-describedby="{{telDescribedBy}}"><sc-if value="{{phoneBad}}" hint-placeholder-val="{{ false }}"><div class="ferr" id="f-tel-err"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg><span>Escribí un número de celular de Honduras con WhatsApp, de 8 dígitos.</span></div></sc-if><span class="fnote" id="f-tel-note">Desde este número el equipo llama o escribe al cliente mientras el pedido está activo. Lo pueden cambiar el dueño y el gerente.</span></div>
+      </div>
+      <sc-if value="{{det.showNum}}" hint-placeholder-val="{{ true }}">
+        <div class="sec">
+          <h3>Numeración de pedidos<span class="hint"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Solo lectura</span></h3>
+          <div class="frow"><div class="fld"><span class="lab">Último pedido</span><div class="inval ro">{{det.last}}</div></div><div class="fld"><span class="lab">Próximo</span><div class="inval ro">{{det.next}}</div></div></div>
+          <span class="fnote">Cada sucursal numera sus pedidos por separado. La numera Sherpa; no se puede reiniciar desde acá.</span>
+        </div>
+      </sc-if>
+      <!-- S7 · Desactivar (owner, active) -->
+      <sc-if value="{{det.showDeactivate}}" hint-placeholder-val="{{ false }}"><div class="sec"><h3>Desactivar sucursal</h3><p class="help">Deja de recibir pedidos. Sus ventas, su historial y sus equipos se conservan. Es reversible: la activás de nuevo cuando querás.</p><div><button class="btn danger" type="button">Desactivar {{det.name}}</button></div></div></sc-if>
+      <!-- S3-legacy · existing active branch the portal cannot deactivate: one field note instead of the section -->
+      <sc-if value="{{det.showLegacyNote}}" hint-placeholder-val="{{ false }}"><span class="fnote">Para desactivar esta sucursal, escribinos.</span></sc-if>
+      <!-- S8 · Activar (owner, inactive and ready) -->
+      <sc-if value="{{det.showActivateReady}}" hint-placeholder-val="{{ false }}"><div class="sec"><h3>Activar sucursal</h3><p class="help">Empieza a recibir pedidos de nuevo. Los pedidos programados se vuelven a revisar automáticamente; algunos pueden necesitar atención del despacho.</p><div><button class="btn accent" type="button">Activar {{det.name}}</button></div></div></sc-if>
+      <!-- S10 · Eliminar borrador (owner, draft) -->
+      <sc-if value="{{det.showDelete}}" hint-placeholder-val="{{ false }}"><div class="sec"><h3>Eliminar borrador</h3><p class="help">Solo mientras sea borrador. Se borra lo que escribiste y Sherpa no configura su ubicación. Podés crearla de nuevo cuando querás.</p><div><button class="btn danger" type="button">Eliminar borrador</button></div></div></sc-if>
+    </div>
+  </div>
+
+  <!-- S5 · unsaved changes with an invalid hour: Guardar stays off -->
+  <sc-if value="{{det.dirty}}" hint-placeholder-val="{{ false }}">
+    <div class="rbar"><span class="rb-dot err"></span><span class="rb-t">Cambios sin guardar en {{det.name}} <sc-if value="{{det.dirtyHours}}" hint-placeholder-val="{{ true }}"><span>· horario · corregí las horas marcadas en rojo para guardar</span></sc-if><sc-if value="{{det.dirtyPhone}}" hint-placeholder-val="{{ false }}"><span>· contacto · corregí el número marcado en rojo para guardar</span></sc-if></span><div class="rb-sp"><button class="btn ghost" type="button">Descartar</button><button class="btn accent" type="button" disabled="{{ true }}">Guardar</button></div></div>
+  </sc-if>
+</sc-if>
+
+</main>
+</div>
+</div>
+
+<!-- ══ MODAL S7 · desactivar con consecuencias ══ -->
+<sc-if value="{{mDeactivate}}" hint-placeholder-val="{{ false }}">
+<div class="scrim"><div class="modal sm" aria-modal="true" aria-labelledby="dx-t">
+  <div class="mh"><div class="mt" id="dx-t">¿Desactivar {{det.name}}?</div><div class="ms">Es reversible: la activás de nuevo cuando querás. Esto es lo que pasa:</div></div>
+  <div class="mb">
+    <div>
+      <div class="cq"><div class="t"><b>Pedidos en curso</b><span>Se terminan de preparar y entregar con normalidad. El equipo y los repartidores los siguen viendo.</span></div></div>
+      <div class="cq"><div class="t"><b>Pedidos programados</b><span>Quedan en espera hasta que la actives; no pasan a otra sucursal.</span></div></div>
+      <div class="cq"><div class="t"><b>Equipos vinculados</b><span>Siguen vinculados, pero dejan de recibir pedidos nuevos.</span></div></div>
+    </div>
+    <p style="font-size:13px;line-height:1.5;color:var(--mute)">Mientras esté desactivada no recibe pedidos. Sus ventas y su historial se conservan.</p>
+  </div>
+  <div class="mf"><button class="btn ghost" type="button">Cancelar</button><button class="btn danger solid" type="button">Desactivar {{det.name}}</button></div>
+</div></div>
+</sc-if>
+
+<!-- ══ MODAL S9 · nueva sucursal (un paso, sin ubicación) ══ -->
+<sc-if value="{{mNueva}}" hint-placeholder-val="{{ false }}">
+<div class="scrim"><div class="modal" aria-modal="true" aria-labelledby="nv-t">
+  <div class="mh"><div class="mt" id="nv-t">Nueva sucursal</div><div class="ms">Vos ponés el nombre, el teléfono, el horario y la preparación. La ubicación y la zona de entrega las configura Sherpa.</div></div>
+  <div class="mb">
+    <div class="frow">
+      <div class="fld"><label for="nv-nombre">Nombre de la sucursal</label><input id="nv-nombre" type="text" placeholder="p. ej. Col. Los Andes" value="Jardines del Valle"></div>
+      <div class="fld {{phoneErrCls}}"><label for="nv-tel">WhatsApp de la sucursal</label><input id="nv-tel" type="tel" placeholder="+504 ____-____" value="{{nvPhone}}" aria-invalid="{{phoneBad}}" aria-describedby="{{nvDescribedBy}}"><sc-if value="{{phoneBad}}" hint-placeholder-val="{{ false }}"><div class="ferr" id="nv-tel-err"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg><span>Escribí un número de celular de Honduras con WhatsApp, de 8 dígitos.</span></div></sc-if></div>
+    </div>
+    <div class="fld"><span class="lab">Horario</span><div class="chips"><button class="chip on" type="button">Copiar de Centro</button><button class="chip" type="button">Copiar de Col. Trejo</button><button class="chip" type="button">Lun–Dom 11:00–22:00</button><button class="chip q" type="button">Definir después</button></div><span class="fnote">Lo ajustás después, día por día. Mismo día, sin pasar la medianoche.</span></div>
+    <div class="fld"><span class="lab">Tiempo de preparación normal</span><div class="step"><button class="stepb" type="button" aria-label="Menos 5 minutos">−</button><div class="val">20<span>min</span></div><button class="stepb" type="button" aria-label="Más 5 minutos">+</button></div><span class="fnote">Entre 5 y 120 min. Se puede cambiar después.</span></div>
+    <div class="callout quiet"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg><div>Queda como <b>borrador</b> hasta que Sherpa configure la ubicación y la zona de entrega. Después vas a poder activarla.</div></div>
+  </div>
+  <div class="mf"><button class="btn ghost" type="button">Cancelar</button><button class="btn accent" type="button" disabled="{{phoneBad}}">Crear sucursal</button></div>
+</div></div>
+</sc-if>
+
+<!-- ══ MODAL S10 · eliminar borrador ══ -->
+<sc-if value="{{mDelete}}" hint-placeholder-val="{{ false }}">
+<div class="scrim"><div class="modal sm" aria-modal="true" aria-labelledby="del-t">
+  <div class="mh"><div class="mt" id="del-t">¿Eliminar el borrador «{{det.name}}»?</div><div class="ms">Todavía no tiene ubicación ni recibió pedidos.</div></div>
+  <div class="mb"><p style="font-size:13.5px;line-height:1.5">Se borra lo que escribiste (nombre, teléfono, horario y preparación) y Sherpa deja de configurar su ubicación. No afecta a las demás sucursales. Podés crearla de nuevo cuando querás.</p></div>
+  <div class="mf"><button class="btn ghost" type="button">Cancelar</button><button class="btn danger solid" type="button">Eliminar borrador</button></div>
+</div></div>
+</sc-if>
+
+<sc-if value="{{toastOn}}" hint-placeholder-val="{{ false }}"><div class="toast" role="status" aria-live="polite"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"></path></svg>Borrador creado · Sherpa está configurando la ubicación</div></sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"screen":{"editor":"enum","options":["s2","s3","s3-bad","s5","s7","s8","s8b","s8c","s9a","s9a-bad","s9b","s10","s11a","s11b","s3-legacy","s3-inactive","s2-empty","s2-onedraft"],"default":"s2","section":"Pantalla"},"narrow":{"editor":"boolean","default":false,"section":"Prototipo"},"$preview":{"width":1280,"height":1180}}'>
+const H = (d, from, to) => ({ d, from: from || '', to: to || '', open: !!from, closed: !from, undef: false, togCls: from ? '' : 'off', err: false, rowCls: '' });
+const U = (d) => ({ d, from: '', to: '', open: false, closed: false, undef: true, togCls: 'off', err: false, rowCls: '' });
+const E = (d, from, to) => ({ ...H(d, from, to), err: true, rowCls: 'err' });
+const STD = [H('Lun','11:00','22:00'), H('Mar','11:00','22:00'), H('Mié','11:00','22:00'), H('Jue','11:00','22:00'), H('Vie','11:00','23:00'), H('Sáb','11:00','23:00'), H('Dom','12:00','21:00')];
+const BAD = [H('Lun','11:00','22:00'), H('Mar','11:00','22:00'), H('Mié','11:00','22:00'), H('Jue',null,null), E('Vie','18:00','01:00'), E('Sáb','12:00','11:30'), H('Dom','12:00','21:00')];
+const PARTIAL = [H('Lun','11:00','22:00'), H('Mar','11:00','22:00'), H('Mié','11:00','22:00'), H('Jue','11:00','22:00'), H('Vie','11:00','22:00'), U('Sáb'), U('Dom')];
+
+const TREJO = { name:'Col. Trejo', life:'active', pill:'busy', pillLabel:'Ocupada +15 min', lede:'Bulevar Morazán, frente a Col. Trejo', addr:'Bulevar Morazán, frente a Col. Trejo', ref:'Plaza comercial, local 4', radius:'3.5', rpx:'58', prep:'25', phone:'+504 9712-8830', last:'#641', next:'#642', devices:'1', hours: STD, hasLocation:true, isDraft:false };
+const ANDES = { name:'Col. Los Andes', life:'staged', pill:'staged', pillLabel:'Por activar', lede:'Col. Los Andes, 1 Calle, local 2 · todavía no recibe pedidos', addr:'Col. Los Andes, 1 Calle, local 2', ref:'Frente al parque, local esquinero', radius:'5', rpx:'74', prep:'20', phone:'+504 9601-7744', last:'—', next:'#1', devices:'0', hours: PARTIAL, hasLocation:true, isDraft:false };
+const JARDINES = { name:'Jardines del Valle', life:'draft', pill:'draft', pillLabel:'Borrador', lede:'Sherpa está configurando la ubicación · todavía no recibe pedidos', addr:'', ref:'', radius:'', rpx:'0', prep:'20', phone:'+504 3390-5521', last:'—', next:'#1', devices:'—', hours: STD, hasLocation:false, isDraft:true };
+
+const READY = [
+  { cls:'ok',   rowCls:'',     state:'Lista', name:'Ubicación definida por Sherpa', sub:'Col. Los Andes, 1 Calle, local 2', code:'location [pendiente]' },
+  { cls:'ok',   rowCls:'',     state:'Lista', name:'Zona de entrega', sub:'5 km a la redonda · la define Sherpa', code:'zone [pendiente]' },
+  { cls:'warn', rowCls:'miss', state:'Falta', name:'Horario de los 7 días', sub:'Definí sábado y domingo, aunque sea «Cerrado»', code:'hours [pendiente]' },
+  { cls:'ok',   rowCls:'',     state:'Listo', name:'Tiempo de preparación normal', sub:'20 min', code:'prep [pendiente]' },
+  { cls:'warn', rowCls:'miss', state:'Falta', name:'Al menos un equipo vinculado', sub:'Vinculá un handheld desde el equipo y encendelo una vez', code:'device_online [pendiente]' },
+  { cls:'ok',   rowCls:'',     state:'Listo', name:'Alguien con acceso a la sucursal', sub:'Marcela Pineda (dueña)', code:'member [pendiente]' },
+  { cls:'ok',   rowCls:'',     state:'Listo', name:'Menú de la marca publicado', sub:'Pizzería Del Valle · 8 productos', code:'menu_published [pendiente]' }
+];
+// S8b · the same 7 rows; location + zone are Sherpa-owned and pending (no owner action), hours met, one owner-fixable row unmet
+const READY_SHERPA = [
+  { cls:'wait', rowCls:'wait', state:'Pendiente', name:'Ubicación · pendiente — Sherpa la configura', sub:'', code:'location [pendiente]' },
+  { cls:'wait', rowCls:'wait', state:'Pendiente', name:'Zona de entrega · pendiente — Sherpa la configura', sub:'', code:'zone [pendiente]' },
+  { cls:'ok',   rowCls:'',     state:'Listo', name:'Horario de los 7 días', sub:'Los 7 días definidos', code:'hours [pendiente]' },
+  { cls:'ok',   rowCls:'',     state:'Listo', name:'Tiempo de preparación normal', sub:'20 min', code:'prep [pendiente]' },
+  { cls:'warn', rowCls:'miss', state:'Falta', name:'Al menos un equipo vinculado', sub:'Vinculá un handheld desde el equipo y encendelo una vez', code:'device_online [pendiente]' },
+  { cls:'ok',   rowCls:'',     state:'Listo', name:'Alguien con acceso a la sucursal', sub:'Marcela Pineda (dueña)', code:'member [pendiente]' },
+  { cls:'ok',   rowCls:'',     state:'Listo', name:'Menú de la marca publicado', sub:'Pizzería Del Valle · 8 productos', code:'menu_published [pendiente]' }
+];
+
+const CARDS = [
+  { name:'Centro', cardCls:'', pill:'open', pillLabel:'Abierta', addr:'3 Av., 5 Calle NO, Barrio Guamilito', zone:'4 km', prep:'20 min', devices:'2', numLabel:'Próximo', num:'#1285', hint:'', hintWarn:false, hintOk:false, hintQuiet:false },
+  { name:'Col. Trejo', cardCls:'', pill:'busy', pillLabel:'Ocupada +15 min', addr:'Bulevar Morazán, frente a Col. Trejo', zone:'3.5 km', prep:'25 min', devices:'1', numLabel:'Próximo', num:'#642', hint:'', hintWarn:false, hintOk:false, hintQuiet:false },
+  { name:'Bulevar del Norte', cardCls:'', pill:'inactive', pillLabel:'Desactivada', addr:'Col. Jardines del Valle, Blvd. del Norte · desactivada el 12 oct', zone:'5 km', prep:'25 min', devices:'1', numLabel:'Último', num:'#212', hint:'Horario, preparación y equipo en orden. Al activarla vuelve a recibir pedidos.', hintWarn:false, hintOk:true, hintQuiet:false },
+  { name:'Col. Los Andes', cardCls:'', pill:'staged', pillLabel:'Por activar', addr:'Col. Los Andes, 1 Calle, local 2', zone:'5 km', prep:'20 min', devices:'0', numLabel:'Próximo', num:'#1', hint:'el horario de sábado y domingo · un equipo vinculado.', hintWarn:true, hintOk:false, hintQuiet:false },
+  { name:'Jardines del Valle', cardCls:'draft', pill:'draft', pillLabel:'Borrador', addr:'Sherpa está configurando la ubicación', zone:'—', prep:'20 min', devices:'—', numLabel:'Próximo', num:'#1', hint:'Vas a poder activarla cuando Sherpa termine de configurar la ubicación y la zona de entrega.', hintWarn:false, hintOk:false, hintQuiet:true }
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    const raw = this.props.screen || 's2';
+    const phoneBad = raw.endsWith('-bad');
+    const scr = phoneBad ? raw.slice(0, -4) : raw;
+    const isManager = scr === 's11a' || scr === 's11b';
+    const isOwner = !isManager;
+    const lifecycle = scr === 's2-empty' || scr === 's2-onedraft';   // brand with no operational branch
+    const sEmpty = scr === 's2-empty';
+    const legacy = scr === 's3-legacy';                                 // existing active branch, no portal deactivate
+    const inactiveReady = scr === 's3-inactive';                        // owner detail of a Desactivada branch, ready to activate
+    const sList = scr === 's2' || scr === 's9a' || lifecycle;
+    const sDetail = !sList;
+    const cards = sEmpty ? [] : (scr === 's2-onedraft' ? [CARDS[4]] : CARDS);
+    let base = TREJO;
+    if (scr === 's8') base = ANDES;
+    if (scr === 's9b' || scr === 's10' || scr === 's8b' || scr === 's8c') base = JARDINES;
+    const det = { ...base };
+    if (scr === 's5') { det.hours = BAD; }
+    if (phoneBad) { det.phone = '+504 2234-5678'; }
+    if (scr === 's11b') { det.life = 'inactive'; det.pill = 'inactive'; det.pillLabel = 'Desactivada'; det.lede = 'Bulevar Morazán, frente a Col. Trejo · desactivada hace un momento'; }
+    if (inactiveReady) { det.life = 'inactive'; det.pill = 'inactive'; det.pillLabel = 'Desactivada'; det.lede = 'Bulevar Morazán, frente a Col. Trejo · desactivada'; }
+    const active = det.life === 'active';
+    const ready = scr === 's8b' ? READY_SHERPA : READY;
+    const unmet = ready.filter((c) => c.cls !== 'ok').length;
+    Object.assign(det, {
+      showPausa: active,
+      showEquipos: !det.isDraft,
+      banner: scr === 's11b',
+      showReady: scr === 's8' || scr === 's8b',
+      readyProvisional: scr === 's8b',
+      showBlocked: scr === 's8c',
+      ready,
+      readyCount: `${unmet} de ${ready.length} pendientes`,
+      showDeactivate: isOwner && active && !legacy,
+      showLegacyNote: isOwner && active && legacy,
+      showActivateReady: isOwner && inactiveReady,
+      showDelete: isOwner && det.isDraft,
+      showNum: !det.isDraft,
+      dirty: scr === 's5' || (phoneBad && scr === 's3'),
+      dirtyHours: scr === 's5',
+      dirtyPhone: phoneBad && scr === 's3'
+    });
+    const brandSub = isManager ? 'Gerente' : (sEmpty ? '0 sucursales' : (lifecycle ? '1 sucursal' : '5 sucursales'));
+    const scopeLabel = isManager ? 'Col. Trejo' : 'Todas las sucursales';
+    return {
+      narrowCls: this.props.narrow ? 'narrow' : '',
+      showOps: !lifecycle,
+      showNavCount: isOwner && !sEmpty,
+      navCount: lifecycle ? '1' : '5',
+      mtopSub: lifecycle ? brandSub : scopeLabel,
+      phoneBad,
+      phoneErrCls: phoneBad ? 'err' : '',
+      telDescribedBy: phoneBad ? 'f-tel-err f-tel-note' : 'f-tel-note',
+      nvDescribedBy: phoneBad ? 'nv-tel-err' : undefined,
+      nvPhone: phoneBad ? '+504 2234-5678' : '+504 3390-5521',
+      isOwner, isManager,
+      brandSub,
+      switchLockCls: isOwner ? '' : 'locked',
+      scopeLockCls: isManager ? 'locked' : '',
+      scopeLabel,
+      navSucLabel: isManager ? 'Mi sucursal' : 'Sucursales',
+      devCount: isManager ? '1' : '4',
+      userInitials: isManager ? 'DR' : 'MP',
+      userName: isManager ? 'Dania Reyes' : 'Marcela Pineda',
+      userRole: isManager ? 'Gerente · Col. Trejo' : 'Dueña de la marca',
+      sList, sDetail, sEmpty, showAddCard: !sEmpty, cards, det,
+      mDeactivate: scr === 's7',
+      mNueva: scr === 's9a',
+      mDelete: scr === 's10',
+      toastOn: scr === 's9b'
+    };
+  }
+}
+</script>
+</body>
+</html>
