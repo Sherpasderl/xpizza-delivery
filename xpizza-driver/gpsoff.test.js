@@ -11,7 +11,9 @@ import { gpsoffHtml } from './stacked-view.js';
 const __dir = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(join(__dir, '..', 'xpizza-functions', 'package.json'));
 const { JSDOM } = require('jsdom');
-const SCRIPT = readFileSync(join(__dir, 'index.html'), 'utf8').match(/<script type="module">([\s\S]*?)<\/script>/)[1];
+const HTML = readFileSync(join(__dir, 'index.html'), 'utf8');
+const SCRIPT = HTML.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
+const CSS = HTML.match(/<style>([\s\S]*?)<\/style>/)[1];   // the first <style> block holds PRESENTATION-3 + the base layout
 function liftFn(name) {
   let start = SCRIPT.indexOf(`function ${name}(`);
   if (SCRIPT.slice(start - 6, start) === 'async ') start -= 6;
@@ -139,6 +141,20 @@ t('COPY PIN: every gpsoff string is exactly as the prototype draws it / the owne
   const ok = gpsoffHtml({ native: true, permission: 'granted', providerEnabled: true, batteryUnrestricted: true }, { esc });
   assert.ok(ok.includes('>Ok<'), 'granted/unrestricted → «Ok» chip');
   assert.ok(!ok.includes('Ubicación del teléfono'), 'the provider row appears ONLY when the switch is off');
+});
+
+// ---------- layout contract (jsdom has no layout, so assert the shipped CSS) ----------
+t('LAYOUT CONTRACT: gpsoff fills #onshift-content to the SCREEN bottom — absolute overlay (inset 0) + foot margin-top:auto', () => {
+  // the gpsoff-state rule: position:absolute with all four insets 0 (a full overlay of the anchored #onshift-content)
+  const gs = (CSS.match(/(?:^|})\s*\.gpsoff-state\s*\{([^}]*)\}/) || [])[1] || '';
+  assert.ok(gs, '.gpsoff-state rule present');
+  assert.match(gs, /position:\s*absolute/, '.gpsoff-state is an absolute overlay');
+  for (const side of ['top', 'right', 'bottom', 'left']) assert.match(gs, new RegExp('\\b' + side + ':\\s*0\\b'), `.gpsoff-state ${side}:0 (full inset)`);
+  // #onshift-content is the positioned ANCHOR (a bare rule — distinct from the .delivering #onshift-content variants)
+  assert.ok(CSS.includes('#onshift-content { position: relative'), '#onshift-content { position: relative } anchors the overlay');
+  // the foot is pinned to the bottom of the overlay (margin-top:auto below the flex:1 body)
+  const gf = (CSS.match(/(?:^|})\s*\.gpsoff-foot\s*\{([^}]*)\}/) || [])[1] || '';
+  assert.match(gf, /margin-top:\s*auto/, '.gpsoff-foot is pinned to the screen bottom');
 });
 
 // ---------- (3) the REAL detection + routing + triggers (P2-6) ----------

@@ -38,7 +38,8 @@ const BANNER_BLOCK = SCRIPT.slice(SCRIPT.indexOf('let offlineBannerConnUnsub'), 
 const R_STARTGEN = regionBody('OFFLINE-START-GEN-3');   // const offlineStartGen = shiftSessionGen;
 const R_INIT = regionBody('OFFLINE-INIT-3');            // if (offlineStartGen === shiftSessionGen) ensureOfflineBanner();
 const R_TEARDOWN = regionBody('OFFLINE-TEARDOWN-3');    // shiftSessionGen += 1; stopOfflineBanner();
-const R_RENDER = regionBody('RENDER-OFFLINE-3');        // ensureOfflineBanner(); applyOfflineBanner();
+const R_RENDER = regionBody('RENDER-OFFLINE-3');        // ensureOfflineBanner();
+const R_BOARD = regionBody('RENDER-BOARD-3');           // queueMicrotask(applyOfflineBanner); — THE shared board-render boundary
 
 let passed = 0;
 function t(name, fn) { fn(); passed += 1; console.log('  ok -', name); }
@@ -49,29 +50,40 @@ function build({ rtdb = true, online = true } = {}) {
   const $ = (id) => document.getElementById(id);
   Object.defineProperty(window.navigator, 'onLine', { value: online, configurable: true });
   let rtdbConn = rtdb; const connCbs = [];
+  let roCb = null;   // the ResizeObserver callback the code registers on the foot note
   const XPD = { getDiagConnState: () => rtdbConn, getDb: () => ({}) };
   const deps = {
     document, window, navigator: window.navigator, $, XPD,
     fbRef: (db, p) => ({ db, p }),
     fbOnValue: (ref, cb) => { connCbs.push(cb); cb(); return () => { const i = connCbs.indexOf(cb); if (i >= 0) connCbs.splice(i, 1); }; },
+    ResizeObserver: class { constructor(cb) { roCb = cb; } observe() {} disconnect() { roCb = null; } },
+    queueMicrotask: (fn) => Promise.resolve().then(fn),   // the board-render boundary queues this; the test awaits a tick
   };
   const body = 'let currentUser = { uid: "drv" };\n'
     + liftFn('offerIsOffline') + '\n' + BANNER_BLOCK + '\n'
     // the REAL host wiring, built from the shipped region bodies (a removed call in any region → a RED test):
     + 'function hostStartClean() {\n' + R_STARTGEN + '\n' + R_INIT + '\n}\n'
     + 'function hostStartAfterSignOut() {\n' + R_STARTGEN + '\ncurrentUser = null;\n' + R_TEARDOWN + '\n' + R_INIT + '\n}\n'
+    // sign-out nulls the user; but a SHIFT-END (then still logged in) does NOT — only the gen bumps. This isolates the
+    // generation guard from the currentUser guard, so removing the gen guard (OFFLINE-INIT-3) RED-s the test (#5).
+    + 'function hostStartAfterGenBump() {\n' + R_STARTGEN + '\n' + R_TEARDOWN + '\n' + R_INIT + '\n}\n'
     + 'function hostRender() {\n' + R_RENDER + '\n}\n'
+    + 'function hostBoard() {\n' + R_BOARD + '\n}\n'
     + 'function hostCleanup() {\n' + R_TEARDOWN + '\n}\n'
-    + 'return { startClean: hostStartClean, startAfterSignOut: hostStartAfterSignOut, render: hostRender, cleanup: hostCleanup,'
-    + ' apply: applyOfflineBanner, setUser: (u) => { currentUser = u; },'
+    + 'return { startClean: hostStartClean, startAfterSignOut: hostStartAfterSignOut, startAfterGenBump: hostStartAfterGenBump,'
+    + ' render: hostRender, board: hostBoard, cleanup: hostCleanup, apply: applyOfflineBanner, setUser: (u) => { currentUser = u; },'
     + ' shown: () => { const b = $("offline-banner"); return !!(b && !b.classList.contains("hidden")); },'
-    + ' noteShown: () => { const n = $("offline-foot-note"); return !!(n && !n.classList.contains("hidden")); } };';
+    + ' noteShown: () => { const n = $("offline-foot-note"); return !!(n && !n.classList.contains("hidden")); },'
+    + ' footH: () => $("screen-onshift").style.getPropertyValue("--offline-foot-h") };';
   const names = Object.keys(deps);
   const api = new Function(...names, body)(...names.map((n) => deps[n]));
   const inHand = (yes) => { $('active-order-slot').innerHTML = yes ? '<div id="btn-delivered" class="sv-slide"></div>' : ''; };
   const setRtdb = (v) => { rtdbConn = v; connCbs.slice().forEach((cb) => cb()); };
   const setOnline = (v) => { Object.defineProperty(window.navigator, 'onLine', { value: v, configurable: true }); window.dispatchEvent(new window.Event(v ? 'online' : 'offline')); };
-  return { api, $, window, inHand, setRtdb, setOnline, connCount: () => connCbs.length };
+  const setNoteHeight = (h) => { const n = $('offline-foot-note'); if (n) Object.defineProperty(n, 'offsetHeight', { value: h, configurable: true }); };   // jsdom has no layout
+  const triggerRO = () => { if (roCb) roCb(); };
+  const flush = () => Promise.resolve();
+  return { api, $, window, inHand, setRtdb, setOnline, setNoteHeight, triggerRO, flush, connCount: () => connCbs.length };
 }
 
 // ---------- visibility ----------
@@ -155,6 +167,36 @@ t('teardown unsubscribes + hides; host init/teardown are load-bearing', () => {
   h.api.cleanup();                                 // ← OFFLINE-TEARDOWN-3: remove its stopOfflineBanner call and this RED
   assert.equal(h.connCount(), 0, 'host teardown unsubscribed (mutant: host teardown removed → RED here)');
   assert.equal(h.api.shown(), false, 'hidden on teardown');
+});
+
+async function at(name, fn) { await fn(); passed += 1; console.log('  ok -', name); }
+
+// ---------- Codex r2 folds ----------
+await at('#1 shared board boundary: the deferred-swipe replay refreshes the banner (visible → replay lands on an offer board → hidden)', async () => {
+  const h = build({ rtdb: false });
+  h.inHand(true); h.api.startClean();              // offline delivery in hand → shown
+  assert.equal(h.api.shown(), true);
+  h.inHand(false);                                 // the drag-deferred render replays into an OFFER board (no in-hand slide) ...
+  h.api.board(); await h.flush();                  // ... through the SHARED board-render boundary (RENDER-BOARD-3), NOT render()
+  assert.equal(h.api.shown(), false, 'the board boundary refreshed away the stale banner');
+  h.inHand(true); h.api.board(); await h.flush();
+  assert.equal(h.api.shown(), true, 'and shows again when accepted work returns on any board render');
+});
+
+t('#2 footer lift tracks the note height LIVE (ResizeObserver): 31px → 65px → the lift follows', () => {
+  const h = build({ rtdb: false });
+  h.inHand(true); h.api.startClean();
+  h.setNoteHeight(31); h.triggerRO();
+  assert.equal(h.api.footH(), '31px', 'the lift = the note height');
+  h.setNoteHeight(65); h.triggerRO();              // the note wrapped to a 2nd line (width / orientation change)
+  assert.equal(h.api.footH(), '65px', 'the lift follows the note growing to 65px — no stale constant');
+});
+
+t('#5 generation guard (isolated from the user check): a start resolving after a SHIFT-END — user still logged in — attaches nothing', () => {
+  const h = build({ rtdb: false });
+  h.inHand(true);
+  h.api.startAfterGenBump();                        // START-GEN (gen 0) → shift-end teardown (gen 1; currentUser STILL valid) → INIT
+  assert.equal(h.connCount(), 0, 'the gen mismatch bails the pending init — removing the OFFLINE-INIT-3 gen guard RED-s this (currentUser is still valid, so only the gen catches it)');
 });
 
 console.log(`✓ offline-banner: ${passed} checks passed`);

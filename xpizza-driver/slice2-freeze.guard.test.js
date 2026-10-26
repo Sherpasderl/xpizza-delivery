@@ -45,8 +45,8 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 // — a tampered shared module (widened/dropped restore, added/removed region, changed kind) is caught HERE too, not
 // just in slice3-freeze. Mirror of slice3-freeze's SLICE3_PINS; both must agree with the byte-frozen contract file.
 const SLICE3_PINS = {
-  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER'],
-  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace'],
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER'],
+  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace'],
   restoreSha: {
     'HELP-HANDLER': 'e823efd01be83461f6b7b900e8e60a9065d9c44bfedb1b32c2624f1d6c00206f',
     'CUADRE-CSS': '41327b6fa5e535b774d323c235e755019b6020516a10ac20340b004667f8a4ec',
@@ -56,7 +56,7 @@ const SLICE3_PINS = {
     'CHIME-FRESH': 'e86e31b5350d14f892d99d38e7bf84fcf2358c262d03d9354bf663864e0de4c9',
     'OFFER-TAKEOVER': '88bdef966a96defc21a3b6bc407f595201c0808456016662832f6ae14c60a855',
   },
-  fileSha: '93f31381f258f834b457e17de824f0143ea43f5d7ca77915bac47aac405e9097',
+  fileSha: '89b976d24d8b61a2a0efcd2e7d8053463da1449ac1da537f809bc2566ae4bc94',
 };
 // Load the contract as DATA: read bytes → verify the sha256 pin FIRST → only then JSON.parse (Codex r2 P1). No
 // require/import of editable code; a tampered or executable contract fails the sha (and JSON.parse) before use.

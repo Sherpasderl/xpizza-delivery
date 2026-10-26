@@ -73,8 +73,11 @@
 }
 #screen-onshift.delivering.offline-foot #onshift-content { padding-bottom: calc(104px + var(--offline-foot-h, 34px)); }
 /* gpsoff — the full-screen «Activá tu ubicación» state over the idle screen (prototype S.gpsoff): the body centres in
-   the available height (gap 16px), and the foot sits at the screen bottom. #idle-state is already flex:1 column. */
-.gpsoff-state { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+   the available height (gap 16px), and the foot sits at the SCREEN bottom. The idle screen's #idle-state does NOT span
+   the full content area (the version tag + other chrome sit below it), so the card fills #onshift-content directly via
+   an absolute overlay — below the status bar, over the (empty) slots + version tag — to reach the true bottom. */
+#onshift-content { position: relative; }
+.gpsoff-state { position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 3; display: flex; flex-direction: column; padding: 24px; overflow-y: auto; background: var(--bg, #F4F6F9); }
 .gpsoff-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; }
 .gpsoff-illus { width: 104px; height: 104px; border-radius: 30px; background: #FEF3E2; color: var(--warn, #f59e0b); display: flex; align-items: center; justify-content: center; }
 .gpsoff-illus svg { width: 52px; height: 52px; }
@@ -2428,7 +2431,13 @@ let offlineBannerConnUnsub = null, offlineBannerHandler = null;
 // The SHIFT SESSION generation: bumped on every teardown (cleanupShift). ensureOfflineBanner subscribes at most once
 // per session, and a pending shift-start (OFFLINE-INIT-3, which runs AFTER its awaits) bails if the session it began
 // in has ended — so a start resolving after a sign-out never re-attaches listeners (Codex r1 P2-2).
-let shiftSessionGen = 0, offlineBannerSessionGen = -1;
+let shiftSessionGen = 0, offlineBannerSessionGen = -1, offlineNoteRO = null, offlineResizeHandler = null;
+// keep --offline-foot-h = the note's CURRENT rendered height (it can change on its own — a width/orientation change
+// wraps it to a second line); a ResizeObserver tracks that live, with a window resize/orientation fallback (P2-4).
+function updateOfflineFootH() {
+  const s = $('screen-onshift'), n = $('offline-foot-note');
+  if (s && n && s.classList.contains('offline-foot')) s.style.setProperty('--offline-foot-h', n.offsetHeight + 'px');
+}
 const OFFLINE_WIFI = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 8.5a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>';
 function offlineInHand() {   // an ACCEPTED order with a queued server slide is on screen (never idle, never an offer)
   const slot = $('active-order-slot');
@@ -2444,7 +2453,7 @@ function applyOfflineBanner() {
   // safe-area-inset-bottom + wrapping), measured here — never a constant — so the slide never covers it (P2-4).
   const screen = $('screen-onshift'); if (screen) {
     screen.classList.toggle('offline-foot', show);
-    if (show && note) screen.style.setProperty('--offline-foot-h', note.offsetHeight + 'px');
+    if (show) updateOfflineFootH();
     else screen.style.removeProperty('--offline-foot-h');
   }
 }
@@ -2468,6 +2477,15 @@ function ensureOfflineBanner() {
     n.textContent = 'Si no vuelve en 5 min, llamá a despacho.';   // prototype foot copy, under the slide while offline
     content.insertBefore(n, $('queue-slot'));          // below the active card (under the slide)
   }
+  if (!offlineNoteRO && typeof ResizeObserver === 'function') {
+    offlineNoteRO = new ResizeObserver(() => updateOfflineFootH());   // the note wrapping to a 2nd line → the lift follows live
+    const n = $('offline-foot-note'); if (n) offlineNoteRO.observe(n);
+  }
+  if (!offlineResizeHandler) {
+    offlineResizeHandler = () => updateOfflineFootH();                // fallback where ResizeObserver is unavailable / on rotation
+    window.addEventListener('resize', offlineResizeHandler);
+    window.addEventListener('orientationchange', offlineResizeHandler);
+  }
   if (!offlineBannerHandler) {
     offlineBannerHandler = () => applyOfflineBanner();
     window.addEventListener('online', offlineBannerHandler);
@@ -2481,6 +2499,8 @@ function ensureOfflineBanner() {
 function stopOfflineBanner() {
   if (offlineBannerHandler) { window.removeEventListener('online', offlineBannerHandler); window.removeEventListener('offline', offlineBannerHandler); offlineBannerHandler = null; }
   if (offlineBannerConnUnsub) { try { offlineBannerConnUnsub(); } catch (_) {} offlineBannerConnUnsub = null; }
+  if (offlineNoteRO) { try { offlineNoteRO.disconnect(); } catch (_) {} offlineNoteRO = null; }
+  if (offlineResizeHandler) { window.removeEventListener('resize', offlineResizeHandler); window.removeEventListener('orientationchange', offlineResizeHandler); offlineResizeHandler = null; }
   offlineBannerSessionGen = -1;
   const b = $('offline-banner'); if (b) b.classList.add('hidden');
   const n = $('offline-foot-note'); if (n) n.classList.add('hidden');
@@ -4126,9 +4146,8 @@ function render() {
     renderStatusBar();
     renderActiveAndQueue();
   }
-  /* ===== SLICE3:RENDER-OFFLINE-3:START — EVERY entry into an active shift (fresh start AND app reopen/restore via auth/feed → render) initializes the offline banner once per session (P2-1); applyOfflineBanner runs after the completed board render — active, offer OR idle — so visibility never goes stale across card changes (P2-3) ===== */
+  /* ===== SLICE3:RENDER-OFFLINE-3:START — EVERY entry into an active shift (fresh start AND app reopen/restore via auth/feed → render) initializes the offline banner once per session (P2-1). The per-render visibility refresh lives at the SHARED board-render boundary (RENDER-BOARD-3), not here, so the deferred-swipe replay is covered too. ===== */
   ensureOfflineBanner();
-  applyOfflineBanner();
   /* ===== SLICE3:RENDER-OFFLINE-3:END ===== */
   startKeepAlive();
 }
@@ -4220,6 +4239,9 @@ function renderActiveAndQueue() {
   // in-progress update) that arrived during the suppressed window is swallowed.
   if (slidingEl) { renderPending = true; return; }
   renderPending = false;
+  /* ===== SLICE3:RENDER-BOARD-3:START — THE shared board-render boundary: queue the offline-banner refresh to run after THIS synchronous render completes, whatever branch it takes (idle / active / offer) and whatever path called it (render, the deferred-swipe replay, or a direct re-render). Fixes the stale banner when a drag-deferred render replays into a different board (Codex r2 #1). ===== */
+  queueMicrotask(applyOfflineBanner);
+  /* ===== SLICE3:RENDER-BOARD-3:END ===== */
 
   const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);
   /* ===== SLICE2:RUN-OBSERVER:START — read-only completion/cancel diff → recent-completion memory (dep D); no write path ===== */
@@ -4661,7 +4683,7 @@ function renderIdleState() {
   /* ===== SLICE3:IDLE-3:START — idle-screen slice-3 state. (a) the «¿Por qué no veo pedidos?» help link shows ONLY when AVAILABLE (owner): on a returning / at-restaurant idle screen the diagnosis is irrelevant. (gpsoff mount/clear to follow in this region.) ===== */
   const idleHelpLink = $('idle-help-link');
   if (idleHelpLink) idleHelpLink.classList.toggle('hidden', status !== 'available');
-  applyOfflineBanner();   // the idle screen has no order in hand → this hides the offline banner + its foot note
+  // (offline banner refresh now runs at the shared board-render boundary, RENDER-BOARD-3 — not here)
   applyGpsoff();          // (b) gpsoff: swap in the location-off card from the CACHED status (sync) ...
   checkLocationStatus();  //        ... and kick a fresh READ-ONLY check that re-applies when it resolves (no polling)
   /* ===== SLICE3:IDLE-3:END ===== */
