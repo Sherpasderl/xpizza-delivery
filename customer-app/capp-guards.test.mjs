@@ -20,7 +20,10 @@ const LEAK = /x_pizza|la_musa|xpizza|lamusa|X\.? ?Pizza|La Musa/i;
 // sherpa-client.js is the shared PLATFORM module, synced byte-for-byte into every manifest site (npm run sync:client); it is
 // not app code, so it is exempt from the literal scan ONLY while it stays identical to platform/client/sherpa-client.js
 const SYNCED = 'sherpa-client.js';
-const codeFiles = () => readdirSync(join(ROOT, 'customer-app')).filter((f) => /\.(m?js|html|css)$/.test(f) && !/\.test\.m?js$/.test(f) && f !== SYNCED);
+// capp-confirm-quote.js (S2a, PLAN-capp-S2-r4 §5.1 Q6) is a BYTE-IDENTICAL port of the forms' form-confirm-quote.js — its only
+// restaurant mention is a comment about the forms' chrome. Exempt ONLY while it stays identical to BOTH form copies.
+const PORTED = { 'capp-confirm-quote.js': ['xpizza-orders/form-confirm-quote.js', 'la-musa-orders/form-confirm-quote.js'] };
+const codeFiles = () => readdirSync(join(ROOT, 'customer-app')).filter((f) => /\.(m?js|html|css)$/.test(f) && !/\.test\.m?js$/.test(f) && f !== SYNCED && !(f in PORTED));
 
 test('no restaurant id or name in customer-app/ code', () => {
   const files = codeFiles();
@@ -31,6 +34,9 @@ test('no restaurant id or name in customer-app/ code', () => {
   }
   assert.ok(LEAK.test("rid === 'la_musa'") && LEAK.test('X. Pizza'), 'non-vacuity: the detector fires');
   assert.ok(readFileSync(join(ROOT, 'customer-app', SYNCED)).equals(readFileSync(join(ROOT, 'platform', 'client', SYNCED))), `🔴 customer-app/${SYNCED} is not the platform copy — the literal-scan exemption no longer holds`);
+  for (const [f, sources] of Object.entries(PORTED)) for (const src of sources) {
+    assert.ok(readFileSync(join(ROOT, 'customer-app', f)).equals(readFileSync(join(ROOT, src))), `🔴 customer-app/${f} is not byte-identical to ${src} — the literal-scan exemption no longer holds`);
+  }
 });
 
 test('customer-app/ is the one platform orders deployment, with exactly the approved shape (no host literal)', () => {
