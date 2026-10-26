@@ -47,9 +47,15 @@ expect "orange in the second <style> block (lowercase)" RED "$(run "${STATIC[@]}
 # P2: inline orange must be caught
 restore; ins_inline '<div style="background:#FA4400"></div>'
 expect "inline style orange" RED "$(run "${STATIC[@]}")"
-# higher-specificity :root override is NOT exempt (only bare :root --accent is)
+# higher-specificity :root override is NOT exempt (only the single baseline :root --accent is)
 restore; ins_before_style1 ':root:not(.zzz) { --accent: #FA4400; }'
 expect "higher-specificity :root:not(.zzz) --accent orange" RED "$(run "${STATIC[@]}")"
+# r2: a SECOND --accent:#FA4400 on a later top-level :root is NOT the baseline → RED
+restore; ins_before_style1 ':root { --accent: #FA4400; }'
+expect "second top-level :root --accent:#FA4400" RED "$(run "${STATIC[@]}")"
+# r2: an --accent:#FA4400 inside @media is conditional, not the baseline → RED
+restore; ins_before_style1 '@media (min-width:1px) { :root { --accent: #FA4400; } }'
+expect "@media :root --accent:#FA4400 (conditional)" RED "$(run "${STATIC[@]}")"
 restore; expect "static: restored clean" GREEN "$(run "${STATIC[@]}")"
 
 echo "== BROWSER mutants (fa4400-render.browser.test.js) =="
@@ -61,6 +67,9 @@ if CHS_OK=$(node -e 'import("node:fs").then(fs=>{const {existsSync,readdirSync}=
   restore; set_accent 'rgb(250,68,0)'; expect "winning --accent = rgb(250,68,0)" RED "$(run "${BROWSER[@]}")"
   # P1: a higher-specificity later override wins the cascade → orange
   restore; ins_before_style2 ':root:not(.zzz) { --accent: #FA4400; }'; expect "higher-specificity override wins → orange" RED "$(run "${BROWSER[@]}")"
+  # r2: a thumb GRADIENT in derived oranges (not a solid colour) must be caught by the gradient-stop scan.
+  # id-level selector so it beats the frozen `.slide-confirm .slide-thumb{background:...!important}` and truly renders.
+  restore; ins_before_style2 '#screen-onshift .slide-thumb { background-image: linear-gradient(155deg,#FF7438,#F23E00) !important; }'; expect "thumb orange gradient (#FF7438/#F23E00)" RED "$(run "${BROWSER[@]}")"
   restore; expect "browser: restored clean" GREEN "$(run "${BROWSER[@]}")"
 else
   echo "SKIP  browser mutants — no chrome-headless-shell resolved (set CHROME_HEADLESS_SHELL)"

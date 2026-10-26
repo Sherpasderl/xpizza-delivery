@@ -59,7 +59,7 @@ function walkRules(css) {
   const rules = [];
   const n = css.length;
   let i = 0;
-  function block() {
+  function block(cond) {
     while (i < n) {
       while (i < n && /\s/.test(css[i])) i++;
       if (i >= n || css[i] === '}') { i++; return; }
@@ -71,16 +71,16 @@ function walkRules(css) {
       const prelude = css.slice(start, i).replace(/\s+/g, ' ').trim();
       i++;                                              // consume '{'
       if (/^@(media|supports|container|document|layer)\b/i.test(prelude)) {
-        block();                                        // conditional group — selectors inside still apply
+        block(true);                                    // conditional group — anything inside is conditional
       } else {
         const bstart = i; let depth = 1;
         while (i < n && depth > 0) { if (css[i] === '{') depth++; else if (css[i] === '}') { depth--; if (!depth) break; } i++; }
-        rules.push({ sel: prelude, body: css.slice(bstart, i) });
+        rules.push({ sel: prelude, body: css.slice(bstart, i), conditional: cond });
         i++;                                            // consume matching '}'
       }
     }
   }
-  block();
+  block(false);
   return rules;
 }
 
@@ -113,15 +113,21 @@ t(`found ${STYLE_BLOCKS.length} <style> block(s) — scanning all of them`, () =
   assert.ok(STYLE_BLOCKS.length >= 1, 'no <style> block found in index.html');
 });
 
-t('every brand-orange rule targets ONLY .rchip.xp .rdot dots (per selector) — baseline --accent token aside', () => {
+const isBaselineDecl = (decl) => /^--accent\s*:\s*#fa4400$/i.test(decl.replace(/\s+/g, ' ').trim());
+
+t('every brand-orange rule targets ONLY .rchip.xp .rdot dots (per selector) — the SINGLE baseline --accent aside', () => {
   const violations = [];
-  for (const raw of STYLE_BLOCKS) {
-    const css = stripComments(raw);
-    for (const rule of walkRules(css)) {
+  // flatten all rules across every <style> block in source order
+  const rules = STYLE_BLOCKS.flatMap((raw) => walkRules(stripComments(raw)));
+  // the one allowed exception is the baseline token: the FIRST top-level (non-@media) :root rule's `--accent: #FA4400`.
+  // Any other brand-orange — a second --accent anywhere, one inside @media, a different :root block — is a violation.
+  const baselineRule = rules.find((r) => r.sel === ':root' && !r.conditional);
+  let baselineClaimed = false;
+  for (const rule of rules) {
+    {
       for (const hit of brandHits(rule.body)) {
         const decl = declAt(rule.body, hit.index);
-        // the single allowed exception: the baseline `--accent: #FA4400` custom property on :root
-        if (/^--accent\s*:/.test(decl) && rule.sel === ':root') continue;
+        if (rule === baselineRule && !baselineClaimed && isBaselineDecl(decl)) { baselineClaimed = true; continue; }
         for (const sel of selectors(rule.sel)) {
           if (!isDot(sel)) violations.push(`brand-orange (${hit.raw}) in "${decl.slice(0, 50)}" via non-dot selector "${sel.slice(0, 60)}"`);
         }

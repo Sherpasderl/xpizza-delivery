@@ -33,16 +33,23 @@ function resolveChrome() {
 
 // orange = hue 10–45°, saturation ≥ .45, lightness .2–.7 → covers #FA4400 and every derived slide orange; excludes
 // steel rgb(47,95,184) (hue ~220) and the translucent whites.
-function isOrange(css) {
-  const m = /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i.exec(css || '');
-  if (!m) return false;
-  const [r, g, b] = [+m[1] / 255, +m[2] / 255, +m[3] / 255];
+function rgbIsOrange(r, g, b) {
+  [r, g, b] = [r / 255, g / 255, b / 255];
   const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
   if (d === 0) return false;
   const s = d / (1 - Math.abs(2 * l - 1));
   let h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
   h *= 60; if (h < 0) h += 360;
   return h >= 10 && h <= 45 && s >= 0.45 && l >= 0.2 && l <= 0.7;
+}
+// scan EVERY rgb/rgba token in a computed value — a solid colour OR every stop of a computed gradient string
+// (getComputedStyle normalises linear-gradient(...) colour stops to rgb()/rgba()).
+function isOrange(css) {
+  if (!css) return false;
+  const re = /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/gi;
+  let m;
+  while ((m = re.exec(css))) if (rgbIsOrange(+m[1], +m[2], +m[3])) return true;
+  return false;
 }
 
 const STYLE = [...readFileSync(join(__dir, 'index.html'), 'utf8').matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)]
@@ -63,12 +70,16 @@ const body = CONTEXTS.map((c) => STATES.map((st) => ctx[c](st)).join('')).join('
 const html = `<!doctype html><html><head><meta charset="utf8"><style>${STYLE}</style></head><body>${body}
 <div id="accent-probe" style="background:var(--accent)"></div>
 <script>
+  // sample BOTH the solid background colour and the background-image (gradient) — a slide element can carry an
+  // orange gradient while its backgroundColor is translucent white.
+  const samp=(s)=>{const e=document.querySelector(s);if(!e)return 'MISSING';const c=getComputedStyle(e);return c.backgroundColor+' || '+c.backgroundImage;};
   const bg=(s)=>{const e=document.querySelector(s);return e?getComputedStyle(e).backgroundColor:'MISSING';};
   const out={ accent:bg('#accent-probe') };
   for (const c of ${JSON.stringify(CONTEXTS)}) for (const st of ${JSON.stringify(STATES)}) {
-    out[c+'/'+st+'/track']=bg('#'+c+'-'+st);
-    out[c+'/'+st+'/fill']=bg('#'+c+'-'+st+' .slide-fill');
-    out[c+'/'+st+'/thumb']=bg('#'+c+'-'+st+' .slide-thumb');
+    out[c+'/'+st+'/track']=samp('#'+c+'-'+st);
+    out[c+'/'+st+'/fill']=samp('#'+c+'-'+st+' .slide-fill');
+    out[c+'/'+st+'/thumb']=samp('#'+c+'-'+st+' .slide-thumb');
+    out[c+'/'+st+'/track-bgc']=bg('#'+c+'-'+st);
   }
   document.title='PROBE'+JSON.stringify(out);
 </script></body></html>`;
@@ -94,10 +105,10 @@ t('the WINNING computed --accent is azul-acero, never an orange', () => {
   assert.equal(out.accent.replace(/\s+/g, ''), 'rgb(47,95,184)', `computed --accent = ${out.accent}, expected steel rgb(47, 95, 184)`);
 });
 
-t('no .slide-confirm track / fill / thumb computes to orange in any of the 4 contexts × 3 states', () => {
+t('no .slide-confirm track / fill / thumb computes to orange (solid OR gradient) in any of the 4 contexts × 3 states', () => {
   const bad = [];
   for (const [k, v] of Object.entries(out)) {
-    if (k === 'accent') continue;
+    if (k === 'accent' || k.endsWith('/track-bgc')) continue;   // samp keys carry colour || background-image
     assert.notEqual(v, 'MISSING', `probe element missing for ${k}`);
     if (isOrange(v)) bad.push(`${k} = ${v}`);
   }
@@ -107,7 +118,7 @@ t('no .slide-confirm track / fill / thumb computes to orange in any of the 4 con
 t('every slide-confirm track computes to the steel track colour (the prototype .slide background)', () => {
   const bad = [];
   for (const [k, v] of Object.entries(out)) {
-    if (!k.endsWith('/track')) continue;
+    if (!k.endsWith('/track-bgc')) continue;
     if (v.replace(/\s+/g, '') !== 'rgb(47,95,184)') bad.push(`${k} = ${v}`);
   }
   assert.deepEqual(bad, [], `slide track(s) not steel rgb(47, 95, 184):\n  ${bad.join('\n  ')}`);
