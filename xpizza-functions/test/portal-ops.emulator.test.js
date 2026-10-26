@@ -722,7 +722,7 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
       console.log('KEYS ' + JSON.stringify(Object.keys(m).sort()));`], { env: process.env, encoding: 'utf8', timeout: 120000 });
     assert.strictEqual(r.status, 0, r.stderr.slice(-400));
     assert.ok(r.stdout.includes('portal_ops_entry getMyBranches'));
-    assert.deepStrictEqual(JSON.parse(r.stdout.split('\n').find((l) => l.startsWith('KEYS ')).slice(5)), ['getBranchAvailability', 'getBranchDevices', 'getMyBranches', 'revokeBranchDevice', 'setBranchAvailability', 'setBranchPause', 'updateBranch']);
+    assert.deepStrictEqual(JSON.parse(r.stdout.split('\n').find((l) => l.startsWith('KEYS ')).slice(5)), ['createBranchDraft', 'deleteBranchDraft', 'getBranchAvailability', 'getBranchDevices', 'getMyBranches', 'revokeBranchDevice', 'setBranchActive', 'setBranchAvailability', 'setBranchPause', 'updateBranch', 'updateBranchProfile']);   // + O1b's four lifecycle endpoints
     ok('isolated load: FUNCTION_TARGET=getMyBranches loads only the ops group (marker printed) under the emulator env');
   }
 
