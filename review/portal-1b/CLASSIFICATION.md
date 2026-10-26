@@ -8,9 +8,9 @@
 
 Run: `node review/portal-1b/shoot.mjs`.
 
-**Result after the in-slot fix commit (52de0ad3): 0 BUG, 0 UNSURE.**
+**Result after the in-slot fix commits (52de0ad3, 86aaf0da): 0 BUG, 0 UNSURE.** Every pair was inspected: 17 desktop pairs and 17 at 390, partly through montages.
 
-## BUG — found on the first capture, fixed in 52de0ad3, re-captured
+## BUG — found on the first captures, fixed in 52de0ad3 / 86aaf0da, re-captured
 
 | # | Frame | Difference | Fix |
 |---|---|---|---|
@@ -20,6 +20,7 @@ Run: `node review/portal-1b/shoot.mjs`.
 | 4 | S9a | The pre-selected chip didn't show as selected (CSS specificity). | `#sucmodal .chip1b.chipon1b` |
 | 5 | S3 / S9a | A valid WhatsApp stayed as typed («3390 5521»). The frame shows «+504 3390-5521». | Formatted once the field is left; an invalid value is kept as typed. |
 | 6 | s2-empty | The second line rendered in ink, about 20px high. | Dedicated classes, muted, with the frame's spacing. |
+| 7 | s2-empty / s2-onedraft at 390 | The short page stretched the stacked mobile shell rows: a tall top bar and a pill-shaped «Sucursales» chip. Pre-existing shell grid behaviour, first visible on a short page. | `.app.opsview{align-content:start}` at ≤920px (86aaf0da) |
 
 ## Approved-truth deviation (advisor rulings, plan §2f T1–T8 / B1–B7)
 
@@ -41,6 +42,9 @@ Run: `node review/portal-1b/shoot.mjs`.
 
 ## Data / environment (not a difference in the product)
 
+- **S8b / S8c.** The frame draws the checklist on a draft («Jardines del Valle», Borrador). E1 sends readiness only for Por activar / Desactivada rows (plan §2c), so the build shows them on a Por activar row. In the S8b fixture the readiness has location + zone gaps only, while the profile leaves Sat/Sun undefined, so the editor shows «Sin definir» under a «Listo» hours row. A real E1 would report the hours gap too.
+- **s3-bad / s9a-bad.** The typed «2234-5678» is kept as typed (an invalid value is never reformatted); the frame's sample shows «+504 2234-5678».
+
 - **Sample data.** The copy chips list the fixture's siblings: «Bulevar del Norte · Centro · Col. Trejo» on Andes and «Bulevar del Norte · Centro» on Trejo, where the frame shows «Centro · Col. Trejo». The rule is per T6: the same brand's identity rows except this one, with valid hours.
 - **Map.** The zone circle radius uses 1a's display scale (radius × 9 px); the frame uses a hand-set sample. The frame's road line renders black under the canvas runtime.
 - **Focus.** The confirm modals focus their first button, so a focus ring shows on Cancelar (deliberate). S5's last-typed hour input keeps focus at capture.
@@ -50,5 +54,5 @@ Run: `node review/portal-1b/shoot.mjs`.
 
 - **Sidebar.** Section labels «Menú» / «Operación» / «Negocio»; Ventas sits under Negocio; «Marca» is not registered on this base; the manager has no Ventas (1a A3).
 - **Brand switcher sub-line and width.** It shows the scope label (1a). The lifecycle-only shell shows «N sucursal(es)» per the approved Fable choice.
-- **Mobile.** The top bar has no account button, and the mobile nav wraps where the frame scrolls (1a).
+- **Mobile.** The top bar has no account button, the mobile nav wraps where the frame scrolls, and the mobile heading size is 1a's.
 - **1a components.** The prep stepper's 30px value (the canvas renders the frame's value small), the crumb's 32px touch height, and the «Cambios sin guardar en {name}» bar text weight are all 1a's.
