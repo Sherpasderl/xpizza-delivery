@@ -3,6 +3,8 @@
 // copy, which must equal the explicit dark block) and the REAL 1b rules from styles.css. For each text class it takes the
 // rule's declared `color` token, pairs it with the surface the element sits on (declared `background`, else the named
 // container surface), and requires ≥ 4.5:1 in light AND dark. A rule whose colour drifts from the table fails here first.
+// 1a follow-up (2026-10-26): the same sweep covers every 1a `.ops` / `.drawer.ops` text rule, and a completeness check
+// discovers those rules from styles.css so a new one cannot land outside the table.
 // Run: node --test xpizza-portal/branches-1b-aa.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -36,15 +38,17 @@ const TEXT = [
   ['.pillok1b', null], ['.pillwarn1b', null], ['.pillwait1b', null], ['.pilldraft1b', null], ['.pillstaged1b', null], ['.pillinactive1b', null],
   ['.chipon1b', null], ['#sucmodal .chip1b.chipon1b', null], ['.ops .calloutok1b b', 'green-soft'],
 ];
-
-test('the prefers-color-scheme dark tokens equal the explicit dark theme (one dark palette)', () => {
-  assert.deepEqual(DARK_MQ, DARK);
-  assert.ok(Object.keys(DARK).length > 15, 'non-vacuity: the palette was parsed');
-});
-
-test('every 1b text class clears 4.5:1 in light AND dark (dark --mute2 on --card is 4.46 — small text uses --mute)', () => {
+// 1a text rules: [selector, surface token it sits on when the rule declares no background]
+const TEXT_1A = [
+  ['.ops .card', null], ['.ops .cmeta', 'card'], ['.ops .cmeta b', 'card'], ['.ops .callout', null], ['.ops .callout b', 'amber-soft'],
+  ['.ops .errbox b,#detail .errbox b', 'red-soft'], ['.ops .errbox p,#detail .errbox p', 'red-soft'], ['.ops .crumb', 'board'],
+  ['.ops .sec h3 .hint', 'card'], ['.ops .sec p.help', 'card'], ['.ops .fld .lab', 'card'], ['.ops .inval', null], ['.ops .inval.inro', null],
+  ['.ops .fnote', 'card'], ['.ops .hrow .d', 'card'], ['.ops .step .val span', 'card'], ['.ops .step .val.miss', 'card'], ['.ops .stepb', null],
+  ['.ops .map .mz', null], ['.ops .status .sub', 'board-2'], ['.drawer.ops .adwx', null], ['.drawer.ops .bt span', 'card'], ['.drawer.ops .fnote', 'card'],
+];
+const sweep = (rows) => {
   let cells = 0;
-  for (const [sel, surface] of TEXT) {
+  for (const [sel, surface] of rows) {
     const fg = declared(sel, 'color');
     const bg = declared(sel, 'background') || surface;
     assert.ok(fg && bg, `${sel}: a colour token and a surface`);
@@ -55,7 +59,31 @@ test('every 1b text class clears 4.5:1 in light AND dark (dark --mute2 on --card
       cells += 1;
     }
   }
-  assert.equal(cells, TEXT.length * 2);
+  assert.equal(cells, rows.length * 2);
+};
+
+test('the prefers-color-scheme dark tokens equal the explicit dark theme (one dark palette)', () => {
+  assert.deepEqual(DARK_MQ, DARK);
+  assert.ok(Object.keys(DARK).length > 15, 'non-vacuity: the palette was parsed');
+});
+
+test('every 1b text class clears 4.5:1 in light AND dark (dark --mute2 on --card is 4.46 — small text uses --mute)', () => {
+  sweep(TEXT);
   // non-vacuity: the pair the gate found really fails, and the swap really passes
   assert.ok(ratio(DARK.mute2, DARK.card) < 4.5 && ratio(DARK.mute, DARK.card) >= 4.5 && ratio(LIGHT.mute, LIGHT.card) >= 4.5);
+});
+
+test('every 1a .ops / .drawer.ops text rule clears 4.5:1 in light AND dark (1a follow-up: .hint, .fld .lab, .fnote → --mute)', () => {
+  sweep(TEXT_1A);
+});
+
+test('the 1a table is complete: every non-1b .ops / .drawer.ops rule that sets a text colour is swept', () => {
+  const found = [];
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const sel = m[1].trim();
+    if (!/^\.(drawer\.)?ops\b/.test(sel) || /1b|#sucmodal|:hover|@/.test(sel)) continue;
+    if (/(?:^|;)\s*color:\s*var\(--/.test(m[2])) found.push(sel);
+  }
+  assert.ok(found.length >= 20, 'non-vacuity: the 1a rules were discovered');
+  assert.deepEqual([...found].sort(), TEXT_1A.map(([sel]) => sel).sort());
 });

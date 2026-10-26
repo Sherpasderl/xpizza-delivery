@@ -99,8 +99,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "18e132d0692661d17e9dcd771c49d3697871a3b522998ab712eae8398756c15d",
-   "bytes": 98950
+   "sha256": "0e8ba21c293a699ba4473d764585dfdb2f34ec7df964b4376d4b5e4945a65d4b",
+   "bytes": 98946
   }
  },
  "diff_aid": {
@@ -876,7 +876,7 @@
     "",
     ".drawer.ops .fnote",
     "color",
-    "var(--mute2)"
+    "var(--mute)"
    ],
    [
     "",
@@ -2016,13 +2016,13 @@
     "",
     ".ops .fld .lab",
     "color",
-    "var(--mute2)"
+    "var(--mute)"
    ],
    [
     "",
     ".ops .fnote",
     "color",
-    "var(--mute2)"
+    "var(--mute)"
    ],
    [
     "",
@@ -2160,7 +2160,7 @@
     "",
     ".ops .sec h3 .hint",
     "color",
-    "var(--mute2)"
+    "var(--mute)"
    ],
    [
     "",
