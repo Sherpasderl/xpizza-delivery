@@ -406,7 +406,7 @@ function scripted(script) {
     const q = script[ep] || []; const r = q.length > 1 ? q.shift() : q[0];
     if (!r) throw new Error(`unscripted ${ep}`);
     if (r === 'network') throw new TypeError('Failed to fetch');
-    const res = typeof r === 'function' ? r(body, url) : r;
+    const res = typeof r === 'function' ? await r(body, url) : r;   // a function may defer its answer (a late response)
     return { status: res.status, ok: res.status >= 200 && res.status < 300, json: async () => res.json };
   };
   return { fetch, calls, of: (ep) => calls.filter((c) => c.ep === ep) };
@@ -1172,4 +1172,68 @@ test('S2b r2 OWNER (B): a cancel return with NO record and NO creds ⇒ the pend
   await c.click('[data-act="pay"][data-val="cash"]'); await c.click('#cta'); await c.click('[data-act="tipc"][data-val="0"]');
   await c.click('[data-act="tip-place"]'); await c.click('#layer [data-act="placing-go"]');
   assert.equal(c.srv.of('createOrder').length, 1, '🔴 (B): the checkout is unlocked — a new placement goes out');
+});
+
+// a response the test releases later (destroy lands while the request is in flight)
+const deferred = (res) => { let go; const p = new Promise((r) => { go = r; }); return { fn: () => p.then(() => res), go }; };
+test('S2b r3 P2-3a: a 202 that lands AFTER destroy() ⇒ the transport never re-sends — one charge; the record keeps the 202 (admitted, unresolved)', async () => {
+  const storage = memStore();
+  const d = deferred({ status: 202, json: { status: 'in_progress' } });
+  const b = bootCo({ storage, script: { chargeOnlineOrder: [d.fn, CHECKOUT] } });
+  await placeVia(b, 'online');
+  assert.equal(b.srv.of('chargeOnlineOrder').length, 1, 'premise: the first charge is in flight');
+  b.ui.destroy();
+  d.go(); await settle(50);
+  assert.equal(b.srv.of('chargeOnlineOrder').length, 1, '🔴 zero charges after teardown (the 202 retry is gated)');
+  const rec = placeRec(storage);
+  assert.deepEqual([rec.admitted, rec.unresolved, rec.dispatched], [true, true, 1], 'the 202 is persisted: the next page recovers, never re-charges');
+  assert.equal(b.nav.length, 0);
+});
+
+test('S2b r3 P2-3b: a late «price_increased» after destroy() is PERSISTED but never rendered — no price sheet, no layer, no re-send', async () => {
+  for (const pay of ['online', 'cash']) {
+    const storage = memStore();
+    const d = deferred({ status: 409, json: { error: 'price_increased', net_total_cents: 99900 } });
+    const ep = pay === 'online' ? 'chargeOnlineOrder' : 'createOrder';
+    const b = bootCo({ storage, realSheet: true, script: { [ep]: [d.fn, pay === 'online' ? CHECKOUT : { status: 200, json: { ok: true, order_id: 'X' } }] } });
+    await placeVia(b, pay);
+    const id = b.srv.of(ep)[0].body.order_id;
+    b.ui.destroy();
+    d.go(); await settle(50);
+    assert.equal(b.q('.cq-sheet'), null, `🔴 ${pay}: no price sheet after teardown`);
+    assert.equal(b.q('#layer').innerHTML, '', `${pay}: nothing rendered`);
+    assert.equal(writes(b), 1, `🔴 ${pay}: no re-send`);
+    const rec = placeRec(storage);
+    assert.equal(rec.order_id, id, `${pay}: the identity is kept`);
+    if (pay === 'online') assert.equal(rec.unresolved, false, '🔴 card: the definitive refusal is persisted (settled — no checkout exists)');
+  }
+});
+
+test('S2b r3 P2-5: a CASH record on file + a credentialless cancel ⇒ the pending sheet; dismissed, the card (and cash) send NOTHING with the retained id; a reload stays locked', async () => {
+  const storage = memStore();
+  const a = bootCo({ storage, script: { createOrder: ['network'] } });
+  await placeVia(a);
+  const id = a.srv.of('createOrder')[0].body.order_id;
+  assert.equal(placeRec(storage).order_id, id, 'premise: a cash placement on record after the network failure');
+  a.ui.destroy();
+  const c = await returned(storage, '?pay=cancel', {});
+  assert.equal(c.srv.calls.length, 0, 'no creds: nothing to poll');
+  assert.equal(c.q('#layer .sheet').getAttribute('aria-label'), 'Tu pago todavía está en verificación');
+  assert.deepEqual([placeRec(storage).order_id, placeRec(storage).pay_pending], [id, true], 'the cash record is locked');
+  await c.click('#layer [data-act="lclose"]');
+  c.ui.cart.inc(c.plain.key); c.ui.openCheckout(); await settle();   // the cart's «Ir a pagar» path (asks for the location)
+  await c.type('#f-details', 'Portón negro'); await c.type('#f-name', 'Ana'); await c.type('#f-phone', '9999 0000');
+  for (const pay of ['online', 'cash']) {
+    await c.click(`[data-act="pay"][data-val="${pay}"]`); await c.click('#cta');
+    if (c.q('[data-act="tipc"][data-val="0"]')) await c.click('[data-act="tipc"][data-val="0"]');
+    if (c.q('[data-act="tip-place"]')) await c.click('[data-act="tip-place"]');
+    if (c.q('#layer [data-act="placing-go"]')) await c.click('#layer [data-act="placing-go"]');
+    assert.equal(c.q('#layer .sheet').getAttribute('aria-label'), 'Tu pago todavía está en verificación', `${pay}: the pending sheet again`);
+    await c.click('#layer [data-act="lclose"]');
+  }
+  assert.deepEqual([writes(c), c.srv.of('paymentStatus').length], [0, 0], '🔴 zero charges, zero createOrder, zero polls with the retained id (only the quote went out)');
+  c.ui.destroy();
+  const r = bootCo({ storage, script: {} });
+  await placeVia(r, 'online');
+  assert.deepEqual([writes(r), r.q('#layer .sheet').getAttribute('aria-label')], [0, 'Tu pago todavía está en verificación'], '🔴 a reload stays locked');
 });

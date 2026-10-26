@@ -621,6 +621,40 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     ok(`V card → provider-loss 502 → cash (lock ${A.LOCK_INTERRUPTED_CARD ? 'ON: refused, recovery' : 'off: the real order_exists'}) → card: the card send stays unresolved with its economics; recovery, one gateway attempt`);
   }
 
+  // ── W (S2b r4, Codex r3): paid_unverified through the REAL handlers — a concurrent request completes THIS identity between the
+  // 202 and the re-send, and the customer pays (the real writer) ⇒ the re-send's 409 Already paid, no creds ⇒ paid_unverified ──
+  {
+    await clean(); CHARGED.length = 0; HOSTED_REACHED = 0;
+    let release; HOSTED_GATE = { p: new Promise((r) => { release = r; }) };
+    let concurrent = null;
+    BEFORE_SEND = { ep: 'chargeOnlineOrder', run: async (url, init) => {   // another instance's request for the SAME identity, first
+      concurrent = fetch(url, init).then((r) => r.json());
+      while (HOSTED_REACHED < 1) await new Promise((r) => setTimeout(r, 10));   // it is 'creating' on the server
+    } };
+    const wStorage = memStorage(); let backoffs = 0;
+    const wp = { storage: wStorage, rid: 'x_pizza', reload: () => null };
+    wp.api = A.createApi({ config: { restaurantId: 'x_pizza', orderIdPrefix: 'TS', pendingPayKey: 'x_pizza_s2a_pending_pay', hours: APP_HOURS,
+      endpoints: Object.fromEntries(Object.keys(ROUTES).map((k) => [k, `${BASE}/${k}`])) }, fetch: (u, i) => sherpa.fetch(u, i), storage: wStorage,
+      sleep: async () => {   // the 202 backoff: the concurrent request completes the checkout and the customer pays it
+        if (++backoffs > 1) return;
+        release(); HOSTED_GATE = null;
+        const cj = await concurrent;
+        assert.ok(cj && cj.checkout_url, `premise: the concurrent request created the checkout (${JSON.stringify(cj)})`);
+        const id = placeOf(wp).order_id; const o = await order(id);
+        assert.ok(await confirmAndMaterialize(edgeDeps('x_pizza'), { orderId: id, attemptId: o.active_attempt_id, now: Date.now(), trackingToken: 'TTW1' }), 'premise: paid by the real writer');
+      } });
+    const f = flowOf('online'); const cart = cartOf('x_pizza');
+    const n0 = await orderCount(); const l0 = LOG.length; const ps0 = count('paymentStatus');
+    let w;
+    try { w = await quoteAndPlace(wp, f, cart); } finally { if (HOSTED_GATE) { release(); HOSTED_GATE = null; } }
+    const sends = LOG.slice(l0).filter((x) => x.ep === 'chargeOnlineOrder').map((x) => [x.status, x.json && (x.json.error || x.json.status)]);
+    assert.deepStrictEqual(sends, [[202, 'in_progress'], [409, 'Already paid']], '🔴 the real race: 202, then the re-send meets the paid order');
+    assert.deepStrictEqual([w.out.kind, count('paymentStatus') - ps0], ['paid_unverified', 0], `🔴 no creds ⇒ paid_unverified, never a poll (${JSON.stringify(w.out)})`);
+    assert.deepStrictEqual([await orderCount(), CHARGED.length], [n0 + 1, 1], 'ONE order, ONE gateway checkout');
+    assert.deepStrictEqual([placeOf(wp), wStorage.getItem('x_pizza_s2a_pending_pay')], [null, null], 'Already paid clears the placement; no creds were ever stored');
+    ok('W paid_unverified through the REAL handlers: a concurrent request completes this identity between the 202 and the re-send, the order is paid (confirmAndMaterialize) ⇒ 409 Already paid, no creds ⇒ paid_unverified; one order, one checkout, zero polls');
+  }
+
   // ── K (r3 rule iii): 202 (a concurrent request is creating THIS identity) → the floor rises → the re-send's 426 KEEPS it ──
   // LAST: it raises the client floor (the inert module sends no X-Client headers, so every later request would be 426'd)
   {

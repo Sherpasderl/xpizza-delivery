@@ -315,7 +315,7 @@
         const id = rec.order_id;
         const body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
         cq.send(body, p.sig, expected);
-        const r = method === 'cash' ? await sendOnce(E.createOrder, body, p.ctx.headers) : await sendCard(id, body, p.ctx);
+        const r = method === 'cash' ? await sendOnce(E.createOrder, body, p.ctx.headers) : await sendCard(id, body, p.ctx, p.alive);
         if (r && r.stop) return r.stop;
         if (!definitive(method, r)) return method === 'cash' ? { kind: 'offline', order_id: id } : resolveExisting(id);   // rule ii
         const j = r.json;
@@ -338,6 +338,8 @@
         if (isExisting(r)) return resolveExisting(id);
         const cr = commonRefusal(r);
         if (cr) return { ...cr, order_id: id };
+        // r3 P2-3: a late answer after teardown is PERSISTED above (settle / issue / clear) but never rendered — no price sheet
+        if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded', order_id: id };
         const rj = await cq.handleRejection({ err: j, shownCents: expected, hasReward: false, retried: silentRetried, sheet: p.sheet });
         if (rj && rj.handled) {
           if (!rj.resend) return { kind: rj.declined ? 'price_declined' : 'error', order_id: id };
@@ -360,8 +362,9 @@
     }
     // 202 in_progress ⇒ admitted (recorded); the SAME identity re-sent by THIS instance, bounded, EVERY re-send a new confirmed
     // dispatch (rule i); exhausted ⇒ the 202 stands (unresolved ⇒ recovery)
-    async function sendCard(id, body, ctx) {
+    async function sendCard(id, body, ctx, alive) {
       for (let i = 0; i < IN_PROGRESS_TRIES; i++) {
+        if (i > 0 && typeof alive === 'function' && !alive()) return { stop: { kind: 'superseded', order_id: id } };   // r3 P2-3: a torn-down page never re-sends (the record keeps its 202: admitted)
         if (i > 0) { try { confirmSend(id, 'online'); } catch (e) { return { stop: placeErr(e, id) || await resolveExisting(id) }; } }
         const r = await sendOnce(E.chargeOnlineOrder, body, ctx.headers);
         if (r.network || r.status !== 202 || !r.parsed) return r;
@@ -401,8 +404,8 @@
       if (pay === 'cancel') {
         // no usable creds: never «Tu banco no autorizó» without an authoritative answer — recovery, locked (S2b r1 P2-5)
         // OWNER (B), 2026-10-26: NO record and NO creds ⇒ the pending sheet once, nothing locked (a cancel almost surely charged
-        // nothing); a card record on file keeps the fail-closed lock
-        if (!id || !t) { const r = readPlace(); const lid = r && r.card === true ? r.order_id : null; if (lid) lockPending(lid); return pendingSheet(lid || id || null); }
+        // nothing); ANY record on file (cash or card, r3 P2-5) keeps the fail-closed lock
+        if (!id || !t) { const r = readPlace(); const lid = r ? r.order_id : null; if (lid) lockPending(lid); return pendingSheet(lid || id || null); }
         const p = await Promise.race([pollOnce(id, t), timeout(CANCEL_CHECK_MS).then(() => ({ state: 'pending', json: {} }))]);
         // the authoritative poll state wins (P2 #5); a server that still says pending LOCKS the order (the pending held state)
         if (p && !p.forbidden && p.state !== 'pending') return outcomeOfState(id, p.state, p.json);

@@ -21066,7 +21066,7 @@
     "slice": "s2b",
     "label": "OWNER (B) applied when a card record exists (no lock)",
     "file": "../customer-app/capp-api.js",
-    "from": "const lid = r && r.card === true ? r.order_id : null;",
+    "from": "const lid = r ? r.order_id : null;",
     "to": "const lid = null;",
     "command": [
       "node",
@@ -21092,6 +21092,54 @@
     "kills_with": [
       "no render after teardown",
       "the agreed re-send never leaves a torn-down page"
+    ]
+  },
+  {
+    "id": "s2b-u14",
+    "slice": "s2b",
+    "label": "sendCard re-sends after a 202 on a torn-down page (no alive() gate in the inner loop)",
+    "file": "../customer-app/capp-api.js",
+    "from": "        if (i > 0 && typeof alive === 'function' && !alive()) return { stop: { kind: 'superseded', order_id: id } };",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "zero charges after teardown"
+    ]
+  },
+  {
+    "id": "s2b-u15",
+    "slice": "s2b",
+    "label": "a late refusal after destroy() still opens the price sheet (no alive() gate before handleRejection)",
+    "file": "../customer-app/capp-api.js",
+    "from": "if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded', order_id: id };",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "no price sheet after teardown"
+    ]
+  },
+  {
+    "id": "s2b-u16",
+    "slice": "s2b",
+    "label": "a credentialless cancel locks only CARD records (a cash record stays open to a charge)",
+    "file": "../customer-app/capp-api.js",
+    "from": "const lid = r ? r.order_id : null;",
+    "to": "const lid = r && r.card === true ? r.order_id : null;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the cash record is locked"
     ]
   },
   {
