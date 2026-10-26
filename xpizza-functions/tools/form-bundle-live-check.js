@@ -1,6 +1,11 @@
 'use strict';
 // FORM BUNDLE ⇄ PUBLISHED CATALOG — the pre-deploy check that a form's BAKED menu matches what its brand has published.
 // Run: node tools/form-bundle-live-check.js        (from xpizza-functions/; needs the network; exit 1 = do not deploy the forms)
+//      node ../xpizza-functions/tools/form-bundle-live-check.js --this-form   (a form's Netlify build: checks only the form whose
+//      folder is the working directory, so one brand's drift never fails another brand's build; a failed build keeps the previous
+//      deploy live — owner decision 2026-10-25, DECISIONS.md)
+// Node built-ins only (fs, path, https): it runs inside a form's Netlify build, where xpizza-functions' dependencies are not
+// installed and the Node version is the image default.
 //
 // Why this exists: the baked bundle (the <script id="form-menu-bundle"> block each form is served with) is generated from the
 // in-repo bootstrap, while the merchant portal publishes to Firestore. Nothing compared the two, so a portal price edit left
@@ -17,7 +22,8 @@
 // WARN (listed, not fatal): live-only additions — they appear when the live menu applies and cannot block a cart.
 // Ignored: the platform identity keys getPublicMenu adds and the forms accept-and-ignore (identity_id, dish_id, extra_id).
 const { readFileSync, readdirSync, existsSync } = require('fs');
-const { join } = require('path');
+const { join, resolve } = require('path');
+const https = require('https');
 const { FORMS } = require('./splice-form-bundle');
 const { SCRIPT_OPEN, extractBundle } = require('../catalog/splice-form-bundle');
 
@@ -74,15 +80,42 @@ function publicMenuUrl(html, rid) {
   return `${m[1]}/menu/${encodeURIComponent(rid)}`;
 }
 
+// The forms to check: every registered form, or with --this-form only the one whose folder is `cwd` (null = cwd is not a
+// registered form folder, which the caller treats as a failure — an unregistered form must not build green).
+function selectForms(argv, cwd, forms = FORMS) {
+  if (!argv.includes('--this-form')) return Object.entries(forms);
+  const here = resolve(cwd);
+  const mine = Object.entries(forms).filter(([, file]) => resolve(file, '..') === here);
+  return mine.length ? mine : null;
+}
+
+// GET a JSON body with the built-in https module (no global fetch: the build image's Node may predate it). Bounded.
+function getJson(url, timeoutMs = 20000) {
+  return new Promise((done, fail) => {
+    const req = https.get(url, { headers: { accept: 'application/json' }, timeout: timeoutMs }, (res) => {
+      let raw = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { raw += c; });
+      res.on('end', () => {
+        if (res.statusCode !== 200) return fail(new Error(`${url} answered ${res.statusCode}`));
+        try { done(JSON.parse(raw)); } catch (e) { fail(new Error(`${url} returned non-JSON`)); }
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error(`${url} timed out after ${timeoutMs} ms`)));
+    req.on('error', fail);
+  });
+}
+
 async function main() {
   let failed = false;
   for (const p of unregisteredForms()) { console.error(`FAIL ${p}: carries a baked menu but is not in tools/splice-form-bundle.js FORMS`); failed = true; }
-  for (const [rid, file] of Object.entries(FORMS)) {
+  const selected = selectForms(process.argv.slice(2), process.cwd());
+  if (!selected) { console.error(`FAIL ${process.cwd()}: --this-form, but this folder is not a registered form`); process.exit(1); }
+  for (const [rid, file] of selected) {
     const html = readFileSync(file, 'utf8');
     const url = publicMenuUrl(html, rid);
-    const res = await fetch(url, { headers: { accept: 'application/json' } });
-    if (!res.ok) { console.error(`FAIL ${rid}: ${url} answered ${res.status}`); failed = true; continue; }
-    const body = await res.json();
+    let body;
+    try { body = await getJson(url); } catch (e) { console.error(`FAIL ${rid}: ${e.message}`); failed = true; continue; }
     const { fail, warn } = compareBundle(extractBundle(html), body && body.menu);
     for (const w of warn) console.log(`WARN ${rid} ${w}`);
     for (const f of fail) console.error(`FAIL ${rid} ${f}`);
@@ -93,4 +126,4 @@ async function main() {
   console.log('form-bundle-live-check: OK');
 }
 if (require.main === module) main().catch((e) => { console.error('form-bundle-live-check: ERROR', e && e.message); process.exit(1); });
-module.exports = { compareBundle, unregisteredForms, publicMenuUrl, IDENTITY_KEYS };
+module.exports = { compareBundle, unregisteredForms, publicMenuUrl, selectForms, IDENTITY_KEYS };

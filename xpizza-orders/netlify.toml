@@ -1,7 +1,10 @@
 
 [build]
   publish = "."
-  command = "node ../platform/stamp-version.js"   # P-SELFUPDATE §1: /version.json + identity <meta>; never fails the build
+  # P-SELFUPDATE §1 stamp (/version.json + identity <meta>; never fails the build), THEN the baked-menu check: this form's baked
+  # menu must equal its brand's published catalog or the build FAILS and the previous deploy stays live (owner 2026-10-25,
+  # DECISIONS.md; docs/runbooks/form-deploy.md). Every registered form must carry it (form-bundle-live-check.test.js).
+  command = "node ../platform/stamp-version.js && node ../xpizza-functions/tools/form-bundle-live-check.js --this-form"
 [build.environment]
   # Netlify secrets scanning (it runs because of the build command above) flags these PUBLIC client keys — the Firebase web
   # config and Google Maps keys already committed in this site's JS. Omit EXACTLY these values; scanning stays ON for

@@ -5,7 +5,8 @@ const assert = require('assert');
 const { readFileSync } = require('fs');
 const { FORMS } = require('./splice-form-bundle');
 const { extractBundle } = require('../catalog/splice-form-bundle');
-const { compareBundle, unregisteredForms, publicMenuUrl } = require('./form-bundle-live-check');
+const { dirname, join } = require('path');
+const { compareBundle, unregisteredForms, publicMenuUrl, selectForms } = require('./form-bundle-live-check');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -54,4 +55,18 @@ assert.deepStrictEqual(unregisteredForms(), [], 'every form that carries a baked
 { const [dropped, ...rest] = rids; const partial = Object.fromEntries(rest.map((r) => [r, FORMS[r]]));
   assert.deepStrictEqual(unregisteredForms(partial), [FORMS[dropped]], 'non-vacuity: a form missing from the registry is reported'); }
 ok('every form folder with a baked menu is registered, so a new brand cannot ship unchecked');
+for (const rid of rids) {
+  assert.deepStrictEqual(selectForms(['--this-form'], dirname(FORMS[rid])).map(([r]) => r), [rid], `${rid}: --this-form in its folder checks ONLY that form`);
+}
+assert.strictEqual(selectForms(['--this-form'], __dirname), null, '--this-form outside a registered form folder selects nothing (the build fails)');
+assert.deepStrictEqual(selectForms([], __dirname).map(([r]) => r), rids, 'without --this-form every registered form is checked');
+ok('--this-form: a form\'s build checks only its own brand; an unregistered folder fails; the default checks every form');
+// Every registered form's Netlify build runs the check for itself, after the stamp — a brand added to the registry without it fails here.
+for (const rid of rids) {
+  const toml = readFileSync(join(dirname(FORMS[rid]), 'netlify.toml'), 'utf8');
+  const cmd = (toml.match(/^\s*command\s*=\s*"([^"]*)"/m) || [])[1] || '';
+  assert.strictEqual(cmd, 'node ../platform/stamp-version.js && node ../xpizza-functions/tools/form-bundle-live-check.js --this-form',
+    `${rid}: its Netlify build command stamps, then runs the baked-menu check for this form only`);
+}
+ok('every registered form\'s Netlify build runs the check (--this-form) after the version stamp')
 console.log(`\nform-bundle-live-check: OK (${n})`);

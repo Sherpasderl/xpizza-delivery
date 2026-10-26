@@ -19764,5 +19764,20 @@
    "node",
    "tools/form-bundle-live-check.test.js"
   ]
+ },
+ {
+  "id": "formcheck-06",
+  "slice": "formcheck",
+  "label": "--this-form is ignored, so one brand's drift fails every brand's Netlify build",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "  if (!argv.includes('--this-form')) return Object.entries(forms);\n",
+  "to": "  return Object.entries(forms);\n",
+  "kills_with": [
+   "--this-form in its folder checks ONLY that form"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
  }
 ]
