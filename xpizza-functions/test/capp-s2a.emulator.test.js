@@ -505,13 +505,14 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     f.pay = 'cash'; C.setPin(f, HUB.lat + 3 * KM, HUB.lng, true);   // cash, and a re-priced pin
     await clean();
     const c = await quoteAndPlace(pg.reload(), f, cart);
-    assert.deepStrictEqual([count('createOrder') - co0, c.out.order_id], [1, id], `premise: the cash attempt is sent on the same identity (${JSON.stringify(c.out)})`);
+    if (A.LOCK_INTERRUPTED_CARD) assert.deepStrictEqual([c.out.kind, c.out.order_id, count('createOrder') - co0], ['existing_order', id, 0], `🔴 owner lock ON: the interrupted card order refuses cash — recovery only (${JSON.stringify(c.out)})`);
+    else assert.deepStrictEqual([count('createOrder') - co0, c.out.order_id], [1, id], `premise (lock off): the cash attempt is sent on the same identity (${JSON.stringify(c.out)})`);
     assert.deepStrictEqual([placeOf(pg).unresolved, placeOf(pg).expected_net_cents], [true, stored], '🔴 the REAL cash refusal left the card send unresolved and its economics untouched');
     f.pay = 'online';
     await clean();
     const b = await quoteAndPlace(pg.reload(), f, cart);
     assert.deepStrictEqual([b.out.kind, b.out.order_id, count('chargeOnlineOrder') - ch0, CHARGED.length], ['existing_order', id, 1, 1], `🔴 back to card ⇒ recovery, ONE gateway attempt (${JSON.stringify(b.out)})`);
-    ok('V card → provider-loss 502 → cash (the real order_exists) → card: the cash answer never settles the unresolved card send nor its economics; recovery, one gateway attempt');
+    ok(`V card → provider-loss 502 → cash (lock ${A.LOCK_INTERRUPTED_CARD ? 'ON: refused, recovery' : 'off: the real order_exists'}) → card: the card send stays unresolved with its economics; recovery, one gateway attempt`);
   }
 
   // ── K (r3 rule iii): 202 (a concurrent request is creating THIS identity) → the floor rises → the re-send's 426 KEEPS it ──
