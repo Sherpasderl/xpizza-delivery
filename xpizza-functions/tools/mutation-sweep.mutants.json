@@ -19577,7 +19577,7 @@
   "slice": "drv-f",
   "id": "drvf-torre-xss",
   "label": "the driver note renders unescaped",
-  "file": "../xpizza-dispatch/index.html",
+  "file": "../xpizza-dispatch/dispatch-alerts.js",
   "from": "` — ${escapeHtml(a.note)}`",
   "to": "` — ${a.note}`",
   "kills_with": [
@@ -19593,8 +19593,8 @@
   "id": "drvf-torre-case",
   "label": "alertContent has no driver_problem case (falls back to «Alerta»)",
   "file": "../xpizza-dispatch/index.html",
-  "from": "    case 'driver_problem': {",
-  "to": "    case 'driver_problemx': {",
+  "from": "    case 'driver_problem':",
+  "to": "    case 'driver_problemx':",
   "kills_with": [
    "DRVF-TORRE-TITLE"
   ],
@@ -19607,7 +19607,7 @@
   "slice": "drv-f",
   "id": "drvf-torre-dn",
   "label": "the Torre ignores the alert's own display number",
-  "file": "../xpizza-dispatch/index.html",
+  "file": "../xpizza-dispatch/dispatch-alerts.js",
   "from": "const ord = Number.isFinite(a.display_number) ?",
   "to": "const ord = false ?",
   "kills_with": [
@@ -19623,8 +19623,8 @@
   "id": "drvf-torre-v",
   "label": "the page import keeps the stale cache key",
   "file": "../xpizza-dispatch/index.html",
-  "from": "from './dispatch-alerts.js?v=3';",
-  "to": "from './dispatch-alerts.js?v=2';",
+  "from": "} from './dispatch-alerts.js?v=4';",
+  "to": "} from './dispatch-alerts.js?v=3';",
   "kills_with": [
    "DRVF-TORRE-IMPORT"
   ],

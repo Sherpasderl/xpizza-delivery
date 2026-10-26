@@ -2673,6 +2673,93 @@
   },
   "xpizza-track/status-view.js#statusArrived@xpizza-track/status-view.js#presentStatus": {
    "status": "pending"
+  },
+  "xpizza-dispatch-mobile/board-model.js#isPostPickup@xpizza-dispatch-mobile/board-model.js#canReassign": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/board-model.js#isPostPickup@xpizza-dispatch-mobile/index.html<script@0>#mdraDeactivate>anon>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/board-model.js#isPostPickup@xpizza-dispatch-mobile/index.html<script@0>#openPicker": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/dispatch-aging.js#agingBaselineMs@xpizza-dispatch-mobile/index.html<script@0>#levelOf": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/dispatch-aging.js#agingBaselineMs@xpizza-dispatch-mobile/index.html<script@0>#minutesOf": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/dispatch-alerts.js#driverProblemContent@xpizza-dispatch-mobile/index.html<script@0>#alertRow": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#alLabel@self": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#alertRow@self": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#displayLabel@xpizza-dispatch-mobile/index.html<script@0>#alLabel": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#hasSlot@xpizza-dispatch-mobile/index.html<script@0>#openDetail": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#hasSlot@xpizza-dispatch-mobile/index.html<script@0>#openDetail~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#hasSlot@xpizza-dispatch-mobile/index.html<script@0>#passHTML": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openDetail@xpizza-dispatch-mobile/index.html<script@0>#openOrderFromAlert": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openDetail@xpizza-dispatch-mobile/index.html<script@0>#openOrderFromAlert>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openOrderFromAlert>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-aging.js#agingBaselineMs@xpizza-dispatch/index.html<script@0>#agedOrd": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-aging.js#agingBaselineMs@xpizza-dispatch/index.html<script@0>#agedOrd~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-aging.js#agingBaselineMs@xpizza-dispatch/index.html<script@0>#colaCard": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-aging.js#agingBaselineMs@xpizza-dispatch/index.html<script@0>#colaCard~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-aging.js#agingBaselineMs@xpizza-dispatch/index.html<script@0>#renderTaskRow": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-aging.js#agingBaselineMs@xpizza-dispatch/index.html<script@0>#riskOf": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-alerts.js#driverProblemContent@xpizza-dispatch/index.html<script@0>#alertContent": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#isPostPickup@xpizza-dispatch/index.html<script@0>#colaCard": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#isPostPickup@xpizza-dispatch/index.html<script@0>#draRenderDeactivate>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#isPostPickup@xpizza-dispatch/index.html<script@0>#openPicker": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#isPostPickup@xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#isPostPickup@xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#isPostPickup@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon>anon@self": {
+   "status": "pending"
   }
  }
 }

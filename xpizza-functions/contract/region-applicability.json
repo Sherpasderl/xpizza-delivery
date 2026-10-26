@@ -411,14 +411,14 @@
     "site": "if (ds.drvfocus){ showTab('mapa'); window.__focusDriverOnMap?.(ds.drvfocus); return; }",
     "siteSha": "deb368c93927903c91e1fd367f3d1f71393515740bfe1cd564fd2666a573fd37",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+    "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -456,14 +456,14 @@
     "site": "if (ds.map){ closeSheet(); showTab('mapa'); window.__focusOrderOnMap?.(ds.map); return; }",
     "siteSha": "575ce555a92ed3dbdf778f78f4b7493fa185c4883d5a2104cab06c522ec37d1d",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+    "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -508,7 +508,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -520,7 +520,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
+     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
     },
     {
      "kind": "C",
@@ -533,7 +533,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -574,7 +574,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -586,7 +586,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
+     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
     },
     {
      "kind": "C",
@@ -599,7 +599,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -640,7 +640,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -685,7 +685,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -730,7 +730,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -742,7 +742,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
+     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
     },
     {
      "kind": "C",
@@ -755,7 +755,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -789,14 +789,14 @@
     "site": "if (oid) { sheetDir = 'push'; openConfirm(oid, ds.choose); }",
     "siteSha": "40f2a5db66dbdcd1f9742f459d4d41493ab90987dbee4228e68dc69ab0805d3a",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+    "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -834,14 +834,14 @@
     "site": "if (ds.detail){ sheetDir = ds.back ? 'pop' : 'push'; openDetail(ds.detail); return; }",
     "siteSha": "64b313060d187928487b1eec1898c5494f904aa8e13126b09961a9a20336c4e0",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+    "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     }
    ],
    "cases": {
@@ -873,7 +873,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -918,7 +918,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -930,7 +930,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
+     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
     },
     {
      "kind": "C",
@@ -943,7 +943,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -984,7 +984,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -996,7 +996,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
+     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
     },
     {
      "kind": "C",
@@ -1009,7 +1009,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -1078,7 +1078,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -1119,7 +1119,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -1157,14 +1157,14 @@
     "site": "const list = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing });",
     "siteSha": "c7158f71157aa2dde3c65c614284780e24504ff7c55605ff7ebfd1959d72eeb5",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
-    "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
+    "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -1176,7 +1176,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
      "text": "const rowOf = (r) => {",
-     "scopeSha": "ad58f65e9f531ddff312847be1c8dea5657a835bd5da82706351f93e26eff069"
+     "scopeSha": "137990595fe49c89c716309817cfb7662e15ba5f16ddf982ce9fdbb31371fe41"
     },
     {
      "kind": "C",
@@ -1189,7 +1189,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -1258,7 +1258,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
@@ -1292,14 +1292,14 @@
     "site": ": await XPD.assignOrderToDriver(orderId, driverId);",
     "siteSha": "2aba6953be0b8d874ae7ccad93862306857bfb5ddb02247b5982e125a78154c3",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#commitAssign",
-    "scopeSha": "08cb50629da1f4528a5e37cd530010b33965f395b2b1c5294f37ab8db7e3ebbc"
+    "scopeSha": "65823ed0dde013f2091abe491a7fecb5c92411ca0198b13b9cb7d630666f0f22"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -1432,7 +1432,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -1565,7 +1565,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -1691,14 +1691,14 @@
     "site": "? await XPD.reassignOrder(orderId, driverId, pickerFromDriver)",
     "siteSha": "9e3bc4a26798f74f79c8943a1577eb089bc34749299cc68fc6e20b3692fd5eb8",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#commitAssign",
-    "scopeSha": "08cb50629da1f4528a5e37cd530010b33965f395b2b1c5294f37ab8db7e3ebbc"
+    "scopeSha": "65823ed0dde013f2091abe491a7fecb5c92411ca0198b13b9cb7d630666f0f22"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -1831,7 +1831,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -1964,7 +1964,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "79d824e939df58ec0e618f691eb06089d38d953f117647ff543eab685e70d9fe"
+     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
     },
     {
      "kind": "K",
@@ -2090,7 +2090,7 @@
     "site": "const stalledDetail = isStalledAssignment(dtDetail, Date.now(), ptDetail);",
     "siteSha": "cb33e81bb9ecd8cd6fc390755aca420b73b37af0eead2699e3c9c54b2251bcd4",
     "scope": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
-    "scopeSha": "1d51f909662dca8a333b537ee706b6092385b4e88918cb644cbfed42e9e4dc01"
+    "scopeSha": "f2b51a3667658fab1bb3b3347c01b139dcf686530ca564fe9488992562edb195"
    },
    "guards": [
     {
@@ -2367,7 +2367,7 @@
     "site": "$('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;",
     "siteSha": "7e94fc97ed4c1c7b15c26081c72c68e7fea1759391ef31d1a1d98cfaccf50a82",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker",
-    "scopeSha": "59d86688258467c89590c3ea58a69b47460af6e9cbca0f44c1d34effbb840c86"
+    "scopeSha": "1d092cad5d093caabe45097751140ff434251b2cb34a1c7acee37fdcd3eb06a2"
    },
    "guards": [
     {
@@ -2391,7 +2391,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     }
@@ -2418,7 +2418,7 @@
     "site": "$('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;",
     "siteSha": "7e94fc97ed4c1c7b15c26081c72c68e7fea1759391ef31d1a1d98cfaccf50a82",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker",
-    "scopeSha": "59d86688258467c89590c3ea58a69b47460af6e9cbca0f44c1d34effbb840c86"
+    "scopeSha": "1d092cad5d093caabe45097751140ff434251b2cb34a1c7acee37fdcd3eb06a2"
    },
    "guards": [
     {
@@ -2442,7 +2442,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     }
@@ -2538,7 +2538,7 @@
     "site": "<span class=\"order-id\">${escapeHtml(displayOrderLabel(order))}</span>",
     "siteSha": "4c05dbbe3dc8a74109630724d00e882b49c2ff724271fc14f73ea2d4b0dfc85b",
     "scope": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
-    "scopeSha": "1d51f909662dca8a333b537ee706b6092385b4e88918cb644cbfed42e9e4dc01"
+    "scopeSha": "f2b51a3667658fab1bb3b3347c01b139dcf686530ca564fe9488992562edb195"
    },
    "guards": [
     {
@@ -2822,7 +2822,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     }
@@ -2873,7 +2873,7 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 6,
       "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     }
@@ -3018,7 +3018,7 @@
     "site": "openPicker(btn.dataset.reassignOrder, true);",
     "siteSha": "33be600626dddb4d1588eaa625b46336b8e90c39b748b6999c3def94de09ea7d",
     "scope": "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon",
-    "scopeSha": "0d5ef9b806f3d76da5b344ebfaf251696dcc4f28c69a92e1111b15d6a17bc856"
+    "scopeSha": "353dad8417a0011ca81919810edd86ef48e9d9a8cd83ed6d504ed9770ad53547"
    },
    "guards": [
     {
@@ -3142,7 +3142,7 @@
     "site": "clienteRows.push(odRow('Código', `<span style=\"font-family:'IBM Plex Mono',monospace; letter-spacing:0.02em;\">${escapeHtml(orderCode(order))}</span>`));",
     "siteSha": "dc00491afd31fe2355409c7fa544d32b152e1e8e231e79a221ad15218b9fb744",
     "scope": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
-    "scopeSha": "1d51f909662dca8a333b537ee706b6092385b4e88918cb644cbfed42e9e4dc01"
+    "scopeSha": "f2b51a3667658fab1bb3b3347c01b139dcf686530ca564fe9488992562edb195"
    },
    "guards": [
     {
@@ -3478,7 +3478,7 @@
     "site": "if (order.scheduled_for) sections.push(scheduledBadge(order));",
     "siteSha": "ab039399e9be172d9ef30fd9dcc11ea345fdcf69e31d70710d5bb65fdc292a6c",
     "scope": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
-    "scopeSha": "1d51f909662dca8a333b537ee706b6092385b4e88918cb644cbfed42e9e4dc01"
+    "scopeSha": "f2b51a3667658fab1bb3b3347c01b139dcf686530ca564fe9488992562edb195"
    },
    "guards": [
     {
