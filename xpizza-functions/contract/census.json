@@ -50,7 +50,7 @@
   "projections": 127,
   "sentinel": 6,
   "timers": {
-   "io-deadline": 32,
+   "io-deadline": 33,
    "sleep-body": 2,
    "job-pacing": 1,
    "application-sleep": 2
@@ -923,7 +923,7 @@
   },
   {
    "id": "xpizza-functions/branches/branch-store.js#setBranchActive>anon#status#0",
-   "line": 665,
+   "line": 667,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -46635,6 +46635,12 @@
   {
    "key": "xpizza-functions/portal/branch-lifecycle-core.js:publishAfterCommit>anon:setTimeout",
    "line": 74,
+   "delay": "publishTimeoutMs",
+   "class": "io-deadline"
+  },
+  {
+   "key": "xpizza-functions/portal/branch-lifecycle-core.js:publishAfterCommit>anon:setTimeout",
+   "line": 85,
    "delay": "publishTimeoutMs",
    "class": "io-deadline"
   },
