@@ -49,9 +49,11 @@
 
   const HOSTED_CHECKOUT_MS = 45 * 60 * 1000;             // the server's hosted-checkout window (HOSTED_TTL_MS, pinned by a test)
   const CAPP_SEND_GRACE_MS = HOSTED_CHECKOUT_MS + 15 * 60 * 1000;
-  // OWNER POLICY (pending, advisor 2026-10-26): true ⇒ an interrupted card payment LOCKS its order in the app — no card AND no cash
-  // attempt on it, only recovery, until it resolves or the record expires. false ⇒ cash stays available (the server decides).
-  const LOCK_INTERRUPTED_CARD = false;
+  // POLICY (advisor ruling 2026-10-26, Codex r4): an interrupted card payment LOCKS its order in the app — no card AND no cash
+  // attempt on it, only recovery, until it resolves or the record expires. `false` (cash stays available) is NOT safe today: the
+  // server's cash absence-check and write are not atomic against a still-running card acquisition (payments backlog, beside
+  // DECISIONS:2306); flip only once that server-side exclusion lands. The lock-off path stays tested for that day.
+  const LOCK_INTERRUPTED_CARD = true;
   const MAX_PLACEMENT_MS = 12 * 60 * 60 * 1000;
   const MAX_TRIES = 3;                                   // READ-ONLY calls only (the quote): 2 retries, 1.5 s then 3 s
   const BACKOFF_MS = (attempt) => attempt * 1500;

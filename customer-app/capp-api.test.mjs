@@ -43,11 +43,11 @@ function server(script, storage) {
   return { fetch, calls, of: (ep) => calls.filter((c) => c.ep === ep) };
 }
 let RNG = 0;   // process-wide: a reloaded page must NOT mint the same id by accident of a restarted counter
-function rig({ script, storage = memStorage(), clock = { t: at(12) }, hours = OPEN_ALL, sheet } = {}) {
+function rig({ script, storage = memStorage(), clock = { t: at(12) }, hours = OPEN_ALL, sheet, lock } = {}) {
   const srv = server(script, storage);
   const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours },
     fetch: srv.fetch, storage, now: () => clock.t, sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256),
-    setInterval: () => 0, clearInterval: () => {} });
+    setInterval: () => 0, clearInterval: () => {}, ...(typeof lock === 'boolean' ? { lockInterruptedCard: lock } : {}) });
   return { api: make(), reload: make, srv, storage, clock, sheet };
 }
 const ITEMS = [{ id: 'margherita', name: 'Margherita', dish_id: 'd_1', qty: 1, price: 250, subtotal: 250, extras: [], extrasTotal: 0 }];
@@ -562,10 +562,10 @@ test('r3 rule (iii): a 426 clears ONLY the first dispatch with no admission — 
 });
 
 // ── S2a r4 (Codex scoped r3): `unresolved` and the economics belong to the CARD send ──
-test('r4: a cash answer never settles an unresolved card send nor overwrites its economics — back to card ⇒ still recovery, zero re-charges', async () => {
+test('r4 (lock OFF — for the day the server exclusion lands): a cash answer never settles an unresolved card send nor overwrites its economics — back to card ⇒ still recovery, zero re-charges', async () => {
   const EXISTS = { status: 409, json: { error: 'order_exists', reason: 'method' } };
   for (const [what, first] of [['provider-loss 502', { status: 502, json: { error: 'Payment gateway error' } }], ['a lost 200 body', { status: 200, badBody: true, json: null }]]) {
-    const R = rig({ script: { chargeOnlineOrder: [first, CHECKOUT], createOrder: [EXISTS] } });
+    const R = rig({ script: { chargeOnlineOrder: [first, CHECKOUT], createOrder: [EXISTS] }, lock: false });
     const a = await R.api.place(argsWith({ expectedNetCents: 32000 }));
     assert.equal(placeRec(R.storage).unresolved, true, `premise (${what}): the card send is unresolved`);
     const c = await R.reload().place({ ...placeArgs('cash'), sig: 'sig_pin2', expectedNetCents: 28000 });
@@ -576,8 +576,9 @@ test('r4: a cash answer never settles an unresolved card send nor overwrites its
   }
 });
 
-test('r4: the owner policy LOCK_INTERRUPTED_CARD — on ⇒ an interrupted card order refuses cash too (recovery only); off (today) ⇒ cash is sent', async () => {
-  assert.equal(readFileSync(join(ROOT, 'customer-app/capp-api.js'), 'utf8').match(/const LOCK_INTERRUPTED_CARD = (true|false);/)[1], 'false', 'the shipped default: cash stays available (owner decision pending)');
+test('r4: the policy LOCK_INTERRUPTED_CARD — ON (shipped) ⇒ an interrupted card order refuses cash too (recovery only); off ⇒ cash is sent', async () => {
+  assert.equal(readFileSync(join(ROOT, 'customer-app/capp-api.js'), 'utf8').match(/const LOCK_INTERRUPTED_CARD = (true|false);/)[1], 'true', '🔴 the shipped policy: the lock is ON (advisor ruling, Codex r4)');
+  assert.equal(A.LOCK_INTERRUPTED_CARD, true);
   const mk = (lock) => {
     const storage = memStorage(); const clock = { t: at(12) };
     const srv = server({ chargeOnlineOrder: ['network'], createOrder: [OK_CASH] }, storage);
