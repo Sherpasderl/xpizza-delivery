@@ -1,51 +1,129 @@
-# Plan 4: the form's baked menu comes from the published catalog (bake at build, rebuild on publish)
+# Plan 4: Every form shows ONLY the published catalog (bake at build, rebuild on publish, reconcile)
 
-**Status:** PLAN r1, awaiting the advisor gate. Codex FULL (it touches every form's build and adds a trigger). Owner rule (standing 2026-10-20, restated 2026-10-25): the portal's published catalog is the ONE menu source, with no per-brand fallbacks.
+**Status:** PLAN r1. It answers Codex plan r1 (3 P1, 4 P2, 1 P3). The advisor accepted all eight on 2026-10-26: the plan must be COMPLETE under the owner rule, with no deferral of display consumers. Codex FULL.
+**Owner rule** (standing 2026-10-20, restated 2026-10-25): the merchant portal's published catalog is the ONE source of truth for every restaurant's menu, with no per-brand fallbacks.
 
-**Problem it closes:** the deployed baked menu is generated from the in-repo bootstrap.
-- The chain is generate-form-bundle.mjs:36-42 → `catalogSnapshot` (catalog/generate-form-bundle.js:32-48) → `buildCatalogV2` (catalog/form-menu-source.js:146), which reads the form MENU literal plus menu-pricing.js.
-- Since 6fcd7ff2, a build refuses to ship that bootstrap if it drifts (form-bundle-live-check). But a publish that lands AFTER a deploy still leaves the live site stale until a human redeploys. That window caused the 2026-10-25 incident.
+## Problem (chronology corrected, P3)
 
-## Design
+The 2026-10-25 incident was bootstrap/published drift. Each form's committed baked menu is generated from the in-repo bootstrap: the form literals plus menu-pricing.js, via generate-form-bundle.mjs:36-42 → `catalogSnapshot` → `buildCatalogV2`. The catalog had been republished on 2026-09-16 and never synced back. Since 6fcd7ff2, every form build refuses to ship that drift (form-bundle-live-check).
 
-### A. Bake at build time, from the published catalog (every form, via the splice registry)
-- **New tool `xpizza-functions/tools/bake-form-bundle.js --this-form`.**
-  - It finds the form whose folder is the cwd. That is the same `selectForms` as form-bundle-live-check, which keeps the registry rule and fails on an unregistered folder.
-  - It GETs that form's own `PUBLICMENU_URL + /menu/<rid>`, reusing `getJson`: one settle path, inactivity plus total deadline, rejections on truncation or abort.
-  - It splices into the build container's `index.html` with the existing fail-closed `spliceFormFile`, which round-trips before it writes. Node built-ins only, as today.
-- **Projection:** published `body.menu` → exactly today's bundle key set `{dishes, extras, categories, variant_items, has_photo}`.
-  - Identity keys (`identity_id`, `dish_id`, `extra_id`) are DROPPED, so the baked shape and every order payload built before the live menu applies stay byte-identical to today.
-  - Once live applies, identity keys arrive exactly as they do now. Gate question: carry them baked instead? That would change pre-apply order payloads, so I recommend no.
-- **Build command, for each registered form:** `node ../xpizza-functions/tools/bake-form-bundle.js --this-form && node ../platform/stamp-version.js && node ../xpizza-functions/tools/form-bundle-live-check.js --this-form`.
-  - **Bake runs BEFORE the stamp**, so the stamp's build hash covers the bytes actually served.
-  - **The check stays last**, as self-verification: it fails only if a publish lands in the seconds between bake and check, and the rebuild trigger re-runs anyway.
-  - **Fetch failure:** bake fails → the build fails → the previous deploy stays live. That's the same policy the owner approved for the check.
-- **The committed bundle and the bootstrap are relabelled SEED/TEST-ONLY.**
-  - `menu-bundle.generated.json`, the committed splice and the form MENU/EXTRAS literals stay for the seed (`tools/seed-source-store`), the 1c parity gates (catalog-form-bundle.test.js:56-62, form-bundle-splice.test.js:21/:117) and the jsdom suites. They are never served once A lands.
-  - Header comments in generate-form-bundle.mjs and form-menu-source.js, plus the runbook, say so. The 1c gates stay byte-unchanged, so there is no gate rework.
-- **Test pin:** form-bundle-live-check.test.js currently pins the exact command; it moves to the new command. A unit test drives `bake-form-bundle` against a loopback server serving a real published-shape body built from the committed bundle plus identity keys, then asserts:
-  - the spliced bundle equals the projection;
-  - identity keys are dropped;
-  - extra live-only top-level keys are ignored;
-  - a malformed or partial body refuses and writes nothing.
+Two gaps remain:
+1. **A publish that lands after a deploy.** The deployed baked menu goes stale until someone redeploys. Nothing rebuilds the form.
+2. **Display structures the forms still read from their own literals.** Below, inventoried; Codex reproduced P1-1 with an extra price.
 
-  Mutation entries for the projection and each refusal.
+## 1. Display-consumer inventory (both forms, main 6fcd7ff2) and the migration for each
 
-### B. Rebuild on publish (closes the post-deploy window, for every brand)
-- **New trigger `rebakeFormOnMirror`:** `onValueWritten({ ref: '/catalog_snapshot/{rid}' })`. That's the mirror every publish and rollback writes, the same event `writeCatalogContextOnMirror` uses (index.js:2808). It's its own function, with no platform retry and `maxInstances: 2`.
-  - It POSTs the rid's Netlify build hook, so the form rebuilds and re-bakes, and the deployed menu trails a publish by about a build (~1 min).
-- **Config, not code:** the hooks live in `FORM_BUILD_HOOKS`, a JSON `{rid: url}` in the functions env (prod env from plain .env, per functions-env-management). The owner creates one hook per form site in the Netlify UI.
-  - A rid with no hook logs and raises an alarm `form_rebake_no_hook`, so a new brand without one is visible, not silent.
-  - A failed POST raises an alarm `form_rebake_failed` and never throws.
-- **Tests:** a unit test with an injected HTTP client proves the POST goes to the rid's hook and to nothing else, that a missing hook raises the alarm, and that a failure is swallowed and alarmed. Mutation entries for each.
+| Consumer | La Musa today | X. Pizza today | Published field | Migration |
+|---|---|---|---|---|
+| dishes (`MENU`) | bundle, else `FALLBACK_MENU` (:2170) | bundle, else `FALLBACK_MENU` (:1712) | `dishes` | boot from the bake only (§3) |
+| categories | bundle, else `FALLBACK_CATEGORIES` (:2171) | derived from dishes | `categories` | bake |
+| variant groups | bundle, else `FALLBACK_VARIANT_ITEMS` (:2172) | bundle (:1717) | `variant_items` | bake |
+| photos | bundle, else `FALLBACK_HAS_PHOTO` (:2173) | dish `img` | `has_photo` / `img` | bake |
+| **options (`EXTRAS`), P1-1** | **literal (:2021)** | **literal (:1792)** | `extras` | **boot from the bake** |
+| **option groups per category / per dish** | **literals `EXTRAS_BY_CATEGORY` (:2041), `EXTRAS_BY_ITEM` (:2076)** | **renderer: all categories of `EXTRAS` (:5576)** | `extras_by_category`, `extras_by_item` | **boot from the bake.** X. Pizza reads `extras_by_category`, which it publishes today. |
+| **"no options" dishes** | — | **name check `dish.name === 'Nutella'` (:5575)** | dish `extras_policy: 'none'` (already supported, form-group-picker.js:89) | **owner data step:** set `extras_policy` to none on Nutella in the portal. Then delete the name check. The live check compares every dish field, so a deploy without the data step fails. |
+| **badges** | **literal `TAG_BADGES` (:1931)** | — | `badges` | **boot from the bake** |
+| **badge priority** | **literal `TAG_PRIORITY` (:1939)** | — | **none** (published `badges` arrive in canonical key order) | **catalog addition:** `structure.badge_priority` (an array of badge keys), seeded from today's `TAG_PRIORITY`, carried by public-menu.js `CARRIED_FROM_STRUCTURE` (:103), then baked |
+| **pickup / weekend gates, P1-2** | — | bundle, else `FALLBACK_PICKUP_ONLY` / `FALLBACK_WEEKEND_ONLY` (:2598/:2604) | `pickup_only_cats`, `weekend_only_cats` | **bake keeps them.** The check is extended to compare them. |
+| **reward-picker icons** | — | **name-keyed `ICON` map in `buildRedeemCatalog` (:3343), fallback `'slice'`** | **none** | **OWNER QUESTION:** (a) a dish field `reward_icon`, seeded from the map and carried in the projection (my recommendation; a new dish gets `'slice'` until set), or (b) keep it as brand decoration outside the menu. |
+| branch hours (`HOURS`) | literal | literal | n/a | **out of scope.** Operating hours, not the menu; owned by Sherpa ops. |
 
-## Not covered / follow-ups
-- **Phase B, other structures.** The form also reads other display structures from its own literals (`EXTRAS_BY_CATEGORY`/`EXTRAS_BY_ITEM`, `TAG_BADGES`, `PICKUP_ONLY_CATS`/`WEEKEND_ONLY_CATS`). The live apply already replaces some of them (`LIVE_MENU_GLOBALS`). Baking them too completes the one-source rule; that's a separate plan, because it changes what the form reads at boot.
-- **x_pizza NY Plain Slice: resolved 2026-10-26.** The owner confirmed it is WEEKEND-ONLY (recorded 2026-10-12). It is enforced by DATA: live dishes 25-28 are in `cat: 'ny'`, the server's catalog-derived `weekendOnlyKeys` covers them (index.js:1004/:1785), and the form gates by category (`WEEKEND_ONLY_CATS = ['ny']`). The bake copies each dish verbatim except the identity keys, so `cat` survives.
-  Acceptance cases when A is built:
-  - a weekend-only category survives the bake, and the client gate still applies;
-  - a new portal-authored dish (for example the upcoming 12" «Plain Slice», cat individual, L 299, daily) appears in the baked menu with no code change.
-- **Mid-session publishes (W4).** A publish landing while the customer already has a cart is not addressed by any baking scheme. That's covered by the cart backstop plus the item 5 copy.
+After this plan, the literals (`FALLBACK_*`, `EXTRAS`, `EXTRAS_BY_*`, `TAG_BADGES`, `TAG_PRIORITY`, the `ICON` map if (a)) stay in each form file only as the **seed/test bootstrap**. `buildCatalogV2`'s `readLiteral` reads them by name, and the 1c parity gates and seed tests use them. **No runtime code path references them.** A new guard asserts that: it scans each form's runtime for references to these names outside the bootstrap block and fails on any.
 
-## Sequencing
-A first; it alone shrinks the window to "since the last build". Then B (functions deploy plus an owner step to create the hooks). Then Phase B as its own plan.
+## 2. Server additions (functions deploy BEFORE the forms)
+
+- **public-menu.js:** `CARRIED_FROM_STRUCTURE` gains `badge_priority`, plus `reward_icon` if (a) is chosen.
+- **Seed:** `tools/seed-source-store.js` authors `badge_priority` (and `reward_icon`) from the bootstrap literals, so the first publish after deploy carries them.
+- The public projection is otherwise unchanged. There is still no new customer-facing endpoint or PII, and private catalog paths stay denied (firestore.rules:12).
+
+## 3. Bake (`tools/bake-form-bundle.js --this-form`)
+
+- **Selection:** the same `selectForms` as the live check. The form whose folder is the cwd, through the splice registry; an unregistered folder fails.
+- **Fresh read (P2-4):** GET the form's own `PUBLICMENU_URL/menu/<rid>?_bake=<build-start-ms>` with `Cache-Control: no-cache`. `ridFromPath` ignores the query (index.js:7012), and the unique query defeats any intermediary cache. Transport goes through the existing `getJson` (one settle path, inactivity plus total deadline).
+- **Envelope contract (P2-5).** Each item below is a named refusal, and a refusal means no file changes plus a non-zero exit, so the build fails and the previous deploy stays live.
+  - `rid === <the selected rid>`. A wrong-brand body is refused.
+  - `representation_version` is known.
+  - `menu.dishes`: a non-empty array; unique, non-empty ids; non-empty names; prices are finite and > 0; each `cat` is in `categories` when the brand authors categories.
+  - `variantOf` / `variant_items` reference existing dishes.
+  - `extras`: an array, possibly empty; unique ids; finite prices > 0.
+  - `extras_by_category` keys are known categories; `extras_by_item` keys are known dishes. Values are known option categories.
+  - `pickup_only_cats` / `weekend_only_cats`: arrays of known categories.
+  - `badges`: an object of `{cls, label}`. `badge_priority`: badge keys only.
+  - These mirror the runtime's `liveMenuPrepare` checks (La Musa index.html:2582-2601), so a bake can never ship what the live apply would refuse.
+- **Projection:** the published `menu` minus `identity_id` / `dish_id` / `extra_id`. Every other field is kept verbatim, including `cat`: the weekend gate for NY stays data-driven, as the advisor verified. Identity keys are dropped so pre-apply order payloads stay byte-identical to today; the live apply adds them exactly as now.
+- **Splice:** into the build container's index.html via the fail-closed `spliceFormFile`.
+- **Form boot (both forms):** every consumer in §1 reads `window.__FORM_MENU_BUNDLE__` before any renderer runs.
+  - `EXTRAS`, `EXTRAS_BY_*`, `TAG_BADGES`, `TAG_PRIORITY`, the gates, and `ICON` if (a).
+  - The same validated selectors as today's `_okDishes` / `_okCats` etc.
+  - An invalid bundle is impossible after a bake, since the build refuses one. If it happens anyway, the form uses its existing `announceMenuBroken` path and waits for the live menu. It never falls back to a literal.
+- **Build command** (every registered form): `bake --this-form && stamp && check --this-form`.
+  - Bake runs before the stamp, so the build hash covers the bytes actually served.
+  - The check is extended to compare `pickup_only_cats`, `weekend_only_cats`, `extras_by_category`, `extras_by_item`, `badges` and `badge_priority`, with the same FAIL/WARN rules.
+
+## 4. Rebuild on publish, and reconcile against what is DEPLOYED (P1-3)
+
+- **Fast path:** `rebakeFormOnMirror` is an `onValueWritten('/catalog_snapshot/{rid}')` trigger, the same event `writeCatalogContextOnMirror` uses (index.js:2808), with no platform retry and `maxInstances: 2`. It POSTs that rid's build hook. It's best-effort, because a successful publish does not guarantee a mirror write (catalog-publish.js:100/:1601).
+- **Recovery:** `reconcileFormBundles` is scheduled every 10 minutes with `maxInstances: 1`, the same shape as `reconcileCatalogContexts` (index.js:2819). For every rid in the brand-agnostic registry that has a registered form:
+  1. Read the published menu (fresh read, as in §3).
+  2. Read the DEPLOYED form: GET each order site's origin from platform-manifest and extract the bundle with `extractBundle`.
+  3. Compare them with the extended `compareBundle`.
+  4. If they differ and no hook was triggered for that rid in the last 15 minutes, POST its hook and record `{at, attempt}` at `form_rebake/{rid}`.
+  5. After three attempts without convergence, raise `form_rebake_stuck {rid, attempts}` and stop retrying until the published version changes. That covers a wrong-branch or wrong-site hook, a failed build, and a failed hook alike.
+
+  It's one mechanism for a missing mirror event, a failed hook, a hook accepted whose build failed, and a duplicate event (the cooldown plus Netlify's build queue). It sits off the publish and money paths: it reads public endpoints and the static site, and writes only its own bookkeeping.
+- **Operator repair:** the runbook's form-deploy section adds:
+  - read `form_rebake/{rid}`;
+  - re-run `form-bundle-live-check.js` against the deployed site;
+  - trigger the hook by hand or "Retry deploy" in Netlify;
+  - verify the alarm clears.
+
+## 5. Hooks are credentials (P2-6)
+
+- **Config:** `FORM_BUILD_HOOKS` holds JSON `{rid: url}` in the functions env (plain .env, per functions-env-management). It's validated at load:
+  - the host must be exactly `api.netlify.com`;
+  - the path must be `/build_hooks/<24-hex id>`;
+  - anything else is refused with an alarm `form_rebake_bad_hook {rid}`, with no URL in the payload.
+- **Requests:**
+  - POST with no `trigger_branch`, so the hook's configured branch is used.
+  - The owner creates each hook on `main`. The runbook records that, and the reconciler's convergence check proves it end to end.
+  - 10 s total deadline. Non-2xx responses are classified as `hook_rejected`; network failures as `hook_unreachable`.
+  - URLs are never logged or alarmed; errors carry only the rid and the class.
+- **Scrub:** `FORM_BUILD_HOOKS` is added to the credential scrub list (tools/secret-env.js:14), so inherited credentials are removed in tests even without a local .env.
+- **Tests:** an injected HTTP client only. The egress guard keeps tests on loopback, and a test asserts zero real hook calls.
+
+## 6. Tests and guards (P2-5, P2-7)
+
+- **Bake unit tests:** loopback server, published-shape bodies built from a REAL catalog build (`buildCatalogV2` + `buildPublicMenu`) plus published-only changes (an added dish, a removed dish, a repriced option, a gate change, a badge priority).
+  - Each named refusal in §3 refuses, leaves files byte-unchanged, and exits non-zero. That includes wrong rid, missing collections, duplicate ids, bad prices, dangling category/variant/option references, and malformed gates and badges.
+- **Post-bake artifact tests** run in jsdom on the BAKED index.html with the live fetch delayed, then unavailable. They cover both forms and a synthetic third: a temp copy of a form registered under `synthetic_3` in a test-local registry.
+  - **Boot:** a repriced dish and a repriced option show the published price before any live fetch (Codex's 162/173 case).
+  - **Contents:** an added dish appears; a removed one is absent.
+  - **Options and choices:** option groups and "no options" follow the bake; required choices work.
+  - **Gates:** pickup and weekend gates apply (NY weekend-only); an 86 still applies from the availability feed.
+  - **Checkout:** a reward redemption quotes, and identity/signature behaviour is unchanged.
+  - **Later live apply:** a subsequent live apply still upgrades.
+  - **Ordering:** bake → stamp → check order, and a changed published menu changes the stamp's build hash.
+- **Runtime-literal guard:** no runtime reference to the bootstrap literal names (§1).
+- **Trigger and reconciler unit tests** (fake db, injected HTTP, fake clock):
+  - a mirror write triggers the hook;
+  - no mirror (a publish whose mirror failed) is caught by the reconciler;
+  - a failed hook is retried after the cooldown;
+  - a hook accepted while the deployed bundle stays stale gives three attempts, then `form_rebake_stuck`, then silence until the version changes;
+  - duplicate mirror events trigger one POST per cooldown;
+  - a missing hook or bad config raises its alarm and makes no request;
+  - URLs never appear in logs or alarms.
+- **index.js additions:** the trigger, the reconciler and the export go in ONE delimited block. Its exact inverse, `tools/formbake-inverse.js`, is proven by `formbake-wiring.guard` and reversed FIRST in every index.js chain and fold (the same 25 guard files and 33 entries plan 2 updated). The whole-file pins (identity-record-guards :45) keep their hashes. Each block's inverse restores the bytes; nothing is re-pinned.
+- **public-menu.js / seed changes:** their existing pins and inverses get the same treatment, and the money-path pins stay byte-unchanged.
+- **Also:** form-source-inventory regen, plus the 2e pins client-form edits re-open; mutation entries for every refusal, the reconciler branches and the runtime-literal guard; the R3 regen, mutation-anchors, and a full `npm test` in the heavy slot.
+
+## 7. Rollout order
+
+1. Functions deploy (§2 projection fields, §4 trigger and reconciler, still with no hooks configured).
+2. The owner publishes once, so the new structure fields are live, and sets Nutella's `extras_policy` to none.
+3. Forms deploy: the bake and the boot changes, with the extended check.
+4. The owner creates the hooks on `main`, and `FORM_BUILD_HOOKS` is set.
+5. Verify: publish a harmless change, and within about 2 minutes the deployed bundle equals published. The reconciler stays quiet.
+
+## Open question for the owner
+
+The reward-picker icons: (a) a catalog field (recommended), or (b) leave them as brand decoration outside the menu.
