@@ -26,6 +26,7 @@
 //   W   storage fails the moment the provider-loss 502 lands, then a reload ⇒ recovery, one gateway attempt (rule i)
 //   B   a 200 whose body is lost ⇒ unresolved; the changed cart is never re-sent (rule ii)
 //   K   202 (a concurrent request creating this identity) → the floor rises → 426 ⇒ the identity is KEPT (rule iii)
+//   V   (r4) card → provider-loss 502 → cash (the real order_exists) → card: the cash answer never settles the card send
 // Run: npm run test:capp-s2a
 require('./_emulator-required')('database', 'firestore');
 
@@ -490,6 +491,27 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     assert.deepStrictEqual([b.out.kind, count('chargeOnlineOrder') - ch0, CHARGED.length], ['existing_order', 1, 1], `🔴 the changed cart is NOT re-sent (${JSON.stringify(b.out)})`);
     assert.strictEqual(placeOf(pg).expected_net_cents, stored, 'the stored economics are never overwritten by the new quote');
     ok('B a 200 whose body is lost: unresolved ⇒ the recovery sheet; the changed cart is never re-sent and the stored economics stay — no displayed/charged divergence');
+  }
+
+  // ── V (r4): a cash answer never settles an unresolved card send — card → provider-loss 502 → cash (the REAL order_exists) → card ──
+  {
+    await clean(); CHARGED.length = 0;
+    const pg = page('x_pizza'); const f = flowOf('online'); const cart = cartOf('x_pizza');
+    const ch0 = count('chargeOnlineOrder'); const co0 = count('createOrder');
+    PROVIDER_LOSS = true;
+    const a = await quoteAndPlace(pg, f, cart);
+    const id = placeOf(pg).order_id; const stored = placeOf(pg).expected_net_cents;
+    assert.deepStrictEqual([a.out.kind, CHARGED.length, placeOf(pg).unresolved], ['existing_order', 1, true], `premise: the card send is unresolved (${JSON.stringify(a.out)})`);
+    f.pay = 'cash'; C.setPin(f, HUB.lat + 3 * KM, HUB.lng, true);   // cash, and a re-priced pin
+    await clean();
+    const c = await quoteAndPlace(pg.reload(), f, cart);
+    assert.deepStrictEqual([count('createOrder') - co0, c.out.order_id], [1, id], `premise: the cash attempt is sent on the same identity (${JSON.stringify(c.out)})`);
+    assert.deepStrictEqual([placeOf(pg).unresolved, placeOf(pg).expected_net_cents], [true, stored], '🔴 the REAL cash refusal left the card send unresolved and its economics untouched');
+    f.pay = 'online';
+    await clean();
+    const b = await quoteAndPlace(pg.reload(), f, cart);
+    assert.deepStrictEqual([b.out.kind, b.out.order_id, count('chargeOnlineOrder') - ch0, CHARGED.length], ['existing_order', id, 1, 1], `🔴 back to card ⇒ recovery, ONE gateway attempt (${JSON.stringify(b.out)})`);
+    ok('V card → provider-loss 502 → cash (the real order_exists) → card: the cash answer never settles the unresolved card send nor its economics; recovery, one gateway attempt');
   }
 
   // ── K (r3 rule iii): 202 (a concurrent request is creating THIS identity) → the floor rises → the re-send's 426 KEEPS it ──

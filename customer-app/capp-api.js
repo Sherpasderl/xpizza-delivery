@@ -31,6 +31,9 @@
 //         stays available (the customer's «Reintentar» re-sends the SAME id: idempotent server-side, no gateway).
 //   (iii) a refusal may CLEAR the record (the 426 floor) ONLY when it answers the FIRST dispatch and no 202 / admission was ever
 //         seen; otherwise the identity is kept and the placement goes to recovery.
+//   `unresolved` and the economics belong to the CARD send (S2a r4): a cash dispatch never sets or settles `unresolved`, and once a
+//   charge was dispatched a cash attempt never overwrites the economics — a cash answer says nothing about the earlier charge.
+//   LOCK_INTERRUPTED_CARD (owner policy) additionally refuses cash on an interrupted card order.
 // Only quotes (read-only) retry.
 // A CHANGED placement never resumes an older checkout at new numbers (S2a r2 P1 #1): the server returns a live checkout at its
 // STORED economics before any gate, so when an ISSUED card placement's economics (cartSig or the expected net) differ, the
@@ -46,6 +49,9 @@
 
   const HOSTED_CHECKOUT_MS = 45 * 60 * 1000;             // the server's hosted-checkout window (HOSTED_TTL_MS, pinned by a test)
   const CAPP_SEND_GRACE_MS = HOSTED_CHECKOUT_MS + 15 * 60 * 1000;
+  // OWNER POLICY (pending, advisor 2026-10-26): true ⇒ an interrupted card payment LOCKS its order in the app — no card AND no cash
+  // attempt on it, only recovery, until it resolves or the record expires. false ⇒ cash stays available (the server decides).
+  const LOCK_INTERRUPTED_CARD = false;
   const MAX_PLACEMENT_MS = 12 * 60 * 60 * 1000;
   const MAX_TRIES = 3;                                   // READ-ONLY calls only (the quote): 2 retries, 1.5 s then 3 s
   const BACKOFF_MS = (attempt) => attempt * 1500;
@@ -75,6 +81,7 @@
     const cryptoApi = (root && root.crypto) || (typeof globalThis !== 'undefined' ? globalThis.crypto : null);
     const randomBytes = o.randomBytes || ((n) => { const b = new Uint8Array(n); cryptoApi.getRandomValues(b); return b; });
     const memberOf = typeof o.member === 'function' ? o.member : () => o.member || null;
+    const lockInterruptedCard = typeof o.lockInterruptedCard === 'boolean' ? o.lockInterruptedCard : LOCK_INTERRUPTED_CARD;
     const cq = o.confirmQuote || CQ({ now, setInterval: o.setInterval, clearInterval: o.clearInterval, requote: o.requote });
     const PLACE_KEY = `capp:${cfg.restaurantId}:pending_place`;
     const PAY_KEY = cfg.pendingPayKey;
@@ -125,7 +132,7 @@
     // persisted and re-read for the specific outgoing identity
     function confirmSend(id, method, fields) {
       const t = now();
-      return patchPlace(id, (cur) => ({ ...(fields || {}), dispatched: (Number(cur.dispatched) || 0) + 1, unresolved: true, card: cur.card === true || method === 'online',
+      return patchPlace(id, (cur) => ({ ...(fields || {}), dispatched: (Number(cur.dispatched) || 0) + 1, ...(method === 'online' ? { unresolved: true } : {}), card: cur.card === true || method === 'online',
         last_send: t, expires_at: expiresAtOf(cur.ts, t) }));
     }
     // rule ii: a definitive answer moves the record out of unresolved (a failed write leaves it unresolved — the safe side)
@@ -254,8 +261,8 @@
     async function place(p) {
       const method = p.flow.pay === 'online' ? 'online' : 'cash';
       const live = readPlace();
+      if (live && live.card === true && live.unresolved && (method === 'online' || lockInterruptedCard)) return resolveExisting(live.order_id);   // rule ii: never charged again
       if (live && live.card === true && method === 'online') {
-        if (live.unresolved) return resolveExisting(live.order_id);                       // rule ii: never charged again
         if (live.issued && !sameEconomics(live, p)) {                                     // r2 P1 #1: resolve the existing placement first
           const t = credsFor(live.order_id);
           if (!t) return recoverySheet(live.order_id);
@@ -273,9 +280,9 @@
         let rec;
         try {
           rec = readPlace() || mintPlace(method, p);
-          // an un-issued identity carries the economics of the body actually sent (an issued one keeps its checkout's); the
-          // method is the record's first one once a charge was ever dispatched (`card` is sticky)
-          rec = confirmSend(rec.order_id, method, rec.issued ? {} : { ...(rec.card ? {} : { method }), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(expected), totals: p.totals || rec.totals || null });
+          // an un-issued identity carries the economics of the body actually sent (an issued one keeps its checkout's, and a cash
+          // attempt never overwrites a charge's); the method is the record's first one once a charge was ever dispatched (`card` is sticky)
+          rec = confirmSend(rec.order_id, method, rec.issued || (rec.card && method !== 'online') ? {} : { ...(rec.card ? {} : { method }), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(expected), totals: p.totals || rec.totals || null });
         } catch (e) { const pe = placeErr(e, rec && rec.order_id); return pe || (rec ? resolveExisting(rec.order_id) : { kind: 'error', error: 'placement_lost' }); }
         const id = rec.order_id;
         const body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
@@ -290,7 +297,7 @@
           return { ...(await resolveExisting(id)), update_required: true };               // an earlier send / admission may land: kept UNRESOLVED
         }
         if (method === 'online' && r.status === 200) return cardIssued(id, body, j);   // settles only once the creds are stored
-        settle(id);
+        if (method === 'online') settle(id);                                              // a cash answer never settles a charge
         if (method === 'cash') {
           if (r.status === 200) { clearPlace(id); return { kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent }; }
           if (r.status === 409 && j.error === 'order_conflict') {

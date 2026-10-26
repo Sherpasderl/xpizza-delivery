@@ -20745,8 +20745,8 @@
     "slice": "s2a",
     "label": "r3 rule (i): the send is not recorded unresolved before it leaves",
     "file": "../customer-app/capp-api.js",
-    "from": "dispatched: (Number(cur.dispatched) || 0) + 1, unresolved: true,",
-    "to": "dispatched: (Number(cur.dispatched) || 0) + 1, unresolved: false,",
+    "from": "dispatched: (Number(cur.dispatched) || 0) + 1, ...(method === 'online' ? { unresolved: true } : {}),",
+    "to": "dispatched: (Number(cur.dispatched) || 0) + 1, ...(method === 'online' ? { unresolved: false } : {}),",
     "command": [
       "node",
       "--test",
@@ -20786,6 +20786,54 @@
     ],
     "kills_with": [
       "a 426 on a SECOND dispatch"
+    ]
+  },
+  {
+    "id": "s2a-u38",
+    "slice": "s2a",
+    "label": "r4: a cash answer settles the unresolved card send",
+    "file": "../customer-app/capp-api.js",
+    "from": "        if (method === 'online') settle(id);",
+    "to": "        settle(id);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "the cash answer left the card send unresolved"
+    ]
+  },
+  {
+    "id": "s2a-u39",
+    "slice": "s2a",
+    "label": "r4: a cash attempt overwrites the card send's economics",
+    "file": "../customer-app/capp-api.js",
+    "from": "rec.issued || (rec.card && method !== 'online') ? {} :",
+    "to": "rec.issued ? {} :",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "the cash answer left the card send unresolved"
+    ]
+  },
+  {
+    "id": "s2a-u40",
+    "slice": "s2a",
+    "label": "r4: the owner lock is ignored (cash sent on an interrupted card order)",
+    "file": "../customer-app/capp-api.js",
+    "from": "live.unresolved && (method === 'online' || lockInterruptedCard)) return",
+    "to": "live.unresolved && method === 'online') return",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "lock on: the interrupted card order refuses cash"
     ]
   },
   {

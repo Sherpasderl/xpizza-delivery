@@ -560,3 +560,38 @@ test('r3 rule (iii): a 426 clears ONLY the first dispatch with no admission — 
   await F.api.place(placeArgs('online'));
   assert.equal(placeRec(F.storage), null, 'the first dispatch, no admission ⇒ cleared');
 });
+
+// ── S2a r4 (Codex scoped r3): `unresolved` and the economics belong to the CARD send ──
+test('r4: a cash answer never settles an unresolved card send nor overwrites its economics — back to card ⇒ still recovery, zero re-charges', async () => {
+  const EXISTS = { status: 409, json: { error: 'order_exists', reason: 'method' } };
+  for (const [what, first] of [['provider-loss 502', { status: 502, json: { error: 'Payment gateway error' } }], ['a lost 200 body', { status: 200, badBody: true, json: null }]]) {
+    const R = rig({ script: { chargeOnlineOrder: [first, CHECKOUT], createOrder: [EXISTS] } });
+    const a = await R.api.place(argsWith({ expectedNetCents: 32000 }));
+    assert.equal(placeRec(R.storage).unresolved, true, `premise (${what}): the card send is unresolved`);
+    const c = await R.reload().place({ ...placeArgs('cash'), sig: 'sig_pin2', expectedNetCents: 28000 });
+    assert.equal(c.order_id, a.order_id, `${what}: the cash attempt rides the same identity`);
+    assert.deepEqual([placeRec(R.storage).unresolved, placeRec(R.storage).expected_net_cents, placeRec(R.storage).body_sig], [true, 32000, 'sig1'], `🔴 ${what}: the cash answer left the card send unresolved and its economics untouched`);
+    const b = await R.reload().place(argsWith({ sig: 'sig_pin2', expectedNetCents: 28000 }));
+    assert.deepEqual([b.kind, R.srv.of('chargeOnlineOrder').length], ['existing_order', 1], `🔴 ${what}: back to card ⇒ recovery, ONE gateway attempt`);
+  }
+});
+
+test('r4: the owner policy LOCK_INTERRUPTED_CARD — on ⇒ an interrupted card order refuses cash too (recovery only); off (today) ⇒ cash is sent', async () => {
+  assert.equal(readFileSync(join(ROOT, 'customer-app/capp-api.js'), 'utf8').match(/const LOCK_INTERRUPTED_CARD = (true|false);/)[1], 'false', 'the shipped default: cash stays available (owner decision pending)');
+  const mk = (lock) => {
+    const storage = memStorage(); const clock = { t: at(12) };
+    const srv = server({ chargeOnlineOrder: ['network'], createOrder: [OK_CASH] }, storage);
+    const api = A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL },
+      fetch: srv.fetch, storage, now: () => clock.t, sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256),
+      setInterval: () => 0, clearInterval: () => {}, lockInterruptedCard: lock });
+    return { api, srv };
+  };
+  const L = mk(true);
+  const l1 = await L.api.place(placeArgs('online'));
+  const l2 = await L.api.place(placeArgs('cash'));
+  assert.deepEqual([l2.kind, l2.order_id, L.srv.of('createOrder').length], ['existing_order', l1.order_id, 0], '🔴 lock on: the interrupted card order refuses cash (recovery only)');
+  const O = mk(false);
+  await O.api.place(placeArgs('online'));
+  const o2 = await O.api.place(placeArgs('cash'));
+  assert.deepEqual([o2.kind, O.srv.of('createOrder').length], ['placed', 1], 'lock off: cash is sent (the server decides)');
+});
