@@ -20195,5 +20195,405 @@
     "kills_with": [
       "an OLD-host request after the switch returns to the OLD host"
     ]
+  },
+  {
+    "id": "s2a-u01",
+    "slice": "s2a",
+    "label": "a gate out of order (details before the pin)",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "    if (del && !(f.pin && f.pin.confirmed === true && Number.isFinite(f.pin.lat) && Number.isFinite(f.pin.lng))) return COPY.pin;\n    if (del && (f.details || '').trim().length < 3) return COPY.details;\n",
+    "to": "    if (del && (f.details || '').trim().length < 3) return COPY.details;\n    if (del && !(f.pin && f.pin.confirmed === true && Number.isFinite(f.pin.lat) && Number.isFinite(f.pin.lng))) return COPY.pin;\n",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "with every gate up to «pin» broken"
+    ]
+  },
+  {
+    "id": "s2a-u02",
+    "slice": "s2a",
+    "label": "G0 (the closed store) removed",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "    if (c.open === false || c.closedRefused === true) return COPY.closed;\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "«closed» broken"
+    ]
+  },
+  {
+    "id": "s2a-u03",
+    "slice": "s2a",
+    "label": "the tip comes preselected («Sin propina»)",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "      tipChoice: null, tipCents: 0,",
+    "to": "      tipChoice: { kind: 'none', lempiras: 0 }, tipCents: 0,",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "nothing preselected"
+    ]
+  },
+  {
+    "id": "s2a-u04",
+    "slice": "s2a",
+    "label": "Total computed as net + tip",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "      tip: tipCentsOf(f), total: r.net_total_cents };",
+    "to": "      tip: tipCentsOf(f), total: r.net_total_cents + tipCentsOf(f) };",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "Expected values to be strictly deep-equal"
+    ]
+  },
+  {
+    "id": "s2a-u05",
+    "slice": "s2a",
+    "label": "entry_mode dropped from the quote body",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "    const b = { restaurant_id: ctx.restaurantId, items: ctx.items, mode: f.mode, entry_mode: ENTRY_MODE };",
+    "to": "    const b = { restaurant_id: ctx.restaurantId, items: ctx.items, mode: f.mode };",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "the quote body carries entry_mode app"
+    ]
+  },
+  {
+    "id": "s2a-u06",
+    "slice": "s2a",
+    "label": "pickup keeps the tip",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "    if (f.mode === 'pickup') { f.tipChoice = null; f.tipCents = 0; }\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "pickup clears the tip"
+    ]
+  },
+  {
+    "id": "s2a-u07",
+    "slice": "s2a",
+    "label": "the cartSig ignores the tip (a token carries across a tip change)",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "uid: ctx.member && ctx.member.uid ? String(ctx.member.uid) : null, tip_cents: tipCentsOf(f) };",
+    "to": "uid: ctx.member && ctx.member.uid ? String(ctx.member.uid) : null };",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "tip changes the signature"
+    ]
+  },
+  {
+    "id": "s2a-u08",
+    "slice": "s2a",
+    "label": "a retry mints a new order id",
+    "file": "../customer-app/capp-api.js",
+    "from": "      const r = readPlace() || { order_id: genOrderId(),",
+    "to": "      const r = { order_id: genOrderId(),",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "the reloaded page resends the SAME order_id"
+    ]
+  },
+  {
+    "id": "s2a-u09",
+    "slice": "s2a",
+    "label": "order_exists / order_context_changed mints instead of resolving",
+    "file": "../customer-app/capp-api.js",
+    "from": "        if (isExisting(r)) return resolveExisting(id);",
+    "to": "        if (isExisting(r)) { clearPlace(); continue; }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "the recovery sheet («Referencia #ABCD»)"
+    ]
+  },
+  {
+    "id": "s2a-u10",
+    "slice": "s2a",
+    "label": "the record write is no longer required before the send",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (!writeJSON(PLACE_KEY, r)) { const e = new Error('placement_write_failed'); e.code = 'placement_write_failed'; throw e; }\n      return r.order_id;",
+    "to": "      writeJSON(PLACE_KEY, r);\n      return r.order_id;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "a failed record write ⇒ stash_failed"
+    ]
+  },
+  {
+    "id": "s2a-u11",
+    "slice": "s2a",
+    "label": "the expiry check removed",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (now() >= r.expires_at) { removeKey(PLACE_KEY); return null; }\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "cleared at 22:00"
+    ]
+  },
+  {
+    "id": "s2a-u12",
+    "slice": "s2a",
+    "label": "closing time ignored (12 h only)",
+    "file": "../customer-app/capp-api.js",
+    "from": "      const inner = closing === null ? ts + MAX_PLACEMENT_MS : Math.min(closing, ts + MAX_PLACEMENT_MS);",
+    "to": "      const inner = ts + MAX_PLACEMENT_MS;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "cleared at 22:00"
+    ]
+  },
+  {
+    "id": "s2a-u13",
+    "slice": "s2a",
+    "label": "last_send ignored in the expiry",
+    "file": "../customer-app/capp-api.js",
+    "from": "      return Math.max(inner, lastSend + CAPP_SEND_GRACE_MS);",
+    "to": "      return inner;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "last_send + 60 governs"
+    ]
+  },
+  {
+    "id": "s2a-u14",
+    "slice": "s2a",
+    "label": "closed_refunded does not clear pending_place",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (st === 'closed_refunded') { clearPlace(); clearPayFor(id);",
+    "to": "      if (st === 'closed_refunded') { clearPayFor(id);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "and pending_place (outcome 4)"
+    ]
+  },
+  {
+    "id": "s2a-u15",
+    "slice": "s2a",
+    "label": "paid_unverified polls without a token",
+    "file": "../customer-app/capp-api.js",
+    "from": "    async function alreadyPaid(id) {\n      const t = credsFor(id);\n      if (t) {",
+    "to": "    async function alreadyPaid(id) {\n      const t = credsFor(id);\n      if (true) {",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "no token: Already paid ⇒ paid_unverified"
+    ]
+  },
+  {
+    "id": "s2a-u16",
+    "slice": "s2a",
+    "label": "202 treated as a final answer (no same-identity re-send)",
+    "file": "../customer-app/capp-api.js",
+    "from": "        if (!r || r.network || r.stashFailed || r.status !== 202) return r;",
+    "to": "        return r;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "202 in_progress"
+    ]
+  },
+  {
+    "id": "s2a-u17",
+    "slice": "s2a",
+    "label": "Already paid treated as failure",
+    "file": "../customer-app/capp-api.js",
+    "from": "        if (method === 'online' && r.status === 409 && j.error === 'Already paid') return alreadyPaid(id);",
+    "to": "        if (method === 'online' && r.status === 409 && j.error === 'Already paid') return { kind: 'payment_not_completed', order_id: id };",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "with a token: polled faithfully"
+    ]
+  },
+  {
+    "id": "s2a-u18",
+    "slice": "s2a",
+    "label": "verifying treated as failure",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (st === 'cancelled' || st === 'failed') { clearPlace();",
+    "to": "      if (st === 'cancelled' || st === 'failed' || st === 'verifying') { clearPlace();",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "verifying ⇒ confirming"
+    ]
+  },
+  {
+    "id": "s2a-u19",
+    "slice": "s2a",
+    "label": "the card creds are not required before the redirect",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (!j.poll_token || !writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now() })) return { kind: 'stash_failed', order_id: id };",
+    "to": "      writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now() });",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "no token persisted ⇒ no redirect"
+    ]
+  },
+  {
+    "id": "s2a-u20",
+    "slice": "s2a",
+    "label": "an older quote overwrites a newer one",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (seq !== qseq) return { kind: 'superseded' };\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "an older response never overwrites a newer one"
+    ]
+  },
+  {
+    "id": "s2a-u21",
+    "slice": "s2a",
+    "label": "a direct fetch to an identity endpoint",
+    "file": "../customer-app/capp-api.js",
+    "from": "    const sfetch = o.fetch || ((u, i) => root.SherpaClient.fetch(u, i));",
+    "to": "    const sfetch = o.fetch || ((u, i) => fetch(u, i));",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "a direct fetch in capp-api.js"
+    ]
+  },
+  {
+    "id": "s2a-u22",
+    "slice": "s2a",
+    "label": "a brand literal in the transport",
+    "file": "../customer-app/capp-api.js",
+    "from": "  const CAPP_SEND_GRACE_MS = 60 * 60 * 1000;",
+    "to": "  const CAPP_SEND_GRACE_MS = 60 * 60 * 1000; const HOME = 'x_pizza';",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "Expected values to be strictly equal"
+    ]
+  },
+  {
+    "id": "s2a-u23",
+    "slice": "s2a",
+    "label": "the self-update adapter ignores unresolved payment state",
+    "file": "../customer-app/capp-self-update.js",
+    "from": "        if (h.unresolved && h.unresolved()) return false;\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-self-update.test.mjs"
+    ],
+    "kills_with": [
+      "unresolved payment state"
+    ]
+  },
+  {
+    "id": "s2a-e01",
+    "slice": "s2a",
+    "label": "the real lost-response duplicate mints instead of resolving",
+    "file": "../customer-app/capp-api.js",
+    "from": "        if (isExisting(r)) return resolveExisting(id);",
+    "to": "        if (isExisting(r)) { clearPlace(); continue; }",
+    "command": [
+      "npm",
+      "run",
+      "test:capp-s2a"
+    ],
+    "kills_with": [
+      "an edited retry ⇒ order_exists cart ⇒ the recovery sheet"
+    ]
+  },
+  {
+    "id": "s2a-b01",
+    "slice": "s2a",
+    "label": "the server return base ignores the request Origin (the §2.1a browser cell)",
+    "file": "index.js",
+    "from": "requestOrigin: req.get('origin'), ",
+    "to": "",
+    "command": [
+      "npm",
+      "run",
+      "test:capp-s2a-browser"
+    ],
+    "kills_with": [
+      "an old-host submission AFTER the switch returns to the OLD origin"
+    ]
   }
 ]

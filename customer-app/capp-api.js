@@ -47,7 +47,8 @@
     const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
     // the cancel return's single bounded check: its OWN timer (a backoff sleep must never shorten it)
     const timeout = o.timeout || ((ms) => new Promise((r) => { const h = setTimeout(r, ms); if (h && typeof h.unref === 'function') h.unref(); }));
-    const randomBytes = o.randomBytes || ((n) => { const b = new Uint8Array(n); root.crypto.getRandomValues(b); return b; });
+    const cryptoApi = (root && root.crypto) || (typeof globalThis !== 'undefined' ? globalThis.crypto : null);
+    const randomBytes = o.randomBytes || ((n) => { const b = new Uint8Array(n); cryptoApi.getRandomValues(b); return b; });
     const memberOf = typeof o.member === 'function' ? o.member : () => o.member || null;
     const cq = o.confirmQuote || CQ({ now, setInterval: o.setInterval, clearInterval: o.clearInterval, requote: o.requote });
     const PLACE_KEY = `capp:${cfg.restaurantId}:pending_place`;
@@ -187,7 +188,9 @@
       let healed = false; let silentRetried = false;
       for (let guard = 0; guard < 4; guard++) {
         let id;
-        try { id = beginSend(method, p.sig); } catch (e) { return { kind: 'stash_failed' }; }   // a failed write ⇒ no send
+        try { id = beginSend(method, p.sig); } catch (e) {   // a failed write ⇒ no send; anything else is an error, never mislabelled
+          return e && e.code === 'placement_write_failed' ? { kind: 'stash_failed' } : { kind: 'error', error: String((e && e.message) || e) };
+        }
         const body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
         cq.send(body, p.sig, expected);
         const r = method === 'cash' ? await sendCash(body, p.ctx) : await sendCard(body, p.ctx);

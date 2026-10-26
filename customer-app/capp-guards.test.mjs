@@ -84,7 +84,7 @@ test(`no server change beyond S2-srv-tip + S2-srv-app: xpizza-functions/ differs
   assert.deepEqual(bad, [], `🔴 production files changed: ${bad.join(', ')}`);
   if (changed.includes('xpizza-functions/package.json')) {
     const was = JSON.parse(git('show', `${BASE}:xpizza-functions/package.json`)); const now = JSON.parse(readFileSync(join(ROOT, 'xpizza-functions/package.json'), 'utf8'));
-    const strip = (j) => { const c = { ...j, scripts: { ...j.scripts } }; delete c.scripts.test; for (const k of Object.keys(c.scripts)) if (/^test:(capp-s1|s2tip$)/.test(k)) delete c.scripts[k]; return c; };
+    const strip = (j) => { const c = { ...j, scripts: { ...j.scripts } }; delete c.scripts.test; for (const k of Object.keys(c.scripts)) if (/^test:(capp-s1|s2tip$|capp-s2a$|capp-s2a-browser$)/.test(k)) delete c.scripts[k]; return c; };
     assert.deepEqual(strip(now), strip(was), '🔴 package.json changed beyond the test chain / the capp-s1 test scripts');
   }
 });

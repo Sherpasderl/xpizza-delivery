@@ -1,0 +1,373 @@
+'use strict';
+// Customer app S2a (PLAN-capp-S2-r4 §5, §7 Transport / Idempotency / Refusal mapping) — the app's REAL client modules
+// (customer-app/ capp-checkout + capp-api + the ported capp-confirm-quote, over the S1 cart / serializer) driving the REAL
+// quoteOrder / createOrder / chargeOnlineOrder / paymentStatus on the emulator, every call through the REAL shared module's
+// SherpaClient.fetch (inert here: unstamped). Server-side states come from their REAL writers (confirmAndMaterialize,
+// cancelOrderCore, the paid-after-close guard).
+//   E   equality: the displayed Total == the placing Total == the recorded total_cents == the PixelPay amount × 100 (cash, card;
+//       envío + tip); the dark brand with no tip
+//   C   card: checkout_url with entry_mode app, returning to the app deployment; creds persisted before the redirect
+//   I   202 in_progress ⇒ the same-identity re-send obtains the checkout
+//   P   409 Already paid: stashed token ⇒ poll recovery; NO token / a REJECTED token ⇒ paid_unverified (zero further calls)
+//   R   closed_refunded ⇒ the refund with the server's refunded_total_cents; verifying ⇒ «Estamos confirmando tu pago»
+//   D   the lost-response duplicate: edited retry ⇒ order_exists cart ⇒ the recovery sheet, still ONE order; unedited ⇒ placed;
+//       after a reload too; order_exists tip / method; the two non-self-clearing cases
+//   M   the proven-safe mints: legacy order_conflict ⇒ a fresh id + a second order; paymentStatus cancelled ⇒ cash on a fresh id
+//   X   refusal mapping: outside_delivery_bands, pin_required, both closure refusals, the radius 400, price_increased (the sheet,
+//       agreed ⇒ the same id stands behind the new ceiling), quote_invalid (silent, one attempt)
+// Run: npm run test:capp-s2a
+require('./_emulator-required')('database', 'firestore');
+
+const assert = require('assert');
+const http = require('http');
+const path = require('path');
+const express = require('express');
+process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
+process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'capp-s2a-secret';
+process.env.QUOTE_TOKEN_SECRET = process.env.QUOTE_TOKEN_SECRET || 'capp-s2a-quote-secret';
+process.env.PIXELPAY_MERCHANT_EMAIL = process.env.PIXELPAY_MERCHANT_EMAIL || 'pagos@example.com';
+const stub = (rel, exportsOf) => { const p = require.resolve(rel); const real = require(rel); require.cache[p] = { id: p, filename: p, loaded: true, children: [], paths: [], exports: exportsOf(real) }; };
+const CHARGED = []; const RETURNS = []; let HOSTED_GATE = null;
+stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
+stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { if (HOSTED_GATE) await HOSTED_GATE.p; CHARGED.push(Number(q.amountLempiras)); RETURNS.push(q.completeUrl); return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
+
+const app = require('../index.js');
+const admin = require('firebase-admin');
+const rtdb = admin.database();
+const fs = admin.firestore();
+const ROOT = path.join(__dirname, '..', '..');
+const { adaptMenu } = require(path.join(ROOT, 'customer-app/capp-menu.js'));
+const { createCart } = require(path.join(ROOT, 'customer-app/capp-cart.js'));
+const { serialize } = require(path.join(ROOT, 'customer-app/capp-serialize.js'));
+const C = require(path.join(ROOT, 'customer-app/capp-checkout.js'));
+const A = require(path.join(ROOT, 'customer-app/capp-api.js'));
+const SC = require(path.join(ROOT, 'platform/client/sherpa-client.js'));
+const { publishVersion } = require('../catalog/catalog-publish');
+const { buildPublishCandidate } = require('../tools/publish-version');
+const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
+const { buildPublicMenu } = require('../catalog/public-menu');
+const { confirmAndMaterialize } = require('../pixelpay-confirm');
+const { buildMaterializeUpdates } = require('../materialize');
+const { cancelOrderCore } = require('../cancel-order-core');
+const { PLATFORM, PLATFORM_CONTEXT } = require('../platform-manifest');
+const APP_DEFAULT = PLATFORM.sites.deployments.find((d) => d.app === 'orders' && d.context === PLATFORM_CONTEXT).pay_return.default;
+
+let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+let FINISHED = false;
+process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('capp-s2a(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
+
+// ── the four REAL handlers behind one local server; the app's URLs point at it ──
+const ROUTES = { quoteOrder: app.quoteOrder, createOrder: app.createOrder, chargeOnlineOrder: app.chargeOnlineOrder, paymentStatus: app.paymentStatus };
+let BASE = null; let SERVER = null;
+const CALLS = []; let DROP_NEXT = null;   // DROP_NEXT: an endpoint whose next response is lost AFTER the server handled it
+async function startServer() {
+  const w = express(); w.use(express.json());
+  for (const [k, h] of Object.entries(ROUTES)) w.use(`/${k}`, h);
+  SERVER = http.createServer(w);
+  await new Promise((r) => SERVER.listen(0, '127.0.0.1', r));
+  BASE = `http://127.0.0.1:${SERVER.address().port}`;
+}
+const realFetch = async (url, init) => {
+  const ep = Object.keys(ROUTES).find((k) => url.startsWith(`${BASE}/${k}`));
+  CALLS.push(ep);
+  const r = await fetch(url, init);
+  if (DROP_NEXT === ep) { DROP_NEXT = null; await r.text(); throw new TypeError('Failed to fetch (response lost)'); }
+  return r;
+};
+// the REAL shared module, unstamped ⇒ inert: its fetch passes through (no X-Client headers; the floor cells live in S2a-e)
+const sherpa = SC.create({ window: { document: { querySelector: () => null, addEventListener() {}, visibilityState: 'visible' }, addEventListener() {}, console: { warn() {} } },
+  fetch: realFetch, setTimeout: (f, ms) => setTimeout(f, ms), setInterval: () => 0 });
+const count = (ep) => CALLS.filter((c) => c === ep).length;
+
+async function wipe() {
+  const url = rtdb.ref().toString();
+  assert.match(url, /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):\d+\//, `🔴 refusing to wipe: the RTDB handle resolves to ${url}`);
+  assert.match(String(process.env.FIRESTORE_EMULATOR_HOST || ''), /^(127\.0\.0\.1|localhost|\[::1\]):\d+$/, '🔴 refusing to wipe: Firestore is not the local emulator');
+  for (const c of await fs.listCollections()) await fs.recursiveDelete(c);
+  await rtdb.ref().remove();
+}
+const OPENH = { open: true, start: '00:00', end: '24:00' };
+const HOURS = { sun: OPENH, mon: OPENH, tue: OPENH, wed: OPENH, thu: OPENH, fri: OPENH, sat: OPENH };
+const CLOSEDH = Object.fromEntries(Object.keys(HOURS).map((k) => [k, { open: false }]));
+const APP_HOURS = Array.from({ length: 7 }, () => [0, 0, 23, 59]);
+const HUB = { lat: 14.1, lng: -87.2 };
+const KM = 1 / 111.195;
+const BANDS = [{ max_km: 2, cents: 3000 }, { max_km: 5, cents: 5000 }, { max_km: 7, cents: 7000 }];
+const IDENT = (rid, o = {}) => ({ name: rid, phone: '+504', active: true, hub_lat: HUB.lat, hub_lng: HUB.lng, delivery_radius_km: 8, version: 1, hours: HOURS, ...o });
+const clean = async () => { await rtdb.ref('rate_limits').remove(); await rtdb.ref('recent_order_content').remove(); };
+const order = async (id) => (await rtdb.ref(`orders/${id}`).get()).val();
+const orderCount = async () => Object.keys((await rtdb.ref('orders').get()).val() || {}).length;
+const edgeDeps = (rid, identity = { active: true, hours: HOURS }) => ({ db: rtdb, restaurant: { lat: HUB.lat, lng: HUB.lng, name: rid, phone: '+504' }, buildMaterializeUpdates, genToken: () => 'TOK',
+  alert: async () => {}, client: { voidTransaction: async () => ({ ok: true }) }, getIdentity: async () => identity, sanitizeText: (x) => String(x || ''), serverTimestamp: 1,
+  voidOrRefund: async () => ({ ok: true, voided: true, outcome: 'voided', ref: 'VR' }) });
+
+const MENU = {};
+async function serve(rid) { const m = await buildPublicMenu(fs, rid, { known: new Set([rid]), isActive: async () => true }); MENU[rid] = adaptMenu({ rid: m.rid, representation_version: m.representation_version, menu: m.body }); }
+const dishOf = (m, skip = 0) => m.dishes.filter((d) => !d.launcher && !(m.weekendOnlyCats.has(String(d.cat)) || m.pickupOnlyCats.has(String(d.cat))))[skip];
+
+// ── the app: one page = one api instance over a storage; a reload = a new instance over the SAME storage ──
+function memStorage() { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), _m: m }; }
+let PH = 0;
+function page(rid, storage = memStorage()) {
+  const api = A.createApi({ config: { restaurantId: rid, orderIdPrefix: 'TS', pendingPayKey: `${rid}_s2a_pending_pay`, hours: APP_HOURS,
+    endpoints: Object.fromEntries(Object.keys(ROUTES).map((k) => [k, `${BASE}/${k}`])) }, fetch: (u, i) => sherpa.fetch(u, i), storage, sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 50))) });
+  return { api, storage, rid, reload: () => page(rid, storage) };
+}
+function cartOf(rid, extraDish = false) { const c = createCart(MENU[rid]); c.inc(dishOf(MENU[rid]).key); if (extraDish) c.inc(dishOf(MENU[rid], 1).key); return c; }
+function flowOf(pay, { tip = 20, km = 1, phone } = {}) {
+  const f = C.freshFlow(null); C.setPin(f, HUB.lat + km * KM, HUB.lng, true);
+  Object.assign(f, { details: 'Portón negro', name: 'Ana S2a', phone: phone || `9966${String(PH += 1).padStart(4, '0')}`, pay });
+  if (tip !== null) C.chooseTip(f, tip);
+  return f;
+}
+const ctxOf = (rid, cart) => { const s = serialize(cart, MENU[rid]); return { restaurantId: rid, items: s.items, itemsText: s.items_text, member: null, subtotal: s.subtotal_cents, headers: { Authorization: `Bearer ${process.env.MAKE_SECRET}` } }; };
+// the app's flow: quote for the selected tip → the Total shown → place standing behind THAT Total
+async function quoteAndPlace(pg, f, cart, { sheet, sigOverride, expected } = {}) {
+  const ctx = ctxOf(pg.rid, cart);
+  const q = await pg.api.quote(f, ctx);
+  assert.strictEqual(q.kind, 'ok', `premise: the quote (${JSON.stringify(q)})`);
+  const T = C.totals(f, q.record, ctx.subtotal, await C.cartSig(f, ctx));
+  assert.ok(T.ready, `premise: a Total to show (${JSON.stringify(T)})`);
+  const out = await pg.api.place({ flow: f, ctx, sig: sigOverride || q.record.sig, expectedNetCents: expected == null ? T.total : expected, sheet });
+  return { out, T, q, ctx };
+}
+const stashOf = (pg) => JSON.parse(pg.storage.getItem(`${pg.rid}_s2a_pending_pay`) || 'null');
+const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_place`) || 'null');
+
+(async () => {
+  await wipe();
+  for (const rid of ['x_pizza', 'la_musa']) {
+    await fs.collection('restaurants').doc(rid).set({ name: rid, pricing_key_mode: rid === 'la_musa' ? 'id' : 'name', active: true, schema_version: 2 });
+    const seed = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: 'capp-s2a-seed' });
+    await publishVersion(fs, rid, seed.input, { expected: { activeVersionId: null }, mirror: makeRtdbMirror(rtdb) });
+    await rtdb.ref(`restaurants/${rid}/identity`).set(IDENT(rid));
+    await serve(rid);
+  }
+  // envío ACTIVE for x_pizza only; la_musa is DARK
+  await rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: BANDS, restaurants: { x_pizza: { active: true, free_delivery: false } } });
+  await startServer();
+
+  // ── E: equality, cash and card, envío + tip; the dark brand with no tip ──
+  {
+    await clean();
+    const pg = page('x_pizza'); const f = flowOf('cash');
+    const { out, T } = await quoteAndPlace(pg, f, cartOf('x_pizza'));
+    assert.strictEqual(out.kind, 'placed', JSON.stringify(out));
+    const o = await order(out.order_id);
+    assert.deepStrictEqual([T.envio, T.tip, o.total_cents, o.tip_cents], [3000, 2000, T.total, 2000], '🔴 cash: displayed Total == recorded total_cents (envío + tip once)');
+    assert.strictEqual(T.total, T.subtotal + T.envio + T.tip, 'the server net = food + envío + tip, exactly once');
+    assert.strictEqual(placeOf(pg), null, 'placed ⇒ pending_place cleared');
+    await clean(); CHARGED.length = 0; RETURNS.length = 0;
+    const kp = page('x_pizza'); const kf = flowOf('online');
+    const card = await quoteAndPlace(kp, kf, cartOf('x_pizza'));
+    assert.strictEqual(card.out.kind, 'redirect', JSON.stringify(card.out));
+    assert.deepStrictEqual([Math.round(CHARGED[0] * 100), (await order(card.out.order_id)).total_cents], [card.T.total, card.T.total], '🔴 card: displayed == pending total == PixelPay amount × 100');
+    assert.strictEqual(new URL(RETURNS[0]).origin, APP_DEFAULT, 'card returns to the app deployment');
+    assert.deepStrictEqual([stashOf(kp).order_id, stashOf(kp).t.length > 0], [card.out.order_id, true], 'creds persisted before the redirect');
+    await clean();
+    const dp = page('la_musa'); const df = flowOf('cash', { tip: 0 });
+    const dark = await quoteAndPlace(dp, df, cartOf('la_musa'));
+    assert.deepStrictEqual([dark.out.kind, dark.T.envio, dark.T.tip, (await order(dark.out.order_id)).total_cents], ['placed', 0, 0, dark.T.total], 'the dark brand, no tip: placed at the food total');
+    ok('E equality: displayed Total == placing == recorded total_cents == PixelPay × 100 (cash + card, envío + tip once); card returns to the app deployment with creds stashed first; the dark brand without a tip');
+  }
+
+  // ── I: 202 in_progress ⇒ the same-identity re-send obtains the checkout ──
+  {
+    await clean(); CHARGED.length = 0;
+    let release; HOSTED_GATE = { p: new Promise((r) => { release = r; }) };
+    const pg = page('x_pizza'); const f = flowOf('online'); const cart = cartOf('x_pizza');
+    const ctx = ctxOf('x_pizza', cart);
+    const q = await pg.api.quote(f, ctx); const T = C.totals(f, q.record, ctx.subtotal, q.record.sig);
+    const first = pg.api.place({ flow: f, ctx, sig: q.record.sig, expectedNetCents: T.total });
+    while (!placeOf(pg)) await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 300));   // the first request holds the creating claim
+    const before = count('chargeOnlineOrder');
+    const second = pg.reload().api.place({ flow: f, ctx, sig: q.record.sig, expectedNetCents: T.total });   // another tab / a reload, SAME record
+    await new Promise((r) => setTimeout(r, 400));
+    const during = count('chargeOnlineOrder') - before;
+    release(); HOSTED_GATE = null;
+    const [a, b] = await Promise.all([first, second]);
+    assert.ok(during >= 1, 'the second page got an answer while the first was creating');
+    assert.deepStrictEqual([a.kind, b.kind, a.order_id === b.order_id, a.url === b.url, CHARGED.length], ['redirect', 'redirect', true, true, 1], `🔴 202 ⇒ the SAME identity re-sent ⇒ the same checkout, one gateway call (${JSON.stringify([a, b])})`);
+    ok('I 202 in_progress: a second page on the SAME placement re-sends the same identity and obtains the same checkout — one gateway call');
+  }
+
+  // ── P: 409 Already paid ──
+  {
+    await clean();
+    const pg = page('x_pizza'); const f = flowOf('online'); const cart = cartOf('x_pizza');
+    const r1 = await quoteAndPlace(pg, f, cart);
+    const o1 = await order(r1.out.order_id);
+    const conf = await confirmAndMaterialize(edgeDeps('x_pizza'), { orderId: r1.out.order_id, attemptId: o1.active_attempt_id, now: Date.now(), trackingToken: 'TTP1' });
+    assert.ok(conf, 'premise: confirmed by the real writer');
+    const c0 = count('paymentStatus');
+    const r2 = await quoteAndPlace(pg, f, cart);
+    assert.deepStrictEqual([r2.out.kind, r2.out.order_id, count('paymentStatus') - c0], ['placed', r1.out.order_id, 1], `with the stashed token: Already paid ⇒ ONE poll ⇒ placed for THAT order (${JSON.stringify(r2.out)})`);
+    for (const [what, mut] of [['NO token', (p) => p.storage.removeItem('x_pizza_s2a_pending_pay')], ['a REJECTED token', (p) => { const s = stashOf(p); s.t = 'not-the-token'; p.storage.setItem('x_pizza_s2a_pending_pay', JSON.stringify(s)); }]]) {
+      await clean();
+      const p2 = page('x_pizza'); const f2 = flowOf('online');
+      const a = await quoteAndPlace(p2, f2, cart);
+      const ao = await order(a.out.order_id);
+      await confirmAndMaterialize(edgeDeps('x_pizza'), { orderId: a.out.order_id, attemptId: ao.active_attempt_id, now: Date.now(), trackingToken: `TTP${what.length}` });
+      mut(p2);
+      const ch0 = count('chargeOnlineOrder'), ps0 = count('paymentStatus');
+      const b = await quoteAndPlace(p2, f2, cart);
+      const polls = count('paymentStatus') - ps0;
+      assert.deepStrictEqual([b.out.kind, b.out.order_id, count('chargeOnlineOrder') - ch0, polls], ['paid_unverified', a.out.order_id, 1, what === 'NO token' ? 0 : 1], `🔴 ${what}: paid_unverified (${JSON.stringify(b.out)})`);
+      assert.strictEqual(placeOf(p2), null, `${what}: Already paid clears the placement`);
+      const ch1 = count('chargeOnlineOrder'), ps1 = count('paymentStatus');
+      await new Promise((r) => setTimeout(r, 100));
+      assert.deepStrictEqual([count('chargeOnlineOrder') - ch1, count('paymentStatus') - ps1], [0, 0], `${what}: zero further calls`);
+    }
+    ok('P Already paid: a stashed token ⇒ one poll ⇒ placed for that order; NO token ⇒ paid_unverified with zero polls; a REJECTED token (403) ⇒ paid_unverified; zero further calls; the placement cleared');
+  }
+
+  // ── R: closed_refunded and verifying, through the paid-after-close guard (the real writer) ──
+  {
+    for (const [uuid, want] of [['uuid-s2a', 'refunded'], [null, 'confirming']]) {
+      await clean();
+      const pg = page('x_pizza'); const f = flowOf('online');
+      const r = await quoteAndPlace(pg, f, cartOf('x_pizza'));
+      const o = await order(r.out.order_id);
+      if (uuid) await rtdb.ref(`payment_attempts/${o.active_attempt_id}/payment_uuid`).set(uuid);   // what the PixelPay webhook records with the capture
+      await confirmAndMaterialize(edgeDeps('x_pizza', { active: true, hours: CLOSEDH }), { orderId: r.out.order_id, attemptId: o.active_attempt_id, now: Date.now(), trackingToken: 'TTR' });
+      const back = pg.reload();   // the redirect lands on a fresh page
+      const s = stashOf(back);
+      const out = await back.api.handleReturn(`?pay=complete&order=${encodeURIComponent(r.out.order_id)}&t=${encodeURIComponent(s.t)}`);
+      if (want === 'refunded') {
+        assert.deepStrictEqual([out.kind, out.refunded_total_cents], ['refunded', r.T.total], `🔴 closed_refunded ⇒ the refund sheet with the server's amount (${JSON.stringify(out)})`);
+        assert.deepStrictEqual([placeOf(back), stashOf(back)], [null, null], 'the refund clears pending_place AND the pay stash');
+      } else {
+        assert.deepStrictEqual([out.kind, out.state], ['confirming', 'verifying'], `verifying ⇒ «Estamos confirmando tu pago» (${JSON.stringify(out)})`);
+        assert.ok(placeOf(back) && stashOf(back), 'verifying keeps the placement and the creds (no cash offer)');
+      }
+    }
+    ok('R paid after close: closed_refunded ⇒ the refund with refunded_total_cents == the Total (placement + stash cleared); a refund that could not run ⇒ verifying ⇒ «Estamos confirmando tu pago», creds kept');
+  }
+
+  // ── D: the lost-response duplicate (Codex r2 P1 #9) and the order_exists family ──
+  {
+    await clean();
+    const pg = page('x_pizza'); const f = flowOf('cash');
+    const before = await orderCount();
+    DROP_NEXT = 'createOrder';
+    const first = await quoteAndPlace(pg, f, cartOf('x_pizza'));
+    assert.strictEqual(first.out.kind, 'offline', `premise: the response was lost (${JSON.stringify(first.out)})`);
+    const id = first.out.order_id;
+    assert.ok(await order(id), 'premise: the server DID create it');
+    await clean();
+    const edited = await quoteAndPlace(pg, f, cartOf('x_pizza', true));
+    assert.deepStrictEqual([edited.out.kind, edited.out.order_id, edited.out.reference], ['existing_order', id, id.slice(-4).toUpperCase()], `🔴 an edited retry ⇒ order_exists cart ⇒ the recovery sheet (${JSON.stringify(edited.out)})`);
+    assert.strictEqual(await orderCount(), before + 1, '🔴 still exactly ONE order');
+    assert.strictEqual(placeOf(pg).order_id, id, 'no mint');
+    await clean();
+    const again = await quoteAndPlace(pg.reload(), f, cartOf('x_pizza'));   // AFTER A RELOAD, the unedited cart
+    assert.deepStrictEqual([again.out.kind, again.out.order_id, again.out.idempotent], ['placed', id, true], 'the unedited retry (after a reload) ⇒ idempotent 200 ⇒ placed');
+    assert.strictEqual(await orderCount(), before + 1);
+    // order_exists reason tip: the same lost response, the tip changed
+    await clean();
+    const tp = page('x_pizza'); const tf = flowOf('cash');
+    DROP_NEXT = 'createOrder';
+    const t1 = await quoteAndPlace(tp, tf, cartOf('x_pizza'));
+    C.chooseTip(tf, 40); await clean();
+    const t2 = await quoteAndPlace(tp, tf, cartOf('x_pizza'));
+    assert.deepStrictEqual([t2.out.kind, t2.out.order_id], ['existing_order', t1.out.order_id], `a changed tip ⇒ order_exists tip ⇒ the sheet, no mint (${JSON.stringify(t2.out)})`);
+    // method: a card placement, then cash on the same identity — with creds one poll first (pending ⇒ confirming); without ⇒ the sheet
+    await clean();
+    const mp = page('x_pizza'); const mf = flowOf('online');
+    const m1 = await quoteAndPlace(mp, mf, cartOf('x_pizza'));
+    mf.pay = 'cash'; const ps0 = count('paymentStatus');
+    const m2 = await quoteAndPlace(mp, mf, cartOf('x_pizza'));
+    assert.deepStrictEqual([m2.out.kind, m2.out.order_id, count('paymentStatus') - ps0], ['confirming', m1.out.order_id, 1], `method WITH creds ⇒ one paymentStatus first (${JSON.stringify(m2.out)})`);
+    mp.storage.removeItem('x_pizza_s2a_pending_pay');
+    const m3 = await quoteAndPlace(mp, mf, cartOf('x_pizza'));
+    assert.deepStrictEqual([m3.out.kind, m3.out.order_id], ['existing_order', m1.out.order_id], 'a cash retry after a card placement (no creds) ⇒ method ⇒ the sheet');
+    // a tokenless CLOSED card order ⇒ the sheet on every retry
+    await clean();
+    const zp = page('x_pizza'); const zf = flowOf('online');
+    const z1 = await quoteAndPlace(zp, zf, cartOf('x_pizza'));
+    zp.storage.removeItem('x_pizza_s2a_pending_pay');
+    const cr = await cancelOrderCore(edgeDeps('x_pizza'), { orderId: z1.out.order_id, actor: 'test', reason: 'capp-s2a', now: Date.now(), claimId: `cancel-${z1.out.order_id}` });
+    assert.ok(cr, 'premise: cancelled by the real writer');
+    for (let i = 0; i < 2; i++) {
+      const z = await quoteAndPlace(zp, zf, cartOf('x_pizza'));
+      assert.deepStrictEqual([z.out.kind, z.out.order_id], ['existing_order', z1.out.order_id], `a tokenless closed card order ⇒ the sheet (retry ${i + 1}) (${JSON.stringify(z.out)})`);
+    }
+    ok('D lost response: an edited retry ⇒ order_exists ⇒ the recovery sheet, ONE order, no mint; the unedited retry after a reload ⇒ idempotent placed; a changed tip ⇒ the sheet; cash after card ⇒ one poll with creds, the sheet without; a tokenless closed card order ⇒ the sheet every retry');
+  }
+
+  // ── M: the proven-safe mints ──
+  {
+    await clean();
+    const pg = page('x_pizza'); const f = flowOf('cash');
+    DROP_NEXT = 'createOrder';
+    const a = await quoteAndPlace(pg, f, cartOf('x_pizza'));
+    const id = a.out.order_id;
+    await cancelOrderCore(edgeDeps('x_pizza'), { orderId: id, actor: 'test', reason: 'capp-s2a', now: Date.now(), claimId: `cancel-${id}` });
+    await clean();
+    const n0 = await orderCount();
+    const b = await quoteAndPlace(pg, f, cartOf('x_pizza'));
+    assert.strictEqual(b.out.kind, 'placed', JSON.stringify(b.out));
+    assert.notStrictEqual(b.out.order_id, id, '🔴 legacy order_conflict (terminal-safe) ⇒ a FRESH id');
+    assert.strictEqual(await orderCount(), n0 + 1, 'and a second order');
+    // paymentStatus cancelled ⇒ «Pagar en efectivo» on a fresh id
+    await clean();
+    const cp = page('x_pizza'); const cf = flowOf('online');
+    const c1 = await quoteAndPlace(cp, cf, cartOf('x_pizza'));
+    await cancelOrderCore(edgeDeps('x_pizza'), { orderId: c1.out.order_id, actor: 'test', reason: 'capp-s2a', now: Date.now(), claimId: `cancel-${c1.out.order_id}` });
+    const back = cp.reload();
+    const ret = await back.api.handleReturn(`?pay=complete&order=${encodeURIComponent(c1.out.order_id)}&t=${encodeURIComponent(stashOf(back).t)}`);
+    assert.deepStrictEqual([ret.kind, ret.state, placeOf(back)], ['payment_failed', 'cancelled', null], `cancelled ⇒ «Pago no completado», cleared (${JSON.stringify(ret)})`);
+    cf.pay = 'cash'; await clean();
+    const c2 = await quoteAndPlace(back, cf, cartOf('x_pizza'));
+    assert.deepStrictEqual([c2.out.kind, c2.out.order_id !== c1.out.order_id], ['placed', true], '«Pagar en efectivo» after cancelled ⇒ a fresh id, placed');
+    ok('M proven-safe mints: legacy order_conflict on a terminal-safe order ⇒ a fresh id and a second order; paymentStatus cancelled ⇒ cash on a fresh id');
+  }
+
+  // ── X: refusal mapping from the REAL server ──
+  {
+    await clean();
+    const pg = page('x_pizza');
+    const far = flowOf('cash', { km: 9 });
+    assert.strictEqual((await pg.api.quote(far, ctxOf('x_pizza', cartOf('x_pizza')))).kind, 'out_of_zone', 'outside_delivery_bands ⇒ out-of-zone');
+    const unpinned = flowOf('cash'); unpinned.pin.confirmed = false;
+    assert.strictEqual((await pg.api.quote(unpinned, ctxOf('x_pizza', cartOf('x_pizza')))).kind, 'pin', 'pin_required ⇒ the pin gate');
+    for (const [label, patch] of [['inactive', { active: false }], ['outside its hours', { hours: CLOSEDH }]]) {
+      await rtdb.ref('restaurants/x_pizza/identity').set(IDENT('x_pizza', { ...patch, version: 2 }));
+      await clean();
+      const cart = cartOf('x_pizza'); const ff = flowOf('cash'); const ctx = ctxOf('x_pizza', cart);
+      const out = await pg.reload().api.place({ flow: ff, ctx, sig: 'none', expectedNetCents: null });
+      assert.strictEqual(out.kind, 'closed', `${label} ⇒ G0 (${JSON.stringify(out)})`);
+    }
+    await rtdb.ref('restaurants/x_pizza/identity').set(IDENT('x_pizza', { delivery_radius_km: 0.5, version: 3 }));
+    await clean();
+    const rz = await page('x_pizza').api.place({ flow: flowOf('cash', { km: 1 }), ctx: ctxOf('x_pizza', cartOf('x_pizza')), sig: 'none', expectedNetCents: null });
+    assert.strictEqual(rz.kind, 'out_of_zone', `the order handler's radius 400 ⇒ out-of-zone (${JSON.stringify(rz)})`);
+    await rtdb.ref('restaurants/x_pizza/identity').set(IDENT('x_pizza', { version: 4 }));
+    // price_increased: the body stands behind a LOWER ceiling than the server's net, no usable token ⇒ the sheet; agreed ⇒ same id
+    await clean();
+    const pp = page('x_pizza'); const pf = flowOf('cash');
+    const seen = [];
+    const pi = await quoteAndPlace(pp, pf, cartOf('x_pizza'), { sigOverride: 'no-token-for-this', expected: 100, sheet: async (o) => { seen.push(o); return true; } });
+    assert.strictEqual(pi.out.kind, 'placed', JSON.stringify(pi.out));
+    assert.deepStrictEqual([seen.length, seen[0].oldCents, seen[0].newCents], [1, 100, pi.T.total], '🔴 price_increased ⇒ the sheet old → new (the server net)');
+    assert.strictEqual((await order(pi.out.order_id)).total_cents, pi.T.total, 'agreed ⇒ placed standing behind the new ceiling');
+    // quote_invalid: a token issued for ANOTHER cart rides this body ⇒ recovered silently, once
+    await clean();
+    const qp = page('x_pizza'); const qf = flowOf('cash');
+    const cartB = cartOf('x_pizza', true); const ctxB = ctxOf('x_pizza', cartB);
+    const qB = await qp.api.quote(qf, ctxB); const TB = C.totals(qf, qB.record, ctxB.subtotal, qB.record.sig);
+    const ctxA = ctxOf('x_pizza', cartOf('x_pizza')); const qA = await qp.api.quote(qf, ctxA);   // the stored token is now A's
+    const sheetCalls = [];
+    const qi = await qp.api.place({ flow: qf, ctx: ctxB, sig: qA.record.sig, expectedNetCents: TB.total, sheet: async () => { sheetCalls.push(1); return true; } });
+    assert.deepStrictEqual([qi.kind, sheetCalls.length], ['placed', 0], `quote_invalid ⇒ recovered silently (${JSON.stringify(qi)})`);
+    assert.strictEqual((await order(qi.order_id)).total_cents, TB.total);
+    ok('X refusals from the REAL server: outside_delivery_bands, pin_required, inactive + outside hours ⇒ G0, the radius 400 ⇒ out-of-zone, price_increased ⇒ the sheet (old → new) then the same id at the new ceiling, quote_invalid ⇒ silent');
+  }
+
+  FINISHED = true;
+  console.log(`\ncapp-s2a (emulator): ${n} passed`);
+  console.log(`##CELLS ${n}`);
+  SERVER.close();
+  process.exit(0);
+})().catch((e) => { console.error('capp-s2a FAILED:', e && (e.stack || e)); process.exit(1); });

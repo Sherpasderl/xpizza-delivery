@@ -63,7 +63,7 @@ test('G0 + every gate, IN ORDER, with the prototype copy (missingStep :1812-1824
 
 test('tip: nothing preselected; presets / «Otro»; 0 = «Sin propina»; pickup clears it; capped at the server maximum', () => {
   const f = ready();
-  assert.equal(f.tipChoice, null); assert.equal(C.tipChosen(f), false, 'tip null ⇒ «Hacer pedido» disabled');
+  assert.equal(f.tipChoice, null, 'nothing preselected'); assert.equal(C.tipChosen(f), false, 'tip null ⇒ «Hacer pedido» disabled');
   assert.ok(C.chooseTip(f, 40)); assert.deepEqual([f.tipChoice, C.tipCentsOf(f), C.tipChosen(f)], [{ kind: 'preset', lempiras: 40 }, 4000, true]);
   assert.ok(C.chooseTip(f, { other: 0 })); assert.deepEqual(f.tipChoice, { kind: 'none', lempiras: 0 }, '0 via «Otro» = «Sin propina»');
   assert.ok(C.tipChosen(f) && C.tipCentsOf(f) === 0);

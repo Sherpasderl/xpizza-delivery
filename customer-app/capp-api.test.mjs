@@ -42,11 +42,11 @@ function server(script, storage) {
   };
   return { fetch, calls, of: (ep) => calls.filter((c) => c.ep === ep) };
 }
+let RNG = 0;   // process-wide: a reloaded page must NOT mint the same id by accident of a restarted counter
 function rig({ script, storage = memStorage(), clock = { t: at(12) }, hours = OPEN_ALL, sheet } = {}) {
   const srv = server(script, storage);
-  let n = 0;
   const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours },
-    fetch: srv.fetch, storage, now: () => clock.t, sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (n++ * 7) % 256),
+    fetch: srv.fetch, storage, now: () => clock.t, sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256),
     setInterval: () => 0, clearInterval: () => {} });
   return { api: make(), reload: make, srv, storage, clock, sheet };
 }
@@ -75,7 +75,7 @@ test('the placement record is persisted BEFORE the first send; last_send before 
   assert.equal(placeRec(R.storage), null, 'cash 200 ⇒ cleared');
   const W = rig({ script: { createOrder: [OK_CASH] } });
   W.storage.failWrites = true;
-  assert.equal((await W.api.place(placeArgs('cash'))).kind, 'stash_failed');
+  assert.equal((await W.api.place(placeArgs('cash'))).kind, 'stash_failed', 'a failed record write ⇒ stash_failed');
   assert.equal(W.srv.calls.length, 0, '🔴 a failed record write ⇒ NO request');
   // the last_send re-write before a RETRY fails ⇒ that retry is not sent (and the placement resolves, never throws)
   const M = rig({ script: { createOrder: ['network', OK_CASH] } });
@@ -169,7 +169,7 @@ test('409 Already paid: a stashed token ⇒ poll recovery; NO token / a REJECTED
   assert.equal(R.storage.getItem('ta_pending_pay'), null, 'the refund clears the stash'); assert.equal(placeRec(R.storage), null, 'and pending_place (outcome 4)');
   const N = rig({ script: { chargeOnlineOrder: [AP] } });
   const n = await N.api.place(placeArgs('online'));
-  assert.equal(n.kind, 'paid_unverified');
+  assert.equal(n.kind, 'paid_unverified', 'no token: Already paid ⇒ paid_unverified');
   assert.deepEqual([N.srv.of('chargeOnlineOrder').length, N.srv.of('paymentStatus').length], [1, 0], '🔴 no token: never polls, never re-sends');
   assert.equal(placeRec(N.storage), null, 'Already paid clears (outcome 3)');
   const X = rig({ script: { chargeOnlineOrder: [CHECKOUT, AP], paymentStatus: [{ status: 403, json: {} }] } });
@@ -230,7 +230,7 @@ test('a late retry spans the old expiry: placed 18:00, closing 21:00, «Reintent
   const r = await retry.api.place(placeArgs('online'));
   assert.equal(r.order_id, a.order_id, 'the retry before closing is the same id');
   R.clock.t = at(21, 1);
-  assert.equal(R.reload().readPlace().order_id, a.order_id, '🔴 21:01: last_send + 60 governs — STILL the same id (the checkout is live to 21:44)');
+  assert.equal((R.reload().readPlace() || {}).order_id, a.order_id, '🔴 21:01: last_send + 60 governs — STILL the same id (the checkout is live to 21:44)');
   R.clock.t = at(21, 59);
   assert.equal(R.reload().readPlace(), null, '21:59: cleared');
 });
@@ -272,6 +272,26 @@ test('order refusals: both closure refusals ⇒ G0; the radius 400 ⇒ out-of-zo
   assert.ok(placeRec(D.storage), 'declined: the identity is kept');
   const S = rig({ script: { createOrder: [{ status: 409, json: { error: 'quote_invalid' } }, OK_CASH] } });
   assert.equal((await S.api.place(placeArgs('cash'))).kind, 'placed', 'quote_invalid: recovered silently, one attempt');
+});
+
+test('the expiry with a frozen clock that replaces the WHOLE Date on the page global (no injected now): the default path', async () => {
+  const vm = await import('node:vm');
+  const { webcrypto } = await import('node:crypto');
+  let FROZEN = at(20);
+  const Real = Date;
+  class FrozenDate extends Real { constructor(...a) { if (a.length === 0) super(FROZEN); else super(...a); } static now() { return FROZEN; } }
+  const ctx = { Date: FrozenDate, URLSearchParams, TextEncoder, crypto: webcrypto, setTimeout, clearTimeout, setInterval: () => 0, clearInterval: () => {}, console, JSON, Math, Promise, Uint8Array };
+  ctx.self = ctx; ctx.window = ctx;
+  vm.createContext(ctx);
+  for (const f of ['capp-checkout.js', 'capp-confirm-quote.js', 'capp-api.js']) vm.runInContext(readFileSync(join(ROOT, 'customer-app', f), 'utf8'), ctx, { filename: f });
+  const storage = memStorage();
+  const srv = server({ createOrder: ['network'] }, storage);
+  const mk = () => ctx.CappApi.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'k', endpoints: E, hours: Array.from({ length: 7 }, () => [11, 0, 22, 0]) },
+    fetch: srv.fetch, storage, sleep: async () => {} });   // NO now: the page's own Date
+  const a = await mk().place(placeArgs('cash'));
+  assert.match(a.order_id, /^TA261026-200000-[0-9A-Z]{8}$/, 'the id is minted on the frozen instant (argument-less new Date())');
+  FROZEN = at(21, 59, 59); assert.equal((mk().readPlace() || {}).order_id, a.order_id, 'still locked at 21:59:59 (Date.now() frozen)');
+  FROZEN = at(22); assert.equal(mk().readPlace(), null, 'cleared at 22:00 — closing wins');
 });
 
 test('the identity endpoints are reached ONLY through the injected SherpaClient.fetch (no direct fetch); no brand literal', () => {
