@@ -17,6 +17,14 @@
       "kind": "insert"
     },
     {
+      "name": "OFFLINE-INIT-3",
+      "kind": "insert"
+    },
+    {
+      "name": "OFFLINE-TEARDOWN-3",
+      "kind": "insert"
+    },
+    {
       "name": "HELP-HANDLER",
       "kind": "replace",
       "restore": [

@@ -45,8 +45,8 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 // — a tampered shared module (widened/dropped restore, added/removed region, changed kind) is caught HERE too, not
 // just in slice3-freeze. Mirror of slice3-freeze's SLICE3_PINS; both must agree with the byte-frozen contract file.
 const SLICE3_PINS = {
-  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER'],
-  kinds: ['insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace'],
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER'],
+  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace'],
   restoreSha: {
     'HELP-HANDLER': 'e823efd01be83461f6b7b900e8e60a9065d9c44bfedb1b32c2624f1d6c00206f',
     'CUADRE-CSS': '41327b6fa5e535b774d323c235e755019b6020516a10ac20340b004667f8a4ec',
@@ -56,7 +56,7 @@ const SLICE3_PINS = {
     'CHIME-FRESH': 'e86e31b5350d14f892d99d38e7bf84fcf2358c262d03d9354bf663864e0de4c9',
     'OFFER-TAKEOVER': '88bdef966a96defc21a3b6bc407f595201c0808456016662832f6ae14c60a855',
   },
-  fileSha: 'eaf87130c5072cb80dab0ed35d6f3bf7f0103112805d80cb85e00d352f8a06eb',
+  fileSha: 'f075998ae41e583ee3892c16f2f7996b9f7bd438105fa07996d847b080e002f1',
 };
 // Load the contract as DATA: read bytes → verify the sha256 pin FIRST → only then JSON.parse (Codex r2 P1). No
 // require/import of editable code; a tampered or executable contract fails the sha (and JSON.parse) before use.
@@ -197,6 +197,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/offer-takeover.test.js',          // cross-hub S.oferta takeover handler test (SLICE3)
   'xpizza-driver/oferta-offer.test.js',            // S.oferta offer-branch rebuild output test (SLICE3)
   'xpizza-driver/idle-help-gate.test.js',          // SLICE3:IDLE-3 help-link gate test (SLICE3)
+  'xpizza-driver/offline-banner.test.js',          // SLICE3 offline banner handler test (SLICE3)
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';

@@ -28,7 +28,7 @@ function shows(status) {
   const dom = new JSDOM('<!doctype html><body><button id="idle-help-link" class="hidden">¿Por qué no veo pedidos?</button></body>');
   const { document } = dom.window;
   const $ = (id) => document.getElementById(id);
-  new Function('status', '$', IDLE3)(status, $);   // the real region reads exactly `status` and `$`
+  new Function('status', '$', 'applyOfflineBanner', IDLE3)(status, $, () => {});   // the real region reads `status`, `$`, and calls applyOfflineBanner (stubbed — its own test covers it)
   return !$('idle-help-link').classList.contains('hidden');
 }
 
@@ -44,7 +44,7 @@ t('the gate is a toggle: an already-visible link re-hides when status leaves ava
   const dom = new JSDOM('<!doctype html><body><button id="idle-help-link">¿Por qué no veo pedidos?</button></body>');   // starts VISIBLE
   const { document } = dom.window;
   const $ = (id) => document.getElementById(id);
-  new Function('status', '$', IDLE3)('returning', $);
+  new Function('status', '$', 'applyOfflineBanner', IDLE3)('returning', $, () => {});
   assert.equal($('idle-help-link').classList.contains('hidden'), true, 'a visible link is hidden when not available');
 });
 

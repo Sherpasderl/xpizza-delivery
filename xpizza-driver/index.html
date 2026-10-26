@@ -55,6 +55,12 @@
 .of2-t { font-size: 14px; color: var(--text, #1F2733); } .of2-t b { font-weight: 800; }
 .of2-d { font-size: 12.5px; color: var(--text-soft, #5A6473); margin-top: 1px; }
 .of2-foot-note { text-align: center; font-size: 12px; color: var(--text-dim, #A2ABBA); margin-top: 2px; line-height: 1.35; }
+/* the offline banner (owner 10-25): a warn banner above the active card, + the prototype foot line under the slide */
+.offline-banner { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 12px; padding: 11px 13px; border-radius: 12px; background: #FEF3E2; color: #8A5A00; font-size: 13px; line-height: 1.35; }
+.offline-banner .ob-ic { flex: none; width: 20px; height: 20px; margin-top: 1px; color: var(--warn, #f59e0b); }
+.offline-banner .ob-ic svg { width: 20px; height: 20px; }
+.offline-banner .ob-tx b { font-weight: 800; }
+.offline-foot-note { text-align: center; font-size: 12px; color: var(--text-dim, #A2ABBA); margin-top: 8px; line-height: 1.35; }
 /* ===== SLICE3:PRESENTATION-3:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -2383,6 +2389,54 @@ function startOfferRepeat(offer) {
     try { if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]); } catch {}
   }, 5000);
 }
+
+// The OFFLINE BANNER (owner 10-25). Shown ABOVE the active order card ONLY while an ACCEPTED order is in hand and the
+// RTDB socket is down (offerIsOffline()); the card stays usable and the slides keep their queued behaviour. Injected +
+// subscribed ONCE at on-shift init, toggled LIVE on the .info/connected edge + the window online/offline edges (no
+// polling), and torn down at shift end / sign-out. The banner + the prototype foot line are PERSISTENT siblings in
+// #onshift-content, so a card re-render never wipes them; applyOfflineBanner re-reads the DOM for the in-hand slide.
+let offlineBannerConnUnsub = null, offlineBannerHandler = null;
+const OFFLINE_WIFI = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 8.5a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>';
+function offlineInHand() {   // an ACCEPTED order with a queued server slide is on screen (never idle, never an offer)
+  const slot = $('active-order-slot');
+  return !!(slot && slot.querySelector('#btn-delivered, #btn-pickup, #btn-at-restaurant'));
+}
+function applyOfflineBanner() {
+  const banner = $('offline-banner'); if (!banner) return;
+  const show = offerIsOffline() && offlineInHand();
+  banner.classList.toggle('hidden', !show);
+  const note = $('offline-foot-note'); if (note) note.classList.toggle('hidden', !show);
+}
+function initOfflineBanner() {
+  const content = $('onshift-content'); if (!content) return;
+  if (!$('offline-banner')) {
+    const b = document.createElement('div');
+    b.id = 'offline-banner'; b.className = 'offline-banner hidden'; b.setAttribute('role', 'status');
+    b.innerHTML = `<span class="ob-ic">${OFFLINE_WIFI}</span><div class="ob-tx"><b>Sin conexión</b> · lo que deslicés se envía al volver la señal. No cierres la app.</div>`;
+    content.insertBefore(b, $('active-order-slot'));   // ABOVE the order card, the prototype S.offline position (:945)
+  }
+  if (!$('offline-foot-note')) {
+    const n = document.createElement('div');
+    n.id = 'offline-foot-note'; n.className = 'offline-foot-note hidden';
+    n.textContent = 'Si no vuelve en 5 min, llamá a despacho.';   // prototype foot copy, under the slide while offline
+    content.insertBefore(n, $('queue-slot'));          // below the active card (under the slide)
+  }
+  if (!offlineBannerHandler) {
+    offlineBannerHandler = () => applyOfflineBanner();
+    window.addEventListener('online', offlineBannerHandler);
+    window.addEventListener('offline', offlineBannerHandler);
+  }
+  if (!offlineBannerConnUnsub) {
+    offlineBannerConnUnsub = fbOnValue(fbRef(XPD.getDb(), '.info/connected'), () => applyOfflineBanner());
+  }
+  applyOfflineBanner();
+}
+function stopOfflineBanner() {
+  if (offlineBannerHandler) { window.removeEventListener('online', offlineBannerHandler); window.removeEventListener('offline', offlineBannerHandler); offlineBannerHandler = null; }
+  if (offlineBannerConnUnsub) { try { offlineBannerConnUnsub(); } catch (_) {} offlineBannerConnUnsub = null; }
+  const b = $('offline-banner'); if (b) b.classList.add('hidden');
+  const n = $('offline-foot-note'); if (n) n.classList.add('hidden');
+}
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
    drivers/{uid}/nav_app (own-uid, enum) with a localStorage mirror; «Cerrar sesión» reuses driverSignOut. ===== */
@@ -3185,6 +3239,9 @@ async function handleStartShift() {
     }
     toast(trackingOk ? 'Turno iniciado' : 'Turno iniciado · problema con ubicación, reintentá',
           trackingOk ? 'success' : 'error');
+    /* ===== SLICE3:OFFLINE-INIT-3:START — on-shift init: inject the offline banner element + subscribe ONCE to the connection edge (idempotent; torn down in cleanupShift) ===== */
+    initOfflineBanner();
+    /* ===== SLICE3:OFFLINE-INIT-3:END ===== */
   } catch (e) {
     // Only the SERVER clock-in throwing reaches here → the shift didn't start → revert the optimistic screen.
     optimisticShift = null;
@@ -3704,6 +3761,9 @@ async function cleanupShift() {
     try { await wakeLock.release(); } catch {}
     wakeLock = null;
   }
+  /* ===== SLICE3:OFFLINE-TEARDOWN-3:START — tear down the offline banner's connectivity subscription on shift end / sign-out (cleanupShift is the common teardown for both) ===== */
+  stopOfflineBanner();
+  /* ===== SLICE3:OFFLINE-TEARDOWN-3:END ===== */
 }
 
 // ============================================================
@@ -4487,6 +4547,7 @@ function renderIdleState() {
   /* ===== SLICE3:IDLE-3:START — idle-screen slice-3 state. (a) the «¿Por qué no veo pedidos?» help link shows ONLY when AVAILABLE (owner): on a returning / at-restaurant idle screen the diagnosis is irrelevant. (gpsoff mount/clear to follow in this region.) ===== */
   const idleHelpLink = $('idle-help-link');
   if (idleHelpLink) idleHelpLink.classList.toggle('hidden', status !== 'available');
+  applyOfflineBanner();   // the idle screen has no order in hand → this hides the offline banner + its foot note
   /* ===== SLICE3:IDLE-3:END ===== */
   syncIdleStats();
 }
