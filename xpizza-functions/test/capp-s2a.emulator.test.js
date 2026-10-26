@@ -7,7 +7,6 @@
 //   E   equality: the displayed Total == the placing Total == the recorded total_cents == the PixelPay amount × 100 (cash, card;
 //       envío + tip); the dark brand with no tip
 //   C   card: checkout_url with entry_mode app, returning to the app deployment; creds persisted before the redirect
-//   I   202 in_progress ⇒ the same-identity re-send obtains the checkout
 //   P   409 Already paid: stashed token ⇒ poll recovery; NO token / a REJECTED token ⇒ paid_unverified (zero further calls)
 //   R   closed_refunded ⇒ the refund with the server's refunded_total_cents; verifying ⇒ «Estamos confirmando tu pago»
 //   D   the lost-response duplicate: edited retry ⇒ order_exists cart ⇒ the recovery sheet, still ONE order; unedited ⇒ placed;
@@ -22,6 +21,11 @@
 //       and browser-response loss (the server issued, the app's response lost) are each ONE gateway call and the recovery sheet;
 //       a later card tap never re-sends
 //   O   an OLD paid return never deletes a newer unresolved placement (conditional clearing); the newer one keeps its id
+//   S2a r3 (the dispatch rule):
+//   I   a reload / second page while the charge is in flight never re-sends (rule i) — replaces r2's same-identity re-send
+//   W   storage fails the moment the provider-loss 502 lands, then a reload ⇒ recovery, one gateway attempt (rule i)
+//   B   a 200 whose body is lost ⇒ unresolved; the changed cart is never re-sent (rule ii)
+//   K   202 (a concurrent request creating this identity) → the floor rises → 426 ⇒ the identity is KEPT (rule iii)
 // Run: npm run test:capp-s2a
 require('./_emulator-required')('database', 'firestore');
 
@@ -35,8 +39,9 @@ process.env.QUOTE_TOKEN_SECRET = process.env.QUOTE_TOKEN_SECRET || 'capp-s2a-quo
 process.env.PIXELPAY_MERCHANT_EMAIL = process.env.PIXELPAY_MERCHANT_EMAIL || 'pagos@example.com';
 const stub = (rel, exportsOf) => { const p = require.resolve(rel); const real = require(rel); require.cache[p] = { id: p, filename: p, loaded: true, children: [], paths: [], exports: exportsOf(real) }; };
 const CHARGED = []; const RETURNS = []; let HOSTED_GATE = null; let PROVIDER_LOSS = false;   // PROVIDER_LOSS: the gateway creates the checkout, its answer is lost
+let HOSTED_REACHED = 0;   // gateway calls that have STARTED (a held one is 'creating' on the server)
 stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
-stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { if (HOSTED_GATE) await HOSTED_GATE.p; CHARGED.push(Number(q.amountLempiras)); RETURNS.push(q.completeUrl); if (PROVIDER_LOSS) { PROVIDER_LOSS = false; throw new Error('provider response lost'); } return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
+stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { HOSTED_REACHED += 1; if (HOSTED_GATE) await HOSTED_GATE.p; CHARGED.push(Number(q.amountLempiras)); RETURNS.push(q.completeUrl); if (PROVIDER_LOSS) { PROVIDER_LOSS = false; throw new Error('provider response lost'); } return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
 
 const app = require('../index.js');
 const admin = require('firebase-admin');
@@ -67,6 +72,9 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('capp-s2a(
 const ROUTES = { quoteOrder: app.quoteOrder, createOrder: app.createOrder, chargeOnlineOrder: app.chargeOnlineOrder, paymentStatus: app.paymentStatus };
 let BASE = null; let SERVER = null;
 const CALLS = []; let DROP_NEXT = null;   // DROP_NEXT: an endpoint whose next response is lost AFTER the server handled it
+let BREAK_BODY_NEXT = null;   // an endpoint whose next 200 arrives with its headers, then its body stream fails
+let FAIL_STORAGE_AFTER = null; let STORAGE_FAIL = false;   // the app's storage starts failing the moment this endpoint answers
+let BEFORE_SEND = null;   // a one-shot hook run before the app's next request is forwarded (a concurrent request)
 async function startServer() {
   const w = express(); w.use(express.json());
   for (const [k, h] of Object.entries(ROUTES)) w.use(`/${k}`, h);
@@ -77,8 +85,11 @@ async function startServer() {
 const realFetch = async (url, init) => {
   const ep = Object.keys(ROUTES).find((k) => url.startsWith(`${BASE}/${k}`));
   CALLS.push(ep);
+  if (BEFORE_SEND && BEFORE_SEND.ep === ep) { const h = BEFORE_SEND; BEFORE_SEND = null; await h.run(url, init); }
   const r = await fetch(url, init);
   if (DROP_NEXT === ep) { DROP_NEXT = null; await r.text(); throw new TypeError('Failed to fetch (response lost)'); }
+  if (FAIL_STORAGE_AFTER === ep) { FAIL_STORAGE_AFTER = null; STORAGE_FAIL = true; }
+  if (BREAK_BODY_NEXT === ep && r.status === 200) { BREAK_BODY_NEXT = null; await r.text(); return { status: 200, ok: true, json: async () => { throw new TypeError('body stream lost'); } }; }
   return r;
 };
 // the REAL shared module, unstamped ⇒ inert: its fetch passes through (no X-Client headers; the floor cells live in S2a-e)
@@ -113,7 +124,7 @@ async function serve(rid) { const m = await buildPublicMenu(fs, rid, { known: ne
 const dishOf = (m, skip = 0) => m.dishes.filter((d) => !d.launcher && !(m.weekendOnlyCats.has(String(d.cat)) || m.pickupOnlyCats.has(String(d.cat))))[skip];
 
 // ── the app: one page = one api instance over a storage; a reload = a new instance over the SAME storage ──
-function memStorage() { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), _m: m }; }
+function memStorage() { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { if (STORAGE_FAIL) throw new Error('quota'); m.set(k, String(v)); }, removeItem: (k) => m.delete(k), _m: m }; }
 let PH = 0;
 function page(rid, storage = memStorage()) {
   const api = A.createApi({ config: { restaurantId: rid, orderIdPrefix: 'TS', pendingPayKey: `${rid}_s2a_pending_pay`, hours: APP_HOURS,
@@ -178,7 +189,7 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     ok('E equality: displayed Total == placing == recorded total_cents == PixelPay × 100 (cash + card, envío + tip once); card returns to the app deployment with creds stashed first; the dark brand without a tip');
   }
 
-  // ── I: 202 in_progress ⇒ the same-identity re-send obtains the checkout ──
+  // ── I (r3 rule i): a reload / a second page while the charge is in flight never re-sends — one gateway call ──
   {
     await clean(); CHARGED.length = 0;
     let release; HOSTED_GATE = { p: new Promise((r) => { release = r; }) };
@@ -188,15 +199,15 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     const first = pg.api.place({ flow: f, ctx, sig: q.record.sig, expectedNetCents: T.total });
     while (!placeOf(pg)) await new Promise((r) => setTimeout(r, 10));
     await new Promise((r) => setTimeout(r, 300));   // the first request holds the creating claim
+    assert.deepStrictEqual([placeOf(pg).unresolved, placeOf(pg).dispatched], [true, 1], 'premise: the in-flight send is on record before it left');
     const before = count('chargeOnlineOrder');
-    const second = pg.reload().api.place({ flow: f, ctx, sig: q.record.sig, expectedNetCents: T.total });   // another tab / a reload, SAME record
-    await new Promise((r) => setTimeout(r, 400));
+    const second = await pg.reload().api.place({ flow: f, ctx, sig: q.record.sig, expectedNetCents: T.total });   // another tab / a reload, SAME record
     const during = count('chargeOnlineOrder') - before;
     release(); HOSTED_GATE = null;
-    const [a, b] = await Promise.all([first, second]);
-    assert.ok(during >= 1, 'the second page got an answer while the first was creating');
-    assert.deepStrictEqual([a.kind, b.kind, a.order_id === b.order_id, a.url === b.url, CHARGED.length], ['redirect', 'redirect', true, true, 1], `🔴 202 ⇒ the SAME identity re-sent ⇒ the same checkout, one gateway call (${JSON.stringify([a, b])})`);
-    ok('I 202 in_progress: a second page on the SAME placement re-sends the same identity and obtains the same checkout — one gateway call');
+    const a = await first;
+    assert.deepStrictEqual([second.kind, second.order_id, during], ['existing_order', a.order_id, 0], `🔴 a reload mid-flight ⇒ recovery, ZERO sends (${JSON.stringify(second)})`);
+    assert.deepStrictEqual([a.kind, CHARGED.length], ['redirect', 1], `the in-flight send completes: one checkout, one gateway call (${JSON.stringify(a)})`);
+    ok('I a reload / second page while the charge is in flight never re-sends (recovery); the in-flight send completes — one gateway call');
   }
 
   // ── P: 409 Already paid ──
@@ -415,7 +426,7 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
       arm();
       const a = await quoteAndPlace(pg, f, cart);
       assert.deepStrictEqual([a.out.kind, count('chargeOnlineOrder') - ch0, CHARGED.length], ['existing_order', 1, 1], `🔴 ${what}: ONE send, ONE gateway call, the recovery sheet (${JSON.stringify(a.out)})`);
-      assert.strictEqual(placeOf(pg).ambiguous, true, `${what}: the placement is AMBIGUOUS`);
+      assert.strictEqual(placeOf(pg).unresolved, true, `${what}: the placement is AMBIGUOUS (unresolved)`);
       await clean();
       const b = await quoteAndPlace(pg.reload(), f, cart);
       assert.deepStrictEqual([b.out.kind, b.out.order_id, count('chargeOnlineOrder') - ch0, CHARGED.length], ['existing_order', a.out.order_id, 1, 1], `🔴 ${what}: a later card tap never re-sends (no second gateway attempt)`);
@@ -445,6 +456,70 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     const b2 = await quoteAndPlace(pg.reload(), cf, cartOf('x_pizza'));
     assert.deepStrictEqual([b2.out.kind, b2.out.order_id, b2.out.idempotent], ['placed', b.out.order_id, true], '🔴 B\'s retry keeps B\'s id (no second order)');
     ok('O an old paid return never deletes a newer unresolved placement; the newer one keeps its id and resolves idempotently');
+  }
+
+  // ── W (r3 rule i): storage fails the moment the provider-loss 502 lands; the reloaded page never re-charges ──
+  {
+    await clean(); CHARGED.length = 0;
+    const pg = page('x_pizza'); const f = flowOf('online'); const cart = cartOf('x_pizza');
+    const ch0 = count('chargeOnlineOrder');
+    PROVIDER_LOSS = true; FAIL_STORAGE_AFTER = 'chargeOnlineOrder';
+    const a = await quoteAndPlace(pg, f, cart);
+    STORAGE_FAIL = false;
+    assert.deepStrictEqual([count('chargeOnlineOrder') - ch0, CHARGED.length], [1, 1], `premise: one charge, the gateway called once (${JSON.stringify(a.out)})`);
+    assert.strictEqual(placeOf(pg).unresolved, true, 'the pre-send record already says unresolved (no post-response write was possible)');
+    await clean();
+    const b = await quoteAndPlace(pg.reload(), f, cart);
+    assert.deepStrictEqual([b.out.kind, b.out.order_id, count('chargeOnlineOrder') - ch0, CHARGED.length], ['existing_order', placeOf(pg).order_id, 1, 1], `🔴 storage failing at the 502 + a reload ⇒ still ONE gateway attempt (${JSON.stringify(b.out)})`);
+    ok('W storage failing when the provider-loss 502 lands, then a reload: the send was recorded unresolved before it left ⇒ recovery, one gateway attempt');
+  }
+
+  // ── B (r3 rule ii): a 200 whose body is lost is UNRESOLVED — the changed cart is never re-sent (no displayed/charged divergence) ──
+  {
+    await clean(); CHARGED.length = 0;
+    const pg = page('x_pizza'); const f = flowOf('online'); const cart = cartOf('x_pizza');
+    const ch0 = count('chargeOnlineOrder');
+    BREAK_BODY_NEXT = 'chargeOnlineOrder';
+    const a = await quoteAndPlace(pg, f, cart);
+    assert.deepStrictEqual([a.out.kind, CHARGED.length, placeOf(pg).unresolved], ['existing_order', 1, true], `🔴 a 200 with a lost body ⇒ unresolved, the recovery sheet (${JSON.stringify(a.out)})`);
+    const stored = placeOf(pg).expected_net_cents;
+    C.setPin(f, HUB.lat + 3 * KM, HUB.lng, true);
+    await clean();
+    const b = await quoteAndPlace(pg.reload(), f, cart);
+    assert.notStrictEqual(b.T.total, a.T.total, 'premise: the changed pin re-prices');
+    assert.deepStrictEqual([b.out.kind, count('chargeOnlineOrder') - ch0, CHARGED.length], ['existing_order', 1, 1], `🔴 the changed cart is NOT re-sent (${JSON.stringify(b.out)})`);
+    assert.strictEqual(placeOf(pg).expected_net_cents, stored, 'the stored economics are never overwritten by the new quote');
+    ok('B a 200 whose body is lost: unresolved ⇒ the recovery sheet; the changed cart is never re-sent and the stored economics stay — no displayed/charged divergence');
+  }
+
+  // ── K (r3 rule iii): 202 (a concurrent request is creating THIS identity) → the floor rises → the re-send's 426 KEEPS it ──
+  // LAST: it raises the client floor (the inert module sends no X-Client headers, so every later request would be 426'd)
+  {
+    await clean(); CHARGED.length = 0; HOSTED_REACHED = 0;
+    let release; HOSTED_GATE = { p: new Promise((r) => { release = r; }) };
+    let concurrent = null;
+    BEFORE_SEND = { ep: 'chargeOnlineOrder', run: async (url, init) => {   // another instance's request for the SAME identity, first
+      concurrent = fetch(url, init).then((r) => r.json());
+      while (HOSTED_REACHED < 1) await new Promise((r) => setTimeout(r, 10));   // it is 'creating' on the server
+    } };
+    const kStorage = memStorage();
+    const kApi = A.createApi({ config: { restaurantId: 'x_pizza', orderIdPrefix: 'TS', pendingPayKey: 'x_pizza_s2a_pending_pay', hours: APP_HOURS,
+      endpoints: Object.fromEntries(Object.keys(ROUTES).map((k) => [k, `${BASE}/${k}`])) }, fetch: (u, i) => sherpa.fetch(u, i), storage: kStorage,
+      sleep: async () => { await rtdb.ref('platform_config/client_floor/orders').set(2); await new Promise((r) => setTimeout(r, 31000)); } });   // the floor rises during the 202 backoff
+    const kp = { api: kApi, storage: kStorage, rid: 'x_pizza', reload: () => null };
+    const f = flowOf('online'); const cart = cartOf('x_pizza');
+    const n0 = await orderCount();
+    let k;
+    try { k = await quoteAndPlace(kp, f, cart); } finally { release(); HOSTED_GATE = null; }
+    await concurrent;
+    const rec = placeOf(kp);
+    assert.ok(rec, `🔴 a 426 after a 202 keeps the identity (${JSON.stringify(k.out)})`);
+    assert.deepStrictEqual([rec.dispatched, rec.admitted, rec.unresolved, k.out.update_required, k.out.order_id], [2, true, true, true, rec.order_id], 'kept unresolved, recovery flagged for the update');
+    assert.deepStrictEqual([await orderCount(), CHARGED.length], [n0 + 1, 1], '🔴 ONE order, ONE gateway checkout (the concurrent request completed it)');
+    const again = await kApi.place({ flow: f, ctx: ctxOf('x_pizza', cart), sig: k.q.record.sig, expectedNetCents: k.T.total });
+    assert.deepStrictEqual([again.order_id, await orderCount(), CHARGED.length], [rec.order_id, n0 + 1, 1], '🔴 the next tap never mints a second identity, never re-charges');
+    await rtdb.ref('platform_config/client_floor/orders').remove();
+    ok('K 202 (a concurrent request creating this identity) → the floor rises → the re-send is 426\'d: the identity is KEPT unresolved, recovery; one order, one gateway checkout');
   }
 
   FINISHED = true;
