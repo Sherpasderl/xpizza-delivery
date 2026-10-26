@@ -203,10 +203,12 @@ const createBody = (over = {}) => ({ op_id: 'opN1', brand_id: 'tb_brand', locati
     // exception
     db = world(); const ref = db.ref; db.ref = (p) => (String(p).startsWith('public/') ? { once: async () => { throw new Error('boom'); }, transaction: async () => { throw new Error('boom'); } } : ref(p));
     r = await C.updateBranchProfileCore(deps(db), req('ownerTB', { rid: 'tb_sur', expectedVersion: 3, patch: { prep_default_min: 30 } }));
+    assert.ok(alert(db), 'PUBLISH-EXCEPTION an exception writes the alert');
     assert.deepStrictEqual([r.status, r.body.projection, alert(db).reason], [200, 'deferred', 'exception'], 'PUBLISH-EXCEPTION');
     // timeout: the publish transaction hangs
     db = world(); db.hooks['public/brands/tb_brand'] = () => new Promise(() => {});
     r = await C.updateBranchProfileCore(deps(db, { publishTimeoutMs: 30 }), req('ownerTB', { rid: 'tb_sur', expectedVersion: 3, patch: { prep_default_min: 30 } }));
+    assert.ok(alert(db), 'PUBLISH-TIMEOUT a timeout writes the alert');
     assert.deepStrictEqual([r.status, r.body.projection, alert(db).reason], [200, 'deferred', 'timeout'], 'PUBLISH-TIMEOUT');
     // concurrent mutations: both commit, fencing keeps the newer source
     db = world();

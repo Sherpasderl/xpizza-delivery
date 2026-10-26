@@ -46,7 +46,7 @@ const seed = () => ({
     x_leg: { owners: { ownerTB: g } },
     tb_nueva: { owners: { ownerTB: g } },
   },
-  member_of: { ownerTB: { brands: { tb_brand: 'owner', x_leg: 'owner', tb_nueva: 'owner' } }, mgrSur: { locations: { tb_sur: 'manager' } } },
+  member_of: { ownerTB: { brands: { tb_brand: 'owner', x_leg: 'owner', tb_nueva: 'owner' } }, mgrSur: { locations: { tb_sur: 'manager' } }, mgrEst: { locations: { tb_este: 'manager' } } },
   menus: { tb_brand: { published: true } },
 });
 // the Admin handle as 1a's ops-core test builds it: the merchant fake + ref().get()
@@ -93,6 +93,8 @@ const strip = (body) => ({ ...body, brands: body.brands.map((b) => Object.fromEn
     const m = (await C.getMyBranchesCore(deps(world()), get('mgrSur'))).body;
     assert.deepStrictEqual(m.brands.map((b) => [b.brand_id, b.caps, 'drafts' in b]), [['tb_brand', [], false]], 'E1-MANAGER no brand caps, no drafts');
     assert.ok(!('readiness' in m.branches[0]), 'a manager row carries no readiness');
+    const me = (await C.getMyBranchesCore(deps(world()), get('mgrEst'))).body.branches.find((b) => b.rid === 'tb_este');
+    assert.deepStrictEqual([me.lifecycle, 'readiness' in me], ['staged', false], 'a manager row carries no readiness — even on a STAGED branch');
     ok('added fields: lifecycle / profile / location / version per row; owner readiness for staged / inactive (gaps, no address gap); legacy flagged; brand caps / activation / drafts owner-only');
   }
 
