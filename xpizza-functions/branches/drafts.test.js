@@ -101,6 +101,17 @@ const ctx = (uid, token = {}) => ({ uid, token });
     ok('a PORTAL delete (bind) re-binds under the lock: a draft whose op-id mapping does not point back to it is not_a_draft, nothing removed; the CLI (no bind) still removes an orphan');
   }
 
+  // ── Codex build r1 #7: an ALIAS mapping pointing at a valid draft → no duplicate row, reported ──
+  {
+    const db = world();
+    db.put('branch_op_ids/tb2/op_alias', { payload_hash: 'h2', inc: 'c9', rid: 'tb2_norte' });
+    const skips = [];
+    const rows = await D.draftsOfBrand(db, 'tb2', { onSkip: (x) => skips.push(x) });
+    assert.deepStrictEqual(rows.map((x) => x.rid), ['tb2_norte'], 'DRAFTS-NO-ALIAS-DUP one row');
+    assert.deepStrictEqual(skips, [{ kind: 'alias_mapping', op_id: 'op_alias', rid: 'tb2_norte' }], 'the alias is reported');
+    ok('draftsOfBrand iterates the mapping ENTRIES: a stale alias mapping is skipped and reported, never a duplicate row');
+  }
+
   FINISHED = true;
   console.log(`\ndrafts: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

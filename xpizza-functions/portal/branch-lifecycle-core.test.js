@@ -222,6 +222,41 @@ const createBody = (over = {}) => ({ op_id: 'opN1', brand_id: 'tb_brand', locati
     ok('publishAfterCommit: refusal / exception / timeout → the mutation stands, reply `deferred`, ONE projection_stale record (count); concurrent publishers → the newest source wins');
   }
 
+  // ── Codex build r1: #1 committed deactivation + failing consequence reads; #3 a stalled ALERT write; #4 E6 replay after
+  //    materialize; #5 an UNENRICHED legacy singleton ──
+  {
+    // #1
+    let db = world(); const ref1 = db.ref;
+    db.ref = (p) => (p === 'restaurants/tb_sur/handhelds' ? { once: async () => { throw new Error('reads down'); } } : ref1(p));
+    let r = await C.setBranchActiveCore(deps(db), req('ownerTB', { rid: 'tb_sur', expectedVersion: 3, active: false }));
+    assert.deepStrictEqual(r, { status: 200, body: { ok: true, state: 'inactive', consequences: null, projection: 'published' } }, 'R1-COMMITTED-PUBLISHED a failed consequence read keeps the committed outcome and still publishes');
+    assert.deepStrictEqual([db.get('restaurants/tb_sur/identity/active'), db.get('public/brands/tb_brand/locations/tb_sur/active')], [false, false], 'identity AND projection inactive');
+    // #3: the publish refuses (a malformed sibling member) AND the alert transaction stalls → the reply still comes, deferred
+    db = world(); db.root.brands.tb_brand.locations.tb_mal = 'member'; db.root.restaurants.tb_mal = { identity: ident('tb_brand', 'Mal', { zone: 'x' }) };
+    db.hooks['dispatcher_alerts/projection_stale_tb_brand'] = () => new Promise(() => {});
+    const t3 = Promise.race([C.updateBranchProfileCore(deps(db, { publishTimeoutMs: 30 }), req('ownerTB', { rid: 'tb_sur', expectedVersion: 3, patch: { prep_default_min: 30 } })),
+      new Promise((resolve) => setTimeout(() => resolve('HUNG'), 1000))]);
+    r = await t3;
+    assert.notStrictEqual(r, 'HUNG', 'R3-ALERT-BOUNDED a stalled alert transaction never holds the reply');
+    assert.deepStrictEqual(r.body, { version: 4, lifecycle: 'identity', projection: 'deferred' });
+    // #4: create → Sherpa materializes → the IDENTICAL create replayed
+    db = world(); db.root.platform_config.service_bounds = { min_lat: 13, max_lat: 17, min_lng: -90, max_lng: -83 };
+    const c1 = await C.createBranchDraftCore(deps(db), req('ownerTB', createBody()));
+    assert.strictEqual(c1.body.state, 'draft');
+    const m = await S.materializeBranch(db, { rid: c1.body.rid, location: { hub: { lat: 15.51, lng: -88.03 }, address_line: 'Blvd 1' }, now: NOW + 500, clock: () => NOW + 500 });
+    assert.strictEqual(m.ok, true, JSON.stringify(m));
+    r = await C.createBranchDraftCore(deps(db), req('ownerTB', createBody()));
+    assert.deepStrictEqual(r, { status: 200, body: { rid: c1.body.rid, state: 'staged', version: 1 } }, 'R4-REPLAY-MATERIALIZED the current lifecycle + the identity token');
+    // #5: an UNENRICHED legacy singleton (no identity.brand_id; resolved through brands/{rid})
+    db = world(); delete db.root.restaurants.x_leg.identity.brand_id; db.root.restaurants.x_leg.identity.location_name = undefined; delete db.root.restaurants.x_leg.identity.location_name;
+    const before = snap(db);
+    for (const active of [false, true]) {
+      assert.deepStrictEqual(await C.setBranchActiveCore(deps(db), req('ownerLG', { rid: 'x_leg', expectedVersion: 3, active })), { status: 409, body: { error: 'legacy_branch' } }, `R5-LEGACY-UNENRICHED active:${active}`);
+    }
+    assert.strictEqual(snap(db), before, 'nothing written');
+    ok('Codex build r1: a committed deactivation survives failed consequence reads (null counts, published); a stalled alert write never holds the reply; an E6 replay after materialize returns the staged identity token; an UNENRICHED legacy singleton → legacy_branch both ways');
+  }
+
   FINISHED = true;
   console.log(`\nbranch-lifecycle-core: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

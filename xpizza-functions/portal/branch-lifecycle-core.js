@@ -14,7 +14,7 @@
 // mutation (409 legacy_branch) — legacy on / off stays the Sherpa CLI until O3.
 // After a committed E7 / E8 on a MEMBER branch the brand projection is published best-effort (publishAfterCommit): the mutation's
 // reply is already decided; refusal / exception / timeout upserts the ONE projection_stale alert and the reply says `deferred`.
-const { resolveAccess, resolveBrandAccess, can } = require('../access/membership');
+const { resolveAccess, resolveBrandAccess, resolveLocation, can } = require('../access/membership');
 const { isBrandId } = require('../brands/brand-model');
 const { writesEnabled } = require('../access/writes-flag');
 const { verifiedContext } = require('./ops-core');
@@ -79,7 +79,13 @@ async function publishAfterCommit(deps, brandId, rid) {
     outcome = 'deferred'; reason = 'exception';
   }
   if (outcome === 'deferred') {
-    try { await B.raiseProjectionStale(db, brandId, { rid, reason, at: now() }); } catch (e) { log.warn('projection_stale_alert_failed', JSON.stringify({ brandId, rid, reason })); }
+    // the alert is best-effort and BOUNDED too (Codex build r1 #3): a stalled alert transaction never holds the reply
+    try {
+      let t2;
+      const capped = new Promise((resolve) => { t2 = setTimeout(() => resolve('alert_timeout'), publishTimeoutMs); });
+      const a = await Promise.race([B.raiseProjectionStale(db, brandId, { rid, reason, at: now() }), capped]).finally(() => clearTimeout(t2));
+      if (a === 'alert_timeout') log.warn('projection_stale_alert_failed', JSON.stringify({ brandId, rid, reason, why: 'timeout' }));
+    } catch (e) { log.warn('projection_stale_alert_failed', JSON.stringify({ brandId, rid, reason })); }
     log.warn('projection_deferred', JSON.stringify({ brandId, rid, reason }));
   }
   return outcome;
@@ -108,7 +114,13 @@ async function createBranchDraftCore(deps, req) {
     return refuse(code, r && Array.isArray(r.errors) ? { errors: r.errors } : {});
   }
   const d = await val(deps.db, `restaurants/${r.rid}/draft`);
-  return reply(200, { rid: r.rid, state: 'draft', version: isObj(d) ? P.draftToken(d) : null });
+  if (isObj(d)) return reply(200, { rid: r.rid, state: 'draft', version: P.draftToken(d) });
+  // a replay of a create whose allocation was MATERIALIZED since (T3a recognises it complete): its CURRENT lifecycle + identity token
+  // (Codex build r1 #4) — never 'draft' with a token E7 / E10 cannot use
+  const id = await val(deps.db, `restaurants/${r.rid}/identity`);
+  const st = await val(deps.db, `brands/${body.brand_id}/locations/${r.rid}`);
+  if (!isObj(id) || !Number.isSafeInteger(id.version)) return refuse('unavailable', { retryable: true });
+  return reply(200, { rid: r.rid, state: st === 'staged' ? 'staged' : (id.active === true ? 'active' : 'inactive'), version: id.version });
 }
 
 // ── E7 updateBranchProfile ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -168,19 +180,22 @@ async function setBranchActiveCore(deps, req) {
   const g = await gateAndToken(deps, req);
   if (g.fail) return g.fail;
   const { db } = deps;
-  const brandId = await val(db, `restaurants/${rid}/identity/brand_id`);
-  if (!isBrandId(brandId)) return refuse('not_a_branch');
+  // the brand by the VALIDATED resolver (Codex build r1 #5): F1 brandIdOf over the identity + the legacy singleton record, then the
+  // roster — so an UNENRICHED legacy singleton (no identity.brand_id, resolved via brands/{rid}) is recognised too
+  let loc;
+  try { loc = await resolveLocation(db, rid); } catch (e) { return refuse('unavailable', { retryable: true }); }
+  if (!loc || loc.state === 'unknown' || !isBrandId(loc.brandId)) return refuse('not_a_branch');
+  const brandId = loc.brandId;
   const o = await brandOwner(db, g.ctx, brandId);
   if (o.fail) return o.fail;
-  const brand = await val(db, `brands/${brandId}`);
-  if (isLegacyBranch(brand, rid)) return refuse('legacy_branch');   // R-LEGACY: before ANY mutation, both directions
+  if (isLegacyBranch(loc.rec, rid)) return refuse('legacy_branch');   // R-LEGACY: before ANY mutation, both directions
   let r;
   try {
     r = await S.setBranchActive(db, { rid, active, expectedVersion, now: (deps.now || Date.now)(), clock: deps.clock, readers: portalReaders(db, brandId) });
   } catch (e) { return refuse('unavailable', { retryable: true }); }
   if (r && r.ok === true) {
     const out = { ok: true, state: r.state };
-    if (r.consequences) out.consequences = r.consequences;
+    if ('consequences' in r) out.consequences = r.consequences;   // null = committed, but the counts could not be read
     out.projection = await publishAfterCommit(deps, brandId, rid);   // after either direction the branch is a MEMBER (activate moved staged → member)
     return reply(200, out);
   }

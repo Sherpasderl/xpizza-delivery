@@ -25,13 +25,20 @@ async function draftBinding(db, brandId, rid) {
 
 // every bound draft of a brand, discovered from its op-id mappings (a mapping without a rid, or one whose draft is gone /
 // materialized / foreign, is skipped). Sorted by rid. A read failure throws.
-async function draftsOfBrand(db, brandId) {
+async function draftsOfBrand(db, brandId, { onSkip = () => {} } = {}) {
   const maps = (await val(db, `branch_op_ids/${brandId}`)) || {};
   const out = [];
-  for (const mp of Object.values(isObj(maps) ? maps : {})) {
+  const seen = new Set();
+  // the mapping ENTRIES (Codex build r1 #7): a draft is listed only from the mapping whose KEY is its own op_id — a stale alias
+  // mapping pointing at a valid draft is skipped and reported, never a second row
+  for (const [opId, mp] of Object.entries(isObj(maps) ? maps : {})) {
     if (!isObj(mp) || typeof mp.rid !== 'string' || !isBrandId(mp.rid)) continue;
     const b = await draftBinding(db, brandId, mp.rid);
-    if (b.ok) out.push({ rid: mp.rid, draft: b.draft });
+    if (!b.ok) continue;
+    if (b.draft.op_id !== opId) { onSkip({ kind: 'alias_mapping', op_id: opId, rid: mp.rid }); continue; }
+    if (seen.has(mp.rid)) continue;
+    seen.add(mp.rid);
+    out.push({ rid: mp.rid, draft: b.draft });
   }
   return out.sort((a, z) => (a.rid < z.rid ? -1 : a.rid > z.rid ? 1 : 0));
 }

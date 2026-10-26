@@ -28,6 +28,7 @@ const OWNER_L = 'uO1bOwnerLeg1';    // owner of the legacy singleton tb_leg
 const MGR = 'uO1bManager01';        // invited + accepted manager of tb_nuevo's staged branch
 const DISP = 'uO1bDispatch1';
 const STRANGER = 'uO1bStranger1';
+const STAFF = 'uO1bKitchen01';     // kitchen staff of tb_nuevo_centro (catalog / staff columns only)
 const AUTH_HOST = () => process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const TOK = new Map();
 async function tokenOf(uid, claims = {}) {
@@ -175,25 +176,34 @@ const H7 = { sun: DAY, mon: { open: false }, tue: DAY, wed: DAY, thu: DAY, fri: 
     ok('C4 E8 through the real handlers: not_ready + identity_gaps (== E1) → a manager fixes prep → activate (member, projection) → deactivate → reactivate; legacy refused both ways, nothing written');
   }
 
-  // ── C1 the authority matrix ──
+  // ── C1 the authority matrix (Codex build r1 #6: a LIVE bound draft with its VALID token; exact 403; a staff actor) ──
   {
+    await db.ref(`restaurants/tb_nuevo_centro/kitchen_staff/${STAFF}`).set(true);   // kitchen staff of the (now member) branch
+    const d6 = await call(ops.createBranchDraft, { uid: OWNER, body: { op_id: 'opMatrix0', brand_id: 'tb_nuevo', location_name: 'Matriz', phone: '+50431234567', hours: H7, prep_default_min: 20 } });
+    assert.strictEqual(d6.status, 200, d6.text);
+    const draftRid = d6.json.rid; const draftTok = d6.json.version;
+    assert.ok((await val(`restaurants/${draftRid}/draft`)) && typeof draftTok === 'string', 'premise: a LIVE bound draft with a valid token');
     const v = await val('restaurants/tb_nuevo_centro/identity/version');
     const calls = {
-      E6: (uid, claims) => call(ops.createBranchDraft, { uid, claims, body: { op_id: 'opMatrix1', brand_id: 'tb_nuevo', location_name: 'Matriz', phone: '+50431234567', hours: H7, prep_default_min: 20 } }),
-      E7: (uid, claims) => call(ops.updateBranchProfile, { uid, claims, body: { rid: 'tb_nuevo_centro', expectedVersion: v, patch: { hours: H7, prep_default_min: 21 } } }),
+      E6: (uid, claims) => call(ops.createBranchDraft, { uid, claims, body: { op_id: 'opMatrix1', brand_id: 'tb_nuevo', location_name: 'Matriz Dos', phone: '+50431234567', hours: H7, prep_default_min: 20 } }),
+      'E7-identity': (uid, claims) => call(ops.updateBranchProfile, { uid, claims, body: { rid: 'tb_nuevo_centro', expectedVersion: v, patch: { hours: H7, prep_default_min: 21 } } }),
+      'E7-draft': (uid, claims) => call(ops.updateBranchProfile, { uid, claims, body: { rid: draftRid, expectedVersion: draftTok, patch: { prep_default_min: 22 } } }),
       E8: (uid, claims) => call(ops.setBranchActive, { uid, claims, body: { rid: 'tb_nuevo_centro', expectedVersion: v, active: false } }),
-      E10: (uid, claims) => call(ops.deleteBranchDraft, { uid, claims, body: { rid: 'tb_nuevo_centro', expectedVersion: 'd.x.y.0' } }),
+      E10: (uid, claims) => call(ops.deleteBranchDraft, { uid, claims, body: { rid: draftRid, expectedVersion: draftTok } }),
     };
     const before = await snap();
-    for (const [who, claims] of [[MGR, {}], [OWNER_L, {}], [DISP, {}], [STRANGER, {}], [OWNER, { customer: true }], [OWNER, { handheld: true, rid: 'tb_nuevo_centro' }]]) {
+    let cells = 0;
+    for (const [who, claims] of [[MGR, {}], [OWNER_L, {}], [DISP, {}], [STAFF, {}], [STRANGER, {}], [OWNER, { customer: true }], [OWNER, { handheld: true, rid: 'tb_nuevo_centro' }]]) {
       for (const [ep, fn] of Object.entries(calls)) {
-        if (ep === 'E7' && who === MGR && !Object.keys(claims).length) continue;   // a manager MAY edit hours / prep (asserted in C4)
+        if (ep === 'E7-identity' && who === MGR && !Object.keys(claims).length) continue;   // a manager MAY edit hours / prep (asserted in C4)
         const r = await fn(who, claims);
-        assert.ok([403, 409].includes(r.status) && r.status !== 200, `MATRIX ${ep} ${who} ${JSON.stringify(claims)} → ${r.status} ${r.text}`);
+        assert.deepStrictEqual([r.status, r.json], [403, { error: 'not_authorized' }], `MATRIX ${ep} ${who} ${JSON.stringify(claims)} → ${r.status} ${r.text}`);
+        cells += 1;
       }
     }
-    assert.strictEqual(await snap(), before, 'MATRIX nothing written by any refused caller');
-    ok('C1 the authority matrix: manager / other-brand owner / dispatcher / stranger / customer / handheld × E6 / E7 / E8 / E10 → refused, nothing written');
+    assert.strictEqual(await snap(), before, 'MATRIX nothing written by any refused caller (the live draft preserved)');
+    assert.deepStrictEqual((await call(ops.deleteBranchDraft, { uid: OWNER, body: { rid: draftRid, expectedVersion: draftTok } })).json, { ok: true }, 'the owner CAN delete it with that token (the refusals were authorization, not a dead token)');
+    ok(`C1 the authority matrix (${cells} cells): manager / other-brand owner / dispatcher / STAFF / stranger / customer / handheld × E6 / E7 (identity + DRAFT) / E8 / E10 on a LIVE draft → exactly 403 not_authorized, nothing written; the owner's delete with the same token succeeds`);
   }
 
   // ── C5 the write gate ──

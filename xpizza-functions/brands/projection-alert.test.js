@@ -58,6 +58,30 @@ const cli = async (db, apply) => { const lines = []; const code = await runBrand
     assert.strictEqual((await cli(bad, true)).code, 1); assert.ok(alert(bad), 'CLI-REFUSED-KEEPS');
     ok('CLI publish --apply clears on the no-op path (the documented recovery); a dry run and a refused plan keep the alert');
   }
+  // ── Codex build r1 #2: an OLDER publisher never erases a NEWER alert (the exact interleaving) ──
+  {
+    const newer = { type: 'projection_stale', brand_id: 'tb_brand', rid: 'tb_centro', reason: 'refused', first_at: 700, at: 700, count: 1 };
+    // (a) no alert when A starts; B's failed publish raises one WHILE A publishes; A completes → B's alert stays
+    let db = fakeRtdb(seed());
+    db.beforeTxn = () => { db.data.dispatcher_alerts = { [A]: newer }; };   // fires at A's projection write — after A read the identities
+    let r = await B.publishBrandProjection(db, 'tb_brand', { now: 800 });
+    assert.strictEqual(r.ok, true, JSON.stringify(r));
+    assert.deepStrictEqual(alert(db), newer, 'CLEAR-CONDITIONAL-NEW a newer alert raised during the publish survives');
+    // (b) an alert existed when A started and is RE-RAISED during A's publish → kept (A covered only the older one)
+    db = fakeRtdb(seed());
+    await B.raiseProjectionStale(db, 'tb_brand', { rid: 'tb_centro', reason: 'timeout', at: 600 });
+    db.beforeTxn = () => { db.data.dispatcher_alerts[A] = { ...db.data.dispatcher_alerts[A], reason: 'refused', at: 700, count: 2 }; };
+    r = await B.publishBrandProjection(db, 'tb_brand', { now: 800 });
+    assert.strictEqual(r.ok, true);
+    assert.deepStrictEqual([alert(db).count, alert(db).reason], [2, 'refused'], 'CLEAR-CONDITIONAL-RERAISED a re-raised alert survives');
+    // (c) the same through the CLI publish
+    db = fakeRtdb(seed());
+    db.beforeTxn = () => { db.data.dispatcher_alerts = { [A]: newer }; };
+    const c = await cli(db, true);
+    assert.strictEqual(c.code, 0, c.out); assert.deepStrictEqual(alert(db), newer, 'CLEAR-CONDITIONAL-CLI');
+    ok('an older publisher never erases a newer alert: raised or re-raised during its publish → kept (portal path and CLI)');
+  }
+
   FINISHED = true;
   console.log(`\nprojection-alert: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -95,27 +95,38 @@ async function raiseProjectionStale(rtdb, brandId, { rid, reason, at }) {
     ? { ...cur, rid: rid || null, reason, at, count: (Number.isInteger(cur.count) ? cur.count : 1) + 1 }
     : { type: 'projection_stale', brand_id: brandId, rid: rid || null, reason, first_at: at, at, count: 1 }));
 }
-async function clearProjectionStale(rtdb, brandId) {
-  if ((await readNode(rtdb, staleAlertPath(brandId))) == null) return false;
-  await rtdb.ref(staleAlertPath(brandId)).set(null);
-  return true;
+// Clear ONLY the alert this publish observed BEFORE it read the identities (Codex build r1 #2): that alert's failure is covered
+// by this publish; an alert raised (or re-raised) after the observation reports a later write this publish may not include, so it
+// is kept. One transaction: delete iff the stored alert still equals the observed one (null-first safe).
+async function clearProjectionStale(rtdb, brandId, observed) {
+  if (observed == null) return false;
+  let cleared = false;
+  await rtdb.ref(staleAlertPath(brandId)).transaction((cur) => {
+    cleared = false;
+    if (cur === null) return null;   // speculative / already gone: no-op (the server re-runs with a real value)
+    if (!isDeepStrictEqual(cur, observed)) return undefined;   // a newer alert: keep it
+    cleared = true; return null;
+  });
+  return cleared;
 }
+const observeProjectionStale = (rtdb, brandId) => readNode(rtdb, staleAlertPath(brandId));
 
 const PUBLISH_TRIES = 3;
 async function publishBrandProjection(rtdb, brandId, { now }) {
   for (let i = 0; i < PUBLISH_TRIES; i += 1) {
+    const observed = await observeProjectionStale(rtdb, brandId);   // BEFORE the identities: what this publish may clear
     const brand = await readNode(rtdb, brandPath(brandId));
     if (brand === null || brand === undefined) return { ok: false, error: 'brand_not_found' };
     const plan = planPublish({ brandId, brand, identities: await readIdentities(rtdb), current: null });
     if (!plan.ok) return { ok: false, error: 'refused', errors: plan.errors };
     const r = await applyPublish(rtdb, plan);
     if (r.error === 'incomparable') continue;   // a mixed-timing read: re-read
-    if (r.error === 'superseded') { await clearProjectionStale(rtdb, brandId); return { ok: true, superseded: true }; }
-    if (r.ok) await clearProjectionStale(rtdb, brandId);
+    if (r.error === 'superseded') { await clearProjectionStale(rtdb, brandId, observed); return { ok: true, superseded: true }; }
+    if (r.ok) await clearProjectionStale(rtdb, brandId, observed);
     return r.ok ? { ...r, source: plan.row.to.source } : r;
   }
   await rtdb.ref(`dispatcher_alerts/projection_unfenced_${brandId}`).transaction((cur) => (cur == null ? { type: 'projection_unfenced', brand_id: brandId, created_at: now } : undefined));
   return { ok: false, error: 'projection_unfenced' };
 }
 
-module.exports = { brandPath, publicPath, readNode, readIdentities, planSeedLegacy, applySeedLegacy, planPublish, applyPublish, projectionSource, compareSource, publishBrandProjection, raiseProjectionStale, clearProjectionStale, staleAlertPath };
+module.exports = { brandPath, publicPath, readNode, readIdentities, planSeedLegacy, applySeedLegacy, planPublish, applyPublish, projectionSource, compareSource, publishBrandProjection, raiseProjectionStale, clearProjectionStale, observeProjectionStale, staleAlertPath };

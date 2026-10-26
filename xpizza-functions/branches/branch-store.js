@@ -659,9 +659,15 @@ async function setBranchActive(db, { rid, active, expectedVersion, now, callId =
   if (!plan.ok) return { ok: false, error: plan.error };
   const w = await casIdentity(db, rid, expectedVersion, plan.patch);
   if (!w.ok) return w;
-  const devices = unrevoked(await val(db, `restaurants/${rid}/handhelds`));
-  const live = await liveOrders(db, rid);
-  return { ok: true, state: 'inactive', consequences: { live_orders: live.length, scheduled_bound: live.filter((o) => o.status === 'scheduled').length, devices: devices.length } };
+  // O1b (Codex build r1 #1): the CAS above COMMITTED — a failed consequence read never turns that into an error; the counts are
+  // then unknown (null) and the caller still publishes
+  try {
+    const devices = unrevoked(await val(db, `restaurants/${rid}/handhelds`));
+    const live = await liveOrders(db, rid);
+    return { ok: true, state: 'inactive', consequences: { live_orders: live.length, scheduled_bound: live.filter((o) => o.status === 'scheduled').length, devices: devices.length } };
+  } catch (_) {
+    return { ok: true, state: 'inactive', consequences: null };
+  }
 }
 
 // ── Sherpa admin: brand activation / deactivation ────────────────────────────────────────────────────────────────────────────

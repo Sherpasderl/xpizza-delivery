@@ -33,15 +33,16 @@ async function runBrandsAdmin({ rtdb, op, id, apply, nowMs, log }) {
     return 0;
   }
   if (op === 'publish' && id) {
+    const observedAlert = await S.observeProjectionStale(rtdb, id);   // O1b: read BEFORE the plan — the only alert this publish may clear
     const plan = S.planPublish({ brandId: id, brand: await S.readNode(rtdb, S.brandPath(id)), identities: await S.readIdentities(rtdb), current: await S.readNode(rtdb, S.publicPath(id)) });
     if (!plan.ok) { log(`brands-admin: REFUSED — ${plan.errors.join('; ')}`); return 1; }
     log(`brands-admin publish ${apply ? 'APPLY' : 'DRY RUN'}\n  ${plan.row.path}: ${plan.changed ? 'CHANGES' : 'unchanged'}\n${JSON.stringify(plan.row.to, null, 2)}`);
     if (!apply) { log('(dry run — nothing written; add --apply)'); return 0; }
-    if (!plan.changed) { log(`(unchanged — nothing written${(await S.clearProjectionStale(rtdb, id)) ? '; projection_stale alert cleared' : ''})`); return 0; }   // O1b T7: the no-op recovery
+    if (!plan.changed) { log(`(unchanged — nothing written${(await S.clearProjectionStale(rtdb, id, observedAlert)) ? '; projection_stale alert cleared' : ''})`); return 0; }   // O1b T7: the no-op recovery
     const r = await S.applyPublish(rtdb, plan);
     if (r.error) { log(`brands-admin: REFUSED (fenced) — ${r.error}`); return 1; }
     if (!r.ok) { log(`brands-admin: READ-BACK MISMATCH — read ${JSON.stringify(r.back)}`); return 1; }
-    log(`brands-admin: published and read back${(await S.clearProjectionStale(rtdb, id)) ? '; projection_stale alert cleared' : ''}`);
+    log(`brands-admin: published and read back${(await S.clearProjectionStale(rtdb, id, observedAlert)) ? '; projection_stale alert cleared' : ''}`);
     return 0;
   }
   log('usage: brands-admin.js --project <id> (status | seed-legacy <rid> | publish <brandId>) [--apply]');
