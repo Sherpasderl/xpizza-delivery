@@ -103,6 +103,7 @@ function arrivalFor({ rec, pickup, stage, prep, driveMin, anchorMs, overdue, v }
     return { text: pickup ? LIVE_COPY.DONE_PICKUP : LIVE_COPY.DONE_DELIVERY, deadline: null };
   }
   if (stage === 'ofd') {
+    if (v.arrived) return { text: v.sub, deadline: null };   // DRIVER C (approved mockup c): «Ya está afuera con tu pedido», no number
     if (rec.driver_name && rec.is_active_drop === false) return { text: v.sub, deadline: null };   // stacked: the tracker's copy, no number
     return { text: v.etaMin ? `Llega en ~${v.etaMin} min` : 'En ruta a tu dirección', deadline: null };
   }

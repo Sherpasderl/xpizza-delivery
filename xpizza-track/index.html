@@ -727,9 +727,16 @@
       subEl.className = v.subClass;
       if (v.avatar) { avatarEl.classList.remove('hidden'); avatarEl.textContent = v.avatar; }
       if (v.updatedHidden) document.getElementById('updated-text').classList.add('hidden');
-      if (v.etaEligible) {
+      if (v.etaEligible || (v.arrived && v.mapEligible)) {
+        if (v.etaEligible) {
         etaIsActive = true;       // Fix C — arm ETA writes; a route callback that resolves after a flip is dropped
         refreshDriverEta(data);   // throttled traffic-aware Directions ETA; minutes only through eta-gate.js, else the calm copy
+        } else {
+          // DRIVER C (approved mockup, frame 3): «{Nombre} llegó» — the driver's dot stays on the SAME live-map path below, but no
+          // ETA: nothing re-arms etaIsActive (cleared at the top of render) and any pending ETA expiry is dropped.
+          subEl.textContent = v.sub;
+          if (etaTimer) { clearTimeout(etaTimer); etaTimer = null; }
+        }
         if (v.mapEligible) {
           if (dMap) updateDriverMap(data);   // the live map exists (Maps loaded): today's synchronous call, unchanged timing
           else {

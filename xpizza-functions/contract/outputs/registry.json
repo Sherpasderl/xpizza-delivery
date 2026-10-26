@@ -2649,6 +2649,30 @@
   },
   "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#drv2ActionGuard>anon": {
    "status": "pending"
+  },
+  "la-musa-orders/status-view.js#statusArrived@la-musa-orders/status-view.js#presentStatus": {
+   "status": "pending"
+  },
+  "xpizza-functions/arrived-notify.js#eligible@xpizza-functions/arrived-notify.js#notifyArrived": {
+   "status": "pending"
+  },
+  "xpizza-functions/arrived-notify.js#eligible@xpizza-functions/arrived-notify.js#notifyArrived~2": {
+   "status": "pending"
+  },
+  "xpizza-functions/arrived-notify.js#makeMirrorUpdater>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-functions/arrived-notify.js#notifyArrived@xpizza-functions/index.js#notifyArrivedOnTap": {
+   "status": "pending"
+  },
+  "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/arrived-notify.js#notifyArrived": {
+   "status": "pending"
+  },
+  "xpizza-orders/status-view.js#statusArrived@xpizza-orders/status-view.js#presentStatus": {
+   "status": "pending"
+  },
+  "xpizza-track/status-view.js#statusArrived@xpizza-track/status-view.js#presentStatus": {
+   "status": "pending"
   }
  }
 }

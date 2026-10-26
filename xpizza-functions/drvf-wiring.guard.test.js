@@ -6,7 +6,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const src = require('./tools/drvc-inverse').unapplyDrvcIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // DRIVER C (newer) reversed first
 const a = src.indexOf('/* drvf:begin */'); const b = src.indexOf('/* drvf:end */');
 assert.ok(a > 0 && b > a, 'DRVF-WIRE-BLOCK the drvf block exists exactly once');
 assert.strictEqual(src.indexOf('/* drvf:begin */', a + 1), -1, 'DRVF-WIRE-ONCE');

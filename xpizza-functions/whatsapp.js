@@ -339,6 +339,18 @@ function tplOutForDelivery({ driverName, etaMinutes, trackingToken, restaurantId
   ].join('\n');
 }
 
+// DRIVER C (PLAN-driver-server-C-llegue r3; OWNER-APPROVED mockup MOCKUP-driver-C-llegue-customer.html, frame 1) — the driver
+// tapped «Llegué»: the arrival notice, then «Sigue su ubicación:» + the tracking link (the tplDriverAssigned layout).
+function renderArrived({ customerName, trackingToken, restaurantId }) {
+  const name = typeof customerName === 'string' && customerName.trim() ? customerName.trim() : null;
+  return [
+    `${name ? `¡${name}, tu repartidor llegó!` : '¡Tu repartidor llegó!'} 🛵 Ya está afuera con tu pedido.`,
+    ``,
+    `Sigue su ubicación:`,
+    trackingUrl(trackingToken, restaurantId)
+  ].join('\n');
+}
+
 function renderDelivered({ customerName, restaurantId, brand }) {
   return [
     `✅ ¡Entregado!`,
@@ -418,6 +430,7 @@ function renderOtp({ code, brand }) {
 const RENDERERS = Object.freeze({
   orderReceived: renderOrderReceived, pickupReceived: renderPickupReceived, delivered: renderDelivered,
   cancelled: renderCancelled, pickupReady: renderPickupReady, preparing: renderPreparing, otp: renderOtp,
+  arrived: renderArrived,
 });
 // the PUBLIC templates: each returns a deferred message that sendMessage renders after resolving the brand
 const tplOrderReceived = (args) => defer('orderReceived', args);
@@ -427,6 +440,16 @@ const tplCancelled = (args) => defer('cancelled', args);
 const tplPickupReady = (args) => defer('pickupReady', args);
 const tplPreparing = (args) => defer('preparing', args);
 const tplOtp = (args) => defer('otp', args);
+const tplArrived = (args) => defer('arrived', args);   // DRIVER C
+
+// DRIVER C (Codex r1 P2-8) — WHICH UltraMsg instance a restaurant routes to, FAIL-CLOSED: resolveWhatsappConfig sends any
+// unknown id through the default instance (today's senders rely on that and are unchanged); the arrival notice instead
+// requires a restaurant with its OWN instance — the default instance's restaurant, or la_musa with its creds — else null.
+function instanceFor(restaurantId, env = process.env) {
+  if (restaurantId === 'la_musa') return resolveWhatsappConfig(restaurantId, env) ? 'la_musa' : null;
+  if (restaurantId === 'x_pizza') return 'default';
+  return null;
+}
 
 module.exports = {
   sendMessage,
@@ -451,6 +474,8 @@ module.exports = {
   tplCancelled,
   tplPickupReady,
   tplPreparing,
+  tplArrived,
+  instanceFor,
   resolvePrepEtaMin,
   TRACKING_BASE
 };

@@ -1144,6 +1144,7 @@
     "xpizza-functions/tools/app-suites.guard.test.js",
     "xpizza-track/eta-gate.test.js",
     "xpizza-track/status-view-forms.test.js",
+    "xpizza-track/tracker-arrived.test.js",
     "xpizza-track/tracker-glide.guard.test.js",
     "xpizza-track/tracker-live.test.js",
     "xpizza-track/tracker-pins.test.js",
@@ -1702,6 +1703,7 @@
   "access/writes-flag.js",
   "account-lib.js",
   "alert-prune.js",
+  "arrived-notify.js",
   "assign-hub.js",
   "assignment-conflict.js",
   "catalog/bound-reuse.js",
@@ -1777,7 +1779,8 @@
   "tracking/reconcile-core.js",
   "tracking/tag.js",
   "tracking/tombstones.js",
-  "unassign-core.js"
+  "unassign-core.js",
+  "whatsapp.js"
  ],
  "server": {
   "access/access-census-core.js": {
@@ -1831,6 +1834,10 @@
    "lifts": []
   },
   "alert-prune.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "arrived-notify.js": {
    "pins": [],
    "lifts": []
   },
@@ -1951,6 +1958,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -1973,6 +1981,7 @@
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
@@ -2001,6 +2010,7 @@
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
@@ -2025,6 +2035,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -2042,6 +2053,7 @@
       "tools/d4c4-inverse.js",
       "tools/d4c5-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
@@ -2068,6 +2080,7 @@
       "tools/brand-server-inverse.js",
       "tools/d12b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
@@ -2091,6 +2104,7 @@
      "file": "xpizza-functions/dlite-push-wiring.guard.test.js",
      "inverses": [
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -2098,8 +2112,15 @@
      ]
     },
     {
+     "file": "xpizza-functions/drvc-wiring.guard.test.js",
+     "inverses": [
+      "tools/drvc-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/drvf-wiring.guard.test.js",
      "inverses": [
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js"
      ]
     },
@@ -2109,6 +2130,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
@@ -2133,6 +2155,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -2154,6 +2177,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2171,6 +2195,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
@@ -2185,6 +2210,7 @@
     {
      "file": "xpizza-functions/membership-wiring.guard.test.js",
      "inverses": [
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -2207,6 +2233,7 @@
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
@@ -2237,6 +2264,7 @@
       "tools/d4c4-inverse.js",
       "tools/d4c5-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
@@ -2259,6 +2287,7 @@
     {
      "file": "xpizza-functions/portalui-wiring.guard.test.js",
      "inverses": [
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -2270,6 +2299,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -2283,6 +2313,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2304,6 +2335,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2324,6 +2356,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2343,6 +2376,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
@@ -2365,6 +2399,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -2383,6 +2418,7 @@
       "tools/d12b-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
@@ -2437,6 +2473,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -2450,6 +2487,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -2465,6 +2503,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/extras-inverse.js",
       "tools/h0-inverse.js",
@@ -2873,6 +2912,34 @@
   "unassign-core.js": {
    "pins": [],
    "lifts": []
+  },
+  "whatsapp.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/brand-server-wiring.guard.test.js",
+     "inverses": [
+      "tools/drvc-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/drvc-wiring.guard.test.js",
+     "inverses": [
+      "tools/drvc-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/tools/drvc-inverse.js",
+     "inverses": [
+      "tools/drvc-inverse.js"
+     ]
+    }
+   ],
+   "lifts": [
+    "xpizza-functions/contract/applicability.guard.test.js",
+    "xpizza-functions/d12-wiring.guard.test.js",
+    "xpizza-functions/preparing-notify.test.js",
+    "xpizza-functions/whatsapp-brand.test.js"
+   ]
   }
  },
  "unregistered": []
