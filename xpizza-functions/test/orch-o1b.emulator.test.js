@@ -137,10 +137,10 @@ const H7 = { sun: DAY, mon: { open: false }, tue: DAY, wed: DAY, thu: DAY, fri: 
     const dev = (await D.pairDevice(hdeps(), { uid: MGR, token: {} }, { rid: 'tb_nuevo_centro', label: 'Equipo de la sucursal' })).uid;
     assert.ok(dev, 'the manager pairs a handheld on the staged branch');
     const list = await call(ops.getBranchDevices, { method: 'GET', query: '?restaurantId=tb_nuevo_centro', uid: MGR });
-    assert.strictEqual(list.status, 200, list.text);
+    assert.strictEqual(list.status, 200, `the manager LISTS it: ${list.text}`);
     assert.deepStrictEqual(list.json.branches[0].devices.map((d) => d.uid), [dev], 'the manager LISTS it');
     const rv = await call(ops.revokeBranchDevice, { uid: MGR, body: { rid: 'tb_nuevo_centro', uid: dev } });
-    assert.strictEqual(rv.status, 200, rv.text);
+    assert.strictEqual(rv.status, 200, `the manager REVOKES it: ${rv.text}`);
     assert.strictEqual((await call(ops.setBranchPause, { uid: MGR, body: { rid: 'tb_nuevo_centro', op: 'pause', dur_min: 30, reason: 'Otro' } })).status, 403, 'location.pause stays refused on staged');
     // pair again for readiness, with a heartbeat
     const dev2 = (await D.pairDevice(hdeps(), { uid: MGR, token: {} }, { rid: 'tb_nuevo_centro', label: 'Equipo 2' })).uid;
