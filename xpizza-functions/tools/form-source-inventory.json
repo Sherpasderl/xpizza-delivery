@@ -101,6 +101,7 @@
     "xpizza-functions/catalog/menu-gates.test.js",
     "xpizza-functions/catalog/menu-order.test.js",
     "xpizza-functions/catalog/migration-parity.test.js",
+    "xpizza-functions/catalog/mirror-key-encoding.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
@@ -218,6 +219,7 @@
     "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
     "xpizza-functions/test/merchant-push.emulator.test.js",
+    "xpizza-functions/test/mirror-keys.emulator.test.js",
     "xpizza-functions/test/order-control.emulator.test.js",
     "xpizza-functions/test/order-exists.emulator.test.js",
     "xpizza-functions/test/otp-brand.emulator.test.js",
@@ -314,6 +316,7 @@
     "xpizza-functions/catalog/menu-gates.test.js",
     "xpizza-functions/catalog/menu-order.test.js",
     "xpizza-functions/catalog/migration-parity.test.js",
+    "xpizza-functions/catalog/mirror-key-encoding.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
@@ -407,6 +410,7 @@
     "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
     "xpizza-functions/test/merchant-push.emulator.test.js",
+    "xpizza-functions/test/mirror-keys.emulator.test.js",
     "xpizza-functions/test/otp-brand.emulator.test.js",
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
@@ -533,6 +537,7 @@
     "xpizza-functions/catalog/menu-gates.test.js",
     "xpizza-functions/catalog/menu-order.test.js",
     "xpizza-functions/catalog/migration-parity.test.js",
+    "xpizza-functions/catalog/mirror-key-encoding.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
@@ -650,6 +655,7 @@
     "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
     "xpizza-functions/test/merchant-push.emulator.test.js",
+    "xpizza-functions/test/mirror-keys.emulator.test.js",
     "xpizza-functions/test/order-control.emulator.test.js",
     "xpizza-functions/test/order-exists.emulator.test.js",
     "xpizza-functions/test/otp-brand.emulator.test.js",
@@ -742,6 +748,7 @@
     "xpizza-functions/catalog/menu-gates.test.js",
     "xpizza-functions/catalog/menu-order.test.js",
     "xpizza-functions/catalog/migration-parity.test.js",
+    "xpizza-functions/catalog/mirror-key-encoding.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
@@ -840,6 +847,7 @@
     "xpizza-functions/test/membership.emulator.test.js",
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
     "xpizza-functions/test/merchant-push.emulator.test.js",
+    "xpizza-functions/test/mirror-keys.emulator.test.js",
     "xpizza-functions/test/otp-brand.emulator.test.js",
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
     "xpizza-functions/test/pickup-label.emulator.test.js",
@@ -1696,10 +1704,14 @@
   "catalog/canonical-binding.js",
   "catalog/catalog-edit-auth.js",
   "catalog/edit-catalog-handler.js",
+  "catalog/identity-record-verifier.js",
+  "catalog/mirror-keys.js",
+  "catalog/mirror-rtdb.js",
   "catalog/portal-reads.js",
   "catalog/publish-edited-handler.js",
   "catalog/publish-request.js",
   "catalog/reset-draft.js",
+  "catalog/snapshot-fallback.js",
   "catalog/text-version.js",
   "createorder-classify.js",
   "driver-ingest.js",
@@ -1845,6 +1857,22 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/identity-record-verifier.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/catalog/identity-record-guards.test.js"
+   ]
+  },
+  "catalog/mirror-keys.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/mirror-rtdb.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/mirrorkeys-wiring.guard.test.js"
+   ]
+  },
   "catalog/portal-reads.js": {
    "pins": [],
    "lifts": [
@@ -1864,6 +1892,12 @@
   "catalog/reset-draft.js": {
    "pins": [],
    "lifts": []
+  },
+  "catalog/snapshot-fallback.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/mirrorkeys-wiring.guard.test.js"
+   ]
   },
   "catalog/text-version.js": {
    "pins": [],

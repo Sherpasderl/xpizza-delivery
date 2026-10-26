@@ -35,6 +35,7 @@ const ALLOWED_GRAPH = new Set([...RUNTIME_ENTRIES,
   'lib/emulator-endpoint.js',      // R1: the run-endpoint validator it calls (pure, no dependencies)
   'catalog/restaurant-registry.js',// makeFirestoreRegistryReader (read-only listDocuments)
   'catalog/mirror-rtdb.js',        // the CLI imports RTDB_URL only — see cell 2's call check
+  'catalog/mirror-keys.js', 'avail-key.js',   // hotfix 2026-10-26: mirror-rtdb's PURE key encoder (no I/O; nothing is called by stats)
 ]);
 const ALLOWED_EXTERNALS = new Set(['crypto', 'firebase-admin', 'fs', 'path', 'dotenv']);
 

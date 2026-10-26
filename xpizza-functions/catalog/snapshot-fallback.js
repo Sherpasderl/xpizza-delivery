@@ -28,6 +28,7 @@
 // ---------------------------------------------------------------------------
 
 const { isValidPrice } = require('../price-valid');   // the ONE platform price rule (1a)
+const { decodeMirror } = require('./mirror-keys');   // hotfix 2026-10-26: the mirror's key encoding
 
 const DEFAULT_K = 1;
 const MIRROR_READ_DEADLINE_MS = 1500;
@@ -145,7 +146,7 @@ function createSnapshotFallback({ mirrorReader, alarm, K = DEFAULT_K, deadlineMs
 function makeRtdbMirrorReader(rtdb) {
   return async function readMirror(rid) {
     const snap = await rtdb.ref(`catalog_snapshot/${rid}`).get();
-    return snap && typeof snap.val === 'function' ? snap.val() : null;
+    return decodeMirror(snap && typeof snap.val === 'function' ? snap.val() : null);   // names as typed; a bad key throws (fail closed)
   };
 }
 

@@ -44,6 +44,7 @@ const PARENT_INDEX = '711db74576a3fe720c765e7c88af4738eff03fbde1b8d9fd987a2dfcb8
 // The REVIEWED application graph of every portal target (identical for all five: they are one isolated group).
 const PORTAL_GRAPH_LOCAL = [
   'access/membership.js',                  // PLAN-portal-membership r3: the ONE resolver (catalog-edit-auth, portal-reads, stats); pure + RTDB reads
+  'avail-key.js',                          // hotfix 2026-10-26: the shared reversible key encoder, via catalog/mirror-keys.js — pure
   'brands/brand-model.js',                  // F1 brandIdOf / validateBrand / checkMembership, via access/membership.js — pure
   'catalog/add-product-io.js',              // 1D add-product A: the profile key mode, high-water mark, registry key reads, KDS sync
   'catalog/add-product.js',                 // 1D add-product A: the pure allocation + structural comparison (editCatalog / publishEdited)
@@ -65,6 +66,7 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/identity-partition.js', 'catalog/identity-plan.js', 'catalog/identity-reconcile.js', 'catalog/identity-registry.js',
   'catalog/identity-stampmap.js', 'catalog/identity-verdict.js', 'catalog/identity-writer.js',
   'catalog/kds-manifest.js',                // 1D add-product A: the conditional /menus writer, after a successful publish
+  'catalog/mirror-keys.js',                 // hotfix 2026-10-26: mirror-rtdb's PURE key encoder (RTDB-unsafe name keys)
   'catalog/mirror-rtdb.js',
   'catalog/platform-extras.js',             // per-product extras: the platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/platform-groups.js',             // 1D add-product B: the ONE platform authoring switch (editCatalog / publishEdited); no I/O
