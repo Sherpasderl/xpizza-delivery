@@ -295,8 +295,32 @@ test('the expiry with a frozen clock that replaces the WHOLE Date on the page gl
 });
 
 test('the identity endpoints are reached ONLY through the injected SherpaClient.fetch (no direct fetch); no brand literal', () => {
-  const src = readFileSync(join(ROOT, 'customer-app/capp-api.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
-  assert.equal(src.match(/(^|[^.\w])fetch\s*\(|window\.fetch|globalThis\.fetch|XMLHttpRequest/g), null, '🔴 a direct fetch in capp-api.js');
-  assert.match(src, /root\.SherpaClient\.fetch\(/, 'the default transport is SherpaClient.fetch');
+  const WRAPPER = "function sherpaFetch(u, o){ var S = root && root.SherpaClient; return (S && typeof S.fetch === 'function') ? S.fetch(u, o) : fetch(u, o); }";
+  const raw = readFileSync(join(ROOT, 'customer-app/capp-api.js'), 'utf8');
+  assert.equal(raw.split(WRAPPER).length - 1, 1, 'the forms\' canonical sherpaFetch wrapper, exactly once');
+  const src = raw.replace(WRAPPER, '').replace(/\/\/[^\n]*/g, '');
+  assert.equal(src.match(/(^|[^.\w])fetch\s*\(|window\.fetch|globalThis\.fetch|XMLHttpRequest/g), null, '🔴 a direct fetch in capp-api.js outside the wrapper\'s dead fallback');
+  assert.match(src, /const sfetch = o\.fetch \|\| sherpaFetch;/, 'the default transport is the wrapper');
   assert.equal(src.match(/x_pizza|la_musa|xpizza|lamusa|X\.? ?Pizza|La Musa/i), null);
+});
+
+test('in the app page the default transport routes through SherpaClient.fetch — the wrapper\'s fallback is never the live path', async () => {
+  const vm = await import('node:vm');
+  const { webcrypto } = await import('node:crypto');
+  const html = readFileSync(join(ROOT, 'customer-app/index.html'), 'utf8');
+  const order = [...html.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(order.indexOf('sherpa-client.js') !== -1 && order.indexOf('sherpa-client.js') < order.indexOf('capp-api.js'), 'the page loads sherpa-client.js before capp-api.js');
+  const storage = memStorage();
+  const srv = server({ createOrder: [OK_CASH] }, storage);
+  const via = [];
+  const ctx = { Date, URLSearchParams, TextEncoder, crypto: webcrypto, setTimeout, clearTimeout, setInterval: () => 0, clearInterval: () => {}, console, JSON, Math, Promise, Uint8Array,
+    fetch: () => { throw new Error('🔴 the bare fetch fallback was taken'); },
+    SherpaClient: { fetch: (u, i) => { via.push(u); return srv.fetch(u, i); } } };
+  ctx.self = ctx; ctx.window = ctx;
+  vm.createContext(ctx);
+  for (const f of ['capp-checkout.js', 'capp-confirm-quote.js', 'capp-api.js']) vm.runInContext(readFileSync(join(ROOT, 'customer-app', f), 'utf8'), ctx, { filename: f });
+  const api = ctx.CappApi.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'k', endpoints: E, hours: null }, storage, sleep: async () => {} });   // NO injected fetch
+  const out = await api.place(placeArgs('cash'));
+  assert.equal(out.kind, 'placed', `🔴 the default transport must reach SherpaClient.fetch (${JSON.stringify(out)})`);
+  assert.deepEqual(via, [E.createOrder], '🔴 the createOrder send went through SherpaClient.fetch');
 });

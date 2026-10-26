@@ -41,7 +41,9 @@
     const cfg = o.config || {};
     const C = o.CappCheckout || (root && root.CappCheckout) || require('./capp-checkout.js');
     const CQ = o.createConfirmQuote || (root && root.createConfirmQuote) || require('./capp-confirm-quote.js').createConfirmQuote;
-    const sfetch = o.fetch || ((u, i) => root.SherpaClient.fetch(u, i));
+    // the forms' canonical wrapper (pselfupdate-wrapper-lint): the page loads sherpa-client.js first, so the fallback arm is dead
+    function sherpaFetch(u, o){ var S = root && root.SherpaClient; return (S && typeof S.fetch === 'function') ? S.fetch(u, o) : fetch(u, o); }
+    const sfetch = o.fetch || sherpaFetch;
     const storage = o.storage || (() => { try { return root.localStorage; } catch (_) { return null; } })();
     const now = o.now || (() => Date.now());
     const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));

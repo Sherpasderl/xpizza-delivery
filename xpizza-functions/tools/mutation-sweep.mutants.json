@@ -20521,15 +20521,15 @@
     "slice": "s2a",
     "label": "a direct fetch to an identity endpoint",
     "file": "../customer-app/capp-api.js",
-    "from": "    const sfetch = o.fetch || ((u, i) => root.SherpaClient.fetch(u, i));",
-    "to": "    const sfetch = o.fetch || ((u, i) => fetch(u, i));",
+    "from": "    function sherpaFetch(u, o){ var S = root && root.SherpaClient; return (S && typeof S.fetch === 'function') ? S.fetch(u, o) : fetch(u, o); }",
+    "to": "    function sherpaFetch(u, o){ var S = root && root.SherpaClient; return (S && typeof S.fetch === 'function') ? fetch(u, o) : fetch(u, o); }",
     "command": [
       "node",
       "--test",
       "../customer-app/capp-api.test.mjs"
     ],
     "kills_with": [
-      "a direct fetch in capp-api.js"
+      "the default transport must reach SherpaClient.fetch"
     ]
   },
   {

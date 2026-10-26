@@ -1249,6 +1249,7 @@
   "<root>/index.html": {
    "tests": [
     "capp-s0prod-config.test.mjs",
+    "customer-app/capp-api.test.mjs",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/form-bundle-splice.test.js",
     "xpizza-functions/menus.test.mjs",
