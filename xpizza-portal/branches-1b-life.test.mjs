@@ -483,3 +483,143 @@ test('r1 #1 (submit guard, defense in depth): W flipped off in the shell\'s stat
   await settle(10);
   assert.equal(P.count('createBranchDraft'), 0);
 });
+
+// ══ codex 1b r2 ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+test('r2 #1: ownership revoked + W off while «Nueva» is dirty — the reload is deferred, the fresh caps still close it → ZERO E6', async () => {
+  installStorage({ 'sherpa.portal.branches.uOwnerLife': E1([row('r_a', { name: 'Centro' })]) });
+  let release;
+  const fresh = new Promise((r) => { release = r; });
+  const P = page([E1([row('r_a', { name: 'Centro' })])], (fn) => (fn === 'getMyBranches' ? fresh : undefined));
+  const mods = await boot(P);
+  mods.shell.goto('suc'); await settle(5);
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Norte');
+  fire(byIdIn(P.modal(), 'nv1b-tel'), 'input', '3390 5521');
+  const go = byIdIn(P.modal(), 'nv1b-go');
+  release(okJson(E1([row('r_a', { name: 'Centro', role: 'manager', caps: MANAGER })], [BRAND([], { caps: [] })], false)));
+  await settle(20);
+  assert.equal(P.reloads.n, 0, 'premise: the reload is deferred by the unsaved form');
+  assert.equal(P.byId.get('sucscrim').classList.contains('show'), false, 'the fresh caps closed the modal anyway');
+  go.click();
+  await settle(10);
+  assert.equal(P.count('createBranchDraft'), 0);
+});
+
+test('r2 #1: the prep capability revoked under an unsaved prep edit (reload deferred) → Guardar off → ZERO E7', async () => {
+  installStorage({ 'sherpa.portal.branches.uOwnerLife': E1([row('r_a', { name: 'Centro' })]) });
+  let release;
+  const fresh = new Promise((r) => { release = r; });
+  const P = page([E1([row('r_a', { name: 'Centro' })])], (fn) => (fn === 'getMyBranches' ? fresh : undefined));
+  const mods = await boot(P);
+  mods.shell.goto('suc', { rid: 'r_a' }); await settle(5);
+  byAria(P.view(), 'Más 5 minutos').click();
+  release(okJson(E1([row('r_a', { name: 'Centro', caps: OWNER.filter((c) => c !== 'location.prep') })])));
+  await settle(20);
+  assert.equal(P.reloads.n, 0, 'premise: the reload is deferred by the unsaved edit');
+  assert.equal(P.byId.get('sucsave').disabled, true, 'Guardar is off for a revoked group');
+  assert.equal(byAria(P.view(), 'Más 5 minutos').disabled, true, 'the prep editor is disabled');
+  P.byId.get('sucsave').click();
+  await settle(10);
+  assert.equal(P.count('updateBranchProfile'), 0);
+});
+
+test('r2 #2: a 500 / an unknown code is UNRESOLVED — locked, the retry is the same op_id + bytes; Cancelar → reopen keeps the same intent', async () => {
+  installStorage();
+  let e6 = 0;
+  const P = page([E1([row('r_a', { name: 'Centro' })])], (fn) => {
+    if (fn === 'createBranchDraft') { e6 += 1; return e6 === 1 ? errJson(500, { error: 'internal' }) : e6 === 2 ? errJson(409, { error: 'some_future_code' }) : okJson({ rid: 'r_n', state: 'draft', version: 'd.z.1.1' }); }
+    return undefined;
+  });
+  const mods = await openSuc(P);
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Norte');
+  fire(byIdIn(P.modal(), 'nv1b-tel'), 'input', '3390 5521');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(15);
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre').disabled, true, '500 → still locked');
+  byText(P.modal(), 'button', 'Cancelar').click();
+  assert.equal(P.byId.get('sucscrim').classList.contains('show'), false);
+  assert.equal(mods.shell.canLeave(), false, 'the unresolved create is still unsaved work after dismissal');
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre').value, 'Norte', 'reopened: the same locked payload');
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre').disabled, true);
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(15);
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre').disabled, true, 'an unknown code → still locked');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(20);
+  const bodies = P.calls.filter((c) => c.fn === 'createBranchDraft').map((c) => c.body);
+  assert.equal(bodies.length, 3);
+  assert.deepEqual(bodies[1], bodies[0]); assert.deepEqual(bodies[2], bodies[0]);
+  assert.equal(mods.shell.canLeave(), true, 'resolved (200) → nothing pending');
+});
+
+// ══ item 6 (OWNER-APPROVED 2026-10-26): the E6 name refusals, D-b inline under the name ═════════════════════════════════════════
+test('item 6: name_taken → the owner line under the name, «Crear» off until the name changes; the changed name is a NEW intent', async () => {
+  installStorage();
+  let e6 = 0;
+  const P = page([E1([row('r_a', { name: 'Centro' })])], (fn) => {
+    if (fn === 'createBranchDraft') { e6 += 1; return e6 === 1 ? errJson(409, { error: 'name_taken' }) : okJson({ rid: 'r_n', state: 'draft', version: 'd.n.1.1' }); }
+    return undefined;
+  });
+  await openSuc(P);
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Norte');
+  fire(byIdIn(P.modal(), 'nv1b-tel'), 'input', '3390 5521');
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre-err'), undefined, 'non-vacuity: no name error before the refusal');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(15);
+  const err = byIdIn(P.modal(), 'nv1b-nombre-err');
+  assert.ok(err, 'the inline error renders');
+  assert.equal(textOf(err).trim(), 'Ya hay una sucursal con ese nombre en esta marca.');
+  assert.equal(err.className, 'ferr1b', 'the D-b inline style (the WhatsApp error class)');
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre').attrs['aria-invalid'], 'true');
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre').attrs['aria-describedby'], 'nv1b-nombre-err');
+  assert.ok(!textOf(P.modal()).includes('No se guardaron los cambios'), 'not the G4 generic box');
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre').disabled, false, 'definitive → editable');
+  assert.equal(byIdIn(P.modal(), 'nv1b-go').disabled, true, '«Crear» off on the refused name');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(5);
+  assert.equal(P.count('createBranchDraft'), 1, 'a click on the refused name sends nothing');
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Norte 2');
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre-err'), undefined, 'a changed name clears the line');
+  assert.equal(byIdIn(P.modal(), 'nv1b-go').disabled, false, 'and enables «Crear»');
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', ' Norte ');
+  assert.ok(byIdIn(P.modal(), 'nv1b-nombre-err'), 'back to the refused name (as sent, trimmed) → the line returns');
+  assert.equal(byIdIn(P.modal(), 'nv1b-go').disabled, true);
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Sur');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(15);
+  const [a, b] = P.calls.filter((c) => c.fn === 'createBranchDraft').map((c) => c.body);
+  assert.equal(a.location_name, 'Norte'); assert.equal(b.location_name, 'Sur');
+  assert.notEqual(b.op_id, a.op_id, 'name_taken is definitive: the new name is a new op_id');
+});
+
+test('item 6: bad_name (defensive) → «Escribí un nombre de hasta 60 caracteres.» under the name, same rule', async () => {
+  installStorage();
+  const P = page([E1([row('r_a', { name: 'Centro' })])], (fn) => (fn === 'createBranchDraft' ? errJson(400, { error: 'bad_name' }) : undefined));
+  await openSuc(P);
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Norte');
+  fire(byIdIn(P.modal(), 'nv1b-tel'), 'input', '3390 5521');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(15);
+  assert.equal(textOf(byIdIn(P.modal(), 'nv1b-nombre-err')).trim(), 'Escribí un nombre de hasta 60 caracteres.');
+  assert.equal(byIdIn(P.modal(), 'nv1b-go').disabled, true);
+  assert.ok(!textOf(P.modal()).includes('No se guardaron los cambios'), 'inline, not the G4 box');
+  assert.equal(byIdIn(P.modal(), 'nv1b-tel-err'), undefined, 'the name refusal never marks the WhatsApp');
+});
+
+test('item 6: op_conflict still shows the G4 box, never a name line', async () => {
+  installStorage();
+  const P = page([E1([row('r_a', { name: 'Centro' })])], (fn) => (fn === 'createBranchDraft' ? errJson(409, { error: 'op_conflict' }) : undefined));
+  await openSuc(P);
+  byText(P.view(), 'button', 'Agregar sucursal').click();
+  fire(byIdIn(P.modal(), 'nv1b-nombre'), 'input', 'Norte');
+  fire(byIdIn(P.modal(), 'nv1b-tel'), 'input', '3390 5521');
+  byIdIn(P.modal(), 'nv1b-go').click();
+  await settle(15);
+  assert.ok(textOf(P.modal()).includes('No se guardaron los cambios'), 'the G4 box');
+  assert.equal(byIdIn(P.modal(), 'nv1b-nombre-err'), undefined);
+  assert.equal(byIdIn(P.modal(), 'nv1b-go').disabled, false, 'op_conflict does not lock «Crear» on the name');
+});

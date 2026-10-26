@@ -1878,7 +1878,9 @@
   },
   "branches/branch-ops.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-portal/branch-1b-logic.test.mjs"
+   ]
   },
   "branches/branch-store.js": {
    "pins": [],
@@ -2693,7 +2695,9 @@
   },
   "portal/branch-lifecycle-core.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-portal/branch-1b-logic.test.mjs"
+   ]
   },
   "portal/branch-phone.js": {
    "pins": [],

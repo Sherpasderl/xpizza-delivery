@@ -220,7 +220,10 @@ export function mountBranches(root, ctx) {
   };
   const patchOf = (b) => { const d = draftFor(b); return d ? B.profilePatch(profileOf(b), d) : {}; };
   // codex 1b r1 #4 (§3.1): Guardar needs EVERY editable value valid — a loaded landline / reversed hours that the draft did not fix
-  // keeps it off, even when only another group is dirty. A null phone is «not set», not invalid (the editor shows it empty).
+  // keeps it off, even when only another group is dirty. A null phone is «not set», not invalid (the editor shows it empty): the
+  // server accepts a prep-only patch on it — planProfilePatch validates only the patched keys (branch-ops.js:116-130, phone :122)
+  // and casIdentity writes the merge with no whole-identity check (branch-store.js:588-596). Blocking would deadlock a merchant
+  // who never set a WhatsApp (advisor r2 #4).
   const editableErrors = (b) => {
     const ed = b.lifecycle === 'draft' ? { phone: true, hours: true, prep_default_min: true } : B.editorsOf(b);
     const cur = curOf(b);
@@ -436,6 +439,8 @@ export function mountBranches(root, ctx) {
     const perr = { ...editableErrors(b), ...B.patchErrors(patch) };
     const labels = B.dirtyLabels1b(patch);
     const dirty = labels.length > 0;
+    const edNow = b.lifecycle === 'draft' ? (owned(b.brand_id) ? { phone: true, hours: true, prep_default_min: true } : {}) : B.editorsOf(b);
+    const revoked = !W() || Object.keys(patch).some((k) => !edNow[k]);   // codex 1b r2 #1: a cap revoked under an unsaved edit
     setDirty(dirty);
     const invalid = !!(perr.hours || perr.phone || perr.prep_default_min);
     const txt = [document.createTextNode(`Cambios sin guardar en ${nameOf(b)} `)];
@@ -444,7 +449,7 @@ export function mountBranches(root, ctx) {
     if (!invalid) txt.push(el('span', null, `· ${labels.join(', ')}`));
     $('sucbartxt').replaceChildren(...txt);
     const dot = $('sucbar').querySelector('.rb-dot'); if (dot) dot.classList.toggle('rbdoterr1b', invalid);
-    $('sucsave').disabled = V.saving || V.locked || invalid;
+    $('sucsave').disabled = V.saving || V.locked || invalid || revoked;
     $('sucdiscard').disabled = V.saving;
   }
 
@@ -646,18 +651,29 @@ export function mountBranches(root, ctx) {
     const first = focusables()[0];
     if (first && first.focus) first.focus();
   }
-  function closeModal() {
+  function closeModal({ discard = false } = {}) {
     const back = V.modal && V.modal.invokerId;
+    // codex 1b r2 #2: an UNRESOLVED create survives Cancelar / Escape / backdrop — its frozen body and op_id stay pending, and
+    // reopening «Nueva sucursal» shows it locked with the retry. Only a definitive answer (or W / ownership loss) ends it.
+    if (!discard && V.nv && V.nv.payload && !V.nv.sending) V.nvPending = V.nv;
+    if (discard) V.nvPending = null;
     V.modal = null; V.nv = null; V.nvGo = null;
-    ctx.setDirty('suc-new', false);
+    ctx.setDirty('suc-new', !!V.nvPending);
     scrim.classList.remove('show'); modal.replaceChildren();
     if (back) { const n = $(back); if (n && typeof n.focus === 'function') n.focus(); }
   }
+  // codex 1b r2 #5: if the focused control comes back disabled (prep at the bound, «Crear» sending), focus moves to the nearest
+  // enabled control: the opposite stepper button, else the first enabled control, else the modal's close (Cancelar).
+  const OPPOSITE = Object.freeze({ 'nv1b-up': 'nv1b-down', 'nv1b-down': 'nv1b-up' });
   function repaintModal(fn) {
     const a = document.activeElement;
     const fid = a && a.id && modal.contains && modal.contains(a) ? a.id : null;
     fn();
-    if (fid) { const n = $(fid); if (n && typeof n.focus === 'function') n.focus(); }
+    if (!fid) return;
+    const usable = (n) => n && !n.disabled && typeof n.focus === 'function';
+    const n = $(fid);
+    const target = [n, OPPOSITE[fid] ? $(OPPOSITE[fid]) : null, focusables()[0], $('nv1b-cancel'), $('suc1b-mcancel')].find(usable);
+    if (target) target.focus();
   }
   const focusables = () => Array.from(modal.querySelectorAll('input, button')).filter((n) => !n.disabled);
   if (scrim) scrim.addEventListener('click', (e) => { if (e.target === scrim && !(V.nv && V.nv.sending)) closeModal(); });
@@ -683,11 +699,14 @@ export function mountBranches(root, ctx) {
     return b.lifecycle === 'draft';
   }
   function checkModal() {
+    if (!V.modal && V.nvPending && (!W() || !ctx.sel || ctx.sel.brand_id !== V.nvPending.brandId || !owned(V.nvPending.brandId))) {
+      V.nvPending = null; ctx.setDirty('suc-new', false); V.listErr = [...B.GENERIC_SAVE_ERR];   // a pending create can no longer be sent
+    }
     if (!V.modal || modalEligible()) return;
     const dirty = V.modal.kind === 'nueva' && nvDirty(V.nv);
     const busy = V.nv && V.nv.sending;
     if (busy) return;   // a send in flight settles first; its own refusal path speaks
-    closeModal();
+    closeModal({ discard: true });
     if (dirty) V.listErr = [...B.GENERIC_SAVE_ERR];   // shown above the list (W on or off) until the next navigation
   }
   function paintModal() {
@@ -728,6 +747,8 @@ export function mountBranches(root, ctx) {
   // ── S9 «Nueva sucursal» (E6): one op_id per intent, reused on «Reintentar» ──
   function openNueva(invokerId) {
     if (V.saving || V.locked || !W() || !ctx.sel || !owned(ctx.sel.brand_id)) return;
+    if (V.nvPending && V.nvPending.brandId === ctx.sel.brand_id) { V.nv = V.nvPending; V.nvPending = null; openModal('nueva', null, invokerId); return; }
+    V.nvPending = null;
     // payload: null, or the EXACT body of an unresolved E6 (codex 1b r1 #2) — a retry re-sends it byte for byte under the same
     // op_id and the fields stay read-only; only a DEFINITIVE answer releases it (and a changed form is then a new intent / op_id)
     V.nv = { opId: B.newOpId(), brandId: ctx.sel.brand_id, name: '', phoneRaw: '', phone: '', choice: 0, prep: 20, err: null, nameErr: null, phoneErr: false, sending: false, payload: null };
@@ -752,8 +773,13 @@ export function mountBranches(root, ctx) {
     const fn = el('div', 'fld');
     const ln = el('label', null, 'Nombre de la sucursal'); ln.htmlFor = 'nv1b-nombre';
     const iname = el('input'); iname.className = 'nvin1b'; iname.type = 'text'; iname.id = 'nv1b-nombre'; iname.placeholder = 'p. ej. Col. Los Andes'; iname.value = m.name; iname.disabled = frozen; iname.maxLength = B.NAME_MAX + 10;
-    iname.addEventListener('input', () => { if (nvFrozen(m)) { iname.value = m.name; return; } m.name = iname.value; m.nameErr = null; paintNuevaGo(); });
+    const refused = B.nameRefused(m.nameErr, m.name);
+    iname.setAttribute('aria-invalid', refused ? 'true' : 'false');
+    if (refused) iname.setAttribute('aria-describedby', 'nv1b-nombre-err');
+    // the error comes and goes with the refused name; a full repaint only when it flips (focus is kept by repaintModal)
+    iname.addEventListener('input', () => { if (nvFrozen(m)) { iname.value = m.name; return; } m.name = iname.value; if (B.nameRefused(m.nameErr, m.name) !== refused) paintNueva(); else paintNuevaGo(); });
     fn.append(ln, iname);
+    if (refused) { const e = el('div', 'ferr1b'); e.id = 'nv1b-nombre-err'; e.append(icon('err'), el('span', null, B.NAME_ERR[m.nameErr.code])); fn.append(e); }
     const fp = el('div', 'fld');
     const lp = el('label', null, 'WhatsApp de la sucursal'); lp.htmlFor = 'nv1b-tel';
     const bad = m.phoneErr || (m.phoneRaw.trim() !== '' && !B.validPhone(m.phone) && m.phoneTouched);
@@ -800,7 +826,7 @@ export function mountBranches(root, ctx) {
     const m = V.nv; const go = V.nvGo;
     if (!m || !go) return;
     ctx.setDirty('suc-new', nvDirty(m));
-    go.disabled = m.sending || (!m.payload && (!B.validName(B.cleanName(m.name)) || !B.validPhone(m.phone)));
+    go.disabled = m.sending || (!m.payload && (!B.validName(B.cleanName(m.name)) || !B.validPhone(m.phone) || B.nameRefused(m.nameErr, m.name)));
   }
   async function createDraft() {
     const m = V.nv;
@@ -808,7 +834,7 @@ export function mountBranches(root, ctx) {
     if (!modalEligible()) { checkModal(); render(); return; }   // codex 1b r1 #1: W / ownership re-checked at submit
     if (!m.payload) {   // a NEW intent: the body is fixed now (copied hours captured once) and every retry re-sends exactly it
       const name = B.cleanName(m.name);
-      if (!B.validName(name) || !B.validPhone(m.phone)) return;
+      if (!B.validName(name) || !B.validPhone(m.phone) || B.nameRefused(m.nameErr, m.name)) return;
       const choices = B.newHoursChoices(branches());
       m.payload = { opId: m.opId, brandId: m.brandId, locationName: name, phone: m.phone, hours: B.cleanHours((choices[m.choice] || choices[0]).hours), prepDefaultMin: m.prep };
     }
@@ -821,7 +847,7 @@ export function mountBranches(root, ctx) {
       m.sending = false;
       ctx.setBusy('suc-new', false);
       if (!ctx.alive(gen)) return;
-      closeModal();
+      closeModal({ discard: true });
       V.det = out && typeof out.rid === 'string' ? out.rid : null;   // S9b: the new draft opens (a replay: that branch, §3.3)
       V.p = null; V.draft = null; V.err = null;
       if (out && out.state === 'draft') ctx.toast('Borrador creado · Sherpa está configurando la ubicación');
@@ -831,15 +857,25 @@ export function mountBranches(root, ctx) {
       ctx.setBusy('suc-new', false);
       if (!ctx.alive(gen) || V.nv !== m) return;
       const code = e && e.code;
-      const unresolved = (e && e.kind === 'Unavailable' && code !== 'writes_disabled') || code === 'interrupted' || code === 'lease_lost';
-      if (code === 'writes_disabled') { closeModal(); V.err = [...B.GENERIC_SAVE_ERR]; await reconcile(gen, true); return; }
-      if (unresolved) m.err = e && e.kind === 'Unavailable' ? [...OFFLINE] : [...B.GENERIC_SAVE_ERR];   // the payload stays frozen: «Crear» re-sends it
+      // codex 1b r2 #2: ONLY a 4xx carrying a known code is definitive; a 5xx, a network failure, a timeout, an unknown code (and
+      // the server's interrupted / lease_lost, which say the op may still complete) leave the intent unresolved
+      const unresolved = code !== 'writes_disabled' && !B.e6Definitive(e);
+      if (code === 'writes_disabled') { closeModal({ discard: true }); V.err = [...B.GENERIC_SAVE_ERR]; await reconcile(gen, true); return; }
+      if (unresolved) {   // the payload stays frozen: «Crear» re-sends it; focus goes to that retry (codex 1b r2 #5)
+        m.err = e && e.kind === 'Unavailable' ? [...OFFLINE] : [...B.GENERIC_SAVE_ERR];
+        paintNueva();
+        const g = $('nv1b-go'); if (g && !g.disabled && typeof g.focus === 'function') g.focus();
+        return;
+      }
       else {   // DEFINITIVE: the intent is over — the form is editable again and the next «Crear» is a new intent with a new op_id
+        const sent = m.payload;
         m.payload = null; m.opId = B.newOpId();
         if (code === 'bad_phone') m.phoneErr = true;
-        else m.err = [...B.GENERIC_SAVE_ERR];   // op_conflict / name_taken / … (name copy pending the owner) — never a silent second draft
+        else if (B.NAME_ERR[code]) m.nameErr = { code, name: sent.locationName };   // item 6: inline under the name (owner copy)
+        else m.err = [...B.GENERIC_SAVE_ERR];   // op_conflict / … — never a silent second draft
       }
       paintNueva();
+      if (B.NAME_ERR[code]) { const i = $('nv1b-nombre'); if (i && typeof i.focus === 'function') i.focus(); }   // item 6: to the field to fix
     }
   }
 

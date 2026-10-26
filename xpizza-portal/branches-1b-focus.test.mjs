@@ -23,7 +23,7 @@ const row = (rid, name) => ({ rid, brand_id: 'marca_s', role: 'owner', state: 'm
   profile: { location_name: name, phone: '+50497952893', hours: WEEK, prep_default_min: 20 }, location: { address_line: `Dirección ${name}`, address_reference: null, hub: { lat: 1, lng: 2 }, zone_radius_km: 4 }, version: 7 });
 const E1 = { brands: [{ brand_id: 'marca_s', name: 'Marca S', caps: ['brand.locations'], activation: 'on', drafts: [] }], branches: [row('r_a', 'Centro'), row('r_b', 'Norte')], membership_writes_enabled: true };
 
-async function boot() {
+async function boot(extra) {
   const dom = new JSDOM(HTML, { url: 'https://portal.test/' });
   const w = dom.window;
   for (const k of ['window', 'document', 'CustomEvent', 'Event', 'KeyboardEvent', 'HTMLElement', 'Node', 'sessionStorage', 'localStorage']) globalThis[k] = k === 'window' ? w : w[k];
@@ -33,6 +33,8 @@ async function boot() {
   const json = (body) => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body), headers: { get: () => null } });
   globalThis.fetch = async (url) => {
     const fn = new URL(String(url)).pathname.split('/').pop();
+    const x = extra && extra(fn);
+    if (x) return x;
     if (fn === 'getMyBranches') return json(E1);
     if (fn === 'getEditableCatalog') return json({ source: { restaurant_id: 'r_a', schema_version: 1, items: [], extras: [], structure: { schema_version: 2, item_order: [], categories: [] } }, sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
     if (fn === 'getBranchAvailability') return json({ branches: [] });
@@ -86,4 +88,41 @@ test('S7 confirm: Cancelar returns focus to «Desactivar …» even though the d
   mods.shell._shellState.views.suc.render();          // a repaint replaces the invoker element
   $('suc1b-mcancel').click();
   assert.equal(active(), 'suc1b-deact', 'focus returns to the (re-rendered) invoker by its stable id');
+});
+
+// ══ codex 1b r2 #5: the focused control comes back DISABLED ═════════════════════════════════════════════════════════════════
+test('r2 #5: prep at 120 → focus moves to the opposite stepper; «Crear» sending → an enabled control; unavailable → the retry («Crear»)', async () => {
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const { $, active, type, doc } = await boot((fn) => (fn === 'createBranchDraft' ? held : null));
+  $('suc1b-add').focus(); $('suc1b-add').click();
+  $('nv1b-up').focus();
+  for (let i = 0; i < 30 && !$('nv1b-up').disabled; i++) $('nv1b-up').click();
+  assert.equal($('nv1b-up').disabled, true, 'premise: prep reached 120');
+  assert.equal(active(), 'nv1b-down', 'the opposite stepper takes focus');
+  type('nv1b-nombre', 'Norte'); type('nv1b-tel', '33905521');
+  $('nv1b-go').focus(); $('nv1b-go').click();
+  assert.equal($('nv1b-go').disabled, true, 'premise: «Crear» is disabled while sending');
+  assert.notEqual(doc.activeElement, doc.body, 'never lost to BODY');
+  assert.ok($('sucmodal').contains(doc.activeElement) && !doc.activeElement.disabled, 'an enabled control inside the modal');
+  release({ ok: false, status: 503, json: async () => ({ error: 'unavailable', retryable: true }), text: async () => '', headers: { get: () => null } });
+  await settle(10);
+  assert.equal(active(), 'nv1b-go', 'after an unavailable answer, focus is on the retry');
+});
+
+test('item 6: name_taken on a real DOM — the line is announced by the field, focus lands on the name (never BODY)', async () => {
+  const bad = { ok: false, status: 409, json: async () => ({ error: 'name_taken' }), text: async () => '', headers: { get: () => null } };
+  const { $, active, type } = await boot((fn) => (fn === 'createBranchDraft' ? bad : null));
+  $('suc1b-add').focus(); $('suc1b-add').click();
+  type('nv1b-nombre', 'Norte'); type('nv1b-tel', '33905521');
+  $('nv1b-go').focus(); $('nv1b-go').click();
+  await settle(10);
+  assert.equal($('nv1b-nombre-err').textContent.trim(), 'Ya hay una sucursal con ese nombre en esta marca.');
+  assert.equal($('nv1b-nombre').getAttribute('aria-describedby'), 'nv1b-nombre-err');
+  assert.equal($('nv1b-go').disabled, true);
+  assert.equal(active(), 'nv1b-nombre', 'focus moves to the field to fix');
+  type('nv1b-nombre', 'Norte 2');
+  assert.equal($('nv1b-nombre-err'), null);
+  assert.equal(active(), 'nv1b-nombre', 'typing keeps focus across the repaint that clears the line');
+  assert.equal($('nv1b-go').disabled, false);
 });

@@ -389,3 +389,15 @@ test('r1 #4 (§3.1): a LOADED landline + reversed hours keep Guardar off even wh
   fire(byIdIn(P.view(), 'h1b-mon-end'), 'change', '23:00');
   assert.equal(P.byId.get('sucsave').disabled, false);
 });
+
+test('r2 #4: an UNSET WhatsApp (null) is not a save blocker — a prep change saves with ONE E7 carrying only prep', async () => {
+  installStorage();
+  const P = page([E1([row('r_a', { profile: { phone: null } })])], (fn) => (fn === 'updateBranchProfile' ? okJson({ version: 8, lifecycle: 'identity' }) : undefined));
+  await open(P);
+  assert.ok(!textOf(P.view()).includes('Escribí un número de celular'), 'no error on an unset number');
+  byAria(P.view(), 'Más 5 minutos').click();
+  assert.equal(P.byId.get('sucsave').disabled, false);
+  P.byId.get('sucsave').click();
+  await settle(15);
+  assert.deepEqual(P.calls.find((c) => c.fn === 'updateBranchProfile').body.patch, { prep_default_min: 25 });
+});

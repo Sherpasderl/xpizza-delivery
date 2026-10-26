@@ -290,10 +290,23 @@ export function missingText(r) {
 export const canActivate = (row) => { const r = readinessRows(row); return r.kind === 'list' && r.unmet === 0; };
 
 // ── S9 «Nueva sucursal» (E6) ──────────────────────────────────────────────────────────────────────────────────────────────
+// codex 1b r2 #2: the E6 refusals that END an intent (a 4xx carrying one of these codes). Anything else — a 5xx, a network failure,
+// an unknown code, interrupted / lease_lost — leaves it unresolved: the same body is retried under the same op_id.
+export const E6_DEFINITIVE = Object.freeze(['bad_request', 'forbidden_field', 'bad_brand', 'bad_phone', 'bad_name', 'bad_hours', 'bad_prep', 'bad_draft',
+  'not_authorized', 'invalid_credentials', 'name_taken', 'op_conflict', 'brand_busy', 'brand_not_found', 'rid_conflict', 'rid_exhausted', 'identity_conflict',
+  'brand_lists_draft', 'brand_has_drafts']);
+// the 4xx kinds api.js types (400 / 401 / 403 / 404 / 409). Every definitive code arrives on one of them (branch-lifecycle-core.js
+// STATUS / statusOf); an untyped 4xx is 'Failed' like a 5xx, so it stays unresolved — the safe side.
+const E6_4XX_KINDS = Object.freeze(['BadRequest', 'NotSignedIn', 'NotAuthorized', 'NotFound', 'Conflict']);
+export const e6Definitive = (e) => !!e && E6_4XX_KINDS.includes(e.kind) && E6_DEFINITIVE.includes(e.code);
 export const NAME_MAX = 60;
+// item 6 (OWNER-APPROVED 2026-10-26, D-b inline under the name): the two E6 name refusals. bad_name is defensive — the client already
+// sends only validName names. The error stands while the field still holds the refused name; «Crear» is off until the name changes.
+export const NAME_ERR = Object.freeze({ name_taken: 'Ya hay una sucursal con ese nombre en esta marca.', bad_name: 'Escribí un nombre de hasta 60 caracteres.' });
 // the server's isText(…, 60) on the TRIMMED name the client sends
 export const cleanName = (raw) => String(raw === null || raw === undefined ? '' : raw).trim();
 export const validName = (s) => typeof s === 'string' && s.length >= 1 && s.length <= NAME_MAX && s.trim() === s;
+export const nameRefused = (nameErr, raw) => !!(nameErr && NAME_ERR[nameErr.code]) && cleanName(raw) === nameErr.name;
 // the hours chips (B6: no «Definir después»): the siblings «Copiar de {name}» + the preset; the first is pre-selected
 export function newHoursChoices(rows) {
   return [...copySources(rows, null).map((x) => ({ label: `Copiar de ${x.label}`, hours: x.hours })), { label: PRESET_LABEL, hours: PRESET_HOURS }];

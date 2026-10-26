@@ -6,7 +6,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import * as B from './branch-1b-logic.js';
-import { E6_KEYS, E7_PATCH_KEYS } from './api.js';
+import { E6_KEYS, E7_PATCH_KEYS, readResponse } from './api.js';
+import { readFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const OPS = require('../xpizza-functions/branches/branch-ops.js');
@@ -284,4 +285,40 @@ test('S9: the name rule mirrors the server isText(…, 60); the hours chips have
   for (const c of ch) assert.equal(OPS.hours7Errors(B.cleanHours(c.hours)).length, 0, `${c.label} is a valid E6 hours`);
   for (let i = 0; i < 20; i++) assert.match(B.newOpId(), /^[A-Za-z0-9_-]{1,64}$/);
   assert.notEqual(B.newOpId(), B.newOpId());
+});
+
+// codex 1b r2 #2 — which E6 refusals END an intent. The replies come from the REAL server: the core itself for the refusals it
+// makes before the gate, and the core's own STATUS / statusOf table (evaluated from its source; not exported) for the rest. Each is
+// turned into the client's error by the REAL api.js readResponse — the classifier never sees a hand-built error.
+const asClientError = async ({ status, body }) => {
+  try { await readResponse({ ok: status < 400, status, json: async () => body }); } catch (e) { return e; }
+  assert.fail(`status ${status} did not throw`);
+};
+const coreSrc = readFileSync(new URL('../xpizza-functions/portal/branch-lifecycle-core.js', import.meta.url), 'utf8');
+const statusOf = new Function(`${/const STATUS = \{[\s\S]*?\};/.exec(coreSrc)[0]}\n${/const statusOf = .*;/.exec(coreSrc)[0]}\nreturn statusOf;`)();
+test('r2 #2: every definitive E6 code reaches the client as a typed 4xx and ends the intent; outages and unknown codes do not', async () => {
+  const E6 = { op_id: 'op_1', brand_id: 'marca_s', location_name: 'Norte', phone: '+50433905521', hours: WEEK(), prep_default_min: 20 };
+  const pre = { forbidden_field: { ...E6, extra: 1 }, bad_request: { op_id: 'op_1' }, bad_brand: { ...E6, brand_id: '' }, bad_phone: { ...E6, phone: '22345678' } };
+  for (const [code, body] of Object.entries(pre)) {
+    const r = await CORE.createBranchDraftCore({}, { method: 'POST', body });
+    assert.equal(r.body.error, code, `non-vacuity: the real core refuses ${code}`);
+    assert.equal(B.e6Definitive(await asClientError(r)), true, code);
+  }
+  for (const code of B.E6_DEFINITIVE) assert.equal(B.e6Definitive(await asClientError({ status: statusOf(code), body: { error: code } })), true, `${code} (${statusOf(code)})`);
+  for (const code of ['unavailable', 'writes_disabled', 'interrupted', 'lease_lost', 'some_future_code']) {
+    assert.equal(B.e6Definitive(await asClientError({ status: statusOf(code), body: { error: code } })), false, `${code} (${statusOf(code)}) stays unresolved`);
+  }
+  for (const status of [500, 502, 504, 422, 429]) assert.equal(B.e6Definitive(await asClientError({ status, body: { error: 'name_taken' } })), false, `${status} + a known code stays unresolved`);
+  assert.equal(B.e6Definitive(new TypeError('Failed to fetch')), false, 'a network failure');
+  assert.equal(B.e6Definitive(null), false);
+});
+test('item 6: the name refusals carry the owner copy; the line stands only while the field holds the refused (trimmed) name', () => {
+  assert.deepEqual({ ...B.NAME_ERR }, { name_taken: 'Ya hay una sucursal con ese nombre en esta marca.', bad_name: 'Escribí un nombre de hasta 60 caracteres.' });
+  const err = { code: 'name_taken', name: 'Norte' };
+  assert.equal(B.nameRefused(err, 'Norte'), true);
+  assert.equal(B.nameRefused(err, '  Norte '), true, 'as sent: trimmed');
+  assert.equal(B.nameRefused(err, 'Norte 2'), false);
+  assert.equal(B.nameRefused(null, 'Norte'), false);
+  assert.equal(B.nameRefused({ code: 'op_conflict', name: 'Norte' }, 'Norte'), false, 'only the two name codes');
+  assert.ok(B.E6_DEFINITIVE.includes('name_taken') && B.E6_DEFINITIVE.includes('bad_name'), 'both are definitive');
 });

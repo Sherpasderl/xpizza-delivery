@@ -140,10 +140,26 @@ async function boot() {
   if (!S.e1) { apply(fresh, { persist: !partial }); return; }
   if (partial) return;
   const sel = B.resolveSelection1b(fresh, store.get(SEL_KEY(uid)));
-  if (decisionOf(sel) !== S.decision && !S.reloadedOnce) { S.reloadedOnce = true; requestReload(); return; }   // the caps changed
+  if (decisionOf(sel) !== S.decision && !S.reloadedOnce) {   // the caps changed
+    S.reloadedOnce = true;
+    if (requestReload()) return;
+    // PORTAL-UI 1b (codex 1b r2 #1): the reload is DEFERRED by unsaved work — with 1b in play (W on before or now) the fresh caps
+    // are applied right away, so every 1b gate (open modals, editors, submits) reads the revoked state. W off throughout → 1a.
+    if (!B.writesOn(S.e1) && !B.writesOn(fresh)) return;
+    applyDeferred(fresh, sel);
+    return;
+  }
   S.e1 = fresh; S.sel = sel;
   renderChrome();
   renderViews();
+}
+
+// codex 1b r2 #1: the eligibility of a fresh E1 lands even while its reload waits for unsaved work — the views repaint over it
+// (an open 1b modal closes, revoked editors disable, every submit reads it); a null selection repaints Sucursales only.
+function applyDeferred(fresh, sel) {
+  S.e1 = fresh; S.sel = sel;
+  if (sel) { renderChrome(); renderViews(); return; }
+  if (S.views.suc) S.views.suc.render();
 }
 
 function apply(e1, { persist = true } = {}) {
@@ -583,7 +599,11 @@ const ctx = {
     if (!fresh || !Array.isArray(fresh.branches) || fresh.branches.some((b) => b && b.degraded)) return 'failed';
     store.set(CACHE_KEY(uid), fresh);
     const sel = B.resolveSelection1b(fresh, store.get(SEL_KEY(uid)));
-    if (!sel || (decisionOf(sel) !== S.decision && !S.reloadedOnce)) { S.reloadedOnce = true; requestReload(); return 'reload'; }
+    if (!sel || (decisionOf(sel) !== S.decision && !S.reloadedOnce)) {
+      S.reloadedOnce = true;
+      if (!requestReload()) applyDeferred(fresh, sel);   // codex 1b r2 #1: deferred → the gates still see the fresh caps
+      return 'reload';
+    }
     S.e1 = fresh; S.sel = sel;
     renderChrome();
     renderViews();
