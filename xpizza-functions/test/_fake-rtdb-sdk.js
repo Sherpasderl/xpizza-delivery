@@ -7,7 +7,7 @@
 // throws AFTER the next / k-th successful write on that path (crashes). `writes` logs every committed write as [kind, path, value].
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 
-function fakeRtdb(init = {}) {
+function fakeRtdb(init = {}, { strict = false } = {}) {
   const root = clone(init);
   const writes = [];
   const segs = (p) => (p ? String(p).split('/').filter(Boolean) : []);
@@ -24,11 +24,19 @@ function fakeRtdb(init = {}) {
   const failAfter = {};
   const crash = (p) => { if (!(p in failAfter)) return false; const v = failAfter[p]; if (v === true || v <= 1) { delete failAfter[p]; return true; } failAfter[p] = v - 1; return false; };
   const snap = (v) => ({ val: () => clone(v), exists: () => v != null });
+  // OPT-IN strict mode (O1b): refuse an `undefined` leaf on set / update / transaction, as the real RTDB does ("Data returned
+  // contains undefined in property …") — default off, so no existing suite shifts.
+  const noUndefined = (v, where) => {
+    if (!strict) return;
+    if (v === undefined) throw new Error(`transaction failed: Data returned contains undefined in property '${where.replace(/\//g, '.')}'`);
+    if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) noUndefined(x, `${where}/${k}`);
+  };
   const ref = (p = '') => ({
     async once() { return snap(get(p)); },
-    async set(v) { set(p, v); writes.push(['set', p, clone(v)]); if (crash(p)) throw new Error(`crash after ${p}`); },
+    async set(v) { noUndefined(v, p); set(p, v); writes.push(['set', p, clone(v)]); if (crash(p)) throw new Error(`crash after ${p}`); },
     async remove() { set(p, null); writes.push(['set', p, null]); },
     async update(patch) {
+      for (const [k, v] of Object.entries(patch)) noUndefined(v, p ? `${p}/${k}` : k);
       for (const [k, v] of Object.entries(patch)) set(p ? `${p}/${k}` : k, v);
       writes.push(['update', p, clone(patch)]);
       const hit = Object.keys(patch).map((k) => (p ? `${p}/${k}` : k)).find((k) => crash(k)); if (hit) throw new Error(`crash after ${hit}`);
@@ -41,6 +49,7 @@ function fakeRtdb(init = {}) {
       if (next === undefined) return { committed: false, snapshot: snap(null) };
       if (real !== null) next = fn(clone(real));
       if (next === undefined) return { committed: false, snapshot: snap(real) };
+      noUndefined(next, p);
       set(p, next); writes.push(['txn', p, clone(next)]);
       if (crash(p)) throw new Error(`crash after ${p}`);
       return { committed: true, snapshot: snap(get(p)) };

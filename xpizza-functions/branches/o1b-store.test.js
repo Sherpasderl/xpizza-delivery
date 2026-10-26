@@ -138,6 +138,20 @@ const world = (sur = SUR, brandState = 'on') => fakeRtdb({
     ok('updateBranchProfile: identity = integer version CAS; draft = d.<op>.<inc>.<n> under the lock (re-bound); stale after materialize / delete+recreate / wrong lifecycle; rename_cli_only; forbidden_field; noop');
   }
 
+  // ── the emulator-found bug: a locked op without a callId wrote `undefined` into brand_ops/{b}/op_id (real RTDB refuses) ──
+  {
+    const strictWorld = () => { const w = world(); return Object.assign(fakeRtdb(JSON.parse(JSON.stringify(w.get(''))), { strict: true }), {}); };
+    const db = strictWorld();
+    const r = await S.setBranchActive(db, { rid: 'tb_sur', active: true, expectedVersion: 2, now: NOW, clock: () => NOW, readers: portalReaders(db, 'tb_brand') });
+    assert.deepStrictEqual(r, { ok: true, rid: 'tb_sur', state: 'active' }, 'CALLID-DEFAULT setBranchActive(activate) with NO callId (the portal E8 path) commits on a strict RTDB');
+    const db2 = strictWorld();
+    await S.createDraft(db2, { input: { brand_id: 'tb_brand', location_name: 'Centro', phone: '+50431234567', hours: H7, prep_default_min: 20 }, opId: 'opM', callerUid: 'ownerTB', now: NOW, clock: () => NOW });
+    db2.root.platform_config = { service_bounds: { min_lat: 13, max_lat: 17, min_lng: -90, max_lng: -83 } };
+    const m = await S.materializeBranch(db2, { rid: 'tb_brand_centro', location: { hub: { lat: 15.51, lng: -88.03 }, address_line: 'Blvd 1' }, now: NOW + 1, clock: () => NOW + 1 });
+    assert.strictEqual(m.ok, true, `CALLID-DEFAULT materializeBranch with NO callId commits on a strict RTDB (${JSON.stringify(m)})`);
+    ok('locked ops without a callId (setBranchActive activate, materializeBranch) default one — no undefined op_id on a strict (real-RTDB-like) store');
+  }
+
   FINISHED = true;
   console.log(`\no1b-store: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

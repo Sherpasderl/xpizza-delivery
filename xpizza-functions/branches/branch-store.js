@@ -562,7 +562,7 @@ async function deleteBranchDraft(db, { rid, brandId, now = Date.now(), callId = 
 }
 
 // Sherpa admin: materialize a draft with its location (§4)
-async function materializeBranch(db, { rid, location, now, callId, clock }) {
+async function materializeBranch(db, { rid, location, now, callId = newCallId('materialize'), clock }) {   // O1b: default like its siblings (emulator: an undefined op_id)
   const brandId = await brandOfRid(db, rid);
   if (!brandId) return { ok: false, error: 'not_a_draft' };
   return runOp(db, brandId, { kind: 'materialize', inputs: { rid, location }, at: now }, callId, now, clock, { live: true });
@@ -647,7 +647,7 @@ async function readinessFacts(db, rid, brandId, brand, devices, readers) {
   };
 }
 const unrevoked = (handhelds) => Object.values(isObj(handhelds) ? handhelds : {}).filter((h) => isObj(h) && h.revoked !== true);
-async function setBranchActive(db, { rid, active, expectedVersion, now, callId, clock, readers = {} }) {
+async function setBranchActive(db, { rid, active, expectedVersion, now, callId = newCallId('activate'), clock, readers = {} }) {   // O1b: the portal E8 passes none (emulator: an undefined op_id)
   const identity = await val(db, `restaurants/${rid}/identity`);
   if (!isObj(identity)) return { ok: false, error: 'not_a_branch' };
   if (active === true) {
