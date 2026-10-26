@@ -38,7 +38,7 @@ function server(script, storage) {
     if (!r) throw new Error(`unscripted ${key}`);
     if (r === 'network') throw new TypeError('Failed to fetch');
     const res = typeof r === 'function' ? await r(calls[calls.length - 1]) : r;
-    return { status: res.status, ok: res.status >= 200 && res.status < 300, json: async () => res.json };
+    return { status: res.status, ok: res.status >= 200 && res.status < 300, json: async () => { if (res.badBody) throw new TypeError('body stream lost'); return res.json; } };
   };
   return { fetch, calls, of: (ep) => calls.filter((c) => c.ep === ep) };
 }
@@ -445,14 +445,14 @@ test('r2 P1 #4: NO automatic retry on a money write — an ambiguous card result
     const R = rig({ script: { chargeOnlineOrder: [resp, CHECKOUT] } });
     const a = await R.api.place(placeArgs('online'));
     assert.deepEqual([a.kind, R.srv.of('chargeOnlineOrder').length], ['existing_order', 1], `🔴 ${what}: ONE send, the recovery sheet`);
-    assert.deepEqual([placeRec(R.storage).ambiguous, placeRec(R.storage).order_id], [true, a.order_id], `${what}: the placement is AMBIGUOUS`);
+    assert.deepEqual([placeRec(R.storage).unresolved, placeRec(R.storage).order_id], [true, a.order_id], `${what}: the placement is AMBIGUOUS (unresolved)`);
     const b = await R.reload().place(placeArgs('online'));
     assert.deepEqual([b.kind, b.order_id, R.srv.of('chargeOnlineOrder').length], ['existing_order', a.order_id, 1], `🔴 ${what}: a later card tap never re-sends`);
   }
   // a 202 re-send that comes back ambiguous ⇒ AMBIGUOUS at once, no further sends
   const P = rig({ script: { chargeOnlineOrder: [IP, 'network', CHECKOUT] } });
   const p = await P.api.place(placeArgs('online'));
-  assert.deepEqual([p.kind, P.srv.of('chargeOnlineOrder').length, placeRec(P.storage).ambiguous], ['existing_order', 2, true], '🔴 a 202 then an ambiguous re-send ⇒ stop');
+  assert.deepEqual([p.kind, P.srv.of('chargeOnlineOrder').length, placeRec(P.storage).unresolved], ['existing_order', 2, true], '🔴 a 202 then an ambiguous re-send ⇒ stop');
   // creds from an earlier issuance ⇒ the recovery is ONE poll
   const K = rig({ script: { chargeOnlineOrder: [CHECKOUT, 'network'], paymentStatus: [PS('pending')] } });
   await K.api.place(placeArgs('online'));
@@ -461,7 +461,7 @@ test('r2 P1 #4: NO automatic retry on a money write — an ambiguous card result
   // 500 'Payment not configured' is definitive, not ambiguous
   const NC = rig({ script: { chargeOnlineOrder: [{ status: 500, json: { error: 'Payment not configured' } }] } });
   assert.equal((await NC.api.place(placeArgs('online'))).kind, 'payment_not_completed');
-  assert.equal(placeRec(NC.storage).ambiguous, false);
+  assert.equal(placeRec(NC.storage).unresolved, false, 'a definitive answer settles the send');
   // cash: one send per tap; a 5xx ⇒ offline; «Reintentar» re-sends the SAME id
   const CS = rig({ script: { createOrder: [{ status: 503, json: {} }, OK_CASH] } });
   const c1 = await CS.api.place(placeArgs('cash'));
@@ -497,7 +497,7 @@ test('r2 P2 #6: a 426 on the FIRST send of a just-minted identity clears it (sel
   const K = rig({ script: { createOrder: ['network', U] } });
   const k1 = await K.api.place(placeArgs('cash'));
   const k2 = await K.reload().place(placeArgs('cash'));
-  assert.equal(k2.kind, 'update_required');
+  assert.deepEqual([k2.update_required, k2.order_id], [true, k1.order_id], 'a 426 on a SECOND dispatch ⇒ recovery for the kept identity');
   assert.equal((placeRec(K.storage) || {}).order_id, k1.order_id, '🔴 an unresolved EARLIER send keeps its record (it may have landed)');
   // the adapter: no record ⇒ the 426 transition may reload
   const SU = require('./capp-self-update.js');
@@ -505,4 +505,58 @@ test('r2 P2 #6: a 426 on the FIRST send of a just-minted identity clears it (sel
   await R2.api.place(placeArgs('cash'));
   const ad = SU.createAdapter({ state: () => ({ screen: 'checkout', placing: false, sheetOpen: false }), unresolved: () => !!R2.api.readPlace(), search: () => '' });
   assert.equal(ad.canReload({ mode: 'checkout' }), true, 'canReload after a refused first placement');
+});
+
+// ── S2a r3 (Codex scoped r2, the advisor's DISPATCH RULE) ──
+test('r3 rule (i): the send is recorded UNRESOLVED before it leaves — a reload mid-flight, or storage failing when the 502 lands, never re-charges', async () => {
+  // reload mid-flight: the first charge is still in the air; the reloaded page's card tap must not send
+  let land; const held = new Promise((r) => { land = r; });
+  const R = rig({ script: { chargeOnlineOrder: [() => held, CHECKOUT] } });
+  const first = R.api.place(placeArgs('online'));
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual([placeRec(R.storage).unresolved, placeRec(R.storage).dispatched, placeRec(R.storage).card], [true, 1, true], '🔴 the in-flight send is on record (unresolved, dispatched 1, card)');
+  const mid = await R.reload().place(placeArgs('online'));
+  assert.deepEqual([mid.kind, R.srv.of('chargeOnlineOrder').length], ['existing_order', 1], '🔴 a reload mid-flight never re-charges the identity');
+  land({ status: 502, json: { error: 'Payment gateway error' } });
+  await first;
+  // storage fails exactly when the 502 lands (no post-response write can succeed) ⇒ the pre-send record already says unresolved
+  const S = rig({ script: { chargeOnlineOrder: [() => { S.storage.failWrites = true; return { status: 502, json: { error: 'Payment gateway error' } }; }, CHECKOUT] } });
+  const s1 = await S.api.place(placeArgs('online'));
+  S.storage.failWrites = false;
+  const s2 = await S.reload().place(placeArgs('online'));
+  assert.deepEqual([s2.kind, s2.order_id, S.srv.of('chargeOnlineOrder').length], ['existing_order', s1.order_id, 1], '🔴 storage failing at the 502 ⇒ still ONE charge');
+  // the pre-send write fails ⇒ no send at all
+  const W = rig({ script: { chargeOnlineOrder: [CHECKOUT] } });
+  let n = 0; const real = W.storage.setItem; W.storage.setItem = (k, v) => { if (k.endsWith(':pending_place') && ++n === 2) throw new Error('quota'); real(k, v); };
+  assert.deepEqual([(await W.api.place(placeArgs('online'))).kind, W.srv.calls.length], ['stash_failed', 0], 'a failed dispatch write ⇒ no send');
+});
+
+test('r3 rule (ii): only a FULLY parsed definitive answer settles a send — a 200 with an unreadable body or missing fields is unresolved, never re-sent, the economics never overwritten', async () => {
+  for (const [what, resp] of [['an unreadable 200 body', { status: 200, badBody: true, json: null }], ['a 200 without its poll token', { status: 200, json: { checkout_url: 'https://pay.test/1' } }], ['a 202 with an unreadable body', { status: 202, badBody: true, json: null }]]) {
+    const R = rig({ script: { chargeOnlineOrder: [resp, CHECKOUT] } });
+    const a = await R.api.place(argsWith({ expectedNetCents: 32000 }));
+    assert.deepEqual([a.kind, R.srv.of('chargeOnlineOrder').length, placeRec(R.storage).unresolved], ['existing_order', 1, true], `🔴 ${what} ⇒ unresolved, the recovery sheet`);
+    const b = await R.reload().place(argsWith({ expectedNetCents: 28000, sig: 'sig_pin2' }));
+    assert.deepEqual([b.kind, R.srv.of('chargeOnlineOrder').length], ['existing_order', 1], `🔴 ${what}: the changed cart is NOT re-sent (no L280 → L320 divergence)`);
+    assert.equal(placeRec(R.storage).expected_net_cents, 32000, `${what}: the stored economics are not overwritten`);
+  }
+  // cash: an unreadable 200 ⇒ offline; «Reintentar» re-sends the SAME id (idempotent)
+  const C2 = rig({ script: { createOrder: [{ status: 200, badBody: true, json: null }, OK_CASH] } });
+  const c1 = await C2.api.place(placeArgs('cash'));
+  const c2 = await C2.api.place(placeArgs('cash'));
+  assert.deepEqual([c1.kind, c2.kind, C2.srv.of('createOrder')[1].body.order_id], ['offline', 'placed', c1.order_id], 'cash: unreadable ⇒ offline, the same id on «Reintentar»');
+});
+
+test('r3 rule (iii): a 426 clears ONLY the first dispatch with no admission — a 426 after a 202 keeps the identity and goes to recovery', async () => {
+  const U = { status: 426, json: { error: 'client_update_required' } };
+  const R = rig({ script: { chargeOnlineOrder: [IP, U, CHECKOUT] } });
+  const out = await R.api.place(placeArgs('online'));
+  const rec = placeRec(R.storage);
+  assert.ok(rec, '🔴 a 426 after a 202 keeps the identity (a concurrent request may be creating its checkout)');
+  assert.deepEqual([rec.dispatched, rec.admitted, out.update_required, out.order_id], [2, true, true, rec.order_id], 'recovery for the kept identity, flagged for the update');
+  const again = await R.reload().place(placeArgs('online'));
+  assert.deepEqual([again.order_id, R.srv.of('chargeOnlineOrder').length], [rec.order_id, 2], '🔴 the updated client never mints a second identity, never re-charges');
+  const F = rig({ script: { chargeOnlineOrder: [U] } });
+  await F.api.place(placeArgs('online'));
+  assert.equal(placeRec(F.storage), null, 'the first dispatch, no admission ⇒ cleared');
 });

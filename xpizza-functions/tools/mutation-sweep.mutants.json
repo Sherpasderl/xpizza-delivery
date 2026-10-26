@@ -20313,8 +20313,8 @@
     "slice": "s2a",
     "label": "a retry mints a new order id",
     "file": "../customer-app/capp-api.js",
-    "from": "          if (!rec) { rec = mintPlace(method, p); minted = true; }",
-    "to": "          rec = mintPlace(method, p); minted = true;",
+    "from": "          rec = readPlace() || mintPlace(method, p);",
+    "to": "          rec = mintPlace(method, p);",
     "command": [
       "node",
       "--test",
@@ -20441,7 +20441,7 @@
     "slice": "s2a",
     "label": "202 treated as a final answer (no same-identity re-send)",
     "file": "../customer-app/capp-api.js",
-    "from": "        if (r.network || r.status !== 202) return r;",
+    "from": "        if (r.network || r.status !== 202 || !r.parsed) return r;",
     "to": "        return r;",
     "command": [
       "node",
@@ -20489,7 +20489,7 @@
     "slice": "s2a",
     "label": "the card creds are not required before the redirect",
     "file": "../customer-app/capp-api.js",
-    "from": "      if (!j.poll_token || !writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now() })) { markAmbiguous(id); return { kind: 'stash_failed', order_id: id }; }",
+    "from": "      if (!writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now() })) return { kind: 'stash_failed', order_id: id };",
     "to": "      writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now() });",
     "command": [
       "node",
@@ -20599,17 +20599,17 @@
   {
     "id": "s2a-u26",
     "slice": "s2a",
-    "label": "r2 P1#1: a cash attempt strips the issued card record's method",
+    "label": "a cash attempt drops the sticky card mark (a later card tap bypasses the guards)",
     "file": "../customer-app/capp-api.js",
-    "from": "          rec = confirmSend(rec.order_id, rec.issued ? {} : { method,",
-    "to": "          rec = confirmSend(rec.order_id, false ? {} : { method,",
+    "from": "card: cur.card === true || method === 'online',",
+    "to": "card: method === 'online',",
     "command": [
       "node",
       "--test",
       "../customer-app/capp-api.test.mjs"
     ],
     "kills_with": [
-      "keeps its method across a cash attempt"
+      "still resolved first"
     ]
   },
   {
@@ -20649,8 +20649,8 @@
     "slice": "s2a",
     "label": "r2 P1#3: a 202 re-send is not gated by a confirmed write",
     "file": "../customer-app/capp-api.js",
-    "from": "        if (i > 0) { try { confirmSend(id); }",
-    "to": "        if (false) { try { confirmSend(id); }",
+    "from": "        if (i > 0) { try { confirmSend(id, 'online'); }",
+    "to": "        if (false) { try { confirmSend(id, 'online'); }",
     "command": [
       "node",
       "--test",
@@ -20663,17 +20663,17 @@
   {
     "id": "s2a-u30",
     "slice": "s2a",
-    "label": "r2 P1#4: an ambiguous card result is not marked (a later tap re-sends)",
+    "label": "a 5xx card answer counts as definitive",
     "file": "../customer-app/capp-api.js",
-    "from": "          if (ambiguousCard(r)) { markAmbiguous(id); return resolveExisting(id); }",
-    "to": "          if (ambiguousCard(r)) { return resolveExisting(id); }",
+    "from": "      if (r.status > 500) return false;",
+    "to": "      if (r.status > 500) return true;",
     "command": [
       "node",
       "--test",
       "../customer-app/capp-api.test.mjs"
     ],
     "kills_with": [
-      "the placement is AMBIGUOUS"
+      "ONE send, the recovery sheet"
     ]
   },
   {
@@ -20713,8 +20713,8 @@
     "slice": "s2a",
     "label": "r2 P2#6: a refused first send keeps its record (self-update blocked)",
     "file": "../customer-app/capp-api.js",
-    "from": "          if (cr.kind === 'update_required' && minted) clearPlace(id);",
-    "to": "",
+    "from": "          if (cur && cur.order_id === id && Number(cur.dispatched) === 1 && cur.admitted !== true) { clearPlace(id); return { kind: 'update_required', order_id: id }; }",
+    "to": "          if (cur && cur.order_id === id && Number(cur.dispatched) === 1 && cur.admitted !== true) { return { kind: 'update_required', order_id: id }; }",
     "command": [
       "node",
       "--test",
@@ -20727,17 +20727,65 @@
   {
     "id": "s2a-u34",
     "slice": "s2a",
-    "label": "r2 P2#6: a 426 clears an EARLIER unresolved send",
+    "label": "a 426 clears whatever identity it answers",
     "file": "../customer-app/capp-api.js",
-    "from": "          if (cr.kind === 'update_required' && minted) clearPlace(id);",
-    "to": "          if (cr.kind === 'update_required') clearPlace(id);",
+    "from": "          if (cur && cur.order_id === id && Number(cur.dispatched) === 1 && cur.admitted !== true) { clearPlace(id); return { kind: 'update_required', order_id: id }; }",
+    "to": "          if (cur && cur.order_id === id) { clearPlace(id); return { kind: 'update_required', order_id: id }; }",
     "command": [
       "node",
       "--test",
       "../customer-app/capp-api.test.mjs"
     ],
     "kills_with": [
-      "an unresolved EARLIER send keeps its record"
+      "a 426 after a 202 keeps the identity"
+    ]
+  },
+  {
+    "id": "s2a-u35",
+    "slice": "s2a",
+    "label": "r3 rule (i): the send is not recorded unresolved before it leaves",
+    "file": "../customer-app/capp-api.js",
+    "from": "dispatched: (Number(cur.dispatched) || 0) + 1, unresolved: true,",
+    "to": "dispatched: (Number(cur.dispatched) || 0) + 1, unresolved: false,",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "the in-flight send is on record"
+    ]
+  },
+  {
+    "id": "s2a-u36",
+    "slice": "s2a",
+    "label": "r3 rule (ii): a 200 counts as definitive without its fields",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (r.status === 200) return method === 'cash' ? j.ok === true : typeof j.checkout_url === 'string' && !!j.checkout_url && typeof j.poll_token === 'string' && !!j.poll_token;",
+    "to": "      if (r.status === 200) return true;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "⇒ unresolved, the recovery sheet"
+    ]
+  },
+  {
+    "id": "s2a-u37",
+    "slice": "s2a",
+    "label": "r3 rule (iii): a 426 clears a non-first dispatch",
+    "file": "../customer-app/capp-api.js",
+    "from": "Number(cur.dispatched) === 1 && cur.admitted",
+    "to": "cur.admitted",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "a 426 on a SECOND dispatch"
     ]
   },
   {

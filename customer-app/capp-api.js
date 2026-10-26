@@ -4,8 +4,8 @@
 // restaurant difference (id, order-id prefix, stash key, endpoint URLs, hours) is CONFIG — no restaurant literal (guarded).
 //
 // THE PLACEMENT IDENTITY (r2–r4, Codex P1 #9 / P2): ONE order_id per placement. The unresolved placement is persisted to
-// `capp:{restaurant_id}:pending_place` = { order_id, method, body_sig, expected_net_cents, totals, issued, ambiguous,
-// checkout_url, checkout_at, ts, last_send, expires_at } BEFORE the first send. BEFORE EVERY send the record of THAT outgoing identity is re-written and
+// `capp:{restaurant_id}:pending_place` = { order_id, method, body_sig, expected_net_cents, totals, dispatched, unresolved, card,
+// admitted, issued, checkout_url, checkout_at, ts, last_send, expires_at } BEFORE the first send. BEFORE EVERY send the record of THAT outgoing identity is re-written and
 // re-read (S2a r2 P1 #3): absent, expired or replaced ⇒ the send is STOPPED and the placement goes to recovery; a failed
 // write ⇒ no send. A fresh id is minted ONLY when there is no live record, which happens only after a proven-safe outcome
 // cleared it (the EXHAUSTIVE list, §5.2) — and every clearing removes the record ONLY if it still holds the resolved order_id
@@ -14,16 +14,24 @@
 //   2 card paymentStatus paid / scheduled_paid      6 (S2) paymentStatus cancelled / failed ⇒ cleared (the next placement mints)
 //   3 card 409 Already paid ⇒ paid_unverified       7 the hard expiry: max(min(closing, ts + 12 h), last_send + 60 min)
 //   4 card paymentStatus closed_refunded ⇒ refund sheet (and the pay stash)
-//   + a 426 on the FIRST send of a just-minted identity (refused before any server write; S2a r2 P2 #6)
+//   + a 426 answering the FIRST dispatch with no 202 / admission ever seen (refused before any server write; rule iii below)
 // NEVER cleared by a reload, a cart edit / discard, dismissing a sheet, order_exists (any reason), order_context_changed,
 // verifying / pending / scheduled_review / the poll timeout, a 403, a network failure or a 5xx. If in doubt, never mint: the
 // customer is sent to the existing order. 60 min = the server's hosted-checkout window (HOSTED_TTL_MS, 45 min) + 15 min margin,
 // pinned by a test against the real server export.
 //
 // MONEY WRITES ARE NEVER AUTO-RETRIED (DECISIONS 2026-10-24, S2a r2 P1 #4): createOrder and chargeOnlineOrder are sent ONCE per
-// tap. Cash: a network error / 5xx ⇒ 'offline' and the customer's «Reintentar» re-sends the SAME id (idempotent server-side, no
-// gateway). Card: a network error / 5xx / a checkout whose creds cannot be stored marks the placement AMBIGUOUS — that identity
-// is never charged again; recovery is one poll with the creds, else the recovery sheet. Only quotes (read-only) retry.
+// tap. THE DISPATCH RULE (S2a r3, advisor ruling on Codex r2):
+//   (i)   BEFORE every send, the confirmed write of that identity records the send: dispatched + 1, unresolved: true (and
+//         card: true, sticky, for a charge). A failed write ⇒ no send. A reload or a storage failure mid-flight therefore
+//         always finds the send unresolved.
+//   (ii)  ONLY a fully parsed, definitive server response moves the record out of unresolved. Anything else — a network error,
+//         a 5xx, a 202, a body that cannot be read or parsed, a 200 missing its fields — leaves it unresolved. A card identity
+//         with an unresolved send is NEVER charged again: recovery is one poll with the creds, else the recovery sheet. Cash
+//         stays available (the customer's «Reintentar» re-sends the SAME id: idempotent server-side, no gateway).
+//   (iii) a refusal may CLEAR the record (the 426 floor) ONLY when it answers the FIRST dispatch and no 202 / admission was ever
+//         seen; otherwise the identity is kept and the placement goes to recovery.
+// Only quotes (read-only) retry.
 // A CHANGED placement never resumes an older checkout at new numbers (S2a r2 P1 #1): the server returns a live checkout at its
 // STORED economics before any gate, so when an ISSUED card placement's economics (cartSig or the expected net) differ, the
 // existing placement is resolved first; still live ⇒ it is RESUMED through the STORED credentials only — a redirect to the
@@ -107,19 +115,26 @@
     function patchPlace(id, fields) {
       const r = readPlace();
       if (!r || r.order_id !== id) throw fail('placement_lost');
-      Object.assign(r, fields || {});
+      Object.assign(r, typeof fields === 'function' ? fields(r) : fields || {});
       if (!writeJSON(PLACE_KEY, r)) throw fail('placement_write_failed');
       const back = readPlace();
       if (!back || back.order_id !== id) throw fail('placement_lost');
       return back;
     }
-    // BEFORE EVERY send: `last_send` (and the expiry it extends) persisted for the specific outgoing identity
-    function confirmSend(id, fields) { const t = now(); return patchPlace(id, { ...(fields || {}), last_send: t, expires_at: expiresAtOf(readPlace() ? readPlace().ts : t, t) }); }
+    // BEFORE EVERY send (rule i): the send itself — dispatched + 1, unresolved — with `last_send` (and the expiry it extends),
+    // persisted and re-read for the specific outgoing identity
+    function confirmSend(id, method, fields) {
+      const t = now();
+      return patchPlace(id, (cur) => ({ ...(fields || {}), dispatched: (Number(cur.dispatched) || 0) + 1, unresolved: true, card: cur.card === true || method === 'online',
+        last_send: t, expires_at: expiresAtOf(cur.ts, t) }));
+    }
+    // rule ii: a definitive answer moves the record out of unresolved (a failed write leaves it unresolved — the safe side)
+    const settle = (id) => { try { patchPlace(id, { unresolved: false }); } catch (_) {} };
     // a fresh record (a new id) — only when there is no live one
     function mintPlace(method, p) {
       const t = now();
       const r = { order_id: genOrderId(), method, body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(p.expectedNetCents),
-        totals: p.totals || null, issued: false, ambiguous: false, ts: t, last_send: t, expires_at: expiresAtOf(t, t) };
+        totals: p.totals || null, dispatched: 0, unresolved: false, card: false, admitted: false, issued: false, ts: t, last_send: t, expires_at: expiresAtOf(t, t) };
       if (!writeJSON(PLACE_KEY, r)) throw fail('placement_write_failed');
       return r;
     }
@@ -145,7 +160,8 @@
     async function post(url, body, extraHeaders) {
       const r = await sfetch(url, { method: 'POST', headers: headersFor(extraHeaders), body: JSON.stringify(body) });
       let j = null; try { j = await r.json(); } catch (_) { j = null; }
-      return { status: r.status, json: j || {} };
+      const parsed = !!j && typeof j === 'object';
+      return { status: r.status, json: parsed ? j : {}, parsed };   // `parsed` false ⇒ never a definitive answer (rule ii)
     }
     // ONE send; a thrown fetch is reported, never retried
     async function sendOnce(url, body, extraHeaders) { try { return await post(url, body, extraHeaders); } catch (e) { return { network: true, error: e }; } }
@@ -218,8 +234,18 @@
       return null;
     }
     const isExisting = (r) => r.status === 409 && (r.json.error === 'order_exists' || r.json.error === 'order_context_changed');
-    // a card result whose outcome is unknown: the gateway attempt may exist (and could rotate on a resend)
-    const ambiguousCard = (r) => !r || r.network || (r.status >= 500 && !(r.status === 500 && r.json && r.json.error === 'Payment not configured'));
+    // rule ii: a FULLY parsed, definitive answer; everything else is unresolved (the outcome is unknown)
+    function definitive(method, r) {
+      if (!r || r.network) return false;
+      if (r.status === 426) return true;                                   // the floor: refused before any write (the status is the contract)
+      if (!r.parsed) return false;
+      const j = r.json;
+      if (r.status === 200) return method === 'cash' ? j.ok === true : typeof j.checkout_url === 'string' && !!j.checkout_url && typeof j.poll_token === 'string' && !!j.poll_token;
+      if (r.status === 202) return false;                                  // admitted: a checkout is being created
+      if (r.status === 500) return method === 'online' && j.error === 'Payment not configured';
+      if (r.status > 500) return false;
+      return typeof j.error === 'string' && j.error !== '';
+    }
     const placeErr = (e, id) => (e && e.code === 'placement_write_failed' ? { kind: 'stash_failed', order_id: id }
       : e && e.code === 'placement_lost' ? null : { kind: 'error', order_id: id, error: String((e && e.message) || e) });
 
@@ -228,9 +254,9 @@
     async function place(p) {
       const method = p.flow.pay === 'online' ? 'online' : 'cash';
       const live = readPlace();
-      if (live && live.method === 'online' && method === 'online') {
-        if (live.ambiguous) return resolveExisting(live.order_id);                        // never charged again (P1 #4)
-        if (live.issued && !sameEconomics(live, p)) {                                     // P1 #1: resolve the existing placement first
+      if (live && live.card === true && method === 'online') {
+        if (live.unresolved) return resolveExisting(live.order_id);                       // rule ii: never charged again
+        if (live.issued && !sameEconomics(live, p)) {                                     // r2 P1 #1: resolve the existing placement first
           const t = credsFor(live.order_id);
           if (!t) return recoverySheet(live.order_id);
           const pr = await pollOnce(live.order_id, t);
@@ -244,38 +270,39 @@
       let expected = p.expectedNetCents;
       let healed = false; let silentRetried = false;
       for (let guard = 0; guard < 4; guard++) {
-        let rec; let minted = false;
+        let rec;
         try {
-          rec = readPlace();
-          if (!rec) { rec = mintPlace(method, p); minted = true; }
-          // an un-issued identity carries the method + economics of the body actually sent (an issued one keeps its checkout's)
-          rec = confirmSend(rec.order_id, rec.issued ? {} : { method, body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(expected), totals: p.totals || rec.totals || null });
+          rec = readPlace() || mintPlace(method, p);
+          // an un-issued identity carries the economics of the body actually sent (an issued one keeps its checkout's); the
+          // method is the record's first one once a charge was ever dispatched (`card` is sticky)
+          rec = confirmSend(rec.order_id, method, rec.issued ? {} : { ...(rec.card ? {} : { method }), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(expected), totals: p.totals || rec.totals || null });
         } catch (e) { const pe = placeErr(e, rec && rec.order_id); return pe || (rec ? resolveExisting(rec.order_id) : { kind: 'error', error: 'placement_lost' }); }
         const id = rec.order_id;
         const body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
         cq.send(body, p.sig, expected);
         const r = method === 'cash' ? await sendOnce(E.createOrder, body, p.ctx.headers) : await sendCard(id, body, p.ctx);
         if (r && r.stop) return r.stop;
-        const j = (r && r.json) || {};
+        if (!definitive(method, r)) return method === 'cash' ? { kind: 'offline', order_id: id } : resolveExisting(id);   // rule ii
+        const j = r.json;
+        if (r.status === 426) {                                                           // rule iii
+          const cur = readPlace();
+          if (cur && cur.order_id === id && Number(cur.dispatched) === 1 && cur.admitted !== true) { clearPlace(id); return { kind: 'update_required', order_id: id }; }
+          return { ...(await resolveExisting(id)), update_required: true };               // an earlier send / admission may land: kept UNRESOLVED
+        }
+        if (method === 'online' && r.status === 200) return cardIssued(id, body, j);   // settles only once the creds are stored
+        settle(id);
         if (method === 'cash') {
-          if (!r || r.network || r.status >= 500) return { kind: 'offline', order_id: id };   // «Reintentar» re-sends the SAME id (no auto-retry)
-          if (r.status === 200 && j.ok) { clearPlace(id); return { kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent }; }
+          if (r.status === 200) { clearPlace(id); return { kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent }; }
           if (r.status === 409 && j.error === 'order_conflict') {
             if (healed) return { kind: 'error', order_id: id, error: 'order_conflict' };
             healed = true; clearPlace(id); continue;   // (S1): proven terminal-safe — ONE resend on a fresh id
           }
         } else {
-          if (ambiguousCard(r)) { markAmbiguous(id); return resolveExisting(id); }      // P1 #4: recovery, never a resend
-          if (r.status === 200 && j.checkout_url) return cardIssued(id, body, j);
-          if (r.status === 202) { markIssued(id); return { kind: 'try_again', order_id: id }; }   // in_progress exhausted (bounded)
           if (r.status === 409 && j.error === 'Already paid') return alreadyPaid(id);
         }
         if (isExisting(r)) return resolveExisting(id);
         const cr = commonRefusal(r);
-        if (cr) {
-          if (cr.kind === 'update_required' && minted) clearPlace(id);   // P2 #6: refused before any server write — this identity never existed
-          return { ...cr, order_id: id };
-        }
+        if (cr) return { ...cr, order_id: id };
         const rj = await cq.handleRejection({ err: j, shownCents: expected, hasReward: false, retried: silentRetried, sheet: p.sheet });
         if (rj && rj.handled) {
           if (!rj.resend) return { kind: rj.declined ? 'price_declined' : 'error', order_id: id };
@@ -288,32 +315,32 @@
       }
       return { kind: 'error', error: 'loop_guard' };
     }
-    // P1 #1 RESUME, through the stored credentials ONLY: the stored checkout URL while it is inside its hosted window (from
+    // r2 P1 #1 RESUME, through the stored credentials ONLY: the stored checkout URL while it is inside its hosted window (from
     // when this placement first saw it), with the ORIGINAL economics — never a re-send, never the new quote
     function resume(live) {
       const id = live.order_id;
       if (typeof live.checkout_url !== 'string' || !live.checkout_url || !Number.isFinite(live.checkout_at) || now() >= live.checkout_at + HOSTED_CHECKOUT_MS) return recoverySheet(id);
       return { kind: 'redirect', order_id: id, url: live.checkout_url, resumed: true, expected_net_cents: live.expected_net_cents, totals: live.totals || null };
     }
-    // 202 in_progress ⇒ the SAME identity re-sent (bounded); EVERY send gated by a confirmed write of THAT identity (P1 #3)
+    // 202 in_progress ⇒ admitted (recorded); the SAME identity re-sent by THIS instance, bounded, EVERY re-send a new confirmed
+    // dispatch (rule i); exhausted ⇒ the 202 stands (unresolved ⇒ recovery)
     async function sendCard(id, body, ctx) {
       for (let i = 0; i < IN_PROGRESS_TRIES; i++) {
-        if (i > 0) { try { confirmSend(id); } catch (e) { return { stop: placeErr(e, id) || await resolveExisting(id) }; } }
+        if (i > 0) { try { confirmSend(id, 'online'); } catch (e) { return { stop: placeErr(e, id) || await resolveExisting(id) }; } }
         const r = await sendOnce(E.chargeOnlineOrder, body, ctx.headers);
-        if (r.network || r.status !== 202) return r;
+        if (r.network || r.status !== 202 || !r.parsed) return r;
+        try { patchPlace(id, { admitted: true }); } catch (e) { return { stop: placeErr(e, id) || await resolveExisting(id) }; }
         await sleep(BACKOFF_MS(Math.min(i + 1, 2)));   // never poll without a token, never mint — re-send
       }
-      return { status: 202, json: { status: 'in_progress' } };
+      return { status: 202, json: { status: 'in_progress' }, parsed: true };
     }
-    const markIssued = (id, extra) => { try { patchPlace(id, { issued: true, ...(extra || {}) }); } catch (_) {} };
-    const markAmbiguous = (id) => { try { patchPlace(id, { issued: true, ambiguous: true }); } catch (_) {} };
     // fresh / reuse 200: persist the creds AFTER the response and BEFORE the redirect (a failed write ⇒ no redirect, and the
-    // placement is ambiguous: the checkout exists but cannot be polled)
+    // send stays UNRESOLVED: the checkout exists but cannot be polled)
     function cardIssued(id, body, j) {
-      if (!j.poll_token || !writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now() })) { markAmbiguous(id); return { kind: 'stash_failed', order_id: id }; }
+      if (!writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now() })) return { kind: 'stash_failed', order_id: id };   // the send stays unresolved
       const r = readPlace();
       const seenAt = r && r.order_id === id && r.checkout_url === j.checkout_url && Number.isFinite(r.checkout_at) ? r.checkout_at : now();
-      markIssued(id, { checkout_url: j.checkout_url, checkout_at: seenAt });   // a reused checkout keeps the time it was first seen
+      try { patchPlace(id, { issued: true, checkout_url: j.checkout_url, checkout_at: seenAt, unresolved: false }); } catch (_) {}   // a reused checkout keeps the time it was first seen
       return { kind: 'redirect', order_id: id, url: j.checkout_url };
     }
     // 409 Already paid: payment recovery, never «Pago no completado», never a new payment
