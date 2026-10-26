@@ -842,7 +842,7 @@ export function helpDiagnosisHtml(info = {}, deps = {}) {
       <div class="help-card">
         ${hrow(ICONS.check || '', 'Estás en turno y disponible', 'Todo bien de tu lado', true)}
         ${gpsRow}
-        ${hrow(ICONS.store || '', 'Las cocinas tienen poco movimiento', 'Despacho asigna en cuanto entra un pedido cerca')}
+        ${hrow(ICONS.store || '', 'Despacho asigna en cuanto entra un pedido cerca', '')}
       </div>
       <button class="help-done" id="btn-help-done">Entendido</button>
     </div>`;

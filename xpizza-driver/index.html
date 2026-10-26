@@ -4484,6 +4484,10 @@ function renderIdleState() {
     sub.textContent = 'Te notificaremos cuando llegue uno';
     arriveBtn.classList.add('hidden');
   }
+  /* ===== SLICE3:IDLE-3:START — idle-screen slice-3 state. (a) the «¿Por qué no veo pedidos?» help link shows ONLY when AVAILABLE (owner): on a returning / at-restaurant idle screen the diagnosis is irrelevant. (gpsoff mount/clear to follow in this region.) ===== */
+  const idleHelpLink = $('idle-help-link');
+  if (idleHelpLink) idleHelpLink.classList.toggle('hidden', status !== 'available');
+  /* ===== SLICE3:IDLE-3:END ===== */
   syncIdleStats();
 }
 

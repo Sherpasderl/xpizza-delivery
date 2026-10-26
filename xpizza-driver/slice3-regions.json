@@ -13,6 +13,10 @@
       "kind": "insert"
     },
     {
+      "name": "IDLE-3",
+      "kind": "insert"
+    },
+    {
       "name": "HELP-HANDLER",
       "kind": "replace",
       "restore": [

@@ -470,7 +470,7 @@ t('helpDiagnosisHtml: 3 rows (on-shift OK, REAL GPS freshness, dispatch reassura
   assert.ok(live.includes('¿Por qué no veo pedidos?'));
   assert.ok(live.includes('Estás en turno y disponible') && live.includes('Todo bien de tu lado'));
   assert.ok(live.includes('Tu GPS se vio hace 3 s') && live.includes('Despacho ve dónde estás'), 'live GPS row uses the real age');
-  assert.ok(live.includes('Las cocinas tienen poco movimiento'));
+  assert.ok(live.includes('Despacho asigna en cuanto entra un pedido cerca') && !live.includes('poco movimiento'), 'row 3 trimmed to the single dispatch line (owner)');
   assert.ok(live.includes('id="btn-help-done"') && live.includes('>Entendido<'));
   // stale/absent GPS → a TRUTHFUL variant, never a fake «hace 3 s» (the prototype only draws the live case)
   const stale = helpDiagnosisHtml({ gpsAgeMs: 300000, gpsLive: false }, DEPS);
