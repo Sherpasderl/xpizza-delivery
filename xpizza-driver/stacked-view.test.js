@@ -273,6 +273,7 @@ t('pickupToRestaurantHtml: to-restaurant card — brand/addr, «Recoger» pill, 
   assert.ok(html.includes('phase-pill pickup') && html.includes('>Recoger<'), 'the «Recoger» pill');
   assert.ok(html.includes('Cocina: listo ~7:22'), 'the kitchen-ready note (ruling #2)');
   assert.ok(html.includes('id="btn-at-restaurant"') && html.includes('Ya estoy en el restaurante'), 'the «Ya estoy» slide');
+  assert.ok(html.includes('class="nav-dest">→ X. Pizza'), 'the nav button carries the «→ {restaurante}» destination sub-line (consistent with apRecoger)');
   assert.ok(!html.includes('id="btn-pickup"'), 'no server Recogí slide at step 1');
   assert.ok(!html.includes('Instrucciones del restaurante'), 'no invented instructions row (no such field exists)');
   const noReady = pickupToRestaurantHtml(deepFreeze({ ...PK, order: { ...PK.order, prep: undefined } }), DEPS);
@@ -286,6 +287,10 @@ t('pickupReviewHtml: review — number protagonist + name chip (R4 is pre-accept
   assert.ok(html.includes('Daniela M.'), 'the customer-name chip is KEPT as first name + last initial (R4 is pre-accept only; «exactly as shown»)');
   assert.ok(html.includes('Pizza grande') && html.includes('Refrescos'), 'the structured items');
   assert.ok(html.includes('Revisá bebidas y salsas'), 'the reminder banner');
+  assert.ok(html.includes('class="bag-chip">1 bolsa'), 'the «1 bolsa» bag chip on the items-card head (one order = one bag)');
+  assert.ok(!html.includes('items-brand'), 'the brand + order-num is replaced by the bag chip on the items head');
+  assert.ok(html.includes('</div><div class="sv-reminder">'), 'the reminder is NESTED inside the items card (directly after the items list, not a sibling)');
+  assert.ok(html.includes('<div class="sv-reminder"><i>U</i>'), 'the reminder opens with the cup glyph (ICONS.cup → CUP_SVG), not the warn triangle');
   assert.ok(html.includes('id="btn-pickup"') && html.includes('Recogí el pedido'), 'the server Recogí slide');
   assert.ok(!html.includes('id="btn-at-restaurant"'), 'no «Ya estoy» slide at the review step');
 });
@@ -295,10 +300,18 @@ t('pickupReviewHtml pay row: collectionFor-driven, affirmative-only (cash = prot
   const cash = pay({ payment_method: 'cash' });
   assert.ok(cash.includes('Cobrar L 385 al entregar') && cash.includes('No cobrés aquí'), 'cash = prototype copy + reassurance');
   assert.ok(pay({ payment_method: 'card_delivery' }).includes('Con tarjeta'), 'card_delivery is collected at delivery (distinct subtitle)');
-  assert.ok(pay({ payment_method: 'online', payment_status: 'confirmed' }).includes('Pagado en línea'), 'confirmed online → affirmative «Pagado en línea»');
+  const paidOnline = pay({ payment_method: 'online', payment_status: 'confirmed' });
+  assert.ok(paidOnline.includes('Pagado en línea'), 'confirmed online → affirmative «Pagado en línea»');
   const pending = pay({ payment_method: 'online' });   // NOT confirmed
   assert.ok(pending.includes('Pago no confirmado') && !/pagado/i.test(pending), 'pending online is NEVER «pagado» (affirmative-only)');
-  assert.ok(pay({ free_order: true }).includes('Pedido gratis'), 'free order → «Pedido gratis»');
+  const free = pay({ free_order: true });
+  assert.ok(free.includes('Pedido gratis'), 'free order → «Pedido gratis»');
+  // the cobrar-icon tile tint: green for the COLLECT cases, amber for the UNCONFIRMED one, neutral for paid/free
+  assert.ok(cash.includes('class="ico ok">'), 'cash → green-filled cobrar icon (ok tint)');
+  assert.ok(pay({ payment_method: 'card_delivery' }).includes('class="ico ok">'), 'card_delivery → green cobrar icon (ok tint)');
+  assert.ok(pending.includes('class="ico warn">'), 'unconfirmed payment → amber icon (warn tint)');
+  assert.ok(paidOnline.includes('class="ico ">') && !/class="ico (ok|warn)"/.test(paidOnline), 'paid-online → neutral icon (no collect)');
+  assert.ok(free.includes('class="ico ">') && !/class="ico (ok|warn)"/.test(free), 'free → neutral icon (nothing to collect)');
 });
 
 // ---------- queueDetailHtml (S5/S6 — read-only: no contact, no nav, no Entregado; items + payment + lock) ----------
