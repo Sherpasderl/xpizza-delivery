@@ -277,6 +277,8 @@
   "branches/branch-ops.js#hubErrors": "branches",
   "branches/branch-ops.js#planMaterialize": "branches",
   "branches/branch-ops.js#planSetLocation": "branches",
+  "branches/branch-ops.js#readinessOf": "branches",
+  "portal/branch-read-model.js#locationOf": "branches",
   "branches/branch-store.js#liveOrders>anon": "branches",
   "branches/branch-store.js#setBranchActive>anon": "branches",
   "branches/branches-admin-core.js#locationInput": "branches",

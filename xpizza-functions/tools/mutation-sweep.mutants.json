@@ -19892,7 +19892,7 @@
   "id": "o1a-activate-readiness",
   "label": "T8: activateBrand skips per-branch readiness",
   "file": "branches/branch-store.js",
-  "from": "  if (Object.keys(unmet).length) return { ok: false, error: 'not_ready', extra: { unmet } };\n",
+  "from": "  if (Object.keys(unmet).length) return { ok: false, error: 'not_ready', extra: Object.keys(gaps).length ? { unmet, identity_gaps: gaps } : { unmet } };\n",
   "to": "",
   "kills_with": [
    "no team reader → fail closed"

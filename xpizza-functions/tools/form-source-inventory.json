@@ -151,6 +151,7 @@
     "xpizza-functions/menus.test.mjs",
     "xpizza-functions/n3-weekend-message.test.js",
     "xpizza-functions/n4-cancel-verify.test.js",
+    "xpizza-functions/o1b-wiring.guard.test.js",
     "xpizza-functions/order-form-location-escape.test.js",
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
@@ -352,6 +353,7 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
+    "xpizza-functions/o1b-wiring.guard.test.js",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
     "xpizza-functions/portal/e1-extend.test.js",
     "xpizza-functions/portal/ops-core.test.js",
@@ -589,6 +591,7 @@
     "xpizza-functions/menus.test.mjs",
     "xpizza-functions/n3-weekend-message.test.js",
     "xpizza-functions/n4-cancel-verify.test.js",
+    "xpizza-functions/o1b-wiring.guard.test.js",
     "xpizza-functions/order-form-location-escape.test.js",
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
@@ -790,6 +793,7 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
+    "xpizza-functions/o1b-wiring.guard.test.js",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
     "xpizza-functions/portal/e1-extend.test.js",
     "xpizza-functions/portal/ops-core.test.js",
@@ -1982,6 +1986,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1b-inverse.js",
@@ -2004,6 +2009,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2030,6 +2036,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2048,6 +2055,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js"
      ]
     },
@@ -2067,6 +2075,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2091,6 +2100,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2108,6 +2118,7 @@
      "inverses": [
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js"
      ]
     },
@@ -2122,6 +2133,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2143,6 +2155,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2161,6 +2174,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
@@ -2175,6 +2189,7 @@
       "tools/dlite-push-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
@@ -2186,6 +2201,7 @@
      "file": "xpizza-functions/membership-wiring.guard.test.js",
      "inverses": [
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js"
      ]
     },
@@ -2204,6 +2220,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2232,6 +2249,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2248,6 +2266,7 @@
      "file": "xpizza-functions/portalui-wiring.guard.test.js",
      "inverses": [
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js"
      ]
     },
@@ -2257,6 +2276,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js"
      ]
@@ -2270,6 +2290,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2289,6 +2310,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2307,6 +2329,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s5-inverse.js",
@@ -2325,6 +2348,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2342,6 +2366,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/signup-inverse.js",
@@ -2362,6 +2387,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2393,6 +2419,12 @@
      ]
     },
     {
+     "file": "xpizza-functions/tools/o1b-inverse.js",
+     "inverses": [
+      "tools/o1b-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/tools/s5-inverse.js",
      "inverses": [
       "tools/s5-inverse.js"
@@ -2410,6 +2442,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/tracker-fixes-inverse.js"
@@ -2421,6 +2454,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2438,6 +2472,7 @@
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
+      "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
@@ -2475,6 +2510,7 @@
     "xpizza-functions/materialize-hub.test.js",
     "xpizza-functions/merchant-no-money.guard.test.js",
     "xpizza-functions/n2-paid-strand-decision.test.js",
+    "xpizza-functions/o1b-wiring.guard.test.js",
     "xpizza-functions/order-creators.guard.test.js",
     "xpizza-functions/order-exists-census.guard.test.js",
     "xpizza-functions/platform-sync.guard.test.js",
