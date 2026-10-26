@@ -27,6 +27,7 @@
 //   B   a 200 whose body is lost ⇒ unresolved; the changed cart is never re-sent (rule ii)
 //   K   202 (a concurrent request creating this identity) → the floor rises → 426 ⇒ the identity is KEPT (rule iii)
 //   V   (r4) card → provider-loss 502 → cash (the real order_exists) → card: the cash answer never settles the card send
+//   G   (S2b) a detected GPS fix (no pin step, pin_confirmed:true) is accepted by the real handlers (DECISIONS:2072)
 // Run: npm run test:capp-s2a
 require('./_emulator-required')('database', 'firestore');
 
@@ -491,6 +492,21 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     assert.deepStrictEqual([b.out.kind, count('chargeOnlineOrder') - ch0, CHARGED.length], ['existing_order', 1, 1], `🔴 the changed cart is NOT re-sent (${JSON.stringify(b.out)})`);
     assert.strictEqual(placeOf(pg).expected_net_cents, stored, 'the stored economics are never overwritten by the new quote');
     ok('B a 200 whose body is lost: unresolved ⇒ the recovery sheet; the changed cart is never re-sent and the stored economics stay — no displayed/charged divergence');
+  }
+
+  // ── G (S2b, OWNER 2026-10-21 DECISIONS:2072): a DETECTED GPS fix — set exactly as the S2b geolocation success handler sets it,
+  //    with NO pin step — is accepted by the REAL handlers (quote + cash + card) and recorded at the device's coordinates ──
+  {
+    const FIX = { lat: HUB.lat + 1.3 * KM, lng: HUB.lng + 0.4 * KM };   // the device's fix (not a tapped/confirmed-on-map point)
+    for (const pay of ['cash', 'online']) {
+      await clean();
+      const pg = page('x_pizza'); const f = flowOf(pay); C.setPin(f, FIX.lat, FIX.lng, true);   // capp-ui: getCurrentPosition ⇒ setPin(…, true)
+      const g = await quoteAndPlace(pg, f, cartOf('x_pizza'));
+      assert.strictEqual(g.out.kind, pay === 'cash' ? 'placed' : 'redirect', `🔴 the detected-fix body is ACCEPTED (${pay}) (${JSON.stringify(g.out)})`);
+      const o = await order(g.out.order_id);
+      assert.deepStrictEqual([Number(o.lat), Number(o.lng), o.total_cents], [FIX.lat, FIX.lng, g.T.total], `${pay}: recorded at the device fix, at the displayed Total`);
+    }
+    ok('G a detected GPS fix (no pin step) is accepted by the real quote / cash / card handlers and recorded at the device coordinates');
   }
 
   // ── V (r4): a cash answer never settles an unresolved card send — card → provider-loss 502 → cash (the REAL order_exists) → card ──
