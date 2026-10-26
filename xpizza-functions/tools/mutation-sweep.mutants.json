@@ -20430,5 +20430,185 @@
    "node",
    "tools/bake-form-bundle.test.js"
   ]
+ },
+ {
+  "id": "fb-40",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a hook on any host is accepted (the api.netlify.com pin dropped)",
+  "file": "catalog/form-rebake.js",
+  "from": "  return u.protocol === 'https:' && u.hostname === HOOK_HOST && u.port === ''",
+  "to": "  return u.protocol === 'https:' && u.port === ''",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-41",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a hook with a query (e.g. trigger_branch) is accepted",
+  "file": "catalog/form-rebake.js",
+  "from": "    && u.search === '' && u.hash === '' && HOOK_PATH_RE.test(u.pathname)",
+  "to": "    && u.hash === '' && HOOK_PATH_RE.test(u.pathname)",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-42",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: the trigger ignores the cooldown — every duplicate mirror event POSTs",
+  "file": "catalog/form-rebake.js",
+  "from": "    if (typeof c.at === 'number' && now - c.at < COOLDOWN_MS) { claimed = false; return undefined; }",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-43",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: the reconciler retries inside the cooldown",
+  "file": "catalog/form-rebake.js",
+  "from": "    if (typeof c.at === 'number' && now - c.at < COOLDOWN_MS) { decision = 'cooldown'; return c; }",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-44",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: the reconciler never gives up — no form_rebake_stuck after 3 attempts",
+  "file": "catalog/form-rebake.js",
+  "from": "    if ((c.attempts || 0) >= MAX_ATTEMPTS) { decision = 'stuck'; attempts = c.attempts; return { ...c, stuck: true }; }",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-45",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a stuck rid keeps POSTing (no silence)",
+  "file": "catalog/form-rebake.js",
+  "from": "    if (c.stuck) { decision = 'stuck_silent'; return c; }",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-46",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a NEW published menu does not re-arm a stuck rid",
+  "file": "catalog/form-rebake.js",
+  "from": "    if (c.version !== version) c = { ...c, version, attempts: 0, stuck: false };     // a NEW published menu re-arms the retries",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-47",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: the bad / missing hook alarm repeats every run (once-per-configuration dropped)",
+  "file": "catalog/form-rebake.js",
+  "from": "  await deps.db.ref(`form_rebake/${rid}/hook_alarm`).transaction((cur) => { if (cur === mark) { fresh = false; return undefined; } fresh = true; return mark; });",
+  "to": "  fresh = true;",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-48",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: the mechanism is not dormant when FORM_BUILD_HOOKS is unset",
+  "file": "catalog/form-rebake.js",
+  "from": "  if (!cfg.configured) return { dormant: true, results: [] };",
+  "to": "  if (false) return { dormant: true, results: [] };",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-49",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: the hook url leaks into the log line",
+  "file": "catalog/form-rebake.js",
+  "from": "  log(deps, 'form_rebake_hook', { rid, class: cls });",
+  "to": "  log(deps, 'form_rebake_hook', { rid, class: cls, url });",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-50",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a converged rid keeps its attempt count (the alarm never clears)",
+  "file": "catalog/form-rebake.js",
+  "from": "      decision = 'converged'; return { ...c, version, attempts: 0, stuck: false };",
+  "to": "      decision = 'converged'; return { ...c, version };",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-51",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: the deployed read is not fresh (no cache-busting query) — a CDN copy can hide a stale deploy",
+  "file": "catalog/form-rebake.js",
+  "from": "    const html = await withDeadline(deps.http.getText(`${base}?_reconcile=${deps.now()}`, { headers: { 'cache-control': 'no-cache' } }), READ_DEADLINE_MS, 'deployed');",
+  "to": "    const html = await withDeadline(deps.http.getText(`${base}`, { headers: { 'cache-control': 'no-cache' } }), READ_DEADLINE_MS, 'deployed');",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-52",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a published-only addition (WARN) is treated as converged — an added dish never reaches the deployed form",
+  "file": "catalog/form-rebake.js",
+  "from": "  const converged = !fail.length && !warn.length;",
+  "to": "  const converged = !fail.length;",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-53",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a rejected hook (non-2xx) counts as ok",
+  "file": "catalog/form-rebake.js",
+  "from": "    cls = res && res.status >= 200 && res.status < 300 ? 'ok' : 'hook_rejected';",
+  "to": "    cls = 'ok';",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-54",
+  "slice": "formbake",
+  "label": "PLAN 4 §4: the trigger gets a platform retry (a failing hook would be re-POSTed by the platform, outside the cooldown)",
+  "file": "index.js",
+  "from": "  { ref: '/catalog_snapshot/{rid}', region: 'us-central1', timeoutSeconds: 30, memory: '256MiB', maxInstances: 2, retry: false },",
+  "to": "  { ref: '/catalog_snapshot/{rid}', region: 'us-central1', timeoutSeconds: 30, memory: '256MiB', maxInstances: 2, retry: true },",
+  "command": [
+   "node",
+   "formbake-wiring.guard.test.js"
+  ]
  }
 ]

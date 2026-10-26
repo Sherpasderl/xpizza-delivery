@@ -487,6 +487,10 @@
       ".read": false,
       ".write": false
     },
+    "form_rebake": {
+      ".read": false,
+      ".write": false
+    },
     "payment_attempts": {
       ".read": false,
       ".write": false,

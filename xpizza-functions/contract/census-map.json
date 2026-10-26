@@ -255,6 +255,9 @@
  "serverFunctions": {
   "alert-prune.js#alertOrderIds": "infra",
   "alert-prune.js#orderStillFlagged": "infra",
+  "catalog/form-rebake.js#postHook": "infra",
+  "index.js#post>anon": "infra",
+  "index.js#getText>anon": "infra",
   "assign-hub.js#resolveAssignHub": "dispatch",
   "assign-hub.js#hubOf": "dispatch",
   "availability-reset.js#resetRestaurant": "infra",

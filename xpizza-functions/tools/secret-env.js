@@ -25,6 +25,8 @@ const REVIEWED = [
   // ambient platform credentials
   'GOOGLE_APPLICATION_CREDENTIALS', 'FIREBASE_TOKEN', 'GCLOUD_TOKEN', 'CLOUDSDK_AUTH_ACCESS_TOKEN', 'GOOGLE_OAUTH_ACCESS_TOKEN',
   'NETLIFY_AUTH_TOKEN', 'GITHUB_TOKEN', 'GH_TOKEN', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY',
+  // PLAN 4 §5 — the forms' Netlify build hooks: a hook URL IS a credential (anyone holding it can trigger a deploy)
+  'FORM_BUILD_HOOKS',
 ];
 
 // the KEY NAMES (left of `=`) of the functions .env* files in this checkout — values are never read into a variable

@@ -26,3 +26,50 @@ cd xpizza-functions && node tools/form-bundle-live-check.js
 
 The comparison itself is unit-tested offline (`node tools/form-bundle-live-check.test.js`, in
 `npm test`); the live run needs the network and so is a deploy step, not a test.
+
+## PLAN 4 — every form build BAKES from the published catalog
+
+Each form's Netlify build now runs:
+
+```
+bake --this-form && stamp && check --this-form
+```
+
+1. **Bake** (`tools/bake-form-bundle.js`) reads the brand's PUBLISHED menu fresh (`?_bake=<build start>` plus
+   `Cache-Control: no-cache`) and writes it into the build's `index.html`.
+2. **Stamp** hashes the baked bytes.
+3. **Check** proves the bake equals what is published.
+
+A bake refusal (wrong brand, an unknown representation, a malformed or dangling menu) is printed as a named
+`FAIL … bake_*` line. On a refusal the build fails, nothing is written, and **the previous deploy stays live**. The
+manual bootstrap-sync procedure above is now only for the in-repo bootstrap (the 1c gates and the seed tests).
+
+### Rebuild on publish, and the reconciler
+
+- **On publish.** A publish writes the catalog mirror. `rebakeFormOnMirror` then POSTs that brand's Netlify build hook,
+  at most once per 15 minutes per brand.
+- **Every 10 minutes.** `reconcileFormBundles` compares each brand's PUBLISHED menu with the bundle its DEPLOYED form
+  carries. On a difference it POSTs the hook again, after the cooldown.
+- **Stuck.** After 3 attempts without convergence for the same published menu, it raises one `form_rebake_stuck {rid,
+  attempts}` alert (in dispatcher alerts as `payment_form_rebake_stuck`), then stays silent until the menu is published
+  again.
+- **Hooks.** `FORM_BUILD_HOOKS` in the functions `.env` is JSON `{"<rid>": "https://api.netlify.com/build_hooks/<id>"}`.
+  - It is a CREDENTIAL. Never paste it in chat, logs or tickets.
+  - Each hook is created by the owner in that form's Netlify site, on branch `main`.
+  - Unset, the mechanism is dormant.
+  - A malformed entry raises `form_rebake_bad_hook {rid}`; a brand with an orders site but no hook raises
+    `form_rebake_missing_hook {rid}`. Each fires once per configuration.
+
+### Operator repair (a `form_rebake_stuck` or `form_rebake_*_hook` alert)
+
+1. Read `form_rebake/{rid}` in the RTDB console: `attempts`, `stuck`, `last_class` (`ok` / `hook_rejected` /
+   `hook_unreachable`) and `at`.
+2. Re-run the check against the deployed site from a checkout, `cd <form folder> && node
+   ../xpizza-functions/tools/form-bundle-live-check.js --this-form`, and read its `FAIL` lines.
+3. Fix the cause:
+   - a failed build: Netlify's deploy log, then "Retry deploy";
+   - a hook on the wrong site or branch: recreate it on `main` and update `FORM_BUILD_HOOKS`;
+   - a bake refusal: the named `bake_*` line in the build log.
+   Then trigger the hook by hand or use "Retry deploy" in Netlify.
+4. Verify the alert clears. Within 10 minutes the reconciler finds the deploy converged and resets `attempts` / `stuck`
+   at `form_rebake/{rid}`.
