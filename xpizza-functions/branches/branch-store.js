@@ -601,8 +601,7 @@ async function casIdentity(db, rid, expectedVersion, patch) {
 async function updateBranchProfile(db, { rid, patch, expected, now, callId = newCallId('edit'), clock }) {
   if (isObj(patch) && Object.prototype.hasOwnProperty.call(patch, 'location_name')) return { ok: false, error: 'rename_cli_only' };
   if (typeof expected === 'string') {
-    const brandId = await brandOfRid(db, rid);
-    if ((await val(db, `restaurants/${rid}/identity`)) != null) return { ok: false, error: 'stale_branch' };
+    const brandId = await brandOfRid(db, rid);   // a draft materialized since → its identity's brand; edit_draft answers stale_branch under the lock
     if (!brandId) return { ok: false, error: 'not_a_draft' };
     return runOp(db, brandId, { kind: 'edit_draft', inputs: { rid, patch: isObj(patch) ? patch : {}, token: expected }, at: now }, callId, now, clock, { live: true });
   }
