@@ -37,16 +37,16 @@ assert.strictEqual(xp({ type: 'free_pizza_choice' }).reason, 'bad_request'); ok(
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.model, 'add_free');
   assert.strictEqual(r.discount_cents, 0);
-  assert.strictEqual(r.cost, 743 * 2 + 133); ok(`lm: cost = Σ(cost_pts × qty) = 743×2 + 133 = ${743 * 2 + 133}`);
+  assert.strictEqual(r.cost, 830 * 2 + 133); ok(`lm: cost = Σ(cost_pts × qty) = 830×2 + 133 = ${830 * 2 + 133}`);
   assert.deepStrictEqual(r.freeItems, [
-    { item_id: 'dimsum_01', qty: 2, price_cents: 22300, cost_pts: 743, added: true },
+    { item_id: 'dimsum_01', qty: 2, price_cents: 24900, cost_pts: 830, added: true },
     { item_id: 'soft_01', qty: 1, price_cents: 4000, cost_pts: 133, added: true },
   ]); ok('lm: freeItems sorted by id, per-unit cost_pts + price_cents');
   assert.deepStrictEqual(r.canonical.items, [
-    { free_item_key: 'dimsum_01', cost: 743, qty: 2, price_cents: 22300 },
+    { free_item_key: 'dimsum_01', cost: 830, qty: 2, price_cents: 24900 },
     { free_item_key: 'soft_01', cost: 133, qty: 1, price_cents: 4000 },
   ]);
-  assert.strictEqual(r.canonical.total_cost, 743 * 2 + 133);
+  assert.strictEqual(r.canonical.total_cost, 830 * 2 + 133);
   assert.strictEqual(r.canonical.type, 'points_ala_carte');
   assert.strictEqual(r.canonical.config_version, 2); ok('lm: canonical = multiset { total_cost, items:[sorted] }');
 }
@@ -59,8 +59,8 @@ assert.strictEqual(laMusaPriceCents('rice_white'), 5000);
 // duplicate coalescing
 {
   const r = lm({ type: 'points_ala_carte', items: [{ id: 'dimsum_01', qty: 1 }, { id: 'dimsum_01', qty: 2 }] });
-  assert.deepStrictEqual(r.canonical.items, [{ free_item_key: 'dimsum_01', cost: 743, qty: 3, price_cents: 22300 }]);
-  assert.strictEqual(r.cost, 743 * 3); ok('lm: duplicate ids COALESCE (1+2 → qty 3)');
+  assert.deepStrictEqual(r.canonical.items, [{ free_item_key: 'dimsum_01', cost: 830, qty: 3, price_cents: 24900 }]);
+  assert.strictEqual(r.cost, 830 * 3); ok('lm: duplicate ids COALESCE (1+2 → qty 3)');
 }
 // exclusions
 assert.strictEqual(lm({ type: 'points_ala_carte', items: [{ id: 'beer_01', qty: 1 }] }).reason, 'ineligible_item'); ok('lm: alcohol (beer_*) → ineligible_item');

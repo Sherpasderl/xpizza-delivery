@@ -59,12 +59,12 @@ const xpApply = (items, pizza) => {
 
 // ── 3. La Musa MULTISET add-free → no platform factura, N 0-price lines, subtotal = paid items ──
 {
-  const items = [{ id: 'dimsum_01', qty: 1 }];   // 223
+  const items = [{ id: 'dimsum_01', qty: 1 }];   // 249
   const total = computeServerTotal(items, 'la_musa').total;
   const redemption = computeRedemption({ redeem: { type: 'points_ala_carte', items: [{ id: 'soft_01', qty: 2 }, { id: 'rice_white', qty: 1 }] }, items, restaurantId: 'la_musa' });
   const r = applyRedemptionToPricing({ items, restaurantId: 'la_musa', redemption, totalLempiras: total });
   assert.strictEqual(r.ok, true); assert.strictEqual(r.factura_items, null); ok('lm: NO platform-factura line items (factura_items null — POS owns the fiscal doc)');
-  assert.strictEqual(r.discount_cents, 0); assert.strictEqual(r.total_cents, 22300); assert.strictEqual(r.subtotal_cents, 22300); assert.strictEqual(r.tax_cents, 0); ok('lm: total unchanged, subtotal = paid items, no ISV split');
+  assert.strictEqual(r.discount_cents, 0); assert.strictEqual(r.total_cents, 24900); assert.strictEqual(r.subtotal_cents, 24900); assert.strictEqual(r.tax_cents, 0); ok('lm: total unchanged, subtotal = paid items, no ISV split');
   assert.deepStrictEqual(r.free_lines, [
     { item_id: 'rice_white', qty: 1, price_cents: 0, added: true },
     { item_id: 'soft_01', qty: 2, price_cents: 0, added: true },
@@ -75,7 +75,7 @@ const xpApply = (items, pizza) => {
 {
   assert.strictEqual(applyRedemptionToPricing({ items: [{ name: 'Ham', qty: 1 }], restaurantId: 'x_pizza', redemption: { ok: false }, totalLempiras: 282 }).ok, false);
   assert.strictEqual(applyRedemptionToPricing({ items: [{ name: 'Ham', qty: 1 }], restaurantId: 'x_pizza', redemption: null, totalLempiras: 282 }).ok, false);
-  assert.strictEqual(applyRedemptionToPricing({ items: [{ id: 'dimsum_01', qty: 1 }], restaurantId: 'la_musa', redemption: { ok: true, model: 'discount' }, totalLempiras: 223 }).ok, false);   // legacy model → rejected
+  assert.strictEqual(applyRedemptionToPricing({ items: [{ id: 'dimsum_01', qty: 1 }], restaurantId: 'la_musa', redemption: { ok: true, model: 'discount' }, totalLempiras: 249 }).ok, false);   // legacy model → rejected
   assert.strictEqual(applyRedemptionToPricing({ items: [{ name: 'Ham', qty: 1 }], restaurantId: 'x_pizza', redemption: { ok: true, model: 'add_free', freeItems: [] }, totalLempiras: 282 }).ok, false);   // empty set
   ok('non-redeem / legacy model / empty set → ok:false');
 }

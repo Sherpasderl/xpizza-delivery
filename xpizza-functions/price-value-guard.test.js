@@ -34,7 +34,7 @@ const T = (rid, over = {}) => ({ restaurantId: rid, menu: { ...MENU_BY_RESTAURAN
   const GOLD = [
     [[{ name: 'Margherita', qty: 1 }], 'x_pizza', 299],
     [[{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }] }], 'x_pizza', 299 * 2 + 50],
-    [[{ id: 'dimsum_01', qty: 1, extras: [{ id: 'rice_white', qty: 2 }] }], 'la_musa', 223 + 50 * 2],
+    [[{ id: 'dimsum_01', qty: 1, extras: [{ id: 'rice_white', qty: 2 }] }], 'la_musa', 249 + 50 * 2],
   ];
   for (const [items, rid, want] of GOLD) assert.deepStrictEqual(computeServerTotal(items, rid), { total: want, error: null }, `golden ${rid} ${want}`);
   ok('inert: golden carts still price to their exact pre-change totals (hard-coded, table-independent)');

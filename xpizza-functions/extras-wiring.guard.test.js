@@ -12,6 +12,8 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { unapplyExtrasIndex, BLOCKS } = require('./tools/extras-inverse');
 const { unapplyExtrasModule, FILES, HUNKS } = require('./tools/extras-module-inverse');
+// the menu price sync landed after the extras slice: its exact inverse is reversed FIRST (newest first)
+const { unapplyPriceSync } = require('./tools/price-sync-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 // index.js: the extras slice sits on 6f353ed (main, which added the WhatsApp-cancel block); the pinned MODULES are byte-identical
@@ -37,7 +39,7 @@ const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-func
 // ── 1b. the pinned modules ──
 {
   assert.deepStrictEqual([...FILES].sort(), ['catalog/catalog-publish.js', 'catalog/source-store.js', 'menu-pricing.js']);
-  for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, read(f)), baseOf(f), `🔴 ${f} minus the extras hunks is not ${BASE}:${f}`);
+  for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, unapplyPriceSync(f, read(f))), baseOf(f), `🔴 ${f} minus the price-sync and extras hunks is not ${BASE}:${f}`);
   const f = 'catalog/source-store.js'; const src = read(f);
   const h = HUNKS.find((x) => x.file === f && x.now.includes('deny_extras'));
   assert.throws(() => unapplyExtrasModule(f, src.replace(h.now, h.now.replace('deny_extras', 'deny_extraz'))), /occurs 0 times/, 'a byte INSIDE a hunk');

@@ -115,7 +115,10 @@ try {
     const { unapplyExtrasModule, FILES: EXTRAS_FILES } = require('../tools/extras-module-inverse');
     // PLAN-A A-1 landed last: its exact module inverse (tools/a1-inverse.js, proven by a1-wiring.guard) is reversed FIRST
     const { unapplyA1Module, FILES: A1_FILES } = require('../tools/a1-inverse');
-    const a1Read = (f) => (A1_FILES.includes(f) ? unapplyA1Module(f, read(f)) : read(f));
+    // the menu price sync landed after A-1: its exact inverse (tools/price-sync-inverse.js, proven by extras-wiring.guard) is reversed FIRST
+    const { unapplyPriceSync, FILES: PS_FILES } = require('../tools/price-sync-inverse');
+    const psRead = (f) => (PS_FILES.includes(f) ? unapplyPriceSync(f, read(f)) : read(f));
+    const a1Read = (f) => (A1_FILES.includes(f) ? unapplyA1Module(f, psRead(f)) : psRead(f));
     const xRead = (f) => (EXTRAS_FILES.includes(f) ? unapplyExtrasModule(f, a1Read(f)) : a1Read(f));
     const pinRead = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, xRead(f)) : xRead(f));
     const baseOf = (f) => {

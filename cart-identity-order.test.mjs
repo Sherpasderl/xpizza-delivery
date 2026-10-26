@@ -97,13 +97,13 @@ const GOLDEN = {
       config_version: 2, cost: 8, discount_cents: 0, free_item_key: 'Carnivora' },
   },
   'la-musa-orders': {
-    items: [{ id: 'dimsum_01', name: 'Sichuan Spicy Wonton', cat: 'dim_sum', qty: 2, price: 223, subtotal: 496,
+    items: [{ id: 'dimsum_01', name: 'Sichuan Spicy Wonton', cat: 'dim_sum', qty: 2, price: 249, subtotal: 548,
       extras: [{ id: 'rice_white', name: 'Arroz Blanco', price: 50, qty: 1 }], extrasTotal: 50 }],
-    items_text: '2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]',
-    total: 496, phone: '+504 9876-5432', net: 49600,
+    items_text: '2x Sichuan Spicy Wonton (L249) [+ Arroz Blanco]',
+    total: 548, phone: '+504 9876-5432', net: 54800,
     canonical: { restaurant_id: 'la_musa', model: 'add_free', type: 'points_ala_carte',
-      config_version: 2, discount_cents: 0, total_cost: 743,
-      items: [{ free_item_key: 'dimsum_01', cost: 743, qty: 1, price_cents: 22300 }] },
+      config_version: 2, discount_cents: 0, total_cost: 830,
+      items: [{ free_item_key: 'dimsum_01', cost: 830, qty: 1, price_cents: 24900 }] },
   },
 };
 
@@ -220,8 +220,8 @@ const ORDER_GOLDEN = {
           "name": "Sichuan Spicy Wonton",
           "cat": "dim_sum",
           "qty": 2,
-          "price": 223,
-          "subtotal": 496,
+          "price": 249,
+          "subtotal": 548,
           "extrasTotal": 50,
           "extras": [
             {
@@ -233,8 +233,8 @@ const ORDER_GOLDEN = {
           ]
         }
       ],
-      "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
-      "total": 496,
+      "items_text": "2x Sichuan Spicy Wonton (L249) [+ Arroz Blanco]",
+      "total": 548,
       "notes": "—",
       "lat": null,
       "lng": null,
@@ -251,7 +251,7 @@ const ORDER_GOLDEN = {
       "customer_email": "cliente@test.hn",
       "razon_social": "",
       "rtn_cliente": "",
-      "expected_net_cents": 49600
+      "expected_net_cents": 54800
     },
     "card": {
       "restaurant_id": "la_musa",
@@ -264,8 +264,8 @@ const ORDER_GOLDEN = {
           "name": "Sichuan Spicy Wonton",
           "cat": "dim_sum",
           "qty": 2,
-          "price": 223,
-          "subtotal": 496,
+          "price": 249,
+          "subtotal": 548,
           "extrasTotal": 50,
           "extras": [
             {
@@ -277,8 +277,8 @@ const ORDER_GOLDEN = {
           ]
         }
       ],
-      "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
-      "total": 496,
+      "items_text": "2x Sichuan Spicy Wonton (L249) [+ Arroz Blanco]",
+      "total": 548,
       "notes": "—",
       "lat": null,
       "lng": null,
@@ -295,7 +295,7 @@ const ORDER_GOLDEN = {
       "customer_email": "cliente@test.hn",
       "razon_social": "",
       "rtn_cliente": "",
-      "expected_net_cents": 49600
+      "expected_net_cents": 54800
     }
   }
 };

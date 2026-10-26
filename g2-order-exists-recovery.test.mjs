@@ -304,7 +304,9 @@ function materializeOld(dir) {
   for (const f of files) writeFileSync(`${ROOT}${OLD_DIR}/${f}`, execFileSync('git', ['-C', ROOT, 'show', `${OLD_SHA}:${f}`]));
 }
 process.on('exit', () => { try { rmSync(`${ROOT}${OLD_DIR}`, { recursive: true, force: true }); } catch (_) {} try { rmdirSync(`${ROOT}node_modules`); } catch (_) {} });
-const SER = { 'xpizza-orders': { X: 2, Y: 19, extra: (w) => w.toggleDetailExtra('e4', 2, 0) }, 'la-musa-orders': { X: 'dimsum_01', Y: 'dimsum_03', extra: (w) => w.chgDetailExtra('rice_white', 'dimsum_01', 1) } };
+// la_musa: dishes whose price is the SAME at OLD_SHA and today — the old page is served its own baked menu while the server prices
+// from today's tables, so a repriced dish makes the old page refuse its card build (correctly) and voids the premise
+const SER = { 'xpizza-orders': { X: 2, Y: 19, extra: (w) => w.toggleDetailExtra('e4', 2, 0) }, 'la-musa-orders': { X: 'dimsum_02', Y: 'dimsum_05', extra: (w) => w.chgDetailExtra('rice_white', 'dimsum_02', 1) } };
 const STASHKEY = STASH;
 async function realCheckoutStash(dir) {
   const B = BRAND[dir]; const C = SER[dir];

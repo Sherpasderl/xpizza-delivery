@@ -1703,6 +1703,7 @@
   "lib/emulator-endpoint.js",
   "lib/hn-date.js",
   "materialize.js",
+  "menu-pricing.js",
   "merchant/_fake-db.js",
   "merchant/merchant-brand.js",
   "merchant/merchant-control.js",
@@ -2460,6 +2461,25 @@
    "lifts": [
     "xpizza-functions/brand-server-wiring.guard.test.js"
    ]
+  },
+  "menu-pricing.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/identity-record-guards.test.js",
+     "inverses": [
+      "tools/extras-module-inverse.js",
+      "tools/price-sync-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/extras-wiring.guard.test.js",
+     "inverses": [
+      "tools/extras-module-inverse.js",
+      "tools/price-sync-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
   },
   "merchant/_fake-db.js": {
    "pins": [],

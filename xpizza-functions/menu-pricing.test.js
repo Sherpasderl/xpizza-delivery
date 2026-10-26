@@ -29,7 +29,7 @@ assert.deepStrictEqual(computeServerTotal([{ name: 'Margherita', id: 'dimsum_01'
 assert.equal(computeServerTotal([{ id: 'dimsum_01', qty: 1 }]).error, 'unknown menu item: undefined'); ok('x_pizza with no name → unknown (id never consulted)');
 
 // ── La Musa: id-keyed ──
-assert.deepStrictEqual(computeServerTotal([{ id: 'dimsum_01', qty: 1 }], 'la_musa'), { total: 223, error: null }); ok('la_musa single item by id');
+assert.deepStrictEqual(computeServerTotal([{ id: 'dimsum_01', qty: 1 }], 'la_musa'), { total: 249, error: null }); ok('la_musa single item by id');
 assert.deepStrictEqual(computeServerTotal([{ id: 'beer_07', qty: 2 }, { id: 'soft_01', qty: 1 }], 'la_musa'), { total: 81 * 2 + 40, error: null }); ok('la_musa multi-item by id');
 assert.equal(computeServerTotal([{ name: 'Sichuan Spicy Wonton', qty: 1 }], 'la_musa').error, 'unknown menu item: undefined'); ok('la_musa by name → unknown (id required)');
 assert.equal(computeServerTotal([{ id: 'dimsum_01', qty: 1, extras: [{ name: 'Mozzarella' }] }], 'la_musa').error, 'unknown extra: undefined'); ok('la_musa extra by name only (no id) → unknown (id required)');
@@ -52,7 +52,7 @@ assert.equal(MENU_BY_RESTAURANT.x_pizza['Pepperoni NY'], 641); ok('Pepperoni NY 
 // (Form-vs-table PARITY — exact id-set equality both directions — lives in menu-parity.test.js,
 // which parses the in-tree form. Here we exercise computeServerTotal against the expected prices.)
 const LA_MUSA_MENU_EXPECTED = {
-  dimsum_01: 223, dimsum_02: 248, dimsum_03: 198, dimsum_04: 237, dimsum_05: 260,
+  dimsum_01: 249, dimsum_02: 248, dimsum_03: 286, dimsum_04: 288, dimsum_05: 260,
   starter_01: 262, starter_02: 252, starter_03: 265, starter_04: 378, starter_05: 413, starter_06: 409,
   special_01: 588, special_02: 478, special_04: 624, special_05: 384,
   crudo_01: 452, crudo_02: 346, crudo_03: 337,
@@ -87,7 +87,7 @@ assert.deepStrictEqual(
 // Anti-tamper: client ex.price ignored (server table only).
 assert.deepStrictEqual(
   computeServerTotal([{ id: 'dimsum_01', qty: 1, extras: [{ id: 'sauce_aioli', qty: 1, price: 9999 }] }], 'la_musa'),
-  { total: 223 + 30, error: null }); ok('la_musa extras: client price ignored (priced from server table)');
+  { total: 249 + 30, error: null }); ok('la_musa extras: client price ignored (priced from server table)');
 // Anti-tamper rejections.
 assert.equal(computeServerTotal([{ id: 'dimsum_01', qty: 1, extras: [{ id: 'nope', qty: 1 }] }], 'la_musa').error, 'unknown extra: nope'); ok('la_musa extras: unknown id rejected');
 assert.equal(computeServerTotal([{ id: 'dimsum_01', qty: 1, extras: [{ id: 'sauce_aioli', qty: 0 }] }], 'la_musa').error, 'invalid quantity for extra sauce_aioli'); ok('la_musa extras: qty < 1 rejected');

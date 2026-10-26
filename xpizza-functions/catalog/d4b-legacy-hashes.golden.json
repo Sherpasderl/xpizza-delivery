@@ -3,7 +3,8 @@
     "captured_at_commit": "717f97e911774aa03fa285b54ee5af576067ba1a",
     "captured_by": "test/d4b-capture-legacy-goldens.js",
     "captured_on": "2026-10-05",
-    "writers": "issueQuote token cart_fingerprint · redemptionFingerprint(computeRedemption) · computeIncomingFingerprint (createOrder) · reserveRedemption stored fp"
+    "writers": "issueQuote token cart_fingerprint · redemptionFingerprint(computeRedemption) · computeIncomingFingerprint (createOrder) · reserveRedemption stored fp",
+    "data_resync": "2026-10-25: la_musa bootstrap prices synced to the published catalog (dimsum_01 249, dimsum_03 286, dimsum_04 288; tools/price-sync-inverse.js). Re-captured with captureLegacyHashes() at captured_at_commit with ONLY those price-data edits applied (the unpatched run reproduced the previous golden byte-for-byte); only the five la_musa order-level fingerprints moved."
   },
   "values": {
     "x_pizza": {
@@ -24,11 +25,11 @@
       "quote_collision_two_lines": "ab96392b795a44cfb8184af7d46dbc4eeb8acb6e61f91f788cbbcc0446411a4d",
       "quote_collision_one_line": "f1136d7335dd8a21f5c114e7ec64f7299cc4dfa14194e98011a51ab491230728",
       "redemption_fp": "fa6fac06aefa2509a907d525",
-      "order_fp_plain": "0ef047ccd1d89c0f0ba3e4b9f1c4d42b3189bf1755a04ecf60d4e26afab9e25f",
-      "order_fp_scheduled": "4d39804a1e5ad16fcf4ef1a3e51ca419aa157c94ec29ef64a16a769719204b2a",
-      "order_fp_redemption": "97342d22f9ee251cbfb78b04445d10f8e8b643722cdd884aa31e2f08f6c77ff1",
-      "order_fp_redemption_scheduled": "1212ed19cfd734ab73e38d4f3c03b9813f52222b3cd9e0c3f68185a22931c39c",
-      "reservation_binding_fp": "c35d64a8e6dbac969dda970d8d89a20d787e83097e454558f7a8aa3f43ae8aa6"
+      "order_fp_plain": "b3471e82149e48fe90988da3873a2c3c878849dedd3d39d0a68c58b97df66c73",
+      "order_fp_scheduled": "90f34989c0c98231902f50be4a58323c0f4cf1958b11a61d50657e85f7f97342",
+      "order_fp_redemption": "eb2c7bba08b0ac480f2e86cc0ec4ae7ab48c9d5d4b13fcae05ebafe83ab7b142",
+      "order_fp_redemption_scheduled": "97c0fc5a28eeefb9ddb62d545cf7d9f91ab8ef3f40fea7717edd141df7830727",
+      "reservation_binding_fp": "454ade9e85b5724192c878ed2f8f218406df77f86fb927516d364e7dd01ac886"
     }
   }
 }

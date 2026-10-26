@@ -90,7 +90,7 @@ function xpGroup(B, w) {
   serveNext(envelope(B.rid, m));
   await comeBack();
   assert.strictEqual(menuCalls(), boot + 1);
-  assert.strictEqual(w.liveMenuGlobalGet('MENU').find((d) => d.id === 'dimsum_01').price, 223 + 7, 'a re-priced dish applies on return');
+  assert.strictEqual(w.liveMenuGlobalGet('MENU').find((d) => d.id === 'dimsum_01').price, 249 + 7, 'a re-priced dish applies on return');
   const before = w.liveMenuGlobalGet('MENU');
   const bad = B.menu(w); bad.variant_items = { noodle_01: { label: 'Proteína', basePrice: 307, variantIds: ['noodle_01_sin', 'gone'] } };
   serveNext(envelope(B.rid, bad));

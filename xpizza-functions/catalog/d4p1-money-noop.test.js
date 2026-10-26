@@ -134,7 +134,10 @@ for (const rid of ['x_pizza', 'la_musa']) {
     const redeem = rid === 'x_pizza'
       ? { type: 'free_pizza_choice', item_id: reward.freeItems[0].item_id }
       : { type: 'points_ala_carte', items: reward.freeItems.map((f) => ({ id: f.item_id, qty: f.qty })) };
-    const resolved = computeRedemption({ redeem, items: json(cart), restaurantId: rid });
+    // Priced from the golden's OWN frozen tables, like every other producer above and like production (rewards-redeem-intake.js
+    // threads the catalog tables): without them computeRedemption reads the code tables, so a later price edit there would
+    // fail this control on a price that is not the one the control froze.
+    const resolved = computeRedemption({ redeem, items: json(cart), restaurantId: rid, tables });
 
     assert.strictEqual(resolved.ok, true, `🔴 ${rid}: the REAL reward producer refused the golden's own redemption — ${JSON.stringify(resolved).slice(0, 200)}`);
     assert.strictEqual(resolved.model, reward.model, `🔴 ${rid}: the resolved reward MODEL moved against pre-P1`);
