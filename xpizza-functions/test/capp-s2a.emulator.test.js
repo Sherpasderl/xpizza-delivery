@@ -269,19 +269,14 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
       const ch0 = count('chargeOnlineOrder'), ps0 = count('paymentStatus');
       const b = await quoteAndPlace(p2, f2, cart);
       const polls = count('paymentStatus') - ps0;
-      if (what === 'NO token') {
-        // poll-first: an issued card record without creds is recovery — zero sends, zero polls; the identity is retained
-        assert.deepStrictEqual([b.out.kind, b.out.order_id, count('chargeOnlineOrder') - ch0, polls], ['existing_order', a.out.order_id, 0, 0], `🔴 ${what}: recovery, zero sends (${JSON.stringify(b.out)})`);
-        assert.strictEqual(placeOf(p2) && placeOf(p2).order_id, a.out.order_id, `${what}: recovery retains the placement`);
-      } else {
-        assert.deepStrictEqual([b.out.kind, b.out.order_id, count('chargeOnlineOrder') - ch0, polls], ['paid_unverified', a.out.order_id, 1, 1], `🔴 ${what}: paid_unverified (${JSON.stringify(b.out)})`);
-        assert.strictEqual(placeOf(p2), null, `${what}: Already paid clears the placement`);
-      }
+      // poll-first: an issued card record is polled before any send — no creds (NO token) or a 403 (REJECTED) ⇒ recovery, zero sends; the identity is retained
+      assert.deepStrictEqual([b.out.kind, b.out.order_id, count('chargeOnlineOrder') - ch0, polls], ['existing_order', a.out.order_id, 0, what === 'NO token' ? 0 : 1], `🔴 ${what}: recovery, zero sends (${JSON.stringify(b.out)})`);
+      assert.strictEqual(placeOf(p2) && placeOf(p2).order_id, a.out.order_id, `${what}: recovery retains the placement`);
       const ch1 = count('chargeOnlineOrder'), ps1 = count('paymentStatus');
       await new Promise((r) => setTimeout(r, 100));
       assert.deepStrictEqual([count('chargeOnlineOrder') - ch1, count('paymentStatus') - ps1], [0, 0], `${what}: zero further calls`);
     }
-    ok('P Already paid: a stashed token ⇒ one poll ⇒ placed for that order; NO token ⇒ recovery with zero sends and zero polls, the placement retained; a REJECTED token (403) ⇒ paid_unverified, the placement cleared; zero further calls');
+    ok('P Already paid: a stashed token ⇒ one poll ⇒ placed for that order; NO token ⇒ recovery with zero sends and zero polls; a REJECTED token (403) ⇒ one poll ⇒ recovery, zero sends; the placement retained; zero further calls');
   }
 
   // ── R: closed_refunded and verifying, through the paid-after-close guard (the real writer) ──
