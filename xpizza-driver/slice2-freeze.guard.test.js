@@ -199,7 +199,9 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/idle-help-gate.test.js',          // SLICE3:IDLE-3 help-link gate test (SLICE3)
   'xpizza-driver/offline-banner.test.js',          // SLICE3 offline banner handler test (SLICE3)
   'xpizza-driver/gpsoff.test.js',                  // SLICE3 gpsoff builder + apply logic test (SLICE3)
-  'xpizza-driver/fa4400-neverships.test.js',       // SLICE3 brand-orange never-ship test (SLICE3)
+  'xpizza-driver/fa4400-neverships.test.js',       // SLICE3 brand-orange never-ship test, static (SLICE3)
+  'xpizza-driver/fa4400-render.browser.test.js',   // SLICE3 brand-orange never-ship test, browser/computed-style (SLICE3)
+  'xpizza-driver/fa4400-neverships.proof.sh',      // SLICE3 brand-orange never-ship mutant proof (SLICE3)
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';

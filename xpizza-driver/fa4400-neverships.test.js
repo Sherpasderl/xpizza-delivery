@@ -1,62 +1,143 @@
-// NEVER-SHIP: #FA4400 is the X. Pizza RESTAURANT identity colour. It may appear in the driver UI ONLY on the
-// .rchip.xp .rdot brand dots (data-driven restaurant identity) — never as chrome, and never on the slide-confirms.
-// Two guards:
-//   1. Every literal #FA4400 in the stylesheet heads a .rchip.xp .rdot rule (the one allowed exception is the
-//      baseline --accent: token on :root, which the live Cuadra :root overrides to azul-acero anyway).
-//   2. The WINNING :root --accent (last definition by source order) is the Cuadra azul-acero #2F5FB8 — so every
-//      var(--accent) slide-confirm track renders steel-blue (the prototype .slide colour), never brand-orange.
-// This is a RENDER-faithful pair: #1 keeps literal brand-orange off the chrome; #2 proves the token the slides
-// read is steel. It does NOT police the dead baseline slide hexes (they are overridden at render by both the steel
-// --accent and the SLICE1 `!important` translucent-white rules, and they live in frozen slice-1 regions).
-// Run: `node fa4400-neverships.test.js`.
+// NEVER-SHIP (static half): #FA4400 is the X. Pizza RESTAURANT identity colour. In the driver stylesheet it may
+// appear ONLY on the .rchip.xp .rdot brand dots (class-driven restaurant identity). The one allowed exception is the
+// baseline `--accent: #FA4400` custom-property declaration on :root (the Cuadra :root overrides it to azul-acero;
+// the browser half, fa4400-render.browser.test.js, proves the WINNING --accent computes to steel).
+//
+// This half polices the BRAND orange specifically (rgb(250,68,0) in any syntax: #FA4400/#fa4400, 8-digit hex,
+// rgb()/rgba(), hsl()/hsla()). It does NOT police the derived baseline slide hexes (#C2410C/#FF7438/#F23E00) — those
+// live in frozen slice-1 regions, are overridden at render, and the owner ruled they stay; the browser half proves
+// no slide renders orange. Scans EVERY <style> block AND every inline style= attribute, parses rules properly, and
+// checks each selector in a comma group INDEPENDENTLY. Run: `node fa4400-neverships.test.js`.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-// strip CSS comments first (they mention #FA4400 descriptively); replace each with same-length spaces so byte
-// offsets (and selectorOf) stay aligned with the live source.
-const CSS = readFileSync(join(__dir, 'index.html'), 'utf8').match(/<style>([\s\S]*?)<\/style>/)[1]
-  .replace(/\/\*[\s\S]*?\*\//g, (c) => ' '.repeat(c.length));
+const HTML = readFileSync(join(__dir, 'index.html'), 'utf8');
+
+const BRAND = [250, 68, 0];                 // #FA4400
+const TOL = 3;                              // absorb hsl↔rgb rounding; tight enough to exclude the file's other warms
+
+// ---- colour parsing: return [r,g,b] for a token, else null ----
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360; s /= 100; l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) [r, g, b] = [c, x, 0]; else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x]; else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c]; else [r, g, b] = [c, 0, x];
+  return [r + m, g + m, b + m].map((v) => Math.round(v * 255));
+}
+function isBrand(rgb) { return rgb && BRAND.every((c, k) => Math.abs(rgb[k] - c) <= TOL); }
+
+// every brand-orange colour token in `text`, each with its char offset
+function brandHits(text) {
+  const hits = [];
+  let m;
+  const hex = /#([0-9a-fA-F]{3,8})\b/g;
+  while ((m = hex.exec(text))) {
+    const h = m[1]; let rgb = null;
+    if (h.length === 3) rgb = [...h].map((c) => parseInt(c + c, 16));
+    else if (h.length === 4) rgb = [...h.slice(0, 3)].map((c) => parseInt(c + c, 16));
+    else if (h.length === 6 || h.length === 8) rgb = [0, 2, 4].map((k) => parseInt(h.slice(k, k + 2), 16));
+    if (isBrand(rgb)) hits.push({ index: m.index, raw: m[0] });
+  }
+  const rgbRe = /rgba?\(\s*([\d.]+)\s*[, ]\s*([\d.]+)\s*[, ]\s*([\d.]+)/gi;
+  while ((m = rgbRe.exec(text))) {
+    if (isBrand([+m[1], +m[2], +m[3]].map(Math.round))) hits.push({ index: m.index, raw: m[0] });
+  }
+  const hslRe = /hsla?\(\s*([\d.]+)\s*[, ]\s*([\d.]+)%\s*[, ]\s*([\d.]+)%/gi;
+  while ((m = hslRe.exec(text))) {
+    if (isBrand(hslToRgb(+m[1], +m[2], +m[3]))) hits.push({ index: m.index, raw: m[0] });
+  }
+  return hits;
+}
+
+// ---- CSS rule parser: every style rule, descending into @media/@supports/@container ----
+function walkRules(css) {
+  const rules = [];
+  const n = css.length;
+  let i = 0;
+  function block() {
+    while (i < n) {
+      while (i < n && /\s/.test(css[i])) i++;
+      if (i >= n || css[i] === '}') { i++; return; }
+      const start = i;
+      while (i < n && css[i] !== '{' && css[i] !== '}' && css[i] !== ';') i++;
+      if (i >= n) break;
+      if (css[i] === ';') { i++; continue; }            // @import / @charset — no block
+      if (css[i] === '}') { i++; return; }
+      const prelude = css.slice(start, i).replace(/\s+/g, ' ').trim();
+      i++;                                              // consume '{'
+      if (/^@(media|supports|container|document|layer)\b/i.test(prelude)) {
+        block();                                        // conditional group — selectors inside still apply
+      } else {
+        const bstart = i; let depth = 1;
+        while (i < n && depth > 0) { if (css[i] === '{') depth++; else if (css[i] === '}') { depth--; if (!depth) break; } i++; }
+        rules.push({ sel: prelude, body: css.slice(bstart, i) });
+        i++;                                            // consume matching '}'
+      }
+    }
+  }
+  block();
+  return rules;
+}
+
+// split a selector list on TOP-LEVEL commas (ignore commas inside :is()/:not()/:where())
+function selectors(list) {
+  const out = []; let depth = 0, cur = '';
+  for (const ch of list) {
+    if (ch === '(') depth++; else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) { out.push(cur.trim()); cur = ''; } else cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+const isDot = (sel) => /\.rchip\.xp(?![\w-])/.test(sel) && /\.rdot\s*$/.test(sel);
+
+// the declaration (`prop: value`) surrounding offset `o` in a rule body
+function declAt(body, o) {
+  const s = body.lastIndexOf(';', o - 1) + 1;
+  let e = body.indexOf(';', o); if (e < 0) e = body.length;
+  return body.slice(s, e).trim();
+}
+
+const STYLE_BLOCKS = [...HTML.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]);
+const stripComments = (css) => css.replace(/\/\*[\s\S]*?\*\//g, (c) => ' '.repeat(c.length));
 
 let passed = 0;
 function t(name, fn) { fn(); passed += 1; console.log('  ok -', name); }
 
-// the full comma-separated selector list that heads the rule containing position `i`
-function selectorOf(i) {
-  const open = CSS.lastIndexOf('{', i);
-  const prevClose = CSS.lastIndexOf('}', open);
-  const prevOpen = CSS.lastIndexOf('{', open - 1);
-  const start = Math.max(prevClose, prevOpen) + 1;   // after the previous rule's boundary
-  return CSS.slice(start, open).trim();
-}
+t(`found ${STYLE_BLOCKS.length} <style> block(s) — scanning all of them`, () => {
+  assert.ok(STYLE_BLOCKS.length >= 1, 'no <style> block found in index.html');
+});
 
-t('literal #FA4400 appears ONLY on .rchip.xp .rdot brand dots (+ the baseline --accent token)', () => {
+t('every brand-orange rule targets ONLY .rchip.xp .rdot dots (per selector) — baseline --accent token aside', () => {
   const violations = [];
-  const re = /#FA4400/gi;
-  let m;
-  while ((m = re.exec(CSS))) {
-    const i = m.index;
-    // the --accent custom-property definition is the single allowed non-dot occurrence
-    const lineStart = CSS.lastIndexOf('\n', i) + 1;
-    const lineEnd = CSS.indexOf('\n', i);
-    const line = CSS.slice(lineStart, lineEnd < 0 ? CSS.length : lineEnd);
-    if (/--accent:\s*#FA4400/i.test(line)) continue;
-    const sel = selectorOf(i);
-    const okDot = /\.rchip\.xp\b/.test(sel) && /\.rdot\b/.test(sel);
-    if (!okDot) violations.push(`#FA4400 in a non-brand-dot rule → "${sel.slice(0, 80)}"`);
+  for (const raw of STYLE_BLOCKS) {
+    const css = stripComments(raw);
+    for (const rule of walkRules(css)) {
+      for (const hit of brandHits(rule.body)) {
+        const decl = declAt(rule.body, hit.index);
+        // the single allowed exception: the baseline `--accent: #FA4400` custom property on :root
+        if (/^--accent\s*:/.test(decl) && rule.sel === ':root') continue;
+        for (const sel of selectors(rule.sel)) {
+          if (!isDot(sel)) violations.push(`brand-orange (${hit.raw}) in "${decl.slice(0, 50)}" via non-dot selector "${sel.slice(0, 60)}"`);
+        }
+      }
+    }
   }
   assert.deepEqual(violations, [], `brand-orange leaked off the .rchip.xp .rdot dots:\n  ${violations.join('\n  ')}`);
 });
 
-t('the WINNING :root --accent is the Cuadra azul-acero #2F5FB8 — so slide tracks render steel, never brand-orange', () => {
-  // every var(--accent) consumer (incl. .slide-confirm track at background:var(--accent)) resolves to the LAST
-  // :root --accent by source order. Prove that winner is the steel, not the brand-orange.
-  const defs = [...CSS.matchAll(/--accent:\s*(#[0-9A-Fa-f]{6})/g)].map((m) => m[1].toUpperCase());
-  assert.ok(defs.length >= 1, 'no --accent definition found');
-  assert.equal(defs[defs.length - 1], '#2F5FB8',
-    `the winning --accent is ${defs[defs.length - 1]} (all defs: ${defs.join(', ')}) — slides would render that colour`);
+t('no inline style= attribute carries the brand orange', () => {
+  const violations = [];
+  for (const m of HTML.matchAll(/\bstyle\s*=\s*("([^"]*)"|'([^']*)')/gi)) {
+    const val = m[2] ?? m[3] ?? '';
+    for (const hit of brandHits(val)) violations.push(`brand-orange (${hit.raw}) inline → "${val.slice(0, 70)}"`);
+  }
+  assert.deepEqual(violations, [], `brand-orange leaked into inline styles:\n  ${violations.join('\n  ')}`);
 });
 
-console.log(`✓ fa4400-neverships: ${passed} checks passed`);
+console.log(`✓ fa4400-neverships (static): ${passed} checks passed`);

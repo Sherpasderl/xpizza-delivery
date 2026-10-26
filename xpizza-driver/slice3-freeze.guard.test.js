@@ -82,7 +82,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = '5457b0393184a874669ed18e88d315c76e0839669c9202eb741dff8572332a5c';
+const SLICE2_GUARD_SHA = 'be35326a38e96d1e49db9962cd5fbacf024ef7ab992abb972991206cca5b9e2f';
 const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -150,7 +150,9 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/idle-help-gate.test.js',       // SLICE3:IDLE-3 help-link gate (shows only when available)
   'xpizza-driver/offline-banner.test.js',       // SLICE3 offline banner (RTDB-signal, in-hand-only) handler test
   'xpizza-driver/gpsoff.test.js',               // SLICE3 gpsoff builder + apply/detection logic test
-  'xpizza-driver/fa4400-neverships.test.js',    // SLICE3 never-ship: brand-orange #FA4400 confined to .rchip.xp .rdot; slide --accent is steel
+  'xpizza-driver/fa4400-neverships.test.js',    // SLICE3 never-ship (static): brand-orange #FA4400 confined to .rchip.xp .rdot
+  'xpizza-driver/fa4400-render.browser.test.js', // SLICE3 never-ship (browser): computed --accent + slide backgrounds are steel, never orange
+  'xpizza-driver/fa4400-neverships.proof.sh',   // SLICE3 never-ship mutant proof (both halves)
 ]);
 
 const REPO = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: __dir }).toString('utf8').trim();
