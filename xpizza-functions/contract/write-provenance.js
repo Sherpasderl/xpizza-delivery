@@ -609,7 +609,9 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
       }
       const fns = fnsFor(n);
       const out = [];
-      for (const f of fns) for (const r of RETURNS.get(f) || []) out.push(...entriesOf(r, { fnNode: f, call: n, parent: env }, d, seen));
+      // a loop, never push(...spread): a spread puts every entry on the stack, and a large answer (train 2026-10-26: a
+      // name-fallback `now()` returned ~205k entries) overflows it. Same entries, same order.
+      for (const f of fns) for (const r of RETURNS.get(f) || []) for (const e of entriesOf(r, { fnNode: f, call: n, parent: env }, d, seen)) out.push(e);
       if (!fns.some((f) => (RETURNS.get(f) || []).length)) return [{ k: 'unresolved', node: n }];
       return out;
     }
@@ -624,7 +626,7 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
     const flat = expand(entries);
     const out = [];
     if (key === null || key === undefined || flat.some((e) => e.k !== 'prop')) out.push({ k: 'unresolved', node: at });
-    for (const e of flat) if (e.k === 'prop' && (e.key === key || e.key === null)) out.push(...entriesOf(e.value, e.env));
+    for (const e of flat) if (e.k === 'prop' && (e.key === key || e.key === null)) for (const x of entriesOf(e.value, e.env)) out.push(x);   // a loop, not a spread (see entriesOf0)
     return out;
   }
   // spreads flattened where they resolve (an unresolved one stays as 'spread-unresolved' with its argument)
