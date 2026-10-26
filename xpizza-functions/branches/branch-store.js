@@ -321,6 +321,8 @@ const STEPS = {
       // O1b T1b: a PORTAL delete (inputs.bind) re-binds under the lock — the brand's op-id mapping for this draft's op must point
       // back to this rid. The Sherpa CLI (no bind) keeps O1a's behaviour so it can still remove an orphan draft `check` reports.
       if (op.inputs.bind === true && !boundDraft(brandId, rid, d, null, typeof d.op_id === 'string' ? maps[d.op_id] : null)) return fail(db, op, callId, 'not_a_draft');
+      // O1b T3c: a portal delete carries the screen's draft token, compared under the lock (an edit since → stale_branch)
+      if (op.inputs.bind === true && typeof op.inputs.token === 'string' && P.draftToken(d) !== op.inputs.token) return fail(db, op, callId, 'stale_branch');
       const brand = await val(db, `brands/${brandId}`);
       const closing = onlyStaged(brand, rid) && isObj(brand.activation) && brand.activation.state === 'off';
       // a draft its brand LISTS goes only together with that listing (Codex r3 #3): the never-opened single-staged OFF brand is
@@ -554,8 +556,9 @@ async function createBrandWithDraft(db, { brandId, brandName, input, opId, calle
 }
 
 // abandoned-draft cleanup (resumable)
-async function deleteBranchDraft(db, { rid, brandId, now = Date.now(), callId = newCallId('delete'), clock, bind = false }) {
-  return runOp(db, brandId, { kind: 'delete_draft', inputs: bind === true ? { rid, bind: true } : { rid }, at: now }, callId, now, clock, { live: true });
+async function deleteBranchDraft(db, { rid, brandId, now = Date.now(), callId = newCallId('delete'), clock, bind = false, token }) {
+  const inputs = bind === true ? { rid, bind: true, ...(typeof token === 'string' ? { token } : {}) } : { rid };
+  return runOp(db, brandId, { kind: 'delete_draft', inputs, at: now }, callId, now, clock, { live: true });
 }
 
 // Sherpa admin: materialize a draft with its location (§4)

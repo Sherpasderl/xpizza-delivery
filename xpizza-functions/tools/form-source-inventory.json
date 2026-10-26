@@ -154,6 +154,7 @@
     "xpizza-functions/order-form-location-escape.test.js",
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
+    "xpizza-functions/portal/branch-lifecycle-core.test.js",
     "xpizza-functions/portal/ops-core.test.js",
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
@@ -350,6 +351,7 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
+    "xpizza-functions/portal/branch-lifecycle-core.test.js",
     "xpizza-functions/portal/ops-core.test.js",
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
@@ -588,6 +590,7 @@
     "xpizza-functions/order-form-location-escape.test.js",
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
+    "xpizza-functions/portal/branch-lifecycle-core.test.js",
     "xpizza-functions/portal/ops-core.test.js",
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
@@ -784,6 +787,7 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
+    "xpizza-functions/portal/branch-lifecycle-core.test.js",
     "xpizza-functions/portal/ops-core.test.js",
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
@@ -1276,6 +1280,7 @@
   "xpizza-functions/contract/version-witness.js",
   "xpizza-functions/index.js",
   "xpizza-functions/menu-extract.mjs",
+  "xpizza-functions/portal/branch-lifecycle-core.js",
   "xpizza-functions/portal/functions.js",
   "xpizza-functions/portal/ops-core.js",
   "xpizza-functions/portal/ops-functions.js",
@@ -1747,6 +1752,8 @@
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
+  "portal/branch-lifecycle-core.js",
+  "portal/branch-phone.js",
   "portal/location-name.js",
   "portal/ops-core.js",
   "portal/ops-functions.js",
@@ -2628,6 +2635,14 @@
     "xpizza-functions/addproduct-wiring.guard.test.js",
     "xpizza-functions/extras-wiring.guard.test.js"
    ]
+  },
+  "portal/branch-lifecycle-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "portal/branch-phone.js": {
+   "pins": [],
+   "lifts": []
   },
   "portal/location-name.js": {
    "pins": [],
