@@ -308,6 +308,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     + NAV_BLOCK + '\n'   // REAL drv2ReadNavPref/drv2WriteNavPref (not a Waze stub) — server-truth + per-uid hydration (Codex r1 P2-10)
     + DRV2_BLOCK + '\n'
     + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate (reads driverState) — the resumen reuses it
+    + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null; function mountOfferTakeover(){} function stopOfferTakeover(){}\n'
     + liftFn(MY_SCRIPT, 'renderActiveAndQueue') + '\n'
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
     + liftFn(MY_SCRIPT, 'attachSlideConfirm') + '\n'
@@ -414,6 +415,11 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     + 'let feedReady=true, cutoverLoaded=true, driverFeed=null, driverIdentityCutoverMs=null;\n'
     + DRV2_BLOCK + '\n'
     + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate the resumen reuses
+    // REAL offer-takeover wiring so the cross-hub 2nd-order accept drives the REAL acceptSecondOrder over the mock;
+    // only the 5 s repeat is stubbed (its own interval is tested in offer-takeover.test.js).
+    + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null; let soundOn=false; function startOfferRepeat(){}\n'
+    + liftFn(MY_SCRIPT, 'mountOfferTakeover') + '\n'
+    + liftFn(MY_SCRIPT, 'stopOfferTakeover') + '\n'
     + liftFn(MY_SCRIPT, 'renderActiveAndQueue') + '\n'
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
     + liftFn(MY_SCRIPT, 'attachSlideConfirm') + '\n'
@@ -431,7 +437,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
     'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml', 'pickupSubLabel',
     'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash', 'contactRowHtml', 'waTemplatesHtml', 'offerExpiredBannerHtml', 'displayOrderLabel',
-    'attachIncomingBannerHandlers', 'renderIdleState', 'toast', 'resolveCompleteErrorMessage', '_driverState', '_rec',
+    'attachIncomingBannerHandlers', 'renderIdleState', 'toast', 'resolveCompleteErrorMessage', 'navigator', '_driverState', '_rec',
     '_latchInit', '_authGen'];
   const fn = new Function(...params, body);
   const api = fn(document, dom.window, $, XPD, { uid: 'drv' }, {}, {}, escapeHtml, ICONS,
@@ -439,7 +445,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
     navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
     pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash, contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml, displayOrderLabel,
-    attachIncomingBannerHandlers, renderIdleState, toast, resolveCompleteErrorMessage, driverState, rec,
+    attachIncomingBannerHandlers, renderIdleState, toast, resolveCompleteErrorMessage, dom.window.navigator, driverState, rec,
     latchInit, authGen);
 
   // Live observer state (Codex r1 P2-10): drv2Observe must see the SAME board state getDriverOrders reports, plus
@@ -931,17 +937,19 @@ t('inventory guard (r3-2): an ALIASED import of an unimplemented export, called 
     'a mention without a call () is not flagged');
 });
 
-// ── P2-3 the REAL incoming-banner handler drives a real acceptSecondOrder ──
-t('runReal banner accept: the REAL attachIncomingBannerHandlers slide → real acceptSecondOrder over the mock', async () => {
+// ── a cross-hub 2nd order (status 'assigned') over the REAL board renders the S.oferta TAKEOVER, not the legacy banner ──
+// (the takeover slide → acceptSecondOrder, its exclusivity, offline-disable and 5 s repeat are proven in
+// offer-takeover.test.js; acceptSecondOrder committing over the real mock is proven by runReal (b) above.)
+t('runReal cross-hub takeover: an in-progress order + a cross-hub offer renders the S.oferta takeover (banner gone)', () => {
   const r = runReal({ seed: seed([
-    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1 },
-    { id: 'B', pickup: TASK_STATUS.ASSIGNED, delivery: TASK_STATUS.ASSIGNED, hub: HUBM, created: 2 },   // awaiting cross-hub → banner
+    { id: 'A', pickup: TASK_STATUS.COMPLETED, delivery: TASK_STATUS.ACCEPTED, hub: HUBX, created: 1 },  // in-progress delivery
+    { id: 'B', pickup: TASK_STATUS.ASSIGNED, delivery: TASK_STATUS.ASSIGNED, hub: HUBM, created: 2 },   // awaiting cross-hub → S.oferta TAKEOVER
   ]) });
   r.read('drivers/drv').current_task_id = 'A_d';
-  assert.ok(r.banner().includes('btn-accept-inc-B'), 'B surfaces as an incoming banner');
-  const d = r.prep('btn-accept-inc-B'); r.down(d); r.move(1000); await r.up(1000); await tick();
-  assert.equal(r.read('tasks/B_p').status, TASK_STATUS.ACCEPTED, 'the REAL banner handler accepted B via real acceptSecondOrder');
-  assert.equal(r.read('drivers/drv').current_task_id, 'A_d', 'current task unchanged (cross-hub 2nd order keeps the in-progress hub)');
+  r.render();
+  assert.ok(r.active().includes('id="btn-accept"'), 'B surfaces as the full-screen S.oferta takeover (reused offer card)');
+  assert.ok(!r.banner().includes('btn-accept-inc-B'), 'the legacy incoming «otro hub» banner is gone');
+  assert.ok(!r.active().includes('btn-delivered') && !r.active().includes('btn-pickup'), 'the in-progress active stop is not reachable underneath the takeover');
 });
 
 // ── P3 REAL map-lifecycle regression (lifts the real timer fns + visibilitychange handler + cleanupShift) ──

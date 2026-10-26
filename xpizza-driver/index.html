@@ -34,6 +34,8 @@
 .help-rd { font-size: 12.5px; color: var(--text-soft, #546078); margin-top: 2px; line-height: 1.3; }
 .help-done { margin-top: 2px; width: 100%; background: var(--accent, #2F5FB8); color: #fff; border: none; border-radius: 14px; padding: 14px; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 15px; }
 /* cierreRechazado + the whole cuadre shell CSS now lives in SLICE3:CUADRE-CSS (the cuadre was rebuilt full-screen). */
+/* OFFER-TAKEOVER: the cross-hub offer's accept slide, disabled offline (acceptSecondOrder can't be queued). */
+.sv-slide-off { opacity: .55; pointer-events: none; filter: saturate(.6); }
 /* ===== SLICE3:PRESENTATION-3:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -2281,6 +2283,52 @@ function showCierreRechazado(attemptCash) {
   });
   screen.classList.add('open');
 }
+
+// SLICE3:OFFER-TAKEOVER — the cross-hub 2nd-order OFFER takeover (prototype S.oferta). Wires the offer card's accept
+// slide (btn-accept, reused from singleOrderCardHtml) to acceptSecondOrder — NEVER acceptTask (exclusivity is by
+// construction: the stacked branch SKIPS attachActiveCardHandlers in takeover mode) — and drives the owner-ruled 5 s
+// repeat alert while the offer is mounted. acceptSecondOrder uses runTransaction (NOT queued offline), so when
+// OFFLINE the slide is disabled with a truthful state and is NOT wired; single-write actions stay enabled elsewhere.
+let offerTakeoverGen = 0, offerTakeoverTimer = null, offerTakeoverTaskId = null;
+function mountOfferTakeover(offer) {
+  const slide = $('btn-accept');
+  if (slide) {
+    if (navigator.onLine === false) {
+      // TRUTHFUL offline state — acceptSecondOrder can't reach the server; do NOT wire it, show why.
+      slide.classList.add('sv-slide-off');
+      const txt = slide.querySelector('.slide-text'); if (txt) txt.textContent = 'Sin conexión — aceptá al reconectar';
+    } else {
+      attachSlideConfirm('btn-accept', async () => {
+        const r = await XPD.acceptSecondOrder(currentUser.uid, offer.pickupTask.id);   // keeps current_task_id / the in-progress hub
+        if (!(r && r.ok)) throw new Error('accept failed');   // attachSlideConfirm resets the slider on a throw
+      });
+    }
+  }
+  startOfferRepeat(offer);
+}
+function stopOfferTakeover() {
+  offerTakeoverGen++; offerTakeoverTaskId = null;
+  if (offerTakeoverTimer) { clearInterval(offerTakeoverTimer); offerTakeoverTimer = null; }
+}
+function startOfferRepeat(offer) {
+  const taskId = offer && offer.pickupTask && offer.pickupTask.id;
+  if (offerTakeoverTimer && offerTakeoverTaskId === taskId) return;   // already ticking for THIS offer — a re-render must not reset the 5 s cadence
+  stopOfferTakeover();
+  offerTakeoverTaskId = taskId;
+  const myGen = ++offerTakeoverGen;   // ONE interval only; a stale tick (older gen) clears itself
+  // Owner ruling: repeat chime + vibration every 5 s while the offer is mounted. The FIRST alert is the arrival chime
+  // (detectNewAssignments, t=0); this ticks from t=5 s so they never double up. Data-driven self-terminate: when the
+  // offer is no longer mine-at-'assigned' in allTasks (accepted / expired / withdrawn / signed-out / shift-end), stop
+  // — robust against every exit even if no re-render cleared us. soundOn gates the chime; vibration always.
+  offerTakeoverTimer = setInterval(() => {
+    if (myGen !== offerTakeoverGen) { clearInterval(offerTakeoverTimer); offerTakeoverTimer = null; return; }
+    const t = taskId && allTasks[taskId];
+    const stillOffered = !!(t && currentUser && t.assigned_driver_id === currentUser.uid && t.type === 'pickup' && t.status === 'assigned');
+    if (!stillOffered) { stopOfferTakeover(); return; }
+    if (soundOn) { const c = $('chime'); if (c) { c.currentTime = 0; c.play().catch(() => {}); } }
+    try { if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]); } catch {}
+  }, 5000);
+}
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
    drivers/{uid}/nav_app (own-uid, enum) with a localStorage mirror; «Cerrar sesión» reuses driverSignOut. ===== */
@@ -4242,8 +4290,26 @@ function renderActiveAndQueue() {
   drv2GateActiveControls(navArmed);   // P1-1: unresolved pointer among accepted stops → nav + pickup/Entregado fail closed (the Aceptar offer stays live, navArmed=true when all-offers)
   /* ===== SLICE2:STACKED-BRANCH:END ===== */
 
-  attachActiveCardHandlers(active);
-  pendingAccept.forEach(attachIncomingBannerHandlers);
+/* ===== SLICE3:OFFER-TAKEOVER:START — a cross-hub 2nd-order OFFER becomes a full-screen S.oferta takeover (replaces the incoming banner); btn-accept → acceptSecondOrder, and the acceptTask attach is SKIPPED so it can never run in takeover mode ===== */
+  // Any pendingAccept while the ACTIVE order is accepted is a CROSS-HUB 2nd order (same-hub stacks auto-accept and
+  // never reach awaiting_acceptance — and this is fail-safe whatever the hub is). Render the SOONEST-deadline offer
+  // as the single-offer S.oferta card OVER the active stop (banner + queue cleared → the active stop is not reachable
+  // underneath), wired to acceptSecondOrder. attachActiveCardHandlers (the acceptTask attach) is NOT called here, so
+  // acceptTask can NEVER be wired to this btn-accept — exclusivity by construction, on EVERY render path. On accept
+  // or expiry the next render leaves takeover and restores the active stop intact.
+  if (active.phase !== 'awaiting_acceptance' && pendingAccept.length >= 1) {
+    const offer = [...pendingAccept].sort((a, b) => (a.pickupTask?.assignment_deadline ?? Infinity) - (b.pickupTask?.assignment_deadline ?? Infinity))[0];
+    bannerSlot.innerHTML = '';
+    queueSlot.innerHTML = '';
+    queuedOrders = [];
+    activeSlot.innerHTML = singleOrderCardHtml(offer, { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: XPD.RESTAURANT, arrived: false, atRestaurant: false, navPref: drv2ReadNavPref(), nowMs: Date.now() });
+    mountOfferTakeover(offer);   // btn-accept → acceptSecondOrder (offline-gated) + the 5 s repeat alert
+  } else {
+    stopOfferTakeover();         // not in takeover → clear the 5 s repeat
+    attachActiveCardHandlers(active);
+    pendingAccept.forEach(attachIncomingBannerHandlers);
+  }
+/* ===== SLICE3:OFFER-TAKEOVER:END ===== */
 }
 
 // Incoming cross-hub 2nd-order banner(s): a swipe-to-accept for EACH awaiting_acceptance order, surfaced

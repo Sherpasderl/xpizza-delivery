@@ -613,7 +613,9 @@ export function incomingBannerHtml(pending, deps = {}) {
     const collapsed = collapsedBanners.has(o.orderId);
     const total = order.total != null ? `L ${Number(order.total).toLocaleString('es-HN')}` : '';
     // PRIVACY (Codex r1/r2 P1): the incoming banner is ALWAYS pre-acceptance — it shows NO customer-identifying
-    // field (no name, NO exact address/destination, no phone). Only the order #, brand, total and "otro hub".
+    // field (no name, NO exact address/destination, no phone). Only the order #, brand and total. The legacy
+    // «otro hub» sub-label is REMOVED (SLICE3): a cross-hub 2nd order now renders as the S.oferta takeover, not this
+    // banner, so «otro hub» must never ship (asserted in offer-takeover.test.js).
     const cd = o.pickupTask.assignment_deadline
       ? `<span class="accept-countdown" data-deadline="${o.pickupTask.assignment_deadline}">--s</span>` : '';
     return `<div class="incoming-banner${collapsed ? ' collapsed' : ''}" data-order-id="${esc(o.orderId)}">
@@ -622,7 +624,7 @@ export function incomingBannerHtml(pending, deps = {}) {
         <div class="ib-right">${cd}<span class="ib-chev">${CHEV}</span></div>
       </div>
       <div class="ib-body">
-        <div class="ib-sub">${total} · otro hub</div>
+        <div class="ib-sub">${total}</div>
         ${scheduledBadge(order)}
         <div class="slide-confirm accept" id="btn-accept-inc-${esc(o.orderId)}">
           <div class="slide-fill"></div>

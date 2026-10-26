@@ -328,11 +328,12 @@ t('queueDetailHtml: the ACTIVE-stop variant drops the «En cola» chip + the «S
   assert.ok(!html.includes('nav-primary') && !html.includes('id="btn-delivered"'), 'still read-only — no nav, no Entregado');
 });
 
-// ---------- incomingBannerHtml (privacy — brand/#/total/otro hub only) ----------
-t('incomingBannerHtml: pre-accept shows NO name/address; shows brand + total + otro hub + accept slide', () => {
+// ---------- incomingBannerHtml (privacy — brand/#/total only; «otro hub» REMOVED, SLICE3) ----------
+t('incomingBannerHtml: pre-accept shows NO name/address and NO «otro hub»; shows brand + total + accept slide', () => {
   const html = incomingBannerHtml([deepFreeze({ orderId: 'X', phase: 'awaiting_acceptance', order: { display_number: 9, total: 200, customer_name: 'Secreta', address_detected: 'Col. Z' }, pickupTask: { assignment_deadline: 1760000000000 }, deliveryTask: {} })], { ...DEPS, collapsedBanners: new Set() });
   assert.ok(!html.includes('Secreta') && !html.includes('Col. Z'), 'no PII pre-accept');
-  assert.ok(html.includes('otro hub') && html.includes('btn-accept-inc-X') && html.includes('data-deadline="1760000000000"'));
+  assert.ok(!html.includes('otro hub'), 'the legacy «otro hub» sub-label is gone (a cross-hub 2nd order is now the S.oferta takeover)');
+  assert.ok(html.includes('btn-accept-inc-X') && html.includes('data-deadline="1760000000000"'));
 });
 
 // ---------- combinedPickupHtml (apRecoger / S19) ----------
