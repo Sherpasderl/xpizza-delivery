@@ -134,7 +134,7 @@
     const S = { mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
       // S2b
       screen: 'store', stack: [], flow: null, q: null, qKey: null, askedKey: null, outZone: false, closedRefused: false, geo: null, err: null, tipDraft: '',
-      backScreen: null, sendHint: null, sendTotals: null, pinDraft: null, pinToast: false, lastDelivery: null };
+      backScreen: null, sendHint: null, sendTotals: null, pinDraft: null, pinToast: false, pinStepOk: false, lastDelivery: null };
 
     // ── the view model: the served menu as the prototype's item shape ──
     const photo = (d) => (d && d.img && cfg.assetBase ? cfg.assetBase.replace(/\/?$/, '/') + String(d.img).replace(/^\.?\//, '') : '');
@@ -511,7 +511,9 @@
       const denied = () => { S.geo = 'denied'; if (!finitePin(f.pin) && cfg.loc && finitePin(cfg.loc)) C.setPin(f, cfg.loc.lat, cfg.loc.lng, false); if (S.screen === 'checkout') render(); };
       if (!g || typeof g.getCurrentPosition !== 'function') { denied(); return; }
       try {
-        g.getCurrentPosition((pos) => { S.geo = 'ok'; if (!(f.pin && f.pin.confirmed)) C.setPin(f, pos.coords.latitude, pos.coords.longitude, false); if (S.screen === 'checkout') render(); }, denied, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+        // OWNER 2026-10-21 (DECISIONS:2072): a DETECTED fix is a real location ⇒ the pin is CONFIRMED in the model (the body's
+        // pin_confirmed:true is the device's truth); only a denied / failed / fallback location must be confirmed on the pin step
+        g.getCurrentPosition((pos) => { S.geo = 'ok'; if (!(f.pin && f.pin.confirmed)) C.setPin(f, pos.coords.latitude, pos.coords.longitude, true); if (S.screen === 'checkout') render(); }, denied, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
       } catch (_) { denied(); }
     }
 
@@ -530,7 +532,7 @@
       const f = S.flow, del = f.mode === 'delivery', m = member(), open = isOpen(), po = poLines(), T = totalsNow();
       const poNames = [...new Set(po.map((l) => { const s = sectionOfKey(l.key); return s ? s.name : l.key; }))].join(', ');
       const geoDenied = S.geo === 'denied' && !m;
-      const pinOk = !!(f.pin && f.pin.confirmed);
+      const pinOk = S.pinStepOk === true;   // the drawn «Pin confirmado» = confirmed ON THE PIN STEP (P f.pinOk), not a detected fix
       const chev = IC.chev.replace('class="i"', 'class="i chev"');
       const zoneKm = (S.lastDelivery && Number.isFinite(S.lastDelivery.max_km) ? S.lastDelivery.max_km : cfg.zoneKm);
       // Entrega — ASAP only (scheduling, the «Programar» card, is S4)
@@ -785,7 +787,16 @@
       if (a === 'tip-save') { const n = Number(S.tipDraft) || 0; C.chooseTip(S.flow, { other: Math.min(n, C.TIP_MAX_LEMPIRAS) }); closeLayer(); render(); return true; }
       if (a === 'placing-go') { placingGo(); return true; }
       if (a === 'placing-back') { placingStop(); closeLayer(); return true; }
-      if (a === 'pin-done') { const d = S.pinDraft; if (d && finitePin(d)) { C.setPin(S.flow, d.lat, d.lng, true); S.outZone = false; S.pinToast = true; } closeLayer(); render(); return true; }
+      if (a === 'pin-done') {
+        const d = S.pinDraft;
+        if (d && finitePin(d)) {
+          C.setPin(S.flow, d.lat, d.lng, true); S.pinStepOk = true;
+          // P :2272 toasts on every «Listo»: after the re-quote when the point moved, at once when it did not (no re-quote runs)
+          if (stateKey() === S.askedKey) toast(S.outZone ? 'Ese punto queda fuera de la zona' : 'Pin confirmado', TOAST_MS);
+          else { S.outZone = false; S.pinToast = true; }
+        }
+        closeLayer(); render(); return true;
+      }
       if (a === 'err-retry') { closeLayer(); send(); return true; }   // the SAME placement (capp-api keeps the id)
       if (a === 'err-cash') { closeLayer(); emit('pay-cash', {}); return true; }   // TODO(ruling pending)
       if (a === 'err-card') { closeLayer(); placeTap(); return true; }   // a new card attempt goes through the same placing card

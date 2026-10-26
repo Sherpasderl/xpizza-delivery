@@ -830,3 +830,32 @@ test('S2b r2: «Agregar más platos» → the menu (history walked back); a devi
   c.timers.flush(); await settle();
   assert.equal(c.srv.of('createOrder').length, 0, '🔴 nothing sent');
 });
+
+// ── OWNER 2026-10-21 (DECISIONS:2072): only a location-DENIED customer must confirm the pin; a detected GPS fix is a real location ──
+test('S2b pin gate: a DETECTED GPS fix passes the pin gate with NO pin step (P flow); the body carries the fix with pin_confirmed:true', async () => {
+  const b = bootCo({ geo: GEO_OK, script: { createOrder: [{ status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }] } });
+  await toCheckout(b);
+  assert.equal(cta(b), 'Agregá Detalles adicionales', '🔴 GPS detected ⇒ the CTA as in P (no «Ajustá el pin a tu dirección»)');
+  assert.equal(b.text('button.map .tag'), 'Tu ubicación', 'the drawn tag: not «Pin confirmado» until the customer confirms on the pin step (P f.pinOk)');
+  assert.ok(b.text('.urow').includes('Ajustá el pin a tu dirección'), 'the drawn row sub-line, as in P');
+  await b.type('#f-details', 'Portón negro'); await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000');
+  await b.click('[data-act="pay"][data-val="cash"]');
+  assert.equal(cta(b), 'Continuar', 'ready with no pin step');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]');
+  b.timers.flush(); await settle();
+  const sent = b.srv.of('createOrder')[0].body;
+  assert.deepEqual([sent.lat, sent.lng, sent.pin_confirmed], [15.52, -88.04, true], '🔴 the device fix, truthfully pin_confirmed');
+  assert.equal(b.srv.of('quoteOrder').at(-1).body.pin.confirmed, true, 'the quote carries the same confirmed fix');
+});
+
+test('S2b pin gate: geolocation DENIED (or failed) ⇒ «Ajustá el pin a tu dirección» until the pin step is confirmed', async () => {
+  for (const geo of [GEO_NO, { getCurrentPosition: (_ok, no) => no({ code: 3 }) }, null]) {
+    const b = bootCo({ geo });
+    await toCheckout(b);
+    assert.equal(cta(b), 'Ajustá el pin a tu dirección', `🔴 ${geo ? 'denied/failed' : 'no geolocation'} ⇒ the pin gate`);
+    await b.click('[data-act="pin"]');
+    b.ui.state.pinDraft = { lat: 15.5, lng: -88 };
+    await b.click('[data-act="pin-done"]');
+    assert.equal(cta(b), 'Agregá Detalles adicionales', 'confirmed on the pin step ⇒ the next gate');
+  }
+});
