@@ -89,24 +89,42 @@ function selectForms(argv, cwd, forms = FORMS) {
   return mine.length ? mine : null;
 }
 
-// GET a JSON body with the built-in https module (no global fetch: the build image's Node may predate it). Bounded.
-function getJson(url, timeoutMs = 20000) {
+// GET a JSON body with the built-in https module (no global fetch: the build image's Node may predate it).
+// 🔴 EVERY PATH SETTLES, AND NOTHING IS ALLOWED TO HANG (codex guard r1 P1/P2). A response that dies after its headers
+// (EOF, 'aborted', a socket error) never reaches 'end'; a promise left pending lets the event loop drain and the build exit 0
+// UNCHECKED. So: one settle path; 'aborted' / 'error' / a 'close' before 'end' reject; `timeoutMs` bounds inactivity and
+// `totalMs` bounds the WHOLE request (a server dribbling a byte a second never ends), both cleared on settle.
+// `get` is injectable for the loopback regression tests; production uses https.get.
+function getJson(url, { timeoutMs = 20000, totalMs = 45000, get = https.get } = {}) {
   return new Promise((done, fail) => {
-    const req = https.get(url, { headers: { accept: 'application/json' }, timeout: timeoutMs }, (res) => {
-      let raw = '';
+    let settled = false, deadline = null, req = null;
+    const settle = (fn, v) => { if (settled) return; settled = true; clearTimeout(deadline); fn(v); };
+    const reject = (msg) => { settle(fail, new Error(`${url} ${msg}`)); if (req) req.destroy(); };
+    deadline = setTimeout(() => reject(`did not complete within ${totalMs} ms`), totalMs);
+    req = get(url, { headers: { accept: 'application/json' }, timeout: timeoutMs }, (res) => {
+      let raw = '', ended = false;
       res.setEncoding('utf8');
       res.on('data', (c) => { raw += c; });
+      res.on('aborted', () => reject('response aborted before it ended'));
+      res.on('error', (e) => reject(`response failed: ${e && e.message}`));
+      res.on('close', () => { if (!ended) reject('connection closed before the response ended'); });
       res.on('end', () => {
-        if (res.statusCode !== 200) return fail(new Error(`${url} answered ${res.statusCode}`));
-        try { done(JSON.parse(raw)); } catch (e) { fail(new Error(`${url} returned non-JSON`)); }
+        ended = true;
+        if (res.statusCode !== 200) return reject(`answered ${res.statusCode}`);
+        let body;
+        try { body = JSON.parse(raw); } catch (e) { return reject('returned non-JSON'); }
+        settle(done, body);
       });
     });
-    req.on('timeout', () => req.destroy(new Error(`${url} timed out after ${timeoutMs} ms`)));
-    req.on('error', fail);
+    req.on('timeout', () => reject(`was idle for ${timeoutMs} ms`));
+    req.on('error', (e) => reject(`request failed: ${e && e.message}`));
   });
 }
 
 async function main() {
+  // Belt for the class P1 belongs to: the exit code is a FAILURE until the very end proves otherwise, so any path that leaves
+  // the event loop without finishing (a promise that never settles) fails the build rather than passing it.
+  process.exitCode = 1;
   let failed = false;
   for (const p of unregisteredForms()) { console.error(`FAIL ${p}: carries a baked menu but is not in tools/splice-form-bundle.js FORMS`); failed = true; }
   const selected = selectForms(process.argv.slice(2), process.cwd());
@@ -124,6 +142,7 @@ async function main() {
   }
   if (failed) { console.error('form-bundle-live-check: FAILED — regenerate the baked menu from the published catalog before deploying the forms'); process.exit(1); }
   console.log('form-bundle-live-check: OK');
+  process.exitCode = 0;
 }
 if (require.main === module) main().catch((e) => { console.error('form-bundle-live-check: ERROR', e && e.message); process.exit(1); });
-module.exports = { compareBundle, unregisteredForms, publicMenuUrl, selectForms, IDENTITY_KEYS };
+module.exports = { compareBundle, unregisteredForms, publicMenuUrl, selectForms, getJson, IDENTITY_KEYS };

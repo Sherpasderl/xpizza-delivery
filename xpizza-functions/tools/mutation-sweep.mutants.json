@@ -19779,5 +19779,35 @@
    "node",
    "tools/form-bundle-live-check.test.js"
   ]
+ },
+ {
+  "id": "formcheck-07",
+  "slice": "formcheck",
+  "label": "codex r1 P1: a response cut off after its headers is not detected (only a deadline, if any, ends it)",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "      res.on('aborted', () => reject('response aborted before it ended'));\n      res.on('error', (e) => reject(`response failed: ${e && e.message}`));\n      res.on('close', () => { if (!ended) reject('connection closed before the response ended'); });\n",
+  "to": "",
+  "kills_with": [
+   "a response cut off after its headers: names the cause"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
+ },
+ {
+  "id": "formcheck-08",
+  "slice": "formcheck",
+  "label": "codex r1 P2: no total deadline — a server dribbling bytes forever holds the build open",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "    deadline = setTimeout(() => reject(`did not complete within ${totalMs} ms`), totalMs);\n",
+  "to": "",
+  "kills_with": [
+   "a response that dribbles data forever: names the cause"
+  ],
+  "command": [
+   "node",
+   "tools/form-bundle-live-check.test.js"
+  ]
  }
 ]

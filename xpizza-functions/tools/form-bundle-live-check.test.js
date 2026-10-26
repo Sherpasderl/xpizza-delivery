@@ -6,7 +6,8 @@ const { readFileSync } = require('fs');
 const { FORMS } = require('./splice-form-bundle');
 const { extractBundle } = require('../catalog/splice-form-bundle');
 const { dirname, join } = require('path');
-const { compareBundle, unregisteredForms, publicMenuUrl, selectForms } = require('./form-bundle-live-check');
+const http = require('http');
+const { compareBundle, unregisteredForms, publicMenuUrl, selectForms, getJson } = require('./form-bundle-live-check');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -68,5 +69,39 @@ for (const rid of rids) {
   assert.strictEqual(cmd, 'node ../platform/stamp-version.js && node ../xpizza-functions/tools/form-bundle-live-check.js --this-form',
     `${rid}: its Netlify build command stamps, then runs the baked-menu check for this form only`);
 }
-ok('every registered form\'s Netlify build runs the check (--this-form) after the version stamp')
-console.log(`\nform-bundle-live-check: OK (${n})`);
+ok('every registered form\'s Netlify build runs the check (--this-form) after the version stamp');
+// ── the GET can never pass a build it did not finish (codex guard r1 P1/P2) — driven against a LOOPBACK server ──
+(async () => {
+  const timers = new Set();
+  const server = http.createServer((req, res) => {
+    if (req.url === '/ok') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end('{"menu":{"dishes":[]}}'); }
+    if (req.url === '/500') { res.writeHead(500); return res.end('no'); }
+    if (req.url === '/badjson') { res.writeHead(200); return res.end('{not json'); }
+    if (req.url === '/truncated') { res.writeHead(200, { 'content-length': '5000' }); res.write('{"menu":{"dish'); return setTimeout(() => req.socket.destroy(), 20); }
+    if (req.url === '/dribble') { res.writeHead(200); const t = setInterval(() => res.write(' '), 30); timers.add(t); req.on('close', () => clearInterval(t)); return; }
+    res.writeHead(404); res.end();
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const opts = { get: http.get, timeoutMs: 5000, totalMs: 600 };
+  const rejects = async (path, re, label) => {
+    let err = null;
+    const hang = new Promise((_, no) => { const t = setTimeout(() => no(new Error('did not settle within 3 s')), 3000); timers.add(t); });
+    try { await Promise.race([getJson(base + path, opts), hang]); } catch (e) { err = e; }
+    assert.ok(err, `${label}: rejects (never settles silently, never resolves)`);
+    assert.match(err.message, re, `${label}: names the cause`);
+  };
+  try {
+    assert.deepStrictEqual(await getJson(base + '/ok', opts), { menu: { dishes: [] } }, 'a complete 200 JSON body resolves');
+    await rejects('/truncated', /closed before the response ended|aborted/, 'a response cut off after its headers');
+    await rejects('/dribble', /did not complete within 600 ms/, 'a response that dribbles data forever');
+    await rejects('/500', /answered 500/, 'a non-200');
+    await rejects('/badjson', /non-JSON/, 'a 200 that is not JSON');
+    ok('the GET settles on every path: a truncated response, a never-ending dribble (total deadline), a non-200 and non-JSON each REJECT; only a complete 200 JSON resolves');
+  } finally {
+    for (const t of timers) { clearInterval(t); clearTimeout(t); }
+    server.closeAllConnections && server.closeAllConnections();
+    server.close();
+  }
+  console.log(`\nform-bundle-live-check: OK (${n})`);
+})().catch((e) => { console.error('form-bundle-live-check FAILED:', e); process.exit(1); });
