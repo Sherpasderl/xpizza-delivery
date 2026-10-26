@@ -32,10 +32,13 @@ try {
   const PB1_BLOCKS = { 'catalog-publish.js': 4 };
   // per-product extras (stage 2) landed later: its exact module inverse is reversed FIRST (newest first)
   const { unapplyExtrasModule, FILES: EXTRAS_FILES } = require('../tools/extras-module-inverse');
+  // the mirror key-encoding hotfix (2026-10-26) landed after both: its exact module inverse is reversed FIRST (newest first)
+  const { unapplyMirrorKeysModule, FILES: MIRRORKEYS_FILES } = require('../tools/mirrorkeys-module-inverse');
   const shaBase = (f) => {
-    const raw = fsys.readFileSync(path.join(__dirname, f), 'utf8');
+    const raw0 = fsys.readFileSync(path.join(__dirname, f), 'utf8');
+    const raw = MIRRORKEYS_FILES.includes(`catalog/${f}`) ? unapplyMirrorKeysModule(`catalog/${f}`, raw0) : raw0;
     const src = EXTRAS_FILES.includes(`catalog/${f}`) ? unapplyExtrasModule(`catalog/${f}`, raw) : raw;
-    if (!C2A_BLOCKS[f]) return crypto.createHash('sha256').update(fsys.readFileSync(path.join(__dirname, f))).digest('hex');
+    if (!C2A_BLOCKS[f]) return crypto.createHash('sha256').update(MIRRORKEYS_FILES.includes(`catalog/${f}`) ? Buffer.from(src, 'utf8') : fsys.readFileSync(path.join(__dirname, f))).digest('hex');
     const begins = (src.match(/\/\* c2a-evidence:begin \*\//g) || []).length;
     const ends = (src.match(/\/\* c2a-evidence:end \*\//g) || []).length;
     assert.strictEqual(begins, C2A_BLOCKS[f], `🔴 ${f}: expected exactly ${C2A_BLOCKS[f]} c2a blocks, found ${begins} begin delimiters`);

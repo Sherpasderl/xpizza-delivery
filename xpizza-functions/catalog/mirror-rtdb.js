@@ -15,16 +15,19 @@
 // keeps index.js byte-unchanged.
 const RTDB_URL = 'https://xpizza-delivery-default-rtdb.firebaseio.com';
 
+const { encodeMirrorTables } = require('./mirror-keys');   // hotfix 2026-10-26: RTDB-unsafe name keys
 function makeRtdbMirror(rtdb) {
   return async function mirrorToRtdb(restaurantId, payload) {
+    const enc = encodeMirrorTables(payload.menu, payload.extras);   // today's tables unless a key needs encoding
     await rtdb.ref(`catalog_snapshot/${restaurantId}`).set({
       version: payload.version,
       seq: payload.seq,      // 2b-pre: the monotonic ordinal — lets a reader compute version distance
                              // WITHOUT Firestore, which is the whole point of a Firestore-independent mirror
       rid: payload.rid,
-      menu: payload.menu,
-      extras: payload.extras,
+      menu: enc.menu,
+      extras: enc.extras,
       at: Date.now(),        // wall-clock stamp for staleness triage; the VERSION is the authority
+      ...(enc.key_encoding ? { key_encoding: enc.key_encoding } : {}),
     });
   };
 }
