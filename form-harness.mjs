@@ -135,8 +135,8 @@ export function makeLogicalClock(start = Date.now()) {
       const RealDate = window.Date; const clock = this;
       function LogicalDate(...a) {
         if (!new.target) return new RealDate(clock.now()).toString();
-        const d = a.length ? new RealDate(...a) : new RealDate(clock.now());
-        return new.target === LogicalDate ? d : Reflect.construct(RealDate, a.length ? a : [clock.now()], new.target);
+        // constructed ONCE (codex r2 P2): a second construction would coerce the arguments twice (valueOf side effects)
+        return Reflect.construct(RealDate, a.length ? a : [clock.now()], new.target);
       }
       LogicalDate.prototype = RealDate.prototype;
       Object.defineProperty(RealDate.prototype, 'constructor', { value: LogicalDate, writable: true, configurable: true });

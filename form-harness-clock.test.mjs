@@ -95,6 +95,11 @@ const turns = async (k) => { for (let i = 0; i < k; i++) await new Promise((r) =
   assert.strictEqual(D.name, 'Date'); assert.strictEqual(D.length, 7);
   class Stamp extends D { label() { return 'S' + this.getTime(); } }
   const s = new Stamp(); assert.ok(s instanceof Stamp && s instanceof D); assert.strictEqual(s.label(), 'S' + start, 'a subclass gets logical NOW');
+  // arguments are coerced exactly ONCE (codex r2 P2): a double construction ran valueOf twice
+  for (const [label, make] of [['new Date(x)', (x) => new D(x)], ['new Stamp(x) (subclass)', (x) => new Stamp(x)]]) {
+    let calls = 0; const x = { valueOf() { calls++; return 5; } };
+    const v = make(x); assert.strictEqual(v.getTime(), 5); assert.strictEqual(calls, 1, `🔴 ${label} coerced its argument ${calls}× — constructed more than once`);
+  }
   await c.sleep(1000); assert.strictEqual(new D().getTime(), start + 1000); assert.strictEqual(D(), new RealDate(start + 1000).toString(), 'Date() moves with the clock');
   assert.strictEqual(Date.prototype.constructor, Date, 'Node\'s own Date is untouched (the realm was the window\'s)');
   ok('Date: callable → string of logical NOW (args ignored), constructor forms, now / parse / UTC, instanceof, .constructor, a subclass, moves with the clock; Node\'s Date untouched');
