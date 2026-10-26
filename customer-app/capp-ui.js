@@ -127,7 +127,8 @@
     const unavailable = opts.unavailable || new Set();
     const soldOf = (key) => { try { return typeof unavailable === 'function' ? !!unavailable(key) : unavailable.has(key); } catch (_) { return false; } };
     const now = opts.now || (() => new Date());
-    const emit = (name, detail) => { try { (opts.onEvent || (() => {}))(name, detail); } catch (_) {} };
+    let dead = false;   // S2b r1 P2-3: destroy() ⇒ every later callback of this instance is a no-op
+    const emit = (name, detail) => { if (dead) return; try { (opts.onEvent || (() => {}))(name, detail); } catch (_) {} };
     const cart = CappCart.createCart(menu);
     const $ = (id) => doc.getElementById(id);
     const app = $('app');
@@ -190,7 +191,7 @@
     let toastT = null;
     // S1's refusal toast stays 4 s (S1-approved); the S2b toasts take the prototype's toast() lifetime, 2.2 s (P:1377)
     const TOAST_MS = 2200;
-    function toast(msg, ms = 4000) { const tm = opts.timers || { setTimeout: (f, d) => setTimeout(f, d), clearTimeout: (h) => clearTimeout(h) }; const t = $('toast'); if (!t) return; t.textContent = msg; t.classList.add('on'); if (toastT !== null) tm.clearTimeout(toastT); toastT = tm.setTimeout(() => { toastT = null; t.classList.remove('on'); }, ms); }
+    function toast(msg, ms = 4000) { const tm = opts.timers || { setTimeout: (f, d) => setTimeout(f, d), clearTimeout: (h) => clearTimeout(h) }; const t = $('toast'); if (!t || dead) return; t.textContent = msg; t.classList.add('on'); if (toastT !== null) tm.clearTimeout(toastT); toastT = tm.setTimeout(() => { toastT = null; if (!dead) t.classList.remove('on'); }, ms); }
     function showRefusal() { if (S.open) renderDetail(); else if (S.layerKind === 'cart') renderLayer(); else toast(S.refusal); }
     const tooLong = () => { if (!cart.count()) return false; try { CappSerialize.serialize(cart, menu); return false; } catch (e) { return !!(e && e.code === 'cart_text_too_long'); } };
 
@@ -391,8 +392,11 @@
       box.innerHTML = !nq ? '' : hits.length ? `<div class="rcount">${hits.length} resultado${hits.length === 1 ? '' : 's'}</div>${hits.map(rowHtml).join('')}` : `<div class="noresults">Nada con «${esc(q)}». Probá otra palabra.</div>`;
     }
     function openLayer(kind) { if (kind === 'cart' && S.layerKind !== 'cart') pushHist(); returnTo = descOf(doc.activeElement); S.layerKind = kind; renderLayer(true); }   // the cart is a back step (P openCart :1752)
-    function closeLayer() { if (S.layerKind === 'placing') placingStop(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); }
+    function closeLayer() { if (S.layerKind === 'placing') placingStop(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
+    // a quote that failed while another layer was open: its sheet once that layer closes (still the same failed state)
+    function closeLayerThen() { if (S.quoteErrSheet && !S.layerKind && (S.screen === 'checkout' || S.screen === 'tip')) { S.quoteErrSheet = false; if (S.quoteErr && S.quoteErr === stateKey()) showErr(ERR.generic('err-requote')); } }
     function renderLayer(fresh) {
+      if (dead) return;
       const L = $('layer'); if (!L) return; const k = S.layerKind;
       if (!k) { L.innerHTML = ''; syncInert(); return; }
       const keep = !fresh && L.contains(doc.activeElement) ? descOf(doc.activeElement) : null;   // S2b: a keypad tap keeps its key focused
@@ -414,7 +418,12 @@
 
     // ═══ S2b: CHECKOUT ═══
     const T_ = opts.timers || { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (h) => clearTimeout(h), setInterval: (f, ms) => setInterval(f, ms), clearInterval: (h) => clearInterval(h) };
-    const navigate = opts.navigate || ((url) => { doc.defaultView.location.assign(url); });
+    const navTo = opts.navigate || ((url) => { doc.defaultView.location.assign(url); });
+    const navigate = (url) => { if (!dead) navTo(url); };
+    // the order-intake key (per-brand config, data only; never logged): createOrder / chargeOnlineOrder require it (index.js:750-760,
+    // :1469-1479). Missing ⇒ the app sends nothing: a config error at boot and «Hacer pedido» stays disabled (fail closed)
+    const intakeOk = () => typeof cfg.intakeKey === 'string' && cfg.intakeKey !== '';
+    const intakeHeaders = () => ({ Authorization: 'Bearer ' + cfg.intakeKey });
     const member = () => opts.member || null;
     // the modules are resolved LAZILY (the S1 host may load the page without them): no modules ⇒ the store keeps S1's host event
     let C = null, api = null;
@@ -446,12 +455,15 @@
     async function requote() {
       if (!S.flow || !mods() || !cart.count() || S.screen === 'store' || S.screen === 'sending') return;
       const f = S.flow; const key = stateKey();
-      if (key === S.askedKey) return;
+      if (key === S.askedKey || key === S.quoteErr) return;   // a failed state waits for «Reintentar» or a change (no loop)
       S.askedKey = key;
       if (!quotable(f)) { S.q = null; S.qKey = null; return; }
       let c; try { c = ctxBase(); } catch (_) { return; }
       const r = await api.quote(f, c);
-      if (r.kind === 'superseded') return;
+      if (dead || r.kind === 'superseded') return;
+      // S2b r1 P2-6: a failed quote is never a silent dead end — the key is released and the generic held state offers «Reintentar»
+      if (r.kind === 'offline' || r.kind === 'try_again' || r.kind === 'refused') { S.askedKey = null; S.quoteErr = key; quoteFailed(); }
+      else S.quoteErr = null;
       if (r.kind === 'ok') { S.q = r.record; S.qKey = key; if (f.mode === 'delivery') { S.outZone = false; if (r.record.resp.delivery) S.lastDelivery = r.record.resp.delivery; } }
       else if (r.kind === 'out_of_zone') { S.outZone = true; }
       // pin / offline / try_again / refused / update_required: no amount is shown (never a guess); a refused QUOTE has no sheet; the placement's sheets are below (onOutcome)
@@ -470,7 +482,7 @@
       const amt = T.ready ? ' · ' + moneyC(T.total) : '';   // pickup places from here (no tip); no amount until the quote is ready
       return S.flow.pay === 'online' ? 'Pagar' + amt : 'Confirmar pedido' + amt;
     }
-    const ctaOff = (T) => !!need() || (S.flow.mode !== 'delivery' && !T.ready);
+    const ctaOff = (T) => !!need() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));   // pickup places from here
     function syncCta() { const b = $('cta'); if (!b || !S.flow) return; const T = totalsNow(); b.disabled = ctaOff(T); b.textContent = ctaLabel(T); }
 
     // ── the map: the drawn chrome; a real Google map inside it when a key is configured, else the schematic SVG ──
@@ -491,6 +503,7 @@
     }
     const mapCenter = () => { const p = S.pinDraft || (S.flow && S.flow.pin); return finitePin(p) ? { lat: p.lat, lng: p.lng } : (cfg.loc && finitePin(cfg.loc) ? { lat: cfg.loc.lat, lng: cfg.loc.lng } : null); };
     const gmapBox = (kind) => (cfg.mapsKey ? `<div class="gmap" data-gmap="${kind}" style="position:absolute;inset:0"></div>` : '');   // TODO(owner ruling): style the live map; S2b keeps the drawn chrome on top
+    let pinGen = 0, pinMap = null;   // S2b r1 P1-2: the ACTIVE pin map; an obsolete instance's callbacks are dropped
     function wireMaps() {
       const els = [...app.querySelectorAll('[data-gmap]')]; if (!els.length) return;
       const p = loadMaps(); if (!p) return;
@@ -500,7 +513,7 @@
           const big = el.dataset.gmap === 'pin';
           const m = new gm.Map(el, { center: c, zoom: 17, disableDefaultUI: true, clickableIcons: false, gestureHandling: big ? 'greedy' : 'none', keyboardShortcuts: big });
           el.__map = m;
-          if (big) m.addListener('idle', () => { const cc = m.getCenter(); if (cc) S.pinDraft = { lat: cc.lat(), lng: cc.lng() }; });
+          if (big) { const gen = ++pinGen; pinMap = { gen, m, el }; m.addListener('idle', () => { if (gen !== pinGen || dead) return; const cc = m.getCenter(); if (cc) S.pinDraft = { lat: cc.lat(), lng: cc.lng() }; }); }
         }
       }).catch(() => {});
     }
@@ -590,7 +603,7 @@
 
     // ── the tip step (prototype tipHtml :1954-1961) ──
     const tipKey = () => { const c = S.flow.tipChoice; return c === null ? null : c.kind === 'none' ? 0 : c.kind === 'other' ? 'other' : c.lempiras; };
-    const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need();
+    const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need() && intakeOk();
     function tipHtml() {
       const f = S.flow, T = totalsNow(), c = tipKey();
       const chip = (v, label) => `<button class="chip" aria-pressed="${c === v}" data-act="tipc" data-val="${v}">${label}</button>`;
@@ -621,13 +634,13 @@
     <div class="acts"><button class="primary okbtn" data-act="placing-go"><i class="fill" aria-hidden="true"></i><span>Se ve bien (<span class="cd">0:02</span>)</span></button><button class="btn2 wide" data-act="placing-back">Volver</button></div></div></div>`;
     }
     function placeTap() {
-      if (!S.flow || need() || !C.tipChosen(S.flow) || !totalsNow().ready) return;
+      if (dead || !intakeOk() || !S.flow || need() || !C.tipChosen(S.flow) || !totalsNow().ready) return;
       placingStop(); S.backScreen = S.screen; openLayer('placing');
       let left = 2;
       placingI = T_.setInterval(() => { left = Math.max(0, left - 1); const cd = doc.querySelector('[data-act="placing-go"] .cd'); if (cd) cd.textContent = '0:0' + left; }, 1000);
       placingT = T_.setTimeout(placingGo, 2000);
     }
-    function placingGo() { placingStop(); if (S.layerKind !== 'placing') return; S.layerKind = null; renderLayer(); send(); }
+    function placingGo() { placingStop(); if (dead || S.layerKind !== 'placing') return; S.layerKind = null; renderLayer(); send(); }
 
     // ── «Enviando tu pedido…» (prototype sendingHtml :2029-2042) while place() is in flight ──
     function sendingHtml() {
@@ -642,12 +655,14 @@
     }
     async function send() {
       const f = S.flow, T = totalsNow();
-      if (!T.ready || !mods()) return;
-      let c; try { c = ctxBase(); } catch (_) { return; }
+      if (dead || !intakeOk() || !T.ready || !mods()) return;   // no key ⇒ nothing is sent (the record stays clean)
+      let c; try { c = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { return; }   // the key only where the server requires it
       S.screen = 'sending'; S.sendHint = null; S.sendTotals = { total: T.total, tip: T.tip }; render();
+      // S2b r1 P2-7: an accepted price change ⇒ «Enviando» shows the ceiling actually sent
+      const onExpected = (cents) => { if (dead || !Number.isFinite(cents)) return; S.sendTotals = { total: cents, tip: T.tip }; if (S.screen === 'sending') render(); };
       let out;
-      try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, expectedNetCents: T.total, totals: T, sheet: priceSheet }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
-      onOutcome(out);
+      try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, expectedNetCents: T.total, totals: T, sheet: priceSheet, onExpected }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
+      if (!dead) onOutcome(out);
     }
     // the 600 ms happy beat: the spinner becomes the green check, then the host takes over (S5)
     function beat(out) {
@@ -663,6 +678,11 @@
       S.screen = target; render();
     }
     function showErr(e) { S.err = e; openLayer('err'); }
+    function quoteFailed() {
+      if (S.screen !== 'checkout' && S.screen !== 'tip') return;
+      if (S.layerKind) { S.quoteErrSheet = true; return; }   // shown when the open layer closes
+      showErr(ERR.generic('err-requote'));
+    }
     const ERR = {
       offline: () => ({ title: 'Sin conexión', body: 'No pudimos enviar tu pedido. Revisá tu conexión e intentá de nuevo; tu pedido está intacto.', icon: 'warn', acts: [{ act: 'err-retry', label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       // S2 drops the «Programar» button and the schedule sentence (OWNER 2026-10-26; CLOSED_SHEET.scheduleHint is S4's)
@@ -674,7 +694,7 @@
       // the approved Q9 mockup #mk-exists — «Escribir a la tienda» hidden (no public restaurant contact in the app data)
       // the owner-approved held-states mockup (MOCKUP-capp-S2b-held-states.html #mk-paused / #mk-generic / #mk-pending)
       paused: () => ({ title: `${cfg.name || ''} no está recibiendo pedidos en este momento`, body: 'Tu pedido no se envió ni se cobró nada; está intacto para que lo intentés en unos minutos.', icon: 'warn', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
-      generic: () => ({ title: 'No pudimos enviar tu pedido', body: 'Intentá de nuevo en un momento; tu pedido está intacto.', acts: [{ act: 'err-retry', label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
+      generic: (retry = 'err-retry') => ({ title: 'No pudimos enviar tu pedido', body: 'Intentá de nuevo en un momento; tu pedido está intacto.', acts: [{ act: retry, label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       pending: () => ({ title: 'Tu pago todavía está en verificación', body: 'Estamos confirmando tu pago con el banco. No hace falta pagar de nuevo; esperá un momento mientras termina.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Volver al pedido', primary: true }] }),
       exists: (ref) => ({ title: 'Necesitamos revisar tu pedido', body: 'Ya existe un pedido con este número, así que no lo enviamos de nuevo para no duplicarlo. Escríbenos y lo revisamos.', icon: 'calm', note: `Referencia <b>#${esc(ref || '')}</b>`, acts: [{ act: 'lclose', label: 'Volver al pedido' }] }),
     };
@@ -693,7 +713,8 @@
       if (k === 'payment_failed') {
         backTo('checkout');   // P pixelPay :2016 — back() to «Entrega & Pago», then the sheet
         if (out.clearable === false) { showErr(ERR.pending()); return; }   // a cancel return the server still calls pending: the order stays locked
-        showErr(ERR.payFailed()); return;
+        // «Usar otra tarjeta» needs the whole checkout back: after a return that could not restore it, the generic held state (U3)
+        showErr(S.returning && !contextRestored() ? ERR.generic() : ERR.payFailed()); return;
       }
       if (k === 'refunded') { backTo('checkout'); showErr(ERR.refunded(out.refunded_total_cents)); return; }
       if (k === 'existing_order') { backTo('checkout'); showErr(ERR.exists(out.reference)); return; }   // also a kept identity after a 426 (update_required: true)
@@ -796,7 +817,10 @@
       if (a === 'placing-go') { placingGo(); return true; }
       if (a === 'placing-back') { placingStop(); closeLayer(); return true; }
       if (a === 'pin-done') {
-        const d = S.pinDraft;
+        // the ACTIVE map's centre at the tap (an `idle` may not have fired yet); no live map ⇒ the draft
+        const live = pinMap && pinMap.gen === pinGen && pinMap.el.isConnected ? pinMap.m.getCenter() : null;
+        const d = live ? { lat: live.lat(), lng: live.lng() } : S.pinDraft;
+        pinGen++; pinMap = null; S.pinDraft = null;   // the closing map is obsolete from here
         if (d && finitePin(d)) {
           C.setPin(S.flow, d.lat, d.lng, true); S.pinStepOk = true;
           // P :2272 toasts on every «Listo»: after the re-quote when the point moved, at once when it did not (no re-quote runs)
@@ -806,24 +830,55 @@
         closeLayer(); render(); return true;
       }
       if (a === 'err-retry') { closeLayer(); send(); return true; }   // the SAME placement (capp-api keeps the id)
+      if (a === 'err-requote') { closeLayer(); S.quoteErr = null; requote(); return true; }   // the failed quote, asked again (its key was released)
       if (a === 'err-cash') { closeLayer(); emit('pay-cash', {}); return true; }   // TODO(ruling pending)
-      if (a === 'err-card') { closeLayer(); placeTap(); return true; }   // a new card attempt goes through the same placing card
+      if (a === 'err-card') {   // a new card attempt goes through the same placing card — once the restored checkout is priced
+        closeLayer(); S.screen = 'checkout';
+        if (totalsNow().ready) { render(); placeTap(); return true; }
+        S.askedKey = null; S.quoteErr = null;
+        const asked = requote(); render();   // requote marks its key first: the render does not ask again
+        asked.then(() => { if (dead) return; if (totalsNow().ready) placeTap(); else if (!S.layerKind) showErr(ERR.generic('err-requote')); });
+        return true;
+      }
       if (a === 'home') { closeLayer(); emit('home'); return true; }
       return false;
     }
     // ?pay= — the hosted-checkout return
+    // S2b r1 P2-4: the checkout context (mode, pin, customer fields, tip) back from the body the card send stashed; null ⇒ not
+    // fully restorable (an action that needs it is never offered)
+    function flowFromBody(b) {
+      if (!b || typeof b !== 'object') return null;
+      const f = C.freshFlow(member());
+      C.setMode(f, b.order_type === 'pickup' ? 'pickup' : 'delivery');
+      Object.assign(f, { name: String(b.customer_name || ''), phone: String(b.customer_phone || '').replace(/^\+504\s*/, ''), email: String(b.customer_email || ''),
+        notes: b.notes && b.notes !== '—' ? String(b.notes) : '', pay: b.payment_method === 'online' ? 'online' : 'cash' });
+      if (f.mode === 'delivery') {
+        if (!Number.isFinite(b.lat) || !Number.isFinite(b.lng)) return null;
+        C.setPin(f, b.lat, b.lng, true); f.details = String(b.address_details || '');
+        const l = Number(b.tip_cents || 0) / 100;
+        if (!Number.isInteger(l) || C.chooseTip(f, C.TIP_PRESETS.includes(l) ? l : { other: l }) === false) return null;
+      }
+      return f;
+    }
+    const contextRestored = () => !!S.flow && S.flowRestored === true && !need() && (S.flow.mode !== 'delivery' || C.tipChosen(S.flow));
     async function handlePayReturn(search) {
       if (!mods()) return;
+      const q0 = new URLSearchParams(search || ''); const rec0 = api.readPlace();
+      const rid0 = q0.get('order') || (rec0 && rec0.order_id) || null;
+      const back = rid0 ? flowFromBody(api.stashedOrder(rid0)) : null;
+      if (back) { S.flow = back; S.mode = back.mode; S.flowRestored = true; }
       if (!S.flow) { S.flow = C.freshFlow(member()); C.setMode(S.flow, S.mode); S.flow.pay = 'online'; }
+      S.returning = true;
       const rec = api.readPlace();
       S.backScreen = 'checkout'; S.screen = 'sending'; S.sendHint = null;
       S.sendTotals = rec ? { total: Number.isFinite(rec.expected_net_cents) ? rec.expected_net_cents : null, tip: rec.totals && Number.isFinite(rec.totals.tip) ? rec.totals.tip : 0 } : null;
       render();
       let out; try { out = await api.handleReturn(search); } catch (e) { out = { kind: 'error' }; }
-      if (out) onOutcome(out);
+      if (out && !dead) onOutcome(out);
     }
 
     function render() {
+      if (dead) return;
       app.classList.toggle('narrow', app.clientWidth > 0 && app.clientWidth < 375);
       const keepSearch = S.layerKind === 'ssearch' && $('layer') && $('layer').querySelector('#sq') ? $('layer') : null;
       const ae = doc.activeElement;
@@ -915,13 +970,14 @@
     doc.addEventListener('keydown', onKey);
     if (doc.defaultView) doc.defaultView.addEventListener('popstate', onPop);
     render();
+    if (mods() && !intakeOk()) { try { (doc.defaultView && doc.defaultView.console || console).error('capp: config error — intakeKey missing; placing disabled'); } catch (_) {} }
     // S2b: a hosted-checkout return (?pay=…)
     const search = opts.search != null ? String(opts.search) : (doc.defaultView && doc.defaultView.location ? doc.defaultView.location.search : '');
     const returning = /[?&]pay=/.test(search || '') ? handlePayReturn(search) : null;
     return {
       cart, menu, render, state: S, openCheckout, returning,
       restore(snapshot) { const r = cart.hydrate(snapshot); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
-      destroy() { doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); if (doc.defaultView) doc.defaultView.removeEventListener('popstate', onPop); },
+      destroy() { dead = true; placingStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; } doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); if (doc.defaultView) doc.defaultView.removeEventListener('popstate', onPop); },
     };
   }
 

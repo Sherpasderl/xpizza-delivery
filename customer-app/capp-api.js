@@ -224,6 +224,24 @@
       return { kind: 'confirming', order_id: id, state: CONFIRMING_STATES.has(st) ? st : 'pending' };   // creds kept, no payment offer
     }
     const recoverySheet = (id) => ({ kind: 'existing_order', order_id: id, reference: ref4(id) });   // no mint, no payment action
+    // S2b r1 P1-1 / P2-5: a cancel return the server still calls pending (or one without usable creds) LOCKS the order — kept on
+    // its record (`pay_pending`), so a dismissal or a reload never re-opens payment: only the poll and the pending held state
+    const pendingSheet = (id) => ({ kind: 'payment_failed', order_id: id, state: 'cancelled', clearable: false });
+    function lockPending(id) {
+      const r = readPlace();
+      if (r && r.order_id === id) { try { patchPlace(id, { pay_pending: true }); } catch (_) {} return; }
+      if (r) return;   // a newer placement is never replaced
+      const t = now();
+      writeJSON(PLACE_KEY, { order_id: id, method: 'online', card: true, issued: true, unresolved: false, dispatched: 1, pay_pending: true, ts: t, last_send: t, expires_at: expiresAtOf(t, t) });
+    }
+    async function lockedOutcome(id) {
+      const t = credsFor(id);
+      if (!t) return pendingSheet(id);
+      const p = await pollOnce(id, t);
+      if (p.forbidden) return recoverySheet(id);
+      if (p.state === 'pending') return pendingSheet(id);
+      return outcomeOfState(id, p.state, p.json);   // a definitive answer releases the lock (cancelled / failed clear the record)
+    }
     async function resolveExisting(id) {
       const t = credsFor(id);
       if (t) {
@@ -263,6 +281,7 @@
     async function place(p) {
       const method = p.flow.pay === 'online' ? 'online' : 'cash';
       const live = readPlace();
+      if (live && live.pay_pending === true) return lockedOutcome(live.order_id);   // locked: zero writes until a definitive poll
       if (live && live.card === true && live.unresolved && (method === 'online' || lockInterruptedCard)) return resolveExisting(live.order_id);   // rule ii: never charged again
       if (live && live.card === true && method === 'online') {
         if (live.issued && !sameEconomics(live, p)) {                                     // r2 P1 #1: resolve the existing placement first
@@ -316,6 +335,7 @@
         if (rj && rj.handled) {
           if (!rj.resend) return { kind: rj.declined ? 'price_declined' : 'error', order_id: id };
           if (typeof rj.expectedNetCents === 'number') expected = rj.expectedNetCents;   // the body now stands behind THIS number
+          if (typeof p.onExpected === 'function') { try { p.onExpected(expected); } catch (_) {} }   // the UI shows the ceiling it sends
           if (rj.silent) silentRetried = true;
           continue;   // the SAME identity (mintNewOrderId is reward-only, never in S2)
         }
@@ -372,11 +392,13 @@
       let id = q.get('order'); let t = q.get('t');
       if (s && (!id || s.order_id === id)) { id = id || s.order_id; t = t || s.t; }
       if (pay === 'cancel') {
-        if (!id || !t) return { kind: 'payment_failed', order_id: id || null, state: 'cancelled' };
+        // no usable creds: never «Tu banco no autorizó» without an authoritative answer — recovery, locked (S2b r1 P2-5)
+        if (!id || !t) { const r = readPlace(); const lid = id || (r && r.card === true ? r.order_id : null); if (lid) lockPending(lid); return pendingSheet(lid); }
         const p = await Promise.race([pollOnce(id, t), timeout(CANCEL_CHECK_MS).then(() => ({ state: 'pending', json: {} }))]);
-        // the authoritative poll state wins (P2 #5); only a server that still says pending is the genuine-cancel screen
+        // the authoritative poll state wins (P2 #5); a server that still says pending LOCKS the order (the pending held state)
         if (p && !p.forbidden && p.state !== 'pending') return outcomeOfState(id, p.state, p.json);
-        return { kind: 'payment_failed', order_id: id, state: 'cancelled', clearable: false };   // «Pago no completado»; record kept
+        lockPending(id);
+        return pendingSheet(id);
       }
       if (pay !== 'complete' || !id || !t) return { kind: 'confirming', order_id: id || null, state: 'pending' };
       const deadline = now() + POLL_DEADLINE_MS;
@@ -392,7 +414,10 @@
       return { kind: 'confirming', order_id: id, state: 'timeout' };   // the webhook confirms later; creds kept
     }
 
-    return { quote, latestQuote, place, handleReturn, resolveExisting, readPlace, clearPlace, genOrderId, expiresAtOf, credsFor,
+    // the order body a card send stashed (the return restores the checkout from it)
+    function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
+
+    return { quote, latestQuote, place, handleReturn, resolveExisting, readPlace, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       confirmQuote: cq, PLACE_KEY };
   }
 
