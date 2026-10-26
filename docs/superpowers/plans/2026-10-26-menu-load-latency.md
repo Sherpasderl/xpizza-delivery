@@ -1,33 +1,63 @@
-# Plan 2: Live-menu load latency (every restaurant)
+# Plan 2: Live-menu load latency, a warm `getPublicMenu` (every restaurant)
 
-**Status:** PLAN r1, awaiting the advisor gate. Its own Codex gate and deploy. Owner approved the sequencing on 2026-10-25 (DECISIONS.md).
-**Goal:** shrink the window in which a form shows its baked menu (W1 in the menu-drift analysis), for every brand, with no UX change.
-**Measured (advisor, prod logs, orders.lamusa.hn since 09-26):** full 200 responses have a median of 4.1 s and a p90 of 8.2 s, and 96 of 160 took over 3 s. 304 responses have a median of 0.5 s and a p90 of 4.6 s.
-**Sampled 2026-10-25 from the dev machine:** warm 200s took 0.58 to 0.86 s; one 304 took 3.6 s, which fits a cold instance.
+**Status:** PLAN r1. It answers Codex plan r1 (1 P1, 5 P2), per the advisor's rulings of 2026-10-26. It is a functions-only change with its own scoped gate and a functions deploy. The owner approved the sequencing on 2026-10-25 (DECISIONS.md).
 
-## What the request path costs today (file:line on main 6fcd7ff2)
+**r1 changes:**
+- **§2b dropped entirely.** That was the Netlify `/menu` proxy and edge cache. Dropping it closes P1 (the URL broke the build check), P2-4 (the consumer inventory) and P2-5 (edge freshness), and makes plan 4's P2-4 moot.
+- **The OPTIONS max-age idea is dropped (P2-3).** The Firebase v2 wrapper runs `cors` before application code (firebase-functions/lib/v2/providers/https.js:83), and `cors` ends an OPTIONS request without calling the handler (cors/lib/index.js:173).
+- **The diagnosis is corrected (P2-2).**
+- **An exact measurement and a post-deploy smoke are added (P2-6).**
 
-1. **No warm instance.** `exports.getPublicMenu` (xpizza-functions/index.js:7052) declares `{ region, cors, timeoutSeconds: 20, memory: '256MiB', maxInstances: 20 }` and has no `minInstances`. The cash order path already keeps one warm (index.js:1420, `minInstances: 1`). A first visit after an idle period pays a cold start.
-2. **A CORS preflight on every stamped load.** The forms fetch through `sherpaFetch` / `SherpaClient.fetch`. That wrapper adds `X-Client-App/-Deployment/-Build/-Compat` (la-musa-orders/sherpa-client.js:259), which makes the GET non-simple, so the browser sends an `OPTIONS` request first. The preflight response, verified live with curl, carries no `Access-Control-Max-Age`, so browsers re-preflight on almost every page load. That is two round trips to a possibly-cold function before the menu arrives.
-3. **No shared cache.** `getPublicMenu` sends `cache-control: public, max-age=30, s-maxage=120`. The forms call the function URL directly (`PUBLICMENU_URL`, la-musa-orders/index.html:1785 and xpizza-orders/index.html:1603), and there is no Firebase Hosting in front of it: xpizza-functions/firebase.json has only database, firestore and functions. Nothing between the browser and the function can use `s-maxage`.
-4. **The first fetch is never conditional.** The ETag lives only in memory after a live apply (form-live-menu.js:75), so a first visit always downloads the full body.
+**Goal:** shorten W1, the time a form shows its baked menu before the live menu arrives. No UX change and no form change.
 
-## Steps (each measured before the next; stop when the median is acceptable)
+## Diagnosis (corrected; file:line on main 6fcd7ff2)
 
-**2a. Functions only, two small option changes, its own gate and deploy.**
-- Add `minInstances: 1` to `getPublicMenu`. The function is 256 MiB, so this is the same cost class the cash path already pays.
-- Answer the preflight with `Access-Control-Max-Age: 7200`, which is Chrome's cap; Safari caps lower. The v2 `cors` option has no max-age, so the plan is a two-line `OPTIONS` pre-handler. It sets the header and lets the existing cors middleware answer. If Codex prefers it, the alternative is to drop the `X-Client-*` headers on this one public GET so it becomes a simple request with no preflight at all. Both are brand-agnostic.
-- Tests: an emulator-free unit test drives the handler with an `OPTIONS` request and asserts the header, plus an assert that the declared options include `minInstances: 1`. Add a mutation entry for each.
-- Measure: re-sample from prod logs a week later, using the same query the advisor used.
+1. **No warm instance.** `exports.getPublicMenu` (xpizza-functions/index.js:7052) declares `{ region: 'us-central1', cors: PUBLIC_MENU_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 20 }`, with no `minInstances`. The cash order path keeps one warm (index.js:1420). A first visit after an idle period pays a cold start.
+   - Samples on 2026-10-25: warm 200s took 0.58 to 0.86 s from the dev machine; one request took 3.6 s, which fits a cold instance. The advisor's prod sample: 200s have a median of 4.1 s and a p90 of 8.2 s.
+2. **First loads are simple GETs, with no preflight.**
+   - The menu request carries no `X-Client-*` headers. Those go only to the four identity endpoints (sherpa-client.js:44/:268), and pselfupdate-client.test.js:170 pins that.
+   - The only script-added preflight trigger is `If-None-Match` on subsequent refreshes (form-live-menu.js:75), after a live apply. My r0 claim of a preflight on every load was wrong.
+   - The browser's own HTTP cache and its automatic revalidation are separate from the script's ETag and are not disabled by it.
+3. **A 304 is not cheaper server-side.** Both 200 and 304 run `buildPublicMenu` before the ETag comparison (index.js:7068). So status-specific medians do not isolate the cause; a cold start hits both.
 
-**2b. Optional: same-origin edge proxy (Netlify), only if 2a is not enough.**
-- Each form's netlify.toml gets `[[redirects]] from = "/menu/*" to = "https://us-central1-xpizza-delivery.cloudfunctions.net/getPublicMenu/menu/:splat" status = 200`. `PUBLICMENU_URL` becomes the relative `/menu`. The request becomes same-origin, so no CORS and no preflight, and Netlify's CDN can honour `s-maxage`.
-- **Must verify before building:** whether Netlify's edge actually caches proxied responses under these headers, and how the ETag and 304 behave through the proxy. Measure on a deploy preview.
-- **Knock-on:** `form-bundle-live-check.js` reads `PUBLICMENU_URL` to find the endpoint. A relative URL needs the check to resolve it against the function origin. One function, tested.
-- A publish is visible within `s-maxage` (120 s) at the edge. That is the same bound browsers already accept from `max-age=30`, plus the CDN layer.
+The only change in this plan is (1). (2) needs no change. (3) is recorded for a later look, not changed here.
 
-## Out of scope
-Changing the payload, which is about 11 KB and not the bottleneck. Changing the apply or defer policy, which is Plan 4 / item 5.
+## Change
+
+- **Code:** `getPublicMenu` options gain `minInstances: 1`. One line. Nothing else changes: not the projection, `maxInstances: 20`, the origin list, restaurant validation, the private catalog rules or pricing.
+- **Test:** the assertion goes on the real exported function. cors-preflight.test.js already loads index.js with a synthetic third deployment, so it gains `assert.strictEqual(app.getPublicMenu.__endpoint.minInstances, 1)`. The existing per-origin preflight cases for getPublicMenu stay as they are: configured, synthetic and denied origins, `If-None-Match` allowed, the ETag exposed.
+- **Mutation entry:** removing the option is killed by that assertion.
+- **Regen and guards:** the R3 chain and form-source-inventory at the exact tip, plus a full `npm test` in the heavy slot.
+
+## Measurement (the acceptance gate)
+
+Two measurements: server-side, from logs (it isolates cold starts), and client-side, in a real browser (it is the actual goal).
+
+**A. Server-side, from Cloud Logging.** The advisor runs this and confirms it matches the query behind the 4.1 s / 8.2 s baseline. If it doesn't, the baseline is re-pulled with this query, so before and after are comparable.
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="getpublicmenu"
+httpRequest.requestMethod="GET"
+(httpRequest.referer=~"^https://orders\.lamusa\.hn" OR httpRequest.referer=~"^https://orders\.xpizza\.hn")
+```
+
+- **Sample:** every matching request, for 7 days before deploy versus the 7 days starting 24 h after deploy, split by brand (referer) and by status (200 / 304 / other), reporting `httpRequest.latency` median and p90 and the non-2xx/304 rate.
+- **Pass:** the 200 median is ≤ 1.0 s and the p90 is ≤ 2.5 s for each brand, and the error rate is no higher than baseline.
+
+**B. Client-side, navigation → live menu in real Chrome, both forms.**
+- **Harness:** the same headless-Chrome DevTools driver used for the item 5 mockup, against the deployed sites, read-only. It records `window.__liveMenu.feed.state().lastAppliedAt − performance.timeOrigin` once `state().source === 'live'`. That's the moment the live menu is received and validated, whether or not it changed anything on screen.
+- **Runs:** for each form, 10 runs with a fresh profile (cold browser cache) and 10 runs reusing one profile (warm browser cache), at 390 px.
+- **Pass:** fresh-profile median ≤ 2.5 s, and no run > 6 s.
+- **Caveat:** these are dev-machine numbers, not a Honduran mobile connection. They are a relative before/after measure, so they're also taken before deploy as the baseline.
+
+**Post-deploy smoke (immediately after the deploy, by me, read-only):**
+- `gcloud functions describe getPublicMenu --gen2 --region us-central1` shows `minInstances: 1`.
+- One B-run per form passes.
+- Both forms' `form-bundle-live-check.js --this-form` stay green.
+
+The week-later A comparison follows.
 
 ## Risks
-`minInstances` has a small standing cost. A wrong preflight header could block the menu fetch entirely; the unit test plus a manual check on a deploy preview cover that. And the fetch already fails soft: the baked menu stays.
+- **Standing cost.** One warm 256 MiB instance, the same class the cash path already pays.
+- **No change to failure behaviour.** The form still fails soft to its baked menu, and that path is untouched.
