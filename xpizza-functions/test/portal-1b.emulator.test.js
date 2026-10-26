@@ -168,12 +168,12 @@ const H7 = { sun: DAY, mon: { open: false }, tue: DAY, wed: DAY, thu: DAY, fri: 
     assert.strictEqual(e1.membership_writes_enabled, false, 'E1 tells the portal W is off');
     const row = e1.branches.find((r) => r.rid === 'marca_s_centro');
     const before = await snap();
-    for (const p of [
-      api.createBranchDraft({ opId: 'p1bGate01', brandId: 'marca_s', locationName: 'Gate', phone: '+50431234567', hours: H7, prepDefaultMin: 20, token: as(OWNER) }),
-      api.updateBranchProfile({ rid: 'marca_s_centro', expectedVersion: row.version, patch: { prep_default_min: 22 }, token: as(OWNER) }),
-      api.setBranchActive({ rid: 'marca_s_centro', expectedVersion: row.version, active: false, token: as(OWNER) }),
-      api.deleteBranchDraft({ rid: 'marca_s_centro', expectedVersion: 'd.x.y.0', token: as(OWNER) }),
-    ]) assert.deepStrictEqual(await refused(p), { status: 503, code: 'writes_disabled' });
+    for (const go of [   // one call at a time: each request is made only when it is awaited (no unhandled rejection)
+      () => api.createBranchDraft({ opId: 'p1bGate01', brandId: 'marca_s', locationName: 'Gate', phone: '+50431234567', hours: H7, prepDefaultMin: 20, token: as(OWNER) }),
+      () => api.updateBranchProfile({ rid: 'marca_s_centro', expectedVersion: row.version, patch: { prep_default_min: 22 }, token: as(OWNER) }),
+      () => api.setBranchActive({ rid: 'marca_s_centro', expectedVersion: row.version, active: false, token: as(OWNER) }),
+      () => api.deleteBranchDraft({ rid: 'marca_s_centro', expectedVersion: 'd.x.y.0', token: as(OWNER) }),
+    ]) assert.deepStrictEqual(await refused(go()), { status: 503, code: 'writes_disabled' });
     assert.strictEqual(await snap(), before, 'nothing written');
     ok('P4 W off → every portal write builder → 503 writes_disabled (the UI hides them, §3.0), nothing written');
   }
