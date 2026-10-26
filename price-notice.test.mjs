@@ -221,7 +221,25 @@ for (const dir of Object.keys(CASES)) {
     if (mode === 'cash-exact') assert.ok(Math.abs(Number(w.document.getElementById('cash-tendered').value) - want) < 0.005, `${dir} cash Pago exacto: 🔴 the tender follows the ADOPTED total`);
     if (mode === 'cash-custom') assert.strictEqual(Number(w.document.getElementById('cash-tendered').value), 1000, `${dir} cash custom: the customer's own tender is NOT rewritten`);
   }
-  ok(`${dir}: payment chosen before the adoption — PixelPay amount and Pago exacto follow the adopted total; a custom tender is kept`);
+  {   // codex r2: a CUSTOM tender that equals the temporarily adopted total, then a failed confirm → the rollback must not
+      // rewrite the customer's tender to the old total (the temporary redraw flips it to "exact")
+    const { w, c, reprice } = await boot(dir);
+    w.chg(c.X, 1); await settle();
+    const from = priceOf(w, c.X), to = from + 10;
+    await toStage(w, 's2', 66);
+    w.selectPay('cash'); await settle();
+    w.setCashTendered(w.redeemAdjustedTotal() + 10);              // custom today (≠ the old total) — equals the NEW total
+    const before = Number(w.document.getElementById('cash-tendered').value);
+    assert.strictEqual(w.eval('cashExactMode'), false, `${dir}: premise — a custom tender`);
+    await toStage(w, 's1', 33);
+    reprice([[c.X, 'dish', to]]);
+    w.priceNoticeHtml = () => '';                                  // the confirm fails → rollback
+    w.openCartReview(); await settle();
+    assert.deepStrictEqual(plain(w.eval('CART.disclosed()')), [], `${dir}: premise — rolled back`);
+    assert.strictEqual(Number(w.document.getElementById('cash-tendered').value), before, `${dir}: 🔴 the customer's custom tender survives the rollback (not rewritten to the old total)`);
+    assert.strictEqual(w.eval('cashExactMode'), false, `${dir}: 🔴 …and it is still a CUSTOM tender`);
+  }
+  ok(`${dir}: payment chosen before the adoption — PixelPay amount and Pago exacto follow the adopted total; a custom tender is kept, including through a rollback when it equals the temporary total`);
 
   // ── 6. THE ORACLE: adopted cart ≡ the same cart freshly added at the new price (cash + card), payment chosen BEFORE the
   //       adoption and never reselected; real server functions; the DISPLAYED totals too (codex r1 P2) ──

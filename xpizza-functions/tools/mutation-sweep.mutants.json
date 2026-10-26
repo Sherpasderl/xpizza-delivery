@@ -20019,5 +20019,20 @@
    "node",
    "../price-notice.test.mjs"
   ]
+ },
+ {
+  "id": "pricenotice-14",
+  "slice": "pricenotice",
+  "label": "la_musa (codex r2): a rollback rewrites a custom tender that equalled the temporary total",
+  "file": "../la-musa-orders/index.html",
+  "from": "    if (tenderEl) { tenderEl.value = savedTender; try { onCashTenderedInput(); } catch (_) {} }\n    cashExactMode = savedExact;\n",
+  "to": "",
+  "kills_with": [
+   "the customer's custom tender survives the rollback"
+  ],
+  "command": [
+   "node",
+   "../price-notice.test.mjs"
+  ]
  }
 ]

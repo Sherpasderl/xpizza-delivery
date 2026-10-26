@@ -2220,6 +2220,11 @@ function priceNoticeMoment(target){
   if (target === 'cart') { const sh = document.getElementById('cart-review-sheet'); if (!sh || !sh.classList.contains('open')) return false; }
   const changes = priceNoticeChanges();
   if (!changes) return false;
+  // The customer's cash tender and its exact/custom mode, as they stand BEFORE the attempt (codex r2): a redraw at the
+  // temporary total can flip the mode (a custom tender that happens to equal the new total reads as exact), and the
+  // rollback redraw would then rewrite the tender to the OLD total. Both are restored exactly after a rollback.
+  const tenderEl = document.getElementById('cash-tendered');
+  const savedTender = tenderEl ? tenderEl.value : null, savedExact = cashExactMode;
   const rollback = CART.adoptPrices(changes);
   if (!rollback) return false;
   let ok = false;
@@ -2231,7 +2236,12 @@ function priceNoticeMoment(target){
     else ok = priceNoticeShows(document.getElementById('s2-price-notice'), document.getElementById('s2-summary'), changes);
     ok = ok && priceNoticePayShows();
   } catch (_) { ok = false; }
-  if (!ok) { rollback(); try { updateTotal(); } catch (_) {} }
+  if (!ok) {
+    rollback();
+    try { updateTotal(); } catch (_) {}
+    if (tenderEl) { tenderEl.value = savedTender; try { onCashTenderedInput(); } catch (_) {} }
+    cashExactMode = savedExact;
+  }
   return ok;
 }
 // Tasks 6/7 own the rendered conflict UI. What must be true HERE is that a blocked submit is never
