@@ -62,6 +62,16 @@ function compareBundle(baked, published) {
   compareKeyed('variant_group', byKey(baked.variant_items), byKey(published.variant_items), out);
   compareKeyed('category', byId(baked.categories), byId(published.categories), out);
   compareKeyed('has_photo', asSet(baked.has_photo), asSet(published.has_photo), out);
+  // PLAN 4 r3 §3 — the display structures the forms now boot from the bake, under the same FAIL/WARN rules: a gate category,
+  // an option-map entry or a badge baked but different / absent live FAILS; a published-only one WARNS. badge_priority is ONE
+  // ordered value (its order IS the content), compared whole.
+  compareKeyed('pickup_only', asSet(baked.pickup_only_cats), asSet(published.pickup_only_cats), out);
+  compareKeyed('weekend_only', asSet(baked.weekend_only_cats), asSet(published.weekend_only_cats), out);
+  compareKeyed('extras_by_category', byKey(baked.extras_by_category), byKey(published.extras_by_category), out);
+  compareKeyed('extras_by_item', byKey(baked.extras_by_item), byKey(published.extras_by_item), out);
+  compareKeyed('badge', byKey(baked.badges), byKey(published.badges), out);
+  const whole = (v) => (v === undefined ? [] : [['order', { value: v }]]);
+  compareKeyed('badge_priority', whole(baked.badge_priority), whole(published.badge_priority), out);
   return out;
 }
 
@@ -95,13 +105,14 @@ function selectForms(argv, cwd, forms = FORMS) {
 // UNCHECKED. So: one settle path; 'aborted' / 'error' / a 'close' before 'end' reject; `timeoutMs` bounds inactivity and
 // `totalMs` bounds the WHOLE request (a server dribbling a byte a second never ends), both cleared on settle.
 // `get` is injectable for the loopback regression tests; production uses https.get.
-function getJson(url, { timeoutMs = 20000, totalMs = 45000, get = https.get } = {}) {
+// `headers` (PLAN 4 §3): the bake and this check ask for a FRESH read — Cache-Control: no-cache beside a build-unique query.
+function getJson(url, { timeoutMs = 20000, totalMs = 45000, get = https.get, headers = { accept: 'application/json' } } = {}) {
   return new Promise((done, fail) => {
     let settled = false, deadline = null, req = null;
     const settle = (fn, v) => { if (settled) return; settled = true; clearTimeout(deadline); fn(v); };
     const reject = (msg) => { settle(fail, new Error(`${url} ${msg}`)); if (req) req.destroy(); };
     deadline = setTimeout(() => reject(`did not complete within ${totalMs} ms`), totalMs);
-    req = get(url, { headers: { accept: 'application/json' }, timeout: timeoutMs }, (res) => {
+    req = get(url, { headers, timeout: timeoutMs }, (res) => {
       let raw = '', ended = false;
       res.setEncoding('utf8');
       res.on('data', (c) => { raw += c; });
@@ -133,7 +144,8 @@ async function main() {
     const html = readFileSync(file, 'utf8');
     const url = publicMenuUrl(html, rid);
     let body;
-    try { body = await getJson(url); } catch (e) { console.error(`FAIL ${rid}: ${e.message}`); failed = true; continue; }
+    // a FRESH read, like the bake's: a cached older body would fail a build whose bake read the newer one
+    try { body = await getJson(`${url}?_check=${Date.now()}`, { headers: { accept: 'application/json', 'cache-control': 'no-cache' } }); } catch (e) { console.error(`FAIL ${rid}: ${e.message}`); failed = true; continue; }
     const { fail, warn } = compareBundle(extractBundle(html), body && body.menu);
     for (const w of warn) console.log(`WARN ${rid} ${w}`);
     for (const f of fail) console.error(`FAIL ${rid} ${f}`);

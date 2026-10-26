@@ -20226,5 +20226,209 @@
    "node",
    "tools/migrate-menu-structure.test.js"
   ]
+ },
+ {
+  "id": "fb-20",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the fresh-read query is dropped — an intermediary cache can serve the bake a stale menu",
+  "file": "tools/bake-form-bundle.js",
+  "from": "function bakeUrl(html, rid, buildStartMs) { return `${publicMenuUrl(html, rid)}?_bake=${encodeURIComponent(String(buildStartMs))}`; }",
+  "to": "function bakeUrl(html, rid, buildStartMs) { return `${publicMenuUrl(html, rid)}`; }",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-21",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the bake stops asking for no-cache",
+  "file": "tools/bake-form-bundle.js",
+  "from": "{ headers: { accept: 'application/json', 'cache-control': 'no-cache' } }); } catch (e) {\n    return { rid, changed: false, refusals: [`bake_fetch_failed",
+  "to": "{ headers: { accept: 'application/json' } }); } catch (e) {\n    return { rid, changed: false, refusals: [`bake_fetch_failed",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-22",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: a wrong-brand body is baked (the rid check dropped)",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  if (env.rid !== rid) r.push(",
+  "to": "  if (false) r.push(",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-23",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: an unknown representation is baked",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  if (!KNOWN_REPRESENTATIONS.includes(env.representation_version)) r.push(",
+  "to": "  if (false) r.push(",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-24",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the identity keys are baked into the form (pre-apply payloads change)",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  const strip = (rec) => (isObj(rec) ? Object.fromEntries(Object.entries(rec).filter(([k]) => !IDENTITY_KEYS.has(k))) : rec);",
+  "to": "  const strip = (rec) => rec;",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-25",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: a refused body is spliced anyway",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  if (refusals.length) return { rid, changed: false, refusals };",
+  "to": "  if (false) return { rid, changed: false, refusals };",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-26",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: a dish in no category is baked",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  D.forEach((d, i) => { if (isObj(d) && !catIds.has(d.cat)) r.push(`bake_dish_orphan@${i}`); });",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-27",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: an option value naming nothing is baked",
+  "file": "tools/bake-form-bundle.js",
+  "from": "      for (const v of vals) if (!extraCats.has(v) && !extraKeys.has(v)) r.push(`bake_option_map_value: ${field}.${k} → ${v}`);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-28",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: a gate naming no category is baked",
+  "file": "tools/bake-form-bundle.js",
+  "from": "    for (const c of m[field]) if (!catIds.has(c)) r.push(`bake_gate_unknown_category: ${field} → ${c}`);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-29",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: a badge priority naming no badge is baked",
+  "file": "tools/bake-form-bundle.js",
+  "from": "    else for (const k of m.badge_priority) if (!isObj(m.badges) || !Object.prototype.hasOwnProperty.call(m.badges, k)) r.push(`bake_badge_priority_unknown: ${k}`);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-30",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: an off-set reward icon is baked",
+  "file": "tools/bake-form-bundle.js",
+  "from": "    recs.forEach((x, i) => { if (isObj(x) && x.reward_icon !== undefined && !REWARD_ICONS.includes(x.reward_icon)) r.push(`bake_reward_icon: ${coll}@${i}`); });",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-31",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the shared picker's variant rule is not applied to the bake",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  if (m.variant_items !== undefined) { try { groupPicker.validateVariantBlock(m.variant_items, D, 'bake'); } catch (e) { r.push(`bake_${e.message}`); } }",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-32",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the bake runs without --this-form (it would rewrite a working tree)",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  if (!argv.includes('--this-form')) {",
+  "to": "  if (false) {",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-33",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the live check stops comparing badge_priority",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "  compareKeyed('badge_priority', whole(baked.badge_priority), whole(published.badge_priority), out);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-34",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the live check stops comparing extras_by_category",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "  compareKeyed('extras_by_category', byKey(baked.extras_by_category), byKey(published.extras_by_category), out);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-35",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the live check stops comparing the weekend gate",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "  compareKeyed('weekend_only', asSet(baked.weekend_only_cats), asSet(published.weekend_only_cats), out);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-36",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the bake stops checking unique dish ids",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  if (new Set(D.map((d) => String(d && d.id))).size !== D.length) r.push('bake_dish_duplicate');",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
  }
 ]
