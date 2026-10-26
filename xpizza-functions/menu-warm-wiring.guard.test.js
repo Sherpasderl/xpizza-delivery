@@ -10,7 +10,7 @@ const { execFileSync } = require('child_process');
 const { BASE, HUNKS, unapplyMenuWarmIndex } = require('./tools/menu-warm-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = require('./tools/formsignal-inverse').unapplyFormSignalIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // PLAN 3 landed on top: stripped first
+const real = require('./tools/o1b-inverse').unapplyO1bIndex(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))))));   // PLAN 3 landed on top: stripped first; R-WIRE train: the newer train slices reversed too (formsignal innermost → wahealth → drvc → drvf → stackseq → O1b)
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.strictEqual(HUNKS.length, 1, 'one hunk');
 assert.notStrictEqual(unapplyMenuWarmIndex(real), real, 'non-vacuity: the hunk is present and swapped back');

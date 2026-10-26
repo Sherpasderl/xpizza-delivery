@@ -6,7 +6,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-const src = require('./tools/drvc-inverse').unapplyDrvcIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // DRIVER C (newer) reversed first
+const src = require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))));   // the newer slices reversed first: formsignal innermost → wahealth → DRIVER C (R-WIRE train re-point)
 const a = src.indexOf('/* drvf:begin */'); const b = src.indexOf('/* drvf:end */');
 assert.ok(a > 0 && b > a, 'DRVF-WIRE-BLOCK the drvf block exists exactly once');
 assert.strictEqual(src.indexOf('/* drvf:begin */', a + 1), -1, 'DRVF-WIRE-ONCE');
@@ -24,8 +24,8 @@ console.log('  ✓ drvf wiring: path, retry:true, awaited core, no catch, sole r
 const { execFileSync } = require('child_process');
 const { unapplyDrvfIndex, BEGIN, END } = require('./tools/drvf-inverse');
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
-const introducing = git(['log', '--format=%H', '-S', BEGIN, '--', 'index.js']).trim().split('\n').filter(Boolean).pop();
-const base = introducing ? git(['show', `${introducing}^:xpizza-functions/index.js`]) : git(['show', 'HEAD:xpizza-functions/index.js']);
+const BASE = 'a354e3db';   // R-WIRE train re-point: M8a^1, the train state just before F merged (git log -S must not be used on the train branch)
+const base = git(['show', `${BASE}:xpizza-functions/index.js`]);
 assert.strictEqual(unapplyDrvfIndex(src), base, 'DRVF-INV-BASE index.js minus the drvf block is not the base index.js — something outside the block changed');
 assert.notStrictEqual(unapplyDrvfIndex(src), src, 'DRVF-INV-NONVACUOUS');
 assert.ok(src.trimEnd().endsWith(END), 'DRVF-INV-LAST the drvf block is the LAST thing in index.js');
@@ -36,4 +36,4 @@ assert.throws(() => unapplyDrvfIndex(src + `\n${blk}\n`), /exactly once/, 'DRVF-
 const outside = src.replace('exports.getSalesStats = portalFunctions.getSalesStats;', 'exports.getSalesStats = portalFunctions.getSalesStats; ');
 assert.notStrictEqual(outside, src, 'premise: the outside probe edits something');
 assert.notStrictEqual(unapplyDrvfIndex(outside), base, 'DRVF-INV-OUTSIDE a byte OUTSIDE the block survives the inverse and fails the base pin');
-console.log(`  ✓ drvf inverse: index.js minus the block === base (${introducing ? `${introducing.slice(0, 8)}^` : 'HEAD'}) byte-for-byte; the block is last; missing / duplicate / outside each caught`);
+console.log(`  ✓ drvf inverse: index.js minus the block === base (${BASE}) byte-for-byte; the block is last; missing / duplicate / outside each caught`);

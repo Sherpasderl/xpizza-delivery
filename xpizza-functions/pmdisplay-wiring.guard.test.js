@@ -11,7 +11,7 @@ const { execFileSync } = require('child_process');
 const { unapplyPmdisplayModule, FILES, HUNKS } = require('./tools/pmdisplay-module-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const BASE = 'acf32fc8';
+const BASE = '68a64ff9';   // R-WIRE train re-point: M5^1, the train state just before pmdisplay merged (the slice's own base was acf32fc8; its modules byte-equal there)
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 

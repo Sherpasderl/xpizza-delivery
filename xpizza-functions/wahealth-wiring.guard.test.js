@@ -13,16 +13,16 @@ const { execFileSync } = require('child_process');
 const { unapplyWaHealthIndex, BEGIN, END } = require('./tools/wahealth-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const real = require('./tools/formsignal-inverse').unapplyFormSignalIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // R-WIRE train re-point: the newer formsignal block reversed first
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
-const introducing = git(['log', '--format=%H', '-S', BEGIN, '--', 'index.js']).trim().split('\n').filter(Boolean).pop();
-const base = introducing ? git(['show', `${introducing}^:xpizza-functions/index.js`]) : git(['show', 'HEAD:xpizza-functions/index.js']);
+const BASE = '71180dfe';   // R-WIRE train re-point: M12^1, the train state just before wahealth merged (git log -S must not be used on the train branch)
+const base = git(['show', `${BASE}:xpizza-functions/index.js`]);
 
 assert.strictEqual(unapplyWaHealthIndex(real), base, '🔴 index.js minus the wahealth block is not its base index.js — something outside the block changed');
 assert.notStrictEqual(unapplyWaHealthIndex(real), real, 'non-vacuity: the block is present');
 assert.ok(real.trimEnd().endsWith(END), 'the wahealth block is the LAST thing in index.js');
 assert.strictEqual(real.split(BEGIN).length - 1, 1); assert.strictEqual(real.split(END).length - 1, 1);
-ok(`unapplyWaHealthIndex(index.js) === its base index.js byte-for-byte (base ${introducing ? `${introducing.slice(0, 8)}^` : 'HEAD'}); the block is last`);
+ok(`unapplyWaHealthIndex(index.js) === its base index.js byte-for-byte (base ${BASE}); the block is last`);
 
 const block = real.slice(real.indexOf(BEGIN), real.indexOf(END) + END.length);
 assert.throws(() => unapplyWaHealthIndex(real.replace(BEGIN, '/* wahealth:begn */')), /occurs 0×/);

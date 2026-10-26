@@ -9,7 +9,8 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { BASE, BEGIN, END, unapplyFormSignalIndex } = require('./tools/formsignal-inverse');
+const { BEGIN, END, unapplyFormSignalIndex } = require('./tools/formsignal-inverse');
+const BASE = 'e836997a';   // R-WIRE train re-point: M13^1, the train state just before formSignal merged (the slice's own base was bd777b6d)
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');

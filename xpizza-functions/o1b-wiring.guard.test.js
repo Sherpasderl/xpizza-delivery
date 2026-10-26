@@ -9,11 +9,12 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { unapplyO1bIndex, unapplyO1bFold, INDEX_HUNKS, BASE } = require('./tools/o1b-inverse');
+const { unapplyO1bIndex, unapplyO1bFold, INDEX_HUNKS } = require('./tools/o1b-inverse');
+const BASE = 'ffdbc1e1';   // R-WIRE train re-point: M6^1, the train state just before O1b merged (the slice's own base was acf32fc8)
 const { foldPortalSplit } = require('./tools/portal-split');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const real = require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))))));   // R-WIRE train re-point: the newer train slices reversed first (formsignal innermost → wahealth → drvc → drvf → stackseq)
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.notStrictEqual(real, base, 'non-vacuity: the slice is present');
@@ -29,8 +30,8 @@ for (const [now] of INDEX_HUNKS) {
 assert.notStrictEqual(unapplyO1bIndex(real.replace('exports.quoteOrder = onRequest(', 'exports.quoteOrder  = onRequest(')), base, 'a byte OUTSIDE every hunk survives');
 ok(`PROOF: unapplyO1bIndex(index.js) === ${BASE}:index.js byte-for-byte (2 hunks, each once); inside / outside / duplicated / missing each detected`);
 
-assert.strictEqual(unapplyO1bFold(foldPortalSplit()), foldPortalSplit(undefined, base), `🔴 the portal fold minus the O1b export hunk is not the ${BASE} fold`);
-assert.throws(() => unapplyO1bFold(foldPortalSplit() + INDEX_HUNKS.find(([now]) => now.includes('PORTAL_OPS_TARGETS'))[0]), /early-branch hunk survived/, 'the top hunk must never survive the fold');
+assert.strictEqual(unapplyO1bFold(foldPortalSplit(undefined, real)), foldPortalSplit(undefined, base), `🔴 the portal fold minus the O1b export hunk is not the ${BASE} fold`);
+assert.throws(() => unapplyO1bFold(foldPortalSplit(undefined, real) + INDEX_HUNKS.find(([now]) => now.includes('PORTAL_OPS_TARGETS'))[0]), /early-branch hunk survived/, 'the top hunk must never survive the fold');
 ok('FOLD: unapplyO1bFold(foldPortalSplit()) equals the base fold; the early-branch hunk never survives the fold');
 
 const ops = require('./portal/ops-functions');

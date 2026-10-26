@@ -6,7 +6,8 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { unapplyMirrorKeysModule, HUNKS, FILES, BASE } = require('./tools/mirrorkeys-module-inverse');
+const { unapplyMirrorKeysModule, HUNKS, FILES } = require('./tools/mirrorkeys-module-inverse');
+const BASE = '0bc8170f';   // R-WIRE train re-point: M4^1, the train state just before mirror-keys merged (the slice's own base was 6fcd7ff2; both modules byte-equal there)
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['catalog/mirror-rtdb.js', 'catalog/snapshot-fallback.js']);
