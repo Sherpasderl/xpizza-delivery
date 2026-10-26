@@ -192,7 +192,10 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
     assert.ok(tb.tencha_viejo.caps.includes('stats.read') && !['location.prep', 'location.pause', 'availability.set'].some((c) => tb.tencha_viejo.caps.includes(c)), `a retired branch: stats.read, no operational capability (${tb.tencha_viejo.caps})`);
     assert.ok(!('control' in tb.tencha_viejo) && !('editable' in tb.tencha_viejo) && !('readonly' in tb.tencha_viejo), 'a stats-only branch carries NO operational fields');
     assert.strictEqual(tb.tencha_centro.editable.prep_default_min, 20);
-    assert.deepStrictEqual(t.json.brands, [{ brand_id: 'tencha', name: 'Marca de Prueba' }]);
+    // ORCHESTRATION O1b T8: E1+ is ADDITIVE — the 1a brand fields are unchanged; the slice-1b keys (caps / activation / drafts) ride along
+    const O1B_BRAND = ['caps', 'activation', 'drafts'];
+    assert.deepStrictEqual(t.json.brands.map((x) => Object.fromEntries(Object.entries(x).filter(([k]) => !O1B_BRAND.includes(k)))), [{ brand_id: 'tencha', name: 'Marca de Prueba' }]);
+    assert.deepStrictEqual(t.json.brands.map((x) => [x.caps, x.activation, x.drafts]), [[['brand.locations'], 'on', []]], 'O1b: the owner holds brand.locations; no drafts');
     const m = await call(ops.getMyBranches, { uid: MGR });
     assert.deepStrictEqual(m.json.branches.map((b) => [b.rid, b.role]), [['tencha_norte', 'manager']], 'a manager sees only their branch');
     assert.ok(m.json.branches[0].caps.includes('location.pause') && !m.json.branches[0].caps.includes('catalog.read_editor'));
