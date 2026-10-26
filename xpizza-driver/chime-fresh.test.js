@@ -103,6 +103,17 @@ t('ownership + pickup-type + status filters: another driver / a delivery task / 
   assert.equal(h.calls.chime, 0, 'a fresh in_progress pickup never chimes (status)');
 });
 
+t('a FRESH pickup at ANY non-offer status never chimes (pending / in_progress / completed / cancelled)', () => {
+  // TASK_STATUS (xpizza-delivery.js:61): pending, assigned, accepted, in_progress, completed, cancelled. Only the
+  // pre-pickup assignment statuses (assigned|accepted) chime; a fresh arrival at any OTHER status must be silent.
+  for (const st of ['pending', 'in_progress', 'completed', 'cancelled']) {
+    const h = build();
+    h.api.detectNewAssignments({ A_pickup: own('accepted') });                      // boot
+    h.api.detectNewAssignments({ A_pickup: own('accepted'), T_pickup: own(st) });   // T_pickup newly appears at `st`
+    assert.equal(h.calls.chime, 0, `a fresh ${st} pickup never chimes (kills the allow-${st} mutant)`);
+  }
+});
+
 t('a KNOWN order never re-chimes (no forgetting after the chime)', () => {
   const h = build();
   h.api.detectNewAssignments({ A_pickup: own('accepted') });    // boot
