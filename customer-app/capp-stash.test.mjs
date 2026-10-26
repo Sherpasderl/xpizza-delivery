@@ -12,12 +12,13 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { loadForm, settle, res, BRAND, closeAll } from '../form-harness.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const A = require('./capp-api.js');
 const C = require('./capp-checkout.js');
-const { loadForm, settle, res, BRAND, closeAll } = await import(join(ROOT, 'form-harness.mjs'));
+
 after(() => closeAll());
 
 const E = { quoteOrder: 'https://fn.test/quoteOrder', createOrder: 'https://fn.test/createOrder', chargeOnlineOrder: 'https://fn.test/chargeOnlineOrder', paymentStatus: 'https://fn.test/paymentStatus' };

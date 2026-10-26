@@ -22,6 +22,7 @@
     "confirm-quote-wiring.test.mjs",
     "customer-app/capp-checkout.test.mjs",
     "customer-app/capp-guards.test.mjs",
+    "customer-app/capp-stash.test.mjs",
     "d4b-availability.test.mjs",
     "d4b-reorder.test.mjs",
     "extras-parity-current.test.mjs",
@@ -279,6 +280,7 @@
    "via_helper": [
     "charge-boundary.test.mjs",
     "confirm-quote-wiring.test.mjs",
+    "customer-app/capp-stash.test.mjs",
     "group-picker-golden.test.mjs",
     "group-picker-lamusa.test.mjs",
     "stage-race.test.mjs",
@@ -477,6 +479,7 @@
     "customer-app/capp-cart.test.mjs",
     "customer-app/capp-checkout.test.mjs",
     "customer-app/capp-guards.test.mjs",
+    "customer-app/capp-stash.test.mjs",
     "d4b-availability.test.mjs",
     "d4b-reorder.test.mjs",
     "extras-parity-current.test.mjs",
@@ -725,6 +728,7 @@
    ],
    "via_helper": [
     "confirm-quote-wiring.test.mjs",
+    "customer-app/capp-stash.test.mjs",
     "group-picker-xpizza.test.mjs",
     "order-control-client.test.mjs",
     "order-exists-client.test.mjs",
