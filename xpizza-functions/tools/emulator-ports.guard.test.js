@@ -259,6 +259,28 @@ const runObserved = (argv, extraEnv = {}) => {
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
+/* PRECONDITION — the rules files the runner itself requires (tools/emulator-run.js refuses, exit 2, when one is missing, empty
+   or — database — not JSON). Without them every cell that starts a data service is refused BEFORE its port preflight prints,
+   and the port cells then report a misleading «hub is not in the preflight set». database.rules.json is gitignored (a fresh
+   worktree has none until `npm run sync:rules`). Checked, never written here: the synced copy is also the deploy copy, and a
+   guard that re-synced it could overwrite a rules-mutant run in the same worktree. */
+{
+  const fb = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.json'), 'utf8'));
+  for (const [svc, rel] of [['database', fb.database && fb.database.rules], ['firestore', fb.firestore && fb.firestore.rules]]) {
+    if (!rel) continue;
+    let text = null;
+    try { text = fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch (_) { /* reported below */ }
+    let bad = text === null ? 'is missing' : (!text.trim() ? 'is empty' : null);
+    if (!bad && svc === 'database') { try { JSON.parse(text); } catch (e) { bad = `is not valid JSON (${e.message})`; } }
+    if (bad) {
+      console.error(`EMULATOR PORTS GUARD: PRECONDITION — the ${svc} rules file ${rel} ${bad}, so the runner refuses before any port preflight.`);
+      console.error(svc === 'database' ? '  Run `npm run sync:rules` in xpizza-functions (it copies ../xpizza-reference/database.rules.json), then re-run this guard.'
+        : `  ${rel} is tracked — restore it from git, then re-run this guard.`);
+      process.exit(1);
+    }
+  }
+}
+
 (async () => {
   // ── 1. EVERY SUITE GOES THROUGH THE RUNNER ──────────────────────────────────────────────────
   {
