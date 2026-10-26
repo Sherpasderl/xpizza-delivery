@@ -16,6 +16,8 @@ const ROOT = path.resolve(HERE, '../..');
 const GRILL = path.join(os.homedir(), 'Downloads/xpizza-D4c-grill');
 const PROTO = path.join(GRILL, 'customer-app-prototype/APPROVED-v6');
 const MOCK = path.join(GRILL, 'MOCKUP-capp-S2-payment-states.html');
+const HELD = path.join(GRILL, 'MOCKUP-capp-S2b-held-states.html');   // owner-approved 2026-10-26
+const HELD_FIGS = ['mk-paused', 'mk-generic', 'mk-pending'];
 const OUT = path.join(HERE, 'shots');
 const W = 390, H = 844;
 // [state, title, reference: 'proto' | mockup figure id | 'forms']
@@ -43,6 +45,9 @@ const STATES = [
   ['price', '«El precio cambió» (the forms\' ported sheet)', 'forms'],
   ['refund', 'Refund sheet', 'mk-refunded'],
   ['exists', 'Existing-order recovery sheet', 'mk-exists'],
+  ['paused', 'Held state · ordering paused (423)', 'mk-paused'],
+  ['generic', 'Held state · «No pudimos enviar tu pedido»', 'mk-generic'],
+  ['pending', 'Held state · card cancelled, bank still pending', 'mk-pending'],
 ];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.png': 'image/png' };
 
@@ -61,7 +66,7 @@ function chromeBin() {
 }
 const server = http.createServer((req, res) => {
   const rel = decodeURIComponent(new URL(req.url, 'http://x').pathname).replace(/^\/+/, '');
-  const file = rel.startsWith('proto/') ? path.join(PROTO, rel.slice(6)) : rel === 'mock.html' ? MOCK : path.join(ROOT, rel);
+  const file = rel.startsWith('proto/') ? path.join(PROTO, rel.slice(6)) : rel === 'mock.html' ? MOCK : rel === 'held.html' ? HELD : path.join(ROOT, rel);
   if (!(file.startsWith(ROOT) || file.startsWith(GRILL)) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
   fs.createReadStream(file).pipe(res);
@@ -129,7 +134,7 @@ for (const [st, , ref] of STATES) {
   for (const side of ['ref', 'build']) {
     const isBuild = side === 'build';
     await send('Emulation.setDeviceMetricsOverride', { width: isBuild ? W : 1300, height: isBuild ? H : 1600, deviceScaleFactor: 2, mobile: isBuild }, sessionId);
-    const url = isBuild ? `${base}/review/capp-s2b/harness.html?state=${st}` : ref.startsWith('mk-') ? `${base}/mock.html` : `${base}/proto/customer-app-prototype-v6-APPROVED.html`;
+    const url = isBuild ? `${base}/review/capp-s2b/harness.html?state=${st}` : HELD_FIGS.includes(ref) ? `${base}/held.html` : ref.startsWith('mk-') ? `${base}/mock.html` : `${base}/proto/customer-app-prototype-v6-APPROVED.html`;
     await send('Page.navigate', { url }, sessionId);
     await wait(900);
     let clip = { x: 0, y: 0 };
@@ -144,7 +149,7 @@ for (const [st, , ref] of STATES) {
 }
 const NOTES = JSON.parse(fs.readFileSync(path.join(HERE, 'notes.json'), 'utf8'));
 const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-const refName = (r) => (r === 'proto' ? 'prototype v6' : r === 'forms' ? 'the forms\' sheet (form-confirm-quote.js) over prototype v6' : `MOCKUP Q9 #${r}`);
+const refName = (r) => (r === 'proto' ? 'prototype v6' : r === 'forms' ? 'the forms\' sheet (form-confirm-quote.js) over prototype v6' : HELD_FIGS.includes(r) ? `MOCKUP held-states #${r}` : `MOCKUP Q9 #${r}`);
 const page = `<!doctype html><meta charset="utf-8"><title>S2b fidelity</title><style>body{font:14px system-ui;background:#EDEAE4;margin:24px}h2{margin:32px 0 8px}
 .p{display:flex;gap:24px}.p figure{margin:0}.p img{width:${W}px;height:${H}px;border:1px solid #D7D3CB;border-radius:18px}figcaption{font-weight:700;margin-bottom:6px}
 li b{display:inline-block;min-width:150px}.BUG{color:#B9323A}.OWNER{color:#8A5A00}</style>

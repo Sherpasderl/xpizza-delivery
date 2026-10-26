@@ -44,9 +44,9 @@
   const NEVER = () => new Promise(() => {});
   const script = { quoteOrder: [state === 'out-of-zone' ? { status: 200, json: { ok: false, error: 'outside_delivery_bands' } } : QUOTE],
     createOrder: [state === 'sending-spinner' ? NEVER : state === 'offline' ? 'network' : state === 'closure' ? { status: 400, json: { error: 'Restaurant closed' } }
-      : state === 'price' ? { status: 409, json: { error: 'price_increased', net_total_cents: 99900 } } : state === 'exists' ? { status: 409, json: { error: 'order_exists', reason: 'live' } } : { status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }],
-    chargeOnlineOrder: [{ status: 200, json: { checkout_url: 'https://pay.review/x', poll_token: 'pt', attempt_id: 'a' } }],
-    paymentStatus: [{ status: 200, json: { ok: true, state: state === 'sending-confirming' ? 'verifying' : state === 'refund' ? 'closed_refunded' : 'cancelled', refunded_total_cents: 48500 } }] };
+      : state === 'price' ? { status: 409, json: { error: 'price_increased', net_total_cents: 99900 } } : state === 'exists' ? { status: 409, json: { error: 'order_exists', reason: 'live' } } : state === 'paused' ? { status: 423, json: { error: 'ordering_paused' } } : { status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }],
+    chargeOnlineOrder: [state === 'generic' ? { status: 500, json: { error: 'Payment not configured' } } : { status: 200, json: { checkout_url: 'https://pay.review/x', poll_token: 'pt', attempt_id: 'a' } }],
+    paymentStatus: [{ status: 200, json: { ok: true, state: state === 'sending-confirming' ? 'verifying' : state === 'refund' ? 'closed_refunded' : state === 'pending' ? 'pending' : 'cancelled', refunded_total_cents: 48500 } }] };
   const sfetch = async (url, init) => {
     const ep = Object.keys(script).find((k) => url.indexOf(k) >= 0); const body = init && init.body ? JSON.parse(init.body) : null;
     const q = script[ep]; const r = q.length > 1 ? q.shift() : q[0];
@@ -61,8 +61,13 @@
     localStorage.setItem('capp:rid_review:pending_place', JSON.stringify({ order_id: id, method: 'online', body_sig: null, expected_net_cents: null, totals: null, dispatched: 1, unresolved: true, card: true, admitted: false, issued: false, ts: t, last_send: t, expires_at: t + 3600000 }));
     localStorage.setItem('review_pending_pay', JSON.stringify({ order_id: id, t: 'pt', order: {}, form: null, ts: t }));
   }
+  if (state === 'pending') {   // a card send whose cancel return the server still calls pending
+    const t = now().getTime(), id = 'XPZ261020-190000-A7K2WXYZ';
+    localStorage.setItem('capp:rid_review:pending_place', JSON.stringify({ order_id: id, method: 'online', body_sig: null, expected_net_cents: null, totals: null, dispatched: 1, unresolved: false, card: true, admitted: true, issued: true, checkout_url: 'https://pay.review/x', checkout_at: t, ts: t, last_send: t, expires_at: t + 3600000 }));
+    localStorage.setItem('review_pending_pay', JSON.stringify({ order_id: id, t: 'pt', order: {}, form: null, ts: t }));
+  }
   const geo = state === 'geo-denied' ? { getCurrentPosition: (_ok, no) => no({ code: 1 }) } : { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.5209, longitude: -88.0401 } }) };
-  const search = state === 'payfail' ? '?pay=cancel' : state === 'refund' ? '?pay=complete&order=XPZ261020-190000-A7K2WXYZ&t=pt' : '';
+  const search = state === 'payfail' || state === 'pending' ? '?pay=cancel' : state === 'refund' ? '?pay=complete&order=XPZ261020-190000-A7K2WXYZ&t=pt' : '';
   const ui = CappUI.mount(document, { envelope: env, config: CFG, now, member, geolocation: geo, navigate: () => {}, search, timers, apiOpts: { fetch: sfetch, sleep: async () => {}, now: () => now().getTime() } });
   window.__ui = ui;
   const $ = (s) => document.querySelector(s);
@@ -73,22 +78,22 @@
   try {
     // the prototype's sampleCart('xp'): 2× Carnivora (Pepperoni on pizza 2) + 1× Margherita
     const c = byName('Carnivora'); ui.cart.add(c.key, [], 2); ui.cart.setInstance(c.key, 1, [m.extras.find((e) => e.name === 'Pepperoni').key]); ui.cart.inc(byName('Margherita').key);
-    if (state === 'payfail' || state === 'refund') { ui.render(); await nap(400); }
+    if (state === 'payfail' || state === 'refund' || state === 'pending') { ui.render(); await nap(400); }
     else {
       if (state === 'pickup') ui.state.mode = 'pickup';
       ui.render(); await click('#cart-bar'); await click('[data-act="checkout"]'); await nap(250);
       if (state === 'pin') await click('[data-act="pin"]');
-      const toTip = ['tip-empty', 'tip-chosen', 'tip-other', 'placing', 'sending-spinner', 'sending-check', 'sending-confirming', 'offline', 'closure', 'price', 'exists'].includes(state);
+      const toTip = ['tip-empty', 'tip-chosen', 'tip-other', 'placing', 'sending-spinner', 'sending-check', 'sending-confirming', 'offline', 'closure', 'price', 'exists', 'paused', 'generic'].includes(state);
       if (toTip) {
         await click('[data-act="pin"]'); await click('[data-act="pin-done"]');
         await type('#f-details', 'Portón negro'); await type('#f-name', 'Ana'); await type('#f-phone', '9612-3344');
-        await click(`[data-act="pay"][data-val="${state === 'sending-confirming' ? 'online' : 'cash'}"]`);
+        await click(`[data-act="pay"][data-val="${state === 'sending-confirming' || state === 'generic' ? 'online' : 'cash'}"]`);
         await nap(2400);   // the «Pin confirmado» toast lives its real 2.2 s
         await click('#cta');
         if (state !== 'tip-empty') await click('[data-act="tipc"][data-val="20"]');
         await nap(250);
         if (state === 'tip-other') { await click('[data-act="tipc"][data-val="other"]'); for (const k of ['1', '5', '0']) await click(`#layer [data-act="tk"][data-val="${k}"]`); }
-        if (['placing', 'sending-spinner', 'sending-check', 'sending-confirming', 'offline', 'closure', 'price', 'exists'].includes(state)) {
+        if (['placing', 'sending-spinner', 'sending-check', 'sending-confirming', 'offline', 'closure', 'price', 'exists', 'paused', 'generic'].includes(state)) {
           await click('[data-act="tip-place"]');
           if (state !== 'placing') await click('#layer [data-act="placing-go"]');
           await nap(state === 'sending-check' ? 250 : 400);

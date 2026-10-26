@@ -113,5 +113,23 @@
     "intentional per ruling (brief + the mockup's own caption): NO «Escribir a la tienda» (no public restaurant contact in the app data) — so the sheet is one button shorter",
     "data-only: the reference id (#A7K2 vs the minted id's last 4)",
     "a11y (S1 FOCUS note): focus ring on «Volver al pedido»"
+  ],
+  "paused": [
+    "identical (vs MOCKUP held-states #mk-paused): warn tint + clock (.icon.warn, IC.clock), title «{name} no está recibiendo pedidos en este momento», body «Tu pedido no se envió ni se cobró nada; está intacto para que lo intentés en unos minutos.», ONE primary «Entendido», sheet over «Entrega & Pago» with «PIN CONFIRMADO»",
+    "data-only: «Café Ocote» (the mockup's sample) vs «X. Pizza» (cfg.name); the ETA «≈ 25 min» vs «≈ 30 min»",
+    "intentional per ruling (S4 / R1/R3/R4): no «Programar» card, «Tu ubicación» row behind (no reverse geocoding; geo backlog S2b-geo)",
+    "a11y (S1 FOCUS note): focus ring on «Entendido»"
+  ],
+  "generic": [
+    "identical (vs MOCKUP held-states #mk-generic): default error icon (red ✕, IC.close), «No pudimos enviar tu pedido», «Intentá de nuevo en un momento; tu pedido está intacto.», primary «Reintentar» + «Cerrar» (btn2 wide), sheet over «Entrega & Pago» with «PIN CONFIRMADO»",
+    "data-only: the ETA «≈ 25 min» vs «≈ 30 min»",
+    "intentional per ruling (S4 / R1/R3/R4): no «Programar» card, «Tu ubicación» row behind",
+    "a11y (S1 FOCUS note): focus ring on «Reintentar»"
+  ],
+  "pending": [
+    "identical (vs MOCKUP held-states #mk-pending): calm tint + clock (.icon.calm, IC.clock), «Tu pago todavía está en verificación», body «Estamos confirmando tu pago con el banco. No hace falta pagar de nuevo; esperá un momento mientras termina.», ONE primary «Volver al pedido», sheet over «Entrega & Pago»",
+    "data-only: the ETA «≈ 25 min» vs «≈ 30 min»; tag «PIN CONFIRMADO» vs «TU UBICACIÓN» and row sub «Pin confirmado» vs «Ajustá el pin a tu dirección» (a return from PixelPay lands on a fresh flow — same as refund)",
+    "intentional per ruling (S4 / R1/R3/R4): no «Programar» card, «Tu ubicación» row behind",
+    "a11y (S1 FOCUS note): focus ring on «Volver al pedido»"
   ]
 }
