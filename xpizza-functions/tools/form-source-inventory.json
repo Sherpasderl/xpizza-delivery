@@ -155,6 +155,7 @@
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
+    "xpizza-functions/portal/e1-extend.test.js",
     "xpizza-functions/portal/ops-core.test.js",
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
@@ -352,6 +353,7 @@
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
+    "xpizza-functions/portal/e1-extend.test.js",
     "xpizza-functions/portal/ops-core.test.js",
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
@@ -591,6 +593,7 @@
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
+    "xpizza-functions/portal/e1-extend.test.js",
     "xpizza-functions/portal/ops-core.test.js",
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
@@ -788,6 +791,7 @@
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
     "xpizza-functions/portal/branch-lifecycle-core.test.js",
+    "xpizza-functions/portal/e1-extend.test.js",
     "xpizza-functions/portal/ops-core.test.js",
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
@@ -1754,6 +1758,7 @@
   "pixelpay-hosted-charge.js",
   "portal/branch-lifecycle-core.js",
   "portal/branch-phone.js",
+  "portal/branch-read-model.js",
   "portal/location-name.js",
   "portal/ops-core.js",
   "portal/ops-functions.js",
@@ -2641,6 +2646,10 @@
    "lifts": []
   },
   "portal/branch-phone.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "portal/branch-read-model.js": {
    "pins": [],
    "lifts": []
   },

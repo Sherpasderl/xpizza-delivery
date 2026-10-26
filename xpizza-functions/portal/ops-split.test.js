@@ -83,6 +83,8 @@ const EXPECTED = [
   'merchant/merchant-control.js', 'tools/order-control-core.js', 'order-control-state.js', 'scheduled-orders.js', 'avail-key.js', 'availability-reset.js',
   'catalog/catalog-firestore.js', 'catalog/catalog-menu.js', 'catalog/catalog-transform.js', 'catalog/catalog-integrity.js', 'catalog/content-hash.js', 'catalog/canonical-json.js',
   'catalog/form-menu-source.js', 'catalog/redeem-source.js', 'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'menu-pricing.js', 'price-valid.js', 'rewards-redeem-config.js',
+  /* ORCHESTRATION O1b T8: E1+'s additive read model (readiness via the O1a writers' own facts + planner) */
+  'portal/branch-read-model.js', 'branches/branch-ops.js', 'branches/branch-store.js', 'branches/drafts.js', 'branches/readiness-readers.js', 'branches/rid-alloc.js', 'sweep-pending.js',
 ].sort();
 const CONDITIONAL = ['lib/emulator-endpoint.js'];   // reached via lib/admin.js only when an emulator env var is set
 const FORBIDDEN = /^(catalog\/catalog-publish\.js|catalog\/portal-reads\.js|stats\/.*|factura\/.*|index\.js|merchant\/merchant-location\.js|merchant\/merchant-orders\.js|portal\/functions\.js)$/;

@@ -708,4 +708,4 @@ async function deactivateBrand(db, { brandId, now, callId = newCallId('deactivat
 // projection resync (advisor ruling): a version-only identity bump, so the fenced publish carries an unversioned earlier write
 const bumpIdentityVersion = (db, { rid, expectedVersion }) => casIdentity(db, rid, expectedVersion, { version: expectedVersion + 1 });
 
-module.exports = { updateBranchProfile, createBrandWithDraft, liveOrders, activateBrand, deactivateBrand, bumpIdentityVersion, createDraft, deleteBranchDraft, materializeBranch, resumeBranchOp, setBranchLocation, setBranchActive, enrichLegacyIdentity, LEASE_MS, opBrandOf };
+module.exports = { readinessFacts, unrevoked, updateBranchProfile, createBrandWithDraft, liveOrders, activateBrand, deactivateBrand, bumpIdentityVersion, createDraft, deleteBranchDraft, materializeBranch, resumeBranchOp, setBranchLocation, setBranchActive, enrichLegacyIdentity, LEASE_MS, opBrandOf };
