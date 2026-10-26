@@ -20,6 +20,14 @@
 // or repriced. That is surfaced to the customer and blocks submit. It is never resolved silently in
 // either direction — not by dropping the line, and not by quietly adopting the new price.
 //
+// 🔴 PLAN 5 (owner-approved, DECISIONS 2026-10-26) — A NEW PRICE MAY BE ADOPTED, BUT ONLY DISCLOSED. When
+// every blocked line is nothing but a dish whose price changed, the form may adopt the live prices
+// (adoptPrices) — and only at a moment that renders the price-change notice, which the form confirms on
+// screen before the adoption stands; any failure rolls it back. Never at the send, never in the
+// background. The disclosure is the `disclosed` map below; the forms rebuild the notice from it on
+// every render, so no re-render can erase a disclosure while its line exists. Every other conflict
+// (options, availability, choice, resume, reward) keeps today's block — priceNoticeChanges() decides.
+//
 // WHEN NOTHING HAS CHANGED, NOTHING CHANGES. A line whose live record matches what it was added as
 // serializes exactly as it does today, byte for byte. The new behaviour only exists on a conflict.
 //
@@ -52,6 +60,11 @@ function createCart(options) {
   // The form still owns WHICH options sit on which line; it owns no record of what they cost.
   const chosenExtras = new Map();
 
+  // PLAN 5 — dish key → { name, from, to } (UNIT prices) for every price the customer has been SHOWN changing.
+  // Written only by adoptPrices(); removed with its line; cleared with the cart. Dish keys only — option
+  // reprices are never adopted (they keep today's block).
+  const disclosed = new Map();
+
   const snapshotOf = (record) => ({
     key: adapter.itemKey(record),
     pricingKey: adapter.pricingKey(record),
@@ -66,7 +79,7 @@ function createCart(options) {
   function setQty(record, n) {
     const key = adapter.itemKey(record);
     const qty = Number(n) || 0;
-    if (qty <= 0) { lines.delete(key); return; }
+    if (qty <= 0) { lines.delete(key); disclosed.delete(key); return; }
     const existing = lines.get(key);
     lines.set(key, { key, qty, added: existing ? existing.added : snapshotOf(record) });
   }
@@ -122,7 +135,7 @@ function createCart(options) {
   function setQtyByKey(key, n) {
     if (!lines.has(key)) return false;
     const qty = Number(n) || 0;
-    if (qty <= 0) { lines.delete(key); return true; }
+    if (qty <= 0) { lines.delete(key); disclosed.delete(key); return true; }
     const line = lines.get(key);
     lines.set(key, { key, qty, added: line.added });
     return true;
@@ -131,11 +144,11 @@ function createCart(options) {
   const qtyOf = (key) => (lines.has(key) ? lines.get(key).qty : 0);
   const has = (key) => lines.has(key);
   const keys = () => [...lines.keys()];
-  const clear = () => lines.clear();
+  const clear = () => { lines.clear(); disclosed.clear(); };
   // A WHOLE NEW CART: the lines AND the captured-options ledger. clear() keeps the ledger on purpose (a line removed and
   // re-added keeps the option price the customer already agreed to); a cart the customer explicitly DISCARDS ("Empezar de
   // nuevo") must not carry the discarded cart's captured option prices into the fresh one.
-  const reset = () => { lines.clear(); chosenExtras.clear(); };
+  const reset = () => { lines.clear(); chosenExtras.clear(); disclosed.clear(); };
 
   // 🔴 HOW A LINE BECOMES UNRESOLVED. Three ways, and each is a different question to the customer:
   //
@@ -236,6 +249,53 @@ function createCart(options) {
     return true;
   }
 
+  // ── PLAN 5: DISCLOSED ADOPTION ────────────────────────────────────────────────────────────────────
+  // ELIGIBILITY, computed on the WHOLE cart before anything is mutated. `resolved` is the form's EFFECTIVE
+  // lines (resolve() plus the form's own launcher marking, so a 'choice' line is seen). Eligible only when
+  // there is at least one blocked line, EVERY blocked line is a dish whose only problem is its price, no
+  // line anywhere carries an option conflict, the dish is not unavailable by an INDEPENDENT check (classify
+  // returns 'repriced' before it ever asks about availability), it is not a launcher, and the form reports
+  // no resume/reward context. Anything else → null, and the caller's path is today's, untouched.
+  function priceNoticeChanges(resolved, ctx) {
+    const c = ctx || {};
+    if (c.blockedByContext) return null;
+    if (!Array.isArray(resolved)) return null;
+    const isUnavailable = typeof c.isUnavailable === 'function' ? c.isUnavailable : () => false;
+    const isLauncher = typeof c.isLauncher === 'function' ? c.isLauncher : () => false;
+    const blocked = resolved.filter((l) => l && l.blocked);
+    if (!blocked.length) return null;
+    if (resolved.some((l) => l && Array.isArray(l.extras) && l.extras.some((x) => x && x.unresolved))) return null;
+    for (const l of blocked) {
+      if (l.unresolved !== 'repriced' || !l.live || !l.added) return null;
+      if (!Number.isFinite(l.live.price) || !Number.isFinite(l.added.price)) return null;
+      if (isUnavailable(l.live) || isLauncher(l)) return null;
+    }
+    return blocked.map((l) => ({ key: l.key, name: l.live.name, from: l.added.price, to: l.live.price, live: l.live }));
+  }
+
+  // ADOPTION, all or nothing, reversible. Adopts each change through accept() and records its disclosure.
+  // Returns a rollback() that restores the lines AND the disclosures exactly as they were, or null when
+  // nothing was adopted (any failure part-way restores before returning). The caller confirms the notice
+  // rendered and calls rollback() if it did not.
+  function adoptPrices(changes) {
+    if (!Array.isArray(changes) || !changes.length) return null;
+    const prevLines = new Map(lines);
+    const prevDisclosed = new Map(disclosed);
+    const restore = () => {
+      lines.clear(); prevLines.forEach((v, k) => lines.set(k, v));
+      disclosed.clear(); prevDisclosed.forEach((v, k) => disclosed.set(k, v));
+    };
+    try {
+      for (const ch of changes) {
+        if (!ch || typeof ch.key !== 'string' || !Number.isFinite(ch.from) || !Number.isFinite(ch.to) || !accept(ch.key, ch.live)) { restore(); return null; }
+        disclosed.set(ch.key, { name: String(ch.name == null ? '' : ch.name), from: ch.from, to: ch.to });
+      }
+    } catch (e) { restore(); return null; }
+    return restore;
+  }
+
+  const disclosedList = () => [...disclosed.entries()].map(([key, e]) => ({ key, name: e.name, from: e.from, to: e.to }));
+
   // 🔴 THE CART MUST SURVIVE LEAVING THE PAGE. Online payment sends the customer to a hosted checkout
   // and back onto a FRESH page, where the form restores its state from localStorage. Restoring qty
   // without the cart re-creates the very split this module closes — the quantities come back and the
@@ -245,6 +305,8 @@ function createCart(options) {
       v: 1,
       lines: keys().map((k) => { const l = lines.get(k); return { key: k, qty: l.qty, added: l.added }; }),
       extras: [...chosenExtras.values()],
+      // PLAN 5: present ONLY when something was disclosed, so every snapshot without one is byte-identical to before.
+      ...(disclosed.size ? { disclosed: disclosedList() } : {}),
     };
   }
 
@@ -270,15 +332,27 @@ function createCart(options) {
     lines.clear(); chosenExtras.clear();
     snap.lines.forEach((l) => lines.set(l.key, { key: l.key, qty: Number(l.qty), added: l.added }));
     snap.extras.forEach((e) => chosenExtras.set(e.key, e));
+    // PLAN 5: a disclosure survives a restore only while it still describes the captured line (same key, and
+    // the captured price IS the disclosed new price). Anything else is dropped — it can never block a restore.
+    disclosed.clear();
+    if (Array.isArray(snap.disclosed)) {
+      for (const d of snap.disclosed) {
+        if (!d || typeof d !== 'object' || typeof d.key !== 'string' || typeof d.name !== 'string') continue;
+        if (!Number.isFinite(d.from) || !Number.isFinite(d.to) || !lines.has(d.key)) continue;
+        if (lines.get(d.key).added.price !== d.to) continue;
+        disclosed.set(d.key, { name: d.name, from: d.from, to: d.to });
+      }
+    }
     return true;
   }
 
-  const remove = (key) => lines.delete(key);
+  const remove = (key) => { disclosed.delete(key); return lines.delete(key); };
 
   return {
     setQty, setQtyByKey, qtyOf, has, keys, clear, reset, remove,
     noteExtra, extraAddedRecord, extraAgreed, classifyExtra, acceptExtra,
     resolve, accept, classify, snapshot, hydrate,
+    priceNoticeChanges, adoptPrices, disclosed: disclosedList,
   };
 }
 
