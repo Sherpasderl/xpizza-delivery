@@ -70,6 +70,22 @@
   padding: 6px 16px calc(9px + env(safe-area-inset-bottom)); background: var(--bg, #F4F2EE);
 }
 #screen-onshift.delivering.offline-foot #onshift-content { padding-bottom: 142px; }
+/* gpsoff — the full-screen «Activá tu ubicación» state over the idle screen (prototype S.gpsoff) */
+.gpsoff-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 13px; padding: 20px 6px 0; }
+.gpsoff-illus { width: 56px; height: 56px; border-radius: 16px; background: #FEF3E2; color: var(--warn, #f59e0b); display: flex; align-items: center; justify-content: center; }
+.gpsoff-illus svg { width: 30px; height: 30px; }
+.gpsoff-h { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 20px; color: var(--text, #0D1424); }
+.gpsoff-sub { font-size: 13.5px; color: var(--text-soft, #546078); line-height: 1.4; max-width: 300px; }
+.gpsoff-card { width: 100%; background: var(--surface, #fff); border-radius: 14px; padding: 2px 14px; margin-top: 2px; }
+.go-row { display: flex; align-items: center; gap: 11px; padding: 12px 0; border-bottom: 1px solid var(--line, #EEF1F5); text-align: left; }
+.go-row:last-child { border-bottom: 0; }
+.go-ic { flex: none; width: 22px; height: 22px; color: var(--text-soft, #546078); } .go-ic svg { width: 22px; height: 22px; }
+.go-rtext { flex: 1; min-width: 0; } .go-rt { font-size: 14px; font-weight: 700; color: var(--text, #0D1424); } .go-rd { font-size: 12.5px; color: var(--text-soft, #546078); margin-top: 1px; }
+.go-chip { flex: none; font-size: 12px; font-weight: 800; padding: 3px 9px; border-radius: 999px; }
+.go-chip.ok { color: #1F7A4D; background: #E3F3EA; } .go-chip.err { color: #B3261E; background: #FBE6E4; }
+.gpsoff-foot { width: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
+.gpsoff-foot .big-btn { text-transform: none; }   /* prototype buttons are sentence case, not the legacy .big-btn uppercase */
+.gpsoff-foot .big-btn.txt { background: transparent; color: var(--text-soft, #546078); box-shadow: none; }
 /* ===== SLICE3:PRESENTATION-3:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -2276,7 +2292,7 @@ function openWhatsappSheet(btn) {
 }
 /* ===== SLICE2:IMPORT:END ===== */
 /* ===== SLICE3:IMPORT-3:START — batch-3 pure builders ===== */
-import { helpDiagnosisHtml, cierreRechazadoHtml, readyTimeLabel } from './stacked-view.js';   // readyTimeLabel: R1 ready time for the S.oferta offer
+import { helpDiagnosisHtml, cierreRechazadoHtml, readyTimeLabel, gpsoffHtml } from './stacked-view.js';   // readyTimeLabel: R1 ready time for the S.oferta offer; gpsoffHtml: the location-off idle state
 import { ref as fbRef, onValue as fbOnValue } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';   // same module instance XPD uses — subscribe to the RTDB connection edge for the offer slide gate
 /* ===== SLICE3:IMPORT-3:END ===== */
 /* ===== SLICE3:LOGIC-3:START — batch-3 module logic (help diagnosis sheet; gpsoff / cierreRechazado / offline to follow) ===== */
@@ -2448,6 +2464,57 @@ function stopOfflineBanner() {
   if (offlineBannerConnUnsub) { try { offlineBannerConnUnsub(); } catch (_) {} offlineBannerConnUnsub = null; }
   const b = $('offline-banner'); if (b) b.classList.add('hidden');
   const n = $('offline-foot-note'); if (n) n.classList.add('hidden');
+}
+
+// SLICE3 gpsoff — the location-off idle state (ruling (C): Transistorsoft stays DORMANT). Detection is READ-ONLY:
+// NATIVE via our own OemSettings.getLocationStatus() — feature-detected, so DARK-SAFE: on the current binary (no such
+// method) there is NO gpsoff card on native and today's behaviour is unchanged; WEB via navigator.permissions
+// (permission cause only, no provider row). Checked on idle mount, on app resume (visibilitychange), on every
+// renderIdleState (driverState updates) and on the web watchPosition PERMISSION_DENIED callback — NO polling interval
+// (advisor). «Más tarde» dismisses until the next resume/recheck. It NEVER mounts over an order in hand (only the idle
+// screen calls applyGpsoff, and it swaps the idle content, never the active card).
+let gpsoffState = null, gpsoffDismissed = false, gpsoffChecking = false;
+async function checkLocationStatus() {
+  if (gpsoffChecking) return; gpsoffChecking = true;
+  try {
+    if (isNative()) {
+      const svc = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.OemSettings;
+      if (!svc || typeof svc.getLocationStatus !== 'function') { gpsoffState = null; return; }   // DARK-SAFE: old binary → never a gpsoff card
+      let loc = null, batt = null;
+      try { loc = await svc.getLocationStatus(); } catch (_) { gpsoffState = null; return; }
+      try { const st = await svc.getStatus(); batt = (st && typeof st.batteryUnrestricted === 'boolean') ? st.batteryUnrestricted : null; } catch (_) {}
+      gpsoffState = { native: true, permission: (loc && loc.permission) || 'denied', providerEnabled: !(loc && loc.providerEnabled === false), batteryUnrestricted: batt };
+    } else if (navigator.permissions && navigator.permissions.query) {
+      try { const p = await navigator.permissions.query({ name: 'geolocation' }); gpsoffState = { native: false, permission: p.state, providerEnabled: true, batteryUnrestricted: null }; }
+      catch (_) { gpsoffState = null; }
+    } else { gpsoffState = null; }   // web with no Permissions API → can't detect → no card
+  } finally { gpsoffChecking = false; applyGpsoff(); }
+}
+function gpsoffActive() {
+  if (gpsoffDismissed || !gpsoffState) return false;
+  return gpsoffState.permission !== 'granted' || gpsoffState.providerEnabled === false;
+}
+function applyGpsoff() {
+  const idle = $('idle-state'); if (!idle) return;
+  let card = $('gpsoff-state'); if (!card) { card = document.createElement('div'); card.id = 'gpsoff-state'; card.className = 'gpsoff-state hidden'; idle.appendChild(card); }
+  const show = gpsoffActive();
+  const top = idle.querySelector('.idle-top'), bar = $('idle-statbar');
+  if (top) top.classList.toggle('hidden', show);   // gpsoff REPLACES the normal idle content (incl. the help link, which lives in .idle-top)
+  if (bar) bar.classList.toggle('hidden', show);
+  card.classList.toggle('hidden', !show);
+  if (!show) { card.innerHTML = ''; return; }
+  card.innerHTML = gpsoffHtml(gpsoffState, { esc: escapeHtml });
+  const settings = $('gpsoff-settings');
+  if (settings) settings.onclick = () => {
+    const svc = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.OemSettings;
+    const cause = settings.getAttribute('data-cause');
+    try {
+      if (svc && cause === 'provider' && typeof svc.openLocationSettings === 'function') svc.openLocationSettings();
+      else if (svc && typeof svc.openAppDetails === 'function') svc.openAppDetails();
+    } catch (_) {}
+  };
+  const later = $('gpsoff-later');
+  if (later) later.onclick = () => { gpsoffDismissed = true; applyGpsoff(); };   // dismiss until the next resume/recheck
 }
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
@@ -3815,6 +3882,9 @@ document.addEventListener('visibilitychange', async () => {
     if (isNative()) pingNativeLocation();
     renderStatusBar();
   }
+  /* ===== SLICE3:GPSOFF-RESUME-3:START — on app resume, clear the «Más tarde» dismiss + re-read the location status so an OS settings change the driver just made reflects at once (applyGpsoff only swaps the idle content, never an order in hand) ===== */
+  if (document.visibilityState === 'visible') { gpsoffDismissed = false; checkLocationStatus(); }
+  /* ===== SLICE3:GPSOFF-RESUME-3:END ===== */
 });
 
 // ============================================================
@@ -3851,6 +3921,9 @@ function startGpsStream() {
     (err) => {
       console.warn('GPS error:', err);
       if (err.code === err.PERMISSION_DENIED) toast('Permiso de GPS denegado', 'error');
+      /* ===== SLICE3:GPSOFF-DENIED-3:START — web: a watchPosition PERMISSION_DENIED is also a gpsoff trigger (advisor); applyGpsoff then shows the card on the idle screen ===== */
+      if (err.code === err.PERMISSION_DENIED) checkLocationStatus();
+      /* ===== SLICE3:GPSOFF-DENIED-3:END ===== */
     },
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 }
   );
@@ -4560,6 +4633,8 @@ function renderIdleState() {
   const idleHelpLink = $('idle-help-link');
   if (idleHelpLink) idleHelpLink.classList.toggle('hidden', status !== 'available');
   applyOfflineBanner();   // the idle screen has no order in hand → this hides the offline banner + its foot note
+  applyGpsoff();          // (b) gpsoff: swap in the location-off card from the CACHED status (sync) ...
+  checkLocationStatus();  //        ... and kick a fresh READ-ONLY check that re-applies when it resolves (no polling)
   /* ===== SLICE3:IDLE-3:END ===== */
   syncIdleStats();
 }

@@ -848,6 +848,40 @@ export function helpDiagnosisHtml(info = {}, deps = {}) {
     </div>`;
 }
 
+// SLICE3 gpsoff — the full-screen «Activá tu ubicación» state over the IDLE screen (prototype S.gpsoff :952). DATA-DRIVEN
+// by the real OS state the caller resolves: permission ('granted'|'denied'|'prompt') and, on native, the location
+// PROVIDER (GPS/location-services switch) + battery. Shows BOTH causes as rows and lets «Abrir ajustes» route to the
+// one that's wrong (the opener is native-only). «Más tarde» is always present. Self-contained SVGs (ICONS has no gps/
+// power key). deps: { native, permission, providerEnabled, batteryUnrestricted, esc }. Pure; never blocks an order in
+// hand (the caller only mounts this on the idle screen).
+const GPSOFF_GPS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4" stroke-linecap="round"/></svg>';
+const GPSOFF_POWER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>';
+export function gpsoffHtml(info = {}, deps = {}) {
+  const { esc = String } = deps;
+  const { native = false, permission = 'denied', providerEnabled = true, batteryUnrestricted = null } = info;
+  const permDenied = permission !== 'granted';
+  const providerOff = native && providerEnabled === false;
+  const chip = (ok, txt) => `<span class="go-chip ${ok ? 'ok' : 'err'}">${esc(txt)}</span>`;
+  const row = (icon, title, sub, chipHtml) => `<div class="go-row"><span class="go-ic">${icon}</span><div class="go-rtext"><div class="go-rt">${esc(title)}</div><div class="go-rd">${esc(sub)}</div></div>${chipHtml}</div>`;
+  // permission row (the prototype's first row) — shown wherever we can read permission (native + web)
+  const permRow = row(GPSOFF_GPS, 'Permiso de ubicación', '«Permitir siempre»', chip(!permDenied, permDenied ? 'Negado' : 'Ok'));
+  // provider row (native only) — shown when the phone's location switch is OFF (the second real cause)
+  const provRow = providerOff ? row(GPSOFF_GPS, 'Ubicación del teléfono', 'Encendé el GPS', chip(false, 'Apagada')) : '';
+  // battery row (native only, when known) — the prototype's second row
+  const battRow = (native && batteryUnrestricted != null) ? row(GPSOFF_POWER, 'Batería', 'Sin restricción', chip(!!batteryUnrestricted, batteryUnrestricted ? 'Ok' : 'Revisar')) : '';
+  // «Abrir ajustes» appears ONLY when a native opener exists; it routes to the switch when that's off, else to app
+  // details (to grant permission). On web there is no opener → «Más tarde» only.
+  const cause = providerOff ? 'provider' : 'permission';
+  const openBtn = native ? `<button class="big-btn primary" id="gpsoff-settings" data-cause="${cause}">Abrir ajustes de ubicación</button>` : '';
+  return `<div class="gpsoff-top">
+      <div class="gpsoff-illus">${GPSOFF_GPS}</div>
+      <div class="gpsoff-h">Activá tu ubicación</div>
+      <div class="gpsoff-sub">Despacho necesita verte en el mapa para asignarte pedidos. Sin GPS no se bloquea nada que ya tengás en mano.</div>
+      <div class="gpsoff-card">${permRow}${provRow}${battRow}</div>
+    </div>
+    <div class="gpsoff-foot">${openBtn}<button class="big-btn txt" id="gpsoff-later">Más tarde</button></div>`;
+}
+
 // SLICE3:CIERRE-REJECT — a self-contained warning triangle (the prototype's I.warn); index.html's ICONS object is
 // out-of-region, so the banner carries its own, same posture as OE_CLOCK / HELP_GPS_SVG.
 const CR_WARN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>';

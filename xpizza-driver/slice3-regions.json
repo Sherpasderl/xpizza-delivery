@@ -25,6 +25,14 @@
       "kind": "insert"
     },
     {
+      "name": "GPSOFF-RESUME-3",
+      "kind": "insert"
+    },
+    {
+      "name": "GPSOFF-DENIED-3",
+      "kind": "insert"
+    },
+    {
       "name": "HELP-HANDLER",
       "kind": "replace",
       "restore": [
