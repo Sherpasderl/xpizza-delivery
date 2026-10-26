@@ -23,6 +23,11 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/source-store.js",
+  "now": "      price: { required: true, type: 'int_positive' },\n      // PLAN 4 r3 §8.1 (advisor ruling, flag 2): an extra the reward picker offers carries its icon too\n      reward_icon: { required: false, type: 'string', enum: REWARD_ICONS },\n    };\n",
+  "was": "      price: { required: true, type: 'int_positive' },\n    };\n"
+ },
+ {
+  "file": "catalog/source-store.js",
   "now": "  }\n  // PLAN 4 r3 §8.1 — the ORDER badges are chosen in. Every entry names a badge THIS document declares, once: a priority\n  // entry naming no definition would be chosen and then render nothing.\n  if (st.badge_priority !== undefined) {\n    checkField(st.badge_priority, { required: false, type: 'string_array', unique: true }, `${rid}`, 'structure.badge_priority');\n    for (const k of st.badge_priority) {\n      if (!st.badges || !Object.prototype.hasOwnProperty.call(st.badges, k)) fail(`${rid} — badge_priority names ${k}, which this document declares no badge for`);\n    }\n  }\n  // ALWAYS the contract's set — never the source's own keys. A brand with no badge renderer has an\n",
   "was": "  }\n  // ALWAYS the contract's set — never the source's own keys. A brand with no badge renderer has an\n"
  },
@@ -53,7 +58,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/public-menu.js",
-  "now": "  for (const f of undeclared) problems.push(`${f} is served but undeclared`);\n  // PLAN 4 r3 §8.1 — the two new display facts, checked against what renders them: a priority entry must name a served\n  // badge, and a dish's reward_icon must be one the reward picker's sprite draws.\n  if (Array.isArray(body.badge_priority)) {\n    const served = isType(body.badges, 'object') ? body.badges : {};\n    const bad = body.badge_priority.filter((k) => typeof k !== 'string' || !Object.prototype.hasOwnProperty.call(served, k));\n    if (bad.length) problems.push(`badge_priority names ${bad.length} key(s) that are not served badges`);\n  }\n  if (Array.isArray(body.dishes)) {\n    const badIcon = body.dishes.filter((d) => d && d.reward_icon !== undefined && !REWARD_ICONS.includes(d.reward_icon));\n    if (badIcon.length) problems.push(`${badIcon.length} dish(es) carry a reward_icon outside the closed set`);\n  }\n  if (problems.length) {\n",
+  "now": "  for (const f of undeclared) problems.push(`${f} is served but undeclared`);\n  // PLAN 4 r3 §8.1 — the two new display facts, checked against what renders them: a priority entry must name a served\n  // badge, and a dish's reward_icon must be one the reward picker's sprite draws.\n  if (Array.isArray(body.badge_priority)) {\n    const served = isType(body.badges, 'object') ? body.badges : {};\n    const bad = body.badge_priority.filter((k) => typeof k !== 'string' || !Object.prototype.hasOwnProperty.call(served, k));\n    if (bad.length) problems.push(`badge_priority names ${bad.length} key(s) that are not served badges`);\n  }\n  for (const coll of ['dishes', 'extras']) {\n    if (!Array.isArray(body[coll])) continue;\n    const badIcon = body[coll].filter((d) => d && d.reward_icon !== undefined && !REWARD_ICONS.includes(d.reward_icon));\n    if (badIcon.length) problems.push(`${badIcon.length} ${coll} record(s) carry a reward_icon outside the closed set`);\n  }\n  if (problems.length) {\n",
   "was": "  for (const f of undeclared) problems.push(`${f} is served but undeclared`);\n  if (problems.length) {\n"
  },
  {

@@ -19703,18 +19703,6 @@
   ]
  },
  {
-  "id": "fb-2",
-  "slice": "formbake",
-  "label": "PLAN 4 §8.1: the dish reward_icon is no longer bound to the closed sprite set — an icon that draws nothing is accepted",
-  "file": "catalog/source-store.js",
-  "from": "    reward_icon: { required: false, type: 'string', enum: REWARD_ICONS },",
-  "to": "    reward_icon: { required: false, type: 'string' },",
-  "command": [
-   "node",
-   "catalog/plan4-display-fields.test.js"
-  ]
- },
- {
   "id": "fb-3",
   "slice": "formbake",
   "label": "PLAN 4 §8.1: badge_priority duplicates are accepted (the unique rule dropped)",
@@ -19763,11 +19751,23 @@
   ]
  },
  {
+  "id": "fb-8",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: the representation version is not advanced — a body with the new fields keeps the 1d.2 cache key",
+  "file": "catalog/public-menu.js",
+  "from": "const REPRESENTATION_VERSION = '1d.3';",
+  "to": "const REPRESENTATION_VERSION = '1d.2';",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
   "id": "fb-7",
   "slice": "formbake",
-  "label": "PLAN 4 §8.1: assertWholeBody stops checking a dish reward_icon against the closed set",
+  "label": "PLAN 4 §8.1: assertWholeBody stops checking a dish / extra reward_icon against the closed set",
   "file": "catalog/public-menu.js",
-  "from": "    if (badIcon.length) problems.push(`${badIcon.length} dish(es) carry a reward_icon outside the closed set`);",
+  "from": "    if (badIcon.length) problems.push(`${badIcon.length} ${coll} record(s) carry a reward_icon outside the closed set`);",
   "to": "",
   "command": [
    "node",
@@ -19775,12 +19775,24 @@
   ]
  },
  {
-  "id": "fb-8",
+  "id": "fb-9",
   "slice": "formbake",
-  "label": "PLAN 4 §8.1: the representation version is not advanced — a body with the new fields keeps the 1d.2 cache key",
-  "file": "catalog/public-menu.js",
-  "from": "const REPRESENTATION_VERSION = '1d.3';",
-  "to": "const REPRESENTATION_VERSION = '1d.2';",
+  "label": "PLAN 4 §8.1 (flag 2): an extra's reward_icon is no longer bound to the closed sprite set",
+  "file": "catalog/source-store.js",
+  "from": "      reward_icon: { required: false, type: 'string', enum: REWARD_ICONS },\n    };",
+  "to": "      reward_icon: { required: false, type: 'string' },\n    };",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-2",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: the dish reward_icon is no longer bound to the closed sprite set — an icon that draws nothing is accepted",
+  "file": "catalog/source-store.js",
+  "from": "    // PLAN 4 r3 §8.1 (OWNER RULING (a)): the reward-picker icon, from the closed set the shipped sprite draws.\n    reward_icon: { required: false, type: 'string', enum: REWARD_ICONS },",
+  "to": "    // PLAN 4 r3 §8.1 (OWNER RULING (a)): the reward-picker icon, from the closed set the shipped sprite draws.\n    reward_icon: { required: false, type: 'string' },",
   "command": [
    "node",
    "catalog/plan4-display-fields.test.js"

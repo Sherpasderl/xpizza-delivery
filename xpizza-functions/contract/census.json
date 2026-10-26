@@ -3044,7 +3044,7 @@
   },
   {
    "id": "xpizza-functions/catalog/source-store.js#validateSource#items#6",
-   "line": 453,
+   "line": 455,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3054,7 +3054,7 @@
   },
   {
    "id": "xpizza-functions/catalog/source-store.js#validateSource#items#7",
-   "line": 522,
+   "line": 524,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3064,7 +3064,7 @@
   },
   {
    "id": "xpizza-functions/catalog/source-store.js#validateSource#items#8",
-   "line": 600,
+   "line": 602,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3074,7 +3074,7 @@
   },
   {
    "id": "xpizza-functions/catalog/source-store.js#validateSource#items#9",
-   "line": 608,
+   "line": 610,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3084,7 +3084,7 @@
   },
   {
    "id": "xpizza-functions/catalog/source-store.js#validateSource#items#10",
-   "line": 662,
+   "line": 664,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3094,7 +3094,7 @@
   },
   {
    "id": "xpizza-functions/catalog/source-store.js#validateSource#items#11",
-   "line": 681,
+   "line": 683,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3104,7 +3104,7 @@
   },
   {
    "id": "xpizza-functions/catalog/source-store.js#validateSource#items#12",
-   "line": 685,
+   "line": 687,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3114,7 +3114,7 @@
   },
   {
    "id": "xpizza-functions/catalog/source-store.js#validateSource#items#13",
-   "line": 695,
+   "line": 697,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3124,7 +3124,7 @@
   },
   {
    "id": "xpizza-functions/catalog/source-store.js#validateSource#items#14",
-   "line": 703,
+   "line": 705,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3134,7 +3134,7 @@
   },
   {
    "id": "xpizza-functions/catalog/source-store.js#validateSource#items#15",
-   "line": 703,
+   "line": 705,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -3144,7 +3144,7 @@
   },
   {
    "id": "xpizza-functions/catalog/source-store.js#sourceToBuildInputs#items#0",
-   "line": 748,
+   "line": 750,
    "kind": "member",
    "facts": [
     "ITEMS"

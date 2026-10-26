@@ -110,9 +110,10 @@ function assertWholeBody(restaurantId, body, menu) {
     const bad = body.badge_priority.filter((k) => typeof k !== 'string' || !Object.prototype.hasOwnProperty.call(served, k));
     if (bad.length) problems.push(`badge_priority names ${bad.length} key(s) that are not served badges`);
   }
-  if (Array.isArray(body.dishes)) {
-    const badIcon = body.dishes.filter((d) => d && d.reward_icon !== undefined && !REWARD_ICONS.includes(d.reward_icon));
-    if (badIcon.length) problems.push(`${badIcon.length} dish(es) carry a reward_icon outside the closed set`);
+  for (const coll of ['dishes', 'extras']) {
+    if (!Array.isArray(body[coll])) continue;
+    const badIcon = body[coll].filter((d) => d && d.reward_icon !== undefined && !REWARD_ICONS.includes(d.reward_icon));
+    if (badIcon.length) problems.push(`${badIcon.length} ${coll} record(s) carry a reward_icon outside the closed set`);
   }
   if (problems.length) {
     fail('public_menu_unavailable', `${restaurantId}: the projection is not a whole menu — ${problems.join('; ')}`);

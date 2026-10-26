@@ -394,6 +394,8 @@ function validateSource(source, rid) {
       cat: { required: true, type: 'string', nonEmpty: true, sink: 'body' },
       name: { required: true, type: 'string', nonEmpty: true, sink: 'body' },
       price: { required: true, type: 'int_positive' },
+      // PLAN 4 r3 §8.1 (advisor ruling, flag 2): an extra the reward picker offers carries its icon too
+      reward_icon: { required: false, type: 'string', enum: REWARD_ICONS },
     };
     for (const [f, rule] of Object.entries(EXTRA_RULES)) checkField(ex.display[f], rule, `${rid}/extra ${ex.key}`, `display.${f}`);
     if (ex.display.price !== ex.price) fail(`${rid}/extra ${ex.key} — display price ${String(ex.display.price)} must be present and equal to the authoritative price ${ex.price}`);

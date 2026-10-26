@@ -28,14 +28,14 @@ const refuses = (fn, re, label) => assert.throws(fn, (e) => re.test(String(e && 
 (async () => {
   // ── 1. the closed reward_icon set is exactly what BOTH forms' sprite can draw (minus its chrome symbols) ──
   {
-    const CHROME = ['check', 'gift', 'star'];
+    const CHROME = ['check', 'gift'];
     for (const dir of ['xpizza-orders', 'la-musa-orders']) {
       const acct = fs.readFileSync(path.join(REPO, dir, 'account.js'), 'utf8');
       const sprite = [...acct.matchAll(/<symbol id="rk-i-([a-z_-]+)"/g)].map((m) => m[1]).sort();
       assert.deepStrictEqual(sprite.filter((s) => !CHROME.includes(s)), [...REWARD_ICONS].sort(), `${dir}: the closed set is the sprite's dish symbols`);
     }
     assert.ok(Object.isFrozen(REWARD_ICONS));
-    ok(`reward_icon set: ${REWARD_ICONS.length} dish icons = both forms' rk-i sprite minus its chrome (check/gift/star); frozen`);
+    ok(`reward_icon set: ${REWARD_ICONS.length} row icons = both forms' rk-i sprite minus its chrome (check/gift); frozen`);
   }
 
   // ── 2. validateSource: badge_priority (la_musa's real seed + today's TAG_PRIORITY) ──
@@ -65,11 +65,17 @@ const refuses = (fn, re, label) => assert.throws(fn, (e) => re.test(String(e && 
     assert.ok(mush, 'premise: the Mushroom dish');
     mush.display.reward_icon = 'mushroom';
     validateSource(s, 'x_pizza');
-    for (const v of ['star', 'pizza', '', 7, null]) {
+    for (const v of ['gift', 'pizza', '', 7, null]) {
       const x = clone(s); x.items.find((i) => i.display.name === 'Mushroom').display.reward_icon = v;
       refuses(() => validateSource(x, 'x_pizza'), /reward_icon/, `reward_icon ${JSON.stringify(v)}`);
     }
-    ok('validateSource: a dish reward_icon from the closed set is accepted; outside it (incl. the chrome "star"), blank, non-string and null each refused');
+    // an EXTRA the picker offers carries one too (la_musa's acompañamientos), bound to the same set
+    const lm = clone(buildSourceFromCode('la_musa'));
+    const side = lm.extras.find((e) => e.display.cat === 'Acompañamientos');
+    assert.ok(side, 'premise: an acompañamiento');
+    side.display.reward_icon = 'rice'; validateSource(lm, 'la_musa');
+    side.display.reward_icon = 'check'; refuses(() => validateSource(lm, 'la_musa'), /reward_icon/, 'an extra with a chrome icon');
+    ok('validateSource: a dish or extra reward_icon from the closed set is accepted; outside it (incl. the chrome "gift"/"check"), blank, non-string and null each refused');
   }
 
   // ── 4. the store path CARRIES badge_priority into the built structure; the money is unmoved by both fields ──
@@ -118,7 +124,8 @@ const refuses = (fn, re, label) => assert.throws(fn, (e) => re.test(String(e && 
     refused((b) => { b.badge_priority = ['a', 'ghost']; }, /badge_priority names 1 key/);
     refused((b) => { b.badge_priority = 'a'; }, /badge_priority is not an array/);
     refused((b) => { delete b.badge_priority; }, /badge_priority is missing although the catalog carries it/);
-    refused((b) => { b.dishes[0].reward_icon = 'star'; }, /reward_icon outside the closed set/);
+    refused((b) => { b.dishes[0].reward_icon = 'gift'; }, /dishes record\(s\) carry a reward_icon outside the closed set/);
+    refused((b) => { b.extras = [{ id: 'e', name: 'E', cat: 'x', price: 1, reward_icon: 'pizza' }]; }, /extras record\(s\) carry a reward_icon outside the closed set/);
     const ic = base(); ic.dishes[0].reward_icon = 'slice'; assertWholeBody('r', ic, menu);
     ok('assertWholeBody: a priority naming an unserved badge, a non-array priority, a dropped priority and an off-set reward_icon are each refused (public_menu_unavailable)');
   }

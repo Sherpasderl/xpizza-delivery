@@ -1716,6 +1716,7 @@
   "catalog/publish-edited-handler.js",
   "catalog/publish-request.js",
   "catalog/reset-draft.js",
+  "catalog/reward-icons.js",
   "catalog/source-store.js",
   "catalog/text-version.js",
   "createorder-classify.js",
@@ -1919,6 +1920,10 @@
    "lifts": []
   },
   "catalog/reset-draft.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/reward-icons.js": {
    "pins": [],
    "lifts": []
   },
