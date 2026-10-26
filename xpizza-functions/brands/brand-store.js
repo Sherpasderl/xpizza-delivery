@@ -87,6 +87,20 @@ async function applyPublish(rtdb, plan) {
   return { ok: true, superseded_after_write: true };
 }
 
+// O1b T7 (Codex r2 P2): ONE per-brand stale-projection alert. A portal mutation whose publish failed / threw / timed out upserts it
+// (the LAST reason and time; first_at kept; count); ANY successful publish clears it (only when present — no write otherwise).
+const staleAlertPath = (brandId) => `dispatcher_alerts/projection_stale_${brandId}`;
+async function raiseProjectionStale(rtdb, brandId, { rid, reason, at }) {
+  await rtdb.ref(staleAlertPath(brandId)).transaction((cur) => (cur && typeof cur === 'object'
+    ? { ...cur, rid: rid || null, reason, at, count: (Number.isInteger(cur.count) ? cur.count : 1) + 1 }
+    : { type: 'projection_stale', brand_id: brandId, rid: rid || null, reason, first_at: at, at, count: 1 }));
+}
+async function clearProjectionStale(rtdb, brandId) {
+  if ((await readNode(rtdb, staleAlertPath(brandId))) == null) return false;
+  await rtdb.ref(staleAlertPath(brandId)).set(null);
+  return true;
+}
+
 const PUBLISH_TRIES = 3;
 async function publishBrandProjection(rtdb, brandId, { now }) {
   for (let i = 0; i < PUBLISH_TRIES; i += 1) {
@@ -96,11 +110,12 @@ async function publishBrandProjection(rtdb, brandId, { now }) {
     if (!plan.ok) return { ok: false, error: 'refused', errors: plan.errors };
     const r = await applyPublish(rtdb, plan);
     if (r.error === 'incomparable') continue;   // a mixed-timing read: re-read
-    if (r.error === 'superseded') return { ok: true, superseded: true };
+    if (r.error === 'superseded') { await clearProjectionStale(rtdb, brandId); return { ok: true, superseded: true }; }
+    if (r.ok) await clearProjectionStale(rtdb, brandId);
     return r.ok ? { ...r, source: plan.row.to.source } : r;
   }
   await rtdb.ref(`dispatcher_alerts/projection_unfenced_${brandId}`).transaction((cur) => (cur == null ? { type: 'projection_unfenced', brand_id: brandId, created_at: now } : undefined));
   return { ok: false, error: 'projection_unfenced' };
 }
 
-module.exports = { brandPath, publicPath, readNode, readIdentities, planSeedLegacy, applySeedLegacy, planPublish, applyPublish, projectionSource, compareSource, publishBrandProjection };
+module.exports = { brandPath, publicPath, readNode, readIdentities, planSeedLegacy, applySeedLegacy, planPublish, applyPublish, projectionSource, compareSource, publishBrandProjection, raiseProjectionStale, clearProjectionStale, staleAlertPath };
