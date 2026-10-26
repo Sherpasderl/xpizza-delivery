@@ -186,6 +186,25 @@ async function myLocations({ db, onStale = () => {} }, ctx) {
   return [...out.values()].sort((a, z) => (a.rid < z.rid ? -1 : a.rid > z.rid ? 1 : 0));
 }
 
+// "My brands" (O1b T1b): the brands this uid OWNS — member_of.brands DISCOVERS, the forward grant brand_members/{b}/owners/{uid}
+// AUTHORIZES, the brand record must validate. Independent of locations, so a brand whose only branch is a draft is listed.
+// Stale / malformed entries are dropped via onStale. → [{ brand_id, activation }] sorted. A failure THROWS (an outage).
+async function myOwnerBrands({ db, onStale = () => {} }, ctx) {
+  const refused = refuseContext(ctx);
+  if (refused) { const e = new Error(refused.code); e.code = refused.code; throw e; }
+  const idx = (await val(db, `member_of/${ctx.uid}`)) || {};
+  const brands = isObj(idx.brands) ? idx.brands : {};
+  const out = [];
+  for (const b of Object.keys(brands).sort()) {
+    if (!F1.isBrandId(b) || brands[b] !== 'owner') { onStale({ kind: 'malformed_brand_entry', id: b }); continue; }
+    if ((await val(db, `brand_members/${b}/owners/${ctx.uid}`)) == null) { onStale({ kind: 'stale_owner', id: b }); continue; }
+    const rec = await val(db, `brands/${b}`);
+    if (!isObj(rec) || !F1.validateBrand(b, rec).ok) { onStale({ kind: 'invalid_brand', id: b }); continue; }
+    out.push({ brand_id: b, activation: isObj(rec.activation) && typeof rec.activation.state === 'string' ? rec.activation.state : null });
+  }
+  return out;
+}
+
 // BRAND scope (O1b T1): the brand's OWNER by the forward grant brand_members/{b}/owners/{uid}, over a VALID brand record —
 // independent of locations, so a brand whose only branch is staged / a draft resolves. A read failure → 'unavailable'.
 async function resolveBrandAccess({ db }, ctx, brandId) {
@@ -203,4 +222,4 @@ async function resolveBrandAccess({ db }, ctx, brandId) {
   }
 }
 
-module.exports = { CAPABILITIES, CAP_NAMES, STAGED_CAPS, BRAND_CAPABILITIES, capsFor, can, resolveAccess, resolveBrandAccess, resolveLocation, myLocations, refuseContext, isUid, isPathUid, UID_RE };
+module.exports = { CAPABILITIES, CAP_NAMES, STAGED_CAPS, BRAND_CAPABILITIES, capsFor, can, resolveAccess, resolveBrandAccess, resolveLocation, myLocations, myOwnerBrands, refuseContext, isUid, isPathUid, UID_RE };

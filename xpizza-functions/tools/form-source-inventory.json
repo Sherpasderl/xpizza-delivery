@@ -1702,6 +1702,7 @@
   "branches/branch-ops.js",
   "branches/branch-store.js",
   "branches/branches-admin-core.js",
+  "branches/drafts.js",
   "branches/rid-alloc.js",
   "brands/brand-model.js",
   "brands/brand-projection.js",
@@ -1853,6 +1854,10 @@
    "lifts": []
   },
   "branches/branches-admin-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "branches/drafts.js": {
    "pins": [],
    "lifts": []
   },

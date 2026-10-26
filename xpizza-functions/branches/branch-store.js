@@ -16,6 +16,7 @@
 const crypto = require('crypto');
 const { validateBrand } = require('../brands/brand-model');
 const { ridCandidates, nameKey } = require('./rid-alloc');
+const { boundDraft } = require('./drafts');   // O1b T1b
 const P = require('./branch-ops');
 const { HEAL_TERMINAL_STATUSES } = require('../sweep-pending');   // every terminal status incl. cancelled — anything else is live
 
@@ -272,6 +273,9 @@ const STEPS = {
       const res = await val(db, `rid_reservations/${rid}`);
       const nm = await val(db, `brand_branch_names/${brandId}/${nk}`);
       const maps = (await val(db, `branch_op_ids/${brandId}`)) || {};
+      // O1b T1b: a PORTAL delete (inputs.bind) re-binds under the lock — the brand's op-id mapping for this draft's op must point
+      // back to this rid. The Sherpa CLI (no bind) keeps O1a's behaviour so it can still remove an orphan draft `check` reports.
+      if (op.inputs.bind === true && !boundDraft(brandId, rid, d, null, typeof d.op_id === 'string' ? maps[d.op_id] : null)) return fail(db, op, callId, 'not_a_draft');
       const brand = await val(db, `brands/${brandId}`);
       const closing = onlyStaged(brand, rid) && isObj(brand.activation) && brand.activation.state === 'off';
       // a draft its brand LISTS goes only together with that listing (Codex r3 #3): the never-opened single-staged OFF brand is
@@ -505,8 +509,8 @@ async function createBrandWithDraft(db, { brandId, brandName, input, opId, calle
 }
 
 // abandoned-draft cleanup (resumable)
-async function deleteBranchDraft(db, { rid, brandId, now = Date.now(), callId = newCallId('delete'), clock }) {
-  return runOp(db, brandId, { kind: 'delete_draft', inputs: { rid }, at: now }, callId, now, clock, { live: true });
+async function deleteBranchDraft(db, { rid, brandId, now = Date.now(), callId = newCallId('delete'), clock, bind = false }) {
+  return runOp(db, brandId, { kind: 'delete_draft', inputs: bind === true ? { rid, bind: true } : { rid }, at: now }, callId, now, clock, { live: true });
 }
 
 // Sherpa admin: materialize a draft with its location (§4)
