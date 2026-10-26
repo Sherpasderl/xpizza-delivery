@@ -238,9 +238,11 @@
       const t = now();
       writeJSON(PLACE_KEY, { order_id: id, method: 'online', card: true, issued: true, unresolved: false, dispatched: 1, pay_pending: true, ts: t, last_send: t, expires_at: expiresAtOf(t, t) });
     }
+    // a locked CASH record has no bank to wait on: its held state is the recovery sheet, never the pending one (r4 ruling)
+    const cashRec = (id) => { const r = readPlace(); return !!(r && r.order_id === id && r.card !== true); };
     async function lockedOutcome(id) {
       const t = credsFor(id);
-      if (!t) return pendingSheet(id);
+      if (!t) return cashRec(id) ? recoverySheet(id) : pendingSheet(id);
       const p = await pollOnce(id, t);
       if (p.forbidden) return recoverySheet(id);
       if (p.state === 'pending') return pendingSheet(id);
@@ -405,7 +407,7 @@
         // no usable creds: never «Tu banco no autorizó» without an authoritative answer — recovery, locked (S2b r1 P2-5)
         // OWNER (B), 2026-10-26: NO record and NO creds ⇒ the pending sheet once, nothing locked (a cancel almost surely charged
         // nothing); ANY record on file (cash or card, r3 P2-5) keeps the fail-closed lock
-        if (!id || !t) { const r = readPlace(); const lid = r ? r.order_id : null; if (lid) lockPending(lid); return pendingSheet(lid || id || null); }
+        if (!id || !t) { const r = readPlace(); const lid = r ? r.order_id : null; if (lid) lockPending(lid); return lid && r.card !== true ? recoverySheet(lid) : pendingSheet(lid || id || null); }
         const p = await Promise.race([pollOnce(id, t), timeout(CANCEL_CHECK_MS).then(() => ({ state: 'pending', json: {} }))]);
         // the authoritative poll state wins (P2 #5); a server that still says pending LOCKS the order (the pending held state)
         if (p && !p.forbidden && p.state !== 'pending') return outcomeOfState(id, p.state, p.json);

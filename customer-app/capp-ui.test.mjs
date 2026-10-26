@@ -1209,7 +1209,7 @@ test('S2b r3 P2-3b: a late «price_increased» after destroy() is PERSISTED but 
   }
 });
 
-test('S2b r3 P2-5: a CASH record on file + a credentialless cancel ⇒ the pending sheet; dismissed, the card (and cash) send NOTHING with the retained id; a reload stays locked', async () => {
+test('S2b r3 P2-5: a CASH record on file + a credentialless cancel ⇒ locked, the RECOVERY sheet (no bank in a cash order — never «Estamos confirmando tu pago»); dismissed, the card (and cash) send NOTHING with the retained id; a reload stays locked', async () => {
   const storage = memStore();
   const a = bootCo({ storage, script: { createOrder: ['network'] } });
   await placeVia(a);
@@ -1218,7 +1218,8 @@ test('S2b r3 P2-5: a CASH record on file + a credentialless cancel ⇒ the pendi
   a.ui.destroy();
   const c = await returned(storage, '?pay=cancel', {});
   assert.equal(c.srv.calls.length, 0, 'no creds: nothing to poll');
-  assert.equal(c.q('#layer .sheet').getAttribute('aria-label'), 'Tu pago todavía está en verificación');
+  assert.equal(c.q('#layer .sheet').getAttribute('aria-label'), 'Necesitamos revisar tu pedido', '🔴 a cash record at the return: the recovery sheet');
+  assert.ok(!/confirmando tu pago/.test(c.text('#layer') || ''), 'no bank copy for cash');
   assert.deepEqual([placeRec(storage).order_id, placeRec(storage).pay_pending], [id, true], 'the cash record is locked');
   await c.click('#layer [data-act="lclose"]');
   c.ui.cart.inc(c.plain.key); c.ui.openCheckout(); await settle();   // the cart's «Ir a pagar» path (asks for the location)
@@ -1228,12 +1229,12 @@ test('S2b r3 P2-5: a CASH record on file + a credentialless cancel ⇒ the pendi
     if (c.q('[data-act="tipc"][data-val="0"]')) await c.click('[data-act="tipc"][data-val="0"]');
     if (c.q('[data-act="tip-place"]')) await c.click('[data-act="tip-place"]');
     if (c.q('#layer [data-act="placing-go"]')) await c.click('#layer [data-act="placing-go"]');
-    assert.equal(c.q('#layer .sheet').getAttribute('aria-label'), 'Tu pago todavía está en verificación', `${pay}: the pending sheet again`);
+    assert.equal(c.q('#layer .sheet').getAttribute('aria-label'), 'Necesitamos revisar tu pedido', `🔴 ${pay}: a locked cash record's later tap ⇒ the recovery sheet`);
     await c.click('#layer [data-act="lclose"]');
   }
   assert.deepEqual([writes(c), c.srv.of('paymentStatus').length], [0, 0], '🔴 zero charges, zero createOrder, zero polls with the retained id (only the quote went out)');
   c.ui.destroy();
   const r = bootCo({ storage, script: {} });
   await placeVia(r, 'online');
-  assert.deepEqual([writes(r), r.q('#layer .sheet').getAttribute('aria-label')], [0, 'Tu pago todavía está en verificación'], '🔴 a reload stays locked');
+  assert.deepEqual([writes(r), r.q('#layer .sheet').getAttribute('aria-label')], [0, 'Necesitamos revisar tu pedido'], '🔴 a reload stays locked (recovery)');
 });

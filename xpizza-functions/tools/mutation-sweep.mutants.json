@@ -21139,7 +21139,40 @@
       "../customer-app/capp-ui.test.mjs"
     ],
     "kills_with": [
-      "the cash record is locked"
+      "the cash record is locked",
+      "a cash record at the return: the recovery sheet"
+    ]
+  },
+  {
+    "id": "s2b-u17",
+    "slice": "s2b",
+    "label": "a locked CASH record's later taps show the bank «pending» sheet (no cash branch in lockedOutcome)",
+    "file": "../customer-app/capp-api.js",
+    "from": "if (!t) return cashRec(id) ? recoverySheet(id) : pendingSheet(id);",
+    "to": "if (!t) return pendingSheet(id);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a locked cash record's later tap ⇒ the recovery sheet"
+    ]
+  },
+  {
+    "id": "s2b-u18",
+    "slice": "s2b",
+    "label": "a credentialless cancel over a CASH record shows the bank «pending» sheet at the return",
+    "file": "../customer-app/capp-api.js",
+    "from": "return lid && r.card !== true ? recoverySheet(lid) : pendingSheet(lid || id || null);",
+    "to": "return pendingSheet(lid || id || null);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a cash record at the return: the recovery sheet"
     ]
   },
   {
