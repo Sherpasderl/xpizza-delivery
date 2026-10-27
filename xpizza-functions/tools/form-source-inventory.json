@@ -1351,6 +1351,7 @@
   "xpizza-functions/contract/timer-bounds.js",
   "xpizza-functions/contract/tracer.js",
   "xpizza-functions/contract/version-witness.js",
+  "xpizza-functions/directory/directory-deps.js",
   "xpizza-functions/index.js",
   "xpizza-functions/menu-extract.mjs",
   "xpizza-functions/portal/branch-lifecycle-core.js",

@@ -86,7 +86,7 @@ const allKeys = (v, acc = new Set()) => { if (Array.isArray(v)) v.forEach((x) =>
   { const r = await D.buildDirectory(mkDeps({ deps: { loadSchedule: async () => { throw new Error('503'); } } })); assert.deepStrictEqual([r.body.restaurants[0].schedule_state, r.body.complete], ['unavailable', false], 'DIR-SCHEDULE-FAIL-PARTIAL'); }
   { const r = await D.buildDirectory(mkDeps({ deps: { loadSchedule: async () => ({ valid: true, hours: H7, cfg: SCHED.resolveCfg(), source: 'cache' }) } })); assert.strictEqual(r.body.complete, false, 'DIR-SCHEDULE-CACHE-PARTIAL'); }
   { const r = await D.buildDirectory(mkDeps({ deps: { readPresentation: async () => { throw new Error('x'); } } }));
-    assert.strictEqual(r.body.complete, false, 'DIR-PRESENTATION-FAIL-PARTIAL'); assert.deepStrictEqual(r.body.restaurants[0].degraded, [...PS.FIELD_NAMES].sort()); assert.strictEqual(r.body.restaurants[0].kicker, null); }
+    assert.strictEqual(r.body.complete, false, 'DIR-PRESENTATION-FAIL-PARTIAL'); assert.deepStrictEqual(r.body.restaurants[0].degraded, [...PS.SERVED_FIELDS].sort()); assert.strictEqual(r.body.restaurants[0].kicker, null); }
   { const r = await D.buildDirectory(mkDeps({ deps: { readPresentation: async () => null } })); assert.strictEqual(r.body.complete, true, 'DIR-PRESENTATION-ABSENT-COMPLETE'); assert.ok(r.body.restaurants[0].degraded.includes('house')); }
   { const r = await D.buildDirectory(mkDeps({ deps: { readPresentation: async () => ({ ...PRES, hero_url: 'http://insecure', house: 'not-a-list' }) } }));
     assert.strictEqual(r.body.restaurants[0].hero_url, null, 'DIR-INVALID-FIELD-WITHHELD'); assert.ok(r.body.restaurants[0].degraded.includes('hero_url') && r.body.restaurants[0].degraded.includes('house')); }
@@ -152,23 +152,101 @@ const allKeys = (v, acc = new Set()) => { if (Array.isArray(v)) v.forEach((x) =>
     ok('registry readNow: floor ∪ last-good ∪ fresh (== known()); an empty read keeps last-good; a failure is ok:false (refresh still swallows)');
   }
 
-  // ── 7. presentation shape + the writer (plan / dry-run / idempotent per field / --force / read-back) ──
+  // ── 7. presentation shape + the writer, against a fake with REAL RTDB semantics (Codex directory r1 P2-2/3/5) ──
   {
+    // RTDB storage semantics: null deletes; EMPTY arrays/objects vanish; map keys come back REORDERED (sorted); arrays keep order
+    const norm = (v) => {
+      if (v === null || v === undefined) return undefined;
+      if (Array.isArray(v)) { const a = v.map(norm).filter((x) => x !== undefined); return a.length ? a : undefined; }
+      if (typeof v === 'object') { const o = {}; for (const k of Object.keys(v).sort()) { const x = norm(v[k]); if (x !== undefined) o[k] = x; } return Object.keys(o).length ? o : undefined; }
+      return v;
+    };
+    const mkRtdb = (init = {}) => { const store = {}; for (const [k, v] of Object.entries(init)) store[k] = norm(v);
+      return { store, ref: (p) => ({ once: async () => ({ val: () => (store[p] === undefined ? null : JSON.parse(JSON.stringify(store[p]))) }),
+        update: async (patch) => { const cur = { ...(store[p] || {}) }; for (const [k, v] of Object.entries(patch)) { const x = norm(v); if (x === undefined) delete cur[k]; else cur[k] = x; } store[p] = norm(cur); } }) }; };
+    const { randomToken } = require('../catalog/identity-registry');
+    const { catalogSnapshot } = require('../catalog/generate-form-bundle');
+    const realIds = [randomToken(), randomToken(), catalogSnapshot('la_musa').items[0].display.id];   // x_pizza minted tokens + a la_musa grandfathered slug
+    assert.ok(/^[0-9A-Z]{10}$/.test(realIds[0]) && realIds[2] === 'dimsum_01', 'premise: real canonical ids (minted uppercase + grandfathered slug)');
+    assert.deepStrictEqual(PS.presentationErrors({ house: realIds }), [], 'PRES-HOUSE-CANONICAL-IDS');
+    assert.deepStrictEqual(PS.pickPresentation({ house: realIds }).fields.house, realIds, 'PRES-HOUSE-CASE-PRESERVED');
     assert.deepStrictEqual(PS.presentationErrors(PRES), [], 'PRES-VALID');
-    for (const [k, v] of [['eta_delivery_min', [45, 30]], ['payments', ['card']], ['order_id_prefix', 'tb'], ['logo_url', 'javascript:x'], ['meals', { 'BAD KEY': 'x' }], ['unit', ['one']]])
-      assert.ok(PS.presentationErrors({ [k]: v }).length > 0, `PRES-REFUSES ${k}`);
+    for (const [k, v] of [['eta_delivery_min', [45, 30]], ['payments', ['card']], ['order_id_prefix', 'tb'], ['logo_url', 'javascript:x'], ['meals', { 'BAD KEY': 'x' }], ['unit', ['one']], ['cuisines', []], ['meals', {}], ['house', ['a/b']], ['house_hidden', false]])
+      assert.ok(PS.presentationErrors({ [k]: v }).length > 0, `PRES-REFUSES ${k} ${JSON.stringify(v)}`);
+    assert.ok(PS.presentationErrors({ house: ['X'], house_hidden: true }).some((e) => /exclusive/.test(e)), 'PRES-HOUSE-EXCLUSIVE');
     assert.ok(PS.presentationErrors({ extra: 1 }).some((e) => /unknown field extra/.test(e)), 'PRES-UNKNOWN-FIELD');
     assert.throws(() => SEED.parseArgs(['--file', 'x.json']), /--project is required/, 'SEEDP-PROJECT-REQUIRED');
-    const store = { 'restaurants/tb_a/presentation': { kicker: 'old' } }; const writes = [];
-    const db = { ref: (p) => ({ once: async () => ({ val: () => store[p] || null }), update: async (v) => { writes.push([p, v]); store[p] = { ...(store[p] || {}), ...v }; } }) };
     const quiet = () => {};
-    await SEED.run(db, { tb_a: PRES }, { apply: false, force: false }, quiet); assert.strictEqual(writes.length, 0, 'SEEDP-DRY-RUN');
-    const res1 = await SEED.run(db, { tb_a: PRES }, { apply: true, force: false }, quiet);
-    assert.ok(res1.tb_a.skipped.includes('kicker') && store['restaurants/tb_a/presentation'].kicker === 'old', 'SEEDP-NO-CLOBBER');
-    await SEED.run(db, { tb_a: PRES }, { apply: true, force: true }, quiet); assert.strictEqual(store['restaurants/tb_a/presentation'].kicker, PRES.kicker, 'SEEDP-FORCE');
-    assert.ok(writes.every(([p]) => p === 'restaurants/tb_a/presentation'), 'SEEDP-ONLY-PRESENTATION-NODE');
+    const db = mkRtdb({ 'restaurants/tb_a/presentation': { kicker: 'old' } });
+    await SEED.run(db, { tb_a: { ...PRES, house: realIds } }, { apply: false, force: false }, quiet);
+    assert.deepStrictEqual(db.store['restaurants/tb_a/presentation'], { kicker: 'old' }, 'SEEDP-DRY-RUN');
+    const res1 = await SEED.run(db, { tb_a: { ...PRES, house: realIds, meals: { z_pizza: 'compartir', a_pasta: 'cena' } } }, { apply: true, force: false }, quiet);
+    assert.ok(res1.tb_a.skipped.includes('kicker') && db.store['restaurants/tb_a/presentation'].kicker === 'old', 'SEEDP-NO-CLOBBER');
+    assert.deepStrictEqual(Object.keys(db.store['restaurants/tb_a/presentation'].meals), ['a_pasta', 'z_pizza'], 'premise: RTDB reordered the map keys');
+    ok('SEEDP-READBACK-STRUCTURAL: a reordered map (meals z/a) reads back as equal — no false mismatch');
+    // explicit EMPTY house survives storage as house_hidden and is served as house:[] (distinct from absent)
+    await SEED.run(db, { tb_a: { house: [] } }, { apply: true, force: true }, quiet);
+    const st = db.store['restaurants/tb_a/presentation'];
+    assert.strictEqual(st.house, undefined, 'SEEDP-HOUSE-EMPTY-CLEARS-LIST'); assert.strictEqual(st.house_hidden, true, 'SEEDP-HOUSE-HIDDEN-PERSISTED');
+    assert.deepStrictEqual(PS.pickPresentation(st).fields.house, [], 'DIR-HOUSE-EXPLICIT-EMPTY-SERVED');
+    assert.strictEqual(PS.pickPresentation({ kicker: 'x' }).fields.house, undefined, 'DIR-HOUSE-ABSENT-STAYS-ABSENT');
+    const dirEmpty = await D.buildDirectory(mkDeps({ deps: { readPresentation: async () => st } }));
+    assert.deepStrictEqual(dirEmpty.body.restaurants[0].house, [], 'DIR-HOUSE-HIDDEN-IN-BODY'); assert.ok(!dirEmpty.body.restaurants[0].degraded.includes('house'));
+    assert.ok(!('house_hidden' in dirEmpty.body.restaurants[0]), 'DIR-HOUSE-HIDDEN-NOT-SERVED-RAW');
+    await SEED.run(db, { tb_a: { house: realIds } }, { apply: true, force: true }, quiet);
+    assert.deepStrictEqual([db.store['restaurants/tb_a/presentation'].house, db.store['restaurants/tb_a/presentation'].house_hidden], [realIds, undefined], 'SEEDP-HOUSE-LIST-CLEARS-HIDDEN');
     await assert.rejects(() => SEED.run(db, { tb_a: { ...PRES, house: 'x' } }, { apply: true, force: true }, quiet), /presentation invalid house/, 'SEEDP-VALIDATES');
-    ok('presentation: one shared shape (writer refuses unknown/invalid fields; reader withholds invalid); seed-presentation is dry-run by default, --project required, per-field no-clobber unless --force, writes only the presentation node');
+    ok('presentation (real-RTDB fake): canonical dish ids (minted + grandfathered, case kept); house:[] persists as house_hidden and is served as []; absent ≠ empty; per-field no-clobber unless --force; dry-run writes nothing');
+  }
+
+  // ── 8. P1 TARGET SAFETY: the RTDB destination is bound to the stated project; an inherited URL can never redirect it ──
+  {
+    const URL0 = 'https://xpizza-delivery-default-rtdb.firebaseio.com';
+    assert.strictEqual(SEED.assertDatabaseTarget('xpizza-delivery', URL0, {}), URL0, 'SEEDP-TARGET-OK');
+    assert.strictEqual(SEED.assertDatabaseTarget('xpizza-delivery', URL0, { FB_DATABASE_URL: `${URL0}/` }), URL0, 'SEEDP-TARGET-SAME-URL-OK');
+    for (const [label, env] of [['FB_DATABASE_URL', { FB_DATABASE_URL: 'https://prod-other-default-rtdb.firebaseio.com' }], ['FIREBASE_DATABASE_URL', { FIREBASE_DATABASE_URL: 'https://x.firebaseio.com' }],
+      ['FIREBASE_CONFIG url', { FIREBASE_CONFIG: JSON.stringify({ databaseURL: 'https://x.firebaseio.com' }) }], ['FIREBASE_CONFIG project', { FIREBASE_CONFIG: JSON.stringify({ projectId: 'other' }) }]])
+      assert.throws(() => SEED.assertDatabaseTarget('xpizza-delivery', URL0, env), (e) => e.code === 'seed_presentation_refused', `SEEDP-TARGET-REFUSES ${label}`);
+    assert.throws(() => SEED.assertDatabaseTarget('staging-proj', URL0, {}), /does not belong to project staging-proj/, 'SEEDP-TARGET-PROJECT-MISMATCH');
+    // the REAL CLI: an inherited foreign FB_DATABASE_URL ⇒ a refusal banner, exit 2, ZERO connection attempts (tools/no-connect.js)
+    const os = require('os'); const path = require('path'); const fsm = require('fs'); const { spawnSync } = require('child_process');
+    const dir = fsm.mkdtempSync(path.join(os.tmpdir(), 'seedp-')); const file = path.join(dir, 'p.json'); fsm.writeFileSync(file, JSON.stringify({ tb_a: { kicker: 'x' } }));
+    const env = { ...process.env, FB_DATABASE_URL: 'https://some-other-project-default-rtdb.firebaseio.com', GOOGLE_CLOUD_PROJECT: 'xpizza-delivery', NO_CONNECT_DIR: dir, HOME: os.tmpdir(),
+      NODE_OPTIONS: `--require ${path.join(__dirname, '..', 'tools', 'no-connect.js')}` };
+    for (const k of Object.keys(env)) if (/_EMULATOR_HOST|_EMULATOR_ADDRESS|FIREBASE_EMULATOR_HUB|FUNCTIONS_EMULATOR|FIREBASE_CONFIG/.test(k)) delete env[k];
+    const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'tools', 'seed-presentation.js'), '--project', 'xpizza-delivery', '--file', file, '--apply'], { encoding: 'utf8', env, timeout: 60000 });
+    assert.strictEqual(r.status, 2, `SEEDP-CLI-REFUSES (exit ${r.status}) ${r.stderr.slice(-400)}`);
+    assert.match(r.stderr, /^🔴 REFUSED — FB_DATABASE_URL=/m, 'SEEDP-CLI-BANNER');
+    // tools/no-connect.js writes one .rec per process: START, any CONNECT/FETCH lines, then `EXIT <code> <connects> <spawns>`
+    const recs = fsm.readdirSync(dir).filter((f) => f.endsWith('.rec')).map((f) => fsm.readFileSync(path.join(dir, f), 'utf8').split('\n').filter(Boolean));
+    assert.strictEqual(recs.length, 1, 'premise: the no-connect recorder observed the CLI process');
+    assert.deepStrictEqual(recs[0].filter((l) => !/^(START|EXIT) /.test(l)), [], 'SEEDP-CLI-NO-CONNECT (no connect / fetch lines)');
+    assert.ok(/^EXIT 2 0 0$/.test(recs[0][recs[0].length - 1]), `SEEDP-CLI-NO-CONNECT (EXIT 2, 0 connects, 0 spawns): ${recs[0].join(' | ')}`);
+    ok('P1 target safety: the RTDB URL must belong to the stated project; FB_DATABASE_URL / FIREBASE_DATABASE_URL / FIREBASE_CONFIG naming another database REFUSE; the real CLI exits 2 with the banner and zero connection attempts');
+  }
+
+  // ── 9. P2-4 with the REAL makeDirectoryDeps + getIdentity: a CACHED INACTIVE store during an outage ⇒ partial, never 304 ──
+  {
+    const { makeDirectoryDeps } = require('./directory-deps');
+    const rid = 'tb_cached_inactive_p24';
+    let down = false;
+    const ident = IDENT('Off', { active: false });
+    const rtdb = { ref: (p) => ({ once: async () => {
+      if (p === 'platform_config/customer_app') return { val: () => null, exists: () => false };
+      if (p === `restaurants/${rid}/identity`) { if (down) throw new Error('rtdb down'); return { val: () => ident, exists: () => true }; }
+      return { val: () => null, exists: () => false };
+    } }) };
+    const registry = RR.createRestaurantRegistry({ listIds: async () => [rid], floor: [] });
+    const deps = makeDirectoryDeps({ rtdb, registry, pricingView: async () => ({ fee: { state: 'none' }, promo: null, coverage_km: null }) });
+    const r1 = mkRes(); await D.handleDirectory(req(undefined), r1, deps);
+    assert.strictEqual(r1.statusCode, 200); const etag = r1.headers.ETag; assert.ok(etag, 'premise: a complete, fresh build carries an ETag');
+    assert.deepStrictEqual(JSON.parse(r1.body).restaurants, [], 'premise: the inactive store is omitted');
+    down = true;   // the identity read now fails; getIdentity serves the warm (inactive) cache within its TTL
+    const r2 = mkRes(); await D.handleDirectory(req(etag), r2, deps);
+    assert.strictEqual(r2.statusCode, 200, 'DIR-CACHED-INACTIVE-NEVER-304');
+    assert.strictEqual(r2.headers.ETag, undefined, 'DIR-CACHED-INACTIVE-NO-ETAG');
+    assert.strictEqual(JSON.parse(r2.body).complete, false, 'DIR-CACHED-INACTIVE-PARTIAL');
+    ok('P2-4 (real makeDirectoryDeps + getIdentity): a cached INACTIVE identity during an outage ⇒ complete:false, no ETag, never 304');
   }
   console.log(`\ndirectory: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

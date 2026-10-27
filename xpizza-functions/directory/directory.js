@@ -14,7 +14,7 @@
 //                                coverage_km:number|null }                           (throw ⇒ fee unavailable, partial)
 // house ids are served UNFILTERED (no catalog dependency; the client MenuCache drops ids its loaded menu lacks).
 const crypto = require('crypto');
-const { FIELD_NAMES, pickPresentation } = require('./presentation-shape');
+const { SERVED_FIELDS, pickPresentation } = require('./presentation-shape');
 const { toPublicSchedule } = require('../schedule/schedule-only');   // the SAME public schedule shape schedule_only serves
 
 const REPRESENTATION_VERSION = 'directory-1';
@@ -57,7 +57,7 @@ async function buildEntry(rid, identity, deps) {
   let pres = { fields: {}, invalid: [] };
   try { pres = pickPresentation(await deps.readPresentation(rid)); }
   catch (_) { partial = true; }
-  for (const k of FIELD_NAMES) {
+  for (const k of SERVED_FIELDS) {
     if (pres.fields[k] !== undefined) row[k] = pres.fields[k];
     else { row[k] = null; degraded.push(k); }
   }
@@ -95,8 +95,10 @@ async function buildDirectory(deps) {
   for (const rid of reg.ids) {
     let act;
     try { act = await deps.activity(rid); } catch (_) { unavailable.push(rid); complete = false; continue; }
+    // freshness FIRST (Codex directory r1 P2-4): a cache-served identity makes the response partial even when it leads to an
+    // OMISSION — a cached inactive store during an outage must not let a stale full-body ETag answer 304.
+    if (!act || act.source !== 'fresh') complete = false;
     if (!act || act.active !== true) continue;                 // inactive (or cannot tell) ⇒ never listed
-    if (act.source !== 'fresh') complete = false;              // a cache-served identity ⇒ partial
     const { row, partial } = await buildEntry(rid, act.identity, deps);
     if (partial) complete = false;
     restaurants.push(row);

@@ -92,7 +92,10 @@ const D = {
     // requireProject({ requireFlag: true }) before any client
     'handheld-push-probe',
     // TRACKER FIXES — the owner-run flag-transition tool: requireProject({ requireFlag: true }) before any client
-    'tracker-reconcile'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
+    'tracker-reconcile',
+    // S7a directory — the presentation writer: requireProject({ requireFlag: true }) before any client, then the RTDB target
+    // is bound to the stated project (an inherited FB_DATABASE_URL naming another database REFUSES; directory.test cell 9)
+    'seed-presentation'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/set-driver-enforcement-mode.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
@@ -118,6 +121,7 @@ const D = {
   [F('stats/stats-volume.test.js')]: 'unit: a named app over catalog/firestore-fake — no network',
   [F('stats/stats-job.test.js')]: 'unit: initializeApp appears in a source string under test', [F('catalog/project-guard.test.js')]: 'unit: drives require-project refusals (no data I/O)',
   [F('tools/brands-admin.test.js')]: 'unit: drives the brands CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
+  [F('directory/directory.test.js')]: 'unit: drives tools/seed-presentation.js into its database-target refusal under tools/no-connect.js (asserts zero connects; it scrubs emulator vars, sets a foreign FB_DATABASE_URL); every other cell uses in-memory fakes',
   [F('tools/branches-admin.test.js')]: 'unit: drives the branches CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/access-census.test.js')]: 'unit: drives the access-census CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/kitchen-roster.test.js')]: 'unit: drives the kitchen-roster CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
