@@ -254,6 +254,11 @@
 #idle-state .disp-statcard { background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); text-align: center; padding: 12px 8px; }
 #idle-state .disp-statcard b { display: block; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 24px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text, #0D1424); }   /* proto .stat2 .card b = --fd */
 #idle-state .disp-statcard small { font-family: var(--fb); font-size: 11.5px; color: var(--text-soft, #546078); font-weight: 600; }
+/* disponible header: the status dot becomes the Sola mark in the idle «En turno» header (SLICE3:DISP-HEADER sets
+   .sola + the SVG). A normal dot hides any leftover svg, so an idle→non-idle transition reverts cleanly to the dot. */
+.status-dot svg { display: none; }
+.status-dot.sola { width: 24px; height: 24px; background: none; box-shadow: none; animation: none; border-radius: 0; }
+.status-dot.sola svg { display: block; width: 24px; height: 24px; }
 
 /* ===== Prototype body-bold parity (ONE source; owner no-clones). The brand-neutral base alias 'Plus Jakarta Sans'
    routes weight >=501 to the Red Hat DISPLAY woff2, but the prototype's bold BODY text is Red Hat Text (--fb) and
@@ -4804,6 +4809,29 @@ function renderStatusBar() {
   const lbl = $('status-label');
   const meta = $('gps-meta');
 
+  /* ===== SLICE3:DISP-HEADER:START — idle-only (available / returning) header → prototype S.disponible: «En turno» +
+     «desde las {h:mm} · {elapsed}» from driverState.shift_started_at (legacy «En turno» with NO sub when the start is
+     unknown) + the Sola mark in place of the status dot. Runs on the existing 30s statusRefresh tick (which calls
+     renderStatusBar), so the elapsed refreshes with no new timer. INSERT: a no-op for every other status (falls
+     through) → the dot/label/meta logic below is byte-identical for non-idle (proven by statusbar-disp-header.test.js).
+     Time format = cuadre's spec (es-HN · hour:'numeric' · minute:'2-digit' · hour12:false); the shared time-format.js
+     dedup is on the batch checklist (before Codex). ===== */
+  if (status === 'available' || status === 'returning') {
+    dot.className = 'status-dot sola';
+    dot.innerHTML = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="var(--marino, #14306B)"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><g><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--celeste, #8EC0FF)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="var(--marino, #14306B)"/></g></svg>';
+    lbl.textContent = 'En turno';
+    const start = driverState && driverState.shift_started_at;
+    if (typeof start === 'number' && start > 0 && start <= Date.now()) {
+      const t = new Date(start).toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit', hour12: false });
+      const durMin = Math.max(0, Math.round((Date.now() - start) / 60000));
+      meta.textContent = 'desde las ' + t + ' · ' + Math.floor(durMin / 60) + ':' + String(durMin % 60).padStart(2, '0');
+    } else {
+      meta.textContent = '';
+    }
+    meta.classList.remove('stale');
+    return;
+  }
+  /* ===== SLICE3:DISP-HEADER:END ===== */
   // Dot color + pulse
   dot.className = 'status-dot';
   const colorMap = {
