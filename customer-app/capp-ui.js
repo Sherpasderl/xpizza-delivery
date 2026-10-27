@@ -709,12 +709,13 @@
       const f = S.flow, T = totalsNow();
       if (dead || !intakeOk() || !T.ready || !mods()) return;   // no key ⇒ nothing is sent (the record stays clean)
       let c; try { c = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { return; }   // the key only where the server requires it
+      const attempt = ++attemptSeq; S.terminal = null;   // Codex r4 #2: THIS attempt's settled outcome only
       S.screen = 'sending'; S.sendHint = null; S.sendTotals = { total: T.total, tip: T.tip }; render();
       // S2b r1 P2-7: an accepted price change ⇒ «Enviando» shows the ceiling actually sent
       const onExpected = (cents) => { if (dead || !Number.isFinite(cents)) return; S.sendTotals = { total: cents, tip: T.tip }; if (S.screen === 'sending') render(); };
       let out;
       try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, expectedNetCents: T.total, totals: T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
-      if (!dead) onOutcome(out);
+      if (!dead) onOutcome(out, attempt);
     }
     // the 600 ms happy beat: the spinner becomes the green check, then the host takes over (S5)
     function beat(out) {
@@ -750,7 +751,8 @@
       pending: () => ({ title: 'Tu pago todavía está en verificación', body: 'Estamos confirmando tu pago con el banco. No hace falta pagar de nuevo; esperá un momento mientras termina.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Volver al pedido', primary: true }], held: true }),
       exists: (ref) => ({ title: 'Necesitamos revisar tu pedido', body: 'Ya existe un pedido con este número, así que no lo enviamos de nuevo para no duplicarlo. Escríbenos y lo revisamos.', icon: 'calm', note: `Referencia <b>#${esc(ref || '')}</b>`, acts: [{ act: 'lclose', label: 'Volver al pedido' }], held: true }),
     };
-    function onOutcome(out) {
+    let attemptSeq = 0;
+    function onOutcome(out, attempt) {
       const k = out && out.kind;
       if (k === 'redirect') {
         // a RESUMED checkout shows the STORED economics (never the current quote), then leaves for the stored URL
@@ -759,7 +761,9 @@
       }
       // r3 §1.7 (Codex r3 #3): a SETTLED success is recorded — the one exception to «never leave while sending», honoured only once
       // reconciliation has durably completed (the leave verdict re-checks it); an unsettled end never qualifies
-      if ((k === 'placed' || k === 'paid_unverified') && out.unsettled !== true) S.terminal = out;
+      // bound to THAT attempt (a later attempt's outcome only — a stale one is ignored) and to its order (a hosted-checkout return
+      // carries no attempt: its own outcome)
+      if ((k === 'placed' || k === 'paid_unverified') && out.unsettled !== true && typeof out.order_id === 'string' && (attempt === undefined || attempt === attemptSeq)) S.terminal = { order_id: out.order_id };
       if (k === 'placed' || k === 'paid_unverified') { if (S.screen !== 'sending') { S.screen = 'sending'; render(); } beat(out); return; }
       if (k === 'confirming') { S.screen = 'sending'; S.sendHint = CONFIRMING_HINT; render(); return; }
       if (k === 'offline') { backTo(); showErr(ERR.offline()); return; }

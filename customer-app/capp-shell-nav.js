@@ -7,7 +7,8 @@
 //                 a remount standing on it does not push again). Every navigation is IN-APP. A device / browser Back leaves the
 //                 sentinel ⇒ popstate ⇒ the sentinel is re-pushed and ONE in-app back runs. A Forward therefore has nothing to
 //                 reach, and no physical offset is ever computed (branching, blocked Backs and remounts cannot desynchronize it).
-//                 Nothing left in-app (Inicio at the root) ⇒ the sentinel is NOT re-pushed: the next Back leaves the app.
+//                 Nothing left in-app (Inicio at the root) ⇒ the sentinel is NOT re-pushed: the next Back leaves the app — and
+//                 the moment in-app navigation begins again (a go / tab / an in-store step) it is RE-ARMED (Codex r4 #1).
 //   store mount   adapterFor(entry) → the `history` option CappUI takes — EXACTLY the approved adapter { push, back, go, owns,
 //                 subscribe } (r2 §1.3; Codex r1 P2-9): its in-store steps are counted in-app; a device back is delivered to the
 //                 mount's fn(): consumed ⇒ it handled it · blocked ⇒ nothing changes · pass ⇒ the store is left: back to the
@@ -37,9 +38,11 @@
     const top = () => stack[stack.length - 1];
     const predecessor = () => (stack.length > 1 ? stack[stack.length - 2] : null);
     const hist = () => (win && win.history) || null;
-    const pushSentinel = () => { try { hist().pushState({ ...SENTINEL }, ''); } catch (_) {} };
+    let armed = false;   // the sentinel is the current browser entry (released by a root exit)
+    const pushSentinel = () => { try { hist().pushState({ ...SENTINEL }, ''); armed = true; } catch (_) {} };
+    const rearm = () => { if (!armed) pushSentinel(); };
     // the one owned entry: pushed once — a remount already standing on it (a reload) does not push again
-    try { if (!isSentinel(hist() && hist().state)) pushSentinel(); } catch (_) {}
+    try { if (!isSentinel(hist() && hist().state)) pushSentinel(); else armed = true; } catch (_) {}
 
     // THE leave + teardown of a top store (every exit path): asked first; blocked ⇒ false, nothing changed
     function leave() {
@@ -52,6 +55,7 @@
     // a shell screen on top of the current one (open-store, Buscar, a dish result…) — the current screen's state is saved first
     function go(entry, saved) {
       if (!leave()) return false;
+      rearm();
       top().saved = saved === undefined ? top().saved : saved;
       stack.push({ ...entry, saved: null }); subs.length = 0;
       onShow(top(), { from: stack[stack.length - 2] });
@@ -60,6 +64,7 @@
     // a tab: the stack restarts at that tab (prototype tab(): S.stack = [])
     function tab(entry) {
       if (!leave()) return false;
+      rearm();
       stack.length = 0; stack.push({ ...entry, saved: null }); subs.length = 0; mountBack = null;
       onShow(top(), { from: null });
       return true;
@@ -80,7 +85,7 @@
     // the history option a store mount takes (CappUI opts.history): every step in-app; owns() — this mount has a step to undo
     function adapterFor(storeEntry) {
       return {
-        push() { subs.push(1); },
+        push() { rearm(); subs.push(1); },
         back() { if (subs.length) subs.pop(); },
         go(k) { const m = Math.min(-k, subs.length); if (m > 0) subs.length -= m; },
         owns() { return top() === storeEntry && subs.length > 0; },
@@ -90,9 +95,10 @@
 
     // a DEVICE / browser Back (the shell never moves the browser itself): the sentinel is put back first, then ONE in-app back
     function onPop() {
-      try { if (isSentinel(hist().state)) return 'none'; } catch (_) {}   // standing on the sentinel already: nothing to undo
+      try { if (isSentinel(hist().state)) { armed = true; return 'none'; } } catch (_) {}   // standing on the sentinel (a Forward back onto it)
+      armed = false;   // the browser left the sentinel
       const inApp = stack.length > 1 || top().name === 'store';
-      if (!inApp) return 'exit';   // Inicio at the root: the sentinel is not re-pushed — the next Back leaves the app
+      if (!inApp) return 'exit';   // Inicio at the root: the sentinel is not re-pushed — the next Back leaves the app (re-armed on the next navigation)
       pushSentinel();
       if (top().name === 'store' && typeof mountBack === 'function') {
         const r = mountBack();

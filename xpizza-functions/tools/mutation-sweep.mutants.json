@@ -22279,7 +22279,7 @@
     "slice": "s7a1",
     "label": "sentinel: a remount standing on the sentinel pushes another entry",
     "file": "../customer-app/capp-shell-nav.js",
-    "from": "try { if (!isSentinel(hist() && hist().state)) pushSentinel(); } catch (_) {}",
+    "from": "try { if (!isSentinel(hist() && hist().state)) pushSentinel(); else armed = true; } catch (_) {}",
     "to": "try { pushSentinel(); } catch (_) {}",
     "command": [
       "node",
@@ -22449,6 +22449,38 @@
     ],
     "kills_with": [
       "an unreadable record holds the lock even with no frozen cart"
+    ]
+  },
+  {
+    "id": "s7a1-58",
+    "slice": "s7a1",
+    "label": "r4 #1: a released sentinel is never re-armed (Back cannot reach the mount)",
+    "file": "../customer-app/capp-shell-nav.js",
+    "from": "const rearm = () => { if (!armed) pushSentinel(); };",
+    "to": "const rearm = () => {};",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "in-app navigation re-arms the sentinel"
+    ]
+  },
+  {
+    "id": "s7a1-59",
+    "slice": "s7a1",
+    "label": "r4 #2: a new attempt inherits the previous order's terminal success",
+    "file": "../customer-app/capp-ui.js",
+    "from": "const attempt = ++attemptSeq; S.terminal = null;",
+    "to": "const attempt = ++attemptSeq;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "never inherits A's terminal success"
     ]
   }
 ]

@@ -121,6 +121,20 @@ test('Codex r3 #4: blocked Backs keep ONE entry (no growth, no drift); a remount
   assert.deepEqual([nav2.current().name, w.history.state && w.history.state.capp_shell], ['home', 1], '🔴 the remount\'s first Back is ONE in-app back');
 });
 
+test('Codex r4 #1: after a root exit releases the sentinel, the next in-app navigation RE-ARMS it — Back reaches the mount again; the root exit itself is kept', async () => {
+  const J0 = jsdomNav(); const { w, nav } = J0;
+  w.history.back(); await popTick();
+  assert.equal(w.history.state, null, 'premise: the root exit released the sentinel');
+  nav.go({ name: 'search' });
+  assert.equal(w.history.state && w.history.state.capp_shell, 1, '🔴 in-app navigation re-arms the sentinel');
+  nav.go({ name: 'store', rid: 'rid_a' }); const asked = []; nav.adapterFor(nav.current()).subscribe((i) => { asked.push(i || 'back'); return i === 'leave' ? 'pass' : 'consumed'; });
+  w.history.back(); await popTick();
+  assert.deepEqual([asked, nav.current().name, w.history.state && w.history.state.capp_shell], [['back'], 'store', 1], '🔴 the device Back reaches the mount');
+  const len = w.history.length;
+  w.history.forward(); await popTick();
+  assert.equal(w.history.length, len, 'one owned entry: Forward has nothing to reach');
+});
+
 test('Codex r3 #2: EVERY shell exit tears the store down through the one leave() — go() over a store destroys it (a countdown cannot keep running)', () => {
   const R = rigNav(); R.nav.go({ name: 'store', rid: 'rid_a' }); R.nav.adapterFor(R.nav.current()).subscribe(() => 'pass');
   assert.equal(R.nav.go({ name: 'search' }), true);

@@ -1672,3 +1672,34 @@ test('Codex r3 #5: an UNREADABLE placement record is UNKNOWN — leave and devic
   assert.deepEqual([b.ui.deviceBack('leave'), H.device()], ['blocked', 'blocked'], '🔴 an unreadable record never makes the store leaveable');
   storage.getItem = g;
 });
+
+test('Codex r4 #1: after a ROOT exit released the sentinel, Buscar → store → «Realizando pedido…» → device Back still CANCELS the countdown (re-armed) — zero sends', async () => {
+  const { createShellNav } = await import('./capp-shell-nav.js').then((m) => m.default || m);
+  const win = faithfulWin(); let b;
+  const nav = createShellNav({ win, onShow: () => {}, onLeave: () => b && b.ui.destroy() });
+  assert.equal(win.device(), 'exit', 'premise: Inicio at the root releases the sentinel');
+  nav.go({ name: 'search' }); nav.go({ name: 'store', rid: 'rid_a' });
+  b = bootCo({ storage: memStore(), config: HOSTED_KEYS, mountOpts: { history: nav.adapterFor(nav.current()) }, script: { createOrder: [OK_CASH_UI] } });
+  await filled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]');
+  assert.equal(b.q('#layer .sheet').getAttribute('aria-label'), 'Realizando pedido', 'premise: the countdown is armed');
+  assert.equal(win.device(), 'consumed', '🔴 the device Back reaches the mount (the sentinel was re-armed)');
+  b.timers.flush(); await settle();
+  assert.equal(writes(b), 0, '🔴 the countdown is cancelled: zero sends');
+});
+
+test('Codex r4 #2: order A\'s terminal success never carries into order B — an UNSETTLED B whose lock expired stays blocked in «Enviando»', async () => {
+  const storage = memStore();
+  const b = bootCo({ storage, config: HOSTED_KEYS, script: { createOrder: [OK_CASH_UI] } });
+  await placeVia(b, 'cash'); b.timers.flush(); await settle();
+  const snapA = JSON.parse(storage.getItem('capp:rid_a:cart'));
+  assert.deepEqual(J(b.ui.restore(snapA)), { cleared: true }, 'premise: A purchased; its cart cleared (memory included)');
+  assert.equal(b.ui.deviceBack('leave'), 'pass', 'premise: A settled and reconciled ⇒ may leave');
+  const si = storage.setItem; storage.setItem = (k, v) => { if (k === 'capp:rid_a:placed') throw new Error('quota'); return si(k, v); };   // B's marker never lands
+  b.ui.cart.inc(b.plain.key); b.ui.openCheckout(); await settle();
+  await b.click('#cta');
+  await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  b.timers.flush(); await settle();
+  assert.deepEqual([writes(b), b.ui.state.screen], [2, 'sending'], 'premise: B sent, «Enviando»');
+  const rec = JSON.parse(storage.getItem('capp:rid_a:pending_place')); rec.expires_at = 0; si('capp:rid_a:pending_place', JSON.stringify(rec));   // B's lock expired
+  assert.equal(b.ui.deviceBack('leave'), 'blocked', '🔴 an unsettled B never inherits A\'s terminal success');
+});
