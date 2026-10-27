@@ -3486,5 +3486,117 @@
    "lifts": []
   }
  },
- "unregistered": []
+ "unregistered": [],
+ "region_pins": [
+  {
+   "id": "L1-read",
+   "module": "index.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L1-gate",
+   "module": "index.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L2-read",
+   "module": "index.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L2-gate",
+   "module": "index.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L3-confirm",
+   "module": "pixelpay-confirm.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L4-release",
+   "module": "scheduled-release-core.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L5-reply",
+   "module": "index.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L6-default-table",
+   "module": "whatsapp_inbound.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L6-status",
+   "module": "whatsapp_inbound.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L6-converter",
+   "module": "whatsapp_inbound.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L7-reset",
+   "module": "availability-reset.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L8-grace",
+   "module": "materialize-guard.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L9-control",
+   "module": "portal/ops-core.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L9-operational",
+   "module": "portal/ops-core.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L9-degrade",
+   "module": "portal/ops-core.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L10-store",
+   "module": "brands/brand-store.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L10-pick",
+   "module": "brands/brand-projection.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L10-row",
+   "module": "brands/brand-projection.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L11-hhmm",
+   "module": "brands/brand-model.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L11-istime",
+   "module": "brands/brand-model.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L11-errors",
+   "module": "brands/brand-model.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L12-interp",
+   "module": "scheduled-orders.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  }
+ ]
 }

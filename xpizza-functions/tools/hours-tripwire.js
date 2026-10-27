@@ -52,8 +52,10 @@ function walk(dir, rel = '') {
 function pinnedLines(file, text, pins) {
   const L = text.split('\n'); const set = new Set();
   for (const p of pins.filter((x) => x.file === file)) {
-    const s = L.indexOf(p.start_anchor), e = L.indexOf(p.end_anchor);
-    if (s >= 0 && e >= s) for (let i = s; i <= e; i++) set.add(i);
+    // anchors are a literal line or a run of consecutive literal lines (hours-legacy-pins multi-line closing anchors)
+    const find = (a) => { const q = Array.isArray(a) ? a : [a]; for (let i = 0; i + q.length <= L.length; i++) if (q.every((t, k) => L[i + k] === t)) return [i, i + q.length - 1]; return null; };
+    const S = find(p.start_anchor), E = find(p.end_anchor);
+    if (S && E && E[1] >= S[0]) for (let i = S[0]; i <= E[1]; i++) set.add(i);
   }
   return set;
 }

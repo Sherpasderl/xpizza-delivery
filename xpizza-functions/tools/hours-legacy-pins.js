@@ -18,15 +18,24 @@ const SPEC = JSON.parse(fs.readFileSync(path.join(__dirname, 'hours-legacy-pins.
 
 const linesOf = (src) => src.split('\n');
 const sha = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
+// An anchor is ONE literal line (a string) or a SEQUENCE of consecutive literal lines (an array) — a closing "}" alone is
+// never unique, so a function span ends on the unique sequence [<its last statement>, …, "}"] (Codex S4 build r1 P2-1).
+const asSeq = (a) => (Array.isArray(a) ? a : [a]);
+function seqIndexes(L, seq) {
+  const hits = [];
+  for (let i = 0; i + seq.length <= L.length; i++) if (seq.every((t, k) => L[i + k] === t)) hits.push(i);
+  return hits;
+}
 // the inclusive region between the unique start and end anchors (full-line equality); throws on non-unique / missing
 function region(src, start, end) {
   const L = linesOf(src);
-  const idx = (t) => { const hits = []; L.forEach((l, i) => { if (l === t) hits.push(i); }); return hits; };
-  const s = idx(start), e = idx(end);
-  if (s.length !== 1) throw new Error(`start anchor occurs ${s.length}× (must be exactly once): ${start.trim().slice(0, 80)}`);
-  if (e.length !== 1) throw new Error(`end anchor occurs ${e.length}× (must be exactly once): ${end.trim().slice(0, 80)}`);
-  if (e[0] < s[0]) throw new Error('end anchor precedes start anchor');
-  return L.slice(s[0], e[0] + 1).join('\n') + '\n';
+  const S = asSeq(start), E = asSeq(end);
+  const s = seqIndexes(L, S), e = seqIndexes(L, E);
+  if (s.length !== 1) throw new Error(`start anchor occurs ${s.length}× (must be exactly once): ${S[0].trim().slice(0, 80)}`);
+  if (e.length !== 1) throw new Error(`end anchor occurs ${e.length}× (must be exactly once): ${E.map((x) => x.trim()).join(' ⏎ ').slice(0, 80)}`);
+  const last = e[0] + E.length - 1;
+  if (last < s[0]) throw new Error('end anchor precedes start anchor');
+  return L.slice(s[0], last + 1).join('\n') + '\n';
 }
 
 function build() {
@@ -39,7 +48,13 @@ function build() {
       const i = L.findIndex((l) => l.includes('if (deps.getIdentity) { try { hours = (await deps.getIdentity(db, order.restaurant_id'));
       s = i + 1; e = i + 2;
     }
-    const start = L[s - 1], end = L[e - 1];
+    const start = L[s - 1];
+    // the shortest unique run of lines ENDING at the region's last line (1 line when that line is already unique)
+    let end = L[e - 1];
+    for (let k = 1; k <= 6; k++) {
+      const seq = L.slice(e - k, e);
+      if (seqIndexes(L, seq).length === 1) { end = k === 1 ? seq[0] : seq; break; }
+    }
     let r;
     try { r = region(src, start, end); } catch (err) { throw new Error(`${id} ${file}:${s}-${e}: ${err.message}`); }
     out.push({ id, family, file, start_anchor: start, end_anchor: end, inclusive: true, sha256: sha(r) });

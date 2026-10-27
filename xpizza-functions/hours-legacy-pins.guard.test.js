@@ -43,4 +43,30 @@ ok('every pinned region: anchors unique and sha256 unchanged');
   assert.throws(() => P.region(src.replace(rec.end_anchor + '\n', ''), rec.start_anchor, rec.end_anchor), /end anchor occurs 0×/, 'G1-MUT-MISSING-ANCHOR');
   ok('MUTANTS: an in-place L4 edit (|| null → || {}), an L8 interior edit (sha256 mismatch), a duplicated anchor and a removed anchor are each detected');
 }
+// FUNCTION TAILS (Codex S4 build r1 P2-1): every function span runs THROUGH its closing brace, so an edit of its RETURN line
+// (e.g. `return out;` → `return {};`) is RED — for each function record, not only the four Codex named.
+{
+  const TAIL_IDS = ['L6-status', 'L6-converter', 'L8-grace', 'L9-operational', 'L10-store', 'L10-pick', 'L11-errors', 'L12-interp'];
+  for (const id of TAIL_IDS) {
+    const rec = RECS.find((r) => r.id === id);
+    assert.ok(rec, `tail record ${id}`);
+    assert.strictEqual((Array.isArray(rec.end_anchor) ? rec.end_anchor[rec.end_anchor.length - 1] : rec.end_anchor).trim(), '}', `G1-TAIL ${id}: the span ends on the function's closing brace`);
+    const src = fs.readFileSync(path.join(__dirname, rec.file), 'utf8');
+    const reg = P.region(src, rec.start_anchor, rec.end_anchor);
+    const lines = reg.split('\n');
+    const ret = [...lines].reverse().find((l) => /^\s*return\b/.test(l));
+    assert.ok(ret, `G1-TAIL ${id}: the region contains its return line`);
+    const mut = src.replace(reg, reg.replace(ret, ret.replace(/return\b.*$/, 'return {};')));
+    assert.notStrictEqual(mut, src, `premise: the ${id} return mutation applies`);
+    let detected = false;
+    try { detected = P.sha(P.region(mut, rec.start_anchor, rec.end_anchor)) !== rec.sha256; } catch (e) { detected = /anchor occurs 0×/.test(e.message); }
+    assert.ok(detected, `G1-MUT-RETURN-${id}: an edit of the return line is detected`);
+  }
+  ok(`FUNCTION TAILS: ${TAIL_IDS.length} function spans end on their closing brace; a return-line edit in each is detected (RED)`);
+}
+{   // P3: the form-source inventory lists every G1 region pin (registered, not dodged)
+  const inv = JSON.parse(fs.readFileSync(path.join(__dirname, 'tools', 'form-source-inventory.json'), 'utf8'));
+  assert.deepStrictEqual((inv.region_pins || []).map((r) => r.id), RECS.map((r) => r.id), 'G1-INVENTORY-REGISTERED: form-source-inventory region_pins == the G1 records');
+  ok(`INVENTORY: tools/form-source-inventory.json lists all ${RECS.length} G1 region pins (tool + module)`);
+}
 console.log(`\nhours-legacy-pins.guard: OK (${n})`);

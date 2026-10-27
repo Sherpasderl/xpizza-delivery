@@ -4,11 +4,15 @@
 //      limiter transaction + the public/brands read + the identity read — NO Firestore call (no catalog / pricing), no
 //      quote_ip, no issueQuote; an unpublished-but-known rid answers bytes identical to an unknown rid; grammar-invalid
 //      hours → 503; the schedule_ip throttle trips at max+1 while quote_ip stays untouched.
+//   C. WRITER → READER freshness (Codex S4 build r1 P2-2): warm schedule_only → change hours through the REAL E7
+//      (portal updateBranchProfile, an owner ID token from the Auth emulator) → the next REAL schedule_only serves the NEW
+//      hours, and validateScheduledFor's accept/refuse over them equals the decision over the hours intake reads.
 //   B. PAIRED ordinary quotes: the same bodies through the BASE handler (index.js with the s4hours segment unapplied,
 //      compiled in a child) and the CANDIDATE handler (the real index.js, another child) → byte-identical responses
 //      (quote_token excepted: it carries a per-quote nonce; presence + length are compared).
 // Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:s4-schedule-only
-require('./_emulator-required')('database', 'firestore');
+require('./_emulator-required')('database', 'firestore', 'auth');
+if (!process.env.S4_CHILD && !process.env.FIREBASE_AUTH_EMULATOR_HOST) { console.error('🔴 REFUSED — FIREBASE_AUTH_EMULATOR_HOST not set (run via npm run test:s4-schedule-only)'); process.exit(2); }
 const REAL_NOW = Date.now.bind(Date);
 const assert = require('assert');
 const http = require('http');
@@ -177,6 +181,68 @@ const cartFor = (rid) => {
     assert.strictEqual(over.status, 429, 'S4E-THROTTLE-MAX+1'); assert.ok(Number(over.retryAfter) >= 1, 'S4E-RETRY-AFTER');
     assert.strictEqual((await rtdb.ref('rate_limits/quote_ip').get()).exists(), false, 'S4E-QUOTE-IP-UNTOUCHED');
     ok(`schedule_ip throttles at ${max + 1} (429 + Retry-After); rate_limits/quote_ip never written by schedule reads`);
+  }
+  // C — WRITER → READER: the real E7 hours writer, then the real schedule_only reader, then the real validator
+  {
+    const ops = require('../portal/ops-functions');
+    const { mutateRoster } = require('../access/roster');
+    const { validateBrand, validateBranchIdentity } = require('../brands/brand-model');
+    const OWNER = 'uS4LegOwner01', LEG = 'tb_s4leg';
+    const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    const tokenOf = async (uid) => {
+      const { getAuth } = require('firebase-admin/auth');
+      const custom = await getAuth().createCustomToken(uid);
+      const r = await fetch(`http://${AUTH_HOST}/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=demo-key`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: custom, returnSecureToken: true }) });
+      const j = await r.json(); assert.ok(r.ok && j.idToken, `S4E-AUTH-EMULATOR signs ${uid} in`); return j.idToken;
+    };
+    const callOps = (fn, body, uid) => new Promise((resolve, reject) => {
+      const w = express(); w.use(express.json()); w.all('*', (rq, rs) => fn(rq, rs));
+      const srv = http.createServer(w).listen(0, '127.0.0.1', async () => {
+        try {
+          const r = await fetch(`http://127.0.0.1:${srv.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://sherpa-portal.netlify.app', Authorization: `Bearer ${await tokenOf(uid)}` }, body: JSON.stringify(body) });
+          const t = await r.text(); srv.close(() => resolve({ status: r.status, text: t }));
+        } catch (e) { srv.close(() => reject(e)); }
+      });
+    });
+    const DAY = { open: true, start: '11:00', end: '21:30' };
+    const H_OLD = { sun: DAY, mon: { open: false }, tue: DAY, wed: DAY, thu: DAY, fri: DAY, sat: DAY };
+    const H_NEW = { ...H_OLD, mon: { open: true, start: '10:00', end: '14:00' }, tue: { open: false } };
+    const legId = { name: 'S4 Leg', brand_id: LEG, location_name: 'Leg', phone: '+50422223333', hours: H_OLD, prep_default_min: 20, hub_lat: 14.1, hub_lng: -87.2,
+      zone: { type: 'circle', radius_km: 5 }, delivery_radius_km: 5, whatsapp_instance: '', whatsapp_enabled: false, active: true, version: 3 };
+    assert.ok(validateBranchIdentity(LEG, legId, LEG).ok, 'S4E-LEG-FIXTURE-VALID');
+    const legBrand = { name: 'S4 Leg', active: true, locations: { [LEG]: 'member' }, activation: { state: 'legacy', since: 1 } };
+    assert.ok(validateBrand(LEG, legBrand).ok, 'S4E-LEG-BRAND-VALID');
+    await rtdb.ref('platform_config').update({ membership_writes_enabled: true, service_bounds: { min_lat: 13, max_lat: 17, min_lng: -90, max_lng: -83 } });
+    await rtdb.ref(`restaurants/${LEG}/identity`).set(legId); await rtdb.ref(`brands/${LEG}`).set(legBrand);
+    await rtdb.ref(`public/brands/${LEG}`).set({ name: 'S4 Leg', locations: { [LEG]: { location_name: 'Leg' } } });
+    assert.ok((await mutateRoster({ db: rtdb }, LEG, { kind: 'cli', operator: 's4-schedule-only-test' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'Dueña', email: 'leg@s4.test' } })).ok, 'S4E-OWNER-BOOTSTRAP');
+    await fs.collection('restaurants').doc(LEG).set({ name: LEG });
+    SO._resetListedCache();
+    let w = null;
+    for (let i = 0; i < 40; i++) { w = await post(app.quoteOrder, APP(LEG), '203.0.113.201'); if (w.status !== 400) break; await new Promise((r) => setTimeout(r, 250)); }
+    assert.strictEqual(w.status, 200, `S4E-LEG-WARM ${w.text}`);
+    assert.deepStrictEqual(JSON.parse(w.text).schedule.hours, H_OLD, 'S4E-FRESHNESS-BEFORE (the warm read serves the old hours)');
+    const e7 = await callOps(ops.updateBranchProfile, { rid: LEG, expectedVersion: 3, patch: { hours: H_NEW } }, OWNER);
+    assert.strictEqual(e7.status, 200, `S4E-E7-WRITE ${e7.text}`);
+    assert.deepStrictEqual((await rtdb.ref(`restaurants/${LEG}/identity/hours`).get()).val(), H_NEW, 'S4E-E7-WROTE-HOURS');
+    const after = await post(app.quoteOrder, APP(LEG), '203.0.113.201');
+    assert.strictEqual(after.status, 200);
+    const served = JSON.parse(after.text).schedule.hours;
+    assert.deepStrictEqual(served, H_NEW, 'S4E-FRESHNESS-AFTER (the next real schedule_only serves the E7-written hours)');
+    // the validator's decisions over the SERVED hours == over the hours intake reads (the identity) — and they moved with E7
+    const { getIdentity } = require('../restaurant-config');
+    const intakeHours = (await getIdentity(rtdb, LEG)).hours;
+    const slotMs = SCHED.resolveCfg().slotMin * 60000;
+    const now = Math.ceil(REAL_NOW() / slotMs) * slotMs;
+    let moved = 0;
+    for (let k = 4; k < 7 * 24 * 4; k += 3) {   // every 45 min across the week, from 1 h out
+      const slot = now + k * slotMs;
+      const a = SCHED.validateScheduledFor(served, slot, now, 'pickup'); const b = SCHED.validateScheduledFor(intakeHours, slot, now, 'pickup');
+      assert.deepStrictEqual(a, b, `S4E-VALIDATOR-AGREES at +${k * 15} min`);
+      if (a.valid !== SCHED.validateScheduledFor(H_OLD, slot, now, 'pickup').valid) moved++;
+    }
+    assert.ok(moved > 0, 'non-vacuity: some slot decisions changed with the E7 write');
+    ok(`WRITER→READER: warm schedule_only (old hours) → real E7 updateBranchProfile → next real schedule_only serves the new hours; validateScheduledFor agrees with intake's identity over a week of slots (${moved} decisions moved)`);
   }
   // B — PAIRED ordinary quotes: base handler vs candidate handler, byte-identical (quote_token normalised)
   {

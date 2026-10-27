@@ -58,5 +58,9 @@ bad((c) => { c.hours.fri = { open: true, start: '17:00', end: '17:00' }; }, /hou
 bad((c) => { c.hours.thu = { open: true, start: '17:00', end: '20:45', note: 'x' }; }, /hours\.thu: unknown key/, 'BC3-EXTRA-KEY'); // BC3-EXTRA-KEY
 bad((c) => { c.hours.mon = { open: false, start: '17:00', end: '20:45' }; }, /hours\.mon: closed day has times/, 'BC3-CLOSED-WITH-TIMES'); // BC3-CLOSED-WITH-TIMES
 bad((c) => { c.hours.funday = { open: false }; }, /hours\.unknown day funday/, 'BC3-UNKNOWN-DAY'); // BC3-UNKNOWN-DAY
+// Codex S4 build r1: two more NEW refusals (the base check's RegExp.test coerced arrays; typeof 'object' admitted arrays)
+bad((c) => { c.hours.wed = { open: true, start: ['12:00'], end: '21:45' }; }, /hours\.wed/, 'BC3-ARRAY-TIME'); // BC3-ARRAY-TIME
+bad((c) => { c.hours.mon = Object.assign([], { open: false }); }, /hours\.mon/, 'BC3-ARRAY-DAY'); // BC3-ARRAY-DAY
+bad((c) => { c.hours = Object.assign([], c.hours); }, /hours\.hours must be an object/, 'BC3-ARRAY-HOURS'); // BC3-ARRAY-HOURS
 
 console.log('seed-identity: OK (real payloads valid; malformed rejected)');
