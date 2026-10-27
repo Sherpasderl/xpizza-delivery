@@ -1731,6 +1731,11 @@
   "merchant/merchant-transitions.js",
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
+  "photos/crops.js",
+  "photos/errors.js",
+  "photos/pipeline.js",
+  "photos/signer.js",
+  "photos/sniff.js",
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
@@ -2590,6 +2595,26 @@
    "lifts": []
   },
   "merchant/merchant-wiring.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/crops.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/errors.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/pipeline.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/signer.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/sniff.js": {
    "pins": [],
    "lifts": []
   },
