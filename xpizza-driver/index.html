@@ -21,18 +21,19 @@
 
 <style>
 /* ===== SLICE3:PRESENTATION-3:START — batch-3 CSS (help / gpsoff / cierreRechazado / offline) ===== */
-.help-sheet { display: flex; flex-direction: column; gap: 10px; }
-.help-sheet .help-h4 { margin: 2px 0; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -.01em; color: var(--text, #0D1424); }
-.help-card { background: var(--surface-2, #F5F7FA); border-radius: 14px; padding: 2px 14px; }
-.help-row { display: flex; gap: 12px; align-items: flex-start; padding: 11px 0; border-bottom: 1px solid var(--line, #EEF1F5); }
-.help-row:last-child { border-bottom: none; }
-.help-row .ico { flex: none; width: 20px; height: 20px; margin-top: 1px; color: var(--text-dim, #8A93A6); }
-.help-row.ok .ico { color: var(--green, #2F9E66); }
-.help-row .ico svg { width: 20px; height: 20px; }
+/* Re-verify (help): .help-* re-mapped EXACT to the prototype S.help tokens (.sheet/.sheet h4/.card/.row/.row .ic/.t/.d/.btn.primary). Scoped to the help sheet — these classes are help-only, no other sheet shifts. */
+.help-sheet { display: flex; flex-direction: column; gap: 12px; }
+.help-sheet .help-h4 { margin: 0; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 19px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); }
+.help-card { background: var(--surface-2, #F5F7FA); border-radius: 14px; padding: 4px 14px; }
+.help-row { display: flex; gap: 11px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line, #EEF1F5); }
+.help-row:first-child { border-top: none; }
+.help-row .ico { flex: none; width: 30px; height: 30px; border-radius: 9px; background: #E7ECF4; color: var(--text-soft, #546078); display: grid; place-items: center; }
+.help-row.ok .ico { background: #E3F3E9; color: var(--green, #15803D); }
+.help-row .ico svg { width: 17px; height: 17px; }
 .help-rtext { flex: 1; min-width: 0; }
-.help-rt { font-weight: 700; font-size: 14.5px; color: var(--text, #0D1424); }
-.help-rd { font-size: 12.5px; color: var(--text-soft, #546078); margin-top: 2px; line-height: 1.3; }
-.help-done { margin-top: 2px; width: 100%; background: var(--accent, #2F5FB8); color: #fff; border: none; border-radius: 14px; padding: 14px; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 15px; }
+.help-rt { font-weight: 700; font-size: 14px; line-height: 1.3; color: var(--text, #0D1424); }
+.help-rd { font-size: 12.5px; color: var(--text-soft, #546078); margin-top: 1px; }
+.help-done { margin-top: 2px; width: 100%; background: var(--accent, #2F5FB8); color: #fff; border: none; border-radius: 14px; padding: 15px 14px; min-height: 52px; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; }
 /* cierreRechazado + the whole cuadre shell CSS now lives in SLICE3:CUADRE-CSS (the cuadre was rebuilt full-screen). */
 /* OFFER-TAKEOVER: the cross-hub offer's accept slide, disabled offline (acceptSecondOrder can't be queued). */
 .sv-slide-off { opacity: .55; pointer-events: none; filter: saturate(.6); }
