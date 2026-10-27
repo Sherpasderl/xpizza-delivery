@@ -156,11 +156,23 @@ const loopbackFetch = (url, opts) => getJson(url, { ...opts, get: http.get, time
         ['an extra reward_icon outside the set', (e) => { e.menu.extras[0].reward_icon = 'gift'; }, /bake_apply_reward_icon:extra@0/],
         ['a gate naming no category', (e) => { e.menu.weekend_only_cats = ['ghost']; }, /bake_apply_gate_unknown_category:weekend_only_cats=ghost/],
         ['a malformed gate', (e) => { e.menu.pickup_only_cats = 'ny'; }, /bake_apply_gate_malformed:pickup_only_cats/],
-        ['a variantOf naming no launcher map', (e) => { e.menu.dishes[0].variantOf = 9999; }, /bake_apply_variant_uncovered@0/],
+        ['a variantOf naming no dish (strict parent)', (e) => { e.menu.dishes[0].variantOf = 9999; }, /bake_apply_variantOf_orphan@0/],
         ['an unknown has_photo shape', (e) => { e.menu.has_photo = 'x'; }, /bake_has_photo_malformed/],
+        // Codex r2 #2 — STRICT parent resolution, the browser's parentOf (sameDishId): a numeric launcher 30 with a choice whose
+        // variantOf is the STRING "30" does not resolve there (parentOf → null, so the choice would not inherit sold-out) → refused
+        ['a choice whose variantOf is "30" for launcher 30 (type mismatch)', (e) => {
+          const base = e.menu.dishes[0];
+          e.menu.dishes.push({ ...base, id: 30, name: 'Grupo' }, { ...base, id: 31, name: 'Grupo - A', variantOf: '30', choice: 'A' }, { ...base, id: 32, name: 'Grupo - B', variantOf: '30', choice: 'B' });
+          e.menu.variant_items = { 30: { label: 'Tamaño', basePrice: base.price, variantIds: [31, 32] } };
+        }, /bake_apply_variantOf_orphan@/],
       ];
       const RLM = [
         ['the variant map DELETED while dishes still carry variantOf (Codex r1 #3, real-writer body)', (e) => { delete e.menu.variant_items; }, /bake_apply_variant_uncovered@\d+/],
+        ['a second launcher that SHARES the first launcher\'s choices (production group-index.js refuses it)', (e) => {
+          const k = Object.keys(e.menu.variant_items)[0]; const l = e.menu.dishes.find((d) => String(d.id) === k);
+          e.menu.dishes.push({ ...l, id: `${k}_twin`, name: `${l.name} 2` });
+          e.menu.variant_items[`${k}_twin`] = { ...e.menu.variant_items[k] };
+        }, /bake_apply_variant_listed_twice:/],
         ['a variant group naming no dish', (e) => { const k = Object.keys(e.menu.variant_items)[0]; e.menu.variant_items[k].variantIds = ['ghost_dish']; }, /bake_apply_variant_id_orphan@bake/],
         ['an option map keyed by no category', (e) => { e.menu.extras_by_category = { ...e.menu.extras_by_category, ghost: [] }; }, /bake_apply_option_map_key:extras_by_category\.ghost/],
         ['an option map keyed by no dish', (e) => { e.menu.extras_by_item = { ...(e.menu.extras_by_item || {}), ghost_dish: [] }; }, /bake_apply_option_map_key:extras_by_item\.ghost_dish/],

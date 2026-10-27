@@ -91,16 +91,21 @@ async function postHook(url, rid, deps) {
   return cls;
 }
 
-// ONE RETRY BUDGET (Codex r1 #4) — the trigger and the reconciler claim POSTs through THIS transaction, so they share the
-// cooldown, the attempt count and `stuck`, all keyed to the PUBLISHED menu's version: a new published menu re-arms; the same one
-// gets at most MAX_ATTEMPTS POSTs however the two entry points interleave, then one form_rebake_stuck and silence.
-// → { decision: 'post' | 'cooldown' | 'stuck' | 'stuck_silent', attempts }
-async function claimAttempt(rid, version, deps) {
+// ONE RETRY BUDGET (Codex r1 #4), FENCED BY PUBLISH ORDER (Codex r2 #1) — the trigger and the reconciler claim POSTs through THIS
+// transaction, so they share the cooldown, the attempt count and `stuck` for ONE published version. Which version is current is
+// decided by the publish SEQUENCE (identity.seq, monotonic per publish) — never by "the hash differs": an OLDER observation (a
+// reconciliation that read version A before B was published) is STALE and touches nothing, and the count resets only when a
+// NEWER seq is first observed. So the same version gets at most MAX_ATTEMPTS POSTs however the entry points interleave or
+// overlap, then one form_rebake_stuck and silence. obs = { version (content hash, for the record), seq }.
+// → { decision: 'post' | 'cooldown' | 'stuck' | 'stuck_silent' | 'stale', attempts }
+const seqOf = (c) => (typeof c.seq === 'number' && Number.isFinite(c.seq) ? c.seq : -Infinity);
+async function claimAttempt(rid, obs, deps) {
   const now = deps.now();
   let decision = null; let attempts = 0;
   await deps.db.ref(`form_rebake/${rid}`).transaction((cur) => {
     let c = isObj(cur) ? { ...cur } : {};
-    if (c.version !== version) c = { ...c, version, attempts: 0, stuck: false };     // a NEW published menu re-arms the retries
+    if (obs.seq < seqOf(c)) { decision = 'stale'; return undefined; }                       // an OLDER observation: no write at all
+    if (obs.seq > seqOf(c)) c = { ...c, version: obs.version, seq: obs.seq, attempts: 0, stuck: false };   // a NEWER publish re-arms
     if (c.stuck) { decision = 'stuck_silent'; return c; }
     if (typeof c.at === 'number' && now - c.at < COOLDOWN_MS) { decision = 'cooldown'; return c; }
     if ((c.attempts || 0) >= MAX_ATTEMPTS) { decision = 'stuck'; attempts = c.attempts; return { ...c, stuck: true }; }
@@ -110,6 +115,8 @@ async function claimAttempt(rid, version, deps) {
   if (decision === 'stuck') await deps.alarm('form_rebake_stuck', { rid, attempts });
   return { decision, attempts };
 }
+// readPublished(rid) → { menu, seq }: the published menu WITHOUT the identity overlay, and its publish sequence.
+const observe = (read) => ({ menu: read && read.menu, obs: { version: menuVersion(read && read.menu), seq: Number(read && read.seq) } });
 
 // FAST PATH — the mirror-write trigger. It reads the published menu (the same in-process read the reconciler uses) only to
 // learn its VERSION, then spends from the shared budget — an unchanged mirror event after `stuck` posts nothing.
@@ -117,11 +124,11 @@ async function onMirrorWrite(rid, deps) {
   const cfg = parseHooks(deps.env.FORM_BUILD_HOOKS);
   const url = await hookFor(rid, cfg, deps);
   if (!url) return { posted: false, reason: cfg.configured ? 'no_hook' : 'dormant' };
-  let published;
-  try { published = await withDeadline(deps.readPublished(rid), READ_DEADLINE_MS, 'published'); } catch (e) {
+  let read;
+  try { read = observe(await withDeadline(deps.readPublished(rid), READ_DEADLINE_MS, 'published')); } catch (e) {
     log(deps, 'form_rebake_published_unreadable', { rid }); return { posted: false, reason: 'published_unreadable' };   // the reconciler retries
   }
-  const { decision, attempts } = await claimAttempt(rid, menuVersion(published), deps);
+  const { decision, attempts } = await claimAttempt(rid, read.obs, deps);
   if (decision !== 'post') return { posted: false, reason: decision };
   const cls = await postHook(url, rid, deps);
   await deps.db.ref(`form_rebake/${rid}/last_class`).set(cls);
@@ -133,7 +140,8 @@ async function reconcileRid(rid, base, cfg, deps) {
   const url = await hookFor(rid, cfg, deps);
   if (!url) return { rid, decision: 'no_hook' };
   let published, deployed;
-  try { published = await withDeadline(deps.readPublished(rid), READ_DEADLINE_MS, 'published'); } catch (e) {
+  let read;
+  try { read = observe(await withDeadline(deps.readPublished(rid), READ_DEADLINE_MS, 'published')); published = read.menu; } catch (e) {
     log(deps, 'form_rebake_published_unreadable', { rid }); return { rid, decision: 'published_unreadable' };
   }
   try {
@@ -142,17 +150,17 @@ async function reconcileRid(rid, base, cfg, deps) {
   } catch (e) { log(deps, 'form_rebake_deployed_unreadable', { rid }); return { rid, decision: 'deployed_unreadable' }; }
   const { fail, warn } = compareBundle(deployed, published);
   const converged = !fail.length && !warn.length;
-  const version = menuVersion(published);
   if (converged) {
-    // convergence resets the budget for THIS version (a no-op write is skipped)
+    // convergence resets the budget — fenced like a claim: an OLDER observation touches nothing; a no-op write is skipped
     await deps.db.ref(`form_rebake/${rid}`).transaction((cur) => {
       const c = isObj(cur) ? { ...cur } : {};
-      if (!c.attempts && !c.stuck && c.version === version) return undefined;
-      return { ...c, version, attempts: 0, stuck: false };
+      if (read.obs.seq < seqOf(c)) return undefined;
+      if (!c.attempts && !c.stuck && read.obs.seq === seqOf(c)) return undefined;
+      return { ...c, version: read.obs.version, seq: read.obs.seq, attempts: 0, stuck: false };
     });
     return { rid, decision: 'converged' };
   }
-  const { decision, attempts } = await claimAttempt(rid, version, deps);
+  const { decision, attempts } = await claimAttempt(rid, read.obs, deps);
   if (decision === 'stuck') return { rid, decision, attempts };
   if (decision !== 'post') return { rid, decision };
   const cls = await postHook(url, rid, deps);

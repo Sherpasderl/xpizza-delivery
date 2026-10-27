@@ -20410,10 +20410,10 @@
  {
   "id": "fb-42",
   "slice": "formbake",
-  "label": "PLAN 4 r2 (#4): the trigger spends from the budget WITHOUT the published version — a new publish never re-arms it",
+  "label": "PLAN 4 r3: the trigger observes the published menu as OLDER than anything stored — it never spends from the budget (never posts)",
   "file": "catalog/form-rebake.js",
-  "from": "  const { decision, attempts } = await claimAttempt(rid, menuVersion(published), deps);\n  if (decision !== 'post') return { posted: false, reason: decision };",
-  "to": "  const { decision, attempts } = await claimAttempt(rid, 'v0', deps);\n  if (decision !== 'post') return { posted: false, reason: decision };",
+  "from": "  const { decision, attempts } = await claimAttempt(rid, read.obs, deps);\n  if (decision !== 'post') return { posted: false, reason: decision };",
+  "to": "  const { decision, attempts } = await claimAttempt(rid, { version: read.obs.version, seq: -1 }, deps);\n  if (decision !== 'post') return { posted: false, reason: decision };",
   "command": [
    "node",
    "catalog/form-rebake.test.js"
@@ -20460,8 +20460,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §4/§5: a NEW published menu does not re-arm a stuck rid",
   "file": "catalog/form-rebake.js",
-  "from": "    if (c.version !== version) c = { ...c, version, attempts: 0, stuck: false };     // a NEW published menu re-arms the retries",
-  "to": "",
+  "from": "    if (obs.seq > seqOf(c)) c = { ...c, version: obs.version, seq: obs.seq, attempts: 0, stuck: false };   // a NEWER publish re-arms",
+  "to": "    if (obs.seq > seqOf(c)) c = { ...c, version: obs.version, seq: obs.seq };   // a NEWER publish re-arms",
   "command": [
    "node",
    "catalog/form-rebake.test.js"
@@ -20508,8 +20508,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §4/§5: a converged rid keeps its attempt count (the alarm never clears)",
   "file": "catalog/form-rebake.js",
-  "from": "      return { ...c, version, attempts: 0, stuck: false };\n    });\n    return { rid, decision: 'converged' };",
-  "to": "      return { ...c, version };\n    });\n    return { rid, decision: 'converged' };",
+  "from": "      return { ...c, version: read.obs.version, seq: read.obs.seq, attempts: 0, stuck: false };\n    });\n    return { rid, decision: 'converged' };",
+  "to": "      return { ...c, version: read.obs.version, seq: read.obs.seq };\n    });\n    return { rid, decision: 'converged' };",
   "command": [
    "node",
    "catalog/form-rebake.test.js"
@@ -20849,6 +20849,54 @@
   "command": [
    "node",
    "tools/form-bundle-deployed-check.test.js"
+  ]
+ },
+ {
+  "id": "fb-89",
+  "slice": "formbake",
+  "label": "PLAN 4 r3 (Codex r2 #1): the stale-observation fence is dropped — an OLDER read is treated as current",
+  "file": "catalog/form-rebake.js",
+  "from": "    if (obs.seq < seqOf(c)) { decision = 'stale'; return undefined; }                       // an OLDER observation: no write at all\n",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-90",
+  "slice": "formbake",
+  "label": "PLAN 4 r3 (Codex r2 #1): the budget resets on ANY version difference (hash inequality), not only a NEWER publish",
+  "file": "catalog/form-rebake.js",
+  "from": "    if (obs.seq > seqOf(c)) c = { ...c, version: obs.version, seq: obs.seq, attempts: 0, stuck: false };   // a NEWER publish re-arms",
+  "to": "    if (obs.seq !== seqOf(c)) c = { ...c, version: obs.version, seq: obs.seq, attempts: 0, stuck: false };   // a NEWER publish re-arms",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-91",
+  "slice": "formbake",
+  "label": "PLAN 4 r3 (Codex r2 #2): strict parent resolution dropped — a variantOf of the wrong TYPE (\"30\" vs 30) resolves by string",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "    const parent = dishes.find(p => sameDishId(p.id, d.variantOf));",
+  "to": "    const parent = dishes.find(p => String(p.id) === String(d.variantOf));",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-92",
+  "slice": "formbake",
+  "label": "PLAN 4 r3: a choice listed by two launchers is accepted (production group-index.js refuses it)",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "      if (listedBy.has(String(v))) throw new Error(\"apply_variant_listed_twice:\" + String(v));\n",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
   ]
  }
 ]

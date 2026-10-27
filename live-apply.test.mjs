@@ -1406,11 +1406,16 @@ for (const dir of Object.keys(BRAND)) {
       const m4 = B.menu(w);
       const liveVI = w.liveMenuGlobalGet('VARIANT_ITEMS');
       const srcKey = Object.keys(liveVI)[0];
-      m4.dishes = m4.dishes.concat([{ ...m4.dishes[0], id: lId, name: 'Launcher Amp', img: undefined }]);
+      // PLAN 4 r3 (Codex r2): a PRODUCTION-VALID second group — the launcher gets its OWN correctly parented choices (production's
+      // catalog/group-index.js refuses a choice shared by two launchers), and the map in force is kept for the existing groups.
+      const launcher = { ...m4.dishes[0], id: lId, name: 'Launcher Amp', img: undefined };
+      const src = liveVI[srcKey].variantIds.map((vid) => m4.dishes.find((d) => d.id === vid));
+      const own = src.map((v, i) => ({ ...v, id: `${lId}_c${i + 1}`, cat: launcher.cat, subcat: launcher.subcat, variantOf: lId,
+        choice: `Opción ${i + 1}`, name: `Launcher Amp - Opción ${i + 1}` }));
+      own.forEach((c) => { if (c.subcat === undefined) delete c.subcat; });
+      m4.dishes = m4.dishes.concat([launcher, ...own]);
       m4.has_photo = [lId];
-      // PLAN 4 r2: the map IN FORCE plus the new launcher — replacing it would leave the existing variants (variantOf → srcKey)
-      // uncovered, a body the one menu contract (reverse coverage) refuses and production never serves
-      m4.variant_items = { ...liveVI, [lId]: { ...liveVI[srcKey] } };
+      m4.variant_items = { ...liveVI, [lId]: { ...liveVI[srcKey], variantIds: own.map((c) => c.id) } };
       await serve(w, envelope(B.rid, m4));
       assert.ok(w.liveMenuGlobalGet('VARIANT_ITEMS')[lId], 'la_musa: non-vacuity — the ampersand launcher applied');
       w.openDetailModal(lId);

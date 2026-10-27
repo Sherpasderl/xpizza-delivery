@@ -7543,7 +7543,7 @@ const formRebakeDeps = () => ({
   registry: restaurantRegistry(),
   sites: require('./platform-manifest').PLATFORM.sites,
   // the published menu WITHOUT the identity overlay: what a bake writes, so nothing needs stripping and the comparator ignores no key
-  readPublished: async (rid) => (await buildPublicMenu(getFirestore(), rid, { known: () => restaurantRegistry().known(), isActive: defaultIsActive(getDatabase()), overlayIdentity: false })).body,
+  readPublished: async (rid) => { const m = await buildPublicMenu(getFirestore(), rid, { known: () => restaurantRegistry().known(), isActive: defaultIsActive(getDatabase()), overlayIdentity: false }); return { menu: m.body, seq: m.seq }; },   // + its publish seq (the budget's fence)
   http: {
     post: (url) => fetch(url, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(FORM_REBAKE.HOOK_DEADLINE_MS) }).then((r) => ({ status: r.status })),
     getText: (url, opts) => fetch(url, { headers: (opts && opts.headers) || {}, redirect: 'follow', signal: AbortSignal.timeout(15000) })

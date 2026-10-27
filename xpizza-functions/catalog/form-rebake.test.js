@@ -35,14 +35,20 @@ function world({ env = { FORM_BUILD_HOOKS: HOOKS }, hookStatus = 201 } = {}) {
   const published = { x_pizza: generateFormBundle('x_pizza', catalogSnapshot('x_pizza')), la_musa: generateFormBundle('la_musa', catalogSnapshot('la_musa')) };
   const html = { x_pizza: fs.readFileSync(FORMS.x_pizza, 'utf8'), la_musa: fs.readFileSync(FORMS.la_musa, 'utf8') };
   const deployed = { x_pizza: clone(published.x_pizza), la_musa: clone(published.la_musa) };
-  const w = { published, deployed, posts: [], gets: [], alarms: [], logs: [], t: Date.UTC(2026, 9, 26, 12), hookStatus, readFails: new Set(), deployedFails: new Set() };
+  const w = { published, deployed, posts: [], gets: [], alarms: [], logs: [], t: Date.UTC(2026, 9, 26, 12), hookStatus, readFails: new Set(), deployedFails: new Set(), seq: {}, lastHash: {} };
   const originOf = (rid) => SITES.deployments.find((d) => d.app === 'orders' && d.context === rid).origins[0];
   w.deps = {
     db: rtdb(), env, now: () => w.t, sites: SITES,
     registry: { ready: async () => {}, known: () => new Set(['la_musa', 'x_pizza', 'synthetic_3']) },
     alarm: async (kind, detail) => { w.alarms.push({ kind, detail }); },
     log: (line, detail) => { w.logs.push(`${line} ${detail}`); },
-    readPublished: async (rid) => { if (w.readFails.has(rid)) throw new Error('down'); return clone(w.published[rid]); },
+    // { menu, seq }: a change of published CONTENT is a publish, so seq advances (monotonic, like identity.seq)
+    readPublished: async (rid) => {
+      if (w.readFails.has(rid)) throw new Error('down');
+      const menu = clone(w.published[rid]); const h = JSON.stringify(menu);
+      if (w.lastHash[rid] !== h) { w.seq[rid] = (w.seq[rid] || 0) + 1; w.lastHash[rid] = h; }
+      return { menu, seq: w.seq[rid] };
+    },
     http: {
       post: async (url) => { w.posts.push(url); if (w.hookStatus === 'throw') throw new Error('ECONNRESET'); return { status: w.hookStatus }; },
       getText: async (url, opts) => {
@@ -217,6 +223,41 @@ const state = (w, rid) => clone(w.deps.db.data.form_rebake && w.deps.db.data.for
     const w3 = world(); w3.readFails.add('x_pizza');
     assert.strictEqual((await FR.onMirrorWrite('x_pizza', w3.deps)).reason, 'published_unreadable'); assert.strictEqual(w3.posts.length, 0);
     ok(`one budget: trigger + reconcile interleaved → ${FR.MAX_ATTEMPTS} POSTs, ONE form_rebake_stuck, then no POST from either (incl. an unchanged mirror event); one cooldown across both; a new version re-arms; an unreadable published menu spends nothing`);
+  }
+
+  // ── 11. OVERLAPPING READS (Codex r2 #1): a reconciliation that read version A BEFORE B was published resumes AFTER B's
+  //        trigger — its stale observation must not reset B's budget; B still gets at most MAX_ATTEMPTS POSTs ──
+  {
+    const w = world();
+    w.published.x_pizza.dishes[0].price += 1;                                   // A is published (the deploy is stale)
+    const readA = await w.deps.readPublished('x_pizza');                        // the reconciliation has READ A …
+    let release; const paused = new Promise((r) => { release = r; });
+    let entered; const inRead = new Promise((r) => { entered = r; });
+    const realRead = w.deps.readPublished; let first = true;
+    w.deps.readPublished = async (rid) => {                                     // the reconciliation's x_pizza read pauses on A
+      if (!first || rid !== 'x_pizza') return realRead(rid);
+      first = false; entered(); await paused; return readA;
+    };
+    const slowR = FR.reconcile(w.deps);
+    await inRead;                                                               // the reconciliation is now waiting inside its read
+    w.published.x_pizza.dishes[0].price += 1;                                   // B is published
+    assert.strictEqual((await FR.onMirrorWrite('x_pizza', w.deps)).attempts, 1, 'B triggers: attempt 1 of B');
+    const stateB = clone(w.deps.db.data.form_rebake.x_pizza);
+    release(); const old = (await slowR).results.find((x) => x.rid === 'x_pizza');
+    assert.strictEqual(old.decision, 'stale', 'the resumed reconciliation of A is STALE');
+    assert.deepStrictEqual(clone(w.deps.db.data.form_rebake.x_pizza), stateB, '🔴 …and touched NOTHING (B\'s count is not reset)');
+    for (let i = 0; i < 6; i += 1) {                                            // more B events and reconciliations, past cooldowns
+      w.t += FR.COOLDOWN_MS; await FR.onMirrorWrite('x_pizza', w.deps); w.t += FR.COOLDOWN_MS; await FR.reconcile(w.deps);
+    }
+    assert.strictEqual(w.posts.length, FR.MAX_ATTEMPTS, `🔴 B got ${w.posts.length} POSTs with MAX_ATTEMPTS = ${FR.MAX_ATTEMPTS}`);
+    assert.deepStrictEqual(w.alarms.map((a) => a.kind), ['form_rebake_stuck'], 'one stuck alarm for B');
+    // a stale observation never even CONVERGES the record: an old read that happens to match the deploy resets nothing
+    const w2 = world(); w2.published.la_musa.dishes[0].price += 1; await FR.reconcile(w2.deps);   // attempt 1 for the new version
+    const st = clone(w2.deps.db.data.form_rebake.la_musa);
+    const oldRead = { menu: clone(w2.deployed.la_musa), seq: 0 };                                  // an OLDER read equal to the deploy
+    w2.deps.readPublished = async () => oldRead; await FR.reconcile(w2.deps);
+    assert.deepStrictEqual(clone(w2.deps.db.data.form_rebake.la_musa), st, 'an older read that matches the deploy does not reset the budget');
+    ok(`overlapping reads: a reconciliation that read A, resumed after B's trigger, is STALE and writes nothing; B gets exactly ${FR.MAX_ATTEMPTS} POSTs and one alarm; an older read never converges the record`);
   }
 
   FINISHED = true;

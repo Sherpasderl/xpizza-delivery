@@ -254,9 +254,21 @@ function validateMenu(body, opts) {
   validateExtrasPolicy(dishes);
   const vi = Object.prototype.hasOwnProperty.call(o, "variantItems") ? o.variantItems : body.variant_items;
   if (vi !== undefined) validateVariantBlock(vi, dishes, o.origin || "supplied");
+  // ONE launcher per choice (production's catalog/group-index.js refuses a choice listed twice or by two launchers)
+  const listedBy = new Map();
+  if (isPlainObj(vi)) Object.keys(vi).forEach(function (k) {
+    (Array.isArray(vi[k] && vi[k].variantIds) ? vi[k].variantIds : []).forEach(function (v) {
+      if (listedBy.has(String(v))) throw new Error("apply_variant_listed_twice:" + String(v));
+      listedBy.set(String(v), k);
+    });
+  });
   dishes.forEach(function (d, i) {
     if (d.variantOf === undefined || d.variantOf === null) return;
-    const cfg = isPlainObj(vi) ? vi[String(d.variantOf)] : null;
+    // STRICT parent resolution — exactly the browser's parentOf (sameDishId: "30" is not 30). A choice whose parent does not
+    // resolve would not inherit its launcher's sold-out state (Codex r2 #2).
+    const parent = dishes.find(p => sameDishId(p.id, d.variantOf));
+    if (!parent) throw new Error("apply_variantOf_orphan@" + i);
+    const cfg = isPlainObj(vi) ? vi[String(parent.id)] : null;
     if (!cfg || !Array.isArray(cfg.variantIds) || !cfg.variantIds.some(v => sameDishId(v, d.id))) throw new Error("apply_variant_uncovered@" + i);
   });
   validateDisplayStructures(body);
