@@ -35,6 +35,7 @@
     googleUnavailable: 'Google no está disponible acá. Seguí con tu número.',
     linkConflict: 'Esa cuenta de Google ya está conectada a otro número. Entraste con tu número.',
   };
+  const GUEST_CTX = new Set(['checkout', 'checkout-returning', 'code', 'refusal']);   // the openings with a checkout behind them
   const fmtLocal = (d) => (d.length > 4 ? d.slice(0, 4) + '-' + d.slice(4) : d);
   const localOf = (e164) => String(e164 || '').replace(/\D/g, '').replace(/^504/, '').slice(0, 8);
   const firstName = (n) => String(n || '').trim().split(/\s+/)[0] || '';
@@ -57,9 +58,9 @@
     function phonePane() {
       const viaGoogle = S.path === 'google';
       const g = !viaGoogle && S.cfg && S.cfg.googleEnabled && o.google && typeof o.google.getIdToken === 'function';
-      // advisor 2026-10-27: «Continuar con correo» is G6b (not rendered: no control without effect); the guest link stays except under
-      // a member-only gate
-      const alts = viaGoogle ? '' : `${g ? `<div class="or">o</div><button class="alt" data-su="google">${GOOGLE_G}Continuar con Google</button>` : ''}${S.memberOnly ? '' : '<button class="lnk" data-su="guest">Prefiero seguir como invitado</button>'}`;
+      // advisor 2026-10-27: «Continuar con correo» is G6b (not rendered: no control without effect); the guest link only where there is a
+      // checkout to continue as a guest (the prototype draws it only for an order) — never from Cuenta, never under a member-only gate
+      const alts = viaGoogle ? '' : `${g ? `<div class="or">o</div><button class="alt" data-su="google">${GOOGLE_G}Continuar con Google</button>` : ''}${!S.memberOnly && GUEST_CTX.has(S.ctx) ? '<button class="lnk" data-su="guest">Prefiero seguir como invitado</button>' : ''}`;
       return `<div class="h1">${viaGoogle ? 'Tu teléfono' : 'Entrá a tu cuenta'}</div><p class="sub">${viaGoogle ? 'Lo necesitamos para la entrega y para avisarte por WhatsApp.' : 'Guardá tus datos y pedí más rápido la próxima vez.'}</p>
     <span class="ml">Teléfono</span><div class="phonerow"><span class="cc">+504</span><input class="inp" id="su-phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="9999-9999" value="${esc(S.phone)}" aria-label="Teléfono"></div>
     <button class="cta" data-su="phone-go"${digits().length === 8 && !S.busy ? '' : ' disabled'}>Continuar</button><p class="fine">Te enviaremos un código de verificación por WhatsApp.</p>${err()}

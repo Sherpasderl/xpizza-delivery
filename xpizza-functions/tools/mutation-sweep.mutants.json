@@ -24032,5 +24032,37 @@
     "kills_with": [
       "restored ⇒ autofilled from the cache"
     ]
+  },
+  {
+    "id": "g6-10",
+    "slice": "g6",
+    "label": "the member token is the one read at sign-in, always (an expired token is sent)",
+    "file": "../customer-app/capp-api.js",
+    "from": "      const token = await memberToken(memberOf());",
+    "to": "      const token = (memberOf() || {}).idToken || null;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "an expired sign-in token is never sent"
+    ]
+  },
+  {
+    "id": "g6-11",
+    "slice": "g6",
+    "label": "the guest link shows from Cuenta (no checkout behind the sheet)",
+    "file": "../customer-app/capp-signup.js",
+    "from": "${!S.memberOnly && GUEST_CTX.has(S.ctx) ?",
+    "to": "${!S.memberOnly ?",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "no guest link for account"
+    ]
   }
 ]

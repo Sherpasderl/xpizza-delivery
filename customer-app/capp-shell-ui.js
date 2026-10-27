@@ -45,6 +45,8 @@
     // G6: with the runtime's signup config (runtime.signup = { firebase, endpoints }) the shell owns the auth: the Firebase adapter
     // (its SDK loaded only AFTER the first paint) feeding CappAuthState, and the in-app sign-in sheet. Absent ⇒ exactly as before
     // (the host's opts.auth, 'signin' as a host event)
+    // FLIP PRECONDITION (advisor 2026-10-27): runtime.signup stays ABSENT until G7's member Cuenta is APPROVED-HELD — a sign-in from
+    // Cuenta lands on the member's Cuenta, which G7 draws
     const SU = runtime.signup && runtime.signup.firebase && runtime.signup.endpoints ? runtime.signup : null;
     let auth = o.auth || null, fbAuth = null, signup = null;
     const authNow = () => { try { return auth ? auth.state() : 'unresolved'; } catch (_) { return 'unresolved'; } };
@@ -196,7 +198,8 @@
     async function applyMember(p) {
       let idToken = null; try { idToken = await fbAuth.idToken(); } catch (_) { idToken = null; }
       if (dead) return;
-      S.member = { uid: p.uid, name: p.name || '', phone: String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', idToken };
+      // getIdToken: the transport asks the SDK at send time (cached while valid, refreshed once expired); idToken = the fallback
+      S.member = { uid: p.uid, name: p.name || '', phone: String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', idToken, getIdToken: () => fbAuth.idToken() };
       if (S.store) S.store.ui.setMember(S.member);   // §4c: back on the SAME checkout step, filled in
       schedule();
     }

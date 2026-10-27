@@ -205,9 +205,20 @@
     }
 
     // ── wire ──
-    const headersFor = (extra) => { const h = { 'Content-Type': 'application/json', ...(extra || {}) }; const m = memberOf(); if (m && m.idToken) h['x-firebase-id-token'] = m.idToken; return h; };
+    // the member token AT SEND TIME (G6, advisor 2026-10-27): the Auth SDK's getIdToken() answers from its cache while the token is
+    // valid and refreshes it silently once expired (an ID token lives 1 h); bounded — a hang falls back to the token read at sign-in.
+    // A guest (no member) never asks.
+    const TOKEN_WAIT_MS = 2000;
+    async function memberToken(m) {
+      if (!m) return null;
+      if (typeof m.getIdToken !== 'function') return m.idToken || null;
+      const fresh = await Promise.race([Promise.resolve().then(() => m.getIdToken()).then((t) => (typeof t === 'string' && t ? t : null), () => null), timeout(TOKEN_WAIT_MS).then(() => null)]);
+      return fresh || m.idToken || null;
+    }
+    const headersFor = (extra, token) => { const h = { 'Content-Type': 'application/json', ...(extra || {}) }; if (token) h['x-firebase-id-token'] = token; return h; };
     async function post(url, body, extraHeaders) {
-      const r = await sfetch(url, { method: 'POST', headers: headersFor(extraHeaders), body: JSON.stringify(body) });
+      const token = await memberToken(memberOf());
+      const r = await sfetch(url, { method: 'POST', headers: headersFor(extraHeaders, token), body: JSON.stringify(body) });
       let j = null; try { j = await r.json(); } catch (_) { j = null; }
       const parsed = !!j && typeof j === 'object';
       return { status: r.status, json: parsed ? j : {}, parsed };   // `parsed` false ⇒ never a definitive answer (rule ii)

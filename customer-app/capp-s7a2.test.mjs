@@ -703,6 +703,7 @@ test('G6 shell: the SDK after the first paint; «Entrá» opens the sheet; a ver
   assert.deepEqual(JSON.parse(storage.getItem('capp:device_account')), { v: 1, account: true, e164: '+50499990000' });
   assert.deepEqual(JSON.parse(storage.getItem('capp:member_profile')), { v: 1, uid: 'u_ana', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com' });
   assert.deepEqual(J(S.ui.state.member), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: 'id:u_ana' });
+  assert.equal(await S.ui.state.member.getIdToken(), 'id:u_ana', 'the transport\'s send-time token comes from the SDK');
   S.click('.tabbar [data-tab="account"]'); await flush();
   assert.deepEqual(S.events.filter((e) => e[0] === 'tab').pop(), ['tab', { tab: 'account' }], 'a member\'s Cuenta is the host\'s');
   await fb.loadSdk().then(({ authMod }) => authMod.signOut()); await flush();

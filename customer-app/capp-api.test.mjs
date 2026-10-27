@@ -32,7 +32,7 @@ function server(script, storage) {
   const calls = [];
   const fetch = async (url, init) => {
     const key = url.startsWith(EV) ? 'verifyCheckoutCode' : Object.keys(E).find((k) => url.startsWith(E[k]));
-    calls.push({ ep: key, body: init && init.body ? JSON.parse(init.body) : null, url, placeAtCall: storage.getItem(`capp:rid_a:pending_place`) });
+    calls.push({ ep: key, body: init && init.body ? JSON.parse(init.body) : null, url, headers: (init && init.headers) || {}, placeAtCall: storage.getItem(`capp:rid_a:pending_place`) });
     const q = script[key] || [];
     const r = q.length > 1 ? q.shift() : q[0];
     if (!r) throw new Error(`unscripted ${key}`);
@@ -712,4 +712,27 @@ test('amendment: the code is verified FOR the order id place() will send — the
   const before = S.srv.calls.length;
   assert.equal((await S.api.verifyCheckoutCode({ phone: '+50499990000', cartFp: 'sig1', code: '123456' })).kind, 'offline');
   assert.equal(S.srv.calls.length, before, 'an unbound verify is never sent');
+});
+
+// G6 (advisor 2026-10-27): the member token is read AT SEND TIME through the SDK's getIdToken (cached while valid, refreshed silently
+// once expired); bounded — a hang falls back to the sign-in token; a guest never asks
+test('G6 member token: a token past its expiry ⇒ the send carries the REFRESHED one; a hung refresh falls back (bounded); a guest never asks', async () => {
+  const mk = ({ member, timeout }) => { const storage = memStorage(); const srv = server({ createOrder: [OK_CASH] }, storage);
+    const api = A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL }, member: () => member, fetch: srv.fetch, storage,
+      now: () => at(12), sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {}, ...(timeout ? { timeout } : {}) });
+    return { api, srv }; };
+  // the SDK's own rule: the cached token while valid, a refreshed one after its 1 h life
+  let clock = 0; const sdk = { getIdToken: async () => (clock < 3600e3 ? 'id:signin' : 'id:refreshed') };
+  const M = { uid: 'u1', idToken: 'id:signin', getIdToken: () => sdk.getIdToken() };
+  clock = 3600e3 + 1;
+  const R = mk({ member: M });
+  assert.equal((await R.api.place(placeArgs('cash'))).kind, 'placed', 'premise');
+  assert.equal(R.srv.of('createOrder')[0].headers['x-firebase-id-token'], 'id:refreshed', '🔴 an expired sign-in token is never sent: the refreshed one is');
+  let asked = 0;
+  const H = mk({ member: { uid: 'u1', idToken: 'id:signin', getIdToken: () => { asked++; return new Promise(() => {}); } }, timeout: async () => {} });
+  assert.equal((await H.api.place(placeArgs('cash'))).kind, 'placed', 'a hung refresh never blocks the send');
+  assert.equal(H.srv.of('createOrder')[0].headers['x-firebase-id-token'], 'id:signin', 'bounded ⇒ the sign-in token as the fallback'); assert.equal(asked, 1);
+  const G = mk({ member: null });
+  await G.api.place(placeArgs('cash'));
+  assert.equal('x-firebase-id-token' in G.srv.of('createOrder')[0].headers, false, 'a guest sends no member token');
 });

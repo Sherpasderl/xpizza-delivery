@@ -151,9 +151,9 @@ test('G6 sheet — closing MID-completion signs out (never a member without the 
   late.q('[data-su="verify"]').dispatchEvent(new late.w.MouseEvent('click', { bubbles: true })); await settle();
   await late.click('[data-su="close"]'); release({ ok: true, token: 'ct:u_late', isNew: true, completion: 'needed' }); await settle();
   assert.deepEqual(late.auth.calls.ct, [], '🔴 a verify answering after the close never signs in'); assert.equal(late.host.innerHTML, '');
-  const g = sheet(); g.su.open({ memberOnly: true }); await settle();
+  const g = sheet(); g.su.open({ ctx: 'checkout', memberOnly: true }); await settle();
   assert.equal(g.q('[data-su="guest"]'), null, 'a member-only gate has no guest path');
-  const g2 = sheet(); g2.su.open({}); await settle(); await g2.click('[data-su="guest"]');
+  const g2 = sheet(); g2.su.open({ ctx: 'checkout' }); await settle(); await g2.click('[data-su="guest"]');
   assert.deepEqual(g2.events, [['guest', {}]]);
 });
 
@@ -186,4 +186,14 @@ test('G6 sheet — a custom-token sign-in that lands AFTER the close is undone (
   await b.click('[data-su="close"]'); hold.release(); await settle();
   assert.equal(b.auth.uid, null, '🔴 a mint for a closed sheet is signed out'); assert.equal(b.auth.calls.out, 1);
   assert.deepEqual(b.events, [['closed', {}]]);
+});
+test('G6 sheet — «Prefiero seguir como invitado» only where a checkout is behind the sheet (advisor 2026-10-27, the prototype): never from Cuenta', async () => {
+  for (const ctx of ['checkout', 'checkout-returning', 'code', 'refusal']) {
+    const b = sheet(); b.su.open({ ctx }); await settle();
+    assert.equal(b.txt('[data-su="guest"]'), 'Prefiero seguir como invitado', `shown for ${ctx}`);
+  }
+  for (const ctx of ['account', 'reauth', 'schedule', null]) {
+    const b = sheet(); b.su.open({ ctx }); await settle();
+    assert.equal(b.q('[data-su="guest"]'), null, `🔴 no guest link for ${ctx}`);
+  }
 });
