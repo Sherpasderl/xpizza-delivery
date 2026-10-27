@@ -233,7 +233,7 @@
   }
   // PLAN 5 (owner-approved repriced-cart pattern, DECISIONS 2026-10-26 (1)) — the notice copy, ONE source with the forms: this
   // body is pinned byte-equal to the forms' priceNoticeText (fixtures/price-notice-text.body.txt, from b8ba8467; S7a r3.4-2).
-  // Unit prices in LEMPIRAS (the caller converts cents). Not rendered yet: the capp notice UI waits on the owner's frame 13.
+  // Unit prices in LEMPIRAS (the caller converts cents). Rendered by capp-ui's cart sheet (frame 13, approved 2026-10-27).
   function priceNoticeText(e){ return 'Cambió el precio de ' + e.name + ': antes L ' + Number(e.from).toFixed(0) + ', ahora L ' + Number(e.to).toFixed(0) + '.'; }
 
   return { TIP_PRESETS, TIP_MAX_LEMPIRAS, ENTRY_MODE, COPY, CLOSED_SHEET, freshFlow, setMode, setPin, chooseTip, tipCentsOf, tipChosen,

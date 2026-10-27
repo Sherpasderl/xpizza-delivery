@@ -979,3 +979,5 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .results>.note.spart{padding:4px 0 8px}
 .rcard.held .ph img,.scard.held .ph img,.dcard.held .ph img{transform:scale(1.02)}
 .rcard.gone,.scard.gone,.srow.gone{opacity:.45}
+/* frame 13 (APPROVED 2026-10-27): a changed line's OLD subtotal, struck, above the new one */
+.cline .cl-p .cl-old{display:block;color:var(--mute);font-weight:400;font-size:13px}

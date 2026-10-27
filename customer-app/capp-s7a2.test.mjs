@@ -247,11 +247,11 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
     return Promise.resolve({ status: 200, body: J(PROV[rid].envelope), etag: PROV[rid].etag });
   };
   const clock = now || { t: T0 };
-  const ui = w.CappShellUI.mount(w.document, { fetchDirectory, fetchEnvelope, readAvailability: async () => [], runtime: RUNTIME, storage: storage || memStorage(), now: () => clock.t,
+  const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), fetchDirectory, fetchEnvelope, readAvailability: async () => [], runtime: RUNTIME, storage: storage || memStorage(), now: () => clock.t,
     auth: { state: () => auth }, geolocation, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: require('./capp-api.js'), apiOpts: { fetch: () => new Promise(() => {}) } } });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
-  const release = (rid) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: J(PROV[rid].envelope), etag: PROV[rid].etag }); };
+  const release = (rid, body) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: body || J(PROV[rid].envelope), etag: body ? '"changed"' : PROV[rid].etag }); };
   return { w, ui, q, qa, click, dirCalls, envCalls, release, pend, clock };
 }
 
@@ -360,4 +360,51 @@ test('shell location: the guest location drives frame 4 (every store outside) an
   const ui = N.ui.store().ui; ui.cart.inc(ui.menu.dishes.find((d) => !d.launcher && !d.variantOf).key); ui.render();
   N.click('#cart-bar'); N.click('[data-act="checkout"]'); await flush();
   assert.deepEqual({ lat: ui.state.flow.pin.lat, lng: ui.state.flow.pin.lng, confirmed: ui.state.flow.pin.confirmed }, { lat: near.lat, lng: near.lng, confirmed: true });
+});
+
+// ── r3.3-F2: browse-only on a stored (presentation) menu; enabled in place; a changed menu adopted at checkout entry (frame 13) ──
+const storedMenu = (rid, body = PROV[rid].envelope) => ({ [`capp:menu:${rid}`]: JSON.stringify({ v: 1, rid, etag: PROV[rid].etag, fetched_at: T0 - 60 * 60 * 1000, body }) });
+const repriced = (name, plus) => { const env = J(PROV.x_pizza.envelope); const d = env.menu.dishes.find((x) => x.name === name); d.price += plus; return env; };
+async function enterOnPresentation() {
+  const S = bootShell({ envelope: 'hold', storage: memStorage(storedMenu('x_pizza')) });
+  await flush();
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  assert.equal(S.ui.store().rid, 'x_pizza', 'premise: verified directory + a stored body ⇒ in');
+  return S;
+}
+test('browse-only: a store entered on its STORED menu has every ordering control inert (the existing disabled attribute); a forced tap changes nothing', async () => {
+  const S = await enterOnPresentation(); const ui = S.ui.store().ui;
+  assert.equal(ui.orderable(), false);
+  const adds = S.qa('.qty-add-btn'); assert.ok(adds.length > 0 && adds.every((b) => b.disabled && b.getAttribute('aria-disabled') === 'true'));
+  const plain = ui.menu.dishes.find((d) => !d.launcher && !d.variantOf && !ui.menu.pickupOnlyCats.has(String(d.cat)));
+  S.click(`.qty-add-btn[data-id="${plain.key}"]`); assert.equal(ui.cart.count(), 0, 'the handler refuses too (mutate is the choke point)');
+  S.click(`.txtbtn[data-id="${plain.key}"]`); await flush();
+  assert.ok(S.q('#detail-cta').disabled, '«Agregar» inert'); assert.ok(S.q('#detail-cta').textContent.startsWith('Agregar'), 'its label unchanged (no geometry change)');
+});
+test('browse-only: the verified IDENTICAL menu turns the controls live IN PLACE — the same nodes, no re-render; ordering works', async () => {
+  const S = await enterOnPresentation(); const ui = S.ui.store().ui;
+  const node = S.q('.qty-add-btn'), scroller = S.q('#scroller');
+  S.release('x_pizza'); await flush(); await flush();
+  assert.equal(ui.orderable(), true);
+  assert.equal(S.q('.qty-add-btn'), node, '🔴 the same node — enabled in place'); assert.equal(S.q('#scroller'), scroller);
+  assert.equal(node.disabled, false); assert.equal(S.q('[data-ord]'), null);
+  S.click(node); assert.equal(ui.cart.count(), 1);
+  S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush();
+  assert.equal(ui.state.screen, 'checkout', 'same fingerprint ⇒ nothing to adopt; checkout opens');
+});
+test('browse-only: a CHANGED menu keeps the surface (its prices) while the customer is in it; at checkout entry it is adopted and the cart discloses the change (frame 13) BEFORE the quote', async () => {
+  const S = await enterOnPresentation(); const ui0 = S.ui.store().ui;
+  const carn = ui0.menu.dishes.find((d) => d.name === 'Carnivora'); assert.ok(carn, 'premise');
+  const priceBefore = S.q(`.txtbtn[data-id="${carn.key}"]`).closest('.row').textContent;
+  S.release('x_pizza', repriced('Carnivora', 26)); await flush(); await flush();
+  assert.equal(ui0.orderable(), true); assert.equal(S.ui.store().ui, ui0, 'never remounted while visible');
+  assert.equal(S.q(`.txtbtn[data-id="${carn.key}"]`).closest('.row').textContent, priceBefore, 'never re-priced while visible');
+  S.click(`.qty-add-btn[data-id="${carn.key}"]`); S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush();
+  const ui1 = S.ui.store().ui;
+  assert.notEqual(ui1, ui0, 'adopted at checkout entry'); assert.equal(ui1.state.screen, 'store'); assert.equal(ui1.state.layerKind, 'cart');
+  assert.equal(S.q('#layer .cartnote[role="status"]').textContent, 'Cambió el precio de Carnivora: antes L 340, ahora L 366.');
+  assert.equal(S.q('#layer .cline .cl-p').innerHTML, '<s class="cl-old">L 340</s>L 366');
+  assert.equal(txt(S.q('#layer .ctot .sumrow')), 'Subtotal L 366', 'totals at the new price');
+  S.click('[data-act="checkout"]'); await flush();
+  assert.equal(ui1.state.screen, 'checkout', 'continuing is acceptance');
 });

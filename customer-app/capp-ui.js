@@ -167,6 +167,10 @@
     const hostSoldOf = (key) => { try { return typeof unavailable === 'function' ? !!unavailable(key) : unavailable.has(key); } catch (_) { return false; } };
     const soldOf = (key) => refused.has(key) || hostSoldOf(key);
     const now = opts.now || (() => new Date());
+    // S7a-2 (PLAN-capp-S7a r3.3-F2, APPROVED): a store mounted on a PRESENTATION body (the stored menu, not yet re-verified) is
+    // BROWSE-ONLY — every ordering control is inert with the existing disabled attribute, no geometry change, and every cart
+    // mutation and the checkout entry are refused; setOrderable(true) (the verified body arrived) turns them live IN PLACE
+    let orderable = opts.orderable !== false;
     let dead = false;   // S2b r1 P2-3: destroy() ⇒ every later callback of this instance is a no-op
     const emit = (name, detail) => { if (dead) return; try { (opts.onEvent || (() => {}))(name, detail); } catch (_) {} };
     // S7a-1 (PLAN-capp-S7a r2 §1.6): the shell's per-store cart persistence hook — after a SUCCESSFUL mutation, a restore and a
@@ -178,7 +182,9 @@
     const hostedKeys = () => !!(cfg.cartKey && cfg.placedKey);
     let cartGen = null;
     const genNow = () => { if (!cartGen && api && typeof api.newGen === 'function') cartGen = api.newGen(); return cartGen; };
-    const cart = CappCart.createCart(menu);
+    // S7a r3.4-1: a HOSTED cart (the shell's per-store keys) records each instance's last-seen prices, so a cart restored onto a
+    // re-priced menu is DISCLOSED (frame 13); the S2 / link path keeps today's byte-identical snapshots
+    const cart = CappCart.createCart(menu, cfg.cartKey && cfg.placedKey ? { provenance: true } : undefined);
     const $ = (id) => doc.getElementById(id);
     const app = $('app');
     const S = { mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
@@ -222,7 +228,7 @@
       return api.cartFreeze().frozen === true;
     }
     function mutate(fn) {
-      if (frozenNow()) return false;
+      if (!orderable || frozenNow()) return false;
       const before = cart.snapshot();
       try { fn(); } catch (_) { return false; }
       if (cart.count()) {
@@ -331,7 +337,14 @@
     let returnTo = null;   // where focus goes back when the open dialog closes
     const screenEl = () => app.querySelector('.screen');
     function dialogEl() { if (S.open) return $('detail-modal'); const L = $('layer'); return S.layerKind && L ? L : null; }
-    function syncInert() {
+    // the browse-only pass: the ordering controls not ALREADY disabled for their own reason get the existing disabled attribute,
+    // marked data-ord so setOrderable(true) can release exactly them, in place (runs after every render / layer / sheet paint)
+    const ORDERING = '.qty-add-btn, .qty-ctrl-btn, .detail-step-btn, #detail-cta, #layer .cstep button, #layer [data-act="checkout"]';
+    function applyOrderable() {
+      if (orderable || dead) return;
+      for (const el of app.querySelectorAll(ORDERING)) if (!el.disabled) { el.disabled = true; el.setAttribute('aria-disabled', 'true'); el.dataset.ord = '1'; }
+    }
+    function syncInert() { applyOrderable();
       const dlg = !!(S.open || S.layerKind);
       setInert(screenEl(), dlg);
       const pill = $('cart-bar'); if (pill) setInert(pill, dlg);
@@ -351,7 +364,7 @@
       const sel = q > 0;
       return `<div class="detail-extras-row" data-act="${act}" ${attrs} role="checkbox" aria-checked="${sel}" tabindex="0"><span class="xrow-main"><span class="detail-extras-name">${esc(e.n)}</span><span class="xrow-price">+${money(e.p)}</span></span><div class="detail-extras-toggle ${sel ? 'selected' : ''}">${IC.check.replace('class="i"', '')}</div></div>`;
     }
-    function renderDetail() { renderDetailBody(); if (detailHad && lost()) focusTo(refind(detailHad)); detailHad = null; }
+    function renderDetail() { renderDetailBody(); applyOrderable(); if (detailHad && lost()) focusTo(refind(detailHad)); detailHad = null; }
     let detailHad = null;
     function renderDetailBody() {
       const o = S.open, it = find(o.id);
@@ -443,8 +456,16 @@
       if (!lines.length) return head + note + `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span><button class="btn2" data-act="cartclose">Ver el menú</button></div>`;
       const soldNote = soldDishes.length ? `<div class="cartnote" role="status">${IC.info}<span>${soldDishes.map((n) => `<span class="cn-l">${esc(n)} se agotó. Quitalo para enviar tu pedido.</span>`).join('')}</span></div>` : '';
       const off = over || soldDishes.length > 0;
-      return head + note + refusal + soldNote + lines.map((d) => { const so = soldOfLine(d);
-        return `<div class="cline${so ? ' sold-out' : ''}">${lineName(d, 'cl-txt')}${lineStep(d, so)}<span class="cl-p">${so ? 'Agotado' : money(d.total)}</span></div>`; }).join('')
+      // the owner's frame 13 (approved 2026-10-27; the forms' Plan 5 pattern, b8ba8467): a configuration whose unit price changed
+      // since the customer last saw it — ONE calm note line per dish (its own unit: the plain configuration's change, else its
+      // first), and each changed line's OLD subtotal struck above the new one. Totals at the new price; no block, no accept button
+      // (continuing is acceptance); a sold line keeps frame 14 instead (mixed cases keep today's blocks)
+      const changes = cart.priceChanges().filter((c) => !isSold(find(c.key)));
+      const perDish = new Map(); for (const c of changes) { const cur = perDish.get(c.key); if (!cur || (c.sig === '' && cur.sig !== '')) perDish.set(c.key, c); }
+      const priceNote = perDish.size && mods() ? `<div class="cartnote" role="status">${IC.info}<span>${[...perDish.values()].map((c) => `<span class="cn-l">${esc(C.priceNoticeText({ name: c.name, from: c.fromCents / 100, to: c.toCents / 100 }))}</span>`).join('')}</span></div>` : '';
+      const oldOf = (d) => { const cs = changes.filter((c) => c.key === d.key && c.sig === d.g); return cs.length ? d.total - cs.reduce((a, c) => a + (c.newSubtotalCents - c.oldSubtotalCents) / 100, 0) : null; };
+      return head + note + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
+        return `<div class="cline${so ? ' sold-out' : ''}">${lineName(d, 'cl-txt')}${lineStep(d, so)}<span class="cl-p">${so ? 'Agotado' : old !== null ? `<s class="cl-old">${money(old)}</s>${money(d.total)}` : money(d.total)}</span></div>`; }).join('')
         + `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>`
         + `<div class="sheetbar"><button class="primary${soldDishes.length ? ' sold-wait' : ''}" data-act="checkout"${off ? ' disabled aria-disabled="true"' : ''}>Ir al checkout</button></div>`;
     }
@@ -1086,7 +1107,8 @@
       if (act === 'goto') { closeLayer(); jumpTo(t.dataset.goto); return; }
       if (act === 'ssearch') { openLayer('ssearch'); return; }
       if (act === 'back') { emit('back'); return; }
-      if (act === 'checkout') { if (soldBlock()) return; let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return; } emit('checkout', { body, mode: S.mode }); openCheckout(); return; }
+      // S7a-2: the host may adopt a newer verified menu first (opts.beforeCheckout() === false ⇒ it took over: not opened here)
+      if (act === 'checkout') { if (!orderable || soldBlock()) return; if (typeof opts.beforeCheckout === 'function' && opts.beforeCheckout() === false) return; let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return; } emit('checkout', { body, mode: S.mode }); openCheckout(); return; }
       if (act === 'closed-sched') { emit('schedule'); return; }
     }
     const FLOW_FIELDS = ['details', 'name', 'phone', 'email', 'notes', 'tendered'];
@@ -1138,6 +1160,14 @@
       deviceBack,
       // the host's AUTHORITATIVE availability has been re-read (its Set / function now reflects it): a dispatch refusal yields to it
       availabilityUpdated() { if (dead) return; refused.clear(); render(); },
+      // S7a-2: the verified menu arrived — the ordering controls turn live IN PLACE (no re-render: boxes, scroll and focus unchanged)
+      setOrderable(on) {
+        if (dead) return; orderable = on === true;
+        if (!orderable) { applyOrderable(); return; }
+        for (const el of app.querySelectorAll('[data-ord]')) { el.disabled = false; el.removeAttribute('aria-disabled'); delete el.dataset.ord; }
+      },
+      orderable: () => orderable,
+      openCart() { if (dead || S.screen !== 'store') return false; openLayer('cart'); return true; },
       // S7a-2: a Buscar / Inicio dish result opens THAT dish's sheet on this store (P open-dish :2253) — false when it is not here
       openDetail(key) { if (dead || S.screen !== 'store' || !find(key)) return false; openDetail(key); return true; },
       restore(snapshot) {

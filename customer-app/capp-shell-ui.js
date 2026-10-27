@@ -35,6 +35,7 @@
     const CappMenuCache = pick(o, 'CappMenuCache', './capp-menu-cache.js'), CappMenu = pick(o, 'CappMenu', './capp-menu.js');
     const CappUI = pick(o, 'CappUI', './capp-ui.js'), CappShell = pick(o, 'CappShell', './capp-shell.js');
     const CappShellNav = pick(o, 'CappShellNav', './capp-shell-nav.js'), CappHome = pick(o, 'CappHome', './capp-home.js');
+    const CappCheckout = pick(o, 'CappCheckout', './capp-checkout.js');
     const win = o.win || doc.defaultView;
     const storage = o.storage !== undefined ? o.storage : (() => { try { return win.localStorage; } catch (_) { return null; } })();
     const nowMs = typeof o.now === 'function' ? o.now : () => Date.now();
@@ -95,7 +96,7 @@
     function loadMenus() {
       for (const r of dir.view().rows) {
         if (r.gone) continue;
-        if (!subscribed.has(r.rid)) { subscribed.add(r.rid); cache.subscribe(r.rid, () => { schedule(); checkHeld(); }); }
+        if (!subscribed.has(r.rid)) { subscribed.add(r.rid); cache.seed(r.rid, readJ(MENU_KEY(r.rid))); cache.subscribe(r.rid, () => { schedule(); checkHeld(); }); }   // a stored menu seeds once its row is known (a no-op when held in memory)
         cache.get(r.rid);   // directory order = visible stores first; the cache's global concurrency (3) and dedupe apply
       }
     }
@@ -120,26 +121,58 @@
     }
 
     // ── the store mount ──
-    function mountStore(entry) {
+    function mountStore(entry, freshBody) {
       const row = dir.view().rows.find((r) => r.rid === entry.rid);
-      const cfg = row && cfgOf(row.entry), e = cache.peek(entry.rid);
+      const cfg = row && cfgOf(row.entry), e = freshBody ? { body: freshBody, state: 'fresh' } : cache.peek(entry.rid);
       if (!cfg || !e || !e.body) return false;
       const uo = o.uiOpts || {};
+      // r3.3-F2: a PRESENTATION body (the stored menu, not yet re-verified) mounts BROWSE-ONLY; the fresh one turns it live in place
+      const orderable = e.state !== 'presentation';
       const apiOpts = { storage, ...(uo.apiOpts || {}) };   // the store's records live in the shell's storage (one device store)
-      const ui = CappUI.mount(doc, { ...uo, apiOpts, envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
+      const ui = CappUI.mount(doc, { ...uo, apiOpts, orderable, beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
         onEvent: (name, detail) => { if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
-      S.store = { rid: entry.rid, ui };
+      S.store = { rid: entry.rid, ui, entry, body: e.body, fp: null, adopt: null };
+      watchMenu(S.store);
       const snap = readJ(cfg.cartKey); if (snap) ui.restore(snap);
       if (entry.dish) ui.openDetail(entry.dish);
       pollAvail(); availTimer = T.setInterval(pollAvail, AVAIL_EVERY_MS);
       return true;
     }
+    // the mounted surface is NEVER remounted or re-priced while the customer is in it ([r2] ruling): a verified body enables the
+    // ordering controls in place; if its CONTENT FINGERPRINT differs, the surface keeps the body it was entered with and the fresh
+    // one is ADOPTED at the next transition where the menu is not visible — checkout entry (below) or the next store entry
+    // no WebCrypto / a bad body ⇒ null ⇒ treated as CHANGED (adopted at checkout entry: the safe direction, never a silent re-price)
+    const fpOf = (body) => Promise.resolve().then(() => CappCheckout.menuFingerprint(body)).catch(() => null);
+    function watchMenu(st) {
+      const check = async () => {
+        const e = cache.peek(st.rid);
+        if (S.store !== st || !e || !e.body || (e.state !== 'fresh' && e.state !== 'stale') || e.body === st.body) { if (S.store === st && e && e.body === st.body && e.state !== 'presentation') st.ui.setOrderable(true); return; }
+        const [a, b] = await Promise.all([st.fp || (st.fp = fpOf(st.body)), fpOf(e.body)]);
+        if (S.store !== st) return;
+        st.adopt = a && b && a === b ? null : e.body;   // same content ⇒ nothing to adopt
+        st.ui.setOrderable(true);
+      };
+      st.unwatch = cache.subscribe(st.rid, () => { check(); });
+      check();
+    }
+    function adoptBeforeCheckout() {
+      const st = S.store; if (!st || !st.adopt) return true;
+      const body = st.adopt;
+      // the cart (with its last-seen prices) is carried onto the fresh body; the cart sheet discloses any changed line (frame 13)
+      // BEFORE the quote — the customer continues from there (continuing is acceptance)
+      if (availTimer !== null) { T.clearInterval(availTimer); availTimer = null; }
+      if (typeof st.unwatch === 'function') st.unwatch();
+      st.ui.destroy(); S.store = null;
+      if (!mountStore(st.entry, body)) return true;   // mountStore restores the stored cart onto the fresh body
+      S.store.ui.openCart();
+      return false;
+    }
     function unmountStore() {
       const st = S.store; if (!st) return;
       if (availTimer !== null) { T.clearInterval(availTimer); availTimer = null; }
-      availSeq++; st.ui.destroy(); S.store = null; rebuild = true;   // #app holds the store's markup: the next shell paint rebuilds it
+      availSeq++; if (typeof st.unwatch === 'function') st.unwatch(); st.ui.destroy(); S.store = null; rebuild = true;   // #app holds the store's markup: the next shell paint rebuilds it
     }
 
     // ── the shell navigation (one history owner) ──
