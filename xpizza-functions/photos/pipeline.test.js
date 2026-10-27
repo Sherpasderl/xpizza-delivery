@@ -4,6 +4,9 @@
 // Run: node photos/pipeline.test.js
 const assert = require('assert');
 const sharp = require('sharp');
+// a spy on the module the pipeline will lazily require: every sharp(...) construction is counted, then delegated
+let SHARP_CALLS = 0;
+{ const real = sharp; const spy = function (...a) { SHARP_CALLS += 1; return real(...a); }; Object.assign(spy, real); require.cache[require.resolve('sharp')].exports = spy; }
 const { processImage, PIPELINE } = require('./pipeline');
 const { sniffImage } = require('./sniff');
 
@@ -82,6 +85,11 @@ const codeOf = async (p) => { try { await p; return 'ok'; } catch (e) { return e
     const truncated = jpg.subarray(0, Math.floor(jpg.length / 2));
     for (const [label, buf] of [['GIF', gif], ['SVG', svg], ['HEIC', heic], ['HTML named .jpg', html], ['zero bytes', Buffer.alloc(0)], ['truncated JPEG', truncated]])
       assert.strictEqual(await codeOf(processImage(buf, FULL)), 'bad_type', `PIPE-BAD-TYPE ${label}`);
+    // §2.7: a non-sniffed input never reaches libvips at all (it would parse SVG / HEIC / GIF headers if asked)
+    for (const [label, buf] of [['GIF', gif], ['SVG', svg], ['HEIC', heic], ['HTML named .jpg', html], ['zero bytes', Buffer.alloc(0)]]) {
+      const before = SHARP_CALLS; await codeOf(processImage(buf, FULL));
+      assert.strictEqual(SHARP_CALLS, before, `PIPE-NO-DECODE-BEFORE-SNIFF ${label}`);
+    }
     // a PNG whose bytes were renamed .jpg is still a PNG (sniffed, decoded AS png) — names never matter
     assert.strictEqual(await codeOf(processImage(await photo(1600, 1200, 'png'), FULL)), 'ok', 'PIPE-SNIFF-NOT-NAME');
     for (const [w, h, want] of [[499, 440, 'too_small'], [500, 439, 'too_small'], [500, 440, 'ok']]) {
@@ -115,6 +123,8 @@ const codeOf = async (p) => { try { await p; return 'ok'; } catch (e) { return e
     const { data } = await sharp(r.card).raw().toBuffer({ resolveWithObject: true });
     assert.ok(data[0] > 200 && data[2] < 60, `PIPE-ANIMATED-FIRST-FRAME (red, got ${data[0]},${data[1]},${data[2]})`);
     assert.strictEqual((await sharp(r.card).metadata()).pages || 1, 1, 'PIPE-OUTPUT-SINGLE-FRAME');
+    // the oriented size is ONE frame (800×600), not the stacked frames: a crop reaching into a second frame is out of bounds
+    assert.strictEqual(await codeOf(processImage(anim, { card: { x: 0, y: 400, w: 400, h: 300 }, hero: { x: 0, y: 0, w: 496, h: 310 } })), 'bad_crop', 'PIPE-ANIMATED-HEIGHT-IS-ONE-FRAME');
     ok('animated WEBP: only the first frame is decoded; outputs are single-frame');
   }
 
