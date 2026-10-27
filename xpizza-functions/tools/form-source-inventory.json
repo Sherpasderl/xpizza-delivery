@@ -1835,8 +1835,10 @@
   "merchant/merchant-transitions.js",
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
+  "phone/flag.js",
   "phone/identity-corpus.js",
   "phone/intl.js",
+  "phone/wire.js",
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
@@ -3086,11 +3088,19 @@
    "pins": [],
    "lifts": []
   },
+  "phone/flag.js": {
+   "pins": [],
+   "lifts": []
+  },
   "phone/identity-corpus.js": {
    "pins": [],
    "lifts": []
   },
   "phone/intl.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "phone/wire.js": {
    "pins": [],
    "lifts": []
   },
