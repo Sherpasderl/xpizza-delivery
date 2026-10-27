@@ -76,6 +76,7 @@ async function authedFetch(url, body) {
   const user = auth && auth.currentUser;
   if (!user) throw new Error('No hay sesión de dispatcher');
   const token = await user.getIdToken();
+  if (authWriteBarred()) throw supersededError();   // re-check: the session may have been superseded DURING the token await
   return sherpaFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -1029,6 +1030,7 @@ export async function sendTestPush() {
   let res;
   try {
     const token = await user.getIdToken();
+    if (authWriteBarred()) return { httpStatus: 0, reason: 'superseded' };   // re-check after the token await (preserve the never-throw contract)
     res = await sherpaFetch(functionUrl('sendTestStaffPush'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },

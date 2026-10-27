@@ -1976,6 +1976,7 @@
   /* PLAN-dispatch-maps-decouple: map-load failure panel over the map pane (board stays live behind it). */
   .map-fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; z-index: 5;
     background: color-mix(in srgb, var(--map-bg) 86%, transparent); }
+  .map-fail[hidden] { display: none; }   /* the author display:grid above would otherwise override the UA hidden state */
   .map-fail-card { display: flex; flex-direction: column; align-items: center; gap: 11px;
     max-width: 320px; padding: 22px 24px; text-align: center; cursor: pointer; font: inherit;
     background: var(--surface); color: var(--text-soft); border: 1px solid var(--border-soft);
@@ -2919,7 +2920,7 @@ $('login-btn').addEventListener('click', async () => {
 
 $('signout-btn').addEventListener('click', async () => {
   await XPD.signOutUser();
-  location.reload();
+  requestReload();   // PLAN §2.3: one-shot clean-path navigation (also reached via onAuth(null)); never a raw reload that could double-navigate
 });
 
 // ============================================================
@@ -2940,6 +2941,18 @@ function onMapReady() {
   updateDriverMarkers();
   updateCustomerMarkers();
   refreshDeliveryEtas();
+  // PLAN §3.5 (no silent drops): replay the ONE map action the operator requested while Maps was loading.
+  if (pendingMapAction) { const f = pendingMapAction; pendingMapAction = null; try { f(); } catch (_) {} }
+}
+
+// A map-focusing action (pan-to-driver, «Ver última ubicación», alert→driver) requested before the map is
+// ready: run it now if ready; if Maps FAILED, surface the retry panel (explicit feedback, board stays live);
+// if still LOADING, queue exactly ONE (latest wins), replayed by onMapReady — never a silent drop.
+let pendingMapAction = null;
+function runOnMap(fn) {
+  if (mapReady) { fn(); return; }
+  if (mapFailed) { showMapFail(); return; }
+  pendingMapAction = fn;
 }
 function onMapFail(e) {
   mapFailed = true; mapInit = null;
@@ -3406,7 +3419,7 @@ function renderDispatcherAlerts(alerts) {
       else if (tgt.kind === 'caja') navigateToCaja(tgt.orderId);
       else if (tgt.kind === 'driver') {
         const d = allDrivers[tgt.driverId];
-        if (mapReady && d && d.lat != null && d.lng != null) { map.panTo({ lat: d.lat, lng: d.lng }); map.setZoom(Math.max(map.getZoom(), 16)); }   // PLAN §3.5: pan only when Maps is up (order/caja nav stays unconditional)
+        if (d && d.lat != null && d.lng != null) runOnMap(() => { map.panTo({ lat: d.lat, lng: d.lng }); map.setZoom(Math.max(map.getZoom(), 16)); });   // PLAN §3.5: pan when ready, else queue/feedback (order/caja nav stays unconditional)
       }
     });
   });
@@ -4462,7 +4475,7 @@ function renderDriversSection() {
       const order = getOrdersForDriver(uid)[0];   // reassignable active order, if any
       const items = [];
       if (d.phone) items.push({ label: `Llamar a ${d.name || 'repartidor'}`, icon: ICONS.phone, action: () => { window.location.href = `tel:${d.phone}`; } });
-      if (!d.active && Number.isFinite(d.lat) && Number.isFinite(d.lng)) items.push({ label: 'Ver última ubicación', icon: ICONS.pin, action: () => showLastLocation(uid) });
+      if (!d.active && Number.isFinite(d.lat) && Number.isFinite(d.lng)) items.push({ label: 'Ver última ubicación', icon: ICONS.pin, action: () => runOnMap(() => showLastLocation(uid)) });
       if (order) items.push({ label: `Reasignar ${displayOrderLabel(order)}`, icon: ICONS.refresh, action: () => openPicker(order.order_id, true) });
       if (d.active) { if (items.length) items.push({ divider: true }); items.push({ label: 'Sacar de turno', icon: ICONS.close, danger: true, action: () => forceOffShift(uid) }); }
       if (items.length) showActionMenu(btn, items);
@@ -4483,10 +4496,10 @@ function renderDriversSection() {
       const uid = row.dataset.driverUid;
       // If clicking the row itself, both pan map (if has GPS) AND toggle
       const d = allDrivers[uid];
-      if (mapReady && d?.active && d?.lat && d?.lng) {   // PLAN §3.5: pan only when Maps is up; the row still expands below
+      if (d?.active && d?.lat && d?.lng) runOnMap(() => {   // PLAN §3.5: pan when ready, else queue/feedback; the row still expands below
         map.panTo({ lat: d.lat, lng: d.lng });
         map.setZoom(Math.max(map.getZoom(), 16));
-      }
+      });
       // Toggle expansion
       if (expandedDrivers.has(uid)) expandedDrivers.delete(uid);
       else expandedDrivers.add(uid);
