@@ -447,6 +447,7 @@
   "index.js#predictReadyTimeOnNew": "readytime",
   "index.js#pricingUnavailable": "intake",
   "index.js#quoteOrder": "intake",
+  "schedule/schedule-only.js#handle": "intake",
   "index.js#quoteRedemption": "intake",
   "index.js#reassertAssignable": "dispatch",
   "index.js#reconcilePayments": "payment",

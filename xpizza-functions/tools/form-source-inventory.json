@@ -1847,7 +1847,11 @@
   "retention-sweep.js",
   "rewards-redeem-intake.js",
   "rewards-reserve.js",
+  "schedule/hours-grammar.js",
+  "schedule/load-schedule.js",
+  "schedule/schedule-only.js",
   "scheduled-release-core.js",
+  "seed_identity.js",
   "sequencing/bounded.js",
   "sequencing/budget.js",
   "sequencing/cancel-promotion.js",
@@ -2200,6 +2204,7 @@
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -2230,6 +2235,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
@@ -2263,6 +2269,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
@@ -2285,6 +2292,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2314,6 +2322,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
@@ -2345,6 +2354,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
@@ -2366,6 +2376,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2375,6 +2386,7 @@
      "inverses": [
       "tools/drvc-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     },
@@ -2384,6 +2396,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     },
@@ -2407,6 +2420,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
@@ -2419,7 +2433,8 @@
     {
      "file": "xpizza-functions/formsignal-wiring.guard.test.js",
      "inverses": [
-      "tools/formsignal-inverse.js"
+      "tools/formsignal-inverse.js",
+      "tools/s4hours-inverse.js"
      ]
     },
     {
@@ -2441,6 +2456,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -2464,6 +2480,7 @@
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2485,6 +2502,7 @@
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2502,6 +2520,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2514,6 +2533,7 @@
       "tools/formsignal-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2525,6 +2545,7 @@
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2553,6 +2574,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
@@ -2588,6 +2610,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
@@ -2608,6 +2631,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2625,6 +2649,7 @@
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2647,6 +2672,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -2673,12 +2699,19 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wahealth-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/s4hours-wiring.guard.test.js",
+     "inverses": [
+      "tools/s4hours-inverse.js"
      ]
     },
     {
@@ -2696,6 +2729,7 @@
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
@@ -2723,6 +2757,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
@@ -2745,6 +2780,7 @@
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/signup-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
@@ -2774,6 +2810,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
@@ -2790,6 +2827,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2843,6 +2881,7 @@
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/wahealth-inverse.js"
@@ -2861,6 +2900,7 @@
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
@@ -2887,6 +2927,7 @@
       "tools/release-race-inverse.js",
       "tools/s1a-inverse.js",
       "tools/s1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/s5-inverse.js",
       "tools/serial3-inverse.js",
       "tools/signup-inverse.js",
@@ -2901,6 +2942,7 @@
      "file": "xpizza-functions/wahealth-wiring.guard.test.js",
      "inverses": [
       "tools/formsignal-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     }
@@ -3227,6 +3269,18 @@
    "pins": [],
    "lifts": []
   },
+  "schedule/hours-grammar.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "schedule/load-schedule.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "schedule/schedule-only.js": {
+   "pins": [],
+   "lifts": []
+  },
   "scheduled-release-core.js": {
    "pins": [
     {
@@ -3246,6 +3300,10 @@
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js"
    ]
+  },
+  "seed_identity.js": {
+   "pins": [],
+   "lifts": []
   },
   "sequencing/bounded.js": {
    "pins": [],

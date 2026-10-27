@@ -63,8 +63,10 @@ const IDENTITIES = {
   },
 };
 
-const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+// S4 C′ (PLAN-capp-S4 r5 §0 + r5.1 BC-3): the seed validates hours through the ONE grammar — a DELIBERATE policy change
+// (stricter: start < end, no unknown/extra keys, a closed day carries no times). Existing identities are unaffected (the seed
+// never clobbers); a legacy-style seed value now REFUSES instead of writing.
+const { hours7Errors } = require('./schedule/hours-grammar');
 
 /** Re-assert the shape the RTDB .validate rules enforce (Admin SDK bypasses them). Throws on any violation. */
 function assertIdentityShape(rid, id) {
@@ -83,13 +85,8 @@ function assertIdentityShape(rid, id) {
   if (typeof id.version !== 'number') throw new Error(`${rid}: version must be a number`);
   // hours: all 7 days, each {open:false} or {open:true, start:'HH:MM', end:'HH:MM'} (no nulls)
   if (!id.hours || typeof id.hours !== 'object') throw new Error(`${rid}: hours must be an object`);
-  for (const d of DAYS) {
-    const h = id.hours[d];
-    if (!h || typeof h !== 'object') throw new Error(`${rid}: hours.${d} missing/invalid`);
-    if (h.open === false) continue;
-    if (h.open !== true) throw new Error(`${rid}: hours.${d}.open must be a boolean`);
-    if (!HHMM.test(h.start) || !HHMM.test(h.end)) throw new Error(`${rid}: hours.${d} start/end must be HH:MM`);
-  }
+  const hoursErr = hours7Errors(id.hours);
+  if (hoursErr.length) throw new Error(`${rid}: hours.${hoursErr[0]}`);
 }
 
 async function main() {

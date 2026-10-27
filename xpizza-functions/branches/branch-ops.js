@@ -5,9 +5,9 @@
 // the pin / address move only while the branch is OFF (inactive ≥ 10 min, zero non-terminal orders); a radius-only change is
 // allowed while active; hours are SAME-DAY, all 7 days; a branch is created inactive; «Desactivar» is reversible active:false.
 const { isBrandId, validateBranchIdentity, validateZone } = require('../brands/brand-model');
+const { hours7Errors } = require('../schedule/hours-grammar');   // S4 C′: MOVED to the one hours grammar; re-exported below (same object)
 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const PHONE = /^\+[1-9][0-9]{7,14}$/;
 const NAME_MAX = 60;
 const ADDRESS_MAX = 120;
@@ -18,22 +18,6 @@ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isText = (v, max) => typeof v === 'string' && v.length >= 1 && v.length <= max && v.trim() === v;
 const isPrep = (v) => Number.isInteger(v) && v >= 5 && v <= 120;
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-
-// all 7 days, each {open:false} or {open:true, start, end} same-day (start < end), no other keys
-function hours7Errors(hours) {
-  if (!isObj(hours)) return ['hours must be an object of 7 days'];
-  const e = [];
-  for (const k of Object.keys(hours)) if (!DAYS.includes(k)) e.push(`unknown day ${k}`);
-  for (const d of DAYS) {
-    const h = hours[d];
-    if (!isObj(h) || typeof h.open !== 'boolean') { e.push(`${d}: {open} required`); continue; }
-    if (Object.keys(h).some((k) => !['open', 'start', 'end'].includes(k))) e.push(`${d}: unknown key`);
-    if (!h.open) { if ('start' in h || 'end' in h) e.push(`${d}: closed day has times`); continue; }
-    // O1b T3d (Codex r1 #7): string times FIRST — an array / object / number never reaches the regex or the comparison
-    if (typeof h.start !== 'string' || typeof h.end !== 'string' || !HHMM.test(h.start) || !HHMM.test(h.end) || !(h.start < h.end)) e.push(`${d}: open day needs HH:MM start < end (same day)`);
-  }
-  return e;
-}
 
 function draftErrors(d) {
   const e = [];
