@@ -891,6 +891,21 @@
       ".read": false,
       ".write": false
     },
+    "checkout_otp": {
+      ".read": false,
+      ".write": false
+    },
+    "otp_budget": {
+      ".read": false,
+      ".write": false
+    },
+    "checkout_tickets": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "exp"
+      ]
+    },
     "merchant_reject_notices": {
       ".read": false,
       ".write": false
