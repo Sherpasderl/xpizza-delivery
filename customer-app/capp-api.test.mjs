@@ -698,6 +698,16 @@ test('amendment: the code is verified FOR the order id place() will send — the
   S.api.clearPlace(t2.order_id);
   const o2 = await S.api.place({ ...a2, checkoutTicket: t2 });
   assert.deepEqual([o2.kind, S.srv.of('chargeOnlineOrder').length], ['guest_ticket_invalid', 0], '🔴 a ticket for another order id is never sent');
+  // Codex amendment r1 P2 — the RECOVERY: the refused attempt recorded nothing for the new identity B, so a re-verify binds to B and
+  // the next place() sends exactly ONE charge, under B, with B's ticket
+  const recB = placeRec(S.storage);
+  assert.ok(recB && recB.order_id !== t2.order_id, 'premise: a new identity B');
+  assert.deepEqual([Number(recB.dispatched) || 0, !!recB.unresolved, !!recB.card], [0, false, false], '🔴 the refused attempt left B un-dispatched (no unresolved mark)');
+  const tB = await ticketFor(S, a2);
+  assert.equal(tB.order_id, recB.order_id, 'the re-verify binds to B');
+  const o3 = await S.api.place({ ...a2, checkoutTicket: tB });
+  assert.equal(o3.kind, 'redirect', '🔴 recovered: B is sent (never stuck on existing_order)');
+  assert.deepEqual(S.srv.of('chargeOnlineOrder').map((c) => [c.body.order_id, c.body.checkout_ticket]), [[recB.order_id, 'tk_1']], '🔴 exactly ONE charge, under B, with B\'s ticket');
   // no order id ⇒ nothing to bind: never sent
   const before = S.srv.calls.length;
   assert.equal((await S.api.verifyCheckoutCode({ phone: '+50499990000', cartFp: 'sig1', code: '123456' })).kind, 'offline');

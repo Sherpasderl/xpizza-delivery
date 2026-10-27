@@ -23869,5 +23869,21 @@
     "kills_with": [
       "a re-verify (a retry) keeps the SAME id"
     ]
+  },
+  {
+    "id": "guest-21",
+    "slice": "guest",
+    "label": "Codex amendment r1 P2: the binding is checked only at the wire (after the freeze / confirmSend) — a refused attempt marks the new identity dispatched",
+    "file": "../customer-app/capp-api.js",
+    "from": "          { const g = guestGate(p, { ticket: true, id: rec.order_id }); if (g) return g; }\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "the refused attempt left B un-dispatched"
+    ]
   }
 ]

@@ -440,6 +440,9 @@
         let rec;
         try {
           rec = readPlace() || mintPlace(method, p);
+          // Codex amendment r1 P2: the ticket ↔ order-id binding BEFORE anything is recorded for this identity (the freeze, confirmSend) —
+          // a refused attempt leaves the record un-dispatched, so the re-verify binds to THIS id and the next place() sends it
+          { const g = guestGate(p, { ticket: true, id: rec.order_id }); if (g) return g; }
           // S7a-1 r3.1 N7: hosted ⇒ a VERIFIED freeze of the purchased cart is a precondition of the FIRST dispatch of an identity;
           // a failure stops here (zero sends; the drawn «Sin conexión» retry) and the retry reuses THIS identity
           if (HOSTED && !(Number(rec.dispatched) > 0)) {
