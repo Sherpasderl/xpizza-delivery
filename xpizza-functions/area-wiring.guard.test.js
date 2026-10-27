@@ -2,7 +2,7 @@
 // Order colonia (PLAN-colonia-address-area r1, Codex r2 APPROVED) — hot-file wiring guard (index.js inverse-fold invariant; see
 // memory index-js-inverse-fold-invariant). The slice's hunks on byte-pinned files are SAME-LINE (tools/area-inverse.js, composed
 // INNERMOST into every index.js fold guard and every create-order-build.js module pin). This guard proves:
-//   (i)   unapplyAreaIndex(index.js) / unapplyAreaModule(create-order-build.js) === acf32fc8 BYTE-FOR-BYTE, with sensitivity, and
+//   (i)   unapplyAreaIndex(index.js) / unapplyAreaModule(create-order-build.js) === e051df4c BYTE-FOR-BYTE, with sensitivity, and
 //         no line inserted;
 //   (ii)  STRUCTURALLY: the field is computed ONLY in validateOrderPayload, through addressAreaFrom, behind the inline delivery
 //         predicate; both writers are conditional; nothing reads address_detected / address_details to produce it;

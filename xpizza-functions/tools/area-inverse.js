@@ -3,10 +3,10 @@
 // files (hot-file invariant, see memory index-js-inverse-fold-invariant). All SAME-LINE (no line inserted):
 //   index.js — validateOrderPayload's address_area field; chargeOnlineOrder's conditional pendingOrderRecord.address_area;
 //   create-order-build.js — buildCreateOrderUpdates' conditional orderRecord.address_area.
-// Each `now` must occur EXACTLY once. Proof (area-wiring.guard): unapplyAreaIndex(index.js) === acf32fc8:index.js and
-// unapplyAreaModule(f, f's src) === acf32fc8:<f> byte-for-byte; other modules pass through. Composed INNERMOST at every fold.
+// Each `now` must occur EXACTLY once. Proof (area-wiring.guard): unapplyAreaIndex(index.js) === e051df4c:index.js (this line's base) and
+// unapplyAreaModule(f, f's src) === e051df4c:<f> byte-for-byte; other modules pass through. Composed INNERMOST at every fold.
 
-const BASE = 'acf32fc8';
+const BASE = 'e051df4c';
 const HUNKS = Object.freeze([
   {
     file: 'index.js',
