@@ -210,9 +210,12 @@
 .slide-confirm.start { background: var(--accent); border-color: transparent; box-shadow: 0 6px 18px rgba(47,95,184,.26), inset 0 1px 0 rgba(255,255,255,.18); }
 .slide-confirm.start::before { box-shadow: none; }
 .slide-confirm.start .slide-fill { background: rgba(255,255,255,.16); }
-.slide-confirm.start .slide-text { background-image: none; color: #fff; -webkit-text-fill-color: #fff; text-transform: none; letter-spacing: .01em; font-size: 15px; font-weight: 700; }
+/* .start has a «DESLIZÁ» hint but NO countdown ring, so it doesn't need the shared 72px right-clearance; dropping it
+   lets the label centre in the track to the right of the knob, matching the prototype .slide (padding-left only). */
+.slide-confirm.start .slide-text { background-image: none; color: #fff; -webkit-text-fill-color: #fff; text-transform: none; letter-spacing: .01em; font-size: 15px; font-weight: 700; padding-right: 0; }
 .slide-confirm.start .slide-hint { color: rgba(255,255,255,.72); }
 .slide-confirm.start .slide-thumb { background: rgba(255,255,255,.22); box-shadow: inset 0 1.5px 0 rgba(255,255,255,.4); }
+#screen-cuenta .cuenta-ver { flex: none; text-align: center; font-size: 11.5px; color: var(--text-dim, #8A93A6); padding: 6px 0 10px; }
 /* ===== SLICE3:PRESENTATION-INICIO:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -2735,6 +2738,9 @@ function syncTabBarForScreen(name) {
   if (name === 'cuenta') {
     const cb = $('cuenta-back');
     if (cb && !cb.dataset.tabBack) { const c = cb.cloneNode(true); c.dataset.tabBack = '1'; cb.replaceWith(c); c.addEventListener('click', () => render()); }
+    // Version line on Cuenta (muted) — the driver follows the customer-app precedent («muted line on Cuenta»).
+    const cs = $('screen-cuenta');
+    if (cs && !cs.querySelector('.cuenta-ver')) cs.insertAdjacentHTML('beforeend', `<div class="cuenta-ver">v${SYSTEM_VERSION} · driver</div>`);
   }
   mountTabBar($('screen-offshift'), 'inicio', name === 'offshift' && !hasWork);
   mountTabBar($('screen-cuenta'), 'cuenta', name === 'cuenta' && !hasWork);
