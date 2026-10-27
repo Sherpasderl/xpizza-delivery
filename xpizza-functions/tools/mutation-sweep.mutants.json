@@ -22498,8 +22498,8 @@
       "../customer-app/capp-perf.cdp.mjs"
     ],
     "kills_with": [
-      "F4-warm: the faces are LOADED",
-      "F4-warm: a heading at weight"
+      "✗ F4-warm: the faces are LOADED",
+      "✗ F4-warm: a heading at weight"
     ]
   }
 ]
