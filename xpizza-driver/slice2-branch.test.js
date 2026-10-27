@@ -310,7 +310,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     + DRV2_BLOCK + '\n'
     + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate (reads driverState) — the resumen reuses it
     + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null,offerConnHandler=null; function readyTimeLabel(){ return ""; } function mountOfferTakeover(){} function stopOfferTakeover(){} function applyOfflineBanner(){}\n'
-    + liftConst(MY_SCRIPT, 'TAB_SHOW_PEDIDOS') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_GANANCIAS') + '\n'   // O6: the REAL production gating constants (lifted)
+    + liftConst(MY_SCRIPT, 'PAGOS_LIVE') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_PEDIDOS') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_GANANCIAS') + '\n'   // O6: the REAL production gating constants (lifted)
     + liftFn(MY_SCRIPT, 'mountTabBar') + '\n'                       // O6: the REAL tab helper renderActiveAndQueue calls (TABBAR-BOARD)
     + liftFn(MY_SCRIPT, 'renderActiveAndQueue') + '\n'
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
@@ -422,7 +422,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     // only the 5 s repeat is stubbed (its own interval is tested in offer-takeover.test.js).
     + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null,offerConnHandler=null,offerConnUnsub=null; function readyTimeLabel(){ return ""; } let soundOn=false; function startOfferRepeat(){} function applyOfflineBanner(){}\n'
     + 'const fbRef=(db,path)=>({db,path}); const fbOnValue=(ref,cb)=>{ cb(); return ()=>{}; };\n'   // .info/connected subscribe stub (connected by default via getDiagConnState)
-    + liftConst(MY_SCRIPT, 'TAB_SHOW_PEDIDOS') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_GANANCIAS') + '\n'   // O6: the REAL production gating constants (lifted)
+    + liftConst(MY_SCRIPT, 'PAGOS_LIVE') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_PEDIDOS') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_GANANCIAS') + '\n'   // O6: the REAL production gating constants (lifted)
     + liftFn(MY_SCRIPT, 'mountTabBar') + '\n'                       // O6: the REAL tab helper renderActiveAndQueue calls (TABBAR-BOARD)
     + liftFn(MY_SCRIPT, 'offerIsOffline') + '\n'
     + liftFn(MY_SCRIPT, 'applyOfferSlideConn') + '\n'

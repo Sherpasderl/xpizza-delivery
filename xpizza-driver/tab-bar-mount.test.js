@@ -49,6 +49,7 @@ function boot() {
     'function render(){ _calls.render++; }\n' +
     'function openCuenta(){ _calls.openCuenta++; }\n' +
     'function updateNotifBanners(){}\n' +
+    liftConst('PAGOS_LIVE') + '\n' +
     liftConst('TAB_SHOW_PEDIDOS') + '\n' +
     liftConst('TAB_SHOW_GANANCIAS') + '\n' +
     liftFn('mountTabBar') + '\n' +

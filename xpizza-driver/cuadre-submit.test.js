@@ -77,6 +77,7 @@ function build(opts = {}) {
     + 'let feedReady = true; let cutoverLoaded = true; let driverState = {}; let driverFeed = null;\n'
     + 'let slidingEl = null; let renderPending = false; function renderActiveAndQueue() {}\n'   // stacked-view globals attachSlideConfirm touches
     + 'const pendingCompletions = new Set();\n'
+    + 'const PAGOS_LIVE = false;\n'   // O6: CUADRE-RENDER now reads the single Pagos flag (CUADRE_SHOW_EARNINGS = PAGOS_LIVE)
     + 'function refreshOpenCashSurfaces() { if (closeInFlight) return; if ($("cuadre-screen").classList.contains("open")) showCuadre(); }\n'
     + regionBody('CUADRE-RENDER') + '\n'
     + liftFn('attachSlideConfirm') + '\n'

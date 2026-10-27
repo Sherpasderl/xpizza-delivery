@@ -2659,8 +2659,12 @@ function applyGpsoff() {
    Cuenta; the board render for the on-shift idle state) — never during an offer / pickup / delivery. The DATA-GATING
    flags are dormant until their destinations ship (one source — flip here): Pedidos needs an order-history screen;
    Ganancias needs Pagos (R2). */
-const TAB_SHOW_PEDIDOS = false;     // no order-history screen yet → Pedidos hidden
-const TAB_SHOW_GANANCIAS = false;   // Ganancias ships with Pagos (R2) → hidden until then
+// THE single Pagos flag (advisor 2026-10-27): earnings everywhere — the Ganancias tab, the cuadre «Ganado hoy» card,
+// and the offshift «Ganado hoy» stat — are hidden until Pagos ships (R2: earnings need a server-delivered pay rate).
+// Flip this ONE const and all three appear with no other code change.
+const PAGOS_LIVE = false;
+const TAB_SHOW_PEDIDOS = false;         // no order-history screen yet → Pedidos hidden
+const TAB_SHOW_GANANCIAS = PAGOS_LIVE;  // Ganancias ships with Pagos (R2)
 // Idempotently mount / update / remove the bar as the LAST child of a screen (visible:false removes it). One reused
 // node per screen; the click delegate is wired once per node. Inicio → go home (render() routes offshift/onshift);
 // Cuenta → openCuenta. Hidden tabs render no node, so there is no stale wiring.
@@ -3890,7 +3894,7 @@ const CUADRE_ARROW_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 // «Ganado hoy» stays HIDDEN until Pagos ships: earnings need a real, server-delivered pay-rate source (advisor R2);
 // the driver app has none today, so NEVER fabricate L70×deliveries here. The card's mount (cuadreEarnCardHtml) is
 // kept so Pagos flips this true and feeds the rate.
-const CUADRE_SHOW_EARNINGS = false;
+const CUADRE_SHOW_EARNINGS = PAGOS_LIVE;   // same single Pagos flag as the Ganancias tab + offshift (advisor 2026-10-27)
 // Each confirm-slide MOUNT gets a generation (Codex r2 P2). A cash refresh replaces the slide; a release from the
 // OLD (stale) slide is a no-op, so a mid-drag refresh can never submit a superseded amount — the driver re-slides.
 let cuadreSlideGen = 0;
