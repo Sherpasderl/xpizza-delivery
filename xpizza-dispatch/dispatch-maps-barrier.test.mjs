@@ -175,26 +175,27 @@ test('tripwire: each firebase write primitive is referenced exactly once (its wr
   }
 });
 
-test('tripwire: EVERY firebase-database import is allow-listed — only the four writes, each under its exact fb alias', () => {
-  // The EXACT allowed write imports: original -> required local alias. Nothing else that can write may be imported.
+test('tripwire: EVERY import is parsed independently (single OR double quote, any specifier position) and all write bindings are allow-listed', () => {
   const ALLOWED = { set: 'fbSet', update: 'fbUpdate', remove: 'fbRemove', runTransaction: 'fbRunTransaction' };
-  // Every firebase-database primitive that MUTATES the tree. Importing any of these other than the allow-listed
-  // four — or an allow-listed one under a non-fb alias — is a bypass and must fail.
   const WRITE_PRIMS = new Set(['set', 'update', 'remove', 'runTransaction', 'push', 'setWithPriority', 'onDisconnect']);
-
-  const imports = [...SRC.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*'https:\/\/www\.gstatic\.com\/firebasejs\/[^']*firebase-database\.js'/g)];
-  assert.ok(imports.length >= 1, 'at least one firebase-database import must be present');
-  for (const imp of imports) {
-    const specs = imp[1].split(',').map((s) => s.trim()).filter(Boolean);
-    for (const spec of specs) {
+  // Parse each `import { … } from <q>…<q>` declaration on its own; `[^}]*` can't span into the next import, and
+  // the quote char is backreferenced so single and double quotes both match. Specifier order is irrelevant.
+  const importRe = /import\s*\{([^}]*)\}\s*from\s*(['"])([^'"]+)\2/g;
+  let m, sawDbImport = false;
+  while ((m = importRe.exec(SRC)) !== null) {
+    const body = m[1], source = m[3];
+    if (!/firebase-database/.test(source)) continue;
+    sawDbImport = true;
+    for (const spec of body.split(',').map((s) => s.trim()).filter(Boolean)) {
       const parts = spec.split(/\s+as\s+/);
       const original = parts[0].trim();
       const local = (parts[1] || parts[0]).trim();
       if (!WRITE_PRIMS.has(original)) continue;                     // a read/query primitive — fine
-      assert.ok(original in ALLOWED, `write primitive '${original}' may not be imported (only ${Object.keys(ALLOWED).join('/')})`);
+      assert.ok(original in ALLOWED, `write primitive '${original}' may not be imported from ${source} (only ${Object.keys(ALLOWED).join('/')})`);
       assert.equal(local, ALLOWED[original], `'${original}' must be imported as '${ALLOWED[original]}' (got '${local}') so raw calls can't bypass the guarded wrapper`);
     }
   }
+  assert.ok(sawDbImport, 'at least one firebase-database import must be present');
 });
 
 test('tripwire: dismissDispatcherAlert routes its update through the guarded wrapper (no raw fbUpdate bypass)', () => {

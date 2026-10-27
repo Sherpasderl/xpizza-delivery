@@ -90,7 +90,10 @@ const realOnAuthBody    = sliceOnAuthBody(HTML);
 function makeHarness() {
   const log = { reloads: 0, subscribes: 0, ticks: 0, signOuts: 0, screen: null, toasts: [], guardSet: 0,
     loadMaps: 0, initMap: 0, drivers: 0, customers: 0, etas: 0, showFail: 0, hideFail: 0, inert: false };
-  const ext = { authUid: null, dispatcher: true, mapsControl: null };
+  const ext = { authUid: null, dispatcher: true, dispGate: null };
+  // A STABLE auth object whose currentUser is a LIVE getter (like Firebase's) — so a change while isDispatcher
+  // is pending is seen by the identity check captured at handler entry.
+  const authObj = { get currentUser() { return ext.authUid ? { uid: ext.authUid } : null; } };
   let resolveMaps, rejectMaps;
   const stubs = {
     // leaf stubs — controllable per-test, inspected via `log`
@@ -110,8 +113,8 @@ function makeHarness() {
     location: { pathname: '/dispatch', replace() { log.reloads++; } },
     document: { body: { set inert(v) { log.inert = v; } } },
     XPD: {
-      isDispatcher: async () => ext.dispatcher,
-      getAuthInstance: () => ({ currentUser: ext.authUid ? { uid: ext.authUid } : null }),
+      isDispatcher: () => ext.dispGate ? ext.dispGate.promise : Promise.resolve(ext.dispatcher),
+      getAuthInstance: () => authObj,
       setAuthedRequestGuard: () => { log.guardSet++; },
       signOutUser: async () => { log.signOuts++; },
     },
@@ -139,6 +142,8 @@ function makeHarness() {
     ...api, log, read: api.read,
     fire: (user, { authUid } = {}) => { ext.authUid = authUid !== undefined ? authUid : (user ? user.uid : null); return api.handler(user); },
     setDispatcher: (v) => { ext.dispatcher = v; },
+    setAuthUid: (u) => { ext.authUid = u; },   // flip the LIVE current auth user (account switch)
+    deferDispatcher: () => { let r; ext.dispGate = { promise: new Promise((res) => { r = res; }) }; return (v) => { ext.dispGate = null; r(v); }; },
     resolveMaps: () => resolveMaps(),
     rejectMaps: (e) => rejectMaps(e || new Error('maps load failed')),
   };
@@ -208,18 +213,29 @@ test('§2 non-dispatcher ⇒ signOut, NO reload, NO subscribe (priorUid stays nu
   assert.equal(h.read().priorUid, null);
 });
 
-test('§2.2 deferred auth: A superseded by B before isDispatcher resolves ⇒ no subscribe, no sign-out of B', async () => {
+test('§2.2 deferred auth (controllable promise + LIVE auth): A→B switch WHILE isDispatcher is pending ⇒ no subscribe, no sign-out', async () => {
   const h = makeHarness();
-  await h.fire({ uid: 'A' }, { authUid: 'B' });
-  assert.equal(h.log.subscribes, 0);
+  const resolveDisp = h.deferDispatcher();     // isDispatcher now hangs until resolved
+  const p = h.fire({ uid: 'A' });              // authUid starts 'A'; the handler awaits isDispatcher
+  await tick();                                // handler is parked at the await
+  h.setAuthUid('B');                           // the live auth object now reports B (account switched mid-pending)
+  resolveDisp(true);                           // A WOULD be authorized…
+  await p;
+  // The real identity check runs AFTER the await against the live auth user → drops stale A.
+  // (Moving the check BEFORE the await reads 'A'==='A' and subscribes → this assertion fails: the mutant dies.)
+  assert.equal(h.log.subscribes, 0, 'stale A must not subscribe');
   assert.equal(h.log.signOuts, 0);
   assert.equal(h.read().priorUid, null);
 });
-test('§2.2 deferred auth on a DENIAL: does not sign out the current (B) session', async () => {
+test('§2.2 deferred auth on a DENIAL while pending: does not sign out the current (B) session', async () => {
   const h = makeHarness();
-  h.setDispatcher(false);
-  await h.fire({ uid: 'A' }, { authUid: 'B' });
-  assert.equal(h.log.signOuts, 0);
+  const resolveDisp = h.deferDispatcher();
+  const p = h.fire({ uid: 'A' });
+  await tick();
+  h.setAuthUid('B');
+  resolveDisp(false);                          // A denied — but the current user is already B
+  await p;
+  assert.equal(h.log.signOuts, 0, "A's late denial must not sign out B (identity check precedes the denial branch)");
 });
 
 test('§3 delayed Maps: board is already live; on resolve the REAL onMapReady replays drivers+customers+ETA once', async () => {
