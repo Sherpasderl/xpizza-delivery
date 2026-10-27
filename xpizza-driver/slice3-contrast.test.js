@@ -61,6 +61,12 @@ const espCardBg = ruleProp('#screen-companion .co-card', 'background');
 const illusFg = ruleProp('#screen-companion .co-illus', 'color');
 const illusBg = ruleProp('#screen-companion .co-illus', 'background');
 const pageBg = 'var(--bg)';
+// Inicio c: the practica «Nada de esto es real» banner + the demo «NO es real» ribbon.
+const bannerBg = ruleProp('#screen-companion .co-banner', 'background');
+const bannerTxFg = ruleProp('#screen-companion .co-banner-tx', 'color');
+const bannerBFg = ruleProp('#screen-companion .co-banner-tx b', 'color');
+const ribbonFg = ruleProp('#screen-companion .co-demo-ribbon', 'color');
+const ribbonBg = ruleProp('#screen-companion .co-demo-ribbon', 'background');
 
 // [label, fgExpr, bgExpr, threshold]
 const PAIRS = [
@@ -72,6 +78,9 @@ const PAIRS = [
   ['login «¿Olvidaste…?» link (13px/600)', loginLinkFg, pageBg, 4.5],
   ['esperando «Hablá con despacho» sub', espSubFg, espCardBg, 4.5],
   ['esperando clock illus glyph (graphical)', illusFg, illusBg, 3.0],
+  ['practica banner body text', bannerTxFg, bannerBg, 4.5],
+  ['practica banner title «Nada de esto es real»', bannerBFg, bannerBg, 4.5],
+  ['practica demo «NO es real» ribbon (12px/800)', ribbonFg, ribbonBg, 4.5],
 ];
 
 let passed = 0;

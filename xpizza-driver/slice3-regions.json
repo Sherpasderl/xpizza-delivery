@@ -406,6 +406,40 @@
     "    if (!d.practiceDone) $('co-practice-row').addEventListener('click', () => { companionStep = 'practice'; companionRenderOnboarding(); });",
     "    const req = $('co-request'); if (req && !req.disabled) req.addEventListener('click', () => companionSubmit());"
    ]
+  },
+  {
+   "name": "INICIO-PRACTICA",
+   "kind": "replace",
+   "restore": [
+    "    // Guided practice — writes NOTHING real; brand-agnostic (a synthetic order with no brand → neutral greeting).",
+    "    const steps = [",
+    "      'Deslizá \"Llegué al restaurante\" para avisar que estás recogiendo el pedido.',",
+    "      'Confirmá los productos del pedido antes de salir.',",
+    "      'Seguí la ruta hasta la dirección del cliente.',",
+    "      `Al llegar, saludá: \"${driverGreeting({})}\"`,",
+    "      'Entregá el pedido y cobrá si es efectivo (entregás el 100%).',",
+    "      'Deslizá \"Entregado\" para cerrar el pedido.',",
+    "    ];",
+    "    const i = Math.min(d.practiceStep || 0, steps.length - 1);",
+    "    el.innerHTML = companionShellHtml(`",
+    "      <div class=\"co-note-warn\">Esto NO es un pedido real · práctica</div>",
+    "      <div class=\"co-card\" style=\"border:2px solid #15181E\">",
+    "        <div class=\"co-chip-dark\">Paso ${i + 1} de ${steps.length}</div>",
+    "        <div class=\"co-sub\" style=\"margin-top:8px;color:#15181E;font-weight:600\">${escapeHtml(steps[i])}</div>",
+    "      </div>",
+    "      <div style=\"flex:1\"></div>`,",
+    "      `<button class=\"big-btn primary\" id=\"co-practice-next\">${i + 1 < steps.length ? 'Siguiente' : 'Terminé la práctica'}</button>",
+    "       <button class=\"big-btn\" id=\"co-practice-exit\" style=\"background:#fff;color:#15181E;border:1.5px solid #D7D3CB\">Salir de la práctica</button>`);",
+    "    $('co-practice-next').addEventListener('click', () => {",
+    "      if (i + 1 < steps.length) { companionWriteDraft({ practiceStep: i + 1 }); companionRenderOnboarding(); }",
+    "      else { companionWriteDraft({ practiceDone: true, practiceStep: 0 }); companionStep = 'checklist'; companionRenderOnboarding(); }",
+    "    });",
+    "    $('co-practice-exit').addEventListener('click', () => { companionStep = 'checklist'; companionRenderOnboarding(); });"
+   ]
+  },
+  {
+   "name": "INICIO-DEMO",
+   "kind": "insert"
   }
  ],
  "deps": [

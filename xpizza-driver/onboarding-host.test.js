@@ -69,7 +69,7 @@ function buildHost({ dom, XPD, currentUser, controller, store, storageThrows = f
   const toastCalls = [];
   const fn = new Function(
     '$', 'escapeHtml', 'showScreen', 'toast', 'driverGreeting', 'XPD', 'currentUser', 'companion',
-    'localStorage', 'allTasks', 'companionDraftKey', 'postActRoute', '__out',
+    'localStorage', 'allTasks', 'companionDraftKey', 'postActRoute', 'ICONS', '__out',
     `let companionStep = 'profile'; let companionDraft = null;\n` +
     // r2: per-uid MAPS, so a dismissal for one uid survives another uid's activation + dismissal.
     `const companionChecklistPendingMem = {}; const companionChecklistClearedMem = {}; let companionProgressMem = {};\n` +
@@ -89,7 +89,7 @@ function buildHost({ dom, XPD, currentUser, controller, store, storageThrows = f
   );
   const api = fn(dom.$, escapeHtml, (n) => showScreenCalls.push(n), (m, k) => toastCalls.push([m, k]),
     driverGreeting, XPD, currentUser, controller,
-    localStorage, {}, (uid) => `sherpa_driver_onboarding_draft_${uid}`, postActRoute, {});
+    localStorage, {}, (uid) => `sherpa_driver_onboarding_draft_${uid}`, postActRoute, new Proxy({}, { get: () => '' }), {});
   api.showScreenCalls = showScreenCalls; api.toastCalls = toastCalls;
   return api;
 }
@@ -278,20 +278,20 @@ t('"Pedir aprobación" runs companionSubmit → submitDriverProfile is called on
 });
 
 // ---- A5 practice is brand-neutral and calls NO operational writer ----
-t('the practice flow renders the neutral greeting and, through its final "done" step, calls NO operational writer', async () => {
-  const user = { uid: 'A', email: 'e@x.hn' };
-  // (a) the greeting step renders the neutral no-brand greeting
-  let dom = makeDom(); let xpd = makeXPD();
-  let host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store: { [`sherpa_driver_onboarding_draft_A`]: JSON.stringify({ practiceStep: 3 }) } });
+// Inicio c: the practica branch is now the prototype S.practica INTRO card (not a text walkthrough); «Empezar práctica»
+// launches the isolated demo controller (companionPracticeStart), whose ZERO-write guarantee is proven end-to-end in
+// practica-demo.test.js. Here: the intro card renders to proto, and «back» returns to the checklist.
+t('the practica branch renders the prototype intro card (banner + 4 named steps + «Empezar práctica»); back → checklist', () => {
+  const dom = makeDom(); const user = { uid: 'A', email: 'e@x.hn' }; const xpd = makeXPD();
+  const host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store: {} });
   host.setStep('practice'); host.companionRenderOnboarding();
-  assert.ok(host.getScreenHtml().includes('Hola, soy su repartidor.'), 'practice greeting is the neutral driverGreeting({})');
-  // (b) advancing through the LAST step's "Terminé la práctica" runs the done branch — it must write no real order
-  dom = makeDom(); xpd = makeXPD();
-  host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store: { [`sherpa_driver_onboarding_draft_A`]: JSON.stringify({ practiceStep: 5 }) } });
-  host.setStep('practice'); host.companionRenderOnboarding();
-  dom.$('co-practice-next').click(); await tick();      // RUN the final practice step (the done branch)
-  assert.equal(xpd.calls.complete, 0, 'practice must never complete a real task');
-  assert.equal(xpd.calls.accept, 0); assert.equal(xpd.calls.pickup, 0); assert.equal(xpd.calls.submit, 0);
+  const html = host.getScreenHtml();
+  assert.ok(html.includes('Nada de esto es real'), 'the «Nada de esto es real» banner is shown (demo is marked non-real)');
+  assert.ok(html.includes('Te llega una oferta') && html.includes('Vas al restaurante') && html.includes('Deslizás'), 'the 4 named steps are listed');
+  assert.ok(dom.$('co-practica-start'), '«Empezar práctica» launches the demo controller');
+  assert.ok(dom.$('co-practica-back'), 'the back control is present');
+  dom.$('co-practica-back').click();
+  assert.equal(host.getStep(), 'checklist', 'back returns to the checklist');
 });
 
 // ---- E2 is a plain screen with NO automatic sign-out; the DRIVER taps "Cerrar sesión" ----
