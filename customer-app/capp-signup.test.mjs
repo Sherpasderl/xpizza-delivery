@@ -119,7 +119,7 @@ test('G6 sheet — a NEW phone account: phone → code → email → name + Tér
   assert.deepEqual(b.api.of('completeProfile'), [{ idToken: 'id:u_new', email: 'ana@gmail.com', name: 'Ana Pérez', promos: false }]);
   assert.equal(b.txt('.sg .h1'), '¡Perfil creado!');
   await b.click('[data-su="finish"]');
-  assert.deepEqual(b.events, [['signed-in', { uid: 'u_new', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com', isNew: true }], ['done', {}]]);
+  assert.deepEqual(b.events, [['pending', { uid: 'u_new' }], ['signed-in', { uid: 'u_new', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com', isNew: true }], ['done', {}]], 'completion owed ⇒ «pending» first');
   assert.equal(b.host.innerHTML, '', 'closed'); assert.equal(b.auth.calls.out, 0, 'a completed account stays signed in');
 });
 test('G6 sheet — an EXISTING complete account: «¡Hola de nuevo, Ana!» (no completion panes); ✕ on that pane = «Listo» (the member is applied)', async () => {
@@ -145,7 +145,7 @@ test('G6 sheet — closing MID-completion signs out (never a member without the 
   await b.type('#su-phone', '99990000'); await b.click('[data-su="phone-go"]'); await b.code('123456'); await b.click('[data-su="verify"]');
   assert.equal(b.txt('.sg .h1'), 'Tu correo', 'premise: signed in, completion needed');
   await b.click('[data-su="close"]');
-  assert.equal(b.auth.calls.out, 1, '🔴 the sign-in is undone'); assert.deepEqual(b.events, [['closed', {}]]);
+  assert.equal(b.auth.calls.out, 1, '🔴 the sign-in is undone'); assert.deepEqual(b.events, [['pending', { uid: 'u_new' }], ['closed', {}]]);
   let release; const late = sheet({ verify: () => new Promise((r) => { release = r; }) });
   late.su.open({}); await settle(); await late.type('#su-phone', '99990000'); await late.click('[data-su="phone-go"]'); await late.code('123456');
   late.q('[data-su="verify"]').dispatchEvent(new late.w.MouseEvent('click', { bubbles: true })); await settle();
@@ -196,4 +196,22 @@ test('G6 sheet — «Prefiero seguir como invitado» only where a checkout is be
     const b = sheet(); b.su.open({ ctx }); await settle();
     assert.equal(b.q('[data-su="guest"]'), null, `🔴 no guest link for ${ctx}`);
   }
+});
+test('Codex G6 r1 #4 — A verified, Back ×2, then B: nothing of A (name / email / consent) reaches B\'s panes or B\'s profile', async () => {
+  const A = { ok: true, token: 'ct:u_a', isNew: false, name: 'Ana Pérez', completion: 'complete', profile: { name: 'Ana Pérez', email: 'ana@gmail.com' } };
+  const B = { ok: true, token: 'ct:u_b', isNew: true, name: null, completion: 'needed', profile: null };
+  const seq = [A, B]; const b = sheet({ verify: () => seq.shift() }); b.su.open({ ctx: 'checkout' }); await settle();
+  await b.type('#su-phone', '99990000'); await b.click('[data-su="phone-go"]'); await b.code('111111'); await b.click('[data-su="verify"]');
+  assert.equal(b.txt('.sg .h1'), '¡Hola de nuevo, Ana!', 'premise: A');
+  await b.click('[data-su="back"]'); await b.click('[data-su="back"]');
+  assert.equal(b.txt('.sg .h1'), 'Entrá a tu cuenta', 'premise: back on the phone pane');
+  await b.type('#su-phone', '88880000'); await b.click('[data-su="phone-go"]'); await b.code('222222'); await b.click('[data-su="verify"]');
+  assert.equal(b.txt('.sg .h1'), 'Tu correo');
+  assert.equal(b.q('#su-email').value, '', '🔴 B never inherits A\'s email');
+  await b.type('#su-email', 'beto@correo.com'); await b.click('[data-su="email-go"]');
+  assert.equal(b.q('#su-name').value, '', '🔴 B never inherits A\'s name');
+  assert.equal(b.q('#su-terms').checked, false, 'nor A\'s consent');
+  await b.type('#su-name', 'Beto'); await b.check('su-terms'); await b.click('[data-su="save"]'); await b.click('[data-su="finish"]');
+  assert.deepEqual(b.api.of('completeProfile'), [{ idToken: 'id:u_b', email: 'beto@correo.com', name: 'Beto', promos: false }]);
+  assert.deepEqual(b.events.filter((e) => e[0] === 'signed-in'), [['signed-in', { uid: 'u_b', name: 'Beto', phone: '+50488880000', email: 'beto@correo.com', isNew: true }]], 'B\'s profile only');
 });

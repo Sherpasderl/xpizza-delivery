@@ -116,7 +116,13 @@
       try { uid = await auth.signInWithCustomToken(r.token); } catch (_) { uid = null; }
       if (!live(g)) { if (uid) { try { await auth.signOut(); } catch (_) {} } return; }   // a mint for a closed sheet is undone
       if (!uid) { S.busy = false; S.err = COPY.codeGeneric; render(); return; }
+      // Codex G6 r1 #4: another account than the one verified before (Back to the phone, a new number) starts from ITS data only —
+      // nothing of the previous account's name / email / consent carries over (a Google link in progress belongs to this phone)
+      if (S.uid && S.uid !== uid) Object.assign(S, { name: '', email: '', promos: false, terms: false, existing: false, completion: null, google: S.google && S.google.ticket ? S.google : null });
       S.uid = uid; S.isNew = r.isNew === true; S.completion = r.completion;
+      // Codex G6 r1 #2: a sign-in still owing its completion (no Términos yet) is marked BEFORE the panes — a reload must not restore it
+      // as a member (the host persists the mark; «Listo» clears it)
+      if (r.completion === 'needed') emit('pending', { uid });
       if (r.profile) { if (r.profile.name && !S.name) S.name = r.profile.name; if (r.profile.email && !S.email) S.email = r.profile.email; }
       if (r.name && !S.name) S.name = r.name;
       S.busy = false;

@@ -23987,8 +23987,8 @@
     "slice": "g6",
     "label": "an ordinary sign-out keeps the cached profile",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "        if (st === 'guest') CappDeviceAccount.forgetProfile(storage);   // an ordinary sign-out: no personal data stays on show\n",
-    "to": "",
+    "from": "if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearPending(); }",
+    "to": "if (st === 'guest') { clearPending(); }",
     "command": [
       "node",
       "--test",
@@ -24063,6 +24063,91 @@
     ],
     "kills_with": [
       "no guest link for account"
+    ]
+  },
+  {
+    "id": "g6-12",
+    "slice": "g6",
+    "label": "Codex G6 r1 #1: a sign-out leaves the mounted checkout's member (and token)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "function dropMember() { memberGen++; S.member = null; if (S.store) S.store.ui.setMember(null); }",
+    "to": "function dropMember() { memberGen++; S.member = null; }",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G6 r1",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "after a sign-out the mounted checkout sends no member token"
+    ]
+  },
+  {
+    "id": "g6-13",
+    "slice": "g6",
+    "label": "Codex G6 r1 #2: a restored pending uid becomes a member",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "        if (u && u.uid && pendingUid() === u.uid) { dropMember(); clearPending(); fbAuth.signOut().catch(() => {}); schedule(); return; }\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G6 r1",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "a restored pending uid is never a member"
+    ]
+  },
+  {
+    "id": "g6-14",
+    "slice": "g6",
+    "label": "Codex G6 r1 #3: no currency check after the token's await",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "      if (dead || gen !== memberGen) return;\n      const u = auth && auth.state() === 'member' && auth.user ? auth.user() : null;\n      if (!u || u.uid !== uid) return;",
+    "to": "      if (dead) return;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G6 r1",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "a late apply never revives a signed-out member",
+      "a late apply for A never overwrites B"
+    ]
+  },
+  {
+    "id": "g6-15",
+    "slice": "g6",
+    "label": "Codex G6 r1 #4: a new verified uid keeps the previous account's fields",
+    "file": "../customer-app/capp-signup.js",
+    "from": "      if (S.uid && S.uid !== uid) Object.assign(S, { name: '', email: '', promos: false, terms: false, existing: false, completion: null, google: S.google && S.google.ticket ? S.google : null });\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "B never inherits A"
+    ]
+  },
+  {
+    "id": "g6-16",
+    "slice": "g6",
+    "label": "the SDK callback applies a member while the sheet is mid-flow (before the Términos)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "        if (signup && signup.state.open) { schedule(); return; }\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G6 r1",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "mid-completion the checkout is not a member"
     ]
   }
 ]

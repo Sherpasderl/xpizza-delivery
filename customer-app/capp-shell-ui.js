@@ -189,15 +189,31 @@
       if (!SU || !signup) { emit('signin', d); return; }   // no shell auth ⇒ the host's, as before
       signup.open({ ctx: d.ctx || null, prefill: d.prefill || null, memberOnly: d.ctx === 'schedule' });
     }
+    // Codex G6 r1 #2: the «completion pending» mark — a verified sign-in that has not accepted the Términos yet. Persisted (per uid)
+    // so a RELOAD in that window never restores the uid as a member; cleared at «Listo» and by any sign-out
+    const PENDING_KEY = 'capp:signup_pending';
+    const pendingUid = () => { try { const v = JSON.parse(storage.getItem(PENDING_KEY) || 'null'); return v && v.v === 1 && typeof v.uid === 'string' ? v.uid : null; } catch (_) { return null; } };
+    const setPending = (uid) => { try { storage.setItem(PENDING_KEY, JSON.stringify({ v: 1, uid })); } catch (_) {} };
+    const clearPending = () => { try { storage.removeItem(PENDING_KEY); } catch (_) {} };
     async function signedIn(d) {
+      clearPending();
       CappDeviceAccount.remember(storage, d.phone);   // §4c: the device marker (full E.164), kept across ordinary sign-outs
       CappDeviceAccount.rememberProfile(storage, d);   // the member's own profile, for a RESTORED session's autofill
       await applyMember(d);
     }
+    // Codex G6 r1 #1: EVERY non-member transition (a sign-out, a close mid-completion, a switch) reaches the mounted checkout — its
+    // member context (and so its token) never outlives the session
+    let memberGen = 0;
+    function dropMember() { memberGen++; S.member = null; if (S.store) S.store.ui.setMember(null); }
     // the member the store mounts / fills from: the profile + the member token the transport sends
     async function applyMember(p) {
+      // Codex G6 r1 #3: applied only if, after the token's await, nothing has changed — no sign-out / switch in between, and the
+      // session is still THIS uid's
+      const gen = ++memberGen, uid = p.uid;
       let idToken = null; try { idToken = await fbAuth.idToken(); } catch (_) { idToken = null; }
-      if (dead) return;
+      if (dead || gen !== memberGen) return;
+      const u = auth && auth.state() === 'member' && auth.user ? auth.user() : null;
+      if (!u || u.uid !== uid) return;
       // getIdToken: the transport asks the SDK at send time (cached while valid, refreshed once expired); idToken = the fallback
       S.member = { uid: p.uid, name: p.name || '', phone: String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', idToken, getIdToken: () => fbAuth.idToken() };
       if (S.store) S.store.ui.setMember(S.member);   // §4c: back on the SAME checkout step, filled in
@@ -209,9 +225,13 @@
       fbAuth = CappAuthFirebase.createFirebaseAuth({ config: SU.firebase, loadSdk: o.loadSdk });
       auth = CappAuthState.createAuthState({ subscribe: fbAuth.subscribe, timers: T });
       auth.onChange((st) => {
-        if (st === 'guest') CappDeviceAccount.forgetProfile(storage);   // an ordinary sign-out: no personal data stays on show
-        if (st !== 'member') { S.member = null; schedule(); return; }
+        if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearPending(); }   // an ordinary sign-out: no personal data stays on show
+        if (st !== 'member') { dropMember(); schedule(); return; }
         const u = auth.user && auth.user();
+        // the sheet in progress owns its outcome: a member only at «Listo» (its 'signed-in'), never by the SDK's callback mid-flow
+        if (signup && signup.state.open) { schedule(); return; }
+        // a RESTORED session that never completed (the pending mark for THIS uid): signed out, never a member
+        if (u && u.uid && pendingUid() === u.uid) { dropMember(); clearPending(); fbAuth.signOut().catch(() => {}); schedule(); return; }
         // a session the SDK RESTORED (no sheet ran): the cached profile of THIS uid, at once (cached-first)
         if (u && u.uid && (!S.member || S.member.uid !== u.uid)) { const c = CappDeviceAccount.readProfile(storage, u.uid); applyMember(c || { uid: u.uid }); return; }
         schedule();
@@ -222,7 +242,7 @@
       const syncDark = () => host.classList.toggle('dark', app.classList.contains('dark'));
       signup = CappSignup.createSignup({ doc, host: { addEventListener: (...a) => host.addEventListener(...a), contains: (n) => host.contains(n), querySelector: (q) => host.querySelector(q), set innerHTML(v) { syncDark(); host.classList.toggle('open', !!v); host.innerHTML = v; }, get innerHTML() { return host.innerHTML; } },
         api: CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch }), auth: fbAuth, google: o.google || null, timers: T,
-        onEvent: (n, d) => { if (n === 'signed-in') signedIn(d); } });
+        onEvent: (n, d) => { if (n === 'signed-in') signedIn(d); else if (n === 'pending' && d && d.uid) setPending(d.uid); } });
     }
     function settleRet(rid, out) {
       const a = S.retAssoc; if (!a || a.rid !== rid) return;
