@@ -259,6 +259,14 @@
 .status-dot svg { display: none; }
 .status-dot.sola { width: 24px; height: 24px; background: none; box-shadow: none; animation: none; border-radius: 0; }
 .status-dot.sola svg { display: block; width: 24px; height: 24px; }
+/* sound → the Cuenta «Sonido y notificaciones» row; history (Hoy) → the Pedidos tab. Both leave the header. */
+.status-bar #sound-toggle, .status-bar #history-btn { display: none; }
+/* the sound toggle switch inside the Cuenta row (cuenta-sound) */
+#screen-cuenta #cuenta-sound { cursor: pointer; }
+#screen-cuenta .set-sw { margin-left: auto; width: 42px; height: 25px; border-radius: 999px; background: var(--surface-3, #E7EBF1); position: relative; flex: none; transition: background .15s; }
+#screen-cuenta .set-sw.on { background: var(--success, #15803D); }
+#screen-cuenta .set-sw::after { content: ''; position: absolute; top: 2.5px; left: 2.5px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(13,20,36,.2); transition: transform .15s; }
+#screen-cuenta .set-sw.on::after { transform: translateX(17px); }
 
 /* ===== Prototype body-bold parity (ONE source; owner no-clones). The brand-neutral base alias 'Plus Jakarta Sans'
    routes weight >=501 to the Red Hat DISPLAY woff2, but the prototype's bold BODY text is Red Hat Text (--fb) and
@@ -2758,7 +2766,7 @@ function applyGpsoff() {
 // and the offshift «Ganado hoy» stat — are hidden until Pagos ships (R2: earnings need a server-delivered pay rate).
 // Flip this ONE const and all three appear with no other code change.
 const PAGOS_LIVE = false;
-const TAB_SHOW_PEDIDOS = false;         // no order-history screen yet → Pedidos hidden
+const TAB_SHOW_PEDIDOS = true;          // Pedidos → the existing daily-history modal (openHistoryModal), moved off the header
 const TAB_SHOW_GANANCIAS = PAGOS_LIVE;  // Ganancias ships with Pagos (R2)
 // Idempotently mount / update / remove the bar as the LAST child of a screen (visible:false removes it). One reused
 // node per screen; the click delegate is wired once per node. Inicio → go home (render() routes offshift/onshift);
@@ -2780,6 +2788,7 @@ function mountTabBar(screenEl, active, visible) {
       const btn = e.target.closest('[data-tab]'); if (!btn) return;
       const tab = btn.getAttribute('data-tab');
       if (tab === 'cuenta') openCuenta();
+      else if (tab === 'pedidos') openHistoryModal();   // Pedidos → the daily-history modal (moved off the header «Hoy» button)
       else if (tab === 'inicio') render();   // route home (render() → offshift when off-shift, the board when on-shift)
     });
   }
@@ -2801,6 +2810,21 @@ function syncTabBarForScreen(name) {
     // Version line on Cuenta (muted) — the driver follows the customer-app precedent («muted line on Cuenta»).
     const cs = $('screen-cuenta');
     if (cs && !cs.querySelector('.cuenta-ver')) cs.insertAdjacentHTML('beforeend', `<div class="cuenta-ver">v${SYSTEM_VERSION} · driver</div>`);
+    // «Sonido y notificaciones» row — moved off the header sound-toggle. nav-view.js (cuentaHtml) is frozen, so the row
+    // is injected here (SLICE3) into the Cuenta card, once per render. SAME soundOn state/writer as the old button
+    // (soundOn gates the chime at its two play sites; vibration is always on). Tapping flips soundOn + toasts.
+    const card = cs && cs.querySelector('.set-card');
+    if (card && !card.querySelector('#cuenta-sound')) {
+      const SPKR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+      const row = document.createElement('div');
+      row.className = 'set-row'; row.id = 'cuenta-sound'; row.setAttribute('role', 'button'); row.tabIndex = 0;
+      row.innerHTML = '<span class="set-ic">' + SPKR + '</span><div class="set-tx"><div class="set-t">Sonido y notificaciones</div><div class="set-d" id="cuenta-sound-d"></div></div><span class="set-sw" id="cuenta-sound-sw"></span>';
+      const paintSound = () => { const d = row.querySelector('#cuenta-sound-d'); if (d) d.textContent = soundOn ? 'Aviso con sonido y vibración' : 'Silenciado · solo vibración'; row.querySelector('#cuenta-sound-sw').classList.toggle('on', soundOn); };
+      paintSound(); card.appendChild(row);
+      const flip = () => { soundOn = !soundOn; paintSound(); toast(soundOn ? 'Sonido activado' : 'Sonido desactivado'); };
+      row.addEventListener('click', flip);
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+    }
   }
   mountTabBar($('screen-offshift'), 'inicio', name === 'offshift' && !hasWork);
   mountTabBar($('screen-cuenta'), 'cuenta', name === 'cuenta' && !hasWork);

@@ -38,7 +38,7 @@ function boot() {
     + SCREENS.map((s) => `<div id="screen-${s}" class="hidden"></div>`).join('')
     + '<button id="duty-toggle-off"></button></body></html>', { pretendToBeVisual: true });
   const { document, window } = dom.window;
-  const calls = { render: 0, openCuenta: 0, origBack: 0 };
+  const calls = { render: 0, openCuenta: 0, openHistory: 0, origBack: 0 };
   const boardRef = { list: [] };
   const $ = (id) => document.getElementById(id);
   document.getElementById('screen-cuenta').innerHTML = '<button id="cuenta-back"></button>';   // as renderCuenta would leave it
@@ -49,6 +49,7 @@ function boot() {
     'const SYSTEM_VERSION = "2.5.3";\n' +   // the Cuenta version line references it
     'function render(){ _calls.render++; }\n' +
     'function openCuenta(){ _calls.openCuenta++; }\n' +
+    'function openHistoryModal(){ _calls.openHistory++; }\n' +
     'function updateNotifBanners(){}\n' +
     liftConst('PAGOS_LIVE') + '\n' +
     liftConst('TAB_SHOW_PEDIDOS') + '\n' +
@@ -66,14 +67,15 @@ function boot() {
 let passed = 0;
 const t = (name, fn) => { try { fn(); passed += 1; } catch (e) { console.error(`✗ ${name}`); throw e; } };
 
-t('REAL showScreen mounts the bar on offshift (Inicio) + Cuenta, data-gated to 2 tabs via the production constants', () => {
+t('REAL showScreen mounts the bar on offshift (Inicio) + Cuenta, data-gated to Inicio·Pedidos·Cuenta via the production constants', () => {
   const h = boot();
   h.api.showScreen('offshift');
   const ob = h.bar('screen-offshift');
   assert.ok(ob, 'offshift carries the bar (showScreen → syncTabBarForScreen)');
-  assert.equal(ob.querySelectorAll('.tab-btn').length, 2, 'Inicio + Cuenta only — the real TAB_SHOW_* are false');
+  assert.equal(ob.querySelectorAll('.tab-btn').length, 3, 'Inicio + Pedidos + Cuenta — Pedidos live (→ history), Ganancias still dormant');
   assert.ok(ob.querySelector('.tab-btn.on[data-tab="inicio"]'), 'Inicio active');
-  assert.ok(!ob.querySelector('[data-tab="pedidos"]') && !ob.querySelector('[data-tab="ganancias"]'), 'dormant tabs hidden (lifted production flags)');
+  assert.ok(ob.querySelector('[data-tab="pedidos"]'), 'Pedidos shown (TAB_SHOW_PEDIDOS flipped on — history modal shipped)');
+  assert.ok(!ob.querySelector('[data-tab="ganancias"]'), 'Ganancias still dormant (PAGOS_LIVE false)');
   h.api.showScreen('cuenta');
   assert.equal(h.bar('screen-offshift'), null, 'leaving offshift removes its bar');
   assert.ok(h.bar('screen-cuenta').querySelector('.tab-btn.on[data-tab="cuenta"]'), 'Cuenta active on the Cuenta screen');
@@ -104,12 +106,14 @@ t('Cuenta back button (P2.2) is rebound to render() — the frozen showScreen(of
   assert.equal(h.calls.origBack, 0, 'the frozen showScreen(offshift) listener no longer fires');
 });
 
-t('tab buttons route: Inicio → render(), Cuenta → openCuenta() (wired once)', () => {
+t('tab buttons route: Inicio → render(), Pedidos → openHistoryModal(), Cuenta → openCuenta() (wired once)', () => {
   const h = boot();
   h.api.showScreen('offshift');
   const ob = h.bar('screen-offshift');
   ob.querySelector('[data-tab="cuenta"]').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
   assert.equal(h.calls.openCuenta, 1, 'Cuenta → openCuenta');
+  ob.querySelector('[data-tab="pedidos"]').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(h.calls.openHistory, 1, 'Pedidos → openHistoryModal (the daily-history modal)');
   const r0 = h.calls.render;
   ob.querySelector('[data-tab="inicio"]').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
   assert.equal(h.calls.render, r0 + 1, 'Inicio → render (go home)');

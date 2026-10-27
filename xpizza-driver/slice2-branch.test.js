@@ -559,16 +559,16 @@ t('stacked (2 orders): real builders render stop-header + strip + map + active c
 // board is idle (orders.length===0); an active order removes it. Uses the REAL mountTabBar + the LIFTED production
 // TAB_SHOW constants. Kills: dropping the idle check (active keeps the bar), dropping the board mount (idle has none),
 // flipping the Pedidos flag (a dormant tab appears).
-t('O6 tab bar: the real board render mounts it only when idle; an active order removes it; data-gated to Inicio+Cuenta', () => {
+t('O6 tab bar: the real board render mounts it only when idle; an active order removes it; data-gated to Inicio·Pedidos·Cuenta', () => {
   const r = run({ orders: [delivery('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH } });
   const onshift = () => r.document.getElementById('screen-onshift');
   assert.equal(onshift().querySelector(':scope > .tabs'), null, 'an active order → NO bar (board render removed it)');
   r.setOrders([]); r.render();
   const bar = onshift().querySelector(':scope > .tabs');
   assert.ok(bar, 'idle board → the bar is mounted');
-  assert.equal(bar.querySelectorAll('.tab-btn').length, 2, 'data-gated: Inicio + Cuenta only (production constants)');
+  assert.equal(bar.querySelectorAll('.tab-btn').length, 3, 'data-gated: Inicio + Pedidos + Cuenta (Pedidos live → history; Ganancias dormant)');
   assert.ok(bar.querySelector('.tab-btn.on[data-tab="inicio"]'), 'Inicio active on the board');
-  assert.ok(!bar.querySelector('[data-tab="pedidos"]') && !bar.querySelector('[data-tab="ganancias"]'), 'dormant tabs hidden');
+  assert.ok(bar.querySelector('[data-tab="pedidos"]') && !bar.querySelector('[data-tab="ganancias"]'), 'Pedidos shown, Ganancias dormant');
   r.setOrders([delivery('A')]); r.render();
   assert.equal(onshift().querySelector(':scope > .tabs'), null, 'a new active order removes it again');
 });
