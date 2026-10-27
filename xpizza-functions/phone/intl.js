@@ -29,13 +29,13 @@ function fromDigits(d) {
 }
 
 // codex r1 #5: the qualifier must LEAD the trimmed input — '+' or the '00' international prefix — and is read BEFORE separators
-// are stripped, so '(+504) 9795-0000' is NOT qualified (it takes the bare rule). → {qualified, digits} | null (non-digits left).
+// are stripped, so '(+504) 9795-0000' is NOT qualified (it takes the bare rule). → {qualified, prefix '+'|'00'|null, digits} | null.
 function splitSubmitted(raw) {
   if (typeof raw !== 'string') return null;
   const t = raw.trim();
-  const q = t.startsWith('+') ? t.slice(1) : t.startsWith('00') ? t.slice(2) : null;
-  const d = (q === null ? t : q).replace(SEPARATORS_RE, '');
-  return /^\d+$/.test(d) ? { qualified: q !== null, digits: d } : null;
+  const prefix = t.startsWith('+') ? '+' : t.startsWith('00') ? '00' : null;
+  const d = (prefix === null ? t : t.slice(prefix.length)).replace(SEPARATORS_RE, '');
+  return /^\d+$/.test(d) ? { qualified: prefix !== null, prefix, digits: d } : null;
 }
 
 function parseSubmitted(raw) {

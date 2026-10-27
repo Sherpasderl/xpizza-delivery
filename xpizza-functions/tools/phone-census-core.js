@@ -5,7 +5,8 @@
 //   classify(v)                     → 'accept:qualified:<cc>' | 'accept:bare8' | 'reject:<why>' | 'empty'
 //   aggregate(orders, {nowMs, days}) → {window_days, orders_in_window, skipped_no_timestamp, totals, by_restaurant, would_reject, flip_safe}
 //                                     flip_safe (advisor ruling Option S) ⇔ ≥1 order in the window AND would_reject == 0 AND accept:bare8 == 0
-//                                     (bare-8 is the ONE class whose stored form — hence its dedup bucket — changes under strict; > 0 ⇒ STOP, Option D)
+//                                     AND no accept:prefix00:* (codex r2). bare-8 and a '00' prefix are the classes whose stored bytes — hence their
+//                                     dedup buckets — change under strict; any of them > 0 ⇒ STOP (Option D, or wait until the census shows zero)
 //   parseArgs(argv)                 → {ok, days} | {ok:false, error}   (--project is require-project's; anything else is refused)
 const { parseSubmitted, splitSubmitted, SUPPORTED } = require('../phone/intl');
 const DAY_MS = 86400e3;
@@ -15,7 +16,7 @@ function classify(v) {
   if (typeof v !== 'string') return 'reject:non_string';
   const p = parseSubmitted(v);
   const x = splitSubmitted(v);   // the SAME qualification rule as the parser (a leading '+' / '00')
-  if (p) return x.qualified ? `accept:qualified:${p.cc}` : 'accept:bare8';
+  if (p) return x.prefix === '00' ? `accept:prefix00:${p.cc}` : x.qualified ? `accept:qualified:${p.cc}` : 'accept:bare8';   // codex r2: '00' changes stored bytes
   if (x && x.qualified) {
     if (x.digits.length === 8) return 'reject:plus_8';
     return SUPPORTED.some((c) => x.digits.startsWith(c.cc)) ? 'reject:qualified_wrong_length' : 'reject:qualified_unsupported';
@@ -38,7 +39,7 @@ function aggregate(orders, { nowMs, days }) {
     (byR[rid] = byR[rid] || {})[c] = (byR[rid][c] || 0) + 1;
     if (c.startsWith('reject:')) rejects++;
   }
-  return { window_days: days, orders_in_window: inWin, skipped_no_timestamp: skipped, totals, by_restaurant: byR, would_reject: rejects, flip_safe: inWin > 0 && rejects === 0 && !totals['accept:bare8'] };
+  return { window_days: days, orders_in_window: inWin, skipped_no_timestamp: skipped, totals, by_restaurant: byR, would_reject: rejects, flip_safe: inWin > 0 && rejects === 0 && !Object.keys(totals).some((k) => k === 'accept:bare8' || k.startsWith('accept:prefix00:')) };
 }
 
 // The exact config/phone_wire_strict value the owner writes at the flip (phone/flag.js evaluateStrict accepts it), or null.
