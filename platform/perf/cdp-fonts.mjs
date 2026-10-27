@@ -55,11 +55,27 @@ export function serveDir(root, { rewrite = () => undefined, gate = () => undefin
     heldCount: () => held.length, release: () => { while (held.length) held.shift()(); } })));
 }
 
+// The shared-machine rule for light browser work: ONE Chrome at a time (callers run sequentially) and only while the 1-min load is
+// under maxLoad; polls every 60 s, gives up loudly after maxWaitMs.
+export async function waitForLoad({ maxLoad = 30, pollMs = 60000, maxWaitMs = 30 * 60000, log = console.log } = {}) {
+  const t0 = Date.now();
+  for (;;) {
+    const l = os.loadavg()[0];
+    if (l < maxLoad) return l;
+    if (Date.now() - t0 > maxWaitMs) throw new Error(`load stayed ≥ ${maxLoad} for ${Math.round(maxWaitMs / 60000)} min (now ${l.toFixed(1)}) — not starting Chrome`);
+    log(`  … waiting: 1-min load ${l.toFixed(1)} ≥ ${maxLoad}`);
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+}
+
 export async function launch({ width = 390, height = 844, dpr = 2, throttle = false, args = [] } = {}) {
+  await waitForLoad();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'cdp-fonts-'));
   const chrome = spawn(chromeBin(), ['--headless=new', `--user-data-dir=${profile}`, '--remote-debugging-port=0', '--no-first-run',
     '--font-render-hinting=none', '--disable-lcd-text', '--force-color-profile=srgb', '--hide-scrollbars', ...args, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
-  const close = () => { try { chrome.kill('SIGTERM'); } catch (_) {} setTimeout(() => fs.rmSync(profile, { recursive: true, force: true }), 300); };   // OUR child, by handle
+  const rmProfile = () => { try { fs.rmSync(profile, { recursive: true, force: true }); } catch (_) {} };
+  process.once('exit', () => { try { chrome.kill('SIGTERM'); } catch (_) {} rmProfile(); });   // a thrown run never orphans OUR Chrome or its profile
+  const close = () => { try { chrome.kill('SIGTERM'); } catch (_) {} setTimeout(rmProfile, 300); };   // OUR child, by handle — never a pattern kill
   try {
     const wsUrl = await new Promise((resolve, reject) => {
       let b = ''; const t = setTimeout(() => reject(new Error('Chrome did not start')), 20000);
@@ -97,8 +113,8 @@ export async function launch({ width = 390, height = 844, dpr = 2, throttle = fa
 // Returns { holds: Map(url → requestId), release(urlPredicate), failHeld(urlPredicate), finished: Map(url → 'ok'|'failed') }.
 export async function router(cdp, decide) {
   const { s, on } = cdp;
-  const holds = new Map(); const finished = new Map(); const byReq = new Map();
-  on('Network.requestWillBeSent', (p) => byReq.set(p.requestId, p.request.url));
+  const holds = new Map(); const finished = new Map(); const byReq = new Map(); const seen = new Set();
+  on('Network.requestWillBeSent', (p) => { byReq.set(p.requestId, p.request.url); seen.add(p.request.url); });
   on('Network.loadingFinished', (p) => { const u = byReq.get(p.requestId); if (u) finished.set(u, 'ok'); });
   on('Network.loadingFailed', (p) => { const u = byReq.get(p.requestId); if (u) finished.set(u, 'failed'); });
   on('Fetch.requestPaused', async (p) => {
@@ -116,7 +132,7 @@ export async function router(cdp, decide) {
   await s('Fetch.enable', { patterns: [{ urlPattern: 'https://*', requestStage: 'Request' }] });
   const take = (pred) => [...holds.entries()].filter(([u]) => pred(u)).map(([u, id]) => { holds.delete(u); return id; });
   return {
-    holds, finished,
+    holds, finished, seen,
     release: async (pred) => { for (const id of take(pred)) await s('Fetch.continueRequest', { requestId: id }).catch(() => {}); },
     failHeld: async (pred) => { for (const id of take(pred)) await s('Fetch.failRequest', { requestId: id, errorReason: 'Failed' }).catch(() => {}); },
   };
