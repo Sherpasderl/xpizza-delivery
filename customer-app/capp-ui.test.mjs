@@ -1915,3 +1915,43 @@ test('perf-core r3 #1 (function host): after a dispatch refusal the item-detail 
   assert.equal(b.ui.cart.count(), 1, '🔴 the detail + handler refuses the refused dish (1 → 1)');
 });
 
+
+// ── S7a-2 (PLAN-capp-S7a r2 §2.2): the guest location SEEDS the checkout pin — decided ONCE, before any render can geocode ──
+const SEED = { lat: 15.531, lng: -88.021, confirmed: true };
+const geoCount = () => { const g = { n: 0, getCurrentPosition(ok) { g.n++; ok({ coords: { latitude: 15.52, longitude: -88.04 } }); } }; return g; };
+test('S7a-2 seed: a FRESH store entry ⇒ the checkout flow is created with the guest pin; ONE geocode at it; the device is not asked', async () => {
+  const geo = geoCount();
+  const b = bootGeo({ geo, mountOpts: { seedPin: () => SEED } });
+  await toCheckout(b); await settle();
+  assert.deepEqual(J(b.ui.state.flow.pin), SEED);
+  assert.equal(geo.n, 0, 'a seeded pin ⇒ no geolocation request');
+  assert.deepEqual(b.gc.map((r) => r.at), [{ lat: SEED.lat, lng: SEED.lng }], '🔴 one geocode, at the seed');
+});
+test('S7a-2 seed: an EXISTING flow is never reseeded — a guest location that changes later neither moves the pin nor geocodes again', async () => {
+  let seed = SEED;
+  const b = bootGeo({ geo: geoCount(), mountOpts: { seedPin: () => seed } });
+  await toCheckout(b); await settle();
+  const before = J(b.ui.state.flow.pin);
+  seed = { lat: 15.6, lng: -88.1, confirmed: true };
+  b.ui.deviceBack(); await settle(); await b.click('[data-act="checkout"]'); await settle();
+  assert.deepEqual(J(b.ui.state.flow.pin), before, 'the mount\'s own flow wins');
+  assert.equal(b.gc.length, 1, 'no second geocode');
+});
+test('S7a-2 seed: a RESTORED return wins over the guest location — its own pin, ONE geocode at it, the seed never applied', async () => {
+  const storage = memStore();
+  const { id, snap } = await cardRedirected(storage);
+  const gc = []; let seedAsked = 0;
+  const c = bootCo({ storage, search: RET('cancel', id), config: { mapsKey: 'k_test' }, pre: (w) => { gmaps(w, gc); }, mountOpts: { seedPin: () => { seedAsked++; return SEED; } },
+    script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'cancelled' } }] } });
+  c.ui.restore(snap); await c.ui.returning; await settle();
+  assert.notDeepEqual({ lat: c.ui.state.flow.pin.lat, lng: c.ui.state.flow.pin.lng }, { lat: SEED.lat, lng: SEED.lng });
+  assert.equal(gc.length, 1); assert.deepEqual(gc[0].at, { lat: c.ui.state.flow.pin.lat, lng: c.ui.state.flow.pin.lng }, '🔴 the restored pin, once');
+  assert.equal(seedAsked, 0, 'the seed is not even read');
+});
+test('S7a-2 seed: a pin the customer confirms (pin step «Listo», a GPS fix) is reported to the shell (onEvent pin)', async () => {
+  const b = bootCo({ geo: geoCount() });
+  await toCheckout(b); await settle();
+  assert.deepEqual(J(b.events.filter(([n]) => n === 'pin').map(([, d]) => d)), [{ lat: 15.52, lng: -88.04, confirmed: true, source: 'gps' }]);
+  await b.click('[data-act="pin"]'); b.ui.state.pinDraft = { lat: 15.5, lng: -88 }; await b.click('[data-act="pin-done"]');
+  assert.deepEqual(J(b.events.filter(([n]) => n === 'pin').at(-1)[1]), { lat: 15.5, lng: -88, confirmed: true, source: 'pin' });
+});

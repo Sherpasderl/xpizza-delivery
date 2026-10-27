@@ -137,6 +137,22 @@
     }).filter((s) => s.items.length);
   }
 
+  // the Google Maps JS loader — ONE load per window, shared by every mount and the shell's pin editor (S7a-2); no key ⇒ null
+  function loadMapsFor(doc, key) {
+    if (!key) return null;
+    const w = doc && doc.defaultView; if (!w) return null;
+    if (w.google && w.google.maps && w.google.maps.Map) return Promise.resolve(w.google.maps);
+    if (w.__cappMapsP) return w.__cappMapsP;
+    w.__cappMapsP = new Promise((resolve, reject) => {
+      w.__cappMapsReady = () => resolve(w.google.maps);
+      const s = doc.createElement('script'); s.async = true;
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&loading=async&callback=__cappMapsReady';
+      s.onerror = () => { w.__cappMapsP = null; reject(new Error('maps_load_failed')); };
+      doc.head.appendChild(s);
+    });
+    return w.__cappMapsP;
+  }
+
   function mount(doc, opts) {
     const CappMenu = opts.CappMenu || (typeof self !== 'undefined' && self.CappMenu) || require('./capp-menu.js');
     const CappCart = opts.CappCart || (typeof self !== 'undefined' && self.CappCart) || require('./capp-cart.js');
@@ -537,21 +553,7 @@
     function syncCta() { const b = $('cta'); if (!b || !S.flow) return; const T = totalsNow(); b.disabled = ctaOff(T); b.textContent = ctaLabel(T); }
 
     // ── the map: the drawn chrome; a real Google map inside it when a key is configured, else the schematic SVG ──
-    let mapsP = null;
-    function loadMaps() {
-      if (!cfg.mapsKey) return null;
-      const w = doc.defaultView; if (!w) return null;
-      if (w.google && w.google.maps && w.google.maps.Map) return Promise.resolve(w.google.maps);
-      if (mapsP) return mapsP;
-      mapsP = new Promise((resolve, reject) => {
-        w.__cappMapsReady = () => resolve(w.google.maps);
-        const s = doc.createElement('script'); s.async = true;
-        s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(cfg.mapsKey) + '&loading=async&callback=__cappMapsReady';
-        s.onerror = () => { mapsP = null; reject(new Error('maps_load_failed')); };
-        doc.head.appendChild(s);
-      });
-      return mapsP;
-    }
+    const loadMaps = () => loadMapsFor(doc, cfg.mapsKey);
     const mapCenter = () => { const p = S.pinDraft || (S.flow && S.flow.pin); return finitePin(p) ? { lat: p.lat, lng: p.lng } : (cfg.loc && finitePin(cfg.loc) ? { lat: cfg.loc.lat, lng: cfg.loc.lng } : null); };
     const gmapBox = (kind) => (cfg.mapsKey ? `<div class="gmap" data-gmap="${kind}" style="position:absolute;inset:0"></div>` : '');   // TODO(owner ruling): style the live map; S2b keeps the drawn chrome on top
     let pinGen = 0, pinMap = null;   // S2b r1 P1-2: the ACTIVE pin map; an obsolete instance's callbacks are dropped
@@ -594,6 +596,9 @@
       const line = C.addrLine(S.flow); if (!line) return;   // none: the rendered text already is today's
       for (const el of app.querySelectorAll('[data-addr]')) el.textContent = line;
     }
+    // S7a-2: the shell's guest location (opts.seedPin: { lat, lng, confirmed } or a function returning it); a pin the customer
+    // confirms here is reported back (onEvent 'pin') so the shell's guest location follows it
+    const seedPin = () => { let p = null; try { p = typeof opts.seedPin === 'function' ? opts.seedPin() : opts.seedPin; } catch (_) { p = null; } return p && finitePin(p) ? p : null; };
     // the device location (unconfirmed until «Listo»); denied / unavailable ⇒ the drawn «Ubicación desactivada» row
     const geoApi = () => (opts.geolocation !== undefined ? opts.geolocation : (doc.defaultView && doc.defaultView.navigator && doc.defaultView.navigator.geolocation) || null);
     function requestGeo() {
@@ -603,7 +608,7 @@
       try {
         // OWNER 2026-10-21 (DECISIONS:2072): a DETECTED fix is a real location ⇒ the pin is CONFIRMED in the model (the body's
         // pin_confirmed:true is the device's truth); only a denied / failed / fallback location must be confirmed on the pin step
-        g.getCurrentPosition((pos) => { S.geo = 'ok'; if (!(f.pin && f.pin.confirmed)) C.setPin(f, pos.coords.latitude, pos.coords.longitude, true); if (S.screen === 'checkout') render(); }, denied, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+        g.getCurrentPosition((pos) => { S.geo = 'ok'; if (!(f.pin && f.pin.confirmed)) { C.setPin(f, pos.coords.latitude, pos.coords.longitude, true); emit('pin', { lat: pos.coords.latitude, lng: pos.coords.longitude, confirmed: true, source: 'gps' }); } if (S.screen === 'checkout') render(); }, denied, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
       } catch (_) { denied(); }
     }
 
@@ -863,7 +868,9 @@
     // ── navigation ──
     function openCheckout() {
       if (!mods()) return false;
-      if (!S.flow) S.flow = C.freshFlow(member());
+      // S7a-2 (PLAN-capp-S7a r2 §2.2): the flow is created ONCE with its pin decided — a restored return flow, else this mount's
+      // own flow, else SEEDED from the shell's guest location (same coordinates ⇒ the same pin version) — before any render can geocode
+      if (!S.flow) { S.flow = C.freshFlow(member()); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }
       C.setMode(S.flow, S.mode);
       S.layerKind = null; S.cartNote = null; S.refusal = null; returnTo = null;
       // the cart stays on the stack: device back from «Entrega & Pago» reopens it (P :2298-2301)
@@ -972,7 +979,7 @@
         const d = live ? { lat: live.lat(), lng: live.lng() } : S.pinDraft;
         dropPinMap();   // the closing map is obsolete from here
         if (d && finitePin(d)) {
-          C.setPin(S.flow, d.lat, d.lng, true); S.pinStepOk = true;
+          C.setPin(S.flow, d.lat, d.lng, true); S.pinStepOk = true; emit('pin', { lat: d.lat, lng: d.lng, confirmed: true, source: 'pin' });
           // P :2272 toasts on every «Listo»: after the re-quote when the point moved, at once when it did not (no re-quote runs)
           if (stateKey() === S.askedKey) toast(S.outZone ? 'Ese punto queda fuera de la zona' : 'Pin confirmado', TOAST_MS);
           else { S.outZone = false; S.pinToast = true; }
@@ -1152,5 +1159,5 @@
     };
   }
 
-  return { mount, viewSections, FULL_CART };
+  return { mount, viewSections, loadMapsFor, MAP_SVG, FULL_CART };
 });

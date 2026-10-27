@@ -38,7 +38,9 @@
     clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'), info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>'),
     alert: I('<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/>'),
     bike: I('<circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M8.5 17h7"/><path d="M14 6h3l2.5 8.5"/><path d="M4 11h7l2 6"/>'),
-    locoff: I('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><path d="M4 4l16 16"/>'),
+    locoff: I('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><path d="M4 4l16 16"/>'), nav: I('<path d="M12 3l8 18-8-4-8 4z"/>'),
+    plus: I('<path d="M12 5v14"/><path d="M5 12h14"/>'), close: I('<path d="M6 6l12 12"/><path d="M18 6L6 18"/>'),
+    pinfill: '<svg width="38" height="38" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>',
   };
   // the Sola compass (Sherpa-owned shell only; never on a restaurant surface) — P:1217
   const SOLA = (size = 22, n = '#2F5FB8', m = 'currentColor') => `<svg width="${size}" height="${size}" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 9.2A14.8 14.8 0 1 1 24 38.8A14.8 14.8 0 1 1 24 9.2" stroke="${m}" stroke-width="3.4" fill="none"/><path d="M24 12.6L27.3 24L20.7 24Z" fill="${n}"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="${m}"/><circle cx="24" cy="24" r="1.7" fill="var(--bg)"/></svg>`;
@@ -290,11 +292,20 @@
     return shellWrap(vm, `<div class="searchbar"><label for="gq">${IC.search}<input id="gq" type="search" placeholder="Restaurantes o platos" autocomplete="off" value="${esc(q)}" data-field="q"></label>${q ? '<button class="textbtn" data-act="clearq">Borrar</button>' : ''}</div><div class="results" id="results">${body}</div>`);
   }
 
+
+  // ── the guest location layers (P addrSheet :2179-2184 guest rows, the location soft-ask :1766, the full-screen pin step :2186 / capp-ui
+  //    pinStepHtml — its store-free sentence; the map is the drawn schematic with a live map inside when a Maps key is configured) ──
+  const addrSheetHtml = () => `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Dirección de entrega"><div class="grab"></div><div class="sheethead"><div><h2>Entregar en</h2><small>La zona de cada restaurante se revisa con esta dirección.</small></div><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
+    <nav><button class="navrow" data-act="loc-use">${IC.nav.replace('class="i"', 'class="i" style="margin-right:10px"')}Usar mi ubicación actual<span></span></button><button class="navrow" data-act="addr-new">${IC.plus.replace('class="i"', 'class="i" style="margin-right:10px"')}Agregar dirección<span></span></button></nav></div>`;
+  const softaskHtml = () => `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Ubicación"><div class="grab"></div><div class="softask"><div class="ill">${IC.pin}</div><h2>Encontrá restaurantes cerca de vos</h2><p>Usamos tu ubicación solo para mostrarte quién te entrega y poner el pin donde estás.</p><div class="acts"><button class="primary" data-act="loc-allow">Usar mi ubicación</button><button class="btn2 wide" data-act="loc-deny">Escribir mi dirección</button></div></div></div>`;
+  const pinEditorHtml = (mapSvg, live) => `<div class="pinstep" role="dialog" aria-label="Confirmá dónde entregamos"><div class="mapwrap">${mapSvg || ''}${live ? '<div class="gmap" data-gmap="pin" style="position:absolute;inset:0"></div>' : ''}<div class="store-nav" style="position:absolute"><button class="iconbtn" data-act="lclose" aria-label="Cancelar">${IC.close}</button><span></span></div><div class="hint">Mové el mapa hasta que el pin quede en tu puerta</div><span class="pin">${IC.pinfill}</span></div>
+    <div class="foot"><b>Confirmá dónde entregamos</b><span class="sub">Las direcciones aquí se describen con referencias: el pin es la dirección, los detalles son la referencia.</span><button class="primary" data-act="pin-done">Listo</button></div></div>`;
+
   // coverage on Inicio (r1 §2.3, display only — the quote stays the authority): straight-line hub → location ≤ coverage_km
   const kmBetween = (a, b) => { const dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lng - a.lng) * Math.PI / 180, s = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2; return 2 * 6371 * Math.asin(Math.sqrt(s)); };
   const covers = (entry, loc) => { if (!loc || !entry || !Number.isFinite(entry.hub_lat) || !Number.isFinite(entry.hub_lng) || !Number.isFinite(entry.coverage_km)) return null; return kmBetween({ lat: entry.hub_lat, lng: entry.hub_lng }, loc) <= entry.coverage_km; };
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, searchHtml, tabbarHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { homeHtml, searchHtml, tabbarHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });

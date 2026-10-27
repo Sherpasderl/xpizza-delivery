@@ -230,7 +230,7 @@ test('Buscar: «No encontramos» ONLY when every menu answered; a partial shows 
 // ── the shell, through the REAL shell.html ──
 function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }); return { p, resolve }; }
 const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
-function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now } = {}) {
+function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://app.test/' });
@@ -248,7 +248,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   };
   const clock = now || { t: T0 };
   const ui = w.CappShellUI.mount(w.document, { fetchDirectory, fetchEnvelope, readAvailability: async () => [], runtime: RUNTIME, storage: storage || memStorage(), now: () => clock.t,
-    auth: { state: () => auth }, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { apiOpts: { fetch: () => new Promise(() => {}) } } });
+    auth: { state: () => auth }, geolocation, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: require('./capp-api.js'), apiOpts: { fetch: () => new Promise(() => {}) } } });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const release = (rid) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: J(PROV[rid].envelope), etag: PROV[rid].etag }); };
@@ -323,4 +323,41 @@ test('shell: a TOMBSTONED row stays in its slot, disabled; a tap does nothing; i
   S.click(lm); await flush(); assert.equal(S.ui.store(), null);
   S.click('.tabbar [data-tab="search"]'); await flush(); S.click('.tabbar [data-tab="home"]'); await flush();
   assert.deepEqual(S.qa('.rlist .rcard').map((b) => b.dataset.rid), ['x_pizza']);
+});
+
+test('shell location: «Entregar en» → «Usar mi ubicación actual» → the soft-ask (first time) → allowed ⇒ the GPS fix is the CONFIRMED guest location, persisted', async () => {
+  const storage = memStorage();
+  const S = bootShell({ storage, geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
+  await flush();
+  S.click('[data-act="addr"]'); assert.deepEqual(S.qa('#layer .navrow').map((b) => b.textContent.trim()), ['Usar mi ubicación actual', 'Agregar dirección']);
+  S.click('[data-act="loc-use"]'); assert.equal(S.q('#layer .softask h2').textContent, 'Encontrá restaurantes cerca de vos');
+  S.click('[data-act="loc-allow"]'); await flush();
+  assert.deepEqual(J(S.ui.state.loc), { lat: 15.52, lng: -88.04, confirmed: true, source: 'gps', v: 1 });
+  assert.deepEqual(JSON.parse(storage.getItem('capp:guest_loc')), { lat: 15.52, lng: -88.04, confirmed: true, source: 'gps', v: 1 });
+  assert.equal(S.q('#toast').textContent, 'Ubicación activada');
+  S.click('[data-act="addr"]'); S.click('[data-act="loc-use"]'); await flush();
+  assert.equal(S.q('#layer').innerHTML, '', 'asked once: no second soft-ask');
+});
+test('shell location: denied ⇒ the drawn «Ubicación desactivada · Activar» row and NO location (no fallback pin); the pin editor\'s «Cancelar» changes nothing', async () => {
+  const S = bootShell({ geolocation: { getCurrentPosition: (ok, no) => no(new Error('denied')) } });
+  await flush();
+  S.click('[data-act="addr"]'); S.click('[data-act="loc-use"]'); S.click('[data-act="loc-allow"]'); await flush();
+  assert.equal(S.ui.state.loc, null); assert.equal(S.q('.locrow span').textContent, 'Ubicación desactivada');
+  S.click('[data-act="addr"]'); S.click('[data-act="addr-new"]');
+  assert.equal(S.q('#layer .pinstep .foot b').textContent, 'Confirmá dónde entregamos');
+  S.click('#layer [data-act="lclose"]');
+  assert.equal(S.ui.state.loc, null, '🔴 an editor cancel leaves the guest location unchanged');
+});
+test('shell location: the guest location drives frame 4 (every store outside) and SEEDS the store\'s checkout pin', async () => {
+  const far = { lat: 15.9, lng: -87.5, confirmed: true, source: 'pin', v: 3 };
+  const S = bootShell({ storage: memStorage({ 'capp:guest_loc': JSON.stringify(far) }) });
+  await flush();
+  assert.equal(S.q('.home-body .empty b').textContent, 'Ningún restaurante entrega en esta dirección');
+  const near = { lat: 15.531, lng: -88.021, confirmed: true, source: 'pin', v: 1 };
+  const N = bootShell({ storage: memStorage({ 'capp:guest_loc': JSON.stringify(near) }) });
+  await flush();
+  N.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  const ui = N.ui.store().ui; ui.cart.inc(ui.menu.dishes.find((d) => !d.launcher && !d.variantOf).key); ui.render();
+  N.click('#cart-bar'); N.click('[data-act="checkout"]'); await flush();
+  assert.deepEqual({ lat: ui.state.flow.pin.lat, lng: ui.state.flow.pin.lng, confirmed: ui.state.flow.pin.confirmed }, { lat: near.lat, lng: near.lng, confirmed: true });
 });

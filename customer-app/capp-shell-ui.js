@@ -25,7 +25,7 @@
   'use strict';
 
   const DIR_EVERY_MS = 60 * 1000, AVAIL_EVERY_MS = 30 * 1000, MENU_LRU = 8, RECENT_MAX = 5;
-  const MENU_KEY = (rid) => `capp:menu:${rid}`, AVAIL_KEY = (rid) => `capp:avail:${rid}`, LRU_KEY = 'capp:menu:lru', RECENT_KEY = 'capp:recent';
+  const MENU_KEY = (rid) => `capp:menu:${rid}`, AVAIL_KEY = (rid) => `capp:avail:${rid}`, LRU_KEY = 'capp:menu:lru', RECENT_KEY = 'capp:recent', LOC_KEY = 'capp:guest_loc';
   const g = typeof self !== 'undefined' ? self : {};
   const pick = (opts, name, file) => opts[name] || g[name] || (typeof require === 'function' ? require(file) : null);
 
@@ -48,10 +48,27 @@
     const app = $('app');
     const readJ = (k) => { try { const v = storage && storage.getItem(k); return v ? JSON.parse(v) : null; } catch (_) { return null; } };
     const writeJ = (k, v) => { try { const s = JSON.stringify(v); storage.setItem(k, s); return storage.getItem(k) === s; } catch (_) { return false; } };
-    let dead = false;
+    let dead = false, rebuild = true;
 
     const S = { tab: 'home', cuisine: '', filters: new Set(), q: '', recent: (readJ(RECENT_KEY) || []).filter((x) => typeof x === 'string').slice(0, RECENT_MAX),
-      held: null, heldErr: false, store: null };
+      held: null, heldErr: false, store: null, layer: null, locDenied: false, loc: null };
+    // ── the guest location (r1 §2.3, owned by the SHELL, persisted per device): { lat, lng, confirmed, source: 'gps'|'pin', v } ──
+    { const l = readJ(LOC_KEY); if (l && Number.isFinite(l.lat) && Number.isFinite(l.lng) && (l.source === 'gps' || l.source === 'pin')) S.loc = { lat: l.lat, lng: l.lng, confirmed: l.confirmed === true, source: l.source, v: Number(l.v) || 1 }; }
+    function setLoc(lat, lng, source) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      if (S.loc && S.loc.lat === lat && S.loc.lng === lng && S.loc.source === source) return;
+      S.loc = { lat, lng, confirmed: true, source, v: (S.loc ? S.loc.v : 0) + 1 }; S.locDenied = false;
+      writeJ(LOC_KEY, S.loc);
+    }
+    const geoApi = () => (o.geolocation !== undefined ? o.geolocation : (win && win.navigator && win.navigator.geolocation) || null);
+    // «Usar mi ubicación actual» (OWNER 2026-10-21: a detected fix is confirmed); denied / failed ⇒ the drawn locrow, NO fallback pin
+    function geolocate(okMsg) {
+      const g = geoApi(), deny = () => { if (dead) return; S.locDenied = true; schedule(); };
+      if (!g || typeof g.getCurrentPosition !== 'function') return deny();
+      try { g.getCurrentPosition((pos) => { if (dead) return; setLoc(pos.coords.latitude, pos.coords.longitude, 'gps'); toast(okMsg); schedule(); }, deny, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }); } catch (_) { deny(); }
+    }
+    let toastT = null;
+    function toast(msg) { const t = $('toast'); if (!t || dead) return; t.textContent = msg; t.classList.add('on'); if (toastT !== null) T.clearTimeout(toastT); toastT = T.setTimeout(() => { toastT = null; if (!dead) t.classList.remove('on'); }, 4000); }
 
     // ── the menus: ONE cache; a validated fresh body is persisted (LRU of MENU_LRU stores) and seeded as presentation at boot ──
     const validateBody = (rid, b) => { if (!b || b.rid !== rid) return false; CappMenu.adaptMenu(b); return true; };
@@ -108,10 +125,11 @@
       const cfg = row && cfgOf(row.entry), e = cache.peek(entry.rid);
       if (!cfg || !e || !e.body) return false;
       const uo = o.uiOpts || {};
-      const ui = CappUI.mount(doc, { ...uo, envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry),
+      const apiOpts = { storage, ...(uo.apiOpts || {}) };   // the store's records live in the shell's storage (one device store)
+      const ui = CappUI.mount(doc, { ...uo, apiOpts, envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
-        onEvent: (name, detail) => { if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
+        onEvent: (name, detail) => { if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
       S.store = { rid: entry.rid, ui };
       const snap = readJ(cfg.cartKey); if (snap) ui.restore(snap);
       if (entry.dish) ui.openDetail(entry.dish);
@@ -121,7 +139,7 @@
     function unmountStore() {
       const st = S.store; if (!st) return;
       if (availTimer !== null) { T.clearInterval(availTimer); availTimer = null; }
-      availSeq++; st.ui.destroy(); S.store = null;
+      availSeq++; st.ui.destroy(); S.store = null; rebuild = true;   // #app holds the store's markup: the next shell paint rebuilds it
     }
 
     // ── the shell navigation (one history owner) ──
@@ -168,7 +186,7 @@
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
       return { phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), cuisine: S.cuisine, filters: S.filters,
-        schedulingLive: o.schedulingLive === true, outOfZone: false, addr: null, locDenied: false, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent };
+        schedulingLive: o.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
     function saveScreen() {
@@ -189,9 +207,35 @@
       const keep = restored || (app.firstElementChild ? saveScreen() : null);
       if (restored && typeof restored.q === 'string') S.q = restored.q;
       const v = vm();
-      app.innerHTML = `<div class="screen">${S.tab === 'search' ? CappHome.searchHtml(v) : CappHome.homeHtml(v)}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`;
+      const layer = $('layer'), toastEl = $('toast');
+      const scr = app.querySelector(':scope > .screen');
+      const html = S.tab === 'search' ? CappHome.searchHtml(v) : CappHome.homeHtml(v);
+      if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
+      else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
     }
+    // ── the location layers ──
+    let pinGen = 0, pinMap = null, pinDraft = null;
+    function renderLayer() {
+      const L = $('layer'); if (!L) return;
+      pinGen++; pinMap = null;   // any open pin map is obsolete
+      L.innerHTML = S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
+      if (S.layer !== 'pin') return;
+      const firstHub = dir.view().rows.map((r) => r.entry).find((e) => Number.isFinite(e.hub_lat) && Number.isFinite(e.hub_lng));
+      pinDraft = S.loc ? { lat: S.loc.lat, lng: S.loc.lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
+      const center = pinDraft || (firstHub ? { lat: firstHub.hub_lat, lng: firstHub.hub_lng } : null);
+      const el = L.querySelector('[data-gmap="pin"]'), p = el && center ? CappUI.loadMapsFor(doc, runtime.mapsKey) : null;
+      if (!p) return;
+      const gen = pinGen;
+      p.then((gm) => {
+        if (dead || gen !== pinGen || !el.isConnected) return;
+        const m = new gm.Map(el, { center, zoom: 17, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy', keyboardShortcuts: true });
+        pinMap = { gen, m };
+        m.addListener('idle', () => { if (gen !== pinGen || dead) return; const c = m.getCenter(); if (c) pinDraft = { lat: c.lat(), lng: c.lng() }; });
+      }).catch(() => {});
+    }
+    function openLayer(k) { S.layer = k; renderLayer(); }
+    function closeLayer() { S.layer = null; renderLayer(); }
     let pending = null;
     const raf = win && typeof win.requestAnimationFrame === 'function' ? (f) => win.requestAnimationFrame(f) : (f) => T.setTimeout(f, 16);
     function schedule() { if (pending || dead) return; pending = true; raf(() => { pending = null; renderNow(); }); }
@@ -212,7 +256,21 @@
       if (a === 'dir-retry') { S.heldErr = false; dir.revalidate(); return renderNow(); }
       if (a === 'recent') { S.q = t.dataset.q; return renderNow(); }
       if (a === 'clearq') { S.q = ''; renderNow(); const i = $('gq'); if (i) i.focus(); return; }
-      emit(a, {});   // 'addr', 'loc-on': the guest location (its own step)
+      if (a === 'addr') return openLayer('addr');
+      if (a === 'lclose') return closeLayer();   // «Cancelar» on the pin editor: the guest location is unchanged
+      if (a === 'addr-new') return openLayer('pin');
+      if (a === 'loc-use') { if (!readJ('capp:loc_asked')) return openLayer('softask'); closeLayer(); return geolocate('Usando tu ubicación actual'); }
+      if (a === 'loc-allow') { writeJ('capp:loc_asked', true); closeLayer(); return geolocate('Ubicación activada'); }
+      if (a === 'loc-deny') { writeJ('capp:loc_asked', true); S.locDenied = true; closeLayer(); return renderNow(); }
+      if (a === 'loc-on') return geolocate('Ubicación activada');
+      if (a === 'pin-done') {
+        const live = pinMap && pinMap.gen === pinGen ? pinMap.m.getCenter() : null;
+        const d = live ? { lat: live.lat(), lng: live.lng() } : pinDraft;
+        closeLayer();
+        if (d && Number.isFinite(d.lat) && Number.isFinite(d.lng)) { setLoc(d.lat, d.lng, 'pin'); toast('Pin confirmado'); }
+        return renderNow();
+      }
+      emit(a, {});
     }
     function onInput(ev) {
       if (dead || S.store) return;
