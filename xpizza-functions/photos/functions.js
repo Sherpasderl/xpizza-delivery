@@ -20,7 +20,7 @@ const { makeGcsSigner } = require('./signer');
 const { makeGcsStore } = require('./gcs-store');
 const { errorBody, ERRORS } = require('./errors');
 
-const send = (res, out) => res.status(out.status).json(out.body);
+const sendPhotoReply = (res, out) => res.status(out.status).json(out.body);
 const fail = (code) => ({ status: ERRORS[code].status, body: errorBody(code) });
 const randomId = () => crypto.randomBytes(15).toString('base64url');
 
@@ -37,13 +37,13 @@ async function handle(req, res, run) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const enabled = await photosUploadsEnabled(getDatabase());
-    if (!enabled) return send(res, fail('photos_disabled'));
+    if (!enabled) return sendPhotoReply(res, fail('photos_disabled'));
     const a = await authorize(req, body.rid);
-    if (a.fail) return send(res, fail(a.fail));
-    return send(res, await run(body, a.uid, () => enabled));
+    if (a.fail) return sendPhotoReply(res, fail(a.fail));
+    return sendPhotoReply(res, await run(body, a.uid, () => enabled));
   } catch (e) {
     console.error('photos_handler', e && e.message);
-    return send(res, fail('unavailable'));
+    return sendPhotoReply(res, fail('unavailable'));
   }
 }
 
