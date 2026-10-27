@@ -108,6 +108,11 @@ t('flag-ON canReportProblem: the body «Problema con este pedido» shows', () =>
   assert.match(html, /problema-btn/, 'body problema button shown');
   assert.match(html, /Problema con este pedido/, 'problema copy');
 });
+t('advisor 2026-10-27 placement: body «Problema» shows EN-ROUTE too (solo delivery), gated on the flag ONLY — not on arrival', () => {
+  assert.match(card({ arrived: false, canReportProblem: true }), /problema-btn/, 'en-route solo delivery + flag → body problema shows (matches the prototype S.alCliente)');
+  assert.ok(!/problema-btn/.test(card({ arrived: false, canReportProblem: false })), 'en-route flag-off → NO problema (no regression on the shipped-dark screen)');
+  assert.ok(!/problema-btn/.test(stackedCard({ arrived: false, canReportProblem: true })), 'a non-solo stacked stop (more ahead) keeps NO body problema, as the prototype (apParada1)');
+});
 t('«Llegué» gated on canNotifyArrival + NOT-notified; hidden once notified (task.arrived) + carries the delivery-task id', () => {
   assert.match(card({ arrived: false, canNotifyArrival: true }), /btn-llegue/, 'Llegué shown flag-on, not yet notified');
   assert.ok(!/btn-llegue/.test(card({ arrived: false, canNotifyArrival: false })), 'Llegué hidden flag-off');

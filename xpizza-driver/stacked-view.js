@@ -422,7 +422,13 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   const itemsCard = deliverItems
     ? `<div class="sv-deliver-items"><div class="sdi-head"><span class="sdi-count">${esc(deliverItems.reduce((a, l) => a + l.qty, 0))} artículo${deliverItems.reduce((a, l) => a + l.qty, 0) === 1 ? '' : 's'}</span><span class="sdi-chip">entregá todo</span></div>${deliverItems.map((l) => `<div class="sdi-row"><b>${esc(l.qty)}×</b><span>${esc(l.name)}</span></div>`).join('')}</div>`
     : '';
-  const problemaBtnHtml = (soloArrival && opts.canReportProblem === true)
+  // «Problema con este pedido» — advisor ruling 2026-10-27: MATCH THE PROTOTYPE. The link shows on the delivery leg
+  // (solo / non-stacked stop, accepted, not pickup) across BOTH en-route AND arrived — gated on the capability flag
+  // ONLY (DRV2_CAN_REPORT_PROBLEM), NOT on arrival. The earlier soloArrival coupling (= needs `arrived`) was an
+  // implementation side effect of building it in the S.llegue block; the items card + arrival banner above stay
+  // arrived-only, as the prototype has them. Scope is opts.soloArrival (= !spStacked), so the first stacked stop
+  // (apParada1, more stops ahead) keeps NO body link, exactly as the prototype.
+  const problemaBtnHtml = (opts.soloArrival === true && accepted && !isPickup && opts.canReportProblem === true)
     ? `<button class="problema-btn" id="btn-problema-body" data-order-id="${esc(o.orderId)}"><span class="ico">${ICONS.warn || ''}</span>Problema con este pedido</button>`
     : '';
 
