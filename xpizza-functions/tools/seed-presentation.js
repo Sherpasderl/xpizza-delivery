@@ -138,9 +138,9 @@ if (require.main === module) {
     const o = parseArgs(process.argv.slice(2));
     if (o.project !== PROJECT_ID) refuse(`--project ${o.project} is not the guarded project ${PROJECT_ID}`);
     const { RTDB_URL } = require('../catalog/mirror-rtdb');
-    const databaseURL = assertDatabaseTarget(PROJECT_ID, RTDB_URL, process.env);
+    assertDatabaseTarget(PROJECT_ID, RTDB_URL, process.env);   // refuses (exit 2) unless RTDB_URL is this project's and nothing ambient disagrees
     const admin = require('firebase-admin');
-    admin.initializeApp({ projectId: PROJECT_ID, databaseURL });
+    admin.initializeApp({ projectId: PROJECT_ID, databaseURL: RTDB_URL });   // the literal pin rtdb-init.test.js requires of every RTDB CLI
     const input = JSON.parse(fs.readFileSync(o.file, 'utf8'));
     const results = await run(admin.database(), input, o);
     const rejected = Object.keys(results).filter((rid) => results[rid].rejected);
