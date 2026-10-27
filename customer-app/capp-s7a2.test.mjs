@@ -239,14 +239,14 @@ function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }
 const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 // stampedDir: a copy of customer-app/ stamped by the REAL platform/stamp-version.js — the page's own sherpa-client.js runs on its
 // stamped identity and capp-api.js runs in the page realm (its SherpaClient.fetch arm), the network = pageFetch (window.fetch)
-function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null } = {}) {
+function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {} } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://app.test/' });
   const w = dom.window;
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -258,7 +258,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   };
   const clock = now || { t: T0 };
   const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), fetchDirectory, fetchEnvelope, readAvailability: async () => [], onEvent: (n, d) => events.push([n, J(d)]), runtime, storage: storage || memStorage(), now: () => clock.t,
-    auth: { state: () => auth }, geolocation, search, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } } });
+    auth: { state: () => auth }, geolocation, search, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const release = (rid, body) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: body || J(PROV[rid].envelope), etag: body ? '"changed"' : PROV[rid].etag }); };
@@ -648,4 +648,76 @@ test('stamp: shell.html is stamped as orders-app; on the stamped shell SherpaCli
       assert.equal(co[0].h['X-Client-App'], 'orders'); assert.equal(co[0].h['X-Client-Build'], r.build);
     } finally { S.w.close(); }
   } finally { rmSync(tmp, { recursive: true, force: true }); }
+});
+
+// ── G6: the in-app sign-in, owned by the shell when the runtime carries the signup config (DARK: absent ⇒ exactly as before) ──
+function fakeFirebase({ persisted = null } = {}) {
+  const calls = { load: 0, ct: [], out: 0 }; let listeners = [], user = persisted;
+  const auth = { get currentUser() { return user ? { uid: user, getIdToken: async () => `id:${user}` } : null; } };
+  const emitU = () => { for (const l of listeners) l(user ? { uid: user } : null); };
+  const authMod = { browserLocalPersistence: 'LOCAL', getAuth: () => auth, setPersistence: async () => {},
+    onAuthStateChanged: (a, next) => { listeners.push(next); Promise.resolve().then(() => next(user ? { uid: user } : null)); return () => { listeners = listeners.filter((x) => x !== next); }; },
+    signInWithCustomToken: async (a, t) => { calls.ct.push(t); user = t.replace(/^ct:/, ''); emitU(); return { user: { uid: user } }; },
+    signOut: async () => { calls.out++; user = null; emitU(); } };
+  return { calls, loadSdk: async () => { calls.load++; return { initializeApp: () => ({}), authMod }; } };
+}
+const SU_EP = Object.fromEntries(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant'].map((k) => [k, `https://fn.test/${k}`]));
+const SU_RUNTIME = { ...RUNTIME, guestCardOnly: true, signup: { firebase: { apiKey: 'k_test', projectId: 'p' }, endpoints: SU_EP } };
+function signupServer(verify) {
+  const sent = [];
+  const fetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); sent.push([ep, i && i.body ? JSON.parse(i.body) : null]);
+    const j = ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false } : ep === 'verifyOtp' ? verify : { ok: true, cooldown: 30 };
+    return { status: 200, json: async () => j }; };
+  return { fetch, sent };
+}
+const ANA = { ok: true, token: 'ct:u_ana', is_new: false, name: 'Ana Pérez', completion: 'complete', profile: { name: 'Ana Pérez', email: 'ana@gmail.com' } };
+const suHost = (S) => S.q('#su-host');
+async function signInViaSheet(S) {
+  S.click('.tabbar [data-tab="account"]'); await flush();
+  S.click('.guestcard .primary'); await flush();
+  const h = suHost(S); assert.ok(h && h.classList.contains('open'), 'premise: the sheet opened in the shell\'s own layer');
+  const ph = h.querySelector('#su-phone'); ph.value = '99990000'; ph.dispatchEvent(new S.w.Event('input', { bubbles: true }));
+  S.click(h.querySelector('[data-su="phone-go"]')); await flush();
+  const b0 = h.querySelector('[data-su-otp="0"]'); b0.value = '482913'; b0.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+  S.click(h.querySelector('[data-su="verify"]')); await flush(); await flush();
+}
+
+test('G6 flag-absent: no runtime.signup ⇒ «Entrá o creá tu cuenta» is the HOST\'s \'signin\' event, as before — no SDK load, no sheet layer', async () => {
+  const fb = fakeFirebase();
+  const S = bootShell({ auth: 'guest', runtime: { ...RUNTIME, guestCardOnly: true }, mountExtra: { loadSdk: fb.loadSdk } }); await flush();
+  S.click('.tabbar [data-tab="account"]'); await flush(); S.click('.guestcard .primary'); await flush();
+  assert.deepEqual(S.events.filter((e) => e[0] === 'signin'), [['signin', { ctx: 'account' }]]);
+  assert.equal(suHost(S), null); assert.equal(fb.calls.load, 0, '🔴 the Auth SDK is never loaded without the signup config');
+});
+test('G6 shell: the SDK after the first paint; «Entrá» opens the sheet; a verified existing account ⇒ member, the device marker + the profile cache; an ordinary sign-out clears the cache, keeps the marker', async () => {
+  const fb = fakeFirebase(); const srv = signupServer(ANA); const storage = memStorage();
+  const S = bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch } });
+  assert.equal(fb.calls.load, 0, 'never before the first paint'); await flush(); await flush();
+  assert.equal(fb.calls.load, 1, 'loaded after it');
+  await signInViaSheet(S);
+  assert.deepEqual(srv.sent.filter((x) => x[0] !== 'getSignupConfig'), [['requestOtp', { phone: '+50499990000', context: 'platform' }], ['verifyOtp', { phone: '+50499990000', code: '482913', context: 'platform' }]]);
+  assert.deepEqual(fb.calls.ct, ['ct:u_ana']);
+  assert.equal(txt(suHost(S).querySelector('.sg .h1')), '¡Hola de nuevo, Ana!');
+  S.click(suHost(S).querySelector('[data-su="finish"]')); await flush();
+  assert.equal(suHost(S).classList.contains('open'), false, 'closed');
+  assert.deepEqual(JSON.parse(storage.getItem('capp:device_account')), { v: 1, account: true, e164: '+50499990000' });
+  assert.deepEqual(JSON.parse(storage.getItem('capp:member_profile')), { v: 1, uid: 'u_ana', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com' });
+  assert.deepEqual(J(S.ui.state.member), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: 'id:u_ana' });
+  S.click('.tabbar [data-tab="account"]'); await flush();
+  assert.deepEqual(S.events.filter((e) => e[0] === 'tab').pop(), ['tab', { tab: 'account' }], 'a member\'s Cuenta is the host\'s');
+  await fb.loadSdk().then(({ authMod }) => authMod.signOut()); await flush();
+  assert.equal(storage.getItem('capp:member_profile'), null, '🔴 an ordinary sign-out clears the cached profile');
+  assert.ok(storage.getItem('capp:device_account'), 'the device marker is kept (§4c)');
+  assert.equal(S.ui.state.member, null);
+});
+test('G6 shell: a RESTORED session autofills from the cached profile of THAT uid at once; another uid\'s cache is never used', async () => {
+  const prof = JSON.stringify({ v: 1, uid: 'u_ana', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com' });
+  const fb = fakeFirebase({ persisted: 'u_ana' });
+  const S = bootShell({ auth: 'unresolved', storage: memStorage({ 'capp:member_profile': prof }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  await flush(); await flush();
+  assert.deepEqual(J(S.ui.state.member), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: 'id:u_ana' }, '🔴 restored ⇒ autofilled from the cache');
+  const fb2 = fakeFirebase({ persisted: 'u_other' });
+  const O = bootShell({ auth: 'unresolved', storage: memStorage({ 'capp:member_profile': prof }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb2.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  await flush(); await flush();
+  assert.deepEqual(J(O.ui.state.member), { uid: 'u_other', name: '', phone: '', email: '', idToken: 'id:u_other' }, '🔴 another member\'s cached profile is never shown');
 });
