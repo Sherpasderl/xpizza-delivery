@@ -184,12 +184,14 @@
 /* offshift (disponible OFF) rebuilt to prototype S.offshift (renderOffshift overwrites #screen-offshift at runtime;
    the static shell stays frozen for the initial load-time bindings). Header greeting + Cuenta icon, status chip card,
    «Efectivo a entregar» stat (+ «Ganado hoy» only when PAGOS_LIVE), «Iniciar turno» slide. Prototype tokens → app. */
-#screen-offshift .off2-hdr { flex: none; display: flex; align-items: center; gap: 11px; padding: 14px 16px 10px; background: var(--surface); border-bottom: 1px solid var(--border-soft, #EAEFF6); }
-#screen-offshift .off2-hm { flex: none; width: 36px; height: 36px; display: block; }
-#screen-offshift .off2-hm svg { width: 36px; height: 36px; border-radius: 9px; }
-#screen-offshift .off2-ttl { flex: 1; min-width: 0; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -.015em; color: var(--text, #0D1424); text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#screen-offshift .off2-cuenta { flex: none; width: 38px; height: 38px; border-radius: 11px; border: 1px solid var(--border); background: var(--surface); color: var(--text-soft); display: grid; place-items: center; cursor: pointer; }
-#screen-offshift .off2-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 10px; }
+#screen-offshift { background: var(--bg, #F5F7FA); }
+#screen-offshift .off2-hdr { flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 16px 10px; background: transparent; border: none; }
+#screen-offshift .off2-hm { flex: none; width: 24px; height: 24px; display: block; }
+#screen-offshift .off2-hm svg { width: 24px; height: 24px; border-radius: 6px; display: block; }
+#screen-offshift .off2-ttl { flex: 1; min-width: 0; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 18px; letter-spacing: -.015em; color: var(--text, #0D1424); text-transform: none; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#screen-offshift .off2-cuenta { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text, #0D1424); display: grid; place-items: center; cursor: pointer; padding: 0; }
+#screen-offshift .off2-cuenta svg { width: 18px; height: 18px; }
+#screen-offshift .off2-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 4px 16px 10px; background: transparent; }
 #screen-offshift .off2-card { background: var(--surface); border-radius: 16px; box-shadow: 0 1px 2px rgba(20,30,50,.05), 0 8px 20px rgba(20,30,50,.05); padding: 14px; }
 #screen-offshift .off2-status { display: flex; align-items: center; gap: 12px; }
 #screen-offshift .off2-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 11px; border-radius: 999px; background: var(--surface-2, #F5F7FA); color: var(--text-soft); }
@@ -2748,9 +2750,10 @@ function syncTabBarForScreen(name) {
 function renderOffshift() {
   const host = $('screen-offshift'); if (!host) return;
   const SOLA_HM = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="var(--marino, #14306B)"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><g><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--celeste, #8EC0FF)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="var(--marino, #14306B)"/></g></svg>';
-  const USER = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c1.3-3.2 4-4.8 7-4.8s5.7 1.6 7 4.8"/></svg>';
+  const USER = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c1.3-3.2 4-4.8 7-4.8s5.7 1.6 7 4.8"/></svg>';   // prototype I.user, filled
   const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>';
   const name = (driverState && driverState.name) || (currentUser && currentUser.email ? currentUser.email.split('@')[0] : '');
+  const first = (name || '').split(/\s+/)[0] || name;   // «Hola, {first name}» (prototype)
   const cash = computeShiftCash(allOrders, currentUser && currentUser.uid, todayMidnightMs(), driverIdentityCutoverMs);
   const cashStat = `<div class="off2-stat"><b>L ${(cash.cashOwed || 0).toLocaleString('es-HN')}</b><small>Efectivo a entregar</small></div>`;
   const earnStat = PAGOS_LIVE ? `<div class="off2-stat"><b class="off2-earn">L ${((cash.deliveries || 0) * 70).toLocaleString('es-HN')}</b><small>Ganado hoy</small></div>` : '';
@@ -2763,11 +2766,10 @@ function renderOffshift() {
       <div class="companion-suspended-notice hidden" style="margin:0;padding:11px 13px;border-radius:12px;background:#F6ECD9;color:#8A5A09;font-weight:700;font-size:13px;line-height:1.35;text-align:left;">Despacho pausó tu cuenta. Podés terminar lo que tenés, pero no vas a recibir pedidos nuevos.</div>
       <div class="off2-stats ${earnStat ? 'two' : 'one'}">${cashStat}${earnStat}</div>
       <div style="flex:1"></div>
-      <div class="version-tag">v${SYSTEM_VERSION} · driver</div>
     </div>
     <div class="off2-foot"><div class="slide-confirm start" id="btn-start-shift"><div class="slide-fill"></div><div class="slide-text">Iniciar turno</div><div class="slide-hint">deslizá</div><div class="slide-thumb">${ARROW}</div></div></div>
     <button class="duty-toggle hidden" id="duty-toggle-off" aria-hidden="true"></button>`;
-  const nm = $('off-driver-name'); if (nm) nm.textContent = name;
+  const nm = $('off-driver-name'); if (nm) nm.textContent = first;
   const cb = $('cuenta-btn'); if (cb) cb.addEventListener('click', openCuenta);
   attachSlideConfirm('btn-start-shift', async () => {
     if (shiftBusy) return;

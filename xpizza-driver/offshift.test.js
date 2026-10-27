@@ -78,12 +78,14 @@ await t('structure: greeting (natural case), status chip, «Efectivo a entregar�
   const h = boot();
   h.api.renderOffshift();
   const html = h.host().innerHTML;
-  assert.equal(h.host().querySelector('#off-driver-name').textContent, 'Marvin Posadas', 'natural-case name (not uppercased)');
+  assert.equal(h.host().querySelector('#off-driver-name').textContent, 'Marvin', 'FIRST name only, natural case (not «Marvin Posadas», not uppercased)');
   assert.ok(/Fuera de turno/.test(html) && /GPS listo/.test(html), 'status chip + GPS');
   assert.ok(/Efectivo a entregar/.test(html) && /L 1,430/.test(html), '«Efectivo a entregar» = cashOwed');
   assert.ok(!/Ganado hoy/.test(html), '«Ganado hoy» hidden while PAGOS_LIVE is false (R2)');
   assert.ok(!/Recib[ií]s pedidos de/.test(html), '«Recibís pedidos de» OMITTED (no data source)');
   assert.ok(h.host().querySelector('.off2-stats.one') && !h.host().querySelector('.off2-stats.two'), 'single-stat layout');
+  assert.ok(h.host().querySelector('.off2-cuenta'), 'Cuenta circle button (.off2-cuenta) present');
+  assert.ok(!/version-tag/.test(html) && !/v2\.5\.3/.test(html), 'version line OMITTED (not in the prototype offshift frame)');
   assert.ok(h.host().querySelector('#btn-start-shift .slide-thumb'), '«Iniciar turno» slide present');
   assert.ok(h.host().querySelector('#duty-toggle-off.hidden'), 'the duty-toggle is kept (hidden) for the frozen references');
 });
