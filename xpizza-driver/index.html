@@ -327,6 +327,29 @@
 #idle-state .disp-cancel-banner .dcb-chip { display: inline-block; font: 700 12px 'Red Hat Text', sans-serif; background: transparent; border: 1px solid currentColor; border-radius: 999px; padding: 4px 10px; }   /* proto .chip.err transparent + border */
 #idle-state .disp-cancel-ack { appearance: none; border: 0; width: 100%; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; border-radius: 14px; padding: 15px 14px; min-height: 52px; background: #2F5FB8; color: #fff; cursor: pointer; }   /* proto .btn.primary «Entendido» */
 #idle-state .disp-cancel-ack:active { background: #24488C; }
+/* slice 3-P — manual pause (prototype S.pausa): a FULL amber ring (the pause never ends on its own), the amber «No
+   recibís pedidos» pill, «Pausa manual» copy, the «pedido en mano» note (reuses .pr-card/.pr), and the «Reanudar turno»
+   foot button. Amber hex inlined per the app's --p-* convention (--p-warn #8A5A00 / --p-warnwash #FBF1DC; ring track
+   --p-surface2 #E7ECF4). */
+#idle-state .pausa-body { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; }
+#idle-state .pausa-ring { position: relative; width: 128px; height: 128px; margin: 0 auto; }
+#idle-state .pausa-ring svg { transform: rotate(-90deg); width: 100%; height: 100%; }
+#idle-state .pausa-ring-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+#idle-state .pausa-ring-c b { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 34px; letter-spacing: -.02em; line-height: 1; font-variant-numeric: tabular-nums; color: var(--text, #0D1424); }
+#idle-state .pausa-ring-c small { font-size: 11px; color: var(--text-soft, #546078); font-weight: 600; margin-top: 3px; }
+#idle-state .pausa-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; line-height: 1.2; white-space: nowrap; background: #FBF1DC; color: #8A5A00; }
+#idle-state .pausa-chip svg { width: 13px; height: 13px; }
+#idle-state .pausa-copy .pausa-h { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 17px; letter-spacing: -.01em; color: var(--text, #0D1424); }
+#idle-state .pausa-copy .pausa-sub { margin: 6px 0 0; font-size: 13px; line-height: 1.4; color: var(--text-soft, #546078); }
+#idle-state .pausa-card { width: 100%; text-align: left; }
+#idle-state .pausa-foot { flex: none; display: flex; flex-direction: column; gap: 9px; padding-top: 10px; }
+#idle-state .pausa-resume { text-transform: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+#idle-state .pausa-resume svg { width: 20px; height: 20px; }
+/* the «Pausar» entry in the idle status bar (header top-right) — a subtle pill, created on demand by renderStatusBar. */
+.status-bar .sb-pausar { margin-left: auto; appearance: none; display: inline-flex; align-items: center; gap: 6px; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 13px; color: var(--text-soft, #546078); background: rgba(20,30,50,.05); border: 1px solid rgba(20,30,50,.08); border-radius: 999px; padding: 6px 12px 6px 10px; cursor: pointer; }
+.status-bar .sb-pausar svg { width: 15px; height: 15px; }
+.status-bar .sb-pausar:active { background: rgba(20,30,50,.1); }
+.status-bar .sb-pausar:disabled { opacity: .5; }
 #idle-state .disp-cancel-info { background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); padding: 4px 14px; }   /* proto .card (S.cancelado padding 4px 14px) */
 #idle-state .disp-cancel-row { display: flex; gap: 11px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line, #E2E6EE); }   /* proto .row */
 #idle-state .disp-cancel-row:first-child { border-top: 0; }
@@ -3171,6 +3194,69 @@ function drv2SessionTeardown() {
   drv2ProblemInFlight = false;
   const pov = $('drv2-problema'); if (pov) pov.remove();   // the body-mounted overlay must not survive teardown
 }
+// ===== Slice 3-P — manual pause (prototype S.pausa). DARK behind DRV2_PAUSE_ENABLED until the «Pausa» server contract
+// (a5cd1bf4: a paused driver is never offered / hand-assigned — pickEligibleDriver skips on_break, assign/reassign
+// refuse it) is DEPLOYED to prod; flipping the flag before that would let a driver set on_break while assignment still
+// reached them. The driver's OWN write is drivers/{uid} { status:'on_break', break_since: serverTimestamp() } — own-uid
+// rules cascade, break_since validates isNumber && ===now; resume clears both. «Reanudar turno» is a TAP (owner 2026-10-27).
+const DRV2_PAUSE_ENABLED = false;
+const DRV2_PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1.3"/><rect x="13.5" y="5" width="4" height="14" rx="1.3"/></svg>';
+const DRV2_PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>';
+// elapsed since break_since (server ms) → «M:SS» under an hour, «H:MM» over; tabular. Refreshed on the 30 s status tick.
+function drv2PauseElapsed(sinceMs) {
+  const s = Math.max(0, Math.round((Date.now() - sinceMs) / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h > 0 ? (h + ':' + String(m).padStart(2, '0')) : (m + ':' + String(sec).padStart(2, '0'));
+}
+// the full amber progress ring (prototype ring(1,…)): a static 128 px dial — track + a FULL amber stroke (the pause
+// never ends on its own, so the ring is complete, not a countdown) — with the elapsed inside. Hex inlined per the
+// real app's --p-* convention (track #E7ECF4, amber #8A5A00).
+function drv2PauseRingHtml(big) {
+  const C = (2 * Math.PI * 56).toFixed(2);
+  return '<div class="pausa-ring">'
+    + '<svg viewBox="0 0 128 128" aria-hidden="true"><circle cx="64" cy="64" r="56" fill="none" stroke="#E7ECF4" stroke-width="9"/>'
+    + '<circle cx="64" cy="64" r="56" fill="none" stroke="#8A5A00" stroke-width="9" stroke-linecap="round" stroke-dasharray="' + C + '" stroke-dashoffset="0"/></svg>'
+    + '<div class="pausa-ring-c"><b>' + escapeHtml(big) + '</b><small>en pausa</small></div></div>';
+}
+// renderPausa — the S.pausa takeover of #idle-state (mirrors renderSoloCancel: overwrite + preserve the bound controls
+// AND renderIdleState's #idle-icon/#idle-msg/#idle-sub deps hidden, so a later renderIdleState never null-derefs).
+function renderPausa(host, helpLink, arriveBtn, offerExpired) {
+  const idleIcon = $('idle-icon'), idleMsg = $('idle-msg'), idleSub = $('idle-sub');
+  const since = driverState && driverState.break_since;
+  const big = (typeof since === 'number' && since > 0 && since <= Date.now()) ? drv2PauseElapsed(since) : '0:00';
+  host.innerHTML =
+    '<div class="pausa-body">'
+    + drv2PauseRingHtml(big)
+    + '<span class="pausa-chip">' + DRV2_PAUSE_SVG + 'No recibís pedidos</span>'
+    + '<div class="pausa-copy"><div class="pausa-h">Pausa manual</div>'
+    + '<p class="pausa-sub">Tu turno sigue abierto y tu efectivo se conserva. La pausa no se termina sola: reanudá cuando quieras.</p></div>'
+    + '<div class="pr-card pausa-card"><div class="pr"><span class="pr-ic">' + ICONS.warn + '</span>'
+    + '<div class="pr-tx"><div class="pr-t">Si tenés un pedido en mano</div><div class="pr-d">La pausa empieza al entregarlo; no corta nada en curso</div></div></div></div>'
+    + '</div>'
+    + '<div class="pausa-foot"><button class="big-btn primary pausa-resume" id="btn-reanudar">' + DRV2_PLAY_SVG + 'Reanudar turno</button></div>'
+    + '<span id="disp-preserve" style="display:none"></span>';
+  const pres = $('disp-preserve');
+  if (pres) { if (helpLink) pres.appendChild(helpLink); if (arriveBtn) pres.appendChild(arriveBtn); if (idleIcon) pres.appendChild(idleIcon); if (idleMsg) pres.appendChild(idleMsg); if (idleSub) pres.appendChild(idleSub); }
+  if (offerExpired) host.insertBefore(offerExpired, host.firstChild);
+  const btn = $('btn-reanudar');
+  // «Reanudar turno» — a TAP (owner 2026-10-27; the tap-vs-slide constant is settled on tap). The own-driver write
+  // clears the pause; the RTDB feed flips driverState.status → available → a re-render shows disponible. FAILURE
+  // re-enables + toasts (no state change claimed).
+  if (btn) btn.onclick = () => {
+    if (!currentUser || btn.disabled) return;
+    btn.disabled = true;
+    fbUpdate(fbRef(XPD.getDb(), 'drivers/' + currentUser.uid), { status: 'available', break_since: null })
+      .catch(() => { btn.disabled = false; toast('No se pudo reanudar; reintentá', 'error'); });
+  };
+}
+// the driver's own PAUSE write (the «Pausar» header button): on_break + a server-stamped break_since. a5cd1bf4 then
+// excludes the driver from assignment; the RTDB feed flips driverState → the pausa screen renders. FAILURE re-enables.
+function drv2PauseShift(btn) {
+  if (!currentUser || (btn && btn.disabled)) return;
+  if (btn) btn.disabled = true;
+  fbUpdate(fbRef(XPD.getDb(), 'drivers/' + currentUser.uid), { status: 'on_break', break_since: fbServerTimestamp() })
+    .catch(() => { if (btn) btn.disabled = false; toast('No se pudo pausar; reintentá', 'error'); });
+}
 function drv2CaptureReturnTarget(o, actingUid) {   // at THIS client's delivery completion, the delivered order's entry is in scope
   // Codex P2-2: attribute to the uid that RAN the completion (captured BEFORE the await), not currentUser read after it,
   // and REJECT the capture if the session changed mid-write — never store one account's restaurant under another's uid.
@@ -3261,6 +3347,7 @@ function renderDisponible() {
   const helpLink = $('idle-help-link');     // bound once (→ openHelpSheet); preserve
   const arriveBtn = $('arrive-btn');         // bound once (→ the «en el restaurante» action); preserve
   const offerExpired = $('idle-offer-expired');   // the expired-offer notice (mounted by renderActiveAndQueue, with its «Ok» handler); preserve across the rebuild
+  if (DRV2_PAUSE_ENABLED && status === 'on_break') { renderPausa(host, helpLink, arriveBtn, offerExpired); return; }   // slice 3-P: the manual-pause takeover (prototype S.pausa)
   if (drv2SoloCancel) {   // a no-survivor cancel takes over the idle screen (prototype S.cancelado)
     if (drv2SoloCancel._uid !== ((currentUser && currentUser.uid) || null)) drv2SoloCancel = null;   // Codex P2-3: a different account → drop it, fall through to the normal idle render
     else { renderSoloCancel(host, helpLink, arriveBtn, offerExpired); return; }
@@ -4247,7 +4334,10 @@ function detectNewAssignments(tasks) {
   // initialAssignmentsLoaded gate keeps boot silent while still chiming the FIRST order of a no-orders shift. The
   // set resets only per session connect (subscribeToFirebase) — the sign-out/sign-in boundary.
   const fresh = [...offered].filter(id => !knownTaskIds.has(id));
-  if (fresh.length > 0 && initialAssignmentsLoaded) {
+  // slice 3-P: while paused, suppress the new-order chime/toast/vibrate. The server (a5cd1bf4) already excludes an
+  // on_break driver from assignment, so this is belt-and-suspenders against a late/in-flight assignment snapshot.
+  const pausedNow = DRV2_PAUSE_ENABLED && driverState && driverState.status === 'on_break';
+  if (fresh.length > 0 && initialAssignmentsLoaded && !pausedNow) {
     if (soundOn) { const c = $('chime'); c.currentTime = 0; c.play().catch(() => {}); }
     toast('¡Nuevo pedido asignado!', 'success');
     try {
@@ -5233,10 +5323,40 @@ function renderStatusBar() {
      through) → the dot/label/meta logic below is byte-identical for non-idle (proven by statusbar-disp-header.test.js).
      Time format = cuadre's spec (es-HN · hour:'numeric' · minute:'2-digit' · hour12:false); the shared time-format.js
      dedup is on the batch checklist (before Codex). ===== */
+  const SOLA_DOT = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="var(--marino, #14306B)"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><g><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--celeste, #8EC0FF)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="var(--marino, #14306B)"/></g></svg>';
+  const sbEl = dot.closest && dot.closest('.status-bar');
+  // slice 3-P: the «Pausar» entry lives in the idle header (available/returning = zero active orders); ensure/remove it
+  // from the status bar. It is NOT the frozen static shell — created on demand so the shell DOM stays untouched.
+  const ensurePausar = (show) => {
+    if (!sbEl) return;
+    let pb = $('btn-pausar');
+    if (show) {
+      if (!pb) {
+        pb = document.createElement('button'); pb.id = 'btn-pausar'; pb.className = 'sb-pausar'; pb.type = 'button';
+        pb.setAttribute('aria-label', 'Pausar'); pb.innerHTML = DRV2_PAUSE_SVG + '<span>Pausar</span>';
+        pb.addEventListener('click', () => drv2PauseShift($('btn-pausar')));
+        sbEl.appendChild(pb);
+      }
+      pb.disabled = false;
+    } else if (pb) { pb.remove(); }
+  };
+  // pausa (3-P): its OWN idle header — «En pausa · desde las {h:mm}» on the page-bg bar, Sola mark, NO «Pausar» entry
+  // (you are already paused; «Reanudar turno» lives in the body). Dark until DRV2_PAUSE_ENABLED.
+  if (DRV2_PAUSE_ENABLED && status === 'on_break') {
+    dot.className = 'status-dot sola';
+    if (sbEl) sbEl.classList.add('enturno');
+    dot.innerHTML = SOLA_DOT;
+    lbl.textContent = 'En pausa';
+    const since = driverState && driverState.break_since;
+    meta.textContent = (typeof since === 'number' && since > 0 && since <= Date.now()) ? ('desde las ' + fmtClockHM(since)) : '';
+    meta.classList.remove('stale');
+    ensurePausar(false);
+    return;
+  }
   if (status === 'available' || status === 'returning') {
     dot.className = 'status-dot sola';
-    const sb = dot.closest && dot.closest('.status-bar'); if (sb) sb.classList.add('enturno');   // idle «En turno» header = page-bg, no white bar. Only available/returning reach here; the status bar is hidden while delivering, and pausa (3-P) will own its own header.
-    dot.innerHTML = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="var(--marino, #14306B)"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><g><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--celeste, #8EC0FF)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="var(--marino, #14306B)"/></g></svg>';
+    if (sbEl) sbEl.classList.add('enturno');   // idle «En turno» header = page-bg, no white bar. Only available/returning reach here; the status bar is hidden while delivering.
+    dot.innerHTML = SOLA_DOT;
     lbl.textContent = 'En turno';
     const start = driverState && driverState.shift_started_at;
     if (typeof start === 'number' && start > 0 && start <= Date.now()) {
@@ -5255,6 +5375,7 @@ function renderStatusBar() {
       dg.textContent = dgStale ? 'GPS inactivo' : ('GPS vivo' + (typeof lp === 'number' ? ' · hace ' + Math.max(0, Math.round((Date.now() - lp) / 1000)) + ' s' : ''));
       dg.classList.toggle('stale', !!dgStale);
     }
+    ensurePausar(DRV2_PAUSE_ENABLED);   // slice 3-P: offer «Pausar» from the idle header
     return;
   }
   // leaving idle (any other status): restore the normal header — strip .enturno (white bar + border come back) and the
@@ -5262,6 +5383,7 @@ function renderStatusBar() {
   // transition on a REUSED DOM (Codex P2); the original dot/label/meta logic below then repaints the phase header.
   const sbBack = dot.closest && dot.closest('.status-bar'); if (sbBack) sbBack.classList.remove('enturno');
   if (dot.firstChild) dot.innerHTML = '';
+  ensurePausar(false);   // the «Pausar» entry is idle-only — strip it while delivering / off-shift
   /* ===== SLICE3:DISP-HEADER:END ===== */
   // Dot color + pulse
   dot.className = 'status-dot';

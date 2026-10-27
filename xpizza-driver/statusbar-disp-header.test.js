@@ -36,7 +36,7 @@ function boot({ status, shift_started_at = null, last_ping = Date.now(), lat, ln
   const driverState = { status, shift_started_at, last_ping, lat, lng };
   const XPD = { isStalePing: () => stale };
   const computeReturnEta = () => eta;
-  const body = liftFn('renderStatusBar') + '\nreturn { renderStatusBar };';
+  const body = 'const DRV2_PAUSE_ENABLED = false;\nconst DRV2_PAUSE_SVG = "";\nfunction drv2PauseShift(){}\n' + liftFn('renderStatusBar') + '\nreturn { renderStatusBar };';
   const api = (new Function('document', '$', 'driverState', 'XPD', 'computeReturnEta', 'fmtClockHM', body))(
     document, $, driverState, XPD, computeReturnEta, fmtClockHM);
   const snap = () => { const dot = $('status-dot'), lbl = $('status-label'), meta = $('gps-meta'), sb = document.querySelector('.status-bar');

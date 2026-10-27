@@ -97,7 +97,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = 'd7a3378927c49828b623b032b2feb266ee338e11e566f5a92ed4fba78655f7bc';
+const SLICE2_GUARD_SHA = '4dc808a4ca23c8c113d355af59ba7e92ac663d1b12e65e1ab23d6ae679b699d4';
 const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -177,6 +177,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/disponible.test.js',           // renderDisponible body (prototype S.disponible) test
   'xpizza-driver/return-target.test.js',        // returning-state nav target (capture/get/clear + renderDisponible) — real-code suite
   'xpizza-driver/solo-cancel.test.js',           // no-survivor cancel idle takeover (S.cancelado) real-code suite
+  'xpizza-driver/pausa.test.js',                 // slice 3-P manual-pause (S.pausa) real-code suite
   'xpizza-driver/llegue.test.js',                // S.llegue arrived-at-customer pure-builder flag-on/off suite
   'xpizza-driver/offline-banner.test.js',       // SLICE3 offline banner (RTDB-signal, in-hand-only) handler test
   'xpizza-driver/gpsoff.test.js',               // SLICE3 gpsoff builder + apply/detection logic test

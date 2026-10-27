@@ -30,7 +30,7 @@ function liftFn(name) {
   throw new Error(`unbalanced ${name}`);
 }
 
-function build({ soundOn = true } = {}) {
+function build({ soundOn = true, paused = false } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><audio id="chime"></audio></body></html>');
   const { document, window } = dom.window;
   const $ = (id) => document.getElementById(id);
@@ -38,7 +38,8 @@ function build({ soundOn = true } = {}) {
   $('chime').play = () => { calls.chime++; return Promise.resolve(); };
   Object.defineProperty(window.navigator, 'vibrate', { value: (p) => { calls.vibrates.push(p); return true; }, configurable: true });
   const deps = { document, window, navigator: window.navigator, $, currentUser: { uid: 'drv' }, soundOn, toast: (m) => calls.toasts.push(m) };
-  const body = 'let knownTaskIds = new Set(); let initialAssignmentsLoaded = false;\n'
+  const body = 'const DRV2_PAUSE_ENABLED = ' + (paused ? 'true' : 'false') + '; const driverState = { status: ' + (paused ? '"on_break"' : '"available"') + ' };\n'   // slice 3-P: paused ⇒ suppress the new-order chime
+    + 'let knownTaskIds = new Set(); let initialAssignmentsLoaded = false;\n'
     + liftFn('detectNewAssignments') + '\n'
     + 'return { detectNewAssignments, seenSize: () => knownTaskIds.size };';
   const names = Object.keys(deps);
@@ -129,6 +130,20 @@ t('soundOn=false: toast + vibrate fire, but NO chime sound', () => {
   h.api.detectNewAssignments({ A_pickup: own('accepted'), B_pickup: own('accepted') });
   assert.equal(h.calls.chime, 0, 'no chime sound when soundOn is false');
   assert.ok(h.calls.toasts.includes('¡Nuevo pedido asignado!') && h.calls.vibrates.length === 1, 'still toasts + vibrates');
+});
+
+t('slice 3-P: while PAUSED (on_break) a new-order snapshot is SILENT — no chime, toast or vibrate (mutant: drop the pause guard → chimes → RED)', () => {
+  const h = build({ paused: true });
+  h.api.detectNewAssignments({ A_pickup: own('accepted') });    // boot
+  h.api.detectNewAssignments({ A_pickup: own('accepted'), B_pickup: own('assigned') });   // a 2nd order arrives while paused
+  assert.equal(h.calls.chime, 0, 'no chime while paused');
+  assert.equal(h.calls.toasts.length, 0, 'no toast while paused');
+  assert.equal(h.calls.vibrates.length, 0, 'no vibrate while paused');
+  // sanity: the SAME sequence un-paused DOES chime (so the silence is the pause, not the fixture)
+  const h2 = build({ paused: false });
+  h2.api.detectNewAssignments({ A_pickup: own('accepted') });
+  h2.api.detectNewAssignments({ A_pickup: own('accepted'), B_pickup: own('assigned') });
+  assert.equal(h2.calls.chime, 1, 'the same sequence un-paused chimes');
 });
 
 console.log(`✓ chime-fresh: ${passed} checks passed`);
