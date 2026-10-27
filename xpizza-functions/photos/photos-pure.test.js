@@ -87,10 +87,12 @@ const B = (...xs) => Buffer.from(xs);
   };
   for (const [code, w] of Object.entries(want)) assert.deepStrictEqual(E.ERRORS[code], w, `ERR-TABLE ${code}`);
   // the remaining codes: no customer-facing photo copy of their own
-  for (const code of ['bad_crop', 'op_conflict', 'not_authorized', 'photo_change_disabled', 'photo_publish_failed', 'photo_unavailable'])
+  for (const code of ['bad_crop', 'op_conflict', 'not_authorized', 'photo_change_disabled', 'photo_publish_failed', 'photo_unavailable', 'photos_disabled', 'bad_request'])
     assert.ok(E.ERRORS[code] && Number.isInteger(E.ERRORS[code].status), `ERR-TABLE-HAS ${code}`);
   assert.strictEqual(E.ERRORS.photo_publish_failed.retryable, true, 'ERR-PUBLISH-FAILED-RETRYABLE (Q2)');
   assert.strictEqual(E.ERRORS.photo_change_disabled.status, 409, 'ERR-CHANGE-DISABLED-409 (Q2)');
+  assert.deepStrictEqual([E.ERRORS.photos_disabled.status, E.ERRORS.photos_disabled.retryable], [409, false], 'ERR-PHOTOS-DISABLED (§2.8 flag off)');
+  assert.deepStrictEqual([E.ERRORS.bad_request.status, E.ERRORS.bad_request.retryable, E.ERRORS.bad_request.copy], [400, false, null], 'ERR-BAD-REQUEST (malformed input; the portal never sends it)');
   // the body helper: retryable:true ONLY on the retryable codes; never a free-text detail
   assert.deepStrictEqual(E.errorBody('unavailable'), { error: 'unavailable', retryable: true }, 'ERR-BODY-RETRYABLE');
   assert.deepStrictEqual(E.errorBody('too_small'), { error: 'too_small' }, 'ERR-BODY-TERMINAL');

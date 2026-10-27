@@ -23,6 +23,10 @@ const ERRORS = Object.freeze({
   photo_change_disabled: Object.freeze({ status: 409, retryable: false, copy: null, frame: null }),
   photo_publish_failed: Object.freeze({ status: 503, retryable: true, copy: null, frame: null }),
   photo_unavailable: Object.freeze({ status: 409, retryable: false, copy: P5, frame: 'P5' }),
+  // §2.8: PHOTOS_UPLOADS off — E-P1 / E-P2 refuse (the portal hides the uploader when photosEnabled is absent)
+  photos_disabled: Object.freeze({ status: 409, retryable: false, copy: null, frame: null }),
+  // a malformed request (shape / type / bounds) — the portal never sends one; no merchant copy
+  bad_request: Object.freeze({ status: 400, retryable: false, copy: null, frame: null }),
 });
 
 // the response body for a code: `{error}` plus `retryable: true` only where the table says so — never a free-text detail
