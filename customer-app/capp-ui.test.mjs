@@ -2491,9 +2491,10 @@ test('S4 row 10 (owner: dim, note A): a scheduled send left unresolved fixes the
   await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
   assert.equal(b.text('#layer .errsheet h2'), 'Sin conexión', 'premise: the drawn «Sin conexión»');
   await b.click('#layer [data-act="lclose"]');
-  assert.ok(b.q('.opts .opt[data-val="asap"]').disabled && b.q('.opts .opt[data-val="schedule"]').disabled, 'the cards fixed');
-  assert.ok(b.qa('.daychip').every((x) => x.disabled) && b.qa('.slotgrid .chip').every((x) => x.disabled), '🔴 days and slots dimmed (.45)');
-  assert.equal(b.text('.slotgrid + .note'), 'Estamos confirmando este horario; no se puede cambiar mientras tanto.');
+  assert.ok(b.q('.opts .opt[data-val="asap"]').disabled, 'the cards fixed'); assert.equal(b.q('.opts .opt[data-val="schedule"]').getAttribute('aria-pressed'), 'true', 'the pressed «Programar» as drawn');
+  assert.ok(b.qa('.daychip').every((x) => x.disabled) && b.qa('.slotgrid .chip:not([aria-pressed="true"])').every((x) => x.disabled), '🔴 days and the other slots dimmed (.45)');
+  assert.equal(b.q('.slotgrid .chip[aria-pressed="true"]').disabled, false, 'the chosen slot as drawn (solid)');
+  assert.deepEqual(b.qa('.slotgrid ~ .note').map((n) => b.text(n)), ['Cada horario es una ventana de 30 minutos.', 'Estamos confirmando este horario; no se puede cambiar mientras tanto.']);
   assert.equal(cta(b), 'Reintentar');
   const first = b.srv.of('createOrder')[0].body;
   b.q('.slotgrid .chip:last-child').dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle();   // a forced tap changes nothing

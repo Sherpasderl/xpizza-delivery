@@ -743,18 +743,20 @@
       // the guest «Creá tu cuenta y tu envío es gratis» line needs a promo flag the quote does not carry (not rendered)
     }
     // S4: the prototype's two cards + the inline picker (P:1838-1841): day chips, EVERY slot of the day (N3), the empty states; row 10b's
-    // read-only variant while a scheduled send is unresolved (the drawn disabled treatment + note A)
+    // read-only variant while a scheduled send is unresolved (frame 10b: «Lo antes posible», the days and the OTHER slots in the drawn
+    // disabled .45; the pressed «Programar» card and the chosen slot stay as drawn; the window note, then note A) — taps are refused by
+    // the handler (lockedSlot), not by the markup
     function schedCards(f, open, del) {
       const K = schedMod(), s = servedSched(), t0 = now().getTime(), lk = lockedSlot();
       if (lk !== null) { f.time = 'schedule'; f.slot = lk; f.slotDay = K.dayKey(s, lk); }
       const ds = schedDays(), first = ds.find((d) => d.slots.length), sdayKey = f.slotDay || (first ? first.key : null), sd = ds.find((d) => d.key === sdayKey) || null;
       const dis = lk !== null ? ' disabled' : '';
       const cards = `<div class="opts"><button class="opt" aria-pressed="${f.time === 'asap'}" data-act="time" data-val="asap"${open && lk === null ? '' : ' disabled'}><b>Lo antes posible</b><span>${open ? esc(etaTxt(del ? 'delivery' : 'pickup')) : 'No disponible · cerrado'}</span></button>
-      <button class="opt" aria-pressed="${f.time === 'schedule'}" data-act="time" data-val="schedule"${dis}><b>Programar</b><span>${Number.isFinite(f.slot) ? esc(K.slotWhen(s, t0, f.slot)) : 'Hasta 7 días'}</span></button></div>`;
+      <button class="opt" aria-pressed="${f.time === 'schedule'}" data-act="time" data-val="schedule"><b>Programar</b><span>${Number.isFinite(f.slot) ? esc(K.slotWhen(s, t0, f.slot)) : 'Hasta 7 días'}</span></button></div>`;
       if (f.time !== 'schedule') return cards;
       const chips = `<div class="daychips" role="group" aria-label="Día">${ds.map((d) => `<button class="daychip" aria-pressed="${d.key === sdayKey}" data-act="slotday" data-val="${d.key}"${d.slots.length && lk === null ? '' : ' disabled'}><b>${esc(K.chipDay(d))}</b><span>${esc(K.chipSub(d))}</span></button>`).join('')}</div>`;
       const grid = sd && sd.slots.length
-        ? `<div class="chips slotgrid" role="group" aria-label="Horario">${sd.slots.map((ms) => `<button class="chip" aria-pressed="${f.slot === ms}" data-act="slot" data-val="${ms}"${dis}>${esc(K.slotTime(s, ms))}</button>`).join('')}</div><span class="note">${lk !== null ? 'Estamos confirmando este horario; no se puede cambiar mientras tanto.' : 'Cada horario es una ventana de 30 minutos.'}</span>`
+        ? `<div class="chips slotgrid" role="group" aria-label="Horario">${sd.slots.map((ms) => `<button class="chip" aria-pressed="${f.slot === ms}" data-act="slot" data-val="${ms}"${f.slot === ms ? '' : dis}>${esc(K.slotTime(s, ms))}</button>`).join('')}</div><span class="note">Cada horario es una ventana de 30 minutos.</span>${lk !== null ? '<span class="note">Estamos confirmando este horario; no se puede cambiar mientras tanto.</span>' : ''}`
         : `<div class="gate"><b>${sd && sd.off === 0 ? 'Hoy ya no hay horarios' : 'Sin horarios disponibles'}</b><span class="note">Elegí otro día.</span></div>`;
       return cards + chips + grid;
     }
