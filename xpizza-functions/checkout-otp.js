@@ -140,4 +140,23 @@ function makeCheckoutOtp(deps) {
   return { requestCheckoutCode, verifyCheckoutCode };
 }
 
-module.exports = { makeCheckoutOtp, sendPlatformOtp };
+// The periodic sweep (the pruneExpired pattern, signup-core.js:269): every expired row is removed in a transaction that
+// RE-CHECKS it is still expired (a fresh write since the query is never removed). Tickets after exp; live codes after
+// expires_at; a send budget once its newest send has left the window (it holds nothing a new request would count).
+async function pruneCheckoutState(db, now) {
+  const out = { tickets: 0, codes: 0, budgets: 0 };
+  const sweep = async (node, field, cutoff, key) => {
+    const rows = (await db.ref(node).orderByChild(field).endAt(cutoff).once('value')).val() || {};
+    for (const [id, row] of Object.entries(rows)) {
+      if (!row || !(row[field] <= cutoff)) continue;
+      const tx = await db.ref(`${node}/${id}`).transaction((cur) => (cur === null ? null : (cur[field] <= cutoff ? null : undefined)));
+      if (tx.committed) out[key] += 1;
+    }
+  };
+  await sweep('checkout_tickets', 'exp', now, 'tickets');
+  await sweep('checkout_otp', 'expires_at', now, 'codes');
+  await sweep('otp_budget', 'last', now - G.BUDGET.WINDOW, 'budgets');
+  return out;
+}
+
+module.exports = { makeCheckoutOtp, sendPlatformOtp, pruneCheckoutState };

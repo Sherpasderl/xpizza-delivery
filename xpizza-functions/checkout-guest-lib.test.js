@@ -22,7 +22,7 @@ ok('isCappGuest: true ONLY for deployment === "orders-app" && uid === null — m
 // ── 2. the durable checkout send budget (txn updater) ──
 {
   const t0 = 1e12;
-  let r = L.budgetReserve(null, t0); assert.ok(r.ok); assert.deepStrictEqual(r.next, { sends: [t0] });
+  let r = L.budgetReserve(null, t0); assert.ok(r.ok); assert.deepStrictEqual(r.next, { sends: [t0], last: t0 });
   r = L.budgetReserve(r.next, t0 + 10e3); assert.ok(!r.ok && r.next === undefined && r.retryInMs === 20e3, 'the 30 s gap');
   let cur = { sends: [t0, t0 + 31e3] };
   r = L.budgetReserve(cur, t0 + 62e3); assert.ok(r.ok); cur = r.next; assert.strictEqual(cur.sends.length, 3);
@@ -30,7 +30,7 @@ ok('isCappGuest: true ONLY for deployment === "orders-app" && uid === null — m
   r = L.budgetReserve(cur, t0 + 10 * 60e3 + 1); assert.ok(r.ok, 'the window slides'); assert.ok(!r.next.sends.includes(t0), 'expired sends are pruned');
   // the union with signup's (non-durable) sends counts toward the window, but only OWN sends persist
   r = L.budgetReserve(null, t0, [t0 - 40e3, t0 - 80e3, t0 - 120e3]); assert.ok(!r.ok, 'signup sends count (3 in the window)');
-  r = L.budgetReserve({ sends: [t0 - 200e3] }, t0, [t0 - 40e3]); assert.ok(r.ok); assert.deepStrictEqual(r.next.sends, [t0 - 200e3, t0], 'signup sends are never copied into the budget');
+  r = L.budgetReserve({ sends: [t0 - 200e3] }, t0, [t0 - 40e3]); assert.ok(r.ok); assert.deepStrictEqual(r.next, { sends: [t0 - 200e3, t0], last: t0 }, 'signup sends are never copied into the budget');
   // the ADVISOR-ACCEPTED policy: after a signup verify deletes otp/{h}, the checkout budget = its own durable sends
   r = L.budgetReserve({ sends: [t0 - 100e3] }, t0, []); assert.ok(r.ok);
   r = L.budgetReserve(null, t0, 'garbage'); assert.ok(r.ok, 'a malformed signup record is ignored, never a crash');

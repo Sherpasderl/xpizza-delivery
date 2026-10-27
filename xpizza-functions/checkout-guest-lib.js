@@ -30,7 +30,7 @@ function budgetReserve(cur, now, signupSends = []) {
   const last = all.length ? all[all.length - 1] : -Infinity;
   if (now - last < BUDGET.MIN_GAP) return { next: undefined, ok: false, retryInMs: BUDGET.MIN_GAP - (now - last) };
   if (all.length >= BUDGET.MAX_PER_WINDOW) return { next: undefined, ok: false, retryInMs: Math.max(1, all[all.length - BUDGET.MAX_PER_WINDOW] + BUDGET.WINDOW - now) };
-  return { next: { sends: own.concat([now]) }, ok: true, retryInMs: 0 };   // only OWN sends persist; the budget is never deleted by a verify
+  return { next: { sends: own.concat([now]), last: now }, ok: true, retryInMs: 0 };   // only OWN sends persist; never deleted by a verify; `last` indexes the age prune
 }
 
 // S1 §1.3 — the ticket record (stored at checkout_tickets/{sha256(ticket)}); NO state field (r3: single use = the order id).

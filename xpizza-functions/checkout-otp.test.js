@@ -8,7 +8,7 @@ process.env.OTP_SALT = process.env.OTP_SALT || 'test-salt-'.padEnd(40, 'x');
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { makeCheckoutOtp, sendPlatformOtp } = require('./checkout-otp');
+const { makeCheckoutOtp, sendPlatformOtp, pruneCheckoutState } = require('./checkout-otp');
 const OTP = require('./otp-lib');
 const G = require('./checkout-guest-lib');
 
@@ -24,6 +24,7 @@ function fakeDb() {
   return { tree, get, set, ref: (p) => ({
     get: async () => snap(get(p)),
     set: async (v) => set(p, v),
+    orderByChild: (field) => ({ endAt: (c) => ({ once: async () => snap(Object.fromEntries(Object.entries(get(p) || {}).filter(([, r]) => r && typeof r[field] === 'number' && r[field] <= c))) }) }),
     transaction: async (fn) => { const next = fn(clone(get(p)) ?? null); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; set(p, next); return { committed: true, snapshot: snap(get(p)) }; },
   }) };
 }
@@ -50,7 +51,7 @@ const reqBody = (o = {}) => ({ phone_e164: PHONE, restaurant_id: 'x_pizza', cart
     const h = OTP.phoneHash('50499990000');
     const rec = t.db.get('checkout_otp/' + h);
     assert.ok(rec && rec.rid === 'x_pizza' && rec.cart_fp === FP && rec.attempts === 0 && rec.code_hash && rec.phone === '50499990000');
-    assert.deepStrictEqual(t.db.get('otp_budget/' + h).sends, [t.now()], 'the checkout send is recorded durably');
+    assert.deepStrictEqual(t.db.get('otp_budget/' + h), { sends: [t.now()], last: t.now() }, 'the checkout send is recorded durably');
     assert.strictEqual(t.db.get('otp/' + h), undefined, 'the signup record is never touched');
   }
   ok('request: platform sender + configured template, its OWN checkout_otp record (rid + cart_fp bound), the durable budget, signup otp/{h} untouched');
@@ -155,8 +156,22 @@ const reqBody = (o = {}) => ({ phone_e164: PHONE, restaurant_id: 'x_pizza', cart
       assert.deepStrictEqual(Object.keys(rules[k]).filter((x) => !x.startsWith('.')), [], `${k}: no nested grant`);
     }
     assert.deepStrictEqual(rules.checkout_tickets['.indexOn'], ['exp']);
+    assert.deepStrictEqual(rules.checkout_otp['.indexOn'], ['expires_at']); assert.deepStrictEqual(rules.otp_budget['.indexOn'], ['last']);
   }
   ok('rules: checkout_otp / otp_budget / checkout_tickets are server-only with no nested grant; checkout_tickets indexOn exp (prune)');
+
+  // ── 9. the prune: expired rows only, re-checked inside a transaction ──
+  {
+    const db = fakeDb(); const now = 2e12, W = G.BUDGET.WINDOW;
+    db.set('checkout_tickets/a', { exp: now - 1 }); db.set('checkout_tickets/b', { exp: now + 60e3 });
+    db.set('checkout_otp/c', { expires_at: now - 5 }); db.set('checkout_otp/d', { expires_at: now + 5 });
+    db.set('otp_budget/e', { sends: [now - W - 10], last: now - W - 10 }); db.set('otp_budget/f', { sends: [now - 1000], last: now - 1000 });
+    const out = await pruneCheckoutState(db, now);
+    assert.deepStrictEqual(out, { tickets: 1, codes: 1, budgets: 1 });
+    assert.deepStrictEqual(Object.keys(db.tree.checkout_tickets), ['b']); assert.deepStrictEqual(Object.keys(db.tree.checkout_otp), ['d']); assert.deepStrictEqual(Object.keys(db.tree.otp_budget), ['f']);
+    assert.deepStrictEqual(await pruneCheckoutState(db, now), { tickets: 0, codes: 0, budgets: 0 }, 'idempotent');
+  }
+  ok('prune: expired tickets / codes and window-old budgets removed (each re-checked in a transaction); live rows kept; idempotent');
 
   // ── 8. sendPlatformOtp never throws ──
   assert.deepStrictEqual(await sendPlatformOtp('50499990000', '123456', { env: ENV, fetchImpl: async () => { throw new Error('net'); }, isSendConfirmed: () => true }), { ok: false, reason: 'threw' });

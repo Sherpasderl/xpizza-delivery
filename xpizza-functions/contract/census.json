@@ -58,7 +58,7 @@
   },
   "clocks": {
    "display": 37,
-   "business-sample": 162,
+   "business-sample": 163,
    "persisted-stamp": 61,
    "business-comparison": 14,
    "io-deadline": 4
@@ -49365,6 +49365,11 @@
   {
    "key": "xpizza-functions/index.js:notifyArrivedOnTap:Date.now()",
    "line": 7621,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/index.js:pruneCheckoutState:Date.now()",
+   "line": 7682,
    "class": "business-sample"
   },
   {

@@ -7676,4 +7676,11 @@ exports.verifyCheckoutCode = onRequest(
   { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
   CHECKOUT_OTP.verifyCheckoutCode,
 );
+exports.pruneCheckoutState = onSchedule(
+  { schedule: 'every 60 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const out = await require('./checkout-otp').pruneCheckoutState(getDatabase(), Date.now());
+    if (out.tickets || out.codes || out.budgets) console.log(`pruneCheckoutState: ${JSON.stringify(out)}`);
+  },
+);
 /* checkout:end endpoints */
