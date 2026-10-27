@@ -855,7 +855,7 @@
       if (statusBusy || !mods() || !api.hosted) return;
       const fz = api.cartFreeze(); if (!fz.frozen) { renderLayer(); return; }
       statusBusy = true;
-      let out; try { out = fz.unknown || !fz.order_id ? { kind: 'offline' } : await api.resolveExisting(fz.order_id); } catch (_) { out = { kind: 'offline' }; } finally { statusBusy = false; }
+      let out; try { out = fz.unknown || !fz.order_id ? { kind: 'offline' } : await api.resolveStatus(fz.order_id); } catch (_) { out = { kind: 'offline' }; } finally { statusBusy = false; }
       if (dead) return;
       closeLayer();
       // over the STORE (no checkout to go back to): the held sheets as drawn; any other outcome takes the normal path with a flow

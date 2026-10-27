@@ -301,6 +301,13 @@
       if (memLock === id) memLock = null;
       return outcomeOfState(id, p.state, p.json);   // a definitive answer releases the lock (cancelled / failed clear the record)
     }
+    // S7a-2 (Codex s7a2 r1 #1-2): the STATUS of a placement this page may hold a lock on — a locked order goes through lockedOutcome,
+    // whose definitive poll RELEASES the lock (pending → paid ⇒ the customer can leave); any other through resolveExisting
+    function resolveStatus(id) {
+      const live = readPlace();
+      if (memLock === id || (live && live.order_id === id && live.pay_pending === true)) return lockedOutcome(id);
+      return resolveExisting(id);
+    }
     async function resolveExisting(id) {
       const t = credsFor(id);
       if (t) {
@@ -543,7 +550,7 @@
     // the order body a card send stashed (the return restores the checkout from it)
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
-    return { quote, latestQuote, place, handleReturn, resolveExisting, readPlace, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
+    return { quote, latestQuote, place, handleReturn, resolveExisting, resolveStatus, readPlace, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY };
   }

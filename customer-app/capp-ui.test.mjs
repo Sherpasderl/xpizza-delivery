@@ -1971,3 +1971,20 @@ test('frame 12: a dish that sells out while the menu is open shows «Agotado» i
   sold.delete(d.key); b.ui.render();
   assert.equal(b.text(`#dish-${d.key} .prrow .pr`), `L ${d.price}`, 'back on sale ⇒ its price again');
 });
+
+// ── Codex s7a2 r1 #2 (P1): frame 10's status read RELEASES the payment lock once the server answers definitively ──
+test('Codex s7a2 r1 #2: a pending cancel return locks the order; «Ver estado del pedido» → paid ⇒ the lock is released and the store can be left', async () => {
+  const storage = memStore();
+  const a = bootCo({ storage, config: HOSTED_KEYS, script: { chargeOnlineOrder: [CHECKOUT] } });
+  await placeVia(a, 'online'); const id = a.srv.of('chargeOnlineOrder')[0].body.order_id; const snap = J(a.ui.cart.snapshot()); a.ui.destroy();
+  const H = shellHist();
+  const c = bootCo({ storage, search: RET('cancel', id), config: HOSTED_KEYS, mountOpts: { history: H.adapter },
+    script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'pending' } }, { status: 200, json: { ok: true, state: 'paid' } }] } });
+  c.ui.restore(snap); await c.ui.returning; await settle();
+  await c.click('#layer [data-act="lclose"]');
+  assert.equal(c.ui.deviceBack('leave'), 'blocked', 'premise: locked');
+  c.ui.state.screen = 'store'; c.ui.render(); await settle();
+  assert.ok(c.ui.openCart(), 'premise: the cart opens');
+  await c.click('#layer [data-act="frozen-status"]'); await settle(); await settle();
+  assert.notEqual(c.ui.deviceBack('leave'), 'blocked', '🔴 a definitive «paid» releases the lock: the customer can leave');
+});
