@@ -67,8 +67,11 @@ manual bootstrap-sync procedure above is now only for the in-repo bootstrap (the
 
 1. Read `form_rebake/{rid}` in the RTDB console: `attempts`, `stuck`, `last_class` (`ok` / `hook_rejected` /
    `hook_unreachable`) and `at`.
-2. Re-run the check against the deployed site from a checkout, `cd <form folder> && node
-   ../xpizza-functions/tools/form-bundle-live-check.js --this-form`, and read its `FAIL` lines.
+2. Compare the DEPLOYED form with the published menu from any checkout:
+   `cd <form folder> && node ../xpizza-functions/tools/form-bundle-live-check.js --this-form --deployed`. It fetches the bundle
+   the LIVE site serves (the brand's orders origin from `platform/sites.json`, read fresh) and the published menu (fresh), and
+   prints every `FAIL` / published-only difference. Without `--deployed` the check reads the checkout's own `index.html`, which
+   cannot see a hook that built the wrong branch or site.
 3. Fix the cause:
    - a failed build: Netlify's deploy log, then "Retry deploy";
    - a hook on the wrong site or branch: recreate it on `main` and update `FORM_BUILD_HOOKS`;

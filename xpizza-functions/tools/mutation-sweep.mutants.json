@@ -20838,5 +20838,17 @@
    "node",
    "catalog/form-rebake.test.js"
   ]
+ },
+ {
+  "id": "fb-88",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 (#6): --deployed compares the CHECKOUT's bundle instead of the live site's — a stale deploy passes",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "  return { origin, ...compareBundle(extractBundle(deployedHtml), body && body.menu) };",
+  "to": "  return { origin, ...compareBundle(extractBundle(html), body && body.menu) };",
+  "command": [
+   "node",
+   "tools/form-bundle-deployed-check.test.js"
+  ]
  }
 ]

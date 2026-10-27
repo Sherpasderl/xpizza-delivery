@@ -66,7 +66,10 @@ function selectForms(argv, cwd, forms = FORMS) {
 // `totalMs` bounds the WHOLE request (a server dribbling a byte a second never ends), both cleared on settle.
 // `get` is injectable for the loopback regression tests; production uses https.get.
 // `headers` (PLAN 4 §3): the bake and this check ask for a FRESH read — Cache-Control: no-cache beside a build-unique query.
-function getJson(url, { timeoutMs = 20000, totalMs = 45000, get = https.get, headers = { accept: 'application/json' } } = {}) {
+function getJson(url, opts = {}) { return getRaw(url, opts, true); }
+// PLAN 4 r2 (Codex r1 #6): the same settle path for an HTML page — the DEPLOYED form, for --deployed.
+function getText(url, opts = {}) { return getRaw(url, { headers: { accept: 'text/html' }, ...opts }, false); }
+function getRaw(url, { timeoutMs = 20000, totalMs = 45000, get = https.get, headers = { accept: 'application/json' } } = {}, asJson = true) {
   return new Promise((done, fail) => {
     let settled = false, deadline = null, req = null;
     const settle = (fn, v) => { if (settled) return; settled = true; clearTimeout(deadline); fn(v); };
@@ -82,6 +85,7 @@ function getJson(url, { timeoutMs = 20000, totalMs = 45000, get = https.get, hea
       res.on('end', () => {
         ended = true;
         if (res.statusCode !== 200) return reject(`answered ${res.statusCode}`);
+        if (!asJson) return settle(done, raw);
         let body;
         try { body = JSON.parse(raw); } catch (e) { return reject('returned non-JSON'); }
         settle(done, body);
@@ -92,6 +96,19 @@ function getJson(url, { timeoutMs = 20000, totalMs = 45000, get = https.get, hea
   });
 }
 
+// PLAN 4 r2 (Codex r1 #6) — the DEPLOYED-ORIGIN comparison an operator repairs with: the bundle the LIVE site serves (its orders
+// origin from the platform manifest, fetched fresh) against the published menu (fresh). The checkout's own index.html supplies
+// only the menu endpoint; it is never the thing compared. → { origin, fail, warn }
+async function deployedCheck(rid, html, { sites = require('../../platform/sites.json'), fetchText = getText, fetchJson = getJson, now = Date.now } = {}) {
+  const { assetBaseFor } = require('../catalog/public-photos');
+  const origin = assetBaseFor(rid, sites);
+  if (!origin) throw new Error(`no single orders origin for ${rid} in platform/sites.json`);
+  const t = now();
+  const deployedHtml = await fetchText(`${origin}?_deployed=${t}`, { headers: { accept: 'text/html', 'cache-control': 'no-cache' } });
+  const body = await fetchJson(`${publicMenuUrl(html, rid)}?_check=${t}`, { headers: { accept: 'application/json', 'cache-control': 'no-cache' } });
+  return { origin, ...compareBundle(extractBundle(deployedHtml), body && body.menu) };
+}
+
 async function main() {
   // Belt for the class P1 belongs to: the exit code is a FAILURE until the very end proves otherwise, so any path that leaves
   // the event loop without finishing (a promise that never settles) fails the build rather than passing it.
@@ -100,8 +117,18 @@ async function main() {
   for (const p of unregisteredForms()) { console.error(`FAIL ${p}: carries a baked menu but is not in tools/splice-form-bundle.js FORMS`); failed = true; }
   const selected = selectForms(process.argv.slice(2), process.cwd());
   if (!selected) { console.error(`FAIL ${process.cwd()}: --this-form, but this folder is not a registered form`); process.exit(1); }
+  const deployed = process.argv.includes('--deployed');
   for (const [rid, file] of selected) {
     const html = readFileSync(file, 'utf8');
+    if (deployed) {
+      let res;
+      try { res = await deployedCheck(rid, html); } catch (e) { console.error(`FAIL ${rid} (deployed): ${e.message}`); failed = true; continue; }
+      for (const w of res.warn) console.log(`WARN ${rid} (deployed ${res.origin}) ${w}`);
+      for (const f of res.fail) console.error(`FAIL ${rid} (deployed ${res.origin}) ${f}`);
+      if (res.fail.length || res.warn.length) failed = true;   // the deployed form must EQUAL published (a published-only addition = a stale deploy)
+      console.log(`${rid}: the DEPLOYED form at ${res.origin} ${res.fail.length || res.warn.length ? `differs from the published menu (${res.fail.length} fail, ${res.warn.length} published-only)` : 'carries the published menu'}`);
+      continue;
+    }
     const url = publicMenuUrl(html, rid);
     let body;
     // a FRESH read, like the bake's: a cached older body would fail a build whose bake read the newer one
@@ -117,4 +144,4 @@ async function main() {
   process.exitCode = 0;
 }
 if (require.main === module) main().catch((e) => { console.error('form-bundle-live-check: ERROR', e && e.message); process.exit(1); });
-module.exports = { compareBundle, unregisteredForms, publicMenuUrl, selectForms, getJson, IDENTITY_KEYS };
+module.exports = { compareBundle, unregisteredForms, publicMenuUrl, selectForms, getJson, getText, deployedCheck, IDENTITY_KEYS };
