@@ -145,7 +145,18 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
   // ── 1. ROUTING ────────────────────────────────────────────────────────────────────────────────────────────────
   // PORTAL-UI 1a: the ops early branch is appended to the Set line (a same-line hunk); its own pin + routing proofs live in
   // portal/ops-split.test.js, so this section pins the five-target branch on index.js minus the portal-ui hunks.
-  const idx = require('../tools/portalui-inverse').unapplyPortalUiIndex(require('../tools/menu-warm-inverse').unapplyMenuWarmIndex(require('../tools/o1b-inverse').unapplyO1bIndex(require('../tools/stackseq-inverse').unapplyStackseqIndex(require('../tools/drvf-inverse').unapplyDrvfIndex(require('../tools/drvc-inverse').unapplyDrvcIndex(require('../tools/formsignal-inverse').unapplyFormSignalIndex(read('index.js'))))))));
+  const idx = require('../tools/portalui-inverse').unapplyPortalUiIndex(require('../tools/menu-warm-inverse').unapplyMenuWarmIndex(require('../tools/o1b-inverse').unapplyO1bIndex(require('../tools/stackseq-inverse').unapplyStackseqIndex(require('../tools/drvf-inverse').unapplyDrvfIndex(require('../tools/drvc-inverse').unapplyDrvcIndex(require('../tools/wahealth-inverse').unapplyWaHealthIndex(require('../tools/formsignal-inverse').unapplyFormSignalIndex(read('index.js')))))))));
+  // R-WIRE (codex train-tip r1 P2): an EQUALITY with the complete earlier layer, not only the selected early-branch text —
+  // idx must be byte-equal to portal-ui's proven parent layer (built exactly as portalui-wiring.guard does: 2920b705 + the
+  // membership hunk, T-c's later same-line export folded out), so a missing train inverse fails here
+  const TC_NOW = 'exports.memberPasswordSet = MEMBERSHIP_TEAM.memberPasswordSet; exports.memberInvitePreview = MEMBERSHIP_TEAM.memberInvitePreview;   /* membership:end team */';
+  const TC_WAS = 'exports.memberPasswordSet = MEMBERSHIP_TEAM.memberPasswordSet;   /* membership:end team */';
+  const unapplyTc = (src) => { assert.strictEqual(src.split(TC_NOW).length - 1, 1, 'the T-c same-line hunk occurs exactly once'); return src.replace(TC_NOW, () => TC_WAS); };
+  const withMembership = require('../tools/membership-inverse').HUNKS.reduce((src, h) => {
+    assert.strictEqual(src.split(h.was).length - 1, 1, 'the membership hunk anchors once on 2920b705');
+    return src.replace(h.was, () => h.now);
+  }, require('child_process').execFileSync('git', ['show', '2920b705:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 }));
+  assert.strictEqual(unapplyTc(idx), unapplyTc(withMembership), '🔴 index.js minus every newer layer and the portal-ui hunks is not portal-ui\'s parent layer (a missing inverse fails here)');
   const EARLY_BRANCH = "const PORTAL_ISOLATED_TARGETS = Object.freeze(new Set(['getMyRestaurants', 'getEditableCatalog', 'editCatalog', 'publishEdited', 'getSalesStats']));\n"
     + 'if (PORTAL_ISOLATED_TARGETS.has(process.env.FUNCTION_TARGET)) {\n'
     + "  console.log('portal_isolated_entry', process.env.FUNCTION_TARGET);   // §8 deploy check: the isolated branch ran\n"

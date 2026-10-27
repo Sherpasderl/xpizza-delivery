@@ -61,12 +61,13 @@ ok(`SAME-LINE: index.js has the base's ${bl.length} lines; exactly lines ${diffe
 
 // ── 3. the fold variant ──
 const { foldPortalSplit } = require('./tools/portal-split');
-const fold = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bFold(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(foldPortalSplit())))));   // train: formsignal (newest) innermost, then drvc, drvf, the O1b fold, then PLAN 2
+const fold = require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/o1b-inverse').unapplyO1bFold(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthFold(require('./tools/formsignal-inverse').unapplyFormSignalIndex(foldPortalSplit())))))));   // train: formsignal (newest) innermost → wahealth (fold) → drvc → drvf → stackseq → the O1b fold → PLAN 2
 assert.ok(!fold.includes('PORTAL_OPS_TARGETS'), 'foldPortalSplit drops the early-branch region (with the ops branch in it)');
 assert.ok(fold.includes(HUNKS[1].now), 'premise: the re-export hunk survives the portal fold');
 const folded = unapplyPortalUiFold(fold);
 assert.ok(!folded.includes('portal/ops-functions'), 'unapplyPortalUiFold removes the re-export');
 assert.throws(() => unapplyPortalUiFold(folded), /occurs 0 times/, 'applying it twice fails (each hunk exactly once)');
+assert.strictEqual(unapplyTc(folded), foldPortalSplit(undefined, baseIdx), '🔴 the portal fold minus every newer layer and the portal-ui hunk is not the base layer\'s fold (a missing inverse fails here)');
 ok('FOLD: unapplyPortalUiFold(foldPortalSplit()) leaves no portal-ui byte; the ops branch is consumed by the portal fold');
 
 console.log(`\nportalui-wiring.guard: OK (${n})`);

@@ -22,8 +22,9 @@ assert.throws(() => unapplyMenuWarmIndex(real + h.now), /occurs 2 times/, 'a dup
 assert.notStrictEqual(unapplyMenuWarmIndex(real.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'a byte OUTSIDE the hunk survives (the base pin catches it)');
 ok(`index.js: unapplyMenuWarmIndex → ${BASE}:index.js byte-for-byte (1 same-line hunk); inside / duplicate / outside each caught`);
 const { foldPortalSplit } = require('./tools/portal-split');
-const fold = require('./tools/formsignal-inverse').unapplyFormSignalIndex(foldPortalSplit());
+const fold = require('./tools/o1b-inverse').unapplyO1bFold(require('./tools/stackseq-inverse').unapplyStackseqIndex(require('./tools/drvf-inverse').unapplyDrvfIndex(require('./tools/drvc-inverse').unapplyDrvcIndex(require('./tools/wahealth-inverse').unapplyWaHealthFold(require('./tools/formsignal-inverse').unapplyFormSignalIndex(foldPortalSplit()))))));   // R-WIRE train: the newer train layers reversed first on the fold (formsignal innermost → wahealth (fold) → drvc → drvf → stackseq → O1b (fold))
 assert.ok(fold.includes(h.now), 'premise: the hunk survives the portal fold');
 assert.ok(!unapplyMenuWarmIndex(fold).includes('minInstances: 1 }'), 'the same inverse strips it from a fold');
-ok('FOLD: the hunk survives foldPortalSplit and unapplyMenuWarmIndex strips it there too');
+assert.strictEqual(unapplyMenuWarmIndex(fold), foldPortalSplit(undefined, base), `🔴 the portal fold minus every newer layer and the menu-warm hunk is not the ${BASE} fold (a missing inverse fails here)`);
+ok(`FOLD: the hunk survives foldPortalSplit; unapplyMenuWarmIndex of the fold (newer layers reversed) === the ${BASE} fold byte-for-byte`);
 console.log(`\nmenu-warm-wiring.guard: OK (${n})`);
