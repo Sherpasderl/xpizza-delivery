@@ -91,6 +91,22 @@ test('CONTRACT: non-parsing values stay ungrouped and are never suffix-merged', 
   assert.equal(convoKey(null), null);
 });
 
+test('CONTRACT: an UltraMsg inbound id (…@c.us) groups with its order exactly as the old last-8 did', () => {
+  const phoneTail = (v) => String(v || '').replace(/\D/g, '').slice(-8);
+  const inbound = '50497952893@c.us';   // UltraMsg JID-style sender
+  const order = '+504 9795-2893';        // the same customer on the order
+  // old last-8 collapsed them; the @c.us was stripped implicitly by /\D/g
+  assert.equal(phoneTail(inbound), phoneTail(order));
+  assert.equal(phoneTail(inbound), '97952893');
+  // new: convoKey strips the JID suffix, then keys by identity → the SAME one group
+  assert.equal(convoKey(inbound), '50497952893');
+  assert.equal(convoKey(order), '50497952893');
+  assert.equal(convoKey(inbound), convoKey(order), 'inbound and its order land in one thread');
+  // defensive: even a bare-8 JID resolves to the +504 identity, matching its bare-8 order (phoneTail parity)
+  assert.equal(convoKey('97952893@c.us'), convoKey('97952893'));
+  assert.equal(convoKey('97952893@c.us'), '50497952893');
+});
+
 test('CONTRACT: every straight current HN number groups exactly as the old last-8 did', () => {
   // for a real 8-digit HN number stored any of the three ways, the OLD last-8 and the NEW identity both collapse
   // the same set into one group — same grouping, no UI change (only the internal key string differs).

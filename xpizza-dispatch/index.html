@@ -4242,9 +4242,10 @@ function phoneTail(v) { return String(v || '').replace(/\D/g, '').slice(-8); }
 // same HN number land in ONE thread (the dual-read window), while a value that doesn't parse stays ungrouped,
 // keyed by its own digits and never suffix-merged. Mirrors the server's phone/intl.js (parity-tested).
 function convoKey(v) {
-  const p = intlParse(v);
+  const raw = String(v == null ? '' : v).replace(/@.*$/, '');   // strip a WhatsApp JID suffix (UltraMsg inbound '…@c.us')
+  const p = intlParse(raw);
   if (p) return p.identity;                               // qualified +CC… or a bare 8 (→ +504)
-  const digits = String(v == null ? '' : v).replace(/\D/g, '');
+  const digits = raw.replace(/\D/g, '');
   if (!digits) return null;                               // no phone digits → not a conversation (matches the old skip)
   const q = intlParse('+' + digits);                      // a no-'+' CCnational (legacy profile / WhatsApp inbound)
   if (q) return q.identity;
