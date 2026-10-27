@@ -254,3 +254,16 @@ test('Codex G6 r3 — a COMPLETE account leaves the sheet as «Listo» by any ex
   await q.click('[data-su="back"]'); await q.click('[data-su="back"]'); await q.click('[data-su="guest"]');
   assert.deepEqual(q.events, [['guest', {}]]); assert.equal(q.auth.calls.out, 1);
 });
+test('Codex G6 r4 — ONE finalization: «Listo» then the host\'s close ×2 ⇒ exactly one signed-in; a guest exit after a sign-in is final (no signed-in after the sign-out)', async () => {
+  const A = { ok: true, token: 'ct:u_a', isNew: false, name: 'Ana Pérez', completion: 'complete', profile: { name: 'Ana Pérez', email: 'ana@gmail.com' } };
+  const b = sheet({ verify: A }); b.su.open({ ctx: 'checkout' }); await settle();
+  await b.type('#su-phone', '99990000'); await b.click('[data-su="phone-go"]'); await b.code('111111'); await b.click('[data-su="verify"]');
+  await b.click('[data-su="finish"]'); b.su.close(); b.su.close(); await settle();
+  assert.deepEqual(b.events.map((e) => e[0]), ['signed-in', 'done'], '🔴 finalized once: a later close never re-finishes');
+  const g = sheet({ verify: A }); g.su.open({ ctx: 'checkout' }); await settle();
+  await g.type('#su-phone', '99990000'); await g.click('[data-su="phone-go"]'); await g.code('111111'); await g.click('[data-su="verify"]');
+  await g.click('[data-su="back"]'); await g.click('[data-su="back"]'); await g.click('[data-su="guest"]'); g.su.close(); await settle();
+  assert.deepEqual(g.events.map((e) => e[0]), ['guest'], '🔴 no signed-in after the guest exit (its sign-out stands)'); assert.equal(g.auth.calls.out, 1);
+  // a re-open is a fresh sheet again (the latch belongs to one opening)
+  g.su.open({ ctx: 'checkout' }); await settle(); assert.equal(g.txt('.sg .h1'), 'Entrá a tu cuenta');
+});

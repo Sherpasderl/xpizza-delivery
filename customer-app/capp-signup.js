@@ -165,11 +165,16 @@
       S.completion = 'complete';   // the server holds the profile + the Términos: from here every exit is «Listo»
       go('done');
     }
+    // Codex G6 r4: ONE finalization latch — once the sheet is closed or finalized, exit / finish / close / guest are no-ops; the flag is
+    // set BEFORE anything is emitted, and closing forgets the verified account so nothing can re-derive its completeness later
+    const finalized = () => !S.open || S.final;
     async function close(why) {
-      const wasSignedIn = !!S.uid, finished = S.pane === 'done';
-      S.open = false; S.gen++; tickStop(); render();
+      if (!S.open) return;
+      const wasSignedIn = !!S.uid, finished = S.pane === 'done', owed = S.completion === 'needed';
+      S.final = true; S.open = false; S.gen++; tickStop(); render();
+      S.uid = null; S.completion = null; S.vphone = null;
       // a sign-in left mid-completion (no Terms yet) is undone — never a member without the required consent
-      if (wasSignedIn && !finished && S.completion === 'needed') { try { await auth.signOut(); } catch (_) {} }
+      if (wasSignedIn && !finished && owed) { try { await auth.signOut(); } catch (_) {} }
       // «Prefiero seguir como invitado» after a sign-in (Back to the phone pane): the customer chose guest — that session is undone
       else if (wasSignedIn && why === 'guest') { try { await auth.signOut(); } catch (_) {} }
       emit(why === 'guest' ? 'guest' : why === 'done' ? 'done' : 'closed', {});
@@ -179,8 +184,8 @@
     // — ✕, the scrim, Back then ✕, a teardown — is «Listo»: the member is signed in and marked. Only an incomplete sign-in is undone
     const COMPLETE = new Set(['complete', 'off']);
     const isComplete = () => !!S.uid && COMPLETE.has(S.completion);
-    const exit = () => (isComplete() ? finish() : close('close'));
-    function finish() { const d = { uid: S.uid, name: S.name.trim(), phone: S.vphone || '+504' + digits(), email: S.email.trim() || null, isNew: !S.existing }; S.completion = 'complete'; emit('signed-in', d); close('done'); }
+    const exit = () => (finalized() ? undefined : isComplete() ? finish() : close('close'));
+    function finish() { if (finalized()) return; S.final = true; const d = { uid: S.uid, name: S.name.trim(), phone: S.vphone || '+504' + digits(), email: S.email.trim() || null, isNew: !S.existing }; S.completion = 'complete'; emit('signed-in', d); close('done'); }
 
     // ── controls ──
     host.addEventListener('click', (ev) => {
@@ -220,7 +225,7 @@
       // ctx: where it was opened from; prefill: the device marker's full E.164 («Entrá de nuevo»); memberOnly: no guest path (a gate)
       open({ ctx, prefill, memberOnly } = {}) {
         S.gen++; Object.assign(S, { open: true, pane: 'phone', stack: [], path: 'phone', memberOnly: memberOnly === true, phone: prefill ? fmtLocal(localOf(prefill)) : '', email: '', name: '', promos: false, terms: false,
-          google: null, uid: null, isNew: false, completion: null, busy: false, err: '', code: '', resendAt: 0, existing: false, vphone: null, ctx: ctx || null });
+          google: null, uid: null, isNew: false, completion: null, busy: false, err: '', code: '', resendAt: 0, existing: false, vphone: null, final: false, ctx: ctx || null });
         render();
         const g = S.gen;
         if (!S.cfg) api.config().then((c) => { if (c && c.ok) S.cfg = c; if (live(g) && S.pane === 'phone') render(); });   // the platform's Google / legal — never awaited by the paint

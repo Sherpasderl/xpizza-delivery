@@ -824,3 +824,12 @@ test('Codex G6 r3: a complete account that leaves the sheet by Back then ✕ is 
   const R = bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb2.loadSdk, signupFetch: signupServer(ANA).fetch } }); await flush(); await flush(); await flush();
   assert.equal(R.ui.state.member && R.ui.state.member.uid, 'u_ana', '🔴 the reload restores the completed account'); assert.equal(fb2.calls.out, 0, 'never signed out');
 });
+test('Codex G6 r4: a guest exit after a complete sign-in leaves NO mark and no member (its sign-out stands)', async () => {
+  const storage = memStorage(); const fb = fakeFirebase();
+  const S = bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } }); await flush(); await flush();
+  await toShellCheckout(S);
+  S.click('#app [data-act="signin"]'); await flush(); await sheetVerify(S);
+  const h = suHost(S); S.click(h.querySelector('[data-su="back"]')); await flush(); S.click(h.querySelector('[data-su="back"]')); await flush();
+  S.click(h.querySelector('[data-su="guest"]')); await flush(); await flush();
+  assert.equal(storage.getItem('capp:member_complete'), null, '🔴 never marked'); assert.equal(S.ui.state.member, null); assert.equal(fb.calls.out, 1, 'signed out');
+});

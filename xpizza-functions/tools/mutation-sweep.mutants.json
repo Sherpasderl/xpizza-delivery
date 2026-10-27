@@ -23907,8 +23907,8 @@
     "slice": "g6",
     "label": "closing mid-completion keeps the sign-in (a member without the Términos)",
     "file": "../customer-app/capp-signup.js",
-    "from": "if (wasSignedIn && !finished && S.completion === 'needed') { try { await auth.signOut(); } catch (_) {} }",
-    "to": "",
+    "from": "      if (wasSignedIn && !finished && owed) { try { await auth.signOut(); } catch (_) {} }\n",
+    "to": "      if (false) {}\n",
     "command": [
       "node",
       "--test",
@@ -24172,8 +24172,8 @@
     "slice": "g6",
     "label": "Codex G6 r3: a complete account's exit (Back then ✕, a teardown) is not «Listo» — no emit, no mark",
     "file": "../customer-app/capp-signup.js",
-    "from": "    const exit = () => (isComplete() ? finish() : close('close'));",
-    "to": "    const exit = () => (S.pane === 'done' ? finish() : close('close'));",
+    "from": "    const exit = () => (finalized() ? undefined : isComplete() ? finish() : close('close'));",
+    "to": "    const exit = () => (finalized() ? undefined : S.pane === 'done' ? finish() : close('close'));",
     "command": [
       "node",
       "--test",
@@ -24181,6 +24181,22 @@
     ],
     "kills_with": [
       "a complete account's exit = «Listo»"
+    ]
+  },
+  {
+    "id": "g6-19",
+    "slice": "g6",
+    "label": "Codex G6 r4: no finalization latch (a closed / finalized sheet can be finished again)",
+    "file": "../customer-app/capp-signup.js",
+    "from": "    const finalized = () => !S.open || S.final;\n    async function close(why) {\n      if (!S.open) return;\n      const wasSignedIn = !!S.uid, finished = S.pane === 'done', owed = S.completion === 'needed';\n      S.final = true; S.open = false; S.gen++; tickStop(); render();\n      S.uid = null; S.completion = null; S.vphone = null;\n",
+    "to": "    const finalized = () => false;\n    async function close(why) {\n      if (!S.open) return;\n      const wasSignedIn = !!S.uid, finished = S.pane === 'done', owed = S.completion === 'needed';\n      S.final = true; S.open = false; S.gen++; tickStop(); render();\n",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "finalized once: a later close never re-finishes"
     ]
   }
 ]
