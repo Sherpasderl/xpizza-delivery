@@ -101,7 +101,7 @@
     const live = (g) => S.open && g === S.gen;
 
     // ── the flow ──
-    function tickStart() { tickStop(); tick = T.setInterval(() => { if (!S.open || S.pane !== 'code') return tickStop(); const el = host.querySelector('[data-su-left]'); if (!el) return; if (Date.now() >= S.resendAt) render(); else { const l = Math.ceil((S.resendAt - Date.now()) / 1000); el.textContent = `¿No lo recibiste? Reenviar en 0:${l < 10 ? '0' : ''}${l}`; } }, 1000); }
+    function tickStart() { tickStop(); tick = T.setInterval(() => { if (!S.open || S.pane !== 'code') return tickStop(); const el = host.querySelector('[data-su-left]'); if (!el) return; if (Date.now() >= S.resendAt) render(); else { const l = Math.ceil((S.resendAt - Date.now()) / 1000); el.textContent = `Reenviar en 0:${l < 10 ? '0' : ''}${l}`; } }, 1000); }
     function tickStop() { if (tick !== null) { T.clearInterval(tick); tick = null; } }
     async function sendCode() {
       const g = S.gen; S.busy = true; S.code = ''; S.resendAt = Date.now() + 29000;
@@ -168,11 +168,13 @@
       emit(why === 'guest' ? 'guest' : why === 'done' ? 'done' : 'closed', {});
     }
 
+    function finish() { const d = { uid: S.uid, name: S.name.trim(), phone: '+504' + digits(), email: S.email.trim() || null, isNew: !S.existing }; S.completion = 'complete'; emit('signed-in', d); close('done'); }
+
     // ── controls ──
     host.addEventListener('click', (ev) => {
       const t = ev.target && ev.target.closest ? ev.target.closest('[data-su]') : null; if (!t || t.disabled || !S.open) return;
       const a = t.dataset.su;
-      if (a === 'close') return void close('close');
+      if (a === 'close') return void (S.pane === 'done' ? finish() : close('close'));   // the account is made: ✕ / the scrim on «Listo» = «Listo»
       if (a === 'guest') return void close('guest');
       if (a === 'back') { if (S.stack.length && !S.busy) { S.pane = S.stack.pop(); S.err = ''; if (S.pane === 'phone' && S.path === 'google' && !S.stack.length) S.path = 'phone'; render(); } return; }
       if (a === 'phone-go') return void sendCode();
@@ -182,7 +184,7 @@
       if (a === 'chip') { S.email = t.dataset.v; render(); return; }
       if (a === 'email-go') { if (EMAIL_RE.test(S.email.trim())) go('name'); return; }
       if (a === 'save') return void save();
-      if (a === 'finish') { const d = { uid: S.uid, name: S.name.trim(), phone: '+504' + digits(), email: S.email.trim() || null, isNew: !S.existing }; S.completion = 'complete'; emit('signed-in', d); close('done'); }
+      if (a === 'finish') finish();
     });
     host.addEventListener('input', (ev) => {
       const el = ev.target; if (!el || !S.open) return;
