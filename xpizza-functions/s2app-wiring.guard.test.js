@@ -11,7 +11,7 @@ const { execFileSync } = require('child_process');
 const { HUNKS, unapplyS2appIndex, BASE } = require('./tools/s2app-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const live = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');   // the NEWEST slice: nothing composes on top
+const live = require('./tools/area-inverse').unapplyAreaIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // colonia (area-inverse) composes on top: stripped first, INNERMOST
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // ── 1. index.js: the exact inverse, one same-line hunk ──

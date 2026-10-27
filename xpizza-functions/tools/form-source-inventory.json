@@ -2161,6 +2161,7 @@
     {
      "file": "xpizza-functions/area-wiring.guard.test.js",
      "inverses": [
+      "tools/area-charge-inputs-inverse.js",
       "tools/area-inverse.js"
      ]
     },
@@ -2268,6 +2269,7 @@
     {
      "file": "xpizza-functions/driver-ledger-wiring.guard.test.js",
      "inverses": [
+      "tools/area-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js",
@@ -2554,8 +2556,17 @@
      ]
     },
     {
+     "file": "xpizza-functions/s2app-wiring.guard.test.js",
+     "inverses": [
+      "tools/area-inverse.js",
+      "tools/s2app-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/s2tip-wiring.guard.test.js",
      "inverses": [
+      "tools/area-charge-inputs-inverse.js",
+      "tools/area-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js"
      ]
@@ -2563,6 +2574,7 @@
     {
      "file": "xpizza-functions/s3a-wiring.guard.test.js",
      "inverses": [
+      "tools/area-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
@@ -2574,6 +2586,7 @@
     {
      "file": "xpizza-functions/s3b-wiring.guard.test.js",
      "inverses": [
+      "tools/area-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3b-inverse.js",
@@ -2584,6 +2597,7 @@
     {
      "file": "xpizza-functions/s3c-wiring.guard.test.js",
      "inverses": [
+      "tools/area-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3c-inverse.js",
@@ -2617,6 +2631,7 @@
     {
      "file": "xpizza-functions/s5r-wiring.guard.test.js",
      "inverses": [
+      "tools/area-inverse.js",
       "tools/s2app-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s5r-inverse.js"
@@ -2847,7 +2862,6 @@
     "xpizza-functions/recon-close-fulfilled.test.js",
     "xpizza-functions/restaurant-config.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
-    "xpizza-functions/s2app-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",

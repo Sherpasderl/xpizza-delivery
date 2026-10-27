@@ -13,7 +13,7 @@ const MI = require('./tools/s2tip-module-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const show = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
-const live = require('./tools/s2app-inverse').unapplyS2appIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // S2-srv-app composes on top of this slice (stripped first)
+const live = require('./tools/s2app-inverse').unapplyS2appIndex(require('./tools/area-inverse').unapplyAreaIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')));   // S2-srv-app composes on top of this slice (stripped first)
 const baseIdx = show('index.js');
 
 // ── 1. index.js: the exact inverse, same-line hunks only ──
@@ -38,7 +38,8 @@ const changed = execFileSync('git', ['diff', '--diff-filter=M', '--name-only', B
   .filter((f) => f !== 'index.js' && /\.js$/.test(f) && !/\.test\.js$/.test(f) && !/^tools\//.test(f));
 assert.deepStrictEqual([...MI.FILES].sort(), [...changed].sort(), 'the module inverse covers EXACTLY the modules this slice modified (no more, no fewer)');
 for (const f of MI.FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+  // colonia (newest) composes on top of charge-inputs.js: its ONE address_area entry stripped first, INNERMOST (entry_mode stays)
+  const src = require('./tools/area-charge-inputs-inverse').unapplyAreaChargeInputsModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));
   const base = show(f);
   assert.notStrictEqual(src, base, `non-vacuity: ${f} carries S2-srv-tip hunks`);
   assert.strictEqual(MI.unapplyS2tipModule(f, src), base, `🔴 ${f} minus the S2-srv-tip hunks is not ${BASE}:${f}`);

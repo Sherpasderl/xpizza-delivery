@@ -45,6 +45,23 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
   ok(`inverse: unapplyAreaIndex / unapplyAreaModule → ${BASE} byte-for-byte (${HUNKS.length} same-line hunks over index.js + ${FILES.join(', ')}); inside / duplicated / missing / outside each detected`);
 }
 
+// ── (i-b) the charge-inputs line inverse (Codex colonia r1 P2-2): removes ONLY the address_area NON_CHARGE_FIELDS entry ──
+{
+  const CIV = require('./tools/area-charge-inputs-inverse');
+  const src = read(CIV.FILE); const base = baseOf(CIV.FILE);
+  assert.strictEqual(CIV.BASE, BASE, 'the same base as area-inverse');
+  assert.strictEqual(CIV.unapplyAreaChargeInputs(src), base, `🔴 ${CIV.FILE} minus the address_area entry is not ${BASE}:${CIV.FILE}`);
+  assert.notStrictEqual(src, base, `non-vacuity: ${CIV.FILE} carries the entry`);
+  assert.strictEqual(src.split('\n').length, base.split('\n').length + 1, 'exactly ONE line inserted by the slice');
+  assert.ok(/^  entry_mode: /m.test(CIV.unapplyAreaChargeInputs(src)), 'entry_mode (S3b) stays');
+  assert.throws(() => CIV.unapplyAreaChargeInputs(src.replace(CIV.LINE, CIV.LINE.replace('display only', 'display-only'))), /exactly once/, 'a byte INSIDE the entry');
+  assert.throws(() => CIV.unapplyAreaChargeInputs(src + CIV.LINE), /exactly once/, 'a DUPLICATED entry');
+  assert.throws(() => CIV.unapplyAreaChargeInputs(base), /exactly once/, 'a MISSING entry');
+  assert.notStrictEqual(CIV.unapplyAreaChargeInputs(src.replace("'use strict';", "'use strict'; ")), base, 'a byte OUTSIDE the entry fails the base pin');
+  assert.strictEqual(CIV.unapplyAreaChargeInputsModule('index.js', 'x'), 'x', 'any other module passes through');
+}
+ok(`charge-inputs line inverse: unapplyAreaChargeInputs → ${BASE}:catalog/charge-inputs.js byte-for-byte (one line, entry_mode kept); inside / duplicated / missing / outside each detected`);
+
 // ── (ii) structure ──
 {
   const idx = stripComments(read('index.js')); const cob = stripComments(read('create-order-build.js'));

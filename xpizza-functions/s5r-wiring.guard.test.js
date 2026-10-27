@@ -12,7 +12,7 @@ const { HUNKS, unapplyS5rIndex } = require('./tools/s5r-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const BASE = '5f2e1ef7';   // the HELD S3c tip this slice branches from
-const live = require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')));   // S2-srv-tip composes on top of this slice (stripped first, newest-first)
+const live = require('./tools/s2tip-inverse').unapplyS2tipIndex(require('./tools/s2app-inverse').unapplyS2appIndex(require('./tools/area-inverse').unapplyAreaIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))));   // S2-srv-tip composes on top of this slice (stripped first, newest-first)
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 assert.strictEqual(HUNKS.length, 1, 'one index.js hunk (the same-line re-export)');
