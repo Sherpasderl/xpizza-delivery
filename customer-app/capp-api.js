@@ -279,8 +279,14 @@
       if (PAID_STATES.has(st)) { const g = stashedGrant(id); const ok = resolvePlace(id, 'placed'); if (ok) clearPayFor(id); return { ...g, kind: 'placed', order_id: id, scheduled: st === 'scheduled_paid', tracking_token: (j && j.tracking_token) || null, scheduled_for: (j && j.scheduled_for) || null, ...settledOf(ok) }; }
       if (st === 'closed_refunded') { const ok = resolvePlace(id, 'released'); if (ok) clearPayFor(id); return { kind: 'refunded', order_id: id, refunded_total_cents: j && Number.isFinite(j.refunded_total_cents) ? j.refunded_total_cents : null, ...settledOf(ok) }; }
       if (st === 'cancelled' || st === 'failed') { const ok = resolvePlace(id, 'released'); return { kind: 'payment_failed', order_id: id, state: st, ...settledOf(ok) }; }   // (S2): the next placement mints
+      // S4 r1 §3.5 (row 9, approved): `scheduled_review` = PAID, the slot under manual review — terminal, never «confirming with the
+      // bank»; no re-send, no payment action (the record stays: paid means no new payment)
+      if (st === 'scheduled_review' && cfg.schedulingLive === true) return { kind: 'scheduled_review', order_id: id };
       return { kind: 'confirming', order_id: id, state: CONFIRMING_STATES.has(st) ? st : 'pending' };   // creds kept, no payment offer
     }
+    // S4: a scheduled placement's slot — the server's answer, else (an idempotent 200 carries none, r1 §3.4) the body that was sent
+    const scheduledOf = (j, body) => (cfg.schedulingLive === true && (j.scheduled === true || Number.isFinite(body && body.scheduled_for))
+      ? { scheduled: true, scheduled_for: Number.isFinite(j.scheduled_for) ? j.scheduled_for : body.scheduled_for } : {});
     const recoverySheet = (id) => ({ kind: 'existing_order', order_id: id, reference: ref4(id) });   // no mint, no payment action
     // S2b r1 P1-1 / P2-5: a cancel return the server still calls pending (or one without usable creds) LOCKS the order — kept on
     // its record (`pay_pending`), so a dismissal or a reload never re-opens payment: only the poll and the pending held state
@@ -442,6 +448,9 @@
       }
       let expected = p.expectedNetCents;
       let healed = false; let silentRetried = false;
+      // S4 r1 §3.4 (under schedulingLive): a retained identity re-sends the EXACT body it first sent (`sent_body`) — never rebuilt from
+      // the current flow (an edited slot never rides a possibly-landed order); the accepted-price resend is the one refresh
+      let priorSends = 0, fresh = false;
       for (let guard = 0; guard < 4; guard++) {
         if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded' };   // r2 P2-3: a torn-down page never sends
         // Codex guest r1 #1 / #5: immediately before EVERY dispatch — the first and every resend (a price acceptance, a healed id) —
@@ -451,6 +460,7 @@
         let rec;
         try {
           rec = readPlace() || mintPlace(method, p);
+          priorSends = Number(rec.dispatched) || 0;   // S4: a retained identity (already dispatched by an earlier attempt)
           // Codex amendment r1 P2: the ticket ↔ order-id binding BEFORE anything is recorded for this identity (the freeze, confirmSend) —
           // a refused attempt leaves the record un-dispatched, so the re-verify binds to THIS id and the next place() sends it
           { const g = guestGate(p, { ticket: true, id: rec.order_id }); if (g) return g; }
@@ -473,7 +483,11 @@
           rec = confirmSend(rec.order_id, method, rec.issued || (rec.card && method !== 'online') ? {} : { ...(rec.card ? {} : { method }), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(expected), totals: p.totals || rec.totals || null });
         } catch (e) { const pe = placeErr(e, rec && rec.order_id); return pe || (rec ? resolveExisting(rec.order_id) : { kind: 'error', error: 'placement_lost' }); }
         const id = rec.order_id;
-        const body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
+        let body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
+        if (cfg.schedulingLive === true) {
+          if (!fresh && priorSends > 0 && typeof rec.sent_body === 'string') { try { body = JSON.parse(rec.sent_body); } catch (_) { /* unreadable ⇒ the rebuilt body */ } }
+          else { try { patchPlace(id, { sent_body: JSON.stringify(body) }); } catch (_) {} }
+        }
         if (cfg.guestCardOnly === true && !memberOf() && p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;   // §4 (consumed at placement by the server)
         cq.send(body, p.sig, expected);
         const r = method === 'cash' ? await dispatchOrder(p, E.createOrder, body) : await sendCard(id, body, p);
@@ -488,7 +502,7 @@
         if (method === 'online' && r.status === 200) return cardIssued(id, body, j);   // settles only once the creds are stored
         if (method === 'online') settle(id);                                              // a cash answer never settles a charge
         if (method === 'cash') {
-          if (r.status === 200) { const ok = resolvePlace(id, 'placed'); return { ...grantOf(j), kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent, ...settledOf(ok) }; }
+          if (r.status === 200) { const ok = resolvePlace(id, 'placed'); return { ...grantOf(j), kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent, ...scheduledOf(j, body), ...settledOf(ok) }; }
           if (r.status === 409 && j.error === 'order_conflict') {
             if (healed) return { kind: 'error', order_id: id, error: 'order_conflict' };
             healed = true; clearPlace(id); continue;   // (S1): proven terminal-safe — ONE resend on a fresh id
@@ -507,6 +521,7 @@
           if (typeof rj.expectedNetCents === 'number') expected = rj.expectedNetCents;   // the body now stands behind THIS number
           if (typeof p.onExpected === 'function') { try { p.onExpected(expected); } catch (_) {} }   // the UI shows the ceiling it sends
           if (rj.silent) silentRetried = true;
+          fresh = true;   // S4: the accepted-price resend refreshes sent_body at THAT dispatch
           continue;   // the SAME identity (mintNewOrderId is reward-only, never in S2)
         }
         if (method === 'online' && r.status === 500) return { kind: 'payment_not_completed', order_id: id };   // 'Payment not configured'

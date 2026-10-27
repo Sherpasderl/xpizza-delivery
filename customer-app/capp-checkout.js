@@ -29,6 +29,8 @@
   // G0 (Q2, finding #11): the closed store's CTA — the prototype's own ASAP-card copy (checkoutHtml :1838)
   const COPY = {
     closed: 'No disponible · cerrado',
+    pickSlot: 'Elegí un horario',             // S4 (P:1814)
+    noSlots: 'Sin horarios disponibles',      // S4 (P:1814)
     pickupOnly: 'Quitá los platos solo para Pickup',
     outZone: 'Fuera de la zona de delivery',
     pin: 'Ajustá el pin a tu dirección',
@@ -149,7 +151,10 @@
   function missingStep(f, ctx) {
     const c = ctx || {};
     const del = f.mode === 'delivery';
-    if (c.open === false || c.closedRefused === true) return COPY.closed;
+    // S4 (PLAN-capp-S4 r1 §3.2): the closure gate is ASAP-only; a scheduled order (f.time — set only by the picker, behind the runtime
+    // schedulingLive) needs a slot instead (P:1814). No time choice ⇒ exactly today's gate
+    if (f.time !== 'schedule' && (c.open === false || c.closedRefused === true)) return COPY.closed;
+    if (f.time === 'schedule') { if (!c.anySlot) return COPY.noSlots; if (!Number.isFinite(f.slot)) return COPY.pickSlot; }
     if (del && (c.pickupOnlyCount || 0) > 0) return COPY.pickupOnly;
     if (del && c.outZone === true) return COPY.outZone;
     if (del && !(f.pin && f.pin.confirmed === true && Number.isFinite(f.pin.lat) && Number.isFinite(f.pin.lng))) return COPY.pin;
@@ -207,8 +212,10 @@
     if (del) { b.lat = f.pin.lat; b.lng = f.pin.lng; b.pin_confirmed = true; b.address_details = (f.details || '').trim(); const a = areaOf(f); if (a) b.address_area = a; }
     const em = validEmail(f.email); if (em) b.customer_email = em;
     const t = tipCentsOf(f); if (t > 0) b.tip_cents = t;
-    if (b.payment_method === 'cash') { const ct = Number(f.tendered); if (Number.isFinite(ct) && ct > 0) b.cash_tendered = ct; }
+    if (b.payment_method === 'cash') { const ct = Number(f.tendered); if (Number.isFinite(ct) && ct > 0) b.cash_tendered = ct; if (ctx.appCash === true) b.entry_mode = ENTRY_MODE; }   // S4 r2 §7: the app contract on cash, under schedulingLive
     else b.entry_mode = ENTRY_MODE;
+    // S4: the slot START (epoch ms) only for a scheduled order — never in the quote body, never in the cart signature
+    if (f.time === 'schedule' && Number.isFinite(f.slot)) b.scheduled_for = f.slot;
     return b;
   }
 
