@@ -867,6 +867,7 @@
       onOutcome(out);
     }
     function onOutcome(out, attempt) {
+      emit('outcome', out);   // S7a-2 (Codex s7a2 r1 #4): every outcome reaches the host (a return handoff settles on a LATER terminal one)
       const k = out && out.kind;
       if (k === 'redirect') {
         // a RESUMED checkout shows the STORED economics (never the current quote), then leaves for the stored URL

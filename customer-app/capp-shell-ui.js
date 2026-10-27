@@ -52,7 +52,7 @@
     let dead = false, rebuild = true;
 
     const S = { tab: 'home', cuisine: '', filters: new Set(), q: '', recent: (readJ(RECENT_KEY) || []).filter((x) => typeof x === 'string').slice(0, RECENT_MAX),
-      held: null, heldErr: false, store: null, layer: null, locDenied: false, loc: null, neutral: null, ret: null };
+      held: null, heldErr: false, store: null, layer: null, locDenied: false, loc: null, neutral: null, ret: null, retAssoc: null };
     // ── the guest location (r1 §2.3, owned by the SHELL, persisted per device): { lat, lng, confirmed, source: 'gps'|'pin', v } ──
     { const l = readJ(LOC_KEY); if (l && Number.isFinite(l.lat) && Number.isFinite(l.lng) && (l.source === 'gps' || l.source === 'pin')) S.loc = { lat: l.lat, lng: l.lng, confirmed: l.confirmed === true, source: l.source, v: Number(l.v) || 1 }; }
     function setLoc(lat, lng, source) {
@@ -136,13 +136,15 @@
       const ui = CappUI.mount(doc, { ...uo, search: ret ? ret.search : '', apiOpts, orderable, beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
-        onEvent: (name, detail) => { if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
+        onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
       S.store = { rid: entry.rid, ui, entry, body: e.body, fp: null, adopt: null };
       watchMenu(S.store);
       const snap = carried || readJ(cfg.cartKey); if (snap) ui.restore(snap);   // an adoption carries the IN-MEMORY cart (Codex s7a2 r1 #1)
       if (entry.dish) ui.openDetail(entry.dish);
       // the return's AUTHORITATIVE outcome settles the stored handoff (S7a-1 r3 §2 / r3.1 N3: never on anything else)
-      if (ret && ui.returning && typeof ui.returning.then === 'function') ui.returning.then((out) => { try { CappShell.settleHandoff(storage, out, ret.handoff); } catch (_) {} }, () => {});
+      // …and the association is KEPT: a LATER terminal outcome of this store (a status read, a recovery) settles it too (Codex s7a2 r1 #4)
+      if (ret) S.retAssoc = { rid: entry.rid, handoff: ret.handoff };
+      if (ret && ui.returning && typeof ui.returning.then === 'function') ui.returning.then((out) => settleRet(entry.rid, out), () => {});
       pollAvail(); availTimer = T.setInterval(pollAvail, AVAIL_EVERY_MS);
       return true;
     }
@@ -175,6 +177,11 @@
       if (!mountStore(st.entry, body, carried)) return true;
       S.store.ui.openCart();
       return false;
+    }
+    function settleRet(rid, out) {
+      const a = S.retAssoc; if (!a || a.rid !== rid) return;
+      let done = false; try { done = CappShell.settleHandoff(storage, out, a.handoff); } catch (_) { done = false; }
+      if (done) S.retAssoc = null;
     }
     function unmountStore() {
       const st = S.store; if (!st) return;

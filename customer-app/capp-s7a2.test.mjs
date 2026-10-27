@@ -230,7 +230,7 @@ test('Buscar: «No encontramos» ONLY when every menu answered; a partial shows 
 // ── the shell, through the REAL shell.html ──
 function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }); return { p, resolve }; }
 const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
-function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [] } = {}) {
+function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://app.test/' });
@@ -248,7 +248,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   };
   const clock = now || { t: T0 };
   const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), fetchDirectory, fetchEnvelope, readAvailability: async () => [], runtime: RUNTIME, storage: storage || memStorage(), now: () => clock.t,
-    auth: { state: () => auth }, geolocation, search, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: require('./capp-api.js'), apiOpts: { fetch: (u, i) => { fetchLog.push(String(u)); return new Promise(() => {}); } } } });
+    auth: { state: () => auth }, geolocation, search, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: require('./capp-api.js'), apiOpts: { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); }, now: () => clock.t, sleep: async () => {} } } });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const release = (rid, body) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: body || J(PROV[rid].envelope), etag: body ? '"changed"' : PROV[rid].etag }); };
@@ -480,4 +480,20 @@ test('Codex s7a2 r1 #3: a STALE menu (verified > 60 s ago) never authorizes orde
   assert.equal(ui.orderable(), false, '🔴 a stale body is browse-only');
   S.release('x_pizza'); await flush(); await flush();
   assert.equal(ui.orderable(), true, 'the fresh body turns it live in place');
+});
+
+test('Codex s7a2 r1 #4: a LATER terminal outcome settles the return handoff — pending return (kept) → «Ver estado del pedido» → paid ⇒ capp:return removed', async () => {
+  const t0 = T0, polls = [{ ok: true, state: 'pending' }, { ok: true, state: 'paid' }];
+  const storage = memStorage({ ...frozenCart(),
+    'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1', order: null, ts: t0 }),
+    'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, dispatched: 1, cart_gen: 'g_1', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) });
+  const apiFetch = async (u) => { const j = u.startsWith('/x/s') ? (polls.length > 1 ? polls.shift() : polls[0]) : { ok: false }; return { status: 200, ok: true, json: async () => j }; };
+  const S = bootShell({ storage, search: `?pay=cancel&order=${ORDER}&t=pt_9`, apiFetch });
+  await flush(); await flush();
+  assert.equal(S.ui.store() && S.ui.store().rid, 'x_pizza', 'premise: the owner store handles its return');
+  assert.ok(storage.getItem('capp:return'), 'premise: a pending outcome keeps the handoff');
+  S.click('#layer [data-act="lclose"]'); await flush();
+  S.ui.store().ui.state.screen = 'store'; S.ui.store().ui.render(); S.ui.store().ui.openCart(); await flush();
+  S.click('#layer [data-act="frozen-status"]'); await flush(); await flush();
+  assert.equal(storage.getItem('capp:return'), null, '🔴 the later terminal outcome settled the handoff');
 });
