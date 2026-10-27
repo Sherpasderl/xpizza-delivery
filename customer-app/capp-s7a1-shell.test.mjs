@@ -79,7 +79,10 @@ test('Codex r2 New 3: EVERY shell exit asks the mount — tab / the shell\'s bac
 });
 
 // ── the single-sentinel history (advisor ruling, Codex r3 #4), against jsdom's REAL asynchronous session history ──
-const popTick = () => new Promise((r) => setTimeout(r, 10));
+// jsdom traverses history ASYNCHRONOUSLY (a queued task), so a fixed sleep raced it under load (a 10 ms tick failed ~1 in 3 runs
+// under a parallel suite). Wait for the popstate itself — the shell's listener was added first, so it has run when this resolves —
+// capped at 1 s for the steps where NO traversal happens (a Forward with nothing to reach)
+const popTick = (w) => new Promise((r) => { const cap = setTimeout(r, 1000); w.addEventListener('popstate', () => { clearTimeout(cap); setTimeout(r, 0); }, { once: true }); });
 function jsdomNav() {
   const w = new JSDOM('<!doctype html><title>x</title>', { url: 'https://app.test/' }).window;
   const shown = [], left = [];
@@ -90,17 +93,17 @@ test('Codex r3 #4: one owned entry — branching history (Buscar → store A →
   const J0 = jsdomNav(); const { w, nav } = J0;
   const len0 = w.history.length;
   nav.go({ name: 'search' }, { q: 'pizza' }); nav.go({ name: 'store', rid: 'rid_a' }, { q: 'pizza' }); nav.adapterFor(nav.current()).subscribe((i) => 'pass');
-  w.history.back(); await popTick();
+  w.history.back(); await popTick(w);
   assert.equal(nav.current().name, 'search', 'Back ⇒ Buscar');
   nav.go({ name: 'store', rid: 'rid_b' }, { q: 'pizza' }); nav.adapterFor(nav.current()).subscribe(() => 'pass');
-  w.history.back(); await popTick();
+  w.history.back(); await popTick(w);
   assert.deepEqual([nav.current().name, J0.shown.at(-1).x.restored], ['search', { q: 'pizza' }], 'Back from the second store ⇒ Buscar with its query');
   const shownN = J0.shown.length;
-  w.history.forward(); await popTick();
+  w.history.forward(); await popTick(w);
   assert.deepEqual([nav.current().name, nav.depth(), J0.shown.length, w.history.length, w.history.state && w.history.state.capp_shell], ['search', 2, shownN, len0, 1], '🔴 a Forward has nothing to reach: Buscar stays, one owned entry');
-  w.history.back(); await popTick();
+  w.history.back(); await popTick(w);
   assert.equal(nav.current().name, 'home', 'Back ⇒ Inicio');
-  w.history.back(); await popTick();
+  w.history.back(); await popTick(w);
   assert.equal(w.history.state, null, 'Inicio at the root: the sentinel is not re-pushed — the app is left');
 });
 
@@ -109,29 +112,29 @@ test('Codex r3 #4: blocked Backs keep ONE entry (no growth, no drift); a remount
   nav.go({ name: 'search' }); nav.go({ name: 'store', rid: 'rid_a' });
   let verdict = 'blocked'; nav.adapterFor(nav.current()).subscribe((i) => (i === 'leave' ? 'pass' : verdict));
   const len = w.history.length;
-  for (let i = 0; i < 3; i++) { w.history.back(); await popTick(); }
+  for (let i = 0; i < 3; i++) { w.history.back(); await popTick(w); }
   assert.deepEqual([nav.current().name, w.history.length, w.history.state && w.history.state.capp_shell, J0.left.length], ['store', len, 1, 0], '🔴 blocked Backs: the store stays, the history does not grow or drift');
-  verdict = 'pass'; w.history.back(); await popTick();
+  verdict = 'pass'; w.history.back(); await popTick(w);
   assert.equal(nav.current().name, 'search');
   nav.destroy();
   const nav2 = J0.make();   // a remount (the shell rebuilt) standing on the preserved sentinel
   assert.equal(w.history.length, len, '🔴 a remount on the sentinel does not push again');
   nav2.go({ name: 'search' });
-  w.history.back(); await popTick();
+  w.history.back(); await popTick(w);
   assert.deepEqual([nav2.current().name, w.history.state && w.history.state.capp_shell], ['home', 1], '🔴 the remount\'s first Back is ONE in-app back');
 });
 
 test('Codex r4 #1: after a root exit releases the sentinel, the next in-app navigation RE-ARMS it — Back reaches the mount again; the root exit itself is kept', async () => {
   const J0 = jsdomNav(); const { w, nav } = J0;
-  w.history.back(); await popTick();
+  w.history.back(); await popTick(w);
   assert.equal(w.history.state, null, 'premise: the root exit released the sentinel');
   nav.go({ name: 'search' });
   assert.equal(w.history.state && w.history.state.capp_shell, 1, '🔴 in-app navigation re-arms the sentinel');
   nav.go({ name: 'store', rid: 'rid_a' }); const asked = []; nav.adapterFor(nav.current()).subscribe((i) => { asked.push(i || 'back'); return i === 'leave' ? 'pass' : 'consumed'; });
-  w.history.back(); await popTick();
+  w.history.back(); await popTick(w);
   assert.deepEqual([asked, nav.current().name, w.history.state && w.history.state.capp_shell], [['back'], 'store', 1], '🔴 the device Back reaches the mount');
   const len = w.history.length;
-  w.history.forward(); await popTick();
+  w.history.forward(); await popTick(w);
   assert.equal(w.history.length, len, 'one owned entry: Forward has nothing to reach');
 });
 
