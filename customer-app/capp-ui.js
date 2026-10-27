@@ -522,19 +522,26 @@
     // S2b-geo: ONE reverse-geocode per CONFIRMED pin version (GPS fix, «Listo», a saved address, a restored return); an unconfirmed
     // fallback pin is never geocoded. The reply applies only to the version it was asked for (C.applyGeocode); a failure settles
     // the version with nothing. No Maps key ⇒ no geocode (today's row).
+    // The reply NEVER re-renders (r1 P1/P3): it patches the address text nodes in place, so an open pin editor keeps its live map,
+    // centre and draft, the «Realizando» countdown keeps running and «Enviando»'s completion check stays.
     let geoAsked = null;   // { f, v }: the flow + version already asked
     function geocodePin() {
       const f = S.flow;
       if (dead || !f || f.mode !== 'delivery' || !(f.pin && f.pin.confirmed === true) || !finitePin(f.pin)) return;
-      const v = f.pinV;
+      const v = f.pinV, at = { lat: f.pin.lat, lng: f.pin.lng };   // r1 P2: the coordinates of THIS version, captured with it
       if ((f.geo && f.geo.v === v) || (geoAsked && geoAsked.f === f && geoAsked.v === v)) return;
       const p = loadMaps(); if (!p) return;
       geoAsked = { f, v };
-      const land = (results) => { if (dead || !C.applyGeocode(f, v, results) || S.flow !== f) return; if (S.screen === 'checkout' || S.screen === 'sending') render(); };   // an open «Realizando» card is not redrawn (its countdown would restart)
+      const land = (results) => { if (dead || !C.applyGeocode(f, v, results) || S.flow !== f) return; paintAddr(); };
       p.then((gm) => {
-        if (dead) return;
-        try { new gm.Geocoder().geocode({ location: { lat: f.pin.lat, lng: f.pin.lng } }, (results, status) => land(status === 'OK' ? results : [])); } catch (_) { land([]); }
+        if (dead || f.pinV !== v) return;   // r1 P2: the pin moved while Maps loaded — obsolete, never sent (the new version asks for itself)
+        try { new gm.Geocoder().geocode({ location: at }, (results, status) => land(status === 'OK' ? results : [])); } catch (_) { land([]); }
       }).catch(() => land([]));
+    }
+    // the address text nodes ([data-addr]: the checkout row's bold, «Realizando»'s store sub, «Enviando»'s row bold), in place
+    function paintAddr() {
+      const line = C.addrLine(S.flow); if (!line) return;   // none: the rendered text already is today's
+      for (const el of app.querySelectorAll('[data-addr]')) el.textContent = line;
     }
     // the device location (unconfirmed until «Listo»); denied / unavailable ⇒ the drawn «Ubicación desactivada» row
     const geoApi = () => (opts.geolocation !== undefined ? opts.geolocation : (doc.defaultView && doc.defaultView.navigator && doc.defaultView.navigator.geolocation) || null);
@@ -575,7 +582,7 @@
       // a guest's address line (S2b-geo, MOCKUP-capp-S2b-geo-address.html A1 / b / b2): the confirmed pin's reverse-geocode; c (none,
       // pending, superseded) keeps today's copy byte for byte
       const geoLine = C.addrLine(f);
-      const addrRow = `<button class="urow" data-act="pin">${IC.pin}<span class="t"><b>${geoLine ? esc(geoLine) : geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
+      const addrRow = `<button class="urow" data-act="pin">${IC.pin}<span class="t"><b data-addr>${geoLine ? esc(geoLine) : geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
       const detailsFld = `<div class="fld"><label for="f-details">Detalles adicionales <span class="req">*</span></label><input id="f-details" data-field="details" value="${esc(f.details)}" placeholder="Colonia, portón, piso, referencia…" autocomplete="off"></div>`;
       const detailsRow = m && !S.editDetails && (f.details || '').trim().length >= 3 ? `<div class="urow">${IC.home}<span class="t"><b>${esc(f.details)}</b><span>Detalles adicionales</span></span><button class="act" data-act="editdetails">Cambiar</button></div>` : '';
       const entrega = `<section class="fsec" aria-label="Entrega"><h2>Entrega</h2>
@@ -642,7 +649,8 @@
     let placingT = null, placingI = null, beatT = null;
     function placingStop() { if (placingI !== null) T_.clearInterval(placingI); if (placingT !== null) T_.clearTimeout(placingT); placingI = placingT = null; }
     const etaRange = (mode) => { const e = mode === 'delivery' ? cfg.etaDel : cfg.etaPick; if (!e) return null; const r5 = (x) => Math.round(x / 5) * 5; const n = clock().min; return { k: mode === 'delivery' ? 'Llega' : 'Listo para recoger', v: fmtMin(r5(n + e[0])) + ' – ' + fmtMin(r5(n + e[1])) }; };
-    const prow = (ic, b, s) => `<div class="prow">${ic}<span class="t"><b>${b}</b>${s ? `<span>${s}</span>` : ''}</span></div>`;
+    // mark: 'b' | 's' — the bold / the sub is the delivery address line ([data-addr], patched in place by paintAddr)
+    const prow = (ic, b, s, mark) => `<div class="prow">${ic}<span class="t"><b${mark === 'b' ? ' data-addr' : ''}>${b}</b>${s ? `<span${mark === 's' ? ' data-addr' : ''}>${s}</span>` : ''}</span></div>`;
     // the delivery address line: the confirmed pin's geo line (S2b-geo frames a / b2); else today's — the customer's own
     // «Detalles adicionales», else «Tu ubicación»
     const addrText = () => esc(C.addrLine(S.flow) || (S.flow.details || '').trim() || 'Tu ubicación');
@@ -650,7 +658,7 @@
       const f = S.flow, del = f.mode === 'delivery', T = totalsNow(), e = etaRange(f.mode), lines = displayLines();
       return `<div class="scrim"></div><div class="sheet" role="dialog" aria-label="Realizando pedido"><div class="grab"></div><div class="placing"><h2>Realizando pedido…</h2>
     ${e ? prow(IC.clock, esc(e.k) + ' ' + esc(e.v), del ? 'Delivery' : 'Pickup') : ''}
-    ${prow(IC.store, storeLine(), del ? addrText() : esc(cfg.addr || ''))}
+    ${prow(IC.store, storeLine(), del ? addrText() : esc(cfg.addr || ''), del ? 's' : '')}
     ${prow(IC.bag, esc(unitOf(cart.count())), esc(lines.map((d) => d.n + '× ' + d.item.n).join(', ')))}
     ${prow(f.pay === 'online' ? IC.card : IC.cash, f.pay === 'online' ? 'Tarjeta · PixelPay' : 'Efectivo ' + (del ? 'al entregar' : 'al recoger'), 'Total ' + moneyC(T.total) + (T.tip ? ' · incluye propina ' + moneyC(T.tip) : ''))}
     <div class="acts"><button class="primary okbtn" data-act="placing-go"><i class="fill" aria-hidden="true"></i><span>Se ve bien (<span class="cd">0:02</span>)</span></button><button class="btn2 wide" data-act="placing-back">Volver</button></div></div></div>`;
@@ -670,7 +678,7 @@
       const st = S.sendTotals || { total: null, tip: 0 };
       return `<div class="sending" aria-live="polite"><div class="shero">${RIDER_LIVE}</div>
     <div class="sndcard"><div class="shd"><h2>Enviando tu pedido…</h2><span class="sspin" id="sspin"><i class="ring" aria-hidden="true"></i></span></div>
-      ${prow(IC.pin, del ? addrText() : 'Pickup · ' + storeLine(), del ? 'Entrega' : esc(cfg.addr || ''))}
+      ${prow(IC.pin, del ? addrText() : 'Pickup · ' + storeLine(), del ? 'Entrega' : esc(cfg.addr || ''), del ? 'b' : '')}
       <div class="prow">${logoChip('lg')}<span class="t"><b>${storeLine()}</b><span>${esc(lines.map((d) => d.n + '× ' + d.item.n).join(', '))}</span></span></div>
       ${prow(f.pay === 'online' ? IC.card : IC.cash, (f.pay === 'online' ? 'Tarjeta · PixelPay' : 'Efectivo ' + (del ? 'al entregar' : 'al recoger')) + (st.total !== null ? ' · ' + moneyC(st.total) : ''), st.tip ? 'Incluye propina ' + moneyC(st.tip) : 'Pago')}
       <p class="shint">${esc(S.sendHint || 'Esto toma unos segundos')}</p></div></div>`;

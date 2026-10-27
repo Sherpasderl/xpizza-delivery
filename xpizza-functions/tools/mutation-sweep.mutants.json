@@ -21333,7 +21333,7 @@
       "../customer-app/capp-ui.test.mjs"
     ],
     "kills_with": [
-      "🔴 A1"
+      "A1 survives a full re-render"
     ]
   },
   {
@@ -21382,6 +21382,72 @@
     ],
     "kills_with": [
       "a failure settles the version: no retry"
+    ]
+  },
+  {
+    "id": "s2b-g14",
+    "slice": "s2b",
+    "label": "a geocode reply re-renders the screen (rebuilds an open pin editor / the completion check)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "!C.applyGeocode(f, v, results) || S.flow !== f) return; paintAddr(); };",
+    "to": "!C.applyGeocode(f, v, results) || S.flow !== f) return; render(); };",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the live editor map survives the reply",
+      "the check stays",
+      "the «Realizando» card is not rebuilt"
+    ]
+  },
+  {
+    "id": "s2b-g15",
+    "slice": "s2b",
+    "label": "a request made obsolete while Maps loads is still sent",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (dead || f.pinV !== v) return;   // r1 P2",
+    "to": "if (dead) return;   // r1 P2",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "one geocode, for B"
+    ]
+  },
+  {
+    "id": "s2b-g17",
+    "slice": "s2b",
+    "label": "«Enviando»'s address row is not patched in place (no mark)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "del ? 'Entrega' : esc(cfg.addr || ''), del ? 'b' : '')}",
+    "to": "del ? 'Entrega' : esc(cfg.addr || ''))}",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "«Enviando»: patched in place"
+    ]
+  },
+  {
+    "id": "s2b-g18",
+    "slice": "s2b",
+    "label": "«Realizando»'s address sub is not patched in place (no mark)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "del ? addrText() : esc(cfg.addr || ''), del ? 's' : '')}",
+    "to": "del ? addrText() : esc(cfg.addr || ''))}",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "«Realizando»: patched in place"
     ]
   },
   {

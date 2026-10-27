@@ -25,7 +25,7 @@
  "addr-placing": [
   "identical: «Realizando pedido…», «Llega 7:35 p.m. – 7:50 p.m. · Delivery», «X. Pizza · Los Próceres» + sub «Calle 10, Col. Jardines del Valle», «3 pizzas …», «Efectivo al entregar · Total L 1,094 · incluye propina L 20», «Se ve bien (0:02)», «Volver»",
   "a11y (S1 FOCUS note, unchanged from S2b): focus ring on «Se ve bien» (the layer focuses its first control)",
-  "build note: an open «Realizando» card is not redrawn if a geocode reply lands during its 2 s (its countdown would restart); «Enviando» and the checkout re-render"
+  "build note (Codex r1 P1/P3): a geocode reply never re-renders — it patches the [data-addr] text in place, so an open pin editor, the «Realizando» countdown and «Enviando»'s completion check all survive"
  ],
  "addr-sending": [
   "identical: promo background, live rider, «Enviando tu pedido…» + spinner, bold «Calle 10, Col. Jardines del Valle» + sub «Entrega», the logo row, «Efectivo al entregar · L 1,094», «Incluye propina L 20», «Esto toma unos segundos»",

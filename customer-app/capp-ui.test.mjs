@@ -1259,6 +1259,7 @@ test('S2b-geo a GPS fix (a CONFIRMED pin) ⇒ ONE geocode at the device fix; A1 
   assert.equal(bold(b), 'Calle 10, Col. Jardines del Valle', '🔴 A1');
   assert.equal(sub(b), 'Ajustá el pin a tu dirección', 'the sub (the pin-step state) is unchanged');
   b.ui.render(); await settle(); b.ui.render(); await settle();
+  assert.equal(bold(b), 'Calle 10, Col. Jardines del Valle', '🔴 A1 survives a full re-render (the row template reads the geo line)');
   assert.equal(b.gc.length, 1, '🔴 one geocode per confirmed pin version');
 });
 
@@ -1341,4 +1342,54 @@ test('S2b-geo pickup: no geocode, no line; the body never carries address_area (
   await b.click('[data-act="type"][data-val="pickup"]'); await settle();
   assert.equal(b.gc.length, 1, 'pickup asks nothing');
   assert.ok(!b.q('.urows .urow[data-act="pin"]'), 'no address row on pickup');
+});
+
+// ── S2b-geo r1 (Codex): a geocode reply never re-renders — it patches the address text in place ──
+test('S2b-geo r1 P1: A\'s reply landing while the pin editor is open (panned to B, no idle yet) never rebuilds the editor — «Listo» confirms B', async () => {
+  const b = bootGeo(); await toCheckout(b); await settle();
+  assert.equal(b.gc.length, 1, 'premise: A\'s geocode is pending');
+  await b.click('[data-act="pin"]'); await settle();
+  const m = b.maps().filter((x) => x.el.dataset.gmap === 'pin').at(-1);
+  m.pan(15.54, -88.06);
+  b.gc[0].reply(GEO.full); await settle();
+  assert.ok(m.el.isConnected, '🔴 the live editor map survives the reply');
+  assert.equal(b.maps().filter((x) => x.el.dataset.gmap === 'pin').length, 1, 'no second editor map was built');
+  await b.click('[data-act="pin-done"]'); await settle();
+  assert.deepEqual(J(b.ui.state.flow.pin), { lat: 15.54, lng: -88.06, confirmed: true }, '🔴 «Listo» confirms B, never the old A');
+  assert.deepEqual(b.gc.map((r) => r.at), [{ lat: 15.52, lng: -88.04 }, { lat: 15.54, lng: -88.06 }], 'B asks for itself');
+  b.gc[1].reply(GEO.area); await settle();
+  assert.equal(bold(b), 'Col. Jardines del Valle');
+});
+
+test('S2b-geo r1 P2: the coordinates are captured WITH the version; work made obsolete while Maps loads is never sent — editor opened, GPS fix A, «Listo» on B, then Maps loads ⇒ exactly ONE geocode, for B', async () => {
+  let fix = null;
+  const gc = [];
+  const b = bootCo({ config: { mapsKey: 'k_test', loc: { lat: 15.5, lng: -88.0 } }, geo: { getCurrentPosition: (ok) => { fix = ok; } } });
+  await toCheckout(b); await settle();
+  await b.click('[data-act="pin"]'); await settle();   // the editor's draft: the restaurant fallback (B)
+  fix({ coords: { latitude: 15.52, longitude: -88.04 } }); await settle();   // GPS fix A: a confirmed pin, its geocode waits for Maps
+  assert.deepEqual(J(b.ui.state.flow.pin), { lat: 15.52, lng: -88.04, confirmed: true }, 'premise: A is the confirmed pin');
+  await b.click('[data-act="pin-done"]'); await settle();   // «Listo» confirms the editor's draft B
+  assert.deepEqual(J(b.ui.state.flow.pin), { lat: 15.5, lng: -88.0, confirmed: true }, 'premise: B confirmed while Maps is still loading');
+  gmaps(b.w, gc); b.w.__cappMapsReady(); await settle();
+  assert.deepEqual(gc.map((r) => r.at), [{ lat: 15.5, lng: -88.0 }], '🔴 one geocode, for B — A\'s obsolete request never left');
+  gc[0].reply(GEO.street); await settle();
+  assert.equal(bold(b), 'Calle 10');
+});
+
+test('S2b-geo r1 P3: a reply during «Enviando»\'s completion (the green check) patches the address in place — the check stays; during «Realizando» the countdown node survives', async () => {
+  const b = bootGeo({ script: { createOrder: [{ status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }] } });
+  await filled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]');
+  const cd = b.q('#layer [data-act="placing-go"] .cd');
+  assert.ok(cd && b.gc.length === 1, 'premise: «Realizando» open, the geocode pending');
+  b.gc[0].reply(GEO.full); await settle();
+  assert.equal(b.q('#layer [data-act="placing-go"] .cd'), cd, '🔴 the «Realizando» card is not rebuilt');
+  assert.equal(b.text(b.qa('#layer .placing .prow')[1].querySelector('.t span')), 'Calle 10, Col. Jardines del Valle', '«Realizando»: patched in place');
+  // a second flow: the reply lands while the completion check shows
+  const s = bootGeo({ script: { createOrder: [{ status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }] } });
+  await filled(s); await s.click('#cta'); await s.click('[data-act="tipc"][data-val="0"]'); await s.click('[data-act="tip-place"]'); await s.click('#layer [data-act="placing-go"]');
+  assert.ok(s.q('#sspin.done'), 'premise: «Enviando» shows the completion check');
+  s.gc[0].reply(GEO.area); await settle();
+  assert.ok(s.q('#sspin.done'), '🔴 the check stays (no rebuild)');
+  assert.equal(s.text(s.q('.sndcard .prow .t b')), 'Col. Jardines del Valle', '«Enviando»: patched in place');
 });
