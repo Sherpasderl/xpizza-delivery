@@ -267,3 +267,11 @@ test('Codex G6 r4 — ONE finalization: «Listo» then the host\'s close ×2 ⇒
   // a re-open is a fresh sheet again (the latch belongs to one opening)
   g.su.open({ ctx: 'checkout' }); await settle(); assert.equal(g.txt('.sg .h1'), 'Entrá a tu cuenta');
 });
+test('S4 frame G = B (only with the host\'s scheduleGate, i.e. schedulingLive): the drawn sheet, ONLY the subtitle «Para programar tu pedido necesitás una cuenta.», the guest exit kept; without it, G6 as before', async () => {
+  const g = sheet(); g.su.open({ ctx: 'schedule', scheduleGate: true }); await settle();
+  assert.equal(g.txt('.sg .h1'), 'Entrá a tu cuenta'); assert.equal(g.txt('.sg .sub'), 'Para programar tu pedido necesitás una cuenta.', '🔴 G = B');
+  assert.equal(g.txt('[data-su="guest"]'), 'Prefiero seguir como invitado', '🔴 the guest exit kept (the order stays ASAP)');
+  await g.click('[data-su="guest"]'); assert.deepEqual(g.events, [['guest', {}]]);
+  const o = sheet(); o.su.open({ ctx: 'schedule', memberOnly: true }); await settle();
+  assert.equal(o.txt('.sg .sub'), 'Guardá tus datos y pedí más rápido la próxima vez.'); assert.equal(o.q('[data-su="guest"]'), null, 'G6 unchanged without the gate');
+});

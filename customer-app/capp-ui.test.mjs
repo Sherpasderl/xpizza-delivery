@@ -2386,3 +2386,165 @@ test('S-picker (advisor): a number TYPED by hand from «+» is never cleared mid
   for (const sel of ['#cta', '[data-act="tipc"][data-val="0"]', '[data-act="tip-place"]']) { const e = h.q(sel); if (e) { e.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true })); await settle(); } }
   assert.equal(h.srv.of('requestCheckoutCode').length, 0, '🔴 a qualified text is never sent as national digits');
 });
+
+// ── S4 (PLAN-capp-S4 r5; the owner's frames + N1 / N3 / N4; ruling (a): ends at placed{scheduled}) — behind the runtime schedulingLive ──
+const S4_FX = JSON.parse(readFileSync(join(HERE, 'fixtures/s7a2/directory.json'), 'utf8'));
+const S4_ENTRY = S4_FX.scenarios.complete.body.restaurants.find((r) => r.schedule);
+// the store config from the REAL writer (the shell's configFor on the 5f-served directory entry): hours + the served schedule + the flag
+const S4_CFG = (() => { const c = require('./capp-shell.js').configFor(S4_ENTRY, { endpoints: EP, intakeKey: INTAKE, schedulingLive: true }); return { hours: c.hours, schedule: c.schedule, schedulingLive: c.schedulingLive }; })();
+const hnT = (d, h, mi = 0) => new Date(Date.UTC(2026, 9, d, h + 6, mi));   // Honduras wall-clock (UTC−6), October 2026
+const S4_QUOTE = (body) => (body.schedule_only ? { status: 200, json: { ok: true, schedule: S4_ENTRY.schedule } } : QUOTE(body));
+const S4_MEMBER = { uid: 'u1', name: 'Ana', phone: '99990000', email: 'a@b.co', idToken: 'tok' };
+const loadSched = (w) => w.eval(readFileSync(join(HERE, 'capp-schedule.js'), 'utf8'));   // shell.html loads it, as here
+function bootS4({ at = hnT(20, 13, 1), member = S4_MEMBER, script = {}, config = {}, clock = null, storage, search = '' } = {}) {
+  const c = clock || { t: at.getTime() };
+  const b = bootCo({ member, config: { ...S4_CFG, ...config }, script: { quoteOrder: [S4_QUOTE], ...script }, pre: loadSched, mountOpts: { now: () => new Date(c.t) }, ...(storage ? { storage } : {}), search });
+  b.clock = c; return b;
+}
+const schedFill = async (b, pay = 'cash') => { await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]'); await b.type('#f-details', 'Portón negro'); if (b.q('#f-name')) { await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000'); } if (b.q(`[data-act="pay"][data-val="${pay}"]`)) await b.click(`[data-act="pay"][data-val="${pay}"]`); };
+const dayChips = (b) => b.qa('.daychip').map((x) => [b.text(x.querySelector('b')), b.text(x.querySelector('span')), x.disabled]);
+
+test('S4 premise: the store config comes from the shell\'s configFor on the 5f-served entry (the served schedule + the flag)', () => {
+  assert.equal(S4_CFG.schedulingLive, true); assert.deepEqual(S4_CFG.schedule, S4_ENTRY.schedule);
+  const off = require('./capp-shell.js').configFor(S4_ENTRY, { endpoints: EP });
+  assert.equal(off.schedulingLive, undefined, 'flag absent ⇒ nothing'); assert.equal(off.schedule, undefined);
+});
+test('S4 frames 1/2: «Lo antes posible» + «Programar» («Hasta 7 días»); the picker: 7 day chips (N4), EVERY slot of the day (N3), the drawn note; the CTA «Elegí un horario»; a slot ⇒ the card shows it', async () => {
+  const b = bootS4({ at: hnT(20, 19, 5) });   // Tuesday 7:05 p.m.: open (closes 7:45), no slot left today (lead 60)
+  await toCheckout(b);
+  assert.deepEqual(b.qa('.opts .opt').map((o) => [b.text(o.querySelector('b')), b.text(o.querySelector('span')), o.getAttribute('aria-pressed')]), [['Lo antes posible', b.text('.opts .opt span'), 'true'], ['Programar', 'Hasta 7 días', 'false']]);
+  await b.click('[data-act="time"][data-val="schedule"]');
+  assert.deepEqual(dayChips(b), [['Hoy', 'Sin horarios', true], ['Mañana', '21 oct', false], ['Jue', '22 oct', false], ['Vie', '23 oct', false], ['Sáb', '24 oct', false], ['Dom', '25 oct', false], ['Lun', '26 oct', false]]);
+  assert.equal(b.q('.daychip[aria-pressed="true"]').dataset.val, '2026-10-21', 'the first day with slots');
+  assert.equal(b.qa('.slotgrid .chip').length, 31, '🔴 N3: every slot (12:00…7:30 p.m.), no 12-chip cap');
+  assert.equal(b.text('.slotgrid + .note'), 'Cada horario es una ventana de 30 minutos.');
+  assert.equal(cta(b), 'Elegí un horario'); assert.ok(b.q('#cta').disabled);
+  await b.click('.slotgrid .chip');
+  assert.equal(b.text('.opts .opt[data-val="schedule"] span'), 'Mañana · 12:00 p.m. – 12:30 p.m.');
+  assert.equal(b.q('.slotgrid .chip[aria-pressed="true"]').textContent, '12:00 p.m.');
+});
+test('S4 the wire: a scheduled cash order carries scheduled_for (the slot START) + entry_mode; quotes never do; the outcome is placed{scheduled, scheduled_for} (ruling (a))', async () => {
+  const b = bootS4({ script: { createOrder: [(body) => ({ status: 200, json: { ok: true, scheduled: true, order_id: body.order_id, scheduled_for: body.scheduled_for, release_at: body.scheduled_for - 3600000 } })] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.daychip[data-val="2026-10-21"]');
+  const chip = b.q('.slotgrid .chip'); const slot = Number(chip.dataset.val); await b.click(chip);
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]');
+  assert.match(b.text('#layer .placing'), /Mañana · 12:00 p\.m\. – 12:30 p\.m\./, 'the placing card\'s clock row = the slot (P:1986)');
+  await b.click('#layer [data-act="placing-go"]');
+  const sent = b.srv.of('createOrder')[0].body;
+  assert.equal(sent.scheduled_for, slot, '🔴 the slot START'); assert.equal(sent.entry_mode, 'app', 'the app contract on cash (r2 §7)');
+  assert.ok(b.srv.of('quoteOrder').filter((c) => !c.body.schedule_only).every((c) => !('scheduled_for' in c.body)), 'never in a quote');
+  await settle(); b.timers.flush(); await settle();   // the 600 ms beat (the harness's timers)
+  const placed = b.events.filter((e) => e[0] === 'placed').pop();
+  assert.ok(placed, 'placed'); assert.deepEqual([placed[1].scheduled, placed[1].scheduled_for], [true, slot], '🔴 placed{scheduled, scheduled_for} to the host');
+});
+test('S4 closed: the schedule is preselected, «Lo antes posible» disabled; the closure gate is ASAP-only — a scheduled order places while closed', async () => {
+  const b = bootS4({ at: hnT(20, 20, 30), script: { createOrder: [(body) => ({ status: 200, json: { ok: true, scheduled: true, order_id: body.order_id, scheduled_for: body.scheduled_for } })] } });
+  await toCheckout(b); await schedFill(b);
+  assert.ok(b.q('.opts .opt[data-val="asap"]').disabled); assert.equal(b.text('.opts .opt[data-val="asap"] span'), 'No disponible · cerrado');
+  assert.equal(b.q('.opts .opt[data-val="schedule"]').getAttribute('aria-pressed'), 'true', 'P:1803 preselect');
+  assert.equal(cta(b), 'Elegí un horario', '🔴 not «cerrado»: the closure gate is ASAP-only');
+  await b.click('.slotgrid .chip'); assert.notEqual(cta(b), 'No disponible · cerrado');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.srv.of('createOrder').length, 1, 'placed while closed');
+});
+test('S4 the closure sheet (P:1974): «… cerró a las …» + «Podés programarlo…» + [Programar][Cerrar]; «Programar» ⇒ the picker, the slot cleared', async () => {
+  const b = bootS4({ at: hnT(20, 13, 1), script: { createOrder: [{ status: 400, json: { error: 'Restaurant closed' } }] } });
+  await toCheckout(b); await schedFill(b);
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.match(b.text('#layer .errsheet p'), /^Tu pedido no se envió\. Podés programarlo para el próximo horario disponible\.$/);
+  assert.deepEqual(b.qa('#layer .errsheet button').map((x) => x.textContent), ['Programar', 'Cerrar']);
+  await b.click('#layer [data-act="err-sched"]');
+  assert.equal(b.q('.opts .opt[data-val="schedule"]').getAttribute('aria-pressed'), 'true'); assert.equal(cta(b), 'Elegí un horario', '🔴 the closure refusal no longer blocks a scheduled order');
+});
+test('S4 frame G: a GUEST tapping «Programar» ⇒ the host\'s sign-in (ctx schedule), the order stays ASAP; once signed in, the picker opens', async () => {
+  const b = bootS4({ member: null }); await toCheckout(b);
+  await b.click('[data-act="time"][data-val="schedule"]');
+  assert.deepEqual(J(b.events.filter((e) => e[0] === 'signin').pop()), ['signin', { ctx: 'schedule' }]);
+  assert.equal(b.q('.opts .opt[data-val="asap"]').getAttribute('aria-pressed'), 'true', 'still ASAP'); assert.equal(b.q('.daychips'), null);
+  b.ui.setMember(S4_MEMBER); await settle();
+  assert.equal(b.q('.opts .opt[data-val="schedule"]').getAttribute('aria-pressed'), 'true', '🔴 signed in ⇒ the picker'); assert.ok(b.q('.daychips'));
+});
+test('S4 N1 (owner, Option 1): the server refuses the slot ⇒ «Ese horario ya no está disponible» + [Elegir otro horario][Cerrar]; «Elegir otro horario» ⇒ the picker, the slot cleared', async () => {
+  const b = bootS4({ script: { createOrder: [{ status: 400, json: { error: 'Bad Request', detail: 'Invalid scheduled time (closed_at_slot)' } }] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.slotgrid .chip');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.text('#layer .errsheet h2'), 'Ese horario ya no está disponible');
+  assert.equal(b.text('#layer .errsheet p'), 'Tu pedido no se envió ni se cobró nada. Elegí otro horario; tu pedido está intacto.');
+  assert.deepEqual(b.qa('#layer .errsheet button').map((x) => x.textContent), ['Elegir otro horario', 'Cerrar']);
+  await b.click('#layer [data-act="err-slot"]');
+  assert.equal(cta(b), 'Elegí un horario', '🔴 the slot cleared'); assert.ok(b.q('.slotgrid'));
+});
+test('S4 the pre-dispatch re-check: a slot no longer offered when sending is cleared — NOTHING is sent, the picker asks again', async () => {
+  const clock = { t: hnT(20, 13, 1).getTime() };
+  const b = bootS4({ clock, script: { createOrder: [OK_CASH_UI] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]');
+  await b.click('.daychip[data-val="2026-10-20"]'); await b.click('.slotgrid .chip');   // today 2:15 p.m.
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]');
+  clock.t = hnT(20, 13, 50).getTime();   // the lead now excludes 2:15 p.m.
+  await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.srv.of('createOrder').length, 0, '🔴 nothing sent for a stale slot'); assert.equal(cta(b), 'Elegí un horario');
+});
+test('S4 row 10 (owner: dim, note A): a scheduled send left unresolved fixes the slot — cards, days and slots disabled, «Estamos confirmando este horario…», «Reintentar» re-sends the SAME body', async () => {
+  const b = bootS4({ script: { createOrder: ['network', (body) => ({ status: 200, json: { ok: true, idempotent: true, order_id: body.order_id } })] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.slotgrid .chip');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.text('#layer .errsheet h2'), 'Sin conexión', 'premise: the drawn «Sin conexión»');
+  await b.click('#layer [data-act="lclose"]');
+  assert.ok(b.q('.opts .opt[data-val="asap"]').disabled && b.q('.opts .opt[data-val="schedule"]').disabled, 'the cards fixed');
+  assert.ok(b.qa('.daychip').every((x) => x.disabled) && b.qa('.slotgrid .chip').every((x) => x.disabled), '🔴 days and slots dimmed (.45)');
+  assert.equal(b.text('.slotgrid + .note'), 'Estamos confirmando este horario; no se puede cambiar mientras tanto.');
+  assert.equal(cta(b), 'Reintentar');
+  const first = b.srv.of('createOrder')[0].body;
+  b.q('.slotgrid .chip:last-child').dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle();   // a forced tap changes nothing
+  await b.click('#cta'); await settle();
+  const re = b.srv.of('createOrder')[1];
+  assert.ok(re, 'premise: re-sent'); assert.deepEqual(J(re.body), J(first), '🔴 the SAME body (r1 §3.4)');
+});
+test('S4 P2: the schedule is revalidated in the background (schedule_only, never awaited); a changed one is HELD and applied at the next picker action', async () => {
+  const changed = J(S4_ENTRY.schedule); changed.hours.wed = { open: true, start: '12:00', end: '13:00' };
+  const b = bootS4({ script: { quoteOrder: [(body) => (body.schedule_only ? { status: 200, json: { ok: true, schedule: changed } } : QUOTE(body))] } });
+  await toCheckout(b); await settle();
+  const so = b.srv.of('quoteOrder').find((c) => c.body.schedule_only);
+  assert.deepEqual(J(so.body), { schedule_only: true, entry_mode: 'app', restaurant_id: 'rid_a' });
+  await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.daychip[data-val="2026-10-21"]');
+  assert.equal(b.qa('.slotgrid .chip').length, 4, '🔴 applied on the user\'s action: Wednesday is now 12:00–1:00 p.m. (4 slots)');
+});
+test('S4 the placed sending row (P:2038): delivery «Entrega · {slot}»', async () => {
+  const b = bootS4({ script: { createOrder: [() => new Promise(() => {})] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.daychip[data-val="2026-10-21"]'); await b.click('.slotgrid .chip');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.match(b.text('.sndcard'), /Entrega · Mañana · 12:00 p\.m\. – 12:30 p\.m\./);
+});
+test('S4 row 9 (owner-approved): a paid scheduled card order whose slot went to review ⇒ «Tu pago está hecho; estamos revisando tu horario», ONE «Entendido», no payment action, nothing re-sent', async () => {
+  const storage = memStore();
+  const a = bootS4({ storage, script: { chargeOnlineOrder: [CHECKOUT] } });
+  await toCheckout(a); await schedFill(a, 'online'); await a.click('[data-act="time"][data-val="schedule"]'); await a.click('.daychip[data-val="2026-10-21"]'); await a.click('.slotgrid .chip');
+  await a.click('#cta'); await a.click('[data-act="tipc"][data-val="0"]'); await a.click('[data-act="tip-place"]'); await a.click('#layer [data-act="placing-go"]');
+  assert.equal(a.nav.length, 1, 'premise: redirected'); const id = a.srv.of('chargeOnlineOrder')[0].body.order_id; const snap = J(a.ui.cart.snapshot()); a.ui.destroy();
+  const r = bootS4({ storage, search: `?pay=complete&order=${id}&t=pt_1`, script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'scheduled_review' } }] } });
+  r.ui.restore(snap); await r.ui.returning; await settle();
+  assert.equal(r.text('#layer .errsheet h2'), 'Tu pago está hecho; estamos revisando tu horario');
+  assert.equal(r.text('#layer .errsheet p'), 'Tu horario ya no estaba disponible cuando se confirmó el pago. No hace falta pagar de nuevo: te escribimos por WhatsApp para acordar otro horario.');
+  assert.deepEqual(r.qa('#layer .errsheet button').map((x) => x.textContent), ['Entendido'], '🔴 one action, no payment offer');
+  assert.equal(r.srv.of('chargeOnlineOrder').length, 0, 'nothing re-sent');
+});
+test('S4 N1 then a NEW slot: after a definitive refusal the next send carries the customer\'s new choice (never a replay of the refused slot)', async () => {
+  const b = bootS4({ script: { createOrder: [{ status: 400, json: { error: 'Bad Request', detail: 'Invalid scheduled time (closed_at_slot)' } }, (body) => ({ status: 200, json: { ok: true, scheduled: true, order_id: body.order_id, scheduled_for: body.scheduled_for } })] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.daychip[data-val="2026-10-21"]'); await b.click('.slotgrid .chip');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  await b.click('#layer [data-act="err-slot"]'); await b.click('.daychip[data-val="2026-10-22"]');
+  const chip = b.q('.slotgrid .chip:nth-child(3)'); const fresh = Number(chip.dataset.val); await b.click(chip);
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  const sends = b.srv.of('createOrder');
+  assert.equal(sends.length, 2); assert.equal(sends[1].body.scheduled_for, fresh, '🔴 the new slot, not the refused one');
+});
+test('S4 restore (r1 §3.3): a returned scheduled order comes back with its slot chosen; an ASAP one stays ASAP', async () => {
+  const storage = memStore();
+  const a = bootS4({ storage, script: { chargeOnlineOrder: [CHECKOUT] } });
+  await toCheckout(a); await schedFill(a, 'online'); await a.click('[data-act="time"][data-val="schedule"]'); await a.click('.daychip[data-val="2026-10-21"]'); await a.click('.slotgrid .chip');
+  await a.click('#cta'); await a.click('[data-act="tipc"][data-val="0"]'); await a.click('[data-act="tip-place"]'); await a.click('#layer [data-act="placing-go"]');
+  const sent = a.srv.of('chargeOnlineOrder')[0].body; const snap = J(a.ui.cart.snapshot()); a.ui.destroy();
+  const r = bootS4({ storage, search: `?pay=cancel&order=${sent.order_id}&t=pt_1`, script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'cancelled' } }] } });
+  r.ui.restore(snap); await r.ui.returning; await settle();
+  assert.equal(r.ui.state.flow.time, 'schedule'); assert.equal(r.ui.state.flow.slot, sent.scheduled_for, '🔴 the slot restored');
+});

@@ -246,7 +246,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   const w = dom.window;
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -832,4 +832,25 @@ test('Codex G6 r4: a guest exit after a complete sign-in leaves NO mark and no m
   const h = suHost(S); S.click(h.querySelector('[data-su="back"]')); await flush(); S.click(h.querySelector('[data-su="back"]')); await flush();
   S.click(h.querySelector('[data-su="guest"]')); await flush(); await flush();
   assert.equal(storage.getItem('capp:member_complete'), null, '🔴 never marked'); assert.equal(S.ui.state.member, null); assert.equal(fb.calls.out, 1, 'signed out');
+});
+
+// ── S4 in the shell: ONE runtime switch (it replaces opts.schedulingLive) ──
+test('S4 shell: runtime.schedulingLive drives the Inicio cues (frame 3 B\'s sentence + «Programar pedido»); absent ⇒ none, as before', async () => {
+  const late = { t: new Date(2026, 9, 20, 23, 30).getTime() };   // every store closed
+  const on = bootShell({ now: late, runtime: { ...RUNTIME, schedulingLive: true } }); await flush();
+  assert.match(txt(on.q('.hnote')) || '', /Podés programar tu pedido\./, '🔴 the cue from the runtime');
+  assert.ok(on.qa('.pill.sched').length > 0, '«Programar pedido» where the SERVED schedule offers a slot');
+  const off = bootShell({ now: late }); await flush();
+  assert.equal(/Podés programar/.test(txt(off.q('.hnote')) || ''), false); assert.equal(off.qa('.pill.sched').length, 0);
+});
+test('S4 frame G in the shell (schedulingLive + G6): a guest\'s «Programar» in the mounted checkout opens the sheet with ONLY the G=B subtitle and the guest exit; G6 without the flag keeps its member-only gate', async () => {
+  const fb = fakeFirebase();
+  const S = bootShell({ auth: 'unresolved', runtime: { ...SU_RUNTIME, schedulingLive: true }, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } }); await flush(); await flush();
+  const ui = await toShellCheckout(S);
+  S.click('#app [data-act="time"][data-val="schedule"]'); await flush();
+  const h = suHost(S); assert.ok(h && h.classList.contains('open'), 'premise: the sheet');
+  assert.equal(txt(h.querySelector('.sg .sub')), 'Para programar tu pedido necesitás una cuenta.', '🔴 G = B');
+  assert.equal(txt(h.querySelector('[data-su="guest"]')), 'Prefiero seguir como invitado');
+  S.click(h.querySelector('[data-su="guest"]')); await flush();
+  assert.equal(ui.state.flow.time, 'asap', 'the order stays ASAP');
 });

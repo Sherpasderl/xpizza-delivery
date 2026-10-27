@@ -487,14 +487,17 @@
         const id = rec.order_id;
         let body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
         if (cfg.schedulingLive === true) {
-          if (!fresh && priorSends > 0 && typeof rec.sent_body === 'string') { try { body = JSON.parse(rec.sent_body); } catch (_) { /* unreadable ⇒ the rebuilt body */ } }
-          else { try { patchPlace(id, { sent_body: JSON.stringify(body) }); } catch (_) {} }
+          // replay ONLY while the earlier send is uncertain (sched_pending: no definitive answer yet); after a definitive one (a refusal,
+          // N1) the next send carries the customer's new choice
+          if (!fresh && priorSends > 0 && rec.sched_pending === true && typeof rec.sent_body === 'string') { try { body = JSON.parse(rec.sent_body); } catch (_) { /* unreadable ⇒ the rebuilt body */ } }
+          else { try { patchPlace(id, { sent_body: JSON.stringify(body), sched_pending: true }); } catch (_) {} }
         }
         if (cfg.guestCardOnly === true && !memberOf() && p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;   // §4 (consumed at placement by the server)
         cq.send(body, p.sig, expected);
         const r = method === 'cash' ? await dispatchOrder(p, E.createOrder, body) : await sendCard(id, body, p);
         if (r && r.stop) return r.stop;
         if (!definitive(method, r)) return method === 'cash' ? { kind: 'offline', order_id: id } : resolveExisting(id);   // rule ii
+        if (cfg.schedulingLive === true) { try { patchPlace(id, { sched_pending: false }); } catch (_) {} }   // S4: a definitive answer ends the replay window
         const j = r.json;
         if (r.status === 426) {                                                           // rule iii
           const cur = readPlace();

@@ -20217,7 +20217,7 @@
     "slice": "s2a",
     "label": "G0 (the closed store) removed",
     "file": "../customer-app/capp-checkout.js",
-    "from": "    if (c.open === false || c.closedRefused === true) return COPY.closed;\n",
+    "from": "    if (f.time !== 'schedule' && (c.open === false || c.closedRefused === true)) return COPY.closed;\n",
     "to": "",
     "command": [
       "node",
@@ -21480,8 +21480,8 @@
     "slice": "s2b",
     "label": "«Enviando»'s address row is not patched in place (no mark)",
     "file": "../customer-app/capp-ui.js",
-    "from": "del ? 'Entrega' : esc(cfg.addr || ''), del ? 'b' : '')}",
-    "to": "del ? 'Entrega' : esc(cfg.addr || ''))}",
+    "from": "f.slot)) : '') : esc(cfg.addr || ''), del ? 'b' : '')}",
+    "to": "f.slot)) : '') : esc(cfg.addr || ''))}",
     "command": [
       "node",
       "--test",
@@ -24054,7 +24054,7 @@
     "slice": "g6",
     "label": "the guest link shows from Cuenta (no checkout behind the sheet)",
     "file": "../customer-app/capp-signup.js",
-    "from": "${!S.memberOnly && GUEST_CTX.has(S.ctx) ?",
+    "from": "${!S.memberOnly && (GUEST_CTX.has(S.ctx) || S.scheduleGate) ?",
     "to": "${!S.memberOnly ?",
     "command": [
       "node",
