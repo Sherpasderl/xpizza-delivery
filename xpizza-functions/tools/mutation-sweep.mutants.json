@@ -23183,5 +23183,55 @@
     "kills_with": [
       "the clock went behind the verification ⇒ held"
     ]
+  },
+  {
+    "id": "perf-core-42",
+    "slice": "perf-core",
+    "label": "r3 #1: a sold dish's item-detail + is not disabled",
+    "file": "../customer-app/capp-ui.js",
+    "from": "${plusOk ? '' : ' disabled aria-disabled=\"true\"'}>+</button>",
+    "to": ">+</button>",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf-core r3",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the detail + is disabled for a sold dish"
+    ]
+  },
+  {
+    "id": "perf-core-43",
+    "slice": "perf-core",
+    "label": "r3 #1: the item-detail + handler adds to a sold / refused dish",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (d > 0 && isSold(it)) { renderDetail(); return; }",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf-core r3",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the detail + handler itself refuses"
+    ]
+  },
+  {
+    "id": "perf-core-44",
+    "slice": "perf-core",
+    "label": "r3 #2: a new verification during a rollback is stamped on the high-water clock (re-flagged)",
+    "file": "../customer-app/capp-eligibility.js",
+    "from": "Number.isFinite(raw) ? raw : at) : raw;",
+    "to": "Number.isFinite(raw) ? raw : at) : hw;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "the new verification clears it"
+    ]
   }
 ]

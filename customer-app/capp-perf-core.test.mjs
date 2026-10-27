@@ -202,6 +202,15 @@ test('Codex perf-core r2: a rollback the checks never observe (between two queri
   t = 4000; el.verified({ listed: ['b'], complete: false, at: t });   // any clock read behind a's verification marks it
   t = 6000; assert.equal(el.state('a'), 'held', 'a was verified "in the future" of a later reading ⇒ held');
 });
+test('Codex perf-core r3 #2: a NEW verification during a rollback (no `at`) clears the suspect state — stamped on the RAW clock, never re-flagged', () => {
+  let t = 5000; const el = createEligibility({ now: () => t });
+  el.verified({ listed: ['a'], complete: true });
+  t = 4000; assert.equal(el.state('a'), 'held', 'premise: the rollback made it suspect');
+  el.verified({ listed: ['a'], complete: true });
+  assert.equal(el.state('a'), 'enterable', '🔴 the new verification clears it');
+  assert.equal(el.verifiedAt('a'), 4000, 'stamped on the current raw clock (not the high-water 5000)');
+  t = 4500; assert.equal(el.state('a'), 'enterable', '🔴 the next read does not re-flag it');
+});
 test('Codex perf-core r1 #2: once expiry has been observed, a clock rolled BACK cannot revive eligibility (high-water clock)', () => {
   let t = 1000; const el = createEligibility({ now: () => t });
   el.verified({ listed: ['a'], complete: true, at: t });

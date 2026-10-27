@@ -1890,4 +1890,28 @@ test('perf-core r2 #6: removing the refused line clears its refusal (the dish is
   await b.click(`.qty-add-btn[data-id="${b.plain.key}"]`);   // the store's own + (its handler refuses a sold dish)
   assert.equal(b.ui.cart.count(), 1, '🔴 removed ⇒ the refusal is gone: the dish can be added again');
 });
+test('perf-core r3 #1 (Set host): a sold dish\'s item-detail «+» is inert — disabled, and its handler refuses; − stays live', async () => {
+  const sold = new Set();
+  const b = bootCo({ mountOpts: { unavailable: sold } });
+  b.ui.cart.inc(b.plain.key); sold.add(b.plain.key); b.ui.render(); await settle();
+  await b.click(`.txtbtn[data-id="${b.plain.key}"]`);
+  const plus = b.q('#detail-step [data-delta="1"]'), minus = b.q('#detail-step [data-delta="-1"]');
+  assert.equal(plus.disabled, true, '🔴 the detail + is disabled for a sold dish');
+  assert.equal(minus.disabled, false, 'its − stays live (removal stays possible)');
+  plus.disabled = false; await b.click(plus);
+  assert.equal(b.ui.cart.count(), 1, '🔴 the detail + handler itself refuses (1 → 1)');
+});
+test('perf-core r3 #1 (function host): after a dispatch refusal the item-detail «+» is inert too', async () => {
+  let key = null;
+  const b = bootCo({ mountOpts: { unavailable: () => false, readAvailability: () => Promise.resolve([key]) } });
+  key = b.plain.key;
+  await toPlacing(b, 'cash'); b.timers.flush(); await settle();
+  assert.ok(b.q('#layer .cline.sold-out'), 'premise: refused at dispatch');
+  b.ui.state.layerKind = null; b.ui.state.screen = 'store'; b.ui.render(); await settle();
+  await b.click(`.txtbtn[data-id="${b.plain.key}"]`);
+  const plus = b.q('#detail-step [data-delta="1"]');
+  assert.equal(plus.disabled, true, '🔴 the refused dish\'s detail + is disabled');
+  plus.disabled = false; await b.click(plus);
+  assert.equal(b.ui.cart.count(), 1, '🔴 the detail + handler refuses the refused dish (1 → 1)');
+});
 

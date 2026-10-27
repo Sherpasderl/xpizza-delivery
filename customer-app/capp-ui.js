@@ -362,19 +362,20 @@
       detailHad = $('detail-modal').contains(doc.activeElement) ? descOf(doc.activeElement) : null;
       const keep = $('detail-scroll').scrollTop; $('detail-scroll').innerHTML = html; $('detail-scroll').scrollTop = keep;
       const step = $('detail-step'), cta = $('detail-cta'); cta.disabled = false; cta.className = 'detail-cta';
-      const stepper = (n, minusOk) => `<button class="detail-step-btn" data-act="qty" data-delta="-1" aria-label="Quitar una"${minusOk ? '' : ' disabled'}>−</button><span class="detail-step-num" aria-live="polite">${n}</span><button class="detail-step-btn" data-act="qty" data-delta="1" aria-label="Agregar una">+</button>`;
+      const stepper = (n, minusOk, plusOk = true) => `<button class="detail-step-btn" data-act="qty" data-delta="-1" aria-label="Quitar una"${minusOk ? '' : ' disabled'}>−</button><span class="detail-step-num" aria-live="polite">${n}</span><button class="detail-step-btn" data-act="qty" data-delta="1" aria-label="Agregar una"${plusOk ? '' : ' disabled aria-disabled="true"'}>+</button>`;
       const label = (verb, amount) => `<span>${verb}</span><span class="detail-cta-divider">·</span><span>${money(amount)}</span>`;
       if (o.kind === 'edit') { step.hidden = true; step.innerHTML = ''; const base = o.staged.choice ? find(o.staged.choice).p : it.p; const target = o.staged.choice || o.key; if (editSold(o)) { cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; } cta.innerHTML = label('Guardar', o.n * (base + instTotal(o.staged.ex))); return; }
       step.hidden = false;
       if (o.kind === 'launcher') { const c = it.group.choices.find((x) => x.id === o.staged.choice), n = o.staged.qty || 1; step.innerHTML = stepper(n, n > 1); if (c && (soldOf(c.id) || soldOf(it.id))) { cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; } if (!c) { cta.disabled = true; cta.innerHTML = `<span>Elegí tu ${esc(it.group.label.toLowerCase())}</span>`; } else cta.innerHTML = label('Agregar', n * (c.p + instTotal(o.staged.ex))); return; }
       const q = qtyOf(it.id);
-      if (isSold(it)) { step.innerHTML = stepper(o.staged.qty || 1, false); cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; }
+      if (isSold(it)) { const q0 = qtyOf(it.id); step.innerHTML = q0 > 0 ? stepper(q0, true, false) : stepper(o.staged.qty || 1, false, false); cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; }   // Codex perf-core r3 #1: + inert, − live
       if (q === 0) { const n = o.staged.qty || 1; step.innerHTML = stepper(n, n > 1); cta.innerHTML = label('Agregar', n * it.p); }
       else { const lineSum = cart.groups().filter((g) => g.key === it.id).reduce((a, g) => a + g.total, 0); step.innerHTML = stepper(q, true); cta.innerHTML = label('Guardar', lineSum); }
     }
     function detailAct(t) {
       const o = S.open, it = find(o.id), act = t.dataset.act;
-      if (act === 'qty') { const d = Number(t.dataset.delta); if (o.kind === 'launcher' || qtyOf(it.id) === 0) o.staged.qty = Math.max(1, (o.staged.qty || 1) + d); else { mutate(() => cart.setQty(it.id, qtyOf(it.id) + d)); if (!qtyOf(it.id)) o.staged.qty = 1; } }
+      if (act === 'qty') { const d = Number(t.dataset.delta); if (d > 0 && isSold(it)) { renderDetail(); return; }   // r3 #1: the handler refuses a sold / refused dish's + too
+        if (o.kind === 'launcher' || qtyOf(it.id) === 0) o.staged.qty = Math.max(1, (o.staged.qty || 1) + d); else { mutate(() => cart.setQty(it.id, qtyOf(it.id) + d)); if (!qtyOf(it.id)) o.staged.qty = 1; } }
       else if (act === 'extra') { const i = Number(t.dataset.inst), e = t.dataset.eid; const l = cart.lines().find((x) => x.key === it.id); const cur = Object.keys((l && l.ex[i]) || {}); mutate(() => cart.setInstance(it.id, i, cur.includes(e) ? cur.filter((k) => k !== e) : [...cur, e])); }
       else if (act === 'variant') { if (soldOf(t.dataset.id)) return; o.staged.choice = t.dataset.id; const allowed = new Set(find(o.staged.choice).ex); for (const k of Object.keys(o.staged.ex)) if (!allowed.has(k)) delete o.staged.ex[k]; }
       else if (act === 'staged') { const e = t.dataset.eid; if (o.staged.ex[e]) delete o.staged.ex[e]; else o.staged.ex[e] = 1; }

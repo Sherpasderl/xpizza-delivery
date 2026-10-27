@@ -37,8 +37,11 @@
 
     // a SUCCESSFUL verification, at its receipt time: `listed` = the rids it lists as active; `complete` = it is the whole directory
     function verified({ listed, complete, at }) {
-      const cur = clock();
-      const t = Number.isFinite(at) ? Math.min(at, cur) : cur;   // a receipt time is never later than the time seen
+      clock();   // records any rollback against the EXISTING verifications first
+      const raw = now();
+      // Codex perf-core r3 #2: a NEW successful verification is stamped on the CURRENT RAW clock (never the high-water mark, which
+      // during a rollback lies in the future and would re-flag the store at the next read), and clears its suspect state below
+      const t = Number.isFinite(at) ? Math.min(at, Number.isFinite(raw) ? raw : at) : raw;
       const ids = new Set((listed || []).map(String));
       for (const rid of ids) { verifiedAt.set(rid, t); tombstoned.delete(rid); suspect.delete(rid); known.add(rid); }
       for (const rid of known) if (!ids.has(rid)) { verifiedAt.delete(rid); if (complete === true) tombstoned.add(rid); }   // omitted: tombstoned (complete) or held (partial)
