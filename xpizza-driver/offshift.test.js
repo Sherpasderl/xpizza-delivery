@@ -40,7 +40,10 @@ function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+50
   const ICONS = new Proxy({}, { get: () => '<svg></svg>' });
   const fbRef = () => ({});
   const fbOnValue = (ref, cb) => { cb({ val: () => dispatch }); return () => {}; };   // one-shot: deliver the dispatch number
-  const XPD = { getDb: () => ({}) };
+  // XPD.startShift IS the server clock-in SDK boundary the REAL handleStartShift drives (P2.5): count it, and let a
+  // test substitute the impl to hang or reject. Removing the real `await XPD.startShift(...)` → this count stays 0 → RED.
+  const XPD = { getDb: () => ({}), getAuthInstance: () => ({ app: {} }),
+    startShift: () => { calls.start++; return startImpl ? startImpl() : Promise.resolve(); } };
   const body =
     'let shiftBusy = false;\nlet optimisticShift = null;\n' +
     'let companionSuspended = _suspended;\n' +
@@ -49,7 +52,15 @@ function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+50
     (pagosLive ? 'const PAGOS_LIVE = true;\n' : liftConst('PAGOS_LIVE') + '\n') +
     'function render(){ _calls.render++; }\n' +
     'function openCuenta(){ _calls.openCuenta++; }\n' +
-    'function handleStartShift(){ _calls.start++; return _startImpl ? _startImpl() : Promise.resolve(); }\n' +
+    // P2.5: DON'T stub handleStartShift — lift the REAL one so the slide/keyboard path runs down to the mocked
+    // XPD.startShift SDK boundary. These are its remaining (non-SDK) dependencies, stubbed inert (non-native path).
+    'let shiftSessionGen = 0;\n' +
+    'function isNative(){ return false; }\n' +
+    'async function startNativeTracking(){ return { trackingOk: true }; }\n' +
+    'async function acquireWakeLock(){}\n' +
+    'function startGpsStream(){}\n' +
+    'function ensureOfflineBanner(){}\n' +
+    liftFn('handleStartShift') + '\n' +
     'function companionSyncSuspendedNotice(){ _calls.sync++; }\n' +
     'function updateNotifBanners(){ _calls.notif++; }\n' +
     'function todayMidnightMs(){ return 0; }\n' +
@@ -104,11 +115,11 @@ await t('PAGOS_LIVE → «Ganado hoy» appears as a second stat (no code change,
   assert.ok(h.host().querySelector('.off2-stats.two'), 'two-stat layout');
 });
 
-await t('the «Iniciar turno» slide reaches the REAL handleStartShift on the shift-start path', async () => {
+await t('the «Iniciar turno» slide drives the REAL handleStartShift down to the XPD.startShift clock-in (P2.5)', async () => {
   const h = boot();
   h.api.renderOffshift();
   await h.slide();
-  assert.equal(h.calls.start, 1, 'handleStartShift reached');
+  assert.equal(h.calls.start, 1, 'the REAL handleStartShift reached the XPD.startShift SDK boundary once (removing the real clock-in → 0 → RED)');
   assert.equal(h.api.getOptimistic(), true, 'optimistic on-shift set');
   assert.ok(h.calls.render >= 1, 'render() driven (optimistic screen)');
 });
@@ -123,6 +134,29 @@ await t('a double-trigger cannot start two shifts (shiftBusy)', async () => {
   await h.slide();                       // #2 → shiftBusy still true → bails
   assert.equal(h.calls.start, 1, 'the second trigger did NOT start a second shift (shiftBusy)');
   release && release();
+});
+
+await t('mixed keyboard+pointer cannot double clock-in: Enter starts the shift, a HELD drag release then bails on the effective-on-shift guard — ONE clock-in (Codex r2 P2)', async () => {
+  const h = boot();
+  h.api.renderOffshift();
+  const el = h.host().querySelector('#btn-start-shift');
+  const thumb = el.querySelector('.slide-thumb');
+  el.getBoundingClientRect = () => ({ width: 300, height: 64, left: 0, top: 0, right: 300, bottom: 64, x: 0, y: 0 });
+  thumb.getBoundingClientRect = () => ({ width: 48, height: 48, left: 0, top: 0, right: 48, bottom: 48, x: 0, y: 0 });
+  // 1) a pointer drag is HELD past threshold (mousedown + move, NO release yet)
+  thumb.dispatchEvent(new h.window.MouseEvent('mousedown', { clientX: 0, bubbles: true, cancelable: true }));
+  h.document.dispatchEvent(new h.window.MouseEvent('mousemove', { clientX: 400, bubbles: true, cancelable: true }));
+  // 2) Enter clocks in to completion: XPD.startShift resolves, shiftBusy clears, optimisticShift=true
+  el.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(h.calls.start, 1, 'the keyboard start clocked in once');
+  assert.equal(h.api.getShiftBusy(), false, 'shiftBusy already cleared — ONLY the effective-on-shift guard stands between here and a double-start');
+  assert.equal(h.api.getOptimistic(), true, 'optimistic on-shift held (the guard reads this)');
+  // 3) release the held drag → onUp → onConfirm → doStartShift again. Guarding on driverState.active ALONE would
+  // let this through (feed hasn't reported active yet); the optimisticShift ?? active guard must bail.
+  h.document.dispatchEvent(new h.window.MouseEvent('mouseup', { clientX: 400, bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(h.calls.start, 1, 'the drag release did NOT mint a second shift — exactly one clock-in (drop the optimisticShift guard → 2 → RED)');
 });
 
 await t('suspendida: warn banner + the two dispatch contact rows (tel/wa), NO «Iniciar turno» (prototype S.suspendida)', () => {

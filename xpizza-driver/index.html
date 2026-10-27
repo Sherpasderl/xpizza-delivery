@@ -2934,10 +2934,20 @@ function renderOffshift() {
     if (shiftBusy) return;
     if (!startSlideEl || !document.body.contains(startSlideEl)) return;                                   // mount replaced / detached
     if ((typeof authGen !== 'undefined' && authGen !== startGen) || ((currentUser && currentUser.uid) || null) !== startUid) return;   // session changed
-    if (companionSuspended || (driverState && driverState.active)) return;                                // no longer eligible
+    // Codex r2 P2: gate on the EFFECTIVE on-shift state (optimisticShift ?? active), NOT driverState.active alone.
+    // A mixed keyboard+pointer input — Enter starts the shift, then a held drag's release re-fires doStartShift
+    // after shiftBusy clears but BEFORE the feed reports active=true — would otherwise mint a SECOND shift id and
+    // clear the task pointer. optimisticShift flips true the instant the first start begins, so the second call
+    // bails; a FAILED start reverts it to null (handleStartShift catch), so a retry stays allowed.
+    const effectiveActive = optimisticShift !== null ? optimisticShift : !!(driverState && driverState.active);
+    if (companionSuspended || effectiveActive) return;                                                    // suspended / already on-shift or starting
     shiftBusy = true;
     optimisticShift = true; render();
     try { await handleStartShift(); } finally { shiftBusy = false; }
+    // Belt-and-suspenders (Codex r2 P2): once activation HOLDS, make this offshift slider inert so a pending
+    // drag-release cannot drive a second confirm. A reverted (failed) start leaves it live for retry.
+    const held = optimisticShift !== null ? optimisticShift : !!(driverState && driverState.active);
+    if (held && startSlideEl) { startSlideEl.style.pointerEvents = 'none'; startSlideEl.setAttribute('aria-disabled', 'true'); startSlideEl.tabIndex = -1; }
   };
   attachSlideConfirm('btn-start-shift', doStartShift);
   // Keyboard activation through the SAME guarded path — the slide is a div, not a button (Codex P2.6).
