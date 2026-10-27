@@ -121,7 +121,7 @@
     }
 
     // ── the store mount ──
-    function mountStore(entry, freshBody) {
+    function mountStore(entry, freshBody, carried) {
       const row = dir.view().rows.find((r) => r.rid === entry.rid);
       const cfg = row && cfgOf(row.entry), e = freshBody ? { body: freshBody, state: 'fresh' } : cache.peek(entry.rid);
       if (!cfg || !e || !e.body) return false;
@@ -137,7 +137,7 @@
         onEvent: (name, detail) => { if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
       S.store = { rid: entry.rid, ui, entry, body: e.body, fp: null, adopt: null };
       watchMenu(S.store);
-      const snap = readJ(cfg.cartKey); if (snap) ui.restore(snap);
+      const snap = carried || readJ(cfg.cartKey); if (snap) ui.restore(snap);   // an adoption carries the IN-MEMORY cart (Codex s7a2 r1 #1)
       if (entry.dish) ui.openDetail(entry.dish);
       // the return's AUTHORITATIVE outcome settles the stored handoff (S7a-1 r3 §2 / r3.1 N3: never on anything else)
       if (ret && ui.returning && typeof ui.returning.then === 'function') ui.returning.then((out) => { try { CappShell.settleHandoff(storage, out, ret.handoff); } catch (_) {} }, () => {});
@@ -168,8 +168,9 @@
       // BEFORE the quote — the customer continues from there (continuing is acceptance)
       if (availTimer !== null) { T.clearInterval(availTimer); availTimer = null; }
       if (typeof st.unwatch === 'function') st.unwatch();
+      const carried = st.ui.snapshot();   // the cart as it is NOW (never only the stored copy: a failed persistence must lose nothing)
       st.ui.destroy(); S.store = null;
-      if (!mountStore(st.entry, body)) return true;   // mountStore restores the stored cart onto the fresh body
+      if (!mountStore(st.entry, body, carried)) return true;
       S.store.ui.openCart();
       return false;
     }

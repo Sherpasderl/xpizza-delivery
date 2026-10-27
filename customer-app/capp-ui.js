@@ -1197,6 +1197,9 @@
       },
       orderable: () => orderable,
       openCart() { if (dead || S.screen !== 'store') return false; openLayer('cart'); return true; },
+      // Codex s7a2 r1 #1: the cart AS IT IS IN MEMORY (the same shape onCartChange persists) — a remount carries this, never only the
+      // stored copy, so a failed persistence can never lose an edit
+      snapshot() { return { ...cart.snapshot(), rid: cfg.restaurantId, mode: S.mode, ...(hostedKeys() ? { cart_gen: cart.count() ? genNow() : null } : {}) }; },
       // S7a-2: a Buscar / Inicio dish result opens THAT dish's sheet on this store (P open-dish :2253) — false when it is not here
       openDetail(key) { if (dead || S.screen !== 'store' || !find(key)) return false; openDetail(key); return true; },
       restore(snapshot) {

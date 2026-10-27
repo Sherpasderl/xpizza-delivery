@@ -452,3 +452,18 @@ test('return: a return OWNED by one store (its pay stash) enters THAT store with
   assert.equal(S.ui.state.ret, null, 'the return is handed to its store ONCE (no later mount is given it)');
   assert.equal(S.ui.nav.tab({ name: 'home' }), false, 'sending ⇒ the store cannot be left (S7a-1 r3.2 ruling (a))');
 });
+
+// ── Codex s7a2 r1 ──
+test('Codex s7a2 r1 #1 (P1): checkout adoption carries the IN-MEMORY cart — a cart whose persistence fails loses nothing across the remount', async () => {
+  const base = memStorage(storedMenu('x_pizza'));
+  const storage = { ...base, getItem: base.getItem, removeItem: base.removeItem, key: base.key, get length() { return base.length; },
+    setItem: (k, v) => { if (k === 'capp:x_pizza:cart') throw new Error('quota'); base.setItem(k, v); } };
+  const S = bootShell({ envelope: 'hold', storage });
+  await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  const ui0 = S.ui.store().ui; const carn = ui0.menu.dishes.find((d) => d.name === 'Carnivora');
+  S.release('x_pizza', repriced('Carnivora', 26)); await flush(); await flush();
+  S.click(`.qty-add-btn[data-id="${carn.key}"]`); assert.equal(ui0.cart.count(), 1, 'premise: one in the cart (its persistence failed)');
+  S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush();
+  assert.notEqual(S.ui.store().ui, ui0, 'premise: adopted');
+  assert.equal(S.ui.store().ui.cart.count(), 1, '🔴 the in-memory cart crossed the remount');
+});
