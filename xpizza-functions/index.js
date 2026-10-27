@@ -5780,7 +5780,7 @@ exports.onIncomingWhatsApp = onRequest(
     try {
       const mdb = getDatabase();
       const windowMs = inbound.resolveMuteWindowMs((await mdb.ref('config/whatsapp_mute_window_ms').once('value')).val());
-      const muteRec = (await mdb.ref(`whatsapp_mute/${restaurantId}/${inbound.muteKeyFor(fromPhoneRaw)}`).once('value')).val();
+      const muteRec = await require('./phone/match').readMute(mdb, restaurantId, fromPhoneRaw);   // INTL S-match (codex r1 #4): the identity leaf + the legacy last-8 leaf, latest wins — no mute lost at deploy
       if (inbound.shouldSuppressAutoReply(muteRec, Date.now(), windowMs)) {
         await mdb.ref('incoming_messages').push({
           from: data.from, restaurant_id: restaurantId, body,

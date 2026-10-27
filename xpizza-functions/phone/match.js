@@ -27,4 +27,22 @@ function muteKeyFor(phone) {
   return storedIdentity(phone) || '';
 }
 
-module.exports = { storedIdentity, samePhone, muteKeyFor };
+// codex r1 #4 — NO LOST MUTES AT DEPLOY. The pre-S-match writer keyed leaves by the last 8 characters (whatsapp_inbound.js @ 8a31e2a3);
+// the reader checks that LEGACY leaf too, so a staff mute set just before the deploy still holds after it. The writer writes the
+// identity leaf ONLY. A legacy leaf can only suppress inside its own mute window and is pruned by the writer at 6× it, so the
+// transition is self-bounding. LATER CLEANUP: drop the legacy read once deploy + 6× the max configured mute window has passed.
+function legacyMuteKeyFor(phone) {
+  return String(phone == null ? '' : phone).replace(/@c\.us$/, '').slice(-8);
+}
+// → the mute record to decide on (the latest finite `at` of the identity + legacy leaves), or null. A non-phone never reads the parent
+// node. A read error PROPAGATES (onIncomingWhatsApp's existing try is fail-open, unchanged).
+async function readMute(db, restaurantId, phone) {
+  const keys = [...new Set([muteKeyFor(phone), legacyMuteKeyFor(phone)])].filter((k) => /^\d+$/.test(k));
+  if (!keys.length) return null;
+  const recs = (await Promise.all(keys.map((k) => db.ref(`whatsapp_mute/${restaurantId}/${k}`).once('value').then((s) => s.val())))).filter((r) => r != null);
+  if (!recs.length) return null;
+  const at = (r) => (r && Number.isFinite(r.at) ? r.at : -Infinity);
+  return recs.reduce((best, r) => (at(r) > at(best) ? r : best));
+}
+
+module.exports = { storedIdentity, samePhone, muteKeyFor, legacyMuteKeyFor, readMute };

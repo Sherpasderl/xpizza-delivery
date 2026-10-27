@@ -21,7 +21,7 @@ const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`
 let undone; try { undone = unapplyIntlIndex(real); } catch (e) { throw new Error(`🔴 INTL-WIRING-PROOF: ${e.message}`); }   // a thrown inverse carries the marker too
 assert.strictEqual(undone, baseIdx, `🔴 INTL-WIRING-PROOF: index.js minus the intl hunks is not ${BASE}:index.js`);
 assert.notStrictEqual(real, baseIdx, 'non-vacuity: the slice is present');
-assert.strictEqual(HUNKS.length, 4);
+assert.strictEqual(HUNKS.length, 5);
 for (const h of HUNKS) {
   assert.ok(real.includes(h.now), 'non-vacuity: each hunk is present');
   assert.ok(h.now.includes("require('./phone/"), 'premise: every hunk calls into phone/');
@@ -74,6 +74,10 @@ const scopeAt = rl.slice(0, smAt).map((l, i) => (l.includes("if ((o.restaurant_i
 assert.ok(scopeAt !== undefined && smAt - scopeAt <= 3, 'INTL-WIRING-SMATCH-AFTER-RESTAURANT-SCOPE (restaurant_id scope preserved)');
 assert.ok(rl.slice(Math.max(0, smAt - 20), smAt).some((l) => l.includes("if (intent === 'STATUS_CHECK') {")), 'INTL-WIRING-SMATCH-IN-STATUS-CHECK');
 assert.ok(!real.split('\n').some((l, i) => i > smAt - 30 && i < smAt + 30 && /\.slice\(-8\)/.test(l)), 'INTL-WIRING-SMATCH-NO-SUFFIX-LEFT');
+// codex r1 #4 — the mute READ uses readMute (both leaves); the mute WRITE is still the identity key via inbound.muteKeyFor (unchanged line)
+assert.strictEqual(HUNKS[4].was, "      const muteRec = (await mdb.ref(`whatsapp_mute/${restaurantId}/${inbound.muteKeyFor(fromPhoneRaw)}`).once('value')).val();\n", 'INTL-WIRING-MUTE-READ-WAS');
+assert.ok(HUNKS[4].now.startsWith("      const muteRec = await require('./phone/match').readMute(mdb, restaurantId, fromPhoneRaw);"), '🔴 INTL-WIRING-MUTE-READ-BOTH-LEAVES');
+assert.strictEqual(real.split("await mdb.ref(`whatsapp_mute/${restaurantId}/${k}`).set({ at: Date.now() });").length - 1, 1, 'INTL-WIRING-MUTE-WRITER-UNCHANGED (one identity-key write)');
 ok('EXACT: intake hunks = the untouched seam + applyWireContract(one flag read), right before `if (errors.length > 0)`; requestOtp = the login gate after the pHash check, before the IP / phone reservations and the send, uniform refusal; verifyOtp ungated; STATUS_CHECK = samePhone after the restaurant scope, no suffix left');
 
 // ── 4. sanitizePhone / validateOrderPayload untouched ──

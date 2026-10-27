@@ -57,4 +57,29 @@ for (const x of ['', null, 'abc', '123']) assert.strictEqual(M.muteKeyFor(x), ''
 assert.ok(/^\d+$/.test(M.muteKeyFor('+1 219 795 0000')), 'MUTE-KEY-RTDB-SAFE');
 ok("muteKeyFor: the identity digits (writer data.to and reader from agree); +502 and +504 with the same last 8 → different leaves; non-phone → ''");
 
-console.log(`phone-match: OK (${n})`);
+// ── 5. (codex r1 #4) NO LOST MUTES AT DEPLOY: the reader checks the identity leaf AND the legacy last-8 leaf; the writer key is identity only ──
+(async () => {
+  const W8 = 'whatsapp_mute/tb_r1/';
+  const dbOf = (tree) => { const reads = []; return { reads, ref: (p) => ({ once: async () => { reads.push(p); return { val: () => (p in tree ? tree[p] : null) }; } }) }; };
+  const T = Date.UTC(2026, 9, 27, 18), from = '50497950000';
+  assert.strictEqual(M.legacyMuteKeyFor('50497950000@c.us'), '97950000', 'MUTE-LEGACY-KEY-IS-TODAYS-LAST-8');
+  assert.strictEqual(M.legacyMuteKeyFor(''), '', 'MUTE-LEGACY-KEY-EMPTY');
+  // a legacy leaf written BEFORE the deploy still mutes AFTER it
+  const legacyOnly = dbOf({ [W8 + '97950000']: { at: T - 60e3 } });
+  assert.deepStrictEqual(await M.readMute(legacyOnly, 'tb_r1', from), { at: T - 60e3 }, 'MUTE-LEGACY-LEAF-STILL-MUTES');
+  assert.deepStrictEqual(legacyOnly.reads.sort(), [W8 + '50497950000', W8 + '97950000'], 'MUTE-READS-BOTH-KEYS');
+  // the post-deploy writer's identity leaf: ONE decision (the latest), never a second write to the legacy key
+  assert.notStrictEqual(M.muteKeyFor(from), M.legacyMuteKeyFor(from), 'premise: the writer key (identity) is not the legacy key');
+  const both = dbOf({ [W8 + '97950000']: { at: T - 60e3 }, [W8 + '50497950000']: { at: T } });
+  assert.deepStrictEqual(await M.readMute(both, 'tb_r1', from), { at: T }, 'MUTE-ONE-ACTIVE-STATE-LATEST-WINS');
+  const identityOnly = dbOf({ [W8 + '50497950000']: { at: T } });
+  assert.deepStrictEqual(await M.readMute(identityOnly, 'tb_r1', from), { at: T }, 'MUTE-IDENTITY-LEAF');
+  assert.strictEqual(await M.readMute(dbOf({}), 'tb_r1', from), null, 'MUTE-NONE');
+  // a non-phone `from` never reads the parent node (today's '' key read whatsapp_mute/<rid>/ itself)
+  const junk = dbOf({}); assert.strictEqual(await M.readMute(junk, 'tb_r1', 'abc'), null, 'MUTE-NON-PHONE-NULL');
+  assert.ok(junk.reads.every((p) => !p.endsWith('/')), 'MUTE-NEVER-READS-THE-PARENT');
+  // a read error propagates (the caller's existing try is FAIL-OPEN, unchanged)
+  await assert.rejects(() => M.readMute({ ref: () => ({ once: async () => { throw new Error('down'); } }) }, 'tb_r1', from), /down/, 'MUTE-READ-ERROR-PROPAGATES');
+  ok('readMute: identity + legacy last-8 leaves, latest wins → a pre-deploy legacy mute still mutes, the post-deploy identity mute is the ONE state; non-phone → null; errors propagate to the fail-open caller');
+  console.log(`phone-match: OK (${n})`);
+})().catch((e) => { console.error('phone-match: FAILED —', e && e.stack || e); process.exit(1); });
