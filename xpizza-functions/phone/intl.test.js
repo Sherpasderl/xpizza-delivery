@@ -45,6 +45,14 @@ assert.deepStrictEqual(I.parseSubmitted('+5016221234'), { cc: '501', national: '
 for (const raw of R.filter((r) => r !== '+5016221234')) assert.strictEqual(I.parseSubmitted(raw), null, `INTL-REJECT ${JSON.stringify(raw)}`);
 ok(`rejects with no fallback: '+'+8 digits, +44, every wrong length, double '+', inner '+', words, '#', non-ASCII digits / nbsp, non-strings (${R.length - 1}); +501+7 is Belize`);
 
+// ── 4b. (codex r1 #5) qualification must LEAD the trimmed input: '+' or the '00' international prefix, BEFORE separators are
+//        stripped. '(+504) 9795-0000' is NOT qualified → the bare rule (11 digits → rejected), never a new stored-byte class ──
+for (const raw of ['(+504) 9795-0000', '(+1) 219 795 0000', '-+50497950000', '.+504 9795 0000', ' (+504)97950000 ']) assert.strictEqual(I.parseSubmitted(raw), null, `INTL-QUALIFIER-MUST-LEAD ${JSON.stringify(raw)}`);
+assert.deepStrictEqual(I.parseSubmitted('00504 9795-0000'), { cc: '504', national: '97950000', canonical: '+50497950000', identity: '50497950000' }, 'INTL-00-PREFIX-QUALIFIES');
+assert.deepStrictEqual(I.parseSubmitted('001 (219) 795-0000'), I.parseSubmitted('+1 (219) 795-0000'), 'INTL-00-PREFIX-EQUALS-PLUS');
+for (const raw of ['0097950000', '00+50497950000', '+00504979500000', '00 44 7911 123456']) assert.strictEqual(I.parseSubmitted(raw), null, `INTL-00-REJECTS ${JSON.stringify(raw)}`);
+ok("qualification must lead: '(+504) …' / '-+504…' → not qualified → rejected; '00' + a supported CC qualifies exactly like '+'; '00'+8 / '00+' / '+00' / '00'+unsupported → rejected");
+
 // ── 5. equal last-8 across countries never collide ──
 const a = I.parseSubmitted('+504 9795-0000'), b = I.parseSubmitted('+502 9795-0000'), c = I.parseSubmitted('+1 219 795 0000');
 assert.ok(a.identity !== b.identity && a.identity.slice(-8) === b.identity.slice(-8), 'INTL-SAME-SUFFIX-DISTINCT');

@@ -7,21 +7,20 @@
 //                                     flip_safe (advisor ruling Option S) ⇔ ≥1 order in the window AND would_reject == 0 AND accept:bare8 == 0
 //                                     (bare-8 is the ONE class whose stored form — hence its dedup bucket — changes under strict; > 0 ⇒ STOP, Option D)
 //   parseArgs(argv)                 → {ok, days} | {ok:false, error}   (--project is require-project's; anything else is refused)
-const { parseSubmitted, SUPPORTED } = require('../phone/intl');
+const { parseSubmitted, splitSubmitted, SUPPORTED } = require('../phone/intl');
 const DAY_MS = 86400e3;
 
 function classify(v) {
   if (v == null || v === '') return 'empty';
   if (typeof v !== 'string') return 'reject:non_string';
   const p = parseSubmitted(v);
-  if (p) return v.trim().startsWith('+') ? `accept:qualified:${p.cc}` : 'accept:bare8';
-  const s = v.trim().replace(/[ \-().]/g, '');
-  if (/^\+\d+$/.test(s)) {
-    const d = s.slice(1);
-    if (d.length === 8) return 'reject:plus_8';
-    return SUPPORTED.some((c) => d.startsWith(c.cc)) ? 'reject:qualified_wrong_length' : 'reject:qualified_unsupported';
+  const x = splitSubmitted(v);   // the SAME qualification rule as the parser (a leading '+' / '00')
+  if (p) return x.qualified ? `accept:qualified:${p.cc}` : 'accept:bare8';
+  if (x && x.qualified) {
+    if (x.digits.length === 8) return 'reject:plus_8';
+    return SUPPORTED.some((c) => x.digits.startsWith(c.cc)) ? 'reject:qualified_wrong_length' : 'reject:qualified_unsupported';
   }
-  if (/^\d+$/.test(s) && parseSubmitted('+' + s)) return 'reject:cc_digits_no_plus';
+  if (x && parseSubmitted('+' + x.digits)) return 'reject:cc_digits_no_plus';
   return 'reject:bare_other';
 }
 
