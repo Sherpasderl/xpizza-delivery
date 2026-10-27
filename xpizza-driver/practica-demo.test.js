@@ -25,8 +25,9 @@ import { singleOrderCardHtml } from './single-order-view.js';
 import { practicaDemoOrder } from './practica-fixture.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
-const { JSDOM } = require('jsdom');
+// Resolve jsdom from the functions package (same shim as llegue/slice2-branch/etc.) so this runs
+// without NODE_PATH in a worktree that has no local node_modules.
+const { JSDOM } = createRequire(join(__dir, '..', 'xpizza-functions', 'package.json'))('jsdom');
 const SCRIPT = readFileSync(join(__dir, 'index.html'), 'utf8').match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 
 function liftFn(name) {
