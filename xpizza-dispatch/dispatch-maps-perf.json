@@ -1,0 +1,53 @@
+{
+  "plan": "PLAN-dispatch-maps-decouple §6.4",
+  "generatedAt": "2026-10-27T16:02:22.291Z",
+  "config": {
+    "chrome": {
+      "kind": "chrome-headless-shell",
+      "version": "mac_arm-131.0.6778.204"
+    },
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "dpr": 1
+    },
+    "throttle": {
+      "cpu": 4,
+      "network": {
+        "label": "Slow-4G",
+        "downKbps": 400,
+        "upKbps": 400,
+        "rttMs": 400
+      }
+    },
+    "timingOrigin": "onAuth-authorized showScreen('main')",
+    "deadlineMs": 10000,
+    "repeats": 5,
+    "gate": "median",
+    "scenarios": [
+      "maps_delayed",
+      "maps_failed",
+      "no_map_baseline"
+    ],
+    "metrics": [
+      "board_useful_ms",
+      "driver_useful_ms",
+      "input_to_paint_ms",
+      "max_long_task_ms"
+    ],
+    "budgets": {
+      "board_useful_vs_baseline_max_ratio": 1.15,
+      "driver_useful_vs_baseline_max_ratio": 1.15,
+      "max_long_task_ms": 50,
+      "input_to_paint_ms": 100,
+      "map_useful": "not budgeted (depends on Google CDN)"
+    },
+    "readiness": {
+      "board_useful": "first orders+tasks snapshot AND a seeded '.unassigned-card[data-order-id]' with its assign control present",
+      "driver_useful": "a seeded driver roster row rendered (independent of board-useful and of Maps)",
+      "map_useful": "mapReady === true AND the one post-init replay ran"
+    }
+  },
+  "status": "pending-heavy-slot",
+  "results": null
+}
