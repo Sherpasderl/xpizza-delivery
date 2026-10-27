@@ -76,7 +76,8 @@ function build() {
   } } };
   window.navigator.permissions = { query: () => Promise.resolve({ state: permState }) };
   let nativeFlag = true;
-  const deps = { document, window, navigator: window.navigator, $, gpsoffHtml, escapeHtml: esc, isNative: () => nativeFlag, tabBarHtml };
+  const boardRef = { list: [] };   // O6: the live board the central mount boundary (mountTabBar) reads
+  const deps = { document, window, navigator: window.navigator, $, gpsoffHtml, escapeHtml: esc, isNative: () => nativeFlag, tabBarHtml, drv2LiveBoard: () => boardRef.list };
   const body = 'let gpsoffState = null, gpsoffDismissed = false, gpsoffChecking = false;\n'
     + 'const TAB_SHOW_PEDIDOS = false, TAB_SHOW_GANANCIAS = false;\n'   // O6: applyGpsoff → mountTabBar (bar off while gpsoff)
     + liftFn('mountTabBar') + '\n'
@@ -92,6 +93,7 @@ function build() {
     cardShown: () => { const c = $('gpsoff-state'); return !!(c && !c.classList.contains('hidden')); },
     barShown: () => !!$('screen-onshift').querySelector(':scope > .tabs'),
     mountBar: () => $('screen-onshift').insertAdjacentHTML('beforeend', '<nav class="tabs"></nav>'),
+    setBoard: (b) => { boardRef.list = b; },
     idleTopHidden: () => $('idle-state').querySelector('.idle-top').classList.contains('hidden') };
 }
 
@@ -239,6 +241,23 @@ t('O6 (Codex r1 P2.5): the tab bar is removed while gpsoff is shown and restored
   h.api.setDismissed(true); h.api.apply();                            // «Más tarde»
   assert.ok(h.barShown(), 'dismissed → bar restored on the idle board');
   assert.ok(!h.cardShown(), 'the gpsoff card is hidden');
+});
+
+t('O6 (Codex r2 P2): a pending location check resolving DURING a delivery never remounts the bar (central boundary)', () => {
+  const h = build();
+  h.setBoard([{ orderId: 'A' }]);                                               // a delivery arrived while a check was pending
+  h.api.setState({ native: true, permission: 'granted', providerEnabled: true });   // location restored → gpsoff NOT active
+  h.api.apply();                                                                // the pending check resolves → restore path
+  assert.ok(!h.barShown(), 'no bar over the delivery — mountTabBar refused (live work)');
+});
+
+t('O6 (Codex r2 P2): a resume during work does not put the bar back', async () => {
+  const h = build();
+  h.setBoard([{ orderId: 'A' }]);
+  h.setLocStatus({ permission: 'granted', providerEnabled: true });             // all good on resume
+  h.api.resume();                                                              // resume → clears dismiss + re-checks → applyGpsoff
+  await Promise.resolve(); await Promise.resolve();
+  assert.ok(!h.barShown(), 'resume during a delivery does not remount the bar');
 });
 
 console.log(`✓ gpsoff: ${passed} checks passed`);

@@ -2666,6 +2666,10 @@ const TAB_SHOW_GANANCIAS = false;   // Ganancias ships with Pagos (R2) → hidde
 // Cuenta → openCuenta. Hidden tabs render no node, so there is no stale wiring.
 function mountTabBar(screenEl, active, visible) {
   if (!screenEl) return;
+  // CENTRAL mount boundary (Codex r2 P2): the bar NEVER shows while there's live work — enforced HERE so no caller can
+  // bypass it (a gpsoff restore / resume / pending location check that resolves during a delivery would otherwise
+  // remount it over the delivery controls). drv2LiveBoard() is the one live-work signal every path shares.
+  if (visible && drv2LiveBoard().length > 0) visible = false;
   let bar = screenEl.querySelector(':scope > .tabs');
   if (!visible) { if (bar) bar.remove(); return; }
   const html = tabBarHtml(active, { showPedidos: TAB_SHOW_PEDIDOS, showGanancias: TAB_SHOW_GANANCIAS });
