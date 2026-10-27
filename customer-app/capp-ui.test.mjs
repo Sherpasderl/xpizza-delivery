@@ -1518,3 +1518,21 @@ test('S7a-1 Codex r1 P2-8: the freeze persists the REAL v2 snapshot with no stor
   const r = bootCo({ storage, config: HOSTED_KEYS }); const h = r.ui.restore(c);
   assert.deepEqual([h.dropped, r.ui.cart.count()], [0, b.ui.cart.count()], 'every line hydrates');
 });
+
+test('S7a-1 composed: the REAL CappUI under the shell nav — Buscar → store → checkout → tip, device backs walk ONE stack (tip → checkout → cart → menu), the store root returns to Buscar with its query', async () => {
+  const { createShellNav } = await import('./capp-shell-nav.js').then((m) => m.default || m);
+  const win = { _l: null, history: { entries: [{}], pushState(st) { this.entries.push(st); }, back() { this.entries.pop(); }, go(k) { for (let i = 0; i < -k; i++) this.entries.pop(); } },
+    addEventListener(t, f) { if (t === 'popstate') this._l = f; }, removeEventListener() { this._l = null; } };
+  const device = () => { win.history.entries.pop(); return win._l(); };
+  const shown = []; const nav = createShellNav({ win, onShow: (e, x) => shown.push({ name: e.name, restored: x && x.restored }), onLeave: () => {} });
+  nav.go({ name: 'search' }); nav.go({ name: 'store', rid: 'rid_a' }, { q: 'pizza', scroll: 40 });
+  const b = bootCo({ mountOpts: { history: nav.adapterFor(nav.current()) } });
+  await filled(b); await b.click('#cta');
+  assert.equal(b.ui.state.screen, 'tip', 'premise: the tip step');
+  assert.equal(device(), 'consumed'); await settle(); assert.equal(b.ui.state.screen, 'checkout', 'tip → «Entrega & Pago»');
+  assert.equal(device(), 'consumed'); await settle(); assert.equal(b.ui.state.screen, 'store');
+  for (let i = 0; i < 4 && b.ui.state.screen !== 'store'; i++) { device(); await settle(); }
+  if (b.q('#layer .sheet')) { assert.equal(device(), 'consumed'); await settle(); }
+  assert.equal(device(), 'pass', 'the store root');
+  assert.deepEqual(shown.at(-1), { name: 'search', restored: { q: 'pizza', scroll: 40 } }, '🔴 back to Buscar with its query');
+});

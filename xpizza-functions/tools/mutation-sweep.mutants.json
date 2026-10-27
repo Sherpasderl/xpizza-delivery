@@ -22062,5 +22062,117 @@
     "kills_with": [
       "the documented adapter receives the push"
     ]
+  },
+  {
+    "id": "s7a1-14",
+    "slice": "s7a1",
+    "label": "leaving a shell screen does not save its state (predecessor restore lost)",
+    "file": "../customer-app/capp-shell-nav.js",
+    "from": "      top().saved = saved === undefined ? top().saved : saved;\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "back returns to Buscar with its query"
+    ]
+  },
+  {
+    "id": "s7a1-15",
+    "slice": "s7a1",
+    "label": "a blocked back is not re-pushed (the browser entry is lost)",
+    "file": "../customer-app/capp-shell-nav.js",
+    "from": "if (r === 'blocked') { push({ store: true, reblock: true }); return r; }",
+    "to": "if (r === 'blocked') { return r; }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "the popped browser entry is restored"
+    ]
+  },
+  {
+    "id": "s7a1-16",
+    "slice": "s7a1",
+    "label": "a UI-caused back is re-delivered to the mount",
+    "file": "../customer-app/capp-shell-nav.js",
+    "from": "      if (skip > 0) { skip--; return 'self'; }\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "UI-caused back is never re-delivered"
+    ]
+  },
+  {
+    "id": "s7a1-17",
+    "slice": "s7a1",
+    "label": "per-consumer concurrency (the global limit ignored)",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "if (active < limit) run(); else queue.push(run);",
+    "to": "run();",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "global concurrency 3"
+    ]
+  },
+  {
+    "id": "s7a1-18",
+    "slice": "s7a1",
+    "label": "a 304 accepted without the retained matching body",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "if (etag && cur && cur.body && cur.etag === etag) next = { ...cur, state: 'fresh', fetched_at: now(), gen };",
+    "to": "if (true) next = { ...cur, state: 'fresh', fetched_at: now(), gen };",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "304 requires the retained matching body"
+    ]
+  },
+  {
+    "id": "s7a1-19",
+    "slice": "s7a1",
+    "label": "a stale rid counted as complete (search reports No encontramos)",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "return !!e && e.state === 'fresh'; });",
+    "to": "return !!e && e.state !== 'failed'; });",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "a stale rid makes search partial"
+    ]
+  },
+  {
+    "id": "s7a1-20",
+    "slice": "s7a1",
+    "label": "the envelope rid is not validated",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "if (r && r.status === 200 && r.body && r.body.rid === rid) return",
+    "to": "if (r && r.status === 200 && r.body) return",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "envelope.rid must equal the requested rid"
+    ]
   }
 ]
