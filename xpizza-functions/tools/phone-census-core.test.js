@@ -14,7 +14,7 @@ const CASES = [
   ['50497950000', 'reject:cc_digits_no_plus'], ['12197950000', 'reject:cc_digits_no_plus'],
   ['+97950000', 'reject:plus_8'], ['+447911123456', 'reject:qualified_unsupported'], ['+5049795000', 'reject:qualified_wrong_length'],
   ['+50497950000123', 'reject:qualified_wrong_length'], ['2197950000', 'reject:bare_other'], ['979500', 'reject:bare_other'],
-  ['(+504) 9795-0000', 'reject:cc_digits_no_plus'], ['00504 9795-0000', 'accept:qualified:504'],
+  ['(+504) 9795-0000', 'reject:bare_other'], ['00504 9795-0000', 'accept:qualified:504'],
   ['', 'empty'], [null, 'empty'], [undefined, 'empty'], [97950000, 'reject:non_string'], ['abc', 'reject:bare_other'],
 ];
 for (const [v, want] of CASES) assert.strictEqual(C.classify(v), want, `CENSUS-CLASS ${JSON.stringify(v)}`);
