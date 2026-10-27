@@ -237,11 +237,14 @@ test('Buscar: «No encontramos» ONLY when every menu answered; a partial shows 
 // ── the shell, through the REAL shell.html ──
 function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }); return { p, resolve }; }
 const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
-function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME } = {}) {
+// stampedDir: a copy of customer-app/ stamped by the REAL platform/stamp-version.js — the page's own sherpa-client.js runs on its
+// stamped identity and capp-api.js runs in the page realm (its SherpaClient.fetch arm), the network = pageFetch (window.fetch)
+function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
-  const html = readFileSync(join(HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
+  const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://app.test/' });
   const w = dom.window;
+  if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
     'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
@@ -255,7 +258,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   };
   const clock = now || { t: T0 };
   const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), fetchDirectory, fetchEnvelope, readAvailability: async () => [], onEvent: (n, d) => events.push([n, J(d)]), runtime, storage: storage || memStorage(), now: () => clock.t,
-    auth: { state: () => auth }, geolocation, search, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: require('./capp-api.js'), apiOpts: { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); }, now: () => clock.t, sleep: async () => {} } } });
+    auth: { state: () => auth }, geolocation, search, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } } });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const release = (rid, body) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: body || J(PROV[rid].envelope), etag: body ? '"changed"' : PROV[rid].etag }); };
@@ -598,4 +601,51 @@ test('Codex guest r1 #3: with the guest flag ABSENT the Cuenta tab is exactly th
   assert.deepEqual(S.events.filter(([n]) => n === 'tab'), [['tab', { tab: 'account' }]], 'the host gets the tab, as before');
   assert.equal(S.q('.guestcard'), null, '🔴 no guest Cuenta without the flag');
   assert.equal(S.ui.state.tab, 'home'); assert.equal(S.q('#app').innerHTML, before, 'the DOM is byte-identical');
+});
+
+// advisor 2026-10-27: shell.html is an orders-app ENTRYPOINT — the real stamp tool stamps it, SherpaClient goes live on it, and the
+// shell's createOrder carries X-Client-Deployment: orders-app (the server's deployment gate)
+test('stamp: shell.html is stamped as orders-app; on the stamped shell SherpaClient is LIVE and the shell\'s createOrder carries X-Client-Deployment: orders-app', async () => {
+  const { mkdtempSync, cpSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const Stamp = require(join(ROOT, 'platform/stamp-version.js'));
+  const tmp = mkdtempSync(join(tmpdir(), 'capp-stamp-')), dir = join(tmp, 'customer-app');
+  cpSync(HERE, dir, { recursive: true, filter: (src) => !/node_modules/.test(src) });
+  try {
+    const r = Stamp.stamp(dir, { siteName: 'sherpa-pedir', commit: 'c0ffee', env: 'preview' });
+    assert.ok(r.ok, r.error); assert.equal(r.deployment, 'orders-app');
+    assert.ok(r.files.includes('shell.html'), '🔴 shell.html is stamped');
+    assert.ok(readFileSync(join(dir, 'shell.html'), 'utf8').includes('<meta name="sherpa-deployment" content="orders-app">'));
+    const sent = [];
+    const pageFetch = async (u, i) => {
+      const url = String(u), ep = url.split('?')[0].split('/').pop(); sent.push({ ep, h: (i && i.headers) || {} });
+      const body = i && i.body ? JSON.parse(i.body) : null;
+      const json = ep === 'quoteOrder' ? { ok: true, total_cents: body.items.reduce((a, x) => a + Math.round(x.subtotal * 100), 0), net_total_cents: body.items.reduce((a, x) => a + Math.round(x.subtotal * 100), 0) + 4500,
+        delivery: { mode: 'delivery', delivery_cents: 4500, promo_discount_cents: 0, policy_version: 'p1', from_cents: 3500, max_km: 6 } }
+        : ep === 'createOrder' ? { ok: true, order_id: body.order_id } : { build: r.build, compat: r.compat };
+      return { status: 200, ok: true, json: async () => json, clone() { return this; } };
+    };
+    const EPS = { quoteOrder: 'https://fn.test/quoteOrder', createOrder: 'https://fn.test/createOrder', chargeOnlineOrder: 'https://fn.test/chargeOnlineOrder', paymentStatus: 'https://fn.test/paymentStatus' };
+    const S = bootShell({ stampedDir: dir, pageFetch, runtime: { ...RUNTIME, endpoints: EPS }, geolocation: { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) } });
+    try {
+      assert.equal(S.w.SherpaClient.inert, false, '🔴 SherpaClient is live on the stamped shell');
+      assert.equal(S.w.SherpaClient.identity.deployment, 'orders-app');
+      await flush();
+      S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); await flush();
+      const ui = S.ui.store().ui; assert.equal(ui.orderable(), true, 'premise: a verified menu');
+      const plain = ui.menu.dishes.find((d) => !d.launcher && !d.variantOf && !ui.menu.pickupOnlyCats.has(String(d.cat)));
+      ui.cart.inc(plain.key); ui.render();
+      const type = (sel, v) => { const el = S.q(sel); assert.ok(el, `premise: ${sel}`); el.value = v; el.dispatchEvent(new S.w.Event('input', { bubbles: true })); };
+      S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush();
+      S.click('[data-act="pin"]'); await flush(); S.click('[data-act="pin-done"]'); await flush();
+      type('#f-details', 'Portón negro'); type('#f-name', 'Ana'); type('#f-phone', '9999 0000'); await flush();
+      S.click('[data-act="pay"][data-val="cash"]'); await flush();
+      S.click('#cta'); await flush(); S.click('[data-act="tipc"][data-val="0"]'); await flush(); S.click('[data-act="tip-place"]'); await flush();
+      S.click('#layer [data-act="placing-go"]'); await flush(); await flush();
+      const co = sent.filter((s) => s.ep === 'createOrder');
+      assert.equal(co.length, 1, 'premise: the shell sent ONE createOrder');
+      assert.equal(co[0].h['X-Client-Deployment'], 'orders-app', '🔴 the shell\'s createOrder carries X-Client-Deployment: orders-app');
+      assert.equal(co[0].h['X-Client-App'], 'orders'); assert.equal(co[0].h['X-Client-Build'], r.build);
+    } finally { S.w.close(); }
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
 });

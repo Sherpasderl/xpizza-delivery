@@ -47,7 +47,7 @@ test('customer-app/ is the one platform orders deployment, with exactly the appr
   assert.equal(app.length, 1, '🔴 exactly one platform orders deployment');
   const d = app[0];
   assert.equal(m.deployments.filter((x) => x.folder === 'customer-app').length, 1, 'customer-app/ is deployed exactly once');
-  assert.deepEqual([d.folder, d.entrypoints, d.context], ['customer-app', ['index.html'], 'platform']);
+  assert.deepEqual([d.folder, d.entrypoints, d.context], ['customer-app', ['index.html', 'shell.html'], 'platform']);   // shell.html: the S7a-2 multi-store page, stamped (advisor 2026-10-27)
   assert.ok(Array.isArray(d.origins) && d.origins.length >= 1, 'declares its origin(s)');
   for (const o of d.origins) assert.equal(new URL(o).origin, o, `${o} is an exact origin`), assert.equal(new URL(o).protocol, 'https:');
   assert.deepEqual(Object.keys(d.pay_return).sort(), ['default', 'env']);

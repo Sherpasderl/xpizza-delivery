@@ -23789,5 +23789,37 @@
     "kills_with": [
       "re-verify"
     ]
+  },
+  {
+    "id": "guest-16",
+    "slice": "guest",
+    "label": "requestCheckoutCode drops the deployment identity (X-Client-*)",
+    "file": "../customer-app/capp-api.js",
+    "from": "{ phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp }, clientIdentity());",
+    "to": "{ phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp });",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "/x/rc carries X-Client-App"
+    ]
+  },
+  {
+    "id": "guest-17",
+    "slice": "guest",
+    "label": "verifyCheckoutCode drops the deployment identity (X-Client-*)",
+    "file": "../customer-app/capp-api.js",
+    "from": "{ phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp, code }, clientIdentity());",
+    "to": "{ phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp, code });",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "/x/vc carries X-Client-App"
+    ]
   }
 ]

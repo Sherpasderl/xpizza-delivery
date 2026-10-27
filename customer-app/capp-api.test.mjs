@@ -644,3 +644,26 @@ test('Codex guest r2 #1: sendCard\'s in-progress RE-SENDS pass the guest gate at
   const o3 = await A3.api.place(args);
   assert.deepEqual([o3.kind, A3.srv.of('chargeOnlineOrder').length], ['guest_cash_not_allowed', 1], '🔴 the tender changed during the backoff ⇒ refused');
 });
+
+// advisor 2026-10-27: the server gates the checkout-code calls on X-Client-Deployment; SherpaClient adds the identity only on ITS
+// identity endpoints (createOrder / chargeOnlineOrder / quotes), so capp-api attaches SherpaClient.headers() on these two — loaded
+// the way the page loads it (a window global beside SherpaClient), never a test seam
+test('identity: the checkout-code calls carry SherpaClient.headers() (X-Client-Deployment) — stamped ⇒ sent, unstamped (inert) ⇒ none', async () => {
+  const vm = await import('node:vm');
+  for (const [what, ident] of [['stamped', { 'X-Client-App': 'orders', 'X-Client-Deployment': 'orders-app', 'X-Client-Build': 'b1', 'X-Client-Compat': '1' }], ['inert', {}]]) {
+    const sent = [];
+    const SherpaClient = { headers: () => ident, fetch: async (u, i) => { sent.push({ u, h: i.headers }); return { status: 200, json: async () => (u.endsWith('/vc') ? { ok: true, checkout_ticket: 'tk' } : { ok: true, resend_in_s: 30 }) }; } };
+    const win = { SherpaClient, crypto: globalThis.crypto }; win.self = win;
+    vm.runInNewContext(readFileSync(join(ROOT, 'customer-app/capp-api.js'), 'utf8'), win);
+    const api = win.CappApi.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: { ...E, requestCheckoutCode: 'https://fn.test/x/rc', verifyCheckoutCode: 'https://fn.test/x/vc' } },
+      CappCheckout: C, createConfirmQuote: require('./capp-confirm-quote.js').createConfirmQuote, storage: null, now: () => at(12) });
+    assert.equal((await api.requestCheckoutCode({ phone: '+50499990000', cartFp: 'fp' })).ok, true, `${what}: premise`);
+    assert.equal((await api.verifyCheckoutCode({ phone: '+50499990000', cartFp: 'fp', code: '123456' })).ok, true);
+    assert.equal(sent.length, 2, 'both through SherpaClient.fetch');
+    for (const s of sent) {
+      for (const [k, v] of Object.entries(ident)) assert.equal(s.h[k], v, `🔴 ${what}: ${s.u} carries ${k}`);
+      if (what === 'inert') assert.deepEqual(Object.keys(s.h).filter((k) => /^x-client/i.test(k)), [], 'unstamped: no identity header');
+      assert.equal(s.h['Content-Type'], 'application/json');
+    }
+  }
+});

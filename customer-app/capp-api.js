@@ -585,9 +585,12 @@
     const TICKET_TTL_MS = 15 * 60 * 1000;
     function ticketValid(t) { return !!t && typeof t.ticket === 'string' && t.ticket && Number.isFinite(t.expires_at) && now() < t.expires_at; }
     const secs = (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.round(Number(v)) : null);
+    // the deployment identity (X-Client-*): SherpaClient adds it only on ITS identity endpoints, and the server gates these two on
+    // X-Client-Deployment (advisor 2026-10-27) — so they carry it here, from the same module; unstamped ⇒ {} (inert)
+    const clientIdentity = () => { const S = root && root.SherpaClient; try { const h = S && typeof S.headers === 'function' ? S.headers() : null; return h && typeof h === 'object' ? h : {}; } catch (_) { return {}; } };
     async function requestCheckoutCode({ phone, cartFp }) {
       if (!E.requestCheckoutCode) return { kind: 'offline' };
-      const r = await sendOnce(E.requestCheckoutCode, { phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp });
+      const r = await sendOnce(E.requestCheckoutCode, { phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp }, clientIdentity());
       if (r.network || !r.parsed) return { kind: 'offline' };
       const j = r.json;
       if (r.status === 200 && j.ok === true) return { ok: true, resendInS: secs(j.resend_in_s) ?? 60 };
@@ -598,7 +601,7 @@
     }
     async function verifyCheckoutCode({ phone, cartFp, code }) {
       if (!E.verifyCheckoutCode) return { kind: 'offline' };
-      const r = await sendOnce(E.verifyCheckoutCode, { phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp, code });
+      const r = await sendOnce(E.verifyCheckoutCode, { phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp, code }, clientIdentity());
       if (r.network || !r.parsed) return { kind: 'offline' };
       const j = r.json;
       if (r.status === 200 && j.ok === true && typeof j.checkout_ticket === 'string' && j.checkout_ticket) return { ok: true, ticket: { ticket: j.checkout_ticket, phone, cart_fp: cartFp, expires_at: now() + TICKET_TTL_MS } };
