@@ -2,11 +2,12 @@
 // PLAN 4 r2 (Codex r1 #6) — the DEPLOYED-ORIGIN comparison (`form-bundle-live-check.js --deployed`): the bundle the LIVE site
 // serves against the published menu, both read fresh through the real transport (getText / getJson) against a LOOPBACK site.
 // The checkout's own index.html supplies only the menu endpoint — a stale DEPLOY is caught even when the checkout is current.
+// PLAN 4 GATED (Codex r4): BOTH CLI modes (--deployed and the default) refuse a PRE-migration published body.
 // Run: node tools/form-bundle-deployed-check.test.js
 const assert = require('assert');
 const fs = require('fs');
 const http = require('http');
-const { deployedCheck, getText, getJson } = require('./form-bundle-live-check');
+const { deployedCheck, thisFormCheck, getText, getJson } = require('./form-bundle-live-check');
 const { FORMS } = require('./splice-form-bundle');
 const { extractBundle, spliceBundle } = require('../catalog/splice-form-bundle');
 
@@ -18,21 +19,22 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
 (async () => {
   const checkout = fs.readFileSync(FORMS.x_pizza, 'utf8');
   const published = extractBundle(checkout);
-  const state = { deployedBundle: clone(published), menu: clone(published), down: false, hits: [] };
+  const state = { page: checkout, deployedBundle: clone(published), menu: clone(published), down: false, hits: [] };
   const server = await new Promise((resolve) => {
     const s = http.createServer((req, res) => {
       state.hits.push({ url: req.url, cc: req.headers['cache-control'] });
-      if (req.url.startsWith('/menu/')) { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ rid: 'x_pizza', representation_version: '1d.3', menu: state.menu })); }
+      if (req.url.startsWith('/menu/')) { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ rid: req.url.slice(6).split('?')[0], representation_version: '1d.3', menu: state.menu })); }
       if (state.down) { res.writeHead(503); return res.end('down'); }
-      res.writeHead(200, { 'content-type': 'text/html' }); res.end(spliceBundle(checkout, state.deployedBundle, 'deployed'));
+      res.writeHead(200, { 'content-type': 'text/html' }); res.end(spliceBundle(state.page, state.deployedBundle, 'deployed'));
     }).listen(0, '127.0.0.1', () => resolve(s));
   });
   const base = `http://127.0.0.1:${server.address().port}`;
   // the manifest names the real-shaped https origin; the transport is redirected to the loopback "live site"
-  const sites = { deployments: [{ app: 'orders', context: 'x_pizza', origins: ['https://orders.test'] }] };
-  const loop = (u) => u.replace('https://orders.test', base).replace(/^https:\/\/[^/]+(?=\/menu\/)/, base);
+  const sites = { deployments: [{ app: 'orders', context: 'x_pizza', origins: ['https://orders.test'] }, { app: 'orders', context: 'la_musa', origins: ['https://musa.test'] }] };
+  const loop = (u) => u.replace('https://orders.test', base).replace('https://musa.test', base).replace(/^https:\/\/[^/]+(?=\/menu\/)/, base);
   const deps = { sites, fetchText: (u, o) => getText(loop(u), { ...o, get: http.get, timeoutMs: 3000, totalMs: 5000 }), fetchJson: (u, o) => getJson(loop(u), { ...o, get: http.get, timeoutMs: 3000, totalMs: 5000 }), now: () => 1761600000000 };
-  const html = checkout.replace(/const PUBLICMENU_URL\s*=\s*'[^']+'/, "const PUBLICMENU_URL = 'https://menu.test'");
+  const atMenu = (page) => page.replace(/const PUBLICMENU_URL\s*=\s*'[^']+'/, "const PUBLICMENU_URL = 'https://menu.test'");
+  const html = atMenu(checkout);
   try {
     let r = await deployedCheck('x_pizza', html, deps);
     assert.deepStrictEqual([r.origin, r.fail, r.warn], ['https://orders.test/', [], []], 'a deploy equal to published is clean');
@@ -52,6 +54,45 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
     await assert.rejects(deployedCheck('x_pizza', html, deps), /answered 503/, 'an unreachable deployed site is a failure, not a pass');
     await assert.rejects(deployedCheck('x_pizza', html, { ...deps, sites: { deployments: [] } }), /no single orders origin/);
     ok('an unreachable deployed site or a brand with no single orders origin is a failure, never a pass');
+
+    // PLAN 4 GATED (Codex r4): the GATED runtime has no literal fallback, so BOTH CLI modes refuse a published body that lacks the
+    // reviewed migration rows — even when the deploy / the checkout EQUAL it (nothing else differs). Both brands.
+    state.down = false;
+    const DATA = require('./migrations/2026-10-26-menu-structure.json');
+    const { pricingKeyOf, extrasKeyOf } = require('../catalog/form-menu-source');
+    const stripRows = (rid, menu) => {                                 // the pre-migration body: EXACTLY the reviewed rows removed
+      const m = clone(menu); const rows = DATA.restaurants[rid]; let removed = 0;
+      for (const f of Object.keys(rows.structure || {})) { assert.ok(m[f] !== undefined, `${rid} committed bundle carries ${f}`); delete m[f]; removed++; }
+      for (const [coll, keyOf, bodyColl] of [['items', pricingKeyOf, 'dishes'], ['extras', extrasKeyOf, 'extras']]) {
+        for (const [key, row] of Object.entries(rows[coll] || {})) {
+          const rec = m[bodyColl].find((r) => String(keyOf(rid, r)) === key);
+          assert.ok(rec, `${rid} ${bodyColl}[${key}] is in the committed bundle`);
+          for (const f of Object.keys(row.display || {})) { delete rec[f]; removed++; }
+        }
+      }
+      return { m, removed };
+    };
+    for (const rid of ['x_pizza', 'la_musa']) {
+      const form = fs.readFileSync(FORMS[rid], 'utf8');
+      const migrated = extractBundle(form);
+      const { m: pre, removed } = stripRows(rid, migrated);
+      assert.ok(removed > 0, `${rid} has reviewed rows to strip`);
+      state.page = form; state.deployedBundle = clone(pre); state.menu = clone(pre);
+      const preHtml = atMenu(spliceBundle(form, pre, 'pre-migration'));   // the checkout bakes the same pre-migration body
+      for (const [mode, run] of [['--deployed', () => deployedCheck(rid, preHtml, deps)], ['default', () => thisFormCheck(rid, preHtml, deps)]]) {
+        const r = await run();
+        assert.strictEqual(r.fail.length, removed, `${rid} ${mode}: one premigration_body failure per missing field (${JSON.stringify(r.fail)})`);
+        assert.ok(r.fail.every((f) => /^premigration_body: .+ is missing from the published menu/.test(f)), `${rid} ${mode}: only premigration failures`);
+        assert.deepStrictEqual(r.warn, [], `${rid} ${mode}: nothing else differs`);
+      }
+      state.deployedBundle = clone(migrated); state.menu = clone(migrated);
+      const migHtml = atMenu(form);
+      for (const [mode, run] of [['--deployed', () => deployedCheck(rid, migHtml, deps)], ['default', () => thisFormCheck(rid, migHtml, deps)]]) {
+        const r = await run();
+        assert.deepStrictEqual([r.fail, r.warn], [[], []], `${rid} ${mode}: the migrated body passes`);
+      }
+    }
+    ok('BOTH CLI modes (--deployed and the default) refuse a pre-migration published body (both brands); the migrated body passes both');
   } finally { server.close(); }
   FINISHED = true;
   console.log(`\nform-bundle-deployed-check: OK (${n})`);

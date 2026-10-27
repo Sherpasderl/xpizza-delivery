@@ -106,7 +106,19 @@ async function deployedCheck(rid, html, { sites = require('../../platform/sites.
   const t = now();
   const deployedHtml = await fetchText(`${origin}?_deployed=${t}`, { headers: { accept: 'text/html', 'cache-control': 'no-cache' } });
   const body = await fetchJson(`${publicMenuUrl(html, rid)}?_check=${t}`, { headers: { accept: 'application/json', 'cache-control': 'no-cache' } });
-  return { origin, ...compareBundle(extractBundle(deployedHtml), body && body.menu) };
+  return { origin, ...withPremigration(rid, compareBundle(extractBundle(deployedHtml), body && body.menu), body && body.menu) };
+}
+
+// PLAN 4 GATED (Codex r3 #3, r4): BOTH modes refuse a pre-migration published body — the GATED runtime has no literal fallback.
+function withPremigration(rid, res, menu) {
+  const gaps = require('../catalog/menu-structure-rows').premigrationGaps(rid, menu);
+  return { ...res, fail: res.fail.concat(gaps.map((g) => `premigration_body: ${g} is missing from the published menu (run the menu-structure migration + publish)`)) };
+}
+// The default (--this-form / every form) mode: the checkout's baked bundle against the published menu (fresh). → { fail, warn }
+async function thisFormCheck(rid, html, { fetchJson = getJson, now = Date.now } = {}) {
+  // a FRESH read, like the bake's: a cached older body would fail a build whose bake read the newer one
+  const body = await fetchJson(`${publicMenuUrl(html, rid)}?_check=${now()}`, { headers: { accept: 'application/json', 'cache-control': 'no-cache' } });
+  return withPremigration(rid, compareBundle(extractBundle(html), body && body.menu), body && body.menu);
 }
 
 async function main() {
@@ -129,13 +141,9 @@ async function main() {
       console.log(`${rid}: the DEPLOYED form at ${res.origin} ${res.fail.length || res.warn.length ? `differs from the published menu (${res.fail.length} fail, ${res.warn.length} published-only)` : 'carries the published menu'}`);
       continue;
     }
-    const url = publicMenuUrl(html, rid);
-    let body;
-    // a FRESH read, like the bake's: a cached older body would fail a build whose bake read the newer one
-    try { body = await getJson(`${url}?_check=${Date.now()}`, { headers: { accept: 'application/json', 'cache-control': 'no-cache' } }); } catch (e) { console.error(`FAIL ${rid}: ${e.message}`); failed = true; continue; }
-    const { fail, warn } = compareBundle(extractBundle(html), body && body.menu);
-    // PLAN 4 GATED (Codex r3 #3): a pre-migration published body is refused here too
-    for (const g of require('../catalog/menu-structure-rows').premigrationGaps(rid, body && body.menu)) fail.push(`premigration_body: ${g} is missing from the published menu (run the menu-structure migration + publish)`);
+    let res;
+    try { res = await thisFormCheck(rid, html); } catch (e) { console.error(`FAIL ${rid}: ${e.message}`); failed = true; continue; }
+    const { fail, warn } = res;
     for (const w of warn) console.log(`WARN ${rid} ${w}`);
     for (const f of fail) console.error(`FAIL ${rid} ${f}`);
     if (fail.length) failed = true;
@@ -146,4 +154,4 @@ async function main() {
   process.exitCode = 0;
 }
 if (require.main === module) main().catch((e) => { console.error('form-bundle-live-check: ERROR', e && e.message); process.exit(1); });
-module.exports = { compareBundle, unregisteredForms, publicMenuUrl, selectForms, getJson, getText, deployedCheck, IDENTITY_KEYS };
+module.exports = { compareBundle, unregisteredForms, publicMenuUrl, selectForms, getJson, getText, deployedCheck, thisFormCheck, IDENTITY_KEYS };

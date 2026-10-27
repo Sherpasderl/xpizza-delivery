@@ -20836,8 +20836,8 @@
   "slice": "formbake",
   "label": "PLAN 4 r2 (#6): --deployed compares the CHECKOUT's bundle instead of the live site's — a stale deploy passes",
   "file": "tools/form-bundle-live-check.js",
-  "from": "  return { origin, ...compareBundle(extractBundle(deployedHtml), body && body.menu) };",
-  "to": "  return { origin, ...compareBundle(extractBundle(html), body && body.menu) };",
+  "from": "  return { origin, ...withPremigration(rid, compareBundle(extractBundle(deployedHtml), body && body.menu), body && body.menu) };",
+  "to": "  return { origin, ...withPremigration(rid, compareBundle(extractBundle(html), body && body.menu), body && body.menu) };",
   "command": [
    "node",
    "tools/form-bundle-deployed-check.test.js"
@@ -20973,6 +20973,42 @@
   "command": [
    "node",
    "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-96",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (Codex r4): --deployed skips the premigration gate (a pre-migration body passes the deployed check)",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "  return { origin, ...withPremigration(rid, compareBundle(extractBundle(deployedHtml), body && body.menu), body && body.menu) };",
+  "to": "  return { origin, ...compareBundle(extractBundle(deployedHtml), body && body.menu) };",
+  "command": [
+   "node",
+   "tools/form-bundle-deployed-check.test.js"
+  ]
+ },
+ {
+  "id": "fb-97",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (Codex r4): the default live-check mode skips the premigration gate",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "  return withPremigration(rid, compareBundle(extractBundle(html), body && body.menu), body && body.menu);",
+  "to": "  return compareBundle(extractBundle(html), body && body.menu);",
+  "command": [
+   "node",
+   "tools/form-bundle-deployed-check.test.js"
+  ]
+ },
+ {
+  "id": "fb-98",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (Codex r4): withPremigration drops the gaps it found (both modes pass a pre-migration body)",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "  return { ...res, fail: res.fail.concat(gaps.map(",
+  "to": "  return { ...res, fail: res.fail.concat([].map(",
+  "command": [
+   "node",
+   "tools/form-bundle-deployed-check.test.js"
   ]
  }
 ]
