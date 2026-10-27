@@ -215,3 +215,42 @@ test('Codex G6 r1 #4 — A verified, Back ×2, then B: nothing of A (name / emai
   assert.deepEqual(b.api.of('completeProfile'), [{ idToken: 'id:u_b', email: 'beto@correo.com', name: 'Beto', promos: false }]);
   assert.deepEqual(b.events.filter((e) => e[0] === 'signed-in'), [['signed-in', { uid: 'u_b', name: 'Beto', phone: '+50488880000', email: 'beto@correo.com', isNew: true }]], 'B\'s profile only');
 });
+test('Codex G6 r3 — a COMPLETE account leaves the sheet as «Listo» by any exit: done → Back → ✕ (phone and Google), the profile saved → Back → ✕; an incomplete one is still undone', async () => {
+  const A = { ok: true, token: 'ct:u_a', isNew: false, name: 'Ana Pérez', completion: 'complete', profile: { name: 'Ana Pérez', email: 'ana@gmail.com' } };
+  const b = sheet({ verify: A }); b.su.open({ ctx: 'checkout' }); await settle();
+  await b.type('#su-phone', '99990000'); await b.click('[data-su="phone-go"]'); await b.code('111111'); await b.click('[data-su="verify"]');
+  assert.equal(b.txt('.sg .h1'), '¡Hola de nuevo, Ana!', 'premise');
+  await b.click('[data-su="back"]'); await b.click('[data-su="back"]'); await b.type('#su-phone', '88887777');   // the field edited, never verified
+  await b.click('[data-su="close"]');
+  assert.deepEqual(b.events, [['signed-in', { uid: 'u_a', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com', isNew: false }], ['done', {}]], '🔴 a complete account\'s exit = «Listo» (with the VERIFIED number)');
+  assert.equal(b.auth.calls.out, 0, 'never signed out');
+  // the host's teardown (navigation / back gesture) follows the same rule
+  const t = sheet({ verify: A }); t.su.open({ ctx: 'checkout' }); await settle();
+  await t.type('#su-phone', '99990000'); await t.click('[data-su="phone-go"]'); await t.code('111111'); await t.click('[data-su="verify"]'); await t.click('[data-su="back"]');
+  t.su.close(); await settle();
+  assert.equal(t.events[0][0], 'signed-in', 'a teardown of a complete account = «Listo»');
+  // Google, linked to a complete account
+  const g = sheet({ config: { ok: true, termsUrl: null, privacyUrl: null, legalReady: true, googleEnabled: true, googleClientId: 'gid' },
+    googleStart: { ok: true, nonce: 'n1' }, googleSignIn: { ok: true, linked: true, token: 'ct:u_g', isNew: false, name: 'Gabi', completion: 'complete', profile: { name: 'Gabi', email: 'gabi@gmail.com' } },
+    google: { getIdToken: async () => 'gid-token' } });
+  g.su.open({ ctx: 'checkout' }); await settle(); await g.click('[data-su="google"]'); await settle();
+  assert.equal(g.txt('.sg .h1'), '¡Hola de nuevo, Gabi!', 'premise: Google, complete');
+  await g.click('[data-su="back"]'); await g.click('[data-su="close"]');
+  assert.equal(g.events[0][0], 'signed-in'); assert.equal(g.events[0][1].uid, 'u_g', '🔴 Google: the same rule');
+  // a NEW account whose profile was saved: complete from there on
+  const n = sheet(); n.su.open({ ctx: 'checkout' }); await settle();
+  await n.type('#su-phone', '99990000'); await n.click('[data-su="phone-go"]'); await n.code('123456'); await n.click('[data-su="verify"]');
+  await n.type('#su-email', 'ana@gmail.com'); await n.click('[data-su="email-go"]'); await n.type('#su-name', 'Ana'); await n.check('su-terms'); await n.click('[data-su="save"]');
+  assert.equal(n.txt('.sg .h1'), '¡Perfil creado!'); await n.click('[data-su="back"]'); await n.click('[data-su="close"]');
+  assert.equal(n.events[0][0], 'signed-in', 'saved ⇒ complete ⇒ «Listo»'); assert.equal(n.auth.calls.out, 0);
+  // INCOMPLETE → Back → ✕ ⇒ undone (unchanged)
+  const i = sheet(); i.su.open({ ctx: 'checkout' }); await settle();
+  await i.type('#su-phone', '99990000'); await i.click('[data-su="phone-go"]'); await i.code('123456'); await i.click('[data-su="verify"]');
+  await i.click('[data-su="back"]'); await i.click('[data-su="close"]');
+  assert.deepEqual(i.events, [['closed', {}]]); assert.equal(i.auth.calls.out, 1, '🔴 an incomplete sign-in is still undone');
+  // a guest choice after a complete sign-in: the customer declined — that session is undone, no member
+  const q = sheet({ verify: A }); q.su.open({ ctx: 'checkout' }); await settle();
+  await q.type('#su-phone', '99990000'); await q.click('[data-su="phone-go"]'); await q.code('111111'); await q.click('[data-su="verify"]');
+  await q.click('[data-su="back"]'); await q.click('[data-su="back"]'); await q.click('[data-su="guest"]');
+  assert.deepEqual(q.events, [['guest', {}]]); assert.equal(q.auth.calls.out, 1);
+});

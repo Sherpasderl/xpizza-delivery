@@ -23889,10 +23889,10 @@
   {
     "id": "g6-01",
     "slice": "g6",
-    "label": "✕ on the done pane closes without signing the member in",
+    "label": "✕ / the scrim on a complete account closes without signing the member in",
     "file": "../customer-app/capp-signup.js",
-    "from": "return void (S.pane === 'done' ? finish() : close('close'));",
-    "to": "return void close('close');",
+    "from": "      if (a === 'close') return void exit();",
+    "to": "      if (a === 'close') return void close('close');",
     "command": [
       "node",
       "--test",
@@ -24165,6 +24165,22 @@
     ],
     "kills_with": [
       "still not a member after a rejected sign-out"
+    ]
+  },
+  {
+    "id": "g6-18",
+    "slice": "g6",
+    "label": "Codex G6 r3: a complete account's exit (Back then ✕, a teardown) is not «Listo» — no emit, no mark",
+    "file": "../customer-app/capp-signup.js",
+    "from": "    const exit = () => (isComplete() ? finish() : close('close'));",
+    "to": "    const exit = () => (S.pane === 'done' ? finish() : close('close'));",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "a complete account's exit = «Listo»"
     ]
   }
 ]

@@ -119,7 +119,7 @@
       // Codex G6 r1 #4: another account than the one verified before (Back to the phone, a new number) starts from ITS data only —
       // nothing of the previous account's name / email / consent carries over (a Google link in progress belongs to this phone)
       if (S.uid && S.uid !== uid) Object.assign(S, { name: '', email: '', promos: false, terms: false, existing: false, completion: null, google: S.google && S.google.ticket ? S.google : null });
-      S.uid = uid; S.isNew = r.isNew === true; S.completion = r.completion;
+      S.uid = uid; S.isNew = r.isNew === true; S.completion = r.completion; S.vphone = '+504' + digits();   // the VERIFIED number (Back can edit the field)
       if (r.profile) { if (r.profile.name && !S.name) S.name = r.profile.name; if (r.profile.email && !S.email) S.email = r.profile.email; }
       if (r.name && !S.name) S.name = r.name;
       S.busy = false;
@@ -162,6 +162,7 @@
       if (!live(g)) return;
       S.busy = false;
       if (!r.ok) { S.err = COPY.saveErr; render(); return; }
+      S.completion = 'complete';   // the server holds the profile + the Términos: from here every exit is «Listo»
       go('done');
     }
     async function close(why) {
@@ -169,16 +170,23 @@
       S.open = false; S.gen++; tickStop(); render();
       // a sign-in left mid-completion (no Terms yet) is undone — never a member without the required consent
       if (wasSignedIn && !finished && S.completion === 'needed') { try { await auth.signOut(); } catch (_) {} }
+      // «Prefiero seguir como invitado» after a sign-in (Back to the phone pane): the customer chose guest — that session is undone
+      else if (wasSignedIn && why === 'guest') { try { await auth.signOut(); } catch (_) {} }
       emit(why === 'guest' ? 'guest' : why === 'done' ? 'done' : 'closed', {});
     }
 
-    function finish() { const d = { uid: S.uid, name: S.name.trim(), phone: '+504' + digits(), email: S.email.trim() || null, isNew: !S.existing }; S.completion = 'complete'; emit('signed-in', d); close('done'); }
+    // Codex G6 r3: once the verified account is COMPLETE (the server said so, or the profile was just saved), every way out of the sheet
+    // — ✕, the scrim, Back then ✕, a teardown — is «Listo»: the member is signed in and marked. Only an incomplete sign-in is undone
+    const COMPLETE = new Set(['complete', 'off']);
+    const isComplete = () => !!S.uid && COMPLETE.has(S.completion);
+    const exit = () => (isComplete() ? finish() : close('close'));
+    function finish() { const d = { uid: S.uid, name: S.name.trim(), phone: S.vphone || '+504' + digits(), email: S.email.trim() || null, isNew: !S.existing }; S.completion = 'complete'; emit('signed-in', d); close('done'); }
 
     // ── controls ──
     host.addEventListener('click', (ev) => {
       const t = ev.target && ev.target.closest ? ev.target.closest('[data-su]') : null; if (!t || t.disabled || !S.open) return;
       const a = t.dataset.su;
-      if (a === 'close') return void (S.pane === 'done' ? finish() : close('close'));   // the account is made: ✕ / the scrim on «Listo» = «Listo»
+      if (a === 'close') return void exit();   // ✕ / the scrim: «Listo» for a complete account, otherwise the incomplete sign-in is undone
       if (a === 'guest') return void close('guest');
       if (a === 'back') { if (S.stack.length && !S.busy) { S.pane = S.stack.pop(); S.err = ''; if (S.pane === 'phone' && S.path === 'google' && !S.stack.length) S.path = 'phone'; render(); } return; }
       if (a === 'phone-go') return void sendCode();
@@ -212,12 +220,12 @@
       // ctx: where it was opened from; prefill: the device marker's full E.164 («Entrá de nuevo»); memberOnly: no guest path (a gate)
       open({ ctx, prefill, memberOnly } = {}) {
         S.gen++; Object.assign(S, { open: true, pane: 'phone', stack: [], path: 'phone', memberOnly: memberOnly === true, phone: prefill ? fmtLocal(localOf(prefill)) : '', email: '', name: '', promos: false, terms: false,
-          google: null, uid: null, isNew: false, completion: null, busy: false, err: '', code: '', resendAt: 0, existing: false, ctx: ctx || null });
+          google: null, uid: null, isNew: false, completion: null, busy: false, err: '', code: '', resendAt: 0, existing: false, vphone: null, ctx: ctx || null });
         render();
         const g = S.gen;
         if (!S.cfg) api.config().then((c) => { if (c && c.ok) S.cfg = c; if (live(g) && S.pane === 'phone') render(); });   // the platform's Google / legal — never awaited by the paint
       },
-      close: () => close('close'),
+      close: () => exit(),   // a host teardown (navigation, back gesture) follows the same rule
     };
   }
 

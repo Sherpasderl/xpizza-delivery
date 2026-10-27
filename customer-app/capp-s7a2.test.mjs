@@ -812,3 +812,15 @@ test('Codex G6 r1 #3: a member apply delayed by a slow token never lands after a
     else assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_b', '🔴 a late apply for A never overwrites B');
   }
 });
+test('Codex G6 r3: a complete account that leaves the sheet by Back then ✕ is a marked member and restores normally after a reload', async () => {
+  const storage = memStorage(); const fb = fakeFirebase();
+  const S = bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } }); await flush(); await flush();
+  await signInViaSheet(S);
+  assert.equal(txt(suHost(S).querySelector('.sg .h1')), '¡Hola de nuevo, Ana!', 'premise');
+  S.click(suHost(S).querySelector('[data-su="back"]')); await flush(); S.click(suHost(S).querySelector('[data-su="close"]')); await flush(); await flush();
+  assert.deepEqual(JSON.parse(storage.getItem('capp:member_complete')), { v: 1, uid: 'u_ana' }, '🔴 marked');
+  assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'a member now'); assert.equal(fb.calls.out, 0);
+  const fb2 = fakeFirebase({ persisted: 'u_ana' });
+  const R = bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb2.loadSdk, signupFetch: signupServer(ANA).fetch } }); await flush(); await flush(); await flush();
+  assert.equal(R.ui.state.member && R.ui.state.member.uid, 'u_ana', '🔴 the reload restores the completed account'); assert.equal(fb2.calls.out, 0, 'never signed out');
+});
