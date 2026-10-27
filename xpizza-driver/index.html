@@ -2184,6 +2184,8 @@
 .splash .sp-word { font-weight: 700; }
 /* llegue (Llegué · avisar; apParada1 + the single-order llegue flow, both via activeCardHtml .llegue-btn): the prototype draws it TINTED like .btn.soft — light-blue wash + blue bell/text — not a grey neutral button. Matched to proto .btn.soft (--p-pwash/--p-p) + the .btn metrics. */
 .llegue-btn { display: flex; background: #E3ECFB; color: #2F5FB8; font-size: 16px; letter-spacing: -.01em; padding: 15px 14px; gap: 8px; min-height: 52px; }
+/* navApp (S.navApp option check): the prototype colors every .opt svg — the selected-option check included — with --p-muted via `.opt svg { color: var(--p-muted) }` (proto line 255), which overrides the wrapper span's inline color:var(--p-p). So the approved check is slate #546078, NOT the primary blue. The frozen base `.set-opt .set-opt-ck` uses var(--accent) (blue); scope an ID-level override to the nav picker to match. --text-soft === #546078 === the prototype's --p-muted. */
+#screen-navApp .set-opt .set-opt-ck { color: var(--text-soft, #546078); }
 </style>
 <!-- ===== SLICE3:PRESENTATION-REVERIFY:END ===== -->
 <div id="screen-companion" class="hidden" style="height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
