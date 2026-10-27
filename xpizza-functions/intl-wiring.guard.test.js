@@ -17,7 +17,8 @@ const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // ── 1. the inverse ──
-assert.strictEqual(unapplyIntlIndex(real), baseIdx, `🔴 INTL-WIRING-PROOF: index.js minus the intl hunks is not ${BASE}:index.js`);
+let undone; try { undone = unapplyIntlIndex(real); } catch (e) { throw new Error(`🔴 INTL-WIRING-PROOF: ${e.message}`); }   // a thrown inverse carries the marker too
+assert.strictEqual(undone, baseIdx, `🔴 INTL-WIRING-PROOF: index.js minus the intl hunks is not ${BASE}:index.js`);
 assert.notStrictEqual(real, baseIdx, 'non-vacuity: the slice is present');
 assert.strictEqual(HUNKS.length, 2);
 for (const h of HUNKS) {
