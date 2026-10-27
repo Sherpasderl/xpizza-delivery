@@ -189,4 +189,20 @@ t('P2-3/NEW-2: drv2SessionTeardown clears returnTarget + drv2SoloCancel + the pr
   assert.ok(!$('drv2-problema'), 'the body-mounted problema overlay is removed from the DOM (NEW-2: must not survive teardown)');
 });
 
+t('P2-3/r3: the auth-transition teardown fires on sign-out or a uid change, NOT on the initial same-account restore (keeps the saved return target on reload)', () => {
+  const region = SCRIPT.match(/SLICE3:INICIO-DEMO-TEARDOWN:START[\s\S]*?===== \*\/\n([\s\S]*?)\n\s*\/\* ===== SLICE3:INICIO-DEMO-TEARDOWN:END/)[1];
+  const run = (prevUid, user) => {
+    let tore = 0;
+    const body = 'let drv2PrevAuthUid = _prev;\nfunction companionDemoTeardown(){}\nfunction drv2SessionTeardown(){ _spy(); }\n' + region + '\nreturn drv2PrevAuthUid;';
+    const after = (new Function('_prev', 'user', '_spy', body))(prevUid, user, () => { tore++; });
+    return { tore, after };
+  };
+  const initial = run(null, { uid: 'A' });   // initial restore: prevUid null → A
+  assert.equal(initial.tore, 0, 'the initial same-account restore does NOT tear down (a mutant that calls it unconditionally → RED)');
+  assert.equal(initial.after, 'A', 'the previous uid advances to A');
+  assert.equal(run('A', { uid: 'B' }).tore, 1, 'a cross-account uid change A→B tears down');
+  assert.equal(run('A', null).tore, 1, 'a sign-out A→null tears down');
+  assert.equal(run('A', { uid: 'A' }).tore, 0, 'a same-account re-auth (token refresh) does NOT tear down');
+});
+
 console.log(`✓ return-target: ${passed} tests passed`);

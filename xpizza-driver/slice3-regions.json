@@ -530,6 +530,14 @@
    "restore": [
     "    activeSlot.innerHTML = stopHeaderHtml({ pickupCount: stacked2.length, sub: pickupSubLabel(stacked2.map((s) => s.order)), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)"
    ]
+  },
+  {
+   "name": "STACKED-DELIV-CARD",
+   "kind": "slice3deps",
+   "parent": "STACKED-BRANCH",
+   "restore": [
+    "    + activeCardHtml(active, deps2, { ordinal: activeOrdinal2, solo, showActualPill: !solo, arrived: a2Arrived && !mapStale2, navLabel: labels2[0] && labels2[0].label, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: queue.length ? queuedPreviewHtml(queue[0], activeOrdinal2 + 1, deps2) : '' });"
+   ]
   }
  ]
 }

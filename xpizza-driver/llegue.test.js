@@ -166,8 +166,9 @@ t('P2-6: «Llegué» writes tasks/{id}/arrived; SUCCESS disables the button; FAI
   const fbUpdate = (ref, val) => { if (failNext) return Promise.reject(new Error('offline')); wrote = { ref, val }; return Promise.resolve(); };
   const fbRef = (db, path) => ({ path });
   const drv2ArrivedAck = new Set();   // Codex r2 P2-6: the ack set the resolve path must populate
+  const drv2ArrivalPending = new Set();   // Codex r3: the in-session pending set (added on tap, cleared on resolve/fail)
   const api = { $, fbUpdate, fbRef, fbServerTimestamp: () => 'TS', XPD: { getDb: () => ({}) }, currentUser: { uid: 'drv' }, toast: () => { toasts++; },
-    DRV2_CAN_NOTIFY_ARRIVAL: true, DRV2_CAN_REPORT_PROBLEM: false, drv2ArrivedAck, renderActiveAndQueue: () => { rerenders++; }, openProblemaSheet: () => {} };
+    DRV2_CAN_NOTIFY_ARRIVAL: true, DRV2_CAN_REPORT_PROBLEM: false, drv2ArrivedAck, drv2ArrivalPending, renderActiveAndQueue: () => { rerenders++; }, openProblemaSheet: () => {} };
   new Function(...Object.keys(api), region)(...Object.values(api));   // register the REAL listener (flag-gated, flag true)
   const btn = $('btn-llegue');
   // success
@@ -178,6 +179,7 @@ t('P2-6: «Llegué» writes tasks/{id}/arrived; SUCCESS disables the button; FAI
   assert.deepEqual(wrote.val, { arrived: { at: 'TS', by: 'drv' } }, 'arrived = {at: serverTimestamp, by: uid} (dep C)');
   // Codex r2 P2-6: the ACK is recorded ONLY on the resolved write (local optimism alone never claims), then a re-render
   assert.ok(drv2ArrivedAck.has('d1'), 'the task id is acked only after update() RESOLVED (the claim gate)');
+  assert.ok(!drv2ArrivalPending.has('d1'), 'Codex r3: promoted OUT of the pending set on resolve');
   assert.ok(rerenders >= 1, 're-render after the ack so the banner/«avisamos a las {t}» can appear');
   // failure: the write rejects → button re-enabled + a toast, and NOTHING claims the notification
   const btn2 = document.createElement('button'); btn2.id = 'btn-llegue'; btn2.className = 'llegue-btn'; btn2.dataset.taskId = 'd9';
@@ -188,6 +190,28 @@ t('P2-6: «Llegué» writes tasks/{id}/arrived; SUCCESS disables the button; FAI
   assert.ok(!btn2.disabled, 'write failed → button re-enabled so the driver can retry');
   assert.equal(toasts, 1, 'a toast on failure, never a «ya sabe» claim');
   assert.ok(!drv2ArrivedAck.has('d9'), 'a FAILED (or pending/offline) write never acks → no claim, «Llegué» stays');
+  assert.ok(!drv2ArrivalPending.has('d9'), 'Codex r3: pending cleared on failure — retryable, no stuck pending');
+});
+t('P2-6/r3 reload: drv2ArrivalAck counts a COMMITTED arrived.by===uid on a fresh load, but NOT an in-session pending write', () => {
+  const SCRIPT = INDEX.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
+  function liftFn(name) { let s = SCRIPT.indexOf('function ' + name + '('); let d = 0, seen = false; for (let i = s; i < SCRIPT.length; i++) { if (SCRIPT[i] === '{') { d++; seen = true; } else if (SCRIPT[i] === '}') { d--; if (seen && d === 0) return SCRIPT.slice(s, i + 1); } } }
+  const mk = () => {
+    const body = 'const drv2ArrivedAck = new Set(), drv2ArrivalPending = new Set(); const currentUser = { uid: "drv" };\n'
+      + liftFn('drv2ArrivalAck') + '\n'
+      + 'return { ack: drv2ArrivalAck, resolved: drv2ArrivedAck, pending: drv2ArrivalPending };';
+    return (new Function(body))();
+  };
+  const order = (by) => ({ deliveryTask: { id: 'd1', arrived: { at: 1, by } } });
+  // FRESH LOAD: committed arrived.by === uid, neither set carries it (module just initialised) → acknowledged.
+  const fresh = mk();
+  assert.equal(fresh.ack(order('drv')), true, 'fresh load: a committed own arrival counts as acknowledged (reload keeps the banner, hides «Llegué»)');
+  assert.equal(fresh.ack(order('other')), false, 'a foreign arrived.by never counts');
+  // IN-SESSION PENDING: this client wrote it this session but it has not resolved → NOT a claim.
+  const sess = mk();
+  sess.pending.add('d1');
+  assert.equal(sess.ack(order('drv')), false, 'in-session pending (optimistic, unresolved) → NO claim, «Llegué» stays');
+  sess.pending.delete('d1'); sess.resolved.add('d1');
+  assert.equal(sess.ack(order('drv')), true, 'once resolved → acknowledged');
 });
 
 t('P2-7 threading: the solo-pickup, stacked-delivery and combined-pickup header carves each thread an order id into stopHeaderHtml (no empty data-order-id)', () => {
@@ -195,6 +219,7 @@ t('P2-7 threading: the solo-pickup, stacked-delivery and combined-pickup header 
   assert.match(carve('SOLO-PICKUP-HEADER'), /orderId: soloOrder\.orderId/, 'solo-pickup header threads soloOrder.orderId (a mutant dropping it → empty id → no button → RED with the builder guard)');
   assert.match(carve('STACKED-DELIV-HEADER'), /orderId: activeAccepted2 \? active\.orderId : ''/, 'stacked-delivery header threads active.orderId, empty for an unaccepted offer');
   assert.match(carve('COMBINED-PICKUP-HEADER'), /orderId: \(stacked2\[0\] && stacked2\[0\]\.orderId\) \|\| ''/, 'combined-pickup header threads the first bag order id');
+  assert.match(carve('STACKED-DELIV-CARD'), /arrivalAck: drv2ArrivalAck\(active\)/, 'Codex r3: the stacked active delivery card threads the arrival ack so «Llegué» hides once acknowledged (a mutant dropping it → persistent «Llegué» + a create-only re-tap → RED)');
 });
 t('flags-false (Codex r2): with BOTH capability flags OFF, the ARRIVAL-ACTION listener is NEVER registered (no dead handler)', () => {
   const region = INDEX.match(/SLICE3:ARRIVAL-ACTION:START[\s\S]*?===== \*\/\n([\s\S]*?)\n\s*\/\* ===== SLICE3:ARRIVAL-ACTION:END/)[1];
@@ -203,7 +228,7 @@ t('flags-false (Codex r2): with BOTH capability flags OFF, the ARRIVAL-ACTION li
   const $ = (id) => document.getElementById(id);
   let wrote = false, opened = 0;
   const api = { $, fbUpdate: () => { wrote = true; return Promise.resolve(); }, fbRef: () => ({}), fbServerTimestamp: () => 'TS', XPD: { getDb: () => ({}) }, currentUser: { uid: 'drv' }, toast: () => {},
-    DRV2_CAN_NOTIFY_ARRIVAL: false, DRV2_CAN_REPORT_PROBLEM: false, drv2ArrivedAck: new Set(), renderActiveAndQueue: () => {}, openProblemaSheet: () => { opened++; } };
+    DRV2_CAN_NOTIFY_ARRIVAL: false, DRV2_CAN_REPORT_PROBLEM: false, drv2ArrivedAck: new Set(), drv2ArrivalPending: new Set(), renderActiveAndQueue: () => {}, openProblemaSheet: () => { opened++; } };
   new Function(...Object.keys(api), region)(...Object.values(api));   // run the REAL region source with both flags OFF
   $('btn-llegue').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
   $('btn-problema-body').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
@@ -257,23 +282,34 @@ t('P2-7/NEW-1/NEW-2: openProblemaSheet — dep-F write shape; the module in-flig
   await Promise.resolve(); await Promise.resolve();
   assert.match($('drv2-problema').innerHTML, /Despacho ya lo sabe/, 'o1 confirmation shows on its own resolve');
 
-  // --- NEW-2: o1b send in flight, reopen for o2, THEN resolve o1b → o2's sheet must NOT become o1b's confirmation ---
+  // --- NEW-2 + r3: o1b send in flight; open o2 and SEND (o2 in flight); resolve the STALE o1b → it must neither
+  //     overwrite o2's sheet NOR clear o2's in-flight lock. Reselecting o2 + tapping must create NO second o2 report. ---
   openProblemaSheet('o1b');
   pick('restaurant_closed');
   tapSend();
-  assert.equal(updates.length, 2, 'o1b write started');
+  assert.equal(updates.length, 2, 'o1b write started (in flight)');
   openProblemaSheet('o2');   // reopen for another order → fresh picker + a new generation invalidates o1b's callback
   assert.ok(!/Despacho ya lo sabe/.test($('drv2-problema').innerHTML), 'o2 shows a fresh picker, not a confirmation');
-  updates[1].resolve();      // o1b's STALE ack resolves after o2 opened
+  pick('customer_no_answer');
+  tapSend();                 // o2 is now in flight
+  assert.equal(updates.length, 3, 'o2 write started (in flight)');
+  updates[1].resolve();      // the STALE o1b ack resolves while o2 is mid-send
   await Promise.resolve(); await Promise.resolve();
   assert.ok(!/Despacho ya lo sabe/.test($('drv2-problema').innerHTML), 'NEW-2: the stale o1b ack does NOT overwrite the o2 sheet');
-
-  // --- FAILURE: a fresh o2 send that rejects → Send re-enabled + a toast ---
   pick('address_not_found');
+  tapSend();                 // try to double-send o2 after the stale ack
+  assert.equal(updates.length, 3, 'r3: the stale o1b ack did NOT clear o2 in-flight (gen checked BEFORE the flag) → no second o2 report');
+  updates[2].resolve();      // o2''s OWN ack resolves → its confirmation
+  await Promise.resolve(); await Promise.resolve();
+  assert.match($('drv2-problema').innerHTML, /Despacho ya lo sabe/, 'o2 own resolve shows its confirmation');
+
+  // --- FAILURE: a fresh send that rejects → Send re-enabled + a toast ---
+  openProblemaSheet('o3');
+  pick('restaurant_closed');
   tapSend();
-  assert.equal(updates.length, 3, 'o2 write started');
+  assert.equal(updates.length, 4, 'o3 write started');
   const before = toasts;
-  updates[2].reject(new Error('x'));
+  updates[3].reject(new Error('x'));
   await Promise.resolve(); await Promise.resolve();
   assert.ok(!$('btn-problema-send').disabled, 'write failed → Send re-enabled for retry');
   assert.ok(toasts > before, 'a toast on failure');

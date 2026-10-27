@@ -2647,13 +2647,16 @@ function openProblemaSheet(oid) {
       const pid = fbPush(fbRef(XPD.getDb(), 'driver_problems/' + oid)).key;   // fresh pid per report
       fbUpdate(fbRef(XPD.getDb(), 'driver_problems/' + oid + '/' + pid), { reason, by: currentUser.uid, at: fbServerTimestamp() })
         .then(() => {
+          // Codex r3: check ownership FIRST — a STALE callback (its opening was closed/replaced for another order)
+          // must not touch drv2ProblemInFlight, which now belongs to the newer opening (else it unlocks O2's in-flight
+          // guard and lets O2 double-send). Only the owning callback clears the flag + shows the confirmation.
+          if (gen !== drv2ProblemGen) return;
           drv2ProblemInFlight = false;
-          if (gen !== drv2ProblemGen) return;   // Codex r2 NEW-2: the sheet was closed/replaced for another order → don't overwrite it
           ov.innerHTML = problemaEnviadoHtml(problemaReasonLabel(reason), fmtClockHM(Date.now()), { ICONS, esc: escapeHtml });
         })
         .catch(() => {
+          if (gen !== drv2ProblemGen) return;   // a stale failure neither unlocks nor re-enables a newer sheet's Send
           drv2ProblemInFlight = false;
-          if (gen !== drv2ProblemGen) return;   // a stale failure never re-enables a newer sheet's Send
           sendBtn.disabled = false;
           toast('No se pudo avisar; reintentá', 'error');
         });
@@ -3135,14 +3138,23 @@ function drv2ClearReturnTarget() {
   returnTarget = null;
   try { sessionStorage.removeItem(RETURN_TARGET_KEY); } catch (_) { /* best-effort */ }
 }
-// Codex r2 P2-6: the set of delivery-task ids whose arrival write THIS client made and SAW RESOLVE. A claim («ya sabe
-// que llegaste» / «avisamos a las {t}» / hiding «Llegué») requires BOTH membership here AND tasks/{id}/arrived.by ===
-// this uid — so a pending offline write (never resolves → never added) and a foreign driver's arrived.by claim nothing.
+// Arrival acknowledgment (Codex r2 P2-6 + r3): a claim («ya sabe que llegaste» / «avisamos a las {t}» / hiding
+// «Llegué») requires tasks/{id}/arrived.by === this uid AND that the write is ACKNOWLEDGED. Two sets distinguish the
+// two sources of an arrived leaf:
+//   • drv2ArrivalPending — delivery-task ids this client wrote THIS session but hasn't seen RESOLVE (optimistic, may
+//     be a pending offline write). A pending write is NOT a claim.
+//   • drv2ArrivedAck — ids whose write RESOLVED this session (confirmed).
+// Codex r3: on a FRESH page load the web SDK holds no pending local writes, so a committed arrived.by === uid seen
+// after load IS acknowledged even though neither set carries it. So the rule is: by === uid AND (resolved this
+// session OR not a still-pending in-session write). A foreign arrived.by claims nothing either way.
 const drv2ArrivedAck = new Set();
+const drv2ArrivalPending = new Set();
+let drv2PrevAuthUid = null;   // Codex r3: the uid of the PREVIOUS auth state, so an initial same-account restore is distinguished from a sign-out / uid change (teardown fires only on the latter two)
 function drv2ArrivalAck(o) {
   const tid = o && o.deliveryTask && o.deliveryTask.id;
   const by = o && o.deliveryTask && o.deliveryTask.arrived && o.deliveryTask.arrived.by;
-  return !!(tid && drv2ArrivedAck.has(tid) && by && currentUser && by === currentUser.uid);
+  if (!tid || !by || !currentUser || by !== currentUser.uid) return false;
+  return drv2ArrivedAck.has(tid) || !drv2ArrivalPending.has(tid);
 }
 // Codex r2 NEW-1/NEW-2: a problema submit is in flight (module-level, independent of the button's disabled state so
 // re-selecting a reason cannot defeat it) and the open sheet's generation (bumped on every open/close/teardown so a
@@ -4037,7 +4049,12 @@ async function boot() {
        the SAME every-transition point also drops the per-session UI state (returning target, solo-cancel banner,
        problema sheet), so a uid change A→B that never renders B's returning state cannot resurrect A's target. ===== */
     companionDemoTeardown();
-    drv2SessionTeardown();
+    // Codex r3: teardown per-session UI state ONLY on a real sign-out or a uid CHANGE (compared to the previous uid) —
+    // NOT on the initial same-account restore (drv2PrevAuthUid null → A, an ordinary reload), which must keep A's saved
+    // return target so the returning screen can rehydrate it. (Sign-out is also covered by cleanupShift below; a double
+    // call is idempotent.)
+    if (drv2PrevAuthUid !== null && drv2PrevAuthUid !== ((user && user.uid) || null)) drv2SessionTeardown();
+    drv2PrevAuthUid = (user && user.uid) || null;
     /* ===== SLICE3:INICIO-DEMO-TEARDOWN:END ===== */
     if (!user) {
       if (companion) companion.invalidateSession();     // a pending submit from the signed-out session must not resurface a screen over login — codex r3 #1
@@ -4715,11 +4732,12 @@ if (DRV2_CAN_NOTIFY_ARRIVAL || DRV2_CAN_REPORT_PROBLEM) {
       const arrTaskId = (llegueBtnEl.dataset && llegueBtnEl.dataset.taskId) || '';
       if (arrTaskId && !llegueBtnEl.disabled && currentUser) {
         llegueBtnEl.disabled = true;
+        drv2ArrivalPending.add(arrTaskId);   // Codex r3: an in-session write is PENDING (optimistic) until it resolves — not yet a claim
         fbUpdate(fbRef(XPD.getDb(), 'tasks/' + arrTaskId), { arrived: { at: fbServerTimestamp(), by: currentUser.uid } })
-          // Codex r2 P2-6: the claim comes only from the driver's OWN acknowledged write — record the ack when THIS
-          // update() RESOLVES, then re-render so the banner/«avisamos a las {t}» appear once arrived.by === our uid syncs.
-          .then(() => { drv2ArrivedAck.add(arrTaskId); if (typeof renderActiveAndQueue === 'function') renderActiveAndQueue(); })
-          .catch(() => { llegueBtnEl.disabled = false; toast('No se pudo avisar; reintentá', 'error'); });
+          // Codex r2 P2-6: the claim comes only from the driver's OWN acknowledged write — on RESOLVE promote the id
+          // from pending → acknowledged, then re-render so the banner / «avisamos a las {t}» appear.
+          .then(() => { drv2ArrivalPending.delete(arrTaskId); drv2ArrivedAck.add(arrTaskId); if (typeof renderActiveAndQueue === 'function') renderActiveAndQueue(); })
+          .catch(() => { drv2ArrivalPending.delete(arrTaskId); llegueBtnEl.disabled = false; toast('No se pudo avisar; reintentá', 'error'); });
       }
       return;
     }
@@ -5621,7 +5639,9 @@ function renderActiveAndQueue() {
     + (drv2Cancel ? cancelBannerHtml(drv2Cancel, { ICONS, esc: escapeHtml }) : '')
     + phaseStripHtml(stripStops2, escapeHtml)
     + overviewMapSvg({ driver: mapDriver2, hubs: mapHubs2, stops: mapStops2, phase: mapPhase2, stale: mapStale2 })
-    + activeCardHtml(active, deps2, { ordinal: activeOrdinal2, solo, showActualPill: !solo, arrived: a2Arrived && !mapStale2, navLabel: labels2[0] && labels2[0].label, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: queue.length ? queuedPreviewHtml(queue[0], activeOrdinal2 + 1, deps2) : '' });
+    /* ===== SLICE3DEPS:STACKED-DELIV-CARD:START (registered carve-out; parent region STACKED-BRANCH) — thread the arrival ack into the stacked active delivery card so «Llegué» hides once THIS driver's write is acknowledged and a re-tap can't hit the create-only rule (Codex r3). slice3-freeze splices this back to the 07e5ab38 line. ===== */
+    + activeCardHtml(active, deps2, { ordinal: activeOrdinal2, solo, showActualPill: !solo, arrived: a2Arrived && !mapStale2, navLabel: labels2[0] && labels2[0].label, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, arrivalAck: drv2ArrivalAck(active), previewHtml: queue.length ? queuedPreviewHtml(queue[0], activeOrdinal2 + 1, deps2) : '' });
+    /* ===== SLICE3DEPS:STACKED-DELIV-CARD:END ===== */
   queuedOrders = queue;
   // The immediate «Después» preview sits ABOVE the footer (inside the active card). Any further queued stops go in
   // #queue-slot. Both carry data-order-id; the SLICE2:STACKED-HANDLERS delegate opens the read-only sheet by
