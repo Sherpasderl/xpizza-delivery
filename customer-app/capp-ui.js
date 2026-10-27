@@ -125,7 +125,12 @@
     const menu = CappMenu.adaptMenu(opts.envelope);
     const cfg = opts.config || {};
     const unavailable = opts.unavailable || new Set();
-    const soldOf = (key) => { try { return typeof unavailable === 'function' ? !!unavailable(key) : unavailable.has(key); } catch (_) { return false; } };
+    // Codex perf-core r2 #6: a DISPATCH REFUSAL is kept as presentation state — the dishes the fresh read refused stay sold for the
+    // whole UI (frame 14's note, mark, Subtotal, CTA and + gates), for Set AND function hosts alike, until the host signals a newer
+    // AUTHORITATIVE availability update (ui.availabilityUpdated()) or the customer removes that dish's lines
+    const refused = new Set();
+    const hostSoldOf = (key) => { try { return typeof unavailable === 'function' ? !!unavailable(key) : unavailable.has(key); } catch (_) { return false; } };
+    const soldOf = (key) => refused.has(key) || hostSoldOf(key);
     const now = opts.now || (() => new Date());
     let dead = false;   // S2b r1 P2-3: destroy() ⇒ every later callback of this instance is a no-op
     const emit = (name, detail) => { if (dead) return; try { (opts.onEvent || (() => {}))(name, detail); } catch (_) {} };
@@ -204,6 +209,7 @@
         }
       }
       S.refusal = null;
+      if (refused.size) { const inCart = new Set(cart.lines().map((l) => l.key)); for (const k of [...refused]) if (!inCart.has(k)) refused.delete(k); }   // removed ⇒ the refusal clears
       if (!cart.count()) cartGen = null;   // an emptied cart: the next one is a NEW cart (a new generation)
       notifyCart();
       return true;
@@ -758,7 +764,7 @@
       // a line known unavailable at dispatch (incl. one that sold out during the countdown): NOTHING is sent — back to where the
       // customer tapped, the cart open with the line still in it (its «Agotado» mark is the owner's frame 14 — not built yet)
       const soldNow = soldLines(has);
-      if (soldNow.length) { emit('dispatch_refused', { reason: 'unavailable', keys: soldNow.map((l) => l.key) }); backTo(); openLayer('cart'); return; }
+      if (soldNow.length) { for (const l of soldNow) refused.add(l.key); emit('dispatch_refused', { reason: 'unavailable', keys: soldNow.map((l) => l.key) }); backTo(); openLayer('cart'); return; }
       // S2b r1 P2-7: an accepted price change ⇒ «Enviando» shows the ceiling actually sent
       const onExpected = (cents) => { if (dead || !Number.isFinite(cents)) return; S.sendTotals = { total: cents, tip: T.tip }; if (S.screen === 'sending') render(); };
       let out;
@@ -1116,6 +1122,8 @@
     return {
       cart, menu, render, state: S, openCheckout, returning,
       deviceBack,
+      // the host's AUTHORITATIVE availability has been re-read (its Set / function now reflects it): a dispatch refusal yields to it
+      availabilityUpdated() { if (dead) return; refused.clear(); render(); },
       restore(snapshot) {
         // S7a-1 r3 §1.3 (hosted): reconcile FIRST — blocked until it completes; a purchased (cleared) cart is never restored
         if (cfg.cartKey && cfg.placedKey && mods() && api.hosted) { const rc = api.reconcile(); if (!rc.ok) return { blocked: true, step: rc.step }; if (rc.done === 'placed' && snapshot && snapshot.cart_gen && snapshot.cart_gen === rc.cart_gen) {
