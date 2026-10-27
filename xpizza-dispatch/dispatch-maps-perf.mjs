@@ -1,7 +1,8 @@
 // dispatch-maps-perf.mjs — PLAN-dispatch-maps-decouple §6.4 measurement harness.
 //
-// GATE: measures the REAL built index.html — served over a local HTTP server with Firebase + the SDK replaced
-// by test doubles and the Google Maps script routed to a scenario-controlled local endpoint, so the page boots
+// GATE: measures the REAL built index.html AND the REAL xpizza-delivery.js — served over a local HTTP server
+// with ONLY the Firebase library (app/auth/database) doubled at the transport layer, and the Google Maps script
+// routed to a scenario-controlled local endpoint. The SDK's own subscription registration runs, so the page boots
 // headless with no backend and the three Maps conditions are real:
 //   maps_delayed   — the Maps script is held ~8s then errors
 //   maps_failed    — the Maps script errors immediately
@@ -37,6 +38,16 @@ export const CONFIG = {
 };
 
 // ───────────────────────── PURE gate logic (unit-tested) ─────────────────────────
+// A report is only a success if the board was ready AND it reported within the deadline — a report past the
+// deadline is a FAIL even if the board is ready (Codex r3 new P2: the elapsed time gates acceptance).
+export function classifyReport(r, deadlineMs) {
+  const bad = !r || r.timedOut || r.board_useful == null || r.driver_useful == null
+    || (r.elapsed != null && r.elapsed > deadlineMs);
+  return {
+    board_useful: bad ? { value: null, timedOut: true } : { value: r.board_useful, timedOut: false },
+    driver_useful: bad ? { value: null, timedOut: true } : { value: r.driver_useful, timedOut: false },
+  };
+}
 export function aggregate(runs) {
   const complete = runs.filter((r) => r && !r.timedOut && r.value != null).map((r) => r.value);
   const incomplete = runs.length - complete.length;
@@ -71,31 +82,54 @@ export function evaluateGate(results, opts = {}) {
 }
 
 // ───────────────────────── local server serving the real page ─────────────────────────
-const FB_DATABASE = `export const ref=(...a)=>({_ref:a});export const onValue=(r,cb)=>{setTimeout(()=>cb({val:()=>({})}),0);return ()=>{};};export const off=()=>{};export const get=async()=>({exists:()=>false,val:()=>null});`;
+// Firebase LIBRARY doubles (transport only) — the REAL xpizza-delivery.js runs on top, so its own subscription
+// registration (subscribeToOrders/Tasks/Drivers → onValue(ref(db,path))) executes. Delaying or deleting that
+// registration inside the real SDK therefore stops the seeded data reaching the board and FAILS the gate.
+const FB_APP = `export const initializeApp=(c)=>({options:{projectId:'demo'}});`;
+const FB_AUTH = `export const getAuth=()=>({currentUser:null});
+  export const onAuthStateChanged=(auth,cb)=>{auth.currentUser={uid:'disp1',email:'disp@x.com',getIdToken:async()=>'t'};setTimeout(()=>cb(auth.currentUser),0);return ()=>{};};
+  export const signInWithEmailAndPassword=async()=>({}); export const signOut=async()=>{};`;
+const FB_DATABASE = `const now=Date.now();
+  const SEED={ orders:{o1:{order_id:'o1',customer_name:'Cli',total:100,lat:15.5,lng:-88.0,created_at:now,address_detected:'x',status:'confirmed',payment_status:'paid'}},
+    tasks:{o1_delivery:{order_id:'o1',type:'delivery',status:'pending',assigned_driver_id:null,created_at:now}, o1_pickup:{order_id:'o1',type:'pickup',status:'pending',assigned_driver_id:null,created_at:now}},
+    drivers:{drv1:{active:true,name:'Ana',status:'available',lat:15.5,lng:-88.0,last_ping:now}} };
+  export const getDatabase=()=>({});
+  export const ref=(db,path)=>({path});
+  export const onValue=(r,cb)=>{ setTimeout(()=>cb({val:()=>SEED[r&&r.path]||{}}),0); return ()=>{}; };
+  export const get=async(r)=>{ const d=!!(r&&r.path&&r.path.indexOf('dispatchers/')===0); return { exists:()=>d, val:()=>d?true:null }; };
+  export const set=async()=>{}; export const update=async()=>{}; export const remove=async()=>{};
+  export const runTransaction=async()=>({committed:true,snapshot:{val:()=>null}});
+  export const serverTimestamp=()=>0; export const off=()=>{}; export const query=(r)=>r; export const orderByChild=()=>({}); export const equalTo=()=>({});`;
 const FB_FUNCTIONS = `export const getFunctions=()=>({});export const httpsCallable=()=>async()=>({data:{}});`;
+const G = 'https://www.gstatic.com/firebasejs/10.13.2/';
 // Injected reporter: mark t0 (screen-main visible), board_useful (seeded card + control), driver_useful (roster
 // row) via a MutationObserver, then POST the deltas. POSTs a timedOut report if the board never renders.
 const REPORTER = (deadlineMs) => `<script>
   (function(){var marks={t0:null,board:null,driver:null},start=performance.now();
    function s(k){if(marks[k]==null)marks[k]=performance.now();}
-   function post(timedOut){try{fetch('/report',{method:'POST',keepalive:true,body:JSON.stringify({
-     timedOut:timedOut, board_useful:(marks.board!=null&&marks.t0!=null)?+(marks.board-marks.t0).toFixed(2):null,
+   function post(timedOut){var el=Math.round(performance.now()-start);try{fetch('/report',{method:'POST',keepalive:true,body:JSON.stringify({
+     timedOut:timedOut, elapsed:el, board_useful:(marks.board!=null&&marks.t0!=null)?+(marks.board-marks.t0).toFixed(2):null,
      driver_useful:(marks.driver!=null&&marks.t0!=null)?+(marks.driver-marks.t0).toFixed(2):null})});}catch(e){}}
    var o=new MutationObserver(function(){var m=document.getElementById('screen-main');
      if(m&&!m.classList.contains('hidden')&&m.offsetParent!==null)s('t0');
      if(document.querySelector('.unassigned-card[data-order-id] button'))s('board');
      if(document.querySelector('[data-driver-uid],.driver-row'))s('driver');
-     if(marks.t0!=null&&marks.board!=null&&marks.driver!=null){o.disconnect();post(false);}});
+     if(marks.t0!=null&&marks.board!=null&&marks.driver!=null){o.disconnect();post((performance.now()-start) > ${deadlineMs});}});
    o.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style']});
    setTimeout(function(){o.disconnect();post(marks.board==null||marks.driver==null);}, ${deadlineMs});})();
 </script>`;
 
 function startServer(scenario) {
   const indexHtml = readFileSync(join(here, 'index.html'), 'utf8')
-    .replace('https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js', '/__fake/fb-database.mjs')
-    .replace('https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js', '/__fake/fb-functions.mjs')
+    .replace(G + 'firebase-database.js', '/__fb/database.mjs')
+    .replace(G + 'firebase-functions.js', '/__fb/functions.mjs')
     .replace('https://maps.${c}apis.com/maps/api/js', '/__maps/js?c=${c}')   // scenario-controlled Maps endpoint
     .replace('</body>', REPORTER(CONFIG.deadlineMs) + '</body>');
+  // The REAL SDK, with only its Firebase library imports pointed at the transport doubles.
+  const sdkJs = readFileSync(join(here, 'xpizza-delivery.js'), 'utf8')
+    .replace(G + 'firebase-app.js', '/__fb/app.mjs')
+    .replace(G + 'firebase-auth.js', '/__fb/auth.mjs')
+    .replace(G + 'firebase-database.js', '/__fb/database.mjs');
   let reportResolve; const reportP = new Promise((r) => { reportResolve = r; });
   const held = [];
   const server = createServer((req, res) => {
@@ -109,9 +143,11 @@ function startServer(scenario) {
     const send = (x, t) => { res.writeHead(200, { 'Content-Type': t }); res.end(x); };
     try {
       if (path === '/' || path === '/index.html') return send(indexHtml, 'text/html');
-      if (path === '/xpizza-delivery.js') return send(readFileSync(join(here, '_fake-sdk.mjs'), 'utf8'), 'text/javascript');
-      if (path === '/__fake/fb-database.mjs') return send(FB_DATABASE, 'text/javascript');
-      if (path === '/__fake/fb-functions.mjs') return send(FB_FUNCTIONS, 'text/javascript');
+      if (path === '/xpizza-delivery.js') return send(sdkJs, 'text/javascript');   // the REAL SDK
+      if (path === '/__fb/app.mjs') return send(FB_APP, 'text/javascript');
+      if (path === '/__fb/auth.mjs') return send(FB_AUTH, 'text/javascript');
+      if (path === '/__fb/database.mjs') return send(FB_DATABASE, 'text/javascript');
+      if (path === '/__fb/functions.mjs') return send(FB_FUNCTIONS, 'text/javascript');
       if (path.endsWith('.js')) { const p = join(here, path.replace(/^\//, '')); if (existsSync(p)) return send(readFileSync(p, 'utf8'), 'text/javascript'); }
       res.writeHead(404); res.end('');
     } catch (e) { res.writeHead(500); res.end(String(e)); }
@@ -130,12 +166,7 @@ async function measureRun(scenario) {
     const timeout = new Promise((r) => setTimeout(() => r('__TIMEOUT__'), CONFIG.runCapMs));
     const raw = await Promise.race([reportP, timeout]);
     if (raw === '__TIMEOUT__') return { board_useful: { value: null, timedOut: true }, driver_useful: { value: null, timedOut: true } };
-    const r = JSON.parse(raw);
-    const ok = !r.timedOut && r.board_useful != null && r.driver_useful != null;
-    return {
-      board_useful: ok ? { value: r.board_useful, timedOut: false } : { value: null, timedOut: true },
-      driver_useful: ok ? { value: r.driver_useful, timedOut: false } : { value: null, timedOut: true },
-    };
+    return classifyReport(JSON.parse(raw), CONFIG.deadlineMs);
   } finally { try { proc.kill('SIGKILL'); } catch {} cleanup(); await sleep(50); }
 }
 

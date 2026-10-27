@@ -15,9 +15,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SRC = readFileSync(join(here, 'xpizza-delivery.js'), 'utf8');
+// Resolve acorn from the repo's xpizza-functions/node_modules (Codex r3: a real parser, no new dependency).
+const acorn = createRequire(join(here, '..', 'xpizza-functions', 'package.json'))('acorn');
 
 // Brace-matched slice of a top-level `[export] [async] function NAME(…) { … }`.
 function sliceFn(src, header) {
@@ -175,27 +178,31 @@ test('tripwire: each firebase write primitive is referenced exactly once (its wr
   }
 });
 
-test('tripwire: EVERY import is parsed independently (single OR double quote, any specifier position) and all write bindings are allow-listed', () => {
-  const ALLOWED = { set: 'fbSet', update: 'fbUpdate', remove: 'fbRemove', runTransaction: 'fbRunTransaction' };
-  const WRITE_PRIMS = new Set(['set', 'update', 'remove', 'runTransaction', 'push', 'setWithPriority', 'onDisconnect']);
-  // Parse each `import { … } from <q>…<q>` declaration on its own; `[^}]*` can't span into the next import, and
-  // the quote char is backreferenced so single and double quotes both match. Specifier order is irrelevant.
-  const importRe = /import\s*\{([^}]*)\}\s*from\s*(['"])([^'"]+)\2/g;
-  let m, sawDbImport = false;
-  while ((m = importRe.exec(SRC)) !== null) {
-    const body = m[1], source = m[3];
-    if (!/firebase-database/.test(source)) continue;
-    sawDbImport = true;
-    for (const spec of body.split(',').map((s) => s.trim()).filter(Boolean)) {
-      const parts = spec.split(/\s+as\s+/);
-      const original = parts[0].trim();
-      const local = (parts[1] || parts[0]).trim();
-      if (!WRITE_PRIMS.has(original)) continue;                     // a read/query primitive — fine
-      assert.ok(original in ALLOWED, `write primitive '${original}' may not be imported from ${source} (only ${Object.keys(ALLOWED).join('/')})`);
-      assert.equal(local, ALLOWED[original], `'${original}' must be imported as '${ALLOWED[original]}' (got '${local}') so raw calls can't bypass the guarded wrapper`);
+test('tripwire (acorn AST): firebase-database imports — no namespace/default; only allowed reads + the 4 writes, each under its exact fb alias', () => {
+  // The EXACT read set the SDK may import from firebase-database, plus the four writes bound ONLY to fb* aliases.
+  const READS = new Set(['getDatabase', 'ref', 'onValue', 'get', 'serverTimestamp', 'off', 'query', 'orderByChild', 'equalTo']);
+  const WRITES = { set: 'fbSet', update: 'fbUpdate', remove: 'fbRemove', runTransaction: 'fbRunTransaction' };
+  const ast = acorn.parse(SRC, { sourceType: 'module', ecmaVersion: 'latest' });
+  let sawDb = false;
+  for (const node of ast.body) {
+    if (node.type !== 'ImportDeclaration') continue;
+    if (typeof node.source.value !== 'string' || !/firebase-database/.test(node.source.value)) continue;
+    sawDb = true;
+    for (const spec of node.specifiers) {
+      // A namespace or default import would expose the whole module (rawDb.push(...)) past the write guard.
+      assert.notEqual(spec.type, 'ImportNamespaceSpecifier', 'no `import * as` from firebase-database — a namespace bypasses the write guard');
+      assert.notEqual(spec.type, 'ImportDefaultSpecifier', 'no default import from firebase-database');
+      // ImportSpecifier.imported is an Identifier, or a Literal for a string-name import (`{ "push" as x }`).
+      const imported = spec.imported.type === 'Literal' ? spec.imported.value : spec.imported.name;
+      const local = spec.local.name;
+      if (imported in WRITES) {
+        assert.equal(local, WRITES[imported], `write '${imported}' must bind to '${WRITES[imported]}' (got '${local}') so raw calls can't bypass the guarded wrapper`);
+      } else {
+        assert.ok(READS.has(imported), `unexpected import '${imported}' from firebase-database (only ${[...READS].join('/')} + the 4 guarded writes)`);
+      }
     }
   }
-  assert.ok(sawDbImport, 'at least one firebase-database import must be present');
+  assert.ok(sawDb, 'a firebase-database import must be present');
 });
 
 test('tripwire: dismissDispatcherAlert routes its update through the guarded wrapper (no raw fbUpdate bypass)', () => {

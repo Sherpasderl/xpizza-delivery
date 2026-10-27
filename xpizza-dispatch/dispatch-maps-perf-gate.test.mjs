@@ -3,11 +3,26 @@
 // survivors — Codex r2 new P2), and delayed/failed medians must stay within 1.15x the baseline.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregate, evaluateGate } from './dispatch-maps-perf.mjs';
+import { aggregate, evaluateGate, classifyReport } from './dispatch-maps-perf.mjs';
 
 const ok = (v) => ({ value: v, timedOut: false });
 const to = () => ({ value: null, timedOut: true });
 const scn = (bu, du) => ({ board_useful_ms: aggregate(bu), driver_useful_ms: aggregate(du) });
+
+test('NEW P2 (r3): a report PAST the deadline is a FAIL even if the board was ready (9501ms vs 9000ms)', () => {
+  const ready = { timedOut: false, board_useful: 17, driver_useful: 8 };
+  const within = classifyReport({ ...ready, elapsed: 8999 }, 9000);
+  assert.equal(within.board_useful.timedOut, false, 'within the deadline → accepted');
+  assert.equal(within.board_useful.value, 17);
+  const past = classifyReport({ ...ready, elapsed: 9501 }, 9000);
+  assert.equal(past.board_useful.timedOut, true, 'past the deadline → fail even though the board was ready');
+  assert.equal(past.driver_useful.timedOut, true);
+  assert.equal(past.board_useful.value, null);
+});
+test('classifyReport: an explicit timedOut report, or a missing board/driver mark, is incomplete', () => {
+  assert.equal(classifyReport({ timedOut: true, elapsed: 100 }, 9000).board_useful.timedOut, true);
+  assert.equal(classifyReport({ timedOut: false, board_useful: null, driver_useful: 8, elapsed: 100 }, 9000).board_useful.timedOut, true);
+});
 
 test('aggregate: median/p95 over complete runs; counts incompletes', () => {
   const a = aggregate([ok(10), ok(12), ok(11), to(), ok(13)]);
