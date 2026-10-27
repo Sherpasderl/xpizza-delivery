@@ -263,7 +263,8 @@ const CASES = {
   // RED
   async R1(rs) {   // C2-delivery: the real cancel lands between completeTask's reads and its batch
     const d = driver(rs, 'r1'); const o = order(rs, { status: 'out_for_delivery', pickupOwner: d.uid, deliveryOwner: d.uid, pickupStatus: 'completed', deliveryStatus: 'accepted' });
-    await seed(rs, { ...d.u, ...o.u, [`drivers/${d.uid}/current_task_id`]: `${o.oid}_delivery` });
+    // ONE path per driver (RTDB refuses an update that holds both /drivers/X and /drivers/X/current_task_id)
+    await seed(rs, { ...o.u, [`drivers/${d.uid}`]: { ...d.u[`drivers/${d.uid}`], current_task_id: `${o.oid}_delivery` } });
     const hooks = {}; const X = await client(rs, 'xpizza-driver', d.uid, hooks);
     let snap; onBatch(hooks, async () => { await realCancel(rs, o.oid); assert.strictEqual(await read(rs, `orders/${o.oid}/status`), 'cancelled', `R1 ${rs} premise: cancelled`); snap = await snapshot(rs, [o.oid], d.uid); });
     const out = await attempt('R1', () => X.completeTask(d.uid, `${o.oid}_delivery`));
