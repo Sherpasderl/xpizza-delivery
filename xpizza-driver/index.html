@@ -134,7 +134,7 @@
    this refresh button so the yet-unrefreshed onboarding + neutral-hold buttons stay untouched (commit-(a) scope). */
 #screen-companion .co-refresh-btn { text-transform: none; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; min-height: 52px; border-radius: 14px; padding: 15px 14px; }
 /* perfil + checklist (Inicio b) — proto S.perfil / S.checklist, scoped to #screen-companion. */
-#screen-companion .co-hdr-sub { font-family: 'Red Hat Text', sans-serif; font-weight: 500; font-size: 12px; color: var(--text-soft, #546078); margin-top: 1px; }
+#screen-companion .co-hdr-sub { font-weight: 500; font-size: 12px; color: var(--text-soft, #546078); margin-top: 1px; }   /* font-family: var(--fb) via the body-bold parity rule */
 #screen-companion .co-form { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
 #screen-companion .co-fld { display: flex; flex-direction: column; gap: 5px; }
 #screen-companion .co-fld label { font-size: 11.5px; font-weight: 700; color: var(--text-soft, #546078); letter-spacing: .03em; }
@@ -178,7 +178,7 @@
    on white; icons are graphical). grid-template-columns is set inline per visible-tab count. Appended as the flex:none
    LAST child of the offshift / on-shift-idle / Cuenta screens (never during an order). */
 .tabs { flex: none; display: grid; border-top: 1px solid var(--border); background: var(--surface); padding: 7px 4px 12px; }
-.tabs .tab-btn { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 3px; font-family: 'Red Hat Text', sans-serif; font-size: 10.5px; font-weight: 600; color: var(--text-soft); cursor: pointer; padding: 4px 0; }
+.tabs .tab-btn { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; color: var(--text-soft); cursor: pointer; padding: 4px 0; }   /* font-family: var(--fb) via the body-bold parity rule */
 .tabs .tab-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .tabs .tab-btn.on { color: var(--accent); }
 /* offshift (disponible OFF) rebuilt to prototype S.offshift (renderOffshift overwrites #screen-offshift at runtime;
@@ -230,11 +230,28 @@
 .pr-ic svg { width: 17px; height: 17px; }
 .pr-ic.ok { background: #E3F3E9; color: var(--success, #15803D); }
 .pr-tx { min-width: 0; flex: 1; text-align: left; }
-.pr-t { font-family: 'Red Hat Text', sans-serif; font-weight: 700; font-size: 14px; line-height: 1.3; color: var(--text, #0D1424); }
+.pr-t { font-weight: 700; font-size: 14px; line-height: 1.3; color: var(--text, #0D1424); }   /* font-family: var(--fb) via the body-bold parity rule below */
 .pr-d { font-size: 12.5px; color: var(--text-soft, #546078); margin-top: 1px; }
 .pr.tap { cursor: pointer; }
 .pr-chev { color: var(--text-dim, #8A93A6); flex: none; align-self: center; }
 .pr-chev svg { width: 16px; height: 16px; }
+
+/* ===== Prototype body-bold parity (ONE source; owner no-clones). The brand-neutral base alias 'Plus Jakarta Sans'
+   routes weight >=501 to the Red Hat DISPLAY woff2, but the prototype's bold BODY text is Red Hat Text (--fb) and
+   only headings use Display. --fb pins the prototype body-bold elements (chips, small stat/caption labels, currency
+   prefixes, receipt-row labels) across the slice-3 screens back to Text. The global alias is left untouched, so the
+   app's own non-prototype screens are unaffected (no-regression). Add a selector here when a new screen needs it. */
+:root { --fb: 'Red Hat Text', sans-serif; }
+.pr-t,
+.tabs .tab-btn,
+#screen-companion .co-hdr-sub,
+#screen-offshift .off2-chip,
+#screen-offshift .off2-stat small,
+.rc-big .v span,
+.rc-big .l,
+.rc-row .l,
+.offer-card .of-dist, .of2-card .of-dist,
+.offer-card .of-lock { font-family: var(--fb); }
 /* ===== SLICE3:PRESENTATION-INICIO:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
