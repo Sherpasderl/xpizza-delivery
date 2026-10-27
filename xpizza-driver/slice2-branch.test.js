@@ -308,7 +308,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     + 'let feedReady=true, cutoverLoaded=true, driverFeed=null, driverIdentityCutoverMs=null;\n'
     + NAV_BLOCK + '\n'   // REAL drv2ReadNavPref/drv2WriteNavPref (not a Waze stub) — server-truth + per-uid hydration (Codex r1 P2-10)
     + DRV2_BLOCK + '\n'
-    + 'let drv2SoloCancel = null; function drv2ClearReturnTarget(){} function drv2SessionTeardown(){} function drv2ArrivalAck(){ return false; }\n'
+    + 'let drv2SoloCancel = null; function drv2ClearReturnTarget(){} function drv2SessionTeardown(){} function drv2ArrivalAck(){ return false; } const DRV2_PAUSE_ENABLED = false;\n'
     + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate (reads driverState) — the resumen reuses it
     + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null,offerConnHandler=null; function readyTimeLabel(){ return ""; } function mountOfferTakeover(){} function stopOfferTakeover(){} function applyOfflineBanner(){}\n'
     + liftConst(MY_SCRIPT, 'PAGOS_LIVE') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_PEDIDOS') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_GANANCIAS') + '\n'   // O6: the REAL production gating constants (lifted)
@@ -418,7 +418,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     // SLICE3:RESUMEN money-grade readiness (see block 1): default money-ready; a cell flips via setFeed.
     + 'let feedReady=true, cutoverLoaded=true, driverFeed=null, driverIdentityCutoverMs=null;\n'
     + DRV2_BLOCK + '\n'
-    + 'let drv2SoloCancel = null; function drv2ClearReturnTarget(){} function drv2SessionTeardown(){} function drv2ArrivalAck(){ return false; }\n'
+    + 'let drv2SoloCancel = null; function drv2ClearReturnTarget(){} function drv2SessionTeardown(){} function drv2ArrivalAck(){ return false; } const DRV2_PAUSE_ENABLED = false;\n'
     + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate the resumen reuses
     // REAL offer-takeover wiring so the cross-hub 2nd-order accept drives the REAL acceptSecondOrder over the mock;
     // only the 5 s repeat is stubbed (its own interval is tested in offer-takeover.test.js).

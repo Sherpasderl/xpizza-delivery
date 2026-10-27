@@ -345,19 +345,19 @@
 #idle-state .pausa-ring svg { transform: rotate(-90deg); width: 100%; height: 100%; }
 #idle-state .pausa-ring-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 #idle-state .pausa-ring-c b { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 34px; letter-spacing: -.02em; line-height: 1; font-variant-numeric: tabular-nums; color: var(--text, #0D1424); }
-#idle-state .pausa-ring-c small { font-size: 11px; color: var(--text-soft, #546078); font-weight: 600; margin-top: 3px; }
+#idle-state .pausa-ring-c small { font-size: 11px; color: var(--text-soft, #546078); font-weight: 600; }   /* Codex r1 #6: prototype .ring .c small has no caption margin */
 #idle-state .pausa-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; line-height: 1.2; white-space: nowrap; background: #FBF1DC; color: #8A5A00; }
 #idle-state .pausa-chip svg { width: 13px; height: 13px; }
 #idle-state .pausa-copy .pausa-h { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); }   /* prototype .h */
 #idle-state .pausa-copy .pausa-sub { margin: 6px 0 0; font-size: 13px; color: var(--text-soft, #546078); }   /* prototype .sub (13px) */
-#idle-state .pausa-card { width: 100%; text-align: left; }
+#idle-state .pausa-card { width: 100%; text-align: left; border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); }   /* Codex r1 #6: prototype .card radius (--p-r 14px) + shadow (--p-shadow), overriding the reused .pr-card */
 #idle-state .pausa-foot { flex: none; display: flex; flex-direction: column; gap: 9px; padding-top: 10px; }
 /* «Reanudar turno» = the prototype .btn.primary EXACTLY (full-width, Red Hat Display 700/16px, radius 14, min-height
    52, gap 8) — NOT the app's .big-btn. Scoped to #idle-state so no other .big-btn use changes. */
 #idle-state .pausa-resume { appearance: none; border: 0; width: 100%; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; border-radius: 14px; padding: 15px 14px; min-height: 52px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; text-transform: none; background: var(--accent, #2F5FB8); color: #fff; }
 #idle-state .pausa-resume:active { background: #24488C; }
 #idle-state .pausa-resume:disabled { opacity: .6; }
-#idle-state .pausa-resume svg { width: 16px; height: 16px; }
+#idle-state .pausa-resume svg { width: 20px; height: 20px; }   /* Codex r1 #6: prototype .btn svg is 20px */
 /* the «Pausar» entry in the idle status bar (header top-right) — the prototype ib(I.pause,…): an icon-only 34px
    circle, created on demand by renderStatusBar («Pausar» is the aria-label/title, not visible text). */
 .status-bar .sb-pausar { margin-left: auto; appearance: none; width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--text-soft, #546078); background: var(--surface, #fff); border: 1px solid rgba(20,30,50,.1); cursor: pointer; padding: 0; }
@@ -3260,23 +3260,53 @@ function renderPausa(host, helpLink, arriveBtn, offerExpired) {
   if (pres) { if (helpLink) pres.appendChild(helpLink); if (arriveBtn) pres.appendChild(arriveBtn); if (idleIcon) pres.appendChild(idleIcon); if (idleMsg) pres.appendChild(idleMsg); if (idleSub) pres.appendChild(idleSub); }
   if (offerExpired) host.insertBefore(offerExpired, host.firstChild);
   const btn = $('btn-reanudar');
-  // «Reanudar turno» — a TAP (owner 2026-10-27; the tap-vs-slide constant is settled on tap). The own-driver write
-  // clears the pause; the RTDB feed flips driverState.status → available → a re-render shows disponible. FAILURE
-  // re-enables + toasts (no state change claimed).
+  // «Reanudar turno» — a TAP (owner 2026-10-27). Ack-gated (Codex r1 #1): the pausa screen stays (busy) until the
+  // resume write RESOLVES; a rejection re-enables + toasts and the driver stays paused (the RTDB optimistic flip is
+  // reverted by the server, so driverState.status returns to on_break).
   if (btn) btn.onclick = () => {
-    if (!currentUser || btn.disabled) return;
-    btn.disabled = true;
-    fbUpdate(fbRef(XPD.getDb(), 'drivers/' + currentUser.uid), { status: 'available', break_since: null })
-      .catch(() => { btn.disabled = false; toast('No se pudo reanudar; reintentá', 'error'); });
+    if (!currentUser || btn.disabled || drv2PauseWriteKind !== null) return;
+    drv2WritePauseState('resume', btn);
   };
 }
-// the driver's own PAUSE write (the «Pausar» header button): on_break + a server-stamped break_since. a5cd1bf4 then
-// excludes the driver from assignment; the RTDB feed flips driverState → the pausa screen renders. FAILURE re-enables.
-function drv2PauseShift(btn) {
-  if (!currentUser || (btn && btn.disabled)) return;
+// Pause state (Codex r1 #1): the RTDB write updates the local feed OPTIMISTICALLY before the server acks, so neither
+// the pausa screen nor the «En pausa» header may trust driverState.status alone. drv2PauseWriteKind tracks an in-flight
+// own pause/resume write; drv2IsPaused() reports the CONFIRMED state:
+//   • 'pause' in flight  → NOT yet paused (busy on disponible until the write acks)
+//   • 'resume' in flight → STILL paused (busy on the pausa screen; a rejection reverts to on_break)
+//   • settled (null)     → the server-confirmed status (on_break = paused), incl. a committed on_break on reload.
+// drv2PausePendingIntent (Codex r1 #3) defers a pause requested while orders are active — no on_break is written until
+// the board empties (renderActiveAndQueue), then it goes through the SAME ack-gated writer below.
+let drv2PauseWriteKind = null;         // 'pause' | 'resume' | null
+let drv2PausePendingIntent = false;
+function drv2IsPaused() {
+  if (drv2PauseWriteKind === 'resume') return true;
+  if (drv2PauseWriteKind === 'pause') return false;
+  return !!(driverState && driverState.status === 'on_break');
+}
+// THE single own pause/resume writer — a direct tap AND the deferred board-empty application both go through here,
+// ack-gated. a5cd1bf4 excludes an on_break driver from assignment; the resume clears it. FAILURE re-enables + toasts.
+function drv2WritePauseState(kind, btn) {
+  if (!currentUser) return;
   if (btn) btn.disabled = true;
-  fbUpdate(fbRef(XPD.getDb(), 'drivers/' + currentUser.uid), { status: 'on_break', break_since: fbServerTimestamp() })
-    .catch(() => { if (btn) btn.disabled = false; toast('No se pudo pausar; reintentá', 'error'); });
+  drv2PauseWriteKind = kind;
+  const payload = kind === 'pause' ? { status: 'on_break', break_since: fbServerTimestamp() } : { status: 'available', break_since: null };
+  fbUpdate(fbRef(XPD.getDb(), 'drivers/' + currentUser.uid), payload)
+    .then(() => { drv2PauseWriteKind = null; renderActiveAndQueue(); })
+    .catch(() => {
+      drv2PauseWriteKind = null;
+      if (btn) btn.disabled = false;
+      toast(kind === 'pause' ? 'No se pudo pausar; reintentá' : 'No se pudo reanudar; reintentá', 'error');
+      renderActiveAndQueue();
+    });
+}
+// the «Pausar» header button. With accepted work in hand (a race: an order was accepted since the idle header drew),
+// Codex r1 #3: record a deferred intent instead of writing on_break now — «La pausa empieza al entregarlo».
+function drv2PauseShift(btn) {
+  if (!currentUser || (btn && btn.disabled) || drv2PauseWriteKind !== null) return;
+  const board = (XPD && typeof XPD.getDriverOrders === 'function') ? (XPD.getDriverOrders(currentUser.uid, allTasks, allOrders) || []) : [];
+  const hasActive = board.some((o) => o && (o.phase === 'pickup' || o.phase === 'delivery'));
+  if (hasActive) { drv2PausePendingIntent = true; if (btn) btn.disabled = true; renderActiveAndQueue(); return; }
+  drv2WritePauseState('pause', btn);
 }
 function drv2CaptureReturnTarget(o, actingUid) {   // at THIS client's delivery completion, the delivered order's entry is in scope
   // Codex P2-2: attribute to the uid that RAN the completion (captured BEFORE the await), not currentUser read after it,
@@ -3368,7 +3398,7 @@ function renderDisponible() {
   const helpLink = $('idle-help-link');     // bound once (→ openHelpSheet); preserve
   const arriveBtn = $('arrive-btn');         // bound once (→ the «en el restaurante» action); preserve
   const offerExpired = $('idle-offer-expired');   // the expired-offer notice (mounted by renderActiveAndQueue, with its «Ok» handler); preserve across the rebuild
-  if (DRV2_PAUSE_ENABLED && status === 'on_break') { renderPausa(host, helpLink, arriveBtn, offerExpired); return; }   // slice 3-P: the manual-pause takeover (prototype S.pausa)
+  if (DRV2_PAUSE_ENABLED && drv2IsPaused()) { renderPausa(host, helpLink, arriveBtn, offerExpired); return; }   // slice 3-P: the CONFIRMED manual-pause takeover (prototype S.pausa) — ack-gated, not the optimistic status
   if (drv2SoloCancel) {   // a no-survivor cancel takes over the idle screen (prototype S.cancelado)
     if (drv2SoloCancel._uid !== ((currentUser && currentUser.uid) || null)) drv2SoloCancel = null;   // Codex P2-3: a different account → drop it, fall through to the normal idle render
     else { renderSoloCancel(host, helpLink, arriveBtn, offerExpired); return; }
@@ -4383,7 +4413,7 @@ function detectNewAssignments(tasks) {
   const fresh = [...offered].filter(id => !knownTaskIds.has(id));
   // slice 3-P: while paused, suppress the new-order chime/toast/vibrate. The server (a5cd1bf4) already excludes an
   // on_break driver from assignment, so this is belt-and-suspenders against a late/in-flight assignment snapshot.
-  const pausedNow = DRV2_PAUSE_ENABLED && driverState && driverState.status === 'on_break';
+  const pausedNow = DRV2_PAUSE_ENABLED && drv2IsPaused();   // Codex r1: the CONFIRMED pause (ack-gated), not the optimistic status
   if (fresh.length > 0 && initialAssignmentsLoaded && !pausedNow) {
     if (soundOn) { const c = $('chime'); c.currentTime = 0; c.play().catch(() => {}); }
     toast('¡Nuevo pedido asignado!', 'success');
@@ -5393,14 +5423,19 @@ function renderStatusBar() {
   };
   // pausa (3-P): its OWN idle header — «En pausa · desde las {h:mm}» on the page-bg bar, Sola mark, NO «Pausar» entry
   // (you are already paused; «Reanudar turno» lives in the body). Dark until DRV2_PAUSE_ENABLED.
-  if (DRV2_PAUSE_ENABLED && status === 'on_break') {
+  if (DRV2_PAUSE_ENABLED && drv2IsPaused()) {
     dot.className = 'status-dot sola';
     if (sbEl) sbEl.classList.add('enturno');
     dot.innerHTML = SOLA_DOT;
     lbl.textContent = 'En pausa';
     const since = driverState && driverState.break_since;
-    meta.textContent = (typeof since === 'number' && since > 0 && since <= Date.now()) ? ('desde las ' + fmtClockHM(since)) : '';
+    const paused = (typeof since === 'number' && since > 0 && since <= Date.now());
+    meta.textContent = paused ? ('desde las ' + fmtClockHM(since)) : '';
     meta.classList.remove('stale');
+    // Codex r1 #4: the 30 s statusRefresh tick calls renderStatusBar, so tick the ring number HERE too (the body does
+    // not re-render on the interval) — the ring and the header stay in sync without a new timer.
+    const ringB = document.querySelector('#idle-state .pausa-ring-c b');
+    if (ringB && paused) ringB.textContent = drv2PauseElapsed(since);
     ensurePausar(false);
     return;
   }
@@ -5554,6 +5589,29 @@ function renderActiveAndQueue() {
   const bannerSlot = $('incoming-banner-slot');
   const activeSlot = $('active-order-slot');
   const queueSlot = $('queue-slot');
+  /* ===== SLICE3:PAUSE-BOARD:START — Codex r1 #2/#3 pause board-boundary handling, from the SAME `orders` (frozen;
+     cannot be reassigned here). #3: a deferred pause (requested with work in hand) applies once the board is TRULY
+     empty — through the SAME ack-gated writer; an offer present THIS tick keeps orders non-empty, so the offer wins and
+     the intent waits. #2: while CONFIRMED paused with no accepted work, show the pausa screen — suppressing a late /
+     racing unaccepted offer and its btn-accept — while accepted pickup/delivery work falls through to render normally
+     (the OFFER-TAKEOVER region suppresses a 2nd offer from hiding it). ===== */
+  {
+    const pbAccepted = orders.filter((o) => o && (o.phase === 'pickup' || o.phase === 'delivery'));
+    if (DRV2_PAUSE_ENABLED && drv2PausePendingIntent && orders.length === 0 && drv2PauseWriteKind === null && !drv2IsPaused()) {
+      drv2PausePendingIntent = false;
+      drv2WritePauseState('pause', null);   // SAME ack-gated writer; its resolve re-renders (busy → pausa)
+    }
+    if (DRV2_PAUSE_ENABLED && drv2IsPaused() && pbAccepted.length === 0) {
+      idleSlot.classList.remove('hidden');
+      activeSlot.classList.remove('solo');
+      bannerSlot.innerHTML = ''; activeSlot.innerHTML = ''; queueSlot.innerHTML = '';
+      $('screen-onshift').classList.toggle('delivering', false);
+      mountTabBar($('screen-onshift'), 'inicio', true);
+      renderIdleState();   // → renderDisponible → renderPausa (confirmed paused), suppressing the late offer
+      return;
+    }
+  }
+  /* ===== SLICE3:PAUSE-BOARD:END ===== */
 
   if (orders.length === 0) {
     idleSlot.classList.remove('hidden');
@@ -5867,7 +5925,7 @@ function renderActiveAndQueue() {
   // underneath), wired to acceptSecondOrder. attachActiveCardHandlers (the acceptTask attach) is NOT called here, so
   // acceptTask can NEVER be wired to this btn-accept — exclusivity by construction, on EVERY render path. On accept
   // or expiry the next render leaves takeover and restores the active stop intact.
-  if (active.phase !== 'awaiting_acceptance' && pendingAccept.length >= 1) {
+  if (active.phase !== 'awaiting_acceptance' && pendingAccept.length >= 1 && !(DRV2_PAUSE_ENABLED && drv2IsPaused())) {   // Codex r1 #2: a racing 2nd offer never takes over (hides) in-hand accepted work while paused
     const offer = [...pendingAccept].sort((a, b) => (a.pickupTask?.assignment_deadline ?? Infinity) - (b.pickupTask?.assignment_deadline ?? Infinity))[0];
     bannerSlot.innerHTML = '';
     queueSlot.innerHTML = '';
@@ -5885,7 +5943,10 @@ function renderActiveAndQueue() {
   } else {
     stopOfferTakeover();         // not in takeover → clear the 5 s repeat
     attachActiveCardHandlers(active);
-    pendingAccept.forEach(attachIncomingBannerHandlers);
+    // Codex r1 #2: while CONFIRMED paused, suppress the unaccepted-offer incoming banner (clear it + do NOT wire its
+    // accept) so a racing offer gives no accept affordance; the in-hand accepted stop above stays fully accessible.
+    if (DRV2_PAUSE_ENABLED && drv2IsPaused()) { bannerSlot.innerHTML = ''; }
+    else { pendingAccept.forEach(attachIncomingBannerHandlers); }
   }
 /* ===== SLICE3:OFFER-TAKEOVER:END ===== */
 }

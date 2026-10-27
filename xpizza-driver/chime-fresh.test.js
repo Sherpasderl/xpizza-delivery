@@ -39,6 +39,7 @@ function build({ soundOn = true, paused = false } = {}) {
   Object.defineProperty(window.navigator, 'vibrate', { value: (p) => { calls.vibrates.push(p); return true; }, configurable: true });
   const deps = { document, window, navigator: window.navigator, $, currentUser: { uid: 'drv' }, soundOn, toast: (m) => calls.toasts.push(m) };
   const body = 'const DRV2_PAUSE_ENABLED = ' + (paused ? 'true' : 'false') + '; const driverState = { status: ' + (paused ? '"on_break"' : '"available"') + ' };\n'   // slice 3-P: paused ⇒ suppress the new-order chime
+    + 'function drv2IsPaused(){ return !!(driverState && driverState.status === "on_break"); }\n'   // Codex r1: the chime gate uses the confirmed pause
     + 'let knownTaskIds = new Set(); let initialAssignmentsLoaded = false;\n'
     + liftFn('detectNewAssignments') + '\n'
     + 'return { detectNewAssignments, seenSize: () => knownTaskIds.size };';

@@ -77,7 +77,7 @@ function build({ online = true } = {}) {
     clearInterval: (id) => { if (id === timers.id) timers.cleared = true; },
     fbRef: (db, path) => ({ db, path }), fbOnValue: (ref, cb) => { connCbs.push(cb); cb(); return () => { const i = connCbs.indexOf(cb); if (i >= 0) connCbs.splice(i, 1); }; },
   };
-  const body = 'let queuedOrders = []; let slidingEl = null; let renderPending = false; function renderActiveAndQueue() {}\n'
+  const body = 'let queuedOrders = []; let slidingEl = null; let renderPending = false; function renderActiveAndQueue() {} const DRV2_PAUSE_ENABLED = false;\n'
     + 'const mapDriver2 = { lat: 15.47, lng: -88.01, heading: 40 }, mapStale2 = false;\n'   // computed in the SLICE2 stacked branch (lifted-out of scope here)
     + 'let offerTakeoverGen = 0, offerTakeoverTimer = null, offerTakeoverTaskId = null, offerConnHandler = null, offerConnUnsub = null;\n'   // module state the lifted takeover fns close over
     + 'const bannerSlot = $("incoming-banner-slot"), activeSlot = $("active-order-slot"), queueSlot = $("queue-slot");\n'

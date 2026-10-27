@@ -468,6 +468,10 @@
   {
    "name": "ARRIVAL-ACTION",
    "kind": "insert"
+  },
+  {
+   "name": "PAUSE-BOARD",
+   "kind": "insert"
   }
  ],
  "deps": [
