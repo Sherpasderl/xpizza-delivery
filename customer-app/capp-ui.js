@@ -689,7 +689,12 @@
       // §3.1 / §4b / §4c (frames 1, 1b, 1c): the guest's «Tus datos» opens with the sign-in ROW (replacing the small link), the phone
       // carries the WhatsApp code + consent note, the EMAIL is its own required field, and the more-row is «Agregar notas»
       const g = cardOnlyGuest();
-      const signinRow = `<div class="signin"><button class="primary" data-act="signin" data-ctx="checkout">Entrá o creá tu cuenta</button></div>`;
+      // frame 1c: THIS device had an account (the local marker, §4c) ⇒ «Ya tenés cuenta en este teléfono» + «Entrá de nuevo · ···· 3344»
+      // (only the last 4 shown; the sign-in pre-fills the full number); otherwise «Entrá o creá tu cuenta». Either keeps cart + checkout
+      let dev = null; try { dev = typeof opts.deviceAccount === 'function' ? opts.deviceAccount() : null; } catch (_) { dev = null; }
+      const signinRow = dev && typeof dev.last4 === 'string' && /^\d{4}$/.test(dev.last4)
+        ? `<div class="signin"><span class="note">Ya tenés cuenta en este teléfono</span><button class="primary" data-act="signin" data-ctx="checkout-returning">Entrá de nuevo · ···· ${esc(dev.last4)}</button></div>`
+        : `<div class="signin"><button class="primary" data-act="signin" data-ctx="checkout">Entrá o creá tu cuenta</button></div>`;
       const emailBad = g && (S.emailRefused || (String(f.email || '').trim() && !C.validEmail(f.email)));
       const datosGuest = `<section class="fsec" aria-label="Tus datos"><h2>Tus datos</h2>${signinRow}
          <div class="fld"><label for="f-name">Nombre <span class="req">*</span></label><input id="f-name" data-field="name" value="${esc(f.name)}" placeholder="Tu nombre" autocomplete="name"></div>
@@ -1037,7 +1042,9 @@
       if (a === 'pin') { S.pinDraft = finitePin(f.pin) ? { lat: f.pin.lat, lng: f.pin.lng } : (cfg.loc && finitePin(cfg.loc) ? { lat: cfg.loc.lat, lng: cfg.loc.lng } : null); openLayer('pin'); return true; }
       if (a === 'loc-on') { S.geo = null; requestGeo(); return true; }
       if (a === 'feeinfo') { openLayer('feeinfo'); return true; }
-      if (a === 'signin') { emit('signin', { ctx: t.dataset.ctx || 'checkout' }); return true; }
+      // §4c: the cart and this checkout step are kept (the host returns here); the returning row PRE-FILLS the full number
+      if (a === 'signin') { const ctx = t.dataset.ctx || 'checkout'; let dev = null; if (ctx === 'checkout-returning') { try { dev = opts.deviceAccount(); } catch (_) { dev = null; } }
+        emit('signin', { ctx, ...(dev && dev.e164 ? { prefill: dev.e164 } : {}) }); return true; }
       if (a === 'confirm') { if (ctaOff(totalsNow())) return true; if (f.mode === 'delivery') go('tip'); else placeTap(); return true; }
       return false;
     }

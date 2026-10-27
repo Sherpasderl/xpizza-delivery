@@ -243,7 +243,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://app.test/' });
   const w = dom.window;
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {};
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -558,4 +558,34 @@ test('Codex s7a2 r1 #9: never «No encontramos» over an incomplete DIRECTORY �
     assert.ok(!/No encontramos/.test(r) && /^Algunos menús no cargaron; puede haber más platos\./.test(r), `🔴 ${JSON.stringify(over)}: never «No encontramos» — ${r}`);
   }
   assert.match(txt(dom(CappHome.searchHtml(VM({ tab: 'search', q }))).querySelector('#results')), /^No encontramos/, 'a ready, complete directory with every menu fresh still says it');
+});
+
+// ── PLAN-capp-signin-required r5.4 G2: the device marker (§4c) and the guest Cuenta tab (frame 5b) ──
+const DA = require('./capp-device-account.js');
+test('G2 §4c device marker: the full E.164 + a hint (never a token); last 4 for display; malformed never stored; only forget() clears it', () => {
+  const st = memStorage();
+  assert.equal(DA.read(st), null);
+  assert.equal(DA.remember(st, '96123344'), false, 'not E.164 ⇒ never stored'); assert.equal(DA.read(st), null);
+  assert.equal(DA.remember(st, '+50496123344'), true);
+  assert.deepEqual(DA.read(st), { e164: '+50496123344', last4: '3344' });
+  assert.deepEqual(JSON.parse(st.getItem('capp:device_account')), { v: 1, account: true, e164: '+50496123344' }, '🔴 no token, no name');
+  assert.equal(DA.forget(st), true); assert.equal(DA.read(st), null);
+  const broken = { getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); }, removeItem() { throw new Error('denied'); } };
+  assert.equal(DA.read(broken), null); assert.equal(DA.remember(broken, '+50496123344'), false);
+});
+test('G2 frame 5b: a guest\'s Cuenta tab = ONE «Entrá o creá tu cuenta» + three benefits, «Pedidos» and «Ayuda» kept; unresolved ⇒ the card hidden (geometry kept); a member ⇒ the host', async () => {
+  const S = bootShell({ auth: 'guest' }); await flush();
+  S.click('.tabbar [data-tab="account"]'); await flush();
+  assert.equal(txt(S.q('.flowbar h1')), 'Cuenta');
+  assert.deepEqual(S.qa('.guestcard li').map((l) => txt(l)), ['Efectivo al entregar o al recoger', 'Recompensas, promos y envío gratis', 'Programá pedidos y guardá tu dirección']);
+  assert.equal(S.qa('.guestcard button.primary').length, 1); assert.equal(txt(S.q('.guestcard .primary')), 'Entrá o creá tu cuenta');
+  assert.deepEqual(S.qa('.rows .rowbtn').map((b) => txt(b)), ['Pedidos Los de este teléfono', 'Ayuda']);
+  assert.equal(S.q('.tabbar [data-tab="account"]').getAttribute('aria-current'), 'true');
+  const U = bootShell({ auth: 'unresolved' }); await flush();
+  U.click('.tabbar [data-tab="account"]'); await flush();
+  assert.equal(U.q('.guestcard').getAttribute('style'), 'visibility:hidden', '🔴 never shown as a guest before auth resolves');
+  assert.equal(U.q('.guestcard button'), null, 'no actionable button while unresolved');
+  const M = bootShell({ auth: 'member' }); await flush();
+  M.click('.tabbar [data-tab="account"]'); await flush();
+  assert.equal(M.q('.guestcard'), null, 'a member\'s Cuenta is the host\'s (a later slice)');
 });

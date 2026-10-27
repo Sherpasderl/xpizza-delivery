@@ -2069,3 +2069,21 @@ test('G1 server refusals: guest_email_required ⇒ frame 1b (the email red, «Re
   await guestFilled(c); await c.click('#cta'); await c.click('[data-act="tipc"][data-val="0"]'); await c.click('[data-act="tip-place"]'); await c.click('#layer [data-act="placing-go"]'); await settle();
   assert.equal(c.text('#layer .errsheet p'), 'El pago en efectivo es solo para cuentas. Pagá con tarjeta o creá tu cuenta.');
 });
+
+// ── G2 frame 1c (approved): the sign-in row atop a guest's «Tus datos», two variants, chosen by the LOCAL device marker (§4c) ──
+test('G2 frame 1c: a device that had an account ⇒ «Ya tenés cuenta en este teléfono» + «Entrá de nuevo · ···· 3344» (last 4 only); its tap pre-fills the FULL number; no marker ⇒ «Entrá o creá tu cuenta»', async () => {
+  const b = bootCo({ config: GUEST, mountOpts: { deviceAccount: () => ({ e164: '+50496123344', last4: '3344' }) } });
+  await toCheckout(b); await settle();
+  assert.equal(b.text('.signin .note'), 'Ya tenés cuenta en este teléfono');
+  assert.equal(b.text('.signin .primary'), 'Entrá de nuevo · ···· 3344');
+  assert.ok(!/96123344|9612/.test(b.q('.signin').textContent), '🔴 only the last 4 digits are displayed');
+  await b.click('.signin .primary');
+  assert.deepEqual(J(b.events.filter(([n]) => n === 'signin').at(-1)[1]), { ctx: 'checkout-returning', prefill: '+50496123344' }, '🔴 the full number is pre-filled at sign-in');
+  assert.equal(b.ui.state.screen, 'checkout', 'the checkout step is kept');
+  const n = bootCo({ config: GUEST, mountOpts: { deviceAccount: () => null } });
+  await toCheckout(n); await settle();
+  assert.equal(n.text('.signin'), 'Entrá o creá tu cuenta'); assert.equal(n.q('.signin .note'), null);
+  const x = bootCo({ config: GUEST, mountOpts: { deviceAccount: () => { throw new Error('storage'); } } });
+  await toCheckout(x); await settle();
+  assert.equal(x.text('.signin'), 'Entrá o creá tu cuenta', 'an unreadable marker degrades to the plain row');
+});

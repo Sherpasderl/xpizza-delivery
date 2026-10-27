@@ -40,6 +40,7 @@
     bike: I('<circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M8.5 17h7"/><path d="M14 6h3l2.5 8.5"/><path d="M4 11h7l2 6"/>'),
     locoff: I('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><path d="M4 4l16 16"/>'), nav: I('<path d="M12 3l8 18-8-4-8 4z"/>'),
     plus: I('<path d="M12 5v14"/><path d="M5 12h14"/>'), close: I('<path d="M6 6l12 12"/><path d="M18 6L6 18"/>'),
+    check: I('<path d="m5 12.5 4.5 4.5L19 7.5"/>'), help: I('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.7"/><path d="M12 17h.01"/>'),
     pinfill: '<svg width="38" height="38" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>',
   };
   // the Sola compass (Sherpa-owned shell only; never on a restaurant surface) — P:1217
@@ -310,11 +311,23 @@
   // records: no store is mounted or mutated, no tab bar; one .empty block; «Ir a Inicio»
   const neutralReturnHtml = (order) => `<div class="scroller"><div class="empty neutral">${IC.receipt}<b>No encontramos este pedido en este teléfono</b><span>Si ya pagaste, tu pago no se pierde. Escribinos con tu número de pedido y lo revisamos.</span>${order ? `<p class="note">Pedido #${esc(order)}</p>` : ''}<button class="btn2" data-act="neutral-home">Ir a Inicio</button></div></div>`;
 
+  // PLAN-capp-signin-required r5.4 frame 5b (approved): the GUEST's Cuenta tab — the shell's .guestcard with ONE primary «Entrá o creá
+  // tu cuenta» and three benefits; «Pedidos» (this phone's) and «Ayuda» stay. While auth is unresolved the card keeps its geometry,
+  // hidden (never shown as guest before the SDK says so)
+  function accountGuestHtml(vm) {
+    const known = vm.auth === 'guest';
+    return shellWrap(vm, `<div class="flow"><div class="flowbar plain"><h1>Cuenta</h1></div>
+    <div class="guestcard"${known ? '' : ' style="visibility:hidden" aria-hidden="true"'}><h2>Tu cuenta</h2>
+      <ul><li>${IC.check}<span>Efectivo al entregar o al recoger</span></li><li>${IC.check}<span>Recompensas, promos y envío gratis</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
+      ${known ? '<button class="primary" data-act="signin" data-ctx="account">Entrá o creá tu cuenta</button>' : '<span class="primary" aria-hidden="true">Entrá o creá tu cuenta</span>'}</div>
+    <div class="rows"><button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button><button class="rowbtn" data-act="help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button></div></div>`);
+  }
+
   // coverage on Inicio (r1 §2.3, display only — the quote stays the authority): straight-line hub → location ≤ coverage_km
   const kmBetween = (a, b) => { const dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lng - a.lng) * Math.PI / 180, s = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2; return 2 * 6371 * Math.asin(Math.sqrt(s)); };
   const covers = (entry, loc) => { if (!loc || !entry || !Number.isFinite(entry.hub_lat) || !Number.isFinite(entry.hub_lng) || !Number.isFinite(entry.coverage_km)) return null; return kmBetween({ lat: entry.hub_lat, lng: entry.hub_lng }, loc) <= entry.coverage_km; };
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, searchHtml, tabbarHtml, neutralReturnHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { homeHtml, searchHtml, tabbarHtml, neutralReturnHtml, accountGuestHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });

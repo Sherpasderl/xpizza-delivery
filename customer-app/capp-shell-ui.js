@@ -35,7 +35,7 @@
     const CappMenuCache = pick(o, 'CappMenuCache', './capp-menu-cache.js'), CappMenu = pick(o, 'CappMenu', './capp-menu.js');
     const CappUI = pick(o, 'CappUI', './capp-ui.js'), CappShell = pick(o, 'CappShell', './capp-shell.js');
     const CappShellNav = pick(o, 'CappShellNav', './capp-shell-nav.js'), CappHome = pick(o, 'CappHome', './capp-home.js');
-    const CappCheckout = pick(o, 'CappCheckout', './capp-checkout.js');
+    const CappCheckout = pick(o, 'CappCheckout', './capp-checkout.js'), CappDeviceAccount = pick(o, 'CappDeviceAccount', './capp-device-account.js');
     const win = o.win || doc.defaultView;
     const storage = o.storage !== undefined ? o.storage : (() => { try { return win.localStorage; } catch (_) { return null; } })();
     const nowMs = typeof o.now === 'function' ? o.now : () => Date.now();
@@ -133,7 +133,7 @@
       const apiOpts = { storage, ...(uo.apiOpts || {}) };   // the store's records live in the shell's storage (one device store)
       // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
       const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
-      const ui = CappUI.mount(doc, { ...uo, search: ret ? ret.search : '', apiOpts, orderable, beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
+      const ui = CappUI.mount(doc, { ...uo, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
         onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
@@ -257,7 +257,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'search' ? CappHome.searchHtml(v) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' ? CappHome.accountGuestHtml(v) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -294,7 +294,11 @@
       const t = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
       if (!t || !app.contains(t) || t.disabled) return;
       const a = t.dataset.act;
-      if (a === 'tab') { const id = t.dataset.tab; if (id === 'home' || id === 'search') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
+      // the Cuenta tab: a guest's (and an unresolved) is frame 5b; a member's screen is a later slice (host event)
+      if (a === 'tab') { const id = t.dataset.tab; if (id === 'account' && authNow() === 'member') { emit('tab', { tab: id }); return; }
+        if (id === 'home' || id === 'search' || id === 'account') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
+      if (a === 'signin') { emit('signin', { ctx: t.dataset.ctx || 'account' }); return; }
+      if (a === 'help') { emit('help', {}); return; }
       if (a === 'open-store') return enter(t.dataset.rid, null);
       if (a === 'open-dish') return enter(t.dataset.rid, t.dataset.id);
       if (a === 'cuisine') { S.cuisine = t.dataset.val || ''; return renderNow(); }
@@ -360,6 +364,8 @@
 
     return {
       nav, dir, cache, eligibility: elig, state: S, render: renderNow, store: () => S.store,
+      // §4c for the sign-in flow (G6): set the marker at sign-in; ONLY «Cerrar sesión y olvidar este teléfono» / deletion forgets it
+      rememberAccount: (e164) => CappDeviceAccount.remember(storage, e164), forgetAccount: () => CappDeviceAccount.forget(storage),
       destroy() {
         dead = true; unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth();
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('visibilitychange', onVisible); nav.destroy();
