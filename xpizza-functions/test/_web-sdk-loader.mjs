@@ -24,7 +24,10 @@ const SIBLING = /(from\s*|import\s*\(\s*)(['"])(\.\/[\w.-]+\.js)(\?[^'"]*)?\2/g;
 // BASELINE worktree root so a baseline capture never imports candidate site code or SDK versions.
 // opts.ns: the RTDB namespace (default `project`). Pass the Admin app's namespace (e.g. 'xpizza-delivery-default-rtdb') when the
 // clients must share a database with index.js's triggers — the emulator keeps namespaces separate.
-export function makeWebSdkLoader({ project, site, uid, claims = {}, callables = {}, hooks = {}, root = REPO, ns = project }) {
+// opts.rulesText (rules hardening §4.0): the EXACT rules text to load into `ns` instead of root's canonical file — a suite that
+// compares rulesets (base / candidate / mutant) gives each its own namespace and its own text, so loading one client can never
+// overwrite another ruleset. SDK-source selection (root / site) stays independent of rules selection.
+export function makeWebSdkLoader({ project, site, uid, claims = {}, callables = {}, hooks = {}, root = REPO, ns = project, rulesText = null }) {
   if (!process.env.FIREBASE_DATABASE_EMULATOR_HOST) throw new Error('_web-sdk-loader: FIREBASE_DATABASE_EMULATOR_HOST not set');
   const [host, port] = process.env.FIREBASE_DATABASE_EMULATOR_HOST.split(':');
   const SITE = path.join(root, site);
@@ -94,9 +97,9 @@ export function httpsCallable(_f, name) {
   // into `ns` explicitly (fail closed: a rejected load throws, never a silently permissive run).
   let rulesLoaded = null;
   const loadRules = () => (rulesLoaded = rulesLoaded || (async () => {
-    const rules = fs.readFileSync(path.join(root, 'xpizza-reference', 'database.rules.json'), 'utf8');
+    const rules = rulesText !== null ? rulesText : fs.readFileSync(path.join(root, 'xpizza-reference', 'database.rules.json'), 'utf8');
     const r = await fetch(`http://${host}:${port}/.settings/rules.json?ns=${ns}`, { method: 'PUT', headers: { Authorization: 'Bearer owner' }, body: rules });
-    if (!r.ok) throw new Error(`_web-sdk-loader: loading the production rules into ns=${ns} failed (${r.status})`);
+    if (!r.ok) throw new Error(`_web-sdk-loader: loading the ${rulesText !== null ? 'given' : 'production'} rules into ns=${ns} failed (${r.status})`);
   })());
 
   let n = 0;
@@ -116,4 +119,22 @@ export function httpsCallable(_f, name) {
   }
   const cleanup = () => { fs.rmSync(tmp, { recursive: true, force: true }); delete globalThis[reg]; };
   return { load, cleanup, tmp };
+}
+
+// rules hardening §4.0 — per-namespace rules control shared with the KDS loader (which connects to ?ns=<project> and loads no rules).
+const emuBase = () => {
+  if (!process.env.FIREBASE_DATABASE_EMULATOR_HOST) throw new Error('_web-sdk-loader: FIREBASE_DATABASE_EMULATOR_HOST not set');
+  return `http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}`;
+};
+export async function putRules(ns, rulesText) {
+  const r = await fetch(`${emuBase()}/.settings/rules.json?ns=${ns}`, { method: 'PUT', headers: { Authorization: 'Bearer owner' }, body: rulesText });
+  if (!r.ok) throw new Error(`_web-sdk-loader: loading rules into ns=${ns} failed (${r.status})`);
+}
+// FAIL CLOSED: the rules ACTIVE in `ns` (read back from the emulator) must equal the intended text, compared as normalized JSON.
+export async function assertActiveRules(ns, expectedText) {
+  const r = await fetch(`${emuBase()}/.settings/rules.json?ns=${ns}`, { headers: { Authorization: 'Bearer owner' } });
+  if (!r.ok) throw new Error(`_web-sdk-loader: reading the active rules of ns=${ns} failed (${r.status})`);
+  const norm = (t) => JSON.stringify(typeof t === 'string' ? JSON.parse(t) : t);
+  const got = await r.text();
+  if (norm(got) !== norm(expectedText)) throw new Error(`_web-sdk-loader: ns=${ns} is NOT running the intended rules`);
 }

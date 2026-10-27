@@ -44,6 +44,7 @@
     "test:rules": "node tools/emulator-run.js --only database \"node test/restaurants-rules.emulator.test.js\"",
     "test:brands-rules": "npm run sync:rules && node tools/emulator-run.js --only database \"node test/brands-rules.emulator.test.js\"",
     "test:branches-rules": "npm run sync:rules && node tools/emulator-run.js --only database \"node test/branches-rules.emulator.test.js\"",
+    "test:rules-driver-terminal": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/rules-driver-terminal.emulator.test.mjs\"",
     "test:branch-races": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/branch-races.emulator.test.js\"",
     "test:brand-server-rules": "npm run sync:rules && node tools/emulator-run.js --only database \"node test/brand-server-rules.emulator.test.js\"",
     "test:driver-return-shift": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/driver-return-shift.emulator.test.js\"",
