@@ -239,12 +239,13 @@
 /* ===== disponible (on-shift idle) — prototype S.disponible, scoped to #idle-state. Calm status card (Disponible chip
    + GPS freshness), the check «Esperando pedidos» block, two stat cards. Verbatim prototype tokens; body-bold = --fb,
    headings = Display (--fd). ===== */
-#idle-state .disp-status { display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); padding: 14px; }
+#idle-state .disp-status { width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); padding: 14px; }
 #idle-state .disp-chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--fb); font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; line-height: 1.2; white-space: nowrap; background: #E3F3E9; color: #15803D; }   /* proto .chip.ok (--p-okwash / --p-ok) */
 #idle-state .disp-chip i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
 #idle-state .disp-gps { margin-left: auto; font-size: 13px; color: var(--text-soft, #546078); }   /* proto .sub */
 #idle-state .disp-gps.stale { color: var(--warn, #8A5A00); }
-#idle-state .idle-top { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 14px 0 0; }   /* proto .body.center */
+#idle-state .idle-top { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; padding: 4px 0 0; }   /* outer idle column: status card (full-width) + the centered check block; proto gap 14px */
+#idle-state .disp-status + .idle-check { margin-top: 2px; }
 #idle-state .idle-check { width: 104px; height: 104px; border-radius: 30px; display: grid; place-items: center; background: #E3F3E9; color: #15803D; }   /* proto .illus.ok */
 #idle-state .idle-check svg { width: 50px; height: 50px; }
 #idle-state .idle-msg { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); }   /* proto .h = --fd */
@@ -2891,6 +2892,45 @@ function renderOffshift() {
   companionSyncSuspendedNotice();   // re-apply the suspend state on the fresh notice
   updateNotifBanners();             // re-populate the fresh notif banner (async)
 }
+
+// renderDisponible — the on-shift IDLE body rebuilt to prototype S.disponible: a calm status card (Disponible chip +
+// GPS freshness) + the check «Esperando pedidos» block + two stat cards. A runtime overwrite of #idle-state (the
+// renderOffshift pattern), called from renderIdleState's IDLE-3 region. The #idle-help-link and #arrive-btn have
+// click handlers bound ONCE at startup, so they are PRESERVED across the rebuild (moved into the new DOM, listeners
+// intact). The stat values (#stat-deliveries/#stat-cash) are filled right after by syncIdleStats. The header
+// «En turno · desde {time}» lives in the status bar (a separate, idle-only region — committed on its own).
+function renderDisponible() {
+  const host = $('idle-state'); if (!host) return;
+  const status = driverState && driverState.status;
+  const helpLink = $('idle-help-link');     // bound once (→ openHelpSheet); preserve
+  const arriveBtn = $('arrive-btn');         // bound once (→ the «en el restaurante» action); preserve
+  let icon, msg, sub, chip;
+  if (status === 'returning') {
+    icon = ICONS.uturn; msg = 'Regresando al restaurante'; sub = 'Pulsá abajo cuando hayas llegado'; chip = 'Disponible';
+  } else if (status === 'at_restaurant') {
+    icon = ICONS.store; msg = 'En el restaurante'; sub = 'Listo para el siguiente pedido'; chip = 'En restaurante';
+  } else {   // available (the prototype disponible) + any other idle status
+    icon = ICONS.check; msg = 'Esperando pedidos';
+    sub = 'Te avisamos con sonido y vibración. Dejá el app abierto o en segundo plano.'; chip = 'Disponible';
+  }
+  const stale = (XPD && typeof XPD.isStalePing === 'function') ? XPD.isStalePing(driverState && driverState.last_ping) : false;
+  const gps = stale ? 'GPS inactivo' : 'GPS vivo';   // body GPS freshness; the live «· hace N s» is added with the tick wiring
+  host.innerHTML =
+    '<div class="idle-top">'
+    + '<div class="disp-status"><span class="disp-chip"><i></i><span id="disp-chip-label">' + chip + '</span></span>'
+    + '<span class="disp-gps' + (stale ? ' stale' : '') + '" id="disp-gps">' + gps + '</span></div>'
+    + '<div class="idle-check" id="idle-icon">' + icon + '</div>'
+    + '<div class="idle-msg" id="idle-msg">' + msg + '</div>'
+    + '<div class="idle-sub" id="idle-sub">' + sub + '</div>'
+    + '<span id="disp-help-slot"></span><span id="disp-arrive-slot"></span>'
+    + '</div>'
+    + '<div class="disp-stat2" id="idle-statbar">'
+    + '<div class="disp-statcard"><b id="stat-deliveries">0</b><small>Entregas hoy</small></div>'
+    + '<div class="disp-statcard"><b id="stat-cash">L 0</b><small>Efectivo a entregar</small></div>'
+    + '</div>';
+  const helpSlot = $('disp-help-slot'); if (helpLink && helpSlot) helpSlot.replaceWith(helpLink);   // re-insert the bound controls
+  const arriveSlot = $('disp-arrive-slot'); if (arriveBtn && arriveSlot) arriveSlot.replaceWith(arriveBtn);
+}
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
    drivers/{uid}/nav_app (own-uid, enum) with a localStorage mirror; «Cerrar sesión» reuses driverSignOut. ===== */
@@ -5292,6 +5332,9 @@ function renderIdleState() {
     arriveBtn.classList.add('hidden');
   }
   /* ===== SLICE3:IDLE-3:START — idle-screen slice-3 state. (a) the «¿Por qué no veo pedidos?» help link shows ONLY when AVAILABLE (owner): on a returning / at-restaurant idle screen the diagnosis is irrelevant. (gpsoff mount/clear to follow in this region.) ===== */
+  // Rebuild the idle body to prototype S.disponible FIRST (overwrites #idle-state, preserving the bound help-link +
+  // arrive-btn); the help-gate / applyGpsoff / syncIdleStats below then act on the fresh DOM.
+  if (typeof renderDisponible === 'function') renderDisponible();
   const idleHelpLink = $('idle-help-link');
   if (idleHelpLink) idleHelpLink.classList.toggle('hidden', status !== 'available');
   // (offline banner refresh now runs at the shared board-render boundary, RENDER-BOARD-3 — not here)
