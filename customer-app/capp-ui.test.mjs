@@ -2141,7 +2141,7 @@ test('G3 frames 3a / 3b: the code could not be sent ⇒ «Intento 2 de 3» with 
   assert.deepEqual(b.qa('#layer .errsheet button').map((x) => x.textContent), ['Reintentar', 'Cambiar número']);
   await b.click('#layer [data-act="otp-resend"]'); await settle();
   assert.equal(b.text('#layer .errsheet p'), 'Lo intentamos 3 veces sin éxito. Tu pedido no se envió ni se cobró nada. Probá con otro número, o entrá con tu cuenta.');
-  const btns = b.qa('#layer .errsheet button'); assert.match(btns[0].textContent, /^Reintentar en 10:00$/); assert.ok(btns[0].disabled);
+  const btns = b.qa('#layer .errsheet button'); assert.match(btns[0].textContent, /^Reintentar en 10:00$/); assert.ok(btns[0].disabled, '🔴 3b: «Reintentar» waits out the block');
   assert.deepEqual(btns.slice(1).map((x) => x.textContent), ['Cambiar número', 'Volver al pedido']);
   assert.equal(writes(b), 0, '🔴 never sent');
   await b.click('#layer [data-act="otp-change"]'); await settle();

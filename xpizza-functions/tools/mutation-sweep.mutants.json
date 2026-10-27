@@ -20940,8 +20940,8 @@
     "slice": "s2b",
     "label": "destroy() cancels nothing (neither the dead flag, the placing timer nor the open card)",
     "file": "../customer-app/capp-ui.js",
-    "from": "        dead = true; placingStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }\n        S.layerKind = null; const L = $('layer'); if (L) L.innerHTML = '';\n",
-    "to": "        if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }\n",
+    "from": "        dead = true; placingStop(); otpTickStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }\n        S.layerKind = null; const L = $('layer'); if (L) L.innerHTML = '';\n",
+    "to": "        otpTickStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }\n",
     "command": [
       "node",
       "--test",
@@ -20950,7 +20950,8 @@
     "kills_with": [
       "teardown takes every sheet off the page",
       "nothing is sent after teardown"
-    ]
+    ],
+    "repointed": "guest checkout G3 (2026-10-27): destroy() also stops the code-sheet ticker; the same guard, re-anchored"
   },
   {
     "id": "s2b-u06",
@@ -21085,8 +21086,8 @@
     "slice": "s2b",
     "label": "destroy() never marks the instance dead (late callbacks still render / send)",
     "file": "../customer-app/capp-ui.js",
-    "from": "        dead = true; placingStop(); if (beatT",
-    "to": "        placingStop(); if (beatT",
+    "from": "        dead = true; placingStop(); otpTickStop(); if (beatT",
+    "to": "        placingStop(); otpTickStop(); if (beatT",
     "command": [
       "node",
       "--test",
@@ -21095,7 +21096,8 @@
     "kills_with": [
       "no render after teardown",
       "the agreed re-send never leaves a torn-down page"
-    ]
+    ],
+    "repointed": "guest checkout G3 (2026-10-27): destroy() also stops the code-sheet ticker; the same guard, re-anchored"
   },
   {
     "id": "s2b-u14",
@@ -23540,6 +23542,246 @@
     ],
     "kills_with": [
       "Destacados: open first, then directory order"
+    ]
+  },
+  {
+    "id": "guest-01",
+    "slice": "guest",
+    "label": "a guest sees the cash option again",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      const pago = g ? pagoGuest :",
+    "to": "      const pago = false ? pagoGuest :",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "cash is absent for a guest"
+    ]
+  },
+  {
+    "id": "guest-02",
+    "slice": "guest",
+    "label": "the shared guest tender invariant never refuses",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (!cardOnlyGuest() || !S.flow || S.flow.pay === 'online') return false;",
+    "to": "      return false;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "frame 6, refused locally"
+    ]
+  },
+  {
+    "id": "guest-03",
+    "slice": "guest",
+    "label": "the transport maps a guest's tender to cash",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (cfg.guestCardOnly === true && !memberOf() && method !== 'online') return { kind: 'guest_cash_not_allowed', local: true };\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "guest_cash_not_allowed"
+    ]
+  },
+  {
+    "id": "guest-04",
+    "slice": "guest",
+    "label": "a guest order without an email passes the gate",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "    if (c.guestEmail === true && (!validEmail(f.email) || c.emailRefused === true)) return COPY.email;",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "an empty email blocks a guest"
+    ]
+  },
+  {
+    "id": "guest-05",
+    "slice": "guest",
+    "label": "a guest order is placed without a checkout ticket",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (cfg.guestCardOnly === true && !memberOf() && !ticketValid(p.checkoutTicket)) return { kind: 'guest_ticket_invalid', local: true };\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "no ticket ⇒ nothing recorded or sent"
+    ]
+  },
+  {
+    "id": "guest-06",
+    "slice": "guest",
+    "label": "«Hacer pedido» skips the WhatsApp code",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (guestNeedsCode()) {",
+    "to": "      if (false) {",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "Confirmá tu WhatsApp"
+    ]
+  },
+  {
+    "id": "guest-07",
+    "slice": "guest",
+    "label": "the order body omits the checkout ticket",
+    "file": "../customer-app/capp-api.js",
+    "from": "p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;",
+    "to": "p.checkoutTicket) void 0;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the order carries its ticket"
+    ]
+  },
+  {
+    "id": "guest-08",
+    "slice": "guest",
+    "label": "a member refused by the guest gate becomes a silent guest",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (member() && (k === 'guest_cash_not_allowed' || k === 'guest_email_required' || k === 'guest_ticket_invalid')) { backTo(); showErr(ERR.reauth()); return; }\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "Tu sesión se interrumpió"
+    ]
+  },
+  {
+    "id": "guest-09",
+    "slice": "guest",
+    "label": "the returning row shows the full number",
+    "file": "../customer-app/capp-ui.js",
+    "from": "Entrá de nuevo · ···· ${esc(dev.last4)}",
+    "to": "Entrá de nuevo · ···· ${esc(dev.e164)}",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "only the last 4 digits are displayed"
+    ]
+  },
+  {
+    "id": "guest-10",
+    "slice": "guest",
+    "label": "the Cuenta card shows as guest before auth resolves",
+    "file": "../customer-app/capp-home.js",
+    "from": "<div class=\"guestcard\"${known ? '' : ' style=\"visibility:hidden\" aria-hidden=\"true\"'}>",
+    "to": "<div class=\"guestcard\">",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "never shown as a guest before auth resolves"
+    ]
+  },
+  {
+    "id": "guest-11",
+    "slice": "guest",
+    "label": "a member's placement carries a signup grant",
+    "file": "../customer-app/capp-api.js",
+    "from": "const grantOf = (j) => (cfg.guestCardOnly === true && !memberOf() && j",
+    "to": "const grantOf = (j) => (cfg.guestCardOnly === true && j",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a member has no grant to redeem"
+    ]
+  },
+  {
+    "id": "guest-12",
+    "slice": "guest",
+    "label": "an expired grant still renders the account offer",
+    "file": "../customer-app/capp-ui.js",
+    "from": "!Number.isFinite(g.expires_at) || t >= g.expires_at) return '';",
+    "to": "!Number.isFinite(g.expires_at)) return '';",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "an expired grant ⇒ no offer"
+    ]
+  },
+  {
+    "id": "guest-13",
+    "slice": "guest",
+    "label": "a pasted whole code is not distributed",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      o.code = digits.length >= 6 ? digits.slice(0, 6) :",
+    "to": "      o.code = false ? digits.slice(0, 6) :",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a pasted code (with a space) fills all six"
+    ]
+  },
+  {
+    "id": "guest-14",
+    "slice": "guest",
+    "label": "3b: «Reintentar» is live during the block",
+    "file": "../customer-app/capp-ui.js",
+    "from": "primary: true, disabled: true, id: 'otp-retry' }",
+    "to": "primary: true, disabled: false, id: 'otp-retry' }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "3b: «Reintentar» waits out the block"
+    ]
+  },
+  {
+    "id": "guest-15",
+    "slice": "guest",
+    "label": "a server guest_ticket_invalid does not re-open the code",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (k === 'guest_ticket_invalid') { S.ticket = null; backTo(); openCode(); return; }",
+    "to": "      if (k === 'guest_ticket_invalid') { S.ticket = null; backTo(); return; }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "re-verify"
     ]
   }
 ]
