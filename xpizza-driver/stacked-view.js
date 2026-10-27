@@ -423,7 +423,7 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
         ${countdownChip ? `<div class="ac-meta">${countdownChip}</div>` : ''}
       </div>
       ${scheduledBadge(order)}
-      ${accepted ? `<div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${esc(order.address_detected || (o.deliveryTask && o.deliveryTask.destination_address) || '—')}</div></div></div>` : ''}
+      ${accepted && !(arrived && !isPickup) ? `<div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${esc(order.address_detected || (o.deliveryTask && o.deliveryTask.destination_address) || '—')}</div></div></div>` : ''}
       ${accepted && order.address_details ? `<div class="instr"><span class="ico">${ICONS.door || DOOR_SVG}</span><div class="instr-main">${esc(order.address_details)}</div></div>` : ''}
       ${accepted && order.customer_phone ? contactRowHtml(order, { ICONS, esc }) : ''}
       <div class="ac-hr"></div>

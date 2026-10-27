@@ -5279,7 +5279,9 @@ function renderActiveAndQueue() {
     const spTotalM = spDeliveredCount + 1;
     const spStacked = spTotalM > 1 && soloOrder.phase !== 'awaiting_acceptance';
     const spDonePins = drv2DoneRun.filter((d) => d.lat != null && d.lng != null).map((d, i) => ({ lat: d.lat, lng: d.lng, n: i + 1, state: 'done' }));
-    const soloMapHtml = (soloOrder.phase !== 'awaiting_acceptance')
+    /* ===== SLICE3DEPS:LLEGUE-MAP:START (registered carve-out; parent region SINGLE-ORDER-MOUNT) — suppress the overview map in the ARRIVED-at-customer state (prototype S.llegue has no map); en-route/pickup unchanged. slice3-freeze splices this back to the 07e5ab38 condition. ===== */
+    const soloMapHtml = (soloOrder.phase !== 'awaiting_acceptance' && !(spArrived && !spIsPickup))
+    /* ===== SLICE3DEPS:LLEGUE-MAP:END ===== */
       ? overviewMapSvg({
           driver: (driverState && driverState.lat != null && driverState.lng != null) ? { lat: driverState.lat, lng: driverState.lng, heading: driverState.heading } : null,
           hubs: [{ lat: soloOrder.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat, lng: soloOrder.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng, on: spIsPickup }],
@@ -5308,7 +5310,9 @@ function renderActiveAndQueue() {
     const spShowReview = spSoloPickup && (spAtRestaurant || spArrived);
     const spHeader = spSoloPickup
       ? stopHeaderHtml({ ...soloPickupHeaderInfo(spOrder, spShowReview), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml })
-      : (spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml }) : '');
+      /* ===== SLICE3DEPS:LLEGUE-HEADER:START (registered carve-out; parent region SINGLE-ORDER-MOUNT) — the ARRIVED-at-customer delivery header «Estás donde {name}» + the flag-gated «avisamos a las {t}» sub (prototype S.llegue); en-route/pickup unchanged. slice3-freeze splices this back to the 07e5ab38 branch. ===== */
+      : (spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, canReportProblem: DRV2_CAN_REPORT_PROBLEM, arrivedCustomer: spArrived && !spIsPickup, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, notifiedAt: '' }, { ICONS, esc: escapeHtml }) : '');
+      /* ===== SLICE3DEPS:LLEGUE-HEADER:END ===== */
     const spStripStops = drv2Cancel
       ? [{ n: 1, state: 'cancelled', label: drv2FirstWord(drv2Cancel.cancelledName) }, { n: 2, state: 'on', label: drv2FirstWord(spName) }]
       : [...drv2DoneRun.map((d, i) => ({ n: i + 1, state: 'done', label: d.label, time: d.time })), { n: spOrdinal, state: 'on', label: drv2FirstWord(spName) }];

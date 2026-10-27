@@ -64,6 +64,12 @@ t('NOT arrived (en route): NO items card, NO banner — the nav button shows (by
   assert.ok(!/arrival-banner/.test(html), 'no arrival banner');
   assert.ok(/nav-primary|nav-btn/.test(html), 'the nav button is shown');
 });
+t('street line: HIDDEN in the arrived-at-customer card (proto S.llegue), KEPT en-route (approved card)', () => {
+  assert.ok(!/address-block/.test(card({ arrived: true })), 'street address-block hidden once arrived at the customer');
+  assert.ok(/address-block/.test(card({ arrived: false })), 'street kept en-route (unchanged approved card)');
+  // the one-line instruction (address_details) stays as the bold ref; «Entregar en mano» has no data source → omitted
+  assert.match(card({ arrived: true }), /Portón negro/, 'the instruction (address_details) is kept');
+});
 
 // ---- card: flag-gated ----
 t('flag-OFF arrived: NO arrival banner, NO body problema; the «Has llegado» note is kept', () => {
