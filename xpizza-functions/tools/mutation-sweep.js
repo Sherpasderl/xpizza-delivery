@@ -5,6 +5,7 @@
 //   node tools/mutation-sweep.js                 # every mutant
 //   node tools/mutation-sweep.js --slice=task7   # one slice
 //   node tools/mutation-sweep.js --list          # what is in the list, without running it
+//   node tools/mutation-sweep.js --help          # usage; any unknown flag prints it and exits 2, running nothing
 //
 // Every "N/M killed" claim in a commit message on this slice comes from here. A count nobody can
 // reproduce is a count, not evidence — this file exists so the claim is checkable from the committed
@@ -30,6 +31,35 @@ const { copyFileSync, renameSync, readFileSync, writeFileSync, existsSync, readd
 const { join } = require('path');
 
 const ROOT = join(__dirname, '..');
+
+/* 🔴 AN UNKNOWN FLAG MUST NOT START A FULL SWEEP. `--help` used to be ignored like any unrecognised
+   argument, so asking how to use the tool ran every mutant against the live tree — for an hour, with
+   the working tree mutated under whoever asked. That happened in three sessions. So the arguments are
+   checked FIRST, before the catalogue is read or anything is printed or run: an unknown or malformed
+   one prints the usage and exits 2; `--help` / `-h` print it and exit 0. `--slice=` with no value
+   is malformed too — an empty slice used to mean "every mutant". */
+const USAGE = `usage: node tools/mutation-sweep.js [--slice=<name>] [--list] [--mutants=<catalogue.json>]
+  (no flags)        run EVERY mutant (each runs its full suite; the tree is mutated while it runs)
+  --slice=<name>    only the mutants of one slice
+  --list            list the selection and exit; runs nothing
+  --mutants=<path>  a synthetic catalogue (tests only; its counts are never a sweep result)
+  --help, -h        this text`;
+{
+  const VALUED = ['slice', 'mutants'];
+  const seen = new Set(); const bad = [];
+  for (const a of process.argv.slice(2)) {
+    if (a === '--help' || a === '-h' || a === '--list') { seen.add(a); continue; }
+    const m = /^--([a-z]+)=(.*)$/s.exec(a);
+    if (m && VALUED.includes(m[1]) && m[2] !== '' && !seen.has(m[1])) { seen.add(m[1]); continue; }
+    bad.push(a);
+  }
+  if (bad.length) {
+    console.error(`mutation-sweep: unknown, empty or repeated argument(s): ${bad.join(' ')} — nothing was run.\n${USAGE}`);
+    process.exit(2);
+  }
+  if (seen.has('--help') || seen.has('-h')) { console.log(USAGE); process.exit(0); }
+}
+
 /* 🔴 --mutants EXISTS SO THE MAIN PATH IS REACHABLE FROM A TEST. The properties that matter here are
    about ORDER — the baseline runs BEFORE any mutation, and a red one scores NOTHING — and order
    cannot be asserted by requiring this module, because everything below runs at load. A synthetic

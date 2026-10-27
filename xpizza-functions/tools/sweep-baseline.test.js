@@ -111,4 +111,57 @@ const mutant = (id, command) => ({ id, slice: 'probe', file: anchorFile, command
   ok('the refusal carries the suite\'s own output, the command, and the mutant that reached it');
 }
 
+// ── 6. 🔴 AN UNKNOWN OR MALFORMED FLAG RUNS NOTHING; --help / -h PRINT THE USAGE ─────────────────────
+/* `--help` used to start a FULL sweep (three sessions). Every probe here passes a synthetic catalogue
+   whose only command appends to a sentinel file, so if the argument check ever regresses, the probe
+   runs that harmless command, never the real catalogue, and the sentinel proves something ran. The
+   SYNTHETIC banner is printed only after the catalogue is read, so its absence proves the refusal
+   came first. */
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sweep-args-'));
+  const sentinel = path.join(dir, 'ran.txt');
+  const writes = ['node', '-e', `require('fs').appendFileSync(${JSON.stringify(sentinel)}, 'ran\\n')`];
+  const fixture = path.join(ROOT, anchorFile); const before = fs.readFileSync(fixture, 'utf8');
+  const runArgs = (file, args) => spawnSync(process.execPath, [SWEEP, `--mutants=${file}`, ...args], { cwd: ROOT, encoding: 'utf8', timeout: 120000 });
+  const untouched = (label) => {
+    assert.ok(!fs.existsSync(sentinel), `🔴 ${label}: a suite command RAN`);
+    assert.strictEqual(fs.readFileSync(fixture, 'utf8'), before, `🔴 ${label}: the tree was mutated`);
+    assert.ok(!fs.existsSync(`${fixture}.bak`), `🔴 ${label}: a backup was left behind`);
+  };
+  try {
+    withCatalogue([mutant('probe-08', writes)], (file) => {
+      for (const flag of ['--help', '-h']) {
+        const r = runArgs(file, [flag]);
+        assert.strictEqual(r.status, 0, `${flag} exits 0 (got ${r.status})`);
+        assert.match(r.stdout, /^usage: node tools\/mutation-sweep\.js/, `${flag} prints the usage`);
+        assert.ok(!/SYNTHETIC|baseline/.test(`${r.stdout}${r.stderr}`), `🔴 ${flag}: the catalogue was read or a baseline started`);
+        untouched(flag);
+      }
+      for (const args of [['--halp'], ['--slice'], ['--slice='], ['--mutants='], ['task7'], ['--slice=probe', '--slice=other'], ['--list', '--bogus'], ['--help', '--bogus']]) {
+        const label = args.join(' ');
+        const r = runArgs(file, args);
+        assert.strictEqual(r.status, 2, `${label}: exits 2 (got ${r.status})`);
+        assert.match(r.stderr, /nothing was run\.\nusage: node tools\/mutation-sweep\.js/, `${label}: says nothing ran and prints the usage`);
+        assert.ok(!/SYNTHETIC|baseline/.test(`${r.stdout}${r.stderr}`), `🔴 ${label}: the catalogue was read or a baseline started`);
+        untouched(label);
+      }
+      // an empty selection is a refusal too (pre-existing; asserted here so it stays one)
+      const e = runArgs(file, ['--slice=no-such-slice']);
+      assert.strictEqual(e.status, 2, `an empty selection exits 2 (got ${e.status})`);
+      assert.match(e.stderr, /no mutants matched --slice=no-such-slice — nothing was measured/);
+      untouched('an empty selection');
+      // valid flags are still accepted: --list reads the catalogue and runs nothing
+      const l = runArgs(file, ['--list', '--slice=probe']);
+      assert.strictEqual(l.status, 0, `--list --slice=probe exits 0 (got ${l.status})`);
+      assert.match(l.stdout, /probe-08/, '--list lists the selection');
+      untouched('--list');
+      // non-vacuity: the sentinel DOES record a run, so its absence above means nothing ran
+      const g = runArgs(file, ['--slice=probe']);
+      assert.ok(fs.existsSync(sentinel), `premise: a valid --slice run executes the command and the sentinel sees it (${(g.stdout || '').slice(-200)})`);
+      assert.strictEqual(fs.readFileSync(fixture, 'utf8'), before, 'and the run restored the fixture');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  ok('--help / -h print the usage and exit 0; unknown, empty-valued, positional and repeated flags exit 2 with the usage; an empty selection exits 2; none of them reads the catalogue or runs a command; a valid run is still accepted');
+}
+
 console.log(`\n${n} cells passed`);
