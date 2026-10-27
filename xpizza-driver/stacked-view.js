@@ -1130,8 +1130,8 @@ export function problemaEnviadoHtml(reasonLabel, timeStr, deps = {}) {
   const { ICONS = {}, esc = String } = deps;
   return `<div class="sheet" role="dialog" aria-modal="true">
       <div class="grab"></div>
-      <div class="pb-done-head"><span class="pb-done-ic">${ICONS.check || ''}</span><div><h4>Despacho ya lo sabe</h4><div class="sub">${esc(reasonLabel)}${timeStr ? ` · ${esc(timeStr)}` : ''}</div></div></div>
-      <p class="sub" style="margin:0">Seguí intentando mientras tanto. Despacho te llama o te escribe por WhatsApp con lo que toca: esperar, dejar en caseta o regresar.</p>
+      <div class="pb-done-head"><span class="pb-done-ic">${ICONS.check || ''}</span><div><h4>Despacho ya lo sabe</h4><div class="pb-done-sub">"${esc(reasonLabel)}"${timeStr ? ` · ${esc(timeStr)}` : ''}</div></div></div>
+      <p class="pb-done-sub" style="margin:0">Seguí intentando mientras tanto. Despacho te llama o te escribe por WhatsApp con lo que toca: esperar, dejar en caseta o regresar.</p>
       <button type="button" class="pb-send" id="btn-problema-done">Entendido</button>
     </div>`;
 }
