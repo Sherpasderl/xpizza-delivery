@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { tabBarHtml } from './tab-bar-view.js';
+import { cuentaHtml } from './nav-view.js';   // the REAL frozen Cuenta shell (header back + flex:1 spacer + signout) the injection adapts
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(join(__dir, '..', 'xpizza-functions', 'package.json'));   // resolve jsdom like the other harnesses
@@ -41,7 +42,8 @@ function boot(opts = {}) {
   const calls = { render: 0, openCuenta: 0, openHistory: 0, origBack: 0 };
   const boardRef = { list: [] };
   const $ = (id) => document.getElementById(id);
-  document.getElementById('screen-cuenta').innerHTML = '<button id="cuenta-back"></button><div class="set-body"><div class="set-card"></div></div>';   // as renderCuenta would leave it (nav row card)
+  document.getElementById('screen-cuenta').innerHTML = cuentaHtml({   // the REAL frozen shell: .set-top (back + title) + .set-body (.set-card + flex:1 spacer + signout)
+    icons: { back: '<svg data-back></svg>', navi: '<svg data-navi></svg>', chev: '<svg data-chev></svg>' }, esc: (s) => String(s), navLabel: 'Waze' });
   // the FROZEN slice2 cuenta-back listener (showScreen('offshift')) — the rebind must strip it
   document.getElementById('cuenta-back').addEventListener('click', () => { calls.origBack++; });
 
@@ -180,9 +182,18 @@ t('Cuenta: the account-hub injection builds the profile card + Reglas/Ayuda rows
   assert.ok(/a la Central/.test(ayuda.textContent) && !/Torre/.test(ayuda.textContent), 'copy says «Central», never «Torre» (owner rule overrides the stale prototype copy)');
   assert.ok(!ayuda.classList.contains('hidden'), 'Ayuda is shown when a valid dispatch number exists');
   assert.equal(typeof ayuda.onclick, 'function', 'Ayuda is wired (tel: on tap, via wireDispatchCallRow)');
-  // card order: sound · reglas · ayuda (App-nav is the frozen cuentaHtml row, absent from this stub card)
+  // card order: App-nav (frozen cuentaHtml) · sound · reglas · ayuda — the prototype order (minus omitted Mi perfil)
   const ids = [...card.children].map((c) => c.id);
-  assert.deepEqual(ids, ['cuenta-sound', 'cuenta-reglas', 'cuenta-ayuda'], 'injected rows in prototype order (after the frozen App-nav row)');
+  assert.deepEqual(ids, ['cuenta-navapp', 'cuenta-sound', 'cuenta-reglas', 'cuenta-ayuda'], 'rows in prototype order');
+  // sound row icon = prototype bell (not a speaker)
+  assert.ok(card.querySelector('#cuenta-sound .set-ic svg path[d^="M6 9a6"]'), 'sound row uses the prototype bell glyph');
+  // header: cuenta is a TAB ROOT — the frozen back button is hidden, the Sola brand mark replaces it
+  const back = cs.querySelector('#cuenta-back');
+  assert.equal(back.style.display, 'none', 'the frozen back button is hidden (tab root, no back)');
+  assert.ok(cs.querySelector('.set-top .cuenta-mark svg'), 'the Sola brand mark is injected into the header');
+  // «Cerrar sesión» flows under the cards: the frozen flex:1 spacer is neutralized
+  const neutralized = [...cs.querySelectorAll('.set-body > div')].filter((d) => d.style.flex === '0 0 auto');
+  assert.equal(neutralized.length, 1, 'the frozen flex:1 spacer is neutralized to 0 0 auto (signout under the cards)');
   // OMITTED per owner ruling: Mi perfil (no edit route) + restaurant pills (no assigned-brand reader)
   assert.ok(!/Mi perfil/.test(cs.textContent), 'Mi perfil row OMITTED (no post-onboarding edit route)');
   assert.ok(!/RECIB|Recib[íi]s pedidos/.test(cs.textContent), 'restaurant pills OMITTED (no assigned-brand reader today)');

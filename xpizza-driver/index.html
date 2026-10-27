@@ -2193,7 +2193,10 @@
 #screen-cuenta .cuenta-prof { display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border-radius: var(--r-card, 14px); box-shadow: var(--shadow-card, 0 1px 2px rgba(13,20,36,.05)); padding: 14px; }
 #screen-cuenta .cuenta-prof .cp-av { width: 50px; height: 50px; border-radius: 50%; background: #14306B; color: #fff; display: grid; place-items: center; font: 800 18px 'Red Hat Display', sans-serif; flex: none; }
 #screen-cuenta .cuenta-prof .cp-tx { min-width: 0; flex: 1; }
-#screen-cuenta .cuenta-prof .cp-name { font-size: 18px; font-weight: 700; color: var(--text, #0D1424); letter-spacing: -.01em; }
+#screen-cuenta .cuenta-prof .cp-name { font-family: 'Red Hat Display', sans-serif; font-size: 18px; font-weight: 800; color: var(--text, #0D1424); letter-spacing: -.01em; }
+/* cuenta tab-root header: the Sola brand mark replaces the frozen back button (injected; back is hidden). Sized to the prototype hm(24). */
+#screen-cuenta .set-top .cuenta-mark { width: 24px; height: 24px; flex: none; display: grid; place-items: center; }
+#screen-cuenta .set-top .cuenta-mark svg { width: 24px; height: 24px; display: block; }
 #screen-cuenta .cuenta-prof .cp-sub { font-size: 13px; color: var(--text-soft, #546078); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #screen-cuenta .cuenta-prof .cp-chip { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--success, #15803D); background: #E3F3E9; padding: 5px 10px; border-radius: 999px; }
 #screen-cuenta .cuenta-prof .cp-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--success, #15803D); }
@@ -3059,10 +3062,10 @@ function syncTabBarForScreen(name) {
     // (soundOn gates the chime at its two play sites; vibration is always on). Tapping flips soundOn + toasts.
     const card = cs && cs.querySelector('.set-card');
     if (card && !card.querySelector('#cuenta-sound')) {
-      const SPKR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+      const BELL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0v5l2 3H4l2-3z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>';   // prototype S.cuenta I.bell (not a speaker)
       const row = document.createElement('div');
       row.className = 'set-row'; row.id = 'cuenta-sound'; row.setAttribute('role', 'button'); row.tabIndex = 0;
-      row.innerHTML = '<span class="set-ic">' + SPKR + '</span><div class="set-tx"><div class="set-t">Sonido y notificaciones</div><div class="set-d" id="cuenta-sound-d"></div></div><span class="set-sw" id="cuenta-sound-sw"></span>';
+      row.innerHTML = '<span class="set-ic">' + BELL + '</span><div class="set-tx"><div class="set-t">Sonido y notificaciones</div><div class="set-d" id="cuenta-sound-d"></div></div><span class="set-sw" id="cuenta-sound-sw"></span>';
       const paintSound = () => { const d = row.querySelector('#cuenta-sound-d'); if (d) d.textContent = soundOn ? 'Aviso con sonido y vibración' : 'Silenciado · solo vibración'; row.querySelector('#cuenta-sound-sw').classList.toggle('on', soundOn); };
       paintSound(); card.appendChild(row);
       const flip = () => { soundOn = !soundOn; paintSound(); toast(soundOn ? 'Sonido activado' : 'Sonido desactivado'); };
@@ -3113,6 +3116,23 @@ function syncTabBarForScreen(name) {
       card.appendChild(r);
       wireDispatchCallRow(r);
     }
+    // Header: cuenta is a TAB ROOT — match the prototype's Sola mark + «Cuenta», no back. The frozen cuentaHtml renders
+    // a back button (a pre-tab-bar leftover, defanged by O6 → render()); hide it and show the brand mark. cuenta-back
+    // stays in the DOM + bound (the O6 rebind is untouched), it is just not shown. SOLA_HM is byte-identical to
+    // renderOffshift's local (a static brand asset; the splash keeps its own copy too — no shared module const exists).
+    const setTop = cs && cs.querySelector('.set-top');
+    const cback = cs && cs.querySelector('#cuenta-back');
+    if (setTop && cback && !setTop.querySelector('.cuenta-mark')) {
+      cback.style.display = 'none';
+      const SOLA_HM = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="var(--marino, #14306B)"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><g><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--celeste, #8EC0FF)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="var(--marino, #14306B)"/></g></svg>';
+      const m = document.createElement('span'); m.className = 'cuenta-mark'; m.innerHTML = SOLA_HM;
+      setTop.insertBefore(m, setTop.firstChild);
+    }
+    // «Cerrar sesión» placement: the prototype flows it right under the cards. The frozen cuentaHtml pushes it to the
+    // bottom with a `<div style="flex:1">` spacer; neutralize that spacer at runtime (an inline flex:1 can't be beaten
+    // by a no-!important cascade override). The version line stays pinned at the very bottom.
+    const spacer = cs && [...cs.querySelectorAll('.set-body > div')].find((d) => /flex:\s*1/.test(d.getAttribute('style') || ''));
+    if (spacer) spacer.style.flex = '0 0 auto';
   }
   mountTabBar($('screen-offshift'), 'inicio', name === 'offshift' && !hasWork);
   mountTabBar($('screen-cuenta'), 'cuenta', name === 'cuenta' && !hasWork);
