@@ -59,4 +59,28 @@ for (const site of p.sites) {
   assert.match(toml, /bake-form-bundle\.js --this-form && node \.\.\/platform\/stamp-version\.js && node \.\.\/xpizza-functions\/tools\/form-bundle-live-check\.js --this-form/, `${site}: Plan 4's bake → stamp → check is untouched`);
   ok(`${site}: /fonts/* immutable; the build command is still bake → stamp → check`);
 }
+// §4.1 / r6.2 — the committed rendered-font census (forms-fonts.cdp.mjs, both brands): gate (b) has a verdict for EVERY primary
+// declaration the candidate ships and none is a FAIL; every painted hosted run matches a DECLARED discrete face; Special Elite paints
+// nowhere; every state's NORMALIZED gate (c) diff is 0 (the raw diff is informational — r6.2).
+{
+  const css = readFileSync(join(ROOT, 'xpizza-orders', p.cssName), 'utf8');
+  const decls = [...css.matchAll(/@font-face\{font-family:'(DM Sans|Playfair Display)';font-style:(\w+);font-weight:(\d+);[^}]*unicode-range:([^}]+)\}/g)].map((m) => `${m[1]}|${m[3]}|${m[4]}`).sort();
+  const AVAIL = { 'DM Sans': [300, 400, 500, 600, 700, 800], 'Playfair Display': [600, 700, 900] };
+  const match = (w, a) => { if (a.includes(w)) return w; const below = a.filter((x) => x < w).reverse(), above = a.filter((x) => x > w);
+    if (w >= 400 && w <= 500) return above.filter((x) => x <= 500)[0] ?? below[0] ?? above.find((x) => x > 500); return w < 400 ? (below[0] ?? above[0]) : (above[0] ?? below[0]); };
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const c = JSON.parse(readFileSync(join(ROOT, 'platform/fonts/census', `orders-form.census.${rid}.json`), 'utf8'));
+    const verdicts = c.gateB.map((v) => `${v.family}|${v.weight}|${v.raw}`).sort();
+    assert.deepEqual(verdicts, decls, `${rid}: gate (b) carries a verdict for exactly the shipped primary declarations`);
+    for (const v of c.gateB) assert.match(v.verdict, /^(covered|r1 subset-only|r2 weight-unrequested)$/, `🔴 ${rid}: ${v.family} ${v.weight} — ${v.verdict}`);
+    for (const [st, nodes] of Object.entries(c.states)) for (const nd of nodes.candidate) for (const r of nd.runs) {
+      assert.doesNotMatch(r.font, /Special Elite/, `${rid} ${st}: Special Elite painted`);
+      const fam = Object.keys(AVAIL).find((f) => r.font === f || r.font.startsWith(`${f} `));
+      if (fam) assert.ok(AVAIL[fam].includes(match(Number(nd.weight) || 400, AVAIL[fam])), `${rid} ${st}: ${fam} ${nd.weight} matches no declared face`);
+    }
+    for (const [st, d] of Object.entries(c.normalized)) assert.equal(d, 0, `🔴 ${rid} ${st}: the NORMALIZED gate (c) diff must be 0`);
+    assert.ok(Object.keys(c.raw).length === Object.keys(c.normalized).length, `${rid}: a raw (informational) record for every state`);
+  }
+  ok('the committed census (both brands): gate (b) verdicts for exactly the shipped declarations, none FAIL; every hosted run matches a declared face; no Special Elite; normalized gate (c) = 0 in every state (raw recorded, informational)');
+}
 console.log(`\nforms-fonts: OK (${n})`);
