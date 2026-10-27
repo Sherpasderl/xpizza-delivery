@@ -521,3 +521,13 @@ test('Codex s7a2 r1 #6: frame 13 discloses PER CONFIGURATION — two changed con
     [`Cambió el precio de Carnivora: antes L ${carn.price - 26}, ahora L ${carn.price}.`, `Cambió el precio de Carnivora + Pepperoni: antes L ${carn.price - 26 + pep.price}, ahora L ${carn.price + pep.price}.`],
     '🔴 one line per changed configuration, with its configured unit prices');
 });
+
+test('Codex s7a2 r1 #7: an UNPRICED fee never carries a promotional claim — no «Envío gratis» for a member, no guest pill / tag, no «Envío gratis» chip', () => {
+  const rows = rowsOf(SC.fee_none.body).map((r) => (r.rid === 'la_musa' ? { ...r, entry: { ...r.entry, promo: { free_delivery: true, label: 'x' } } } : r));
+  for (const auth of ['member', 'guest']) {
+    const d = dom(CappHome.homeHtml(VM({ rows, auth })));
+    const lm = d.querySelector('.rlist .rcard[data-rid="la_musa"]'), sc = d.querySelector('.scard .rt[data-rid="la_musa"]').closest('.scard');
+    assert.ok(!/Envío gratis/.test(txt(lm)) && !/Envío gratis/.test(txt(sc)), `🔴 ${auth}: no promotional claim without a priced fee`);
+  }
+  assert.ok(![...dom(CappHome.homeHtml(VM({ rows: rows.filter((r) => r.rid === 'la_musa'), auth: 'member' }))).querySelectorAll('.fchip')].some((b) => /Envío gratis/.test(b.textContent)), 'no free-delivery chip from an unpriced store');
+});

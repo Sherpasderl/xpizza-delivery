@@ -138,7 +138,9 @@
   }
   // fees (Sherpa data): a PRICED fee only; the promotion is the member's price (P feeFree), never assumed while auth is unresolved
   const priced = (r) => !!r.fee && r.fee.state === 'priced' && Number.isInteger(r.fee.from_cents) && r.fee.from_cents >= 0;
-  const feeFree = (r, auth) => !!(r.promo && r.promo.free_delivery) && auth === 'member';
+  // a promotional claim needs a PRICED fee too (Codex s7a2 r1 #7): no verified price ⇒ no «Envío gratis» of any kind
+  const promoOn = (r) => priced(r) && !!(r.promo && r.promo.free_delivery);
+  const feeFree = (r, auth) => promoOn(r) && auth === 'member';
   const feeHtml = (r, auth) => (feeFree(r, auth) ? '<span class="free">Envío gratis</span>' : priced(r) ? 'Envío desde ' + money(r.fee.from_cents / 100) : '');
   const dishPrice = (it) => (it.group ? 'desde ' + money(Math.min(...it.group.choices.map((c) => c.p))) : money(it.p));
   const items = (r) => (r.sections ? r.sections.flatMap((s) => s.items) : []);
@@ -184,7 +186,7 @@
   function rcardHtml(r, vm) {
     const now = vm.now, auth = vm.auth, open = !r.gone && isOpen(r.cfg, now);
     // the guest-only pill is reserved (hidden) while auth is unresolved, so its line never appears under a finger
-    const deal = r.promo && r.promo.free_delivery && auth !== 'member' ? `<span class="pill deal"${auth === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}>Envío gratis con tu cuenta</span>` : '';
+    const deal = promoOn(r) && auth !== 'member' ? `<span class="pill deal"${auth === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}>Envío gratis con tu cuenta</span>` : '';
     const pills = open ? [isValue(r, vm.platform) ? '<span class="pill value">Buen precio</span>' : '', deal].filter(Boolean).join('') : '';
     const fee = feeHtml(r, auth);
     return `<button class="rcard${open ? '' : ' closed'}${rowCls(r)}" data-act="open-store" data-rid="${esc(r.id)}" aria-label="${esc(r.name)}${open ? '' : ', cerrado'}"${rowAttrs(r)}>
@@ -203,7 +205,7 @@
     const fee = feeHtml(r, vm.auth);
     const line = open ? `<span>${fee || '​'}</span>` : `<span>Cerrado · ${esc(opensText(r.cfg, vm.now))}</span>`;
     const pills = [isValue(r, vm.platform) ? '<span class="pill value">Buen precio</span>' : '', !open && vm.schedulingLive && !r.gone && hasSlot(r.cfg, vm.now) ? '<span class="pill sched">Programar pedido</span>' : ''].filter(Boolean).join('');
-    const deal = r.promo && r.promo.free_delivery && vm.auth === 'guest' ? '<span class="tag-deal">Envío gratis con tu cuenta</span>' : '';
+    const deal = promoOn(r) && vm.auth === 'guest' ? '<span class="tag-deal">Envío gratis con tu cuenta</span>' : '';
     return `<div class="scard${open ? '' : ' closed'}${rowCls(r)}"><button class="ph" data-act="open-store" data-rid="${esc(r.id)}" aria-label="${esc(r.name)}${open ? '' : ', cerrado'}"${rowAttrs(r)}>${heroImg(r, true)}${deal}${logoChip(r, 'logo')}</button>
       <button class="rt" data-act="open-store" data-rid="${esc(r.id)}"${rowAttrs(r)}><span class="nm">${esc(r.name)}</span>${eta ? `<span class="eta">${eta}</span>` : ''}</button><div class="ln">${line}</div>${pills ? `<div class="pills">${pills}</div>` : ''}</div>`;
   }
