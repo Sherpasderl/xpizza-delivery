@@ -116,7 +116,7 @@
 #screen-login .login-lbl { font-size: 11.5px; font-weight: 700; color: var(--text-soft, #546078); letter-spacing: .03em; }
 #screen-login .signin-form input { border-radius: 12px; padding: 12px 13px; font-size: 15px; font-weight: 600; }
 #screen-login .big-btn { text-transform: none; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; padding: 15px 14px; min-height: 52px; border-radius: 14px; }
-#screen-login .text-link { font-size: 13px; margin-top: 12px; }
+#screen-login .text-link { font-size: 13px; font-weight: 600; margin-top: 12px; }
 #screen-login .version-tag { margin-top: auto; }
 /* esperando (companionRenderScreen 'waiting') — clock illus + «Hablá con despacho» row; «Actualizar» kept (companion is
    read-once, no live account-status subscription — index.html companionEnsure). */
@@ -2903,10 +2903,33 @@ function companionRenderScreen(decision) {
         <div class="co-illus">${CLOCK}</div>
         <div class="co-chip-wait">Esperando aprobación</div>
         <div><div class="co-title">Estamos preparando tu cuenta</div><div class="co-sub" style="margin-top:6px">Despacho revisa tu perfil. No tenés que hacer nada; podés cerrar el app.</div></div>
-        <div class="co-card" style="text-align:left;padding:4px 14px"><div class="co-row" style="padding:10px 0"><span class="co-row-ic">${PHONE}</span><div><div class="co-row-t">Hablá con despacho</div><div class="co-row-d">Si pasa mucho tiempo, llamá o escribí</div></div></div></div>
+        <div class="co-card hidden" id="co-dispatch-card" style="text-align:left;padding:4px 14px 12px"><div class="co-row" style="padding:10px 0"><span class="co-row-ic">${PHONE}</span><div><div class="co-row-t">Hablá con despacho</div><div class="co-row-d">Si pasa mucho tiempo, llamá o escribí</div></div></div><div class="contact-row" id="co-dispatch-actions"></div></div>
       </div>`,
       `<button class="big-btn co-refresh-btn" id="co-refresh" style="background:#fff;color:#15181E;border:1.5px solid #D7D3CB">Actualizar</button>`);
     const r = $('co-refresh'); if (r) r.addEventListener('click', () => { if (companion) companion.refresh(); });
+    // Wire «Hablá con despacho» from config/dispatch_contact — the single E.164 string F «Problema» (c8b08cf1) added;
+    // a signed-in not-yet-approved driver may READ it via the existing config .read rule (auth != null && not handheld
+    // && not customer), pinned by driver-problems-rules.emulator.test.js. One-shot read, then detach. Present → Llamar
+    // (tel:) + WhatsApp (wa.me), reusing the app's .contact-row link styles, and show the card; absent/invalid/denied →
+    // leave it hidden (no dead affordance, no invented number). No-SDK (harness) → hidden.
+    (function wireDispatchContact() {
+      if (typeof fbOnValue !== 'function' || !XPD || typeof XPD.getDb !== 'function') return;
+      let done = false, unsub = null;
+      const finish = (raw) => {
+        if (done) return; done = true; try { if (unsub) unsub(); } catch (_) {}
+        const card = $('co-dispatch-card'), actions = $('co-dispatch-actions');
+        if (!card || !actions) return;                                   // esperando no longer on screen
+        const s = (typeof raw === 'string') ? raw.trim() : '';
+        const digits = s.replace(/[^\d]/g, '');
+        if (!/^\+?[1-9][\d ]{6,}$/.test(s) || digits.length < 7) { card.classList.add('hidden'); return; }
+        const tel = s.replace(/[^\d+]/g, '');
+        actions.innerHTML = `<a class="recipient-phone" href="tel:${tel}"><span class="ico">${ICONS.phone || ''}</span>Llamar</a>`
+          + `<a class="recipient-whatsapp" href="https://wa.me/${digits}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp || ''}</span>WhatsApp</a>`;
+        card.classList.remove('hidden');
+      };
+      try { unsub = fbOnValue(fbRef(XPD.getDb(), 'config/dispatch_contact'), (snap) => finish(snap && snap.val()), () => finish(null)); }
+      catch (_) { finish(null); }
+    })();
     /* ===== SLICE3:INICIO-ESPERANDO:END ===== */
   } else if (decision === 'neutral-hold') {
     $('screen-companion').innerHTML = companionShellHtml(`

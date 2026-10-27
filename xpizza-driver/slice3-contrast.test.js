@@ -52,12 +52,26 @@ const warnBg = ruleProp('#screen-onshift .pay-ro-card .ico.warn', 'background');
 const neutFg = ruleProp('#screen-onshift .pay-ro-card .ico', 'color');
 const neutBg = ruleProp('#screen-onshift .pay-ro-card .ico', 'background');
 
+// Inicio commit (a): login labels + «¿Olvidaste…?» link sit on the page bg; esperando «Hablá con despacho» sub sits
+// on the co-card; the clock illus glyph is a graphical object on its wash. Source-coupled → mutant-killable.
+const loginLblFg = ruleProp('#screen-login .login-lbl', 'color');
+const loginLinkFg = ruleProp('.text-link', 'color');
+const espSubFg = ruleProp('#screen-companion .co-row .co-row-d', 'color');
+const espCardBg = ruleProp('#screen-companion .co-card', 'background');
+const illusFg = ruleProp('#screen-companion .co-illus', 'color');
+const illusBg = ruleProp('#screen-companion .co-illus', 'background');
+const pageBg = 'var(--bg)';
+
 // [label, fgExpr, bgExpr, threshold]
 const PAIRS = [
   ['«1 bolsa» bag chip TEXT (12px/700)', chipFg, chipBg, 4.5],
   ['cobrar icon OK glyph (graphical)', okFg, okBg, 3.0],
   ['cobrar icon WARN glyph (graphical)', warnFg, warnBg, 3.0],
   ['cobrar icon NEUTRAL glyph (graphical)', neutFg, neutBg, 3.0],
+  ['login «Correo»/«Contraseña» label (11.5px/700)', loginLblFg, pageBg, 4.5],
+  ['login «¿Olvidaste…?» link (13px/600)', loginLinkFg, pageBg, 4.5],
+  ['esperando «Hablá con despacho» sub', espSubFg, espCardBg, 4.5],
+  ['esperando clock illus glyph (graphical)', illusFg, illusBg, 3.0],
 ];
 
 let passed = 0;
