@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
+import { fmtClockHM } from './time-format.js';   // the shared clock formatter renderStatusBar's DISP-HEADER now calls
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(join(__dir, '..', 'xpizza-functions', 'package.json'));
@@ -35,8 +36,8 @@ function boot({ status, shift_started_at = null, last_ping = Date.now(), lat, ln
   const XPD = { isStalePing: () => stale };
   const computeReturnEta = () => eta;
   const body = liftFn('renderStatusBar') + '\nreturn { renderStatusBar };';
-  const api = (new Function('document', '$', 'driverState', 'XPD', 'computeReturnEta', body))(
-    document, $, driverState, XPD, computeReturnEta);
+  const api = (new Function('document', '$', 'driverState', 'XPD', 'computeReturnEta', 'fmtClockHM', body))(
+    document, $, driverState, XPD, computeReturnEta, fmtClockHM);
   api.renderStatusBar();
   const dot = $('status-dot'), lbl = $('status-label'), meta = $('gps-meta');
   return { dot: dot.className, dotHtml: dot.innerHTML, lbl: lbl.textContent, meta: meta.textContent, metaCls: meta.className };

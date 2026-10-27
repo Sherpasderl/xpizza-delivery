@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { cierreRechazadoHtml } from './stacked-view.js';
+import { fmtClockHM } from './time-format.js';   // CUADRE-RENDER's date line now uses the shared formatter
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(join(__dir, '..', 'xpizza-functions', 'package.json'));
@@ -58,7 +59,7 @@ function build(opts = {}) {
   const ICONS = { check: '', store: '', wallet: '' };
   const escapeHtml = (s) => String(s == null ? '' : s);
   const deps = {
-    document, window, $, ICONS, escapeHtml, cierreRechazadoHtml,
+    document, window, $, ICONS, escapeHtml, cierreRechazadoHtml, fmtClockHM,
     toast: (m) => calls.toasts.push(m),
     shiftIdentity: () => ({ valid: true, shiftId: 's1', start: Date.now() - 60000 }),
     identityMatches: () => true,

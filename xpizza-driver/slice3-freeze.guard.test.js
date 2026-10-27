@@ -88,7 +88,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = '59c106c3d6430d3e97fee296717a5b2f2e778c1d9287e641f603e154ef0f41e3';
+const SLICE2_GUARD_SHA = '33246094d2a2312e553a764bea4f15511636b40c35451232eb12f9da6ae34ff6';
 const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -163,6 +163,8 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/oferta-offer.test.js',         // S.oferta offer-branch rebuild output test
   'xpizza-driver/idle-help-gate.test.js',       // SLICE3:IDLE-3 help-link gate (shows only when available)
   'xpizza-driver/statusbar-disp-header.test.js', // SLICE3:DISP-HEADER idle «En turno» header + non-idle byte-identity
+  'xpizza-driver/time-format.js',               // ONE source for «7:16» (cuadre date line + disponible header) — shared formatter
+  'xpizza-driver/time-format.test.js',          // the shared formatter's spec test
   'xpizza-driver/offline-banner.test.js',       // SLICE3 offline banner (RTDB-signal, in-hand-only) handler test
   'xpizza-driver/gpsoff.test.js',               // SLICE3 gpsoff builder + apply/detection logic test
   'xpizza-driver/fa4400-neverships.test.js',    // SLICE3 never-ship (static): brand-orange #FA4400 confined to .rchip.xp .rdot

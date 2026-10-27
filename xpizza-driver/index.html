@@ -2497,6 +2497,7 @@ import { ref as fbRef, onValue as fbOnValue } from 'https://www.gstatic.com/fire
 import { postActRoute } from './postact-route.js';   // Inicio b: pure post-activation checklist routing decision (tested in postact-route.test.js)
 import { practicaDemoOrder } from './practica-fixture.js';   // Inicio c: the synthetic practice ORDER (brand = registry-only 'synthetic_3' as DATA, never a controller literal)
 import { tabBarHtml } from './tab-bar-view.js';   // O6: the bottom nav bar (Inicio·Pedidos·Ganancias·Cuenta), data-gated pure builder
+import { fmtClockHM } from './time-format.js';   // ONE source for «7:16» — the cuadre date line + the disponible «desde las {time}» header
 /* ===== SLICE3:IMPORT-3:END ===== */
 /* ===== SLICE3:LOGIC-3:START — batch-3 module logic (help diagnosis sheet; gpsoff / cierreRechazado / offline to follow) ===== */
 // SLICE3:HELP — the «¿Por qué no veo pedidos?» diagnosis sheet (prototype S.help), mounted on demand (reusing the
@@ -4163,7 +4164,7 @@ function cuadreDateStr(ident) {
   const datePart = `${CUADRE_WD[now.getDay()]} ${now.getDate()} ${CUADRE_MO[now.getMonth()]}`;
   const start = (ident && ident.valid) ? ident.start : null;
   if (!(typeof start === 'number' && Number.isFinite(start) && start > 0 && start <= now.getTime())) return datePart;
-  const hhmm = (ms) => new Date(ms).toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit', hour12: false });
+  const hhmm = fmtClockHM;   // ONE source (time-format.js)
   const durMin = Math.round((now.getTime() - start) / 60000);
   const h = Math.floor(durMin / 60), m = durMin % 60;
   const dur = h > 0 ? (m > 0 ? `${h} h ${m} min` : `${h} h`) : `${m} min`;
@@ -4846,7 +4847,7 @@ function renderStatusBar() {
     lbl.textContent = 'En turno';
     const start = driverState && driverState.shift_started_at;
     if (typeof start === 'number' && start > 0 && start <= Date.now()) {
-      const t = new Date(start).toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit', hour12: false });
+      const t = fmtClockHM(start);   // ONE source (time-format.js)
       const durMin = Math.max(0, Math.round((Date.now() - start) / 60000));
       meta.textContent = 'desde las ' + t + ' · ' + Math.floor(durMin / 60) + ':' + String(durMin % 60).padStart(2, '0');
     } else {
