@@ -20680,8 +20680,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §1: x_pizza's reward picker ignores the published reward_icon",
   "file": "../xpizza-orders/index.html",
-  "from": "icon:p.reward_icon||'slice' }));   // PLAN 4 GATED: the published reward_icon (the name-keyed literal map is gone)",
-  "to": "icon:'slice' }));",
+  "from": "icon:p.reward_icon||'star' }));   // PLAN 4 GATED: the published reward_icon (the name-keyed literal map is gone)",
+  "to": "icon:'star' }));",
   "command": [
    "node",
    "../post-bake-artifact.test.mjs"
@@ -20692,8 +20692,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §1: la_musa's reward picker ignores the published reward_icon",
   "file": "../la-musa-orders/index.html",
-  "from": "section:c, icon:p.reward_icon||'slice' }); });",
-  "to": "section:c, icon:'slice' }); });",
+  "from": "section:c, icon:p.reward_icon||'star' }); });",
+  "to": "section:c, icon:'star' }); });",
   "command": [
    "node",
    "../post-bake-artifact.test.mjs"

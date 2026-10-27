@@ -61,11 +61,11 @@ for (const [dir, names] of Object.entries(SEED_ONLY)) {
   const xp = code('xpizza-orders'), lm = code('la-musa-orders');
   const redeem = (src) => src.slice(src.indexOf('function buildRedeemCatalog(){'), src.indexOf('\n}\n', src.indexOf('function buildRedeemCatalog(){')));
   assert.ok(redeem(xp).length > 50 && redeem(lm).length > 50, 'premise: both reward catalogs found');
-  assert.ok(!/const ICON\s*=/.test(redeem(xp)) && /icon:p\.reward_icon\|\|'slice'/.test(redeem(xp)), '🔴 x_pizza: the reward icon is the published field (no name-keyed map)');
+  assert.ok(!/const ICON\s*=/.test(redeem(xp)) && /icon:p\.reward_icon\|\|'star'/.test(redeem(xp)), '🔴 x_pizza: the reward icon is the published field (no name-keyed map)');
   assert.ok(!/\[\s*'[^']*'\s*,\s*'[a-z_]+'\s*\]/.test(redeem(lm).match(/const CAT=\{[^}]*\}/)[0]), '🔴 la_musa: CAT carries sections only, no icons');
-  assert.ok(/icon:p\.reward_icon\|\|'slice'/.test(redeem(lm)) && /icon:e\.reward_icon\|\|'slice'/.test(redeem(lm)) && !/icon:'rice'/.test(redeem(lm)), '🔴 la_musa: dish and extra icons are the published field');
+  assert.ok(/icon:p\.reward_icon\|\|'star'/.test(redeem(lm)) && /icon:e\.reward_icon\|\|'star'/.test(redeem(lm)) && !/icon:'rice'/.test(redeem(lm)), '🔴 la_musa: dish and extra icons are the published field');
   assert.ok(!/===\s*'Nutella'|'Nutella'\s*===/.test(xp), '🔴 x_pizza: "no options" is the published extras_policy, never a name check');
   assert.ok(!/\bTAG_PRIORITY\b/.test(lm.replace(/FALLBACK_TAG_PRIORITY/g, '')), '🔴 la_musa: no runtime TAG_PRIORITY (BADGE_PRIORITY is the published order)');
-  ok('GATED: no reward-icon literal map (x_pizza ICON, la_musa CAT icons / \'rice\'), no runtime TAG_PRIORITY, no Nutella name check');
+  ok('GATED: the brand-neutral default reward icon is \'star\' in both forms (advisor ruling); no reward-icon literal map (x_pizza ICON, la_musa CAT icons / \'rice\'), no runtime TAG_PRIORITY, no Nutella name check');
 }
 console.log(`\nform-runtime-literals.guard: OK (${n})`);

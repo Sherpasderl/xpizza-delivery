@@ -3497,7 +3497,7 @@ function successTotalCents(o){
 // pizzas, each with a per-topping fine-line icon. 18" NY pies excluded (the server enforces this too).
 function buildRedeemCatalog(){
   // 1D add-product B: eligibility is this brand's data (12" individual pizzas); the shared rule drops launchers
-  return GroupPicker.rewardDishes(MENU, VARIANT_ITEMS, p=>p.cat==='individual').map(p=>({ key:p.name, name:p.name, price_cents:Math.round(p.price*100), icon:p.reward_icon||'slice' }));   // PLAN 4 GATED: the published reward_icon (the name-keyed literal map is gone)
+  return GroupPicker.rewardDishes(MENU, VARIANT_ITEMS, p=>p.cat==='individual').map(p=>({ key:p.name, name:p.name, price_cents:Math.round(p.price*100), icon:p.reward_icon||'star' }));   // PLAN 4 GATED: the published reward_icon (the name-keyed literal map is gone)
 }
 
 function calcTotal(){
