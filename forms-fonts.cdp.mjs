@@ -147,7 +147,7 @@ async function premisePane(cdp, sel) {
 // ── one run: boot a site in a state under a font policy; returns everything the cells judge ──
 async function run(site, { side = 'candidate', fontGate, throttle = false, oldPolicy = false, stateName = 'S1', deterministic = false, holdMs = 6000 }) {
   const def = STATES[stateName];
-  const state = { ...def, baseline: side === 'baseline', fontGate };
+  const state = { ...def, baseline: side === 'baseline' || process.env.FONTS_HEAD === 'google', fontGate };
   const root = side === 'baseline' ? baselineRoot() : ROOT;
   const srv = await serveDir(root, {
     gate: (rel) => (/\/fonts\/.*\.woff2$/.test(rel) ? fontGate : undefined),
@@ -155,6 +155,15 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
       let out;
       if (def.rewards && /account\.js$/.test(rel)) out = seamed(out ?? buf);
       if (process.env.FONTS_STRIP_NAMES && side === 'candidate' && /(index\.html|account\.js)$/.test(rel)) out = String(out ?? buf).replace(/,\s*'(DM Sans|Playfair Display) Fallback( Roboto| Noto)?'/g, '');   // diagnostic only
+      if (process.env.FONTS_SWAP_ONLY && side === 'candidate' && /orders-fonts\.css$/.test(rel)) out = String(out ?? buf).replace(/font-display:optional/g, 'font-display:swap');   // diagnostic only
+      if (process.env.FONTS_NO_PF_PRELOAD && side === 'candidate' && /index\.html$/.test(rel)) out = String(out ?? buf).replace(/<link rel="preload" href="fonts\/playfair-display-latin\.[^"]+"[^>]*>/, '');   // diagnostic only
+      if (process.env.FONTS_HEAD && side === 'candidate' && /index\.html$/.test(rel)) {   // diagnostic only: swap head line 25/26 variants
+        const L = String(out ?? buf).split('\n');
+        if (process.env.FONTS_HEAD === 'google') { L[24] = '<link rel="preconnect" href="https://fonts.googleapis.com"/>'; L[25] = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Playfair+Display:wght@600;700;900&family=DM+Sans:wght@300;400;500;600;700;800&display=swap"/>'; }
+        if (process.env.FONTS_HEAD === 'nopreload') L[24] = L[24].replace(/<link rel="preload"[^>]*>/g, '');
+        if (process.env.FONTS_HEAD === 'nopreconnect') L[25] = '';
+        out = L.join('\n');
+      }
       if (oldPolicy) {   // the OLD policy, rewritten in flight: font-display:swap and no fallback faces / stack names
         if (/orders-fonts\.css$/.test(rel)) out = String(out ?? buf).replace(/font-display:optional/g, 'font-display:swap').replace(/@font-face\{font-family:'[^']+ Fallback[^']*';[^}]*\}/g, '');
         if (/(index\.html|account\.js)$/.test(rel)) out = String(out ?? buf).replace(/,\s*'(DM Sans|Playfair Display) Fallback( Roboto| Noto)?'/g, '');
@@ -202,6 +211,19 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
       const { node: tn } = t ? await cdp.s('DOM.describeNode', { backendNodeId: t.backendNodeId }) : { node: null };
       const pushed = t ? (await cdp.s('DOM.pushNodesByBackendIdsToFrontend', { backendNodeIds: [t.backendNodeId] })).nodeIds[0] : nodeId;
       console.log(`  [inspect-font ${side}]`, JSON.stringify((await cdp.s('CSS.getPlatformFontsForNode', { nodeId: pushed })).fonts)); }
+    if (deterministic && process.env.FONTS_RERASTER) {   // diagnostic: force EVERY layer to re-rasterize on BOTH sides (no font changes)
+      await cdp.ev(`document.documentElement.style.filter = 'opacity(0.999)', true`); await settle(cdp); await sleep(150);
+      await cdp.ev(`document.documentElement.style.filter = '', true`); await settle(cdp); await sleep(250);
+    }
+    if (deterministic && process.env.FONTS_REPAINT) {   // diagnostic: normalize raster history on BOTH sides (no font changes)
+      await cdp.s('Emulation.setDeviceMetricsOverride', { width: 391, height: 844, deviceScaleFactor: 2, mobile: true }); await settle(cdp);
+      await cdp.s('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }); await settle(cdp); await sleep(200);
+    }
+    if (process.env.FONTS_DEBUG_PATH) for (const n of after.nodes) if (n.path.includes(process.env.FONTS_DEBUG_PATH)) {
+      const pr = await attribute(cdp, [n]);
+      console.log(`  [debug ${side}]`, JSON.stringify({ path: n.path.slice(-60), family: n.family, weight: n.weight, style: n.style, spaces: n.spaces, text: String.fromCodePoint(...n.codepoints), fonts: n.fonts,
+        probe: [...new Set(n.codepoints)].map((cp) => `${String.fromCodePoint(cp)}=${pr.get(`${n.family}|${n.weight}|${n.style}|${cp}`)}`).join(' ') }));
+    }
     const png = deterministic ? Buffer.from((await cdp.s('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })).data, 'base64') : null;
     const probe = await attribute(cdp, after.nodes);
     return { before, after, probe, png };
@@ -336,7 +358,7 @@ for (const site of SITES) {
         const A = [...faceSet(base)].sort(), B = [...faceSet(cand)].sort();
         check(JSON.stringify(A) === JSON.stringify(B), `[${rep}] ${st} gate (a): face sets identical (${B.length})${JSON.stringify(A) === JSON.stringify(B) ? '' : ` base ${JSON.stringify(A)} cand ${JSON.stringify(B)}`}`);
         const d = pixelDiff(base.png, cand.png);
-        if (d) { fs.writeFileSync(path.join(OUT, `${site}-${st}-base.png`), base.png); fs.writeFileSync(path.join(OUT, `${site}-${st}-cand.png`), cand.png); }
+        if (d || process.env.FONTS_SAVE) { fs.writeFileSync(path.join(OUT, `${site}-${st}-base.png`), base.png); fs.writeFileSync(path.join(OUT, `${site}-${st}-cand.png`), cand.png); }
         check(d === 0, `[${rep}] ${st} gate (c): pixel-exact (${d} differing pixels)`);
         for (const [side, r] of [['baseline', base], ['candidate', cand]]) { const bad = gateD(r); check(!bad.length, `[${rep}] ${st} gate (d) ${side}: no silent fallback${bad.length ? ` — ${bad.slice(0, 3).join('; ')}` : ''}`); }
         record.states[st] = { candidate: cand.after.nodes.map((n) => ({ path: n.path, family: n.family, weight: n.weight, runs: runsOf(n, cand.probe).runs.map((x) => ({ font: x.familyName, cps: x.codepoints.length })) })) };

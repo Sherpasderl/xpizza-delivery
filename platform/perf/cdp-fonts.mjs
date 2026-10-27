@@ -210,6 +210,22 @@ export async function attribute(cdp, nodes) {
     }
     await ev(`document.getElementById('__fprobe').remove(), true`);
   }
+  // A key the batched off-screen host reports NO font for gets ONE individual re-probe in a plainly positioned, on-screen span
+  // (calibrated: a lone "i" at weight 650 came back empty from the batch host but probes normally on its own). The probe always runs
+  // AFTER any screenshot. A key that is still empty stays '(none)' — and the per-node fidelity check still fails it.
+  for (const [k, v] of map) {
+    if (v !== '(none)') continue;
+    const [fam, w, st, cp] = k.split('|');
+    await ev(`(() => { const e = document.createElement('span'); e.id = '__fp1'; e.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483647;white-space:pre;font-size:32px';
+      e.style.fontFamily = ${JSON.stringify(fam)}; e.style.fontWeight = ${JSON.stringify(w)}; e.style.fontStyle = ${JSON.stringify(st)}; e.textContent = String.fromCodePoint(${Number(cp)});
+      document.documentElement.appendChild(e); return true; })()`);
+    await new Promise((r) => setTimeout(r, 50));
+    const { root } = await s('DOM.getDocument', { depth: 0 });
+    const { nodeId } = await s('DOM.querySelector', { nodeId: root.nodeId, selector: '#__fp1' });
+    const { fonts } = await s('CSS.getPlatformFontsForNode', { nodeId });
+    if (fonts.length) map.set(k, fonts.length === 1 ? fonts[0].familyName : fonts.map((f) => f.familyName).join('+'));
+    await ev(`document.getElementById('__fp1').remove(), true`);
+  }
   return map;
 }
 
