@@ -105,6 +105,11 @@ function fakeInit(site, rewards) {
 
 // ── page boot + the fixture STATES (the coverage set; Codex r4 ruling: pane-level premises only) ──
 const FREEZE = `(() => { const T = Date.UTC(2026, 9, 27, 18, 30); const D = Date; class FD extends D { constructor(...a) { super(...(a.length ? a : [T])); } static now() { return T; } } window.Date = FD; })();`;
+// Codex r2: the INITIAL rendering boundary — at the first rAF after first-contentful-paint, record every element's box and which
+// hosted font faces are already 'loaded' at that instant (document-start script; nothing waits on DOM polling).
+const PAINT_SNAP = `(() => { const GEO = () => [...document.querySelectorAll('body *')].filter((e) => !/^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE)$/.test(e.tagName)).map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map((v) => v.toFixed(2)).join(','); });
+  try { new PerformanceObserver((l, obs) => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint' && !window.__paintSnap) { obs.disconnect();
+    requestAnimationFrame(() => { window.__paintSnap = { t: performance.now(), fcp: e.startTime, geo: GEO(), loaded: [...document.fonts].filter((f) => /^(DM Sans|Playfair Display)$/.test(f.family.replace(/["']/g, '')) && f.status === 'loaded').map((f) => f.family.replace(/["']/g, '') + ' ' + f.weight + ' ' + f.unicodeRange.slice(0, 12)) }; }); } }).observe({ type: 'paint', buffered: true }); } catch (_) {} })();`;
 const QUIET = `document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}'; document.head.appendChild(s); });`;
 const settle = async (cdp) => { await cdp.ev('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))'); };
 const addOne = `(() => { const d = MENU.find((x) => x.price > 0 && !x.variantOf && !(window.itemIsLauncher && itemIsLauncher(x))); chg(d.id, 1);
@@ -200,6 +205,7 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
     cdp.on('Runtime.consoleAPICalled', (p) => { if (p.type === 'error') errs.push(`console.error: ${p.args.map((a) => a.value ?? a.description ?? '').join(' ')}`.slice(0, 200)); });
     cdp.on('Log.entryAdded', (p) => { if (p.entry.level === 'error') errs.push({ log: p.entry.text.slice(0, 200), url: p.entry.url || '' }); });
     await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: OBSERVER });
+    await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: PAINT_SNAP });
     if (deterministic) for (const src of [FREEZE, QUIET]) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: src });
     if (def.rewards) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: fakeInit(site, typeof def.rewards === 'function' ? def.rewards(site) : def.rewards) });
     const t0 = Date.now();
@@ -208,7 +214,9 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
     for (let i = 0; i < 2400; i++) { if (await cdp.ev(`document.readyState !== 'loading' && !!document.getElementById('s1')`).catch(() => false)) break; await sleep(25); }
     await settle(cdp);
     const bootMs = Date.now() - t0;
-    const paintGeo = await cdp.ev(GEO);   // Codex r1 #2: the geometry AT FIRST PAINT, before the drive and before any font completes
+    for (let i = 0; i < 400 && !(await cdp.ev('!!window.__paintSnap').catch(() => false)); i++) await sleep(25);
+    const paintSnap = await cdp.ev('window.__paintSnap || null');   // Codex r2: captured IN-PAGE at the first rAF after FCP
+    const paintGeo = paintSnap ? paintSnap.geo : null;
     await def.drive(cdp);
     await settle(cdp);
     if (process.env.FONTS_DEBUG_STAGE) console.log(`  [stage ${side} ${stateName}]`, JSON.stringify(await cdp.ev(`({ active: (document.querySelector('.stage.active') || {}).id, err1: (document.getElementById('err1') || {}).textContent, err3: (document.getElementById('err3') || {}).textContent, sx: (document.getElementById('acct-success-rewards') || {}).innerHTML?.length })`)), 'createOrder seen:', [...rt.seen].some((u) => /createOrder/.test(u)));
@@ -231,7 +239,7 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
     await cdp.ev('document.fonts.ready.then(() => true)'); await sleep(250);
     let geo = await cdp.ev(GEO); for (let i = 0; i < 20; i++) { await settle(cdp); const g = await cdp.ev(GEO); if (JSON.stringify(g) === JSON.stringify(geo)) break; geo = g; }
     await premisePane(cdp, def.container);
-    const after = { heldMs, bootMs, paintGeo, errs, refused: [...rt.refused], nodes: await census(cdp), geo, cls: await cdp.ev('window.__cls'), fontsFailed: fontUrls().filter((u) => rt.finished.get(u) === 'failed').length };
+    const after = { heldMs, bootMs, paintGeo, paintSnap, errs, refused: [...rt.refused], nodes: await census(cdp), geo, cls: await cdp.ev('window.__cls'), fontsFailed: fontUrls().filter((u) => rt.finished.get(u) === 'failed').length };
     if (process.env.FONTS_INSPECT) console.log(`  [inspect ${side} ${stateName}]`, JSON.stringify(await cdp.ev(`[...document.querySelectorAll(${JSON.stringify(process.env.FONTS_INSPECT)})].map((e) => { const cs = getComputedStyle(e), r = e.getBoundingClientRect(); return { text: e.textContent.slice(0, 20), ff: cs.fontFamily, fw: cs.fontWeight, fs: cs.fontSize, ls: cs.letterSpacing, x: r.x, y: r.y, w: r.width, h: r.height, op: cs.opacity, filter: cs.filter }; })`)));
     if (process.env.FONTS_INSPECT) { const { root } = await cdp.s('DOM.getDocument', { depth: -1, pierce: true }); const { nodeId } = await cdp.s('DOM.querySelector', { nodeId: root.nodeId, selector: process.env.FONTS_INSPECT });
       const d = await cdp.s('DOM.describeNode', { nodeId, depth: 1 }); const t = (d.node.children || []).find((c) => c.nodeType === 3);
@@ -375,6 +383,11 @@ for (const site of SITES) {
       check(hostedPainted(r.after.nodes), `[${rep}] FF-fast: hosted faces paint (census)`);
       // Codex r1 #2: observed from FIRST PAINT (geometry snapshot at paint, before any font completes) through font completion,
       // and the layout-shift total over the WHOLE window from navigation start (buffered observer) must be 0
+      // Codex r2: the comparison baseline is the IN-PAGE snapshot at the first rAF after first-contentful-paint (document-start
+      // script). With preload + optional the preloaded faces are ALREADY loaded at that boundary (measured: DM Sans 400/600/700,
+      // + Playfair 700 on la_musa, at FCP ≈ 60 ms) — that is the design goal, so "no face loaded" cannot be FF-fast's premise
+      // (it would void every run); the loaded set is RECORDED, and any face landing after the snapshot that moves a box fails below.
+      check(!!r.after.paintSnap && r.after.paintGeo.length > 50, `[${rep}] FF-fast premise: geometry captured in-page at FCP + 1 rAF (FCP ${r.after.paintSnap && Math.round(r.after.paintSnap.fcp)} ms; faces already loaded then: ${r.after.paintSnap ? r.after.paintSnap.loaded.length : '?'})`);
       const m = moved(r.after.paintGeo, r.after.geo);
       check(r.after.geo.length > 50 && m === 0, `[${rep}] FF-fast: 0 of ${r.after.geo.length} boxes moved from FIRST PAINT to settled (${m})`);
       check(r.after.cls === 0, `[${rep}] FF-fast: CLS 0 over the whole window from navigation start (${r.after.cls})`);
@@ -382,6 +395,7 @@ for (const site of SITES) {
     if (CELLS.includes('slow')) {
       const r = await run(site, { fontGate: 'hold', throttle: true });
       check(!hostedPainted(r.before.nodes), `[${rep}] FF-slow premise: the fallback is painted before release (painted at ${r.after.bootMs} ms, fonts released at ${r.after.heldMs} ms)`);
+      check(!!r.after.paintSnap && r.after.paintSnap.loaded.length === 0, `[${rep}] FF-slow premise (Codex r2): NO hosted face loaded at the FCP snapshot (${r.after.paintSnap ? JSON.stringify(r.after.paintSnap.loaded) : 'no snapshot'}) — else the cell is VOID`);
       check(!hostedPainted(r.after.nodes), `[${rep}] FF-slow: the fallback is KEPT after the held fonts complete`);
       const m = moved(r.before.geo, r.after.geo);
       check(r.after.geo.length > 50 && m === 0, `[${rep}] FF-slow: 0 of ${r.after.geo.length} boxes moved (${m})`);
@@ -401,6 +415,7 @@ for (const site of SITES) {
     }
     if (CELLS.includes('ctrl')) {
       const r = await run(site, { fontGate: 'hold', throttle: true, oldPolicy: true });
+      check(!!r.after.paintSnap && r.after.paintSnap.loaded.length === 0, `[${rep}] FF-ctrl premise (Codex r2): NO hosted face loaded at the FCP snapshot — else the cell is VOID`);
       check(!hostedPainted(r.before.nodes) && hostedPainted(r.after.nodes), `[${rep}] FF-ctrl: the OLD policy swaps (fallback → brand; fonts released at ${r.after.heldMs} ms)`);
       const m = moved(r.before.geo, r.after.geo);
       check(m > 0, `[${rep}] FF-ctrl: the geometry check SEES it — ${m} of ${r.after.geo.length} boxes moved (CLS ${r.after.cls}, recorded only)`);
