@@ -3316,7 +3316,7 @@ function renderPausa(host, helpLink, arriveBtn, offerExpired) {
 // drv2PausePendingIntent (Codex r1 #3) defers a pause requested while orders are active — no on_break is written until
 // the board empties (renderActiveAndQueue), then it goes through the SAME ack-gated writer below.
 let drv2PauseWriteKind = null;         // 'pause' | 'resume' | null
-let drv2PausePendingIntent = false;
+let drv2PausePendingIntent = false;    // Codex r2 P2: false = no intent, else the authGen of the session that recorded it (bound so a deferred pause never writes on_break to a later account)
 function drv2IsPaused() {
   if (drv2PauseWriteKind === 'resume') return true;
   if (drv2PauseWriteKind === 'pause') return false;
@@ -3344,7 +3344,7 @@ function drv2PauseShift(btn) {
   if (!currentUser || (btn && btn.disabled) || drv2PauseWriteKind !== null) return;
   const board = (XPD && typeof XPD.getDriverOrders === 'function') ? (XPD.getDriverOrders(currentUser.uid, allTasks, allOrders) || []) : [];
   const hasActive = board.some((o) => o && (o.phase === 'pickup' || o.phase === 'delivery'));
-  if (hasActive) { drv2PausePendingIntent = true; if (btn) btn.disabled = true; renderActiveAndQueue(); return; }
+  if (hasActive) { drv2PausePendingIntent = authGen; if (btn) btn.disabled = true; renderActiveAndQueue(); return; }   // Codex r2 P2: bind the deferred intent to THIS session (authGen), so it can never apply to a later account
   drv2WritePauseState('pause', btn);
 }
 function drv2CaptureReturnTarget(o, actingUid) {   // at THIS client's delivery completion, the delivered order's entry is in scope
@@ -5478,7 +5478,11 @@ function renderStatusBar() {
     ensurePausar(false);
     return;
   }
-  if (status === 'available' || status === 'returning') {
+  if (status === 'available' || status === 'returning' || (DRV2_PAUSE_ENABLED && status === 'on_break' && !drv2IsPaused())) {
+    // Codex r2 P1: an OPTIMISTIC pause (status flips to on_break locally before the server ack) is NOT yet paused
+    // (drv2IsPaused() === false). The driver still sees disponible until the write acks, so the idle header stays «En
+    // turno» — never a premature «En pausa» from the fallback label map below. Gated by DRV2_PAUSE_ENABLED, so the
+    // flag-off non-idle path stays byte-identical.
     dot.className = 'status-dot sola';
     if (sbEl) sbEl.classList.add('enturno');   // idle «En turno» header = page-bg, no white bar. Only available/returning reach here; the status bar is hidden while delivering.
     dot.innerHTML = SOLA_DOT;
@@ -5636,7 +5640,11 @@ function renderActiveAndQueue() {
      (the OFFER-TAKEOVER region suppresses a 2nd offer from hiding it). ===== */
   {
     const pbAccepted = orders.filter((o) => o && (o.phase === 'pickup' || o.phase === 'delivery'));
-    if (DRV2_PAUSE_ENABLED && drv2PausePendingIntent && orders.length === 0 && drv2PauseWriteKind === null && !drv2IsPaused()) {
+    // Codex r2 P2: the deferred intent is bound to the session that recorded it (authGen). A stale intent left by a
+    // previous session (sign-out / uid change) is cleared here and NEVER applied — it must not write on_break to the
+    // new account's driver record.
+    if (DRV2_PAUSE_ENABLED && drv2PausePendingIntent !== false && drv2PausePendingIntent !== authGen) drv2PausePendingIntent = false;
+    if (DRV2_PAUSE_ENABLED && drv2PausePendingIntent === authGen && orders.length === 0 && drv2PauseWriteKind === null && !drv2IsPaused()) {
       drv2PausePendingIntent = false;
       drv2WritePauseState('pause', null);   // SAME ack-gated writer; its resolve re-renders (busy → pausa)
     }

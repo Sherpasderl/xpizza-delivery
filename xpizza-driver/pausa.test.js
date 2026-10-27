@@ -51,7 +51,7 @@ function boot({ since = FIXED_NOW - 155000, uid = 'drv', status = 'on_break', ac
   let writes = [], toasts = 0, renders = 0;
   const fbUpdate = (ref, val) => { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); writes.push({ path: ref.path, val, resolve: res, reject: rej }); return p; };
   const body = PAUSE_SVG_LINE + '\n' + PLAY_SVG_LINE + '\n' + INFO_SVG_LINE + '\n'
-    + 'let drv2PauseWriteKind = null, drv2PausePendingIntent = false; let allTasks = {}, allOrders = {};\n'
+    + 'let drv2PauseWriteKind = null, drv2PausePendingIntent = false; let authGen = 1; let allTasks = {}, allOrders = {};\n'
     + 'function renderActiveAndQueue(){ _render(); }\n'
     + liftFn('drv2PauseElapsed') + '\n' + liftFn('drv2PauseRingHtml') + '\n'
     + liftFn('drv2IsPaused') + '\n' + liftFn('drv2WritePauseState') + '\n' + liftFn('drv2PauseShift') + '\n' + liftFn('renderPausa') + '\n'
@@ -132,7 +132,7 @@ t('drv2PauseShift with ACCEPTED work in hand → records a deferred intent, writ
   const h = boot({ status: 'available', orders: [{ phase: 'delivery' }] });
   const btn = { disabled: false };
   h.api.drv2PauseShift(btn);
-  assert.equal(h.api.state().intent, true, 'a pending-pause intent is recorded');
+  assert.equal(h.api.state().intent, 1, 'a pending-pause intent is recorded, bound to this session (authGen=1)');
   assert.equal(h.writes.length, 0, 'NO on_break write while orders are active (La pausa empieza al entregarlo)');
   assert.ok(btn.disabled, 'the button reflects the pending intent (busy)');
 });
@@ -159,7 +159,7 @@ t('drv2PauseElapsed: M:SS under an hour, H:MM over (fixed clock)', () => {
 });
 
 // ---- Codex r1 #4/#5: the ticking ring + header with an injected clock ----
-function bootHeader({ status = 'available', since = FIXED_NOW - 120000, enabled = true, now = FIXED_NOW, withRing = false } = {}) {
+function bootHeader({ status = 'available', since = FIXED_NOW - 120000, enabled = true, now = FIXED_NOW, withRing = false, writeKind = null } = {}) {
   const ring = withRing ? '<div id="idle-state"><div class="pausa-ring-c"><b>old</b></div></div>' : '';
   const dom = new JSDOM('<!doctype html><html><body>' + ring + '<div class="status-bar"><div id="status-dot"></div><div id="status-label"></div><div id="gps-meta"></div><button class="duty-toggle on" id="duty-toggle-on"></button></div></body></html>', { pretendToBeVisual: true });
   const { document, window } = dom.window;
@@ -167,7 +167,7 @@ function bootHeader({ status = 'available', since = FIXED_NOW - 120000, enabled 
   const driverState = { status, break_since: since, shift_started_at: now - 600000, last_ping: now };
   let paused = 0;
   const body = 'const DRV2_PAUSE_ENABLED = ' + enabled + '; const DRV2_ENDSHIFT_SLIDE = false;\n' + PAUSE_SVG_LINE + '\n'
-    + 'let drv2PauseWriteKind = null;\n' + liftFn('drv2IsPaused') + '\n'
+    + 'let drv2PauseWriteKind = ' + JSON.stringify(writeKind) + ';\n' + liftFn('drv2IsPaused') + '\n'
     + 'function drv2PauseShift(){ _pause(); }\n'
     + liftFn('drv2PauseElapsed') + '\n' + liftFn('renderStatusBar') + '\nreturn { renderStatusBar };';
   const names = ['document', '$', 'driverState', 'fmtClockHM', 'XPD', 'Date', '_pause'];
@@ -201,15 +201,27 @@ t('header available: offers «Pausar» → drv2PauseShift; dark → none', () =>
   off.api.renderStatusBar();
   assert.ok(!off.$('btn-pausar'), 'dark → no «Pausar»');
 });
+t('Codex r2 P1: an OPTIMISTIC pause (status on_break BEFORE the ack) shows «En turno», never a premature «En pausa»', () => {
+  // The RTDB write flips driverState.status to on_break locally before the server acks; drv2PauseWriteKind="pause"
+  // ⇒ drv2IsPaused() === false. The driver still sees disponible, so the idle header must stay «En turno».
+  const h = bootHeader({ status: 'on_break', writeKind: 'pause', enabled: true });
+  h.api.renderStatusBar();
+  assert.equal(h.$('status-label').textContent, 'En turno', 'pending pause → still available → «En turno»');
+  assert.notEqual(h.$('status-label').textContent, 'En pausa', 'NO «En pausa» anywhere before the server ack');
+  assert.ok(h.$('btn-pausar'), 'the «Pausar» entry is still present (the tap is a no-op while a write is in flight)');
+});
 
 // ---- Codex r1 #2/#3: the SLICE3:PAUSE-BOARD board-boundary region ----
-function runBoard({ paused = false, intent = false, kind = null, orders = [] } = {}) {
+function runBoard({ paused = false, intent = false, kind = null, orders = [], authGen = 1 } = {}) {
   const region = SCRIPT.match(/SLICE3:PAUSE-BOARD:START[\s\S]*?===== \*\/\n([\s\S]*?)\n\s*\/\* ===== SLICE3:PAUSE-BOARD:END/)[1];
   const dom = new JSDOM('<!doctype html><body><div id="screen-onshift"></div><div id="idle-state"></div><div id="incoming-banner-slot">b</div><div id="active-order-slot">a</div><div id="queue-slot">q</div></body>', { pretendToBeVisual: true });
   const { document } = dom.window;
   const $ = (id) => document.getElementById(id);
   let idle = 0, tab = 0, wrote = null, returned = false;
-  const body = 'const DRV2_PAUSE_ENABLED = true; let drv2PausePendingIntent = ' + intent + '; let drv2PauseWriteKind = ' + JSON.stringify(kind) + ';\n'
+  // Codex r2 P2: the intent holds the authGen of the session that recorded it. `intent: true` = an intent from THIS
+  // session (authGen); a number = an intent carried over from that specific (possibly prior) session.
+  const intentVal = (intent === true ? authGen : intent);
+  const body = 'const DRV2_PAUSE_ENABLED = true; let authGen = ' + authGen + '; let drv2PausePendingIntent = ' + JSON.stringify(intentVal) + '; let drv2PauseWriteKind = ' + JSON.stringify(kind) + ';\n'
     + 'function drv2IsPaused(){ return ' + paused + '; }\n'
     + 'function drv2WritePauseState(k){ _wrote(k); } function mountTabBar(){ _tab(); } function renderIdleState(){ _idle(); }\n'
     + 'const idleSlot = $("idle-state"), bannerSlot = $("incoming-banner-slot"), activeSlot = $("active-order-slot"), queueSlot = $("queue-slot");\n'
@@ -237,7 +249,16 @@ t('#3: pending intent + TRULY empty board → applies on_break via the SAME writ
 t('#3 race: pending intent but a fresh OFFER arrived this tick → the offer wins, the intent WAITS (no write)', () => {
   const r = runBoard({ paused: false, intent: true, orders: [{ phase: 'awaiting_acceptance' }] });
   assert.equal(r.wrote, null, 'NO pause write — the offer (orders not empty) wins');
-  assert.equal(r.intent, true, 'the intent stays pending');
+  assert.notEqual(r.intent, false, 'the intent stays pending (bound to this session)');
+});
+t('Codex r2 P2: a deferred intent bound to a PRIOR session is cleared + never written to the new account', () => {
+  // A recorded a deferred pause in session authGen=1, then signed out; B signs in (authGen=2) with an empty board.
+  const r = runBoard({ paused: false, intent: 1, authGen: 2, orders: [] });
+  assert.equal(r.wrote, null, 'NO on_break write for B — the stale cross-session intent is never applied');
+  assert.equal(r.intent, false, 'the stale intent (authGen 1) is cleared under the new session (authGen 2)');
+  // control: the SAME session (authGen matches) on an empty board DOES apply — proves the gate is session-scoped, not a block
+  const same = runBoard({ paused: false, intent: 2, authGen: 2, orders: [] });
+  assert.equal(same.wrote, 'pause', 'the originating session still applies its own deferred pause');
 });
 
 // ---- Survivor (Codex r1): the SHIPPED flag is false, read FROM SOURCE ----
