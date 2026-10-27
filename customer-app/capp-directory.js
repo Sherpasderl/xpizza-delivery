@@ -105,12 +105,11 @@
         failedAt = now();
         if (!rows.length && phase !== 'ready') phase = 'error';
       }
-      notify();
-      return view();
     }
+    // subscribers hear the outcome only once the request is no longer in flight (Codex s7a2 r1 #5: a held tap reads `pending`)
     function revalidate() {
       if (inflight) return inflight;
-      inflight = run().finally(() => { inflight = null; });
+      inflight = run().then(() => { inflight = null; notify(); return view(); }, () => { inflight = null; failedAt = now(); notify(); return view(); });
       return inflight;
     }
     // Inicio / Buscar entered again: tombstoned rows leave the list now (never while visible)
