@@ -7,6 +7,7 @@ const { Readable } = require('stream');
 const { makeGcsStore } = require('./gcs-store');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+const labelled = (label, p) => p.catch((e) => { throw new Error(`${label}: ${e && e.message}`); });   // a bare rejection carries its marker
 const err = (code) => Object.assign(new Error(`gcs ${code}`), { code });
 
 function fakeBucket() {
@@ -34,14 +35,14 @@ function fakeBucket() {
 (async () => {
   const b = fakeBucket(); const S = makeGcsStore(b);
   // metadata
-  assert.strictEqual(await S.metadata('uploads/r/u1'), null, 'GCS-METADATA-404-IS-NULL');
+  assert.strictEqual(await labelled('GCS-METADATA-404-IS-NULL', S.metadata('uploads/r/u1')), null, 'GCS-METADATA-404-IS-NULL');
   b.put('uploads/r/u1', Buffer.alloc(1000, 1));
   assert.deepStrictEqual(await S.metadata('uploads/r/u1'), { generation: b.objects.get('uploads/r/u1').generation, size: 1000 }, 'GCS-METADATA-NUMERIC-SIZE');
   ok('metadata: 404 → null; {generation, size} with a numeric size');
 
   // download: pinned to the generation; byte-capped
   const g = b.objects.get('uploads/r/u1').generation;
-  assert.strictEqual((await S.download('uploads/r/u1', { generation: g, maxBytes: 1000 })).length, 1000, 'GCS-DOWNLOAD-AT-CAP');
+  assert.strictEqual((await labelled('GCS-DOWNLOAD-AT-CAP', S.download('uploads/r/u1', { generation: g, maxBytes: 1000 }))).length, 1000, 'GCS-DOWNLOAD-AT-CAP');
   assert.ok(b.calls.some((c) => c[0] === 'createReadStream' && c[2] === g), 'GCS-DOWNLOAD-PINNED-GENERATION');
   await assert.rejects(() => S.download('uploads/r/u1', { generation: g, maxBytes: 999 }), (e) => e.code === 'too_large', 'GCS-DOWNLOAD-OVER-CAP-ABORTS');
   await assert.rejects(() => S.download('uploads/r/u1', { generation: '1', maxBytes: 5000 }), (e) => e.code === 'generation_mismatch', 'GCS-DOWNLOAD-OTHER-GENERATION');
@@ -53,12 +54,12 @@ function fakeBucket() {
   assert.ok(c1.created === true && typeof c1.generation === 'string', 'GCS-CREATE');
   const save = b.calls.find((c) => c[0] === 'save');
   assert.deepStrictEqual([save[2], save[3], save[4]], [{ ifGenerationMatch: 0 }, 'image/webp', 'private, max-age=0, no-store'], 'GCS-CREATE-PRECONDITION-AND-HEADERS');
-  const c2 = await S.createIfAbsent('drafts/r/p-card.webp', Buffer.from('x'), { contentType: 'image/webp' });
+  const c2 = await labelled('GCS-CREATE-EXISTS-412', S.createIfAbsent('drafts/r/p-card.webp', Buffer.from('x'), { contentType: 'image/webp' }));
   assert.deepStrictEqual(c2, { generation: c1.generation, created: false }, 'GCS-CREATE-EXISTS-412');
   ok('createIfAbsent: save with ifGenerationMatch:0 (private, no-store); a 412 → the existing generation, created:false');
 
   // remove + signRead
-  await S.remove('uploads/r/u1'); await S.remove('uploads/r/never');
+  await S.remove('uploads/r/u1'); await labelled('GCS-REMOVE-IGNORE-NOT-FOUND', S.remove('uploads/r/never'));
   assert.ok(!b.objects.has('uploads/r/u1'), 'GCS-REMOVE');
   assert.deepStrictEqual(b.calls.filter((c) => c[0] === 'delete').map((c) => c[2]), [{ ignoreNotFound: true }, { ignoreNotFound: true }], 'GCS-REMOVE-IGNORE-NOT-FOUND');
   const url = await S.signRead('drafts/r/p-card.webp', 1234);
