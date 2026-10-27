@@ -257,9 +257,13 @@
       } catch (_) { return { state: 'pending', json: {}, network: true }; }
     }
     // a poll state (payment-poll-state.js) → the outcome, applying the clearing rules to THAT order only
+    // §4 (Codex r6): a successful GUEST placement returns a SIGNUP GRANT (phone_hash-bound, single-use, 15 min) — carried on the placed
+    // outcome for the post-order account offer (frame 7); anything malformed is dropped (the offer then falls back to a normal signup)
+    const grantOf = (j) => (cfg.guestCardOnly === true && !memberOf() && j && j.signup_grant && typeof j.signup_grant.token === 'string' && j.signup_grant.token
+      && Number.isFinite(j.signup_grant.expires_at) ? { signup_grant: { token: j.signup_grant.token, expires_at: j.signup_grant.expires_at } } : {});
     function outcomeOfState(id, st, j) {
       // Codex r1 P1-2: the stash (the recovery credentials) is cleared ONLY once the completion is durable
-      if (PAID_STATES.has(st)) { const ok = resolvePlace(id, 'placed'); if (ok) clearPayFor(id); return { kind: 'placed', order_id: id, scheduled: st === 'scheduled_paid', tracking_token: (j && j.tracking_token) || null, scheduled_for: (j && j.scheduled_for) || null, ...settledOf(ok) }; }
+      if (PAID_STATES.has(st)) { const ok = resolvePlace(id, 'placed'); if (ok) clearPayFor(id); return { ...grantOf(j), kind: 'placed', order_id: id, scheduled: st === 'scheduled_paid', tracking_token: (j && j.tracking_token) || null, scheduled_for: (j && j.scheduled_for) || null, ...settledOf(ok) }; }
       if (st === 'closed_refunded') { const ok = resolvePlace(id, 'released'); if (ok) clearPayFor(id); return { kind: 'refunded', order_id: id, refunded_total_cents: j && Number.isFinite(j.refunded_total_cents) ? j.refunded_total_cents : null, ...settledOf(ok) }; }
       if (st === 'cancelled' || st === 'failed') { const ok = resolvePlace(id, 'released'); return { kind: 'payment_failed', order_id: id, state: st, ...settledOf(ok) }; }   // (S2): the next placement mints
       return { kind: 'confirming', order_id: id, state: CONFIRMING_STATES.has(st) ? st : 'pending' };   // creds kept, no payment offer
@@ -457,7 +461,7 @@
         if (method === 'online' && r.status === 200) return cardIssued(id, body, j);   // settles only once the creds are stored
         if (method === 'online') settle(id);                                              // a cash answer never settles a charge
         if (method === 'cash') {
-          if (r.status === 200) { const ok = resolvePlace(id, 'placed'); return { kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent, ...settledOf(ok) }; }
+          if (r.status === 200) { const ok = resolvePlace(id, 'placed'); return { ...grantOf(j), kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent, ...settledOf(ok) }; }
           if (r.status === 409 && j.error === 'order_conflict') {
             if (healed) return { kind: 'error', order_id: id, error: 'order_conflict' };
             healed = true; clearPlace(id); continue;   // (S1): proven terminal-safe — ONE resend on a fresh id

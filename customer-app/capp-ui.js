@@ -1371,5 +1371,19 @@
     };
   }
 
-  return { mount, viewSections, loadMapsFor, MAP_SVG, FULL_CART };
+  // PLAN-capp-signin-required r5.4 frame 7 (approved): the post-order ACCOUNT OFFER under «Pedido recibido» (the host draws that
+  // screen). ONE benefit; the phone already verified (no second code: the signup grant), the email from the order and still editable;
+  // a visible «Ahora no». Renders nothing without a live grant. Actions are host events: 'offer-create' (redeem the grant: the
+  // signup flow, G6) and 'offer-skip'.
+  function accountOfferHtml(o) {
+    const g = o && o.grant, t = o && typeof o.now === 'number' ? o.now : Date.now();
+    if (!g || typeof g.token !== 'string' || !g.token || !Number.isFinite(g.expires_at) || t >= g.expires_at) return '';
+    return `<div class="guestcard offer"><div class="sg">
+      <div class="h1">Guardá tus datos para la próxima</div><p class="sub">La próxima vez pedís sin escribir nada ni esperar un código.</p>
+      <div class="ml">WhatsApp</div><input class="inp" id="offer-phone" value="${esc(o.phone || '')}" readonly aria-label="WhatsApp"><span class="badge">${IC.check} Tu número ya está confirmado.</span>
+      <div class="ml">Correo</div><input class="inp" id="offer-email" type="email" value="${esc(o.email || '')}" autocomplete="email" aria-label="Correo">
+      <button class="cta" type="button" data-act="offer-create">Crear mi cuenta</button><button class="lnk" type="button" data-act="offer-skip">Ahora no</button></div></div>`;
+  }
+
+  return { mount, viewSections, loadMapsFor, MAP_SVG, FULL_CART, accountOfferHtml };
 });

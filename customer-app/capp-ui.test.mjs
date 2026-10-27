@@ -2170,3 +2170,34 @@ test('G4 frame 4: a member\'s order refused by the GUEST gate (token not verifie
   await b.click('#layer [data-act="reauth"]');
   assert.deepEqual(J(b.events.filter(([n]) => n === 'signin').at(-1)[1]), { ctx: 'reauth' });
 });
+
+const CU = createRequire(import.meta.url)('./capp-ui.js');   // the pure renderers, in this realm
+// ── G5 frame 7 (approved): the SIGNUP GRANT rides on the placed outcome; the account offer card renders only while it is live ──
+test('G5: a guest\'s paid card return carries the signup grant on its placed outcome (frame 7\'s input); a member\'s never does', async () => {
+  const storage = memStore();
+  const a = bootCo({ storage, config: GUEST, script: { ...CODE_OK, chargeOnlineOrder: [CHECKOUT] } });
+  await guestFilled(a); await a.click('#cta'); await a.click('[data-act="tipc"][data-val="0"]'); await a.click('[data-act="tip-place"]'); await viaCode(a); await a.click('#layer [data-act="placing-go"]'); await settle();
+  const id = a.srv.of('chargeOnlineOrder')[0].body.order_id; const snap = J(a.ui.cart.snapshot()); a.ui.destroy();
+  const grant = { token: 'sg_1', expires_at: NOON().getTime() + 15 * 60e3 };
+  const c = bootCo({ storage, config: GUEST, search: RET('complete', id), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'paid', signup_grant: grant } }] } });
+  c.ui.restore(snap); const out = await c.ui.returning; await settle();
+  assert.equal(out.kind, 'placed'); assert.deepEqual(J(out.signup_grant), grant, '🔴 the grant reaches the post-order offer');
+  const m = CA.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: EP, guestCardOnly: true }, CappCheckout: CK, member: MEMBER_LIKE(),
+    fetch: async () => ({ status: 200, ok: true, json: async () => ({ ok: true, order_id: 'TA1', signup_grant: grant }) }), storage: memStore(), now: () => NOON().getTime(), sleep: async () => {} });
+  const f = CK.freshFlow(MEMBER_LIKE()); f.pay = 'cash';
+  const mo = await m.place({ flow: f, ctx: { restaurantId: 'rid_a', items: [], itemsText: '', member: MEMBER_LIKE(), headers: {} } });
+  assert.equal(mo.signup_grant, undefined, 'a member has no grant to redeem');
+});
+test('G5 frame 7: the offer card — one benefit, the verified phone (read-only) + «Tu número ya está confirmado.», the email editable, «Crear mi cuenta» / «Ahora no»; nothing without a live grant', () => {
+  const JD = JSDOM;
+  const html = CU.accountOfferHtml({ grant: { token: 'sg_1', expires_at: 2000 }, now: 1000, phone: '+504 9612-3344', email: 'ana.perez@gmail.com' });
+  const d = new JD(`<div>${html}</div>`).window.document;
+  assert.equal(d.querySelector('.h1').textContent, 'Guardá tus datos para la próxima');
+  assert.equal(d.querySelector('.sub').textContent, 'La próxima vez pedís sin escribir nada ni esperar un código.');
+  assert.ok(d.querySelector('#offer-phone').readOnly); assert.equal(d.querySelector('#offer-phone').value, '+504 9612-3344');
+  assert.equal(d.querySelector('.badge').textContent.trim(), 'Tu número ya está confirmado.');
+  assert.ok(!d.querySelector('#offer-email').readOnly, 'the email can be corrected'); assert.equal(d.querySelector('#offer-email').value, 'ana.perez@gmail.com');
+  assert.deepEqual([...d.querySelectorAll('button')].map((b) => [b.textContent, b.dataset.act]), [['Crear mi cuenta', 'offer-create'], ['Ahora no', 'offer-skip']]);
+  assert.equal(CU.accountOfferHtml({ grant: { token: 'sg_1', expires_at: 2000 }, now: 2000 }), '', '🔴 an expired grant ⇒ no offer (a normal signup instead)');
+  assert.equal(CU.accountOfferHtml({}), '');
+});
