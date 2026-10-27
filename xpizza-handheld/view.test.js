@@ -138,3 +138,14 @@ test('readiness: the frozen status() (browser / older shell) renders the approve
   assert.ok(old.text.includes('Falta apagar el ahorro de batería.'));
   assert.match(old.body, /<div class="srow" style="border-bottom:none"><span><span style="display:block">Ahorro de batería/, 'battery stays the last row');
 });
+
+test('readiness (OWNER 2026-10-26, choice A): a green new row shows «Listo» on the right like the battery row; a red one does not', () => {
+  const g = checksOf(EX);
+  assert.equal(g.text.filter((s) => s === 'Listo').length, 4, 'battery + the three new rows');
+  for (const t of ['Sonido de pedidos', 'Alerta en pantalla bloqueada', 'Conexión para pedidos']) {
+    const i = g.text.indexOf(t); assert.equal(g.text[i + 2], 'Listo', `${t}: title, ok text, «Listo»`);
+  }
+  assert.ok(!/<svg/.test(g.body.slice(g.body.indexOf('Sonido de pedidos'))), 'no check icons (the srow style, not the preview icons)');
+  const r = checksOf({ ...EX, channelOk: false, fullScreen: false, pushReady: false, pushSession: true, blocked: true });
+  assert.equal(r.text.filter((s) => s === 'Listo').length, 1, 'only the green battery row');
+});
