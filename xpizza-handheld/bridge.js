@@ -9,7 +9,8 @@
 // H1c additions (PLAN-H1c "Contract additions"; additive — the frozen calls above are unchanged):
 //   bridge.alarm.start(ids, {known})   a FEED snapshot: `known` = every order id the feed holds (an empty update is start([], {known}),
 //                                      never stop()); push-only ids the feed does not know keep ringing natively
-//   bridge.statusEx?() → {notifications, fullScreen, channelOk, alarmVolumeMax, batteryExempt, pushReady, defaultHome, native, blocked}
+//   bridge.statusEx?() → {notifications, fullScreen, channelOk, alarmVolumeMax, batteryExempt, pushReady, defaultHome, kiosk,
+//                         pushSession, native, blocked}  (kiosk / pushSession: info only, never part of blocked)
 //                                      native only (absent on the browser stub: the checks screen then reads status())
 //   bridge.openSettings(kind)          battery | notifications | fullScreen | channel | volume
 //   bridge.setDeviceCredential(customToken, uid, rid) / bridge.endDeviceSession()
@@ -67,7 +68,10 @@ function nativeBridge(p) {
       const s = (await call('statusEx')) || {};
       const out = { notifications: bool(s.notifications), fullScreen: bool(s.fullScreen), channelOk: bool(s.channelOk), alarmVolumeMax: bool(s.alarmVolumeMax),
         batteryExempt: bool(s.batteryExempt), pushReady: bool(s.pushReady), defaultHome: bool(s.defaultHome) };
-      return { ...out, native: true, blocked: blockedEx(out) };
+      // readiness copy (2026-10-26), additive + info only: kiosk = lock task LOCKED (repair buttons hidden); pushSession = a native
+      // pairing exists (false → «Vincular»; absent on an older shell → undefined → «Conectando…», never a forced re-pair)
+      const extra = { kiosk: bool(s.kiosk), pushSession: typeof s.pushSession === 'boolean' ? s.pushSession : undefined };
+      return { ...out, ...extra, native: true, blocked: blockedEx(out) };
     },
     openSettings: async (kind) => { await call('openSettings', { kind }); },
     setDeviceCredential: async (customToken, uid, rid) => { await p.setDeviceCredential({ customToken, uid, rid }); },

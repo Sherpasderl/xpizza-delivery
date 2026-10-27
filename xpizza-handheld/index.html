@@ -62,15 +62,28 @@
         <div class="shS" style="font-size:15px">Revisamos el sonido y que el equipo siga despierto.</div>
         <div class="card" style="padding:2px 14px">
           <div class="srow"><span>Notificaciones</span><span style="color:{{notifColor}};font-size:15px">{{notifText}}</span></div>
+          <sc-if value="{{exRows}}" hint-placeholder-val="{{ false }}"><div class="srow"><span><span style="display:block">{{rdChannel.title}}</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">{{rdChannel.text}}</span></span>
+            <sc-if value="{{rdChannel.hasBtn}}" hint-placeholder-val="{{ false }}"><button class="btn sm" style="width:auto;padding:0 16px;min-height:48px" onClick="{{rdChannel.fix}}">{{rdChannel.btn}}</button></sc-if>
+            <sc-if value="{{rdChannel.ok}}" hint-placeholder-val="{{ false }}"><span style="color:#17633D;font-size:15px">Listo</span></sc-if>
+          </div></sc-if>
+          <sc-if value="{{exRows}}" hint-placeholder-val="{{ false }}"><div class="srow"><span><span style="display:block">{{rdFullScreen.title}}</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">{{rdFullScreen.text}}</span></span>
+            <sc-if value="{{rdFullScreen.hasBtn}}" hint-placeholder-val="{{ false }}"><button class="btn sm" style="width:auto;padding:0 16px;min-height:48px" onClick="{{rdFullScreen.fix}}">{{rdFullScreen.btn}}</button></sc-if>
+            <sc-if value="{{rdFullScreen.ok}}" hint-placeholder-val="{{ false }}"><span style="color:#17633D;font-size:15px">Listo</span></sc-if>
+          </div></sc-if>
           <div class="srow"><span>Volumen de alerta</span><span style="color:{{volColor}};font-size:15px">{{volText}}</span></div>
-          <div class="srow" style="border-bottom:none"><span><span style="display:block">Ahorro de batería</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">{{batteryText}}</span></span>
+          <div class="srow" style="{{batteryRowStyle}}"><span><span style="display:block">Ahorro de batería</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">{{batteryText}}</span></span>
             <sc-if value="{{batteryPending}}" hint-placeholder-val="{{ true }}"><button class="btn sm" style="width:auto;padding:0 16px;min-height:48px" onClick="{{fixBattery}}">Apagar</button></sc-if>
             <sc-if value="{{batteryOk}}" hint-placeholder-val="{{ false }}"><span style="color:#17633D;font-size:15px">Listo</span></sc-if>
           </div>
+          <sc-if value="{{exRows}}" hint-placeholder-val="{{ false }}"><div class="srow" style="border-bottom:none"><span><span style="display:block">{{rdPush.title}}</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">{{rdPush.text}}</span></span>
+            <sc-if value="{{rdPush.hasBtn}}" hint-placeholder-val="{{ false }}"><button class="btn sm" style="width:auto;padding:0 16px;min-height:48px" onClick="{{rdPush.fix}}">{{rdPush.btn}}</button></sc-if>
+            <sc-if value="{{rdPush.ok}}" hint-placeholder-val="{{ false }}"><span style="color:#17633D;font-size:15px">Listo</span></sc-if>
+          </div></sc-if>
         </div>
         <button class="btn ghost sm" onClick="{{testAlert}}">Probar la alerta</button>
         <sc-if value="{{browserNote}}"><div class="shS">{{browserNote}}</div></sc-if>
         <sc-if value="{{checksBlocked}}"><div class="info">Falta apagar el ahorro de batería.</div></sc-if>
+        <sc-if value="{{exLine}}"><div class="info">{{exLine}}</div></sc-if>
         <div style="flex:1"></div>
         <button class="btn {{checksBtnCls}}" onClick="{{goPinCreate}}">Continuar</button>
       </div>

@@ -135,6 +135,8 @@ function vm() {
     now: now(), online: online(), orders: viewOrders(), base: base(), sess, driverOf, set,
     act: { doLogin, doPair, refreshStatus, pinPress, doSignOut, control, openOrder, handed, doReject, doMore, undoReady, doAccept, doReady,
       stopEta: () => stopEta(), checksContinue,
+      // readiness rows: the repair buttons open the matching system screen (the resume refresh re-reads the status afterwards)
+      openSettings: (kind) => { bridge.openSettings(kind).catch(() => {}); },
       testAlert: () => { sound.unlock(); bridge.alarm.start(['__prueba__']); setTimeout(() => bridge.alarm.stop(), 2500); toast('Sonando la alerta de prueba a todo volumen…'); } },
   });
 }

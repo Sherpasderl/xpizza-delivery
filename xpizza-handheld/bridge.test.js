@@ -115,7 +115,7 @@ test('H1c: alarm.start(ids, {known}) sends the feed snapshot; without {known} th
 });
 
 test('H1c: statusEx — normalized booleans; blocked = status()\'s rule OR fullScreen / channelOk / pushReady false; defaultHome is info only', async () => {
-  assert.deepEqual(await nativeRig(ALL).b.statusEx(), { ...ALL, native: true, blocked: false });
+  assert.deepEqual(await nativeRig(ALL).b.statusEx(), { ...ALL, kiosk: false, pushSession: undefined, native: true, blocked: false });
   for (const k of ['notifications', 'fullScreen', 'channelOk', 'alarmVolumeMax', 'batteryExempt', 'pushReady']) {
     assert.equal((await nativeRig({ ...ALL, [k]: false }).b.statusEx()).blocked, true, `${k} false → blocked`);
     assert.equal((await nativeRig({ ...ALL, [k]: 'true' }).b.statusEx()).blocked, true, `${k} non-boolean → false → blocked`);
@@ -124,6 +124,14 @@ test('H1c: statusEx — normalized booleans; blocked = status()\'s rule OR fullS
   const old = await nativeRig(undefined).b.statusEx();
   assert.equal(old.blocked, true, 'an older shell without statusEx fails CLOSED');
   assert.equal(blockedEx(ALL), false);
+});
+
+test('readiness 2026-10-26: statusEx passes kiosk (strict boolean) and pushSession (boolean or undefined); neither changes blocked', async () => {
+  const k = await nativeRig({ ...ALL, kiosk: true, pushSession: false }).b.statusEx();
+  assert.deepEqual([k.kiosk, k.pushSession, k.blocked], [true, false, false]);
+  const odd = await nativeRig({ ...ALL, kiosk: 'true', pushSession: 'false' }).b.statusEx();
+  assert.deepEqual([odd.kiosk, odd.pushSession], [false, undefined], 'non-booleans: kiosk false, pushSession unknown');
+  assert.equal((await nativeRig({ ...ALL, pushReady: false, pushSession: true }).b.statusEx()).blocked, true, 'pushReady still blocks');
 });
 
 test('H1c: openSettings / setDeviceCredential / endDeviceSession / pushToken delegate; listeners deliver and unsubscribe', async () => {

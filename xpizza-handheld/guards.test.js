@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { COPY, BOARD, ADVISOR, KIOSK } from './copy.js';
+import { COPY, BOARD, ADVISOR, KIOSK, READINESS } from './copy.js';
 import { C1_NO_LOCATIONS } from './setup.js';
 import { C2_BROWSER_NOTE } from './bridge.js';
 
@@ -22,7 +22,8 @@ const specText = (f) => {
 };
 const corpus = fs.readdirSync(here('./spec/')).filter((f) => f.endsWith('.html')).map(specText).join(' \n ');
 const approved = [...Object.values(COPY).filter((v) => typeof v === 'string'), COPY.reconnected(1), 'Conexión restablecida ·', 'acciones enviadas',
-  ...Object.values(BOARD), ...Object.values(ADVISOR), ...Object.values(KIOSK), C1_NO_LOCATIONS, C2_BROWSER_NOTE];
+  ...Object.values(BOARD), ...Object.values(ADVISOR), ...Object.values(KIOSK), ...Object.values(READINESS).filter((v) => typeof v === 'string'),
+  READINESS.steps(2), C1_NO_LOCATIONS, C2_BROWSER_NOTE];
 const known = (s) => corpus.includes(s) || approved.some((a) => a.includes(s));
 
 const template = (() => { const h = read('./index.html'); return h.slice(h.indexOf('<template id="screen">') + 22, h.indexOf('</template>')); })();
@@ -57,7 +58,7 @@ export function stringLiterals(src) {
 test('copy: every Spanish string literal the modules can show is prototype / board text or approved', () => {
   // never shown on the device: the device LABEL sent to merchantPairDevice (shown in the portal), a programmer-error throw
   const TECH = new Set(['Equipo de la sucursal', 'is not a queued action']);
-  const files = ['model.js', 'view.js', 'app.js', 'api.js', 'setup.js', 'bridge.js', 'copy.js', 'morph.js'];
+  const files = ['model.js', 'view.js', 'app.js', 'api.js', 'setup.js', 'bridge.js', 'copy.js', 'morph.js', 'readiness.js'];
   const unknown = [];
   for (const f of files) {
     for (const raw of stringLiterals(read(`./${f}`))) {
