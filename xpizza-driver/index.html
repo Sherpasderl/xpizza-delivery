@@ -178,7 +178,7 @@
    on white; icons are graphical). grid-template-columns is set inline per visible-tab count. Appended as the flex:none
    LAST child of the offshift / on-shift-idle / Cuenta screens (never during an order). */
 .tabs { flex: none; display: grid; border-top: 1px solid var(--border); background: var(--surface); padding: 7px 4px 12px; }
-.tabs .tab-btn { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; color: var(--text-soft); cursor: pointer; padding: 4px 0; }
+.tabs .tab-btn { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 3px; font-family: 'Red Hat Text', sans-serif; font-size: 10.5px; font-weight: 600; color: var(--text-soft); cursor: pointer; padding: 4px 0; }
 .tabs .tab-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .tabs .tab-btn.on { color: var(--accent); }
 /* ===== SLICE3:PRESENTATION-INICIO:END ===== */
@@ -2635,6 +2635,10 @@ function applyGpsoff() {
   const top = idle.querySelector('.idle-top'), bar = $('idle-statbar');
   if (top) top.classList.toggle('hidden', show);   // gpsoff REPLACES the normal idle content (incl. the help link, which lives in .idle-top)
   if (bar) bar.classList.toggle('hidden', show);
+  // O6 (Codex r1 P2.5): gpsoff REPLACES the idle screen — prototype S.gpsoff has no tab bar. Take it off when gpsoff
+  // appears (incl. the async checkLocationStatus path) and restore it on dismiss. applyGpsoff runs only on the idle
+  // board, so the restore side is always the no-work state.
+  mountTabBar($('screen-onshift'), 'inicio', !show);
   card.classList.toggle('hidden', !show);
   if (!show) { card.innerHTML = ''; return; }
   card.innerHTML = gpsoffHtml(gpsoffState, { esc: escapeHtml });
@@ -2677,11 +2681,23 @@ function mountTabBar(screenEl, active, visible) {
     });
   }
 }
-// Mount the bar for the CURRENT top-level screen (from showScreen): offshift + Cuenta always carry it. The on-shift
-// bar is owned by the board render (idle shows it; an active order removes it), so it is not touched here.
+// Mount the bar for the CURRENT top-level screen (from showScreen). CENTRAL work-state rule (Codex r1 P1): the bar is
+// NEVER shown while there's an active order, for EVERY host. offshift + Cuenta carry it only when the board is clear;
+// the on-shift bar is owned by the board render (TABBAR-BOARD). Two races the Cuenta entry opened:
+//   • P1: a delayed continuation (e.g. a nav-pref save resolving after an order arrived) can reopen Cuenta OVER the
+//     active board. The Cuenta tab is offered only from no-work states, so Cuenta + active work is always that race →
+//     bounce to the board via render() instead of covering it.
+//   • P2.2: Cuenta's own back button (frozen SLICE2:NAVPREF) routes to offshift; for an on-shift driver that's wrong.
+//     Re-bind it (strip the frozen listener via a clone) to render() so the destination follows current state.
 function syncTabBarForScreen(name) {
-  mountTabBar($('screen-offshift'), 'inicio', name === 'offshift');
-  mountTabBar($('screen-cuenta'), 'cuenta', name === 'cuenta');
+  const hasWork = drv2LiveBoard().length > 0;
+  if (name === 'cuenta' && hasWork) { render(); return; }
+  if (name === 'cuenta') {
+    const cb = $('cuenta-back');
+    if (cb && !cb.dataset.tabBack) { const c = cb.cloneNode(true); c.dataset.tabBack = '1'; cb.replaceWith(c); c.addEventListener('click', () => render()); }
+  }
+  mountTabBar($('screen-offshift'), 'inicio', name === 'offshift' && !hasWork);
+  mountTabBar($('screen-cuenta'), 'cuenta', name === 'cuenta' && !hasWork);
 }
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to

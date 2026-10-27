@@ -1,7 +1,9 @@
-// tab-bar-mount.test.js — the HOST glue for the O6 bottom nav bar, in a real jsdom document. Lifts the shipped
-// mountTabBar + syncTabBarForScreen from index.html and drives them: the bar is mounted as the LAST child of the
-// right screen, data-gated to Inicio + Cuenta (dormant Pedidos/Ganancias hidden), removed when visible=false (an
-// active order), and its buttons route — Inicio → render(), Cuenta → openCuenta() — wired once. Run: `node tab-bar-mount.test.js`
+// tab-bar-mount.test.js — the HOST glue for the O6 bottom nav bar, driven through the REAL showScreen + the REAL
+// syncTabBarForScreen / mountTabBar, with the LIFTED production gating constants (not injected). Covers the mounts
+// (offshift + Cuenta), the data-gating, the central no-bar-with-active-work rule and the two Cuenta races, and the
+// Inicio/Cuenta routing. The board-mount (idle vs active) lifecycle is covered through the REAL renderActiveAndQueue
+// in slice2-branch.test.js. Kills: dropping the showScreen→sync call, and flipping the production Pedidos flag.
+// Run: `node tab-bar-mount.test.js` (jsdom resolved from xpizza-functions, like the other harnesses).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +12,7 @@ import { createRequire } from 'node:module';
 import { tabBarHtml } from './tab-bar-view.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
+const require = createRequire(join(__dir, '..', 'xpizza-functions', 'package.json'));   // resolve jsdom like the other harnesses
 const { JSDOM } = require('jsdom');
 const SCRIPT = readFileSync(join(__dir, 'index.html'), 'utf8').match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 function liftFn(name) {
@@ -23,79 +25,90 @@ function liftFn(name) {
   }
   throw new Error(`unbalanced ${name}`);
 }
+function liftConst(name) {   // lift a `const NAME = …;` statement VERBATIM (the real production value)
+  const hits = [...SCRIPT.matchAll(new RegExp(`const ${name} = `, 'g'))];
+  assert.equal(hits.length, 1, `const ${name} must appear exactly once (found ${hits.length})`);
+  const start = hits[0].index, end = SCRIPT.indexOf(';', start);
+  return SCRIPT.slice(start, end + 1);
+}
 
+const SCREENS = ['config', 'login', 'offshift', 'onshift', 'companion', 'cuenta', 'navApp'];
 function boot() {
-  const dom = new JSDOM('<!doctype html><html><body><div id="screen-offshift"></div><div id="screen-onshift"></div><div id="screen-cuenta"></div></body></html>', { pretendToBeVisual: true });
+  const dom = new JSDOM('<!doctype html><html><body>'
+    + SCREENS.map((s) => `<div id="screen-${s}" class="hidden"></div>`).join('')
+    + '<button id="duty-toggle-off"></button></body></html>', { pretendToBeVisual: true });
   const { document, window } = dom.window;
-  const calls = { render: 0, openCuenta: 0 };
+  const calls = { render: 0, openCuenta: 0, origBack: 0 };
+  const boardRef = { list: [] };
   const $ = (id) => document.getElementById(id);
+  document.getElementById('screen-cuenta').innerHTML = '<button id="cuenta-back"></button>';   // as renderCuenta would leave it
+  // the FROZEN slice2 cuenta-back listener (showScreen('offshift')) — the rebind must strip it
+  document.getElementById('cuenta-back').addEventListener('click', () => { calls.origBack++; });
+
   const body =
     'function render(){ _calls.render++; }\n' +
     'function openCuenta(){ _calls.openCuenta++; }\n' +
+    'function updateNotifBanners(){}\n' +
+    liftConst('TAB_SHOW_PEDIDOS') + '\n' +
+    liftConst('TAB_SHOW_GANANCIAS') + '\n' +
     liftFn('mountTabBar') + '\n' +
     liftFn('syncTabBarForScreen') + '\n' +
-    'return { mountTabBar, syncTabBarForScreen };';
-  const api = (new Function('document', '$', 'tabBarHtml', 'TAB_SHOW_PEDIDOS', 'TAB_SHOW_GANANCIAS', '_calls', body))(
-    document, $, tabBarHtml, false, false, calls);
-  return { api, document, window, calls, $, bar: (id) => document.getElementById(id).querySelector(':scope > .tabs') };
+    liftFn('showScreen') + '\n' +
+    'return { showScreen, syncTabBarForScreen, mountTabBar };';
+  const api = (new Function('document', '$', 'tabBarHtml', 'drv2LiveBoard', '_calls', body))(
+    document, $, tabBarHtml, () => boardRef.list, calls);
+  return { api, document, window, calls, $, boardRef,
+    bar: (id) => document.getElementById(id).querySelector(':scope > .tabs') };
 }
 
 let passed = 0;
-const t = (name, fn) => { fn(); passed += 1; };
+const t = (name, fn) => { try { fn(); passed += 1; } catch (e) { console.error(`✗ ${name}`); throw e; } };
 
-t('syncTabBarForScreen mounts the bar on offshift (Inicio) + Cuenta, data-gated to 2 tabs; not elsewhere', () => {
+t('REAL showScreen mounts the bar on offshift (Inicio) + Cuenta, data-gated to 2 tabs via the production constants', () => {
   const h = boot();
-  h.api.syncTabBarForScreen('offshift');
+  h.api.showScreen('offshift');
   const ob = h.bar('screen-offshift');
-  assert.ok(ob, 'offshift carries the bar');
-  assert.equal(h.bar('screen-cuenta'), null, 'cuenta does not (not the shown screen)');
-  assert.equal(ob.querySelectorAll('.tab-btn').length, 2, 'two tabs (Inicio + Cuenta; Pedidos/Ganancias dormant)');
-  assert.ok(ob.querySelector('.tab-btn.on[data-tab="inicio"]'), 'Inicio active on offshift');
-  assert.ok(!ob.querySelector('[data-tab="pedidos"]') && !ob.querySelector('[data-tab="ganancias"]'), 'no dormant tabs');
-
-  h.api.syncTabBarForScreen('cuenta');
+  assert.ok(ob, 'offshift carries the bar (showScreen → syncTabBarForScreen)');
+  assert.equal(ob.querySelectorAll('.tab-btn').length, 2, 'Inicio + Cuenta only — the real TAB_SHOW_* are false');
+  assert.ok(ob.querySelector('.tab-btn.on[data-tab="inicio"]'), 'Inicio active');
+  assert.ok(!ob.querySelector('[data-tab="pedidos"]') && !ob.querySelector('[data-tab="ganancias"]'), 'dormant tabs hidden (lifted production flags)');
+  h.api.showScreen('cuenta');
   assert.equal(h.bar('screen-offshift'), null, 'leaving offshift removes its bar');
-  const cb = h.bar('screen-cuenta');
-  assert.ok(cb && cb.querySelector('.tab-btn.on[data-tab="cuenta"]'), 'Cuenta active on the Cuenta screen');
-
-  h.api.syncTabBarForScreen('login');
+  assert.ok(h.bar('screen-cuenta').querySelector('.tab-btn.on[data-tab="cuenta"]'), 'Cuenta active on the Cuenta screen');
+  h.api.showScreen('login');
   assert.equal(h.bar('screen-offshift'), null);
-  assert.equal(h.bar('screen-cuenta'), null, 'neither bar shows on an unrelated screen');
+  assert.equal(h.bar('screen-cuenta'), null, 'no bar on an unrelated screen');
 });
 
-t('mountTabBar is the idle/active toggle for on-shift: visible mounts, invisible removes', () => {
+t('CENTRAL no-bar-with-active-work (P1): a Cuenta reopen over an active order bounces to the board, no bar', () => {
   const h = boot();
-  h.api.mountTabBar(h.$('screen-onshift'), 'inicio', true);
-  assert.ok(h.bar('screen-onshift'), 'idle board shows the bar');
-  h.api.mountTabBar(h.$('screen-onshift'), 'inicio', false);
-  assert.equal(h.bar('screen-onshift'), null, 'an active order removes the bar');
-  // idempotent re-mount leaves exactly one bar
-  h.api.mountTabBar(h.$('screen-onshift'), 'inicio', true);
-  h.api.mountTabBar(h.$('screen-onshift'), 'inicio', true);
-  assert.equal(h.$('screen-onshift').querySelectorAll(':scope > .tabs').length, 1, 'never more than one bar');
+  h.boardRef.list = [{ orderId: 'x' }];   // an order arrived
+  h.api.showScreen('cuenta');             // a delayed continuation reopened Cuenta
+  assert.equal(h.calls.render, 1, 'bounced to the board via render()');
+  assert.equal(h.bar('screen-cuenta'), null, 'no Cuenta bar over an active order');
+  // offshift too: no bar while there is active work
+  h.api.showScreen('offshift');
+  assert.equal(h.bar('screen-offshift'), null, 'no offshift bar while an order is active');
 });
 
-t('the bar is the LAST child of its screen (sits at the bottom of the flex column)', () => {
+t('Cuenta back button (P2.2) is rebound to render() — the frozen showScreen(offshift) listener is stripped', () => {
   const h = boot();
-  const off = h.$('screen-offshift');
-  off.insertAdjacentHTML('beforeend', '<div class="offshift-content">x</div>');
-  h.api.syncTabBarForScreen('offshift');
-  assert.ok(off.lastElementChild.classList.contains('tabs'), 'the bar is appended last (below the content)');
+  h.api.showScreen('cuenta');   // rebinds cuenta-back
+  const before = h.calls.render;
+  h.document.getElementById('cuenta-back').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(h.calls.render, before + 1, 'cuenta-back → render() (destination follows current state)');
+  assert.equal(h.calls.origBack, 0, 'the frozen showScreen(offshift) listener no longer fires');
 });
 
 t('tab buttons route: Inicio → render(), Cuenta → openCuenta() (wired once)', () => {
   const h = boot();
-  h.api.syncTabBarForScreen('offshift');
+  h.api.showScreen('offshift');
   const ob = h.bar('screen-offshift');
   ob.querySelector('[data-tab="cuenta"]').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
   assert.equal(h.calls.openCuenta, 1, 'Cuenta → openCuenta');
-  assert.equal(h.calls.render, 0, 'render not yet called');
+  const r0 = h.calls.render;
   ob.querySelector('[data-tab="inicio"]').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
-  assert.equal(h.calls.render, 1, 'Inicio → render (go home)');
-  // re-sync (rebuild) then click again — still exactly one handler fires (wired once per node, no double-binding)
-  h.api.syncTabBarForScreen('offshift');
-  h.bar('screen-offshift').querySelector('[data-tab="inicio"]').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
-  assert.equal(h.calls.render, 2, 'exactly one render per Inicio tap after a rebuild');
+  assert.equal(h.calls.render, r0 + 1, 'Inicio → render (go home)');
 });
 
 console.log(`✓ tab-bar-mount: ${passed} tests passed`);

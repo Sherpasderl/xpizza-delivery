@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { singleOrderCardHtml } from './single-order-view.js';
+import { tabBarHtml } from './tab-bar-view.js';   // O6: renderActiveAndQueue now calls mountTabBar (TABBAR-BOARD)
 import {
   incomingBannerHtml, activeCardHtml, queueHtml, queueDetailHtml,
   phaseStripHtml, stopNavInfo, resolveVisibleLabels,
@@ -309,6 +310,8 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     + DRV2_BLOCK + '\n'
     + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate (reads driverState) — the resumen reuses it
     + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null,offerConnHandler=null; function readyTimeLabel(){ return ""; } function mountOfferTakeover(){} function stopOfferTakeover(){} function applyOfflineBanner(){}\n'
+    + liftConst(MY_SCRIPT, 'TAB_SHOW_PEDIDOS') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_GANANCIAS') + '\n'   // O6: the REAL production gating constants (lifted)
+    + liftFn(MY_SCRIPT, 'mountTabBar') + '\n'                       // O6: the REAL tab helper renderActiveAndQueue calls (TABBAR-BOARD)
     + liftFn(MY_SCRIPT, 'renderActiveAndQueue') + '\n'
     + liftFn(MY_SCRIPT, 'attachActiveCardHandlers') + '\n'
     + liftFn(MY_SCRIPT, 'attachSlideConfirm') + '\n'
@@ -326,7 +329,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     'queueDetailHtml', 'phaseStripHtml', 'stopNavInfo', 'resolveVisibleLabels', 'overviewMapSvg', 'isStaleFix',
     'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml', 'pickupSubLabel',
     'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash', 'contactRowHtml', 'waTemplatesHtml', 'offerExpiredBannerHtml', 'displayOrderLabel',
-    'renderIdleState', 'toast', 'resolveCompleteErrorMessage', 'CSS', '_driverState', '_rec'];
+    'renderIdleState', 'toast', 'resolveCompleteErrorMessage', 'CSS', '_driverState', '_rec', 'tabBarHtml'];
   const CSS = dom.window.CSS || { escape: (s) => String(s).replace(/[^\w-]/g, '\\$&') };
   const lsStore = {};   // per-harness in-memory localStorage (the real drv2ReadNavPref per-uid mirror)
   const localStorage = { getItem: (k) => (k in lsStore ? lsStore[k] : null), setItem: (k, v) => { lsStore[k] = String(v); }, removeItem: (k) => { delete lsStore[k]; } };
@@ -335,7 +338,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     queueDetailHtml, phaseStripHtml, stopNavInfo, resolveVisibleLabels, overviewMapSvg, isStaleFix,
     navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
     pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash, contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml, displayOrderLabel,
-    renderIdleState, toast, resolveCompleteErrorMessage, CSS, driverState, rec);
+    renderIdleState, toast, resolveCompleteErrorMessage, CSS, driverState, rec, tabBarHtml);
   // Feed the observer the SAME live mock state getDriverOrders reads BEFORE every render (prod's allTasks/
   // allOrders are the live listener state; a captured ref would go stale when completeTask deletes the task legs).
   // Also merge the mock's drivers/{uid} record into driverState — in prod driverState IS that record, so
@@ -419,6 +422,8 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     // only the 5 s repeat is stubbed (its own interval is tested in offer-takeover.test.js).
     + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null,offerConnHandler=null,offerConnUnsub=null; function readyTimeLabel(){ return ""; } let soundOn=false; function startOfferRepeat(){} function applyOfflineBanner(){}\n'
     + 'const fbRef=(db,path)=>({db,path}); const fbOnValue=(ref,cb)=>{ cb(); return ()=>{}; };\n'   // .info/connected subscribe stub (connected by default via getDiagConnState)
+    + liftConst(MY_SCRIPT, 'TAB_SHOW_PEDIDOS') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_GANANCIAS') + '\n'   // O6: the REAL production gating constants (lifted)
+    + liftFn(MY_SCRIPT, 'mountTabBar') + '\n'                       // O6: the REAL tab helper renderActiveAndQueue calls (TABBAR-BOARD)
     + liftFn(MY_SCRIPT, 'offerIsOffline') + '\n'
     + liftFn(MY_SCRIPT, 'applyOfferSlideConn') + '\n'
     + liftFn(MY_SCRIPT, 'mountOfferTakeover') + '\n'
@@ -441,7 +446,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     'navBtnHtml', 'queuedPreviewHtml', 'coloniaOf', 'stopHeaderHtml', 'combinedPickupHtml', 'interludeHtml', 'cancelBannerHtml', 'offerScreenHtml', 'pickupSubLabel',
     'pickupToRestaurantHtml', 'pickupReviewHtml', 'soloPickupHeaderInfo', 'deliverySummaryHtml', 'readyTimeHHMM', 'computeShiftCash', 'contactRowHtml', 'waTemplatesHtml', 'offerExpiredBannerHtml', 'displayOrderLabel',
     'attachIncomingBannerHandlers', 'renderIdleState', 'toast', 'resolveCompleteErrorMessage', 'navigator', '_driverState', '_rec',
-    '_latchInit', '_authGen'];
+    '_latchInit', '_authGen', 'tabBarHtml'];
   const fn = new Function(...params, body);
   const api = fn(document, dom.window, $, XPD, { uid: 'drv' }, {}, {}, escapeHtml, ICONS,
     computeVuelto, scheduledBadge, singleOrderCardHtml, incomingBannerHtml, activeCardHtml, queueHtml,
@@ -449,7 +454,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     navBtnHtml, queuedPreviewHtml, coloniaOf, stopHeaderHtml, combinedPickupHtml, interludeHtml, cancelBannerHtml, offerScreenHtml, pickupSubLabel,
     pickupToRestaurantHtml, pickupReviewHtml, soloPickupHeaderInfo, deliverySummaryHtml, readyTimeHHMM, computeShiftCash, contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml, displayOrderLabel,
     attachIncomingBannerHandlers, renderIdleState, toast, resolveCompleteErrorMessage, dom.window.navigator, driverState, rec,
-    latchInit, authGen);
+    latchInit, authGen, tabBarHtml);
 
   // Live observer state (Codex r1 P2-10): drv2Observe must see the SAME board state getDriverOrders reports, plus
   // the affirmative terminal status of any stop that LEFT the board. `terminal` persists a vanished order's
@@ -548,6 +553,24 @@ t('stacked (2 orders): real builders render stop-header + strip + map + active c
   assert.ok(a.includes('<span class="bagtag b">2</span>'), 'preview bag tag 2');
   assert.equal(r.queue(), '', 'queue-slot empty with only 2 stops (stop 2 is the in-card preview)');
   assert.equal(r.rec.mapTimerEnsured >= 1, true, 'map-age lifecycle timer armed on mount');
+});
+
+// 1a-tab. O6: the on-shift bottom nav bar is mounted by the REAL renderActiveAndQueue (TABBAR-BOARD) ONLY when the
+// board is idle (orders.length===0); an active order removes it. Uses the REAL mountTabBar + the LIFTED production
+// TAB_SHOW constants. Kills: dropping the idle check (active keeps the bar), dropping the board mount (idle has none),
+// flipping the Pedidos flag (a dormant tab appears).
+t('O6 tab bar: the real board render mounts it only when idle; an active order removes it; data-gated to Inicio+Cuenta', () => {
+  const r = run({ orders: [delivery('A')], driverState: { lat: 15.5, lng: -88.03, last_location_ts: FRESH } });
+  const onshift = () => r.document.getElementById('screen-onshift');
+  assert.equal(onshift().querySelector(':scope > .tabs'), null, 'an active order → NO bar (board render removed it)');
+  r.setOrders([]); r.render();
+  const bar = onshift().querySelector(':scope > .tabs');
+  assert.ok(bar, 'idle board → the bar is mounted');
+  assert.equal(bar.querySelectorAll('.tab-btn').length, 2, 'data-gated: Inicio + Cuenta only (production constants)');
+  assert.ok(bar.querySelector('.tab-btn.on[data-tab="inicio"]'), 'Inicio active on the board');
+  assert.ok(!bar.querySelector('[data-tab="pedidos"]') && !bar.querySelector('[data-tab="ganancias"]'), 'dormant tabs hidden');
+  r.setOrders([delivery('A')]); r.render();
+  assert.equal(onshift().querySelector(':scope > .tabs'), null, 'a new active order removes it again');
 });
 
 // 1b. A THIRD stop lands in #queue-slot as an after-card with its identity hook (the in-card preview is stop 2).

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { gpsoffHtml } from './stacked-view.js';
+import { tabBarHtml } from './tab-bar-view.js';   // O6: applyGpsoff now calls mountTabBar (P2.5 — gpsoff has no tab bar)
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(join(__dir, '..', 'xpizza-functions', 'package.json'));
@@ -60,7 +61,7 @@ t('builder WEB: permission cause only — NO battery row, NO «Abrir ajustes», 
 
 // ---------- (2) the lifted apply logic ----------
 function build() {
-  const dom = new JSDOM('<!doctype html><body><div id="idle-state"><div class="idle-top"><div id="idle-msg"></div><button id="idle-help-link">¿Por qué?</button></div><div class="statbar" id="idle-statbar"></div></div></body>');
+  const dom = new JSDOM('<!doctype html><body><div id="screen-onshift"><div id="idle-state"><div class="idle-top"><div id="idle-msg"></div><button id="idle-help-link">¿Por qué?</button></div><div class="statbar" id="idle-statbar"></div></div></div></body>');
   const { document, window } = dom.window;
   const $ = (id) => document.getElementById(id);
   // mock OS surfaces: native OemSettings (getLocationStatus/getStatus + the two openers) and the web Permissions API
@@ -75,8 +76,10 @@ function build() {
   } } };
   window.navigator.permissions = { query: () => Promise.resolve({ state: permState }) };
   let nativeFlag = true;
-  const deps = { document, window, navigator: window.navigator, $, gpsoffHtml, escapeHtml: esc, isNative: () => nativeFlag };
+  const deps = { document, window, navigator: window.navigator, $, gpsoffHtml, escapeHtml: esc, isNative: () => nativeFlag, tabBarHtml };
   const body = 'let gpsoffState = null, gpsoffDismissed = false, gpsoffChecking = false;\n'
+    + 'const TAB_SHOW_PEDIDOS = false, TAB_SHOW_GANANCIAS = false;\n'   // O6: applyGpsoff → mountTabBar (bar off while gpsoff)
+    + liftFn('mountTabBar') + '\n'
     + liftFn('checkLocationStatus') + '\n' + liftFn('gpsoffActive') + '\n' + liftFn('applyGpsoff') + '\n'
     + 'function hostResume() {\n' + regionBody('GPSOFF-RESUME-3') + '\n}\n'          // app-resume trigger (clears dismiss + re-checks)
     + 'function hostDenied() {\n const err = { code: 1, PERMISSION_DENIED: 1 };\n' + regionBody('GPSOFF-DENIED-3') + '\n}\n'          // web PERMISSION_DENIED trigger (err = the watchPosition error cb param)
@@ -87,6 +90,8 @@ function build() {
   return { api, $, document, opens,
     setNative: (v) => { nativeFlag = v; }, setLocStatus: (s) => { locStatus = s; }, setPermState: (s) => { permState = s; },
     cardShown: () => { const c = $('gpsoff-state'); return !!(c && !c.classList.contains('hidden')); },
+    barShown: () => !!$('screen-onshift').querySelector(':scope > .tabs'),
+    mountBar: () => $('screen-onshift').insertAdjacentHTML('beforeend', '<nav class="tabs"></nav>'),
     idleTopHidden: () => $('idle-state').querySelector('.idle-top').classList.contains('hidden') };
 }
 
@@ -221,6 +226,19 @@ await at('trigger GPSOFF-RESUME-3: app resume clears a «Más tarde» dismiss an
   await Promise.resolve(); await Promise.resolve();
   assert.equal(h.api.dismissed(), false, 'resume cleared the dismiss');
   assert.equal(h.cardShown(), true, 'and the card is back after the re-check');
+});
+
+t('O6 (Codex r1 P2.5): the tab bar is removed while gpsoff is shown and restored on dismiss', () => {
+  const h = build();
+  h.mountBar();                                                       // idle board leaves the bar mounted
+  assert.ok(h.barShown(), 'bar present on the idle board');
+  h.api.setState({ native: true, permission: 'denied', providerEnabled: true });   // gpsoff active
+  h.api.apply();
+  assert.ok(!h.barShown(), 'gpsoff shown → bar removed (prototype S.gpsoff has none)');
+  assert.ok(h.cardShown(), 'the gpsoff card is shown');
+  h.api.setDismissed(true); h.api.apply();                            // «Más tarde»
+  assert.ok(h.barShown(), 'dismissed → bar restored on the idle board');
+  assert.ok(!h.cardShown(), 'the gpsoff card is hidden');
 });
 
 console.log(`✓ gpsoff: ${passed} checks passed`);
