@@ -1414,21 +1414,24 @@ test('S2b-geo body: the UI\'s createOrder / chargeOnlineOrder carry address_area
 
 
 // ── S7a-1 client foundation (PLAN-capp-S7a r1 → r3.1): the HOSTED mount — history adapter, onCartChange, the countdown never freezes ──
-// a shell stand-in: a history-like object (no window.history touched) + the device-back subscription
+// a shell stand-in implementing EXACTLY the approved adapter (PLAN-capp-S7a r2 §1.3; Codex r1 P2-9): { push, back, go, owns,
+// subscribe } — frozen, so any other member the UI reached for would be undefined. The test-side helpers live OUTSIDE it.
 function shellHist() {
-  const like = { entries: [], get state() { return this.entries.length ? this.entries[this.entries.length - 1] : null; }, pushState(st) { this.entries.push(st); }, back() { this.entries.pop(); }, go(k) { for (let i = 0; i < -k; i++) this.entries.pop(); } };
-  let fn = null; const h = { like, subscribe: (f) => { fn = f; return () => { fn = null; }; }, device: () => { const r = fn ? fn() : 'none'; if (r === 'consumed') like.entries.pop(); return r; }, get subscribed() { return !!fn; } };
-  return h;
+  const st = { entries: 0, pushes: 0 }; let fn = null;
+  const adapter = Object.freeze({ push() { st.entries++; st.pushes++; }, back() { if (st.entries) st.entries--; }, go(k) { st.entries = Math.max(0, st.entries + k); }, owns() { return st.entries > 0; },
+    subscribe: (f) => { fn = f; return () => { fn = null; }; } });
+  return { adapter, st, device: () => { const r = fn ? fn() : 'none'; if (r === 'consumed' && st.entries) st.entries--; return r; }, get subscribed() { return !!fn; } };
 }
 const HOSTED_KEYS = { cartKey: 'capp:rid_a:cart', placedKey: 'capp:rid_a:placed' };
 
 test('S7a-1 history adapter: hosted ⇒ CappUI never touches window.history; device back = consumed (cart closes) / pass (store root); destroy unsubscribes', async () => {
   const H = shellHist();
-  const b = bootCo({ mountOpts: { history: H } });
+  const b = bootCo({ mountOpts: { history: H.adapter } });
   const len0 = b.w.history.length;
   b.ui.cart.inc(b.plain.key); b.ui.render(); await b.click('#cart-bar');
   assert.ok(b.q('#layer .sheet'), 'premise: the cart is open');
   assert.equal(b.w.history.length, len0, '🔴 hosted: no window.history push');
+  assert.deepEqual([H.st.pushes, H.st.entries], [1, 1], '🔴 the documented adapter receives the push (Codex r1 P2-9)');
   assert.equal(H.device(), 'consumed'); await settle();
   assert.equal(b.q('#layer').innerHTML, '', 'the cart closed');
   assert.equal(H.device(), 'pass', 'store root ⇒ the shell pops to its recorded predecessor');
@@ -1437,7 +1440,7 @@ test('S7a-1 history adapter: hosted ⇒ CappUI never touches window.history; dev
 
 test('S7a-1 N2 (non-negotiable): device back during «Realizando pedido…» CANCELS — consumed, ZERO sends, and the cart is NEVER frozen; «Enviando» ⇒ blocked', async () => {
   const H = shellHist(); const storage = memStore();
-  const b = bootCo({ storage, config: HOSTED_KEYS, mountOpts: { history: H } });
+  const b = bootCo({ storage, config: HOSTED_KEYS, mountOpts: { history: H.adapter } });
   await filled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]');
   assert.equal(b.q('#layer .sheet').getAttribute('aria-label'), 'Realizando pedido', 'premise: the countdown is armed');
   assert.equal(H.device(), 'consumed', '🔴 countdown back is consumed as cancellation');
@@ -1447,7 +1450,7 @@ test('S7a-1 N2 (non-negotiable): device back during «Realizando pedido…» CAN
   assert.ok(!cart || cart.frozen_for === undefined, '🔴 cancelling the countdown never freezes');
   // sending is blocked
   let go; const held = new Promise((r) => { go = r; });
-  const s2 = bootCo({ storage: memStore(), config: HOSTED_KEYS, mountOpts: { history: shellHist() }, script: { createOrder: [() => held.then(() => ({ status: 200, json: { ok: true, order_id: 'X' } }))] } });
+  const s2 = bootCo({ storage: memStore(), config: HOSTED_KEYS, mountOpts: { history: shellHist().adapter }, script: { createOrder: [() => held.then(() => ({ status: 200, json: { ok: true, order_id: 'X' } }))] } });
   const H2 = s2.ui; await filled(s2); await s2.click('#cta'); await s2.click('[data-act="tipc"][data-val="0"]'); await s2.click('[data-act="tip-place"]'); await s2.click('#layer [data-act="placing-go"]');
   assert.equal(H2.deviceBack(), 'blocked', '«Enviando» is not a back step');
   go(); await settle();
@@ -1470,4 +1473,48 @@ test('S7a-1 onCartChange: after successful mutations and delivery/pickup changes
   const t = bootCo({ mountOpts: { onCartChange: () => { throw new Error('shell bug'); } } });
   await t.click('[data-act="mode"][data-val="pickup"]');
   assert.ok(t.q('.screen'), 'a throwing hook never breaks the UI');
+});
+
+test('S7a-1 Codex r1 P2-6: after a REAL pending cancel return (pay_pending) the held sheet and the lock report `blocked` — never consumed-then-pass, the store is never torn down over the lock', async () => {
+  const storage = memStore();
+  const a = bootCo({ storage, config: HOSTED_KEYS, script: { chargeOnlineOrder: [CHECKOUT] } });
+  await placeVia(a, 'online'); const id = a.srv.of('chargeOnlineOrder')[0].body.order_id; const snap = J(a.ui.cart.snapshot()); a.ui.destroy();
+  const H = shellHist();
+  const c = bootCo({ storage, search: RET('cancel', id), config: HOSTED_KEYS, mountOpts: { history: H.adapter }, script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'pending' } }] } });
+  c.ui.restore(snap); await c.ui.returning; await settle();
+  assert.equal(c.q('#layer .sheet').getAttribute('aria-label'), 'Tu pago todavía está en verificación', 'premise: the pending held state');
+  assert.equal(placeRec(storage).pay_pending, true, 'premise: locked on its record');
+  assert.deepEqual([H.device(), H.device()], ['blocked', 'blocked'], '🔴 the held sheet ⇒ blocked');
+  await c.click('#layer [data-act="lclose"]');
+  const seen = []; for (let i = 0; i < 6; i++) { seen.push(H.device()); await settle(); }
+  assert.ok(!seen.includes('pass'), `🔴 a held lock never passes to the shell (${seen.join(',')})`);
+  assert.equal(seen.at(-1), 'blocked', 'the store root under a lock is blocked');
+  assert.deepEqual([writes(c), placeRec(storage).pay_pending], [0, true], 'nothing sent; the lock is kept');
+});
+
+test('S7a-1 Codex r1 P2-7: hosted restore of a v2 PICKUP snapshot frozen for A ⇒ the pickup mode, and the cart is READ-ONLY — «+» and a mode change land nothing and notify nothing', async () => {
+  const b0 = bootCo(); b0.ui.cart.inc(b0.plain.key);
+  const snap = { ...J(b0.ui.cart.snapshot()), rid: 'rid_a', mode: 'pickup', cart_gen: 'GEN_A', frozen_for: 'TA_A' };   // the REAL writer's v2 lines
+  const storage = memStore(); const t0 = NOON().getTime();
+  storage.setItem('capp:rid_a:cart', JSON.stringify(snap));
+  storage.setItem('capp:rid_a:pending_place', JSON.stringify({ order_id: 'TA_A', method: 'cash', card: false, dispatched: 1, cart_gen: 'GEN_A', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }));
+  const seen = [];
+  const b = bootCo({ storage, config: HOSTED_KEYS, mountOpts: { onCartChange: (x) => seen.push(x) } });
+  b.ui.restore(snap); await settle();
+  assert.deepEqual([b.ui.state.mode, b.ui.cart.count()], ['pickup', 1], '🔴 the persisted mode is restored with the lines');
+  await b.click('#cart-bar'); await b.click('#layer [data-act="rev"][data-rev="1"]');
+  assert.equal(b.ui.cart.count(), 1, '🔴 a frozen cart rejects «+»');
+  await b.click('#layer [data-act="lclose"]').catch(() => {});
+  await b.click('[data-act="mode"][data-val="delivery"]');   // the store's delivery/pickup toggle (asserted present)
+  assert.deepEqual([b.ui.state.mode, seen.length, JSON.parse(storage.getItem('capp:rid_a:cart')).frozen_for], ['pickup', 0, 'TA_A'], 'no mode change, nothing notified, still frozen');
+});
+
+test('S7a-1 Codex r1 P2-8: the freeze persists the REAL v2 snapshot with no stored cart beforehand — a reload hydrates every line', async () => {
+  const storage = memStore();
+  const b = bootCo({ storage, config: HOSTED_KEYS, script: { createOrder: ['network'] } });
+  await placeVia(b, 'cash');
+  const c = JSON.parse(storage.getItem('capp:rid_a:cart'));
+  assert.deepEqual([c.v, typeof c.frozen_for], [2, 'string'], '🔴 the supplied snapshot\'s v2 is kept');
+  const r = bootCo({ storage, config: HOSTED_KEYS }); const h = r.ui.restore(c);
+  assert.deepEqual([h.dropped, r.ui.cart.count()], [0, b.ui.cart.count()], 'every line hydrates');
 });

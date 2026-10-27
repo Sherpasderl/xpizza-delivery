@@ -20409,8 +20409,8 @@
     "slice": "s2a",
     "label": "closed_refunded does not clear pending_place",
     "file": "../customer-app/capp-api.js",
-    "from": "      if (st === 'closed_refunded') { resolvePlace(id, 'released'); clearPayFor(id);",
-    "to": "      if (st === 'closed_refunded') { clearPayFor(id);",
+    "from": "      if (st === 'closed_refunded') { const ok = resolvePlace(id, 'released'); if (ok) clearPayFor(id);",
+    "to": "      if (st === 'closed_refunded') { const ok = true; if (ok) clearPayFor(id);",
     "command": [
       "node",
       "--test",
@@ -20473,8 +20473,8 @@
     "slice": "s2a",
     "label": "verifying treated as failure",
     "file": "../customer-app/capp-api.js",
-    "from": "      if (st === 'cancelled' || st === 'failed') { resolvePlace(id, 'released');",
-    "to": "      if (st === 'cancelled' || st === 'failed' || st === 'verifying') { resolvePlace(id, 'released');",
+    "from": "      if (st === 'cancelled' || st === 'failed') { const ok = resolvePlace(id, 'released');",
+    "to": "      if (st === 'cancelled' || st === 'failed' || st === 'verifying') { const ok = resolvePlace(id, 'released');",
     "command": [
       "node",
       "--test",
@@ -20713,8 +20713,8 @@
     "slice": "s2a",
     "label": "r2 P2#6: a refused first send keeps its record (self-update blocked)",
     "file": "../customer-app/capp-api.js",
-    "from": "          if (cur && cur.order_id === id && Number(cur.dispatched) === 1 && cur.admitted !== true) { resolvePlace(id, 'released'); return { kind: 'update_required', order_id: id }; }",
-    "to": "          if (cur && cur.order_id === id && Number(cur.dispatched) === 1 && cur.admitted !== true) { return { kind: 'update_required', order_id: id }; }",
+    "from": "{ const ok = resolvePlace(id, 'released'); return { kind: 'update_required', order_id: id, ...settledOf(ok) }; }",
+    "to": "{ const ok = true; return { kind: 'update_required', order_id: id, ...settledOf(ok) }; }",
     "command": [
       "node",
       "--test",
@@ -20729,8 +20729,8 @@
     "slice": "s2a",
     "label": "a 426 clears whatever identity it answers",
     "file": "../customer-app/capp-api.js",
-    "from": "          if (cur && cur.order_id === id && Number(cur.dispatched) === 1 && cur.admitted !== true) { resolvePlace(id, 'released'); return { kind: 'update_required', order_id: id }; }",
-    "to": "          if (cur && cur.order_id === id) { resolvePlace(id, 'released'); return { kind: 'update_required', order_id: id }; }",
+    "from": "if (cur && cur.order_id === id && Number(cur.dispatched) === 1 && cur.admitted !== true) { const ok = resolvePlace(id, 'released');",
+    "to": "if (cur && cur.order_id === id) { const ok = resolvePlace(id, 'released');",
     "command": [
       "node",
       "--test",
@@ -21571,8 +21571,8 @@
     "slice": "s7a1",
     "label": "dispatch without a verified freeze (a failed freeze write ignored)",
     "file": "../customer-app/capp-api.js",
-    "from": "return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };",
-    "to": "{}",
+    "from": "frozen_for: rec.order_id })) return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };",
+    "to": "frozen_for: rec.order_id })) {}",
     "command": [
       "node",
       "--test",
@@ -21652,7 +21652,7 @@
     "slice": "s7a1",
     "label": "reconciliation clears a cart of ANOTHER generation (late A wipes B)",
     "file": "../customer-app/capp-api.js",
-    "from": "if (c && mk.cart_gen && c.cart_gen === mk.cart_gen && c.frozen_for === mk.order_id) {",
+    "from": "if (c && c.cart_gen === mk.cart_gen && c.frozen_for === mk.order_id) {",
     "to": "if (c) {",
     "command": [
       "node",
@@ -21668,16 +21668,15 @@
     "slice": "s7a1",
     "label": "an unverified marker is left in storage (drives reconciliation)",
     "file": "../customer-app/capp-api.js",
-    "from": "{ removeKey(PLACED_KEY); return false; }   // an UNVERIFIED marker",
-    "to": "{ return false; }   // an UNVERIFIED marker",
+    "from": "{ if (!removeStrict(PLACED_KEY)) markerSuspect = true; return false; }",
+    "to": "{ return false; }",
     "command": [
       "node",
       "--test",
       "../customer-app/capp-s7a1.test.mjs"
     ],
     "kills_with": [
-      "the marker lands",
-      "Expected values to be strictly deep-equal"
+      "an unremovable unverified marker latches the page"
     ]
   },
   {
@@ -21749,8 +21748,8 @@
     "slice": "s7a1",
     "label": "a delivery/pickup change does not notify the shell",
     "file": "../customer-app/capp-ui.js",
-    "from": "if (act === 'mode') { S.mode = t.dataset.val; notifyCart(); renderStoreKeep(); return; }",
-    "to": "if (act === 'mode') { S.mode = t.dataset.val; renderStoreKeep(); return; }",
+    "from": "if (act === 'mode') { if (frozenNow()) return; S.mode = t.dataset.val; notifyCart(); renderStoreKeep(); return; }",
+    "to": "if (act === 'mode') { if (frozenNow()) return; S.mode = t.dataset.val; renderStoreKeep(); return; }",
     "command": [
       "node",
       "--test",
@@ -21758,6 +21757,310 @@
     ],
     "kills_with": [
       "a mode change notifies"
+    ]
+  },
+  {
+    "id": "s7a1-21",
+    "slice": "s7a1",
+    "label": "P1-1: an unremovable unverified marker does not latch the page",
+    "file": "../customer-app/capp-api.js",
+    "from": "if (!removeStrict(PLACED_KEY)) markerSuspect = true;",
+    "to": "removeKey(PLACED_KEY);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "an unremovable unverified marker latches the page"
+    ]
+  },
+  {
+    "id": "s7a1-22",
+    "slice": "s7a1",
+    "label": "P1-1: a reconciled purchased cart is dispatched again (new identity)",
+    "file": "../customer-app/capp-api.js",
+    "from": "if (purchased) return recoverySheet(purchased);",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "the purchased cart is never sent again"
+    ]
+  },
+  {
+    "id": "s7a1-23",
+    "slice": "s7a1",
+    "label": "P1-2: a paid end clears the stash although its marker failed",
+    "file": "../customer-app/capp-api.js",
+    "from": "if (PAID_STATES.has(st)) { const ok = resolvePlace(id, 'placed'); if (ok) clearPayFor(id);",
+    "to": "if (PAID_STATES.has(st)) { const ok = resolvePlace(id, 'placed'); clearPayFor(id);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "a failed marker keeps the stash"
+    ]
+  },
+  {
+    "id": "s7a1-24",
+    "slice": "s7a1",
+    "label": "P1-2: the shell treats an unsettled end as terminal",
+    "file": "../customer-app/capp-shell.js",
+    "from": "    if (out.unsettled === true) return false;\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "the shell never settles an unsettled end"
+    ]
+  },
+  {
+    "id": "s7a1-25",
+    "slice": "s7a1",
+    "label": "P1-3: a cart read error reads as an unfrozen cart",
+    "file": "../customer-app/capp-api.js",
+    "from": "const cr = readStrict(CART_KEY); if (!cr.ok) return { frozen: true, unknown: true, order_id: null, live: false };",
+    "to": "const cr = readStrict(CART_KEY); if (!cr.ok) return { frozen: false };",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "unknown freeze state ⇒ blocked"
+    ]
+  },
+  {
+    "id": "s7a1-26",
+    "slice": "s7a1",
+    "label": "P1-3: the freeze's own cart read error is ignored (frozen over nothing)",
+    "file": "../customer-app/capp-api.js",
+    "from": "const sr = readStrict(CART_KEY); if (!sr.ok) return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };",
+    "to": "const sr = readStrict(CART_KEY);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "an unreadable cart at the freeze"
+    ]
+  },
+  {
+    "id": "s7a1-27",
+    "slice": "s7a1",
+    "label": "P1-4: a completion with no generation evidence writes a null-gen marker",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (!gen) return !r && !s;",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "the late A never overwrites B"
+    ]
+  },
+  {
+    "id": "s7a1-28",
+    "slice": "s7a1",
+    "label": "P1-4: another order's pending marker is overwritten",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (m.value && m.value.order_id !== id && !reconcile().ok) return false;\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "completion is applied (its purchased cart removed)"
+    ]
+  },
+  {
+    "id": "s7a1-29",
+    "slice": "s7a1",
+    "label": "P1-4: a null-generation marker is trusted by reconciliation",
+    "file": "../customer-app/capp-api.js",
+    "from": "|| typeof mk.cart_gen !== 'string' || !mk.cart_gen) return mk == null",
+    "to": ") return mk == null",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "a marker WITHOUT a generation is never evidence"
+    ]
+  },
+  {
+    "id": "s7a1-30",
+    "slice": "s7a1",
+    "label": "P1-5: settling removes whatever handoff is stored",
+    "file": "../customer-app/capp-shell.js",
+    "from": "return sameHandoff(cur, handoff) ? removeV(storage, RETURN_KEY) : false;",
+    "to": "return removeV(storage, RETURN_KEY);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "a late terminal for A leaves B"
+    ]
+  },
+  {
+    "id": "s7a1-31",
+    "slice": "s7a1",
+    "label": "P1-5: an outcome for another order settles the handoff",
+    "file": "../customer-app/capp-shell.js",
+    "from": "    if (handoff.order && out.order_id !== handoff.order) return false;",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "an outcome for another order never settles B"
+    ]
+  },
+  {
+    "id": "s7a1-32",
+    "slice": "s7a1",
+    "label": "P1-5: a transfer overwrites another order's stash",
+    "file": "../customer-app/capp-shell.js",
+    "from": "    if (cur && cur.order_id !== handoff.order) return false;\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "stash and handoff intact"
+    ]
+  },
+  {
+    "id": "s7a1-33",
+    "slice": "s7a1",
+    "label": "P2-6: a held sheet is not blocked",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (S.layerKind === 'err' && S.err && S.err.held === true) return 'blocked';\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the held sheet ⇒ blocked"
+    ]
+  },
+  {
+    "id": "s7a1-34",
+    "slice": "s7a1",
+    "label": "P2-6: a held lock passes to the shell at the store root",
+    "file": "../customer-app/capp-ui.js",
+    "from": "return api && api.hosted && typeof api.holdsLock === 'function' && api.holdsLock() ? 'blocked' : 'pass'; }",
+    "to": "return 'pass'; }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a held lock never passes to the shell"
+    ]
+  },
+  {
+    "id": "s7a1-35",
+    "slice": "s7a1",
+    "label": "P2-7: a frozen cart accepts mutations",
+    "file": "../customer-app/capp-ui.js",
+    "from": "    function mutate(fn) {\n      if (frozenNow()) return false;\n",
+    "to": "    function mutate(fn) {\n",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a frozen cart rejects «+»"
+    ]
+  },
+  {
+    "id": "s7a1-36",
+    "slice": "s7a1",
+    "label": "P2-7: hosted restore drops the persisted mode",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (snapshot && (snapshot.mode === 'pickup' || snapshot.mode === 'delivery')) { S.mode = snapshot.mode;",
+    "to": "if (false) { S.mode = snapshot.mode;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the persisted mode is restored"
+    ]
+  },
+  {
+    "id": "s7a1-37",
+    "slice": "s7a1",
+    "label": "P2-7: a frozen cart is notified to the shell",
+    "file": "../customer-app/capp-ui.js",
+    "from": "typeof opts.onCartChange !== 'function' || frozenNow()) return;",
+    "to": "typeof opts.onCartChange !== 'function') return;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "nothing notified, still frozen"
+    ]
+  },
+  {
+    "id": "s7a1-38",
+    "slice": "s7a1",
+    "label": "P2-8: the freeze writes a v1 default over the v2 snapshot",
+    "file": "../customer-app/capp-api.js",
+    "from": "v: cs ? cs.v : snap.v",
+    "to": "v: snap.v || 1",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "v2 is kept"
+    ]
+  },
+  {
+    "id": "s7a1-39",
+    "slice": "s7a1",
+    "label": "P2-9: the documented adapter's push is not called",
+    "file": "../customer-app/capp-ui.js",
+    "from": "try { if (H) H.push(); else hist().pushState",
+    "to": "try { if (H) {} else hist().pushState",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the documented adapter receives the push"
     ]
   }
 ]

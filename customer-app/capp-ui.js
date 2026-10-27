@@ -131,7 +131,7 @@
     const emit = (name, detail) => { if (dead) return; try { (opts.onEvent || (() => {}))(name, detail); } catch (_) {} };
     // S7a-1 (PLAN-capp-S7a r2 §1.6): the shell's per-store cart persistence hook — after a SUCCESSFUL mutation, a restore and a
     // delivery/pickup change; a throwing hook never affects the UI; absent ⇒ nothing is called
-    const notifyCart = () => { if (dead || typeof opts.onCartChange !== 'function') return; try { opts.onCartChange({ ...cart.snapshot(), rid: cfg.restaurantId, mode: S.mode }); } catch (_) {} };
+    const notifyCart = () => { if (dead || typeof opts.onCartChange !== 'function' || frozenNow()) return; try { opts.onCartChange({ ...cart.snapshot(), rid: cfg.restaurantId, mode: S.mode }); } catch (_) {} };
     const cart = CappCart.createCart(menu);
     const $ = (id) => doc.getElementById(id);
     const app = $('app');
@@ -178,7 +178,17 @@
     const displayLines = () => cart.groups().map((g) => ({ key: g.key, g: g.sig, item: find(g.key) || { n: g.dish.name }, n: g.n, extras: g.extras.map((e) => e.name).join(', '), total: g.total, editable: g.editable }));
     // every mutation is guarded: a write the cart refuses (the quantity cap, an unsupported extra) changes nothing, and one that would
     // push the order text past the server's cap is REVERTED with the owner-approved line
+    // S7a-1 r3 §1.1 (Codex r1 P2-7): hosted ⇒ a cart frozen for a placement — or whose freeze state is unknown — is READ-ONLY:
+    // every mutation and mode change is refused before it lands. Reconciliation runs first, so a finished placement unfreezes it.
+    // Absent the hosted keys ⇒ never frozen (the S2 path)
+    function frozenNow() {
+      if (!(cfg.cartKey && cfg.placedKey)) return false;
+      if (!mods() || !api.hosted) return true;
+      const rc = api.reconcile(); if (!rc.ok) return true;
+      return api.cartFreeze().frozen === true;
+    }
     function mutate(fn) {
+      if (frozenNow()) return false;
       const before = cart.snapshot();
       try { fn(); } catch (_) { return false; }
       if (cart.count()) {
@@ -730,8 +740,8 @@
       // the owner-approved held-states mockup (MOCKUP-capp-S2b-held-states.html #mk-paused / #mk-generic / #mk-pending)
       paused: () => ({ title: `${cfg.name || ''} no está recibiendo pedidos en este momento`, body: 'Tu pedido no se envió ni se cobró nada; está intacto para que lo intentés en unos minutos.', icon: 'warn', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
       generic: (retry = 'err-retry') => ({ title: 'No pudimos enviar tu pedido', body: 'Intentá de nuevo en un momento; tu pedido está intacto.', acts: [{ act: retry, label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
-      pending: () => ({ title: 'Tu pago todavía está en verificación', body: 'Estamos confirmando tu pago con el banco. No hace falta pagar de nuevo; esperá un momento mientras termina.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Volver al pedido', primary: true }] }),
-      exists: (ref) => ({ title: 'Necesitamos revisar tu pedido', body: 'Ya existe un pedido con este número, así que no lo enviamos de nuevo para no duplicarlo. Escríbenos y lo revisamos.', icon: 'calm', note: `Referencia <b>#${esc(ref || '')}</b>`, acts: [{ act: 'lclose', label: 'Volver al pedido' }] }),
+      pending: () => ({ title: 'Tu pago todavía está en verificación', body: 'Estamos confirmando tu pago con el banco. No hace falta pagar de nuevo; esperá un momento mientras termina.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Volver al pedido', primary: true }], held: true }),
+      exists: (ref) => ({ title: 'Necesitamos revisar tu pedido', body: 'Ya existe un pedido con este número, así que no lo enviamos de nuevo para no duplicarlo. Escríbenos y lo revisamos.', icon: 'calm', note: `Referencia <b>#${esc(ref || '')}</b>`, acts: [{ act: 'lclose', label: 'Volver al pedido' }], held: true }),
     };
     function onOutcome(out) {
       const k = out && out.kind;
@@ -792,18 +802,18 @@
     function toStore() {
       const i = S.stack.map((x) => x.screen).lastIndexOf('store');
       S.layerKind = null;
-      if (i >= 0) { const k = S.stack.length - i; S.stack = S.stack.slice(0, i); if (ownHist()) { skipPop++; histN -= k; try { hist().go(-k); } catch (_) {} } }
+      if (i >= 0) { const k = S.stack.length - i; S.stack = S.stack.slice(0, i); if (ownHist()) { skipPop++; histN -= k; try { if (H) H.go(-k); else hist().go(-k); } catch (_) {} } }
       S.screen = 'store'; render();
     }
     // ── device / browser back (P pushHist / back / backInternal / popstate :1352-1371): «Entrega & Pago» has no back control;
     //    device back → the cart → the menu; the tip step's back → «Entrega & Pago» ──
     let histN = 0, skipPop = 0;
-    // S7a-1 (PLAN-capp-S7a r2 §1.3): hosted ⇒ the shell's history-like object stands in for window.history (pushState / back /
-    // go / state); absent ⇒ window.history, exactly as before
+    // S7a-1 (PLAN-capp-S7a r2 §1.3): hosted ⇒ the shell's adapter { push, back, go, owns, subscribe } replaces the four
+    // browser-touching primitives (pushState / back / go(-k) / ownHist); absent ⇒ window.history, exactly as before
     const H = opts.history || null;
-    const hist = () => (H ? H.like : doc.defaultView && doc.defaultView.history);
-    function pushHist() { histN++; try { hist().pushState({ ca: histN }, ''); } catch (_) {} }
-    const ownHist = () => { try { const h = hist(); return histN > 0 && !!h.state && h.state.ca === histN; } catch (_) { return false; } };
+    const hist = () => doc.defaultView && doc.defaultView.history;
+    function pushHist() { histN++; try { if (H) H.push(); else hist().pushState({ ca: histN }, ''); } catch (_) {} }
+    const ownHist = () => { try { if (H) return histN > 0 && H.owns() === true; const h = hist(); return histN > 0 && !!h.state && h.state.ca === histN; } catch (_) { return false; } };
     function go(screen) { S.stack.push({ screen: S.screen }); S.stack = S.stack.slice(-12); pushHist(); S.screen = screen; render(); const sc = $('flow'); if (sc) sc.scrollTop = 0; }
     function backInternal() {
       if (S.layerKind === 'cart') { closeLayer(); return; }   // closing the cart → the menu
@@ -815,24 +825,27 @@
       if (top.layer) openLayerNoPush(top.layer);
     }
     function openLayerNoPush(kind) { returnTo = null; S.layerKind = kind; renderLayer(true); }
-    function back() { if (ownHist()) { skipPop++; histN--; try { hist().back(); } catch (_) {} } backInternal(); }
+    function back() { if (ownHist()) { skipPop++; histN--; try { if (H) H.back(); else hist().back(); } catch (_) {} } backInternal(); }
     function onPop(e) {
       if (skipPop > 0) { skipPop--; return; }
       const n = e && e.state && typeof e.state.ca === 'number' ? e.state.ca : 0;
       if (n < histN) { histN = n; backInternal(); }   // a forward move is ignored: only walks back
     }
     // S7a-1: a DEVICE back delivered by the shell (hosted). The same decisions as backInternal, reported: the cart closes / the
-    // «Realizando pedido…» countdown is CANCELLED (zero sends) ⇒ consumed; «Enviando» ⇒ blocked; the store root ⇒ pass
+    // «Realizando pedido…» countdown is CANCELLED (zero sends) ⇒ consumed; «Enviando» ⇒ blocked; the store root ⇒ pass.
+    // Codex r1 P2-6: a held / locked sheet (pending, recovery) ⇒ blocked; a payment lock this page holds ⇒ the store root is NOT
+    // an unlocked root — blocked, never pass (the shell must not tear the store down over the lock)
     function deviceBack() {
       if (dead) return 'pass';
+      if (S.layerKind === 'err' && S.err && S.err.held === true) return 'blocked';
       if (S.layerKind === 'cart' || S.layerKind === 'placing') { histN = Math.max(0, histN - 1); backInternal(); return 'consumed'; }
       if (S.screen === 'sending') return 'blocked';
-      if (!S.stack.length) { if (S.layerKind) { closeLayer(); return 'consumed'; } return 'pass'; }
+      if (!S.stack.length) { if (S.layerKind) { closeLayer(); return 'consumed'; } return api && api.hosted && typeof api.holdsLock === 'function' && api.holdsLock() ? 'blocked' : 'pass'; }
       histN = Math.max(0, histN - 1); backInternal(); return 'consumed';
     }
     function checkoutAct(t) {
       const f = S.flow, a = t.dataset.act, v = t.dataset.val;
-      if (a === 'type') { S.mode = v === 'pickup' ? 'pickup' : 'delivery'; C.setMode(f, S.mode); notifyCart(); if (S.mode === 'delivery' && !finitePin(f.pin) && S.geo === null) requestGeo(); render(); return true; }
+      if (a === 'type') { if (frozenNow()) return true; S.mode = v === 'pickup' ? 'pickup' : 'delivery'; C.setMode(f, S.mode); notifyCart(); if (S.mode === 'delivery' && !finitePin(f.pin) && S.geo === null) requestGeo(); render(); return true; }
       if (a === 'rm-po') { for (const l of poLines()) mutate(() => cart.setQty(l.key, 0)); if (!cart.count()) toStore(); else render(); return true; }
       if (a === 'editwho') { f.editWho = true; render(); return true; }
       if (a === 'more') { S.more = true; render(); return true; }
@@ -970,7 +983,7 @@
       if (act === 'lclose') { closeLayer(); return; }
       if (act === 'rev') { const k = t.dataset.key, g = t.dataset.grp || '', d = descOf(t); mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(k, g) : cart.lineDec(k, g))); renderStoreKeep(); renderLayer(); focusTo(refind(d) || [...$('layer').querySelectorAll(FOCUSABLE)].find(reachable)); return; }
       if (act === 'edit') { S.layerKind = null; renderLayer(); returnTo = { elId: 'cart-bar', ds: { act: 'pill' } }; openEdit(t.dataset.key, t.dataset.grp || ''); return; }
-      if (act === 'mode') { S.mode = t.dataset.val; notifyCart(); renderStoreKeep(); return; }
+      if (act === 'mode') { if (frozenNow()) return; S.mode = t.dataset.val; notifyCart(); renderStoreKeep(); return; }
       if (act === 'jump') { jumpTo(t.dataset.jump); return; }
       if (act === 'menu') { openLayer('menu'); return; }
       if (act === 'goto') { closeLayer(); jumpTo(t.dataset.goto); return; }
@@ -1028,7 +1041,9 @@
       deviceBack,
       restore(snapshot) {
         // S7a-1 r3 §1.3 (hosted): reconcile FIRST — blocked until it completes; a purchased (cleared) cart is never restored
-        if (cfg.cartKey && cfg.placedKey && mods() && api.hosted) { const rc = api.reconcile(); if (!rc.ok) return { blocked: true, step: rc.step }; if (rc.done === 'placed' && snapshot && snapshot.cart_gen && snapshot.cart_gen === rc.cart_gen) return { cleared: true }; }
+        if (cfg.cartKey && cfg.placedKey && mods() && api.hosted) { const rc = api.reconcile(); if (!rc.ok) return { blocked: true, step: rc.step }; if (rc.done === 'placed' && snapshot && snapshot.cart_gen && snapshot.cart_gen === rc.cart_gen) return { cleared: true };
+          // Codex r1 P2-7: the persisted mode is restored with the lines (a frozen pickup cart is never re-shown as delivery)
+          if (snapshot && (snapshot.mode === 'pickup' || snapshot.mode === 'delivery')) { S.mode = snapshot.mode; if (S.flow && C) C.setMode(S.flow, S.mode); } }
         const r = cart.hydrate(snapshot); notifyCart(); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
       destroy() {
         dead = true; placingStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }

@@ -27,7 +27,8 @@ function server(script) {
     const ep = Object.keys(E).find((k) => url.startsWith(E[k])); calls.push({ ep, body: init && init.body ? JSON.parse(init.body) : null });
     const q = script[ep] || []; const r = q.length > 1 ? q.shift() : q[0];
     if (!r) throw new Error(`unscripted ${ep}`); if (r === 'network') throw new TypeError('Failed to fetch');
-    return { status: r.status, ok: r.status >= 200 && r.status < 300, json: async () => r.json };
+    const res = typeof r === 'function' ? await r() : r;   // a function may defer its answer (an outstanding request)
+    return { status: res.status, ok: res.status >= 200 && res.status < 300, json: async () => res.json };
   };
   return { fetch, calls, sends: () => calls.filter((c) => c.ep === 'createOrder' || c.ep === 'chargeOnlineOrder').length };
 }
@@ -42,10 +43,12 @@ function rig({ script = {}, storage = memStorage(), clock = { t: T0 }, hosted = 
 const ITEMS = [{ id: 'margherita', name: 'Margherita', dish_id: 'd_1', qty: 1, price: 250, subtotal: 250, extras: [], extrasTotal: 0 }];
 const CTX = { restaurantId: 'rid_a', items: ITEMS, itemsText: '1x Margherita (L250)', member: null };
 const flowOf = (pay = 'cash') => { const f = C.freshFlow(null); C.setPin(f, 15.5, -88, true); Object.assign(f, { details: 'Portón', name: 'Ana', phone: '99990000', pay }); C.chooseTip(f, 20); return f; };
-const SNAP = { v: 1, lines: [{ key: 'd_1', qty: 1, ex: [{}] }] };
+// the CappCart v2 snapshot shape (cart.snapshot(): { v: 2, lines: [{ key, qty, ex, added }] }); the real writer's own output is
+// composed in capp-ui.test.mjs (Codex r1 P2-8)
+const SNAP = { v: 2, lines: [{ key: 'd_1', qty: 1, ex: [{}], added: 1 }] };
 const args = (pay = 'cash') => ({ flow: flowOf(pay), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, cartSnapshot: SNAP });
 const OK_CASH = { status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } };
-const seedCart = (st, extra = {}) => st.setItem(K.cart, JSON.stringify({ v: 1, rid: 'rid_a', mode: 'delivery', lines: SNAP.lines, cart_gen: 'GEN_A', ...extra }));
+const seedCart = (st, extra = {}) => st.setItem(K.cart, JSON.stringify({ v: 2, rid: 'rid_a', mode: 'delivery', lines: SNAP.lines, cart_gen: 'GEN_A', ...extra }));
 
 // ── N7: the verified freeze is a precondition of the first dispatch ──
 test('S7a-1 N7: a FAILED freeze write ⇒ ZERO sends, the drawn offline state; a retry reuses the SAME identity and sends once', async () => {
@@ -73,17 +76,94 @@ test('S7a-1 N7: the freeze lands BEFORE the dispatch — frozen_for = the order,
 });
 
 // ── N1: the marker, ordered reconciliation, generation binding ──
-test('S7a-1 N1: cash success ⇒ the VERIFIED marker, then the guarded clear; reconcile removes the purchased cart and the marker; A is never re-purchasable', async () => {
+test('S7a-1 N1 (Codex r1 P1-1): cash success ⇒ the VERIFIED marker, then the guarded clear; placing the PURCHASED cart again on that page ⇒ reconciled and ZERO further sends — never a new identity', async () => {
   const R = rig({ script: { createOrder: [OK_CASH] } }); seedCart(R.storage);
   const a = await R.api.place(args());
-  assert.equal(a.kind, 'placed');
+  assert.deepEqual([a.kind, a.unsettled], ['placed', undefined]);
   const sent = R.srv.calls[0].body.order_id;
-  assert.deepEqual([J(R.storage, K.placed).order_id, J(R.storage, K.placed).outcome, J(R.storage, K.place)], [sent, 'placed', null]);
-  const rc = R.api.reconcile();
-  assert.deepEqual([rc.ok, rc.done, J(R.storage, K.cart), J(R.storage, K.placed)], [true, 'placed', null, null], '🔴 purchased A removed');
-  assert.notEqual(R.srv.calls.length && J(R.storage, K.place) && J(R.storage, K.place).order_id, sent);
-  const R3 = rig({ script: { createOrder: [OK_CASH] }, storage: R.storage }); seedCart(R.storage, { cart_gen: 'GEN_N' }); await R3.api.place(args());
-  assert.notEqual(R3.srv.calls[0].body.order_id, sent, '🔴 purchased A is not re-purchasable (a new identity)');
+  assert.deepEqual([J(R.storage, K.placed).order_id, J(R.storage, K.placed).cart_gen, J(R.storage, K.placed).outcome, J(R.storage, K.place)], [sent, 'GEN_A', 'placed', null]);
+  for (let i = 0; i < 2; i++) {   // the page still holds the purchased cart's lines (p.cartSnapshot)
+    const again = await R.api.place(args());
+    assert.deepEqual([again.kind, again.order_id, R.srv.sends()], ['existing_order', sent, 1], '🔴 the purchased cart is never sent again');
+  }
+  assert.deepEqual([J(R.storage, K.cart), J(R.storage, K.placed), J(R.storage, K.place)], [null, null, null], 'purchased A removed, marker consumed, nothing minted');
+});
+
+test('S7a-1 Codex r1 P1-1: an UNVERIFIED marker whose removal ALSO fails ⇒ fail closed — this page places nothing more; a fresh mount reconciles it and never re-dispatches the purchased cart', async () => {
+  const R = rig({ script: { createOrder: [OK_CASH] } }); seedCart(R.storage);
+  R.storage.fail.corrupt.add(K.placed); R.storage.fail.remove.add(K.placed);   // the marker keeps different bytes AND cannot be removed
+  const a = await R.api.place(args());
+  const id = R.srv.calls[0].body.order_id;
+  assert.deepEqual([a.kind, a.unsettled, J(R.storage, K.place).order_id], ['placed', true, id], 'reported unsettled; the lock is held');
+  R.storage.fail.corrupt.delete(K.placed); R.storage.fail.remove.delete(K.placed);
+  const b = await R.api.place(args());
+  assert.deepEqual([b.kind, b.reconcile, R.srv.sends()], ['offline', 'marker_unverified', 1], '🔴 an unremovable unverified marker latches the page: zero further sends');
+  const c = await R.reload().place(args());
+  assert.deepEqual([c.kind, c.order_id, R.srv.sends()], ['existing_order', id, 1], '🔴 a fresh mount reconciles the purchased cart and never re-dispatches it');
+});
+
+test('S7a-1 Codex r1 P1-2: a paid poll whose marker write FAILS keeps the stash (the recovery credentials) and is UNSETTLED — never terminal for the shell; a later poll completes it', async () => {
+  const R = rig({ script: { chargeOnlineOrder: [{ status: 200, json: { checkout_url: 'https://pay.test/1', poll_token: 'pt_1', attempt_id: 'a1' } }] } }); seedCart(R.storage);
+  const a = await R.api.place(args('online')); assert.equal(a.kind, 'redirect');
+  const PAID = { paymentStatus: [{ status: 200, json: { ok: true, state: 'paid', tracking_token: 'tt' } }] };
+  R.storage.fail.write.add(K.placed);
+  const R2 = rig({ script: PAID, storage: R.storage });
+  const out = await R2.api.handleReturn(`?pay=complete&order=${a.order_id}&t=pt_1`);
+  assert.deepEqual([out.kind, out.unsettled, R2.api.credsFor(a.order_id)], ['placed', true, 'pt_1'], '🔴 a failed marker keeps the stash');
+  assert.equal(J(R.storage, K.place).order_id, a.order_id, 'and the lock');
+  assert.equal(SH.isTerminal(out), false, '🔴 the shell never settles an unsettled end');
+  R.storage.fail.write.delete(K.placed);
+  const R3 = rig({ script: PAID, storage: R.storage });
+  const done = await R3.api.resolveExisting(a.order_id);
+  assert.deepEqual([done.kind, done.unsettled, J(R.storage, K.pay), J(R.storage, K.placed).order_id, SH.isTerminal(done)], ['placed', undefined, null, a.order_id, true]);
+});
+
+test('S7a-1 Codex r1 P1-3: a cart READ error is not an unfrozen cart — one failing read ⇒ blocked, zero sends, nothing minted; healthy again ⇒ the recovery sheet', async () => {
+  const R = rig({ script: { createOrder: [OK_CASH] } }); seedCart(R.storage, { frozen_for: 'TA_OLD' });
+  let n = 0; const g = R.storage.getItem; R.storage.getItem = (k) => { if (k === K.cart && n++ === 0) throw new Error('read'); return g(k); };
+  const a = await R.api.place(args());
+  assert.deepEqual([a.kind, R.srv.sends(), J(R.storage, K.place)], ['offline', 0, null], '🔴 unknown freeze state ⇒ blocked');
+  const b = await R.api.place(args());
+  assert.deepEqual([b.kind, b.order_id, R.srv.sends()], ['existing_order', 'TA_OLD', 0]);  // the freeze's OWN read of the cart fails (the freeze check read fine) ⇒ the freeze is not attempted: zero sends
+  const F = rig({ script: { createOrder: [OK_CASH] } }); seedCart(F.storage);
+  let m = 0; const gf = F.storage.getItem; F.storage.getItem = (k) => { if (k === K.cart && m++ === 1) throw new Error('read'); return gf(k); };
+  const f = await F.api.place(args());
+  assert.deepEqual([f.kind, f.freeze_failed, F.srv.sends(), J(F.storage, K.cart).frozen_for], ['offline', true, 0, undefined], '🔴 an unreadable cart at the freeze ⇒ no freeze, zero sends');
+});
+
+test('S7a-1 Codex r1 P1-4: a STALE late completion for A never replaces B\'s marker — A outstanding; A re-sent and reconciled; B placed; then the original A answers', async () => {
+  let release; const held = new Promise((r) => { release = r; });
+  const R = rig({ script: { createOrder: [() => held.then(() => OK_CASH), OK_CASH] } }); seedCart(R.storage);
+  const p1 = R.api.place(args());                       // page 1: A dispatched, its answer outstanding
+  await new Promise((r) => setImmediate(r));
+  const idA = R.srv.calls[0].body.order_id;
+  const page2 = R.reload();
+  assert.equal((await page2.place(args())).kind, 'placed');   // a reload re-sends the retained A ⇒ placed
+  assert.equal(R.srv.calls[1].body.order_id, idA);
+  assert.equal(page2.reconcile().cart, 'cleared', 'A reconciled: its purchased cart removed');
+  seedCart(R.storage, { cart_gen: 'GEN_B' });
+  const page3 = R.reload();
+  assert.equal((await page3.place(args())).kind, 'placed');   // B (a new cart, a new identity)
+  const idB = R.srv.calls[2].body.order_id; assert.notEqual(idB, idA);
+  release(); const late = await p1;                    // the original A finally answers
+  assert.equal(late.kind, 'placed');
+  assert.deepEqual([J(R.storage, K.placed).order_id, J(R.storage, K.placed).cart_gen], [idB, 'GEN_B'], '🔴 the late A never overwrites B\'s marker');
+  const rc = page3.reconcile();
+  assert.deepEqual([rc.order_id, rc.cart, J(R.storage, K.cart)], [idB, 'cleared', null], 'B completes: never left frozen without its record');
+});
+
+test('S7a-1 Codex r1 P1-4: a completion for A WITH its own evidence while B\'s marker is pending ⇒ B is finished (reconciled) first, never overwritten', async () => {
+  const R = rig({ script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'paid' } }] } });
+  seedCart(R.storage, { cart_gen: 'GEN_B', frozen_for: 'TA_B' });
+  R.storage.setItem(K.placed, JSON.stringify({ order_id: 'TA_B', cart_gen: 'GEN_B', outcome: 'placed', at: T0 }));
+  R.storage.setItem(K.pay, JSON.stringify({ order_id: 'TA_A', t: 'pt_a', rid: 'rid_a', cart_gen: 'GEN_A' }));
+  const out = await R.api.resolveExisting('TA_A');
+  assert.deepEqual([out.kind, out.unsettled], ['placed', undefined]);
+  assert.equal(J(R.storage, K.cart), null, '🔴 B\'s completion is applied (its purchased cart removed), not lost under A\'s marker');
+  assert.deepEqual([J(R.storage, K.placed).order_id, J(R.storage, K.placed).cart_gen], ['TA_A', 'GEN_A']);
+  R.storage.setItem(K.placed, JSON.stringify({ order_id: 'TA_A', cart_gen: null, outcome: 'placed', at: T0 }));
+  seedCart(R.storage, { frozen_for: 'TA_A' });
+  assert.deepEqual([R.api.reconcile().done, J(R.storage, K.cart).frozen_for], ['none', 'TA_A'], 'a marker WITHOUT a generation is never evidence: nothing cleared, frozen');
 });
 
 test('S7a-1 N1: a marker write that FAILS (or keeps different bytes) ⇒ the lock is HELD (pending_place kept); recovery completes later', async () => {
@@ -91,7 +171,7 @@ test('S7a-1 N1: a marker write that FAILS (or keeps different bytes) ⇒ the loc
     const R = rig({ script: { createOrder: [OK_CASH] } }); seedCart(R.storage);
     R.storage.fail[how].add(K.placed);
     const a = await R.api.place(args());
-    assert.equal(a.kind, 'placed');
+    assert.deepEqual([a.kind, a.unsettled], ['placed', true], 'P1-2: reported unsettled');
     const id = R.srv.calls[0].body.order_id;
     assert.equal(J(R.storage, K.place).order_id, id, `🔴 ${how}: marker byte mismatch ⇒ lock held`);
     assert.equal(J(R.storage, K.cart).frozen_for, id, 'the cart stays frozen');
@@ -191,11 +271,12 @@ test('S7a-1 N3: the handoff is persisted (verified) BEFORE stripping; a persist 
 });
 
 test('S7a-1 N3/r3.1: the handoff is removed ONLY on an authoritative terminal (kind + clearable) or a VERIFIED transfer — never on the pending lock or local expiry', () => {
-  const st = memStorage(); st.setItem(SH.RETURN_KEY, JSON.stringify({ pay: 'cancel', order: 'TA261026-120000-AAAAAAAA', t: 'pt', owner: 'rid_a' }));
-  for (const nt of [{ kind: 'payment_failed', clearable: false }, { kind: 'confirming' }, { kind: 'existing_order' }, { kind: 'offline' }]) {
-    assert.equal(SH.settleHandoff(st, nt), false, `🔴 ${JSON.stringify(nt)} keeps the handoff (not terminal)`); assert.ok(J(st, SH.RETURN_KEY), `🔴 ${JSON.stringify(nt)} keeps the handoff`);
+  const h = { pay: 'cancel', order: 'TA261026-120000-AAAAAAAA', t: 'pt', owner: 'rid_a' };
+  const st = memStorage(); st.setItem(SH.RETURN_KEY, JSON.stringify(h));
+  for (const nt of [{ kind: 'payment_failed', clearable: false }, { kind: 'confirming' }, { kind: 'existing_order' }, { kind: 'offline' }, { kind: 'placed', unsettled: true }]) {
+    assert.equal(SH.settleHandoff(st, { ...nt, order_id: h.order }, h), false, `🔴 ${JSON.stringify(nt)} keeps the handoff (not terminal)`); assert.ok(J(st, SH.RETURN_KEY), `🔴 ${JSON.stringify(nt)} keeps the handoff`);
   }
-  assert.equal(SH.settleHandoff(st, { kind: 'payment_failed', state: 'cancelled' }), true, 'a definitive failure is terminal');
+  assert.equal(SH.settleHandoff(st, { kind: 'payment_failed', state: 'cancelled', order_id: h.order }, h), true, 'a definitive failure is terminal');
   st.setItem(SH.RETURN_KEY, JSON.stringify({ pay: 'cancel', order: 'TA261026-120000-AAAAAAAA', t: 'pt', owner: 'rid_a' }));
   st.fail.write.add(K.pay);
   assert.equal(SH.transferHandoff(st, J(st, SH.RETURN_KEY), 'GEN_A'), false); assert.ok(J(st, SH.RETURN_KEY), 'an unverified transfer keeps it');
@@ -203,4 +284,21 @@ test('S7a-1 N3/r3.1: the handoff is removed ONLY on an authoritative terminal (k
   assert.equal(SH.transferHandoff(st, J(st, SH.RETURN_KEY), 'GEN_A'), true);
   assert.deepEqual([J(st, SH.RETURN_KEY), J(st, K.pay).t, J(st, K.pay).cart_gen, J(st, K.pay).rid], [null, 'pt', 'GEN_A', 'rid_a']);
   for (const t of [{ kind: 'placed' }, { kind: 'refunded' }, { kind: 'scheduled_review' }, { kind: 'paid_unverified' }]) assert.equal(SH.isTerminal(t), true);
+});
+
+test('S7a-1 Codex r1 P1-5: a late terminal for A never deletes B\'s handoff; transferring A never overwrites B\'s stash nor borrows GEN_B', () => {
+  const hA = { pay: 'complete', order: 'TA261026-120000-AAAAAAAA', t: 'pt_a', owner: 'rid_a', at: T0 };
+  const hB = { pay: 'complete', order: 'TA261026-130000-BBBBBBBB', t: 'pt_b', owner: 'rid_a', at: T0 + 1 };
+  const st = memStorage(); st.setItem(SH.RETURN_KEY, JSON.stringify(hB));
+  assert.equal(SH.settleHandoff(st, { kind: 'placed', order_id: hA.order }, hA), false, '🔴 a late terminal for A leaves B\'s handoff (not settled)');
+  assert.deepEqual(J(st, SH.RETURN_KEY), hB, '🔴 a late terminal for A leaves B\'s handoff');
+  assert.equal(SH.settleHandoff(st, { kind: 'placed', order_id: hA.order }, hB), false, '🔴 an outcome for another order never settles B (refused)');
+  assert.deepEqual(J(st, SH.RETURN_KEY), hB, '🔴 an outcome for another order never settles B');
+  st.setItem(K.pay, JSON.stringify({ order_id: hB.order, t: 'pt_b', rid: 'rid_a', cart_gen: 'GEN_B' }));
+  assert.equal(SH.transferHandoff(st, hA), false);
+  assert.deepEqual([J(st, K.pay).order_id, J(st, K.pay).t, J(st, K.pay).cart_gen, J(st, SH.RETURN_KEY)], [hB.order, 'pt_b', 'GEN_B', hB], '🔴 B\'s stash and handoff intact');
+  const s2 = memStorage(); s2.setItem(SH.RETURN_KEY, JSON.stringify(hA));
+  assert.equal(SH.transferHandoff(s2, hA), true);
+  assert.deepEqual([J(s2, K.pay).order_id, J(s2, K.pay).cart_gen, J(s2, SH.RETURN_KEY)], [hA.order, null, null], 'no generation given ⇒ null, never another order\'s');
+  assert.equal(SH.settleHandoff(st, { kind: 'placed', order_id: hB.order }, hB), true, 'B\'s own terminal settles B');
 });

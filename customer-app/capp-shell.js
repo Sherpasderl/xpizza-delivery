@@ -89,24 +89,39 @@
   }
   // r3 §2: AUTHORITATIVE terminal outcomes only (matched by kind AND clearable); the pending lock (payment_failed, clearable:false),
   // confirming, recovery and offline are NOT terminal — the handoff is kept
+  // Codex r1 P1-2: an end whose completion marker did not land (`unsettled`) is NOT terminal — its evidence is kept
   function isTerminal(out) {
     if (!out || typeof out !== 'object') return false;
+    if (out.unsettled === true) return false;
     if (out.kind === 'placed' || out.kind === 'paid_unverified' || out.kind === 'refunded' || out.kind === 'scheduled_review') return true;
     if (out.kind === 'payment_failed') return out.clearable !== false;
     return false;
   }
-  // r3.1 N3: removed ONLY on a terminal outcome, or after a VERIFIED transfer of its credentials into the owner's pay stash
-  function settleHandoff(storage, out) {
-    if (!storage) return false;
-    return isTerminal(out) ? removeV(storage, RETURN_KEY) : false;
+  // r3.1 N3: removed ONLY on a terminal outcome, or after a VERIFIED transfer of its credentials into the owner's pay stash.
+  // Codex r1 P1-5: both are guarded by IDENTITY — `handoff` is the one the caller processed; the stored handoff is removed only
+  // while it is still THAT handoff (a newer return is never deleted), and only by an outcome for ITS order
+  const sameHandoff = (a, b) => !!a && !!b && typeof a === 'object' && a.pay === b.pay && (a.order || null) === (b.order || null) && (a.t || null) === (b.t || null) && a.at === b.at;
+  function removeHandoffIf(storage, handoff) {
+    const cur = readJ(storage, RETURN_KEY);
+    return sameHandoff(cur, handoff) ? removeV(storage, RETURN_KEY) : false;
   }
+  function settleHandoff(storage, out, handoff) {
+    if (!storage || !handoff || !isTerminal(out)) return false;
+    if (handoff.order && out.order_id !== handoff.order) return false;   // an outcome for ANOTHER order never settles it
+    return removeHandoffIf(storage, handoff);
+  }
+  // the destination stash is written only when empty or already THIS order's (another order's is never overwritten); the
+  // generation is the caller's, else this order's own — never another order's
   function transferHandoff(storage, handoff, cartGen) {
     if (!storage || !handoff || !handoff.owner || !handoff.order || !handoff.t) return false;
     const k = keysFor(handoff.owner);
     const cur = readJ(storage, k.pay);
-    const stash = { ...(cur && cur.order_id === handoff.order ? cur : {}), order_id: handoff.order, t: handoff.t, rid: handoff.owner, cart_gen: cartGen == null ? (cur && cur.cart_gen) || null : cartGen };
+    if (cur === undefined) return false;   // unreadable ⇒ unknown, never overwritten
+    if (cur && cur.order_id !== handoff.order) return false;
+    const gen = typeof cartGen === 'string' && cartGen ? cartGen : (cur && typeof cur.cart_gen === 'string' && cur.cart_gen) || null;
+    const stash = { ...(cur || {}), order_id: handoff.order, t: handoff.t, rid: handoff.owner, cart_gen: gen };
     if (!writeV(storage, k.pay, stash)) return false;
-    return removeV(storage, RETURN_KEY);
+    return removeHandoffIf(storage, handoff);
   }
 
   return { RETURN_KEY, keysFor, configFor, validateReturnQuery, resolveOwner, bootReturn, isTerminal, settleHandoff, transferHandoff };
