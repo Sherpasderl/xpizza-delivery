@@ -301,11 +301,15 @@
   const pinEditorHtml = (mapSvg, live) => `<div class="pinstep" role="dialog" aria-label="Confirmá dónde entregamos"><div class="mapwrap">${mapSvg || ''}${live ? '<div class="gmap" data-gmap="pin" style="position:absolute;inset:0"></div>' : ''}<div class="store-nav" style="position:absolute"><button class="iconbtn" data-act="lclose" aria-label="Cancelar">${IC.close}</button><span></span></div><div class="hint">Mové el mapa hasta que el pin quede en tu puerta</div><span class="pin">${IC.pinfill}</span></div>
     <div class="foot"><b>Confirmá dónde entregamos</b><span class="sub">Las direcciones aquí se describen con referencias: el pin es la dirección, los detalles son la referencia.</span><button class="primary" data-act="pin-done">Listo</button></div></div>`;
 
+  // frame 11 (approved 2026-10-27): the NEUTRAL return surface — a hosted-checkout return this phone cannot tie to one store's
+  // records: no store is mounted or mutated, no tab bar; one .empty block; «Ir a Inicio»
+  const neutralReturnHtml = (order) => `<div class="scroller"><div class="empty neutral">${IC.receipt}<b>No encontramos este pedido en este teléfono</b><span>Si ya pagaste, tu pago no se pierde. Escribinos con tu número de pedido y lo revisamos.</span>${order ? `<p class="note">Pedido #${esc(order)}</p>` : ''}<button class="btn2" data-act="neutral-home">Ir a Inicio</button></div></div>`;
+
   // coverage on Inicio (r1 §2.3, display only — the quote stays the authority): straight-line hub → location ≤ coverage_km
   const kmBetween = (a, b) => { const dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lng - a.lng) * Math.PI / 180, s = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2; return 2 * 6371 * Math.asin(Math.sqrt(s)); };
   const covers = (entry, loc) => { if (!loc || !entry || !Number.isFinite(entry.hub_lat) || !Number.isFinite(entry.hub_lng) || !Number.isFinite(entry.coverage_km)) return null; return kmBetween({ lat: entry.hub_lat, lng: entry.hub_lng }, loc) <= entry.coverage_km; };
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, searchHtml, tabbarHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { homeHtml, searchHtml, tabbarHtml, neutralReturnHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });

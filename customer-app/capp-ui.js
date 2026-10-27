@@ -455,6 +455,14 @@
       const refusal = S.refusal || over ? `<div class="cartnote">${IC.info}<span>${esc(over ? FULL_CART : S.refusal)}</span></div>` : '';
       if (!lines.length) return head + note + `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span><button class="btn2" data-act="cartclose">Ver el menú</button></div>`;
       const soldNote = soldDishes.length ? `<div class="cartnote" role="status">${IC.info}<span>${soldDishes.map((n) => `<span class="cn-l">${esc(n)} se agotó. Quitalo para enviar tu pedido.</span>`).join('')}</span></div>` : '';
+      // the owner's frame 10 (approved 2026-10-27): a cart FROZEN for a placement (S7a-1 r3 §1.1) is read-only — one calm note,
+      // the lines' controls at the drawn .45 (disabled), and «Ver estado del pedido»: the placement's STATUS (poll with its stored
+      // credentials, else «Necesitamos revisar tu pedido») — never a send. No other exit (ruling: no «Empezar un pedido nuevo»)
+      if (frozenNow()) {
+        return head + `<div class="cartnote">${IC.info}<span>Tu pedido se está confirmando; no se puede cambiar mientras tanto.</span></div>` + lines.map((d) => `<div class="cline frozen">${lineName(d, 'cl-txt').replace(/^<button /, '<button disabled aria-disabled="true" ')}${lineStep(d).replace(/<button /g, '<button disabled aria-disabled="true" ')}<span class="cl-p">${money(d.total)}</span></div>`).join('')
+          + `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>`
+          + '<div class="sheetbar"><button class="primary" data-act="frozen-status">Ver estado del pedido</button></div>';
+      }
       const off = over || soldDishes.length > 0;
       // the owner's frame 13 (approved 2026-10-27; the forms' Plan 5 pattern, b8ba8467): a configuration whose unit price changed
       // since the customer last saw it — ONE calm note line per dish (its own unit: the plain configuration's change, else its
@@ -839,6 +847,23 @@
       exists: (ref) => ({ title: 'Necesitamos revisar tu pedido', body: 'Ya existe un pedido con este número, así que no lo enviamos de nuevo para no duplicarlo. Escríbenos y lo revisamos.', icon: 'calm', note: `Referencia <b>#${esc(ref || '')}</b>`, acts: [{ act: 'lclose', label: 'Volver al pedido' }], held: true }),
     };
     let attemptSeq = 0;
+    // frame 10's «Ver estado del pedido»: the frozen placement's state through the existing reader (no send, no new identity)
+    let statusBusy = false;
+    async function frozenStatus() {
+      if (statusBusy || !mods() || !api.hosted) return;
+      const fz = api.cartFreeze(); if (!fz.frozen) { renderLayer(); return; }
+      statusBusy = true;
+      let out; try { out = fz.unknown || !fz.order_id ? { kind: 'offline' } : await api.resolveExisting(fz.order_id); } catch (_) { out = { kind: 'offline' }; } finally { statusBusy = false; }
+      if (dead) return;
+      closeLayer();
+      // over the STORE (no checkout to go back to): the held sheets as drawn; any other outcome takes the normal path with a flow
+      const k = out && out.kind;
+      if (k === 'existing_order') { showErr(ERR.exists(out.reference)); return; }
+      if (k === 'payment_failed' && out.clearable === false) { showErr(ERR.pending()); return; }
+      if (k === 'offline' || !k) { const e = ERR.offline(); showErr({ ...e, acts: e.acts.map((x) => (x.act === 'err-retry' ? { ...x, act: 'frozen-status' } : x)) }); return; }   // «Reintentar» re-reads the status — never a send
+      if (!S.flow) { S.flow = C.freshFlow(member()); C.setMode(S.flow, S.mode); }
+      onOutcome(out);
+    }
     function onOutcome(out, attempt) {
       const k = out && out.kind;
       if (k === 'redirect') {
@@ -1053,6 +1078,7 @@
       render();
       let out; try { out = await api.handleReturn(search); } catch (e) { out = { kind: 'error' }; }
       if (out && !dead) onOutcome(out);
+      return out;   // S7a-2: the shell settles its return handoff on an AUTHORITATIVE outcome (CappShell.settleHandoff)
     }
 
     function render() {
@@ -1110,6 +1136,7 @@
       // S7a-2: the host may adopt a newer verified menu first (opts.beforeCheckout() === false ⇒ it took over: not opened here)
       if (act === 'checkout') { if (!orderable || soldBlock()) return; if (typeof opts.beforeCheckout === 'function' && opts.beforeCheckout() === false) return; let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return; } emit('checkout', { body, mode: S.mode }); openCheckout(); return; }
       if (act === 'closed-sched') { emit('schedule'); return; }
+      if (act === 'frozen-status') { frozenStatus(); return; }
     }
     const FLOW_FIELDS = ['details', 'name', 'phone', 'email', 'notes', 'tendered'];
     function onInput(ev) {

@@ -981,3 +981,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .rcard.gone,.scard.gone,.srow.gone{opacity:.45}
 /* frame 13 (APPROVED 2026-10-27): a changed line's OLD subtotal, struck, above the new one */
 .cline .cl-p .cl-old{display:block;color:var(--mute);font-weight:400;font-size:13px}
+/* frame 10 (APPROVED 2026-10-27): a frozen cart's line controls at the drawn .45 */
+.cline.frozen button[disabled]{opacity:.45}
+/* frame 11 (APPROVED 2026-10-27): the neutral return surface's block, as drawn */
+.empty.neutral{padding-top:120px}

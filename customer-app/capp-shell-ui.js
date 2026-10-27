@@ -52,7 +52,7 @@
     let dead = false, rebuild = true;
 
     const S = { tab: 'home', cuisine: '', filters: new Set(), q: '', recent: (readJ(RECENT_KEY) || []).filter((x) => typeof x === 'string').slice(0, RECENT_MAX),
-      held: null, heldErr: false, store: null, layer: null, locDenied: false, loc: null };
+      held: null, heldErr: false, store: null, layer: null, locDenied: false, loc: null, neutral: null, ret: null };
     // ── the guest location (r1 §2.3, owned by the SHELL, persisted per device): { lat, lng, confirmed, source: 'gps'|'pin', v } ──
     { const l = readJ(LOC_KEY); if (l && Number.isFinite(l.lat) && Number.isFinite(l.lng) && (l.source === 'gps' || l.source === 'pin')) S.loc = { lat: l.lat, lng: l.lng, confirmed: l.confirmed === true, source: l.source, v: Number(l.v) || 1 }; }
     function setLoc(lat, lng, source) {
@@ -129,7 +129,9 @@
       // r3.3-F2: a PRESENTATION body (the stored menu, not yet re-verified) mounts BROWSE-ONLY; the fresh one turns it live in place
       const orderable = e.state !== 'presentation';
       const apiOpts = { storage, ...(uo.apiOpts || {}) };   // the store's records live in the shell's storage (one device store)
-      const ui = CappUI.mount(doc, { ...uo, apiOpts, orderable, beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
+      // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
+      const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
+      const ui = CappUI.mount(doc, { ...uo, search: ret ? ret.search : '', apiOpts, orderable, beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
         onEvent: (name, detail) => { if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
@@ -137,6 +139,8 @@
       watchMenu(S.store);
       const snap = readJ(cfg.cartKey); if (snap) ui.restore(snap);
       if (entry.dish) ui.openDetail(entry.dish);
+      // the return's AUTHORITATIVE outcome settles the stored handoff (S7a-1 r3 §2 / r3.1 N3: never on anything else)
+      if (ret && ui.returning && typeof ui.returning.then === 'function') ui.returning.then((out) => { try { CappShell.settleHandoff(storage, out, ret.handoff); } catch (_) {} }, () => {});
       pollAvail(); availTimer = T.setInterval(pollAvail, AVAIL_EVERY_MS);
       return true;
     }
@@ -196,6 +200,7 @@
     function checkHeld() {
       const h = S.held; if (!h || S.store) return false;
       const st = dir.state(h.rid), e = cache.peek(h.rid);
+      if (st === 'unknown' && dir.view().phase === 'cold') return false;   // the directory has not answered yet (a return entered at boot): wait
       if (st === 'gone' || st === 'unknown') { S.held = null; schedule(); return false; }
       if (st === 'enterable' && e && e.body) {
         S.held = null;
@@ -242,7 +247,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.tab === 'search' ? CappHome.searchHtml(v) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'search' ? CappHome.searchHtml(v) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -289,6 +294,7 @@
       if (a === 'dir-retry') { S.heldErr = false; dir.revalidate(); return renderNow(); }
       if (a === 'recent') { S.q = t.dataset.q; return renderNow(); }
       if (a === 'clearq') { S.q = ''; renderNow(); const i = $('gq'); if (i) i.focus(); return; }
+      if (a === 'neutral-home') { S.neutral = null; return renderNow(); }
       if (a === 'addr') return openLayer('addr');
       if (a === 'lclose') return closeLayer();   // «Cancelar» on the pin editor: the guest location is unchanged
       if (a === 'addr-new') return openLayer('pin');
@@ -320,10 +326,27 @@
     // ── boot: paint from storage (presentation) at once; then every read ──
     dir.boot();
     for (const r of dir.view().rows) cache.seed(r.rid, readJ(MENU_KEY(r.rid)));
+    // ── a hosted-checkout return (S7a-1 r2 §1.5 / r3 §2): its owner from EXACT local records only. One owner ⇒ that store is entered
+    //    with the return (held until it is enterable); none / several on a fresh return ⇒ the neutral surface (frame 11); a stored
+    //    handoff with no owner never re-shows it on later boots (it is kept, untouched, for its authoritative outcome) ──
+    {
+      const search = o.search !== undefined ? String(o.search || '') : (win && win.location ? win.location.search : '');
+      // candidates: the stored directory, the menu LRU, and every store that holds a placement / pay record on this device (a cold
+      // boot has no directory yet); ownership itself is decided by resolveOwner on the EXACT records
+      const held = []; try { for (let i = 0; storage && i < storage.length; i++) { const m = /^capp:([^:]+):(pending_pay|pending_place)$/.exec(storage.key(i) || ''); if (m) held.push(m[1]); } } catch (_) {}
+      const rids = [...new Set([...dir.view().rows.map((r) => r.rid), ...(readJ(LRU_KEY) || []), ...held])];
+      let br = null; try { br = CappShell.bootReturn({ search, storage, rids, now: nowMs }); } catch (_) { br = null; }
+      if (br && br.strip && win && win.history && win.location) { try { win.history.replaceState(win.history.state, '', win.location.pathname + win.location.hash); } catch (_) {} }
+      if (br && br.handoff && br.owner) {
+        const h = br.handoff, q = new URLSearchParams({ pay: h.pay }); if (h.order) q.set('order', h.order); if (h.t) q.set('t', h.t);
+        S.ret = { rid: br.owner, search: '?' + q.toString(), handoff: h };
+      } else if (br && br.handoff && (br.mode === 'persisted' || br.mode === 'memory')) S.neutral = { order: br.handoff.order };
+    }
     app.classList.add('app');
     renderNow();
     dir.revalidate();
     loadMenus();
+    if (S.ret) enter(S.ret.rid, null);
 
     return {
       nav, dir, cache, eligibility: elig, state: S, render: renderNow, store: () => S.store,

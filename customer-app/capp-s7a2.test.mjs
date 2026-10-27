@@ -49,7 +49,7 @@ test('contract fake: produced by the pinned 5f commit; every 200 body is exactly
 });
 
 // ── the client directory store ──
-function memStorage(init = {}) { const m = new Map(Object.entries(init)); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), _m: m }; }
+function memStorage(init = {}) { const m = new Map(Object.entries(init)); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), get length() { return m.size; }, key: (i) => [...m.keys()][i] ?? null, _m: m }; }
 const resp = (k) => ({ status: SC[k].status, body: SC[k].body, etag: SC[k].headers.ETag });
 function rigDir({ storage = memStorage(), script = [], now = { t: T0 } } = {}) {
   const calls = [];
@@ -230,7 +230,7 @@ test('Buscar: «No encontramos» ONLY when every menu answered; a partial shows 
 // ── the shell, through the REAL shell.html ──
 function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }); return { p, resolve }; }
 const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
-function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null } = {}) {
+function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [] } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://app.test/' });
@@ -248,7 +248,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   };
   const clock = now || { t: T0 };
   const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), fetchDirectory, fetchEnvelope, readAvailability: async () => [], runtime: RUNTIME, storage: storage || memStorage(), now: () => clock.t,
-    auth: { state: () => auth }, geolocation, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: require('./capp-api.js'), apiOpts: { fetch: () => new Promise(() => {}) } } });
+    auth: { state: () => auth }, geolocation, search, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: require('./capp-api.js'), apiOpts: { fetch: (u, i) => { fetchLog.push(String(u)); return new Promise(() => {}); } } } });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const release = (rid, body) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: body || J(PROV[rid].envelope), etag: body ? '"changed"' : PROV[rid].etag }); };
@@ -407,4 +407,48 @@ test('browse-only: a CHANGED menu keeps the surface (its prices) while the custo
   assert.equal(txt(S.q('#layer .ctot .sumrow')), 'Subtotal L 366', 'totals at the new price');
   S.click('[data-act="checkout"]'); await flush();
   assert.equal(ui1.state.screen, 'checkout', 'continuing is acceptance');
+});
+
+// ── frames 10 and 11 (S7a-1 shell UI, approved 2026-10-27) ──
+const ORDER = 'XPZ261020-190500-ABCDWXYZ';
+const frozenCart = () => { const m = CappMenu.adaptMenu(PROV.x_pizza.envelope); const d = m.dishes.find((x) => !x.launcher && !x.variantOf && !m.pickupOnlyCats.has(String(x.cat)));
+  return { 'capp:x_pizza:cart': JSON.stringify({ v: 2, lines: [{ key: d.key, qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery', cart_gen: 'g_1', frozen_for: ORDER }) }; };
+test('frame 10: a cart frozen for a placement is read-only — the note, its controls disabled, «Ver estado del pedido» reads the STATUS (the recovery sheet) and sends NOTHING', async () => {
+  const fetchLog = [];
+  const S = bootShell({ storage: memStorage(frozenCart()), fetchLog });
+  await flush();
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  S.click('#cart-bar'); await flush();
+  assert.equal(txt(S.q('#layer .cartnote')), 'Tu pedido se está confirmando; no se puede cambiar mientras tanto.');
+  assert.ok(S.qa('#layer .cline.frozen button').length >= 3 && S.qa('#layer .cline.frozen button').every((b) => b.disabled));
+  assert.equal(S.q('#layer [data-act="checkout"]'), null, 'no «Ir al checkout»');
+  const cta = S.q('#layer .sheetbar .primary'); assert.equal(cta.textContent, 'Ver estado del pedido');
+  S.click(cta); await flush(); await flush();
+  assert.match(txt(S.q('#layer')), /Necesitamos revisar tu pedido/, 'not live, no credentials ⇒ the recovery sheet');
+  assert.deepEqual(fetchLog, [], '🔴 zero sends');
+  S.click('#layer [data-act="lclose"]'); await flush();
+  const add = S.qa('.qty-add-btn[data-act="inc"]').find((b) => !b.disabled); S.click(add);
+  assert.equal(S.ui.store().ui.cart.count(), 1, 'still frozen: a tap through the store is refused');
+});
+test('frame 11: a fresh return this phone cannot tie to ONE store ⇒ the neutral surface (no tab bar, no store mounted); «Ir a Inicio»; a later boot does not show it again', async () => {
+  const storage = memStorage();
+  const S = bootShell({ storage, search: `?pay=complete&order=${ORDER}&t=pt_9` });
+  await flush();
+  assert.equal(S.q('.empty.neutral b').textContent, 'No encontramos este pedido en este teléfono');
+  assert.equal(S.q('.empty.neutral .note').textContent, `Pedido #${ORDER}`);
+  assert.equal(S.q('.tabbar'), null); assert.equal(S.ui.store(), null);
+  assert.equal(JSON.parse(storage.getItem('capp:return')).order, ORDER, 'the handoff is kept (removed only on an authoritative outcome)');
+  S.click('[data-act="neutral-home"]'); await flush();
+  assert.ok(S.q('.rlist'));
+  const again = bootShell({ storage }); await flush();
+  assert.equal(again.q('.empty.neutral'), null, 'a resumed, ownerless handoff never re-shows the surface');
+});
+test('return: a return OWNED by one store (its pay stash) enters THAT store with the return, once — even on a cold boot (no directory yet)', async () => {
+  const storage = memStorage({ 'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1' }) });
+  const S = bootShell({ storage, search: `?pay=complete&order=${ORDER}&t=pt_9` });
+  await flush(); await flush();
+  assert.equal(S.ui.store() && S.ui.store().rid, 'x_pizza');
+  assert.equal(S.ui.store().ui.state.screen, 'sending', 'the store handles its return (polling)');
+  assert.equal(S.ui.state.ret, null, 'the return is handed to its store ONCE (no later mount is given it)');
+  assert.equal(S.ui.nav.tab({ name: 'home' }), false, 'sending ⇒ the store cannot be left (S7a-1 r3.2 ruling (a))');
 });
