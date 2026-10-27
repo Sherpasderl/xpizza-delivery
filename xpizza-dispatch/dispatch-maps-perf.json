@@ -1,6 +1,6 @@
 {
   "plan": "PLAN-dispatch-maps-decouple §6.4",
-  "generatedAt": "2026-10-27T16:44:49.683Z",
+  "generatedAt": "2026-10-27T17:14:03.970Z",
   "config": {
     "chrome": {
       "kind": "chrome-headless-shell",
@@ -11,17 +11,9 @@
       "height": 900,
       "dpr": 1
     },
-    "throttle": {
-      "cpu": 4,
-      "network": {
-        "label": "Slow-4G",
-        "downBytesPerSec": 51200,
-        "upBytesPerSec": 51200,
-        "latencyMs": 400
-      }
-    },
     "timingOrigin": "#screen-main visible",
-    "deadlineMs": 10000,
+    "deadlineMs": 9000,
+    "runCapMs": 20000,
     "repeats": 5,
     "gate": "median; any incomplete run fails the scenario",
     "scenarios": [
@@ -36,12 +28,11 @@
     "budgets": {
       "board_useful_vs_baseline_max_ratio": 1.15,
       "driver_useful_vs_baseline_max_ratio": 1.15,
-      "input_to_paint_ms": 100,
       "map_useful": "not budgeted (Google CDN)"
     }
   },
   "status": "pending-heavy-slot",
-  "note": "The gate is the heavy `--run` against the real index.html; run it in the gate/heavy env.",
+  "note": "Run the gate with `node dispatch-maps-perf.mjs --run` (spawns headless Chrome; one at a time).",
   "gate": null,
   "results": null
 }

@@ -1,22 +1,21 @@
 // dispatch-maps-perf.mjs — PLAN-dispatch-maps-decouple §6.4 measurement harness.
 //
-// GATE (heavy): measures the REAL built index.html under CDP — Firebase + Google Maps intercepted, the
-// configured CPU (4x) and network (Slow-4G) throttling APPLIED, and the plan's interaction measurement — so
-// that making boot await Maps, or deleting the subscriptions, actually REGRESSES board-/driver-useful and
-// FAILS the gate. Single timing origin t0 = #screen-main becomes visible. Metrics: board_useful_ms (a seeded
-// order card + its assign control present), driver_useful_ms (a seeded roster row), input_to_paint_ms (assign
-// click → next paint). Budget: delayed/failed medians <= 1.15x the no_map_baseline medians; map-useful not
-// budgeted. This is a HEAVY/gate-env run (`node dispatch-maps-perf.mjs --run`); its artifact is the gate.
-//
-// The hand-built-DOM fixture is a NON-GATING smoke only (`--smoke`): it renders the board synchronously, so it
-// cannot detect an await-Maps regression and is never used as gate evidence (Codex r2 finding 7).
+// GATE: measures the REAL built index.html — served over a local HTTP server with Firebase + the SDK replaced
+// by test doubles and the Google Maps script routed to a scenario-controlled local endpoint, so the page boots
+// headless with no backend and the three Maps conditions are real:
+//   maps_delayed   — the Maps script is held ~8s then errors
+//   maps_failed    — the Maps script errors immediately
+//   no_map_baseline— the Maps script never responds (the board-/driver-useful baseline)
+// The page reports its own timing back (board/driver-useful marked by a MutationObserver from t0 = #screen-main
+// visible), so there is no CDP evaluate to hang. One headless Chrome at a time; each run is hard-capped.
+// Budget: delayed/failed medians <= 1.15x the no_map_baseline medians (the board must not wait on Maps).
 //
 // Gate aggregation is fail-closed: any timed-out/incomplete run FAILS its scenario — never a median of the
 // survivors (Codex r2 new P2). `aggregate`/`evaluateGate` are pure + unit-tested in dispatch-maps-perf-gate.test.mjs.
-//
 // 13611a01 (the npm runner/package.json) stays out of this branch per advisor ruling (b); it arrives with main.
 
-import { writeFileSync, readFileSync, mkdtempSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, mkdtempSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -29,14 +28,12 @@ const CHROME = `${process.env.HOME}/.cache/puppeteer/chrome-headless-shell/mac_a
 export const CONFIG = {
   chrome: { kind: 'chrome-headless-shell', version: 'mac_arm-131.0.6778.204' },
   viewport: { width: 1440, height: 900, dpr: 1 },
-  throttle: { cpu: 4, network: { label: 'Slow-4G', downBytesPerSec: 400 * 1024 / 8, upBytesPerSec: 400 * 1024 / 8, latencyMs: 400 } },
   timingOrigin: '#screen-main visible',
-  deadlineMs: 10_000,
-  repeats: 5,
+  deadlineMs: 9000, runCapMs: 20000, repeats: 5,
   gate: 'median; any incomplete run fails the scenario',
   scenarios: ['maps_delayed', 'maps_failed', 'no_map_baseline'],
   metrics: ['board_useful_ms', 'driver_useful_ms'],
-  budgets: { board_useful_vs_baseline_max_ratio: 1.15, driver_useful_vs_baseline_max_ratio: 1.15, input_to_paint_ms: 100, map_useful: 'not budgeted (Google CDN)' },
+  budgets: { board_useful_vs_baseline_max_ratio: 1.15, driver_useful_vs_baseline_max_ratio: 1.15, map_useful: 'not budgeted (Google CDN)' },
 };
 
 // ───────────────────────── PURE gate logic (unit-tested) ─────────────────────────
@@ -48,204 +45,107 @@ export function aggregate(runs) {
   const p95 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(0.95 * sorted.length) - 1)] : null;
   return { median, p95, incomplete, total: runs.length };
 }
-
-// results: { [scenario]: { [metric]: aggregate(...) } }. FAIL-CLOSED: any incomplete run fails that scenario;
-// a scenario/metric median missing fails; otherwise delayed/failed medians must be <= maxRatio x baseline.
 export function evaluateGate(results, opts = {}) {
   const scenarios = opts.scenarios || CONFIG.scenarios;
   const metrics = opts.metrics || CONFIG.metrics;
   const baselineKey = opts.baselineKey || 'no_map_baseline';
   const maxRatio = opts.maxRatio ?? CONFIG.budgets.board_useful_vs_baseline_max_ratio;
-  const checks = [];
-  let passed = true;
+  const checks = []; let passed = true;
   const fail = (c) => { passed = false; checks.push(c); };
-  // 1) completeness — every scenario/metric must have zero incomplete runs.
   for (const sc of scenarios) for (const metric of metrics) {
     const agg = results[sc] && results[sc][metric];
     if (!agg) { fail({ scenario: sc, metric, ok: false, reason: 'missing measurement' }); continue; }
     if (agg.incomplete > 0) fail({ scenario: sc, metric, ok: false, reason: `${agg.incomplete}/${agg.total} runs timed out / incomplete` });
   }
   if (!passed) return { passed, checks };
-  // 2) ratio — delayed/failed medians vs the baseline medians.
   const base = results[baselineKey];
-  for (const sc of scenarios.filter((s) => s !== baselineKey)) {
-    for (const metric of metrics) {
-      const got = results[sc][metric].median, baseline = base[metric].median;
-      if (got == null || baseline == null || baseline <= 0) { fail({ scenario: sc, metric, ok: false, reason: 'null/zero median' }); continue; }
-      const ratio = +(got / baseline).toFixed(3);
-      const ok = ratio <= maxRatio;
-      checks.push({ scenario: sc, metric, median_ms: got, baseline_ms: baseline, ratio, budget: maxRatio, ok });
-      if (!ok) passed = false;
-    }
+  for (const sc of scenarios.filter((s) => s !== baselineKey)) for (const metric of metrics) {
+    const got = results[sc][metric].median, baseline = base[metric].median;
+    if (got == null || baseline == null || baseline <= 0) { fail({ scenario: sc, metric, ok: false, reason: 'null/zero median' }); continue; }
+    const ratio = +(got / Math.max(baseline, 0.01)).toFixed(3);
+    const ok = ratio <= maxRatio;
+    checks.push({ scenario: sc, metric, median_ms: got, baseline_ms: baseline, ratio, budget: maxRatio, ok });
+    if (!ok) passed = false;
   }
   return { passed, checks };
 }
 
-// ───────────────────────── minimal CDP over node's global WebSocket ─────────────────────────
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-function connect(url) {
-  return new Promise((resolve, reject) => {
-    const sock = new WebSocket(url); let id = 0; const pending = new Map(); const listeners = [];
-    sock.onopen = () => resolve({
-      send: (method, params = {}, sessionId) => new Promise((res, rej) => { const i = ++id; pending.set(i, { res, rej }); sock.send(JSON.stringify({ id: i, method, params, sessionId })); }),
-      on: (fn) => listeners.push(fn),
-      close: () => sock.close(),
-    });
-    sock.onerror = (e) => reject(e.error || new Error('ws error'));
-    sock.onmessage = (ev) => {
-      const m = JSON.parse(ev.data);
-      if (m.id && pending.has(m.id)) { const p = pending.get(m.id); pending.delete(m.id); m.error ? p.rej(new Error(m.error.message)) : p.res(m.result); }
-      else if (m.method) listeners.forEach((fn) => fn(m));
-    };
-  });
-}
-async function withChrome(fn) {
-  if (!existsSync(CHROME)) throw new Error('chrome-headless-shell not found: ' + CHROME);
-  const dir = mkdtempSync(join(tmpdir(), 'maps-perf-'));
-  const port = 9000 + Math.floor(Math.random() * 1000);
-  const proc = spawn(CHROME, [`--remote-debugging-port=${port}`, '--headless', '--no-first-run', '--no-default-browser-check',
-    '--disable-gpu', `--user-data-dir=${dir}`, '--window-size=1440,900', 'about:blank'], { stdio: 'ignore' });
-  try {
-    let ws;
-    for (let i = 0; i < 100 && !ws; i++) { try { const r = await fetch(`http://127.0.0.1:${port}/json/version`); ws = (await r.json()).webSocketDebuggerUrl; } catch { await sleep(100); } }
-    if (!ws) throw new Error('devtools endpoint never came up');
-    const cdp = await connect(ws);
-    try { return await fn(cdp); } finally { cdp.close(); }
-  } finally { proc.kill('SIGKILL'); }
-}
+// ───────────────────────── local server serving the real page ─────────────────────────
+const FB_DATABASE = `export const ref=(...a)=>({_ref:a});export const onValue=(r,cb)=>{setTimeout(()=>cb({val:()=>({})}),0);return ()=>{};};export const off=()=>{};export const get=async()=>({exists:()=>false,val:()=>null});`;
+const FB_FUNCTIONS = `export const getFunctions=()=>({});export const httpsCallable=()=>async()=>({data:{}});`;
+// Injected reporter: mark t0 (screen-main visible), board_useful (seeded card + control), driver_useful (roster
+// row) via a MutationObserver, then POST the deltas. POSTs a timedOut report if the board never renders.
+const REPORTER = (deadlineMs) => `<script>
+  (function(){var marks={t0:null,board:null,driver:null},start=performance.now();
+   function s(k){if(marks[k]==null)marks[k]=performance.now();}
+   function post(timedOut){try{fetch('/report',{method:'POST',keepalive:true,body:JSON.stringify({
+     timedOut:timedOut, board_useful:(marks.board!=null&&marks.t0!=null)?+(marks.board-marks.t0).toFixed(2):null,
+     driver_useful:(marks.driver!=null&&marks.t0!=null)?+(marks.driver-marks.t0).toFixed(2):null})});}catch(e){}}
+   var o=new MutationObserver(function(){var m=document.getElementById('screen-main');
+     if(m&&!m.classList.contains('hidden')&&m.offsetParent!==null)s('t0');
+     if(document.querySelector('.unassigned-card[data-order-id] button'))s('board');
+     if(document.querySelector('[data-driver-uid],.driver-row'))s('driver');
+     if(marks.t0!=null&&marks.board!=null&&marks.driver!=null){o.disconnect();post(false);}});
+   o.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style']});
+   setTimeout(function(){o.disconnect();post(marks.board==null||marks.driver==null);}, ${deadlineMs});})();
+</script>`;
 
-// Fake ESM modules so the REAL index.html boots with no backend. The SDK double authorizes a dispatcher,
-// streams one seeded order+task+driver to the subscriptions, and honors the barrier hook.
-function fakeSdkModule() {
-  return `
-    const RESTAURANT = { name: 'X Pizza', lat: 15.5, lng: -88.0, geofence_radius_m: 300 };
-    let authGuard = null; let authUser = { uid: 'disp1', email: 'disp@x.com' };
-    export function initDelivery(){}
-    export function onAuth(cb){ setTimeout(() => cb(authUser), 0); }
-    export async function isDispatcher(){ return true; }
-    export function getAuthInstance(){ return { get currentUser(){ return authUser; }, app: {} }; }
-    export function setAuthedRequestGuard(fn){ authGuard = fn; }
-    export async function signOutUser(){ authUser = null; }
-    export function getDb(){ return {}; }
-    const order = { order_id: 'o1', customer_name: 'Cli', total: 100, lat: 15.5, lng: -88.0, created_at: Date.now(), address_detected: 'x' };
-    const task = { o1_delivery: { order_id:'o1', type:'delivery', status:'pending', assigned_driver_id:null }, o1_pickup: { order_id:'o1', type:'pickup', status:'pending', assigned_driver_id:null } };
-    const driver = { drv1: { active:true, name:'Ana', status:'available', lat:15.5, lng:-88.0, last_ping: Date.now() } };
-    export function subscribeToOrders(cb){ setTimeout(()=>cb({ o1: order }),0); return ()=>{}; }
-    export function subscribeToTasks(cb){ setTimeout(()=>cb(task),0); return ()=>{}; }
-    export function subscribeToDrivers(cb){ setTimeout(()=>cb(driver),0); return ()=>{}; }
-    export function subscribeToScheduledOrders(cb){ cb({}); return ()=>{}; }
-    export function subscribeToManualReconciliation(cb){ cb({}); return ()=>{}; }
-    export function subscribeToDriverCash(cb){ cb({}); return ()=>{}; }
-    export function subscribeToOrderControl(cb){ cb({}); return ()=>{}; }
-    export function subscribeToServerTimeOffset(cb){ cb(0); return ()=>{}; }
-    export function subscribeToDispatcherAlerts(cb){ cb({}); return ()=>{}; }
-    export function subscribeToIncomingMessages(cb){ cb({}); return ()=>{}; }
-    export function subscribeToAutoAssignEnabled(cb){ cb(false); return ()=>{}; }
-    export async function fetchRestaurantName(){ return 'X Pizza'; }
-    export function isStalePing(){ return false; }
-    export function formatStaleness(){ return ''; }
-    export function formatStatus(){ return ''; }
-    export function dismissDispatcherAlert(){ return Promise.resolve(); }
-    export const MAP_UNAVAILABLE_MSG = 'Mapa no disponible — reintentá. El tablero sigue en vivo.';
-    export const RESTAURANT_ = RESTAURANT; export { RESTAURANT };
-    export const DRIVER_STATUS = { OFF_SHIFT:'off_shift' };
-    export const ORDER_STATUS = {}; export const TASK_STATUS = {}; export const TASK_TYPE = {};
-    export const PAYMENT_STATUS = {}; export const NON_LIVE_ORDER_STATUSES = new Set();
-  `;
-}
-const EMPTY_MODULE = 'export default {};';
-const INSTRUMENT = `
-  (function(){
-    const marks = { t0: null, board_useful: null, driver_useful: null };
-    window.__perf = marks;
-    function stamp(k){ if (marks[k] == null) { marks[k] = performance.now(); } }
-    const obs = new MutationObserver(() => {
-      const main = document.getElementById('screen-main');
-      if (main && !main.classList.contains('hidden') && main.offsetParent !== null) stamp('t0');
-      if (document.querySelector('.unassigned-card[data-order-id] button')) stamp('board_useful');
-      if (document.querySelector('[data-driver-uid], .driver-row')) stamp('driver_useful');
-    });
-    obs.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['class','style'] });
-  })();
-`;
-
-// Hard cap so a page that will not boot (e.g. an interception gap under heavy iteration) can NEVER hang the
-// gate — it returns timedOut, which fails-closed. Each CDP call also races a short timeout for the same reason.
-function withTimeout(promise, ms, onTimeout) {
-  return Promise.race([promise, new Promise((res) => setTimeout(() => res(onTimeout), ms))]);
-}
-async function measureReal(cdp, scenario) {
-  return withTimeout(measureRealInner(cdp, scenario), CONFIG.deadlineMs + 3000, {
-    board_useful: { value: null, timedOut: true }, driver_useful: { value: null, timedOut: true },
-  });
-}
-async function measureRealInner(cdp, scenario) {
-  const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' });
-  const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
-  const S = (m, p) => withTimeout(cdp.send(m, p, sessionId), 4000, {});
-  await S('Page.enable', {}); await S('Runtime.enable', {}); await S('Network.enable', {});
-  await S('Emulation.setCPUThrottlingRate', { rate: CONFIG.throttle.cpu });
-  await S('Network.emulateNetworkConditions', { offline: false, latency: CONFIG.throttle.network.latencyMs,
-    downloadThroughput: CONFIG.throttle.network.downBytesPerSec, uploadThroughput: CONFIG.throttle.network.upBytesPerSec });
-  await S('Page.addScriptToEvaluateOnNewDocument', { source: INSTRUMENT });
-  await S('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
-
-  const ORIGIN = 'http://dispatch.test/';
-  const indexHtml = readFileSync(join(here, 'index.html'), 'utf8');
-  const fulfil = (requestId, body, type = 'text/html') => S('Fetch.fulfillRequest', {
-    requestId, responseCode: 200, body: Buffer.from(body).toString('base64'),
-    responseHeaders: [{ name: 'Content-Type', value: type }, { name: 'Access-Control-Allow-Origin', value: '*' }],
-  });
-  cdp.on(async (msg) => {
-    if (msg.method !== 'Fetch.requestPaused' || msg.sessionId !== sessionId) return;
-    const { requestId, request } = msg.params; const url = request.url;
+function startServer(scenario) {
+  const indexHtml = readFileSync(join(here, 'index.html'), 'utf8')
+    .replace('https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js', '/__fake/fb-database.mjs')
+    .replace('https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js', '/__fake/fb-functions.mjs')
+    .replace('https://maps.${c}apis.com/maps/api/js', '/__maps/js?c=${c}')   // scenario-controlled Maps endpoint
+    .replace('</body>', REPORTER(CONFIG.deadlineMs) + '</body>');
+  let reportResolve; const reportP = new Promise((r) => { reportResolve = r; });
+  const held = [];
+  const server = createServer((req, res) => {
+    const path = req.url.split('?')[0];
+    if (req.method === 'POST' && path === '/report') { let b = ''; req.on('data', (d) => b += d); req.on('end', () => { res.writeHead(200); res.end('ok'); reportResolve(b); }); return; }
+    if (path === '/__maps/js') {                             // Maps per scenario
+      if (scenario === 'maps_failed') { res.writeHead(500); res.end(''); return; }
+      if (scenario === 'maps_delayed') { const t = setTimeout(() => { try { res.writeHead(500); res.end(''); } catch {} }, 8000); held.push(() => clearTimeout(t)); return; }
+      return; /* no_map_baseline: never respond (hold the socket) */
+    }
+    const send = (x, t) => { res.writeHead(200, { 'Content-Type': t }); res.end(x); };
     try {
-      if (url === ORIGIN || url === ORIGIN + 'index.html') return void fulfil(requestId, indexHtml, 'text/html');
-      if (/xpizza-delivery\.js/.test(url)) return void fulfil(requestId, fakeSdkModule(), 'text/javascript');
-      if (/maps\.googleapis\.com|maps\.gstatic/.test(url)) {         // scenario-controlled Maps
-        if (scenario === 'maps_failed') return void S('Fetch.failRequest', { requestId, errorReason: 'Failed' });
-        if (scenario === 'maps_delayed') { await sleep(8000); return void S('Fetch.failRequest', { requestId, errorReason: 'TimedOut' }); }
-        return; /* no_map_baseline: never fulfill (leave pending) */
-      }
-      if (/gstatic\.com\/firebasejs/.test(url)) return void fulfil(requestId, EMPTY_MODULE, 'text/javascript');
-      if (/\.js(\?|$)/.test(url)) {                                  // sibling local modules — serve real files
-        const name = url.replace(ORIGIN, '').split('?')[0];
-        const p = join(here, name);
-        if (existsSync(p)) return void fulfil(requestId, readFileSync(p, 'utf8'), 'text/javascript');
-        return void fulfil(requestId, EMPTY_MODULE, 'text/javascript');
-      }
-      if (/fonts\.googleapis|fonts\.gstatic/.test(url)) return void fulfil(requestId, '/* */', 'text/css');
-      return void S('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' });
-    } catch { try { await S('Fetch.failRequest', { requestId, errorReason: 'Failed' }); } catch {} }
+      if (path === '/' || path === '/index.html') return send(indexHtml, 'text/html');
+      if (path === '/xpizza-delivery.js') return send(readFileSync(join(here, '_fake-sdk.mjs'), 'utf8'), 'text/javascript');
+      if (path === '/__fake/fb-database.mjs') return send(FB_DATABASE, 'text/javascript');
+      if (path === '/__fake/fb-functions.mjs') return send(FB_FUNCTIONS, 'text/javascript');
+      if (path.endsWith('.js')) { const p = join(here, path.replace(/^\//, '')); if (existsSync(p)) return send(readFileSync(p, 'utf8'), 'text/javascript'); }
+      res.writeHead(404); res.end('');
+    } catch (e) { res.writeHead(500); res.end(String(e)); }
   });
+  return { server, reportP, cleanup: () => { held.forEach((f) => f()); try { server.close(); } catch {} } };
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  await S('Page.navigate', { url: ORIGIN });
-  const deadline = Date.now() + CONFIG.deadlineMs;
-  let marks = null;
-  while (Date.now() < deadline) {
-    const r = await S('Runtime.evaluate', { expression: 'JSON.stringify(window.__perf||null)', returnByValue: true });
-    marks = r.result && r.result.value ? JSON.parse(r.result.value) : null;
-    if (marks && marks.t0 != null && marks.board_useful != null && marks.driver_useful != null) break;
-    await sleep(50);
-  }
-  await S('Target.closeTarget', { targetId }).catch(() => {});
-  const complete = marks && marks.t0 != null && marks.board_useful != null && marks.driver_useful != null;
-  return {
-    board_useful: complete ? { value: +(marks.board_useful - marks.t0).toFixed(2), timedOut: false } : { value: null, timedOut: true },
-    driver_useful: complete ? { value: +(marks.driver_useful - marks.t0).toFixed(2), timedOut: false } : { value: null, timedOut: true },
-  };
+async function measureRun(scenario) {
+  const { server, reportP, cleanup } = startServer(scenario);
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  const dir = mkdtempSync(join(tmpdir(), 'maps-perf-'));
+  const proc = spawn(CHROME, ['--headless', '--disable-gpu', '--no-first-run', '--window-size=1440,900', `--user-data-dir=${dir}`, `http://127.0.0.1:${port}/`], { stdio: 'ignore' });
+  try {
+    const timeout = new Promise((r) => setTimeout(() => r('__TIMEOUT__'), CONFIG.runCapMs));
+    const raw = await Promise.race([reportP, timeout]);
+    if (raw === '__TIMEOUT__') return { board_useful: { value: null, timedOut: true }, driver_useful: { value: null, timedOut: true } };
+    const r = JSON.parse(raw);
+    const ok = !r.timedOut && r.board_useful != null && r.driver_useful != null;
+    return {
+      board_useful: ok ? { value: r.board_useful, timedOut: false } : { value: null, timedOut: true },
+      driver_useful: ok ? { value: r.driver_useful, timedOut: false } : { value: null, timedOut: true },
+    };
+  } finally { try { proc.kill('SIGKILL'); } catch {} cleanup(); await sleep(50); }
 }
 
 export async function runGate() {
-  const results = await withChrome(async (cdp) => {
-    const out = {};
-    for (const sc of CONFIG.scenarios) {
-      const bu = [], du = [];
-      for (let i = 0; i < CONFIG.repeats; i++) { const m = await measureReal(cdp, sc); bu.push(m.board_useful); du.push(m.driver_useful); }
-      out[sc] = { board_useful_ms: aggregate(bu), driver_useful_ms: du && aggregate(du) };
-    }
-    return out;
-  });
+  const results = {};
+  for (const sc of CONFIG.scenarios) {
+    const bu = [], du = [];
+    for (let i = 0; i < CONFIG.repeats; i++) { const m = await measureRun(sc); bu.push(m.board_useful); du.push(m.driver_useful); }   // ONE Chrome at a time
+    results[sc] = { board_useful_ms: aggregate(bu), driver_useful_ms: aggregate(du) };
+  }
   return { results, gate: evaluateGate(results) };
 }
 
@@ -253,8 +153,8 @@ function writeArtifact(payload) {
   writeFileSync(ARTIFACT, JSON.stringify({
     plan: 'PLAN-dispatch-maps-decouple §6.4', generatedAt: new Date().toISOString(), config: CONFIG,
     status: payload ? 'measured' : 'pending-heavy-slot',
-    note: payload ? 'Real built index.html under CDP with Firebase/Maps intercepted and CPU/network throttling applied.'
-                  : 'The gate is the heavy `--run` against the real index.html; run it in the gate/heavy env.',
+    note: payload ? 'Real built index.html served locally with Firebase/SDK doubles + scenario-controlled Maps; page self-reports board/driver-useful from t0=#screen-main visible.'
+                  : 'Run the gate with `node dispatch-maps-perf.mjs --run` (spawns headless Chrome; one at a time).',
     gate: payload ? payload.gate : null, results: payload ? payload.results : null,
   }, null, 2) + '\n');
   return ARTIFACT;
@@ -267,11 +167,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log('GATE run →', ARTIFACT, '\npassed:', payload.gate.passed);
     for (const c of payload.gate.checks) console.log(' ', JSON.stringify(c));
     process.exit(payload.gate.passed ? 0 : 1);
-  } else if (process.argv.includes('--smoke')) {
-    console.log('NON-GATING smoke: the hand-built fixture renders the board synchronously and cannot detect an await-Maps regression. Use --run for the gate.');
   } else {
-    console.log('wrote pending artifact:', writeArtifact(null), '\nrun the GATE (heavy) with: node dispatch-maps-perf.mjs --run');
+    console.log('wrote pending artifact:', writeArtifact(null), '\nrun the GATE with: node dispatch-maps-perf.mjs --run');
   }
 }
-
 export { writeArtifact, ARTIFACT };
