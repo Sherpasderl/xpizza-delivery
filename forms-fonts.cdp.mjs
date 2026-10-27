@@ -152,7 +152,7 @@ async function premisePane(cdp, sel) {
 }
 
 // ── one run: boot a site in a state under a font policy; returns everything the cells judge ──
-async function run(site, { side = 'candidate', fontGate, throttle = false, oldPolicy = false, stateName = 'S1', deterministic = false, holdMs = 6000 }) {
+async function run(site, { side = 'candidate', fontGate, throttle = false, oldPolicy = false, stateName = 'S1', deterministic = false, holdMs = 6000, faceChange = false }) {
   const def = STATES[stateName];
   const state = { ...def, baseline: side === 'baseline' || process.env.FONTS_HEAD === 'google', fontGate };
   const root = side === 'baseline' ? baselineRoot() : ROOT;
@@ -164,6 +164,8 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
       if (process.env.FONTS_STRIP_NAMES && side === 'candidate' && /(index\.html|account\.js)$/.test(rel)) out = String(out ?? buf).replace(/,\s*'(DM Sans|Playfair Display) Fallback( Roboto| Noto)?'/g, '');   // diagnostic only
       if (process.env.FONTS_SWAP_ONLY && side === 'candidate' && /orders-fonts\.css$/.test(rel)) out = String(out ?? buf).replace(/font-display:optional/g, 'font-display:swap');   // diagnostic only
       if (process.env.FONTS_NO_PF_PRELOAD && side === 'candidate' && /index\.html$/.test(rel)) out = String(out ?? buf).replace(/<link rel="preload" href="fonts\/playfair-display-latin\.[^"]+"[^>]*>/, '');   // diagnostic only
+      if (faceChange && side === 'candidate' && /index\.html$/.test(rel))   // FC-ctrl: a deliberate face change (.acct-nm 650→700 face becomes the 600 face)
+        out = String(out ?? buf).replace('</head>', '<style>.acct-nm{font-weight:600!important}</style></head>');
       if (process.env.FONTS_SYNTH_NONE && side === 'candidate' && /index\.html$/.test(rel))   // diagnostic: Codex step 1 — scoped synthesis suppression, before first use
         out = String(out ?? buf).replace('</head>', '<style>.acct-nm{font-synthesis:none!important}</style></head>');
       if (process.env.FONTS_HEAD && side === 'candidate' && /index\.html$/.test(rel)) {   // diagnostic only: swap head line 25/26 variants
@@ -236,9 +238,6 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
       console.log(`  [debug ${side}]`, JSON.stringify({ path: n.path.slice(-60), family: n.family, weight: n.weight, style: n.style, spaces: n.spaces, text: String.fromCodePoint(...n.codepoints), fonts: n.fonts,
         probe: [...new Set(n.codepoints)].map((cp) => `${String.fromCodePoint(cp)}=${pr.get(`${n.family}|${n.weight}|${n.style}|${cp}`)}`).join(' ') }));
     }
-    if (deterministic && process.env.FONTS_INVALIDATE) {   // diagnostic: the SAME font-cache invalidation on BOTH sides (a throwaway FontFace load)
-      await cdp.ev(`(async () => { const ff = new FontFace('__Invalidate', "local('Arial')"); document.fonts.add(ff); await ff.load(); return true; })()`); await settle(cdp); await sleep(300);
-    }
     if (deterministic && process.env.FONTS_STEP2 === 'probe') {   // Codex step 2: a FRESH «Ana», same typography, opaque surface, same fractional coords
       await cdp.ev(`(() => { const box = document.createElement('div'); box.style.cssText = 'position:fixed;left:250px;top:14px;width:80px;height:40px;background:#fff;z-index:2147483646';
         const t = document.createElement('span'); const cs = getComputedStyle(document.querySelector('.acct-nm'));
@@ -249,9 +248,17 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
     if (deterministic && process.env.FONTS_STEP2 === 'nooverlay') {   // Codex step 2: the dim overlay removed on BOTH sides (the sheet stays)
       await cdp.ev(`(() => { for (const o of document.querySelectorAll('.acct-overlay')) { o.style.background = 'transparent'; o.style.backdropFilter = 'none'; } return true; })()`); await settle(cdp); await sleep(200);
     }
-    const png = deterministic ? Buffer.from((await cdp.s('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })).data, 'base64') : null;
+    const shot = async () => Buffer.from((await cdp.s('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })).data, 'base64');
+    // r6.2 (advisor ruling, Option A): gate (c) compares EQUALIZED state history. The RAW capture is kept as an informational record;
+    // then the SAME font-cache invalidation (a throwaway local() FontFace, which bumps the font-selector version so every existing
+    // text run is re-shaped with all hosted faces available) is applied on BOTH sides, and the NORMALIZED capture is the gated one.
+    // Evidence (x_pizza A-rewards «Ana»): raw 323 px from load order (a LATE Playfair load re-shapes existing text on the baseline);
+    // a fresh probe of the same text = 0; the overlay is ruled out (344 without it); equal invalidation on both sides = 0.
+    const raw = deterministic ? await shot() : null;
+    if (deterministic) { await cdp.ev(`(async () => { const ff = new FontFace('__Invalidate', "local('Arial')"); document.fonts.add(ff); await ff.load(); return true; })()`); await settle(cdp); await sleep(300); }
+    const png = deterministic ? await shot() : null;
     const probe = await attribute(cdp, after.nodes);
-    return { before, after, probe, png };
+    return { before, after, probe, png, raw };
   } finally { cdp.close(); srv.close(); }
 }
 
@@ -382,11 +389,20 @@ for (const site of SITES) {
         check(hostedPainted(base.after.nodes) && hostedPainted(cand.after.nodes), `[${rep}] ${st}: brand faces paint on BOTH sides`);
         const A = [...faceSet(base)].sort(), B = [...faceSet(cand)].sort();
         check(JSON.stringify(A) === JSON.stringify(B), `[${rep}] ${st} gate (a): face sets identical (${B.length})${JSON.stringify(A) === JSON.stringify(B) ? '' : ` base ${JSON.stringify(A)} cand ${JSON.stringify(B)}`}`);
-        const d = pixelDiff(base.png, cand.png);
-        if (d || process.env.FONTS_SAVE) { fs.writeFileSync(path.join(OUT, `${site}-${st}-base.png`), base.png); fs.writeFileSync(path.join(OUT, `${site}-${st}-cand.png`), cand.png); }
-        check(d === 0, `[${rep}] ${st} gate (c): pixel-exact (${d} differing pixels)`);
+        const d = pixelDiff(base.png, cand.png), dRaw = pixelDiff(base.raw, cand.raw);
+        if (d || dRaw || process.env.FONTS_SAVE) for (const [k, b] of [['base', base.png], ['cand', cand.png], ['base-raw', base.raw], ['cand-raw', cand.raw]]) fs.writeFileSync(path.join(OUT, `${site}-${st}-${k}.png`), b);
+        check(d === 0, `[${rep}] ${st} gate (c): pixel-exact, equalized history (${d} differing pixels)`);
+        console.log(`    · ${st} raw (un-normalized, informational): ${dRaw} differing pixels${dRaw ? ' — history-dependent; recorded' : ''}`);
+        record.raw = { ...(record.raw || {}), [st]: dRaw }; record.normalized = { ...(record.normalized || {}), [st]: d };
         for (const [side, r] of [['baseline', base], ['candidate', cand]]) { const bad = gateD(r); check(!bad.length, `[${rep}] ${st} gate (d) ${side}: no silent fallback${bad.length ? ` — ${bad.slice(0, 3).join('; ')}` : ''}`); }
         record.states[st] = { candidate: cand.after.nodes.map((n) => ({ path: n.path, family: n.family, weight: n.weight, runs: runsOf(n, cand.probe).runs.map((x) => ({ font: x.familyName, cps: x.codepoints.length })) })) };
+      }
+      // FC-ctrl (r6.2 condition 3): the normalization cannot hide a REAL face change — inject one on the candidate ⇒ the NORMALIZED gate must FAIL
+      if (states.includes('A-account')) {
+        const b0 = await run(site, { side: 'baseline', stateName: 'A-account', deterministic: true });
+        const c0 = await run(site, { side: 'candidate', stateName: 'A-account', deterministic: true, faceChange: true });
+        const dc = pixelDiff(b0.png, c0.png);
+        check(dc > 0, `[${rep}] FC-ctrl: a deliberate face change (.acct-nm → the 600 face) FAILS the normalized gate (${dc} differing pixels)`);
       }
       const decls = primaryDecls(), reqW = requestedWeights();
       const vb = gateB(byState, decls, reqW);
