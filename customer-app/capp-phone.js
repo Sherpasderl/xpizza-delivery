@@ -46,7 +46,8 @@
     for (let g = 0; g < c.groups.length && i < d.length; g++) { out += c.seps[g] + d.slice(i, i + c.groups[g]); i += c.groups[g]; }
     return out;
   }
-  const valid = (cc, s) => { const c = byCc(cc); return !!c && digits(s).length === c.len; };
+  // a NATIONAL number only: a qualified text ('+…' / '00…', typed into the field before it parses) is never valid as national digits
+  const valid = (cc, s) => { const c = byCc(cc); return !!c && !/^\s*(\+|00)/.test(String(s == null ? '' : s)) && digits(s).length === c.len; };
   const toE164 = (cc, s) => (valid(cc, s) ? '+' + cc + digits(s) : '');
   function parseE164(s) {
     const t = String(s == null ? '' : s).trim();

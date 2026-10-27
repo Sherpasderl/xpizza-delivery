@@ -1385,14 +1385,16 @@
       if (S.flow && fld === 'phone' && intl()) {
         // the country's local format as they type, never past its national length
         const P = phoneMod(), raw = String(t.value || '').trim();
-        // Codex S-picker r1 #1: a QUALIFIED number (a paste / autofill starting '+' or '00') is read as E.164 FIRST — never formatted
-        // into the selected country's national digits. Supported + exact length ⇒ its country and digits together; anything else ⇒
-        // the country kept, the field empty (the CTA's own «Escribí tu WhatsApp»)
+        // Codex S-picker r1 #1 (+ advisor): a QUALIFIED number ('+' or '00') is read as E.164 FIRST — never formatted into the selected
+        // country's digits. It parses (a paste / autofill, or the last digit typed) ⇒ its country and digits together. It does not
+        // parse YET ⇒ the text stays exactly as typed (no formatting, no truncation, the country unchanged) and the order is
+        // incomplete (valid() refuses a qualified text) — so a number can be typed by hand; an unparseable one is cleared on blur
         if (/^(\+|00)/.test(raw)) {
           const q = P.parseE164(raw.replace(/^00/, '+'));
-          const was = ccOf(S.flow);
-          if (q) { S.flow.cc = q.cc; S.flow.phone = P.format(q.cc, q.national); } else { S.flow.cc = was; S.flow.phone = ''; }
-          render(); const ph = $('f-phone'); if (ph) { focusTo(ph); try { ph.setSelectionRange(ph.value.length, ph.value.length); } catch (_) {} }
+          if (q) {
+            S.flow.cc = q.cc; S.flow.phone = P.format(q.cc, q.national);
+            render(); const ph = $('f-phone'); if (ph) { focusTo(ph); try { ph.setSelectionRange(ph.value.length, ph.value.length); } catch (_) {} }
+          } else S.flow.phone = t.value;
           syncCta(); return;
         }
         const cc = ccOf(S.flow), v = P.format(cc, t.value);
@@ -1433,6 +1435,12 @@
     doc.addEventListener('click', onClick);
     doc.addEventListener('input', onInput);
     doc.addEventListener('keydown', onKey);
+    // S-picker: leaving the WhatsApp field with a qualified number that never parsed ⇒ it is cleared (the CTA's «Escribí tu WhatsApp»)
+    function onPhoneOut(ev) {
+      const t = ev.target; if (!t || t.id !== 'f-phone' || !S.flow || !intl()) return;
+      if (/^\s*(\+|00)/.test(String(t.value || '')) && !phoneMod().parseE164(String(t.value).trim().replace(/^00/, '+'))) { t.value = ''; S.flow.phone = ''; syncCta(); }
+    }
+    if (intl()) doc.addEventListener('focusout', onPhoneOut);
     if (!H && doc.defaultView) doc.defaultView.addEventListener('popstate', onPop);
     const unsubBack = H && typeof H.subscribe === 'function' ? H.subscribe(deviceBack) : null;
     render();
@@ -1488,7 +1496,7 @@
         dead = true; placingStop(); otpTickStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }
         S.layerKind = null; const L = $('layer'); if (L) L.innerHTML = '';
         for (const el of [...doc.querySelectorAll('.cq-sheet')]) el.remove();   // the ported «El precio cambió» sheet (capp-confirm-quote)
-        doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); if (!H && doc.defaultView) doc.defaultView.removeEventListener('popstate', onPop); if (typeof unsubBack === 'function') { try { unsubBack(); } catch (_) {} } },
+        doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); doc.removeEventListener('focusout', onPhoneOut); if (!H && doc.defaultView) doc.defaultView.removeEventListener('popstate', onPop); if (typeof unsubBack === 'function') { try { unsubBack(); } catch (_) {} } },
     };
   }
 

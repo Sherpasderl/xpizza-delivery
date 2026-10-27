@@ -24271,8 +24271,8 @@
     "slice": "picker",
     "label": "a number longer than the country's national length is valid",
     "file": "../customer-app/capp-phone.js",
-    "from": "const valid = (cc, s) => { const c = byCc(cc); return !!c && digits(s).length === c.len; };",
-    "to": "const valid = (cc, s) => { const c = byCc(cc); return !!c && digits(s).length >= c.len; };",
+    "from": "  const valid = (cc, s) => { const c = byCc(cc); return !!c && !/^\\s*(\\+|00)/.test(String(s == null ? '' : s)) && digits(s).length === c.len; };",
+    "to": "  const valid = (cc, s) => { const c = byCc(cc); return !!c && !/^\\s*(\\+|00)/.test(String(s == null ? '' : s)) && digits(s).length >= c.len; };",
     "command": [
       "node",
       "--test",
@@ -24366,6 +24366,59 @@
     "kills_with": [
       "never composed into a +504 guess",
       ": no member row"
+    ]
+  },
+  {
+    "id": "picker-11",
+    "slice": "picker",
+    "label": "(advisor) a number typed from «+» is cleared on every keystroke that does not parse yet",
+    "file": "../customer-app/capp-ui.js",
+    "from": "          } else S.flow.phone = t.value;",
+    "to": "          } else { S.flow.phone = ''; t.value = ''; }",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=S-picker",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "kept as typed, never cleared mid-typing"
+    ]
+  },
+  {
+    "id": "picker-12",
+    "slice": "picker",
+    "label": "(advisor) a qualified text in the field is valid as national digits",
+    "file": "../customer-app/capp-phone.js",
+    "from": "  const valid = (cc, s) => { const c = byCc(cc); return !!c && !/^\\s*(\\+|00)/.test(String(s == null ? '' : s)) && digits(s).length === c.len; };",
+    "to": "  const valid = (cc, s) => { const c = byCc(cc); return !!c && digits(s).length === c.len; };",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=S-picker",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a qualified text is never sent as national digits",
+      "incomplete (disabled)"
+    ]
+  },
+  {
+    "id": "picker-13",
+    "slice": "picker",
+    "label": "(advisor) an unparseable qualified number is not cleared on blur",
+    "file": "../customer-app/capp-ui.js",
+    "from": "    if (intl()) doc.addEventListener('focusout', onPhoneOut);\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=S-picker",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "an unsupported number is cleared on blur",
+      "a supported code with the wrong length: refused"
     ]
   }
 ]

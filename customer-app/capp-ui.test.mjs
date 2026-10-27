@@ -2353,15 +2353,36 @@ test('S-picker member path (5f intl recon): a member\'s non-HN number is sent as
   await o.click('#cta'); await o.click('[data-act="tipc"][data-val="0"]'); await o.click('[data-act="tip-place"]'); await o.click('#layer [data-act="placing-go"]');
   assert.equal(o.srv.of('createOrder')[0].body.customer_phone, '+504 9612-3344', 'off: unchanged');
 });
-test('Codex S-picker r1 #1: a pasted / autofilled QUALIFIED number is read as E.164 first — its own country, never truncated into the selected one; an unsupported one is refused, nothing sent', async () => {
+test('Codex S-picker r1 #1: a pasted / autofilled QUALIFIED number is read as E.164 first — its own country, never truncated into the selected one; an unsupported one is refused on blur, nothing sent', async () => {
   for (const [raw, cc, shown] of [['+13055550147', '+1', '(305) 555-0147'], ['+50499990000', '+504', '9999-0000'], ['0013055550147', '+1', '(305) 555-0147'], ['+52 55 1234 5678', '+52', '55 1234 5678']]) {
     const b = bootIntl(); await toCheckout(b); await b.type('#f-phone', raw);
     assert.equal(b.text('.fld .cc'), cc, `🔴 ${raw}: a qualified paste keeps its own country`); assert.equal(b.q('#f-phone').value, shown, `${raw}: its own national digits`);
   }
+  const blur = async (b) => { b.q('#f-phone').dispatchEvent(new b.w.FocusEvent('focusout', { bubbles: true })); await settle(); };
   const g = bootIntl({ config: GUEST, script: CODE_OK }); await intlFilled(g, null, '+44 20 7946 0958'); await g.type('#f-email', 'ana.perez@gmail.com');
-  assert.equal(g.text('.fld .cc'), '+504', 'the country kept'); assert.equal(g.q('#f-phone').value, '', '🔴 an unsupported number is refused (the field empty)');
+  assert.equal(g.q('#f-phone').value, '+44 20 7946 0958', 'while typing: kept as typed'); assert.ok(g.q('#cta').disabled, 'incomplete'); assert.equal(cta(g), 'Escribí tu WhatsApp');
+  g.q('#f-phone').focus(); await blur(g);
+  assert.equal(g.text('.fld .cc'), '+504', 'the country kept'); assert.equal(g.q('#f-phone').value, '', '🔴 an unsupported number is cleared on blur');
   g.q('#cta').dispatchEvent(new g.w.MouseEvent('click', { bubbles: true })); await settle();
   assert.equal(g.srv.of('requestCheckoutCode').length, 0, '🔴 nothing sent for it');
-  const w = bootIntl(); await toCheckout(w); await w.type('#f-phone', '+1305555014');
+  const w = bootIntl(); await toCheckout(w); await w.type('#f-phone', '+1305555014'); await blur(w);
   assert.deepEqual([w.text('.fld .cc'), w.q('#f-phone').value], ['+504', ''], 'a supported code with the wrong length: refused, never truncated');
+});
+test('S-picker (advisor): a number TYPED by hand from «+» is never cleared mid-typing, is never complete as national digits, and resolves to its country when the last digit lands', async () => {
+  const b = bootIntl({ script: { createOrder: [OK_CASH_UI] } }); await intlFilled(b, null, '', 'cash');
+  let typed = '';
+  for (const ch of '+13055550147') {
+    typed += ch; await b.type('#f-phone', typed);
+    if (typed.length < 12) {
+      assert.equal(b.q('#f-phone').value, typed, `🔴 «${typed}»: kept as typed, never cleared mid-typing`);
+      assert.equal(b.text('.fld .cc'), '+504', 'the country unchanged until it parses');
+      assert.ok(b.q('#cta').disabled, `«${typed}»: incomplete (disabled)`); assert.equal(cta(b), 'Escribí tu WhatsApp');
+    }
+  }
+  assert.equal(b.text('.fld .cc'), '+1', 'complete ⇒ its country'); assert.equal(b.q('#f-phone').value, '(305) 555-0147');
+  // a qualified text with exactly 8 digits («+13055550») is NOT a valid Honduras number
+  const h = bootIntl({ config: GUEST, script: CODE_OK }); await intlFilled(h, null, '+13055550'); await h.type('#f-email', 'ana.perez@gmail.com');
+  assert.ok(h.q('#cta').disabled, '🔴 a qualified text is never sent as national digits (the order stays incomplete)');
+  for (const sel of ['#cta', '[data-act="tipc"][data-val="0"]', '[data-act="tip-place"]']) { const e = h.q(sel); if (e) { e.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true })); await settle(); } }
+  assert.equal(h.srv.of('requestCheckoutCode').length, 0, '🔴 a qualified text is never sent as national digits');
 });
