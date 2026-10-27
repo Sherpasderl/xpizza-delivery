@@ -1703,3 +1703,73 @@ test('Codex r4 #2: order A\'s terminal success never carries into order B — an
   const rec = JSON.parse(storage.getItem('capp:rid_a:pending_place')); rec.expires_at = 0; si('capp:rid_a:pending_place', JSON.stringify(rec));   // B's lock expired
   assert.equal(b.ui.deviceBack('leave'), 'blocked', '🔴 an unsettled B never inherits A\'s terminal success');
 });
+
+// ── PLAN-capp-S7a r3.3-F2 [r2 ruling 2] (perf, APPROVED): availability re-checked at DISPATCH + the unavailable-lines gate ──
+// the REAL UI through its own controls; the host's live availability is the Set it mutates (as the shell will), the dispatch read
+// is opts.readAvailability (the forms' loadAvailability semantics: a failed read CLEARS sold-outs — agotado-failopen)
+const sent = (b) => b.srv.of('createOrder').length + b.srv.of('chargeOnlineOrder').length;
+async function toPlacing(b, pay) { await filled(b, pay); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); }
+for (const pay of ['cash', 'online']) {
+  test(`perf r2-2 (${pay}): a dish that sells out DURING the countdown ⇒ the dispatch re-check sends NOTHING, back with the cart open`, async () => {
+    const sold = new Set();
+    const b = bootCo({ script: { chargeOnlineOrder: [{ status: 200, json: { checkout_url: 'https://pay.test/1', poll_token: 'pt_1', attempt_id: 'a1' } }] },
+      mountOpts: { unavailable: sold, readAvailability: () => Promise.resolve([...sold]) } });
+    await toPlacing(b, pay);
+    assert.ok(b.q('#layer [data-act="placing-go"]'), 'premise: «Realizando pedido…» is counting down');
+    sold.add(b.plain.key);   // the host's live read lands mid-countdown
+    b.timers.flush(); await settle();
+    assert.equal(sent(b), 0, '🔴 nothing is dispatched for a line now unavailable');
+    assert.deepEqual(J(b.events.find((e) => e[0] === 'dispatch_refused')), ['dispatch_refused', { reason: 'unavailable', keys: [b.plain.key] }]);
+    assert.ok(b.q('#layer .cline'), 'the cart is open, the line still in it (never removed silently)');
+    assert.notEqual(b.ui.state.screen, 'sending', 'not left on «Enviando»');
+  });
+  test(`perf r2-2 (${pay}): a known-unavailable line gates the CTA before any countdown`, async () => {
+    const sold = new Set();
+    const b = bootCo({ mountOpts: { unavailable: sold, readAvailability: () => Promise.resolve([...sold]) } });
+    await filled(b, pay); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]');
+    sold.add(b.plain.key); b.ui.render(); await settle();
+    assert.equal(b.q('[data-act="tip-place"]').disabled, true, '🔴 the tip step\'s place button is disabled');
+    await b.click('[data-act="tip-place"]');
+    assert.equal(b.q('#layer [data-act="placing-go"]'), null, '🔴 no countdown starts');
+    b.timers.flush(); await settle();
+    assert.equal(sent(b), 0, '🔴 nothing is dispatched');
+  });
+}
+test('perf r2-2: the dispatch read FAILS ⇒ fail-open exactly like the forms — stale sold-outs are CLEARED and the order is sent', async () => {
+  const sold = new Set();
+  const b = bootCo({ mountOpts: { unavailable: sold, readAvailability: () => Promise.reject(new Error('net')) } });
+  await toPlacing(b, 'cash');
+  sold.add(b.plain.key);   // a stale sold-out the failed read cannot confirm
+  b.timers.flush(); await settle();
+  assert.equal(sold.size, 0, 'the failed read cleared the stale sold-out (agotado-failopen)');
+  assert.equal(b.srv.of('createOrder').length, 1, 'the order is sent; the server stays the authority');
+});
+test('perf r2-2: a dispatch read that never answers is bounded (1.5 s) and fails open', async () => {
+  const sold = new Set();
+  const b = bootCo({ mountOpts: { unavailable: sold, readAvailability: () => new Promise(() => {}) } });
+  await toPlacing(b, 'cash');
+  b.timers.flush(); await settle();   // the countdown → send → the re-check is pending on its bound
+  assert.equal(b.srv.of('createOrder').length, 0, 'premise: waiting on the bounded read');
+  assert.ok([...b.timers.ms.values()].includes(1500), 'the bound is 1.5 s');
+  b.timers.flush(); await settle();
+  assert.equal(b.srv.of('createOrder').length, 1, 'the bound expired ⇒ fail-open ⇒ sent');
+});
+test('perf r2-2: a function-form availability input is overridden by the fresh dispatch read (it cannot be mutated)', async () => {
+  let key = null;
+  const b = bootCo({ mountOpts: { unavailable: () => false, readAvailability: () => Promise.resolve([key]) } });
+  key = b.plain.key;
+  await toPlacing(b, 'cash');
+  b.timers.flush(); await settle();
+  assert.equal(b.srv.of('createOrder').length, 0, '🔴 the fresh read says sold ⇒ nothing sent');
+});
+test('perf r2-2 (pickup): a known-unavailable line disables «Confirmar pedido» on «Entrega & Pago» (pickup places from there)', async () => {
+  const sold = new Set();
+  const b = bootCo({ mountOpts: { unavailable: sold, readAvailability: () => Promise.resolve([...sold]) } });
+  await toCheckout(b); await b.click('[data-act="type"][data-val="pickup"]');
+  await b.type('#f-name', 'Ana'); await b.type('#f-phone', '99990000'); await b.click('[data-act="pay"][data-val="cash"]');
+  assert.equal(b.q('#cta').disabled, false, 'premise: ready to place');
+  sold.add(b.plain.key); b.ui.render(); await settle();
+  assert.equal(b.q('#cta').disabled, true, '🔴 the pickup CTA is disabled for an unavailable line');
+  await b.click('#cta'); b.timers.flush(); await settle();
+  assert.equal(b.srv.of('createOrder').length, 0, 'nothing is dispatched');
+});

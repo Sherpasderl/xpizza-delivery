@@ -1,0 +1,1 @@
+ return 'Cambió el precio de ' + e.name + ': antes L ' + Number(e.from).toFixed(0) + ', ahora L ' + Number(e.to).toFixed(0) + '.'; 

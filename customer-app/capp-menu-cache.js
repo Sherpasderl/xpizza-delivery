@@ -10,6 +10,10 @@
 //   • the deadlines apply at READ time too (peek / complete / what subscribers receive), also while a revalidation is pending:
 //     older than FRESH_MS ⇒ stale (renderable, search partial); older than STALE_MS ⇒ failed (Codex r2 New 5)
 //   • one retry on a network error / 5xx — on every request, the validator-less re-fetch after an unusable 304 included (New 6)
+//   • PLAN-capp-S7a r3.3-F2 (perf, APPROVED): a PERSISTED last-known body enters as its own state, `presentation` — renderable for
+//     browsing only, its ORIGINAL fetched_at kept, expiring PRESENT_MS (24 h) after it; never fresh, never stale, never complete.
+//     It is not a cache hit (get() always requests, with its etag); a validated 200 or a 304 matching its etag promotes it to
+//     fresh; a failed request leaves it presentation until it expires. The fresh / stale / failed deadlines are untouched.
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -17,7 +21,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const CONCURRENCY = 3, FRESH_MS = 60 * 1000, STALE_MS = 10 * 60 * 1000;
+  const CONCURRENCY = 3, FRESH_MS = 60 * 1000, STALE_MS = 10 * 60 * 1000, PRESENT_MS = 24 * 60 * 60 * 1000, SKEW_MS = 5 * 60 * 1000;
 
   // fetchEnvelope(rid, etag|null) → Promise<{ status, body?, etag? }> (status 0 = network failure)
   function createMenuCache(opts) {
@@ -25,6 +29,9 @@
     const fetchEnvelope = o.fetchEnvelope;
     const now = o.now || (() => Date.now());
     const limit = o.concurrency || CONCURRENCY;
+    // the persisted record's body check (the shell passes the real adapter: rid match + CappMenu.adaptMenu succeeds)
+    const validBody = typeof o.validateBody === 'function' ? o.validateBody : (rid, body) => !!body && typeof body === 'object' && body.rid === rid;
+    const persist = typeof o.persist === 'function' ? o.persist : null;   // (rid, { v:1, rid, etag, fetched_at, body }) on every network-fresh body
     const entries = new Map(), inflight = new Map(), listeners = new Map();
     const queue = []; let active = 0;
     const notify = (rid) => { for (const fn of [...(listeners.get(rid) || [])]) { try { fn(peek(rid)); } catch (_) {} } };
@@ -49,12 +56,13 @@
       const r = await attemptRetry(rid, etag);
       let next;
       if (r.status === 304) {
-        if (etag && cur && cur.body && cur.etag === etag) next = { ...cur, state: 'fresh', fetched_at: now(), gen };   // the retained body IS that etag
+        if (etag && cur && cur.body && cur.etag === etag) next = { body: cur.body, etag: cur.etag, state: 'fresh', fetched_at: now(), gen };   // the retained body IS that etag (a presentation body is promoted here)
         else { const f = await attemptRetry(rid, null); next = okBody(rid, f, gen) || failOf(cur, gen); }   // no matching body ⇒ re-fetch without a validator
       } else {
         next = okBody(rid, r, gen) || failOf(cur, gen);
       }
       entries.set(rid, next); notify(rid);
+      if (persist && next.state === 'fresh') { try { persist(rid, { v: 1, rid, etag: next.etag, fetched_at: next.fetched_at, body: next.body }); } catch (_) {} }
       return next;
     }
     function okBody(rid, r, gen) {
@@ -62,6 +70,7 @@
       return null;
     }
     function failOf(cur, gen) {
+      if (cur && cur.state === 'presentation' && now() < cur.presented_until) return { ...cur, gen };   // stays browse-only until it expires
       if (cur && cur.body && now() - cur.fetched_at < STALE_MS) return { ...cur, state: 'stale', gen };
       return { body: null, etag: null, fetched_at: cur ? cur.fetched_at : 0, state: 'failed', gen };
     }
@@ -77,11 +86,26 @@
     // body dropped); a fresh body past FRESH_MS ⇒ stale (renderable, never complete) until a revalidation lands
     function peek(rid) {
       const e = entries.get(rid); if (!e) return null;
+      if (e.state === 'presentation') return now() < e.presented_until ? e : null;   // its own clock: the ORIGINAL age + 24 h
       if (e.state === 'failed') return e;
       const age = now() - e.fetched_at;
       if (age >= STALE_MS) return { ...e, state: 'failed', body: null };
       if (e.state === 'fresh' && age >= FRESH_MS) return { ...e, state: 'stale' };
       return e;
+    }
+    // a persisted record → `presentation`, only if valid: v:1, the rid matches, the body passes validateBody, younger than
+    // PRESENT_MS by its ORIGINAL fetched_at (never refreshed by a read), and not from the future beyond SKEW_MS (clock anomaly).
+    // A body already held in memory (fresh / stale / pending) is never replaced by an older persisted one.
+    function seed(rid, rec) {
+      if (entries.has(rid)) return false;
+      if (!rec || typeof rec !== 'object' || rec.v !== 1 || rec.rid !== rid || !Number.isFinite(rec.fetched_at)) return false;
+      const t = now();
+      if (rec.fetched_at > t + SKEW_MS || t - rec.fetched_at >= PRESENT_MS) return false;
+      let ok = false; try { ok = !!validBody(rid, rec.body); } catch (_) { ok = false; }
+      if (!ok) return false;
+      entries.set(rid, { body: rec.body, etag: typeof rec.etag === 'string' && rec.etag ? rec.etag : null, fetched_at: rec.fetched_at, state: 'presentation', presented_until: rec.fetched_at + PRESENT_MS, gen: 0 });
+      notify(rid);
+      return true;
     }
     function subscribe(rid, fn) {
       if (!listeners.has(rid)) listeners.set(rid, new Set());
@@ -90,8 +114,8 @@
     }
     // search completeness: every listed rid has a FRESH body (stale / failed / missing ⇒ partial)
     const complete = (rids) => rids.every((rid) => { const e = peek(rid); return !!e && e.state === 'fresh'; });
-    return { get, peek, subscribe, complete, _active: () => active, _queued: () => queue.length };
+    return { get, peek, seed, subscribe, complete, _active: () => active, _queued: () => queue.length };
   }
 
-  return { createMenuCache, CONCURRENCY, FRESH_MS, STALE_MS };
+  return { createMenuCache, CONCURRENCY, FRESH_MS, STALE_MS, PRESENT_MS, SKEW_MS };
 });

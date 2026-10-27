@@ -125,7 +125,10 @@
     const menu = CappMenu.adaptMenu(opts.envelope);
     const cfg = opts.config || {};
     const unavailable = opts.unavailable || new Set();
-    const soldOf = (key) => { try { return typeof unavailable === 'function' ? !!unavailable(key) : unavailable.has(key); } catch (_) { return false; } };
+    // PLAN-capp-S7a r3.3-F2 (perf, APPROVED): a dispatch re-check's result. A Set input is updated IN PLACE (the host's own state);
+    // a function input cannot be, so the fresh read overrides it from then on (null = no re-check has run)
+    let availOverride = null;
+    const soldOf = (key) => { try { if (availOverride) return availOverride.has(key); return typeof unavailable === 'function' ? !!unavailable(key) : unavailable.has(key); } catch (_) { return false; } };
     const now = opts.now || (() => new Date());
     let dead = false;   // S2b r1 P2-3: destroy() ⇒ every later callback of this instance is a no-op
     const emit = (name, detail) => { if (dead) return; try { (opts.onEvent || (() => {}))(name, detail); } catch (_) {} };
@@ -496,7 +499,11 @@
     const poKeys = new Set(); for (const s of sections) if (s.pickupOnly) for (const it of s.items) { poKeys.add(it.id); if (it.group) for (const c of it.group.choices) poKeys.add(c.id); }
     const poLines = () => cart.lines().filter((l) => poKeys.has(l.key));
     const sectionOfKey = (k) => sections.find((s) => s.items.some((it) => it.id === k || (it.group && it.group.choices.some((c) => c.id === k))));
-    const gateCtx = () => ({ open: isOpen(), closedRefused: S.closedRefused, pickupOnlyCount: poLines().length, outZone: S.outZone, member: member() });
+    // r3.3-F2: a cart line whose dish (or its choice's launcher) is known unavailable NOW blocks placement — cash and card alike (no
+    // new copy: the line carries the drawn «Agotado» mark; the CTA stays as labelled, disabled)
+    const soldLines = () => cart.lines().filter((l) => isSold(find(l.key)));
+    const soldBlock = () => soldLines().length > 0;
+    const gateCtx = () => ({ open: isOpen(), closedRefused: S.closedRefused, pickupOnlyCount: poLines().length, outZone: S.outZone, member: member(), unavailableLines: soldLines().length });
     const need = () => C.missingStep(S.flow, gateCtx());
     function ctaLabel(T) {
       const n = need(); if (n) return n;
@@ -504,7 +511,7 @@
       const amt = T.ready ? ' · ' + moneyC(T.total) : '';   // pickup places from here (no tip); no amount until the quote is ready
       return S.flow.pay === 'online' ? 'Pagar' + amt : 'Confirmar pedido' + amt;
     }
-    const ctaOff = (T) => !!need() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));   // pickup places from here
+    const ctaOff = (T) => !!need() || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));   // pickup places from here
     function syncCta() { const b = $('cta'); if (!b || !S.flow) return; const T = totalsNow(); b.disabled = ctaOff(T); b.textContent = ctaLabel(T); }
 
     // ── the map: the drawn chrome; a real Google map inside it when a key is configured, else the schematic SVG ──
@@ -653,7 +660,7 @@
 
     // ── the tip step (prototype tipHtml :1954-1961) ──
     const tipKey = () => { const c = S.flow.tipChoice; return c === null ? null : c.kind === 'none' ? 0 : c.kind === 'other' ? 'other' : c.lempiras; };
-    const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need() && intakeOk();
+    const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need() && !soldBlock() && intakeOk();
     function tipHtml() {
       const f = S.flow, T = totalsNow(), c = tipKey();
       const chip = (v, label) => `<button class="chip" aria-pressed="${c === v}" data-act="tipc" data-val="${v}">${label}</button>`;
@@ -705,12 +712,32 @@
       ${prow(f.pay === 'online' ? IC.card : IC.cash, (f.pay === 'online' ? 'Tarjeta · PixelPay' : 'Efectivo ' + (del ? 'al entregar' : 'al recoger')) + (st.total !== null ? ' · ' + moneyC(st.total) : ''), st.tip ? 'Incluye propina ' + moneyC(st.tip) : 'Pago')}
       <p class="shint">${esc(S.sendHint || 'Esto toma unos segundos')}</p></div></div>`;
     }
+    // r3.3-F2 [r2 ruling 2]: availability is re-read at DISPATCH (after the countdown, behind the painted «Enviando»), bounded at
+    // AVAIL_RECHECK_MS, with the forms' FAIL-OPEN rule: a failed / non-OK / timed-out read CLEARS the sold-outs (agotado-failopen).
+    // opts.readAvailability() → Promise<iterable of sold dish keys | null on failure>. Absent ⇒ no re-check (today's behaviour).
+    const AVAIL_RECHECK_MS = 1500;
+    async function recheckAvailability() {
+      let keys = null;
+      try {
+        keys = await new Promise((res) => { const t = T_.setTimeout(() => res(null), AVAIL_RECHECK_MS); Promise.resolve().then(() => opts.readAvailability()).then((v) => { T_.clearTimeout(t); res(v); }, () => { T_.clearTimeout(t); res(null); }); });
+      } catch (_) { keys = null; }
+      const fresh = new Set(); try { if (keys) for (const k of keys) fresh.add(String(k)); } catch (_) { fresh.clear(); }
+      if (unavailable && typeof unavailable !== 'function' && typeof unavailable.clear === 'function' && typeof unavailable.add === 'function') { unavailable.clear(); for (const k of fresh) unavailable.add(k); }
+      else availOverride = fresh;
+    }
     async function send() {
       const f = S.flow, T = totalsNow();
       if (dead || !intakeOk() || !T.ready || !mods()) return;   // no key ⇒ nothing is sent (the record stays clean)
       let c; try { c = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { return; }   // the key only where the server requires it
       const attempt = ++attemptSeq; S.terminal = null;   // Codex r4 #2: THIS attempt's settled outcome only
       S.screen = 'sending'; S.sendHint = null; S.sendTotals = { total: T.total, tip: T.tip }; render();
+      if (typeof opts.readAvailability === 'function') {
+        await recheckAvailability();   // the FRESH read decides (a stale sold-out is cleared on failure, never trusted)
+        if (dead || attempt !== attemptSeq) return;
+      }
+      // a line known unavailable at dispatch (incl. one that sold out during the countdown): NOTHING is sent — back to where the
+      // customer tapped, the cart open with the line still in it
+      if (soldBlock()) { emit('dispatch_refused', { reason: 'unavailable', keys: soldLines().map((l) => l.key) }); backTo(); openLayer('cart'); return; }
       // S2b r1 P2-7: an accepted price change ⇒ «Enviando» shows the ceiling actually sent
       const onExpected = (cents) => { if (dead || !Number.isFinite(cents)) return; S.sendTotals = { total: cents, tip: T.tip }; if (S.screen === 'sending') render(); };
       let out;

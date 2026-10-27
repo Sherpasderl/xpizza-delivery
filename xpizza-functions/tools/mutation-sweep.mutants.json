@@ -22136,8 +22136,8 @@
     "slice": "s7a1",
     "label": "a 304 accepted without the retained matching body",
     "file": "../customer-app/capp-menu-cache.js",
-    "from": "if (etag && cur && cur.body && cur.etag === etag) next = { ...cur, state: 'fresh', fetched_at: now(), gen };",
-    "to": "if (true) next = { ...cur, state: 'fresh', fetched_at: now(), gen };",
+    "from": "if (etag && cur && cur.body && cur.etag === etag) next = { body: cur.body, etag: cur.etag, state: 'fresh', fetched_at: now(), gen };",
+    "to": "if (true) next = { body: cur && cur.body, etag: cur && cur.etag, state: 'fresh', fetched_at: now(), gen };",
     "command": [
       "node",
       "--test",
@@ -22145,7 +22145,8 @@
     ],
     "kills_with": [
       "304 requires the retained matching body"
-    ]
+    ],
+    "repointed": "perf-core (2026-10-27): the 304 promotion builds the fresh entry explicitly (a presentation entry's fields are dropped); same mutation — any 304 accepted"
   },
   {
     "id": "s7a1-19",
@@ -22500,6 +22501,381 @@
     "kills_with": [
       "✗ F4-warm: the faces are LOADED",
       "✗ F4-warm: a heading at weight"
+    ]
+  },
+  {
+    "id": "perf-core-1",
+    "slice": "perf-core",
+    "label": "r3.4-1: a provenance cart serializes no provenance",
+    "file": "../customer-app/capp-cart.js",
+    "from": "if (!provenance) return { v: 2, lines: api.lines() };",
+    "to": "if (true) return { v: 2, lines: api.lines() };",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "the per-instance provenance, in cents"
+    ]
+  },
+  {
+    "id": "perf-core-2",
+    "slice": "perf-core",
+    "label": "r3.4-1: a clone re-snapshots instead of copying its source",
+    "file": "../customer-app/capp-cart.js",
+    "from": "[...l.sn, copySeen(l.sn[i])]",
+    "to": "[...l.sn, seenFor(l.key, l.ex[i])]",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "the clone carries its source"
+    ]
+  },
+  {
+    "id": "perf-core-3",
+    "slice": "perf-core",
+    "label": "r3.4-1: an edit keeps no provenance for the edited instances",
+    "file": "../customer-app/capp-cart.js",
+    "from": "...Array.from({ length: n }, () => seenFor(d.key, instOf(cfg)))];",
+    "to": "...Array.from({ length: n }, () => null)];",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "the edited instance carries the prices the sheet showed"
+    ]
+  },
+  {
+    "id": "perf-core-4",
+    "slice": "perf-core",
+    "label": "r3.4-1: the current unit ignores the instance's extras",
+    "file": "../customer-app/capp-cart.js",
+    "from": "const nowUnit = cents(d.price) + Object.keys(x).reduce((a, k) => a + cents(menu.extra(k).price), 0);",
+    "to": "const nowUnit = cents(d.price);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "nothing changed against its own menu"
+    ]
+  },
+  {
+    "id": "perf-core-5",
+    "slice": "perf-core",
+    "label": "r3.4-1: hydrate trusts a malformed `seen`",
+    "file": "../customer-app/capp-cart.js",
+    "from": "raw.seen.length === inst.length ? validSeen(raw.seen[i], x) : null",
+    "to": "raw.seen.length === inst.length ? raw.seen[i] : null",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "wrong extra set: no disclosure"
+    ]
+  },
+  {
+    "id": "perf-core-6",
+    "slice": "perf-core",
+    "label": "r3.3-F2: presentation never expires at peek",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "if (e.state === 'presentation') return now() < e.presented_until ? e : null;",
+    "to": "if (e.state === 'presentation') return e;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "24 h 01 m: gone"
+    ]
+  },
+  {
+    "id": "perf-core-7",
+    "slice": "perf-core",
+    "label": "r3.3-F2: a failed request demotes presentation",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "      if (cur && cur.state === 'presentation' && now() < cur.presented_until) return { ...cur, gen };   // stays browse-only until it expires\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "a failure keeps the browse view"
+    ]
+  },
+  {
+    "id": "perf-core-8",
+    "slice": "perf-core",
+    "label": "r3.3-F2: seed refreshes fetched_at (24 h by refresh)",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "fetched_at: rec.fetched_at, state: 'presentation'",
+    "to": "fetched_at: t, state: 'presentation'",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "the ORIGINAL fetched_at and its 24 h expiry"
+    ]
+  },
+  {
+    "id": "perf-core-9",
+    "slice": "perf-core",
+    "label": "r3.3-F2: seed accepts a record from the future",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "if (rec.fetched_at > t + SKEW_MS || t - rec.fetched_at >= PRESENT_MS) return false;",
+    "to": "if (t - rec.fetched_at >= PRESENT_MS) return false;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "future"
+    ]
+  },
+  {
+    "id": "perf-core-10",
+    "slice": "perf-core",
+    "label": "r3.3-F2: a 304 promotion keeps the presentation fields",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "next = { body: cur.body, etag: cur.etag, state: 'fresh', fetched_at: now(), gen };",
+    "to": "next = { ...cur, state: 'fresh', fetched_at: now(), gen };",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "promoted to fresh, the presentation fields dropped"
+    ]
+  },
+  {
+    "id": "perf-core-11",
+    "slice": "perf-core",
+    "label": "r3.3-F2: the fingerprint hashes non-canonical JSON",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "new TextEncoder().encode(canonicalJson(envelope))",
+    "to": "new TextEncoder().encode(JSON.stringify(envelope))",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "key order is not content"
+    ]
+  },
+  {
+    "id": "perf-core-12",
+    "slice": "perf-core",
+    "label": "r3.3-F1: the window includes its 60th second",
+    "file": "../customer-app/capp-eligibility.js",
+    "from": "return age >= 0 && age < windowMs ? 'enterable' : 'held';",
+    "to": "return age >= 0 && age <= windowMs ? 'enterable' : 'held';",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "60 s after the last success"
+    ]
+  },
+  {
+    "id": "perf-core-13",
+    "slice": "perf-core",
+    "label": "r3.3-F1: a partial response tombstones",
+    "file": "../customer-app/capp-eligibility.js",
+    "from": "if (complete === true) for (const rid",
+    "to": "if (true) for (const rid",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "a partial verifies what it lists and never tombstones"
+    ]
+  },
+  {
+    "id": "perf-core-14",
+    "slice": "perf-core",
+    "label": "r3.3-F5: the 10 s timeout assumes guest",
+    "file": "../customer-app/capp-auth-state.js",
+    "from": "timer = T.setTimeout(() => { timer = null; if (st === 'unresolved') set('unavailable'); }, limit);",
+    "to": "timer = T.setTimeout(() => { timer = null; if (st === 'unresolved') set('guest'); }, limit);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "not guest"
+    ]
+  },
+  {
+    "id": "perf-core-15",
+    "slice": "perf-core",
+    "label": "r3.3-F5: an identity tap resolves before auth does",
+    "file": "../customer-app/capp-auth-state.js",
+    "from": "whenResolved: () => (st === 'unresolved' ? new Promise((r) => waiters.push(r)) : Promise.resolve(st)),",
+    "to": "whenResolved: () => Promise.resolve(st === 'unresolved' ? 'guest' : st),",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "never assumed guest while unresolved"
+    ]
+  },
+  {
+    "id": "perf-core-16",
+    "slice": "perf-core",
+    "label": "r3.3-F2 r2-2: no availability re-read at dispatch",
+    "file": "../customer-app/capp-ui.js",
+    "from": "        await recheckAvailability();   // the FRESH read decides",
+    "to": "        // (no re-check)",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the failed read cleared the stale sold-out"
+    ]
+  },
+  {
+    "id": "perf-core-17",
+    "slice": "perf-core",
+    "label": "r3.3-F2 r2-2: a failed read keeps stale sold-outs",
+    "file": "../customer-app/capp-ui.js",
+    "from": "unavailable.clear(); for (const k of fresh) unavailable.add(k); }",
+    "to": "for (const k of fresh) unavailable.add(k); }",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the failed read cleared the stale sold-out"
+    ]
+  },
+  {
+    "id": "perf-core-18",
+    "slice": "perf-core",
+    "label": "r3.3-F2 r2-2: dispatch ignores a known-unavailable line",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (soldBlock()) { emit('dispatch_refused',",
+    "to": "if (false) { emit('dispatch_refused',",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "nothing is dispatched for a line now unavailable"
+    ]
+  },
+  {
+    "id": "perf-core-19",
+    "slice": "perf-core",
+    "label": "r3.3-F2 r2-2: the tip step can place an unavailable line (delivery)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need() && !soldBlock() && intakeOk();",
+    "to": "const tipReady = (T) => C.tipChosen(S.flow) && T.ready && !need() && intakeOk();",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the tip step's place button is disabled"
+    ]
+  },
+  {
+    "id": "perf-core-20",
+    "slice": "perf-core",
+    "label": "r3.3-F2 r2-2: the dispatch read is not bounded at 1.5 s",
+    "file": "../customer-app/capp-ui.js",
+    "from": "const AVAIL_RECHECK_MS = 1500;",
+    "to": "const AVAIL_RECHECK_MS = 15000;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the bound is 1.5 s"
+    ]
+  },
+  {
+    "id": "perf-core-21",
+    "slice": "perf-core",
+    "label": "r3.3-F2 r2-2: a function-form input ignores the fresh read",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      else availOverride = fresh;\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the fresh read says sold"
+    ]
+  },
+  {
+    "id": "perf-core-22",
+    "slice": "perf-core",
+    "label": "r3.4-2: the capp notice copy drifts from the forms'",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "': antes L ' + Number(e.from)",
+    "to": "': ante L ' + Number(e.from)",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-price-notice-copy.test.mjs"
+    ],
+    "kills_with": [
+      "the capp copy drifted"
+    ]
+  },
+  {
+    "id": "perf-core-23",
+    "slice": "perf-core",
+    "label": "r3.3-F2 r2-2: «Confirmar pedido» (pickup) can place an unavailable line",
+    "file": "../customer-app/capp-ui.js",
+    "from": "const ctaOff = (T) => !!need() || soldBlock() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
+    "to": "const ctaOff = (T) => !!need() || (S.flow.mode !== 'delivery' && (!T.ready || !intakeOk()));",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the pickup CTA is disabled for an unavailable line"
     ]
   }
 ]

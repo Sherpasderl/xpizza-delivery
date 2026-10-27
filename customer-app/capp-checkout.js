@@ -221,7 +221,22 @@
     return Number.isFinite(ct) && ct >= totalCents && ct > 0 ? ct - totalCents : null;
   }
 
+  // PLAN-capp-S7a r3.3-F2 [r2] (Codex perf r2 New-2): "is the served menu unchanged?" is a CONTENT FINGERPRINT of the RAW envelope —
+  // sha-256 over THIS file's canonicalJson (one canonical form in the app) — never deep equality of adapted models (they carry
+  // functions). The envelope body carries no transport metadata (the etag is an HTTP header). WebCrypto, so async.
+  async function menuFingerprint(envelope) {
+    if (!envelope || typeof envelope !== 'object' || !envelope.menu || typeof envelope.menu !== 'object') throw new Error('capp-checkout: no menu in the envelope');
+    const subtle = typeof crypto !== 'undefined' && crypto ? crypto.subtle : null;
+    if (!subtle) throw new Error('capp-checkout: no WebCrypto');
+    const buf = await subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson(envelope)));
+    return [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
+  }
+  // PLAN 5 (owner-approved repriced-cart pattern, DECISIONS 2026-10-26 (1)) — the notice copy, ONE source with the forms: this
+  // body is pinned byte-equal to the forms' priceNoticeText (fixtures/price-notice-text.body.txt, from b8ba8467; S7a r3.4-2).
+  // Unit prices in LEMPIRAS (the caller converts cents). Not rendered yet: the capp notice UI waits on the owner's frame 13.
+  function priceNoticeText(e){ return 'Cambió el precio de ' + e.name + ': antes L ' + Number(e.from).toFixed(0) + ', ahora L ' + Number(e.to).toFixed(0) + '.'; }
+
   return { TIP_PRESETS, TIP_MAX_LEMPIRAS, ENTRY_MODE, COPY, CLOSED_SHEET, freshFlow, setMode, setPin, chooseTip, tipCentsOf, tipChosen,
     isOpenAt, closingAt, missingStep, canonicalJson, sigInput, cartSig, quoteBody, orderBody, totals, changeCents, fullPhone,
-    areaFromGeocode, routeFrom, applyGeocode, displayArea, addrLine };
+    areaFromGeocode, routeFrom, applyGeocode, displayArea, addrLine, menuFingerprint, priceNoticeText };
 });
