@@ -90,5 +90,8 @@ S.zero = await call(await world({ inactive: ['x_pizza', 'la_musa'] }));   // the
 S.unavailable_503 = await call(await world({ registryFails: true }));
 S.tombstone = await call(await world({ inactive: ['la_musa'] }));
 S.fee_none = await call(await world({ pricing: { ...PRICING, la_musa: { fee: { state: 'none' }, promo: null, coverage_km: 9.66 } } }));
+// the CONTENT pin (Codex s7a2 r1 #10): sha-256 over the canonical JSON (sorted keys) of every scenario — a hand edit fails the test
+const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
+out.scenarios_sha256 = createHash('sha256').update(canon(out.scenarios)).digest('hex');
 writeFileSync(join(dirname(fileURLToPath(import.meta.url)), 'directory.json'), JSON.stringify(out, null, 2) + '\n');
 console.log(Object.entries(S).map(([k, v]) => `${k} ${v.status} ${v.body ? (v.body.complete === undefined ? '' : 'complete=' + v.body.complete) + ' n=' + (v.body.restaurants || []).length : ''}`).join('\n'));

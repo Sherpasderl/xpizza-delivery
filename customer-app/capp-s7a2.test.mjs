@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -31,6 +32,12 @@ const BODY_FIELDS = ['representation_version', 'complete', 'platform', 'restaura
 test('contract fake: produced by the pinned 5f commit; every 200 body is exactly the 5f schema; the declared statuses / validators', () => {
   assert.equal(FX.source.commit, 'eb6d9558d2bea94bbb2d0a1829db3be72d07a419');
   assert.equal(FX.source.blobs['directory/directory.js'], 'b462c1b21704e47565e5907e86b80fed8de9ed3a', 'the handler blob the fixture came from');
+  // Codex s7a2 r1 #10: the CONTENTS are pinned — the generator's digest of every scenario, recomputed here and pinned literally (a hand
+  // edit, e.g. a fee, fails; a regeneration from the real handler that changes anything must update this line on purpose)
+  const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
+  const digest = createHash('sha256').update(canon(FX.scenarios)).digest('hex');
+  assert.equal(digest, FX.scenarios_sha256, '🔴 the fixture contents match the digest its generator wrote');
+  assert.equal(digest, '115f98189d64c572ba996d56c2bae0827f81e0a4de54fd65a88e6195f6381a14', '🔴 the fixture contents are the pinned generation');
   for (const [k, s] of Object.entries(SC)) {
     if (s.status !== 200) continue;
     assert.deepEqual(Object.keys(s.body), BODY_FIELDS, `${k}: body schema`);
