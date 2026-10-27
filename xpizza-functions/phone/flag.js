@@ -4,7 +4,7 @@
 // stale `true` is never retained. OFF = today's sanitizePhone verbatim; ON = phone/intl.js parseSubmitted (the wire contract).
 // Each intake handler reads it ONCE per request and passes it down. Owner flips it after the read-only phone census.
 // step 5 (advisor ruling, Option S — the FLIP-ORDER guard): ON only for the census-backed object
-//   { enabled: true, enabled_at: <ms>, census: { flip_safe: true, generated_at: <ms>, orders_in_window: <int ≥ 0> } }
+//   { enabled: true, enabled_at: <ms>, census: { flip_safe: true, generated_at: <ms>, orders_in_window: <int ≥ 1> } }
 // with generated_at ≤ enabled_at ≤ now and enabled_at − generated_at ≤ 7 days (a stale census cannot authorize a flip; checked
 // against the FLIP time, so a valid flip never expires). Anything else present → OFF + console.error('phone_wire_strict_refused',
 // <reason>) — no phone, no value echoed. Absent / enabled:false → OFF, silently.
@@ -17,7 +17,7 @@ function strictRefusal(v, now) {
   if (!c || typeof c !== 'object') return 'census_missing';
   if (c.flip_safe !== true) return 'census_not_flip_safe';
   if (!Number.isFinite(c.generated_at)) return 'census_generated_at_invalid';
-  if (!Number.isInteger(c.orders_in_window) || c.orders_in_window < 0) return 'census_orders_in_window_invalid';
+  if (!Number.isInteger(c.orders_in_window) || c.orders_in_window < 1) return 'census_orders_in_window_invalid';   // > 0, as the census generator requires (codex r1 #3)
   if (!Number.isFinite(v.enabled_at)) return 'enabled_at_invalid';
   if (v.enabled_at > now) return 'enabled_at_in_future';
   if (c.generated_at > v.enabled_at) return 'census_after_enable';
