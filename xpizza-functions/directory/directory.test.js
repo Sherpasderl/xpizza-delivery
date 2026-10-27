@@ -195,8 +195,50 @@ const allKeys = (v, acc = new Set()) => { if (Array.isArray(v)) v.forEach((x) =>
     assert.ok(!('house_hidden' in dirEmpty.body.restaurants[0]), 'DIR-HOUSE-HIDDEN-NOT-SERVED-RAW');
     await SEED.run(db, { tb_a: { house: realIds } }, { apply: true, force: true }, quiet);
     assert.deepStrictEqual([db.store['restaurants/tb_a/presentation'].house, db.store['restaurants/tb_a/presentation'].house_hidden], [realIds, undefined], 'SEEDP-HOUSE-LIST-CLEARS-HIDDEN');
-    await assert.rejects(() => SEED.run(db, { tb_a: { ...PRES, house: 'x' } }, { apply: true, force: true }, quiet), /presentation invalid house/, 'SEEDP-VALIDATES');
+    { const before = JSON.stringify(db.store['restaurants/tb_a/presentation']);
+      const r = await SEED.run(db, { tb_a: { ...PRES, house: 'x' } }, { apply: true, force: true }, quiet);
+      assert.ok(r.tb_a.rejected && r.tb_a.rejected.some((e) => /invalid house/.test(e)), `SEEDP-VALIDATES ${JSON.stringify(r)}`);
+      assert.strictEqual(JSON.stringify(db.store['restaurants/tb_a/presentation']), before, 'SEEDP-VALIDATES rejected rid untouched'); }
     ok('presentation (real-RTDB fake): canonical dish ids (minted + grandfathered, case kept); house:[] persists as house_hidden and is served as []; absent ≠ empty; per-field no-clobber unless --force; dry-run writes nothing');
+  }
+
+  // ── 7b. Codex directory r2: explicit-empty taxonomy CLEARS; a rejection is per restaurant; --force repairs a house conflict ──
+  {
+    const norm = (v) => {
+      if (v === null || v === undefined) return undefined;
+      if (Array.isArray(v)) { const a = v.map(norm).filter((x) => x !== undefined); return a.length ? a : undefined; }
+      if (typeof v === 'object') { const o = {}; for (const k of Object.keys(v).sort()) { const x = norm(v[k]); if (x !== undefined) o[k] = x; } return Object.keys(o).length ? o : undefined; }
+      return v;
+    };
+    const mkRtdb = (init = {}) => { const store = {}; for (const [k, v] of Object.entries(init)) store[k] = norm(v);
+      return { store, ref: (p) => ({ once: async () => ({ val: () => (store[p] === undefined ? null : JSON.parse(JSON.stringify(store[p]))) }),
+        update: async (patch) => { const cur = { ...(store[p] || {}) }; for (const [k, v] of Object.entries(patch)) { const x = norm(v); if (x === undefined) delete cur[k]; else cur[k] = x; } store[p] = norm(cur); } }) }; };
+    const P = (rid) => `restaurants/${rid}/presentation`;
+    const lines = []; const log = (l) => lines.push(l);
+    // P2-1: {} / [] clear an existing assignment (with --force); a rejected rid is reported and the REST of the batch still runs
+    const db = mkRtdb({ [P('tb_a')]: { meals: { pizzas: 'compartir' }, cuisines: ['pizza'], kicker: 'k' }, [P('tb_c')]: { kicker: 'old' } });
+    const r = await SEED.run(db, { tb_a: { meals: {}, cuisines: [] }, tb_bad: { house: 'x' }, tb_c: { kicker: 'new' }, 'BAD RID': { kicker: 'x' } }, { apply: true, force: true }, log);
+    assert.deepStrictEqual(db.store[P('tb_a')], { kicker: 'k' }, `SEEDP-EMPTY-TAXONOMY-CLEARS ${JSON.stringify(db.store[P('tb_a')])}`);
+    assert.deepStrictEqual([...r.tb_a.clear].sort(), ['cuisines', 'meals'], `SEEDP-CLEAR-REPORTED ${JSON.stringify(r.tb_a)}`);
+    assert.ok(r.tb_bad && r.tb_bad.rejected && r.tb_bad.rejected.some((e) => /invalid house/.test(e)), `SEEDP-REJECT-PER-RID ${JSON.stringify(r.tb_bad)}`);
+    assert.ok(r['BAD RID'] && r['BAD RID'].rejected, 'SEEDP-REJECT-PER-RID bad rid');
+    assert.strictEqual(db.store[P('tb_bad')], undefined, 'SEEDP-REJECT-WRITES-NOTHING');
+    assert.strictEqual(db.store[P('tb_c')].kicker, 'new', 'SEEDP-REJECT-DOES-NOT-ABORT-BATCH');
+    assert.ok(lines.some((l) => /REJECTED/.test(l) && /tb_bad/.test(l)), `SEEDP-REJECT-LOGGED ${JSON.stringify(lines)}`);
+    assert.strictEqual(SEED.exitCodeFor(r), 1, 'SEEDP-REJECT-EXIT-NONZERO');
+    assert.strictEqual(SEED.exitCodeFor({ tb_c: r.tb_c }), 0, 'SEEDP-CLEAN-EXIT-ZERO');
+    // clearing respects no-clobber: an existing assignment is only cleared with --force; clearing an absent field writes nothing
+    const db2 = mkRtdb({ [P('tb_a')]: { meals: { pizzas: 'compartir' } } });
+    const r2 = await SEED.run(db2, { tb_a: { meals: {}, cuisines: [] } }, { apply: true, force: false }, () => {});
+    assert.deepStrictEqual([db2.store[P('tb_a')], r2.tb_a.clear, [...r2.tb_a.skipped].sort()], [{ meals: { pizzas: 'compartir' } }, [], ['cuisines', 'meals']], `SEEDP-CLEAR-NEEDS-FORCE ${JSON.stringify(r2)}`);
+    // P2-2: a stored CONFLICT (house + house_hidden) is repaired by --force even when the requested value already matches
+    for (const [want, expect, label] of [[[], { house_hidden: true }, 'SEEDP-FORCE-REPAIRS-CONFLICT-HIDDEN'], [['ABERVHPJ1C'], { house: ['ABERVHPJ1C'] }, 'SEEDP-FORCE-REPAIRS-CONFLICT-LIST']]) {
+      const db3 = mkRtdb({ [P('tb_a')]: { house: ['ABERVHPJ1C'], house_hidden: true } });
+      await SEED.run(db3, { tb_a: { house: want } }, { apply: true, force: true }, () => {});
+      assert.deepStrictEqual(db3.store[P('tb_a')], expect, `${label} ${JSON.stringify(db3.store[P('tb_a')])}`);
+      assert.deepStrictEqual(PS.pickPresentation(db3.store[P('tb_a')]).fields.house, want, `${label} served`);
+    }
+    ok('Codex r2: {}/[] taxonomy clears (with --force; absent = no-op); a rejected rid is reported, writes nothing, the batch continues, exit 1; --force repairs a house/house_hidden conflict');
   }
 
   // ── 8. P1 TARGET SAFETY: the RTDB destination is bound to the stated project; an inherited URL can never redirect it ──
