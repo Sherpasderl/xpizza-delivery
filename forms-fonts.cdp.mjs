@@ -164,11 +164,15 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
       if (process.env.FONTS_STRIP_NAMES && side === 'candidate' && /(index\.html|account\.js)$/.test(rel)) out = String(out ?? buf).replace(/,\s*'(DM Sans|Playfair Display) Fallback( Roboto| Noto)?'/g, '');   // diagnostic only
       if (process.env.FONTS_SWAP_ONLY && side === 'candidate' && /orders-fonts\.css$/.test(rel)) out = String(out ?? buf).replace(/font-display:optional/g, 'font-display:swap');   // diagnostic only
       if (process.env.FONTS_NO_PF_PRELOAD && side === 'candidate' && /index\.html$/.test(rel)) out = String(out ?? buf).replace(/<link rel="preload" href="fonts\/playfair-display-latin\.[^"]+"[^>]*>/, '');   // diagnostic only
+      if (process.env.FONTS_SYNTH_NONE && side === 'candidate' && /index\.html$/.test(rel))   // diagnostic: Codex step 1 — scoped synthesis suppression, before first use
+        out = String(out ?? buf).replace('</head>', '<style>.acct-nm{font-synthesis:none!important}</style></head>');
       if (process.env.FONTS_HEAD && side === 'candidate' && /index\.html$/.test(rel)) {   // diagnostic only: swap head line 25/26 variants
         const L = String(out ?? buf).split('\n');
         if (process.env.FONTS_HEAD === 'google') { L[24] = '<link rel="preconnect" href="https://fonts.googleapis.com"/>'; L[25] = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Playfair+Display:wght@600;700;900&family=DM+Sans:wght@300;400;500;600;700;800&display=swap"/>'; }
         if (process.env.FONTS_HEAD === 'nopreload') L[24] = L[24].replace(/<link rel="preload"[^>]*>/g, '');
         if (process.env.FONTS_HEAD === 'nopreconnect') L[25] = '';
+        if (process.env.FONTS_HEAD === 'dmonly') L[24] = L[24].replace(/<link rel="preload" href="fonts\/playfair-display-[^"]+"[^>]*>/, '');
+        if (process.env.FONTS_HEAD === 'pfonly') L[24] = L[24].replace(/<link rel="preload" href="fonts\/dm-sans-[^"]+"[^>]*>/, '');
         out = L.join('\n');
       }
       if (oldPolicy) {   // the OLD policy, rewritten in flight: font-display:swap and no fallback faces / stack names
@@ -231,6 +235,19 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
       const pr = await attribute(cdp, [n]);
       console.log(`  [debug ${side}]`, JSON.stringify({ path: n.path.slice(-60), family: n.family, weight: n.weight, style: n.style, spaces: n.spaces, text: String.fromCodePoint(...n.codepoints), fonts: n.fonts,
         probe: [...new Set(n.codepoints)].map((cp) => `${String.fromCodePoint(cp)}=${pr.get(`${n.family}|${n.weight}|${n.style}|${cp}`)}`).join(' ') }));
+    }
+    if (deterministic && process.env.FONTS_INVALIDATE) {   // diagnostic: the SAME font-cache invalidation on BOTH sides (a throwaway FontFace load)
+      await cdp.ev(`(async () => { const ff = new FontFace('__Invalidate', "local('Arial')"); document.fonts.add(ff); await ff.load(); return true; })()`); await settle(cdp); await sleep(300);
+    }
+    if (deterministic && process.env.FONTS_STEP2 === 'probe') {   // Codex step 2: a FRESH «Ana», same typography, opaque surface, same fractional coords
+      await cdp.ev(`(() => { const box = document.createElement('div'); box.style.cssText = 'position:fixed;left:250px;top:14px;width:80px;height:40px;background:#fff;z-index:2147483646';
+        const t = document.createElement('span'); const cs = getComputedStyle(document.querySelector('.acct-nm'));
+        t.style.cssText = 'position:fixed;left:274.359375px;top:26.5px;z-index:2147483647;white-space:pre;line-height:normal';
+        t.style.fontFamily = cs.fontFamily; t.style.fontWeight = cs.fontWeight; t.style.fontSize = cs.fontSize; t.style.letterSpacing = cs.letterSpacing; t.style.color = '#17130F';
+        t.textContent = 'Ana'; document.documentElement.append(box, t); return true; })()`); await settle(cdp); await sleep(200);
+    }
+    if (deterministic && process.env.FONTS_STEP2 === 'nooverlay') {   // Codex step 2: the dim overlay removed on BOTH sides (the sheet stays)
+      await cdp.ev(`(() => { for (const o of document.querySelectorAll('.acct-overlay')) { o.style.background = 'transparent'; o.style.backdropFilter = 'none'; } return true; })()`); await settle(cdp); await sleep(200);
     }
     const png = deterministic ? Buffer.from((await cdp.s('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })).data, 'base64') : null;
     const probe = await attribute(cdp, after.nodes);
