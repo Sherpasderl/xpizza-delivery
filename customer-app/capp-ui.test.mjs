@@ -2153,3 +2153,20 @@ test('G3: a server guest_ticket_invalid (expired / consumed) ⇒ the code sheet 
   await toCodeSheet(b); await viaCode(b); await b.click('#layer [data-act="placing-go"]'); await settle();
   assert.ok(b.q('#layer .otp'), '🔴 re-verify'); assert.equal(b.srv.of('requestCheckoutCode').length, 2);
 });
+
+// ── G4 frame 4 (approved): a MEMBER whose session did not verify server-side is never turned into a cash guest ──
+test('G4 frame 4: a member\'s order refused by the GUEST gate (token not verified) ⇒ «Tu sesión se interrumpió» + «Volver a entrar»; cash and data intact; never a guest', async () => {
+  const b = bootCo({ config: GUEST, member: MEMBER_LIKE(), script: { createOrder: [{ status: 400, json: { ok: false, error: 'guest_cash_not_allowed' } }] } });
+  await toCheckout(b); await settle();
+  await b.type('#f-details', 'Portón negro'); await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  assert.equal(b.ui.state.flow.pay, 'cash', 'premise: the member pays cash');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b.text('#layer .errsheet h2'), 'Tu sesión se interrumpió');
+  assert.equal(b.text('#layer .errsheet p'), 'Volvé a entrar para enviar tu pedido. Tu pedido está intacto y no se cobró nada; tus datos y tu forma de pago quedan igual.');
+  assert.ok(b.q('#layer .errsheet .icon.calm'));
+  assert.deepEqual(b.qa('#layer .errsheet button').map((x) => [x.textContent, x.dataset.act]), [['Volver a entrar', 'reauth'], ['Cerrar', 'lclose']]);
+  assert.equal(b.ui.state.flow.pay, 'cash', '🔴 never silently a guest: the cash tender stays');
+  assert.ok(!/El pago en efectivo es solo para cuentas/.test(b.text('#layer')), 'not the guest refusal');
+  await b.click('#layer [data-act="reauth"]');
+  assert.deepEqual(J(b.events.filter(([n]) => n === 'signin').at(-1)[1]), { ctx: 'reauth' });
+});

@@ -965,6 +965,8 @@
       closed: () => ({ title: C.CLOSED_SHEET.title(cfg.name || '', closesText()), body: C.CLOSED_SHEET.body, icon: 'warn', acts: [{ act: 'lclose', label: 'Cerrar' }] }),
       // TODO(ruling pending): «Pagar en efectivo» is a host event only
       // frame 6 (approved): the existing title, the fixed body; «Pagar con tarjeta» selects card and sends again, «Creá tu cuenta» signs up
+      // frame 4 (approved): the session dropped mid-checkout — calm, the lock; the member's data and tender stay as they are
+      reauth: () => ({ title: 'Tu sesión se interrumpió', body: 'Volvé a entrar para enviar tu pedido. Tu pedido está intacto y no se cobró nada; tus datos y tu forma de pago quedan igual.', icon: 'calm', ic: 'lock', acts: [{ act: 'reauth', label: 'Volver a entrar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       guestCash: () => ({ title: 'No pudimos enviar tu pedido', body: 'El pago en efectivo es solo para cuentas. Pagá con tarjeta o creá tu cuenta.', acts: [{ act: 'guest-card', label: 'Pagar con tarjeta', primary: true }, { act: 'guest-signup', label: 'Creá tu cuenta' }] }),
       payFailed: () => ({ title: 'Pago no completado', body: 'Tu banco no autorizó el pago. Podés intentar con otra tarjeta o pagar en efectivo; tu pedido está intacto.', acts: [{ act: 'err-cash', label: 'Pagar en efectivo', primary: true }, { act: 'err-card', label: 'Usar otra tarjeta' }] }),
       // the approved Q9 mockup #mk-refunded
@@ -1009,6 +1011,9 @@
       if ((k === 'placed' || k === 'paid_unverified') && out.unsettled !== true && typeof out.order_id === 'string' && (attempt === undefined || attempt === attemptSeq)) S.terminal = { order_id: out.order_id };
       if (k === 'placed' || k === 'paid_unverified') { if (S.screen !== 'sending') { S.screen = 'sending'; render(); } beat(out); return; }
       if (k === 'confirming') { S.screen = 'sending'; S.sendHint = CONFIRMING_HINT; render(); return; }
+      // §3.3 / frame 4: a MEMBER whose order met the GUEST gate — the server could not verify the session (token expired / SDK failure,
+      // uid:null). Never a silent cash guest: the member stays a member, nothing was sent or charged, and is asked to sign in again
+      if (member() && (k === 'guest_cash_not_allowed' || k === 'guest_email_required' || k === 'guest_ticket_invalid')) { backTo(); showErr(ERR.reauth()); return; }
       if (k === 'guest_cash_not_allowed') { if (S.flow && cardOnlyGuest()) S.flow.pay = 'online'; backTo('checkout'); showErr(ERR.guestCash()); return; }   // §3.3 server refusal ⇒ frame 6
       if (k === 'guest_ticket_invalid') { S.ticket = null; backTo(); openCode(); return; }   // §4: re-verify (expired / consumed / missing) — the code sheet over the screen of the tap
       if (k === 'guest_email_required') { S.emailRefused = true; backTo('checkout'); return; }   // §4b ⇒ frame 1b: the email field red, CTA «Revisá tu correo»
@@ -1172,6 +1177,7 @@
       if (a === 'err-retry') { closeLayer(); send(); return true; }   // the SAME placement (capp-api keeps the id)
       if (a === 'err-requote') { closeLayer(); S.quoteErr = null; requote(); return true; }   // the failed quote, asked again (its key was released)
       if (a === 'err-cash') { closeLayer(); if (cardOnlyGuest()) { showErr(ERR.guestCash()); return true; } emit('pay-cash', {}); return true; }   // TODO(ruling pending); a guest never reaches cash (§3.2)
+      if (a === 'reauth') { closeLayer(); emit('signin', { ctx: 'reauth' }); return true; }   // the host re-authenticates, then this checkout continues
       if (a === 'otp-verify') { verifyCode(); return true; }
       if (a === 'otp-resend') { closeCodeErr(); requestCode(); return true; }
       if (a === 'otp-change') { closeOtp(); S.screen = 'checkout'; render(); const ph = $('f-phone'); if (ph) focusTo(ph); return true; }   // «Cambiar número»: back to Tus datos, the phone focused
