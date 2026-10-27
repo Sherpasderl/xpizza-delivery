@@ -63,10 +63,10 @@ assert.strictEqual(app.getPublicMenu.__endpoint.minInstances, 1, 'getPublicMenu 
 ok('getPublicMenu: minInstances 1 on the real export');
   // PLAN 3: formSignal — the exported options on the REAL export, and its daily sweep.
   { const e = app.formSignal.__endpoint;
-    assert.deepStrictEqual([e.region, e.timeoutSeconds, e.availableMemoryMb, e.maxInstances, e.concurrency, !!e.httpsTrigger], [['us-central1'], 10, 128, 5, 40, true], 'formSignal options');
+    assert.deepStrictEqual([e.region, e.timeoutSeconds, e.availableMemoryMb, e.maxInstances, e.concurrency, !!e.httpsTrigger], [['us-central1'], 10, 256, 5, 40, true], 'formSignal options');
     const w = app.sweepFormSignals.__endpoint.scheduleTrigger;
     assert.deepStrictEqual([w.schedule, w.timeZone], ['20 3 * * *', 'America/Tegucigalpa'], 'sweepFormSignals runs daily (Honduras time)'); }
-  ok('formSignal: us-central1, 10 s, 128 MiB, maxInstances 5, concurrency 40 on the real export; sweepFormSignals daily');
+  ok('formSignal: us-central1, 10 s, 256 MiB (128 OOMs at boot: memory-floor.guard), maxInstances 5, concurrency 40 on the real export; sweepFormSignals daily');
 console.log(`cors-preflight: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('cors-preflight FAILED:', e); process.exit(1); });

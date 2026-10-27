@@ -7641,7 +7641,7 @@ exports.whatsappInstanceHealth = require('./whatsapp/instance-health').makeHealt
 // The audience is the order sites' exact origins, derived from the manifest (the ACCOUNT_ORIGINS list — no localhost).
 const FORM_SIGNAL_ORIGINS = require('./platform-manifest').PLATFORM.ACCOUNT_ORIGINS;
 exports.formSignal = onRequest(
-  { region: 'us-central1', cors: FORM_SIGNAL_ORIGINS, timeoutSeconds: 10, memory: '128MiB', maxInstances: 5, concurrency: 40 },
+  { region: 'us-central1', cors: FORM_SIGNAL_ORIGINS, timeoutSeconds: 10, memory: '256MiB', maxInstances: 5, concurrency: 40 },
   async (req, res) => {
     try {
       return await require('./form-signal').handleSignal(req, res, { db: getDatabase(), ServerValue, registry: restaurantRegistry() });
