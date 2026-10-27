@@ -487,8 +487,15 @@
       box.innerHTML = !nq ? '' : hits.length ? `<div class="rcount">${hits.length} resultado${hits.length === 1 ? '' : 's'}</div>${hits.map(rowHtml).join('')}` : `<div class="noresults">Nada con «${esc(q)}». Probá otra palabra.</div>`;
     }
     function openLayer(kind) { if (kind === 'cart' && S.layerKind !== 'cart') pushHist(); returnTo = descOf(doc.activeElement); S.layerKind = kind; renderLayer(true); }   // the cart is a back step (P openCart :1752)
-    function closeLayer() { if (S.layerKind === 'otp' || S.layerKind === 'err') { otpTickStop(); S.otp = null; }   // Codex guest r1 #2: closing / back invalidates a pending verification (its late success never sends)
-      if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'pin') dropPinMap(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
+    // THE layer teardown (Codex guest r2 #2): every way a layer goes away — closeLayer, a browser / device Back — runs it: the pin map is
+    // dropped, and a code sheet's pending verification is invalidated (its late success never sends)
+    function layerTeardown() {
+      const k = S.layerKind;
+      if (k === 'otp' || k === 'err') { otpTickStop(); S.otp = null; }
+      if (k === 'pin') dropPinMap();
+    }
+    function closeLayer() {
+      if (S.layerKind === 'placing') placingStop(); layerTeardown(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
     // a quote that failed while another layer was open: its sheet once that layer closes (still the same failed state)
     function closeLayerThen() { if (S.quoteErrSheet && !S.layerKind && (S.screen === 'checkout' || S.screen === 'tip')) { S.quoteErrSheet = false; if (S.quoteErr && S.quoteErr === stateKey()) showErr(ERR.generic('err-requote')); } }
     function renderLayer(fresh) {
@@ -1107,7 +1114,7 @@
       if (S.layerKind === 'placing') { placingStop(); closeLayer(); return; }   // a back during «Realizando pedido…» = «Volver» (nothing sent)
       if (S.screen === 'sending' || !S.stack.length) return;   // «Enviando» is not a back step
       const top = S.stack.pop();
-      if (S.layerKind) { if (S.layerKind === 'pin') dropPinMap(); S.layerKind = null; S.err = null; }
+      if (S.layerKind) { layerTeardown(); S.layerKind = null; S.err = null; }
       S.screen = top.screen; render();
       if (top.layer) openLayerNoPush(top.layer);
     }

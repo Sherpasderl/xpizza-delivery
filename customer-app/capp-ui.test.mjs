@@ -2253,3 +2253,15 @@ test('Codex guest r1 #7: a hung code request is BOUNDED ⇒ 3a «Intento 1 de 3�
   await c.click('#layer .rowx [data-act="otp-resend"]'); await settle();
   assert.equal(c.srv.of('requestCheckoutCode').length, 2, '🔴 «Reenviar» while busy sends a fresh request');
 });
+
+test('Codex guest r2 #2: a browser / device BACK while the verification waits ⇒ the late success never sends (one layer teardown)', async () => {
+  let release; const held = new Promise((r) => { release = r; });
+  const b = bootCo({ config: GUEST, script: { requestCheckoutCode: [{ status: 200, json: { ok: true, resend_in_s: 41 } }], verifyCheckoutCode: [() => held], chargeOnlineOrder: [CHECKOUT] } });
+  await toCodeSheet(b);
+  const box = b.q('#layer .otp input[data-i="0"]'); box.value = '482913'; box.dispatchEvent(new b.w.Event('input', { bubbles: true })); await settle();
+  await b.click('#layer [data-act="otp-verify"]');
+  b.ui.deviceBack(); await settle();
+  assert.equal(b.q('#layer .otp'), null, 'premise: Back left the sheet');
+  release({ status: 200, json: { ok: true, checkout_ticket: 'tk_late' } }); await settle(); await settle();
+  assert.equal(writes(b), 0, '🔴 a verification abandoned by Back never sends'); assert.notEqual(b.ui.state.screen, 'sending');
+});

@@ -600,10 +600,10 @@ test('r4: the policy LOCK_INTERRUPTED_CARD — ON (shipped) ⇒ an interrupted c
 });
 
 // ── PLAN-capp-signin-required r5.4 / Codex guest r1 #1 + #5: the guest rules hold at EVERY dispatch; existing payments resolve first ──
-function grig({ script, storage = memStorage(), member = { cur: null } } = {}) {
+function grig({ script, storage = memStorage(), member = { cur: null }, clock = { t: at(12) }, sleep = async () => {} } = {}) {
   const srv = server(script, storage);
   const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, guestCardOnly: true },
-    member: () => member.cur, fetch: srv.fetch, storage, now: () => at(12), sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} });
+    member: () => member.cur, fetch: srv.fetch, storage, now: () => clock.t, sleep, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} });
   return { api: make(), reload: make, srv, storage, member };
 }
 const TICKET = { ticket: 'tk_1', phone: '+50499990000', cart_fp: 'sig1', expires_at: at(12) + 15 * 60e3 };
@@ -627,4 +627,20 @@ test('Codex guest r1 #5: a guest whose card checkout was already ISSUED resolves
   assert.notEqual(again.kind, 'guest_ticket_invalid', '🔴 recovery never requires a ticket');
   assert.ok(R.srv.of('paymentStatus').length >= 1, 'the existing payment was read'); assert.equal(R.srv.of('chargeOnlineOrder').length, 1, 'never charged again');
   assert.deepEqual([again.kind, again.resumed], ['redirect', true], 'back to ITS checkout');
+});
+
+test('Codex guest r2 #1: sendCard\'s in-progress RE-SENDS pass the guest gate at the wire — sign-out, an expired ticket or a cash tender during the backoff ⇒ refused', async () => {
+  const IP = { status: 202, json: { status: 'in_progress' } };
+  const m = { cur: MEMBER };
+  const A1 = grig({ member: m, sleep: async () => { m.cur = null; }, script: { chargeOnlineOrder: [IP, CHECKOUT] } });
+  const o1 = await A1.api.place(placeArgs('online'));
+  assert.deepEqual([o1.kind, A1.srv.of('chargeOnlineOrder').length], ['guest_ticket_invalid', 1], '🔴 202 → sign-out → the re-send is refused');
+  const clock = { t: at(12) };
+  const A2 = grig({ clock, sleep: async () => { clock.t = TICKET.expires_at + 1; }, script: { chargeOnlineOrder: [IP, CHECKOUT] } });
+  const o2 = await A2.api.place({ ...placeArgs('online'), checkoutTicket: TICKET });
+  assert.deepEqual([o2.kind, A2.srv.of('chargeOnlineOrder').length], ['guest_ticket_invalid', 1], '🔴 the ticket expired during the backoff ⇒ refused');
+  const args = { ...placeArgs('online'), checkoutTicket: TICKET };
+  const A3 = grig({ sleep: async () => { args.flow.pay = 'cash'; }, script: { chargeOnlineOrder: [IP, CHECKOUT] } });
+  const o3 = await A3.api.place(args);
+  assert.deepEqual([o3.kind, A3.srv.of('chargeOnlineOrder').length], ['guest_cash_not_allowed', 1], '🔴 the tender changed during the backoff ⇒ refused');
 });

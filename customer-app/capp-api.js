@@ -459,7 +459,7 @@
         const body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
         if (cfg.guestCardOnly === true && !memberOf() && p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;   // §4 (consumed at placement by the server)
         cq.send(body, p.sig, expected);
-        const r = method === 'cash' ? await sendOnce(E.createOrder, body, p.ctx.headers) : await sendCard(id, body, p.ctx, p.alive);
+        const r = method === 'cash' ? await dispatchOrder(p, E.createOrder, body) : await sendCard(id, body, p);
         if (r && r.stop) return r.stop;
         if (!definitive(method, r)) return method === 'cash' ? { kind: 'offline', order_id: id } : resolveExisting(id);   // rule ii
         const j = r.json;
@@ -506,11 +506,19 @@
     }
     // 202 in_progress ⇒ admitted (recorded); the SAME identity re-sent by THIS instance, bounded, EVERY re-send a new confirmed
     // dispatch (rule i); exhausted ⇒ the 202 stands (unresolved ⇒ recovery)
-    async function sendCard(id, body, ctx, alive) {
+    // THE order dispatch (Codex guest r2 #1): every network send of an order — the first, a resend, and sendCard's own in-progress
+    // re-sends — goes through here, and the guest rules (identity, tender, ticket, read NOW) are checked at the wire
+    async function dispatchOrder(p, url, body) {
+      const g = guestGate(p, { ticket: true }); if (g) return { stop: g };
+      return sendOnce(url, body, p.ctx.headers);
+    }
+    async function sendCard(id, body, p) {
+      const alive = p.alive;
       for (let i = 0; i < IN_PROGRESS_TRIES; i++) {
         if (i > 0 && typeof alive === 'function' && !alive()) return { stop: { kind: 'superseded', order_id: id } };   // r3 P2-3: a torn-down page never re-sends (the record keeps its 202: admitted)
+        if (i > 0) { const g = guestGate(p, { ticket: true }); if (g) return { stop: g }; }   // before the re-send is even recorded
         if (i > 0) { try { confirmSend(id, 'online'); } catch (e) { return { stop: placeErr(e, id) || await resolveExisting(id) }; } }
-        const r = await sendOnce(E.chargeOnlineOrder, body, ctx.headers);
+        const r = await dispatchOrder(p, E.chargeOnlineOrder, body);
         if (r.network || r.status !== 202 || !r.parsed) return r;
         try { patchPlace(id, { admitted: true }); } catch (e) { return { stop: placeErr(e, id) || await resolveExisting(id) }; }
         await sleep(BACKOFF_MS(Math.min(i + 1, 2)));   // never poll without a token, never mint — re-send

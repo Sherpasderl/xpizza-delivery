@@ -20685,7 +20685,7 @@
     "slice": "s2a",
     "label": "r2 P1#4: createOrder auto-retried",
     "file": "../customer-app/capp-api.js",
-    "from": "await sendOnce(E.createOrder, body, p.ctx.headers)",
+    "from": "await dispatchOrder(p, E.createOrder, body)",
     "to": "await withRetry(() => post(E.createOrder, body, p.ctx.headers))",
     "command": [
       "node",
@@ -20694,7 +20694,8 @@
     ],
     "kills_with": [
       "createOrder is NEVER auto-retried"
-    ]
+    ],
+    "repointed": "Codex guest r2 #1: createOrder now goes through the dispatchOrder choke point; the same property (never auto-retried)"
   },
   {
     "id": "s2a-u32",
@@ -21023,8 +21024,8 @@
     "slice": "s2b",
     "label": "«Cancelar» leaves the pin-step map live",
     "file": "../customer-app/capp-ui.js",
-    "from": "placingStop(); if (S.layerKind === 'pin') dropPinMap(); S.layerKind = null; S.cartNote",
-    "to": "placingStop(); S.layerKind = null; S.cartNote",
+    "from": "      if (k === 'pin') dropPinMap();\n",
+    "to": "",
     "command": [
       "node",
       "--test",
@@ -21032,7 +21033,8 @@
     ],
     "kills_with": [
       "the preview stays on the pin after «Cancelar»"
-    ]
+    ],
+    "repointed": "Codex guest r2 #2: the pin-map drop moved into the ONE layerTeardown; the same property («Cancelar» drops the map)"
   },
   {
     "id": "s2b-u10",
