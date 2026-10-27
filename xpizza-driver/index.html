@@ -2182,6 +2182,8 @@
 .oe-banner .oe-x { font-weight: 700; padding: 4px 8px; align-self: auto; }
 /* splash (S.splash): the Sola compass SVG is already byte-identical to the prototype sola() output; only the wordmark weight differs (prototype .w is 700, not 800). Position/z-index/opacity/safe-area are correct device behaviors (once-per-launch, never blocks auth). */
 .splash .sp-word { font-weight: 700; }
+/* llegue (Llegué · avisar; apParada1 + the single-order llegue flow, both via activeCardHtml .llegue-btn): the prototype draws it TINTED like .btn.soft — light-blue wash + blue bell/text — not a grey neutral button. Matched to proto .btn.soft (--p-pwash/--p-p) + the .btn metrics. */
+.llegue-btn { display: flex; background: #E3ECFB; color: #2F5FB8; font-size: 16px; letter-spacing: -.01em; padding: 15px 14px; gap: 8px; min-height: 52px; }
 </style>
 <!-- ===== SLICE3:PRESENTATION-REVERIFY:END ===== -->
 <div id="screen-companion" class="hidden" style="height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
