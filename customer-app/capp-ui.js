@@ -757,6 +757,9 @@
         if (out.resumed) { const t = out.totals || {}; S.sendTotals = { total: Number.isFinite(out.expected_net_cents) ? out.expected_net_cents : (Number.isFinite(t.total) ? t.total : null), tip: Number.isFinite(t.tip) ? t.tip : 0 }; S.screen = 'sending'; render(); }
         navigate(out.url); return;
       }
+      // r3 §1.7 (Codex r3 #3): a SETTLED success is recorded — the one exception to «never leave while sending», honoured only once
+      // reconciliation has durably completed (the leave verdict re-checks it); an unsettled end never qualifies
+      if ((k === 'placed' || k === 'paid_unverified') && out.unsettled !== true) S.terminal = out;
       if (k === 'placed' || k === 'paid_unverified') { if (S.screen !== 'sending') { S.screen = 'sending'; render(); } beat(out); return; }
       if (k === 'confirming') { S.screen = 'sending'; S.sendHint = CONFIRMING_HINT; render(); return; }
       if (k === 'offline') { backTo(); showErr(ERR.offline()); return; }
@@ -858,7 +861,7 @@
     // a «Realizando pedido…» countdown: zero sends)
     function deviceBack(intent) {
       if (dead) return 'pass';
-      if (intent === 'leave') return S.screen === 'sending' || (S.layerKind === 'err' && S.err && S.err.held === true) || lockedHere() ? 'blocked' : 'pass';
+      if (intent === 'leave') return (S.screen === 'sending' && !S.terminal) || (S.layerKind === 'err' && S.err && S.err.held === true) || lockedHere() ? 'blocked' : 'pass';
       if (S.layerKind === 'err' && S.err && S.err.held === true) return 'blocked';
       if (S.layerKind === 'cart' || S.layerKind === 'placing') { histN = Math.max(0, histN - 1); backInternal(); return 'consumed'; }
       if (S.screen === 'sending') return 'blocked';
@@ -1063,7 +1066,11 @@
       deviceBack,
       restore(snapshot) {
         // S7a-1 r3 §1.3 (hosted): reconcile FIRST — blocked until it completes; a purchased (cleared) cart is never restored
-        if (cfg.cartKey && cfg.placedKey && mods() && api.hosted) { const rc = api.reconcile(); if (!rc.ok) return { blocked: true, step: rc.step }; if (rc.done === 'placed' && snapshot && snapshot.cart_gen && snapshot.cart_gen === rc.cart_gen) { cartGen = null; return { cleared: true }; }
+        if (cfg.cartKey && cfg.placedKey && mods() && api.hosted) { const rc = api.reconcile(); if (!rc.ok) return { blocked: true, step: rc.step }; if (rc.done === 'placed' && snapshot && snapshot.cart_gen && snapshot.cart_gen === rc.cart_gen) {
+            // Codex r3 #1: the PURCHASED lines are cleared from memory too, BEFORE the generation is released — a new generation is
+            // only ever minted for an empty cart, so purchased lines can never be disguised as a new cart
+            cart.hydrate({ v: 2, lines: [] }); cartGen = null; render(); return { cleared: true };
+          }
           cartGen = snapshot && typeof snapshot.cart_gen === 'string' && snapshot.cart_gen ? snapshot.cart_gen : null;   // the restored cart keeps its generation
           // Codex r1 P2-7: the persisted mode is restored with the lines (a frozen pickup cart is never re-shown as delivery)
           if (snapshot && (snapshot.mode === 'pickup' || snapshot.mode === 'delivery')) { S.mode = snapshot.mode; if (S.flow && C) C.setMode(S.flow, S.mode); } }

@@ -22082,25 +22082,9 @@
   {
     "id": "s7a1-15",
     "slice": "s7a1",
-    "label": "a blocked back is not re-pushed (the browser entry is lost)",
+    "label": "sentinel: a device Back does not re-push the one owned entry",
     "file": "../customer-app/capp-shell-nav.js",
-    "from": "if (r === 'blocked') { push({ store: true, reblock: true }); return r; }",
-    "to": "if (r === 'blocked') { return r; }",
-    "command": [
-      "node",
-      "--test",
-      "../customer-app/capp-s7a1-shell.test.mjs"
-    ],
-    "kills_with": [
-      "the popped browser entry is restored"
-    ]
-  },
-  {
-    "id": "s7a1-16",
-    "slice": "s7a1",
-    "label": "a UI-caused back is re-delivered to the mount",
-    "file": "../customer-app/capp-shell-nav.js",
-    "from": "      if (skip > 0) { skip--; pos = idx; return 'self'; }\n",
+    "from": "      pushSentinel();\n",
     "to": "",
     "command": [
       "node",
@@ -22108,7 +22092,24 @@
       "../customer-app/capp-s7a1-shell.test.mjs"
     ],
     "kills_with": [
-      "UI-caused back is never re-delivered"
+      "the sentinel is re-pushed",
+      "the history does not grow or drift"
+    ]
+  },
+  {
+    "id": "s7a1-16",
+    "slice": "s7a1",
+    "label": "sentinel: a UI-caused back moves the browser",
+    "file": "../customer-app/capp-shell-nav.js",
+    "from": "back() { if (subs.length) subs.pop(); },",
+    "to": "back() { if (subs.length) subs.pop(); try { hist().back(); } catch (_) {} },",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "a UI-caused back never moves the browser"
     ]
   },
   {
@@ -22262,8 +22263,8 @@
     "slice": "s7a1",
     "label": "r2 New 3: shell exits never ask the mount",
     "file": "../customer-app/capp-shell-nav.js",
-    "from": "const mayLeave = () => !(top().name === 'store' && typeof mountBack === 'function' && mountBack('leave') === 'blocked');",
-    "to": "const mayLeave = () => true;",
+    "from": "      if (typeof mountBack === 'function' && mountBack('leave') === 'blocked') return false;\n",
+    "to": "",
     "command": [
       "node",
       "--test",
@@ -22276,17 +22277,17 @@
   {
     "id": "s7a1-47",
     "slice": "s7a1",
-    "label": "r2 New 4: a browser Forward is processed as a Back",
+    "label": "sentinel: a remount standing on the sentinel pushes another entry",
     "file": "../customer-app/capp-shell-nav.js",
-    "from": "if (idx > pos) { skip++;",
-    "to": "if (false) { skip++;",
+    "from": "try { if (!isSentinel(hist() && hist().state)) pushSentinel(); } catch (_) {}",
+    "to": "try { pushSentinel(); } catch (_) {}",
     "command": [
       "node",
       "--test",
       "../customer-app/capp-s7a1-shell.test.mjs"
     ],
     "kills_with": [
-      "the forward move is undone"
+      "a remount on the sentinel does not push again"
     ]
   },
   {
@@ -22367,6 +22368,87 @@
     ],
     "kills_with": [
       "an unknown freeze state never leaves"
+    ]
+  },
+  {
+    "id": "s7a1-53",
+    "slice": "s7a1",
+    "label": "r3 #1: a purchased restore keeps the purchased lines in memory",
+    "file": "../customer-app/capp-ui.js",
+    "from": "cart.hydrate({ v: 2, lines: [] }); cartGen = null; render(); return { cleared: true };",
+    "to": "cartGen = null; render(); return { cleared: true };",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the purchased lines are cleared from memory"
+    ]
+  },
+  {
+    "id": "s7a1-54",
+    "slice": "s7a1",
+    "label": "r3 #2: leave() does not tear the mount down",
+    "file": "../customer-app/capp-shell-nav.js",
+    "from": "onLeave(t); mountBack = null; subs.length = 0;",
+    "to": "mountBack = null; subs.length = 0;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "go() over a store leaves (destroys) it"
+    ]
+  },
+  {
+    "id": "s7a1-55",
+    "slice": "s7a1",
+    "label": "r3 #3: no terminal-success exception (a settled success is trapped in «Enviando»)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (intent === 'leave') return (S.screen === 'sending' && !S.terminal) ||",
+    "to": "if (intent === 'leave') return (S.screen === 'sending') ||",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a durably reconciled success may leave"
+    ]
+  },
+  {
+    "id": "s7a1-56",
+    "slice": "s7a1",
+    "label": "r3 #5: an unreadable placement record reads as not live",
+    "file": "../customer-app/capp-api.js",
+    "from": "const ps = placeStrict(); if (!ps.ok) return { frozen: true, unknown: true, order_id: c.frozen_for, live: false };",
+    "to": "const ps = placeStrict(); if (!ps.ok) return { frozen: true, order_id: c.frozen_for, live: false };",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "unknown, not «not live»",
+      "an unreadable record ⇒ unknown ⇒ offline"
+    ]
+  },
+  {
+    "id": "s7a1-57",
+    "slice": "s7a1",
+    "label": "r3 #5: holdsLock reads an unreadable record as unlocked",
+    "file": "../customer-app/capp-api.js",
+    "from": "const ps = placeStrict(); if (!ps.ok) return true;",
+    "to": "const ps = placeStrict(); if (!ps.ok) return false;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "an unreadable record holds the lock even with no frozen cart"
     ]
   }
 ]

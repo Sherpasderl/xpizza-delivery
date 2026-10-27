@@ -339,3 +339,15 @@ test('S7a-1 Codex r1 P1-5: a late terminal for A never deletes B\'s handoff; tra
   assert.deepEqual([J(s2, K.pay).order_id, J(s2, K.pay).cart_gen, J(s2, SH.RETURN_KEY)], [hA.order, null, null], 'no generation given ⇒ null, never another order\'s');
   assert.equal(SH.settleHandoff(st, { kind: 'placed', order_id: hB.order }, hB), true, 'B\'s own terminal settles B');
 });
+
+test('Codex r3 #5: an UNREADABLE placement record is UNKNOWN in the lock and freeze path — placement reports offline (retryable, zero sends), holdsLock() holds; readPlace for S2 callers is unchanged', async () => {
+  const R = rig({ script: { createOrder: [OK_CASH] } }); seedCart(R.storage, { frozen_for: 'TA_A' });
+  R.storage.setItem(K.place, JSON.stringify({ order_id: 'TA_A', method: 'cash', dispatched: 1, cart_gen: 'GEN_A', ts: T0, last_send: T0, expires_at: T0 + 3600e3 }));
+  R.storage.fail.read.add(K.place);
+  assert.deepEqual(R.api.cartFreeze(), { frozen: true, unknown: true, order_id: 'TA_A', live: false }, 'unknown, not «not live»');
+  const a = await R.api.place(args());
+  assert.deepEqual([a.kind, a.reconcile, R.srv.sends()], ['offline', 'read_cart', 0], '🔴 an unreadable record ⇒ unknown ⇒ offline, never the not-live recovery path');
+  const N = rig(); N.storage.fail.read.add(K.place);
+  assert.equal(N.api.holdsLock(), true, '🔴 an unreadable record holds the lock even with no frozen cart');
+  assert.equal(N.api.readPlace(), null, 'readPlace (S2) still reads a failure as absence');
+});

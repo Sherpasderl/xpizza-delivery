@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { createShellNav } = require('./capp-shell-nav.js');
+const { JSDOM } = createRequire(new URL('../xpizza-functions/x.js', import.meta.url))('jsdom');   // resolved as the S0 form harness does
 const { createMenuCache, STALE_MS, FRESH_MS } = require('./capp-menu-cache.js');
 
 // a FAITHFUL session history (Codex r2 New 4): indexed entries; pushState truncates the forward entries; back / forward / go move
@@ -44,19 +45,18 @@ test('S7a-1 N4: store-root `pass` returns to the RECORDED predecessor — Buscar
   D.win.device(); assert.equal(D.shown.at(-1).e.name, 'home', 'no predecessor (a deep link) ⇒ the Inicio fallback');
 });
 
-test('S7a-1 §1.3: consumed ⇒ the mount handled it (the store stays); blocked ⇒ the browser entry is RE-PUSHED, nothing left; a UI-caused back is never re-delivered', () => {
+test('S7a-1 §1.3 (single sentinel): consumed ⇒ the mount handled it (the store stays); blocked ⇒ nothing changes, the sentinel is back; a UI-caused back never moves the browser', () => {
   const R = rigNav();
   R.nav.go({ name: 'store', rid: 'rid_a' });
   const ad = R.nav.adapterFor(R.nav.current()); let result = 'consumed', calls = 0; ad.subscribe(() => { calls++; return result; });
-  ad.push(); ad.push();   // checkout → tip
-  assert.equal(R.win.device(), 'consumed'); assert.deepEqual([ad.owns(), R.left.length], [true, 0], 'one in-store entry left, the store stays');
-  const at = R.win.history.i;
+  ad.push(); ad.push();   // checkout → tip (in-app steps)
+  const len = R.win.history.entries.length;
+  assert.equal(R.win.device(), 'consumed'); assert.deepEqual([ad.owns(), R.left.length], [true, 0], 'one in-store step left, the store stays');
   result = 'blocked';
   assert.equal(R.win.device(), 'blocked');
-  assert.equal(R.win.history.i, at, '🔴 blocked: the popped browser entry is restored (re-pushed)');
-  assert.equal(R.left.length, 0, 'blocked never leaves or destroys the store');
-  calls = 0; ad.back(); assert.deepEqual(R.win.flush(), ['self']); assert.equal(calls, 0, '🔴 a UI-caused back is never re-delivered to the mount');
-  ad.push(); ad.push(); assert.equal(ad.owns(), true); ad.go(-2); assert.deepEqual(R.win.flush(), ['self']); assert.equal(ad.owns(), false, 'go(-k) pops k of the mount\'s entries');
+  assert.deepEqual([R.win.history.entries.length, R.win.history.state && R.win.history.state.capp_shell, R.left.length, R.nav.current().name], [len, 1, 0, 'store'], '🔴 blocked: the sentinel is re-pushed, the store stays');
+  calls = 0; ad.back(); assert.deepEqual([R.win.flush(), calls, ad.owns()], [[], 0, false], '🔴 a UI-caused back never moves the browser nor reaches the mount');
+  ad.push(); ad.push(); assert.equal(ad.owns(), true); ad.go(-2); assert.deepEqual([R.win.flush(), ad.owns()], [[], false], 'go(-k) pops k of the mount\'s steps, in-app');
   assert.deepEqual(Object.keys(ad).sort(), ['back', 'go', 'owns', 'push', 'subscribe'], 'EXACTLY the approved adapter interface');
 });
 
@@ -78,14 +78,55 @@ test('Codex r2 New 3: EVERY shell exit asks the mount — tab / the shell\'s bac
   assert.deepEqual([R.nav.current().name, R.left.map((e) => e.rid)], ['orders', ['rid_a']], 'a mount that may leave is left on the tab');
 });
 
-test('Codex r2 New 4: browser Forward is never processed as a Back — Inicio → Buscar → store, Back ⇒ Buscar, Forward ⇒ undone (Buscar stays, the predecessor intact), Back ⇒ Inicio', () => {
-  const R = rigNav(); R.nav.go({ name: 'search' }, { q: 'pizza' }); R.nav.go({ name: 'store', rid: 'rid_a' }, { q: 'pizza' });
-  R.nav.adapterFor(R.nav.current()).subscribe(() => 'pass');
-  assert.equal(R.win.device(), 'pass'); assert.equal(R.nav.current().name, 'search');
-  const shown = R.shown.length;
-  assert.deepEqual(R.win.fwd(), ['forward', 'self'], 'the forward move is undone (one self-caused correction)');
-  assert.deepEqual([R.nav.current().name, R.nav.depth(), R.shown.length, R.win.history.i], ['search', 2, shown, 1], '🔴 a Forward never pops the recorded predecessor');
-  assert.equal(R.win.device(), 'popped'); assert.equal(R.nav.current().name, 'home', 'Back from Buscar ⇒ Inicio');
+// ── the single-sentinel history (advisor ruling, Codex r3 #4), against jsdom's REAL asynchronous session history ──
+const popTick = () => new Promise((r) => setTimeout(r, 10));
+function jsdomNav() {
+  const w = new JSDOM('<!doctype html><title>x</title>', { url: 'https://app.test/' }).window;
+  const shown = [], left = [];
+  const make = () => createShellNav({ win: w, onShow: (e, x) => shown.push({ e, x }), onLeave: (e) => left.push(e) });
+  return { w, shown, left, make, nav: make() };
+}
+test('Codex r3 #4: one owned entry — branching history (Buscar → store A → Back → store B → Back) and a browser Forward never desynchronize; Forward has nothing to reach', async () => {
+  const J0 = jsdomNav(); const { w, nav } = J0;
+  const len0 = w.history.length;
+  nav.go({ name: 'search' }, { q: 'pizza' }); nav.go({ name: 'store', rid: 'rid_a' }, { q: 'pizza' }); nav.adapterFor(nav.current()).subscribe((i) => 'pass');
+  w.history.back(); await popTick();
+  assert.equal(nav.current().name, 'search', 'Back ⇒ Buscar');
+  nav.go({ name: 'store', rid: 'rid_b' }, { q: 'pizza' }); nav.adapterFor(nav.current()).subscribe(() => 'pass');
+  w.history.back(); await popTick();
+  assert.deepEqual([nav.current().name, J0.shown.at(-1).x.restored], ['search', { q: 'pizza' }], 'Back from the second store ⇒ Buscar with its query');
+  const shownN = J0.shown.length;
+  w.history.forward(); await popTick();
+  assert.deepEqual([nav.current().name, nav.depth(), J0.shown.length, w.history.length, w.history.state && w.history.state.capp_shell], ['search', 2, shownN, len0, 1], '🔴 a Forward has nothing to reach: Buscar stays, one owned entry');
+  w.history.back(); await popTick();
+  assert.equal(nav.current().name, 'home', 'Back ⇒ Inicio');
+  w.history.back(); await popTick();
+  assert.equal(w.history.state, null, 'Inicio at the root: the sentinel is not re-pushed — the app is left');
+});
+
+test('Codex r3 #4: blocked Backs keep ONE entry (no growth, no drift); a remount standing on the preserved sentinel does not push again and its first Back is a Back', async () => {
+  const J0 = jsdomNav(); const { w, nav } = J0;
+  nav.go({ name: 'search' }); nav.go({ name: 'store', rid: 'rid_a' });
+  let verdict = 'blocked'; nav.adapterFor(nav.current()).subscribe((i) => (i === 'leave' ? 'pass' : verdict));
+  const len = w.history.length;
+  for (let i = 0; i < 3; i++) { w.history.back(); await popTick(); }
+  assert.deepEqual([nav.current().name, w.history.length, w.history.state && w.history.state.capp_shell, J0.left.length], ['store', len, 1, 0], '🔴 blocked Backs: the store stays, the history does not grow or drift');
+  verdict = 'pass'; w.history.back(); await popTick();
+  assert.equal(nav.current().name, 'search');
+  nav.destroy();
+  const nav2 = J0.make();   // a remount (the shell rebuilt) standing on the preserved sentinel
+  assert.equal(w.history.length, len, '🔴 a remount on the sentinel does not push again');
+  nav2.go({ name: 'search' });
+  w.history.back(); await popTick();
+  assert.deepEqual([nav2.current().name, w.history.state && w.history.state.capp_shell], ['home', 1], '🔴 the remount\'s first Back is ONE in-app back');
+});
+
+test('Codex r3 #2: EVERY shell exit tears the store down through the one leave() — go() over a store destroys it (a countdown cannot keep running)', () => {
+  const R = rigNav(); R.nav.go({ name: 'store', rid: 'rid_a' }); R.nav.adapterFor(R.nav.current()).subscribe(() => 'pass');
+  assert.equal(R.nav.go({ name: 'search' }), true);
+  assert.deepEqual(R.left.map((e) => e.rid), ['rid_a'], '🔴 go() over a store leaves (destroys) it');
+  R.nav.go({ name: 'store', rid: 'rid_b' }); R.nav.adapterFor(R.nav.current()).subscribe(() => 'pass');
+  assert.equal(R.nav.back(), true); assert.deepEqual(R.left.map((e) => e.rid), ['rid_a', 'rid_b'], 'the shell\'s back leaves it too');
 });
 
 // ── MenuCache ──

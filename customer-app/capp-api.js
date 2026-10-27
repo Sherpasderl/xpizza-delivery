@@ -282,7 +282,15 @@
     // a locked CASH record has no bank to wait on: its held state is the recovery sheet, never the pending one (r4 ruling)
     // Codex r1 P2-6: this page holds a payment lock (its in-memory lock, or a record the server still calls pending) — the hosted
     // mount reports device back `blocked` rather than letting the shell tear the store down over it
-    function holdsLock() { if (memLock) return true; const r = readPlace(); return !!(r && r.pay_pending === true); }
+    // Codex r3 #5: the record is read STRICTLY here — an unreadable record is UNKNOWN, and unknown holds the lock (readPlace, which
+    // reads a failure as absence, is unchanged for every S2 caller)
+    function placeStrict() {
+      const pr = readStrict(PLACE_KEY); if (!pr.ok) return { ok: false };
+      const r = pr.value;
+      const live = r && typeof r === 'object' && typeof r.order_id === 'string' && Number.isFinite(r.expires_at) && now() < r.expires_at ? r : null;
+      return { ok: true, value: live };
+    }
+    function holdsLock() { if (memLock) return true; const ps = placeStrict(); if (!ps.ok) return true; return !!(ps.value && ps.value.pay_pending === true); }
     const cashRec = (id) => { const r = readPlace(); return !!(r && r.order_id === id && r.card !== true); };
     async function lockedOutcome(id) {
       const t = credsFor(id);
@@ -357,8 +365,8 @@
       const cr = readStrict(CART_KEY); if (!cr.ok) return { frozen: true, unknown: true, order_id: null, live: false };
       const c = cr.value;
       if (!c || typeof c !== 'object' || typeof c.frozen_for !== 'string') return { frozen: false };
-      const r = readPlace();
-      return { frozen: true, order_id: c.frozen_for, live: !!(r && r.order_id === c.frozen_for) };
+      const ps = placeStrict(); if (!ps.ok) return { frozen: true, unknown: true, order_id: c.frozen_for, live: false };   // r3 #5
+      return { frozen: true, order_id: c.frozen_for, live: !!(ps.value && ps.value.order_id === c.frozen_for) };
     }
     async function place(p) {
       const method = p.flow.pay === 'online' ? 'online' : 'cash';

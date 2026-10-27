@@ -1613,3 +1613,62 @@ test('advisor ruling (a): a frozen-but-NOT-live cart (§1.4, the lock expired, n
   assert.deepEqual([u.ui.deviceBack('leave'), H.device()], ['blocked', 'blocked'], '🔴 an unknown freeze state never leaves');
   storage.getItem = g;
 });
+
+const OK_CASH_UI = { status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } };
+const navOf = async (onLeave) => { const { createShellNav } = await import('./capp-shell-nav.js').then((m) => m.default || m); return createShellNav({ win: faithfulWin(), onShow: () => {}, onLeave }); };
+
+test('Codex r3 #1 (P1): a PURCHASED-snapshot restore clears the in-memory cart too — the purchased lines can never be re-sent under a new generation (openCheckout ⇒ zero new sends)', async () => {
+  const storage = memStore();
+  const b = bootCo({ storage, config: HOSTED_KEYS, script: { createOrder: [OK_CASH_UI] } });
+  await placeVia(b, 'cash'); b.timers.flush(); await settle();
+  assert.equal(writes(b), 1, 'premise: A purchased');
+  const snap = JSON.parse(storage.getItem('capp:rid_a:cart'));
+  assert.deepEqual(J(b.ui.restore(snap)), { cleared: true });
+  assert.equal(b.ui.cart.count(), 0, '🔴 the purchased lines are cleared from memory');
+  b.ui.openCheckout(); await settle();
+  for (const sel of ['#cta', '[data-act="tipc"][data-val="0"]', '[data-act="tip-place"]', '#layer [data-act="placing-go"]']) { if (b.q(sel)) await b.click(sel); }
+  b.timers.flush(); await settle();
+  assert.equal(writes(b), 1, '🔴 zero new sends of the purchased cart');
+});
+
+test('Codex r3 #2: a shell screen opened over a store in «Realizando pedido…» tears the mount down — the countdown is cancelled, ZERO sends', async () => {
+  let b; const left = []; const nav = await navOf((e) => { left.push(e); b.ui.destroy(); });
+  nav.go({ name: 'search' }); nav.go({ name: 'store', rid: 'rid_a' });
+  b = bootCo({ storage: memStore(), config: HOSTED_KEYS, mountOpts: { history: nav.adapterFor(nav.current()) }, script: { createOrder: [OK_CASH_UI] } });
+  await filled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]');
+  assert.equal(b.q('#layer .sheet').getAttribute('aria-label'), 'Realizando pedido', 'premise: the countdown is armed');
+  assert.equal(nav.go({ name: 'search' }), true);
+  b.timers.flush(); await settle();
+  assert.deepEqual([left.length, writes(b)], [1, 0], '🔴 go() leaves through the teardown: the countdown never sends');
+});
+
+test('Codex r3 #3: the terminal-success exception (r3 §1.7) — a SETTLED placed, durably reconciled, may leave «Enviando»; an UNSETTLED one may not', async () => {
+  const SHM = await import('./capp-shell.js').then((m) => m.default || m);
+  for (const settled of [true, false]) {
+    let b; const left = []; const nav = await navOf((e) => { left.push(e); b.ui.destroy(); });
+    nav.go({ name: 'store', rid: 'rid_a' });
+    const storage = memStore();
+    if (!settled) { const si = storage.setItem; storage.setItem = (k, v) => { if (k === 'capp:rid_a:placed') throw new Error('quota'); return si(k, v); }; }
+    b = bootCo({ storage, config: HOSTED_KEYS, mountOpts: { history: nav.adapterFor(nav.current()) }, script: { createOrder: [OK_CASH_UI] } });
+    await placeVia(b, 'cash'); b.timers.flush(); await settle();
+    const out = (b.events.find((e) => e[0] === 'placed') || [])[1];
+    assert.equal(b.ui.state.screen, 'sending', 'premise: «Enviando»');
+    if (settled) {
+      assert.ok(out && SHM.isTerminal(J(out)), 'premise: the real placed event is terminal');
+      assert.deepEqual([nav.go({ name: 'tracker' }), left.length, nav.current().name], [true, 1, 'tracker'], '🔴 a durably reconciled success may leave «Enviando»');
+    } else {
+      assert.deepEqual([nav.go({ name: 'tracker' }), left.length], [false, 0], 'an unsettled end keeps the store');
+    }
+  }
+});
+
+test('Codex r3 #5: an UNREADABLE placement record is UNKNOWN — leave and device Back stay blocked (a live freeze is never read as leaveable)', async () => {
+  const storage = memStore(); const H = shellHist();
+  const b = bootCo({ storage, config: HOSTED_KEYS, mountOpts: { history: H.adapter }, script: { createOrder: [{ status: 409, json: { error: 'order_exists' } }] } });
+  await placeVia(b, 'cash');
+  await b.click('#layer [data-act="lclose"]');
+  for (let i = 0; i < 6; i++) { if (H.device() === 'blocked') break; await settle(); }
+  const g = storage.getItem; storage.getItem = (k) => { if (k === 'capp:rid_a:pending_place') throw new Error('read'); return g(k); };
+  assert.deepEqual([b.ui.deviceBack('leave'), H.device()], ['blocked', 'blocked'], '🔴 an unreadable record never makes the store leaveable');
+  storage.getItem = g;
+});
