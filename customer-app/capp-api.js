@@ -261,9 +261,11 @@
     // outcome for the post-order account offer (frame 7); anything malformed is dropped (the offer then falls back to a normal signup)
     const grantOf = (j) => (cfg.guestCardOnly === true && !memberOf() && j && j.signup_grant && typeof j.signup_grant.token === 'string' && j.signup_grant.token
       && Number.isFinite(j.signup_grant.expires_at) ? { signup_grant: { token: j.signup_grant.token, expires_at: j.signup_grant.expires_at } } : {});
+    // the grant THIS order's charge returned (its stash), read before the stash is cleared; anything stale or malformed is dropped
+    function stashedGrant(id) { const s = readPay(); return s && s.order_id === id ? grantOf(s) : {}; }
     function outcomeOfState(id, st, j) {
       // Codex r1 P1-2: the stash (the recovery credentials) is cleared ONLY once the completion is durable
-      if (PAID_STATES.has(st)) { const ok = resolvePlace(id, 'placed'); if (ok) clearPayFor(id); return { ...grantOf(j), kind: 'placed', order_id: id, scheduled: st === 'scheduled_paid', tracking_token: (j && j.tracking_token) || null, scheduled_for: (j && j.scheduled_for) || null, ...settledOf(ok) }; }
+      if (PAID_STATES.has(st)) { const g = stashedGrant(id); const ok = resolvePlace(id, 'placed'); if (ok) clearPayFor(id); return { ...g, kind: 'placed', order_id: id, scheduled: st === 'scheduled_paid', tracking_token: (j && j.tracking_token) || null, scheduled_for: (j && j.scheduled_for) || null, ...settledOf(ok) }; }
       if (st === 'closed_refunded') { const ok = resolvePlace(id, 'released'); if (ok) clearPayFor(id); return { kind: 'refunded', order_id: id, refunded_total_cents: j && Number.isFinite(j.refunded_total_cents) ? j.refunded_total_cents : null, ...settledOf(ok) }; }
       if (st === 'cancelled' || st === 'failed') { const ok = resolvePlace(id, 'released'); return { kind: 'payment_failed', order_id: id, state: st, ...settledOf(ok) }; }   // (S2): the next placement mints
       return { kind: 'confirming', order_id: id, state: CONFIRMING_STATES.has(st) ? st : 'pending' };   // creds kept, no payment offer
@@ -518,7 +520,9 @@
     // fresh / reuse 200: persist the creds AFTER the response and BEFORE the redirect (a failed write ⇒ no redirect, and the
     // send stays UNRESOLVED: the checkout exists but cannot be polled)
     function cardIssued(id, body, j) {
-      if (!writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now(), ...(HOSTED ? { rid: cfg.restaurantId, cart_gen: (readPlace() || {}).cart_gen || null } : {}) })) return { kind: 'stash_failed', order_id: id };   // the send stays unresolved
+      // Codex guest r1 #4: the contract's SIGNUP GRANT arrives with chargeOnlineOrder's success — kept WITH this order's recovery state
+      // (the pay stash) across the redirect, and handed to the placed outcome from there
+      if (!writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now(), ...grantOf(j), ...(HOSTED ? { rid: cfg.restaurantId, cart_gen: (readPlace() || {}).cart_gen || null } : {}) })) return { kind: 'stash_failed', order_id: id };   // the send stays unresolved
       const r = readPlace();
       const seenAt = r && r.order_id === id && r.checkout_url === j.checkout_url && Number.isFinite(r.checkout_at) ? r.checkout_at : now();
       try { patchPlace(id, { issued: true, checkout_url: j.checkout_url, checkout_at: seenAt, unresolved: false }); } catch (_) {}   // a reused checkout keeps the time it was first seen
