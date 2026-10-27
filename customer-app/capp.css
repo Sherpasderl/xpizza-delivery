@@ -1016,3 +1016,5 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .app.su-host{background:transparent;pointer-events:none;z-index:80}
 .app.su-host.open{pointer-events:auto}
 .app.su-host:not(.open){display:none}
+/* the legal links are live (the platform's own URLs) but drawn as the prototype's bold ink words */
+.sg .checks a{color:inherit;text-decoration:none}
