@@ -291,8 +291,8 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 .acct-rw-tier b{position:absolute;bottom:16px;font-family:var(--display);font-size:12px;font-weight:600;color:#9A8F7E;white-space:nowrap}
 /* §3 La Musa points-as-value card (à-la-carte reframe) — FIXED brand-neutral gold (matches the ticket) */
 .acct-pt-card{text-align:center;padding:14px 4px 6px}
-.acct-pt-num{font-family:var(--display,'Playfair Display',Georgia,serif);font-weight:700;font-size:52px;line-height:1;color:#5a3d0c;font-variant-numeric:tabular-nums}
-.acct-pt-unit{font-family:var(--sans,'DM Sans',sans-serif);font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#7a5410;margin-top:4px}
+.acct-pt-num{font-family:var(--display,'Playfair Display','Playfair Display Fallback','Playfair Display Fallback Noto',Georgia,serif);font-weight:700;font-size:52px;line-height:1;color:#5a3d0c;font-variant-numeric:tabular-nums}
+.acct-pt-unit{font-family:var(--sans,'DM Sans','DM Sans Fallback','DM Sans Fallback Roboto',sans-serif);font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#7a5410;margin-top:4px}
 .acct-pt-worth{display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:7px 15px;border-radius:999px;background:linear-gradient(116deg,#f3e5b2,#e0c37c);border:1px solid #d9b65a;color:#5a3d0c;font-weight:700;font-size:13.5px}
 .acct-pt-worth .acct-pt-chk{width:15px;height:15px;stroke:#5a3d0c;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .acct-pt-worth--wait{background:none;border-color:${CONFIG.palette.line3};color:#8A8072;font-weight:600}
@@ -752,7 +752,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     // Ported VERBATIM from rewards-v2-mockups/redeem-experience.html — rk- prefixed, FIXED brand-neutral gold
     // (byte-identical both forms), adapted to a fixed viewport bottom-sheet (z 3000/3001). No backdrop-filter/blur.
     st.textContent = `
-#acct-redeem,#rk-sheet-root{--rk-ge:#8a6a1e;--rk-gm:#c9a13e;--rk-gh:#f7e9b0;--rk-gi:#5a3d0c;--rk-gi2:#7a5410;--rk-grn:#2A6A42;--rk-scr:#FCFCFB;--rk-sink:#1b1a17;--rk-ssoft:#6b6459;--rk-hair:#ECECEA;--rk-serif:'Playfair Display',Georgia,serif;--rk-slab:Georgia,'Times New Roman',serif;--rk-sans:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif}
+#acct-redeem,#rk-sheet-root{--rk-ge:#8a6a1e;--rk-gm:#c9a13e;--rk-gh:#f7e9b0;--rk-gi:#5a3d0c;--rk-gi2:#7a5410;--rk-grn:#2A6A42;--rk-scr:#FCFCFB;--rk-sink:#1b1a17;--rk-ssoft:#6b6459;--rk-hair:#ECECEA;--rk-serif:'Playfair Display','Playfair Display Fallback','Playfair Display Fallback Noto',Georgia,serif;--rk-slab:Georgia,'Times New Roman',serif;--rk-sans:'DM Sans','DM Sans Fallback','DM Sans Fallback Roboto',-apple-system,BlinkMacSystemFont,sans-serif}
 .rk-tk{position:relative;display:flex;align-items:stretch;border-radius:11px;padding:3px;margin:3px 16px 4px;background:linear-gradient(116deg,#e4cd8a 0%,#f3e5b2 22%,#dcc074 44%,#ecdb9e 64%,#e0c37c 100%);box-shadow:0 1px 0 rgba(255,255,255,.55) inset,0 -1px 0 rgba(90,61,12,.22) inset,0 1px 2px rgba(90,61,12,.18),0 8px 20px -14px rgba(90,61,12,.5);color:var(--rk-gi);cursor:pointer}
 .rk-tk::before{content:"";position:absolute;inset:0;border-radius:11px;pointer-events:none;z-index:3;background:radial-gradient(120% 120% at 82% -20%,rgba(255,255,255,.6),transparent 45%),linear-gradient(102deg,transparent 40%,rgba(255,255,255,.42) 50%,transparent 62%)}
 .rk-tk-frame{position:relative;flex:1;display:flex;align-items:center;gap:11px;border:1px solid var(--rk-gi2);border-radius:8px;box-shadow:0 0 0 1px rgba(255,255,255,.3) inset;padding:10px 8px;min-width:0;min-height:50px;z-index:2}

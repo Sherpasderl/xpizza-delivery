@@ -22,8 +22,8 @@
   }catch(_){}
 })();
 </script>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Playfair+Display:wght@600;700;900&family=DM+Sans:wght@300;400;500;600;700;800&display=swap"/>
+<link rel="preload" href="fonts/dm-sans-latin.468d56b6b2.woff2" as="font" type="font/woff2" crossorigin/><link rel="stylesheet" href="orders-fonts.css"/>   <!-- PLAN-forms-fonts-preconnect r6.1: self-hosted, font-display:optional (platform/fonts) -->
+<link rel="preconnect" href="https://us-central1-xpizza-delivery.cloudfunctions.net" crossorigin/><link rel="preconnect" href="https://xpizza-delivery-default-rtdb.firebaseio.com" crossorigin/>   <!-- the boot fetches: getPublicMenu + availability -->
 
 <style>
 :root {
@@ -57,10 +57,10 @@
   --bronze:        #A8814E;
 
   --radius:   14px;
-  --display:  'Playfair Display', Georgia, serif;
-  --sans:     'DM Sans', system-ui, sans-serif;
-  --stamp:    'Playfair Display', Georgia, serif;
-  --body:     'DM Sans', system-ui, sans-serif;
+  --display:  'Playfair Display', 'Playfair Display Fallback', 'Playfair Display Fallback Noto', Georgia, serif;
+  --sans:     'DM Sans', 'DM Sans Fallback', 'DM Sans Fallback Roboto', system-ui, sans-serif;
+  --stamp:    'Playfair Display', 'Playfair Display Fallback', 'Playfair Display Fallback Noto', Georgia, serif;
+  --body:     'DM Sans', 'DM Sans Fallback', 'DM Sans Fallback Roboto', system-ui, sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{background:var(--cream)}
@@ -5336,7 +5336,7 @@ function showPayReturn(kind){
   }
   const retry = v.retry ? `<a href="#" onclick="restoreOrderForm();return false;" style="display:inline-block;margin-top:26px;padding:13px 26px;background:var(--red,#C8321A);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;letter-spacing:.3px;">Volver a intentar</a>` : '';
   el.innerHTML = logo + visual
-    + `<div style="font-family:var(--display,'Playfair Display',Georgia,serif);font-size:25px;font-weight:800;margin-bottom:10px;color:var(--charcoal,#1E1B18);">${v.t}</div>`
+    + `<div style="font-family:var(--display,'Playfair Display','Playfair Display Fallback','Playfair Display Fallback Noto',Georgia,serif);font-size:25px;font-weight:800;margin-bottom:10px;color:var(--charcoal,#1E1B18);">${v.t}</div>`
     + `<div style="font-size:15px;color:var(--muted,#8C7B6E);max-width:360px;line-height:1.6;">${v.m}</div>${retry}`;
 }
 

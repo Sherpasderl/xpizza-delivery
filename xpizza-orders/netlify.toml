@@ -19,3 +19,9 @@
   for = "/*"
   [headers.values]
     Referrer-Policy = "strict-origin-when-cross-origin"
+
+# PLAN-forms-fonts-preconnect r6.1: the self-hosted fonts are content-hashed (a new file = a new name), so they are cached forever.
+[[headers]]
+  for = "/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
