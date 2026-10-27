@@ -2178,6 +2178,8 @@
 .oe-banner .ico svg { width: 20px; height: 20px; }
 .oe-banner b { font-size: 14.5px; margin-bottom: 0; }
 .oe-banner .oe-x { font-weight: 700; padding: 4px 8px; align-self: auto; }
+/* splash (S.splash): the Sola compass SVG is already byte-identical to the prototype sola() output; only the wordmark weight differs (prototype .w is 700, not 800). Position/z-index/opacity/safe-area are correct device behaviors (once-per-launch, never blocks auth). */
+.splash .sp-word { font-weight: 700; }
 </style>
 <!-- ===== SLICE3:PRESENTATION-REVERIFY:END ===== -->
 <div id="screen-companion" class="hidden" style="height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
