@@ -339,12 +339,16 @@
 #idle-state .pausa-ring-c small { font-size: 11px; color: var(--text-soft, #546078); font-weight: 600; margin-top: 3px; }
 #idle-state .pausa-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; line-height: 1.2; white-space: nowrap; background: #FBF1DC; color: #8A5A00; }
 #idle-state .pausa-chip svg { width: 13px; height: 13px; }
-#idle-state .pausa-copy .pausa-h { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 17px; letter-spacing: -.01em; color: var(--text, #0D1424); }
-#idle-state .pausa-copy .pausa-sub { margin: 6px 0 0; font-size: 13px; line-height: 1.4; color: var(--text-soft, #546078); }
+#idle-state .pausa-copy .pausa-h { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); }   /* prototype .h */
+#idle-state .pausa-copy .pausa-sub { margin: 6px 0 0; font-size: 13px; color: var(--text-soft, #546078); }   /* prototype .sub (13px) */
 #idle-state .pausa-card { width: 100%; text-align: left; }
 #idle-state .pausa-foot { flex: none; display: flex; flex-direction: column; gap: 9px; padding-top: 10px; }
-#idle-state .pausa-resume { text-transform: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-#idle-state .pausa-resume svg { width: 20px; height: 20px; }
+/* «Reanudar turno» = the prototype .btn.primary EXACTLY (full-width, Red Hat Display 700/16px, radius 14, min-height
+   52, gap 8) — NOT the app's .big-btn. Scoped to #idle-state so no other .big-btn use changes. */
+#idle-state .pausa-resume { appearance: none; border: 0; width: 100%; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; border-radius: 14px; padding: 15px 14px; min-height: 52px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; text-transform: none; background: var(--accent, #2F5FB8); color: #fff; }
+#idle-state .pausa-resume:active { background: #24488C; }
+#idle-state .pausa-resume:disabled { opacity: .6; }
+#idle-state .pausa-resume svg { width: 16px; height: 16px; }
 /* the «Pausar» entry in the idle status bar (header top-right) — the prototype ib(I.pause,…): an icon-only 34px
    circle, created on demand by renderStatusBar («Pausar» is the aria-label/title, not visible text). */
 .status-bar .sb-pausar { margin-left: auto; appearance: none; width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--text-soft, #546078); background: var(--surface, #fff); border: 1px solid rgba(20,30,50,.1); cursor: pointer; padding: 0; }
@@ -3203,6 +3207,7 @@ function drv2SessionTeardown() {
 const DRV2_PAUSE_ENABLED = false;
 const DRV2_PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1.3"/><rect x="13.5" y="5" width="4" height="14" rx="1.3"/></svg>';
 const DRV2_PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>';
+const DRV2_INFO_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01" stroke-linecap="round"/></svg>';   // prototype I.info (the «pedido en mano» note)
 // elapsed since break_since (server ms) → «M:SS» under an hour, «H:MM» over; tabular. Refreshed on the 30 s status tick.
 function drv2PauseElapsed(sinceMs) {
   const s = Math.max(0, Math.round((Date.now() - sinceMs) / 1000));
@@ -3231,10 +3236,10 @@ function renderPausa(host, helpLink, arriveBtn, offerExpired) {
     + '<span class="pausa-chip">' + DRV2_PAUSE_SVG + 'No recibís pedidos</span>'
     + '<div class="pausa-copy"><div class="pausa-h">Pausa manual</div>'
     + '<p class="pausa-sub">Tu turno sigue abierto y tu efectivo se conserva. La pausa no se termina sola: reanudá cuando quieras.</p></div>'
-    + '<div class="pr-card pausa-card"><div class="pr"><span class="pr-ic">' + ICONS.warn + '</span>'
+    + '<div class="pr-card pausa-card"><div class="pr"><span class="pr-ic">' + DRV2_INFO_SVG + '</span>'
     + '<div class="pr-tx"><div class="pr-t">Si tenés un pedido en mano</div><div class="pr-d">La pausa empieza al entregarlo; no corta nada en curso</div></div></div></div>'
     + '</div>'
-    + '<div class="pausa-foot"><button class="big-btn primary pausa-resume" id="btn-reanudar">' + DRV2_PLAY_SVG + 'Reanudar turno</button></div>'
+    + '<div class="pausa-foot"><button class="pausa-resume" id="btn-reanudar">' + DRV2_PLAY_SVG + 'Reanudar turno</button></div>'
     + '<span id="disp-preserve" style="display:none"></span>';
   const pres = $('disp-preserve');
   if (pres) { if (helpLink) pres.appendChild(helpLink); if (arriveBtn) pres.appendChild(arriveBtn); if (idleIcon) pres.appendChild(idleIcon); if (idleMsg) pres.appendChild(idleMsg); if (idleSub) pres.appendChild(idleSub); }

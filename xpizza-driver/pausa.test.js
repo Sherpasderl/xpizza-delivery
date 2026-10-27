@@ -26,6 +26,7 @@ function liftFn(name) {
 function liftConst(re, label) { const m = SCRIPT.match(re); assert.ok(m, (label || re) + ' not found'); return m[0]; }
 const PAUSE_SVG_LINE = liftConst(/const DRV2_PAUSE_SVG = '[^']*';/, 'DRV2_PAUSE_SVG');
 const PLAY_SVG_LINE = liftConst(/const DRV2_PLAY_SVG = '[^']*';/, 'DRV2_PLAY_SVG');
+const INFO_SVG_LINE = liftConst(/const DRV2_INFO_SVG = '[^']*';/, 'DRV2_INFO_SVG');
 
 let passed = 0;
 const t = (name, fn) => { try { fn(); passed += 1; } catch (e) { console.error('✗ ' + name); throw e; } };
@@ -47,7 +48,7 @@ function bootPausa({ sinceDelta = 155000, uid = 'drv', fail = false } = {}) {
   let wrote = null, toasts = 0;
   const fbUpdate = (ref, val) => { if (fail) return Promise.reject(new Error('x')); wrote = { path: ref.path, val }; return Promise.resolve(); };
   const fbRef = (db, path) => ({ path });
-  const body = PAUSE_SVG_LINE + '\n' + PLAY_SVG_LINE + '\n'
+  const body = PAUSE_SVG_LINE + '\n' + PLAY_SVG_LINE + '\n' + INFO_SVG_LINE + '\n'
     + liftFn('drv2PauseElapsed') + '\n' + liftFn('drv2PauseRingHtml') + '\n' + liftFn('renderPausa') + '\n'
     + 'return { renderPausa, drv2PauseElapsed };';
   const names = ['document', '$', 'ICONS', 'escapeHtml', 'driverState', 'currentUser', 'fbUpdate', 'fbRef', 'XPD', 'toast', 'Date'];
