@@ -42,6 +42,9 @@
       pendingPayKey: k.pay, cartKey: k.cart, placedKey: k.placed, entry: 'app',
       // PLAN-capp-signin-required r5.4: the app's guest rules (card only, email, WhatsApp code) — the RUNTIME's switch, off until it ships
       ...(rt.guestCardOnly === true ? { guestCardOnly: true } : {}),
+      // PLAN-intl-phone r2.3 (S-picker): the WhatsApp country picker + E.164 on the wire — the RUNTIME's switch. FLIP PRECONDITION
+      // (advisor 2026-10-27): only after S-core / S-match (server) land AND the per-sender UltraMsg country gate passes
+      ...(rt.intlPhone === true ? { intlPhone: true } : {}),
     };
   }
 

@@ -52,7 +52,7 @@
     info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>'), alert: I('<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/>'),
     bike: I('<circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M8.5 17h7"/><path d="M14 6h3l2.5 8.5"/><path d="M4 11h7l2 6"/>'),
     // S2b (the prototype's IC, verbatim)
-    back: I('<path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/>'), chev: I('<path d="M9 6l6 6-6 6"/>'), down: I('<path d="M6 9l6 6 6-6"/>'),
+    back: I('<path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/>'), chev: I('<path d="M9 6l6 6-6 6"/>'), down: I('<path d="M6 9l6 6 6-6"/>'), up: I('<path d="m18 15-6-6-6 6"/>'),
     plus: I('<path d="M12 5v14"/><path d="M5 12h14"/>'), home: I('<path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/>'),
     user: I('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'), pin: I('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/>'),
     pinfill: '<svg width="38" height="38" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>',
@@ -514,10 +514,28 @@
       else if (k === 'tipother') L.innerHTML = tipOtherHtml();
       else if (k === 'pin') L.innerHTML = pinStepHtml();
       else if (k === 'feeinfo') L.innerHTML = feeInfoHtml();
+      else if (k === 'cc') L.innerHTML = ccSheetHtml();
       syncInert();
       if (fresh) { const first = k === 'ssearch' ? $('sq') : L.querySelector(FOCUSABLE); focusTo(first); }
       else if (keep && lost()) focusTo(refind(keep));
       if (k === 'pin') wireMaps();
+    }
+
+    // ═══ S-picker: the WhatsApp field's country (mockup frames 4–6) ═══
+    // the note under the input: a non-HN country names itself and its national length; once complete, how it will be saved
+    function ccNote(f) {
+      const P = phoneMod(), cc = ccOf(f), c = P.byCc(cc); if (cc === P.DEFAULT_CC) return '';
+      return `${esc(c.name)} · <b>${c.len} dígitos</b>${P.valid(cc, f.phone) ? ` · se guarda como <b>${esc(P.display(cc, f.phone))}</b>` : ''}`;
+    }
+    function phoneFld(f, extra) {
+      const P = phoneMod(), cc = ccOf(f), c = P.byCc(cc), open = S.layerKind === 'cc', note = ccNote(f);
+      return `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><div class="phonerow"><button type="button" class="cc${open ? ' focus' : ''}" data-act="cc" aria-label="País del número: ${esc(c.name)} +${cc}" aria-haspopup="dialog">+${cc} ${open ? IC.up : IC.down}</button><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(P.format(cc, f.phone))}" placeholder="${esc(c.ph)}" autocomplete="tel"></div><div class="note" id="f-phone-cc"${note ? '' : ' hidden'}>${note}</div>${extra}</div>`;
+    }
+    function ccSheetHtml() {
+      const P = phoneMod(), cur = ccOf(S.flow);
+      return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="País del número"><div class="grab"></div>
+        <div class="sheethead"><h2>País del número <small>Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.</small></h2><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
+        ${P.COUNTRIES.map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-act="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
     }
 
     // ═══ S2b: CHECKOUT ═══
@@ -535,6 +553,25 @@
     // runtime flag cfg.guestCardOnly (the shell sets it); absent ⇒ today's S2 checkout byte for byte. ONE invariant for every
     // dispatch / restore / retry: a guest's effective tender is ONLINE, else it is refused locally (frame 6) — nothing is sent.
     const cardOnlyGuest = () => cfg.guestCardOnly === true && !member();
+    // PLAN-intl-phone r2.3 S-picker (MOCKUP-intl-phone-picker-APPROVED-2026-10-27, frames 4–6): the runtime flag cfg.intlPhone (the
+    // shell sets it); absent ⇒ today's single «+504» input and the '+504 9999-9999' wire, byte for byte. Present ⇒ the country button +
+    // sheet, the national length / local format per country, and E.164 on the wire for EVERY country (+504 included). FLIP
+    // PRECONDITION: S-core / S-match (server) landed AND the per-sender UltraMsg country gate passed (plan §5)
+    const intl = () => cfg.intlPhone === true;
+    let PH = null;
+    const phoneMod = () => PH || (PH = opts.CappPhone || (typeof self !== 'undefined' && self.CappPhone) || require('./capp-phone.js'));
+    const ccOf = (f) => (f && f.cc && phoneMod().byCc(f.cc) ? f.cc : phoneMod().DEFAULT_CC);
+    // a stored / member number into the flow: E.164 ⇒ its country; a bare local (or 504-prefixed) number ⇒ Honduras; never guessed
+    function setPhone(f, raw) {
+      const P = phoneMod(), q = P.parseE164(raw);
+      if (q) { f.cc = q.cc; f.phone = P.format(q.cc, q.national); return; }
+      const d = P.digits(raw).replace(/^504(?=\d{8}$)/, '');
+      f.cc = P.DEFAULT_CC; f.phone = P.format(P.DEFAULT_CC, d);
+    }
+    // the ONE fresh flow: with the picker on, the member's number lands in its own country
+    function newFlow() { const f = C.freshFlow(member()); if (intl()) { const m = member(); setPhone(f, m && m.phone ? m.phone : ''); } return f; }
+    // how a number is shown back (the code sheet, the member row): the picker's '+cc formatted'; off ⇒ the forms' fullPhone, as before
+    const phoneShown = (f) => (intl() ? phoneMod().display(ccOf(f), f.phone) : C.fullPhone(f.phone));
     // the modules are resolved LAZILY (the S1 host may load the page without them): no modules ⇒ the store keeps S1's host event
     let C = null, api = null;
     function mods() {
@@ -711,13 +748,13 @@
       const emailBad = g && (S.emailRefused || (String(f.email || '').trim() && !C.validEmail(f.email)));
       const datosGuest = `<section class="fsec" aria-label="Tus datos"><h2>Tus datos</h2>${signinRow}
          <div class="fld"><label for="f-name">Nombre <span class="req">*</span></label><input id="f-name" data-field="name" value="${esc(f.name)}" placeholder="Tu nombre" autocomplete="name"></div>
-         <div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(f.phone)}" placeholder="+504 9999-9999" autocomplete="tel"><span class="note">Te enviamos un código por WhatsApp para confirmarlo. Al continuar aceptás recibir mensajes de WhatsApp sobre este pedido.</span></div>
+         ${intl() ? phoneFld(f, '<span class="note">Te enviamos un código por WhatsApp para confirmarlo. Al continuar aceptás recibir mensajes de WhatsApp sobre este pedido.</span>') : `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(f.phone)}" placeholder="+504 9999-9999" autocomplete="tel"><span class="note">Te enviamos un código por WhatsApp para confirmarlo. Al continuar aceptás recibir mensajes de WhatsApp sobre este pedido.</span></div>`}
          <div class="fld${emailBad ? ' bad' : ''}"><label for="f-email">Correo <span class="req">*</span> <span class="mute">· para tu recibo</span></label><input id="f-email" data-field="email" type="email" value="${esc(f.email)}" placeholder="tu@correo.com" autocomplete="email"></div>
          ${S.more ? `<div class="fld"><label for="f-notes">Notas para el restaurante</label><textarea id="f-notes" data-field="notes" placeholder="Sin cebolla, extra salsa… (opcional)">${esc(f.notes)}</textarea></div>` : `<div class="urows"><button class="urow" data-act="more">${IC.plus}<span class="t"><b>Agregar notas</b></span>${chev}</button></div>`}</section>`;
       const datos = g ? datosGuest : `<section class="fsec" aria-label="Tus datos"><h2>Tus datos</h2>
-    ${m && !f.editWho ? `<div class="urows"><div class="urow">${IC.user}<span class="t"><b>${esc(m.name)}</b><span>${esc(C.fullPhone(m.phone))}</span></span><button class="act" data-act="editwho">Cambiar</button></div>${S.more ? '' : moreRow}</div>`
+    ${m && !f.editWho ? `<div class="urows"><div class="urow">${IC.user}<span class="t"><b>${esc(m.name)}</b><span>${esc(intl() ? phoneShown(newFlow()) : C.fullPhone(m.phone))}</span></span><button class="act" data-act="editwho">Cambiar</button></div>${S.more ? '' : moreRow}</div>`
       : `<div class="fld"><label for="f-name">Nombre <span class="req">*</span></label><input id="f-name" data-field="name" value="${esc(f.name)}" placeholder="Tu nombre" autocomplete="name"></div>
-         <div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(f.phone)}" placeholder="+504 9999-9999" autocomplete="tel"></div>
+         ${intl() ? phoneFld(f, '') : `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(f.phone)}" placeholder="+504 9999-9999" autocomplete="tel"></div>`}
          ${!m ? `<div class="line" style="font-size:14px"><span class="mute">¿Ya tenés cuenta?</span><button class="lnk" data-act="signin" data-ctx="checkout">Entrá</button></div>` : ''}${S.more ? '' : `<div class="urows">${moreRow}</div>`}`}
     ${S.more ? moreFields : ''}</section>`;
       // Tu pedido (the redeem / «Descuento» row is pending a ruling — not rendered)
@@ -844,7 +881,7 @@
     // ── §4 THE GUEST'S WHATSAPP CODE (frames 2, 2b–2d, 3a, 3b; the confirmed wire contract) ──
     // A valid ticket for THIS phone and THIS cart is the only way a guest order is sent; it is asked for at the «Hacer pedido» tap,
     // in a sheet over the tip step (nothing sent behind it). The order goes on as soon as the code verifies.
-    const phoneE164 = () => { const d = String((S.flow && S.flow.phone) || '').replace(/\D/g, '').slice(-8); return d.length === 8 ? '+504' + d : ''; };   // the intl picker is its own plan
+    const phoneE164 = () => { if (intl()) return S.flow ? phoneMod().toE164(ccOf(S.flow), S.flow.phone) : ''; const d = String((S.flow && S.flow.phone) || '').replace(/\D/g, '').slice(-8); return d.length === 8 ? '+504' + d : ''; };   // S-picker: the chosen country's E.164
     const cartFpNow = () => (S.q && S.q.sig != null ? String(S.q.sig) : '');
     const guestNeedsCode = () => cardOnlyGuest() && !(S.ticket && api && api.ticketValid(S.ticket) && S.ticket.phone === phoneE164() && S.ticket.cart_fp === cartFpNow());
     const nowMs = () => now().getTime();   // the mount's clock (the countdowns)
@@ -875,7 +912,7 @@
       const blocked = blockedMs != null;
       return { icon: 'warn', ic: 'chat', title: 'No pudimos enviar tu código por WhatsApp',
         ...(blocked ? { body: 'Lo intentamos 3 veces sin éxito. Tu pedido no se envió ni se cobró nada. Probá con otro número, o entrá con tu cuenta.' }
-          : { bodyHtml: `Revisá que <b>${esc(C.fullPhone(S.flow.phone))}</b> tenga WhatsApp y señal. Tu pedido está intacto; no se envió ni se cobró nada.`, note: `Intento <b>${esc(attempt)} de ${esc(max)}</b>` }),
+          : { bodyHtml: `Revisá que <b>${esc(phoneShown(S.flow))}</b> tenga WhatsApp y señal. Tu pedido está intacto; no se envió ni se cobró nada.`, note: `Intento <b>${esc(attempt)} de ${esc(max)}</b>` }),
         acts: blocked ? [{ act: 'otp-resend', label: 'Reintentar en ' + mmss(blockedMs), primary: true, disabled: true, id: 'otp-retry' }, { act: 'otp-change', label: 'Cambiar número' }, { act: 'otp-back', label: 'Volver al pedido' }]
           : [{ act: 'otp-resend', label: 'Reintentar', primary: true }, { act: 'otp-change', label: 'Cambiar número' }] };
     };
@@ -934,7 +971,7 @@
         : `<div class="rowx"><span data-otp="resend-in">Reenviar en ${mmss(o.resendAt - nowMs())}</span><button type="button" data-act="otp-change">Cambiar número</button></div>`;
       return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Ingresá el código"><div class="grab"></div><div class="sg">
     <div class="topb"><span class="iconbtn" aria-hidden="true"></span><span class="bm">Confirmá tu WhatsApp</span><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
-    <div class="h1">Ingresá el código</div><p class="sub">Te lo enviamos por WhatsApp al <b>${esc(C.fullPhone(S.flow.phone))}</b>.</p>
+    <div class="h1">Ingresá el código</div><p class="sub">Te lo enviamos por WhatsApp al <b>${esc(phoneShown(S.flow))}</b>.</p>
     ${boxes}${line}
     <button class="cta" type="button" data-act="otp-verify"${o.code.length === 6 && !off && !o.busy ? '' : ' disabled'}>Verificar y hacer pedido · ${T.ready ? moneyC(T.total) : ''}</button>
     ${rowx}
@@ -1023,7 +1060,7 @@
       if (k === 'existing_order') { showErr(ERR.exists(out.reference)); return; }
       if (k === 'payment_failed' && out.clearable === false) { showErr(ERR.pending()); return; }
       if (k === 'offline' || !k) { const e = ERR.offline(); showErr({ ...e, acts: e.acts.map((x) => (x.act === 'err-retry' ? { ...x, act: 'frozen-status' } : x)) }); return; }   // «Reintentar» re-reads the status — never a send
-      if (!S.flow) { S.flow = C.freshFlow(member()); C.setMode(S.flow, S.mode); }
+      if (!S.flow) { S.flow = newFlow(); C.setMode(S.flow, S.mode); }
       onOutcome(out);
     }
     function onOutcome(out, attempt) {
@@ -1085,7 +1122,7 @@
       if (!mods()) return false;
       // S7a-2 (PLAN-capp-S7a r2 §2.2): the flow is created ONCE with its pin decided — a restored return flow, else this mount's
       // own flow, else SEEDED from the shell's guest location (same coordinates ⇒ the same pin version) — before any render can geocode
-      if (!S.flow) { S.flow = C.freshFlow(member()); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }
+      if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }
       C.setMode(S.flow, S.mode);
       if (cardOnlyGuest()) S.flow.pay = 'online';   // §3.1: one option, card, already selected
       S.layerKind = null; S.cartNote = null; S.refusal = null; returnTo = null;
@@ -1161,6 +1198,12 @@
       if (a === 'type') { if (frozenNow()) return true; S.mode = v === 'pickup' ? 'pickup' : 'delivery'; C.setMode(f, S.mode); notifyCart(); if (S.mode === 'delivery' && !finitePin(f.pin) && S.geo === null) requestGeo(); render(); return true; }
       if (a === 'rm-po') { for (const l of poLines()) mutate(() => cart.setQty(l.key, 0)); if (!cart.count()) toStore(); else render(); return true; }
       if (a === 'editwho') { f.editWho = true; render(); return true; }
+      if (a === 'cc' && intl()) { openLayer('cc'); render(); return true; }
+      if (a === 'cc-pick' && intl()) {
+        const cc = t.dataset.cc; if (!phoneMod().byCc(cc)) return true;
+        if (cc !== ccOf(f)) { f.cc = cc; f.phone = phoneMod().format(cc, f.phone); }   // the digits stay, capped to the new length
+        closeLayer(); render(); const ph = $('f-phone'); if (ph) focusTo(ph); syncCta(); return true;
+      }
       if (a === 'more') { S.more = true; render(); return true; }
       if (a === 'editdetails') { S.editDetails = true; render(); return true; }
       if (a === 'sumtoggle') { S.sumOpen = !S.sumOpen; render(); return true; }
@@ -1233,10 +1276,11 @@
     // fully restorable (an action that needs it is never offered)
     function flowFromBody(b) {
       if (!b || typeof b !== 'object') return null;
-      const f = C.freshFlow(member());
+      const f = newFlow();
       C.setMode(f, b.order_type === 'pickup' ? 'pickup' : 'delivery');
       Object.assign(f, { name: String(b.customer_name || ''), phone: String(b.customer_phone || '').replace(/^\+504\s*/, ''), email: String(b.customer_email || ''),
         notes: b.notes && b.notes !== '—' ? String(b.notes) : '', pay: b.payment_method === 'online' || cardOnlyGuest() ? 'online' : 'cash' });   // §3.2: a guest's restore is never cash
+      if (intl()) setPhone(f, b.customer_phone);   // the picker's wire is E.164: the restored number keeps its country
       if (f.mode === 'delivery') {
         if (!Number.isFinite(b.lat) || !Number.isFinite(b.lng)) return null;
         C.setPin(f, b.lat, b.lng, true); f.details = String(b.address_details || '');
@@ -1252,7 +1296,7 @@
       const rid0 = q0.get('order') || (rec0 && rec0.order_id) || null;
       const back = rid0 ? flowFromBody(api.stashedOrder(rid0)) : null;
       if (back) { S.flow = back; S.mode = back.mode; S.flowRestored = true; }
-      if (!S.flow) { S.flow = C.freshFlow(member()); C.setMode(S.flow, S.mode); S.flow.pay = 'online'; }
+      if (!S.flow) { S.flow = newFlow(); C.setMode(S.flow, S.mode); S.flow.pay = 'online'; }
       S.returning = true;
       const rec = api.readPlace();
       S.backScreen = 'checkout'; S.screen = 'sending'; S.sendHint = null;
@@ -1327,6 +1371,14 @@
       if (fld === 'otp') { otpInput(t); return; }
       if (fld === 'sq') { S.searchQ = t.value; runStoreSearch(t.value); return; }
       if (fld === 'tipOther') { S.tipDraft = capDraft(t.value, S.tipDraft || ''); t.value = S.tipDraft || '0'; t.style.width = `calc(${Math.max(1, t.value.length)}ch + 6px)`; return; }
+      if (S.flow && fld === 'phone' && intl()) {
+        // the country's local format as they type, never past its national length
+        const P = phoneMod(), cc = ccOf(S.flow), v = P.format(cc, t.value);
+        if (t.value !== v) t.value = v;
+        S.flow.phone = v; S.flow.cc = cc;
+        const n = $('f-phone-cc'); if (n) { const h = ccNote(S.flow); n.innerHTML = h; n.hidden = !h; }
+        syncCta(); return;
+      }
       if (S.flow && FLOW_FIELDS.includes(fld)) {
         S.flow[fld] = t.value;
         if (fld === 'email' && cardOnlyGuest()) { S.emailRefused = false; if (C.validEmail(t.value)) { const fe = t.closest('.fld'); if (fe) fe.classList.remove('bad'); } }   // the red clears as soon as it is valid
@@ -1387,7 +1439,7 @@
         const f = S.flow;
         if (f && memberCtx) {
           if (!String(f.name || '').trim() && memberCtx.name) f.name = String(memberCtx.name);
-          if (!String(f.phone || '').trim() && memberCtx.phone) f.phone = String(memberCtx.phone);
+          if (!String(f.phone || '').trim() && memberCtx.phone) { if (intl()) setPhone(f, memberCtx.phone); else f.phone = String(memberCtx.phone); }
           if (!String(f.email || '').trim() && memberCtx.email) f.email = String(memberCtx.email);
           f.editWho = false; S.emailRefused = false;
         }
