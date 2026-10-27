@@ -210,6 +210,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/return-target.test.js',           // returning-state nav target real-code suite (SLICE3)
   'xpizza-driver/solo-cancel.test.js',              // S.cancelado idle takeover real-code suite (SLICE3)
   'xpizza-driver/pausa.test.js',                    // slice 3-P manual-pause (S.pausa) real-code suite (SLICE3)
+  'xpizza-driver/endshift.test.js',                 // «Terminar turno» idle slide real-code suite (SLICE3)
   'xpizza-driver/llegue.test.js',                   // S.llegue pure-builder flag suite (SLICE3)
   'xpizza-driver/offline-banner.test.js',          // SLICE3 offline banner handler test (SLICE3)
   'xpizza-driver/gpsoff.test.js',                  // SLICE3 gpsoff builder + apply logic test (SLICE3)

@@ -56,7 +56,7 @@ function boot({ cancel, dispatch = '+504 9999 8888', realRaq = false, orders = [
        + 'function applyOfflineBanner(){} function drv2ResolveActivePointer(){ return null; } function drv2NavArmed(){ return true; } function drv2Observe(){} function drv2ShowInterlude(){} function drv2DismissInterlude(){} function drv2ResetRun(){} function mountTabBar(){} function offerExpiredBannerHtml(){ return ""; }\n'
        + liftFn('renderActiveAndQueue') + '\n')
     : 'function renderActiveAndQueue(){ _calls.raq = (_calls.raq||0)+1; }\n';
-  const body = 'const DRV2_PAUSE_ENABLED = false;\nfunction renderPausa(){}\nlet drv2SoloCancel = _cancel;\n' + raqBlock
+  const body = 'const DRV2_PAUSE_ENABLED = false;\nconst DRV2_ENDSHIFT_SLIDE = false;\nfunction renderPausa(){}\nlet drv2SoloCancel = _cancel;\n' + raqBlock
     + 'let NAVP_ICONS = {}, navBtnHtml = () => "", drv2ReadNavPref = () => "Waze";\n'
     + 'function drv2GetReturnTarget(){ return null; } function drv2ClearReturnTarget(){}\n'
     + 'function applyGpsoff(){} function checkLocationStatus(){} function syncIdleStats(){}\n'

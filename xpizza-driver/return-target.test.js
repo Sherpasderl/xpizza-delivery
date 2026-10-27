@@ -53,7 +53,7 @@ function boot({ status = 'returning', uid = 'drv', seed = undefined } = {}) {
   const drv2ReadNavPref = () => 'Waze';
   const escapeHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const currentUser = { uid };
-  const body = KEY_LINE + '\n' + VAR_LINE + '\nconst DRV2_PAUSE_ENABLED = false;\nfunction renderPausa(){}\nlet drv2SoloCancel = null;\nfunction renderSoloCancel(){}\n'
+  const body = KEY_LINE + '\n' + VAR_LINE + '\nconst DRV2_PAUSE_ENABLED = false;\nconst DRV2_ENDSHIFT_SLIDE = false;\nfunction renderPausa(){}\nlet drv2SoloCancel = null;\nfunction renderSoloCancel(){}\n'
     + liftFn('drv2SetReturnTarget') + '\n' + liftFn('drv2GetReturnTarget') + '\n'
     + liftFn('drv2ClearReturnTarget') + '\n' + liftFn('drv2CaptureReturnTarget') + '\n'
     + liftFn('renderDisponible') + '\n'

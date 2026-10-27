@@ -266,6 +266,15 @@
 .slide-confirm.start .slide-text { background-image: none; color: #fff; -webkit-text-fill-color: #fff; text-transform: none; letter-spacing: .01em; font-size: 15px; font-weight: 700; padding-right: 0; }
 .slide-confirm.start .slide-hint { color: rgba(255,255,255,.72); }
 .slide-confirm.start .slide-thumb { background: rgba(255,255,255,.22); box-shadow: inset 0 1.5px 0 rgba(255,255,255,.4); }
+/* «Terminar turno» idle slide (owner 2026-10-27) — the SAME steel-blue treatment as «Iniciar turno» (.start), on the
+   disponible screen above the tabs. Separate selectors so the approved start slide is byte-untouched. */
+.slide-confirm.endshift { background: var(--accent); border-color: transparent; box-shadow: 0 6px 18px rgba(47,95,184,.26), inset 0 1px 0 rgba(255,255,255,.18); }
+.slide-confirm.endshift::before { box-shadow: none; }
+.slide-confirm.endshift .slide-fill { background: rgba(255,255,255,.16); }
+.slide-confirm.endshift .slide-text { background-image: none; color: #fff; -webkit-text-fill-color: #fff; text-transform: none; letter-spacing: .01em; font-size: 15px; font-weight: 700; padding-right: 0; }
+.slide-confirm.endshift .slide-hint { color: rgba(255,255,255,.72); }
+.slide-confirm.endshift .slide-thumb { background: rgba(255,255,255,.22); box-shadow: inset 0 1.5px 0 rgba(255,255,255,.4); }
+#idle-state .disp-endshift-foot { flex: none; padding: 2px 0 calc(8px + env(safe-area-inset-bottom, 0px)); }
 #screen-cuenta .cuenta-ver { flex: none; text-align: center; font-size: 11.5px; color: var(--text-dim, #8A93A6); padding: 6px 0 10px; }
 /* REUSABLE prototype .banner + .row components, copied VERBATIM from the mockup (used by suspendida; and for the
    esperando/Cuenta contact rows). Exact prototype tokens: --p-warnwash #FBF1DC / --p-warn #8A5A00; the .row icon tile
@@ -3208,6 +3217,12 @@ const DRV2_PAUSE_ENABLED = false;
 const DRV2_PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1.3"/><rect x="13.5" y="5" width="4" height="14" rx="1.3"/></svg>';
 const DRV2_PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>';
 const DRV2_INFO_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01" stroke-linecap="round"/></svg>';   // prototype I.info (the «pedido en mano» note)
+// «Terminar turno» idle slide (owner 2026-10-27) — mirrors the offshift «Iniciar turno» slide, at the bottom of
+// disponible; the top-right duty toggle goes away when it is live. Runs the SAME end-shift path (handleEndShift → the
+// O4 «Todavía tenés N pedido(s) en camino» sheet when orders are in hand → cuadre). DARK until the gate + Codex pass;
+// false keeps today's behavior (header toggle, no slide) → no regression on the live app.
+const DRV2_ENDSHIFT_SLIDE = false;
+const DRV2_SLIDE_ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>';
 // elapsed since break_since (server ms) → «M:SS» under an hour, «H:MM» over; tabular. Refreshed on the 30 s status tick.
 function drv2PauseElapsed(sinceMs) {
   const s = Math.max(0, Math.round((Date.now() - sinceMs) / 1000));
@@ -3403,10 +3418,36 @@ function renderDisponible() {
     + '<div class="disp-statcard"><b id="stat-deliveries">0</b><small>Entregas hoy</small></div>'
     + '<div class="disp-statcard"><b id="stat-cash">L 0</b><small>Efectivo a entregar</small></div>'
     + '</div>'
-    + '<div class="disp-sp"></div>';
+    + '<div class="disp-sp"></div>'
+    // «Terminar turno» idle slide (owner 2026-10-27), at the bottom above the tabs — mirrors the offshift «Iniciar
+    // turno» slide. Dark until DRV2_ENDSHIFT_SLIDE flips (then the header duty toggle is hidden; see renderStatusBar).
+    + (DRV2_ENDSHIFT_SLIDE
+        ? '<div class="disp-endshift-foot"><div class="slide-confirm endshift" id="btn-end-shift-slide" role="button" tabindex="0" aria-label="Terminar turno"><div class="slide-fill"></div><div class="slide-text">Terminar turno</div><div class="slide-hint">deslizá</div><div class="slide-thumb">' + DRV2_SLIDE_ARROW + '</div></div></div>'
+        : '');
   const helpSlot = $('disp-help-slot'); if (helpLink && helpSlot) helpSlot.replaceWith(helpLink);   // re-insert the bound controls
   const arriveSlot = $('disp-arrive-slot'); if (arriveBtn && arriveSlot) arriveSlot.replaceWith(arriveBtn);
   if (offerExpired) host.insertBefore(offerExpired, host.firstChild);   // restore the expired-offer notice at the top (its «Ok» handler survives)
+  // Wire «Terminar turno» — mirrors the offshift doStartShift: the SAME end-shift path (handleEndShift → O4 → cuadre)
+  // behind double-trigger + stale-mount + session guards, so a held-drag release or a mixed keyboard+pointer input
+  // cannot re-fire it, and a detached/other-account slide no-ops.
+  if (DRV2_ENDSHIFT_SLIDE) {
+    const endSlideEl = $('btn-end-shift-slide');
+    const endGen = (typeof authGen !== 'undefined') ? authGen : null;
+    const endUid = currentUser && currentUser.uid;
+    const doEndShift = async () => {
+      if (shiftBusy) return;
+      if (!endSlideEl || !document.body.contains(endSlideEl)) return;                                         // mount replaced / detached
+      if ((typeof authGen !== 'undefined' && authGen !== endGen) || ((currentUser && currentUser.uid) || null) !== endUid) return;   // session changed
+      const effectiveActive = optimisticShift !== null ? optimisticShift : !!(driverState && driverState.active);
+      if (!effectiveActive) return;                                                                            // only end a shift that is effectively ON (double-fire after it ends bails)
+      shiftBusy = true;
+      try { await handleEndShift(); } finally { shiftBusy = false; }                                          // O4 sheet (orders in hand) → cuadre; its overlay then covers the slide
+    };
+    if (endSlideEl) {
+      attachSlideConfirm('btn-end-shift-slide', doEndShift);
+      endSlideEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doEndShift(); } });
+    }
+  }
 }
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
@@ -5331,6 +5372,10 @@ function renderStatusBar() {
      dedup is on the batch checklist (before Codex). ===== */
   const SOLA_DOT = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="var(--marino, #14306B)"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><g><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--celeste, #8EC0FF)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="var(--marino, #14306B)"/></g></svg>';
   const sbEl = dot.closest && dot.closest('.status-bar');
+  // «Terminar turno» slide (owner 2026-10-27): when it is live, the top-right duty toggle goes away from the idle
+  // header — the slide at the bottom of disponible is the end-shift entry. The toggle stays in the DOM (hidden) so
+  // the stop-header «Terminar turno» (#btn-end-shift → duty-toggle-on.click()) still ends a shift during a delivery.
+  { const dtOn = $('duty-toggle-on'); if (dtOn && DRV2_ENDSHIFT_SLIDE) dtOn.classList.add('hidden'); }
   // slice 3-P: the «Pausar» entry lives in the idle header (available/returning = zero active orders); ensure/remove it
   // from the status bar. It is NOT the frozen static shell — created on demand so the shell DOM stays untouched.
   const ensurePausar = (show) => {
