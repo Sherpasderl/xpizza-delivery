@@ -91,4 +91,25 @@ t('a stale GPS ping → «GPS inactivo» + .stale', () => {
   assert.ok(h.host.querySelector('#disp-gps').classList.contains('stale'), 'stale class');
 });
 
+t('composed: renderIdleState rebuilds the body via the renderDisponible hook (kills the removed-hook mutant)', () => {
+  const dom = new JSDOM('<!doctype html><html><body><div id="idle-state">'
+    + '<div class="idle-top"><div class="idle-check" id="idle-icon"></div><div class="idle-msg" id="idle-msg">x</div>'
+    + '<div class="idle-sub" id="idle-sub">x</div><button class="idle-help-link" id="idle-help-link">h</button>'
+    + '<button class="big-btn primary hidden" id="arrive-btn">a</button></div>'
+    + '<div class="statbar" id="idle-statbar"><div id="stat-deliveries">0</div><div id="stat-cash">L 0</div></div>'
+    + '</div></body></html>', { pretendToBeVisual: true });
+  const { document } = dom.window;
+  const $ = (id) => document.getElementById(id);
+  const ICONS = new Proxy({}, { get: (_, k) => `<svg data-ic="${String(k)}"></svg>` });
+  const driverState = { status: 'available', last_ping: Date.now() };
+  const XPD = { isStalePing: () => false };
+  const body = 'function applyGpsoff(){}\nfunction checkLocationStatus(){}\nfunction syncIdleStats(){}\n'
+    + liftFn('renderDisponible') + '\n' + liftFn('renderIdleState') + '\nreturn { renderIdleState };';
+  const api = (new Function('document', '$', 'ICONS', 'driverState', 'XPD', body))(document, $, ICONS, driverState, XPD);
+  api.renderIdleState();
+  assert.ok($('idle-state').querySelector('.disp-status'), 'renderIdleState → renderDisponible rebuilt the body (disp-status present)');
+  assert.ok($('idle-state').querySelector('.disp-chip'), 'the «Disponible» chip is present through the composed path');
+  assert.ok(/Esperando pedidos/.test($('idle-state').innerHTML), 'the prototype copy is present');
+});
+
 console.log(`✓ disponible: ${passed} tests passed`);

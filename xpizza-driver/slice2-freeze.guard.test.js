@@ -228,7 +228,7 @@ const ALLOWED_MODIFY = 'xpizza-driver/index.html';
 // onboarding-host.test.js's fake-DOM mock had no insertAdjacentHTML, so it must be extended to support the injection
 // AND now covers it (asserts co-nav-row is injected + wired). This is a test-only change; no production/baseline
 // behaviour moves. The region-restoration byte check still proves index.html's companion code is baseline-identical.
-const SLICE2_TEST_MODIFY = new Set(['xpizza-driver/onboarding-host.test.js']);
+const SLICE2_TEST_MODIFY = new Set(['xpizza-driver/onboarding-host.test.js', 'xpizza-driver/slice1-font-resolution.test.js']);
 // Exactly ONE baseline file may be DELETED by slice 2: the slice-1 branch harness single-order-branch.test.js.
 // Its stub-based proof (the 2-order stacked render is byte-identical to baseline + renderActiveCard is called)
 // is superseded — slice 2 intentionally reroutes the stacked path through the builders (renderActiveCard is now

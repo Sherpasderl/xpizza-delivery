@@ -27,9 +27,10 @@ function liftFn(name) {
 }
 
 function boot({ status, shift_started_at = null, last_ping = Date.now(), lat, lng, stale = false, eta = null } = {}) {
+  // the REAL .status-bar parent: dot.closest('.status-bar') must resolve for the .enturno add/remove to work
   const dom = new JSDOM('<!doctype html><html><body>'
-    + '<div class="status-dot" id="status-dot"></div><div class="status-label" id="status-label">x</div>'
-    + '<div class="gps-meta" id="gps-meta">x</div></body></html>', { pretendToBeVisual: true });
+    + '<div class="status-bar"><div class="status-dot" id="status-dot"></div><div class="status-label" id="status-label">x</div>'
+    + '<div class="gps-meta" id="gps-meta">x</div></div></body></html>', { pretendToBeVisual: true });
   const { document } = dom.window;
   const $ = (id) => document.getElementById(id);
   const driverState = { status, shift_started_at, last_ping, lat, lng };
@@ -38,9 +39,11 @@ function boot({ status, shift_started_at = null, last_ping = Date.now(), lat, ln
   const body = liftFn('renderStatusBar') + '\nreturn { renderStatusBar };';
   const api = (new Function('document', '$', 'driverState', 'XPD', 'computeReturnEta', 'fmtClockHM', body))(
     document, $, driverState, XPD, computeReturnEta, fmtClockHM);
+  const snap = () => { const dot = $('status-dot'), lbl = $('status-label'), meta = $('gps-meta'), sb = document.querySelector('.status-bar');
+    return { dot: dot.className, dotHtml: dot.innerHTML, lbl: lbl.textContent, meta: meta.textContent, metaCls: meta.className, sbCls: sb.className }; };
   api.renderStatusBar();
-  const dot = $('status-dot'), lbl = $('status-label'), meta = $('gps-meta');
-  return { dot: dot.className, dotHtml: dot.innerHTML, lbl: lbl.textContent, meta: meta.textContent, metaCls: meta.className };
+  // reRender re-runs renderStatusBar on the SAME DOM after changing status — exposes transition (idle→non-idle) behaviour
+  return Object.assign(snap(), { reRender: (s) => { driverState.status = s; api.renderStatusBar(); return snap(); } });
 }
 
 let passed = 0;
@@ -92,6 +95,22 @@ t('en_route_delivery with a live ETA → «↩ N min» (the original return path
   const r = boot({ status: 'en_route_delivery', lat: 15.5, lng: -88.0, eta: 7 });
   assert.equal(r.meta, '↩ 7 min', 'ETA meta unchanged');
   assert.equal(r.lbl, 'En camino');
+});
+
+// (3) transition on a REUSED DOM — leaving idle restores the normal header (Codex P2: .enturno / Sola must not persist)
+t('available → at_restaurant on the SAME DOM: .enturno + the Sola svg are removed, the phase header is restored', () => {
+  const START = Date.now() - 97 * 60000;
+  const h = boot({ status: 'available', shift_started_at: START });
+  assert.ok(h.sbCls.includes('enturno'), 'idle adds .enturno to the status bar');
+  assert.ok(/<svg/.test(h.dotHtml), 'idle injects the Sola svg');
+  assert.ok(h.meta.includes(fmtClockHM(START)), 'the header uses the REAL shared clock formatter (kills the «00:00» literal mutant)');
+  const r2 = h.reRender('at_restaurant');
+  assert.ok(!r2.sbCls.includes('enturno'), '.enturno removed when leaving idle');
+  assert.equal(r2.dotHtml, '', 'the Sola svg is cleared');
+  assert.equal(r2.lbl, 'En restaurante', 'the phase label is restored');
+  assert.equal(r2.dot, 'status-dot green live', 'the phase dot is restored');
+  const fresh = boot({ status: 'at_restaurant' });   // and it equals a FRESH at_restaurant render
+  assert.equal(r2.dot, fresh.dot); assert.equal(r2.dotHtml, fresh.dotHtml); assert.equal(r2.lbl, fresh.lbl); assert.equal(r2.sbCls, fresh.sbCls);
 });
 
 console.log(`✓ statusbar-disp-header: ${passed} tests passed`);

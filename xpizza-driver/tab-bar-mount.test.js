@@ -50,6 +50,7 @@ function boot() {
     'function render(){ _calls.render++; }\n' +
     'function openCuenta(){ _calls.openCuenta++; }\n' +
     'function openHistoryModal(){ _calls.openHistory++; }\n' +
+    'function renderOffshift(){ _calls.renderOffshift = (_calls.renderOffshift||0)+1; }\n' +
     'let soundOn = true;\n' +
     'function toast(){ _calls.toasts = (_calls.toasts||0) + 1; }\n' +
     'function updateNotifBanners(){}\n' +
@@ -137,6 +138,12 @@ t('Cuenta: the «Sonido y notificaciones» row is injected into the card and its
   // idempotent: a re-sync does not inject a second row
   h.api.showScreen('offshift'); h.api.showScreen('cuenta');
   assert.equal(h.document.getElementById('screen-cuenta').querySelectorAll('#cuenta-sound').length, 1, 'no duplicate row on re-render');
+});
+
+t('showScreen(offshift) invokes the renderOffshift rebuild hook (kills the removed-hook mutant)', () => {
+  const h = boot();
+  h.api.showScreen('offshift');
+  assert.equal(h.calls.renderOffshift, 1, 'showScreen → renderOffshift (TABBAR-SHOW rebuild hook)');
 });
 
 console.log(`✓ tab-bar-mount: ${passed} tests passed`);

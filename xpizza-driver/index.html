@@ -243,7 +243,7 @@
    side margins, status card → center block → stats → spacer. */
 #screen-onshift #idle-state { padding: 4px 16px 10px; justify-content: flex-start; gap: 14px; }   /* proto .body gap 14px; NOT vertically centred */
 #screen-onshift #idle-state .idle-top { flex: none; justify-content: flex-start; align-items: stretch; text-align: left; gap: 14px; padding: 0; }
-#idle-state .disp-center { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 4px 0 0; }   /* proto .body.center — full content width (not shrunk to the title) so .sub wraps at the design 358px */
+#idle-state .disp-center { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 14px 0 0; }   /* proto .body.center — full content width (not shrunk to the title) so .sub wraps at the design 358px */
 #idle-state .disp-ts { align-self: stretch; }   /* proto wrapper <div> around .h + .sub — full content width */
 #idle-state .disp-sp { flex: 1; min-height: 6px; }   /* proto .sp — fills below the stats so the block stays top-aligned */
 #idle-state .disp-status { width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); padding: 14px; }   /* FULL width (proto .card) */
@@ -251,9 +251,9 @@
 #idle-state .disp-chip i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
 #idle-state .disp-gps { margin-left: auto; font-size: 13px; color: var(--text-soft, #546078); }   /* proto .sub */
 #idle-state .disp-gps.stale { color: var(--warn, #8A5A00); }
-#idle-state .idle-check { width: 104px; height: 104px; border-radius: 30px; display: grid; place-items: center; background: #E3F3E9; color: #15803D; }   /* proto .illus.ok */
+#idle-state .idle-check { width: 104px; height: 104px; border-radius: 30px; display: grid; place-items: center; background: #E3F3E9; color: #15803D; margin: 0; }   /* proto .illus.ok (margin 0 — drop the base 20px) */
 #idle-state .idle-check svg { width: 50px; height: 50px; }
-#idle-state .idle-msg { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); }   /* proto .h = --fd */
+#idle-state .idle-msg { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); margin: 0; }   /* proto .h = --fd (margin 0 — drop the base 9px) */
 #idle-state .idle-sub { font-family: var(--fb); font-size: 13px; line-height: 1.4; max-width: none; margin: 6px 0 0; color: var(--text-soft, #546078); }   /* CSS parity with prototype .body.center .sub (advisor): font/size/line-height/width/padding equal, NO max-width, 6px margin-top */
 #screen-onshift #idle-state .idle-help-link { font-family: var(--fb); color: var(--text-soft, #546078); font-weight: 600; font-size: 13px; }   /* proto .btn.txt — darker, semibold (fix) */
 #idle-state .disp-stat2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -2924,12 +2924,27 @@ function renderOffshift() {
     <button class="duty-toggle hidden" id="duty-toggle-off" aria-hidden="true"></button>`;
   const nm = $('off-driver-name'); if (nm) nm.textContent = first;
   const cb = $('cuenta-btn'); if (cb) cb.addEventListener('click', openCuenta);
-  attachSlideConfirm('btn-start-shift', async () => {
+  // Start-shift via the slide — GUARDED (Codex P2): a stale release after this mount was replaced (offshift →
+  // suspendida), the session changed, or the driver is no longer eligible (already on-shift / suspended) must NOT
+  // start a shift. shiftBusy alone does not invalidate an obsolete control.
+  const startSlideEl = $('btn-start-shift');
+  const startGen = (typeof authGen !== 'undefined') ? authGen : null;
+  const startUid = currentUser && currentUser.uid;
+  const doStartShift = async () => {
     if (shiftBusy) return;
+    if (!startSlideEl || !document.body.contains(startSlideEl)) return;                                   // mount replaced / detached
+    if ((typeof authGen !== 'undefined' && authGen !== startGen) || ((currentUser && currentUser.uid) || null) !== startUid) return;   // session changed
+    if (companionSuspended || (driverState && driverState.active)) return;                                // no longer eligible
     shiftBusy = true;
     optimisticShift = true; render();
     try { await handleStartShift(); } finally { shiftBusy = false; }
-  });
+  };
+  attachSlideConfirm('btn-start-shift', doStartShift);
+  // Keyboard activation through the SAME guarded path — the slide is a div, not a button (Codex P2.6).
+  if (startSlideEl) {
+    startSlideEl.setAttribute('role', 'button'); startSlideEl.tabIndex = 0; startSlideEl.setAttribute('aria-label', 'Iniciar turno');
+    startSlideEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doStartShift(); } });
+  }
   companionSyncSuspendedNotice();   // re-apply the suspend state on the fresh notice
   updateNotifBanners();             // re-populate the fresh notif banner (async)
 }
@@ -2945,6 +2960,7 @@ function renderDisponible() {
   const status = driverState && driverState.status;
   const helpLink = $('idle-help-link');     // bound once (→ openHelpSheet); preserve
   const arriveBtn = $('arrive-btn');         // bound once (→ the «en el restaurante» action); preserve
+  const offerExpired = $('idle-offer-expired');   // the expired-offer notice (mounted by renderActiveAndQueue, with its «Ok» handler); preserve across the rebuild
   let icon, msg, sub, chip;
   if (status === 'returning') {
     icon = ICONS.uturn; msg = 'Regresando al restaurante'; sub = 'Pulsá abajo cuando hayas llegado'; chip = 'Disponible';
@@ -2979,6 +2995,7 @@ function renderDisponible() {
     + '<div class="disp-sp"></div>';
   const helpSlot = $('disp-help-slot'); if (helpLink && helpSlot) helpSlot.replaceWith(helpLink);   // re-insert the bound controls
   const arriveSlot = $('disp-arrive-slot'); if (arriveBtn && arriveSlot) arriveSlot.replaceWith(arriveBtn);
+  if (offerExpired) host.insertBefore(offerExpired, host.firstChild);   // restore the expired-offer notice at the top (its «Ok» handler survives)
 }
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
@@ -4884,6 +4901,11 @@ function renderStatusBar() {
     }
     return;
   }
+  // leaving idle (any other status): restore the normal header — strip .enturno (white bar + border come back) and the
+  // Sola svg (the phase dot comes back). A no-op on a fresh non-idle render (byte-identical), it fixes the idle→non-idle
+  // transition on a REUSED DOM (Codex P2); the original dot/label/meta logic below then repaints the phase header.
+  const sbBack = dot.closest && dot.closest('.status-bar'); if (sbBack) sbBack.classList.remove('enturno');
+  if (dot.firstChild) dot.innerHTML = '';
   /* ===== SLICE3:DISP-HEADER:END ===== */
   // Dot color + pulse
   dot.className = 'status-dot';

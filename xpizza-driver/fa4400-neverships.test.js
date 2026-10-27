@@ -121,7 +121,7 @@ t('every brand-orange rule targets ONLY .rchip.xp .rdot dots (per selector) — 
   const rules = STYLE_BLOCKS.flatMap((raw) => walkRules(stripComments(raw)));
   // the one allowed exception is the baseline token: the FIRST top-level (non-@media) :root rule's `--accent: #FA4400`.
   // Any other brand-orange — a second --accent anywhere, one inside @media, a different :root block — is a violation.
-  const baselineRule = rules.find((r) => r.sel === ':root' && !r.conditional);
+  const baselineRule = rules.find((r) => r.sel === ':root' && !r.conditional && /--accent\s*:\s*#fa4400/i.test(r.body));   // the :root that HOLDS the baseline token (a --fb :root may precede it now)
   let baselineClaimed = false;
   for (const rule of rules) {
     {

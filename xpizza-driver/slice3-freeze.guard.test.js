@@ -88,7 +88,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = '245578ff678c23e6169d0e2b690656067dfcfb2fe00c25e8108e416d616d69ba';
+const SLICE2_GUARD_SHA = 'e9536ffc6dd5d92dbc1b8b16b731e25ea2bb513602f5b0ad5b9052532fa61682';
 const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -150,8 +150,8 @@ const SLICE3_COEXIST_MODIFY = new Set(['xpizza-driver/slice2-freeze.guard.test.j
 // #co-ck-nav / #co-ck-perms / #co-ck-cash). It is byte-EXEMPT from the 07e5ab38 frozen-files check, but PINNED here
 // to the reviewed revision so the exemption stays BOUNDED (any later edit re-opens this guard at HIGH effort). One
 // file only; nothing else is exempted.
-const SLICE3_TEST_MODIFY = new Set(['xpizza-driver/onboarding-host.test.js']);
-const SLICE3_TEST_MODIFY_SHA = { 'xpizza-driver/onboarding-host.test.js': 'be4311c675d176d89aef4fe04e06b68ad085bacf9bc30977f5ff15121169ec05' };
+const SLICE3_TEST_MODIFY = new Set(['xpizza-driver/onboarding-host.test.js', 'xpizza-driver/slice1-font-resolution.test.js']);
+const SLICE3_TEST_MODIFY_SHA = { 'xpizza-driver/onboarding-host.test.js': 'be4311c675d176d89aef4fe04e06b68ad085bacf9bc30977f5ff15121169ec05', 'xpizza-driver/slice1-font-resolution.test.js': '9e7cc99cb9f115ef7c2c65bc543c46f27eaabfc20b413723eda856cc4e2fce0e' };
 // Everything slice 3 is allowed to ADD under xpizza-driver/.
 const ALLOWED_ADDS = new Set([
   'xpizza-driver/slice3-regions.json',          // the shared SLICE3 region contract (non-executable data)

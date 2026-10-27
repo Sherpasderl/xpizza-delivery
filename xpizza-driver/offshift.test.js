@@ -150,4 +150,30 @@ await t('suspendida: an absent/invalid dispatch number hides the contact card (n
   assert.ok(/Despacho pausó tu cuenta/.test(h.host().innerHTML), 'the banner still shows');
 });
 
+await t('keyboard: Enter on the «Iniciar turno» slide reaches handleStartShift (the slide is a div — Codex P2.6)', async () => {
+  const h = boot();
+  h.api.renderOffshift();
+  const el = h.host().querySelector('#btn-start-shift');
+  assert.equal(el.tabIndex, 0, 'the slide is focusable (tabindex 0)');
+  assert.equal(el.getAttribute('role'), 'button', 'the slide is a button for AT');
+  el.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(h.calls.start, 1, 'Enter reaches handleStartShift through the guarded path');
+});
+
+await t('a stale release after the mount is detached does NOT start a shift (Codex P2 guard)', async () => {
+  const h = boot();
+  h.api.renderOffshift();
+  const el = h.host().querySelector('#btn-start-shift');
+  const thumb = el.querySelector('.slide-thumb');
+  el.getBoundingClientRect = () => ({ width: 300, height: 64, left: 0, top: 0, right: 300, bottom: 64, x: 0, y: 0 });
+  thumb.getBoundingClientRect = () => ({ width: 48, height: 48, left: 0, top: 0, right: 48, bottom: 48, x: 0, y: 0 });
+  thumb.dispatchEvent(new h.window.MouseEvent('mousedown', { clientX: 0, bubbles: true, cancelable: true }));
+  h.document.dispatchEvent(new h.window.MouseEvent('mousemove', { clientX: 400, bubbles: true, cancelable: true }));
+  el.remove();                                       // the mount is replaced mid-drag (offshift → suspendida)
+  h.document.dispatchEvent(new h.window.MouseEvent('mouseup', { clientX: 400, bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(h.calls.start, 0, 'a detached/obsolete slide must not reach handleStartShift');
+});
+
 console.log(`✓ offshift: ${passed} tests passed`);
