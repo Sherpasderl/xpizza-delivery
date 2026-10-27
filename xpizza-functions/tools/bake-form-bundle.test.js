@@ -31,12 +31,19 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
 
 // A REAL published body: the seed source + the reviewed migration rows (so badge_priority / reward_icon / extras_policy are
 // present as they will be live), published, then served.
-async function servedEnvelope(rid) {
+async function servedEnvelope(rid, { migrated = true } = {}) {
   const source = clone(buildSourceFromCode(rid));
   const rows = DATA.restaurants[rid];
-  if (rows.structure) Object.assign(source.structure, clone(rows.structure));
+  // PLAN 4 GATED: the in-repo seed now carries the rows (G1); a PRE-migration body is built by STRIPPING exactly them
+  for (const f of Object.keys(rows.structure || {})) delete source.structure[f];
   for (const [coll, list] of [['items', source.items], ['extras', source.extras]]) {
-    for (const [key, row] of Object.entries(rows[coll] || {})) Object.assign(list.find((x) => x.key === key).display, clone(row.display));
+    for (const [key, row] of Object.entries(rows[coll] || {})) { const rec = list.find((x) => x.key === key); for (const f of Object.keys(row.display)) delete rec.display[f]; }
+  }
+  if (migrated) {
+    if (rows.structure) Object.assign(source.structure, clone(rows.structure));
+    for (const [coll, list] of [['items', source.items], ['extras', source.extras]]) {
+      for (const [key, row] of Object.entries(rows[coll] || {})) Object.assign(list.find((x) => x.key === key).display, clone(row.display));
+    }
   }
   const db = makeDb();
   const { inputs, built } = buildSourceCandidate(rid, source);
@@ -260,6 +267,29 @@ const loopbackFetch = (url, opts) => getJson(url, { ...opts, get: http.get, time
       const r = spawnSync(process.execPath, ['-e', load], { encoding: 'utf8' });
       assert.strictEqual(r.status, 0, `🔴 the bake requires a non-built-in module: ${r.stderr}`);
       ok('the bake (and the form\'s picker it loads) resolves Node built-ins only — it can run in a form\'s Netlify build');
+    }
+
+    // ── 9. GATED IS SELF-ENFORCING (Codex r3 #3): a PRE-migration published body is refused at build time, both brands ──
+    {
+      const { premigrationGaps } = require('../catalog/menu-structure-rows');
+      for (const rid of ['x_pizza', 'la_musa']) {
+        const pre = await servedEnvelope(rid, { migrated: false });
+        const { file } = tempForm(rid); pointAt(file, port);
+        const before = fs.readFileSync(file, 'utf8');
+        state.envelope = pre;
+        const res = await bakeForm(rid, file, { fetchJson: loopbackFetch });
+        assert.ok(res.refusals.some((x) => /^bake_premigration_body: \d+ migrated field/.test(x)), `${rid}: 🔴 a pre-migration body is refused (${JSON.stringify(res.refusals)})`);
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), before, `${rid}: nothing written`);
+        const gaps = premigrationGaps(rid, pre.menu);
+        if (rid === 'x_pizza') assert.ok(gaps.includes('dishes[Nutella].extras_policy') && gaps.some((g) => /\.reward_icon$/.test(g)), 'x_pizza: Nutella\'s extras_policy and the reward icons are named');
+        else assert.ok(gaps.includes('badge_priority') && gaps.some((g) => /^extras\[rice_white\]\.reward_icon$/.test(g)), 'la_musa: badge_priority and the acompañamiento icons are named');
+        assert.deepStrictEqual(premigrationGaps(rid, ENV[rid].menu), [], `${rid}: the migrated body has no gap`);
+        // a merchant who REMOVED a migrated dish is not a gap: nothing to carry
+        const removed = clone(ENV[rid].menu); const k = rid === 'x_pizza' ? 'Mushroom' : 'dimsum_01';
+        removed.dishes = removed.dishes.filter((d) => String(rid === 'x_pizza' ? d.name : d.id) !== k);
+        assert.deepStrictEqual(premigrationGaps(rid, removed), [], `${rid}: a removed dish is not a gap`);
+      }
+      ok('GATED self-enforcing: a pre-migration published body (no reward icons / no Nutella extras_policy / no badge_priority) is refused — bake_premigration_body, nothing written — both brands; the migrated body has no gap; a merchant-removed dish is not a gap');
     }
   } finally { server.close(); for (const d of TEMP) fs.rmSync(d, { recursive: true, force: true }); }
   FINISHED = true;

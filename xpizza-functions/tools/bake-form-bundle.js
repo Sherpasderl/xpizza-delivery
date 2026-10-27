@@ -20,6 +20,7 @@
 const { join, dirname } = require('path');
 const { readFileSync } = require('fs');
 const { spliceFormFile } = require('../catalog/splice-form-bundle');
+const { premigrationGaps } = require('../catalog/menu-structure-rows');   // PLAN 4 GATED: the migrated fields are required
 const { selectForms, publicMenuUrl, getJson, IDENTITY_KEYS } = require('./form-bundle-live-check');
 
 // Every representation a consumer accepts during the rollout (r3 §8.1): the bake, the live check and the forms' adapter.
@@ -45,6 +46,10 @@ function validateEnvelope(env, rid, { groupPicker }) {
   // map with REVERSE coverage (a dish with variantOf needs its launcher map — the BODY's own; the bake has no retained map),
   // option maps, gates, badges, priority and reward icons. Its first problem is the refusal.
   try { groupPicker.validateMenu(m, { variantItems: m.variant_items, origin: 'bake' }); } catch (e) { r.push(`bake_${e.message}`); }
+  // PLAN 4 GATED (Codex r3 #3): this runtime has NO literal fallback for the migrated fields — a pre-migration published body is
+  // refused at BUILD time (the previous deploy stays live) instead of shipping Nutella with every option or La Musa without badges
+  const gaps = premigrationGaps(rid, m);
+  if (gaps.length) r.push(`bake_premigration_body: ${gaps.length} migrated field(s) missing — ${gaps.slice(0, 6).join(', ')}${gaps.length > 6 ? ', …' : ''}`);
   if (m.has_photo !== undefined && !isStrArray(m.has_photo)) r.push('bake_has_photo_malformed');
   return r;
 }

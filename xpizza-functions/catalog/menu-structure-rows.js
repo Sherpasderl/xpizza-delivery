@@ -37,4 +37,25 @@ function withBootstrapRows(rid, { dishes = [], extras = [] } = {}) {
   return { dishes: d, extras: e };
 }
 
-module.exports = { applyBootstrapRows, withBootstrapRows };
+// PLAN 4 r4 (Codex r3 #3) — GATED IS SELF-ENFORCING. Once the literal fallbacks are gone, a PUBLISHED body that predates the
+// migration would ship Nutella with every option and La Musa with no badge. So the bake and the live check REFUSE it: every field
+// the reviewed data file authors must be present on the published body (any value — a merchant edit counts), for every record it
+// names that still exists (a record the merchant removed has nothing to carry). → [missing path, …]
+function premigrationGaps(rid, body) {
+  const rows = rowsFor(rid);
+  if (!rows || !isObj(body)) return [];
+  const { pricingKeyOf, extrasKeyOf } = require('./form-menu-source');
+  const gaps = [];
+  for (const f of Object.keys(rows.structure || {})) if (body[f] === undefined) gaps.push(f);
+  for (const [coll, keyOf, bodyColl] of [['items', pricingKeyOf, 'dishes'], ['extras', extrasKeyOf, 'extras']]) {
+    const list = Array.isArray(body[bodyColl]) ? body[bodyColl] : [];
+    for (const [key, row] of Object.entries(rows[coll] || {})) {
+      const rec = list.find((r) => isObj(r) && String(keyOf(rid, r)) === key);
+      if (!rec) continue;
+      for (const f of Object.keys((row && row.display) || {})) if (rec[f] === undefined) gaps.push(`${bodyColl}[${key}].${f}`);
+    }
+  }
+  return gaps;
+}
+
+module.exports = { applyBootstrapRows, withBootstrapRows, premigrationGaps };

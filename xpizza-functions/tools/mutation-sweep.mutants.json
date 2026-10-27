@@ -20950,5 +20950,29 @@
    "node",
    "form-runtime-literals.guard.test.js"
   ]
+ },
+ {
+  "id": "fb-94",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (Codex r3 #3): the bake ships a PRE-migration body (the premigration refusal dropped)",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  if (gaps.length) r.push(`bake_premigration_body:",
+  "to": "  if (false) r.push(`bake_premigration_body:",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-95",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (Codex r3 #3): the pre-migration check ignores the per-record rows (reward icons, extras_policy)",
+  "file": "catalog/menu-structure-rows.js",
+  "from": "      for (const f of Object.keys((row && row.display) || {})) if (rec[f] === undefined) gaps.push(`${bodyColl}[${key}].${f}`);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
  }
 ]
