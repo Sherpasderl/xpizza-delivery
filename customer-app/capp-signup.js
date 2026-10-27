@@ -60,8 +60,8 @@
       const g = !viaGoogle && S.cfg && S.cfg.googleEnabled && o.google && typeof o.google.getIdToken === 'function';
       // advisor 2026-10-27: «Continuar con correo» is G6b (not rendered: no control without effect); the guest link only where there is a
       // checkout to continue as a guest (the prototype draws it only for an order) — never from Cuenta, never under a member-only gate
-      const alts = viaGoogle ? '' : `${g ? `<div class="or">o</div><button class="alt" data-su="google">${GOOGLE_G}Continuar con Google</button>` : ''}${!S.memberOnly && GUEST_CTX.has(S.ctx) ? '<button class="lnk" data-su="guest">Prefiero seguir como invitado</button>' : ''}`;
-      return `<div class="h1">${viaGoogle ? 'Tu teléfono' : 'Entrá a tu cuenta'}</div><p class="sub">${viaGoogle ? 'Lo necesitamos para la entrega y para avisarte por WhatsApp.' : 'Guardá tus datos y pedí más rápido la próxima vez.'}</p>
+      const alts = viaGoogle ? '' : `${g ? `<div class="or">o</div><button class="alt" data-su="google">${GOOGLE_G}Continuar con Google</button>` : ''}${!S.memberOnly && (GUEST_CTX.has(S.ctx) || S.scheduleGate) ? '<button class="lnk" data-su="guest">Prefiero seguir como invitado</button>' : ''}`;
+      return `<div class="h1">${viaGoogle ? 'Tu teléfono' : 'Entrá a tu cuenta'}</div><p class="sub">${viaGoogle ? 'Lo necesitamos para la entrega y para avisarte por WhatsApp.' : S.scheduleGate ? 'Para programar tu pedido necesitás una cuenta.' : 'Guardá tus datos y pedí más rápido la próxima vez.'}</p>
     <span class="ml">Teléfono</span><div class="phonerow"><span class="cc">+504</span><input class="inp" id="su-phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="9999-9999" value="${esc(S.phone)}" aria-label="Teléfono"></div>
     <button class="cta" data-su="phone-go"${digits().length === 8 && !S.busy ? '' : ' disabled'}>Continuar</button><p class="fine">Te enviaremos un código de verificación por WhatsApp.</p>${err()}
     ${alts}`;
@@ -223,9 +223,9 @@
     return {
       state: S,
       // ctx: where it was opened from; prefill: the device marker's full E.164 («Entrá de nuevo»); memberOnly: no guest path (a gate)
-      open({ ctx, prefill, memberOnly } = {}) {
+      open({ ctx, prefill, memberOnly, scheduleGate } = {}) {
         S.gen++; Object.assign(S, { open: true, pane: 'phone', stack: [], path: 'phone', memberOnly: memberOnly === true, phone: prefill ? fmtLocal(localOf(prefill)) : '', email: '', name: '', promos: false, terms: false,
-          google: null, uid: null, isNew: false, completion: null, busy: false, err: '', code: '', resendAt: 0, existing: false, vphone: null, final: false, ctx: ctx || null });
+          google: null, uid: null, isNew: false, completion: null, busy: false, err: '', code: '', resendAt: 0, existing: false, vphone: null, final: false, ctx: ctx || null, scheduleGate: scheduleGate === true });
         render();
         const g = S.gen;
         if (!S.cfg) api.config().then((c) => { if (c && c.ok) S.cfg = c; if (live(g) && S.pane === 'phone') render(); });   // the platform's Google / legal — never awaited by the paint

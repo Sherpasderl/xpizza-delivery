@@ -188,7 +188,10 @@
     // ── G6: the in-app sign-in ──
     function openSignin(d) {
       if (!SU || !signup) { emit('signin', d); return; }   // no shell auth ⇒ the host's, as before
-      signup.open({ ctx: d.ctx || null, prefill: d.prefill || null, memberOnly: d.ctx === 'schedule' });
+      // S4 frame G (owner: B), only under schedulingLive: a guest tapping «Programar» gets the drawn sheet with the guest exit kept (the
+      // order stays ASAP) and only the subtitle changed; without the flag, exactly as G6
+      const gate = d.ctx === 'schedule' && runtime.schedulingLive === true;
+      signup.open({ ctx: d.ctx || null, prefill: d.prefill || null, memberOnly: d.ctx === 'schedule' && !gate, ...(gate ? { scheduleGate: true } : {}) });
     }
     // Codex G6 r1 #2 / r2 (an ALLOW-list, closed by construction): capp:member_complete {v:1, uid} is written ONLY at «Listo» — a new
     // account's completion, or an existing account the server confirmed complete. A RESTORED session becomes a member ONLY when the

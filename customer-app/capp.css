@@ -525,6 +525,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .slotgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}   /* 4 columns from 375 px; .app.narrow (set at render from the app's own width) → 3 */
 .slotgrid .chip{padding:0 6px;min-height:40px;font-size:13.5px;display:flex;align-items:center;justify-content:center}
 .app.narrow .slotgrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.slotgrid .chip:disabled{opacity:.45;cursor:default}   /* S4 row 10b (owner): the slot chips reuse the drawn disabled .45 (P:527/534) */
 .opt{min-height:64px;padding:12px 14px;border:1.5px solid var(--line2);border-radius:14px;background:transparent;color:var(--ink);text-align:left;display:flex;flex-direction:column;gap:2px;font:inherit}
 .opt b{font-size:15px;font-weight:600}.opt span{font-size:13px;color:var(--mute)}
 .opt[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}

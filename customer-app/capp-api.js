@@ -346,6 +346,8 @@
       if (r.status === 426) return { kind: 'update_required' };
       if (r.status === 400 && (j.error === 'Restaurant closed' || (j.error === 'Bad Request' && j.detail === 'Cerrado — programá tu pedido'))) return { kind: 'closed' };
       if (r.status === 400 && j.error === 'Bad Request' && typeof j.detail === 'string' && j.detail.indexOf('Outside delivery zone') === 0) return { kind: 'out_of_zone' };
+      // S4 N1: the server refused the slot (validateScheduledFor) — nothing was created or charged
+      if (cfg.schedulingLive === true && r.status === 400 && j.error === 'Bad Request' && typeof j.detail === 'string' && j.detail.indexOf('Invalid scheduled time (') === 0) return { kind: 'slot_refused' };
       if (r.status === 423 && j.error === 'ordering_paused') return { kind: 'paused', detail: j.detail || null };
       // §3.3 / §4 / §4b: the server's capp-guest gate (the reason codes of the confirmed wire contract)
       if (r.status === 400 && (j.error === 'guest_cash_not_allowed' || j.error === 'guest_email_required' || j.error === 'guest_ticket_invalid')) return { kind: j.error };
@@ -620,6 +622,13 @@
     // the deployment identity (X-Client-*): SherpaClient adds it only on ITS identity endpoints, and the server gates these two on
     // X-Client-Deployment (advisor 2026-10-27) — so they carry it here, from the same module; unstamped ⇒ {} (inert)
     const clientIdentity = () => { const S = root && root.SherpaClient; try { const h = S && typeof S.headers === 'function' ? S.headers() : null; return h && typeof h === 'object' ? h : {}; } catch (_) { return {}; } };
+    // S4 P2: quoteOrder's `schedule_only` read (1d19ea94): app-scoped, its own limiter; never a pricing call. A plain result — the
+    // served schedule, or null (any failure / 429 ⇒ the schedule in hand stays; the server validates at placement)
+    async function scheduleOnly() {
+      if (cfg.schedulingLive !== true || !E.quoteOrder) return null;
+      const r = await sendOnce(E.quoteOrder, { schedule_only: true, entry_mode: C.ENTRY_MODE, restaurant_id: cfg.restaurantId });
+      return !r.network && r.parsed && r.status === 200 && r.json.ok === true && r.json.schedule && typeof r.json.schedule === 'object' ? r.json.schedule : null;
+    }
     async function requestCheckoutCode({ phone, cartFp }) {
       if (!E.requestCheckoutCode) return { kind: 'offline' };
       const r = await sendOnce(E.requestCheckoutCode, { phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp }, clientIdentity());
@@ -650,7 +659,7 @@
     // the order body a card send stashed (the return restores the checkout from it)
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
-    return { quote, latestQuote, place, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, ticketValid, TICKET_TTL_MS, readPlace, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
+    return { quote, latestQuote, place, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY };
   }

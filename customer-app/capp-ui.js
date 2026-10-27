@@ -281,9 +281,11 @@
           ? `${etaTxt('delivery') ? `<span>${esc(etaTxt('delivery'))}</span>` : ''}${feeTxt}`
           : `${etaTxt('pickup') ? `<span>${esc(etaTxt('pickup'))}</span>` : ''}${cfg.addr ? `<span class="mute full">Recogé en ${esc(cfg.addr)}</span>` : ''}`)
         : `<span class="full"><span class="dot off"></span><strong>Cerrado</strong> · ${esc(opensText())}</span>`;
-      const fs = !open ? firstSlot() : null;
+      const fs = !open && !sched() ? firstSlot() : null;
+      const sfd = !open && sched() ? schedDays().find((d) => d.slots.length) || null : null;
       const dayWord = (off) => (off === 0 ? 'hoy' : off === 1 ? 'mañana' : DAYS[(clock().day + off) % 7]);
-      const closednote = !open ? `<div class="closednote">${IC.clock}<span>${fs ? `Podés programar un pedido para ${esc(dayWord(fs.off))}, desde las ${esc(fmtMin(fs.t))}` : 'Sin horarios disponibles · ' + esc(opensText()).toLowerCase()}</span>${fs ? '<button class="lnk" data-act="closed-sched">Programar</button>' : ''}</div>` : '';
+      const closednote = !open && sched() ? `<div class="closednote">${IC.clock}<span>${sfd ? `Podés programar un pedido para ${sfd.off === 0 ? 'hoy' : esc(schedMod().slotWhen(servedSched(), now().getTime(), sfd.slots[0]).split(' · ')[0].toLowerCase())}, desde las ${esc(schedMod().slotTime(servedSched(), sfd.slots[0]))}` : 'Sin horarios disponibles · ' + esc(opensText()).toLowerCase()}</span>${sfd ? '<button class="lnk" data-act="closed-sched">Programar</button>' : ''}</div>`
+        : !open ? `<div class="closednote">${IC.clock}<span>${fs ? `Podés programar un pedido para ${esc(dayWord(fs.off))}, desde las ${esc(fmtMin(fs.t))}` : 'Sin horarios disponibles · ' + esc(opensText()).toLowerCase()}</span>${fs ? '<button class="lnk" data-act="closed-sched">Programar</button>' : ''}</div>` : '';
       const avatar = cfg.logo ? `<div class="avatar${cfg.logoWide ? ' wide' : ''}"><img src="${esc(cfg.logo)}" alt="${esc(cfg.name)}"></div>` : `<div class="avatar txt" aria-hidden="true">${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}</div>`;
       let content = house.length ? `<section class="toprow" aria-label="La casa recomienda"><h2>La casa recomienda</h2><div class="cards">${house.map((it) => `<div class="card"><div class="ph"><button class="openimg" data-act="open" data-id="${esc(it.id)}" aria-label="Ver ${esc(it.n)}" tabindex="-1" style="border-radius:14px"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div><button class="txtbtn" data-act="open" data-id="${esc(it.id)}"><span class="nm">${esc(it.n)}</span><span class="prrow"><span class="mute" style="font-size:14px">${money(it.p)}</span></span></button></div>`).join('')}</div></section>` : '';
       for (const s of sections) content += `<section class="sec" id="sec-${esc(s.id)}" data-sec="${esc(s.id)}"><div class="sechead"><h2>${esc(s.name)}</h2><span>${esc(s.items.length + (s.items.length === 1 ? ' plato' : ' platos'))}</span></div>${s.note ? `<div class="secnote">${esc(s.note)}</div>` : ''}${s.pickupOnly && mode === 'delivery' ? '<div class="secflag">Solo para Pickup · cambiá a Pickup arriba para pedirlas</div>' : ''}<div>${s.items.map(rowHtml).join('')}</div></section>`;
@@ -558,6 +560,25 @@
     // sheet, the national length / local format per country, and E.164 on the wire for EVERY country (+504 included). FLIP
     // PRECONDITION: S-core / S-match (server) landed AND the per-sender UltraMsg country gate passed (plan §5)
     const intl = () => cfg.intlPhone === true;
+    // PLAN-capp-S4 (r5): scheduled orders — the runtime flag cfg.schedulingLive (the shell sets it, with the SERVED schedule in
+    // cfg.schedule); absent ⇒ today's ASAP-only checkout, byte for byte. FLIP PRECONDITIONS: signup LIVE + PIN owner records; the
+    // «revisando» / tracker transitions need the (d) owner lookup (C = the scheduled variant of S5's order screen)
+    const sched = () => cfg.schedulingLive === true;
+    let SKM = null;
+    const schedMod = () => SKM || (SKM = opts.CappSchedule || (typeof self !== 'undefined' && self.CappSchedule) || require('./capp-schedule.js'));
+    // the schedule the picker computes from: P1 (the directory's, in hand) until a P2 revalidation is applied at a USER action
+    const servedSched = () => S.sched || cfg.schedule || null;
+    const applyHeldSched = () => { if (S.schedHeld) { S.sched = S.schedHeld; S.schedHeld = null; } };
+    const schedDays = () => schedMod().days(servedSched(), now().getTime(), S.flow ? S.flow.mode : 'delivery');
+    const anySlotNow = () => schedDays().some((d) => d.slots.length > 0);
+    // row 10: a RETAINED scheduled identity (dispatched, its body recorded) — its slot is fixed until the send resolves
+    function lockedSlot() {
+      if (!sched() || !api || !S.flow || S.flow.time !== 'schedule') return null;
+      let r = null; try { r = api.readPlace(); } catch (_) { r = null; }
+      if (!r || !(Number(r.dispatched) > 0) || typeof r.sent_body !== 'string') return null;
+      let b = null; try { b = JSON.parse(r.sent_body); } catch (_) { b = null; }
+      return b && Number.isFinite(b.scheduled_for) ? b.scheduled_for : null;
+    }
     let PH = null;
     const phoneMod = () => PH || (PH = opts.CappPhone || (typeof self !== 'undefined' && self.CappPhone) || require('./capp-phone.js'));
     const ccOf = (f) => (f && f.cc && phoneMod().byCc(f.cc) ? f.cc : phoneMod().DEFAULT_CC);
@@ -577,6 +598,7 @@
     // «Tus datos» in edit (the customer types it) — the member path never sends a number it could not read (5f intl recon)
     function newFlow() {
       const f = C.freshFlow(member());
+      if (sched()) { f.time = isOpen() ? 'asap' : 'schedule'; f.slot = null; f.slotDay = null; }
       if (intl()) { const m = member(); if (!setPhone(f, m && m.phone ? m.phone : '') && m) f.editWho = true; }
       return f;
     }
@@ -604,7 +626,7 @@
     const finitePin = (p) => !!p && Number.isFinite(p.lat) && Number.isFinite(p.lng);
 
     // ── the order context, the state key (what a quote stands for) and the totals of the CURRENT state ──
-    function ctxBase() { const s = CappSerialize.serialize(cart, menu); return { restaurantId: cfg.restaurantId, items: s.items, itemsText: s.items_text, member: member() }; }
+    function ctxBase() { const s = CappSerialize.serialize(cart, menu); return { restaurantId: cfg.restaurantId, items: s.items, itemsText: s.items_text, member: member(), ...(sched() ? { appCash: true } : {}) }; }
     function stateKey() { const f = S.flow; const m = member(); return JSON.stringify([f.mode, f.mode === 'delivery' ? f.pin : null, C.tipCentsOf(f), cart.snapshot().lines, m && m.uid ? m.uid : null]); }
     function totalsNow() { if (!S.flow || !S.q || S.qKey !== stateKey()) return { ready: false }; return C.totals(S.flow, S.q, cart.subtotalCents(), S.q.sig); }
     // delivery is quoted only once there is an address to price: a confirmed pin, or the device location (never the branch fallback)
@@ -636,10 +658,11 @@
     // new copy: the line carries the drawn «Agotado» mark; the CTA stays as labelled, disabled)
     const soldLines = (has = soldOf) => cart.lines().filter((l) => isSoldBy(find(l.key), has));
     const soldBlock = () => soldLines().length > 0;
-    const gateCtx = () => ({ open: isOpen(), closedRefused: S.closedRefused, pickupOnlyCount: poLines().length, outZone: S.outZone, member: member(), unavailableLines: soldLines().length,
+    const gateCtx = () => ({ open: isOpen(), closedRefused: S.closedRefused, ...(sched() ? { anySlot: anySlotNow() } : {}), pickupOnlyCount: poLines().length, outZone: S.outZone, member: member(), unavailableLines: soldLines().length,
       ...(cardOnlyGuest() ? { guestEmail: true, emailRefused: S.emailRefused === true } : {}) });
     const need = () => C.missingStep(S.flow, gateCtx());
     function ctaLabel(T) {
+      if (lockedSlot() !== null) return 'Reintentar';   // row 10b: the drawn «Reintentar» re-sends the SAME order
       const n = need(); if (n) return n;
       if (S.flow.mode === 'delivery') return 'Continuar';   // delivery continues to the tip step
       const amt = T.ready ? ' · ' + moneyC(T.total) : '';   // pickup places from here (no tip); no amount until the quote is ready
@@ -719,6 +742,22 @@
       return `<div class="sumrow"><span>Envío${ib}</span><span>${moneyC(T.envio)}</span></div>`;
       // the guest «Creá tu cuenta y tu envío es gratis» line needs a promo flag the quote does not carry (not rendered)
     }
+    // S4: the prototype's two cards + the inline picker (P:1838-1841): day chips, EVERY slot of the day (N3), the empty states; row 10b's
+    // read-only variant while a scheduled send is unresolved (the drawn disabled treatment + note A)
+    function schedCards(f, open, del) {
+      const K = schedMod(), s = servedSched(), t0 = now().getTime(), lk = lockedSlot();
+      if (lk !== null) { f.time = 'schedule'; f.slot = lk; f.slotDay = K.dayKey(s, lk); }
+      const ds = schedDays(), first = ds.find((d) => d.slots.length), sdayKey = f.slotDay || (first ? first.key : null), sd = ds.find((d) => d.key === sdayKey) || null;
+      const dis = lk !== null ? ' disabled' : '';
+      const cards = `<div class="opts"><button class="opt" aria-pressed="${f.time === 'asap'}" data-act="time" data-val="asap"${open && lk === null ? '' : ' disabled'}><b>Lo antes posible</b><span>${open ? esc(etaTxt(del ? 'delivery' : 'pickup')) : 'No disponible · cerrado'}</span></button>
+      <button class="opt" aria-pressed="${f.time === 'schedule'}" data-act="time" data-val="schedule"${dis}><b>Programar</b><span>${Number.isFinite(f.slot) ? esc(K.slotWhen(s, t0, f.slot)) : 'Hasta 7 días'}</span></button></div>`;
+      if (f.time !== 'schedule') return cards;
+      const chips = `<div class="daychips" role="group" aria-label="Día">${ds.map((d) => `<button class="daychip" aria-pressed="${d.key === sdayKey}" data-act="slotday" data-val="${d.key}"${d.slots.length && lk === null ? '' : ' disabled'}><b>${esc(K.chipDay(d))}</b><span>${esc(K.chipSub(d))}</span></button>`).join('')}</div>`;
+      const grid = sd && sd.slots.length
+        ? `<div class="chips slotgrid" role="group" aria-label="Horario">${sd.slots.map((ms) => `<button class="chip" aria-pressed="${f.slot === ms}" data-act="slot" data-val="${ms}"${dis}>${esc(K.slotTime(s, ms))}</button>`).join('')}</div><span class="note">${lk !== null ? 'Estamos confirmando este horario; no se puede cambiar mientras tanto.' : 'Cada horario es una ventana de 30 minutos.'}</span>`
+        : `<div class="gate"><b>${sd && sd.off === 0 ? 'Hoy ya no hay horarios' : 'Sin horarios disponibles'}</b><span class="note">Elegí otro día.</span></div>`;
+      return cards + chips + grid;
+    }
     function checkoutHtml() {
       const f = S.flow, del = f.mode === 'delivery', m = member(), open = isOpen(), po = poLines(), T = totalsNow();
       const poNames = [...new Set(po.map((l) => { const s = sectionOfKey(l.key); return s ? s.name : l.key; }))].join(', ');
@@ -727,7 +766,7 @@
       const chev = IC.chev.replace('class="i"', 'class="i chev"');
       const zoneKm = (S.lastDelivery && Number.isFinite(S.lastDelivery.max_km) ? S.lastDelivery.max_km : cfg.zoneKm);
       // Entrega — ASAP only (scheduling, the «Programar» card, is S4)
-      const timeCards = `<div class="opts"><button class="opt" aria-pressed="${open}" data-act="time" data-val="asap"${open ? '' : ' disabled'}><b>Lo antes posible</b><span>${open ? esc(etaTxt(del ? 'delivery' : 'pickup')) : 'No disponible · cerrado'}</span></button></div>`;
+      const timeCards = sched() ? schedCards(f, open, del) : `<div class="opts"><button class="opt" aria-pressed="${open}" data-act="time" data-val="asap"${open ? '' : ' disabled'}><b>Lo antes posible</b><span>${open ? esc(etaTxt(del ? 'delivery' : 'pickup')) : 'No disponible · cerrado'}</span></button></div>`;
       const mapBlock = `<button class="map${S.outZone && del ? ' out' : ''}" data-act="pin" aria-label="Ajustar el pin en el mapa">${MAP_SVG}${gmapBox('preview')}<span class="pin">${IC.pinfill}</span><span class="tag">${geoDenied ? 'Pin en el restaurante' : pinOk ? 'Pin confirmado' : 'Tu ubicación'}</span><span class="adj">Ajustar pin</span></button>
     ${geoDenied ? `<div class="locrow">${IC.locoff}<span>Ubicación desactivada</span><button data-act="loc-on">Activar</button></div>` : ''}
     ${S.outZone && del ? `<div class="gate" role="alert"><b>${esc(cfg.name || '')} no llega a esta dirección</b><span class="note">${Number.isFinite(zoneKm) && cfg.branch ? `Entregamos hasta ${esc(zoneKm)} km de ${esc(cfg.branch)}. ` : ''}Mové el pin a una dirección dentro de la zona, o recogé en tienda.</span><div class="row2"><button class="btn2" data-act="pin">Cambiar dirección</button><button class="btn2 dark" data-act="type" data-val="pickup">Recoger en tienda</button></div></div>` : ''}`;
@@ -826,9 +865,10 @@
     // «Detalles adicionales», else «Tu ubicación»
     const addrText = () => esc(C.addrLine(S.flow) || (S.flow.details || '').trim() || 'Tu ubicación');
     function placingHtml() {
-      const f = S.flow, del = f.mode === 'delivery', T = totalsNow(), e = etaRange(f.mode), lines = displayLines();
+      const f = S.flow, del = f.mode === 'delivery', T = totalsNow(), lines = displayLines();
+      const e = sched() && f.time === 'schedule' && Number.isFinite(f.slot) ? { k: schedMod().slotWhen(servedSched(), now().getTime(), f.slot), v: '' } : etaRange(f.mode);
       return `<div class="scrim"></div><div class="sheet" role="dialog" aria-label="Realizando pedido"><div class="grab"></div><div class="placing"><h2>Realizando pedido…</h2>
-    ${e ? prow(IC.clock, esc(e.k) + ' ' + esc(e.v), del ? 'Delivery' : 'Pickup') : ''}
+    ${e ? prow(IC.clock, e.v ? esc(e.k) + ' ' + esc(e.v) : esc(e.k), del ? 'Delivery' : 'Pickup') : ''}
     ${prow(IC.store, storeLine(), del ? addrText() : esc(cfg.addr || ''), del ? 's' : '')}
     ${prow(IC.bag, esc(unitOf(cart.count())), esc(lines.map((d) => d.n + '× ' + d.item.n).join(', ')))}
     ${prow(f.pay === 'online' ? IC.card : IC.cash, f.pay === 'online' ? 'Tarjeta · PixelPay' : 'Efectivo ' + (del ? 'al entregar' : 'al recoger'), 'Total ' + moneyC(T.total) + (T.tip ? ' · incluye propina ' + moneyC(T.tip) : ''))}
@@ -863,7 +903,7 @@
       const st = S.sendTotals || { total: null, tip: 0 };
       return `<div class="sending" aria-live="polite"><div class="shero">${RIDER_LIVE}</div>
     <div class="sndcard"><div class="shd"><h2>Enviando tu pedido…</h2><span class="sspin" id="sspin"><i class="ring" aria-hidden="true"></i></span></div>
-      ${prow(IC.pin, del ? addrText() : 'Pickup · ' + storeLine(), del ? 'Entrega' : esc(cfg.addr || ''), del ? 'b' : '')}
+      ${prow(IC.pin, del ? addrText() : 'Pickup · ' + storeLine(), del ? 'Entrega' + (sched() && f.time === 'schedule' && Number.isFinite(f.slot) ? ' · ' + esc(schedMod().slotWhen(servedSched(), now().getTime(), f.slot)) : '') : esc(cfg.addr || ''), del ? 'b' : '')}
       <div class="prow">${logoChip('lg')}<span class="t"><b>${storeLine()}</b><span>${esc(lines.map((d) => d.n + '× ' + d.item.n).join(', '))}</span></span></div>
       ${prow(f.pay === 'online' ? IC.card : IC.cash, (f.pay === 'online' ? 'Tarjeta · PixelPay' : 'Efectivo ' + (del ? 'al entregar' : 'al recoger')) + (st.total !== null ? ' · ' + moneyC(st.total) : ''), st.tip ? 'Incluye propina ' + moneyC(st.tip) : 'Pago')}
       <p class="shint">${esc(S.sendHint || 'Esto toma unos segundos')}</p></div></div>`;
@@ -994,6 +1034,9 @@
     async function send() {
       const f = S.flow, T = totalsNow();
       if (dead || !intakeOk() || !T.ready || !mods()) return;
+      if (sched() && f && f.time === 'schedule' && lockedSlot() === null && !schedMod().offered(servedSched(), now().getTime(), f.mode, f.slot)) {
+        f.slot = null; backTo('checkout'); return;   // the picker shows «Elegí un horario»; nothing was sent
+      }
       if (guestCashBlocked()) return;   // no key ⇒ nothing is sent (the record stays clean)
       let c; try { c = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { return; }   // the key only where the server requires it
       const attempt = ++attemptSeq; S.terminal = null;   // Codex r4 #2: THIS attempt's settled outcome only
@@ -1036,7 +1079,11 @@
     const ERR = {
       offline: () => ({ title: 'Sin conexión', body: 'No pudimos enviar tu pedido. Revisá tu conexión e intentá de nuevo; tu pedido está intacto.', icon: 'warn', acts: [{ act: 'err-retry', label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       // S2 drops the «Programar» button and the schedule sentence (OWNER 2026-10-26; CLOSED_SHEET.scheduleHint is S4's)
-      closed: () => ({ title: C.CLOSED_SHEET.title(cfg.name || '', closesText()), body: C.CLOSED_SHEET.body, icon: 'warn', acts: [{ act: 'lclose', label: 'Cerrar' }] }),
+      closed: () => (sched() ? { title: C.CLOSED_SHEET.title(cfg.name || '', closesText()), body: C.CLOSED_SHEET.body + ' ' + C.CLOSED_SHEET.scheduleHint, icon: 'warn', acts: [{ act: 'err-sched', label: 'Programar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }
+        : { title: C.CLOSED_SHEET.title(cfg.name || '', closesText()), body: C.CLOSED_SHEET.body, icon: 'warn', acts: [{ act: 'lclose', label: 'Cerrar' }] }),   // S4 (P:1974): «Programar»
+      // S4 N1 (owner, Option 1) and row 9 (owner-approved; the calm held sheet of #mk-pending, one action)
+      slotRefused: () => ({ title: 'Ese horario ya no está disponible', body: 'Tu pedido no se envió ni se cobró nada. Elegí otro horario; tu pedido está intacto.', icon: 'warn', acts: [{ act: 'err-slot', label: 'Elegir otro horario', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
+      schedReview: () => ({ title: 'Tu pago está hecho; estamos revisando tu horario', body: 'Tu horario ya no estaba disponible cuando se confirmó el pago. No hace falta pagar de nuevo: te escribimos por WhatsApp para acordar otro horario.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }], held: true }),
       // TODO(ruling pending): «Pagar en efectivo» is a host event only
       // frame 6 (approved): the existing title, the fixed body; «Pagar con tarjeta» selects card and sends again, «Creá tu cuenta» signs up
       // frame 4 (approved): the session dropped mid-checkout — calm, the lock; the member's data and tender stay as they are
@@ -1096,6 +1143,8 @@
       if (k === 'guest_email_required') { S.emailRefused = true; backTo('checkout'); return; }   // §4b ⇒ frame 1b: the email field red, CTA «Revisá tu correo»
       if (k === 'offline') { backTo(); showErr(ERR.offline()); return; }
       if (k === 'closed') { S.closedRefused = true; backTo(); showErr(ERR.closed()); return; }   // over the screen of the tap (P placeTap :1975)
+      if (k === 'slot_refused') { backTo('checkout'); showErr(ERR.slotRefused()); return; }   // S4 N1
+      if (k === 'scheduled_review') { backTo('checkout'); showErr(ERR.schedReview()); return; }   // S4 row 9: paid, the slot under review
       if (k === 'out_of_zone') { S.outZone = true; backTo('checkout'); return; }
       if (k === 'payment_failed') {
         backTo('checkout');   // P pixelPay :2016 — back() to «Entrega & Pago», then the sheet
@@ -1135,6 +1184,9 @@
       if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }
       C.setMode(S.flow, S.mode);
       if (cardOnlyGuest()) S.flow.pay = 'online';   // §3.1: one option, card, already selected
+      // S4 P2: the schedule revalidated in the background, never awaited; a CHANGED one is held and applied at the next user picker
+      // action (never under a finger); a failure leaves the schedule in hand
+      if (sched() && api && typeof api.scheduleOnly === 'function') { const at = cfg.restaurantId; api.scheduleOnly().then((x) => { if (!dead && x && at === cfg.restaurantId && JSON.stringify(x) !== JSON.stringify(servedSched())) S.schedHeld = x; }, () => {}); }
       S.layerKind = null; S.cartNote = null; S.refusal = null; returnTo = null;
       // the cart stays on the stack: device back from «Entrega & Pago» reopens it (P :2298-2301)
       S.stack.push({ screen: 'store', layer: 'cart' }); S.stack = S.stack.slice(-12); pushHist();
@@ -1208,6 +1260,15 @@
       if (a === 'type') { if (frozenNow()) return true; S.mode = v === 'pickup' ? 'pickup' : 'delivery'; C.setMode(f, S.mode); notifyCart(); if (S.mode === 'delivery' && !finitePin(f.pin) && S.geo === null) requestGeo(); render(); return true; }
       if (a === 'rm-po') { for (const l of poLines()) mutate(() => cart.setQty(l.key, 0)); if (!cart.count()) toStore(); else render(); return true; }
       if (a === 'editwho') { f.editWho = true; render(); return true; }
+      if (sched() && (a === 'time' || a === 'slotday' || a === 'slot')) {
+        if (lockedSlot() !== null) return true;   // row 10: fixed while the send is unresolved
+        applyHeldSched();   // P2: a revalidated schedule lands on a USER action, never under a finger
+        if (a === 'time' && v === 'schedule' && !member()) { S.schedAfterSignin = true; emit('signin', { ctx: 'schedule' }); return true; }   // frame G: the order stays ASAP
+        if (a === 'time') { f.time = v === 'schedule' ? 'schedule' : 'asap'; if (f.time === 'asap') f.slot = null; }
+        if (a === 'slotday') { f.slotDay = v; f.slot = null; }
+        if (a === 'slot') { const ms = Number(v); if (Number.isFinite(ms)) { f.slot = ms; f.slotDay = schedMod().dayKey(servedSched(), ms); } }
+        render(); return true;
+      }
       if (a === 'cc' && intl()) { openLayer('cc'); render(); return true; }
       if (a === 'more') { S.more = true; render(); return true; }
       if (a === 'editdetails') { S.editDetails = true; render(); return true; }
@@ -1259,6 +1320,8 @@
         closeLayer(); render(); return true;
       }
       if (a === 'err-retry') { closeLayer(); send(); return true; }   // the SAME placement (capp-api keeps the id)
+      if (a === 'err-sched' && sched() && S.flow) { closeLayer(); S.closedRefused = false; applyHeldSched(); S.flow.time = 'schedule'; S.flow.slot = null; render(); return true; }   // P:2287
+      if (a === 'err-slot' && sched() && S.flow) { closeLayer(); applyHeldSched(); S.flow.time = 'schedule'; S.flow.slot = null; render(); return true; }   // N1: the picker, the slot cleared
       if (a === 'err-requote') { closeLayer(); S.quoteErr = null; requote(); return true; }   // the failed quote, asked again (its key was released)
       if (a === 'err-cash') { closeLayer(); if (cardOnlyGuest()) { showErr(ERR.guestCash()); return true; } emit('pay-cash', {}); return true; }   // TODO(ruling pending); a guest never reaches cash (§3.2)
       if (a === 'reauth') { closeLayer(); emit('signin', { ctx: 'reauth' }); return true; }   // the host re-authenticates, then this checkout continues
@@ -1292,6 +1355,7 @@
       Object.assign(f, { name: String(b.customer_name || ''), phone: String(b.customer_phone || '').replace(/^\+504\s*/, ''), email: String(b.customer_email || ''),
         notes: b.notes && b.notes !== '—' ? String(b.notes) : '', pay: b.payment_method === 'online' || cardOnlyGuest() ? 'online' : 'cash' });   // §3.2: a guest's restore is never cash
       if (intl()) setPhone(f, b.customer_phone);   // the picker's wire is E.164: the restored number keeps its country
+      if (sched()) { const sf = Number(b.scheduled_for); if (b.scheduled_for != null && Number.isFinite(sf)) { f.time = 'schedule'; f.slot = sf; f.slotDay = schedMod().dayKey(servedSched(), sf); } else { f.time = 'asap'; f.slot = null; } }
       if (f.mode === 'delivery') {
         if (!Number.isFinite(b.lat) || !Number.isFinite(b.lng)) return null;
         C.setPin(f, b.lat, b.lng, true); f.details = String(b.address_details || '');
@@ -1372,6 +1436,13 @@
       if (act === 'back') { emit('back'); return; }
       // S7a-2: the host may adopt a newer verified menu first (opts.beforeCheckout() === false ⇒ it took over: not opened here)
       if (act === 'checkout') { if (!orderable || soldBlock()) return; if (typeof opts.beforeCheckout === 'function' && opts.beforeCheckout() === false) return; let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return; } emit('checkout', { body, mode: S.mode }); openCheckout(); return; }
+      if (act === 'closed-sched' && sched()) {
+        if (!cart.count()) { toast('Agregá platos y programá al final'); return; }
+        if (!S.flow) S.flow = newFlow();
+        if (member()) { S.flow.time = 'schedule'; S.flow.slot = null; } else S.schedAfterSignin = false;
+        openCheckout(); if (!member()) { S.schedAfterSignin = true; emit('signin', { ctx: 'schedule' }); }
+        return;
+      }
       if (act === 'closed-sched') { emit('schedule'); return; }
       if (act === 'frozen-status') { frozenStatus(); return; }
     }
@@ -1466,6 +1537,7 @@
       setMember(m) {
         if (dead) return;
         memberCtx = m && typeof m === 'object' ? m : null;
+        if (!memberCtx) S.schedAfterSignin = false;
         const f = S.flow;
         if (f && memberCtx) {
           if (!String(f.name || '').trim() && memberCtx.name) f.name = String(memberCtx.name);
@@ -1473,6 +1545,7 @@
           if (!String(f.phone || '').trim() && memberCtx.phone) { if (intl()) unread = !setPhone(f, memberCtx.phone); else f.phone = String(memberCtx.phone); }
           if (!String(f.email || '').trim() && memberCtx.email) f.email = String(memberCtx.email);
           f.editWho = unread; S.emailRefused = false;   // an unreadable member number stays in edit (intl)
+          if (S.schedAfterSignin && sched()) { f.time = 'schedule'; f.slot = null; }   // frame G: signed in ⇒ the picker opens
         }
         render();
       },
