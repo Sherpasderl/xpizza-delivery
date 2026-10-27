@@ -790,6 +790,14 @@
       placingI = T_.setInterval(() => { left = Math.max(0, left - 1); const cd = doc.querySelector('[data-act="placing-go"] .cd'); if (cd) cd.textContent = '0:0' + left; }, 1000);
       placingT = T_.setTimeout(placingGo, 2000);
     }
+    // the verified guest's send: placeTap's gates, without the «Realizando pedido…» window (the verify tap was the commit)
+    function placeNow() {
+      if (dead) return;
+      if (soldBlock()) { openLayer('cart'); return; }
+      if (guestCashBlocked() || guestNeedsCode()) return;
+      if (!intakeOk() || !S.flow || need() || !C.tipChosen(S.flow) || !totalsNow().ready) return;
+      placingStop(); S.backScreen = S.screen; send();
+    }
     function placingGo() { placingStop(); if (dead || S.layerKind !== 'placing') return; S.layerKind = null; renderLayer(); send(); }
 
     // ── «Enviando tu pedido…» (prototype sendingHtml :2029-2042) while place() is in flight ──
@@ -878,7 +886,7 @@
       let r; try { r = await api.verifyCheckoutCode({ phone: o.phone, cartFp: cartFpNow(), code: o.code }); } catch (_) { r = { kind: 'offline' }; }
       o.busy = false;
       if (dead || S.otp !== o) return;
-      if (r.ok) { S.ticket = r.ticket; closeOtp(); placeTap(); return; }   // the order goes on (the drawn «Realizando pedido…» window)
+      if (r.ok) { S.ticket = r.ticket; closeOtp(); placeNow(); return; }   // advisor 2026-10-27: the verify tap IS the commit — no extra window; straight to the drawn «Enviando»
       if (r.kind === 'code_wrong') { o.state = 'wrong'; o.code = ''; }
       else if (r.kind === 'code_expired') { o.state = 'expired'; o.code = ''; o.resendAt = null; }
       else if (r.kind === 'too_many_attempts') { o.state = 'locked'; o.code = ''; o.lockedUntil = nowMs() + r.retryInS * 1000; }
@@ -968,6 +976,9 @@
       // frame 4 (approved): the session dropped mid-checkout — calm, the lock; the member's data and tender stay as they are
       reauth: () => ({ title: 'Tu sesión se interrumpió', body: 'Volvé a entrar para enviar tu pedido. Tu pedido está intacto y no se cobró nada; tus datos y tu forma de pago quedan igual.', icon: 'calm', ic: 'lock', acts: [{ act: 'reauth', label: 'Volver a entrar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       guestCash: () => ({ title: 'No pudimos enviar tu pedido', body: 'El pago en efectivo es solo para cuentas. Pagá con tarjeta o creá tu cuenta.', acts: [{ act: 'guest-card', label: 'Pagar con tarjeta', primary: true }, { act: 'guest-signup', label: 'Creá tu cuenta' }] }),
+      // advisor 2026-10-27: a guest NEVER SEES a cash option — the same sheet without «Pagar en efectivo» (and without the body's cash
+      // clause: the approved sentence, shortened, no new words); «Usar otra tarjeta» is its primary. The invariant stays as the backstop.
+      payFailedGuest: () => ({ title: 'Pago no completado', body: 'Tu banco no autorizó el pago. Podés intentar con otra tarjeta; tu pedido está intacto.', acts: [{ act: 'err-card', label: 'Usar otra tarjeta', primary: true }] }),
       payFailed: () => ({ title: 'Pago no completado', body: 'Tu banco no autorizó el pago. Podés intentar con otra tarjeta o pagar en efectivo; tu pedido está intacto.', acts: [{ act: 'err-cash', label: 'Pagar en efectivo', primary: true }, { act: 'err-card', label: 'Usar otra tarjeta' }] }),
       // the approved Q9 mockup #mk-refunded
       refunded: (cents) => ({ title: 'Te reembolsamos tu pago', body: `${cfg.name || ''} ya había cerrado cuando se confirmó tu pago. Te devolvimos el total completo${Number.isFinite(cents) ? ', ' + moneyC(cents) : ''}; no se te cobrará.`, icon: 'ok', acts: [{ act: 'home', label: 'Volver al inicio', primary: true }] }),
@@ -1024,7 +1035,7 @@
         backTo('checkout');   // P pixelPay :2016 — back() to «Entrega & Pago», then the sheet
         if (out.clearable === false) { showErr(ERR.pending()); return; }   // a cancel return the server still calls pending: the order stays locked
         // «Usar otra tarjeta» needs the whole checkout back: after a return that could not restore it, the generic held state (U3)
-        showErr(S.returning && !contextRestored() ? ERR.generic() : ERR.payFailed()); return;
+        showErr(S.returning && !contextRestored() ? ERR.generic() : cardOnlyGuest() ? ERR.payFailedGuest() : ERR.payFailed()); return;
       }
       if (k === 'refunded') { backTo('checkout'); showErr(ERR.refunded(out.refunded_total_cents)); return; }
       if (k === 'existing_order') { backTo('checkout'); showErr(ERR.exists(out.reference)); return; }   // also a kept identity after a 426 (update_required: true)

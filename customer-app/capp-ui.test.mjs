@@ -2069,13 +2069,13 @@ test('G1 §3.2 transport: the api itself refuses a guest cash placement before a
 });
 test('G1 server refusals: guest_email_required ⇒ frame 1b (the email red, «Revisá tu correo» until edited); guest_cash_not_allowed ⇒ frame 6', async () => {
   const b = bootCo({ config: GUEST, script: { ...CODE_OK, chargeOnlineOrder: [{ status: 400, json: { ok: false, error: 'guest_email_required' } }] } });
-  await guestFilled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await viaCode(b); await b.click('#layer [data-act="placing-go"]'); await settle();
+  await guestFilled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await viaCode(b); await settle();
   assert.equal(b.ui.state.screen, 'checkout'); assert.equal(b.text('#cta'), 'Revisá tu correo', '🔴 the server\'s email refusal shows frame 1b');
   assert.ok(b.q('#f-email').closest('.fld').classList.contains('bad'));
   await b.type('#f-email', 'ana.perez@gmail.com.hn'); await settle();
   assert.notEqual(b.text('#cta'), 'Revisá tu correo', 'editing the email clears it');
   const c = bootCo({ config: GUEST, script: { ...CODE_OK, chargeOnlineOrder: [{ status: 400, json: { ok: false, error: 'guest_cash_not_allowed' } }] } });
-  await guestFilled(c); await c.click('#cta'); await c.click('[data-act="tipc"][data-val="0"]'); await c.click('[data-act="tip-place"]'); await viaCode(c); await c.click('#layer [data-act="placing-go"]'); await settle();
+  await guestFilled(c); await c.click('#cta'); await c.click('[data-act="tipc"][data-val="0"]'); await c.click('[data-act="tip-place"]'); await viaCode(c); await settle();
   assert.equal(c.text('#layer .errsheet p'), 'El pago en efectivo es solo para cuentas. Pagá con tarjeta o creá tu cuenta.');
 });
 
@@ -2114,7 +2114,7 @@ test('G3 frame 2: «Hacer pedido» ⇒ the code sheet (nothing sent): the code i
   assert.match(b.text('#layer [data-act="otp-verify"]'), /^Verificar y hacer pedido · L /); assert.ok(!b.q('#layer [data-act="otp-verify"]').disabled);
   await b.click('#layer [data-act="otp-verify"]'); await settle();
   assert.deepEqual(b.srv.of('verifyCheckoutCode')[0].body, { ...rq, code: '482913' });
-  assert.ok(b.q('#layer [data-act="placing-go"]'), 'verified ⇒ the drawn «Realizando pedido…» window'); await b.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b.q('#layer [data-act="placing-go"]'), null, '🔴 no «Realizando pedido…» window after verify (the tap is the commit)');
   assert.equal(b.srv.of('chargeOnlineOrder')[0].body.checkout_ticket, 'tk_1', '🔴 the order carries its ticket');
 });
 test('G3 frames 2b–2d: wrong ⇒ red boxes + one red line, cleared; expired ⇒ the amber line + «Reenviar código» at once; too many ⇒ boxes inert + minutes + the two exits; never sent', async () => {
@@ -2150,7 +2150,7 @@ test('G3 frames 3a / 3b: the code could not be sent ⇒ «Intento 2 de 3» with 
 test('G3: a server guest_ticket_invalid (expired / consumed) ⇒ the code sheet again, nothing else sent', async () => {
   const b = bootCo({ config: GUEST, script: { requestCheckoutCode: [{ status: 200, json: { ok: true, resend_in_s: 41 } }], verifyCheckoutCode: [{ status: 200, json: { ok: true, checkout_ticket: 'tk_1' } }],
     chargeOnlineOrder: [{ status: 400, json: { ok: false, error: 'guest_ticket_invalid' } }] } });
-  await toCodeSheet(b); await viaCode(b); await b.click('#layer [data-act="placing-go"]'); await settle();
+  await toCodeSheet(b); await viaCode(b); await settle();
   assert.ok(b.q('#layer .otp'), '🔴 re-verify'); assert.equal(b.srv.of('requestCheckoutCode').length, 2);
 });
 
@@ -2176,7 +2176,7 @@ const CU = createRequire(import.meta.url)('./capp-ui.js');   // the pure rendere
 test('G5: a guest\'s paid card return carries the signup grant on its placed outcome (frame 7\'s input); a member\'s never does', async () => {
   const storage = memStore();
   const a = bootCo({ storage, config: GUEST, script: { ...CODE_OK, chargeOnlineOrder: [CHECKOUT] } });
-  await guestFilled(a); await a.click('#cta'); await a.click('[data-act="tipc"][data-val="0"]'); await a.click('[data-act="tip-place"]'); await viaCode(a); await a.click('#layer [data-act="placing-go"]'); await settle();
+  await guestFilled(a); await a.click('#cta'); await a.click('[data-act="tipc"][data-val="0"]'); await a.click('[data-act="tip-place"]'); await viaCode(a); await settle();
   const id = a.srv.of('chargeOnlineOrder')[0].body.order_id; const snap = J(a.ui.cart.snapshot()); a.ui.destroy();
   const grant = { token: 'sg_1', expires_at: NOON().getTime() + 15 * 60e3 };
   const c = bootCo({ storage, config: GUEST, search: RET('complete', id), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'paid', signup_grant: grant } }] } });
@@ -2200,4 +2200,17 @@ test('G5 frame 7: the offer card — one benefit, the verified phone (read-only)
   assert.deepEqual([...d.querySelectorAll('button')].map((b) => [b.textContent, b.dataset.act]), [['Crear mi cuenta', 'offer-create'], ['Ahora no', 'offer-skip']]);
   assert.equal(CU.accountOfferHtml({ grant: { token: 'sg_1', expires_at: 2000 }, now: 2000 }), '', '🔴 an expired grant ⇒ no offer (a normal signup instead)');
   assert.equal(CU.accountOfferHtml({}), '');
+});
+
+test('G advisor 2026-10-27: a guest\'s declined card ⇒ «Pago no completado» with NO cash option anywhere — only «Usar otra tarjeta»', async () => {
+  const storage = memStore();
+  const a = bootCo({ storage, config: GUEST, script: { ...CODE_OK, chargeOnlineOrder: [CHECKOUT] } });
+  await guestFilled(a); await a.click('#cta'); await a.click('[data-act="tipc"][data-val="0"]'); await a.click('[data-act="tip-place"]'); await viaCode(a); await settle();
+  const id = a.srv.of('chargeOnlineOrder')[0].body.order_id; const snap = J(a.ui.cart.snapshot()); a.ui.destroy();
+  const c = bootCo({ storage, config: GUEST, search: RET('cancel', id), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'failed' } }] } });
+  c.ui.restore(snap); await c.ui.returning; await settle();
+  assert.equal(c.text('#layer .errsheet h2'), 'Pago no completado');
+  assert.equal(c.text('#layer .errsheet p'), 'Tu banco no autorizó el pago. Podés intentar con otra tarjeta; tu pedido está intacto.');
+  assert.deepEqual(c.qa('#layer .errsheet button').map((x) => [x.textContent, x.dataset.act]), [['Usar otra tarjeta', 'err-card']], '🔴 a guest never sees a cash option');
+  assert.ok(!/efectivo/i.test(c.text('#layer')), 'no cash anywhere on the sheet');
 });
