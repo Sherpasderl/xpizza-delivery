@@ -209,6 +209,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/disponible.test.js',              // renderDisponible body (prototype S.disponible) test (SLICE3)
   'xpizza-driver/return-target.test.js',           // returning-state nav target real-code suite (SLICE3)
   'xpizza-driver/solo-cancel.test.js',              // S.cancelado idle takeover real-code suite (SLICE3)
+  'xpizza-driver/llegue.test.js',                   // S.llegue pure-builder flag suite (SLICE3)
   'xpizza-driver/offline-banner.test.js',          // SLICE3 offline banner handler test (SLICE3)
   'xpizza-driver/gpsoff.test.js',                  // SLICE3 gpsoff builder + apply logic test (SLICE3)
   'xpizza-driver/fa4400-neverships.test.js',       // SLICE3 brand-orange never-ship test, static (SLICE3)

@@ -103,6 +103,21 @@
 #screen-onshift .pay-ro-card .ico.ok { background: var(--green-bg, #EBF7F0); color: var(--success, #15803D); }   /* prototype .row .ic.ok (--p-ok #15803D) */
 #screen-onshift .pay-ro-card .ico.warn { background: #FBF0D8; color: var(--warn, #f59e0b); }
 #screen-onshift .items-card .sv-reminder { margin-top: 10px; }
+/* llegue (S.llegue) — the arrived-at-customer delivery additions: arrival banner (flag-on), the «entregá todo» items
+   card, and the body «Problema» button. Scoped to #screen-onshift (the on-shift delivery surface). */
+#screen-onshift .arrival-banner { display: flex; gap: 11px; align-items: flex-start; padding: 12px 13px; border-radius: 13px; font-size: 13.5px; line-height: 1.35; background: var(--green-bg, #E3F3E9); color: var(--success, #15803D); }   /* proto .banner.ok */
+#screen-onshift .arrival-banner svg { width: 20px; height: 20px; flex: none; margin-top: 1px; }
+#screen-onshift .arrival-banner b { display: block; font-family: 'Red Hat Display', sans-serif; font-size: 14.5px; }
+#screen-onshift .arrival-banner span { display: block; margin-top: 2px; }
+#screen-onshift .sv-deliver-items { background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); padding: 12px 14px; }   /* proto items() .card padding 12px 14px */
+#screen-onshift .sv-deliver-items .sdi-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+#screen-onshift .sv-deliver-items .sdi-count { font-family: var(--fb); font-size: 13px; color: var(--text-soft, #546078); }   /* proto .lbl */
+#screen-onshift .sv-deliver-items .sdi-chip { display: inline-flex; align-items: center; font: 700 12px var(--fb); padding: 4px 10px; border-radius: 999px; line-height: 1.2; background: var(--surface-2, #F5F7FA); color: var(--text-soft, #546078); white-space: nowrap; }   /* proto .chip.ghost */
+#screen-onshift .sv-deliver-items .sdi-row { display: flex; gap: 10px; font-size: 14px; padding: 4px 0; }
+#screen-onshift .sv-deliver-items .sdi-row b { font-family: 'Red Hat Display', sans-serif; min-width: 22px; color: var(--accent, #2F5FB8); }   /* proto {q}× = --fd, color --p-p */
+#screen-onshift .problema-btn { appearance: none; border: 0; background: none; width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; font-family: var(--fb); font-weight: 600; font-size: 13px; color: var(--text-soft, #546078); min-height: 40px; cursor: pointer; }   /* proto .btn.txt (problemaBtn min-height 40px) */
+#screen-onshift .problema-btn .ico { width: 16px; height: 16px; display: inline-flex; }
+#screen-onshift .problema-btn .ico svg { width: 100%; height: 100%; }
 /* ===== SLICE3:PRESENTATION-3:END ===== */
 /* ===== SLICE3:PRESENTATION-INICIO:START — Inicio (pre-shift) refresh: login + esperando, SCOPED to their screens so the
    shared .center-screen/.greeting/.big-btn that off-shift also uses stay untouched (no regression). Sherpa Sola brand,

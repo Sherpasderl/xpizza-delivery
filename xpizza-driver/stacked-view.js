@@ -387,15 +387,35 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   let navBlock;
   if (phase === 'awaiting_acceptance') { navBlock = ''; }
   else if (arrived) {
-    navBlock = `<div class="arrived-note">${ICONS.check}<span>Has llegado ${isPickup ? 'al restaurante' : 'donde el cliente'}</span></div>`;
+    // flag-ON delivery: the arrival banner below conveys arrival (prototype S.llegue has no «Has llegado» note), so
+    // drop the redundant note. flag-OFF (and pickup) keep the note byte-identical to today.
+    navBlock = (opts.canNotifyArrival === true && !isPickup)
+      ? ''
+      : `<div class="arrived-note">${ICONS.check}<span>Has llegado ${isPickup ? 'al restaurante' : 'donde el cliente'}</span></div>`;
   } else {
     navBlock = navBtnHtml(target, navPref, navLabel, { ...deps, navTaskId });
   }
+
+  // Prototype S.llegue additions (arrived-at-customer delivery). All DARK behind their flags / state:
+  // • the arrival banner is a notification claim → canNotifyArrival + arrived + delivery (R9, no false control);
+  // • the items card («entregá todo») shows the order lines once arrived (display-only, from existing order data);
+  // • the body «Problema con este pedido» is gated on the problem-report capability (R9/F).
+  const arrivalBanner = (arrived && opts.canNotifyArrival === true && accepted && !isPickup)
+    ? `<div class="arrival-banner">${ICONS.bell || ''}<div><b>${esc(firstName(name))} ya sabe que llegaste</b><span>Le avisamos por su seguimiento. Si no sale en un par de minutos, escribile.</span></div></div>`
+    : '';
+  const deliverItems = (arrived && accepted && !isPickup) ? itemLines(order) : null;
+  const itemsCard = deliverItems
+    ? `<div class="sv-deliver-items"><div class="sdi-head"><span class="sdi-count">${esc(deliverItems.reduce((a, l) => a + l.qty, 0))} artículo${deliverItems.reduce((a, l) => a + l.qty, 0) === 1 ? '' : 's'}</span><span class="sdi-chip">entregá todo</span></div>${deliverItems.map((l) => `<div class="sdi-row"><b>${esc(l.qty)}×</b><span>${esc(l.name)}</span></div>`).join('')}</div>`
+    : '';
+  const problemaBtnHtml = (opts.canReportProblem === true && accepted)
+    ? `<button class="problema-btn" id="btn-problema-body"><span class="ico">${ICONS.warn || ''}</span>Problema con este pedido</button>`
+    : '';
 
   const flowTop = solo ? '<div class="ao-spacer ao-spacer-top"></div>' : '';
   const flowBot = solo ? '<div class="ao-spacer ao-spacer-bot"></div>' : '';
   const actualPill = showActualPill ? '<span class="pactual">Parada actual</span>' : '';
   return `${flowTop}
+    ${arrivalBanner}
     <div class="active-card" data-order-id="${esc(o.orderId)}">
       <div class="ac-chiprow">${bagTagHtml(ordinal, esc)}${rchip(order, esc)}<span class="order-num">${esc(displayOrderLabel(order))}</span>${actualPill}</div>
       <div class="ac-head">
@@ -411,6 +431,8 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
       ${vueltoLine(order, deps)}
     </div>
     ${navBlock}
+    ${itemsCard}
+    ${problemaBtnHtml}
     ${opts.previewHtml || ''}
     <div class="action-zone">
       ${llegueBtn}
@@ -671,15 +693,25 @@ const CUP_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 
 export function stopHeaderHtml(info = {}, deps = {}) {
   const { ICONS = {}, esc = String } = deps;
-  const { ordinal, total, name, area, deadline, single, canReportProblem, pickupCount, sub: subOverride, title: titleOverride } = info;
-  // An explicit `title` (the solo-pickup two-step: «Recoger ~H:MM» / «Revisá el pedido») wins over the stop-count
-  // vocabulary. Escaped — the ready label it may carry is pure «~H:MM». subOverride is raw text, escaped below.
+  const { ordinal, total, name, area, deadline, single, canReportProblem, pickupCount, sub: subOverride, title: titleOverride,
+    arrivedCustomer, canNotifyArrival, notifiedAt } = info;
+  // The ARRIVED-at-customer header (prototype S.llegue): «Estás donde {Nombre}» — true by geofence regardless of the
+  // arrival-notification capability. An explicit `title` (the solo-pickup two-step) still wins over everything.
   const title = titleOverride != null ? esc(titleOverride)
+    : arrivedCustomer ? `Estás donde ${esc(firstName(name))}`
     : pickupCount ? `Recoger ${esc(pickupCount)} pedidos` : single ? 'Única parada' : `Parada ${esc(ordinal)} de ${esc(total)}`;
   const dl = deadline ? ` · antes de ${esc(deadline)}` : '';
-  // An explicit `sub` (e.g. apRecoger's «{brand} ~H:MM · {brand} ~H:MM» ready-time line, ruling #2) wins; else the
-  // name·area subtitle. subOverride is raw text, escaped here.
-  const sub = subOverride != null ? esc(subOverride) : [name, area].filter(Boolean).map(esc).join(' · ');
+  const titleDl = arrivedCustomer ? '' : dl;   // arrived puts the deadline in the SUB, not after the «Estás donde» title
+  // An explicit `sub` wins. For the arrived header: the «avisamos a las {t} · antes de {t}» line is an ARRIVAL-
+  // NOTIFICATION claim, shown ONLY when the capability is live AND a notify time exists (R9 — no false claim); the
+  // truthful flag-OFF variant is «{area}» (or «antes de {deadline}» when a real deadline exists). Else the name·area sub.
+  let sub;
+  if (subOverride != null) sub = esc(subOverride);
+  else if (arrivedCustomer) {
+    sub = (canNotifyArrival === true && notifiedAt)
+      ? `avisamos a las ${esc(notifiedAt)}${dl}`
+      : (area ? esc(area) : (deadline ? `antes de ${esc(deadline)}` : ''));
+  } else sub = [name, area].filter(Boolean).map(esc).join(' · ');
   // Right cluster (header ruling, option a): «Terminar turno» power icon — ALWAYS present (the one end-shift
   // entry during a delivery → the existing end-shift path → O4 sheet → cuadre, unchanged) — then the Ayuda icon,
   // gated on the Problema capability (R9/F; hidden until that endpoint exists). Left: the subtle Sola brand mark.
@@ -687,7 +719,7 @@ export function stopHeaderHtml(info = {}, deps = {}) {
   const ayuda = canReportProblem === true ? `<button class="ib sh-ayuda" id="btn-problema" aria-label="Ayuda" title="Ayuda">${ICONS.help || '?'}</button>` : '';
   return `<div class="stop-header">
       <div class="sh-logo">${ICONS.sola || SOLA_SVG}</div>
-      <div class="sh-titles"><div class="sh-title">${title}${dl}</div>${sub ? `<div class="sh-sub">${sub}</div>` : ''}</div>
+      <div class="sh-titles"><div class="sh-title">${title}${titleDl}</div>${sub ? `<div class="sh-sub">${sub}</div>` : ''}</div>
       <div class="sh-actions">${endShift}${ayuda}</div>
     </div>`;
 }
