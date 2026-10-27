@@ -43,8 +43,8 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 // `process.exit(0)` appended to it cannot short-circuit this guard (Codex r2 P1). A tampered contract (widened/
 // dropped restore, added/removed/shrunk region, changed kind) is caught even though the file is editable.
 const SLICE3_PINS = {
-  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER'],
-  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace'],
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO'],
+  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace'],
   restoreSha: {
     'HELP-HANDLER': 'e823efd01be83461f6b7b900e8e60a9065d9c44bfedb1b32c2624f1d6c00206f',
     'CUADRE-CSS': '41327b6fa5e535b774d323c235e755019b6020516a10ac20340b004667f8a4ec',
@@ -53,8 +53,10 @@ const SLICE3_PINS = {
     'CUADRE-SUBMIT': '06a225a4158eae7c797d0775fec2def67fb01283467b3c6352cff7dc55e8466b',
     'CHIME-FRESH': 'e86e31b5350d14f892d99d38e7bf84fcf2358c262d03d9354bf663864e0de4c9',
     'OFFER-TAKEOVER': '88bdef966a96defc21a3b6bc407f595201c0808456016662832f6ae14c60a855',
+    'INICIO-LOGIN': 'c88bdf37eb700d815067bda2ed13a24478b983b0ead7321713095d18c402fc32',
+    'INICIO-ESPERANDO': '582717c999424ab08ce8bb1bdeb34fb2378b3563f6c66ca5957c91b695bfa06f',
   },
-  fileSha: '89b976d24d8b61a2a0efcd2e7d8053463da1449ac1da537f809bc2566ae4bc94',
+  fileSha: 'cafca93383b079b0446b0939d2f8311ba27ac2e3aeef9d96f28adb78347946bf',
 };
 // SLICE3DEPS carve-outs (advisor 2026-10-26): a REGISTERED exception to the non-nesting rule — a tiny span that MAY
 // live inside its declared SLICE2 parent, so slice 3 can edit slice-2-added host code (the fresh-offer deps object)
@@ -82,7 +84,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = 'be35326a38e96d1e49db9962cd5fbacf024ef7ab992abb972991206cca5b9e2f';
+const SLICE2_GUARD_SHA = '9a287ee0fae2b4c1714cedfe84cdbc716cbc82e97e9af7ffcddfe4832544601a';
 const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
