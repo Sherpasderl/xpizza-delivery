@@ -1,0 +1,326 @@
+// Customer app S7a-2 (PLAN-capp-S7a r1-r3.4; MOCKUP-capp-S7a-states frames 1–9 APPROVED 2026-10-27): the directory contract fake
+// (pinned to the REAL 5f handler's output), the client directory store, Inicio / Buscar from the real served envelopes, and the
+// shell driven through the REAL shell.html + modules in jsdom.
+// Run: node --test customer-app/capp-s7a2.test.mjs
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, '..');
+const require = createRequire(import.meta.url);
+const { JSDOM } = createRequire(join(ROOT, 'xpizza-functions/x.js'))('jsdom');
+const CappDirectory = require('./capp-directory.js'), CappEligibility = require('./capp-eligibility.js');
+const CappHome = require('./capp-home.js'), CappShell = require('./capp-shell.js'), CappMenu = require('./capp-menu.js'), CappUI = require('./capp-ui.js');
+const { provisionBrand } = await import(join(ROOT, 'xpizza-functions/contract/capp/capture.mjs'));
+const quiet = async (fn) => { const w = console.warn, l = console.log; console.warn = console.log = () => {}; try { return await fn(); } finally { console.warn = w; console.log = l; } };
+const PROV = { x_pizza: await quiet(() => provisionBrand('x_pizza')), la_musa: await quiet(() => provisionBrand('la_musa')) };
+const FX = JSON.parse(readFileSync(join(HERE, 'fixtures/s7a2/directory.json'), 'utf8'));
+const SC = FX.scenarios;
+const RUNTIME = { endpoints: { quoteOrder: '/x/q', createOrder: '/x/c', chargeOnlineOrder: '/x/p', paymentStatus: '/x/s' }, intakeKey: 'k_test' };
+const T0 = new Date(2026, 9, 20, 19, 5).getTime();   // Tuesday 7:05 p.m. — both stores open (the seeded hours)
+const J = (x) => JSON.parse(JSON.stringify(x));
+
+// ── the contract fake ──
+// the 5f allowlist, in output order (directory.js ENTRY_FIELDS / BODY_FIELDS at the pinned commit)
+const ENTRY_FIELDS = ['restaurant_id', 'name', 'kicker', 'unit', 'cuisines', 'logo_url', 'logo_wide', 'hero_url', 'asset_base', 'branch', 'pickup_addr', 'coverage_km', 'hub_lat', 'hub_lng',
+  'eta_delivery_min', 'eta_pickup_min', 'payments', 'pickup', 'schedule', 'schedule_state', 'fee', 'promo', 'order_id_prefix', 'house', 'meals', 'degraded'];
+const BODY_FIELDS = ['representation_version', 'complete', 'platform', 'restaurants', 'unavailable'];
+test('contract fake: produced by the pinned 5f commit; every 200 body is exactly the 5f schema; the declared statuses / validators', () => {
+  assert.equal(FX.source.commit, 'eb6d9558d2bea94bbb2d0a1829db3be72d07a419');
+  assert.equal(FX.source.blobs['directory/directory.js'], 'b462c1b21704e47565e5907e86b80fed8de9ed3a', 'the handler blob the fixture came from');
+  for (const [k, s] of Object.entries(SC)) {
+    if (s.status !== 200) continue;
+    assert.deepEqual(Object.keys(s.body), BODY_FIELDS, `${k}: body schema`);
+    for (const r of s.body.restaurants) assert.deepEqual(Object.keys(r), ENTRY_FIELDS, `${k}: entry schema`);
+  }
+  assert.equal(SC.complete.headers['Cache-Control'], 'public, max-age=30'); assert.match(SC.complete.headers.ETag, /^"[0-9a-f]{64}"$/);
+  assert.equal(SC.not_modified.status, 304); assert.equal(SC.not_modified.body, null);
+  for (const k of ['partial_presentation', 'partial_unavailable']) { assert.equal(SC[k].body.complete, false); assert.equal(SC[k].headers.ETag, undefined, `${k}: a partial never carries a validator`); }
+  assert.deepEqual(SC.partial_unavailable.body.unavailable, ['la_musa']);
+  assert.equal(SC.unavailable_503.status, 503); assert.deepEqual(SC.unavailable_503.body, { ok: false, error: 'directory_unavailable', retryable: true });
+  assert.deepEqual(SC.zero.body.restaurants, []); assert.equal(SC.zero.body.complete, true);
+  assert.deepEqual(SC.tombstone.body.restaurants.map((r) => r.restaurant_id), ['x_pizza']);
+  // the house ids are x_pizza's CANONICAL dish ids from the real publish (the S0 rig)
+  const ids = new Set(PROV.x_pizza.envelope.menu.dishes.map((d) => d.dish_id));
+  assert.ok(SC.complete.body.restaurants[0].house.length === 4 && SC.complete.body.restaurants[0].house.every((h) => ids.has(h)));
+});
+
+// ── the client directory store ──
+function memStorage(init = {}) { const m = new Map(Object.entries(init)); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), _m: m }; }
+const resp = (k) => ({ status: SC[k].status, body: SC[k].body, etag: SC[k].headers.ETag });
+function rigDir({ storage = memStorage(), script = [], now = { t: T0 } } = {}) {
+  const calls = [];
+  const elig = CappEligibility.createEligibility({ now: () => now.t });
+  const dir = CappDirectory.createDirectory({ storage, now: () => now.t, eligibility: elig, fetchDirectory: async (etag) => { calls.push(etag); const n = script.shift(); return typeof n === 'string' ? resp(n) : n || { status: 0 }; } });
+  return { dir, elig, calls, storage, now };
+}
+const stored = (body, at, etag = SC.complete.headers.ETag) => ({ 'capp:directory': JSON.stringify({ v: 1, body, etag, fetched_at: at }) });
+
+test('directory: cold ⇒ loading; a complete 200 lists, verifies (enterable), and is stored with its validator', async () => {
+  const R = rigDir({ script: ['complete'] });
+  assert.equal(R.dir.boot().phase, 'cold');
+  const v = await R.dir.revalidate();
+  assert.equal(v.phase, 'ready'); assert.deepEqual(v.rows.map((r) => r.rid), ['x_pizza', 'la_musa']);
+  assert.equal(R.dir.state('x_pizza'), 'enterable'); assert.equal(R.calls[0], null);
+  assert.equal(JSON.parse(R.storage.getItem('capp:directory')).etag, SC.complete.headers.ETag);
+});
+test('directory: a stored body < 24 h paints at boot as PRESENTATION (listed, never enterable); ≥ 24 h, future > 5 min, or a partial ⇒ discarded', () => {
+  const ok = rigDir({ storage: memStorage(stored(SC.complete.body, T0 - 60 * 60 * 1000)) });
+  const v = ok.dir.boot();
+  assert.equal(v.phase, 'ready'); assert.equal(v.presentation, true); assert.equal(v.rows.length, 2);
+  assert.equal(ok.dir.state('x_pizza'), 'held', 'presentation is not eligibility');
+  for (const at of [T0 - 24 * 60 * 60 * 1000, T0 + 5 * 60 * 1000 + 1]) assert.equal(rigDir({ storage: memStorage(stored(SC.complete.body, at)) }).dir.boot().phase, 'cold');
+  assert.equal(rigDir({ storage: memStorage(stored(SC.partial_presentation.body, T0)) }).dir.boot().phase, 'cold', 'only a COMPLETE body is ever trusted from storage');
+});
+test('directory: revalidation sends the stored etag; a matching 304 verifies; a 304 naming another etag ⇒ re-fetched WITHOUT a validator', async () => {
+  const R = rigDir({ storage: memStorage(stored(SC.complete.body, T0 - 1000)), script: ['not_modified'] });
+  R.dir.boot(); await R.dir.revalidate();
+  assert.equal(R.calls[0], SC.complete.headers.ETag); assert.equal(R.dir.state('la_musa'), 'enterable');
+  const R2 = rigDir({ storage: memStorage(stored(SC.complete.body, T0 - 1000)), script: [{ status: 304, etag: '"other"' }, 'complete'] });
+  R2.dir.boot(); await R2.dir.revalidate();
+  assert.deepEqual(R2.calls, [SC.complete.headers.ETag, null]);
+});
+test('directory: a complete body omitting a shown store TOMBSTONES it in place (disabled, same slot) until the next visit; it is never enterable', async () => {
+  const R = rigDir({ script: ['complete', 'tombstone'] });
+  R.dir.boot(); await R.dir.revalidate(); await R.dir.revalidate();
+  assert.deepEqual(R.dir.view().rows.map((r) => [r.rid, r.gone]), [['x_pizza', false], ['la_musa', true]]);
+  assert.equal(R.dir.state('la_musa'), 'gone');
+  assert.deepEqual(JSON.parse(R.storage.getItem('capp:directory')).body.restaurants.map((r) => r.restaurant_id), ['x_pizza'], 'removed from the stored body');
+  R.dir.visit();
+  assert.deepEqual(R.dir.view().rows.map((r) => r.rid), ['x_pizza']);
+});
+test('directory: a PARTIAL verifies what it lists; an omitted store is held (never tombstoned); the stored body is not overwritten; the partial note', async () => {
+  const R = rigDir({ script: ['complete', 'partial_unavailable'] });
+  R.dir.boot(); await R.dir.revalidate();
+  const before = R.storage.getItem('capp:directory');
+  const v = await R.dir.revalidate();
+  assert.equal(v.partial, true); assert.deepEqual(v.rows.map((r) => [r.rid, r.gone]), [['x_pizza', false], ['la_musa', false]]);
+  assert.equal(R.dir.state('x_pizza'), 'enterable'); assert.equal(R.dir.state('la_musa'), 'held');
+  assert.equal(R.storage.getItem('capp:directory'), before);
+});
+test('directory: 503 / offline change nothing; with nothing to show ⇒ the error phase (frame 7); a later success clears it', async () => {
+  const R = rigDir({ script: ['unavailable_503', { status: 0 }, 'complete'] });
+  R.dir.boot(); assert.equal((await R.dir.revalidate()).phase, 'error'); assert.equal((await R.dir.revalidate()).phase, 'error');
+  assert.equal((await R.dir.revalidate()).phase, 'ready');
+  const P = rigDir({ storage: memStorage(stored(SC.complete.body, T0 - 1000)), script: ['unavailable_503'] });
+  P.dir.boot(); const v = await P.dir.revalidate();
+  assert.equal(v.phase, 'ready'); assert.equal(v.failed, true); assert.equal(P.dir.state('x_pizza'), 'held', 'a presentation row stays held');
+});
+test('directory: eligibility expires on its own clock (60 s) — a verified row reverts to held without any new response', async () => {
+  const R = rigDir({ script: ['complete'] });
+  R.dir.boot(); await R.dir.revalidate();
+  R.now.t += 59 * 1000; assert.equal(R.dir.state('x_pizza'), 'enterable');
+  R.now.t += 1000; assert.equal(R.dir.state('x_pizza'), 'held');
+});
+
+// ── Inicio / Buscar (pure renderers over the real envelopes) ──
+function rowsOf(body, menus = { x_pizza: 'fresh', la_musa: 'fresh' }) {
+  return body.restaurants.map((entry) => {
+    const rid = entry.restaurant_id, cfg = CappShell.configFor(entry, RUNTIME), st = menus[rid] || null;
+    const view = st && st !== 'failed' ? { sections: CappUI.viewSections(CappMenu.adaptMenu(PROV[rid].envelope), cfg) } : null;
+    return { rid, entry, cfg, view, menuState: st, gone: false, held: false };
+  });
+}
+const VM = (over = {}) => ({ phase: 'ready', partial: false, rows: rowsOf(SC.complete.body), platform: SC.complete.body.platform, now: new Date(T0), auth: 'guest', cuisine: '', filters: new Set(),
+  schedulingLive: false, outOfZone: false, tab: 'home', cartN: 0, q: '', recent: [], ...over });
+const dom = (html) => new JSDOM(`<div id="x">${html}</div>`).window.document;
+// the visible text: every text node, trimmed, joined by one space (spans are spaced by CSS, not by literal spaces)
+const txt = (el) => { if (!el) return null; const tw = el.ownerDocument.createTreeWalker(el, 4); const out = []; for (let n = tw.nextNode(); n; n = tw.nextNode()) { const t = n.nodeValue.replace(/\s+/g, ' ').trim(); if (t) out.push(t); } return out.join(' '); };
+
+test('Inicio S5-absent: no statistics rows; «Destacados» = «Abiertos ahora y para pedir hoy», open first then directory order', () => {
+  const d = dom(CappHome.homeHtml(VM()));
+  const secs = [...d.querySelectorAll('.hsec')].map((s) => s.getAttribute('aria-label'));
+  assert.deepEqual(secs, ['Destacados', 'La casa recomienda', 'Todos los restaurantes']);
+  assert.ok(!/más pedido|volvieron a pedir|vuelven a pedir|%/.test(d.querySelector('#x').textContent), 'nothing from statistics');
+  assert.equal(txt(d.querySelector('.hsec[aria-label="Destacados"] p')), 'Abiertos ahora y para pedir hoy');
+  // 6:00 p.m.: x_pizza open (12–7:45), la_musa open (5–8:45); 8:00 p.m.: only la_musa ⇒ it leads
+  const late = dom(CappHome.homeHtml(VM({ now: new Date(2026, 9, 20, 20, 0) })));
+  assert.deepEqual([...late.querySelectorAll('.hsec[aria-label="Destacados"] .scard .rt')].map((b) => b.dataset.rid), ['la_musa', 'x_pizza']);
+});
+test('Inicio house: ids ⇒ those canonical dishes (a dish the loaded menu lacks is dropped); absent ⇒ catalog-tag fallback; [] ⇒ hidden', () => {
+  const xp = SC.complete.body.restaurants[0];
+  const withHouse = (house) => { const rows = rowsOf(SC.complete.body); rows[0] = { ...rows[0], entry: { ...xp, house } }; return rows; };
+  const names = (rows) => [...dom(CappHome.homeHtml(VM({ rows }))).querySelectorAll('.hsec[aria-label="La casa recomienda"] .dcard .nm')].map((n) => n.textContent);
+  assert.deepEqual(names(withHouse(xp.house)), ['Sweet Corn & Calabrian Chili', 'Pancetta Vodka Sauce', 'Pistaccio Mortadella', 'Prosciutto']);
+  assert.deepEqual(names(withHouse(['ZZZZZZZZZZ', ...xp.house.slice(0, 2)])), ['Pistaccio Mortadella', 'Prosciutto'], 'an unknown id is dropped; the rest in menu order');
+  assert.deepEqual(names(withHouse([])), [], 'house: [] hides the row');
+  // absent ⇒ the tag fallback: photographed dishes tagged signature / chefs_pick / must_try (x_pizza's catalog carries none ⇒ tagged here)
+  const tagged = rowsOf(SC.complete.body);
+  const photographed = tagged[0].view.sections.flatMap((s) => s.items).filter((it) => it.img).slice(0, 2).map((it) => it.id);
+  tagged[0] = { ...tagged[0], entry: { ...xp, house: null }, view: { sections: tagged[0].view.sections.map((s) => ({ ...s, items: s.items.map((it) => (photographed.includes(it.id) ? { ...it, tags: ['chefs_pick'] } : it)) })) } };
+  assert.equal(photographed.length, 2, 'premise');
+  assert.deepEqual(names(tagged), tagged[0].view.sections.flatMap((s) => s.items).filter((it) => photographed.includes(it.id)).map((it) => it.n));
+  assert.deepEqual(names(rowsOf({ ...SC.complete.body, restaurants: [{ ...xp, house: null }] })), [], 'absent + no tags ⇒ no row (never invented)');
+});
+test('Inicio fees: «Envío desde L 45» only for a PRICED fee; no fee text otherwise — never «Envío gratis» / L 0; the promo is the MEMBER price', () => {
+  const none = dom(CappHome.homeHtml(VM({ rows: rowsOf(SC.fee_none.body) })));
+  const lm = none.querySelector('.rlist .rcard[data-rid="la_musa"]');
+  assert.ok(!/Envío/.test(txt(lm)), txt(lm)); assert.ok(!/L 0\b/.test(txt(lm)));
+  const guest = dom(CappHome.homeHtml(VM()));
+  assert.match(txt(guest.querySelector('.rlist .rcard[data-rid="x_pizza"] .meta')), /Envío desde L 45$/);
+  assert.equal(txt(guest.querySelector('.scard .tag-deal')), 'Envío gratis con tu cuenta');
+  const member = dom(CappHome.homeHtml(VM({ auth: 'member' })));
+  assert.match(txt(member.querySelector('.rlist .rcard[data-rid="x_pizza"] .meta')), /Envío gratis$/);
+  assert.equal(member.querySelector('.tag-deal'), null);
+  // unresolved: neither variant; the guest pill's slot is reserved (no line appears under a finger when auth lands)
+  const unres = dom(CappHome.homeHtml(VM({ auth: 'unresolved' })));
+  assert.equal(unres.querySelector('.tag-deal'), null);
+  assert.match(txt(unres.querySelector('.rlist .rcard[data-rid="x_pizza"] .meta')), /Envío desde L 45$/);
+  assert.equal(unres.querySelector('.rlist .rcard[data-rid="x_pizza"] .pill.deal').getAttribute('style'), 'visibility:hidden');
+});
+test('Inicio states: 1 loading line · 7 error · 2 zero · 3 B all closed (2nd sentence only while scheduling is live) · 9 partial · 4 out of zone', () => {
+  assert.equal(txt(dom(CappHome.homeHtml(VM({ rows: [], phase: 'cold' }))).querySelector('.home-body')), 'Cargando restaurantes…');
+  const err = dom(CappHome.homeHtml(VM({ rows: [], phase: 'error' })));
+  assert.equal(txt(err.querySelector('.home-body')), 'No pudimos cargar los restaurantes Revisá tu conexión e intentá de nuevo. Reintentar');
+  assert.equal(err.querySelector('.btn2').dataset.act, 'dir-retry');
+  assert.equal(txt(dom(CappHome.homeHtml(VM({ rows: [] }))).querySelector('.home-body')), 'Todavía no hay restaurantes aquí Pronto vas a poder pedir en San Pedro Sula.');
+  const night = new Date(2026, 9, 20, 22, 30);
+  assert.equal(txt(dom(CappHome.homeHtml(VM({ now: night }))).querySelector('.hnote')), 'Ahora no hay restaurantes abiertos.');
+  assert.equal(txt(dom(CappHome.homeHtml(VM({ now: night, schedulingLive: true }))).querySelector('.hnote')), 'Ahora no hay restaurantes abiertos. Podés programar tu pedido.');
+  assert.equal(dom(CappHome.homeHtml(VM())).querySelector('.hnote'), null, 'open stores ⇒ no note');
+  const part = dom(CappHome.homeHtml(VM({ partial: true })));
+  assert.equal(txt(part.querySelector('.hnote')), 'Algunos restaurantes no cargaron. Reintentar');
+  assert.equal(part.querySelector('.hnote .lnk').dataset.act, 'dir-retry');
+  const oz = dom(CappHome.homeHtml(VM({ outOfZone: true })));
+  assert.equal(txt(oz.querySelector('.home-body')), 'Ningún restaurante entrega en esta dirección Probá otra dirección o recogé en tienda. Cambiar dirección');
+});
+test('coverage: frame 4 only when EVERY store answers «outside»; an unknown coverage is never counted as outside', () => {
+  const rows = rowsOf(SC.complete.body);
+  const far = { lat: 15.9, lng: -87.5 }, near = { lat: 15.5075, lng: -88.0398 };
+  assert.equal(CappHome.allOutOfZone(rows, far), true); assert.equal(CappHome.allOutOfZone(rows, near), false);
+  const unknown = rows.map((r, i) => (i ? { ...r, entry: { ...r.entry, coverage_km: null } } : r));
+  assert.equal(CappHome.allOutOfZone(unknown, far), false); assert.equal(CappHome.allOutOfZone(rows, null), false);
+  // the limit itself: exactly coverage_km is inside
+  const e = rows[0].entry, km = CappHome.kmBetween({ lat: e.hub_lat, lng: e.hub_lng }, far);
+  assert.equal(CappHome.covers({ ...e, coverage_km: km }, far), true); assert.equal(CappHome.covers({ ...e, coverage_km: km - 1e-9 }, far), false);
+});
+test('Buscar: dish hits are the DISPLAYED items (a launcher «desde L min», never a raw variant child), directory → section → item order, capped at 12', () => {
+  const m = CappHome.searchModel(rowsOf(SC.complete.body), 'a');
+  assert.equal(m.dishes.length, 12, 'capped at 12');
+  const ordered = rowsOf(SC.complete.body).flatMap((r) => r.view.sections.flatMap((s) => s.items.filter((it) => CappHome.norm(it.n + ' ' + it.d).includes('a')).map((it) => `${r.rid}/${it.id}`))).slice(0, 12);
+  assert.deepEqual(m.dishes.map((h) => `${h.r.id}/${h.it.id}`), ordered);
+  const menu = CappMenu.adaptMenu(PROV.la_musa.envelope);
+  const launcher = menu.dish(Object.keys(menu.groups)[0]); assert.ok(launcher && launcher.launcher, 'premise: la_musa has a launcher');
+  const child = menu.dish(menu.groups[launcher.key].choices[0]);
+  const hits = CappHome.searchModel(rowsOf(SC.complete.body), launcher.name).dishes;
+  assert.ok(hits.some((h) => h.it.id === launcher.key), 'the launcher is found');
+  assert.ok(!hits.some((h) => h.it.id === child.key), 'its variant child is not a hit of its own');
+  const d = dom(CappHome.searchHtml(VM({ tab: 'search', q: launcher.name })));
+  const row = d.querySelector(`.srow[data-id="${launcher.key}"] .pr`);
+  assert.equal(txt(row), `desde L ${Math.min(...menu.groups[launcher.key].choices.map((k) => menu.dish(k).price))}`);
+});
+test('Buscar: «No encontramos» ONLY when every menu answered; a partial shows its note (frame 8); pending menus show «Buscando platos…» (frame 6)', () => {
+  const nothing = 'zzzqqq';
+  assert.match(txt(dom(CappHome.searchHtml(VM({ tab: 'search', q: nothing }))).querySelector('#results')), /^No encontramos «zzzqqq»/);
+  for (const st of ['stale', 'presentation', 'failed']) {
+    const r = txt(dom(CappHome.searchHtml(VM({ tab: 'search', q: nothing, rows: rowsOf(SC.complete.body, { x_pizza: 'fresh', la_musa: st }) }))).querySelector('#results'));
+    assert.ok(!/No encontramos/.test(r), `${st}: never «No encontramos» over a partial`); assert.match(r, /^Algunos menús no cargaron; puede haber más platos\./);
+  }
+  const found = dom(CappHome.searchHtml(VM({ tab: 'search', q: 'camar', rows: rowsOf(SC.complete.body, { x_pizza: 'failed', la_musa: 'fresh' }) })));
+  assert.equal(txt(found.querySelector('.results > .note')), 'Algunos menús no cargaron; puede haber más platos.');
+  assert.ok(found.querySelectorAll('.srow[data-act="open-dish"]').length > 0);
+  const loading = dom(CappHome.searchHtml(VM({ tab: 'search', q: 'pizza', rows: rowsOf(SC.complete.body, {}) })));
+  assert.deepEqual([...loading.querySelectorAll('h3')].map((h) => h.textContent), ['Restaurantes', 'Platos']);
+  assert.equal(txt(loading.querySelector('.note.sload')), 'Buscando platos…');
+});
+
+// ── the shell, through the REAL shell.html ──
+function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }); return { p, resolve }; }
+const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
+function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now } = {}) {
+  const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
+  const html = readFileSync(join(HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
+  const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://app.test/' });
+  const w = dom.window;
+  for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+  const dirCalls = [], envCalls = [], pend = {};
+  const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
+  const fetchEnvelope = (rid, etag) => {
+    envCalls.push(rid);
+    const mode = typeof envelope === 'function' ? envelope(rid) : envelope;
+    if (mode === 'hold') { const d = deferred(); (pend[rid] = pend[rid] || []).push(d); return d.p; }
+    if (mode === 'fail') return Promise.resolve({ status: 500 });
+    return Promise.resolve({ status: 200, body: J(PROV[rid].envelope), etag: PROV[rid].etag });
+  };
+  const clock = now || { t: T0 };
+  const ui = w.CappShellUI.mount(w.document, { fetchDirectory, fetchEnvelope, readAvailability: async () => [], runtime: RUNTIME, storage: storage || memStorage(), now: () => clock.t,
+    auth: { state: () => auth }, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { apiOpts: { fetch: () => new Promise(() => {}) } } });
+  const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
+  const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
+  const release = (rid) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: J(PROV[rid].envelope), etag: PROV[rid].etag }); };
+  return { w, ui, q, qa, click, dirCalls, envCalls, release, pend, clock };
+}
+
+test('shell: Inicio paints the directory-only rows BEFORE any envelope lands; menu rows fill in as each lands (never waits for all)', async () => {
+  const S = bootShell({ envelope: 'hold' });
+  await flush();
+  assert.deepEqual(S.qa('.rlist .rcard').map((b) => b.dataset.rid), ['x_pizza', 'la_musa'], 'the list is painted with every envelope pending');
+  assert.equal(S.q('.hsec[aria-label="La casa recomienda"]'), null, 'no menu-derived row yet');
+  S.release('x_pizza'); await flush();
+  assert.ok(S.q('.hsec[aria-label="La casa recomienda"]'), 'x_pizza\'s house row fills in while la_musa is still pending');
+  assert.equal(S.pend.la_musa.length, 1);
+});
+test('shell: ONE cache — Buscar reuses Inicio\'s in-flight requests (no duplicate), and the search fills in as they land', async () => {
+  const S = bootShell({ envelope: 'hold' });
+  await flush();
+  assert.deepEqual(S.envCalls.sort(), ['la_musa', 'x_pizza']);
+  S.click('.tabbar [data-tab="search"]'); await flush();
+  const i = S.q('#gq'); i.focus(); i.value = 'camar'; i.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+  assert.equal(S.q('.note.sload').textContent, 'Buscando platos…');
+  assert.deepEqual(S.envCalls.sort(), ['la_musa', 'x_pizza'], 'no second request');
+  S.release('la_musa'); S.release('x_pizza'); await flush();
+  assert.ok(S.qa('.srow[data-act="open-dish"]').length > 0); assert.equal(S.q('.results > .note'), null, 'complete ⇒ no partial note');
+  assert.equal(document_focus(S), 'gq', 'typing keeps the caret in the field across re-renders');
+});
+const document_focus = (S) => S.w.document.activeElement && S.w.document.activeElement.id;
+test('shell: a tap on a PRESENTATION row is HELD (pressed) and opens the moment the verification lands; an eligible row opens at once', async () => {
+  const gate = deferred();
+  const storage = memStorage({ ...stored(SC.complete.body, T0 - 1000), [`capp:menu:x_pizza`]: JSON.stringify({ v: 1, rid: 'x_pizza', etag: PROV.x_pizza.etag, fetched_at: T0 - 1000, body: PROV.x_pizza.envelope }) });
+  const S = bootShell({ dirScript: [gate, 'complete'], storage });
+  assert.equal(S.qa('.rlist .rcard').length, 2, 'presentation painted synchronously at boot');
+  S.click('.rlist .rcard[data-rid="x_pizza"]');
+  assert.ok(S.q('.rlist .rcard[data-rid="x_pizza"]').classList.contains('held'), 'the drawn pressed state'); assert.equal(S.ui.store(), null);
+  gate.resolve(resp('complete')); await flush();
+  assert.equal(S.ui.store().rid, 'x_pizza', 'opened on the verified response'); assert.ok(S.q('.store-nav, .stick'), 'the store surface');
+  S.click('[data-act="back"]'); await flush();
+  assert.equal(S.ui.store(), null); assert.ok(S.q('.rlist'));
+  S.click('.rlist .rcard[data-rid="la_musa"]'); await flush();
+  assert.equal(S.ui.store().rid, 'la_musa', 'verified < 60 s ⇒ in');
+});
+test('shell: a held tap whose directory read FAILS shows frame 7; «Reintentar» re-reads', async () => {
+  const storage = memStorage(stored(SC.complete.body, T0 - 1000));
+  const S = bootShell({ dirScript: ['unavailable_503', 'unavailable_503', 'complete'], storage });
+  await flush();
+  assert.equal(S.qa('.rlist .rcard').length, 2, 'a failed revalidation keeps the presentation list');
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  assert.equal(S.q('.empty b').textContent, 'No pudimos cargar los restaurantes');
+  S.click('[data-act="dir-retry"]'); await flush();
+  assert.equal(S.qa('.rlist .rcard').length, 2);
+});
+test('shell: a Buscar dish result opens THAT dish\'s sheet in its store; Back returns to Buscar with the query', async () => {
+  const S = bootShell();
+  await flush();
+  S.click('.tabbar [data-tab="search"]'); await flush();
+  const i = S.q('#gq'); i.value = 'camar'; i.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+  const hit = S.q('.srow[data-act="open-dish"]'); const key = hit.dataset.id;
+  S.click(hit); await flush();
+  assert.equal(S.ui.store().rid, 'la_musa');
+  assert.ok(S.q('#detail-modal').classList.contains('open')); assert.equal(S.q('#detail-header-title').textContent, S.ui.store().ui.menu.dish(key).name);
+  S.ui.nav.back(); await flush();
+  assert.equal(S.ui.store(), null); assert.equal(S.q('#gq').value, 'camar', 'the recorded predecessor keeps its query');
+  assert.deepEqual(J(S.ui.state.recent), ['camar'], 'the search is remembered');
+});
+test('shell: a TOMBSTONED row stays in its slot, disabled; a tap does nothing; it leaves on the next visit to Inicio', async () => {
+  const S = bootShell({ dirScript: ['complete', 'tombstone'] });
+  await flush();
+  await S.ui.dir.revalidate(); await flush();
+  const lm = S.q('.rlist .rcard[data-rid="la_musa"]');
+  assert.ok(lm.disabled && lm.classList.contains('gone'));
+  S.click(lm); await flush(); assert.equal(S.ui.store(), null);
+  S.click('.tabbar [data-tab="search"]'); await flush(); S.click('.tabbar [data-tab="home"]'); await flush();
+  assert.deepEqual(S.qa('.rlist .rcard').map((b) => b.dataset.rid), ['x_pizza']);
+});
