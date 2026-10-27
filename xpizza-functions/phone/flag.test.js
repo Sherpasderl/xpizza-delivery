@@ -61,6 +61,30 @@ const dbOf = (fn) => ({ ref: (p) => ({ once: async () => { assert.strictEqual(p,
   assert.strictEqual(await F.phoneWireStrict(hang, T), false, 'FLAG-TIMEOUT-OFF');
   ok('a read error or a 500 ms timeout → OFF (fail closed)');
 
+  // ── codex r1 #2: phoneWireStrictNow — SYNCHRONOUS, never awaited on a hot path (stale-while-revalidate) ──
+  {
+    F._resetForTest(); let reads = 0, resolveRead; let val = GOOD;
+    const db = { ref: (p) => ({ once: () => { reads++; assert.strictEqual(p, 'config/phone_wire_strict', 'FLAG-NOW-PATH'); return new Promise((r) => { resolveRead = () => r({ val: () => val }); }); } }) };
+    const v0 = F.phoneWireStrictNow(db, T);
+    assert.strictEqual(v0, false, 'FLAG-NOW-COLD-IS-OFF (a boolean, not a Promise)');
+    assert.strictEqual(reads, 1, 'FLAG-NOW-COLD-REFRESHES-IN-BACKGROUND');
+    assert.strictEqual(F.phoneWireStrictNow(db, T), false, 'FLAG-NOW-STILL-OFF-WHILE-REFRESHING');
+    assert.strictEqual(reads, 1, 'FLAG-NOW-ONE-INFLIGHT-REFRESH');
+    resolveRead(); await new Promise((r) => setImmediate(r));
+    assert.strictEqual(F.phoneWireStrictNow(db, T + 1000), true, 'FLAG-NOW-FRESH-AFTER-REFRESH');
+    assert.strictEqual(reads, 1, 'FLAG-NOW-FRESH-NO-READ');
+    val = null;
+    assert.strictEqual(F.phoneWireStrictNow(db, T + 30000), true, 'FLAG-NOW-STALE-SERVES-CACHED-WHILE-REVALIDATING');
+    assert.strictEqual(reads, 2, 'FLAG-NOW-STALE-TRIGGERS-ONE-REFRESH');
+    resolveRead(); await new Promise((r) => setImmediate(r));
+    assert.strictEqual(F.phoneWireStrictNow(db, T + 30001), false, 'FLAG-NOW-REVALIDATED-OFF');
+    F._resetForTest();
+    const broken = { ref: () => ({ once: async () => { throw new Error('down'); } }) };
+    const e = console.error; console.error = () => {};
+    try { assert.strictEqual(F.phoneWireStrictNow(broken, T), false, 'FLAG-NOW-ERROR-OFF'); await new Promise((r) => setImmediate(r)); assert.strictEqual(F.phoneWireStrictNow(broken, T + 1), false, 'FLAG-NOW-ERROR-STAYS-OFF'); } finally { console.error = e; }
+    ok('phoneWireStrictNow: synchronous boolean; cold → OFF at once + ONE background refresh; fresh → cached, no read; stale → cached value while ONE refresh revalidates; error → OFF');
+  }
+
   console.log(`phone-flag: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('phone-flag: FAILED —', e && e.stack || e); process.exit(1); });

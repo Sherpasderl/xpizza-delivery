@@ -7,7 +7,7 @@
 //   allowedCountries(db, id, now) RTDB config/phone_login/{instanceId} (owner-written): a list of supported CCs, cached 30 s per
 //                                instance; '504' is ALWAYS included (the delivery country — an owner typo can never stop HN logins);
 //                                absent / malformed (any non-supported entry) / read error / 500 ms timeout → ['504'] (fail closed)
-//   otpLoginAllowed({...})       HN → true with NO read (today's path, zero added latency); another country → true only if THAT
+//   otpLoginAllowed({...})       HN (today's reading) → true with NO read and NO flag evaluation (zero added latency); another country → true only if THAT
 //                                sender's list has it; unparseable / unsupported / no sender → false.
 // A refusal is answered by requestOtp with its existing uniform response (no enumeration). verifyOtp is NOT gated: a code already
 // issued is honoured until it expires (plan §5). Never logs a phone.
@@ -59,8 +59,13 @@ async function allowedCountries(db, instanceId, now = Date.now()) {
   } finally { clearTimeout(timer); }
 }
 
+// codex r1 #2: the HN fast path runs FIRST — on today's unchanged identity reading — before ANY flag evaluation or read. `strict` may
+// be a boolean or a lazy () => boolean (requestOtp passes phoneWireStrictNow), evaluated at most once, and only for a non-HN number.
 async function otpLoginAllowed({ db, phone, restaurantId, strict, now = Date.now(), resolve = W.resolveWhatsappConfig }) {
-  const cc = loginCountryOf(phone, strict);
+  const today = loginCountryOf(phone, false);
+  if (today === HN) return true;
+  const isStrict = (typeof strict === 'function' ? strict() : strict) === true;
+  const cc = isStrict ? loginCountryOf(phone, true) : today;
   if (!cc) return false;
   if (cc === HN) return true;
   return (await allowedCountries(db, senderInstanceId(restaurantId, resolve), now)).includes(cc);

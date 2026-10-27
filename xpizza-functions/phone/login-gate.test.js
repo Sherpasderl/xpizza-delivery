@@ -54,7 +54,15 @@ const quiet = async (fn) => { const e = console.error, w = console.warn; console
   assert.strictEqual(await ask('+52 55 1234 5678', 'tb_brand_a', false), false, 'GATE-MX-NOT-ENABLED');
   assert.strictEqual(await ask('+1 219 795 0000', 'tb_nocreds', false), false, 'GATE-US-UNRESOLVED-SENDER-REFUSED');
   assert.strictEqual(await ask('+44 7911 123456', 'tb_brand_a', false), false, 'GATE-UNSUPPORTED-REFUSED');
-  assert.strictEqual(await ask('+97950000', 'tb_brand_a', true), false, 'GATE-STRICT-PLUS8-REFUSED');
+  // codex r1 #2: the HN fast path runs BEFORE any flag evaluation — so a stored-HN-shaped '+97950000' is allowed even when strict
+  // (exactly as today: normalizePhone reads it as HN); the strict parse only ever decides a NON-HN number
+  assert.strictEqual(await ask('+97950000', 'tb_brand_a', true), true, 'GATE-HN-FAST-PATH-EVEN-STRICT');
+  { G._resetForTest(); let evals = 0; const lazy = () => { evals++; return true; };
+    assert.strictEqual(await G.otpLoginAllowed({ db: dbOf(CFG), phone: '9795-0000', restaurantId: 'tb_brand_a', strict: lazy, now: T, resolve }), true, 'GATE-HN-FAST-PATH-BEFORE-FLAG allowed');
+    assert.strictEqual(evals, 0, 'GATE-HN-FAST-PATH-BEFORE-FLAG (the flag is never evaluated for HN)');
+    assert.strictEqual(await G.otpLoginAllowed({ db: dbOf(CFG), phone: '+1 219 795 0000', restaurantId: 'tb_brand_a', strict: lazy, now: T, resolve }), true, 'GATE-LAZY-FLAG-NON-HN');
+    assert.strictEqual(evals, 1, 'GATE-LAZY-FLAG-EVALUATED-ONCE-FOR-NON-HN');
+    assert.strictEqual(await G.otpLoginAllowed({ db: dbOf(CFG), phone: '+1 219 795 000', restaurantId: 'tb_brand_a', strict: () => true, now: T, resolve }), false, 'GATE-STRICT-NON-HN-WRONG-LENGTH-REFUSED'); }
   assert.strictEqual(await ask('+97950000', 'tb_brand_a', false), true, 'GATE-OFF-PLUS8-AS-TODAY');
   ok("otpLoginAllowed: HN always; another country only if THAT sender's list has it; unsupported / unparseable / no sender → refused");
 

@@ -54,5 +54,15 @@ async function phoneWireStrict(db, now = Date.now()) {
   })();
   return _inflight;
 }
+// codex r1 #2 (perf rule: no awaited flag read on a hot path) — the SYNCHRONOUS read the order intakes and requestOtp use.
+// Fresh cache → its value. Otherwise ONE background revalidation (phoneWireStrict: in-flight dedupe, backoff, fail-closed) is
+// started and NEVER awaited, and this call answers at once: a cold cache → OFF; a stale cached value → that value (stale-while-
+// revalidate; a failed refresh resets the cache to OFF, so a stale `true` cannot outlive a failure).
+function phoneWireStrictNow(db, now = Date.now()) {
+  if (_cache.at && now - _cache.at < FLAG_TTL_MS) return _cache.value;
+  const answer = _cache.at ? _cache.value : false;
+  phoneWireStrict(db, now).catch(() => {});
+  return answer;
+}
 function _resetForTest() { _cache = { value: false, at: 0 }; _inflight = null; _backoffUntil = 0; }
-module.exports = { phoneWireStrict, evaluateStrict, CENSUS_MAX_AGE_MS, FLAG_PATH, FLAG_TTL_MS, FLAG_REFRESH_TIMEOUT_MS, FLAG_BACKOFF_MS, _resetForTest };
+module.exports = { phoneWireStrict, phoneWireStrictNow, evaluateStrict, CENSUS_MAX_AGE_MS, FLAG_PATH, FLAG_TTL_MS, FLAG_REFRESH_TIMEOUT_MS, FLAG_BACKOFF_MS, _resetForTest };

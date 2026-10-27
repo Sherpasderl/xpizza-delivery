@@ -12,17 +12,17 @@ const BASE = '8a31e2a3';
 const HUNKS = Object.freeze([
  {
   "file": "index.js",
-  "now": "  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(await require('./phone/flag').phoneWireStrict(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [create]\n",
+  "now": "  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [create]\n",
   "was": "  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);\n"
  },
  {
   "file": "index.js",
-  "now": "  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(await require('./phone/flag').phoneWireStrict(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [charge]\n",
+  "now": "  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [charge]\n",
   "was": "  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);\n"
  },
  {
   "file": "index.js",
-  "now": "      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 }); if (!(await require('./phone/login-gate').otpLoginAllowed({ db: getDatabase(), phone, restaurantId, strict: await require('./phone/flag').phoneWireStrict(getDatabase()) }))) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration (INTL S-core step 4: the per-sender login gate refuses uniformly)\n",
+  "now": "      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 }); if (!(await require('./phone/login-gate').otpLoginAllowed({ db: getDatabase(), phone, restaurantId, strict: () => require('./phone/flag').phoneWireStrictNow(getDatabase()) }))) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration (INTL S-core step 4: the per-sender login gate refuses uniformly)\n",
   "was": "      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration\n"
  },
  {

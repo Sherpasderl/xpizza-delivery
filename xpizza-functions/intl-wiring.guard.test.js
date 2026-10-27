@@ -44,7 +44,7 @@ ok(`SAME-LINE: index.js has the base's ${bl.length} lines; exactly lines ${group
 
 // ── 3. the exact pinned text, before the errors check, in the right handler ──
 const SEAM = '  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);';
-const WIRE = " require('./phone/wire').applyWireContract(await require('./phone/flag').phoneWireStrict(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) ";
+const WIRE = " require('./phone/wire').applyWireContract(require('./phone/flag').phoneWireStrictNow(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) ";
 for (const [i, name, tag] of [[0, 'createOrder', 'create'], [1, 'chargeOnlineOrder', 'charge']]) {
   assert.strictEqual(HUNKS[i].now, `${SEAM}${WIRE}[${tag}]\n`, `🔴 INTL-WIRING-EXACT ${name}`);
   assert.strictEqual(HUNKS[i].was, `${SEAM}\n`, `INTL-WIRING-WAS ${name}`);
@@ -53,11 +53,12 @@ for (const [i, name, tag] of [[0, 'createOrder', 'create'], [1, 'chargeOnlineOrd
 }
 assert.ok(lineOf(HUNKS[0]) < real.split('\n').findIndex((l) => l.startsWith('exports.createOrder = onRequest(')), 'the first hunk is in createOrderApp');
 assert.ok(rl.slice(0, lineOf(HUNKS[1])).some((l) => l.includes("console.log(`chargeOnlineOrder: restaurant_id=")), 'the second hunk is in the chargeOnlineOrder handler');
-assert.strictEqual(real.split('phoneWireStrict(db)').length - 1, 2, 'INTL-WIRING-ONE-READ-PER-HANDLER');
+assert.strictEqual(real.split('phoneWireStrictNow(db)').length - 1, 2, 'INTL-WIRING-ONE-READ-PER-HANDLER');
+assert.ok(!/await\s+require\('\.\/phone\/flag'\)/.test(real) && !/phoneWireStrict\(/.test(real), '🔴 INTL-WIRING-NO-AWAITED-FLAG (codex r1 #2: hot paths read the flag synchronously, never awaited)');
 // step 4 — requestOtp: the gate after the pHash check, BEFORE the IP / per-phone reservations and the send; the same uniform answer
 const UNIFORM = 'return res.status(200).json({ ok: true, cooldown: 30 });';
 assert.strictEqual(HUNKS[2].was, `      if (!pHash) ${UNIFORM}   // uniform — no enumeration\n`, 'INTL-WIRING-OTP-WAS');
-assert.strictEqual(HUNKS[2].now, `      if (!pHash) ${UNIFORM} if (!(await require('./phone/login-gate').otpLoginAllowed({ db: getDatabase(), phone, restaurantId, strict: await require('./phone/flag').phoneWireStrict(getDatabase()) }))) ${UNIFORM}   // uniform — no enumeration (INTL S-core step 4: the per-sender login gate refuses uniformly)\n`, '🔴 INTL-WIRING-OTP-EXACT');
+assert.strictEqual(HUNKS[2].now, `      if (!pHash) ${UNIFORM} if (!(await require('./phone/login-gate').otpLoginAllowed({ db: getDatabase(), phone, restaurantId, strict: () => require('./phone/flag').phoneWireStrictNow(getDatabase()) }))) ${UNIFORM}   // uniform — no enumeration (INTL S-core step 4: the per-sender login gate refuses uniformly)\n`, '🔴 INTL-WIRING-OTP-EXACT');
 const otpAt = lineOf(HUNKS[2]), reqAt = rl.findIndex((l) => l.startsWith('exports.requestOtp = onRequest('));
 const verAt = rl.findIndex((l) => l.startsWith('exports.verifyOtp = onRequest('));
 assert.ok(reqAt < otpAt && otpAt < verAt, 'INTL-WIRING-OTP-IN-REQUESTOTP (never verifyOtp: an issued code is honoured)');
