@@ -59,6 +59,8 @@
     store: I('<path d="M4 9.5V20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9.5"/><path d="M2.5 9.5 4.1 4a1 1 0 0 1 1-.7h13.8a1 1 0 0 1 1 .7l1.6 5.5a2.5 2.5 0 0 1-4.8 1.2 2.5 2.5 0 0 1-4.8 0 2.5 2.5 0 0 1-4.8 0 2.5 2.5 0 0 1-4.8-1.2Z"/><path d="M9 21v-5h6v5"/>'),
     card: I('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/>'), cash: I('<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9h.01M18 15h.01"/>'),
     locoff: I('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><path d="M4 4l16 16"/>'),
+    // PLAN-capp-signin-required (approved mockup 2026-10-27): the chat bubble (frames 3a/3b) and the lock (frame 4), one stroke
+    chat: I('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/>'), lock: I('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
   };
   const BKSP = I('<path d="M9 5h11a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9l-6-7z"/><path d="m12 9 5 5"/><path d="m17 9-5 5"/>');
   // the tip step's rider (prototype RIDER :1918-1952, verbatim) and the sending screen's live variant (RIDER_LIVE :2023-2026)
@@ -485,7 +487,7 @@
       box.innerHTML = !nq ? '' : hits.length ? `<div class="rcount">${hits.length} resultado${hits.length === 1 ? '' : 's'}</div>${hits.map(rowHtml).join('')}` : `<div class="noresults">Nada con «${esc(q)}». Probá otra palabra.</div>`;
     }
     function openLayer(kind) { if (kind === 'cart' && S.layerKind !== 'cart') pushHist(); returnTo = descOf(doc.activeElement); S.layerKind = kind; renderLayer(true); }   // the cart is a back step (P openCart :1752)
-    function closeLayer() { if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'pin') dropPinMap(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
+    function closeLayer() { if (S.layerKind === 'otp' || S.layerKind === 'err') otpTickStop(); if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'pin') dropPinMap(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
     // a quote that failed while another layer was open: its sheet once that layer closes (still the same failed state)
     function closeLayerThen() { if (S.quoteErrSheet && !S.layerKind && (S.screen === 'checkout' || S.screen === 'tip')) { S.quoteErrSheet = false; if (S.quoteErr && S.quoteErr === stateKey()) showErr(ERR.generic('err-requote')); } }
     function renderLayer(fresh) {
@@ -499,6 +501,7 @@
       else if (k === 'ssearch') { L.innerHTML = `<div class="search" role="dialog" aria-label="Buscar en el menú"><div class="searchbar"><label for="sq">${IC.search}<input id="sq" type="search" placeholder="Buscar platos" autocomplete="off" data-field="sq" value="${esc(S.searchQ)}"></label><button class="textbtn" data-act="lclose">Cancelar</button></div><div class="results" id="sresults"></div></div>`; runStoreSearch(S.searchQ); }
       // S2b layers (the prototype's renderLayer kinds)
       else if (k === 'err') L.innerHTML = errSheet(S.err);
+      else if (k === 'otp') L.innerHTML = codeSheetHtml();
       else if (k === 'placing') L.innerHTML = placingHtml();
       else if (k === 'tipother') L.innerHTML = tipOtherHtml();
       else if (k === 'pin') L.innerHTML = pinStepHtml();
@@ -780,6 +783,7 @@
       if (dead) return;
       if (soldBlock()) { openLayer('cart'); return; }   // never silently nothing: the cart shows which dish sold out (frame 14)
       if (guestCashBlocked()) return;   // §3.2: refused locally, frame 6
+      if (guestNeedsCode()) { if (intakeOk() && S.flow && !need() && C.tipChosen(S.flow) && totalsNow().ready) openCode(); return; }   // §4: the WhatsApp code BEFORE anything is sent (frame 2)
       if (!intakeOk() || !S.flow || need() || !C.tipChosen(S.flow) || !totalsNow().ready) return;
       placingStop(); S.backScreen = S.screen; openLayer('placing');
       let left = 2;
@@ -819,6 +823,96 @@
     }
     // §3.2 THE shared invariant (every dispatch path calls it: placeTap, send — which «Reintentar» / «Usar otra tarjeta» reach —
     // and «Pagar en efectivo»): a guest whose effective tender is not ONLINE is refused LOCALLY with frame 6; nothing is sent
+    // ── §4 THE GUEST'S WHATSAPP CODE (frames 2, 2b–2d, 3a, 3b; the confirmed wire contract) ──
+    // A valid ticket for THIS phone and THIS cart is the only way a guest order is sent; it is asked for at the «Hacer pedido» tap,
+    // in a sheet over the tip step (nothing sent behind it). The order goes on as soon as the code verifies.
+    const phoneE164 = () => { const d = String((S.flow && S.flow.phone) || '').replace(/\D/g, '').slice(-8); return d.length === 8 ? '+504' + d : ''; };   // the intl picker is its own plan
+    const cartFpNow = () => (S.q && S.q.sig != null ? String(S.q.sig) : '');
+    const guestNeedsCode = () => cardOnlyGuest() && !(S.ticket && api && api.ticketValid(S.ticket) && S.ticket.phone === phoneE164() && S.ticket.cart_fp === cartFpNow());
+    const nowMs = () => now().getTime();   // the mount's clock (the countdowns)
+    let otpTick = null;
+    function otpTickStop() { if (otpTick !== null) { T_.clearInterval(otpTick); otpTick = null; } }
+    const mmss = (ms) => { const t = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(t / 60) + ':' + pad2(t % 60); };
+    function otpTickStart() {
+      otpTickStop();
+      otpTick = T_.setInterval(() => {
+        if (dead || !S.otp) { otpTickStop(); return; }
+        const n = nowMs();
+        const rs = doc.querySelector('#layer [data-otp="resend-in"]');
+        if (rs) { if (S.otp.resendAt && n < S.otp.resendAt) rs.textContent = 'Reenviar en ' + mmss(S.otp.resendAt - n); else renderLayer(); }
+        const lk = doc.querySelector('#layer [data-otp="locked"]');
+        if (lk) { if (S.otp.lockedUntil && n < S.otp.lockedUntil) lk.textContent = 'Demasiados intentos. Probá de nuevo en ' + Math.ceil((S.otp.lockedUntil - n) / 60000) + ' min.'; else { S.otp.state = 'entry'; S.otp.lockedUntil = null; renderLayer(); } }
+        const rb = doc.querySelector('#layer #otp-retry');
+        if (rb) { if (S.otp.blockedUntil && n < S.otp.blockedUntil) rb.textContent = 'Reintentar en ' + mmss(S.otp.blockedUntil - n); else { rb.disabled = false; rb.textContent = 'Reintentar'; } }
+      }, 1000);
+    }
+    function openCode() {
+      if (!mods() || !api.requestCheckoutCode) return;
+      S.otp = { state: 'entry', code: '', resendAt: null, lockedUntil: null, blockedUntil: null, phone: phoneE164(), busy: false };
+      S.ticket = null; openLayer('otp'); otpTickStart(); requestCode();
+    }
+    function closeOtp() { otpTickStop(); S.otp = null; closeLayer(); }
+    function closeCodeErr() { if (S.layerKind === 'err') { S.layerKind = 'otp'; S.err = null; renderLayer(); } }
+    const codeErr = (attempt, max, blockedMs) => {
+      const blocked = blockedMs != null;
+      return { icon: 'warn', ic: 'chat', title: 'No pudimos enviar tu código por WhatsApp',
+        ...(blocked ? { body: 'Lo intentamos 3 veces sin éxito. Tu pedido no se envió ni se cobró nada. Probá con otro número, o entrá con tu cuenta.' }
+          : { bodyHtml: `Revisá que <b>${esc(C.fullPhone(S.flow.phone))}</b> tenga WhatsApp y señal. Tu pedido está intacto; no se envió ni se cobró nada.`, note: `Intento <b>${esc(attempt)} de ${esc(max)}</b>` }),
+        acts: blocked ? [{ act: 'otp-resend', label: 'Reintentar en ' + mmss(blockedMs), primary: true, disabled: true, id: 'otp-retry' }, { act: 'otp-change', label: 'Cambiar número' }, { act: 'otp-back', label: 'Volver al pedido' }]
+          : [{ act: 'otp-resend', label: 'Reintentar', primary: true }, { act: 'otp-change', label: 'Cambiar número' }] };
+    };
+    async function requestCode() {
+      const o = S.otp; if (!o || o.busy) return;
+      o.busy = true; o.phone = phoneE164();
+      let r; try { r = await api.requestCheckoutCode({ phone: o.phone, cartFp: cartFpNow() }); } catch (_) { r = { kind: 'offline' }; }
+      o.busy = false;
+      if (dead || S.otp !== o) return;
+      if (r.ok) { o.state = o.state === 'locked' ? 'locked' : 'entry'; o.code = ''; o.resendAt = nowMs() + r.resendInS * 1000; S.layerKind = 'otp'; S.err = null; renderLayer(); return; }
+      if (r.kind === 'send_failed' && r.attempt < r.max) { S.err = codeErr(r.attempt, r.max); S.layerKind = 'err'; renderLayer(); return; }   // frame 3a
+      if (r.kind === 'send_failed' || r.kind === 'rate_limited') { o.blockedUntil = nowMs() + (r.kind === 'rate_limited' ? r.retryInS : 600) * 1000; S.err = codeErr(r.max, r.max, o.blockedUntil - nowMs()); S.layerKind = 'err'; renderLayer(); return; }   // frame 3b
+      S.err = { ...ERR.generic('otp-resend') }; S.layerKind = 'err'; renderLayer();   // offline / a country the sender cannot reach (undrawn ⇒ the generic sheet)
+    }
+    async function verifyCode() {
+      const o = S.otp; if (!o || o.busy || o.state === 'locked' || o.code.length !== 6) return;
+      o.busy = true; renderLayer();
+      let r; try { r = await api.verifyCheckoutCode({ phone: o.phone, cartFp: cartFpNow(), code: o.code }); } catch (_) { r = { kind: 'offline' }; }
+      o.busy = false;
+      if (dead || S.otp !== o) return;
+      if (r.ok) { S.ticket = r.ticket; closeOtp(); placeTap(); return; }   // the order goes on (the drawn «Realizando pedido…» window)
+      if (r.kind === 'code_wrong') { o.state = 'wrong'; o.code = ''; }
+      else if (r.kind === 'code_expired') { o.state = 'expired'; o.code = ''; o.resendAt = null; }
+      else if (r.kind === 'too_many_attempts') { o.state = 'locked'; o.code = ''; o.lockedUntil = nowMs() + r.retryInS * 1000; }
+      else { S.err = { ...ERR.generic('otp-verify') }; S.layerKind = 'err'; renderLayer(); return; }
+      renderLayer(); const b0 = doc.querySelector('#layer .otp input'); if (b0 && !b0.disabled) focusTo(b0);
+    }
+    // the six boxes; a whole code pasted (with spaces or a dash) into any box fills them all (WhatsApp has no OS autofill)
+    function otpInput(el) {
+      const o = S.otp; if (!o || o.state === 'locked') return;
+      const i = Math.min(Number(el.dataset.i) || 0, o.code.length), digits = String(el.value || '').replace(/\D/g, '');
+      o.code = digits.length >= 6 ? digits.slice(0, 6) : (o.code.slice(0, i) + digits).slice(0, 6);   // a pasted whole code fills all six
+      if (o.state === 'wrong') o.state = 'entry';
+      renderLayer();
+      const next = doc.querySelector(`#layer .otp input[data-i="${Math.min(o.code.length, 5)}"]`); if (next) focusTo(next);
+    }
+    function codeSheetHtml() {
+      const o = S.otp || { state: 'entry', code: '' }, T = totalsNow();
+      const off = o.state === 'locked', cls = o.state === 'wrong' ? ' bad' : off ? ' off' : '';
+      const boxes = `<div class="otp${cls}" aria-label="Código de 6 dígitos">${[0, 1, 2, 3, 4, 5].map((i) => `<input inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="Dígito ${i + 1}" data-field="otp" data-i="${i}" value="${esc(o.code[i] || '')}" class="${o.code[i] ? 'f' : ''}${i === Math.min(o.code.length, 5) && !off ? ' focus' : ''}"${off ? ' disabled' : ''}>`).join('')}</div>`;
+      const line = o.state === 'wrong' ? `<p class="inline err">${IC.alert}<span>Ese código no es. Revisalo e intentá de nuevo.</span></p>`
+        : o.state === 'expired' ? `<p class="inline warn">${IC.clock}<span>Este código ya venció. Pedí uno nuevo.</span></p>`
+        : off ? `<p class="inline mute">${IC.clock}<span data-otp="locked">Demasiados intentos. Probá de nuevo en ${Math.max(1, Math.ceil(((o.lockedUntil || 0) - nowMs()) / 60000))} min.</span></p>` : '';
+      const waiting = o.resendAt && nowMs() < o.resendAt;
+      const rowx = o.state === 'expired' || (!off && !waiting) ? `<div class="rowx"><button type="button" data-act="otp-resend">Reenviar código</button><button type="button" data-act="otp-change">Cambiar número</button></div>`
+        : off ? `<div class="rowx"><button type="button" data-act="otp-change">Cambiar número</button><button type="button" data-act="otp-signin">¿Ya tenés cuenta? Entrá</button></div>`
+        : `<div class="rowx"><span data-otp="resend-in">Reenviar en ${mmss(o.resendAt - nowMs())}</span><button type="button" data-act="otp-change">Cambiar número</button></div>`;
+      return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Ingresá el código"><div class="grab"></div><div class="sg">
+    <div class="topb"><span class="iconbtn" aria-hidden="true"></span><span class="bm">Confirmá tu WhatsApp</span><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
+    <div class="h1">Ingresá el código</div><p class="sub">Te lo enviamos por WhatsApp al <b>${esc(C.fullPhone(S.flow.phone))}</b>.</p>
+    ${boxes}${line}
+    <button class="cta" type="button" data-act="otp-verify"${o.code.length === 6 && !off && !o.busy ? '' : ' disabled'}>Verificar y hacer pedido · ${T.ready ? moneyC(T.total) : ''}</button>
+    ${rowx}
+    <p class="fine">No creamos una cuenta; solo confirmamos que este número es tuyo. Tu pedido sale al verificar.</p></div></div>`;
+    }
     function guestCashBlocked() {
       if (!cardOnlyGuest() || !S.flow || S.flow.pay === 'online') return false;
       backTo('checkout'); showErr(ERR.guestCash()); return true;
@@ -843,7 +937,7 @@
       // S2b r1 P2-7: an accepted price change ⇒ «Enviando» shows the ceiling actually sent
       const onExpected = (cents) => { if (dead || !Number.isFinite(cents)) return; S.sendTotals = { total: cents, tip: T.tip }; if (S.screen === 'sending') render(); };
       let out;
-      try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, expectedNetCents: T.total, totals: T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
+      try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, checkoutTicket: cardOnlyGuest() ? S.ticket : undefined, expectedNetCents: T.total, totals: T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
       if (!dead) onOutcome(out, attempt);
     }
     // the 600 ms happy beat: the spinner becomes the green check, then the host takes over (S5)
@@ -916,6 +1010,7 @@
       if (k === 'placed' || k === 'paid_unverified') { if (S.screen !== 'sending') { S.screen = 'sending'; render(); } beat(out); return; }
       if (k === 'confirming') { S.screen = 'sending'; S.sendHint = CONFIRMING_HINT; render(); return; }
       if (k === 'guest_cash_not_allowed') { if (S.flow && cardOnlyGuest()) S.flow.pay = 'online'; backTo('checkout'); showErr(ERR.guestCash()); return; }   // §3.3 server refusal ⇒ frame 6
+      if (k === 'guest_ticket_invalid') { S.ticket = null; backTo(); openCode(); return; }   // §4: re-verify (expired / consumed / missing) — the code sheet over the screen of the tap
       if (k === 'guest_email_required') { S.emailRefused = true; backTo('checkout'); return; }   // §4b ⇒ frame 1b: the email field red, CTA «Revisá tu correo»
       if (k === 'offline') { backTo(); showErr(ERR.offline()); return; }
       if (k === 'closed') { S.closedRefused = true; backTo(); showErr(ERR.closed()); return; }   // over the screen of the tap (P placeTap :1975)
@@ -937,9 +1032,9 @@
       backTo();
     }
     function errSheet(e) {
-      const acts = e.acts.map((a) => `<button class="${a.primary ? 'primary' : 'btn2 wide'}" data-act="${a.act}">${esc(a.label)}</button>`).join('');
+      const acts = e.acts.map((a) => `<button class="${a.primary ? 'primary' : 'btn2 wide'}" data-act="${a.act}"${a.disabled ? ' disabled' : ''}${a.id ? ` id="${a.id}"` : ''}>${esc(a.label)}</button>`).join('');
       const ic = e.ic ? IC[e.ic] : e.icon === 'ok' ? IC.check : e.icon === 'warn' || e.icon === 'calm' ? IC.alert : IC.close;
-      return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${esc(e.title)}"><div class="grab"></div><div class="errsheet"><div class="icon${e.icon ? ' ' + e.icon : ''}">${ic}</div><h2>${esc(e.title)}</h2><p>${esc(e.body)}</p>${e.note ? `<p class="note">${e.note}</p>` : ''}<div class="acts">${acts}</div></div></div>`;
+      return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${esc(e.title)}"><div class="grab"></div><div class="errsheet"><div class="icon${e.icon ? ' ' + e.icon : ''}">${ic}</div><h2>${esc(e.title)}</h2><p>${e.bodyHtml != null ? e.bodyHtml : esc(e.body)}</p>${e.note ? `<p class="note">${e.note}</p>` : ''}<div class="acts">${acts}</div></div></div>`;
     }
     const feeInfoHtml = () => { const d = S.lastDelivery || {}; return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Envío"><div class="grab"></div><div class="errsheet"><h2>Envío</h2><p>Sherpa calcula el envío según la distancia entre la sucursal y tu dirección. Desde ${moneyC(d.from_cents)}; zona de entrega hasta ${esc(d.max_km)} km de ${storeLine()}.</p><div class="acts"><button class="btn2 wide" data-act="lclose">Entendido</button></div></div></div>`; };
     // ── the full-screen pin step (prototype pinStepHtml :2186-2190; the prototype-only «Simulación» strip dropped) ──
@@ -1077,6 +1172,11 @@
       if (a === 'err-retry') { closeLayer(); send(); return true; }   // the SAME placement (capp-api keeps the id)
       if (a === 'err-requote') { closeLayer(); S.quoteErr = null; requote(); return true; }   // the failed quote, asked again (its key was released)
       if (a === 'err-cash') { closeLayer(); if (cardOnlyGuest()) { showErr(ERR.guestCash()); return true; } emit('pay-cash', {}); return true; }   // TODO(ruling pending); a guest never reaches cash (§3.2)
+      if (a === 'otp-verify') { verifyCode(); return true; }
+      if (a === 'otp-resend') { closeCodeErr(); requestCode(); return true; }
+      if (a === 'otp-change') { closeOtp(); S.screen = 'checkout'; render(); const ph = $('f-phone'); if (ph) focusTo(ph); return true; }   // «Cambiar número»: back to Tus datos, the phone focused
+      if (a === 'otp-signin') { closeOtp(); emit('signin', { ctx: 'code' }); return true; }
+      if (a === 'otp-back') { closeOtp(); return true; }   // «Volver al pedido»: the sheet closes, the cart as it was
       if (a === 'guest-card') { closeLayer(); if (S.flow) S.flow.pay = 'online'; S.screen = 'checkout'; render(); placeTap(); return true; }   // frame 6 «Pagar con tarjeta»: card, then the send again
       if (a === 'guest-signup') { closeLayer(); emit('signin', { ctx: 'refusal' }); return true; }
       if (a === 'err-card') {   // a new card attempt goes through the same placing card — once the restored checkout is priced
@@ -1156,7 +1256,7 @@
       if (S.open && ['qty', 'extra', 'variant', 'staged', 'dcta'].includes(act)) { detailAct(t); return; }
       if (act === 'dclose') { closeDetail(); return; }
       // S2b: the open layer's controls, then the current screen's
-      if (S.layerKind && ['err', 'placing', 'tipother', 'pin', 'feeinfo'].includes(S.layerKind)) { if (act === 'lclose') { closeLayer(); return; } if (layerAct(t)) return; }
+      if (S.layerKind && ['err', 'placing', 'tipother', 'pin', 'feeinfo', 'otp'].includes(S.layerKind)) { if (act === 'lclose') { closeLayer(); return; } if (layerAct(t)) return; }
       if (S.screen === 'checkout' && !S.layerKind) {
         if (act === 'rev') { if (Number(t.dataset.rev) > 0 && isSold(find(t.dataset.key))) return; mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(t.dataset.key, t.dataset.grp || '') : cart.lineDec(t.dataset.key, t.dataset.grp || ''))); if (!cart.count()) toStore(); else render(); return; }
         if (checkoutAct(t)) return;
@@ -1186,6 +1286,7 @@
     function onInput(ev) {
       const t = ev.target; if (!t || !t.dataset) return;
       const fld = t.dataset.field;
+      if (fld === 'otp') { otpInput(t); return; }
       if (fld === 'sq') { S.searchQ = t.value; runStoreSearch(t.value); return; }
       if (fld === 'tipOther') { S.tipDraft = capDraft(t.value, S.tipDraft || ''); t.value = S.tipDraft || '0'; t.style.width = `calc(${Math.max(1, t.value.length)}ch + 6px)`; return; }
       if (S.flow && FLOW_FIELDS.includes(fld)) {
@@ -1257,7 +1358,7 @@
           if (snapshot && (snapshot.mode === 'pickup' || snapshot.mode === 'delivery')) { S.mode = snapshot.mode; if (S.flow && C) C.setMode(S.flow, S.mode); } }
         const r = cart.hydrate(snapshot); notifyCart(); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
       destroy() {
-        dead = true; placingStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }
+        dead = true; placingStop(); otpTickStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }
         S.layerKind = null; const L = $('layer'); if (L) L.innerHTML = '';
         for (const el of [...doc.querySelectorAll('.cq-sheet')]) el.remove();   // the ported «El precio cambió» sheet (capp-confirm-quote)
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); if (!H && doc.defaultView) doc.defaultView.removeEventListener('popstate', onPop); if (typeof unsubBack === 'function') { try { unsubBack(); } catch (_) {} } },

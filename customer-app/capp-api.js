@@ -382,6 +382,9 @@
       // PLAN-capp-signin-required §3.2: the transport's tender mapping is part of the ONE invariant — an app GUEST (cfg.guestCardOnly,
       // no member) never maps to cash: refused here before any record, lock or send
       if (cfg.guestCardOnly === true && !memberOf() && method !== 'online') return { kind: 'guest_cash_not_allowed', local: true };
+      // §4: an app guest order carries a VALID checkout ticket (the verified WhatsApp code, bound to phone + store + cart, 15 min) or
+      // nothing is recorded, locked or sent
+      if (cfg.guestCardOnly === true && !memberOf() && !ticketValid(p.checkoutTicket)) return { kind: 'guest_ticket_invalid', local: true };
       if (HOSTED) {
         if (markerSuspect) return { kind: 'offline', reconcile: 'marker_unverified' };   // P1-1: fail closed until a fresh mount
         const rc = reconcile();
@@ -440,6 +443,7 @@
         } catch (e) { const pe = placeErr(e, rec && rec.order_id); return pe || (rec ? resolveExisting(rec.order_id) : { kind: 'error', error: 'placement_lost' }); }
         const id = rec.order_id;
         const body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
+        if (cfg.guestCardOnly === true && !memberOf() && p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;   // §4 (consumed at placement by the server)
         cq.send(body, p.sig, expected);
         const r = method === 'cash' ? await sendOnce(E.createOrder, body, p.ctx.headers) : await sendCard(id, body, p.ctx, p.alive);
         if (r && r.stop) return r.stop;
@@ -552,10 +556,37 @@
       return { kind: 'confirming', order_id: id, state: 'timeout' };   // the webhook confirms later; creds kept
     }
 
+    // ── §4: the guest's checkout code (PLAN-capp-signin-required r5.4; the CONFIRMED wire contract, advisor 2026-10-27) — WhatsApp
+    //    only; the ticket is bound to phone + restaurant + cart fingerprint and expires (TICKET_TTL_MS). Never retried by itself ──
+    const TICKET_TTL_MS = 15 * 60 * 1000;
+    function ticketValid(t) { return !!t && typeof t.ticket === 'string' && t.ticket && Number.isFinite(t.expires_at) && now() < t.expires_at; }
+    const secs = (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.round(Number(v)) : null);
+    async function requestCheckoutCode({ phone, cartFp }) {
+      if (!E.requestCheckoutCode) return { kind: 'offline' };
+      const r = await sendOnce(E.requestCheckoutCode, { phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp });
+      if (r.network || !r.parsed) return { kind: 'offline' };
+      const j = r.json;
+      if (r.status === 200 && j.ok === true) return { ok: true, resendInS: secs(j.resend_in_s) ?? 60 };
+      if (r.status === 429 && j.error === 'rate_limited') return { kind: 'rate_limited', retryInS: secs(j.retry_in_s) ?? 600 };
+      if (r.status === 502 && j.error === 'send_failed') return { kind: 'send_failed', attempt: secs(j.attempt) ?? 1, max: secs(j.max_attempts) ?? 3 };
+      if (r.status === 400 && j.error === 'country_not_allowed') return { kind: 'country_not_allowed' };
+      return { kind: 'offline' };
+    }
+    async function verifyCheckoutCode({ phone, cartFp, code }) {
+      if (!E.verifyCheckoutCode) return { kind: 'offline' };
+      const r = await sendOnce(E.verifyCheckoutCode, { phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp, code });
+      if (r.network || !r.parsed) return { kind: 'offline' };
+      const j = r.json;
+      if (r.status === 200 && j.ok === true && typeof j.checkout_ticket === 'string' && j.checkout_ticket) return { ok: true, ticket: { ticket: j.checkout_ticket, phone, cart_fp: cartFp, expires_at: now() + TICKET_TTL_MS } };
+      if (r.status === 400 && (j.error === 'code_wrong' || j.error === 'code_expired')) return { kind: j.error };
+      if (r.status === 429 && j.error === 'too_many_attempts') return { kind: 'too_many_attempts', retryInS: secs(j.retry_in_s) ?? 600 };
+      return { kind: 'offline' };
+    }
+
     // the order body a card send stashed (the return restores the checkout from it)
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
-    return { quote, latestQuote, place, handleReturn, resolveExisting, resolveStatus, readPlace, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
+    return { quote, latestQuote, place, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, ticketValid, TICKET_TTL_MS, readPlace, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY };
   }

@@ -998,3 +998,12 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .guestcard ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:14px}
 .guestcard ul li{display:flex;gap:8px;align-items:flex-start}
 .guestcard ul li svg.i{width:18px;height:18px;color:var(--ok);margin-top:1px}
+/* frames 2 / 2b–2d (approved): the code sheet's pieces the shell lacked — values from the approved mockup */
+.sg .topb .bm{font-family:var(--name);font-weight:var(--name-weight);font-size:17px;flex:1;text-align:center}
+.sg .otp.bad input{border-color:var(--err)}
+.sg .otp.off input{opacity:.45}
+.sg .inline{font-size:13.5px;line-height:1.4;font-weight:500;display:flex;gap:6px;align-items:flex-start;margin-top:-4px}
+.sg .inline.err{color:var(--err)}
+.sg .inline.warn{color:var(--warn)}
+.sg .inline.mute{color:var(--mute)}
+.sg .inline svg.i{width:16px;height:16px;margin-top:2px}

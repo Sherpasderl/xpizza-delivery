@@ -1992,6 +1992,12 @@ test('Codex s7a2 r1 #2: a pending cancel return locks the order; «Ver estado de
 // ── PLAN-capp-signin-required r5.4 G1 (frozen approved mockup 2026-10-27, frames 1 / 1b / 6): app guests pay CARD ONLY, leave an
 //    email, and ONE invariant refuses any guest cash dispatch locally. DARK behind cfg.guestCardOnly (absent ⇒ the S2 checkout) ──
 const GUEST = { guestCardOnly: true };
+EP.requestCheckoutCode = '/x/rc'; EP.verifyCheckoutCode = '/x/vc';   // the confirmed wire contract (advisor 2026-10-27), for the scripted server
+const CODE_OK = { requestCheckoutCode: [{ status: 200, json: { ok: true, resend_in_s: 41 } }], verifyCheckoutCode: [{ status: 200, json: { ok: true, checkout_ticket: 'tk_1' } }] };
+async function viaCode(b, code = '482913') {   // the frame-2 sheet: the code pasted whole, then «Verificar y hacer pedido»
+  await settle(); const box = b.q('#layer .otp input[data-i="0"]'); assert.ok(box, 'premise: the code sheet'); box.value = code; box.dispatchEvent(new b.w.Event('input', { bubbles: true })); await settle();
+  await b.click('#layer [data-act="otp-verify"]'); await settle();
+}
 async function guestFilled(b, email = 'ana.perez@gmail.com') {
   await toCheckout(b);
   await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
@@ -2056,17 +2062,20 @@ test('G1 §3.2 transport: the api itself refuses a guest cash placement before a
   const f = CK.freshFlow(null); f.pay = 'cash';
   const out = await api.place({ flow: f, ctx: { restaurantId: 'rid_a', items: [], itemsText: '', member: null, headers: {} } });
   assert.deepEqual(J(out), { kind: 'guest_cash_not_allowed', local: true });
+  f.pay = 'online';
+  assert.deepEqual(J(await api.place({ flow: f, ctx: { restaurantId: 'rid_a', items: [], itemsText: '', member: null, headers: {} } })), { kind: 'guest_ticket_invalid', local: true }, '🔴 §4: no ticket ⇒ nothing recorded or sent');
+  assert.deepEqual(J(await api.place({ flow: f, checkoutTicket: { ticket: 'tk', expires_at: NOON().getTime() - 1 }, ctx: { restaurantId: 'rid_a', items: [], itemsText: '', member: null, headers: {} } })), { kind: 'guest_ticket_invalid', local: true }, 'an expired ticket is no ticket');
   assert.equal(storage.getItem('capp:rid_a:pending_place'), null); assert.equal(storage.getItem('ta_pending_pay'), null);
 });
 test('G1 server refusals: guest_email_required ⇒ frame 1b (the email red, «Revisá tu correo» until edited); guest_cash_not_allowed ⇒ frame 6', async () => {
-  const b = bootCo({ config: GUEST, script: { chargeOnlineOrder: [{ status: 400, json: { ok: false, error: 'guest_email_required' } }] } });
-  await guestFilled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
+  const b = bootCo({ config: GUEST, script: { ...CODE_OK, chargeOnlineOrder: [{ status: 400, json: { ok: false, error: 'guest_email_required' } }] } });
+  await guestFilled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await viaCode(b); await b.click('#layer [data-act="placing-go"]'); await settle();
   assert.equal(b.ui.state.screen, 'checkout'); assert.equal(b.text('#cta'), 'Revisá tu correo', '🔴 the server\'s email refusal shows frame 1b');
   assert.ok(b.q('#f-email').closest('.fld').classList.contains('bad'));
   await b.type('#f-email', 'ana.perez@gmail.com.hn'); await settle();
   assert.notEqual(b.text('#cta'), 'Revisá tu correo', 'editing the email clears it');
-  const c = bootCo({ config: GUEST, script: { chargeOnlineOrder: [{ status: 400, json: { ok: false, error: 'guest_cash_not_allowed' } }] } });
-  await guestFilled(c); await c.click('#cta'); await c.click('[data-act="tipc"][data-val="0"]'); await c.click('[data-act="tip-place"]'); await c.click('#layer [data-act="placing-go"]'); await settle();
+  const c = bootCo({ config: GUEST, script: { ...CODE_OK, chargeOnlineOrder: [{ status: 400, json: { ok: false, error: 'guest_cash_not_allowed' } }] } });
+  await guestFilled(c); await c.click('#cta'); await c.click('[data-act="tipc"][data-val="0"]'); await c.click('[data-act="tip-place"]'); await viaCode(c); await c.click('#layer [data-act="placing-go"]'); await settle();
   assert.equal(c.text('#layer .errsheet p'), 'El pago en efectivo es solo para cuentas. Pagá con tarjeta o creá tu cuenta.');
 });
 
@@ -2086,4 +2095,61 @@ test('G2 frame 1c: a device that had an account ⇒ «Ya tenés cuenta en este t
   const x = bootCo({ config: GUEST, mountOpts: { deviceAccount: () => { throw new Error('storage'); } } });
   await toCheckout(x); await settle();
   assert.equal(x.text('.signin'), 'Entrá o creá tu cuenta', 'an unreadable marker degrades to the plain row');
+});
+
+// ── G3 (frames 2, 2b–2d, 3a, 3b): the guest's WhatsApp code — asked at «Hacer pedido», nothing sent until it verifies ──
+async function toCodeSheet(b) { await guestFilled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await settle(); }
+test('G3 frame 2: «Hacer pedido» ⇒ the code sheet (nothing sent): the code is requested for THIS phone, store and cart; a whole pasted code fills the six boxes; verify ⇒ the order goes out WITH its ticket', async () => {
+  const b = bootCo({ config: GUEST, script: { ...CODE_OK, chargeOnlineOrder: [CHECKOUT] } });
+  await toCodeSheet(b);
+  assert.equal(b.text('#layer .sg .bm'), 'Confirmá tu WhatsApp'); assert.equal(b.text('#layer .sg .h1'), 'Ingresá el código');
+  assert.match(b.text('#layer .sg .sub'), /^Te lo enviamos por WhatsApp al \+504 9999.?0000 ?\.$/);
+  assert.equal(b.qa('#layer .otp input').length, 6); assert.ok(b.q('#layer [data-act="otp-verify"]').disabled, 'disabled until the sixth digit');
+  assert.equal(b.text('#layer .sg .fine'), 'No creamos una cuenta; solo confirmamos que este número es tuyo. Tu pedido sale al verificar.');
+  assert.equal(writes(b), 0, '🔴 nothing sent behind the sheet');
+  const rq = b.srv.of('requestCheckoutCode')[0].body;
+  assert.deepEqual(rq, { phone_e164: '+50499990000', restaurant_id: 'rid_a', cart_fp: String(b.ui.state.q.sig) }, 'bound to phone + store + cart');
+  const box = b.q('#layer .otp input[data-i="0"]'); box.value = '482 913'; box.dispatchEvent(new b.w.Event('input', { bubbles: true })); await settle();
+  assert.deepEqual(b.qa('#layer .otp input').map((x) => x.value), ['4', '8', '2', '9', '1', '3'], 'a pasted code (with a space) fills all six');
+  assert.match(b.text('#layer [data-act="otp-verify"]'), /^Verificar y hacer pedido · L /); assert.ok(!b.q('#layer [data-act="otp-verify"]').disabled);
+  await b.click('#layer [data-act="otp-verify"]'); await settle();
+  assert.deepEqual(b.srv.of('verifyCheckoutCode')[0].body, { ...rq, code: '482913' });
+  assert.ok(b.q('#layer [data-act="placing-go"]'), 'verified ⇒ the drawn «Realizando pedido…» window'); await b.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b.srv.of('chargeOnlineOrder')[0].body.checkout_ticket, 'tk_1', '🔴 the order carries its ticket');
+});
+test('G3 frames 2b–2d: wrong ⇒ red boxes + one red line, cleared; expired ⇒ the amber line + «Reenviar código» at once; too many ⇒ boxes inert + minutes + the two exits; never sent', async () => {
+  const b = bootCo({ config: GUEST, script: { requestCheckoutCode: [{ status: 200, json: { ok: true, resend_in_s: 41 } }],
+    verifyCheckoutCode: [{ status: 400, json: { ok: false, error: 'code_wrong' } }, { status: 400, json: { ok: false, error: 'code_expired' } }, { status: 429, json: { ok: false, error: 'too_many_attempts', retry_in_s: 540 } }] } });
+  await toCodeSheet(b);
+  await viaCode(b);
+  assert.ok(b.q('#layer .otp').classList.contains('bad')); assert.equal(b.text('#layer .inline.err'), 'Ese código no es. Revisalo e intentá de nuevo.');
+  assert.deepEqual(b.qa('#layer .otp input').map((x) => x.value), ['', '', '', '', '', ''], 'cleared'); assert.match(b.text('#layer .rowx'), /^Reenviar en 0:41 Cambiar número$/);
+  await viaCode(b);
+  assert.equal(b.text('#layer .inline.warn'), 'Este código ya venció. Pedí uno nuevo.'); assert.equal(b.text('#layer .rowx'), 'Reenviar código Cambiar número');
+  await viaCode(b);
+  assert.equal(b.text('#layer .inline.mute'), 'Demasiados intentos. Probá de nuevo en 9 min.');
+  assert.ok(b.q('#layer .otp').classList.contains('off') && b.qa('#layer .otp input').every((x) => x.disabled));
+  assert.equal(b.text('#layer .rowx'), 'Cambiar número ¿Ya tenés cuenta? Entrá');
+  assert.equal(writes(b), 0, '🔴 never sent');
+});
+test('G3 frames 3a / 3b: the code could not be sent ⇒ «Intento 2 de 3» with «Reintentar»; the last attempt ⇒ «Reintentar en m:ss» disabled + «Cambiar número» + «Volver al pedido»; never sent', async () => {
+  const b = bootCo({ config: GUEST, script: { requestCheckoutCode: [{ status: 502, json: { ok: false, error: 'send_failed', attempt: 2, max_attempts: 3 } }, { status: 502, json: { ok: false, error: 'send_failed', attempt: 3, max_attempts: 3 } }] } });
+  await toCodeSheet(b);
+  assert.equal(b.text('#layer .errsheet h2'), 'No pudimos enviar tu código por WhatsApp');
+  assert.match(b.text('#layer .errsheet p'), /^Revisá que \+504 9999.?0000 tenga WhatsApp y señal\. Tu pedido está intacto; no se envió ni se cobró nada\.$/);
+  assert.equal(b.text('#layer .errsheet .note'), 'Intento 2 de 3'); assert.ok(b.q('#layer .errsheet .icon.warn'));
+  assert.deepEqual(b.qa('#layer .errsheet button').map((x) => x.textContent), ['Reintentar', 'Cambiar número']);
+  await b.click('#layer [data-act="otp-resend"]'); await settle();
+  assert.equal(b.text('#layer .errsheet p'), 'Lo intentamos 3 veces sin éxito. Tu pedido no se envió ni se cobró nada. Probá con otro número, o entrá con tu cuenta.');
+  const btns = b.qa('#layer .errsheet button'); assert.match(btns[0].textContent, /^Reintentar en 10:00$/); assert.ok(btns[0].disabled);
+  assert.deepEqual(btns.slice(1).map((x) => x.textContent), ['Cambiar número', 'Volver al pedido']);
+  assert.equal(writes(b), 0, '🔴 never sent');
+  await b.click('#layer [data-act="otp-change"]'); await settle();
+  assert.equal(b.ui.state.screen, 'checkout'); assert.equal(b.w.document.activeElement && b.w.document.activeElement.id, 'f-phone', '«Cambiar número» ⇒ Tus datos, the phone focused');
+});
+test('G3: a server guest_ticket_invalid (expired / consumed) ⇒ the code sheet again, nothing else sent', async () => {
+  const b = bootCo({ config: GUEST, script: { requestCheckoutCode: [{ status: 200, json: { ok: true, resend_in_s: 41 } }], verifyCheckoutCode: [{ status: 200, json: { ok: true, checkout_ticket: 'tk_1' } }],
+    chargeOnlineOrder: [{ status: 400, json: { ok: false, error: 'guest_ticket_invalid' } }] } });
+  await toCodeSheet(b); await viaCode(b); await b.click('#layer [data-act="placing-go"]'); await settle();
+  assert.ok(b.q('#layer .otp'), '🔴 re-verify'); assert.equal(b.srv.of('requestCheckoutCode').length, 2);
 });
