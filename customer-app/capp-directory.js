@@ -35,6 +35,7 @@
     let rows = [];             // [{ rid, entry, gone }] in display order
     let phase = 'cold';        // cold | ready | error
     let partial = false, verified = false, platform = null, inflight = null, failedAt = null;
+    let order = [];   // the last complete response's order (the next visit's)
     const listeners = new Set();
     const notify = () => { for (const fn of [...listeners]) { try { fn(view()); } catch (_) {} } };
 
@@ -56,20 +57,22 @@
     function boot() {
       const rec = readStored();
       if (!rec) { try { storage && storage.getItem(key) !== null && storage.removeItem(key); } catch (_) {} }
-      if (rec) { stored = rec; rows = rec.body.restaurants.map((entry) => ({ rid: entry.restaurant_id, entry, gone: false })); platform = rec.body.platform || null; phase = 'ready'; }
+      if (rec) { stored = rec; rows = rec.body.restaurants.map((entry) => ({ rid: entry.restaurant_id, entry, gone: false })); order = ridsOf(rec.body); platform = rec.body.platform || null; phase = 'ready'; }
       return view();
     }
 
-    // a COMPLETE verification: the listed stores in its order; stores shown before and now absent stay, disabled, in place
+    // a COMPLETE verification. Nothing moves under a finger (Codex s7a2 r1 #8): the rows already shown keep their slots — a listed
+    // one is refreshed in place, an omitted one is TOMBSTONED in place (disabled) — and a newly listed store is inserted after its
+    // predecessor in the response. The next visit() drops the tombstones and takes the verified order.
     function applyComplete(body) {
-      const ids = new Set(ridsOf(body));
-      const kept = rows.filter((r) => !ids.has(r.rid));
-      const next = body.restaurants.map((entry) => ({ rid: entry.restaurant_id, entry, gone: false }));
-      for (const g of kept) {   // a tombstoned row keeps its slot (after the row it followed) until the next visit
-        const i = rows.indexOf(g), prev = rows.slice(0, i).reverse().find((r) => ids.has(r.rid));
-        const at = prev ? next.findIndex((r) => r.rid === prev.rid) + 1 : 0;
-        next.splice(at, 0, { ...g, gone: true });
-      }
+      const ids = new Set(ridsOf(body)), byRid = new Map(body.restaurants.map((e) => [e.restaurant_id, e]));
+      order = ridsOf(body);
+      const next = rows.map((r) => (byRid.has(r.rid) ? { rid: r.rid, entry: byRid.get(r.rid), gone: false } : { ...r, gone: true }));
+      body.restaurants.forEach((e, i) => {
+        if (next.some((r) => r.rid === e.restaurant_id)) return;
+        const prev = i > 0 ? next.findIndex((r) => r.rid === body.restaurants[i - 1].restaurant_id) : -1;
+        next.splice(prev + 1, 0, { rid: e.restaurant_id, entry: e, gone: false });
+      });
       rows = next; platform = body.platform || null; partial = false;
       elig.verified({ listed: [...ids], complete: true, at: now() });
     }
@@ -113,7 +116,12 @@
       return inflight;
     }
     // Inicio / Buscar entered again: tombstoned rows leave the list now (never while visible)
-    function visit() { const n = rows.length; rows = rows.filter((r) => !r.gone); if (rows.length !== n) notify(); }
+    function visit() {
+      const before = rows.map((r) => r.rid).join();
+      const at = (rid) => { const i = order.indexOf(rid); return i < 0 ? Infinity : i; };
+      rows = rows.filter((r) => !r.gone).map((r, i) => [r, i]).sort((a, b) => (at(a[0].rid) - at(b[0].rid)) || (a[1] - b[1])).map(([r]) => r);
+      if (rows.map((r) => r.rid).join() !== before) notify();
+    }
     function view() {
       return { phase, rows: rows.slice(), partial, verified, platform, failed: failedAt !== null, pending: !!inflight,
         presentation: !verified && rows.length > 0 };

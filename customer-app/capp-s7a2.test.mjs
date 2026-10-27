@@ -531,3 +531,13 @@ test('Codex s7a2 r1 #7: an UNPRICED fee never carries a promotional claim — no
   }
   assert.ok(![...dom(CappHome.homeHtml(VM({ rows: rows.filter((r) => r.rid === 'la_musa'), auth: 'member' }))).querySelectorAll('.fchip')].some((b) => /Envío gratis/.test(b.textContent)), 'no free-delivery chip from an unpriced store');
 });
+
+test('Codex s7a2 r1 #8: ADJACENT tombstones keep their slots — [A,B,C,D] then complete [A,D] shows A,B(gone),C(gone),D; the next visit shows A,D', async () => {
+  const e0 = SC.complete.body.restaurants[0];
+  const body = (ids) => ({ ...SC.complete.body, restaurants: ids.map((id) => ({ ...e0, restaurant_id: id })) });
+  const R = rigDir({ script: [{ status: 200, body: body(['a', 'b', 'c', 'd']), etag: '"1"' }, { status: 200, body: body(['a', 'd']), etag: '"2"' }] });
+  R.dir.boot(); await R.dir.revalidate(); await R.dir.revalidate();
+  assert.deepEqual(R.dir.view().rows.map((r) => `${r.rid}${r.gone ? '·gone' : ''}`), ['a', 'b·gone', 'c·gone', 'd'], '🔴 every tombstone keeps its slot until the next visit');
+  R.dir.visit();
+  assert.deepEqual(R.dir.view().rows.map((r) => r.rid), ['a', 'd']);
+});
