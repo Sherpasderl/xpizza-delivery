@@ -57,7 +57,7 @@ function boot({ status = 'returning', uid = 'drv', seed = undefined } = {}) {
     + liftFn('drv2SetReturnTarget') + '\n' + liftFn('drv2GetReturnTarget') + '\n'
     + liftFn('drv2ClearReturnTarget') + '\n' + liftFn('drv2CaptureReturnTarget') + '\n'
     + liftFn('renderDisponible') + '\n'
-    + 'return { drv2SetReturnTarget, drv2GetReturnTarget, drv2ClearReturnTarget, drv2CaptureReturnTarget, renderDisponible, setStatus: (s) => { driverState.status = s; }, setUid: (u) => { currentUser.uid = u; }, raw: () => { try { return sessionStorage.getItem(RETURN_TARGET_KEY); } catch { return null; } } };';
+    + 'return { drv2SetReturnTarget, drv2GetReturnTarget, drv2ClearReturnTarget, drv2CaptureReturnTarget, renderDisponible, runRegion: (src, o, actingUid) => { eval(src); }, setStatus: (s) => { driverState.status = s; }, setUid: (u) => { currentUser.uid = u; }, raw: () => { try { return sessionStorage.getItem(RETURN_TARGET_KEY); } catch { return null; } } };';
   const names = ['document', '$', 'sessionStorage', 'ICONS', 'NAVP_ICONS', 'driverState', 'XPD', 'brandLabel', 'navBtnHtml', 'drv2ReadNavPref', 'escapeHtml', 'currentUser'];
   const api = (new Function(...names, body))(document, $, sessionStorage, ICONS, NAVP_ICONS, driverState, XPD, brandLabel, navBtnHtml, drv2ReadNavPref, escapeHtml, currentUser);
   return { api, document, host: $('idle-state'), $ };
@@ -149,6 +149,15 @@ t('stacked: the LAST completed delivery wins (overwrite)', () => {
   h.api.renderDisponible();
   const nav = h.host.querySelector('.disp-return-nav');
   assert.match(nav.querySelector('.nav-primary .nav-dest').textContent, /La Musa/, 'the last completion’s restaurant is the target');
+});
+
+t('P2-8: the btn-delivered SLICE3:RETURN-TARGET-CAPTURE region actually CAPTURES (integration — kills the removed-capture mutant)', () => {
+  const region = SCRIPT.match(/SLICE3:RETURN-TARGET-CAPTURE:START[\s\S]*?===== \*\/\n([\s\S]*?)\n\s*\/\* ===== SLICE3:RETURN-TARGET-CAPTURE:END/)[1];
+  assert.ok(/drv2CaptureReturnTarget\(o, actingUid\)/.test(region), 'the region calls the capture with the pre-await actingUid (Codex P2-2)');
+  const h = boot({ status: 'returning' });
+  h.api.runRegion(region, entry('X. Pizza', 15.5, -88.03, 'x_pizza'), 'drv');   // run the REAL region source in the handler closure
+  h.api.renderDisponible();
+  assert.ok(h.host.querySelector('.disp-return-nav'), 'the region captured the target — emptying the region → no button → RED');
 });
 
 console.log(`✓ return-target: ${passed} tests passed`);

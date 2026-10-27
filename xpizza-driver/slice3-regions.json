@@ -494,6 +494,14 @@
    "restore": [
     "      : (spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml }) : '');"
    ]
+  },
+  {
+   "name": "LLEGUE-CARD",
+   "kind": "slice3deps",
+   "parent": "SINGLE-ORDER-MOUNT",
+   "restore": [
+    "      ? activeCardHtml(soloOrder, spCardDeps, { ordinal: spOrdinal, solo: false, showActualPill: true, arrived: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()), navLabel: stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: '' })"
+   ]
   }
  ]
 }

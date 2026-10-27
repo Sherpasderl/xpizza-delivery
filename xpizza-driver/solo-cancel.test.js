@@ -48,8 +48,10 @@ function boot({ cancel, dispatch = '+504 9999 8888' } = {}) {
   $('idle-help-link')._mark = 'help'; $('arrive-btn')._mark = 'arrive';
   const body = 'let drv2SoloCancel = _cancel;\nfunction renderActiveAndQueue(){ _calls.raq = (_calls.raq||0)+1; }\n'
     + 'let NAVP_ICONS = {}, navBtnHtml = () => "", drv2ReadNavPref = () => "Waze";\n'
-    + liftFn('renderSoloCancel') + '\n' + liftFn('wireDispatchCallRow') + '\n' + liftFn('renderDisponible') + '\n'
-    + 'return { renderDisponible, getCancel: () => drv2SoloCancel };';
+    + 'function drv2GetReturnTarget(){ return null; } function drv2ClearReturnTarget(){}\n'
+    + 'function applyGpsoff(){} function checkLocationStatus(){} function syncIdleStats(){}\n'
+    + liftFn('renderSoloCancel') + '\n' + liftFn('wireDispatchCallRow') + '\n' + liftFn('renderDisponible') + '\n' + liftFn('renderIdleState') + '\n'
+    + 'return { renderDisponible, renderIdleState, getCancel: () => drv2SoloCancel, setCancel: (c) => { drv2SoloCancel = c; } };';
   const calls = {};
   const names = ['document', '$', 'ICONS', 'driverState', 'XPD', 'fbRef', 'fbOnValue', 'escapeHtml', 'currentUser', 'window', '_cancel', '_calls'];
   const api = (new Function(...names, body))(document, $, ICONS, driverState, XPD, fbRef, fbOnValue, escapeHtml, currentUser, window, cancel, calls);
@@ -62,15 +64,15 @@ const CAPTURE = (() => {
   assert.ok(m, 'SOLO-CANCEL capture snippet not found');
   return m[1];
 })();
-function runCapture(orders, drv2Cancel, prior = null) {
-  const fn = new Function('orders', 'drv2Cancel', 'drv2SoloCancel', CAPTURE + '\nreturn drv2SoloCancel;');
-  return fn(orders, drv2Cancel, prior);
+function runCapture(orders, drv2Cancel, prior = null, uid = 'drv') {
+  const fn = new Function('orders', 'drv2Cancel', 'drv2SoloCancel', 'currentUser', 'drv2ClearReturnTarget', CAPTURE + '\nreturn drv2SoloCancel;');
+  return fn(orders, drv2Cancel, prior, { uid }, () => {});
 }
 
 let passed = 0;
 const t = (name, fn) => { try { fn(); passed += 1; } catch (e) { console.error(`✗ ${name}`); throw e; } };
 
-const CANCEL = { cancelledNum: '#1042', cancelledName: 'Daniela', cancelledAmount: 385, survivorName: '', cancelledBrand: 'X. Pizza' };
+const CANCEL = { cancelledNum: '#1042', cancelledName: 'Daniela', cancelledAmount: 385, survivorName: '', cancelledBrand: 'X. Pizza', _uid: 'drv' };
 
 t('renderDisponible shows the S.cancelado takeover: banner (num + brand), «Entendido», «Disponible» card, «cuadre no cambia», dispatch row', () => {
   const h = boot({ cancel: CANCEL });
@@ -121,14 +123,18 @@ t('the startup-bound #idle-help-link and #arrive-btn survive the takeover (prese
 });
 
 // the capture logic (REAL snippet)
-t('capture: a NO-survivor cancel on an EMPTY board → drv2SoloCancel set', () => {
-  assert.deepEqual(runCapture([], CANCEL, null), CANCEL, 'solo cancel captured');
+const RAW = { cancelledNum: '#1042', cancelledName: 'Daniela', cancelledAmount: 385, survivorName: '', cancelledBrand: 'X. Pizza' };   // drv2Cancel (no _uid); capture stamps it
+t('capture: a NO-survivor cancel on an EMPTY board → drv2SoloCancel set, stamped with the uid (Codex P2-3)', () => {
+  assert.deepEqual(runCapture([], RAW, null), { ...RAW, _uid: 'drv' }, 'solo cancel captured + uid-stamped');
 });
 t('capture: a SURVIVOR cancel → NOT captured (survivor path owns it)', () => {
-  assert.equal(runCapture([], { ...CANCEL, survivorName: 'Carlos' }, null), null, 'survivor cancel not captured as solo');
+  assert.equal(runCapture([], { ...RAW, survivorName: 'Carlos' }, null), null, 'survivor cancel not captured as solo');
 });
 t('capture: active work clears a prior solo-cancel (next order)', () => {
   assert.equal(runCapture([{ phase: 'pickup' }], null, CANCEL), null, 'cleared once there is active work');
+});
+t('capture: a new unaccepted OFFER clears a prior solo-cancel (Codex P2-3)', () => {
+  assert.equal(runCapture([{ phase: 'awaiting_acceptance' }], null, CANCEL), null, 'cleared by any order, incl. an offer');
 });
 t('capture: persists across idle re-renders once drv2Cancel is nulled (no re-set, no clear)', () => {
   assert.deepEqual(runCapture([], null, CANCEL), CANCEL, 'idle re-render keeps the banner');
@@ -144,6 +150,22 @@ t('computeShiftCash: a CANCELLED cash order is NOT counted — the «Tu cuadre n
   assert.equal(r.cashOwed, 385, 'only the delivered order is in the cash — the cancelled one adds nothing');
   assert.equal(r.cashOrderCount, 1, 'the cancelled cash order is not a cash-owed order');
   assert.equal(r.deliveries, 1, 'the cancelled order is not a delivery');
+});
+
+t('P1 (Codex): cancel → «Entendido» → the idle screen re-renders with NO null-deref (idle-icon/msg/sub preserved)', () => {
+  const h = boot({ cancel: CANCEL });
+  h.api.renderIdleState();   // cancel takeover (renderSoloCancel), preserving idle-icon/msg/sub hidden
+  assert.ok(h.host.querySelector('.disp-cancel-banner'), 'cancel screen shown');
+  assert.ok(h.$('idle-icon') && h.$('idle-msg') && h.$('idle-sub'), 'the renderIdleState deps survive the takeover');
+  h.api.setCancel(null);   // «Entendido»
+  assert.doesNotThrow(() => h.api.renderIdleState(), 'idle re-renders without a null-deref (kills the stuck-cancel mutant)');
+  assert.ok(h.host.querySelector('.disp-status') || /Esperando pedidos/.test(h.host.innerHTML), 'the normal idle body is back');
+});
+t('P2-3: a solo-cancel from a DIFFERENT account is NOT shown and is cleared (no cross-account leak)', () => {
+  const h = boot({ cancel: { ...CANCEL, _uid: 'other' } });
+  h.api.renderDisponible();
+  assert.ok(!h.host.querySelector('.disp-cancel-banner'), 'another account’s cancel is not shown');
+  assert.equal(h.api.getCancel(), null, 'and it is cleared (dropped), so A→B→A cannot resurrect it');
 });
 
 console.log(`✓ solo-cancel: ${passed} tests passed`);

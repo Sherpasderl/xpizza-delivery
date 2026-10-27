@@ -349,6 +349,11 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   const accepted = phase !== 'awaiting_acceptance';
   const target = navTarget(o, isPickup, RESTAURANT);   // IDENTICAL precedence to the baseline (?? pickup / || delivery)
   const arrived = opts.arrived === true;
+  // Codex P2-4: the prototype S.llegue restyle (hidden chiprow/street, .ac-arrived, items card, arrival banner, body
+  // problema, «cobré» slide) is for the SOLO arrived-at-customer card ONLY. An explicit discriminator keeps STACKED
+  // and PROMOTED-SURVIVOR delivery cards byte-identical (they never set opts.soloArrival). `arrived` is already the
+  // freshness-qualified predicate the solo call passes (Codex P2-5).
+  const soloArrival = opts.soloArrival === true && arrived && !isPickup && accepted;
   const ordinal = opts.ordinal != null ? opts.ordinal : 1;
   const solo = opts.solo === true;
   const showActualPill = opts.showActualPill === true;
@@ -360,7 +365,7 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   let deliveredText = '';
   if (accepted && !isPickup) {
     const cash = collectionFor(order).kind === 'cash';
-    if (opts.arrived === true && !opts.previewHtml) {
+    if (soloArrival) {
       // prototype S.llegue (solo, arrived): «Entregado · cobré L {amt}» (cash) / «Entregado» (online-paid) — no name
       deliveredText = cash ? `Entregado · cobré L ${(Number(order.total) || 0).toLocaleString('es-HN')}` : 'Entregado';
     } else {
@@ -394,7 +399,7 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   else if (arrived) {
     // flag-ON delivery: the arrival banner below conveys arrival (prototype S.llegue has no «Has llegado» note), so
     // drop the redundant note. flag-OFF (and pickup) keep the note byte-identical to today.
-    navBlock = (opts.canNotifyArrival === true && !isPickup)
+    navBlock = (soloArrival && opts.canNotifyArrival === true)
       ? ''
       : `<div class="arrived-note">${ICONS.check}<span>Has llegado ${isPickup ? 'al restaurante' : 'donde el cliente'}</span></div>`;
   } else {
@@ -405,14 +410,14 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   // • the arrival banner is a notification claim → canNotifyArrival + arrived + delivery (R9, no false control);
   // • the items card («entregá todo») shows the order lines once arrived (display-only, from existing order data);
   // • the body «Problema con este pedido» is gated on the problem-report capability (R9/F).
-  const arrivalBanner = (arrived && opts.canNotifyArrival === true && accepted && !isPickup)
+  const arrivalBanner = (soloArrival && opts.canNotifyArrival === true)
     ? `<div class="arrival-banner">${ICONS.bell || ''}<div><b>${esc(firstName(name))} ya sabe que llegaste</b><span>Le avisamos por su seguimiento. Si no sale en un par de minutos, escribile.</span></div></div>`
     : '';
-  const deliverItems = (arrived && accepted && !isPickup) ? itemLines(order) : null;
+  const deliverItems = soloArrival ? itemLines(order) : null;
   const itemsCard = deliverItems
     ? `<div class="sv-deliver-items"><div class="sdi-head"><span class="sdi-count">${esc(deliverItems.reduce((a, l) => a + l.qty, 0))} artículo${deliverItems.reduce((a, l) => a + l.qty, 0) === 1 ? '' : 's'}</span><span class="sdi-chip">entregá todo</span></div>${deliverItems.map((l) => `<div class="sdi-row"><b>${esc(l.qty)}×</b><span>${esc(l.name)}</span></div>`).join('')}</div>`
     : '';
-  const problemaBtnHtml = (opts.canReportProblem === true && accepted)
+  const problemaBtnHtml = (soloArrival && opts.canReportProblem === true)
     ? `<button class="problema-btn" id="btn-problema-body"><span class="ico">${ICONS.warn || ''}</span>Problema con este pedido</button>`
     : '';
 
@@ -421,14 +426,14 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   const actualPill = showActualPill ? '<span class="pactual">Parada actual</span>' : '';
   return `${flowTop}
     ${arrivalBanner}
-    <div class="active-card${(arrived && !isPickup) ? ' ac-arrived' : ''}" data-order-id="${esc(o.orderId)}">
-      ${(arrived && !isPickup) ? '' : `<div class="ac-chiprow">${bagTagHtml(ordinal, esc)}${rchip(order, esc)}<span class="order-num">${esc(displayOrderLabel(order))}</span>${actualPill}</div>`}
+    <div class="active-card${soloArrival ? ' ac-arrived' : ''}" data-order-id="${esc(o.orderId)}">
+      ${soloArrival ? '' : `<div class="ac-chiprow">${bagTagHtml(ordinal, esc)}${rchip(order, esc)}<span class="order-num">${esc(displayOrderLabel(order))}</span>${actualPill}</div>`}
       <div class="ac-head">
         <div class="recipient-name">${esc(name)}</div>
         ${countdownChip ? `<div class="ac-meta">${countdownChip}</div>` : ''}
       </div>
       ${scheduledBadge(order)}
-      ${accepted && !(arrived && !isPickup) ? `<div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${esc(order.address_detected || (o.deliveryTask && o.deliveryTask.destination_address) || '—')}</div></div></div>` : ''}
+      ${accepted && !soloArrival ? `<div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${esc(order.address_detected || (o.deliveryTask && o.deliveryTask.destination_address) || '—')}</div></div></div>` : ''}
       ${accepted && order.address_details ? `<div class="instr"><span class="ico">${ICONS.door || DOOR_SVG}</span><div class="instr-main">${esc(order.address_details)}</div></div>` : ''}
       ${accepted && order.customer_phone ? contactRowHtml(order, { ICONS, esc }) : ''}
       <div class="ac-hr"></div>

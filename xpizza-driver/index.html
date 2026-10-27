@@ -2932,6 +2932,7 @@ function driverRow(icon, label, o) {
 function renderOffshift() {
   const host = $('screen-offshift'); if (!host) return;
   drv2ClearReturnTarget();   // off-shift / shift-end → drop any returning nav target (advisor: clear on ending the shift)
+  drv2SoloCancel = null;     // Codex P2-3: a shift reset also clears the solo-cancel banner
   const SOLA_HM = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="var(--marino, #14306B)"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><g><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--celeste, #8EC0FF)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="var(--marino, #14306B)"/></g></svg>';
   const USER = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c1.3-3.2 4-4.8 7-4.8s5.7 1.6 7 4.8"/></svg>';   // prototype I.user, filled
   const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>';
@@ -3058,20 +3059,26 @@ function drv2GetReturnTarget() {
     try { const raw = sessionStorage.getItem(RETURN_TARGET_KEY); if (raw) t = JSON.parse(raw); } catch (_) { t = null; }
   }
   if (t && t.name && Number.isFinite(t.lat) && Number.isFinite(t.lng) && t.uid === uid) { returnTarget = t; return t; }
-  return null;   // absent, malformed, or a DIFFERENT account (switch) → no target → the nav button hides
+  // Codex P2-3: a DIFFERENT account's target (or malformed) must be CLEARED, not merely hidden — else A→B→A resurrects it.
+  if (t) drv2ClearReturnTarget();
+  return null;
 }
 function drv2ClearReturnTarget() {
   returnTarget = null;
   try { sessionStorage.removeItem(RETURN_TARGET_KEY); } catch (_) { /* best-effort */ }
 }
-function drv2CaptureReturnTarget(o) {   // at THIS client's delivery completion, the delivered order's entry is in scope
+function drv2CaptureReturnTarget(o, actingUid) {   // at THIS client's delivery completion, the delivered order's entry is in scope
+  // Codex P2-2: attribute to the uid that RAN the completion (captured BEFORE the await), not currentUser read after it,
+  // and REJECT the capture if the session changed mid-write — never store one account's restaurant under another's uid.
+  const uid = actingUid || (currentUser && currentUser.uid);
+  if (!uid || ((currentUser && currentUser.uid) || null) !== uid) return;
   const order = (o && o.order) || {};
   const pk = (o && o.pickupTask) || {};
   drv2SetReturnTarget({
     name: brandLabel(order),                 // server-stamped restaurant_display_name — '' when unknown → no target → hidden
     lat: Number(pk.destination_lat),         // the order's immutable per-restaurant hub (stamped on the pickup task)
     lng: Number(pk.destination_lng),
-    uid: currentUser && currentUser.uid,
+    uid,
   });
 }
 
@@ -3082,6 +3089,10 @@ function drv2CaptureReturnTarget(o) {   // at THIS client's delivery completion,
 // arrive-btn are preserved (invisible) so a later normal render still finds them. The survivor/stacked cancel path
 // (cancelBannerHtml over the active order) is untouched.
 function renderSoloCancel(host, helpLink, arriveBtn, offerExpired) {
+  // Codex P1: renderIdleState dereferences #idle-icon/#idle-msg/#idle-sub (setting innerHTML/textContent) BEFORE it
+  // rebuilds. This takeover overwrites #idle-state, so those elements must survive (hidden) or the NEXT renderIdleState
+  // — e.g. «Entendido» → renderActiveAndQueue — null-derefs and the cancel screen gets stuck.
+  const idleIcon = $('idle-icon'), idleMsg = $('idle-msg'), idleSub = $('idle-sub');
   const c = drv2SoloCancel || {};
   const num = String(c.cancelledNum || '').trim();
   const brandPhrase = c.cancelledBrand
@@ -3106,7 +3117,13 @@ function renderSoloCancel(host, helpLink, arriveBtn, offerExpired) {
     + '<div class="disp-sp"></div>'
     + '<span id="disp-preserve" style="display:none"></span>';
   const pres = $('disp-preserve');
-  if (pres) { if (helpLink) pres.appendChild(helpLink); if (arriveBtn) pres.appendChild(arriveBtn); }   // keep the bound controls alive (invisible)
+  if (pres) {   // keep the bound controls AND renderIdleState's #idle-icon/#idle-msg/#idle-sub dependencies alive (invisible)
+    if (helpLink) pres.appendChild(helpLink);
+    if (arriveBtn) pres.appendChild(arriveBtn);
+    if (idleIcon) pres.appendChild(idleIcon);
+    if (idleMsg) pres.appendChild(idleMsg);
+    if (idleSub) pres.appendChild(idleSub);
+  }
   if (offerExpired) host.insertBefore(offerExpired, host.firstChild);
   const ack = $('btn-solo-cancel-ack');
   if (ack) ack.onclick = () => { drv2SoloCancel = null; renderActiveAndQueue(); };   // «Entendido» → dismiss + re-render
@@ -3140,7 +3157,10 @@ function renderDisponible() {
   const helpLink = $('idle-help-link');     // bound once (→ openHelpSheet); preserve
   const arriveBtn = $('arrive-btn');         // bound once (→ the «en el restaurante» action); preserve
   const offerExpired = $('idle-offer-expired');   // the expired-offer notice (mounted by renderActiveAndQueue, with its «Ok» handler); preserve across the rebuild
-  if (drv2SoloCancel) { renderSoloCancel(host, helpLink, arriveBtn, offerExpired); return; }   // a no-survivor cancel takes over the idle screen (prototype S.cancelado)
+  if (drv2SoloCancel) {   // a no-survivor cancel takes over the idle screen (prototype S.cancelado)
+    if (drv2SoloCancel._uid !== ((currentUser && currentUser.uid) || null)) drv2SoloCancel = null;   // Codex P2-3: a different account → drop it, fall through to the normal idle render
+    else { renderSoloCancel(host, helpLink, arriveBtn, offerExpired); return; }
+  }
   let icon, msg, sub, chip, iconCls = 'idle-check', navHtml = '';
   if (status === 'returning') {
     // prototype S.disponibleRegresando: a navigation glyph on the BLUE illus + the «head back» copy + a SOFT nav
@@ -5209,8 +5229,11 @@ function renderActiveAndQueue() {
      is active work again. «Entendido» clears it in renderDisponible. The survivor/stacked path is untouched (that
      shows cancelBannerHtml over the active order). ===== */
   const drv2HasActiveWork = (orders || []).some((o) => o && (o.phase === 'pickup' || o.phase === 'delivery'));
-  if (drv2HasActiveWork) drv2SoloCancel = null;
-  else if (drv2Cancel && !drv2Cancel.survivorName) drv2SoloCancel = drv2Cancel;
+  if (drv2HasActiveWork) drv2ClearReturnTarget();   // Codex P2-3: entering active work drops the returning nav target
+  // Codex P2-3: clear the solo-cancel banner on ANY order (a new unaccepted OFFER too), not only active work; stamp the
+  // capturing uid so it can never show across an account switch.
+  if ((orders || []).length > 0) drv2SoloCancel = null;
+  else if (drv2Cancel && !drv2Cancel.survivorName) drv2SoloCancel = { ...drv2Cancel, _uid: (currentUser && currentUser.uid) || null };
   /* ===== SLICE3:SOLO-CANCEL:END ===== */
   const idleSlot = $('idle-state');
   const bannerSlot = $('incoming-banner-slot');
@@ -5297,7 +5320,7 @@ function renderActiveAndQueue() {
     const spStacked = spTotalM > 1 && soloOrder.phase !== 'awaiting_acceptance';
     const spDonePins = drv2DoneRun.filter((d) => d.lat != null && d.lng != null).map((d, i) => ({ lat: d.lat, lng: d.lng, n: i + 1, state: 'done' }));
     /* ===== SLICE3DEPS:LLEGUE-MAP:START (registered carve-out; parent region SINGLE-ORDER-MOUNT) — suppress the overview map in the ARRIVED-at-customer state (prototype S.llegue has no map); en-route/pickup unchanged. slice3-freeze splices this back to the 07e5ab38 condition. ===== */
-    const soloMapHtml = (soloOrder.phase !== 'awaiting_acceptance' && !(spArrived && !spIsPickup))
+    const soloMapHtml = (soloOrder.phase !== 'awaiting_acceptance' && !(spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()) && !spIsPickup))
     /* ===== SLICE3DEPS:LLEGUE-MAP:END ===== */
       ? overviewMapSvg({
           driver: (driverState && driverState.lat != null && driverState.lng != null) ? { lat: driverState.lat, lng: driverState.lng, heading: driverState.heading } : null,
@@ -5328,7 +5351,7 @@ function renderActiveAndQueue() {
     const spHeader = spSoloPickup
       ? stopHeaderHtml({ ...soloPickupHeaderInfo(spOrder, spShowReview), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml })
       /* ===== SLICE3DEPS:LLEGUE-HEADER:START (registered carve-out; parent region SINGLE-ORDER-MOUNT) — the ARRIVED-at-customer delivery header «Estás donde {name}» + the flag-gated «avisamos a las {t}» sub (prototype S.llegue); en-route/pickup unchanged. slice3-freeze splices this back to the 07e5ab38 branch. ===== */
-      : (spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, canReportProblem: DRV2_CAN_REPORT_PROBLEM, arrivedCustomer: spArrived && !spIsPickup, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, notifiedAt: '' }, { ICONS, esc: escapeHtml }) : '');
+      : (spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, canReportProblem: DRV2_CAN_REPORT_PROBLEM, arrivedCustomer: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()) && !spIsPickup, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, notifiedAt: '' }, { ICONS, esc: escapeHtml }) : '');
       /* ===== SLICE3DEPS:LLEGUE-HEADER:END ===== */
     const spStripStops = drv2Cancel
       ? [{ n: 1, state: 'cancelled', label: drv2FirstWord(drv2Cancel.cancelledName) }, { n: 2, state: 'on', label: drv2FirstWord(spName) }]
@@ -5345,7 +5368,9 @@ function renderActiveAndQueue() {
       : spSoloPickup
       ? pickupToRestaurantHtml(soloOrder, spCardDeps)
       : spStopScreen
-      ? activeCardHtml(soloOrder, spCardDeps, { ordinal: spOrdinal, solo: false, showActualPill: true, arrived: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()), navLabel: stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: '' })
+      /* ===== SLICE3DEPS:LLEGUE-CARD:START (registered carve-out; parent region SINGLE-ORDER-MOUNT) — the SOLO delivery card gets the S.llegue discriminator soloArrival (!spStacked: genuine solo, NOT a promoted survivor — Codex P2-4) + canReportProblem (Codex P2-7, dark). slice3-freeze splices this back to the 07e5ab38 branch. ===== */
+      ? activeCardHtml(soloOrder, spCardDeps, { ordinal: spOrdinal, solo: false, showActualPill: true, arrived: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()), navLabel: stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, canReportProblem: DRV2_CAN_REPORT_PROBLEM, soloArrival: !spStacked, previewHtml: '' })
+      /* ===== SLICE3DEPS:LLEGUE-CARD:END ===== */
       /* ===== SLICE3DEPS:OFFER-RENDER:START (registered carve-out; parent region SINGLE-ORDER-MOUNT) — the FRESH single offer gets the prototype S.oferta deps: the overview map (driver + restaurant + stop, REAL coords only), «X km total» (haversine), R4 colonia + R1 ready time — symmetric with the OFFER-TAKEOVER region. slice3-freeze recovery splices this back to the pinned 07e5ab38 branch, so everything else still recovers byte-for-byte. ===== */
       : singleOrderCardHtml(soloOrder, (() => {
           const ofDriver = (driverState && driverState.lat != null && driverState.lng != null) ? { lat: driverState.lat, lng: driverState.lng, heading: driverState.heading } : null;
@@ -5855,7 +5880,7 @@ function attachActiveCardHandlers(o) {
          as the returning-state nav target. Runs only on a successful completion through this client's slide (the
          catch above rethrows), so an other-device / offline-replay completion never sets it — then the returning
          nav button hides (prototype S.disponibleRegresando). Stacked: the last completion wins (overwrite). ===== */
-      drv2CaptureReturnTarget(o);
+      drv2CaptureReturnTarget(o, actingUid);
       /* ===== SLICE3:RETURN-TARGET-CAPTURE:END ===== */
     });
   }

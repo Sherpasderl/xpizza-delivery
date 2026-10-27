@@ -60,7 +60,7 @@ const SLICE3_PINS = {
     'INICIO-CHECKLIST': 'f270a45d4f0bc010c18de365e97fd1427138962b2b8d2abbdc07270db8cc4d74',
     'INICIO-PRACTICA': 'dc6e3b5213046e049f1ba47cd428392caca2cfcb84c7ffea4744c83f312e1e13',
   },
-  fileSha: 'a3389f9e10315bf3bb021ffd267cd21f366108714eb0b56e6406fc1c9aa74f9b',
+  fileSha: 'c3820d61b5423f7ddd3e372a76e67c9a8adb305412207c88440fb8196b23d85e',
 };
 // SLICE3DEPS carve-outs (advisor 2026-10-26): a REGISTERED exception to the non-nesting rule — a tiny span that MAY
 // live inside its declared SLICE2 parent, so slice 3 can edit slice-2-added host code (the fresh-offer deps object)
@@ -69,13 +69,14 @@ const SLICE3_PINS = {
 // carve (still inside the parent) still goes RED. An UNREGISTERED carve, or one in the wrong parent / partially
 // overlapping / double-nested, FAILS (negative self-tests below).
 const SLICE3_DEPS_PINS = {
-  names: ['OFFER-RENDER', 'LLEGUE-MAP', 'LLEGUE-HEADER'],
-  kinds: ['slice3deps', 'slice3deps', 'slice3deps'],
-  parents: ['SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT'],
+  names: ['OFFER-RENDER', 'LLEGUE-MAP', 'LLEGUE-HEADER', 'LLEGUE-CARD'],
+  kinds: ['slice3deps', 'slice3deps', 'slice3deps', 'slice3deps'],
+  parents: ['SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT'],
   restoreSha: {
     'OFFER-RENDER': 'f7bd685aa3efa75a6bd3df1757c120d16538876645961bfe5f68cf63170a9c3e',
     'LLEGUE-MAP': '4ce5b4226d369d69d82193fc06d09ab840cce26605c33cc2594c67693654c94f',
     'LLEGUE-HEADER': 'e7db20aa5da75a093f1d8ab99b74d8c0787cfee524c633fd6b170eec9cd5f07f',
+    'LLEGUE-CARD': '872db1af8ca1fa97f5a945827fddb108abf19c094bd8c16b8d6a3dfcfa98802c',
   },
 };
 function loadContract() {   // bytes → sha pin FIRST → JSON.parse; no import/require of editable code (Codex r2 P1)
@@ -92,7 +93,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = '5aeba1d0d2cb74cc1922b4fb43625f0b033c285ec3df77a6c00da5c2f2f6ea3f';
+const SLICE2_GUARD_SHA = 'e92b2f65d3338b579c8ff2c8025de0e4110bd30b5b418651b758a1ffa42b4710';
 const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs

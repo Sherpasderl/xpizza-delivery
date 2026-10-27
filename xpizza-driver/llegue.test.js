@@ -9,6 +9,10 @@
 // Run: `node llegue.test.js`
 import assert from 'node:assert/strict';
 import { stopHeaderHtml, activeCardHtml } from './stacked-view.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const INDEX = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.html'), 'utf8');   // for the compose carves
 
 const ICONS = new Proxy({}, { get: (_, k) => `<svg data-ic="${String(k)}"></svg>` });
 const deps = { ICONS, esc: (s) => String(s == null ? '' : s), scheduledBadge: () => '', RESTAURANT: { lat: 15.5, lng: -88.03 }, navPref: 'Waze' };
@@ -20,7 +24,10 @@ const order = {
   summary_lines: [{ name: 'Pizza grande', qty: 1, cents: 28000 }, { name: 'Coca-Cola', qty: 1, cents: 4500 }, { name: 'Salsa', qty: 2, cents: 2000 }],
 };
 const deliveryEntry = { orderId: 'o1', phase: 'delivery', order, deliveryTask: { id: 'd1', destination_address: order.address_detected, recipient_name: 'Daniela' }, pickupTask: { id: 'p1', destination_lat: 15.5, destination_lng: -88.03 } };
-const card = (opts) => activeCardHtml(deliveryEntry, deps, { ordinal: 1, solo: true, showActualPill: true, navLabel: '', previewHtml: '', ...opts });
+// the SOLO arrived-at-customer card passes the explicit soloArrival discriminator (Codex P2-4)
+const card = (opts) => activeCardHtml(deliveryEntry, deps, { ordinal: 1, solo: true, showActualPill: true, navLabel: '', previewHtml: '', soloArrival: true, ...opts });
+// a STACKED / promoted-survivor delivery card: NO soloArrival → must stay byte-identical (the arrival restyle never applies)
+const stackedCard = (opts) => activeCardHtml(deliveryEntry, deps, { ordinal: 2, solo: false, showActualPill: true, navLabel: '', previewHtml: '<div class="after-card"></div>', ...opts });
 
 let passed = 0;
 const t = (name, fn) => { try { fn(); passed += 1; } catch (e) { console.error(`✗ ${name}`); throw e; } };
@@ -103,13 +110,34 @@ t('solo arrived: the ac-chiprow (bag-tag/brand/#) is HIDDEN (proto single-delive
 t('slide copy: solo arrived cash → «Entregado · cobré L {amt}» (no name); online-paid → «Entregado»', () => {
   assert.match(card({ arrived: true }), /Entregado · cobré L 385/, 'cash copy «cobré L 385»');
   assert.ok(!/Entregado · Daniela/.test(card({ arrived: true })), 'no name on the arrived slide');
-  const paid = activeCardHtml({ ...deliveryEntry, order: { ...order, payment_method: 'card_online' } }, deps, { ordinal: 1, solo: true, arrived: true, previewHtml: '' });
+  const paid = activeCardHtml({ ...deliveryEntry, order: { ...order, payment_method: 'card_online' } }, deps, { ordinal: 1, solo: true, arrived: true, soloArrival: true, previewHtml: '' });
   assert.match(paid, /Entregado</, 'online-paid arrived slide = plain «Entregado»');
   assert.ok(!/cobré/.test(paid), 'no «cobré» for a paid order');
 });
 t('slide copy: en-route / stacked keep the named slide «Entregado · {name} · L {amt}» (untouched)', () => {
   assert.match(card({ arrived: false }), /Entregado · Daniela · L 385/, 'en-route keeps the named slide');
-  assert.match(card({ arrived: true, previewHtml: '<div class="after-card"></div>' }), /Entregado · Daniela · L 385/, 'a stacked arrived card (previewHtml) keeps the named slide');
+  assert.match(stackedCard({ arrived: true }), /Entregado · Daniela · L 385/, 'a stacked arrived card keeps the named slide');
+});
+t('P2-4: a STACKED/promoted arrived delivery stays byte-identical — chiprow + street kept, NO .ac-arrived / items / banner / cobré slide', () => {
+  const html = stackedCard({ arrived: true, canNotifyArrival: true, canReportProblem: true });
+  assert.ok(/ac-chiprow/.test(html), 'chiprow kept on the stacked card');
+  assert.ok(/address-block/.test(html), 'street kept on the stacked card');
+  assert.ok(!/ac-arrived/.test(html), 'no .ac-arrived on the stacked card');
+  assert.ok(!/sv-deliver-items/.test(html), 'no items card on the stacked card');
+  assert.ok(!/arrival-banner/.test(html) && !/problema-btn/.test(html), 'no arrival banner / body problema on the stacked card');
+  assert.ok(!/cobré/.test(html), 'stacked keeps the named slide, not «cobré»');
+});
+
+t('P2-8: the LLEGUE-MAP carve SUPPRESSES the map when arrived+FRESH, keeps it when stale/en-route (kills the map-restored mutant)', () => {
+  const m = INDEX.match(/SLICE3DEPS:LLEGUE-MAP:START[\s\S]*?===== \*\/\n([\s\S]*?)\n\s*\/\* ===== SLICE3DEPS:LLEGUE-MAP:END/);
+  assert.ok(m, 'LLEGUE-MAP carve found');
+  const cond = m[1].match(/const soloMapHtml = (\(.*\))\s*$/m)[1];   // the show-map condition expression
+  const show = (spArrived, spIsPickup, stale, phase) => new Function('spArrived', 'spIsPickup', 'driverState', 'soloOrder', 'isStaleFix',
+    'return ' + cond + ';')(spArrived, spIsPickup, { last_location_ts: 0 }, { phase }, () => stale);
+  assert.equal(show(true, false, false, 'delivery'), false, 'arrived + FRESH delivery → map suppressed (prototype S.llegue)');
+  assert.equal(show(true, false, true, 'delivery'), true, 'STALE GPS → map kept (en-route), one freshness predicate (P2-5)');
+  assert.equal(show(false, false, false, 'delivery'), true, 'not arrived → map kept');
+  assert.equal(show(true, true, false, 'pickup'), true, 'pickup → map kept (arrival restyle is delivery-only)');
 });
 
 console.log(`✓ llegue: ${passed} tests passed`);
