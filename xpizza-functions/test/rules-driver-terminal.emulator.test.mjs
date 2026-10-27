@@ -128,6 +128,39 @@ const realCancel = (rs, oid) => cancelOrderCore({ db: adb(rs), client: { voidTra
 // fires `fn` ONCE, at the writer's first root multi-path update (after its reads, before submission)
 const onBatch = (hooks, fn) => { let done = false; hooks.beforeWrite = async (o) => { if (!done && o.kind === 'update' && o.path === '') { done = true; await fn(); } }; };
 
+// whole-batch evidence (Codex build r1 P2-3): every node a refused batch could have touched, captured AFTER the cancel and compared
+// after the refusal — orders, BOTH task legs of each, and the driver's whole node (pointer + status)
+async function snapshot(rs, oids, driverUid) {
+  const out = {};
+  for (const oid of oids) { out[`orders/${oid}`] = await read(rs, `orders/${oid}`); for (const l of ['pickup', 'delivery']) out[`tasks/${oid}_${l}`] = await read(rs, `tasks/${oid}_${l}`); }
+  out[`drivers/${driverUid}`] = await read(rs, `drivers/${driverUid}`);
+  return out;
+}
+// dispatch flows through ONE site's real SDK copy (Codex build r1 P2-2): ASSIGN then the driver completes; REASSIGN then the NEW driver
+// completes and the OLD driver's real writer is refused
+async function assignFlow(rs, site, label) {
+  const d = driver(rs, `${label}a`); const disp = `u_rh_disp_${++seq}`; const o = order(rs, { pickupStatus: 'pending', deliveryStatus: 'pending' });
+  await seed(rs, { ...d.u, ...o.u, [`dispatchers/${disp}`]: true });
+  const D = await client(rs, site, disp);
+  const r = await D.assignOrderToDriver(o.oid, d.uid); assert.ok(r && r.ok, `${label} ${rs} ${site} assign ok (${JSON.stringify(r)})`);
+  const X = await client(rs, 'xpizza-driver', d.uid);
+  return attempt(`${label}-assign`, async () => { await X.acceptTask(d.uid, `${o.oid}_pickup`); await X.pickupComplete(d.uid, `${o.oid}_pickup`); await X.completeTask(d.uid, `${o.oid}_delivery`);
+    assert.strictEqual(await read(rs, `orders/${o.oid}/status`), 'delivered', `${label} ${rs} ${site} assigned driver delivered`); });
+}
+async function reassignFlow(rs, site, label) {
+  const old = driver(rs, `${label}old`); const nu = driver(rs, `${label}new`); const disp = `u_rh_disp_${++seq}`;
+  const o = order(rs, { pickupOwner: old.uid, deliveryOwner: old.uid, pickupStatus: 'assigned' });
+  await seed(rs, { ...old.u, ...nu.u, ...o.u, [`dispatchers/${disp}`]: true });
+  const D = await client(rs, site, disp);
+  const r = await D.reassignOrder(o.oid, nu.uid, old.uid); assert.ok(r && r.ok, `${label} ${rs} ${site} reassign ok (${JSON.stringify(r)})`);
+  const XO = await client(rs, 'xpizza-driver', old.uid);
+  assert.strictEqual(await attempt(`${label}-old-pickup`, () => XO.pickupComplete(old.uid, `${o.oid}_pickup`)), 'refused', `${label} ${rs} ${site} the OLD driver's real pickupComplete is refused after reassignment`);
+  assert.strictEqual(await attempt(`${label}-old-status`, () => XO.setOrderStatus(o.oid, 'out_for_delivery')), 'refused', `${label} ${rs} ${site} the OLD driver's status write is refused after reassignment`);
+  const XN = await client(rs, 'xpizza-driver', nu.uid);
+  return attempt(`${label}-reassign`, async () => { await XN.acceptTask(nu.uid, `${o.oid}_pickup`); await XN.pickupComplete(nu.uid, `${o.oid}_pickup`); await XN.completeTask(nu.uid, `${o.oid}_delivery`);
+    assert.strictEqual(await read(rs, `orders/${o.oid}/status`), 'delivered', `${label} ${rs} ${site} the NEW driver delivered`); });
+}
+
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const results = {};   // label → { base, cand } outcomes, for the hand-back table
 const watchdog = setTimeout(() => { console.error('rules-driver-terminal: FAIL — timed out'); process.exit(1); }, 15 * 60 * 1000);
@@ -166,25 +199,11 @@ const CASES = {
     return attempt('G4', async () => { const r = await X.acceptSecondOrder(d.uid, `${o.oid}_pickup`); assert.ok(r.ok, `G4 ${rs} acceptSecondOrder`);
       await X.pickupComplete(d.uid, `${o.oid}_pickup`); await X.completeTask(d.uid, `${o.oid}_delivery`); });
   },
-  async G5(rs) {
-    const old = driver(rs, 'g5old'); const nu = driver(rs, 'g5new'); const disp = `u_rh_disp_${++seq}`;
-    const o = order(rs, { pickupOwner: old.uid, deliveryOwner: old.uid, pickupStatus: 'assigned' });
-    await seed(rs, { ...old.u, ...nu.u, ...o.u, [`dispatchers/${disp}`]: true });
-    const D = await client(rs, 'xpizza-dispatch', disp);
-    const r = await D.reassignOrder(o.oid, nu.uid, old.uid); assert.ok(r && r.ok, `G5 ${rs} reassign ok (${JSON.stringify(r)})`);
-    const XO = await client(rs, 'xpizza-driver', old.uid);
-    const lateOld = await attempt('G5-old', () => XO.setOrderStatus(o.oid, 'out_for_delivery'));
-    assert.strictEqual(lateOld, 'refused', `G5 ${rs} the OLD driver's late write stays refused (ownership)`);
-    const XN = await client(rs, 'xpizza-driver', nu.uid);
-    return attempt('G5', async () => { await XN.acceptTask(nu.uid, `${o.oid}_pickup`); await XN.pickupComplete(nu.uid, `${o.oid}_pickup`); await XN.completeTask(nu.uid, `${o.oid}_delivery`); });
+  async G5(rs) {   // DESKTOP dispatch SDK copy: assign + reassign
+    return [`assign:${await assignFlow(rs, 'xpizza-dispatch', 'G5')}`, `reassign:${await reassignFlow(rs, 'xpizza-dispatch', 'G5')}`].join(',');
   },
-  async G6(rs) {
-    const d = driver(rs, 'g6'); const disp = `u_rh_disp_${++seq}`; const o = order(rs, { pickupStatus: 'pending', deliveryStatus: 'pending' });
-    await seed(rs, { ...d.u, ...o.u, [`dispatchers/${disp}`]: true });
-    const M = await client(rs, 'xpizza-dispatch-mobile', disp);
-    const r = await M.assignOrderToDriver(o.oid, d.uid); assert.ok(r && r.ok, `G6 ${rs} mobile assign ok (${JSON.stringify(r)})`);
-    const X = await client(rs, 'xpizza-driver', d.uid);
-    return attempt('G6', async () => { await X.acceptTask(d.uid, `${o.oid}_pickup`); await X.pickupComplete(d.uid, `${o.oid}_pickup`); await X.completeTask(d.uid, `${o.oid}_delivery`); });
+  async G6(rs) {   // MOBILE dispatch SDK copy: assign + reassign
+    return [`assign:${await assignFlow(rs, 'xpizza-dispatch-mobile', 'G6')}`, `reassign:${await reassignFlow(rs, 'xpizza-dispatch-mobile', 'G6')}`].join(',');
   },
   async G7(rs) {
     const disp = `u_rh_disp_${++seq}`; await seed(rs, { [`dispatchers/${disp}`]: true });
@@ -246,11 +265,11 @@ const CASES = {
     const d = driver(rs, 'r1'); const o = order(rs, { status: 'out_for_delivery', pickupOwner: d.uid, deliveryOwner: d.uid, pickupStatus: 'completed', deliveryStatus: 'accepted' });
     await seed(rs, { ...d.u, ...o.u, [`drivers/${d.uid}/current_task_id`]: `${o.oid}_delivery` });
     const hooks = {}; const X = await client(rs, 'xpizza-driver', d.uid, hooks);
-    let ptr; onBatch(hooks, async () => { await realCancel(rs, o.oid); assert.strictEqual(await read(rs, `orders/${o.oid}/status`), 'cancelled', `R1 ${rs} premise: cancelled`); ptr = await read(rs, `drivers/${d.uid}/current_task_id`); });
+    let snap; onBatch(hooks, async () => { await realCancel(rs, o.oid); assert.strictEqual(await read(rs, `orders/${o.oid}/status`), 'cancelled', `R1 ${rs} premise: cancelled`); snap = await snapshot(rs, [o.oid], d.uid); });
     const out = await attempt('R1', () => X.completeTask(d.uid, `${o.oid}_delivery`));
     if (out === 'refused') {
-      assert.deepStrictEqual([await read(rs, `orders/${o.oid}/status`), await read(rs, `orders/${o.oid}/delivered_by_driver_uid`), await read(rs, `tasks/${o.oid}_delivery/status`), await read(rs, `drivers/${d.uid}/current_task_id`)],
-        ['cancelled', null, 'cancelled', ptr], `R1 ${rs} the WHOLE batch refused: order cancelled, no stamp, task cancelled, pointer as the cancel left it`);
+      assert.deepStrictEqual(await snapshot(rs, [o.oid], d.uid), snap, `R1 ${rs} the WHOLE batch refused: the order, both task legs and the driver node are exactly as the cancel left them`);
+      assert.strictEqual(snap[`orders/${o.oid}`].delivered_by_driver_uid, undefined, `R1 ${rs} no stamp`);
     }
     return out;
   },
@@ -258,9 +277,12 @@ const CASES = {
     const d = driver(rs, 'r2'); const o = order(rs, { status: 'ready', pickupOwner: d.uid, deliveryOwner: d.uid });
     await seed(rs, { ...d.u, ...o.u });
     const hooks = {}; const X = await client(rs, 'xpizza-driver', d.uid, hooks);
-    onBatch(hooks, () => realCancel(rs, o.oid));
+    let snap; onBatch(hooks, async () => { await realCancel(rs, o.oid); snap = await snapshot(rs, [o.oid], d.uid); });
     const out = await attempt('R2', () => X.pickupComplete(d.uid, `${o.oid}_pickup`));
-    if (out === 'refused') assert.deepStrictEqual([await read(rs, `orders/${o.oid}/status`), await read(rs, `orders/${o.oid}/picked_up_at`), await read(rs, `tasks/${o.oid}_pickup/status`)], ['cancelled', null, 'cancelled'], `R2 ${rs} nothing lands`);
+    if (out === 'refused') {
+      assert.deepStrictEqual(await snapshot(rs, [o.oid], d.uid), snap, `R2 ${rs} nothing lands: the order, both task legs and the driver node are exactly as the cancel left them`);
+      assert.deepStrictEqual([snap[`orders/${o.oid}`].status, snap[`orders/${o.oid}`].picked_up_at], ['cancelled', undefined], `R2 ${rs} premise: cancelled, never picked up`);
+    }
     return out;
   },
   async R3(rs) {   // order cancelled by an Admin STATUS-ONLY shape (tasks stay live): the order pre-status check in isolation
@@ -311,11 +333,11 @@ const CASES = {
     const d = driver(rs, 'r7'); const a = order(rs, { status: 'ready', pickupOwner: d.uid, deliveryOwner: d.uid }); const b = order(rs, { status: 'ready', pickupOwner: d.uid, deliveryOwner: d.uid });
     await seed(rs, { ...d.u, ...a.u, ...b.u });
     const hooks = {}; const X = await client(rs, 'xpizza-driver', d.uid, hooks);
-    onBatch(hooks, () => realCancel(rs, b.oid));
+    let snap; onBatch(hooks, async () => { await realCancel(rs, b.oid); snap = await snapshot(rs, [a.oid, b.oid], d.uid); });
     const out = await attempt('R7', () => X.pickupComplete(d.uid, `${a.oid}_pickup`));
     if (out === 'refused') {
-      assert.deepStrictEqual([await read(rs, `orders/${a.oid}/status`), await read(rs, `orders/${a.oid}/picked_up_at`), await read(rs, `tasks/${a.oid}_pickup/status`), await read(rs, `orders/${b.oid}/status`)],
-        ['ready', null, 'accepted', 'cancelled'], `R7 ${rs} COMPLETE rejection: A unchanged, B stays cancelled`);
+      assert.deepStrictEqual(await snapshot(rs, [a.oid, b.oid], d.uid), snap, `R7 ${rs} COMPLETE rejection: A, B, all four task legs and the driver node exactly as the cancel left them`);
+      assert.deepStrictEqual([snap[`orders/${a.oid}`].status, snap[`tasks/${a.oid}_pickup`].status, snap[`orders/${b.oid}`].status], ['ready', 'accepted', 'cancelled'], `R7 ${rs} premise: A live and untouched, B cancelled`);
       hooks.beforeWrite = null;
       const g13 = await attempt('G13', () => X.pickupComplete(d.uid, `${a.oid}_pickup`));   // the REAL refreshed writer: its fresh scan excludes B
       assert.strictEqual(g13, 'accepted', `G13 ${rs} the retry picks up A`);
