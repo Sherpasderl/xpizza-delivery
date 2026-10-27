@@ -243,7 +243,8 @@
    side margins, status card → center block → stats → spacer. */
 #screen-onshift #idle-state { padding: 4px 16px 10px; justify-content: flex-start; gap: 14px; }   /* proto .body gap 14px; NOT vertically centred */
 #screen-onshift #idle-state .idle-top { flex: none; justify-content: flex-start; align-items: stretch; text-align: left; gap: 14px; padding: 0; }
-#idle-state .disp-center { width: 100%; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 4px 0 0; }   /* proto .body.center — full content width (not shrunk to the title) so .sub wraps at the design 358px */
+#idle-state .disp-center { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 4px 0 0; }   /* proto .body.center — full content width (not shrunk to the title) so .sub wraps at the design 358px */
+#idle-state .disp-ts { align-self: stretch; }   /* proto wrapper <div> around .h + .sub — full content width */
 #idle-state .disp-sp { flex: 1; min-height: 6px; }   /* proto .sp — fills below the stats so the block stays top-aligned */
 #idle-state .disp-status { width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); padding: 14px; }   /* FULL width (proto .card) */
 #idle-state .disp-chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--fb); font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; line-height: 1.2; white-space: nowrap; background: #E3F3E9; color: #15803D; }   /* proto .chip.ok (--p-okwash / --p-ok) */
@@ -253,7 +254,7 @@
 #idle-state .idle-check { width: 104px; height: 104px; border-radius: 30px; display: grid; place-items: center; background: #E3F3E9; color: #15803D; }   /* proto .illus.ok */
 #idle-state .idle-check svg { width: 50px; height: 50px; }
 #idle-state .idle-msg { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); }   /* proto .h = --fd */
-#idle-state .idle-sub { width: 100%; font-family: var(--fb); font-size: 13px; color: var(--text-soft, #546078); }   /* proto .sub — full content width (align-items:center would otherwise shrink it, changing the wrap) */
+#idle-state .idle-sub { font-family: var(--fb); font-size: 13px; line-height: 1.4; max-width: none; margin: 6px 0 0; color: var(--text-soft, #546078); }   /* CSS parity with prototype .body.center .sub (advisor): font/size/line-height/width/padding equal, NO max-width, 6px margin-top */
 #screen-onshift #idle-state .idle-help-link { font-family: var(--fb); color: var(--text-soft, #546078); font-weight: 600; font-size: 13px; }   /* proto .btn.txt — darker, semibold (fix) */
 #idle-state .disp-stat2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 #idle-state .disp-statcard { background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); text-align: center; padding: 12px 8px; }
@@ -2964,8 +2965,10 @@ function renderDisponible() {
     + '<span class="disp-gps' + (stale ? ' stale' : '') + '" id="disp-gps">' + gps + '</span></div>'
     + '<div class="disp-center">'
     + '<div class="idle-check" id="idle-icon">' + icon + '</div>'
+    + '<div class="disp-ts">'
     + '<div class="idle-msg" id="idle-msg">' + msg + '</div>'
     + '<div class="idle-sub" id="idle-sub">' + sub + '</div>'
+    + '</div>'
     + '<span id="disp-help-slot"></span><span id="disp-arrive-slot"></span>'
     + '</div>'
     + '</div>'
