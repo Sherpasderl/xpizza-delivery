@@ -191,7 +191,7 @@
 #screen-offshift .off2-ttl { flex: 1; min-width: 0; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 18px; letter-spacing: -.015em; color: var(--text, #0D1424); text-transform: none; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #screen-offshift .off2-cuenta { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text, #0D1424); display: grid; place-items: center; cursor: pointer; padding: 0; }
 #screen-offshift .off2-cuenta svg { width: 18px; height: 18px; }
-#screen-offshift .off2-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 4px 16px 10px; background: transparent; }
+#screen-offshift .off2-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 4px 16px 10px; background: transparent; }
 #screen-offshift .off2-card { background: var(--surface); border-radius: 16px; box-shadow: 0 1px 2px rgba(20,30,50,.05), 0 8px 20px rgba(20,30,50,.05); padding: 14px; }
 #screen-offshift .off2-status { display: flex; align-items: center; gap: 12px; }
 #screen-offshift .off2-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 11px; border-radius: 999px; background: var(--surface-2, #F5F7FA); color: var(--text-soft); }
@@ -216,18 +216,25 @@
 .slide-confirm.start .slide-hint { color: rgba(255,255,255,.72); }
 .slide-confirm.start .slide-thumb { background: rgba(255,255,255,.22); box-shadow: inset 0 1.5px 0 rgba(255,255,255,.4); }
 #screen-cuenta .cuenta-ver { flex: none; text-align: center; font-size: 11.5px; color: var(--text-dim, #8A93A6); padding: 6px 0 10px; }
-/* suspendida (account paused by dispatch) — prototype S.suspendida: a warn banner + the two dispatch contact rows. */
-#screen-offshift .off2-susp { display: flex; gap: 10px; align-items: flex-start; background: var(--sv-warn-bg, #F6EEDD); color: var(--warn, #8A5A00); border-radius: 16px; padding: 13px 14px; }
-#screen-offshift .off2-susp-ic { flex: none; width: 22px; height: 22px; }
-#screen-offshift .off2-susp-ic svg { width: 22px; height: 22px; }
-#screen-offshift .off2-susp-tx { font-size: 13px; line-height: 1.4; font-weight: 600; text-align: left; }
-#screen-offshift .off2-susp-tx b { display: block; font-weight: 800; font-size: 14px; margin-bottom: 2px; }
-#screen-offshift .off2-contact { padding: 2px 14px; }
-#screen-offshift .off2-crow { display: flex; align-items: center; gap: 12px; padding: 13px 0; color: var(--text, #0D1424); font-weight: 600; font-size: 14px; text-decoration: none; cursor: pointer; border-bottom: 1px solid var(--border-soft, #EAEFF6); }
-#screen-offshift .off2-crow:last-child { border-bottom: none; }
-#screen-offshift .off2-crow-ic { flex: none; width: 22px; height: 22px; color: var(--text-soft); }
-#screen-offshift .off2-crow-ic svg { width: 22px; height: 22px; }
-#screen-offshift .off2-crow-wa .off2-crow-ic { color: var(--success, #15803D); }
+/* REUSABLE prototype .banner + .row components, copied VERBATIM from the mockup (used by suspendida; and for the
+   esperando/Cuenta contact rows). Exact prototype tokens: --p-warnwash #FBF1DC / --p-warn #8A5A00; the .row icon tile
+   --p-surface2 #E7ECF4 / --p-muted; .row.ok tile --p-okwash #E3F3E9 / --p-ok #15803D; left-aligned, title-only bold. */
+.pr-banner { display: flex; gap: 11px; align-items: flex-start; padding: 12px 13px; border-radius: 13px; font-size: 13.5px; line-height: 1.35; text-align: left; font-weight: 400; }
+.pr-banner svg { width: 20px; height: 20px; flex: none; margin-top: 1px; }
+.pr-banner b { display: block; font-family: 'Red Hat Display', sans-serif; font-size: 14.5px; font-weight: 700; }
+.pr-banner.warn { background: #FBF1DC; color: #8A5A00; }
+.pr-card { background: var(--surface); border-radius: 16px; box-shadow: 0 1px 2px rgba(20,30,50,.05), 0 8px 20px rgba(20,30,50,.05); padding: 0 14px; }
+.pr { display: flex; gap: 11px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border, #DCE2EC); text-decoration: none; color: inherit; }
+.pr:first-child, .pr.nb { border-top: 0; }
+.pr-ic { width: 30px; height: 30px; border-radius: 9px; background: #E7ECF4; color: var(--text-soft, #546078); display: grid; place-items: center; flex: none; }
+.pr-ic svg { width: 17px; height: 17px; }
+.pr-ic.ok { background: #E3F3E9; color: var(--success, #15803D); }
+.pr-tx { min-width: 0; flex: 1; text-align: left; }
+.pr-t { font-weight: 700; font-size: 14px; line-height: 1.3; color: var(--text, #0D1424); }
+.pr-d { font-size: 12.5px; color: var(--text-soft, #546078); margin-top: 1px; }
+.pr.tap { cursor: pointer; }
+.pr-chev { color: var(--text-dim, #8A93A6); flex: none; align-self: center; }
+.pr-chev svg { width: 16px; height: 16px; }
 /* ===== SLICE3:PRESENTATION-INICIO:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -2758,6 +2765,17 @@ function syncTabBarForScreen(name) {
   mountTabBar($('screen-cuenta'), 'cuenta', name === 'cuenta' && !hasWork);
 }
 
+// REUSABLE prototype .row builder (copied verbatim): icon tile + bold label + optional desc + optional chevron and/or
+// trailing control. Renders as <a> when href is given (tel:/wa:), else <div>. Used by suspendida + the Cuenta rows.
+function driverRow(icon, label, o) {
+  o = o || {};
+  const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+  const tag = o.href != null ? 'a' : 'div';
+  const attrs = (o.href != null ? ` href="${o.href}"` : '') + (o.id ? ` id="${o.id}"` : '') + (o.target ? ` target="${o.target}" rel="noopener"` : '');
+  return `<${tag} class="pr${(o.tap || o.href != null) ? ' tap' : ''}"${attrs}><span class="pr-ic${o.tile ? ' ' + o.tile : ''}">${icon}</span>`
+    + `<div class="pr-tx"><div class="pr-t">${label}</div>${o.desc ? `<div class="pr-d">${o.desc}</div>` : ''}</div>`
+    + `${o.trail || ''}${o.chev ? `<span class="pr-chev">${CHEV}</span>` : ''}</${tag}>`;
+}
 // offshift (disponible OFF) rebuilt to prototype S.offshift. Overwrites #screen-offshift at runtime (the static shell
 // stays frozen for the initial load-time bindings); then re-binds the Cuenta icon, re-applies the notif banner + the
 // suspended notice, and populates the name (NATURAL case — render() uppercases the pre-replace element, this wins),
@@ -2776,15 +2794,18 @@ function renderOffshift() {
   // contact channels, and NO «Iniciar turno». The banner IS the suspend notice here. One-shot config/dispatch_contact
   // read wires tel:/wa.me on the rows (present → show; absent/invalid/no-SDK → hide the card; no dead affordance).
   if (companionSuspended) {
-    const PAUSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="6" width="3.2" height="12" rx="1"/><rect x="13.8" y="6" width="3.2" height="12" rx="1"/></svg>';
+    // Exact prototype glyphs: filled pause bars (I.pause), the stroke phone/wa.
+    const PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1.3"/><rect x="13.5" y="5" width="4" height="14" rx="1.3"/></svg>';
+    const PHONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>';
+    const WA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>';
     host.innerHTML = `
       <header class="off2-hdr"><span class="off2-hm">${SOLA_HM}</span><div class="off2-ttl">Hola, <span id="off-driver-name"></span></div>
         <button class="off2-cuenta" id="cuenta-btn" title="Cuenta" aria-label="Cuenta">${USER}</button></header>
       <div class="off2-body">
-        <div class="off2-susp"><span class="off2-susp-ic">${PAUSE}</span><div class="off2-susp-tx"><b>Despacho pausó tu cuenta</b>Podés terminar lo que tenés en mano, pero no vas a recibir pedidos nuevos. Hablá con despacho para saber el motivo.</div></div>
-        <div class="off2-card off2-contact hidden" id="off2-susp-card">
-          <a class="off2-crow" id="off2-susp-call"><span class="off2-crow-ic">${ICONS.phone || ''}</span><span>Llamar a despacho</span></a>
-          <a class="off2-crow off2-crow-wa" id="off2-susp-wa" target="_blank" rel="noopener"><span class="off2-crow-ic">${ICONS.whatsapp || ''}</span><span>Escribir por WhatsApp</span></a>
+        <div class="pr-banner warn">${PAUSE}<div><b>Despacho pausó tu cuenta</b>Podés terminar lo que tenés en mano, pero no vas a recibir pedidos nuevos. Hablá con despacho para saber el motivo.</div></div>
+        <div class="pr-card hidden" id="off2-susp-card">
+          ${driverRow(PHONE, 'Llamar a despacho', { id: 'off2-susp-call', chev: true, href: '#' })}
+          ${driverRow(WA, 'Escribir por WhatsApp', { id: 'off2-susp-wa', tile: 'ok', chev: true, href: '#', target: '_blank' })}
         </div>
         <div style="flex:1"></div>
       </div>

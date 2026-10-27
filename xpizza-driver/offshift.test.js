@@ -55,6 +55,7 @@ function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+50
     'function todayMidnightMs(){ return 0; }\n' +
     'const driverIdentityCutoverMs = null;\n' +
     liftFn('attachSlideConfirm') + '\n' +
+    liftFn('driverRow') + '\n' +
     liftFn('renderOffshift') + '\n' +
     'return { renderOffshift, getShiftBusy: () => shiftBusy, getOptimistic: () => optimisticShift };';
   const names = ['document', '$', 'computeShiftCash', 'allOrders', 'SYSTEM_VERSION', 'toast', 'ICONS', 'fbOnValue', 'fbRef', 'XPD', '_suspended', '_driverState', '_currentUser', '_calls', '_startImpl'];
@@ -136,6 +137,10 @@ await t('suspendida: warn banner + the two dispatch contact rows (tel/wa), NO «
   assert.ok(call && /^tel:\+?5049999 ?8888|^tel:\+?50499998888/.test(call.getAttribute('href') || ''), 'Llamar wired to tel:');
   assert.ok(wa && /wa\.me\/50499998888/.test(wa.getAttribute('href') || ''), 'WhatsApp wired to wa.me');
   assert.ok(!h.host().querySelector('#off2-susp-card').classList.contains('hidden'), 'contact card shown (valid number)');
+  // prototype component structure (verbatim .banner / .row)
+  assert.ok(h.host().querySelector('.pr-banner.warn'), 'prototype .banner.warn component');
+  assert.ok(call.classList.contains('pr') && call.querySelector('.pr-ic') && call.querySelector('.pr-t') && call.querySelector('.pr-chev'), 'phone row = prototype .row: icon tile + bold .pr-t + chevron');
+  assert.ok(wa.querySelector('.pr-ic.ok'), 'WhatsApp row has the green .ok icon tile');
 });
 
 await t('suspendida: an absent/invalid dispatch number hides the contact card (no dead affordance)', () => {
