@@ -126,12 +126,24 @@ const mutant = (id, command) => ({ id, slice: 'probe', file: anchorFile, command
   const fixture = path.join(ROOT, anchorFile); const before = fs.readFileSync(fixture, 'utf8');
   const shim = path.join(dir, 'no-io-shim.js');
   fs.writeFileSync(shim, `'use strict';
-const fs = require('fs'); const cp = require('child_process'); const path = require('path');
+const fs = require('fs'); const cp = require('child_process'); const path = require('path'); const { fileURLToPath } = require('url');
 const MAIN = path.resolve(process.argv[1]);
 const trip = (op, p) => { process.stderr.write('SHIM-TRIPPED ' + op + ' ' + p + '\\n'); process.exit(97); };
-const read = fs.readFileSync;
-fs.readFileSync = function (p, ...rest) { const r = path.resolve(String(p)); if (r !== MAIN) trip('readFileSync', r); return read.call(this, p, ...rest); };
-for (const op of ['writeFileSync', 'appendFileSync', 'copyFileSync', 'renameSync', 'unlinkSync', 'rmSync', 'existsSync', 'readdirSync']) fs[op] = (p) => trip(op, String(p));
+const own = (p) => { try { return path.resolve(String(p)) === MAIN; } catch (_) { return false; } };
+// every module load (require AND import, JSON included) other than the tool itself and builtins
+require('module').registerHooks({ load(url, ctx, next) {
+  if (url.startsWith('node:') || (url.startsWith('file:') && fileURLToPath(url) === MAIN)) return next(url, ctx);
+  trip('load', url.startsWith('file:') ? fileURLToPath(url) : url);
+} });
+// path-taking reads: the tool's own source passes, anything else trips
+for (const op of ['readFileSync', 'readFile', 'openSync', 'open', 'createReadStream', 'statSync', 'lstatSync', 'accessSync']) {
+  const orig = fs[op]; fs[op] = function (p, ...rest) { if (!own(p)) trip(op, path.resolve(String(p))); return orig.call(this, p, ...rest); };
+}
+for (const op of ['readFile', 'open', 'stat', 'lstat', 'access']) { const orig = fs.promises[op]; fs.promises[op] = function (p, ...rest) { if (!own(p)) trip('promises.' + op, path.resolve(String(p))); return orig.call(this, p, ...rest); }; }
+// fd reads, writes and tree changes: always trip
+for (const op of ['readSync', 'read', 'writeFileSync', 'appendFileSync', 'copyFileSync', 'renameSync', 'unlinkSync', 'rmSync', 'existsSync', 'readdirSync', 'createWriteStream',
+  'writeFile', 'appendFile', 'copyFile', 'rename', 'unlink', 'rm', 'readdir']) fs[op] = (p) => trip(op, String(p));
+for (const op of ['writeFile', 'appendFile', 'copyFile', 'rename', 'unlink', 'rm', 'readdir', 'mkdir', 'cp']) fs.promises[op] = (p) => trip('promises.' + op, String(p));
 for (const op of ['execFileSync', 'execSync', 'spawnSync', 'spawn', 'execFile', 'exec', 'fork']) cp[op] = (c) => trip(op, String(c));
 `);
   const probe = (args) => spawnSync(process.execPath, ['-r', shim, SWEEP, ...args], { cwd: ROOT, encoding: 'utf8', timeout: 60000 });
@@ -144,11 +156,16 @@ for (const op of ['execFileSync', 'execSync', 'spawnSync', 'spawn', 'execFile', 
   };
   try {
     withCatalogue([mutant('probe-08', writes)], (file) => {
-      // premise: the shim DOES see a catalogue read: a valid --list (real default, or synthetic) is stopped at the read
-      for (const args of [['--list'], [`--mutants=${file}`, '--list']]) {
+      // premise: the shim DOES see a catalogue read: a valid --list (the real default, a synthetic one, and one under a path with a
+      // SPACE) is stopped at the read, which names that exact file
+      const spaced = path.join(dir, 'a catalogue dir'); fs.mkdirSync(spaced); fs.copyFileSync(file, path.join(spaced, 'cat.json'));
+      for (const [args, cat] of [[['--list'], path.join(__dirname, 'mutation-sweep.mutants.json')], [[`--mutants=${file}`, '--list'], file],
+        [[`--mutants=${path.join(spaced, 'cat.json')}`, '--list'], path.join(spaced, 'cat.json')]]) {
         const r = probe(args);
         assert.strictEqual(r.status, 97, `premise: ${args.join(' ')} reads the catalogue and the shim stops it (got ${r.status}: ${(r.stderr || '').slice(0, 200)})`);
-        assert.match(r.stderr, /SHIM-TRIPPED readFileSync \S*\.json/, 'premise: and names the catalogue read');
+        const want = fs.realpathSync(cat);
+        assert.ok((r.stderr || '').split('\n').some((l) => /^SHIM-TRIPPED (load|readFileSync) /.test(l) && l.slice(l.indexOf(' ', 13) + 1) === want),
+          `premise: the trip names the catalogue itself (${want}): ${(r.stderr || '').slice(0, 300)}`);
       }
       for (const flag of ['--help', '-h']) {
         const r = probe([flag]);
@@ -172,7 +189,6 @@ for (const op of ['execFileSync', 'execSync', 'spawnSync', 'spawn', 'execFile', 
       assert.match(e.stderr, /no mutants matched --slice=no-such-slice — nothing was measured/);
       untouched('an empty selection');
       // valid flags are still accepted: --list reads the catalogue and runs nothing; a path with an inner space is kept whole
-      const spaced = path.join(dir, 'a catalogue dir'); fs.mkdirSync(spaced); fs.copyFileSync(file, path.join(spaced, 'cat.json'));
       for (const f of [file, path.join(spaced, 'cat.json')]) {
         const l = runArgs(f, ['--list', '--slice=probe']);
         assert.strictEqual(l.status, 0, `--list --slice=probe exits 0 for ${f} (got ${l.status}: ${(l.stderr || '').slice(0, 200)})`);
