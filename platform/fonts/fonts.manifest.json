@@ -195,6 +195,82 @@
           }
         }
       }
+    },
+    "portal": {
+      "baseline": "baseline/portal",
+      "sites": [
+        "xpizza-portal"
+      ],
+      "css": "portal-fonts.css",
+      "families": {
+        "Archivo": {
+          "slug": "archivo",
+          "fallbacks": [
+            {
+              "name": "Archivo Fallback",
+              "weights": "600 800",
+              "local": [
+                "Arial Bold",
+                "Arial-BoldMT"
+              ],
+              "metricsAt": 800,
+              "against": "arial-bold"
+            },
+            {
+              "name": "Archivo Fallback Roboto",
+              "weights": "600 800",
+              "local": [
+                "Roboto Bold",
+                "Roboto-Bold"
+              ],
+              "metricsAt": 800,
+              "against": "roboto-700"
+            }
+          ],
+          "copyright": "Copyright 2020 The Archivo Project Authors (https://github.com/Omnibus-Type/Archivo)"
+        }
+      },
+      "preload": [
+        {
+          "family": "Archivo",
+          "subset": "latin",
+          "decidedBy": "PLAN-portal-fonts r1.1 §2.1: expected (the «Sherpa» wordmark .bname and the h1 at 800 sit in the first viewport of L-login and I-email); to be RATIFIED by the §4 census (P2, heavy slot) — the guard ties the preload to this list"
+        }
+      ],
+      "metrics": {
+        "Archivo Fallback|600 800": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.548158,
+            "ascentEm": 0.878,
+            "descentEm": 0.21,
+            "lineGapEm": 0.0
+          },
+          "against": "arial-bold",
+          "overrides": {
+            "size-adjust": "106.30%",
+            "ascent-override": "82.60%",
+            "descent-override": "19.76%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "Archivo Fallback Roboto|600 800": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.548158,
+            "ascentEm": 0.878,
+            "descentEm": 0.21,
+            "lineGapEm": 0.0
+          },
+          "against": "roboto-700",
+          "overrides": {
+            "size-adjust": "112.37%",
+            "ascent-override": "78.13%",
+            "descent-override": "18.69%",
+            "line-gap-override": "0.00%"
+          }
+        }
+      }
     }
   },
   "systemFonts": {
