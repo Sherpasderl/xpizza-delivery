@@ -1835,6 +1835,7 @@
   "merchant/merchant-transitions.js",
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
+  "phone/identity-corpus.js",
   "phone/intl.js",
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
@@ -3082,6 +3083,10 @@
    "lifts": []
   },
   "merchant/merchant-wiring.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "phone/identity-corpus.js": {
    "pins": [],
    "lifts": []
   },
