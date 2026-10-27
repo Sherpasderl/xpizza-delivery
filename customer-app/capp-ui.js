@@ -518,6 +518,10 @@
     const intakeOk = () => typeof cfg.intakeKey === 'string' && cfg.intakeKey !== '';
     const intakeHeaders = () => ({ Authorization: 'Bearer ' + cfg.intakeKey });
     const member = () => opts.member || null;
+    // PLAN-capp-signin-required r5.4 §3 (owner FINAL: app guests pay CARD ONLY; frozen approved mockup 2026-10-27). DARK behind the
+    // runtime flag cfg.guestCardOnly (the shell sets it); absent ⇒ today's S2 checkout byte for byte. ONE invariant for every
+    // dispatch / restore / retry: a guest's effective tender is ONLINE, else it is refused locally (frame 6) — nothing is sent.
+    const cardOnlyGuest = () => cfg.guestCardOnly === true && !member();
     // the modules are resolved LAZILY (the S1 host may load the page without them): no modules ⇒ the store keeps S1's host event
     let C = null, api = null;
     function mods() {
@@ -526,7 +530,7 @@
         C = opts.CappCheckout || (typeof self !== 'undefined' && self.CappCheckout) || require('./capp-checkout.js');
         const A = opts.CappApi || (typeof self !== 'undefined' && self.CappApi) || require('./capp-api.js');
         api = opts.api || A.createApi({ config: { restaurantId: cfg.restaurantId, orderIdPrefix: cfg.orderIdPrefix, pendingPayKey: cfg.pendingPayKey, endpoints: cfg.endpoints, hours: cfg.hours,
-          cartKey: cfg.cartKey, placedKey: cfg.placedKey },   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged)
+          cartKey: cfg.cartKey, placedKey: cfg.placedKey, guestCardOnly: cfg.guestCardOnly === true },   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged); §3.2 the guest tender rule
           CappCheckout: C, member, ...(opts.apiOpts || {}) });
         return true;
       } catch (_) { C = null; api = null; return false; }
@@ -572,7 +576,8 @@
     // new copy: the line carries the drawn «Agotado» mark; the CTA stays as labelled, disabled)
     const soldLines = (has = soldOf) => cart.lines().filter((l) => isSoldBy(find(l.key), has));
     const soldBlock = () => soldLines().length > 0;
-    const gateCtx = () => ({ open: isOpen(), closedRefused: S.closedRefused, pickupOnlyCount: poLines().length, outZone: S.outZone, member: member(), unavailableLines: soldLines().length });
+    const gateCtx = () => ({ open: isOpen(), closedRefused: S.closedRefused, pickupOnlyCount: poLines().length, outZone: S.outZone, member: member(), unavailableLines: soldLines().length,
+      ...(cardOnlyGuest() ? { guestEmail: true, emailRefused: S.emailRefused === true } : {}) });
     const need = () => C.missingStep(S.flow, gateCtx());
     function ctaLabel(T) {
       const n = need(); if (n) return n;
@@ -681,7 +686,17 @@
       const moreRow = `<button class="urow" data-act="more">${IC.plus}<span class="t"><b>Agregar email / notas</b></span>${chev}</button>`;
       const moreFields = `<div class="fld"><label for="f-email">Correo <span class="mute">(opcional · para tu recibo)</span></label><input id="f-email" data-field="email" type="email" value="${esc(f.email)}" placeholder="tu@correo.com" autocomplete="email"></div>
        <div class="fld"><label for="f-notes">Notas para el restaurante</label><textarea id="f-notes" data-field="notes" placeholder="Sin cebolla, extra salsa… (opcional)">${esc(f.notes)}</textarea></div>`;
-      const datos = `<section class="fsec" aria-label="Tus datos"><h2>Tus datos</h2>
+      // §3.1 / §4b / §4c (frames 1, 1b, 1c): the guest's «Tus datos» opens with the sign-in ROW (replacing the small link), the phone
+      // carries the WhatsApp code + consent note, the EMAIL is its own required field, and the more-row is «Agregar notas»
+      const g = cardOnlyGuest();
+      const signinRow = `<div class="signin"><button class="primary" data-act="signin" data-ctx="checkout">Entrá o creá tu cuenta</button></div>`;
+      const emailBad = g && (S.emailRefused || (String(f.email || '').trim() && !C.validEmail(f.email)));
+      const datosGuest = `<section class="fsec" aria-label="Tus datos"><h2>Tus datos</h2>${signinRow}
+         <div class="fld"><label for="f-name">Nombre <span class="req">*</span></label><input id="f-name" data-field="name" value="${esc(f.name)}" placeholder="Tu nombre" autocomplete="name"></div>
+         <div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(f.phone)}" placeholder="+504 9999-9999" autocomplete="tel"><span class="note">Te enviamos un código por WhatsApp para confirmarlo. Al continuar aceptás recibir mensajes de WhatsApp sobre este pedido.</span></div>
+         <div class="fld${emailBad ? ' bad' : ''}"><label for="f-email">Correo <span class="req">*</span> <span class="mute">· para tu recibo</span></label><input id="f-email" data-field="email" type="email" value="${esc(f.email)}" placeholder="tu@correo.com" autocomplete="email"></div>
+         ${S.more ? `<div class="fld"><label for="f-notes">Notas para el restaurante</label><textarea id="f-notes" data-field="notes" placeholder="Sin cebolla, extra salsa… (opcional)">${esc(f.notes)}</textarea></div>` : `<div class="urows"><button class="urow" data-act="more">${IC.plus}<span class="t"><b>Agregar notas</b></span>${chev}</button></div>`}</section>`;
+      const datos = g ? datosGuest : `<section class="fsec" aria-label="Tus datos"><h2>Tus datos</h2>
     ${m && !f.editWho ? `<div class="urows"><div class="urow">${IC.user}<span class="t"><b>${esc(m.name)}</b><span>${esc(C.fullPhone(m.phone))}</span></span><button class="act" data-act="editwho">Cambiar</button></div>${S.more ? '' : moreRow}</div>`
       : `<div class="fld"><label for="f-name">Nombre <span class="req">*</span></label><input id="f-name" data-field="name" value="${esc(f.name)}" placeholder="Tu nombre" autocomplete="name"></div>
          <div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(f.phone)}" placeholder="+504 9999-9999" autocomplete="tel"></div>
@@ -699,7 +714,11 @@
       const payOpts = `<div class="optrow" role="radiogroup" aria-label="Forma de pago">
       <button class="opt" aria-pressed="${f.pay === 'online'}" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea<span class="rec">Recomendado</span></b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).</span></span></button>
       <button class="opt" aria-pressed="${f.pay === 'cash'}" data-act="pay" data-val="cash"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Efectivo ${del ? 'al entregar' : 'al recoger'}</b><span>${del ? 'Pagás cuando llegue tu pedido.' : 'Pagás en tienda al recoger.'}</span></span></button></div>`;
-      const pago = `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
+      // §3.1 (frame 1): a guest has ONE option — card, already selected (cash ABSENT, not dimmed) — and the fixed line with the why
+      const pagoGuest = `<section class="fsec" aria-label="Pago"><h2>Pago</h2><div class="optrow" role="radiogroup" aria-label="Forma de pago">
+      <button class="opt" aria-pressed="true" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).</span></span></button></div>
+      <p class="paynote">Pagás con tarjeta. <button class="lnk" data-act="signin" data-ctx="paynote">Creá una cuenta</button> para pagar en efectivo y sumar recompensas.</p></section>`;
+      const pago = g ? pagoGuest : `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
         ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D Secure'}</span></span><button class="act" data-act="showpay">Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
       const bar = `<div class="paybar"><button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button></div>`;
       // the prototype's footer «¿Problemas con tu pedido? Escribinos al …» (:1886) is omitted — pending a ruling
@@ -755,6 +774,7 @@
       // known-unavailable line never starts a countdown (Codex perf-core r1 #7); the button-level gates stay as well
       if (dead) return;
       if (soldBlock()) { openLayer('cart'); return; }   // never silently nothing: the cart shows which dish sold out (frame 14)
+      if (guestCashBlocked()) return;   // §3.2: refused locally, frame 6
       if (!intakeOk() || !S.flow || need() || !C.tipChosen(S.flow) || !totalsNow().ready) return;
       placingStop(); S.backScreen = S.screen; openLayer('placing');
       let left = 2;
@@ -792,9 +812,16 @@
       if (unavailable && typeof unavailable !== 'function' && typeof unavailable.clear === 'function' && typeof unavailable.add === 'function') { unavailable.clear(); for (const k of fresh) unavailable.add(k); }
       return fresh;
     }
+    // §3.2 THE shared invariant (every dispatch path calls it: placeTap, send — which «Reintentar» / «Usar otra tarjeta» reach —
+    // and «Pagar en efectivo»): a guest whose effective tender is not ONLINE is refused LOCALLY with frame 6; nothing is sent
+    function guestCashBlocked() {
+      if (!cardOnlyGuest() || !S.flow || S.flow.pay === 'online') return false;
+      backTo('checkout'); showErr(ERR.guestCash()); return true;
+    }
     async function send() {
       const f = S.flow, T = totalsNow();
-      if (dead || !intakeOk() || !T.ready || !mods()) return;   // no key ⇒ nothing is sent (the record stays clean)
+      if (dead || !intakeOk() || !T.ready || !mods()) return;
+      if (guestCashBlocked()) return;   // no key ⇒ nothing is sent (the record stays clean)
       let c; try { c = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { return; }   // the key only where the server requires it
       const attempt = ++attemptSeq; S.terminal = null;   // Codex r4 #2: THIS attempt's settled outcome only
       S.screen = 'sending'; S.sendHint = null; S.sendTotals = { total: T.total, tip: T.tip }; render();
@@ -838,6 +865,8 @@
       // S2 drops the «Programar» button and the schedule sentence (OWNER 2026-10-26; CLOSED_SHEET.scheduleHint is S4's)
       closed: () => ({ title: C.CLOSED_SHEET.title(cfg.name || '', closesText()), body: C.CLOSED_SHEET.body, icon: 'warn', acts: [{ act: 'lclose', label: 'Cerrar' }] }),
       // TODO(ruling pending): «Pagar en efectivo» is a host event only
+      // frame 6 (approved): the existing title, the fixed body; «Pagar con tarjeta» selects card and sends again, «Creá tu cuenta» signs up
+      guestCash: () => ({ title: 'No pudimos enviar tu pedido', body: 'El pago en efectivo es solo para cuentas. Pagá con tarjeta o creá tu cuenta.', acts: [{ act: 'guest-card', label: 'Pagar con tarjeta', primary: true }, { act: 'guest-signup', label: 'Creá tu cuenta' }] }),
       payFailed: () => ({ title: 'Pago no completado', body: 'Tu banco no autorizó el pago. Podés intentar con otra tarjeta o pagar en efectivo; tu pedido está intacto.', acts: [{ act: 'err-cash', label: 'Pagar en efectivo', primary: true }, { act: 'err-card', label: 'Usar otra tarjeta' }] }),
       // the approved Q9 mockup #mk-refunded
       refunded: (cents) => ({ title: 'Te reembolsamos tu pago', body: `${cfg.name || ''} ya había cerrado cuando se confirmó tu pago. Te devolvimos el total completo${Number.isFinite(cents) ? ', ' + moneyC(cents) : ''}; no se te cobrará.`, icon: 'ok', acts: [{ act: 'home', label: 'Volver al inicio', primary: true }] }),
@@ -881,6 +910,8 @@
       if ((k === 'placed' || k === 'paid_unverified') && out.unsettled !== true && typeof out.order_id === 'string' && (attempt === undefined || attempt === attemptSeq)) S.terminal = { order_id: out.order_id };
       if (k === 'placed' || k === 'paid_unverified') { if (S.screen !== 'sending') { S.screen = 'sending'; render(); } beat(out); return; }
       if (k === 'confirming') { S.screen = 'sending'; S.sendHint = CONFIRMING_HINT; render(); return; }
+      if (k === 'guest_cash_not_allowed') { if (S.flow && cardOnlyGuest()) S.flow.pay = 'online'; backTo('checkout'); showErr(ERR.guestCash()); return; }   // §3.3 server refusal ⇒ frame 6
+      if (k === 'guest_email_required') { S.emailRefused = true; backTo('checkout'); return; }   // §4b ⇒ frame 1b: the email field red, CTA «Revisá tu correo»
       if (k === 'offline') { backTo(); showErr(ERR.offline()); return; }
       if (k === 'closed') { S.closedRefused = true; backTo(); showErr(ERR.closed()); return; }   // over the screen of the tap (P placeTap :1975)
       if (k === 'out_of_zone') { S.outZone = true; backTo('checkout'); return; }
@@ -921,6 +952,7 @@
       // own flow, else SEEDED from the shell's guest location (same coordinates ⇒ the same pin version) — before any render can geocode
       if (!S.flow) { S.flow = C.freshFlow(member()); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }
       C.setMode(S.flow, S.mode);
+      if (cardOnlyGuest()) S.flow.pay = 'online';   // §3.1: one option, card, already selected
       S.layerKind = null; S.cartNote = null; S.refusal = null; returnTo = null;
       // the cart stays on the stack: device back from «Entrega & Pago» reopens it (P :2298-2301)
       S.stack.push({ screen: 'store', layer: 'cart' }); S.stack = S.stack.slice(-12); pushHist();
@@ -997,7 +1029,7 @@
       if (a === 'more') { S.more = true; render(); return true; }
       if (a === 'editdetails') { S.editDetails = true; render(); return true; }
       if (a === 'sumtoggle') { S.sumOpen = !S.sumOpen; render(); return true; }
-      if (a === 'pay') { f.pay = v === 'online' ? 'online' : 'cash'; S.showPay = false; render(); return true; }
+      if (a === 'pay') { f.pay = v === 'online' || cardOnlyGuest() ? 'online' : 'cash'; S.showPay = false; render(); return true; }
       if (a === 'showpay') { S.showPay = true; render(); return true; }
       if (a === 'tender') { f.tendered = v; render(); return true; }
       if (a === 'addmore') { toStore(); return true; }
@@ -1037,7 +1069,9 @@
       }
       if (a === 'err-retry') { closeLayer(); send(); return true; }   // the SAME placement (capp-api keeps the id)
       if (a === 'err-requote') { closeLayer(); S.quoteErr = null; requote(); return true; }   // the failed quote, asked again (its key was released)
-      if (a === 'err-cash') { closeLayer(); emit('pay-cash', {}); return true; }   // TODO(ruling pending)
+      if (a === 'err-cash') { closeLayer(); if (cardOnlyGuest()) { showErr(ERR.guestCash()); return true; } emit('pay-cash', {}); return true; }   // TODO(ruling pending); a guest never reaches cash (§3.2)
+      if (a === 'guest-card') { closeLayer(); if (S.flow) S.flow.pay = 'online'; S.screen = 'checkout'; render(); placeTap(); return true; }   // frame 6 «Pagar con tarjeta»: card, then the send again
+      if (a === 'guest-signup') { closeLayer(); emit('signin', { ctx: 'refusal' }); return true; }
       if (a === 'err-card') {   // a new card attempt goes through the same placing card — once the restored checkout is priced
         closeLayer(); S.screen = 'checkout';
         if (totalsNow().ready) { render(); placeTap(); return true; }
@@ -1057,7 +1091,7 @@
       const f = C.freshFlow(member());
       C.setMode(f, b.order_type === 'pickup' ? 'pickup' : 'delivery');
       Object.assign(f, { name: String(b.customer_name || ''), phone: String(b.customer_phone || '').replace(/^\+504\s*/, ''), email: String(b.customer_email || ''),
-        notes: b.notes && b.notes !== '—' ? String(b.notes) : '', pay: b.payment_method === 'online' ? 'online' : 'cash' });
+        notes: b.notes && b.notes !== '—' ? String(b.notes) : '', pay: b.payment_method === 'online' || cardOnlyGuest() ? 'online' : 'cash' });   // §3.2: a guest's restore is never cash
       if (f.mode === 'delivery') {
         if (!Number.isFinite(b.lat) || !Number.isFinite(b.lng)) return null;
         C.setPin(f, b.lat, b.lng, true); f.details = String(b.address_details || '');
@@ -1149,6 +1183,7 @@
       if (fld === 'tipOther') { S.tipDraft = capDraft(t.value, S.tipDraft || ''); t.value = S.tipDraft || '0'; t.style.width = `calc(${Math.max(1, t.value.length)}ch + 6px)`; return; }
       if (S.flow && FLOW_FIELDS.includes(fld)) {
         S.flow[fld] = t.value;
+        if (fld === 'email' && cardOnlyGuest()) { S.emailRefused = false; if (C.validEmail(t.value)) { const fe = t.closest('.fld'); if (fe) fe.classList.remove('bad'); } }   // the red clears as soon as it is valid
         if (fld === 'tendered') { const n = $('tender-note'); if (n) n.textContent = tenderNote(totalsNow()); }
         syncCta();
       }

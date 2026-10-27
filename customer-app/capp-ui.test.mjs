@@ -1988,3 +1988,84 @@ test('Codex s7a2 r1 #2: a pending cancel return locks the order; «Ver estado de
   await c.click('#layer [data-act="frozen-status"]'); await settle(); await settle();
   assert.notEqual(c.ui.deviceBack('leave'), 'blocked', '🔴 a definitive «paid» releases the lock: the customer can leave');
 });
+
+// ── PLAN-capp-signin-required r5.4 G1 (frozen approved mockup 2026-10-27, frames 1 / 1b / 6): app guests pay CARD ONLY, leave an
+//    email, and ONE invariant refuses any guest cash dispatch locally. DARK behind cfg.guestCardOnly (absent ⇒ the S2 checkout) ──
+const GUEST = { guestCardOnly: true };
+async function guestFilled(b, email = 'ana.perez@gmail.com') {
+  await toCheckout(b);
+  await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  await b.type('#f-details', 'Portón negro'); await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000');
+  if (email !== null) await b.type('#f-email', email);
+}
+test('G1 frame 1: a guest sees ONE payment option (card, selected), cash ABSENT, the fixed line; «Tus datos» = the sign-in row, the WhatsApp note, a required email, «Agregar notas»', async () => {
+  const b = bootCo({ config: GUEST });
+  await toCheckout(b); await settle();
+  assert.deepEqual(b.qa('[data-act="pay"]').map((x) => [x.dataset.val, x.getAttribute('aria-pressed')]), [['online', 'true']], '🔴 cash is absent for a guest');
+  assert.equal(b.ui.state.flow.pay, 'online');
+  assert.equal(b.text('.paynote'), 'Pagás con tarjeta. Creá una cuenta para pagar en efectivo y sumar recompensas.');
+  assert.equal(b.text('[aria-label="Tus datos"] .signin .primary'), 'Entrá o creá tu cuenta');
+  assert.equal(b.q('[aria-label="Tus datos"] .signin .primary').dataset.act, 'signin');
+  assert.equal(b.text('#f-phone + .note'), 'Te enviamos un código por WhatsApp para confirmarlo. Al continuar aceptás recibir mensajes de WhatsApp sobre este pedido.');
+  assert.equal(b.text('label[for="f-email"]'), 'Correo * · para tu recibo');
+  assert.equal(b.text('[aria-label="Tus datos"] [data-act="more"]'), 'Agregar notas');
+  assert.ok(!/¿Ya tenés cuenta\?/.test(b.text('[aria-label="Tus datos"]')), 'the small link is replaced by the row');
+  const m = bootCo({ config: GUEST, member: MEMBER_LIKE() });
+  await toCheckout(m); await settle();
+  assert.ok(m.qa('[data-act="pay"]').length === 0 || m.q('[data-act="pay"][data-val="cash"]') || m.q('[data-act="showpay"]'), 'a member keeps today\'s payment choice');
+});
+const MEMBER_LIKE = () => ({ uid: 'u1', name: 'Ana Pérez', phone: '96123344', email: 'ana@x.com', idToken: 'tok', lastPay: 'cash' });
+test('G1 frame 1b: the guest email is required (format only) — empty or invalid ⇒ «Revisá tu correo»; invalid ⇒ the field red; valid ⇒ the next step', async () => {
+  const b = bootCo({ config: GUEST });
+  await guestFilled(b, null); await settle();
+  assert.equal(b.text('#cta'), 'Revisá tu correo', '🔴 an empty email blocks a guest');
+  await b.type('#f-email', 'ana.perez@gmail'); b.ui.render(); await settle();
+  assert.equal(b.text('#cta'), 'Revisá tu correo'); assert.ok(b.q('#f-email').closest('.fld').classList.contains('bad'), 'the drawn red field');
+  await b.type('#f-email', 'ana.perez@gmail.com'); await settle();
+  assert.ok(!b.q('#f-email').closest('.fld').classList.contains('bad'), 'the red clears as soon as it is valid');
+  assert.notEqual(b.text('#cta'), 'Revisá tu correo');
+});
+test('G1 §3.2: ONE invariant — a guest flow carrying cash (a restore, a stale tender) is refused LOCALLY with frame 6 at the tap, at send and at «Pagar en efectivo»; zero sends', async () => {
+  const b = bootCo({ config: GUEST, script: { chargeOnlineOrder: [CHECKOUT] } });
+  await guestFilled(b); await settle();
+  b.ui.state.flow.pay = 'cash';   // as a restore / stale state would leave it
+  await b.click('#cta'); await settle();
+  if (b.q('[data-act="tipc"]')) { await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); }
+  await settle();
+  assert.equal(b.text('#layer .errsheet h2'), 'No pudimos enviar tu pedido');
+  assert.equal(b.text('#layer .errsheet p'), 'El pago en efectivo es solo para cuentas. Pagá con tarjeta o creá tu cuenta.', '🔴 frame 6, refused locally');
+  assert.equal(writes(b), 0, '🔴 nothing sent');
+  assert.deepEqual(b.qa('#layer .errsheet button').map((x) => [x.textContent.trim(), x.dataset.act]), [['Pagar con tarjeta', 'guest-card'], ['Creá tu cuenta', 'guest-signup']]);
+  await b.click('#layer [data-act="guest-card"]'); await settle();
+  assert.equal(b.ui.state.flow.pay, 'online', '«Pagar con tarjeta» selects card');
+});
+test('G1 §3.2: «Pagar en efectivo» on a guest\'s failed-card sheet never reaches cash — frame 6, no pay-cash host event', async () => {
+  const b = bootCo({ config: GUEST });
+  await guestFilled(b); await settle();
+  b.ui.state.err = null; b.ui.state.layerKind = 'err';
+  // the failed-card sheet, as the outcome renders it
+  b.ui.state.err = { title: 'Pago no completado', body: '…', acts: [{ act: 'err-cash', label: 'Pagar en efectivo', primary: true }] }; b.ui.render(); await settle();
+  await b.click('#layer [data-act="err-cash"]'); await settle();
+  assert.equal(b.text('#layer .errsheet p'), 'El pago en efectivo es solo para cuentas. Pagá con tarjeta o creá tu cuenta.');
+  assert.ok(!b.events.some(([n]) => n === 'pay-cash'), '🔴 a guest never reaches cash');
+});
+test('G1 §3.2 transport: the api itself refuses a guest cash placement before any record or send (guest_cash_not_allowed, local)', async () => {
+  const storage = memStore();
+  const api = CA.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: EP, guestCardOnly: true }, CappCheckout: CK, member: null,
+    fetch: async () => { throw new Error('🔴 nothing may be sent'); }, storage, now: () => NOON().getTime(), sleep: async () => {} });
+  const f = CK.freshFlow(null); f.pay = 'cash';
+  const out = await api.place({ flow: f, ctx: { restaurantId: 'rid_a', items: [], itemsText: '', member: null, headers: {} } });
+  assert.deepEqual(J(out), { kind: 'guest_cash_not_allowed', local: true });
+  assert.equal(storage.getItem('capp:rid_a:pending_place'), null); assert.equal(storage.getItem('ta_pending_pay'), null);
+});
+test('G1 server refusals: guest_email_required ⇒ frame 1b (the email red, «Revisá tu correo» until edited); guest_cash_not_allowed ⇒ frame 6', async () => {
+  const b = bootCo({ config: GUEST, script: { chargeOnlineOrder: [{ status: 400, json: { ok: false, error: 'guest_email_required' } }] } });
+  await guestFilled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b.ui.state.screen, 'checkout'); assert.equal(b.text('#cta'), 'Revisá tu correo', '🔴 the server\'s email refusal shows frame 1b');
+  assert.ok(b.q('#f-email').closest('.fld').classList.contains('bad'));
+  await b.type('#f-email', 'ana.perez@gmail.com.hn'); await settle();
+  assert.notEqual(b.text('#cta'), 'Revisá tu correo', 'editing the email clears it');
+  const c = bootCo({ config: GUEST, script: { chargeOnlineOrder: [{ status: 400, json: { ok: false, error: 'guest_cash_not_allowed' } }] } });
+  await guestFilled(c); await c.click('#cta'); await c.click('[data-act="tipc"][data-val="0"]'); await c.click('[data-act="tip-place"]'); await c.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(c.text('#layer .errsheet p'), 'El pago en efectivo es solo para cuentas. Pagá con tarjeta o creá tu cuenta.');
+});

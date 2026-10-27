@@ -987,3 +987,10 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .empty.neutral{padding-top:120px}
 /* frame 12 (APPROVED 2026-10-27, D1 (a)): a sold dish's «Agotado» in the price slot, muted */
 .row.sold-out .prrow .pr{color:var(--mute)}
+/* PLAN-capp-signin-required r5.4 (frozen approved mockup 2026-10-27): the sign-in row atop a guest's «Tus datos» (frame 1c) and the
+   guest's fixed card-only line under Pago (frame 1) — values from the mockup */
+.signin{display:flex;flex-direction:column;gap:8px;padding-bottom:8px}
+.signin .note{font-size:13px;line-height:1.45;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.signin .primary{white-space:nowrap}
+.paynote{font-size:13px;line-height:1.45;color:var(--mute);padding:2px 2px 0}
+.paynote .lnk{border:0;background:transparent;padding:0;font:inherit;color:var(--acc);font-weight:600;cursor:pointer}

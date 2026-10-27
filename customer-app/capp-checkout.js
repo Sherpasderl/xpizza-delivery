@@ -155,6 +155,9 @@
       if (localPhone(f.phone).length !== 8) return COPY.phone;
     }
     if (f.email && !EMAIL_RE.test(String(f.email).trim())) return COPY.email;
+    // PLAN-capp-signin-required §4b: an app GUEST must leave a valid email (format only; never a code) — the shell's own «Revisá tu
+    // correo»; a server refusal (guest_email_required) keeps it until the field is edited
+    if (c.guestEmail === true && (!validEmail(f.email) || c.emailRefused === true)) return COPY.email;
     if (!f.pay) return COPY.pay;
     if (f.rtn && !/^\d{14}$/.test((f.rtnNum || '').trim())) return COPY.rtn;
     return '';
@@ -238,5 +241,5 @@
 
   return { TIP_PRESETS, TIP_MAX_LEMPIRAS, ENTRY_MODE, COPY, CLOSED_SHEET, freshFlow, setMode, setPin, chooseTip, tipCentsOf, tipChosen,
     isOpenAt, closingAt, missingStep, canonicalJson, sigInput, cartSig, quoteBody, orderBody, totals, changeCents, fullPhone,
-    areaFromGeocode, routeFrom, applyGeocode, displayArea, addrLine, menuFingerprint, priceNoticeText };
+    areaFromGeocode, routeFrom, applyGeocode, displayArea, addrLine, menuFingerprint, priceNoticeText, validEmail };
 });

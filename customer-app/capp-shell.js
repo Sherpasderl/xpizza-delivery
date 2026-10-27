@@ -40,6 +40,8 @@
       orderIdPrefix: typeof d.order_id_prefix === 'string' ? d.order_id_prefix : undefined,
       endpoints: rt.endpoints, intakeKey: rt.intakeKey, mapsKey: rt.mapsKey || undefined,
       pendingPayKey: k.pay, cartKey: k.cart, placedKey: k.placed, entry: 'app',
+      // PLAN-capp-signin-required r5.4: the app's guest rules (card only, email, WhatsApp code) — the RUNTIME's switch, off until it ships
+      ...(rt.guestCardOnly === true ? { guestCardOnly: true } : {}),
     };
   }
 

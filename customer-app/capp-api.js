@@ -324,6 +324,8 @@
       if (r.status === 400 && (j.error === 'Restaurant closed' || (j.error === 'Bad Request' && j.detail === 'Cerrado — programá tu pedido'))) return { kind: 'closed' };
       if (r.status === 400 && j.error === 'Bad Request' && typeof j.detail === 'string' && j.detail.indexOf('Outside delivery zone') === 0) return { kind: 'out_of_zone' };
       if (r.status === 423 && j.error === 'ordering_paused') return { kind: 'paused', detail: j.detail || null };
+      // §3.3 / §4 / §4b: the server's capp-guest gate (the reason codes of the confirmed wire contract)
+      if (r.status === 400 && (j.error === 'guest_cash_not_allowed' || j.error === 'guest_email_required' || j.error === 'guest_ticket_invalid')) return { kind: j.error };
       return null;
     }
     const isExisting = (r) => r.status === 409 && (r.json.error === 'order_exists' || r.json.error === 'order_context_changed');
@@ -377,6 +379,9 @@
     }
     async function place(p) {
       const method = p.flow.pay === 'online' ? 'online' : 'cash';
+      // PLAN-capp-signin-required §3.2: the transport's tender mapping is part of the ONE invariant — an app GUEST (cfg.guestCardOnly,
+      // no member) never maps to cash: refused here before any record, lock or send
+      if (cfg.guestCardOnly === true && !memberOf() && method !== 'online') return { kind: 'guest_cash_not_allowed', local: true };
       if (HOSTED) {
         if (markerSuspect) return { kind: 'offline', reconcile: 'marker_unverified' };   // P1-1: fail closed until a fresh mount
         const rc = reconcile();
