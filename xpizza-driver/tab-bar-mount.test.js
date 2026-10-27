@@ -33,7 +33,7 @@ function liftConst(name) {   // lift a `const NAME = …;` statement VERBATIM (t
 }
 
 const SCREENS = ['config', 'login', 'offshift', 'onshift', 'companion', 'cuenta', 'navApp'];
-function boot() {
+function boot(opts = {}) {
   const dom = new JSDOM('<!doctype html><html><body>'
     + SCREENS.map((s) => `<div id="screen-${s}" class="hidden"></div>`).join('')
     + '<button id="duty-toggle-off"></button></body></html>', { pretendToBeVisual: true });
@@ -45,6 +45,11 @@ function boot() {
   // the FROZEN slice2 cuenta-back listener (showScreen('offshift')) — the rebind must strip it
   document.getElementById('cuenta-back').addEventListener('click', () => { calls.origBack++; });
 
+  // Cuenta account-hub injection deps: the driver's own record + a dispatch contact. Overridable per test via opts.
+  const ds = JSON.stringify(opts.driverState === undefined
+    ? { name: 'Marvin Reyes', vehicle: 'moto', plate: 'MAB 4821', phone: '+504 9795 2893', active: true }
+    : opts.driverState);
+  const disp = JSON.stringify(opts.dispContact === undefined ? '+504 9795 2893' : opts.dispContact);
   const body =
     'const SYSTEM_VERSION = "2.5.3";\n' +   // the Cuenta version line references it
     'function render(){ _calls.render++; }\n' +
@@ -54,13 +59,22 @@ function boot() {
     'let soundOn = true;\n' +
     'function toast(){ _calls.toasts = (_calls.toasts||0) + 1; }\n' +
     'function updateNotifBanners(){}\n' +
+    'let driverState = ' + ds + ';\n' +                                    // the profile card reads drivers/{uid}
+    'let currentUser = { uid: "t", email: "marvin@x.com" };\n' +
+    'let _dispContact = ' + disp + ';\n' +                                 // config/dispatch_contact (Ayuda row)
+    'function fbRef(){ return {}; }\n' +
+    'function fbOnValue(ref, okCb){ okCb({ val: () => _dispContact }); return () => {}; }\n' +
+    'const XPD = { getDb: () => ({}) };\n' +
+    'const NAVP_ICONS = { chev: "<svg data-chev></svg>" };\n' +            // only .chev is used (Ayuda row); glyph not asserted
     liftConst('PAGOS_LIVE') + '\n' +
     liftConst('TAB_SHOW_PEDIDOS') + '\n' +
     liftConst('TAB_SHOW_GANANCIAS') + '\n' +
+    liftFn('escapeHtml') + '\n' +
+    liftFn('wireDispatchCallRow') + '\n' +
     liftFn('mountTabBar') + '\n' +
     liftFn('syncTabBarForScreen') + '\n' +
     liftFn('showScreen') + '\n' +
-    'return { showScreen, syncTabBarForScreen, mountTabBar, getSoundOn: () => soundOn };';
+    'return { showScreen, syncTabBarForScreen, mountTabBar, getSoundOn: () => soundOn, setSound: (v) => { soundOn = v; } };';
   const api = (new Function('document', '$', 'tabBarHtml', 'drv2LiveBoard', '_calls', body))(
     document, $, tabBarHtml, () => boardRef.list, calls);
   return { api, document, window, calls, $, boardRef,
@@ -138,6 +152,56 @@ t('Cuenta: the «Sonido y notificaciones» row is injected into the card and its
   // idempotent: a re-sync does not inject a second row
   h.api.showScreen('offshift'); h.api.showScreen('cuenta');
   assert.equal(h.document.getElementById('screen-cuenta').querySelectorAll('#cuenta-sound').length, 1, 'no duplicate row on re-render');
+});
+
+t('Cuenta: the account-hub injection builds the profile card + Reglas/Ayuda rows, omits Mi perfil + restaurant pills, exact to the prototype', () => {
+  const h = boot();   // default driverState: Marvin Reyes · moto · MAB 4821 · +504 9795 2893 · active, dispContact present
+  h.api.showScreen('cuenta');
+  const cs = h.document.getElementById('screen-cuenta');
+  const card = cs.querySelector('.set-card');
+  // profile card (display-only) above the settings card
+  const prof = cs.querySelector('.set-body > .cuenta-prof');
+  assert.ok(prof, 'profile card injected into .set-body');
+  assert.ok(prof.compareDocumentPosition(card) & h.window.Node.DOCUMENT_POSITION_FOLLOWING, 'profile card sits ABOVE the settings card');
+  assert.equal(prof.querySelector('.cp-av').textContent, 'MR', 'initials from the driver name');
+  assert.ok(/Marvin Reyes/.test(prof.querySelector('.cp-name').textContent), 'full name');
+  assert.equal(prof.querySelector('.cp-sub').textContent, 'Moto · MAB 4821 · +504 9••• ••••', 'vehicle · plate · MASKED phone (exact to prototype)');
+  assert.ok(prof.querySelector('.cp-chip'), '«Activa» chip when the account is active');
+  // Reglas de efectivo — DISPLAY-ONLY (no chevron, no pointer)
+  const reglas = card.querySelector('#cuenta-reglas');
+  assert.ok(reglas, 'Reglas row present');
+  assert.ok(reglas.classList.contains('set-static'), 'Reglas is display-only (set-static, no pointer)');
+  assert.ok(!reglas.querySelector('.set-chev'), 'Reglas has NO chevron (proto target is a self-loop no-op)');
+  assert.ok(/Entregás el 100% · llevás sencillo/.test(reglas.textContent), 'Reglas copy from the prototype');
+  // Ayuda y despacho — tappable, chevron, «Central» (never «Torre»), wired to the dispatch number
+  const ayuda = card.querySelector('#cuenta-ayuda');
+  assert.ok(ayuda, 'Ayuda row present');
+  assert.ok(ayuda.querySelector('.set-chev'), 'Ayuda has a chevron (real tel: destination)');
+  assert.ok(/a la Central/.test(ayuda.textContent) && !/Torre/.test(ayuda.textContent), 'copy says «Central», never «Torre» (owner rule overrides the stale prototype copy)');
+  assert.ok(!ayuda.classList.contains('hidden'), 'Ayuda is shown when a valid dispatch number exists');
+  assert.equal(typeof ayuda.onclick, 'function', 'Ayuda is wired (tel: on tap, via wireDispatchCallRow)');
+  // card order: sound · reglas · ayuda (App-nav is the frozen cuentaHtml row, absent from this stub card)
+  const ids = [...card.children].map((c) => c.id);
+  assert.deepEqual(ids, ['cuenta-sound', 'cuenta-reglas', 'cuenta-ayuda'], 'injected rows in prototype order (after the frozen App-nav row)');
+  // OMITTED per owner ruling: Mi perfil (no edit route) + restaurant pills (no assigned-brand reader)
+  assert.ok(!/Mi perfil/.test(cs.textContent), 'Mi perfil row OMITTED (no post-onboarding edit route)');
+  assert.ok(!/RECIB|Recib[íi]s pedidos/.test(cs.textContent), 'restaurant pills OMITTED (no assigned-brand reader today)');
+  // idempotent: a re-sync does not duplicate the injected pieces
+  h.api.showScreen('offshift'); h.api.showScreen('cuenta');
+  assert.equal(cs.querySelectorAll('.cuenta-prof').length, 1, 'no duplicate profile card');
+  assert.equal(cs.querySelectorAll('#cuenta-reglas').length, 1, 'no duplicate Reglas row');
+  assert.equal(cs.querySelectorAll('#cuenta-ayuda').length, 1, 'no duplicate Ayuda row');
+});
+
+t('Cuenta: Ayuda hides with no dispatch number; «Activa» chip drops when the account is not active', () => {
+  const h = boot({ dispContact: null, driverState: { name: 'Ana', vehicle: 'carro', plate: 'XYZ 1', phone: '', active: false } });
+  h.api.showScreen('cuenta');
+  const cs = h.document.getElementById('screen-cuenta');
+  const ayuda = cs.querySelector('#cuenta-ayuda');
+  assert.ok(ayuda && ayuda.classList.contains('hidden'), 'Ayuda row hidden when no valid dispatch number (no dead affordance)');
+  assert.equal(cs.querySelector('.cp-av').textContent, 'A', 'single-word name → one initial');
+  assert.equal(cs.querySelector('.cp-sub').textContent, 'Carro · XYZ 1', 'empty phone drops cleanly from the identity line');
+  assert.ok(!cs.querySelector('.cp-chip'), 'no «Activa» chip when active=false');
 });
 
 t('showScreen(offshift) invokes the renderOffshift rebuild hook (kills the removed-hook mutant)', () => {

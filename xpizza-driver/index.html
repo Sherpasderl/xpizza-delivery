@@ -2188,6 +2188,18 @@
 #screen-navApp .set-opt .set-opt-ck { color: var(--text-soft, #546078); }
 </style>
 <!-- ===== SLICE3:PRESENTATION-REVERIFY:END ===== -->
+<!-- ===== SLICE3:CUENTA-CARD:START — cuenta account-hub additions (owner ruled BUILD 2026-10-27). The profile card (display-only) is injected above the frozen .set-card; the Reglas/Ayuda rows are injected into it. Own trailing stylesheet, new classes only, zero frozen bytes. Light-only (the driver app has no dark theme). Exact to prototype S.cuenta card 1 + rows; the profile card mirrors the frozen .set-card surface, rows reuse the frozen .set-row/.set-ic/.set-tx. ===== -->
+<style>
+#screen-cuenta .cuenta-prof { display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border-radius: var(--r-card, 14px); box-shadow: var(--shadow-card, 0 1px 2px rgba(13,20,36,.05)); padding: 14px; }
+#screen-cuenta .cuenta-prof .cp-av { width: 50px; height: 50px; border-radius: 50%; background: #14306B; color: #fff; display: grid; place-items: center; font: 800 18px 'Red Hat Display', sans-serif; flex: none; }
+#screen-cuenta .cuenta-prof .cp-tx { min-width: 0; flex: 1; }
+#screen-cuenta .cuenta-prof .cp-name { font-size: 18px; font-weight: 700; color: var(--text, #0D1424); letter-spacing: -.01em; }
+#screen-cuenta .cuenta-prof .cp-sub { font-size: 13px; color: var(--text-soft, #546078); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#screen-cuenta .cuenta-prof .cp-chip { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--success, #15803D); background: #E3F3E9; padding: 5px 10px; border-radius: 999px; }
+#screen-cuenta .cuenta-prof .cp-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--success, #15803D); }
+#screen-cuenta .set-row.set-static { cursor: default; }
+</style>
+<!-- ===== SLICE3:CUENTA-CARD:END ===== -->
 <div id="screen-companion" class="hidden" style="height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
 
 <!-- SLICE2:NAV-SCREENS:START — Cuenta + «App de navegación» screen shells (R7); filled by renderCuenta/renderNavApp. Pure insert. -->
@@ -3056,6 +3068,50 @@ function syncTabBarForScreen(name) {
       const flip = () => { soundOn = !soundOn; paintSound(); toast(soundOn ? 'Sonido activado' : 'Sonido desactivado'); };
       row.addEventListener('click', flip);
       row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+    }
+    // Profile card (proto S.cuenta card 1) — DISPLAY-ONLY, injected above the frozen .set-card. Data from the driver's
+    // own drivers/{uid} record (driverState). Initials avatar (photo is a post-slice-3 plan; the prototype draws
+    // initials too). «Mi perfil»/restaurant-pills rows are OMITTED (no edit route / no assigned-brand reader today) —
+    // see STRUCTURAL-DELTAS row 9.
+    const setBody = cs && cs.querySelector('.set-body');
+    if (setBody && card && !setBody.querySelector('.cuenta-prof')) {
+      const nm = (driverState && driverState.name) || (currentUser && currentUser.email ? currentUser.email.split('@')[0] : '');
+      const initials = (nm || '').trim().split(/\s+/).map(w => w[0] || '').slice(0, 2).join('').toUpperCase() || '—';
+      const vehMap = { moto: 'Moto', carro: 'Carro', bici: 'Bici' };
+      const veh = vehMap[(driverState && driverState.vehicle) || ''] || '';
+      // Phone is MASKED to match the prototype («+504 9••• ••••»): reveal the prefix, mask the subscriber digits so
+      // the identity line stays one line. The driver's full number lives in «Mi perfil» (when that screen is built).
+      const ph = ((driverState && driverState.phone) || '').trim();
+      const phMask = ph.length > 6 ? ph.slice(0, 6) + '••• ••••' : ph;
+      const sub = [veh, (driverState && driverState.plate) || '', phMask].filter(Boolean).join(' · ');
+      const active = !!(driverState && driverState.active);
+      const prof = document.createElement('div');
+      prof.className = 'cuenta-prof';
+      prof.innerHTML = '<span class="cp-av">' + escapeHtml(initials) + '</span>'
+        + '<div class="cp-tx"><div class="cp-name">' + escapeHtml(nm || 'Repartidor') + '</div>'
+        + '<div class="cp-sub">' + escapeHtml(sub) + '</div></div>'
+        + (active ? '<span class="cp-chip"><i></i>Activa</span>' : '');
+      setBody.insertBefore(prof, card);
+    }
+    // «Reglas de efectivo» — DISPLAY-ONLY (proto row has go:'cuenta', a self-target no-op → no real sheet; proto line
+    // 911). Static copy. No chevron, no pointer. Injected after the sound row to match the prototype's card order.
+    if (card && !card.querySelector('#cuenta-reglas')) {
+      const CASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5" stroke-linecap="round"/></svg>';
+      const r = document.createElement('div');
+      r.className = 'set-row set-static'; r.id = 'cuenta-reglas';
+      r.innerHTML = '<span class="set-ic">' + CASH + '</span><div class="set-tx"><div class="set-t">Reglas de efectivo</div><div class="set-d">Entregás el 100% · llevás sencillo</div></div>';
+      card.appendChild(r);
+    }
+    // «Ayuda y despacho» — tap → tel: the dispatch number (config/dispatch_contact), reusing wireDispatchCallRow (hides
+    // the row when no valid number exists: no dead affordance). Copy says «Central», never «Torre» (owner rule
+    // overrides the prototype's stale «Torre» copy, proto line 912).
+    if (card && !card.querySelector('#cuenta-ayuda')) {
+      const HELP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg>';
+      const r = document.createElement('div');
+      r.className = 'set-row'; r.id = 'cuenta-ayuda'; r.setAttribute('role', 'button'); r.tabIndex = 0;
+      r.innerHTML = '<span class="set-ic">' + HELP + '</span><div class="set-tx"><div class="set-t">Ayuda y despacho</div><div class="set-d">Llamar o escribir a la Central</div></div><span class="set-chev">' + NAVP_ICONS.chev + '</span>';
+      card.appendChild(r);
+      wireDispatchCallRow(r);
     }
   }
   mountTabBar($('screen-offshift'), 'inicio', name === 'offshift' && !hasWork);
