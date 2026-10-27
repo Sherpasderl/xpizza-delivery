@@ -173,6 +173,14 @@
 #screen-companion .co-demo-ribbon > span { flex: 1; text-align: center; }
 #screen-companion .co-demo-exit { flex: none; color: inherit; background: none; border: 0; font: inherit; text-decoration: underline; padding: 2px 4px; cursor: pointer; }
 #screen-companion .co-demo-host { display: flex; flex-direction: column; min-height: 100%; }
+/* O6 bottom nav bar (tab-bar-view.js). Prototype `.tabs` mapped 1:1 to the app's Cuadra tokens (--p-line→--border,
+   --p-surface→--surface, --p-muted→--text-soft #546078, --p-p→--accent) — exact + AA (inactive 5.95:1, active 5.80:1
+   on white; icons are graphical). grid-template-columns is set inline per visible-tab count. Appended as the flex:none
+   LAST child of the offshift / on-shift-idle / Cuenta screens (never during an order). */
+.tabs { flex: none; display: grid; border-top: 1px solid var(--border); background: var(--surface); padding: 7px 4px 12px; }
+.tabs .tab-btn { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; color: var(--text-soft); cursor: pointer; padding: 4px 0; }
+.tabs .tab-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tabs .tab-btn.on { color: var(--accent); }
 /* ===== SLICE3:PRESENTATION-INICIO:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -2385,6 +2393,7 @@ import { helpDiagnosisHtml, cierreRechazadoHtml, readyTimeLabel, gpsoffHtml } fr
 import { ref as fbRef, onValue as fbOnValue } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';   // same module instance XPD uses — subscribe to the RTDB connection edge for the offer slide gate
 import { postActRoute } from './postact-route.js';   // Inicio b: pure post-activation checklist routing decision (tested in postact-route.test.js)
 import { practicaDemoOrder } from './practica-fixture.js';   // Inicio c: the synthetic practice ORDER (brand = registry-only 'synthetic_3' as DATA, never a controller literal)
+import { tabBarHtml } from './tab-bar-view.js';   // O6: the bottom nav bar (Inicio·Pedidos·Ganancias·Cuenta), data-gated pure builder
 /* ===== SLICE3:IMPORT-3:END ===== */
 /* ===== SLICE3:LOGIC-3:START — batch-3 module logic (help diagnosis sheet; gpsoff / cierreRechazado / offline to follow) ===== */
 // SLICE3:HELP — the «¿Por qué no veo pedidos?» diagnosis sheet (prototype S.help), mounted on demand (reusing the
@@ -2640,6 +2649,39 @@ function applyGpsoff() {
   };
   const later = $('gpsoff-later');
   if (later) later.onclick = () => { gpsoffDismissed = true; applyGpsoff(); };   // dismiss until the next resume/recheck
+}
+
+/* O6 bottom nav bar — host glue. WHICH screens draw the bar is decided by the callers (showScreen for offshift +
+   Cuenta; the board render for the on-shift idle state) — never during an offer / pickup / delivery. The DATA-GATING
+   flags are dormant until their destinations ship (one source — flip here): Pedidos needs an order-history screen;
+   Ganancias needs Pagos (R2). */
+const TAB_SHOW_PEDIDOS = false;     // no order-history screen yet → Pedidos hidden
+const TAB_SHOW_GANANCIAS = false;   // Ganancias ships with Pagos (R2) → hidden until then
+// Idempotently mount / update / remove the bar as the LAST child of a screen (visible:false removes it). One reused
+// node per screen; the click delegate is wired once per node. Inicio → go home (render() routes offshift/onshift);
+// Cuenta → openCuenta. Hidden tabs render no node, so there is no stale wiring.
+function mountTabBar(screenEl, active, visible) {
+  if (!screenEl) return;
+  let bar = screenEl.querySelector(':scope > .tabs');
+  if (!visible) { if (bar) bar.remove(); return; }
+  const html = tabBarHtml(active, { showPedidos: TAB_SHOW_PEDIDOS, showGanancias: TAB_SHOW_GANANCIAS });
+  if (bar) bar.outerHTML = html; else screenEl.insertAdjacentHTML('beforeend', html);
+  bar = screenEl.querySelector(':scope > .tabs');
+  if (bar && !bar.dataset.tabWired) {
+    bar.dataset.tabWired = '1';
+    bar.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-tab]'); if (!btn) return;
+      const tab = btn.getAttribute('data-tab');
+      if (tab === 'cuenta') openCuenta();
+      else if (tab === 'inicio') render();   // route home (render() → offshift when off-shift, the board when on-shift)
+    });
+  }
+}
+// Mount the bar for the CURRENT top-level screen (from showScreen): offshift + Cuenta always carry it. The on-shift
+// bar is owned by the board render (idle shows it; an active order removes it), so it is not touched here.
+function syncTabBarForScreen(name) {
+  mountTabBar($('screen-offshift'), 'inicio', name === 'offshift');
+  mountTabBar($('screen-cuenta'), 'cuenta', name === 'cuenta');
 }
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
@@ -2914,6 +2956,11 @@ function showScreen(name) {
     const offToggle = $('duty-toggle-off');
     if (offToggle) offToggle.classList.remove('on');
   }
+  /* ===== SLICE3:TABBAR-SHOW:START — O6: offshift + Cuenta always carry the bottom nav bar (mounted/removed per the
+     screen being shown). The on-shift bar is owned by the board render (SLICE3:TABBAR-BOARD), so it is not touched
+     here. Guarded so it is inert until the bar builder is wired in. ===== */
+  if (typeof syncTabBarForScreen === 'function') syncTabBarForScreen(name);
+  /* ===== SLICE3:TABBAR-SHOW:END ===== */
 }
 
 // ============================================================
@@ -4604,6 +4651,11 @@ function renderActiveAndQueue() {
   $('screen-onshift').classList.toggle('delivering', orders.length > 0);
   drv2ShowInterlude();   // a just-completed delivery with a next stop → the 3-s apAvance overlay over the promoted screen
   /* ===== SLICE2:RUN-OBSERVER:END ===== */
+  /* ===== SLICE3:TABBAR-BOARD:START — O6: the on-shift bottom nav bar shows ONLY in the idle/standby board (no stop in
+     progress); an active order (orders.length>0) removes it, so it is never shown during a pickup/delivery — matching
+     the prototype (which draws the tab bar on disponible/pausa/regresando/cancelado, never on an order screen). ===== */
+  mountTabBar($('screen-onshift'), 'inicio', orders.length === 0);
+  /* ===== SLICE3:TABBAR-BOARD:END ===== */
   const idleSlot = $('idle-state');
   const bannerSlot = $('incoming-banner-slot');
   const activeSlot = $('active-order-slot');

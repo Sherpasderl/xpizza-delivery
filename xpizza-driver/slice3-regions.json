@@ -444,6 +444,14 @@
   {
    "name": "INICIO-DEMO-TEARDOWN",
    "kind": "insert"
+  },
+  {
+   "name": "TABBAR-SHOW",
+   "kind": "insert"
+  },
+  {
+   "name": "TABBAR-BOARD",
+   "kind": "insert"
   }
  ],
  "deps": [
