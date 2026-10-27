@@ -257,7 +257,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' ? CappHome.accountGuestHtml(v) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && runtime.guestCardOnly === true ? CappHome.accountGuestHtml(v) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -294,8 +294,9 @@
       const t = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
       if (!t || !app.contains(t) || t.disabled) return;
       const a = t.dataset.act;
-      // the Cuenta tab: a guest's (and an unresolved) is frame 5b; a member's screen is a later slice (host event)
-      if (a === 'tab') { const id = t.dataset.tab; if (id === 'account' && authNow() === 'member') { emit('tab', { tab: id }); return; }
+      // the Cuenta tab: with the guest rules ON (runtime.guestCardOnly), a guest's (and an unresolved) is frame 5b; a member's is a
+      // later slice. Flag absent ⇒ exactly the S7a-2 behaviour: a host event (Codex guest r1 #3)
+      if (a === 'tab') { const id = t.dataset.tab; if (id === 'account' && (runtime.guestCardOnly !== true || authNow() === 'member')) { emit('tab', { tab: id }); return; }
         if (id === 'home' || id === 'search' || id === 'account') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
       if (a === 'signin') { emit('signin', { ctx: t.dataset.ctx || 'account' }); return; }
       if (a === 'help') { emit('help', {}); return; }

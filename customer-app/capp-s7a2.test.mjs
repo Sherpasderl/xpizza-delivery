@@ -237,14 +237,14 @@ test('Buscar: «No encontramos» ONLY when every menu answered; a partial shows 
 // ── the shell, through the REAL shell.html ──
 function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }); return { p, resolve }; }
 const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
-function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null } = {}) {
+function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://app.test/' });
   const w = dom.window;
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
     'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
-  const dirCalls = [], envCalls = [], pend = {};
+  const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
     envCalls.push(rid);
@@ -254,12 +254,12 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
     return Promise.resolve({ status: 200, body: J(PROV[rid].envelope), etag: PROV[rid].etag });
   };
   const clock = now || { t: T0 };
-  const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), fetchDirectory, fetchEnvelope, readAvailability: async () => [], runtime: RUNTIME, storage: storage || memStorage(), now: () => clock.t,
+  const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), fetchDirectory, fetchEnvelope, readAvailability: async () => [], onEvent: (n, d) => events.push([n, J(d)]), runtime, storage: storage || memStorage(), now: () => clock.t,
     auth: { state: () => auth }, geolocation, search, timers: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: require('./capp-api.js'), apiOpts: { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); }, now: () => clock.t, sleep: async () => {} } } });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const release = (rid, body) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: body || J(PROV[rid].envelope), etag: body ? '"changed"' : PROV[rid].etag }); };
-  return { w, ui, q, qa, click, dirCalls, envCalls, release, pend, clock };
+  return { w, ui, q, qa, click, dirCalls, envCalls, release, pend, clock, events };
 }
 
 test('shell: Inicio paints the directory-only rows BEFORE any envelope lands; menu rows fill in as each lands (never waits for all)', async () => {
@@ -574,18 +574,28 @@ test('G2 §4c device marker: the full E.164 + a hint (never a token); last 4 for
   assert.equal(DA.read(broken), null); assert.equal(DA.remember(broken, '+50496123344'), false);
 });
 test('G2 frame 5b: a guest\'s Cuenta tab = ONE «Entrá o creá tu cuenta» + three benefits, «Pedidos» and «Ayuda» kept; unresolved ⇒ the card hidden (geometry kept); a member ⇒ the host', async () => {
-  const S = bootShell({ auth: 'guest' }); await flush();
+  const GR = { ...RUNTIME, guestCardOnly: true };
+  const S = bootShell({ auth: 'guest', runtime: GR }); await flush();
   S.click('.tabbar [data-tab="account"]'); await flush();
   assert.equal(txt(S.q('.flowbar h1')), 'Cuenta');
   assert.deepEqual(S.qa('.guestcard li').map((l) => txt(l)), ['Efectivo al entregar o al recoger', 'Recompensas, promos y envío gratis', 'Programá pedidos y guardá tu dirección']);
   assert.equal(S.qa('.guestcard button.primary').length, 1); assert.equal(txt(S.q('.guestcard .primary')), 'Entrá o creá tu cuenta');
   assert.deepEqual(S.qa('.rows .rowbtn').map((b) => txt(b)), ['Pedidos Los de este teléfono', 'Ayuda']);
   assert.equal(S.q('.tabbar [data-tab="account"]').getAttribute('aria-current'), 'true');
-  const U = bootShell({ auth: 'unresolved' }); await flush();
+  const U = bootShell({ auth: 'unresolved', runtime: GR }); await flush();
   U.click('.tabbar [data-tab="account"]'); await flush();
   assert.equal(U.q('.guestcard').getAttribute('style'), 'visibility:hidden', '🔴 never shown as a guest before auth resolves');
   assert.equal(U.q('.guestcard button'), null, 'no actionable button while unresolved');
-  const M = bootShell({ auth: 'member' }); await flush();
+  const M = bootShell({ auth: 'member', runtime: GR }); await flush();
   M.click('.tabbar [data-tab="account"]'); await flush();
   assert.equal(M.q('.guestcard'), null, 'a member\'s Cuenta is the host\'s (a later slice)');
+});
+
+test('Codex guest r1 #3: with the guest flag ABSENT the Cuenta tab is exactly the S7a-2 behaviour — a host event, Inicio stays, the DOM unchanged', async () => {
+  const S = bootShell({ auth: 'guest' }); await flush();
+  const before = S.q('#app').innerHTML;
+  S.click('.tabbar [data-tab="account"]'); await flush();
+  assert.deepEqual(S.events.filter(([n]) => n === 'tab'), [['tab', { tab: 'account' }]], 'the host gets the tab, as before');
+  assert.equal(S.q('.guestcard'), null, '🔴 no guest Cuenta without the flag');
+  assert.equal(S.ui.state.tab, 'home'); assert.equal(S.q('#app').innerHTML, before, 'the DOM is byte-identical');
 });
