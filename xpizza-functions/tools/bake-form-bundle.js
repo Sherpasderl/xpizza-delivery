@@ -26,9 +26,6 @@ const { selectForms, publicMenuUrl, getJson, IDENTITY_KEYS } = require('./form-b
 const KNOWN_REPRESENTATIONS = Object.freeze(['1d.1', '1d.2', '1d.3']);
 
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
-const okId = (id) => id !== undefined && id !== null && String(id) !== '';
-const okPrice = (p) => typeof p === 'number' && Number.isFinite(p) && p > 0;
-const okRecord = (r) => isObj(r) && okId(r.id) && typeof r.name === 'string' && r.name !== '' && okPrice(r.price);
 const isStrArray = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string' && x !== '');
 
 // The fresh-read URL: the form's own endpoint + a build-unique query.
@@ -43,37 +40,11 @@ function validateEnvelope(env, rid, { groupPicker }) {
   const m = env.menu;
   if (!isObj(m)) { r.push('bake_menu_missing'); return r; }
 
-  // dishes / extras: well-formed records, unique non-empty ids
-  const dishes = m.dishes, extras = m.extras;
-  if (!Array.isArray(dishes) || !dishes.length) r.push('bake_dishes_missing');
-  if (!Array.isArray(extras)) r.push('bake_extras_missing');
-  const D = Array.isArray(dishes) ? dishes : [];
-  const E = Array.isArray(extras) ? extras : [];
-  D.forEach((d, i) => { if (!okRecord(d)) r.push(`bake_dish_malformed@${i}`); });
-  E.forEach((e, i) => { if (!okRecord(e)) r.push(`bake_extra_malformed@${i}`); });
-  if (new Set(D.map((d) => String(d && d.id))).size !== D.length) r.push('bake_dish_duplicate');
-  if (new Set(E.map((e) => String(e && e.id))).size !== E.length) r.push('bake_extra_duplicate');
-
-  // categories: present, well-formed, unique; every dish lands in one
-  const cats = m.categories;
-  if (!Array.isArray(cats) || !cats.length) r.push('bake_categories_missing');
-  const C = Array.isArray(cats) ? cats : [];
-  C.forEach((c, i) => { if (!isObj(c) || typeof c.id !== 'string' || !c.id) r.push(`bake_category_malformed@${i}`); });
-  const catIds = new Set(C.filter(isObj).map((c) => c.id));
-  if (catIds.size !== C.length) r.push('bake_category_duplicate');
-  D.forEach((d, i) => { if (isObj(d) && !catIds.has(d.cat)) r.push(`bake_dish_orphan@${i}`); });
-
-  // groups: the shared picker's rules, against the ARRIVING dishes; variantOf names a dish that exists
-  if (m.variant_items !== undefined) { try { groupPicker.validateVariantBlock(m.variant_items, D, 'bake'); } catch (e) { r.push(`bake_${e.message}`); } }
-  try { groupPicker.validateExtrasPolicy(D); } catch (e) { r.push(`bake_${e.message}`); }
-  D.forEach((d, i) => {
-    if (isObj(d) && d.variantOf !== undefined && d.variantOf !== null && !D.some((x) => isObj(x) && groupPicker.sameDishId(x.id, d.variantOf))) r.push(`bake_variantOf_orphan@${i}`);
-  });
-
-  // option maps (a value is an option CATEGORY or one EXTRA by id or name, §8.3), gates, badges, badge_priority, reward
-  // icons: the form's OWN shared rule (form-group-picker.js validateDisplayStructures) — the one its boot and every live apply
-  // run, so the bake and the live apply cannot disagree. Its first problem is the refusal.
-  try { groupPicker.validateDisplayStructures(m); } catch (e) { r.push(`bake_${e.message}`); }
+  // THE COMPLETE MENU CONTRACT (Codex r1 #2 / #3) — the form's OWN shared rule (form-group-picker.js validateMenu), the one its
+  // boot and every live apply run: records, positive-integer prices, unique ids, categories, extras_policy, a drawable variant
+  // map with REVERSE coverage (a dish with variantOf needs its launcher map — the BODY's own; the bake has no retained map),
+  // option maps, gates, badges, priority and reward icons. Its first problem is the refusal.
+  try { groupPicker.validateMenu(m, { variantItems: m.variant_items, origin: 'bake' }); } catch (e) { r.push(`bake_${e.message}`); }
   if (m.has_photo !== undefined && !isStrArray(m.has_photo)) r.push('bake_has_photo_malformed');
   return r;
 }

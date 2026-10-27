@@ -134,9 +134,13 @@ export const BRAND = {
     containers: ['menu-individual', 'menu-ny'],
     menu: (w) => {
       const live = w.liveMenuGlobalGet('MENU');
+      // PLAN 4 r2: the categories the published x_pizza body always carries (the composer emits them; the one menu contract
+      // requires them) — first appearance in MENU, exactly as the catalog derives them. A body without them is laxer than prod.
+      const cats = []; for (const d of live) if (!cats.includes(d.cat)) cats.push(d.cat);
       return {
         dishes: live.map((d) => ({ ...d })),
         extras: w.liveMenuGlobalGet('EXTRAS').map((e) => ({ ...e })),
+        categories: cats.map((id) => ({ id })),
       };
     },
   },

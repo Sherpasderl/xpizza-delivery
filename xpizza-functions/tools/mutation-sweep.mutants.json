@@ -1989,9 +1989,9 @@
   "id": "b6-08",
   "slice": "b6",
   "label": "a non-positive price is accepted into the live menu",
-  "file": "../xpizza-orders/index.html",
-  "from": "    && typeof r.price === 'number' && isFinite(r.price) && r.price > 0;",
-  "to": "    && (r.price === undefined || typeof r.price === 'number');",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "    && typeof r.name === \"string\" && r.name !== \"\" && isPosInt(r.price);",
+  "to": "    && typeof r.name === \"string\" && r.name !== \"\" && (r.price === undefined || typeof r.price === \"number\");",
   "command": [
    "node",
    "../live-apply.test.mjs"
@@ -2001,8 +2001,8 @@
   "id": "b6-09",
   "slice": "b6",
   "label": "two dishes sharing an id are accepted — one silently wins every lookup",
-  "file": "../xpizza-orders/index.html",
-  "from": "  if (new Set(dishes.map((d) => String(d.id))).size !== dishes.length) throw new Error('apply_dish_duplicate');",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "  if (new Set(dishes.map(d => String(d.id))).size !== dishes.length) throw new Error(\"apply_dish_duplicate\");",
   "to": ";",
   "command": [
    "node",
@@ -2064,7 +2064,7 @@
   "slice": "b6",
   "label": "focus is not restored after the container holding it is re-rendered",
   "file": "../xpizza-orders/index.html",
-  "from": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; __serverQuote.failedKey = null; }\n  /* 🔴 AND THE REWARD QUOTE, which redeemAdjustedTotal() prefers over the one above. Invalidating only\n     __serverQuote left the reward's total standing across a reprice — a displayed-vs-charged window\n     that is NOT the checkout-hold and therefore 1B's to close. Re-requested rather than dropped; the\n     send gate refuses while a reward is pending without a price. */\n  try {\n    if (window.__ACCOUNT && typeof window.__ACCOUNT.requoteRedeem === 'function'\n        && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) {\n      Promise.resolve(window.__ACCOUNT.requoteRedeem(redeemCartItems())).catch(function(){});\n    }\n  } catch (_) {}\n  liveMenuPaint(prepared);\n  liveMenuUiRestore(ui);\n}\n",
+  "from": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; __serverQuote.failedKey = null; }\n  /* 🔴 AND THE REWARD QUOTE, which redeemAdjustedTotal() prefers over the one above. Invalidating only\n     __serverQuote left the reward's total standing across a reprice — a displayed-vs-charged window\n     that is NOT the checkout-hold and therefore 1B's to close. Re-requested rather than dropped; the\n     send gate refuses while a reward is pending without a price. */\n  try {\n    if (window.__ACCOUNT && typeof window.__ACCOUNT.requoteRedeem === 'function'\n        && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) {\n      Promise.resolve(window.__ACCOUNT.requoteRedeem(redeemCartItems())).catch(function(){});\n    }\n  } catch (_) {}\n  liveMenuPaint(prepared);\n  liveMenuUiRestore(ui);\n  _menuBrokenClear();   // PLAN 4 r2: a COMPLETE live menu applied successfully — the page can vouch for its menu again\n}\n",
   "to": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; __serverQuote.failedKey = null; }\n  /* 🔴 AND THE REWARD QUOTE, which redeemAdjustedTotal() prefers over the one above. Invalidating only\n     __serverQuote left the reward's total standing across a reprice — a displayed-vs-charged window\n     that is NOT the checkout-hold and therefore 1B's to close. Re-requested rather than dropped; the\n     send gate refuses while a reward is pending without a price. */\n  try {\n    if (window.__ACCOUNT && typeof window.__ACCOUNT.requoteRedeem === 'function'\n        && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) {\n      Promise.resolve(window.__ACCOUNT.requoteRedeem(redeemCartItems())).catch(function(){});\n    }\n  } catch (_) {}\n  liveMenuPaint(prepared);\n}\n",
   "command": [
    "node",
@@ -2075,8 +2075,8 @@
   "id": "b6-20",
   "slice": "b6",
   "label": "la_musa: a dish in a category that does not exist is accepted (sellable and invisible)",
-  "file": "../la-musa-orders/index.html",
-  "from": "  dishes.forEach((d, i) => { if (!catIds.has(d.cat)) throw new Error('apply_dish_orphan@' + i); });",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "  dishes.forEach(function (d, i) { if (!catIds.has(d.cat)) throw new Error(\"apply_dish_orphan@\" + i); });",
   "to": ";",
   "command": [
    "node",
@@ -2087,8 +2087,8 @@
   "id": "b6-21",
   "slice": "b6",
   "label": "la_musa: two dishes sharing an id are accepted",
-  "file": "../la-musa-orders/index.html",
-  "from": "  if (new Set(dishes.map((d) => String(d.id))).size !== dishes.length) throw new Error('apply_dish_duplicate');",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "  if (new Set(dishes.map(d => String(d.id))).size !== dishes.length) throw new Error(\"apply_dish_duplicate\");",
   "to": ";",
   "command": [
    "node",
@@ -3110,9 +3110,9 @@
   "id": "b8-36",
   "slice": "b8",
   "label": "la_musa: a RETAINED variant block is trusted instead of re-checked against the arriving dishes",
-  "file": "../la-musa-orders/index.html",
-  "from": "  } else if (variantItems && Object.keys(variantItems).length) {\n    validateVariantBlock(variantItems, 'retained');\n  }",
-  "to": "  }",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "  if (vi !== undefined) validateVariantBlock(vi, dishes, o.origin || \"supplied\");",
+  "to": "  if (vi !== undefined && o.origin !== \"retained\") validateVariantBlock(vi, dishes, o.origin || \"supplied\");",
   "command": [
    "node",
    "../live-apply.test.mjs"
@@ -3194,9 +3194,9 @@
   "id": "b8-43",
   "slice": "b8",
   "label": "la_musa: an empty record id is accepted again",
-  "file": "../la-musa-orders/index.html",
-  "from": "    && r.id !== undefined && r.id !== null && String(r.id) !== ''",
-  "to": "    && r.id !== undefined && r.id !== null",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "  const okRecord = (r) => isPlainObj(r) && r.id !== undefined && r.id !== null && String(r.id) !== \"\"",
+  "to": "  const okRecord = (r) => isPlainObj(r) && r.id !== undefined && r.id !== null",
   "command": [
    "node",
    "../live-apply.test.mjs"
@@ -3206,9 +3206,9 @@
   "id": "b8-44",
   "slice": "b8",
   "label": "x_pizza: an empty record id is accepted again",
-  "file": "../xpizza-orders/index.html",
-  "from": "    && r.id !== undefined && r.id !== null && String(r.id) !== ''",
-  "to": "    && r.id !== undefined && r.id !== null",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "  const okRecord = (r) => isPlainObj(r) && r.id !== undefined && r.id !== null && String(r.id) !== \"\"",
+  "to": "  const okRecord = (r) => isPlainObj(r) && r.id !== undefined && r.id !== null",
   "command": [
    "node",
    "../live-apply.test.mjs"
@@ -20302,10 +20302,10 @@
  {
   "id": "fb-26",
   "slice": "formbake",
-  "label": "PLAN 4 §3: a dish in no category is baked",
-  "file": "tools/bake-form-bundle.js",
-  "from": "  D.forEach((d, i) => { if (isObj(d) && !catIds.has(d.cat)) r.push(`bake_dish_orphan@${i}`); });",
-  "to": "",
+  "label": "PLAN 4 r2: a dish in no category is baked / booted / applied (the ONE menu contract)",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "  dishes.forEach(function (d, i) { if (!catIds.has(d.cat)) throw new Error(\"apply_dish_orphan@\" + i); });",
+  "to": ";",
   "command": [
    "node",
    "tools/bake-form-bundle.test.js"
@@ -20314,10 +20314,10 @@
  {
   "id": "fb-31",
   "slice": "formbake",
-  "label": "PLAN 4 §3: the shared picker's variant rule is not applied to the bake",
-  "file": "tools/bake-form-bundle.js",
-  "from": "  if (m.variant_items !== undefined) { try { groupPicker.validateVariantBlock(m.variant_items, D, 'bake'); } catch (e) { r.push(`bake_${e.message}`); } }",
-  "to": "",
+  "label": "PLAN 4 r2: the variant map is not checked (the ONE menu contract)",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "  if (vi !== undefined) validateVariantBlock(vi, dishes, o.origin || \"supplied\");",
+  "to": "  if (false) validateVariantBlock(vi, dishes, o.origin || \"supplied\");",
   "command": [
    "node",
    "tools/bake-form-bundle.test.js"
@@ -20374,10 +20374,10 @@
  {
   "id": "fb-36",
   "slice": "formbake",
-  "label": "PLAN 4 §3: the bake stops checking unique dish ids",
-  "file": "tools/bake-form-bundle.js",
-  "from": "  if (new Set(D.map((d) => String(d && d.id))).size !== D.length) r.push('bake_dish_duplicate');",
-  "to": "",
+  "label": "PLAN 4 r2: duplicate dish ids are baked / booted / applied (the ONE menu contract)",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "  if (new Set(dishes.map(d => String(d.id))).size !== dishes.length) throw new Error(\"apply_dish_duplicate\");",
+  "to": ";",
   "command": [
    "node",
    "tools/bake-form-bundle.test.js"
@@ -20664,8 +20664,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §8.4: x_pizza's live apply stops running the shared display rule (a malformed map applies)",
   "file": "../xpizza-orders/index.html",
-  "from": "  // PLAN 4 r3 §8.4: the option maps, gates, badges, priority and reward icons by the SAME shared rule the bake ran\n  GroupPicker.validateDisplayStructures(body);\n  const isMap",
-  "to": "  const isMap",
+  "from": "  GroupPicker.validateMenu(body, { variantItems, origin: supplied ? 'supplied' : 'retained' });\n  const dishes = body.dishes, extras = body.extras;\n  const isMap",
+  "to": "  const dishes = body.dishes, extras = body.extras;\n  const isMap",
   "command": [
    "node",
    "../post-bake-artifact.test.mjs"
@@ -20741,6 +20741,90 @@
   "command": [
    "node",
    "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-80",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 P1: x_pizza's add-to-cart ignores the broken-boot latch",
+  "file": "../xpizza-orders/index.html",
+  "from": "  if(d>0 && _MENU_BROKEN){ announceMenuBroken(); return; }   // PLAN 4 r2: a broken boot adds nothing (removing still works)\n",
+  "to": "",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-81",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 P1: la_musa's send gate ignores the broken-boot latch",
+  "file": "../la-musa-orders/index.html",
+  "from": "  if (_MENU_BROKEN) {\n    try { console.warn('cart_blocked_send_menu_broken', JSON.stringify({ at: where, error: 'boot' })); } catch (_) {}\n    announceMenuBroken();\n    return true;\n  }\n",
+  "to": "",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-82",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 P1: x_pizza's menu-broken announcement goes to a HIDDEN stage again (err3 first)",
+  "file": "../xpizza-orders/index.html",
+  "from": "  const err = ['err3', 'err1'].map(function (id) { return document.getElementById(id); }).find(function (el) { return el && active && active.contains(el); })\n    || document.getElementById('err3') || document.getElementById('err1');",
+  "to": "  const err = document.getElementById('err3') || document.getElementById('err1');",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-83",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 P1: la_musa never clears the latch after a complete live menu applies",
+  "file": "../la-musa-orders/index.html",
+  "from": "  _menuBrokenClear();   // PLAN 4 r2: a COMPLETE live menu applied successfully — the page can vouch for its menu again\n",
+  "to": "",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-84",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 P1: x_pizza does not latch a broken boot",
+  "file": "../xpizza-orders/index.html",
+  "from": "  _MENU_BROKEN = true;   // PLAN 4 r2: latched — not orderable until a complete live menu applies\n",
+  "to": "",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-85",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 #3: reverse coverage dropped — a variant whose launcher map is missing is accepted",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "    if (!cfg || !Array.isArray(cfg.variantIds) || !cfg.variantIds.some(v => sameDishId(v, d.id))) throw new Error(\"apply_variant_uncovered@\" + i);",
+  "to": "",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-86",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 #2: a non-integer price is accepted (the integer rule dropped)",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "const isPosInt = (p) => typeof p === \"number\" && Number.isInteger(p) && p > 0;",
+  "to": "const isPosInt = (p) => typeof p === \"number\" && isFinite(p) && p > 0;",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
   ]
  }
 ]

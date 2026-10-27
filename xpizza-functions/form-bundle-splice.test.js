@@ -143,6 +143,7 @@ function stmt(src, decl) {
   if (at > 0) return src.slice(at, src.indexOf(';', at) + 1);
   return assert.fail(`expected declaration in form: ${decl}`);
 }
+const clone = (v) => JSON.parse(JSON.stringify(v));
 function bootBlock(src) {
   const a = src.indexOf('/* ── PLAN 4 (bake from published, r3 §3) — THE BUNDLE IS THE ONLY BOOT SOURCE');
   const fn = src.indexOf('function _announceBootBroken(){', a);
@@ -163,7 +164,7 @@ function runSelect(rid, bundleGlobal) {
   const helpers = ['const _BUNDLE = ', 'const _okDishes = ', 'const _okStrArr = '].concat(rid === 'la_musa' ? ['const _okCats = ', 'const _okObj = '] : []);
   const selects = SELECT_NAMES[rid].map((k) => `let ${k} = ${k === 'HAS_PHOTO' ? 'new Set(_bootSelect(' : '_bootSelect('}`);
   const code = helpers.map((d) => stmt(src, d)).join('\n') + '\n' + bootBlock(src) + '\n' + selects.map((d) => stmt(src, d)).join('\n')
-    + `\n_announceBootBroken();\n;globalThis.__out = { ${SELECT_NAMES[rid].join(', ')}, _BOOT_BROKEN };`;
+    + `\n_announceBootBroken();\n;globalThis.__out = { ${SELECT_NAMES[rid].join(', ')}, _BOOT_BROKEN, _MENU_BROKEN };`;
   vm.runInContext(code, sandbox);
   // out of the vm realm: plain arrays / objects (a cross-realm array fails deepStrictEqual on its prototype alone)
   const out = {};
@@ -184,24 +185,30 @@ for (const rid of ['x_pizza', 'la_musa']) {
     assert.notDeepStrictEqual(none[k], readLiteral(src, k), `🔴 ${rid}: ${k} must never become the literal`);
   }
   assert.strictEqual(none.announced, 1, `${rid}: announced once`);
-  for (const bad of [{ ...bundle, dishes: [] }, { ...bundle, dishes: 'nope' }, { ...bundle, dishes: [{ id: 1 }] }, { ...bundle, dishes: [null] }]) {
+  assert.strictEqual(used._MENU_BROKEN, false, `${rid}: a valid bundle does not latch`);
+  assert.strictEqual(none._MENU_BROKEN, true, `${rid}: no bundle LATCHES the page non-orderable`);
+  // PLAN 4 r2 (Codex r1 #2): the COMPLETE contract at boot — any failure boots NOTHING (every structure empty), announced, latched
+  const dup = clone(bundle); dup.dishes[1] = { ...dup.dishes[1], id: dup.dishes[0].id };
+  const neg = clone(bundle); neg.dishes[0] = { ...neg.dishes[0], price: -5 };
+  for (const [label, bad] of [['empty dishes', { ...bundle, dishes: [] }], ['dishes not an array', { ...bundle, dishes: 'nope' }], ['an unnamed dish', { ...bundle, dishes: [{ id: 1 }] }],
+    ['a null dish', { ...bundle, dishes: [null] }], ['a NEGATIVE price', neg], ['DUPLICATE dish ids', dup], ['no extras', (() => { const b = clone(bundle); delete b.extras; return b; })()]]) {
     const out = runSelect(rid, bad);
-    assert.deepStrictEqual([out.MENU, out.announced], [[], 1], `${rid}: malformed dishes (${JSON.stringify(bad.dishes)}) → EMPTY + announced`);
-    assert.deepStrictEqual(out.EXTRAS, bundle.extras, `${rid}: the other structures are still the bundle's`);
+    assert.deepStrictEqual([out.MENU, out.EXTRAS, out.announced, out._MENU_BROKEN], [[], [], 1, true], `${rid}: ${label} → EVERY structure empty, announced once, latched`);
   }
-  ok(`boot select ${rid}: a valid bundle is used for every structure; no / malformed bundle → each required structure EMPTY, announced once, never the literal`);
+  ok(`boot select ${rid}: a valid bundle is used for every structure; no bundle, a malformed record, a negative price, duplicate ids or no extras → NOTHING boots, announced once, latched non-orderable — never the literal`);
 }
 {
   // per-structure independence + optional absence
   const src = html('la_musa'), b = S.extractBundle(src);
-  const out = runSelect('la_musa', { ...b, categories: 'broken', variant_items: null, has_photo: 42 });
-  assert.deepStrictEqual(out.MENU, b.dishes, 'good dishes are still used');
-  assert.deepStrictEqual([out.CATEGORIES, out.VARIANT_ITEMS, [...out.HAS_PHOTO]], [[], {}, []], 'each broken structure boots empty on its own');
-  assert.ok(['boot_categories', 'boot_has_photo', 'boot_variant_items'].every((k) => out._BOOT_BROKEN.includes(k)), 'each is named');
-  // and with no usable categories the shared rule cannot vouch for maps keyed by them: those boot empty too (named), never a literal
-  assert.ok(out._BOOT_BROKEN.some((k) => /^apply_option_map_key:extras_by_category\./.test(k)) && out._BOOT_BROKEN.includes('boot_extras_by_category'));
-  assert.deepStrictEqual([out.EXTRAS_BY_CATEGORY, out.TAG_BADGES], [{}, {}]);
-  assert.deepStrictEqual(out.EXTRAS, b.extras, 'the extras themselves are still the bundle\'s');
+  const out = runSelect('la_musa', { ...b, categories: 'broken' });
+  assert.deepStrictEqual([out.MENU, out.CATEGORIES, out.EXTRAS, out.VARIANT_ITEMS, out.HAS_PHOTO, out.EXTRAS_BY_CATEGORY, out.TAG_BADGES], [[], [], [], {}, [], {}, {}], 'broken categories → nothing boots');
+  assert.deepStrictEqual(out._BOOT_BROKEN, ['apply_categories_missing'], 'the first problem is named');
+  // PLAN 4 r2 (Codex r1 #2 / #3): a malformed variant map, and dishes whose variant map is MISSING, boot nothing either
+  const bvm = clone(b); bvm.variant_items[Object.keys(bvm.variant_items)[0]].variantIds = ['ghost'];
+  assert.deepStrictEqual(runSelect('la_musa', bvm)._BOOT_BROKEN.map((x) => x.split('@')[0]), ['apply_variant_id_orphan'], 'a malformed variant map refuses the boot');
+  const nvm = clone(b); delete nvm.variant_items;
+  const o0 = runSelect('la_musa', nvm);
+  assert.ok(/^apply_variant_uncovered@/.test(o0._BOOT_BROKEN[0]) && o0._MENU_BROKEN && o0.MENU.length === 0, 'variants with NO map (reverse coverage) refuse the boot — never "no groups"');
   const opt = { ...b }; delete opt.extras_by_item; delete opt.badges; delete opt.badge_priority;
   const o2 = runSelect('la_musa', opt);
   assert.deepStrictEqual([o2.EXTRAS_BY_ITEM, o2.TAG_BADGES, o2._BOOT_BROKEN], [{}, {}, []], 'an OPTIONAL structure that is absent is simply none — not broken');
@@ -209,11 +216,11 @@ for (const rid of ['x_pizza', 'la_musa']) {
   const o3 = runSelect('la_musa', { ...b, badge_priority: ['must_try', 'chefs_pick'] });
   assert.deepStrictEqual(o3.BADGE_PRIORITY, ['must_try', 'chefs_pick'], 'a published priority wins');
   const o4 = runSelect('la_musa', { ...b, extras_by_category: { ...b.extras_by_category, ghost: [] } });
-  assert.deepStrictEqual([o4.EXTRAS_BY_CATEGORY, o4.announced], [{}, 1], 'a map the shared rule refuses boots EMPTY (never the literal) and is announced');
-  ok('boot select la_musa: each structure judged on its own; optional absent = none; the shared rule\'s refusal empties the maps; a published priority wins over TAG_PRIORITY');
+  assert.deepStrictEqual([o4.EXTRAS_BY_CATEGORY, o4.MENU, o4.announced, o4._MENU_BROKEN], [{}, [], 1, true], 'a map the shared rule refuses boots NOTHING (never the literal), announced, latched');
+  ok('boot select la_musa: broken categories, a malformed variant map, variants with no map, a refused option map → nothing boots, latched; optional absent = none; a published priority wins over TAG_PRIORITY');
   const x = runSelect('x_pizza', { ...S.extractBundle(html('x_pizza')), pickup_only_cats: 7, weekend_only_cats: null });
-  assert.deepStrictEqual([x.PICKUP_ONLY_CATS, x.WEEKEND_ONLY_CATS, x.announced], [[], [], 1], 'x_pizza malformed gates boot EMPTY (the server still enforces them) — never the literal');
-  ok('boot select x_pizza: malformed gate arrays boot empty and are announced, independently of the dishes');
+  assert.deepStrictEqual([x.PICKUP_ONLY_CATS, x.WEEKEND_ONLY_CATS, x.MENU, x.announced, x._MENU_BROKEN], [[], [], [], 1, true], 'x_pizza malformed gates → nothing boots, announced, latched — never the literal');
+  ok('boot select x_pizza: malformed gate arrays refuse the boot (nothing orderable), announced and latched');
 }
 // ── 6b. SERVED MENU vs SERVER PRICING — asserted DIRECTLY, not via transitivity. The customer sees
 //      the bundle; the server charges from menu-pricing. Those two must agree item-for-item. ─────

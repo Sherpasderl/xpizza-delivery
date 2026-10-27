@@ -2134,11 +2134,29 @@ const _okStrArr = (a) => Array.isArray(a) && a.every((s) => typeof s === 'string
    unusable; an OPTIONAL one that is absent is simply none. The literal declarations in this file stay ONLY as the in-repo
    seed / test bootstrap the catalog readers read by name; xpizza-functions/form-runtime-literals.guard.test.js fails any runtime reference. */
 const _BOOT_BROKEN = [];
-const _DISPLAY_OK = (function(){
-  try { GroupPicker.validateDisplayStructures(_BUNDLE); return true; }
+/* PLAN 4 r2 (Codex r1 #2): the COMPLETE menu contract at boot — the same shared rule (form-group-picker.js validateMenu) the bake
+   ran on this bundle and every live apply runs. A bundle that fails it boots NOTHING: a page that cannot vouch for its menu shows
+   none of it, and the latch below keeps it from taking an order. */
+const _MENU_OK = (function(){
+  try { GroupPicker.validateMenu(_BUNDLE, { variantItems: _BUNDLE.variant_items, origin: 'bundle' }); return true; }
   catch (e) { _BOOT_BROKEN.push(String(e && e.message)); return false; }
 })();
+const _DISPLAY_OK = _MENU_OK;   // the display structures are part of the complete contract
+/* PLAN 4 r2 (Codex r1 P1) — A BROKEN BOOT IS NOT ORDERABLE, VISIBLY. Latched at boot when anything was unusable: adding to the cart
+   and sending both refuse, and the existing menu-broken announcement shows in the stage the customer is on. ONLY a successful
+   commit of a COMPLETE live menu (liveMenuCommit, after liveMenuPrepare's full contract) clears it. */
+let _MENU_BROKEN = false;
+function _menuBrokenClear(){
+  if (!_MENU_BROKEN) return;
+  _MENU_BROKEN = false;
+  _BOOT_BROKEN.length = 0;
+  ['err1', 'err3'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el && /No pudimos actualizar el menú/.test(el.textContent || '')) { el.textContent = ''; el.style.display = 'none'; }
+  });
+}
 function _bootSelect(field, ok, empty, required){
+  if (!_MENU_OK) return empty;
   const v = _BUNDLE[field];
   if (v === undefined && !required) return empty;
   if (ok(v)) return v;
@@ -2149,6 +2167,7 @@ const _okRecords = (a) => Array.isArray(a) && a.every((r) => r && r.id != null &
 const _okMap = (o) => !!o && typeof o === 'object' && !Array.isArray(o) && _DISPLAY_OK;
 function _announceBootBroken(){
   if (!_BOOT_BROKEN.length) return;
+  _MENU_BROKEN = true;   // PLAN 4 r2: latched — not orderable until a complete live menu applies
   try { console.error('menu_boot_broken', JSON.stringify(_BOOT_BROKEN)); } catch(_){}
   const go = () => { try { announceMenuBroken(); } catch(_){} };
   if (typeof document === 'undefined') return;
@@ -2444,7 +2463,11 @@ function cartRestore(stashedCart){
 /* The customer is TOLD, and told the one thing that actually helps: reload. A blocked submit must never
    be silent — the same rule the conflict announcement follows, for the same reason. */
 function announceMenuBroken(){
-  const err = document.getElementById('err3') || document.getElementById('err1');
+  /* PLAN 4 r2 (Codex r1 P1): the error box of the stage the customer is ON (err1 on the menu stage s1, err3 at checkout) — an
+     announcement written into a hidden stage tells nobody. */
+  const active = document.querySelector('.stage.active');
+  const err = ['err3', 'err1'].map(function (id) { return document.getElementById(id); }).find(function (el) { return el && active && active.contains(el); })
+    || document.getElementById('err3') || document.getElementById('err1');
   if (err) {
     err.textContent = 'No pudimos actualizar el menú. Recargá la página para continuar con tu pedido.';
     err.style.display = 'block';
@@ -2452,6 +2475,12 @@ function announceMenuBroken(){
 }
 
 function refuseConflictedSend(where){
+  // PLAN 4 r2 (Codex r1 P1): a boot that could not vouch for its menu takes no order until a complete live menu applies
+  if (_MENU_BROKEN) {
+    try { console.warn('cart_blocked_send_menu_broken', JSON.stringify({ at: where, error: 'boot' })); } catch (_) {}
+    announceMenuBroken();
+    return true;
+  }
   /* 🔴 1B Task 9 — A PAGE THAT ADMITS IT IS BROKEN DOES NOT ASK FOR MONEY.
      When a live apply fails AND its recovery also fails, the applier reports 'broken' and records the
      cause in state().fatal. Until now that was recorded and nothing more: the screen may agree with
@@ -2726,62 +2755,17 @@ function liveMenuRenderAll(){ renderCategoryShell(); renderMenu(); }
 function sameDishId(a, b) { return GroupPicker.sameDishId(a, b); }   // 1D add-product B: the shared rule (strict within a type)
 
 function liveMenuPrepare(body){
-  if (!body || typeof body !== 'object') throw new Error('apply_body_missing');
-  const dishes = body.dishes, extras = body.extras;
-  if (!Array.isArray(dishes) || !dishes.length) throw new Error('apply_dishes_missing');
-  if (!Array.isArray(extras)) throw new Error('apply_extras_missing');
-  /* 🔴 AN EMPTY ID IS NOT AN ID. `r.id !== undefined && r.id !== null` let '' through, and an empty id
-     is a latent trap rather than a harmless oddity: it keys prices, 86s and cart lines, it renders as
-     id="card-", and it resolves against ITSELF — sameDishId('', '') is true — so it satisfies every
-     cross-reference check while naming nothing. A mutant on the variant type-check is what exposed it,
-     which is the argument for mutating validators and not only behaviour. */
-  const okRecord = (r) => r && typeof r === 'object'
-    && r.id !== undefined && r.id !== null && String(r.id) !== ''
-    && typeof r.name === 'string' && r.name !== ''
-    && typeof r.price === 'number' && isFinite(r.price) && r.price > 0;
-  dishes.forEach((d, i) => { if (!okRecord(d)) throw new Error('apply_dish_malformed@' + i); });
-  extras.forEach((e, i) => { if (!okRecord(e)) throw new Error('apply_extra_malformed@' + i); });
-  // 🔴 THE SET-LEVEL CHECK, the same one hydrate() had to learn: every record being well-formed is not
-  // the same as the collection being well-formed. Two dishes sharing an id means one silently wins
-  // every lookup — cart reconciliation, pricing, availability — and which one is an accident of order.
-  if (new Set(dishes.map((d) => String(d.id))).size !== dishes.length) throw new Error('apply_dish_duplicate');
-  if (new Set(extras.map((e) => String(e.id))).size !== extras.length) throw new Error('apply_extra_duplicate');
-  const cats = body.categories;
-  if (!Array.isArray(cats) || !cats.length) throw new Error('apply_categories_missing');
-  cats.forEach((c, i) => { if (!c || typeof c !== 'object' || typeof c.id !== 'string' || !c.id) throw new Error('apply_category_malformed@' + i); });
-  if (new Set(cats.map((c) => c.id)).size !== cats.length) throw new Error('apply_category_duplicate');
-  // 🔴 CROSS-REFERENCE: every dish must land in a category that exists, or it renders into a container
-  // that is not there and disappears from the page while still being in MENU — a dish that is sellable,
-  // priced, and invisible.
-  const catIds = new Set(cats.map((c) => c.id));
-  dishes.forEach((d, i) => { if (!catIds.has(d.cat)) throw new Error('apply_dish_orphan@' + i); });
-  /* 🔴 THE NESTED VALUES GET THE SAME CHECK THE TOP-LEVEL PRICES GET. variant_items was accepted as
-     "an object" and never looked inside — so a launcher's basePrice could be anything at all while every
-     ordinary price had to be a positive integer, and that price is rendered ("desde L …") and used to
-     compute the CTA total. A validation that stops at the outer shape is not validation of the thing it
-     is guarding; the same rule applies wherever a price lives. variantIds must also name dishes that
-     exist, or the launcher offers a choice that resolves to nothing. */
-  /* 🔴 THE RETAINED BLOCK IS VALIDATED TOO, AGAINST THE DISHES THAT ARE ARRIVING. "Absent means keep
-     what is in force" is right for structure, but a variant block is not self-contained — it is a set
-     of REFERENCES into the dish list, and the dish list is exactly what this snapshot replaces. So a
-     snapshot that simply omits variant_items while dropping or renaming the variant dishes left a
-     launcher pointing at dishes that no longer exist: the card still says "desde L …", the modal still
-     opens, and the required single-select group inside it has NOTHING in it. Unorderable, and silent.
-     Validating only the SUPPLIED block checked the one case that came with its own evidence and
-     skipped the one that did not. The origin is carried into the error so the two are distinguishable
-     once a caller starts reporting them. */
-  // 1D add-product B: the variant-map rule is the shared picker's (form-group-picker.js), judged against the arriving dishes
-  const validateVariantBlock = (vi, origin) => GroupPicker.validateVariantBlock(vi, dishes, origin);
-  GroupPicker.validateExtrasPolicy(dishes);   // 1D add-product B: extras_policy ∈ {'none'} or absent — the same boundary in every form
-  let variantItems = VARIANT_ITEMS;
-  if (body.variant_items !== undefined) {
-    validateVariantBlock(body.variant_items, 'supplied');
-    variantItems = body.variant_items;
-  } else if (variantItems && Object.keys(variantItems).length) {
-    validateVariantBlock(variantItems, 'retained');
-  }
-  // PLAN 4 r3 §8.4: the option maps, gates, badges, priority and reward icons by the SAME shared rule the bake ran
-  GroupPicker.validateDisplayStructures(body);
+  /* PLAN 4 r2 (Codex r1 #2) — THE COMPLETE MENU CONTRACT is ONE shared rule (form-group-picker.js validateMenu): the same one the
+     bake ran on this page's bundle and the boot runs on it. Records (non-empty ids — an empty id resolves against itself and
+     names nothing; names; positive-integer prices), unique ids (two dishes sharing one silently win every lookup), categories
+     that hold every dish (a dish in a missing category is sellable, priced and invisible), the extras_policy boundary, a
+     drawable variant map with REVERSE coverage, and the display structures. A snapshot that omits variant_items is judged
+     against the map IN FORCE — the retained map is a set of references into the dish list this snapshot replaces, so dropping
+     or renaming the choices can never leave a launcher with nothing to choose. Throws the typed reason. */
+  const supplied = !!body && typeof body === 'object' && body.variant_items !== undefined;
+  const variantItems = supplied ? body.variant_items : VARIANT_ITEMS;
+  GroupPicker.validateMenu(body, { variantItems, origin: supplied ? 'supplied' : 'retained' });
+  const dishes = body.dishes, extras = body.extras, cats = body.categories;
   return {
     // 1D D1 — the SECOND boundary: the live refresh. This one really does carry ids (the served body
     // is overlaid), and it is the path that replaces MENU/EXTRAS under a running form.
@@ -3010,6 +2994,7 @@ function liveMenuCommit(prepared){
   } catch (_) {}
   liveMenuPaint(prepared);
   liveMenuUiRestore(ui);
+  _menuBrokenClear();   // PLAN 4 r2: a COMPLETE live menu applied successfully — the page can vouch for its menu again
 }
 
 /* THE ADAPTER the coordinator validates through. A snapshot is accepted WHOLE or not at all: the same
@@ -3483,6 +3468,7 @@ function renderMenu() {
 }
 
 function chg(id,d){
+  if(d>0 && _MENU_BROKEN){ announceMenuBroken(); return; }   // PLAN 4 r2: a broken boot adds nothing (removing still works)
   if(d>0 && itemIsLauncher(MENU.find(p => p.id === id))) return;   // 1D add-product B: a launcher is never a cart line — its choice is
   if(d>0 && soldOutById(id)) return;   // KDS 2b: item 86'd — freeze add/increment (decrements still allowed so an in-cart item can be removed). Fail-open: soldOutById is false on any doubt.
   // (qty[id]||0): a dish that arrives with a live upgrade has no entry yet, and undefined+1 is NaN —
@@ -6254,6 +6240,7 @@ function updateDetailCta() {
 function detailCtaTap() {
   const pizzaId = currentDetailPizzaId;
   if (pizzaId === null) return;
+  if (_MENU_BROKEN) { announceMenuBroken(); return; }   // PLAN 4 r2: a broken boot adds nothing
   const _pizza = MENU.find(p => p.id === pizzaId);
   if (itemIsLauncher(_pizza)) {
     if (!stagedVariantId) return;                        // required — no-op until chosen

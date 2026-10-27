@@ -1408,7 +1408,9 @@ for (const dir of Object.keys(BRAND)) {
       const srcKey = Object.keys(liveVI)[0];
       m4.dishes = m4.dishes.concat([{ ...m4.dishes[0], id: lId, name: 'Launcher Amp', img: undefined }]);
       m4.has_photo = [lId];
-      m4.variant_items = { [lId]: { ...liveVI[srcKey] } };
+      // PLAN 4 r2: the map IN FORCE plus the new launcher — replacing it would leave the existing variants (variantOf → srcKey)
+      // uncovered, a body the one menu contract (reverse coverage) refuses and production never serves
+      m4.variant_items = { ...liveVI, [lId]: { ...liveVI[srcKey] } };
       await serve(w, envelope(B.rid, m4));
       assert.ok(w.liveMenuGlobalGet('VARIANT_ITEMS')[lId], 'la_musa: non-vacuity — the ampersand launcher applied');
       w.openDetailModal(lId);
@@ -1609,9 +1611,11 @@ for (const dir of Object.keys(BRAND)) {
     await w.submitOrder('confirmed');
     assert.deepStrictEqual(chargeUrls(w.__calls), [],
       `${dir}: 🔴 …and the real submit path reached NO charge endpoint (${JSON.stringify(chargeUrls(w.__calls))})`);
-    const err = w.document.getElementById('err3') || w.document.getElementById('err1');
+    // PLAN 4 r2 (Codex r1 P1): the announcement is in the error box of the stage the customer is ON — not a hidden one
+    const active = w.document.querySelector('.stage.active');
+    const err = ['err3', 'err1'].map((id) => w.document.getElementById(id)).find((el) => el && active && active.contains(el));
     assert.match((err && err.textContent) || '', /[Rr]ecarg/,
-      `${dir}: 🔴 …and the customer is told to reload rather than left guessing`);
+      `${dir}: 🔴 …and the customer is told to reload rather than left guessing — in the VISIBLE stage`);
     ok(`${dir}: a renderer that cannot draw the old menu either is reported fatal — and blocks the charge`);
   }
 

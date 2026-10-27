@@ -226,6 +226,42 @@ function validateDisplayStructures(body) {
   });
 }
 
+/* ── PLAN 4 r2 (Codex r1 #2 / #3) — THE COMPLETE MENU CONTRACT, ONE RULE for the bake, the boot and every live apply ──────
+   A usable menu: well-formed dish and extra records (non-empty ids, names, POSITIVE INTEGER prices — the server's int_positive),
+   unique ids, categories that exist and hold every dish, the extras_policy boundary, a drawable variant map, REVERSE coverage
+   (every dish with variantOf belongs to an existing launcher map that lists it — a missing map is a refusal, never "no groups"),
+   and the display structures above. `opts.variantItems` is the map in force for the check (the live apply's retained map when a
+   snapshot omits one; the bundle's / body's own otherwise). Throws the FIRST problem as an apply-rejection code. */
+const isPosInt = (p) => typeof p === "number" && Number.isInteger(p) && p > 0;
+function validateMenu(body, opts) {
+  const o = opts || {};
+  if (!isPlainObj(body)) throw new Error("apply_body_missing");
+  const dishes = body.dishes, extras = body.extras;
+  if (!Array.isArray(dishes) || !dishes.length) throw new Error("apply_dishes_missing");
+  if (!Array.isArray(extras)) throw new Error("apply_extras_missing");
+  const okRecord = (r) => isPlainObj(r) && r.id !== undefined && r.id !== null && String(r.id) !== ""
+    && typeof r.name === "string" && r.name !== "" && isPosInt(r.price);
+  dishes.forEach(function (d, i) { if (!okRecord(d)) throw new Error("apply_dish_malformed@" + i); });
+  extras.forEach(function (e, i) { if (!okRecord(e)) throw new Error("apply_extra_malformed@" + i); });
+  if (new Set(dishes.map(d => String(d.id))).size !== dishes.length) throw new Error("apply_dish_duplicate");
+  if (new Set(extras.map(e => String(e.id))).size !== extras.length) throw new Error("apply_extra_duplicate");
+  const cats = body.categories;
+  if (!Array.isArray(cats) || !cats.length) throw new Error("apply_categories_missing");
+  cats.forEach(function (c, i) { if (!isPlainObj(c) || typeof c.id !== "string" || !c.id) throw new Error("apply_category_malformed@" + i); });
+  if (new Set(cats.map(c => c.id)).size !== cats.length) throw new Error("apply_category_duplicate");
+  const catIds = new Set(cats.map(c => c.id));
+  dishes.forEach(function (d, i) { if (!catIds.has(d.cat)) throw new Error("apply_dish_orphan@" + i); });
+  validateExtrasPolicy(dishes);
+  const vi = Object.prototype.hasOwnProperty.call(o, "variantItems") ? o.variantItems : body.variant_items;
+  if (vi !== undefined) validateVariantBlock(vi, dishes, o.origin || "supplied");
+  dishes.forEach(function (d, i) {
+    if (d.variantOf === undefined || d.variantOf === null) return;
+    const cfg = isPlainObj(vi) ? vi[String(d.variantOf)] : null;
+    if (!cfg || !Array.isArray(cfg.variantIds) || !cfg.variantIds.some(v => sameDishId(v, d.id))) throw new Error("apply_variant_uncovered@" + i);
+  });
+  validateDisplayStructures(body);
+}
+
 /* The extras a dish offers, GROUPED by option category: the dish category's entries first, then the dish's own, each value
    EITHER an option category (all its extras, in EXTRAS order) OR one extra named by id or name (§8.3). [] = none offered. */
 function offeredExtraGroups(dish, extras, byCategory, byItem) {
@@ -254,6 +290,6 @@ function pickBadge(tags, badges, priority) {
 const GroupPicker = { GROUP_PICKER_V1, RECOMMENDED_LABEL, sameDishId, isLauncher, isVariant, validateVariantBlock, priceRange, priceText, choiceDelta,
   promptText, isRecommended, choiceRows, noExtras, validateExtrasPolicy, rewardDishes, parentOf, soldOutWithParent, ctaDecision,
   markLauncherLines, launcherKeys, launcherQty, reChooseText, CHOICE_INPUT_CLASS, choiceInputHtml, choiceHasFocus, refocusChoice, wireChoiceKeys,
-  REWARD_ICONS, validateDisplayStructures, offeredExtraGroups, pickBadge };
+  REWARD_ICONS, validateDisplayStructures, validateMenu, offeredExtraGroups, pickBadge };
 if (typeof module !== "undefined" && module.exports) module.exports = GroupPicker;
 if (typeof window !== "undefined") { window.GroupPicker = GroupPicker; }

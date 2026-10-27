@@ -6,6 +6,7 @@
    "tests": [
     "agotado-failopen.test.mjs",
     "avail-key.test.mjs",
+    "boot-broken-latch.test.mjs",
     "cart-decoupling.test.mjs",
     "cart-extras-money.test.mjs",
     "cart-identity-order.test.mjs",
@@ -458,6 +459,7 @@
    "tests": [
     "agotado-failopen.test.mjs",
     "avail-key.test.mjs",
+    "boot-broken-latch.test.mjs",
     "cart-decoupling.test.mjs",
     "cart-extras-money.test.mjs",
     "cart-identity-order.test.mjs",
@@ -1732,6 +1734,7 @@
   "assignment-conflict.js",
   "catalog/add-product.js",
   "catalog/bound-reuse.js",
+  "catalog/bundle-compare.js",
   "catalog/canonical-binding.js",
   "catalog/catalog-edit-auth.js",
   "catalog/catalog-edit.js",
@@ -1884,6 +1887,10 @@
    "lifts": [
     "xpizza-functions/addproduct-b-wiring.guard.test.js"
    ]
+  },
+  "catalog/bundle-compare.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/canonical-binding.js": {
    "pins": [],

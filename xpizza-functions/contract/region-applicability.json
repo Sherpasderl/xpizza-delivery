@@ -13461,7 +13461,7 @@
     "site": "refreshCardExtrasIndicator(vid); updateTotal(); updateCart();",
     "siteSha": "c8b7767b2aded04dab87995ab4a4457588b1d74740a5fe1b5002f10396ff133f",
     "scope": "xpizza-orders/index.html<script@2>#detailCtaTap",
-    "scopeSha": "04b19dc37792fce34bf054e41b7eacb534339175037f6896ad8b8fef3d17cc63"
+    "scopeSha": "0a9182549541c7ed5f3f67f2ccd852d5a829d4edb7408f38b804884b700ff9ea"
    },
    "guards": [
     {
