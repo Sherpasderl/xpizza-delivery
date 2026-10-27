@@ -31,7 +31,7 @@ assert.deepEqual(weightsOf('DM Sans', 'latin'), ['300', '400', '500', '600', '70
 assert.deepEqual(weightsOf('Playfair Display', 'latin'), ['600', '700', '900']);
 assert.doesNotMatch(p.css, /Special Elite|fonts\.(googleapis|gstatic)\.com|font-display:\s*(swap|fallback|block|auto)/);
 for (const fb of p.css.match(/@font-face\{font-family:'[^']+ Fallback[^']*';[^}]*\}/g)) for (const d of ['size-adjust', 'ascent-override', 'descent-override', 'line-gap-override']) assert.match(fb, new RegExp(`${d}:[\\d.]+%`), fb);
-assert.deepEqual(p.preload, [`fonts/${[...p.files.keys()].find((k) => k.startsWith('dm-sans-latin.'))}`], 'preload = DM Sans latin (Playfair latin awaits the census)');
+assert.deepEqual(p.preload, ['dm-sans-latin.', 'playfair-display-latin.'].map((pre) => `fonts/${[...p.files.keys()].find((k) => k.startsWith(pre))}`), 'preload = the census-decided critical set: DM Sans latin + Playfair latin (latin subsets only)');
 ok(`${prim.length} primary faces carry Google's discrete weights (DM Sans 300…800, Playfair 600/700/900 per subset), optional only, no Special Elite / Google host; every fallback is metric-matched`);
 
 // each name carries its own bytes' hash and equals the pin

@@ -90,13 +90,11 @@
         {
           "family": "DM Sans",
           "subset": "latin"
-        }
-      ],
-      "preloadPending": [
+        },
         {
           "family": "Playfair Display",
           "subset": "latin",
-          "decidedBy": "the §4.1 runtime census (first-viewport glyphs on s1)"
+          "decidedBy": "the §4.1 census 2026-10-27: la_musa s1 paints Playfair 700 («DIM SUM», y=312) in the first 390×844 viewport; x_pizza has none — one surface, one preload set (union)"
         }
       ],
       "metrics": {
