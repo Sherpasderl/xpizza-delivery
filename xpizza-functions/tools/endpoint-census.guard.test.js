@@ -88,6 +88,8 @@ const D = {
     'ack-identity-finding', 'record-evidence-boundary',
     // per-product extras gate 0: the READ-ONLY live export (active version + public menu) for the advisor's parity run
     'extras-export-live',
+    // INTL PHONE S-core step 3 — the READ-ONLY phone census (counts only) the owner runs before flipping config/phone_wire_strict
+    'phone-census',
     // H1c step 0 — the owner-run hardware-gate sender (ONE data-only FCM message; no database read or write):
     // requireProject({ requireFlag: true }) before any client
     'handheld-push-probe',
