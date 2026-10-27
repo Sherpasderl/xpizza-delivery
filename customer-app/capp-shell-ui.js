@@ -126,8 +126,10 @@
       const cfg = row && cfgOf(row.entry), e = freshBody ? { body: freshBody, state: 'fresh' } : cache.peek(entry.rid);
       if (!cfg || !e || !e.body) return false;
       const uo = o.uiOpts || {};
-      // r3.3-F2: a PRESENTATION body (the stored menu, not yet re-verified) mounts BROWSE-ONLY; the fresh one turns it live in place
-      const orderable = e.state !== 'presentation';
+      // r3.3-F2: only a FRESH-verified body authorizes ordering (cached-first is for PAINT only — Codex s7a2 r1 #3): a presentation
+      // or STALE body mounts BROWSE-ONLY, its revalidation is started, and the fresh one turns it live in place
+      const orderable = e.state === 'fresh';
+      if (!orderable) cache.get(entry.rid);
       const apiOpts = { storage, ...(uo.apiOpts || {}) };   // the store's records live in the shell's storage (one device store)
       // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
       const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
@@ -152,7 +154,7 @@
     function watchMenu(st) {
       const check = async () => {
         const e = cache.peek(st.rid);
-        if (S.store !== st || !e || !e.body || (e.state !== 'fresh' && e.state !== 'stale') || e.body === st.body) { if (S.store === st && e && e.body === st.body && e.state !== 'presentation') st.ui.setOrderable(true); return; }
+        if (S.store !== st || !e || !e.body || e.state !== 'fresh' || e.body === st.body) { if (S.store === st && e && e.body === st.body && e.state === 'fresh') st.ui.setOrderable(true); return; }
         const [a, b] = await Promise.all([st.fp || (st.fp = fpOf(st.body)), fpOf(e.body)]);
         if (S.store !== st) return;
         st.adopt = a && b && a === b ? null : e.body;   // same content ⇒ nothing to adopt

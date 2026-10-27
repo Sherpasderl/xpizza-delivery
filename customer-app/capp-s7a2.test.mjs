@@ -467,3 +467,17 @@ test('Codex s7a2 r1 #1 (P1): checkout adoption carries the IN-MEMORY cart — a 
   assert.notEqual(S.ui.store().ui, ui0, 'premise: adopted');
   assert.equal(S.ui.store().ui.cart.count(), 1, '🔴 the in-memory cart crossed the remount');
 });
+
+test('Codex s7a2 r1 #3: a STALE menu (verified > 60 s ago) never authorizes ordering — browse-only, revalidated, live in place when FRESH', async () => {
+  let n = 0;
+  const S = bootShell({ envelope: (rid) => (rid === 'x_pizza' && ++n > 1 ? 'hold' : 'ok') });
+  await flush();
+  S.clock.t += 61 * 1000;   // the fresh body ages into STALE; its revalidation will be held
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  if (!S.ui.store()) { await S.ui.dir.revalidate(); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); }
+  const ui = S.ui.store().ui;
+  assert.equal(S.ui.cache.peek('x_pizza').state, 'stale', 'premise: stale');
+  assert.equal(ui.orderable(), false, '🔴 a stale body is browse-only');
+  S.release('x_pizza'); await flush(); await flush();
+  assert.equal(ui.orderable(), true, 'the fresh body turns it live in place');
+});
