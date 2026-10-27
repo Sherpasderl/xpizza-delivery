@@ -2665,6 +2665,7 @@ import { createEtaSnapshotStore } from './dispatch-eta-snapshot.js?v=1';
 import { deliveryRisk } from './dispatch-delivery-risk.js?v=1';
 import { assembleThread } from './dispatch-comms-thread.js?v=1';
 import { pauseBannerModel, pauseBannerHtml, heldTag, PAUSE_RECHECK_MS } from './dispatch-order-control.js?v=1';
+import { parseSubmitted as intlParse } from './intl.js?v=1';   // comms grouping by identity digits (mirror of phone/intl.js)
 const etaSnapshots = createEtaSnapshotStore();   // session-scoped first-observed-ETA baselines
 
 // ===== Slice C: theme toggle — sun/moon, persisted, default dark, localStorage guarded, renders with no
@@ -4199,7 +4200,7 @@ function renderCommsTab() {
   const byPhone = new Map();
   for (const m of Object.values(allMessages || {})) {
     if (!m || (m.received_at || 0) < cutoff) continue;
-    const key = phoneTail(m.from);
+    const key = convoKey(m.from);
     if (!key) continue;
     const prev = byPhone.get(key);
     if (!prev || (m.received_at || 0) > (prev.received_at || 0)) byPhone.set(key, m);
@@ -4236,6 +4237,20 @@ let commsSheetTail = null;  // last-8 phone digits of the open thread, or null w
 
 function phoneTail(v) { return String(v || '').replace(/\D/g, '').slice(-8); }
 
+// Conversation grouping key (BUILD-ORDER-intl-core §Dispatch lane): the IDENTITY digits (CCnational, no '+') of
+// the canonical phone — NEVER a last-8 suffix. So the legacy forms 97950000 / 50497950000 / +50497950000 of the
+// same HN number land in ONE thread (the dual-read window), while a value that doesn't parse stays ungrouped,
+// keyed by its own digits and never suffix-merged. Mirrors the server's phone/intl.js (parity-tested).
+function convoKey(v) {
+  const p = intlParse(v);
+  if (p) return p.identity;                               // qualified +CC… or a bare 8 (→ +504)
+  const digits = String(v == null ? '' : v).replace(/\D/g, '');
+  if (!digits) return null;                               // no phone digits → not a conversation (matches the old skip)
+  const q = intlParse('+' + digits);                      // a no-'+' CCnational (legacy profile / WhatsApp inbound)
+  if (q) return q.identity;
+  return 'raw:' + digits;                                 // present but non-parsing → its own thread, never suffix-merged
+}
+
 function formatCommsDay(ms) {
   if (!Number.isFinite(ms)) return '';
   const d = new Date(ms), now = new Date();
@@ -4244,7 +4259,7 @@ function formatCommsDay(ms) {
 }
 
 function openCommsThread(fromRaw) {
-  const tail = phoneTail(fromRaw);
+  const tail = convoKey(fromRaw);
   if (!tail) return;
   commsSheetTail = tail;
   renderCommsThread();
@@ -4264,11 +4279,11 @@ function renderCommsThread() {
   const tail = commsSheetTail;
 
   // This customer's inbound messages (matched by trailing phone digits).
-  const inbound = Object.values(allMessages || {}).filter(m => phoneTail(m.from) === tail);
+  const inbound = Object.values(allMessages || {}).filter(m => convoKey(m.from) === tail);
 
   // Best-matching order (most recent) → header identity + the "Recibido" event/chip.
   const order = Object.values(allOrders || {})
-    .filter(o => phoneTail(o.customer_phone) === tail)
+    .filter(o => convoKey(o.customer_phone) === tail)
     .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0] || null;
 
   const autoEvents = (order && Number.isFinite(order.order_received_notified_at))
