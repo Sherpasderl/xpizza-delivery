@@ -216,6 +216,18 @@
 .slide-confirm.start .slide-hint { color: rgba(255,255,255,.72); }
 .slide-confirm.start .slide-thumb { background: rgba(255,255,255,.22); box-shadow: inset 0 1.5px 0 rgba(255,255,255,.4); }
 #screen-cuenta .cuenta-ver { flex: none; text-align: center; font-size: 11.5px; color: var(--text-dim, #8A93A6); padding: 6px 0 10px; }
+/* suspendida (account paused by dispatch) — prototype S.suspendida: a warn banner + the two dispatch contact rows. */
+#screen-offshift .off2-susp { display: flex; gap: 10px; align-items: flex-start; background: var(--sv-warn-bg, #F6EEDD); color: var(--warn, #8A5A00); border-radius: 16px; padding: 13px 14px; }
+#screen-offshift .off2-susp-ic { flex: none; width: 22px; height: 22px; }
+#screen-offshift .off2-susp-ic svg { width: 22px; height: 22px; }
+#screen-offshift .off2-susp-tx { font-size: 13px; line-height: 1.4; font-weight: 600; text-align: left; }
+#screen-offshift .off2-susp-tx b { display: block; font-weight: 800; font-size: 14px; margin-bottom: 2px; }
+#screen-offshift .off2-contact { padding: 2px 14px; }
+#screen-offshift .off2-crow { display: flex; align-items: center; gap: 12px; padding: 13px 0; color: var(--text, #0D1424); font-weight: 600; font-size: 14px; text-decoration: none; cursor: pointer; border-bottom: 1px solid var(--border-soft, #EAEFF6); }
+#screen-offshift .off2-crow:last-child { border-bottom: none; }
+#screen-offshift .off2-crow-ic { flex: none; width: 22px; height: 22px; color: var(--text-soft); }
+#screen-offshift .off2-crow-ic svg { width: 22px; height: 22px; }
+#screen-offshift .off2-crow-wa .off2-crow-ic { color: var(--success, #15803D); }
 /* ===== SLICE3:PRESENTATION-INICIO:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -2760,6 +2772,43 @@ function renderOffshift() {
   const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>';
   const name = (driverState && driverState.name) || (currentUser && currentUser.email ? currentUser.email.split('@')[0] : '');
   const first = (name || '').split(/\s+/)[0] || name;   // «Hola, {first name}» (prototype)
+  // SUSPENDIDA (account paused by dispatch) — prototype S.suspendida: the same header, a warn banner + the two dispatch
+  // contact channels, and NO «Iniciar turno». The banner IS the suspend notice here. One-shot config/dispatch_contact
+  // read wires tel:/wa.me on the rows (present → show; absent/invalid/no-SDK → hide the card; no dead affordance).
+  if (companionSuspended) {
+    const PAUSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="6" width="3.2" height="12" rx="1"/><rect x="13.8" y="6" width="3.2" height="12" rx="1"/></svg>';
+    host.innerHTML = `
+      <header class="off2-hdr"><span class="off2-hm">${SOLA_HM}</span><div class="off2-ttl">Hola, <span id="off-driver-name"></span></div>
+        <button class="off2-cuenta" id="cuenta-btn" title="Cuenta" aria-label="Cuenta">${USER}</button></header>
+      <div class="off2-body">
+        <div class="off2-susp"><span class="off2-susp-ic">${PAUSE}</span><div class="off2-susp-tx"><b>Despacho pausó tu cuenta</b>Podés terminar lo que tenés en mano, pero no vas a recibir pedidos nuevos. Hablá con despacho para saber el motivo.</div></div>
+        <div class="off2-card off2-contact hidden" id="off2-susp-card">
+          <a class="off2-crow" id="off2-susp-call"><span class="off2-crow-ic">${ICONS.phone || ''}</span><span>Llamar a despacho</span></a>
+          <a class="off2-crow off2-crow-wa" id="off2-susp-wa" target="_blank" rel="noopener"><span class="off2-crow-ic">${ICONS.whatsapp || ''}</span><span>Escribir por WhatsApp</span></a>
+        </div>
+        <div style="flex:1"></div>
+      </div>
+      <button class="duty-toggle hidden" id="duty-toggle-off" aria-hidden="true"></button>`;
+    const snm = $('off-driver-name'); if (snm) snm.textContent = first;
+    const scb = $('cuenta-btn'); if (scb) scb.addEventListener('click', openCuenta);
+    if (typeof fbOnValue === 'function' && XPD && typeof XPD.getDb === 'function') {
+      let done = false, unsub = null;
+      const finish = (raw) => {
+        if (done) return; done = true; try { if (unsub) unsub(); } catch (_) {}
+        const card = $('off2-susp-card'), call = $('off2-susp-call'), wa = $('off2-susp-wa');
+        if (!card || !call || !wa) return;
+        const s = (typeof raw === 'string') ? raw.trim() : '';
+        const digits = s.replace(/[^\d]/g, '');
+        if (!/^\+?[1-9][\d ]{6,}$/.test(s) || digits.length < 7) { card.classList.add('hidden'); return; }
+        call.setAttribute('href', 'tel:' + s.replace(/[^\d+]/g, ''));
+        wa.setAttribute('href', 'https://wa.me/' + digits);
+        card.classList.remove('hidden');
+      };
+      try { unsub = fbOnValue(fbRef(XPD.getDb(), 'config/dispatch_contact'), (snap) => finish(snap && snap.val()), () => finish(null)); }
+      catch (_) { finish(null); }
+    }
+    return;
+  }
   const cash = computeShiftCash(allOrders, currentUser && currentUser.uid, todayMidnightMs(), driverIdentityCutoverMs);
   const cashStat = `<div class="off2-stat"><b>L ${(cash.cashOwed || 0).toLocaleString('es-HN')}</b><small>Efectivo a entregar</small></div>`;
   const earnStat = PAGOS_LIVE ? `<div class="off2-stat"><b class="off2-earn">L ${((cash.deliveries || 0) * 70).toLocaleString('es-HN')}</b><small>Ganado hoy</small></div>` : '';

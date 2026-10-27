@@ -31,14 +31,19 @@ function liftConst(name) {
   const start = hits[0].index; return SCRIPT.slice(start, SCRIPT.indexOf(';', start) + 1);
 }
 
-function boot({ pagosLive = false, startImpl } = {}) {
+function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+504 9999 8888' } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="screen-offshift" class="with-header hidden"></div></body></html>', { pretendToBeVisual: true });
   const { document, window } = dom.window;
   const calls = { start: 0, render: 0, openCuenta: 0, sync: 0, notif: 0 };
   const $ = (id) => document.getElementById(id);
   const computeShiftCash = () => ({ cashOwed: 1430, deliveries: 7 });
+  const ICONS = new Proxy({}, { get: () => '<svg></svg>' });
+  const fbRef = () => ({});
+  const fbOnValue = (ref, cb) => { cb({ val: () => dispatch }); return () => {}; };   // one-shot: deliver the dispatch number
+  const XPD = { getDb: () => ({}) };
   const body =
     'let shiftBusy = false;\nlet optimisticShift = null;\n' +
+    'let companionSuspended = _suspended;\n' +
     'let driverState = _driverState;\nlet currentUser = _currentUser;\n' +
     'let slidingEl = null, renderPending = false; function renderActiveAndQueue(){}\n' +
     (pagosLive ? 'const PAGOS_LIVE = true;\n' : liftConst('PAGOS_LIVE') + '\n') +
@@ -52,9 +57,9 @@ function boot({ pagosLive = false, startImpl } = {}) {
     liftFn('attachSlideConfirm') + '\n' +
     liftFn('renderOffshift') + '\n' +
     'return { renderOffshift, getShiftBusy: () => shiftBusy, getOptimistic: () => optimisticShift };';
-  const names = ['document', '$', 'computeShiftCash', 'allOrders', 'SYSTEM_VERSION', 'toast', '_driverState', '_currentUser', '_calls', '_startImpl'];
+  const names = ['document', '$', 'computeShiftCash', 'allOrders', 'SYSTEM_VERSION', 'toast', 'ICONS', 'fbOnValue', 'fbRef', 'XPD', '_suspended', '_driverState', '_currentUser', '_calls', '_startImpl'];
   const api = (new Function(...names, body))(
-    document, $, computeShiftCash, {}, '2.5.3', () => {},
+    document, $, computeShiftCash, {}, '2.5.3', () => {}, ICONS, fbOnValue, fbRef, XPD, suspended,
     { name: 'Marvin Posadas', active: false }, { uid: 'drv', email: 'marvin@x.pizza' }, calls, startImpl);
   const host = () => document.getElementById('screen-offshift');
   async function slide(id = 'btn-start-shift') {
@@ -117,6 +122,27 @@ await t('a double-trigger cannot start two shifts (shiftBusy)', async () => {
   await h.slide();                       // #2 → shiftBusy still true → bails
   assert.equal(h.calls.start, 1, 'the second trigger did NOT start a second shift (shiftBusy)');
   release && release();
+});
+
+await t('suspendida: warn banner + the two dispatch contact rows (tel/wa), NO «Iniciar turno» (prototype S.suspendida)', () => {
+  const h = boot({ suspended: true });
+  h.api.renderOffshift();
+  const html = h.host().innerHTML;
+  assert.ok(/Despacho pausó tu cuenta/.test(html), 'suspend banner title');
+  assert.ok(/Podés terminar lo que tenés en mano/.test(html) && /Hablá con despacho para saber el motivo/.test(html), 'prototype banner copy');
+  assert.ok(h.host().querySelector('#off-driver-name').textContent === 'Marvin', 'same first-name header');
+  assert.ok(!h.host().querySelector('#btn-start-shift'), 'NO «Iniciar turno» slide while suspended');
+  const call = h.host().querySelector('#off2-susp-call'), wa = h.host().querySelector('#off2-susp-wa');
+  assert.ok(call && /^tel:\+?5049999 ?8888|^tel:\+?50499998888/.test(call.getAttribute('href') || ''), 'Llamar wired to tel:');
+  assert.ok(wa && /wa\.me\/50499998888/.test(wa.getAttribute('href') || ''), 'WhatsApp wired to wa.me');
+  assert.ok(!h.host().querySelector('#off2-susp-card').classList.contains('hidden'), 'contact card shown (valid number)');
+});
+
+await t('suspendida: an absent/invalid dispatch number hides the contact card (no dead affordance)', () => {
+  const h = boot({ suspended: true, dispatch: null });
+  h.api.renderOffshift();
+  assert.ok(h.host().querySelector('#off2-susp-card').classList.contains('hidden'), 'contact card hidden when no number');
+  assert.ok(/Despacho pausó tu cuenta/.test(h.host().innerHTML), 'the banner still shows');
 });
 
 console.log(`✓ offshift: ${passed} tests passed`);
