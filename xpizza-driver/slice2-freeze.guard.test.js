@@ -45,9 +45,10 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 // — a tampered shared module (widened/dropped restore, added/removed region, changed kind) is caught HERE too, not
 // just in slice3-freeze. Mirror of slice3-freeze's SLICE3_PINS; both must agree with the byte-frozen contract file.
 const SLICE3_PINS = {
-  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO', 'INICIO-CHECKLIST-FLAG', 'INICIO-POSTACT-ROUTE', 'INICIO-PERFIL', 'INICIO-CHECKLIST', 'INICIO-PRACTICA', 'INICIO-DEMO', 'INICIO-DEMO-TEARDOWN', 'TABBAR-SHOW', 'TABBAR-BOARD', 'DISP-HEADER', 'RETURN-TARGET-CAPTURE', 'SOLO-CANCEL', 'ARRIVAL-ACTION', 'PAUSE-BOARD', 'PRESENTATION-REVERIFY', 'CUENTA-CARD'],
-  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace', 'insert', 'replace', 'replace', 'replace', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert'],
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO', 'INICIO-CHECKLIST-FLAG', 'INICIO-POSTACT-ROUTE', 'INICIO-PERFIL', 'INICIO-CHECKLIST', 'INICIO-PRACTICA', 'INICIO-DEMO', 'INICIO-DEMO-TEARDOWN', 'TABBAR-SHOW', 'TABBAR-BOARD', 'DISP-HEADER', 'RETURN-TARGET-CAPTURE', 'SOLO-CANCEL', 'ARRIVAL-ACTION', 'PAUSE-BOARD', 'PRESENTATION-REVERIFY', 'CUENTA-CARD', 'INICIO-DESACTIVADA'],
+  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace', 'insert', 'replace', 'replace', 'replace', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace'],
   restoreSha: {
+    'INICIO-DESACTIVADA': '9d4c041325a3511f3d7e88e158cacabe9d14b0c88582f198e7101d3eaacb9353',
     'HELP-HANDLER': 'e823efd01be83461f6b7b900e8e60a9065d9c44bfedb1b32c2624f1d6c00206f',
     'CUADRE-CSS': '41327b6fa5e535b774d323c235e755019b6020516a10ac20340b004667f8a4ec',
     'CUADRE-DOM': 'ec70f01fe5711aacff4fc4e88ff0fd873bf715abf8ba178d30092c7ec34c2dab',
@@ -62,7 +63,7 @@ const SLICE3_PINS = {
     'INICIO-CHECKLIST': 'f270a45d4f0bc010c18de365e97fd1427138962b2b8d2abbdc07270db8cc4d74',
     'INICIO-PRACTICA': 'dc6e3b5213046e049f1ba47cd428392caca2cfcb84c7ffea4744c83f312e1e13',
   },
-  fileSha: 'cbf54911e033f503843146edbe8483f33889bed63c6881b7baa486c7f5361e7a',
+  fileSha: 'fe1c338158435dea76fc390f1ac0a76ae906a19bdb5f24af83a6ef31f2e14482',
 };
 // Load the contract as DATA: read bytes → verify the sha256 pin FIRST → only then JSON.parse (Codex r2 P1). No
 // require/import of editable code; a tampered or executable contract fails the sha (and JSON.parse) before use.

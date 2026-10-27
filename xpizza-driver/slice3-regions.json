@@ -480,6 +480,22 @@
   {
    "name": "CUENTA-CARD",
    "kind": "insert"
+  },
+  {
+   "name": "INICIO-DESACTIVADA",
+   "kind": "replace",
+   "restore": [
+    "  $('screen-companion').innerHTML = companionShellHtml(`",
+    "    <div style=\"flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;text-align:center\">",
+    "      <div class=\"co-title\" style=\"color:#8a241d\">Cuenta desactivada</div>",
+    "      <div class=\"co-sub\" style=\"color:#7a3a35\">Despacho desactivó tu cuenta. Contactalos para reactivarla.</div>",
+    "      <div class=\"co-card\" style=\"text-align:left\"><div class=\"co-sub\" style=\"color:#7a3a35\">No podés recibir ni completar pedidos. Despacho puede reactivarte cuando corresponda.</div></div>",
+    "    </div>",
+    "    <button class=\"big-btn primary\" id=\"co-e2-signout\" style=\"background:#B4322A\">Cerrar sesión</button>`, '');",
+    "  const btn = $('co-e2-signout');",
+    "  // The DRIVER taps this — there is NO automatic sign-out. Signing out here routes onAuth(null) → login as usual.",
+    "  if (btn) btn.addEventListener('click', async () => { try { await XPD.signOutUser(); } catch (_) { showScreen('login'); } });"
+   ]
   }
  ],
  "deps": [

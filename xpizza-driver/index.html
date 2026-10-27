@@ -3927,16 +3927,45 @@ function companionShellHtml(body, footer) {
 }
 
 function companionRenderE2() {
+  /* ===== SLICE3:INICIO-DESACTIVADA:START — E2 (account deactivated) refreshed to prototype S.desactivada: dim lock
+     illustration, full copy, «Hablá con despacho» dispatch card (config/dispatch_contact → Llamar/WhatsApp), neutral
+     «Cerrar sesión». Replaces the baseline red-text E2. ===== */
+  // E2 (account deactivated) — refreshed to prototype S.desactivada: a dim lock illustration, «Cuenta desactivada»
+  // + the full copy, a «Hablá con despacho» card (one-shot config/dispatch_contact → Llamar/WhatsApp, hidden if
+  // absent — same read as esperando), and a neutral «Cerrar sesión» button (the driver signs out; no auto sign-out).
+  const LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3.5" y="11" width="17" height="10.5" rx="2.2"/><path d="M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11"/></svg>';
+  const PHONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>';
   $('screen-companion').innerHTML = companionShellHtml(`
     <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;text-align:center">
-      <div class="co-title" style="color:#8a241d">Cuenta desactivada</div>
-      <div class="co-sub" style="color:#7a3a35">Despacho desactivó tu cuenta. Contactalos para reactivarla.</div>
-      <div class="co-card" style="text-align:left"><div class="co-sub" style="color:#7a3a35">No podés recibir ni completar pedidos. Despacho puede reactivarte cuando corresponda.</div></div>
+      <div class="co-illus" style="background:var(--surface-2, #F5F7FA);color:var(--text-dim, #8A93A6)">${LOCK}</div>
+      <div><div class="co-title">Cuenta desactivada</div><div class="co-sub" style="margin-top:6px">Despacho desactivó tu cuenta. No podés recibir ni completar pedidos. Si tenés efectivo pendiente, entregalo en el restaurante.</div></div>
+      <div class="co-card hidden" id="co-dispatch-card" style="text-align:left;padding:4px 14px 12px"><div class="co-row" style="padding:10px 0"><span class="co-row-ic">${PHONE}</span><div><div class="co-row-t">Hablá con despacho</div><div class="co-row-d">Te explican el motivo y los pasos</div></div></div><div class="contact-row" id="co-dispatch-actions"></div></div>
     </div>
-    <button class="big-btn primary" id="co-e2-signout" style="background:#B4322A">Cerrar sesión</button>`, '');
+    <button class="big-btn" id="co-e2-signout" style="background:#fff;color:#15181E;border:1.5px solid #D7D3CB">Cerrar sesión</button>`, '');
   const btn = $('co-e2-signout');
   // The DRIVER taps this — there is NO automatic sign-out. Signing out here routes onAuth(null) → login as usual.
   if (btn) btn.addEventListener('click', async () => { try { await XPD.signOutUser(); } catch (_) { showScreen('login'); } });
+  // Wire «Hablá con despacho» from config/dispatch_contact (one-shot read, then detach); present → Llamar (tel:) +
+  // WhatsApp, absent/invalid/denied/no-SDK → leave the card hidden (no dead affordance). Mirrors esperando.
+  (function wireDispatchContact() {
+    if (typeof fbOnValue !== 'function' || !XPD || typeof XPD.getDb !== 'function') return;
+    let done = false, unsub = null;
+    const finish = (raw) => {
+      if (done) return; done = true; try { if (unsub) unsub(); } catch (_) {}
+      const card = $('co-dispatch-card'), actions = $('co-dispatch-actions');
+      if (!card || !actions) return;
+      const s = (typeof raw === 'string') ? raw.trim() : '';
+      const digits = s.replace(/[^\d]/g, '');
+      if (!/^\+?[1-9][\d ]{6,}$/.test(s) || digits.length < 7) { card.classList.add('hidden'); return; }
+      const tel = s.replace(/[^\d+]/g, '');
+      actions.innerHTML = `<a class="recipient-phone" href="tel:${tel}"><span class="ico">${ICONS.phone || ''}</span>Llamar</a>`
+        + `<a class="recipient-whatsapp" href="https://wa.me/${digits}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp || ''}</span>WhatsApp</a>`;
+      card.classList.remove('hidden');
+    };
+    try { unsub = fbOnValue(fbRef(XPD.getDb(), 'config/dispatch_contact'), (snap) => finish(snap && snap.val()), () => finish(null)); }
+    catch (_) { finish(null); }
+  })();
+  /* ===== SLICE3:INICIO-DESACTIVADA:END ===== */
 }
 
 // Does the driver have HELD operational work (a non-terminal task assigned to them)? Used so a neutral hold

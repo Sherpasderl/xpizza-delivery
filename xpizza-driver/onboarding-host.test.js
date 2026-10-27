@@ -305,6 +305,11 @@ t('companionRenderE2 shows E2 WITHOUT signing out; tapping "Cerrar sesión" sign
   host.companionRenderE2();
   const html = dom.$('screen-companion').innerHTML;
   assert.ok(html.includes('Cuenta desactivada'), 'E2 copy shown');
+  // refreshed to prototype S.desactivada: dim lock illustration + full copy + «Hablá con despacho» dispatch card
+  assert.ok(/co-illus/.test(html) && /M7\.5 11V7\.5/.test(html), 'E2 shows the (dim) lock illustration');
+  assert.ok(/Si tenés efectivo pendiente, entregalo en el restaurante/.test(html), 'E2 uses the full prototype copy');
+  assert.ok(/Hablá con despacho/.test(html) && /co-dispatch-card/.test(html), 'E2 has the «Hablá con despacho» dispatch card');
+  assert.ok(!/#8a241d|#7a3a35|#B4322A/.test(html), 'the old red E2 colors are gone');
   assert.equal(xpd.calls.signOut, 0, 'E2 must NOT auto sign-out');
   await dom.$('co-e2-signout').click();                 // the DRIVER taps it
   await Promise.resolve();
