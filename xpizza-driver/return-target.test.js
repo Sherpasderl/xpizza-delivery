@@ -72,23 +72,26 @@ const entry = (displayName, lat, lng, rid = 'x_pizza') => ({
 let passed = 0;
 const t = (name, fn) => { try { fn(); passed += 1; } catch (e) { console.error(`✗ ${name}`); throw e; } };
 
-t('x_pizza: capture at delivery → returning shows the SOFT nav button, labelled with the display name, deep-linked to the stamped hub', () => {
+t('x_pizza: capture → returning nav button; label = brandLabel(order) EXACTLY (display name ONLY, address omitted), deep-linked to the stamped hub', () => {
   const h = boot({ status: 'returning' });
-  h.api.drv2CaptureReturnTarget(entry('X. Pizza · Blvd. del Norte', 15.50749, -88.03985, 'x_pizza'));
+  const order = { restaurant_display_name: 'X. Pizza', restaurant_id: 'x_pizza' };   // a realistic display name — the brand, NOT the address
+  h.api.drv2CaptureReturnTarget({ order, pickupTask: { id: 'pk1', destination_lat: 15.50749, destination_lng: -88.03985 } });
   h.api.renderDisponible();
   const nav = h.host.querySelector('.disp-return-nav');
   assert.ok(nav, 'the returning nav button is shown');
-  assert.match(nav.querySelector('.nav-primary .nav-dest').textContent, /X\. Pizza · Blvd\. del Norte/, 'label = the order display name (data-driven)');
+  assert.equal(nav.querySelector('.nav-primary .nav-dest').textContent, '→ ' + brandLabel(order), 'label equals brandLabel(order) EXACTLY — no address appended (the address has no data source; ruling)');
+  assert.doesNotMatch(nav.querySelector('.nav-primary .nav-dest').textContent, / · |Blvd|Norte|Col\./, 'NO address fragment in the label');
   assert.match(nav.querySelector('.nav-primary').getAttribute('href'), /waze\.com\/ul\?ll=15\.50749,-88\.03985/, 'Waze deep-link points at the stamped hub');
   assert.ok(h.host.querySelector('#arrive-btn'), 'the «Estoy en el restaurante» arrive-btn is KEPT (below the nav button)');
 });
 
 t('la_musa: a DIFFERENT brand → its OWN display name + its OWN hub (brand-agnostic, never the X.Pizza constant)', () => {
   const h = boot({ status: 'returning' });
-  h.api.drv2CaptureReturnTarget(entry('La Musa · Col. Jardines', 15.49000, -88.02000, 'la_musa'));
+  const order = { restaurant_display_name: 'La Musa', restaurant_id: 'la_musa' };
+  h.api.drv2CaptureReturnTarget({ order, pickupTask: { id: 'pk2', destination_lat: 15.49000, destination_lng: -88.02000 } });
   h.api.renderDisponible();
   const nav = h.host.querySelector('.disp-return-nav');
-  assert.match(nav.querySelector('.nav-primary .nav-dest').textContent, /La Musa · Col\. Jardines/, 'la_musa label');
+  assert.equal(nav.querySelector('.nav-primary .nav-dest').textContent, '→ ' + brandLabel(order), 'la_musa label = its display name exactly');
   assert.match(nav.querySelector('.nav-primary').getAttribute('href'), /ll=15\.49,-88\.02/, 'la_musa hub (not 15.5074/-88.0398)');
   assert.doesNotMatch(nav.querySelector('.nav-primary').getAttribute('href'), /15\.50749|88\.0398/, 'NOT the hardcoded X.Pizza RESTAURANT hub');
 });
@@ -132,17 +135,17 @@ t('a nameless or hub-less completion captures NO target (no dead button)', () =>
 });
 
 t('sessionStorage rehydrates the target after a reload (fresh module state, same session store)', () => {
-  const h = boot({ status: 'returning', uid: 'drv', seed: { name: 'X. Pizza · Blvd. del Norte', lat: 15.51, lng: -88.04, uid: 'drv' } });
+  const h = boot({ status: 'returning', uid: 'drv', seed: { name: 'X. Pizza', lat: 15.51, lng: -88.04, uid: 'drv' } });
   h.api.renderDisponible();   // in-memory returnTarget starts null → reads the seeded sessionStorage
   const nav = h.host.querySelector('.disp-return-nav');
   assert.ok(nav, 'rehydrated from sessionStorage');
-  assert.match(nav.querySelector('.nav-primary .nav-dest').textContent, /X\. Pizza · Blvd\. del Norte/, 'rehydrated label');
+  assert.equal(nav.querySelector('.nav-primary .nav-dest').textContent, '→ X. Pizza', 'rehydrated label (display name only)');
 });
 
 t('stacked: the LAST completed delivery wins (overwrite)', () => {
   const h = boot({ status: 'returning' });
   h.api.drv2CaptureReturnTarget(entry('X. Pizza', 15.5, -88.0, 'x_pizza'));
-  h.api.drv2CaptureReturnTarget(entry('La Musa · Col. Jardines', 15.49, -88.02, 'la_musa'));   // a second delivery completes
+  h.api.drv2CaptureReturnTarget(entry('La Musa', 15.49, -88.02, 'la_musa'));   // a second delivery completes
   h.api.renderDisponible();
   const nav = h.host.querySelector('.disp-return-nav');
   assert.match(nav.querySelector('.nav-primary .nav-dest').textContent, /La Musa/, 'the last completion’s restaurant is the target');
