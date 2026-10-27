@@ -11,6 +11,9 @@
 //            restaurant / cart / mode / pin / auth / tip (the ported capp-confirm-quote.js attaches on a signature match only).
 //   bodies   deterministic quote + order bodies (§5.1); quote_token / expected_net_cents are attached ONLY by the ported
 //            module's send(). Every quote body (cash AND card) carries entry_mode:'app' (§3.6).
+//   geo      S2b-geo (MOCKUP-capp-S2b-geo-address.html; PLAN-colonia r1 §1): the reverse-geocode of a CONFIRMED pin, bound to
+//            the pin's version (pinV). Every pin change bumps pinV and clears geo SYNCHRONOUSLY; a reply applies only to the
+//            version it was asked for. Display only at this base: NO address_area in any body (the server slice is not here).
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -55,6 +58,7 @@
       email: m ? String(m.email || '') : '', rtn: false, razon: '', rtnNum: '', notes: '',
       pay: m && (m.lastPay === 'cash' || m.lastPay === 'online') ? m.lastPay : '', tendered: '', editWho: false,
       tipChoice: null, tipCents: 0,
+      pinV: 0, geo: null,   // S2b-geo: the pin's version and its reverse-geocode { v, street, area } (null = none yet)
     };
   }
   // switching to pickup clears the tip (prototype :1891, :1909-1913); pickup never reaches the tip step
@@ -63,7 +67,49 @@
     if (f.mode === 'pickup') { f.tipChoice = null; f.tipCents = 0; }
     return f;
   }
-  function setPin(f, lat, lng, confirmed) { f.pin = { lat: Number(lat), lng: Number(lng), confirmed: confirmed === true }; return f; }
+  function setPin(f, lat, lng, confirmed) {
+    const p = { lat: Number(lat), lng: Number(lng), confirmed: confirmed === true };
+    const o = f.pin;
+    if (o && o.lat === p.lat && o.lng === p.lng && o.confirmed === p.confirmed) return f;   // the same pin keeps its version (one geocode)
+    f.pin = p; f.pinV = (Number(f.pinV) || 0) + 1; f.geo = null;   // a NEW pin: its old street / area are gone at once
+    return f;
+  }
+
+  // ── S2b-geo: the reverse-geocode of the confirmed pin (Google Geocoder results, address_components) ──
+  const compsOf = (results) => (Array.isArray(results) ? results : []).flatMap((r) => (r && Array.isArray(r.address_components) ? r.address_components : []));
+  const nameOf = (c) => (c && typeof c.long_name === 'string' ? c.long_name.trim() : '');
+  const hasType = (c, t) => !!(c && Array.isArray(c.types) && c.types.includes(t));
+  // PLAN-colonia §1: neighborhood, else sublocality_level_1, else sublocality — never locality / route / street_number. Raw:
+  // the server's privacy filter is the only authority over what is kept.
+  function areaFromGeocode(results) {
+    const cs = compsOf(results);
+    for (const t of ['neighborhood', 'sublocality_level_1', 'sublocality']) { const c = cs.find((x) => hasType(x, t) && nameOf(x)); if (c) return nameOf(c); }
+    return '';
+  }
+  // the street: the route's long_name ONLY (no street_number, no plus_code); Google's «Unnamed Road» is no street
+  function routeFrom(results) {
+    const c = compsOf(results).find((x) => hasType(x, 'route') && nameOf(x));
+    const n = c ? nameOf(c) : '';
+    return /^unnamed road$/i.test(n) ? '' : n;
+  }
+  // a reply for version v: applied ONLY if the pin is still that version (a superseded reply is discarded); a failed or empty
+  // reply settles the version with nothing (no retry: one geocode per confirmed pin)
+  function applyGeocode(f, v, results) {
+    if (v !== f.pinV) return false;
+    f.geo = { v, street: routeFrom(results), area: areaFromGeocode(results) };
+    return true;
+  }
+  // display only (advisor ruling 2026-10-26, a truth rule): an area name that already says what it is — Colonia / Col. / Barrio /
+  // Bo. / Residencial / Res., as a whole word — is shown as given (never «Col. Barrio …»); otherwise «Col. {X}». address_area stays raw.
+  const fold = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  const displayArea = (a) => (/^(colonia|col|barrio|bo|residencial|res)(\.|\s)/.test(fold(a) + ' ') ? a : 'Col. ' + a);
+  // the delivery line (A1 «{street}, Col. {X}» · b «{street}» · b2 «Col. {X}»); '' = today's row (c: none, pending, stale)
+  function addrLine(f) {
+    const g = f && f.geo;
+    if (!g || g.v !== f.pinV || !(f.pin && f.pin.confirmed === true)) return '';
+    const a = g.area ? displayArea(g.area) : '';
+    return g.street && a ? g.street + ', ' + a : g.street || a;
+  }
   // a preset (lempiras, one of TIP_PRESETS) or «Otro» { other: lempiras }. 0 either way = «Sin propina» (a CHOICE, not null)
   function chooseTip(f, choice) {
     let l = null; let kind = null;
@@ -169,5 +215,6 @@
   }
 
   return { TIP_PRESETS, TIP_MAX_LEMPIRAS, ENTRY_MODE, COPY, CLOSED_SHEET, freshFlow, setMode, setPin, chooseTip, tipCentsOf, tipChosen,
-    isOpenAt, closingAt, missingStep, canonicalJson, sigInput, cartSig, quoteBody, orderBody, totals, changeCents, fullPhone };
+    isOpenAt, closingAt, missingStep, canonicalJson, sigInput, cartSig, quoteBody, orderBody, totals, changeCents, fullPhone,
+    areaFromGeocode, routeFrom, applyGeocode, displayArea, addrLine };
 });
