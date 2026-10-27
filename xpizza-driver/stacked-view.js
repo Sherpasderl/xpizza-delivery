@@ -360,8 +360,13 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   let deliveredText = '';
   if (accepted && !isPickup) {
     const cash = collectionFor(order).kind === 'cash';
-    const amt = cash ? ` · L ${(Number(order.total) || 0).toLocaleString('es-HN')}` : '';
-    deliveredText = `Entregado · ${esc(firstName(name))}${esc(amt)}`;   // first name keeps the slide one line
+    if (opts.arrived === true && !opts.previewHtml) {
+      // prototype S.llegue (solo, arrived): «Entregado · cobré L {amt}» (cash) / «Entregado» (online-paid) — no name
+      deliveredText = cash ? `Entregado · cobré L ${(Number(order.total) || 0).toLocaleString('es-HN')}` : 'Entregado';
+    } else {
+      const amt = cash ? ` · L ${(Number(order.total) || 0).toLocaleString('es-HN')}` : '';
+      deliveredText = `Entregado · ${esc(firstName(name))}${esc(amt)}`;   // en-route / stacked keep the named slide
+    }
   }
   // «Llegué · avisar a {Nombre}» (L1): a TAP that notifies the customer. R9 — rendered ONLY when the arrival-
   // notification capability exists (opts.canNotifyArrival); until the endpoint lands it is hidden (no dead control).
@@ -416,8 +421,8 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   const actualPill = showActualPill ? '<span class="pactual">Parada actual</span>' : '';
   return `${flowTop}
     ${arrivalBanner}
-    <div class="active-card" data-order-id="${esc(o.orderId)}">
-      <div class="ac-chiprow">${bagTagHtml(ordinal, esc)}${rchip(order, esc)}<span class="order-num">${esc(displayOrderLabel(order))}</span>${actualPill}</div>
+    <div class="active-card${(arrived && !isPickup) ? ' ac-arrived' : ''}" data-order-id="${esc(o.orderId)}">
+      ${(arrived && !isPickup) ? '' : `<div class="ac-chiprow">${bagTagHtml(ordinal, esc)}${rchip(order, esc)}<span class="order-num">${esc(displayOrderLabel(order))}</span>${actualPill}</div>`}
       <div class="ac-head">
         <div class="recipient-name">${esc(name)}</div>
         ${countdownChip ? `<div class="ac-meta">${countdownChip}</div>` : ''}

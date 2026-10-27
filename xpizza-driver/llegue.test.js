@@ -94,4 +94,22 @@ t('the «Llegué · avisar» button is still gated on canNotifyArrival (before a
   assert.ok(!/btn-llegue/.test(card({ arrived: false, canNotifyArrival: false })), 'Llegué hidden flag-off');
 });
 
+t('solo arrived: the ac-chiprow (bag-tag/brand/#) is HIDDEN (proto single-delivery card) + the .ac-arrived scope class is set', () => {
+  const html = card({ arrived: true });
+  assert.ok(!/ac-chiprow/.test(html), 'no chiprow on the solo arrived card');
+  assert.match(html, /active-card ac-arrived/, 'the .ac-arrived scope class is present');
+  assert.ok(/ac-chiprow/.test(card({ arrived: false })), 'en-route keeps the chiprow (unchanged)');
+});
+t('slide copy: solo arrived cash → «Entregado · cobré L {amt}» (no name); online-paid → «Entregado»', () => {
+  assert.match(card({ arrived: true }), /Entregado · cobré L 385/, 'cash copy «cobré L 385»');
+  assert.ok(!/Entregado · Daniela/.test(card({ arrived: true })), 'no name on the arrived slide');
+  const paid = activeCardHtml({ ...deliveryEntry, order: { ...order, payment_method: 'card_online' } }, deps, { ordinal: 1, solo: true, arrived: true, previewHtml: '' });
+  assert.match(paid, /Entregado</, 'online-paid arrived slide = plain «Entregado»');
+  assert.ok(!/cobré/.test(paid), 'no «cobré» for a paid order');
+});
+t('slide copy: en-route / stacked keep the named slide «Entregado · {name} · L {amt}» (untouched)', () => {
+  assert.match(card({ arrived: false }), /Entregado · Daniela · L 385/, 'en-route keeps the named slide');
+  assert.match(card({ arrived: true, previewHtml: '<div class="after-card"></div>' }), /Entregado · Daniela · L 385/, 'a stacked arrived card (previewHtml) keeps the named slide');
+});
+
 console.log(`✓ llegue: ${passed} tests passed`);
