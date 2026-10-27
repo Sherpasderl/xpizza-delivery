@@ -135,6 +135,25 @@
    border-left:none), so the browser's default button border shows as a dark outline. Clear it + keep focus-visible only. */
 #screen-onshift .recipient-whatsapp { border: 0; }
 #screen-onshift .recipient-whatsapp:focus:not(:focus-visible), #screen-onshift .recipient-phone:focus:not(:focus-visible) { outline: none; }
+/* S.problema reason-picker sheet (dep F) + S.problemaEnviado — proto .opt/.brow styling, reusing the app .sheet-backdrop/.sheet */
+#drv2-problema .pb-opts { display: flex; flex-direction: column; gap: 7px; }
+#drv2-problema .pb-opt { display: flex; gap: 11px; align-items: center; width: 100%; text-align: left; padding: 12px; border-radius: 12px; border: 0; background: var(--surface-2, #F5F7FA); cursor: pointer; font-family: var(--fb); font-weight: 600; font-size: 14px; color: var(--text, #0D1424); }
+#drv2-problema .pb-opt .pb-ic { width: 19px; height: 19px; flex: none; color: var(--text-soft, #546078); display: inline-flex; }
+#drv2-problema .pb-opt .pb-ic svg { width: 100%; height: 100%; }
+#drv2-problema .pb-opt .pb-t { min-width: 0; }
+#drv2-problema .pb-opt .pb-d { display: block; font-size: 12px; color: var(--text-soft, #546078); font-weight: 500; margin-top: 1px; }
+#drv2-problema .pb-opt.sel { box-shadow: inset 0 0 0 1.5px var(--accent, #2F5FB8); background: #E3ECFB; }
+#drv2-problema .pb-note { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; line-height: 1.35; padding: 11px 12px; border-radius: 12px; background: #E3ECFB; color: #2F5FB8; }
+#drv2-problema .pb-note svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+#drv2-problema .pb-brow { display: flex; gap: 9px; }
+#drv2-problema .pb-brow > * { flex: 1; }
+#drv2-problema .pb-cancel, #drv2-problema .pb-send { appearance: none; border: 0; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; min-height: 52px; border-radius: 14px; cursor: pointer; }
+#drv2-problema .pb-cancel { background: var(--surface, #fff); color: var(--text, #0D1424); box-shadow: inset 0 0 0 1px var(--line, #E2E6EE); }
+#drv2-problema .pb-send { background: var(--accent, #2F5FB8); color: #fff; }
+#drv2-problema .pb-send:disabled { opacity: .5; cursor: default; }
+#drv2-problema .pb-done-head { display: flex; align-items: center; gap: 10px; }
+#drv2-problema .pb-done-ic { width: 44px; height: 44px; flex: none; border-radius: 14px; background: #E3F3E9; color: #15803D; display: grid; place-items: center; }
+#drv2-problema .pb-done-ic svg { width: 22px; height: 22px; }
 /* ===== SLICE3:PRESENTATION-3:END ===== */
 /* ===== SLICE3:PRESENTATION-INICIO:START — Inicio (pre-shift) refresh: login + esperando, SCOPED to their screens so the
    shared .center-screen/.greeting/.big-btn that off-shift also uses stay untouched (no regression). Sherpa Sola brand,
@@ -2571,7 +2590,7 @@ function openWhatsappSheet(btn) {
 }
 /* ===== SLICE2:IMPORT:END ===== */
 /* ===== SLICE3:IMPORT-3:START — batch-3 pure builders ===== */
-import { helpDiagnosisHtml, cierreRechazadoHtml, readyTimeLabel, gpsoffHtml } from './stacked-view.js';   // readyTimeLabel: R1 ready time for the S.oferta offer; gpsoffHtml: the location-off idle state
+import { helpDiagnosisHtml, cierreRechazadoHtml, readyTimeLabel, gpsoffHtml, problemaSheetHtml, problemaEnviadoHtml, problemaReasonLabel } from './stacked-view.js';   // readyTimeLabel: R1 ready time for the S.oferta offer; gpsoffHtml: the location-off idle state; problema*: the «Problema con este pedido» sheet (dep F)
 import { ref as fbRef, onValue as fbOnValue, update as fbUpdate, serverTimestamp as fbServerTimestamp, push as fbPush } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';   // same module instance XPD uses — subscribe to the RTDB connection edge for the offer slide gate; update/serverTimestamp/push for the driver's own tasks/{id}/arrived (dep C) + driver_problems writes (dep F), since the SDK module is frozen
 import { postActRoute } from './postact-route.js';   // Inicio b: pure post-activation checklist routing decision (tested in postact-route.test.js)
 import { practicaDemoOrder } from './practica-fixture.js';   // Inicio c: the synthetic practice ORDER (brand = registry-only 'synthetic_3' as DATA, never a controller literal)
@@ -2591,6 +2610,40 @@ function openHelpSheet() {
   if (!ov) { ov = document.createElement('div'); ov.id = 'drv2-help'; ov.className = 'sheet-backdrop'; document.body.appendChild(ov); }
   ov.innerHTML = helpDiagnosisHtml({ gpsAgeMs: ageMs, gpsLive }, { ICONS, esc: escapeHtml });
   ov.onclick = (e) => { if (e.target === ov || (e.target.closest && e.target.closest('#btn-help-done'))) ov.classList.remove('open'); };
+  ov.classList.add('open');
+}
+
+// «Problema con este pedido» (dep F): the reason-picker sheet → a create-only write of driver_problems/{oid}/{pid} =
+// {reason: <CONTRACT key>, by: uid, at: serverTimestamp}. Idempotent per report: a FRESH pid, the send button DISABLED
+// in flight. On success → the «Despacho ya lo sabe» confirmation; on FAILURE → re-enable + toast (never a false claim).
+function openProblemaSheet(oid) {
+  if (!oid) return;
+  let ov = $('drv2-problema');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'drv2-problema'; ov.className = 'sheet-backdrop'; document.body.appendChild(ov); }
+  ov.innerHTML = problemaSheetHtml({ ICONS, esc: escapeHtml });
+  let picked = null;
+  const close = () => ov.classList.remove('open');
+  ov.onclick = (e) => {
+    if (e.target === ov) { close(); return; }
+    const opt = e.target.closest && e.target.closest('.pb-opt');
+    if (opt) {
+      picked = opt.getAttribute('data-reason');
+      ov.querySelectorAll('.pb-opt').forEach((o) => o.classList.toggle('sel', o === opt));
+      const send = $('btn-problema-send'); if (send) send.disabled = false;
+      return;
+    }
+    if (e.target.closest && e.target.closest('#btn-problema-cancel')) { close(); return; }
+    if (e.target.closest && e.target.closest('#btn-problema-done')) { close(); return; }
+    const sendBtn = e.target.closest && e.target.closest('#btn-problema-send');
+    if (sendBtn && picked && !sendBtn.disabled && currentUser) {
+      sendBtn.disabled = true;   // dep F is create-only → disable in flight (no double-submit), fresh pid per report
+      const reason = picked;
+      const pid = fbPush(fbRef(XPD.getDb(), 'driver_problems/' + oid)).key;
+      fbUpdate(fbRef(XPD.getDb(), 'driver_problems/' + oid + '/' + pid), { reason, by: currentUser.uid, at: fbServerTimestamp() })
+        .then(() => { ov.innerHTML = problemaEnviadoHtml(problemaReasonLabel(reason), fmtClockHM(Date.now()), { ICONS, esc: escapeHtml }); })
+        .catch(() => { sendBtn.disabled = false; toast('No se pudo avisar; reintentá', 'error'); });
+    }
+  };
   ov.classList.add('open');
 }
 
@@ -4621,7 +4674,11 @@ $('screen-onshift').addEventListener('click', (e) => {
       fbUpdate(fbRef(XPD.getDb(), 'tasks/' + arrTaskId), { arrived: { at: fbServerTimestamp(), by: currentUser.uid } })
         .catch(() => { llegueBtnEl.disabled = false; toast('No se pudo avisar; reintentá', 'error'); });
     }
+    return;
   }
+  // «Problema con este pedido» — the body button + the header Ayuda icon both open the S.problema reason-picker sheet (dep F).
+  const probBtn = e.target.closest && e.target.closest('#btn-problema-body, #btn-problema');
+  if (probBtn) { openProblemaSheet((probBtn.dataset && probBtn.dataset.orderId) || ''); return; }
 });
 /* ===== SLICE3:ARRIVAL-ACTION:END ===== */
 
@@ -5369,7 +5426,7 @@ function renderActiveAndQueue() {
     const spHeader = spSoloPickup
       ? stopHeaderHtml({ ...soloPickupHeaderInfo(spOrder, spShowReview), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml })
       /* ===== SLICE3DEPS:LLEGUE-HEADER:START (registered carve-out; parent region SINGLE-ORDER-MOUNT) — the ARRIVED-at-customer delivery header «Estás donde {name}» + the flag-gated «avisamos a las {t}» sub (prototype S.llegue); en-route/pickup unchanged. slice3-freeze splices this back to the 07e5ab38 branch. ===== */
-      : (spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, canReportProblem: DRV2_CAN_REPORT_PROBLEM, arrivedCustomer: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()) && !spIsPickup, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, notifiedAt: (soloOrder.deliveryTask && soloOrder.deliveryTask.arrived && typeof soloOrder.deliveryTask.arrived.at === 'number' ? fmtClockHM(soloOrder.deliveryTask.arrived.at) : '') }, { ICONS, esc: escapeHtml }) : '');
+      : (spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, orderId: soloOrder.orderId, canReportProblem: DRV2_CAN_REPORT_PROBLEM, arrivedCustomer: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()) && !spIsPickup, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, notifiedAt: (soloOrder.deliveryTask && soloOrder.deliveryTask.arrived && typeof soloOrder.deliveryTask.arrived.at === 'number' ? fmtClockHM(soloOrder.deliveryTask.arrived.at) : '') }, { ICONS, esc: escapeHtml }) : '');
       /* ===== SLICE3DEPS:LLEGUE-HEADER:END ===== */
     const spStripStops = drv2Cancel
       ? [{ n: 1, state: 'cancelled', label: drv2FirstWord(drv2Cancel.cancelledName) }, { n: 2, state: 'on', label: drv2FirstWord(spName) }]

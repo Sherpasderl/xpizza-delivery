@@ -8,7 +8,7 @@
 //   • NOT arrived / pickup: none of the above (byte-stable).
 // Run: `node llegue.test.js`
 import assert from 'node:assert/strict';
-import { stopHeaderHtml, activeCardHtml } from './stacked-view.js';
+import { stopHeaderHtml, activeCardHtml, problemaSheetHtml, problemaReasonLabel } from './stacked-view.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -178,6 +178,49 @@ t('P2-6: «Llegué» writes tasks/{id}/arrived; SUCCESS disables the button; FAI
   await Promise.resolve(); await Promise.resolve();
   assert.ok(!btn2.disabled, 'write failed → button re-enabled so the driver can retry');
   assert.equal(toasts, 1, 'a toast on failure, never a «ya sabe» claim');
+});
+
+t('P2-7 builder: the S.problema sheet lists the 6 reasons by their CONTRACT keys; send disabled until a pick', () => {
+  const html = problemaSheetHtml({ ICONS, esc: (s) => String(s == null ? '' : s) });
+  ['waiting_restaurant', 'not_ready_incomplete', 'customer_no_answer', 'address_not_found', 'restaurant_closed', 'other']
+    .forEach((k) => assert.ok(html.includes(`data-reason="${k}"`), `reason mapped by key ${k} (not the display string)`));
+  assert.match(html, /id="btn-problema-send"[^>]*disabled/, 'send disabled until a reason is picked');
+  assert.equal(problemaReasonLabel('customer_no_answer'), 'El cliente no contesta', 'key → display label (for the confirmation)');
+});
+t('P2-7: openProblemaSheet writes driver_problems/{oid}/{pid} = {reason(KEY), by, at}; send disabled in flight; a fresh pid; FAILURE re-enables', async () => {
+  const SCRIPT = INDEX.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
+  function liftFn(name) { let s = SCRIPT.indexOf('function ' + name + '('); let d = 0, seen = false; for (let i = s; i < SCRIPT.length; i++) { if (SCRIPT[i] === '{') { d++; seen = true; } else if (SCRIPT[i] === '}') { d--; if (seen && d === 0) return SCRIPT.slice(s, i + 1); } } }
+  const dom = new JSDOM('<!doctype html><body></body>', { url: 'https://driver.test/', pretendToBeVisual: true });
+  const { document, window } = dom.window;
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s);
+  let wrote = null, pids = [], failNext = false, toasts = 0;
+  const fbRef = (db, path) => ({ path });
+  const fbPush = (r) => { const key = 'pid' + (pids.length + 1); pids.push(key); return { key }; };
+  const fbUpdate = (r, val) => { if (failNext) return Promise.reject(new Error('offline')); wrote = { path: r.path, val }; return Promise.resolve(); };
+  const api = { $, ICONS, escapeHtml: esc, problemaSheetHtml, problemaEnviadoHtml: (l, t2) => `<div class="sheet"><h4>Despacho ya lo sabe</h4><div>${esc(l)} · ${esc(t2)}</div></div>`, problemaReasonLabel, fbRef, fbPush, fbUpdate, fbServerTimestamp: () => 'TS', XPD: { getDb: () => ({}) }, currentUser: { uid: 'drv' }, toast: () => { toasts++; }, fmtClockHM: () => '7:44', document };
+  (new Function(...Object.keys(api), liftFn('openProblemaSheet') + '\nreturn openProblemaSheet;'))(...Object.values(api))('o1');
+  const ov = $('drv2-problema');
+  assert.ok(ov && ov.classList.contains('open'), 'sheet opened');
+  // pick a reason → send enabled
+  ov.querySelector('[data-reason="customer_no_answer"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  assert.ok(!$('btn-problema-send').disabled, 'send enabled after a pick');
+  // send → write + disable in flight
+  $('btn-problema-send').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  assert.ok($('btn-problema-send').disabled, 'send disabled in flight (no double-submit — dep F create-only)');
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(wrote.path, 'driver_problems/o1/pid1', 'wrote driver_problems/{oid}/{fresh pid}');
+  assert.deepEqual(wrote.val, { reason: 'customer_no_answer', by: 'drv', at: 'TS' }, 'the CONTRACT key + by + at (dep F)');
+  assert.match(ov.innerHTML, /Despacho ya lo sabe/, 'the confirmation shows');
+  // FAILURE path
+  const dom2vals = { ...api, toast: () => { toasts++; }, fbUpdate: () => Promise.reject(new Error('x')) };
+  (new Function(...Object.keys(dom2vals), liftFn('openProblemaSheet') + '\nreturn openProblemaSheet;'))(...Object.values(dom2vals))('o2');
+  const ov2 = $('drv2-problema');
+  ov2.querySelector('[data-reason="other"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  $('btn-problema-send').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await Promise.resolve(); await Promise.resolve();
+  assert.ok(!$('btn-problema-send').disabled, 'write failed → send re-enabled for retry');
+  assert.ok(toasts >= 1, 'a toast on failure');
 });
 
 console.log(`✓ llegue: ${passed} tests passed`);

@@ -420,7 +420,7 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
     ? `<div class="sv-deliver-items"><div class="sdi-head"><span class="sdi-count">${esc(deliverItems.reduce((a, l) => a + l.qty, 0))} artículo${deliverItems.reduce((a, l) => a + l.qty, 0) === 1 ? '' : 's'}</span><span class="sdi-chip">entregá todo</span></div>${deliverItems.map((l) => `<div class="sdi-row"><b>${esc(l.qty)}×</b><span>${esc(l.name)}</span></div>`).join('')}</div>`
     : '';
   const problemaBtnHtml = (soloArrival && opts.canReportProblem === true)
-    ? `<button class="problema-btn" id="btn-problema-body"><span class="ico">${ICONS.warn || ''}</span>Problema con este pedido</button>`
+    ? `<button class="problema-btn" id="btn-problema-body" data-order-id="${esc(o.orderId)}"><span class="ico">${ICONS.warn || ''}</span>Problema con este pedido</button>`
     : '';
 
   const flowTop = solo ? '<div class="ao-spacer ao-spacer-top"></div>' : '';
@@ -728,7 +728,7 @@ export function stopHeaderHtml(info = {}, deps = {}) {
   // entry during a delivery → the existing end-shift path → O4 sheet → cuadre, unchanged) — then the Ayuda icon,
   // gated on the Problema capability (R9/F; hidden until that endpoint exists). Left: the subtle Sola brand mark.
   const endShift = `<button class="ib sh-end" id="btn-end-shift" aria-label="Terminar turno" title="Terminar turno">${ICONS.power || POWER_SVG}</button>`;
-  const ayuda = canReportProblem === true ? `<button class="ib sh-ayuda" id="btn-problema" aria-label="Ayuda" title="Ayuda">${ICONS.help || '?'}</button>` : '';
+  const ayuda = canReportProblem === true ? `<button class="ib sh-ayuda" id="btn-problema" data-order-id="${esc(info.orderId || '')}" aria-label="Ayuda" title="Ayuda">${ICONS.help || '?'}</button>` : '';
   return `<div class="stop-header">
       <div class="sh-logo">${ICONS.sola || SOLA_SVG}</div>
       <div class="sh-titles"><div class="sh-title">${title}${titleDl}</div>${sub ? `<div class="sh-sub">${sub}</div>` : ''}</div>
@@ -1086,5 +1086,46 @@ export function cancelBannerHtml(info = {}, deps = {}) {
       <span class="ico">${ICONS.warn || '!'}</span>
       <div><b>Pedido ${esc(cancelledNum)} (${esc(cancelledName)}) cancelado</b>${esc(money)}${bagReturn}</div>
       <button class="x" id="btn-cancel-ack" aria-label="Entendido">Entendido</button>
+    </div>`;
+}
+
+// «Problema con este pedido» (dep F, prototype S.problema): the 6 reasons mapped 1:1 to the SERVER REASONS keys
+// (by key, NOT display string). Pure. The host writes driver_problems/{oid}/{pid} = {reason, by, at} on «Avisar a
+// despacho», then shows problemaEnviadoHtml. The send button is disabled until a reason is picked + in-flight (dep F
+// is create-only → idempotent per report: a fresh pid, the button disabled while writing).
+const PB_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round"/></svg>';
+const PB_BAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 8h12l-1 12H7z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg>';
+const PB_INFO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01" stroke-linecap="round"/></svg>';
+const PB_HELP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg>';
+// {key: the CONTRACT key, t/d: display, ic: glyph}. The order + copy mirror the prototype S.problema.
+export const PROBLEMA_REASONS = [
+  { key: 'waiting_restaurant', t: 'Estoy esperando en el restaurante', d: 'Llevo rato y no me lo entregan', ic: PB_CLOCK },
+  { key: 'not_ready_incomplete', t: 'El pedido no está listo o está incompleto', d: '', ic: PB_BAG },
+  { key: 'customer_no_answer', t: 'El cliente no contesta', d: 'Ya llamé y escribí', ic: null },
+  { key: 'address_not_found', t: 'No encuentro la dirección', d: '', ic: null },
+  { key: 'restaurant_closed', t: 'El local está cerrado', d: '', ic: null },
+  { key: 'other', t: 'Otro', d: '', ic: PB_HELP },
+];
+export function problemaReasonLabel(key) { const r = PROBLEMA_REASONS.find((x) => x.key === key); return r ? r.t : ''; }
+export function problemaSheetHtml(deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  const iconFor = (r) => r.ic || (r.key === 'customer_no_answer' ? (ICONS.phone || '') : r.key === 'address_not_found' ? (ICONS.pin || '') : r.key === 'restaurant_closed' ? (ICONS.store || '') : '');
+  const opts = PROBLEMA_REASONS.map((r) => `<button type="button" class="pb-opt" data-reason="${esc(r.key)}"><span class="pb-ic">${iconFor(r)}</span><span class="pb-t">${esc(r.t)}${r.d ? `<span class="pb-d">${esc(r.d)}</span>` : ''}</span></button>`).join('');
+  return `<div class="sheet" role="dialog" aria-modal="true">
+      <div class="grab"></div>
+      <h4>Problema con este pedido</h4>
+      <p class="sub" style="margin:0">Avisá a despacho al instante. Ellos deciden qué hacer y te escriben; el pedido no cambia solo.</p>
+      <div class="pb-opts">${opts}</div>
+      <div class="pb-note">${ICONS.info || PB_INFO}<span>Sin cronómetros ni cierres automáticos: nada se cancela ni se cobra sin que despacho lo decida.</span></div>
+      <div class="pb-brow"><button type="button" class="pb-cancel" id="btn-problema-cancel">Cancelar</button><button type="button" class="pb-send" id="btn-problema-send" disabled>Avisar a despacho</button></div>
+    </div>`;
+}
+export function problemaEnviadoHtml(reasonLabel, timeStr, deps = {}) {
+  const { ICONS = {}, esc = String } = deps;
+  return `<div class="sheet" role="dialog" aria-modal="true">
+      <div class="grab"></div>
+      <div class="pb-done-head"><span class="pb-done-ic">${ICONS.check || ''}</span><div><h4>Despacho ya lo sabe</h4><div class="sub">${esc(reasonLabel)}${timeStr ? ` · ${esc(timeStr)}` : ''}</div></div></div>
+      <p class="sub" style="margin:0">Seguí intentando mientras tanto. Despacho te llama o te escribe por WhatsApp con lo que toca: esperar, dejar en caseta o regresar.</p>
+      <button type="button" class="pb-send" id="btn-problema-done">Entendido</button>
     </div>`;
 }
