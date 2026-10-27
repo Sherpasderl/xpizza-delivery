@@ -331,7 +331,7 @@
    recibís pedidos» pill, «Pausa manual» copy, the «pedido en mano» note (reuses .pr-card/.pr), and the «Reanudar turno»
    foot button. Amber hex inlined per the app's --p-* convention (--p-warn #8A5A00 / --p-warnwash #FBF1DC; ring track
    --p-surface2 #E7ECF4). */
-#idle-state .pausa-body { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; }
+#idle-state .pausa-body { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; gap: 16px; padding-top: 2px; }   /* prototype top-aligns the content (its .sp spacer pushes it up); the foot button sits at the bottom */
 #idle-state .pausa-ring { position: relative; width: 128px; height: 128px; margin: 0 auto; }
 #idle-state .pausa-ring svg { transform: rotate(-90deg); width: 100%; height: 100%; }
 #idle-state .pausa-ring-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -345,10 +345,11 @@
 #idle-state .pausa-foot { flex: none; display: flex; flex-direction: column; gap: 9px; padding-top: 10px; }
 #idle-state .pausa-resume { text-transform: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 #idle-state .pausa-resume svg { width: 20px; height: 20px; }
-/* the «Pausar» entry in the idle status bar (header top-right) — a subtle pill, created on demand by renderStatusBar. */
-.status-bar .sb-pausar { margin-left: auto; appearance: none; display: inline-flex; align-items: center; gap: 6px; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 13px; color: var(--text-soft, #546078); background: rgba(20,30,50,.05); border: 1px solid rgba(20,30,50,.08); border-radius: 999px; padding: 6px 12px 6px 10px; cursor: pointer; }
-.status-bar .sb-pausar svg { width: 15px; height: 15px; }
-.status-bar .sb-pausar:active { background: rgba(20,30,50,.1); }
+/* the «Pausar» entry in the idle status bar (header top-right) — the prototype ib(I.pause,…): an icon-only 34px
+   circle, created on demand by renderStatusBar («Pausar» is the aria-label/title, not visible text). */
+.status-bar .sb-pausar { margin-left: auto; appearance: none; width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--text-soft, #546078); background: var(--surface, #fff); border: 1px solid rgba(20,30,50,.1); cursor: pointer; padding: 0; }
+.status-bar .sb-pausar svg { width: 18px; height: 18px; }
+.status-bar .sb-pausar:active { background: rgba(20,30,50,.06); }
 .status-bar .sb-pausar:disabled { opacity: .5; }
 #idle-state .disp-cancel-info { background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); padding: 4px 14px; }   /* proto .card (S.cancelado padding 4px 14px) */
 #idle-state .disp-cancel-row { display: flex; gap: 11px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line, #E2E6EE); }   /* proto .row */
@@ -5333,7 +5334,7 @@ function renderStatusBar() {
     if (show) {
       if (!pb) {
         pb = document.createElement('button'); pb.id = 'btn-pausar'; pb.className = 'sb-pausar'; pb.type = 'button';
-        pb.setAttribute('aria-label', 'Pausar'); pb.innerHTML = DRV2_PAUSE_SVG + '<span>Pausar</span>';
+        pb.setAttribute('aria-label', 'Pausar'); pb.setAttribute('title', 'Pausar'); pb.innerHTML = DRV2_PAUSE_SVG;   // prototype ib(I.pause,…): icon-only circle, «Pausar» is the aria-label
         pb.addEventListener('click', () => drv2PauseShift($('btn-pausar')));
         sbEl.appendChild(pb);
       }

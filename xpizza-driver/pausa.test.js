@@ -31,7 +31,9 @@ let passed = 0;
 const t = (name, fn) => { try { fn(); passed += 1; } catch (e) { console.error('✗ ' + name); throw e; } };
 
 // ---- renderPausa (the S.pausa takeover) ----
-function bootPausa({ since = Date.now() - 155000, uid = 'drv', fail = false } = {}) {
+const FIXED_NOW = 1700000000000;   // a fixed clock so drv2PauseElapsed is deterministic (no real-time flakiness)
+function bootPausa({ sinceDelta = 155000, uid = 'drv', fail = false } = {}) {
+  const since = FIXED_NOW - sinceDelta;
   const dom = new JSDOM('<!doctype html><html><body><div id="idle-state">'
     + '<div class="idle-check" id="idle-icon">i</div><div class="idle-msg" id="idle-msg">m</div><div class="idle-sub" id="idle-sub">s</div>'
     + '<button class="idle-help-link" id="idle-help-link">h</button><button id="arrive-btn">a</button>'
@@ -48,14 +50,14 @@ function bootPausa({ since = Date.now() - 155000, uid = 'drv', fail = false } = 
   const body = PAUSE_SVG_LINE + '\n' + PLAY_SVG_LINE + '\n'
     + liftFn('drv2PauseElapsed') + '\n' + liftFn('drv2PauseRingHtml') + '\n' + liftFn('renderPausa') + '\n'
     + 'return { renderPausa, drv2PauseElapsed };';
-  const names = ['document', '$', 'ICONS', 'escapeHtml', 'driverState', 'currentUser', 'fbUpdate', 'fbRef', 'XPD', 'toast'];
-  const api = (new Function(...names, body))(document, $, ICONS, escapeHtml, driverState, currentUser, fbUpdate, fbRef, { getDb: () => ({}) }, () => { toasts++; });
+  const names = ['document', '$', 'ICONS', 'escapeHtml', 'driverState', 'currentUser', 'fbUpdate', 'fbRef', 'XPD', 'toast', 'Date'];
+  const api = (new Function(...names, body))(document, $, ICONS, escapeHtml, driverState, currentUser, fbUpdate, fbRef, { getDb: () => ({}) }, () => { toasts++; }, { now: () => FIXED_NOW });
   $('idle-help-link')._mark = 'help'; $('arrive-btn')._mark = 'arrive';
   return { api, $, host: $('idle-state'), window, driverState, get wrote() { return wrote; }, get toasts() { return toasts; } };
 }
 
 t('renderPausa: the full amber ring + elapsed, «No recibís pedidos», «Pausa manual» copy, the in-hand note, «Reanudar turno»', () => {
-  const h = bootPausa({ since: Date.now() - 155000 });   // 2:35 ago
+  const h = bootPausa({ sinceDelta: 155000 });   // 2:35 ago (fixed clock)
   h.api.renderPausa(h.host, h.$('idle-help-link'), h.$('arrive-btn'), null);
   const html = h.host.innerHTML;
   assert.ok(h.host.querySelector('.pausa-ring'), 'the ring is present');
@@ -94,14 +96,13 @@ t('«Reanudar turno»: a FAILED write re-enables the button + toasts (no state c
   assert.ok(!btn.disabled, 'write failed → re-enabled for retry');
   assert.ok(h.toasts >= 1, 'a toast on failure');
 });
-t('drv2PauseElapsed: M:SS under an hour, H:MM over', () => {
-  const body = liftFn('drv2PauseElapsed') + '\nreturn drv2PauseElapsed;';
-  const el = (new Function(body))();
-  const now = Date.now();
-  assert.equal(el(now - 0), '0:00', 'zero');
-  assert.equal(el(now - 65000), '1:05', 'M:SS');
-  assert.equal(el(now - (3600 + 125) * 1000), '1:02', 'over an hour → H:MM');
-  assert.equal(el(now + 999999), '0:00', 'a future stamp clamps to 0:00 (never negative)');
+t('drv2PauseElapsed: M:SS under an hour, H:MM over (deterministic via a fixed Date.now)', () => {
+  const NOW = FIXED_NOW;
+  const el = (new Function('Date', liftFn('drv2PauseElapsed') + '\nreturn drv2PauseElapsed;'))({ now: () => NOW });
+  assert.equal(el(NOW), '0:00', 'zero');
+  assert.equal(el(NOW - 65000), '1:05', 'M:SS');
+  assert.equal(el(NOW - (3600 + 125) * 1000), '1:02', 'over an hour → H:MM');
+  assert.equal(el(NOW + 999999), '0:00', 'a future stamp clamps to 0:00 (never negative)');
 });
 
 // ---- drv2PauseShift (the «Pausar» write) ----
