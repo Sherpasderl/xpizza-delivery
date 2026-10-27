@@ -1,19 +1,19 @@
-// practica-demo.test.js — the Inicio (c) practica demo is CLIENT-ONLY with ZERO RTDB writes (O5), AND fully ISOLATED
-// from the real order machinery (Codex r1 P1: a demo swipe must never reproduce a real write). This mounts the demo in
-// a REAL jsdom document with the operational handlers PRESENT — the production slide binder (attachSlideConfirm) and a
-// planted production slide node — drives REAL pointer gestures, runs assignment/shift/auth transitions, and spies at
-// the SDK + XPD write boundary. Invariants proven:
-//   1. The whole demo runs end-to-end with ZERO writes (RTDB set/update/push/transaction/remove AND XPD
-//      acceptTask/pickupComplete/completeTask/submitDriverProfile), reaches the resumen and records practiceDone in the
-//      PROGRESS store (never a real order).
-//   2. ISOLATION: every demo node is NAMESPACED (cd-*), so no production id survives in the demo host; binding the REAL
-//      attachSlideConfirm to a planted production `btn-pickup` and then swiping the DEMO's `cd-btn-pickup` advances the
-//      demo and NEVER fires the real callback. (Reverting the namespacing turns this RED: the demo host would carry a
-//      production id and the scoped `#cd-*` lookup would miss.)
-//   3. alive() teardown: an order assigned / a shift going active / an auth transition mid-demo disposes the controller
-//      (→ null) so a real order can never render underneath; a subsequent swipe is a no-op with zero writes.
-//   4. START guard: the demo refuses to start while a shift is active or an order is assigned (nothing painted).
-// The injected inline-write mutant dies on (1); the un-namespaced mutant dies on (2). Run: `node practica-demo.test.js`
+// practica-demo.test.js — the Inicio (c) practica demo is CLIENT-ONLY (ZERO RTDB writes, O5) AND fully ISOLATED from
+// the real order machinery (Codex r1 P1 + r2 P2s). Mounted in a REAL jsdom document (runScripts:'dangerously' so an
+// injected inline handler would execute — the inline-write mutant dies) with the operational handlers PRESENT (the
+// production slide binder attachSlideConfirm + a planted production slide node), driven with REAL pointer gestures and
+// the REAL teardown callback. Invariants:
+//   1. Whole demo runs with ZERO writes, reaches the resumen, and the resumen's OWN «Listo» (cd-btn-resumen-done)
+//      completes it + records practiceDone in the PROGRESS store.
+//   2. ISOLATION: every demo node is NAMESPACED (cd-*); binding the REAL attachSlideConfirm to a planted production
+//      `btn-pickup` and swiping the DEMO's `cd-btn-pickup` advances the demo and NEVER fires the real callback.
+//   3. alive() teardown: order assigned / shift active / auth change mid-demo disposes the controller → no-op swipe.
+//   4. START guard: refuses while a shift is active or an order is assigned.
+//   5. Demo-local «Calcular vuelto» (P2-1): the scoped [data-vuelto-open] handler opens the calculator with the demo
+//      order's numbers; the production delegate never fires here; zero writes.
+//   6. Identity-bound callbacks (P2-2): a late pointer release from an earlier/disposed controller never advances a
+//      later one; the REAL companionDemoTeardown removes in-flight document gesture listeners.
+// Un-namespaced mutant dies on (2); inline-write mutant dies on (1). Run: `node practica-demo.test.js`
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -26,10 +26,9 @@ import { practicaDemoOrder } from './practica-fixture.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
-const { JSDOM } = require('jsdom');                       // the sanctioned driver jsdom harness (see slice2-branch.test.js)
+const { JSDOM } = require('jsdom');
 const SCRIPT = readFileSync(join(__dir, 'index.html'), 'utf8').match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 
-// Lift a `function NAME(` declaration by balancing braces — fails CLOSED (a rename turns this red, never a silent stub).
 function liftFn(name) {
   let start = SCRIPT.indexOf(`function ${name}(`);
   assert.notEqual(start, -1, `function ${name} not found`);
@@ -43,24 +42,24 @@ function liftFn(name) {
 }
 
 const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const ICONS = new Proxy({}, { get: () => '' });            // any icon → '' (we test writes + isolation, not glyphs)
+const ICONS = new Proxy({}, { get: () => '' });
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-// Boot a harness: a real jsdom document with #screen-onshift (to host production slide residue) + #screen-companion
-// (the demo host). The REAL companionPracticeStart / companionDemoAlive / attachDemoSlide are lifted from index.html;
-// the REAL production attachSlideConfirm is lifted so a cell can bind it to a production id. Every write path is spied.
 function boot() {
-  const dom = new JSDOM('<!doctype html><html><body><div id="screen-onshift"></div><div id="screen-companion"></div></body></html>', { pretendToBeVisual: true });
+  const dom = new JSDOM('<!doctype html><html><body><div id="screen-onshift"></div><div id="screen-companion"></div></body></html>',
+    { pretendToBeVisual: true, runScripts: 'dangerously' });   // runScripts: an injected inline write-handler would execute
   const { document, window } = dom.window;
   const writes = { set: 0, update: 0, push: 0, transaction: 0, remove: 0, acceptTask: 0, pickupComplete: 0, completeTask: 0, submitDriverProfile: 0, raq: 0 };
   const dbSpy = { set: () => { writes.set++; }, update: () => { writes.update++; }, push: () => { writes.push++; }, transaction: () => { writes.transaction++; }, remove: () => { writes.remove++; } };
   const XPD = { RESTAURANT: { lat: 15.5074, lng: -88.0398 }, db: dbSpy,
     acceptTask: () => { writes.acceptTask++; }, pickupComplete: () => { writes.pickupComplete++; },
     completeTask: () => { writes.completeTask++; }, submitDriverProfile: () => { writes.submitDriverProfile++; } };
-  const boardRef = { list: [] };                           // the "live board" the start guard + alive() read
+  const vuelto = { calls: 0, args: null };
+  const openVuelto = (total, tendered) => { vuelto.calls++; vuelto.args = [total, tendered]; };   // spy for the shared calculator (pure display in prod)
+  const boardRef = { list: [] };
   const store = {};
   const localStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
-  const $ = (id) => document.getElementById(id);           // DOCUMENT-WIDE — exactly production's `$`
+  const $ = (id) => document.getElementById(id);
 
   const body =
     "let companionDemo = null;\n" +
@@ -70,44 +69,55 @@ function boot() {
     "let driverState = _driverState;\n" +
     "let currentUser = _currentUser;\n" +
     "let slidingEl = null, renderPending = false;\n" +
-    "function renderActiveAndQueue(){ _writes.raq++; }\n" +               // production attachSlideConfirm's tail — must NOT be reached by the demo
+    "let companionDemoDocCleanup = null;\n" +
+    "function renderActiveAndQueue(){ _writes.raq++; }\n" +
     liftFn('companionReadProgress') + "\n" +
     liftFn('companionWriteProgress') + "\n" +
+    liftFn('companionDemoTeardown') + "\n" +
     liftFn('companionDemoAlive') + "\n" +
     liftFn('attachDemoSlide') + "\n" +
     liftFn('attachSlideConfirm') + "\n" +
     liftFn('companionPracticeStart') + "\n" +
-    "return { start: companionPracticeStart, alive: companionDemoAlive, attachSlideConfirm,\n" +
+    "return { start: companionPracticeStart, alive: companionDemoAlive, teardown: companionDemoTeardown, attachSlideConfirm,\n" +
     "  getStep: () => companionStep, getDemo: () => companionDemo, store: () => companionProgressMem,\n" +
     "  setActive: (v) => { driverState = v ? { active: true } : null; }, bumpAuth: () => { authGen++; }, setUser: (u) => { currentUser = u; } };";
 
   const names = ['document', '$', 'XPD', 'escapeHtml', 'ICONS', 'localStorage', 'computeVuelto', 'scheduledBadge',
     'singleOrderCardHtml', 'pickupReviewHtml', 'activeCardHtml', 'deliverySummaryHtml', 'practicaDemoOrder',
-    'drv2LiveBoard', 'showScreen', 'companionRenderOnboarding', 'toast', '_driverState', '_currentUser', '_writes'];
+    'drv2LiveBoard', 'showScreen', 'companionRenderOnboarding', 'toast', 'openVuelto', '_driverState', '_currentUser', '_writes'];
   const api = (new Function(...names, body))(
     document, $, XPD, escapeHtml, ICONS, localStorage, computeVuelto, () => '',
     singleOrderCardHtml, pickupReviewHtml, activeCardHtml, deliverySummaryHtml, practicaDemoOrder,
-    () => boardRef.list, () => {}, () => {}, () => {}, null, { uid: 'A' }, writes);
+    () => boardRef.list, () => {}, () => {}, () => {}, openVuelto, null, { uid: 'A' }, writes);
 
   const host = () => document.getElementById('screen-companion');
-  async function swipe(slideId) {
-    const el = host().querySelector('#' + slideId);
-    assert.ok(el, `demo slide #${slideId} present in the demo host`);
+  const stub = (el) => {
     const thumb = el.querySelector('.slide-thumb');
     el.getBoundingClientRect = () => ({ width: 300, height: 64, left: 0, top: 0, right: 300, bottom: 64, x: 0, y: 0 });
     thumb.getBoundingClientRect = () => ({ width: 48, height: 48, left: 0, top: 0, right: 48, bottom: 48, x: 0, y: 0 });
+    return thumb;
+  };
+  async function swipe(slideId) {
+    const el = host().querySelector('#' + slideId);
+    assert.ok(el, `demo slide #${slideId} present`);
+    const thumb = stub(el);
     thumb.dispatchEvent(new window.MouseEvent('mousedown', { clientX: 0, bubbles: true, cancelable: true }));
     document.dispatchEvent(new window.MouseEvent('mousemove', { clientX: 400, bubbles: true, cancelable: true }));
     document.dispatchEvent(new window.MouseEvent('mouseup', { clientX: 400, bubbles: true, cancelable: true }));
     await tick();
   }
-  function clickDone() {
-    const d = host().querySelector('#co-demo-done');
-    assert.ok(d, 'resumen co-demo-done present');
-    d.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  function dragStart(slideId) {           // begin a drag to completion WITHOUT releasing (registers document listeners)
+    const el = host().querySelector('#' + slideId);
+    assert.ok(el, `demo slide #${slideId} present`);
+    const thumb = stub(el);
+    thumb.dispatchEvent(new window.MouseEvent('mousedown', { clientX: 0, bubbles: true, cancelable: true }));
+    document.dispatchEvent(new window.MouseEvent('mousemove', { clientX: 400, bubbles: true, cancelable: true }));
   }
+  const release = async () => { document.dispatchEvent(new window.MouseEvent('mouseup', { clientX: 400, bubbles: true, cancelable: true })); await tick(); };
   return {
-    api, writes, document, window, host, swipe, clickDone,
+    api, writes, vuelto, document, window, host, swipe, dragStart, release,
+    tapVuelto: () => { const pw = host().querySelector('[data-vuelto-open]'); assert.ok(pw, 'paywith [data-vuelto-open] present'); pw.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); return pw; },
+    clickResumenDone: () => { const d = host().querySelector('#cd-btn-resumen-done'); assert.ok(d, 'resumen «Listo» (cd-btn-resumen-done) present'); d.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); },
     assignOrder: () => boardRef.list.push({ orderId: 'real-1' }),
     plantProductionSlide: () => { document.getElementById('screen-onshift').innerHTML =
       '<div class="slide-confirm pickup" id="btn-pickup"><div class="slide-fill"></div><div class="slide-text">Recogí</div><div class="slide-hint">deslizá</div><div class="slide-thumb">x</div></div>'; },
@@ -120,38 +130,36 @@ const ALL_ZERO = { set: 0, update: 0, push: 0, transaction: 0, remove: 0, accept
 let passed = 0;
 const t = async (name, fn) => { await fn(); passed += 1; };
 
-await t('(1) the whole demo runs with ZERO writes, reaches the resumen and records practiceDone', async () => {
+await t('(1) the whole demo runs with ZERO writes; the resumen «Listo» completes it + records practiceDone', async () => {
   const h = boot();
-  h.api.start();                                           // step 0: the offer
-  assert.equal(h.api.getStep(), 'practice', 'still in practice while the demo runs');
-  assert.ok(h.host().querySelector('#cd-btn-accept'), 'the offer rendered with a NAMESPACED slide');
-  assert.equal(h.host().querySelector('#btn-accept'), null, 'NO production id survives in the demo host (isolation by construction)');
+  h.api.start();
+  assert.ok(h.host().querySelector('#cd-btn-accept'), 'offer rendered, namespaced');
+  assert.equal(h.host().querySelector('#btn-accept'), null, 'NO production id in the demo host');
   await h.swipe('cd-btn-accept');
-  assert.equal(h.api.getDemo().step, 1, 'a real swipe advanced to recoger');
+  assert.equal(h.api.getDemo().step, 1, 'advanced to recoger');
   await h.swipe('cd-btn-pickup');
   assert.equal(h.api.getDemo().step, 2, 'advanced to entregar');
   await h.swipe('cd-btn-delivered');
   assert.equal(h.api.getDemo().step, 3, 'advanced to the resumen');
-  h.clickDone();
-  assert.equal(h.api.getStep(), 'checklist', 'the demo returned to the checklist');
-  assert.equal(h.api.getDemo(), null, 'the controller is disposed at the end');
-  assert.equal(h.api.store().A.practiceDone, true, 'practiceDone recorded in the PROGRESS store (never a real order)');
+  assert.equal(h.host().querySelector('#co-demo-done'), null, 'no extra demo button — the resumen uses its own «Listo»');
+  h.clickResumenDone();
+  assert.equal(h.api.getStep(), 'checklist', 'returned to the checklist');
+  assert.equal(h.api.getDemo(), null, 'controller disposed at the end');
+  assert.equal(h.api.store().A.practiceDone, true, 'practiceDone recorded in the PROGRESS store');
   assert.deepEqual(zeroWrites(h.writes), ALL_ZERO, 'ZERO writes across the whole demo');
-  assert.equal(h.writes.raq, 0, 'the demo never reaches production renderActiveAndQueue');
+  assert.equal(h.writes.raq, 0, 'never reaches production renderActiveAndQueue');
 });
 
 await t('(2) a demo swipe cannot reach a REAL production handler bound to a production id (P1 closed)', async () => {
   const h = boot();
   h.api.start();
-  await h.swipe('cd-btn-accept');                          // → step 1, cd-btn-pickup present
-  // Operational handlers PRESENT: a production slide node left in #screen-onshift, bound via the REAL attachSlideConfirm
-  // to a real write. This is the exact P1 geometry (a live board underneath the demo).
+  await h.swipe('cd-btn-accept');                          // → pickup, cd-btn-pickup present
   h.plantProductionSlide();
   h.api.attachSlideConfirm('btn-pickup', () => { h.writes.pickupComplete += 1; });
-  assert.ok(h.document.getElementById('btn-pickup'), 'the production btn-pickup exists in the document');
-  assert.equal(h.host().querySelector('#btn-pickup'), null, 'the demo host carries NO production id');
-  await h.swipe('cd-btn-pickup');                          // swipe the DEMO node
-  assert.equal(h.api.getDemo().step, 2, 'the demo advanced on its own node');
+  assert.ok(h.document.getElementById('btn-pickup'), 'production btn-pickup exists');
+  assert.equal(h.host().querySelector('#btn-pickup'), null, 'demo host has NO production id');
+  await h.swipe('cd-btn-pickup');
+  assert.equal(h.api.getDemo().step, 2, 'demo advanced on its own node');
   assert.equal(h.writes.pickupComplete, 0, 'the REAL pickupComplete was NEVER reached by a demo swipe');
   assert.deepEqual(zeroWrites(h.writes), ALL_ZERO, 'still zero real writes');
 });
@@ -159,28 +167,62 @@ await t('(2) a demo swipe cannot reach a REAL production handler bound to a prod
 await t('(3) alive() disposes the demo when an order is assigned / a shift goes active / auth changes mid-demo', async () => {
   for (const trip of ['assign', 'shift', 'auth']) {
     const h = boot();
-    h.api.start();                                         // step 0, cd-btn-accept present
+    h.api.start();
     if (trip === 'assign') h.assignOrder();
     else if (trip === 'shift') h.api.setActive(true);
     else h.api.bumpAuth();
-    await h.swipe('cd-btn-accept');                        // onConfirm gates on alive() → false → no advance, dispose
-    assert.equal(h.api.getDemo(), null, `the demo is disposed on: ${trip}`);
+    await h.swipe('cd-btn-accept');
+    assert.equal(h.api.getDemo(), null, `disposed on: ${trip}`);
     assert.deepEqual(zeroWrites(h.writes), ALL_ZERO, `zero writes after disposal on: ${trip}`);
   }
 });
 
 await t('(4) the demo refuses to START while a shift is active or an order is assigned (nothing painted)', async () => {
   const hA = boot();
-  hA.api.setActive(true);
-  hA.api.start();
+  hA.api.setActive(true); hA.api.start();
   assert.equal(hA.api.getDemo(), null, 'no demo while a shift is active');
   assert.equal(hA.host().innerHTML, '', 'nothing painted');
-  assert.deepEqual(zeroWrites(hA.writes), ALL_ZERO, 'zero writes');
   const hB = boot();
-  hB.assignOrder();
-  hB.api.start();
+  hB.assignOrder(); hB.api.start();
   assert.equal(hB.api.getDemo(), null, 'no demo while an order is assigned');
   assert.equal(hB.host().innerHTML, '', 'nothing painted');
 });
 
-console.log(`✓ practica-demo: ${passed} isolation + zero-write tests passed`);
+await t('(5) «Calcular vuelto» opens the calculator with the demo order numbers; the production delegate never fires; zero writes', async () => {
+  const h = boot();
+  h.api.start();
+  await h.swipe('cd-btn-accept'); await h.swipe('cd-btn-pickup');   // → delivery step (cash → paywith row)
+  const pw = h.tapVuelto();
+  assert.equal(h.vuelto.calls, 1, 'the demo-local vuelto handler fired');
+  assert.equal(h.vuelto.args[0], Number(pw.getAttribute('data-total')) || 0, 'opened with the demo order total');
+  assert.equal(h.vuelto.args[0], 350, 'the demo order total');
+  assert.deepEqual(zeroWrites(h.writes), ALL_ZERO, 'opening the calculator wrote nothing');
+});
+
+await t('(6) a late pointer release from an earlier/disposed controller never advances a later demo (P2-2)', async () => {
+  // identity guard: controller A has a drag in flight; B replaces it; A releases → B must not advance.
+  const h = boot();
+  h.api.start();                       // controller A, step 0
+  const A = h.api.getDemo();
+  h.dragStart('cd-btn-accept');        // A begins a drag (document listeners registered)
+  h.api.start();                       // controller B overwrites companionDemo (A's listeners still live)
+  const B = h.api.getDemo();
+  assert.notEqual(A, B, 'a new controller instance');
+  await h.release();                   // A's onUp fires → identity check (companionDemo !== A) → bail
+  assert.equal(h.api.getDemo().step, 0, 'B was NOT advanced by A\'s late release');
+  assert.deepEqual(zeroWrites(h.writes), ALL_ZERO, 'zero writes');
+
+  // teardown removes in-flight document listeners (real companionDemoTeardown = the logout/auth-transition callback).
+  const h2 = boot();
+  h2.api.start();
+  h2.dragStart('cd-btn-accept');
+  h2.api.teardown();                   // the REAL teardown the auth reset calls
+  assert.equal(h2.api.getDemo(), null, 'teardown disposed the controller');
+  await h2.release();                  // listeners were removed → no-op
+  assert.equal(h2.api.getDemo(), null, 'still disposed; nothing resurrected');
+  assert.deepEqual(zeroWrites(h2.writes), ALL_ZERO, 'zero writes after teardown + late release');
+  h2.api.start();                      // a fresh demo still works after teardown
+  assert.ok(h2.host().querySelector('#cd-btn-accept'), 'a new demo starts cleanly after teardown');
+});
+
+console.log(`✓ practica-demo: ${passed} isolation + zero-write + P2 tests passed`);
