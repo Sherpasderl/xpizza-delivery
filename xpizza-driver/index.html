@@ -122,8 +122,13 @@
    (like every other screen), consistent with the banner/items, + vertical gaps so nothing overlaps. */
 #screen-onshift .ac-arrived { margin: 4px 16px 0; }
 #screen-onshift .arrival-banner, #screen-onshift .sv-deliver-items { margin: 0 16px; }
-#screen-onshift .ac-arrived, #screen-onshift .sv-deliver-items { margin-bottom: 12px; }
-#screen-onshift .arrival-banner { margin-bottom: 12px; }
+#screen-onshift .arrival-banner, #screen-onshift .sv-deliver-items { margin-bottom: 12px; }
+/* the arrived slot drops the shared 13px solo padding so the header + cards sit at the prototype's 16px (match .body
+   padding). :has() scopes it to the arrived card only; stacked/en-route keep the 13px. */
+#active-order-slot.solo:has(.ac-arrived) { padding: 0; }
+#active-order-slot.solo:has(.ac-arrived) .stop-header { padding-left: 16px; padding-right: 16px; }
+/* beat the frozen `#active-order-slot.solo .active-card { margin-bottom:0 }` (1,2,0) so the card does not abut the items card */
+#active-order-slot.solo .active-card.ac-arrived { margin-bottom: 12px; }
 /* header action buttons: the prototype's 34px CIRCLE (ib), both the kept «Terminar turno» (power, classified pending owner) and «Ayuda» */
 #screen-onshift .stop-header .ib { border-radius: 50%; }
 /* WhatsApp contact BUG (everywhere, not just llegue): .recipient-whatsapp is a <button> with no `border` set (only
