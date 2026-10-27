@@ -2268,3 +2268,67 @@ test('Codex guest r2 #2: a browser / device BACK while the verification waits �
   release({ status: 200, json: { ok: true, checkout_ticket: 'tk_late' } }); await settle(); await settle();
   assert.equal(writes(b), 0, '🔴 a verification abandoned by Back never sends'); assert.notEqual(b.ui.state.screen, 'sending');
 });
+
+// ── S-picker (PLAN-intl-phone r2.3; MOCKUP-intl-phone-picker-APPROVED-2026-10-27 frames 4–6): behind the runtime intlPhone ──
+const INTL = { intlPhone: true };
+const loadPhone = (w) => w.eval(readFileSync(join(HERE, 'capp-phone.js'), 'utf8'));   // the page loads it (shell.html), as here
+const bootIntl = (o = {}) => bootCo({ ...o, config: { ...INTL, ...(o.config || {}) }, pre: loadPhone });
+async function intlFilled(b, cc, digits) {
+  await toCheckout(b); await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  await b.type('#f-details', 'Portón negro'); await b.type('#f-name', 'Ana');
+  if (cc) { await b.click('[data-act="cc"]'); await b.click(`#layer [data-act="cc-pick"][data-cc="${cc}"]`); }
+  await b.type('#f-phone', digits);
+}
+test('S-picker frame 4: the WhatsApp field = the country button «+504» + the input «9999-9999»; flag ABSENT ⇒ today\'s single «+504 9999-9999» input', async () => {
+  const b = bootIntl(); await toCheckout(b);
+  const row = b.q('.fld .phonerow'); assert.ok(row, 'the phone row');
+  assert.equal(b.text('.fld .cc'), '+504'); assert.equal(b.q('.fld .cc').getAttribute('aria-label'), 'País del número: Honduras +504');
+  assert.equal(b.q('#f-phone').getAttribute('placeholder'), '9999-9999'); assert.ok(b.q('#f-phone-cc').hidden, 'Honduras: no country note');
+  const o = bootCo(); await toCheckout(o);
+  assert.equal(o.q('.fld .phonerow'), null); assert.equal(o.q('#f-phone').getAttribute('placeholder'), '+504 9999-9999', 'off: unchanged');
+});
+test('S-picker frame 5: the country sheet — «País del número» + its line, the ten countries in order, the current one in accent with a check; the button shows it open', async () => {
+  const b = bootIntl(); await toCheckout(b); await b.click('[data-act="cc"]');
+  assert.equal(b.q('#layer .sheet').getAttribute('aria-label'), 'País del número');
+  assert.equal(b.text('#layer .sheethead h2'), 'País del número Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.');
+  assert.deepEqual(b.qa('#layer .crow').map((r) => [b.text(r), r.classList.contains('on')]), [['Honduras +504', true], ['Estados Unidos +1', false], ['México +52', false], ['Guatemala +502', false],
+    ['El Salvador +503', false], ['Nicaragua +505', false], ['Costa Rica +506', false], ['Panamá +507', false], ['Belice +501', false], ['España +34', false]]);
+  assert.ok(b.q('#layer .crow.on svg'), 'the check'); assert.equal(b.q('#layer .crow.on').getAttribute('aria-pressed'), 'true');
+  assert.ok(b.q('.fld .cc').classList.contains('focus'), 'the button shows the sheet open');
+  await b.click('#layer [data-act="lclose"]'); assert.equal(b.q('#layer .sheet'), null); assert.equal(b.text('.fld .cc'), '+504', 'closing changes nothing');
+});
+test('S-picker frame 6: Estados Unidos ⇒ «+1», «(555) 123-4567», «Estados Unidos · 10 dígitos»; typing formats and caps; complete ⇒ «se guarda como +1 (305) 555-0147»', async () => {
+  const b = bootIntl(); await toCheckout(b); await b.click('[data-act="cc"]'); await b.click('#layer [data-act="cc-pick"][data-cc="1"]');
+  assert.equal(b.q('#layer .sheet'), null, 'the pick closes the sheet');
+  assert.equal(b.text('.fld .cc'), '+1'); assert.equal(b.q('#f-phone').getAttribute('placeholder'), '(555) 123-4567');
+  assert.equal(b.text('#f-phone-cc'), 'Estados Unidos · 10 dígitos');
+  await b.type('#f-phone', '305555014799');
+  assert.equal(b.q('#f-phone').value, '(305) 555-0147', '🔴 the local format, capped at 10');
+  assert.equal(b.text('#f-phone-cc'), 'Estados Unidos · 10 dígitos · se guarda como +1 (305) 555-0147');
+  await b.click('[data-act="cc"]'); await b.click('#layer [data-act="cc-pick"][data-cc="501"]');
+  assert.equal(b.q('#f-phone').value, '305-5550', 'another country keeps the digits, capped to ITS length (Belice 7)');
+});
+test('S-picker wire: the order carries the chosen country\'s E.164 (+504 too, with the picker on); flag absent ⇒ «+504 9999-0000» as today', async () => {
+  const b = bootIntl({ script: { createOrder: [OK_CASH] } }); await intlFilled(b, '1', '3055550147');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.srv.of('createOrder')[0].body.customer_phone, '+13055550147', '🔴 E.164 of the chosen country');
+  const h = bootIntl({ script: { createOrder: [OK_CASH] } }); await intlFilled(h, null, '9999 0000');
+  await h.click('#cta'); await h.click('[data-act="tipc"][data-val="0"]'); await h.click('[data-act="tip-place"]'); await h.click('#layer [data-act="placing-go"]');
+  assert.equal(h.srv.of('createOrder')[0].body.customer_phone, '+50499990000');
+  const o = bootCo({ script: { createOrder: [OK_CASH] } }); await placeVia(o);
+  assert.equal(o.srv.of('createOrder')[0].body.customer_phone, '+504 9999-0000', 'off: unchanged');
+});
+test('S-picker guest code: the WhatsApp code is asked for the chosen country\'s E.164, and the sheet names it in its own format', async () => {
+  const b = bootIntl({ config: GUEST, script: CODE_OK }); await intlFilled(b, '1', '3055550147'); await b.type('#f-email', 'ana.perez@gmail.com');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await settle();
+  assert.equal(b.srv.of('requestCheckoutCode')[0].body.phone_e164, '+13055550147', '🔴 the code goes to THIS number');
+  assert.match(b.text('#layer .sg .sub'), /\+1 \(305\) 555-0147/);
+});
+test('S-picker restore + member: a stored E.164 keeps its country (the return\'s body, a member\'s number); a bare local number is Honduras', async () => {
+  const m = { uid: 'u1', name: 'Ana', phone: '+13055550147', email: 'a@b.co' };
+  const b = bootIntl({ member: m }); await toCheckout(b);
+  assert.match(b.text('.urow .t'), /\+1 \(305\) 555-0147/, 'the member row in the number\'s own format');
+  await b.click('[data-act="editwho"]'); assert.equal(b.text('.fld .cc'), '+1'); assert.equal(b.q('#f-phone').value, '(305) 555-0147');
+  const l = bootIntl({ member: { ...m, phone: '96123344' } }); await toCheckout(l); await l.click('[data-act="editwho"]');
+  assert.equal(l.text('.fld .cc'), '+504'); assert.equal(l.q('#f-phone').value, '9612-3344');
+});

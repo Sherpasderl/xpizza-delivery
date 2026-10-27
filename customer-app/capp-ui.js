@@ -1199,11 +1199,6 @@
       if (a === 'rm-po') { for (const l of poLines()) mutate(() => cart.setQty(l.key, 0)); if (!cart.count()) toStore(); else render(); return true; }
       if (a === 'editwho') { f.editWho = true; render(); return true; }
       if (a === 'cc' && intl()) { openLayer('cc'); render(); return true; }
-      if (a === 'cc-pick' && intl()) {
-        const cc = t.dataset.cc; if (!phoneMod().byCc(cc)) return true;
-        if (cc !== ccOf(f)) { f.cc = cc; f.phone = phoneMod().format(cc, f.phone); }   // the digits stay, capped to the new length
-        closeLayer(); render(); const ph = $('f-phone'); if (ph) focusTo(ph); syncCta(); return true;
-      }
       if (a === 'more') { S.more = true; render(); return true; }
       if (a === 'editdetails') { S.editDetails = true; render(); return true; }
       if (a === 'sumtoggle') { S.sumOpen = !S.sumOpen; render(); return true; }
@@ -1229,6 +1224,12 @@
       return false;
     }
     function layerAct(t) {
+      // S-picker: a country picked ⇒ the sheet closes, the digits stay (capped to the new length), the phone focused
+      if (t.dataset.act === 'cc-pick' && S.layerKind === 'cc' && intl() && S.flow) {
+        const f = S.flow, cc = t.dataset.cc; if (!phoneMod().byCc(cc)) return true;
+        if (cc !== ccOf(f)) { f.cc = cc; f.phone = phoneMod().format(cc, f.phone); }
+        S.layerKind = null; renderLayer(); returnTo = null; render(); const ph = $('f-phone'); if (ph) focusTo(ph); syncCta(); return true;
+      }
       const a = t.dataset.act;
       if (a === 'tk') { const v = t.dataset.val; S.tipDraft = v === 'del' ? (S.tipDraft || '').slice(0, -1) : capDraft((S.tipDraft || '') + v, S.tipDraft || ''); renderLayer(); return true; }
       if (a === 'tip-save') { const n = Number(S.tipDraft) || 0; C.chooseTip(S.flow, { other: Math.min(n, C.TIP_MAX_LEMPIRAS) }); closeLayer(); render(); return true; }
@@ -1338,7 +1339,7 @@
       if (S.open && ['qty', 'extra', 'variant', 'staged', 'dcta'].includes(act)) { detailAct(t); return; }
       if (act === 'dclose') { closeDetail(); return; }
       // S2b: the open layer's controls, then the current screen's
-      if (S.layerKind && ['err', 'placing', 'tipother', 'pin', 'feeinfo', 'otp'].includes(S.layerKind)) { if (act === 'lclose') { closeLayer(); return; } if (layerAct(t)) return; }
+      if (S.layerKind && ['err', 'placing', 'tipother', 'pin', 'feeinfo', 'otp', 'cc'].includes(S.layerKind)) { if (act === 'lclose') { closeLayer(); return; } if (layerAct(t)) return; }
       if (S.screen === 'checkout' && !S.layerKind) {
         if (act === 'rev') { if (Number(t.dataset.rev) > 0 && isSold(find(t.dataset.key))) return; mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(t.dataset.key, t.dataset.grp || '') : cart.lineDec(t.dataset.key, t.dataset.grp || ''))); if (!cart.count()) toStore(); else render(); return; }
         if (checkoutAct(t)) return;

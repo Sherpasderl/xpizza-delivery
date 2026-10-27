@@ -218,7 +218,7 @@
       const u = auth && auth.state() === 'member' && auth.user ? auth.user() : null;
       if (!u || u.uid !== uid) return;
       // getIdToken: the transport asks the SDK at send time (cached while valid, refreshed once expired); idToken = the fallback
-      S.member = { uid: p.uid, name: p.name || '', phone: String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', idToken, getIdToken: () => fbAuth.idToken() };
+      S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''),   // S-picker: the member's E.164 (its own country) email: p.email || '', idToken, getIdToken: () => fbAuth.idToken() };
       if (S.store) S.store.ui.setMember(S.member);   // §4c: back on the SAME checkout step, filled in
       schedule();
     }

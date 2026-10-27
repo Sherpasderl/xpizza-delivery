@@ -48,6 +48,10 @@
   };
   const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;   // the prototype's check (:1821)
   const localPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^504/, '');
+  // S-picker (PLAN-intl-phone r2.3): a flow with a chosen country (f.cc — set only by the UI's picker, behind the runtime intlPhone)
+  // validates that country's national length and sends E.164; a flow without one is exactly today's +504 path
+  let PH = null;
+  const phoneMod = () => PH || (PH = (typeof self !== 'undefined' && self.CappPhone) || require('./capp-phone.js'));
   const validEmail = (e) => { const t = String(e || '').trim(); return t && EMAIL_RE.test(t) ? t : ''; };
 
   // ── state ──
@@ -152,7 +156,7 @@
     if (del && (f.details || '').trim().length < 3) return COPY.details;
     if (!c.member || f.editWho) {
       if (!(f.name || '').trim()) return COPY.name;
-      if (localPhone(f.phone).length !== 8) return COPY.phone;
+      if (f.cc ? !phoneMod().valid(f.cc, f.phone) : localPhone(f.phone).length !== 8) return COPY.phone;
     }
     if (f.email && !EMAIL_RE.test(String(f.email).trim())) return COPY.email;
     // PLAN-capp-signin-required §4b: an app GUEST must leave a valid email (format only; never a code) — the shell's own «Revisá tu
@@ -195,7 +199,7 @@
   // ctx: { restaurantId, items, itemsText, orderId }
   function orderBody(f, ctx) {
     const del = f.mode === 'delivery';
-    const b = { restaurant_id: ctx.restaurantId, order_id: ctx.orderId, customer_name: (f.name || '').trim(), customer_phone: fullPhone(f.phone),
+    const b = { restaurant_id: ctx.restaurantId, order_id: ctx.orderId, customer_name: (f.name || '').trim(), customer_phone: f.cc ? phoneMod().toE164(f.cc, f.phone) : fullPhone(f.phone),
       items: ctx.items, items_text: ctx.itemsText, notes: (f.notes || '').trim() || '—', order_type: f.mode,
       payment_method: f.pay === 'online' ? 'online' : 'cash', razon_social: f.rtn ? (f.razon || '').trim() : '', rtn_cliente: f.rtn ? (f.rtnNum || '').trim() : '' };
     if (del) { b.lat = f.pin.lat; b.lng = f.pin.lng; b.pin_confirmed = true; b.address_details = (f.details || '').trim(); const a = areaOf(f); if (a) b.address_area = a; }
