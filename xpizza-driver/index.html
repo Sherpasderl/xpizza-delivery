@@ -253,7 +253,7 @@
 #idle-state .idle-check { width: 104px; height: 104px; border-radius: 30px; display: grid; place-items: center; background: #E3F3E9; color: #15803D; }   /* proto .illus.ok */
 #idle-state .idle-check svg { width: 50px; height: 50px; }
 #idle-state .idle-msg { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); }   /* proto .h = --fd */
-#idle-state .idle-sub { font-family: var(--fb); font-size: 13px; color: var(--text-soft, #546078); max-width: 320px; }   /* proto .sub */
+#idle-state .idle-sub { width: 100%; font-family: var(--fb); font-size: 13px; color: var(--text-soft, #546078); }   /* proto .sub — full content width (align-items:center would otherwise shrink it, changing the wrap) */
 #screen-onshift #idle-state .idle-help-link { font-family: var(--fb); color: var(--text-soft, #546078); font-weight: 600; font-size: 13px; }   /* proto .btn.txt — darker, semibold (fix) */
 #idle-state .disp-stat2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 #idle-state .disp-statcard { background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); text-align: center; padding: 12px 8px; }
@@ -261,7 +261,7 @@
 #idle-state .disp-statcard small { font-family: var(--fb); font-size: 11.5px; color: var(--text-soft, #546078); font-weight: 600; }
 /* idle «En turno» header: on the PAGE background, no white bar / no border (like the offshift header), muted Text sub.
    DISP-HEADER adds .enturno for available/returning; the normal (non-idle) status bar keeps the white bar + border. */
-.status-bar.enturno { background: transparent; border-bottom: none; }
+.status-bar.enturno { background: transparent; border-bottom: none; padding: 6px 16px 10px; }   /* match proto .top header height */
 .status-bar.enturno .gps-meta { font-family: var(--fb); font-weight: 500; font-size: 12px; color: var(--text-soft, #546078); letter-spacing: 0; }
 /* disponible header: the status dot becomes the Sola mark in the idle «En turno» header (SLICE3:DISP-HEADER sets
    .sola + the SVG). A normal dot hides any leftover svg, so an idle→non-idle transition reverts cleanly to the dot. */
