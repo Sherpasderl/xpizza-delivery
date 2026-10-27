@@ -217,7 +217,8 @@ test('S2b-geo pin-version binding: every pin change bumps the version and clears
   C.setPin(f, 15.52, -88.04, true);
   assert.deepEqual([f.pinV, C.addrLine(f)], [v1, 'Calle 10, Col. Jardines del Valle'], 'the same coordinates: same version, geo kept (no second geocode)');
   C.setPin(f, 15.53, -88.05, true); const v2 = f.pinV;
-  assert.deepEqual([v2 === v1 + 1, f.geo, C.addrLine(f)], [true, null, ''], '🔴 a new pin: the old street / area are gone at once');
+  assert.equal(v2, v1 + 1, '🔴 a new pin bumps the pin version');
+  assert.deepEqual([f.geo, C.addrLine(f)], [null, ''], '🔴 a new pin: the old street / area are gone at once');
   assert.equal(C.applyGeocode(f, v1, GC.full), false, '🔴 A\'s late reply after the pin moved to B is discarded');
   assert.equal(C.addrLine(f), '');
   assert.equal(C.applyGeocode(f, v2, GC.areaOnly), true); assert.equal(C.addrLine(f), 'Col. Jardines del Valle', 'B\'s own reply applies');

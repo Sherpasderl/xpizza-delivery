@@ -21176,6 +21176,215 @@
     ]
   },
   {
+    "id": "s2b-g01",
+    "slice": "s2b",
+    "label": "a new pin does not bump the pin version (a superseded reply applies)",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "f.pin = p; f.pinV = (Number(f.pinV) || 0) + 1; f.geo = null;",
+    "to": "f.pin = p; f.geo = null;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "a new pin bumps the pin version"
+    ]
+  },
+  {
+    "id": "s2b-g02",
+    "slice": "s2b",
+    "label": "a pin change keeps the old geo (not cleared synchronously)",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "f.pinV = (Number(f.pinV) || 0) + 1; f.geo = null;",
+    "to": "f.pinV = (Number(f.pinV) || 0) + 1;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "a new pin: the old street / area are gone at once"
+    ]
+  },
+  {
+    "id": "s2b-g03",
+    "slice": "s2b",
+    "label": "a geocode reply applies to any version (superseded not discarded)",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "if (v !== f.pinV) return false;",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "A's late reply after the pin moved to B is discarded"
+    ]
+  },
+  {
+    "id": "s2b-g04",
+    "slice": "s2b",
+    "label": "«Unnamed Road» is shown as a street",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "return /^unnamed road$/i.test(n) ? '' : n;",
+    "to": "return n;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "«Unnamed Road» ⇒ no street"
+    ]
+  },
+  {
+    "id": "s2b-g05",
+    "slice": "s2b",
+    "label": "the area falls back to the locality (the city)",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "for (const t of ['neighborhood', 'sublocality_level_1', 'sublocality'])",
+    "to": "for (const t of ['neighborhood', 'sublocality_level_1', 'sublocality', 'locality'])",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "locality only ⇒ none"
+    ]
+  },
+  {
+    "id": "s2b-g06",
+    "slice": "s2b",
+    "label": "displayArea matches a prefix as a substring, not a whole word",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "(\\.|\\s)/.test(fold(a) + ' ')",
+    "to": "/.test(fold(a) + ' ')",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "near-miss"
+    ]
+  },
+  {
+    "id": "s2b-g07",
+    "slice": "s2b",
+    "label": "an unconfirmed fallback pin is geocoded",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (dead || !f || f.mode !== 'delivery' || !(f.pin && f.pin.confirmed === true) || !finitePin(f.pin)) return;",
+    "to": "if (dead || !f || f.mode !== 'delivery' || !finitePin(f.pin)) return;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "an unconfirmed fallback pin: zero geocodes"
+    ]
+  },
+  {
+    "id": "s2b-g08",
+    "slice": "s2b",
+    "label": "a pending geocode is asked again on every render",
+    "file": "../customer-app/capp-ui.js",
+    "from": " || (geoAsked && geoAsked.f === f && geoAsked.v === v)) return;",
+    "to": ") return;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "one request, at the confirmed fix",
+      "one geocode per confirmed pin version"
+    ]
+  },
+  {
+    "id": "s2b-g09",
+    "slice": "s2b",
+    "label": "«Realizando» / «Enviando» ignore the geo line",
+    "file": "../customer-app/capp-ui.js",
+    "from": "esc(C.addrLine(S.flow) || (S.flow.details || '').trim() || 'Tu ubicación')",
+    "to": "esc((S.flow.details || '').trim() || 'Tu ubicación')",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "«Realizando»"
+    ]
+  },
+  {
+    "id": "s2b-g10",
+    "slice": "s2b",
+    "label": "the checkout row ignores the geo line",
+    "file": "../customer-app/capp-ui.js",
+    "from": "${geoLine ? esc(geoLine) : geoDenied ?",
+    "to": "${geoDenied ?",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "🔴 A1"
+    ]
+  },
+  {
+    "id": "s2b-g11",
+    "slice": "s2b",
+    "label": "the order body carries address_area at this base",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "b.pin_confirmed = true; b.address_details = (f.details || '').trim(); }",
+    "to": "b.pin_confirmed = true; b.address_details = (f.details || '').trim(); if (f.geo && f.geo.area) b.address_area = f.geo.area; }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "no area anywhere in the body"
+    ]
+  },
+  {
+    "id": "s2b-g12",
+    "slice": "s2b",
+    "label": "an unconfirmed pin shows a geo line",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "if (!g || g.v !== f.pinV || !(f.pin && f.pin.confirmed === true)) return '';",
+    "to": "if (!g || g.v !== f.pinV) return '';",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "an UNCONFIRMED pin never shows a geo line"
+    ]
+  },
+  {
+    "id": "s2b-g13",
+    "slice": "s2b",
+    "label": "a failed geocode is retried (the version is not settled)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "(results, status) => land(status === 'OK' ? results : [])",
+    "to": "(results, status) => { if (status === 'OK') land(results); else geoAsked = null; }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a failure settles the version: no retry"
+    ]
+  },
+  {
     "id": "s2b-e02",
     "slice": "s2b-e",
     "label": "the real 423 ordering_paused gets no sheet (paused not mapped)",
