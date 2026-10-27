@@ -69,13 +69,15 @@ test(`the live forms are byte-unchanged vs ${BASE}`, () => {
 // tip money core + P-C change, the slice's test-only inverses, the R3 contract files it regenerated, and the mutant catalogue.
 // S2-srv-app (added on top): the app deployment's manifest entry (+ bundled copy), its validator, the return resolver, the
 // sync-client filter and the slice's test-only inverse.
-const S2TIP_SERVER = new Set(['catalog/charge-inputs.js', 'compute-server-net.js', 'createorder-classify.js', 'delivery/delivery-pricing.js',
+// Colonia (PLAN-colonia r1, recomposed onto S2b-geo; added on top): the privacy filter module, the order writer's same-line hunk,
+// the census FIELD_FACTS entry and the slice's test-only inverse (charge-inputs / index.js / census JSON are already listed).
+const S2TIP_SERVER = new Set(['address-area.js', 'create-order-build.js', 'contract/census.js', 'tools/area-inverse.js', 'catalog/charge-inputs.js', 'compute-server-net.js', 'createorder-classify.js', 'delivery/delivery-pricing.js',
   'delivery/delivery-wire.js', 'driver-ledger/ledger-core.js', 'factura/build-record.js', 'index.js', 'order-exists.js', 'payer-email.js',
   'pixelpay-hosted-charge.js', 'quote-issue.js', 'rewards-redeem-intake.js', 'stats/stats-api.js', 'stats/stats-build.js', 'tip.js', 'whatsapp.js',
   'tools/s2tip-inverse.js', 'tools/s2tip-module-inverse.js', 'tools/mutation-sweep.mutants.json',
   'contract/census-map.json', 'contract/census.json', 'contract/regions.json',
   'platform/sites.json', 'platform-manifest.js', 'pixelpay-return-url.js', 'tools/sync-client.js', 'tools/s2app-inverse.js'].map((f) => `xpizza-functions/${f}`));
-test(`no server change beyond S2-srv-tip + S2-srv-app: xpizza-functions/ differs from ${BASE} only in tests, fixtures, generated inventories, the test chain and the slices' allowlist`, () => {
+test(`no server change beyond S2-srv-tip + S2-srv-app + colonia: xpizza-functions/ differs from ${BASE} only in tests, fixtures, generated inventories, the test chain and the slices' allowlist`, () => {
   const changed = git('diff', '--name-only', BASE, '--', 'xpizza-functions').trim().split('\n').filter(Boolean)
     .concat(git('ls-files', '--others', '--exclude-standard', '--', 'xpizza-functions').trim().split('\n').filter(Boolean));
   const allowed = (p) => /\.test\.(m?js|cjs)$/.test(p) || /^xpizza-functions\/test\//.test(p) || /\.golden\.json$|\.expect\.json$/.test(p)
@@ -84,7 +86,7 @@ test(`no server change beyond S2-srv-tip + S2-srv-app: xpizza-functions/ differs
   assert.deepEqual(bad, [], `🔴 production files changed: ${bad.join(', ')}`);
   if (changed.includes('xpizza-functions/package.json')) {
     const was = JSON.parse(git('show', `${BASE}:xpizza-functions/package.json`)); const now = JSON.parse(readFileSync(join(ROOT, 'xpizza-functions/package.json'), 'utf8'));
-    const strip = (j) => { const c = { ...j, scripts: { ...j.scripts } }; delete c.scripts.test; for (const k of Object.keys(c.scripts)) if (/^test:(capp-s1|s2tip$|capp-s2a$|capp-s2a-browser$)/.test(k)) delete c.scripts[k]; return c; };
+    const strip = (j) => { const c = { ...j, scripts: { ...j.scripts } }; delete c.scripts.test; for (const k of Object.keys(c.scripts)) if (/^test:(capp-s1|s2tip$|capp-s2a$|capp-s2a-browser$|address-area$)/.test(k)) delete c.scripts[k]; return c; };
     assert.deepEqual(strip(now), strip(was), '🔴 package.json changed beyond the test chain / the capp-s1 test scripts');
   }
 });
