@@ -12,7 +12,10 @@ import { stopHeaderHtml, activeCardHtml } from './stacked-view.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-const INDEX = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.html'), 'utf8');   // for the compose carves
+import { createRequire } from 'node:module';
+const __dir = dirname(fileURLToPath(import.meta.url));
+const INDEX = readFileSync(join(__dir, 'index.html'), 'utf8');   // for the compose carves + the ARRIVAL-ACTION listener
+const { JSDOM } = createRequire(join(__dir, '..', 'xpizza-functions', 'package.json'))('jsdom');
 
 const ICONS = new Proxy({}, { get: (_, k) => `<svg data-ic="${String(k)}"></svg>` });
 const deps = { ICONS, esc: (s) => String(s == null ? '' : s), scheduledBadge: () => '', RESTAURANT: { lat: 15.5, lng: -88.03 }, navPref: 'Waze' };
@@ -26,6 +29,9 @@ const order = {
 const deliveryEntry = { orderId: 'o1', phase: 'delivery', order, deliveryTask: { id: 'd1', destination_address: order.address_detected, recipient_name: 'Daniela' }, pickupTask: { id: 'p1', destination_lat: 15.5, destination_lng: -88.03 } };
 // the SOLO arrived-at-customer card passes the explicit soloArrival discriminator (Codex P2-4)
 const card = (opts) => activeCardHtml(deliveryEntry, deps, { ordinal: 1, solo: true, showActualPill: true, navLabel: '', previewHtml: '', soloArrival: true, ...opts });
+// the driver has written tasks/{id}/arrived (dep C) → the delivery task carries `arrived` → the banner is allowed
+const notifiedEntry = { ...deliveryEntry, deliveryTask: { ...deliveryEntry.deliveryTask, arrived: { at: 1799999000000, by: 'drv' } } };
+const cardN = (opts) => activeCardHtml(notifiedEntry, deps, { ordinal: 1, solo: true, showActualPill: true, navLabel: '', previewHtml: '', soloArrival: true, ...opts });
 // a STACKED / promoted-survivor delivery card: NO soloArrival → must stay byte-identical (the arrival restyle never applies)
 const stackedCard = (opts) => activeCardHtml(deliveryEntry, deps, { ordinal: 2, solo: false, showActualPill: true, navLabel: '', previewHtml: '<div class="after-card"></div>', ...opts });
 
@@ -85,20 +91,27 @@ t('flag-OFF arrived: NO arrival banner, NO body problema; the «Has llegado» no
   assert.ok(!/problema-btn/.test(html), 'no body problema (flag off)');
   assert.match(html, /Has llegado donde el cliente/, 'the «Has llegado» note is kept (truthful flag-off)');
 });
-t('flag-ON canNotifyArrival: the arrival banner shows, the «Has llegado» note is suppressed', () => {
-  const html = card({ arrived: true, canNotifyArrival: true });
-  assert.match(html, /arrival-banner/, 'arrival banner shown');
+t('flag-ON canNotifyArrival + the driver has notified (task.arrived): the banner shows, «Has llegado» suppressed', () => {
+  const html = cardN({ arrived: true, canNotifyArrival: true });
+  assert.match(html, /arrival-banner/, 'arrival banner shown after the arrived write');
   assert.match(html, /Daniela ya sabe que llegaste/, 'banner copy with the first name');
   assert.ok(!/Has llegado donde el cliente/.test(html), 'the redundant «Has llegado» note is dropped');
+});
+t('flag-ON canNotifyArrival but NOT yet notified (no task.arrived): NO banner, «Llegué» STILL available (write-failure / pre-tap)', () => {
+  const html = card({ arrived: true, canNotifyArrival: true });   // arrived geofence, but tasks/{id}/arrived not written
+  assert.ok(!/arrival-banner/.test(html), 'no banner without the confirmed write (never a false claim — Codex P2-6)');
+  assert.match(html, /btn-llegue/, '«Llegué» stays available until the write lands');
 });
 t('flag-ON canReportProblem: the body «Problema con este pedido» shows', () => {
   const html = card({ arrived: true, canReportProblem: true });
   assert.match(html, /problema-btn/, 'body problema button shown');
   assert.match(html, /Problema con este pedido/, 'problema copy');
 });
-t('the «Llegué · avisar» button is still gated on canNotifyArrival (before arrival)', () => {
-  assert.match(card({ arrived: false, canNotifyArrival: true }), /btn-llegue/, 'Llegué shown flag-on before arrival');
+t('«Llegué» gated on canNotifyArrival + NOT-notified; hidden once notified (task.arrived) + carries the delivery-task id', () => {
+  assert.match(card({ arrived: false, canNotifyArrival: true }), /btn-llegue/, 'Llegué shown flag-on, not yet notified');
   assert.ok(!/btn-llegue/.test(card({ arrived: false, canNotifyArrival: false })), 'Llegué hidden flag-off');
+  assert.ok(!/btn-llegue/.test(cardN({ arrived: true, canNotifyArrival: true })), 'Llegué hidden once the arrival is written (notified)');
+  assert.match(card({ arrived: false, canNotifyArrival: true }), /data-task-id="d1"/, 'carries the delivery-task id for the write');
 });
 
 t('solo arrived: the ac-chiprow (bag-tag/brand/#) is HIDDEN (proto single-delivery card) + the .ac-arrived scope class is set', () => {
@@ -138,6 +151,33 @@ t('P2-8: the LLEGUE-MAP carve SUPPRESSES the map when arrived+FRESH, keeps it wh
   assert.equal(show(true, false, true, 'delivery'), true, 'STALE GPS → map kept (en-route), one freshness predicate (P2-5)');
   assert.equal(show(false, false, false, 'delivery'), true, 'not arrived → map kept');
   assert.equal(show(true, true, false, 'pickup'), true, 'pickup → map kept (arrival restyle is delivery-only)');
+});
+
+t('P2-6: «Llegué» writes tasks/{id}/arrived; SUCCESS disables the button; FAILURE re-enables it + toasts (no false claim)', async () => {
+  const region = INDEX.match(/SLICE3:ARRIVAL-ACTION:START[\s\S]*?===== \*\/\n([\s\S]*?)\n\s*\/\* ===== SLICE3:ARRIVAL-ACTION:END/)[1];
+  const dom = new JSDOM('<!doctype html><body><div id="screen-onshift"><button class="llegue-btn" id="btn-llegue" data-task-id="d1">Llegué</button></div></body>', { pretendToBeVisual: true });
+  const { document, window } = dom.window;
+  const $ = (id) => document.getElementById(id);
+  let wrote = null, failNext = false, toasts = 0;
+  const fbUpdate = (ref, val) => { if (failNext) return Promise.reject(new Error('offline')); wrote = { ref, val }; return Promise.resolve(); };
+  const fbRef = (db, path) => ({ path });
+  const api = { $, fbUpdate, fbRef, fbServerTimestamp: () => 'TS', XPD: { getDb: () => ({}) }, currentUser: { uid: 'drv' }, toast: () => { toasts++; } };
+  new Function(...Object.keys(api), region)(...Object.values(api));   // register the REAL listener
+  const btn = $('btn-llegue');
+  // success
+  btn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  assert.ok(btn.disabled, 'button disabled in flight (no double-submit)');
+  await Promise.resolve(); await Promise.resolve();
+  assert.match(wrote.ref.path, /^tasks\/d1$/, 'wrote tasks/{deliveryTaskId}/arrived');
+  assert.deepEqual(wrote.val, { arrived: { at: 'TS', by: 'drv' } }, 'arrived = {at: serverTimestamp, by: uid} (dep C)');
+  // failure: the write rejects → button re-enabled + a toast, and NOTHING claims the notification
+  const btn2 = document.createElement('button'); btn2.id = 'btn-llegue'; btn2.className = 'llegue-btn'; btn2.dataset.taskId = 'd9';
+  $('screen-onshift').innerHTML = ''; $('screen-onshift').appendChild(btn2);
+  failNext = true;
+  btn2.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await Promise.resolve(); await Promise.resolve();
+  assert.ok(!btn2.disabled, 'write failed → button re-enabled so the driver can retry');
+  assert.equal(toasts, 1, 'a toast on failure, never a «ya sabe» claim');
 });
 
 console.log(`✓ llegue: ${passed} tests passed`);

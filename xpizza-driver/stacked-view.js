@@ -373,10 +373,12 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
       deliveredText = `Entregado · ${esc(firstName(name))}${esc(amt)}`;   // en-route / stacked keep the named slide
     }
   }
-  // «Llegué · avisar a {Nombre}» (L1): a TAP that notifies the customer. R9 — rendered ONLY when the arrival-
-  // notification capability exists (opts.canNotifyArrival); until the endpoint lands it is hidden (no dead control).
-  const llegueBtn = (opts.canNotifyArrival === true && accepted && !isPickup && !arrived)
-    ? `<button class="llegue-btn" id="btn-llegue" data-order-id="${esc(o.orderId)}" data-recipient="${esc(firstName(name))}"><span class="ico">${ICONS.bell || ''}</span>Llegué · avisar a ${esc(firstName(name))}</button>`
+  // «Llegué · avisar a {Nombre}» (L1): a TAP that notifies the customer — the driver's own create of tasks/{id}/arrived
+  // (dep C). Rendered ONLY when the capability exists (opts.canNotifyArrival) AND the driver has NOT yet notified
+  // (tasks/{id}/arrived absent); once notified the banner replaces it. Carries the delivery-task id for the write.
+  const notified = !!(o.deliveryTask && o.deliveryTask.arrived);
+  const llegueBtn = (opts.canNotifyArrival === true && accepted && !isPickup && !notified)
+    ? `<button class="llegue-btn" id="btn-llegue" data-order-id="${esc(o.orderId)}" data-task-id="${esc((o.deliveryTask && o.deliveryTask.id) || '')}" data-recipient="${esc(firstName(name))}"><span class="ico">${ICONS.bell || ''}</span>Llegué · avisar a ${esc(firstName(name))}</button>`
     : '';
 
   let countdownChip = '';
@@ -399,7 +401,7 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   else if (arrived) {
     // flag-ON delivery: the arrival banner below conveys arrival (prototype S.llegue has no «Has llegado» note), so
     // drop the redundant note. flag-OFF (and pickup) keep the note byte-identical to today.
-    navBlock = (soloArrival && opts.canNotifyArrival === true)
+    navBlock = (soloArrival && opts.canNotifyArrival === true && notified)
       ? ''
       : `<div class="arrived-note">${ICONS.check}<span>Has llegado ${isPickup ? 'al restaurante' : 'donde el cliente'}</span></div>`;
   } else {
@@ -410,7 +412,7 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
   // • the arrival banner is a notification claim → canNotifyArrival + arrived + delivery (R9, no false control);
   // • the items card («entregá todo») shows the order lines once arrived (display-only, from existing order data);
   // • the body «Problema con este pedido» is gated on the problem-report capability (R9/F).
-  const arrivalBanner = (soloArrival && opts.canNotifyArrival === true)
+  const arrivalBanner = (soloArrival && opts.canNotifyArrival === true && notified)
     ? `<div class="arrival-banner">${ICONS.bell || ''}<div><b>${esc(firstName(name))} ya sabe que llegaste</b><span>Le avisamos por su seguimiento. Si no sale en un par de minutos, escribile.</span></div></div>`
     : '';
   const deliverItems = soloArrival ? itemLines(order) : null;

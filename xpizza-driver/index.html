@@ -2572,7 +2572,7 @@ function openWhatsappSheet(btn) {
 /* ===== SLICE2:IMPORT:END ===== */
 /* ===== SLICE3:IMPORT-3:START — batch-3 pure builders ===== */
 import { helpDiagnosisHtml, cierreRechazadoHtml, readyTimeLabel, gpsoffHtml } from './stacked-view.js';   // readyTimeLabel: R1 ready time for the S.oferta offer; gpsoffHtml: the location-off idle state
-import { ref as fbRef, onValue as fbOnValue } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';   // same module instance XPD uses — subscribe to the RTDB connection edge for the offer slide gate
+import { ref as fbRef, onValue as fbOnValue, update as fbUpdate, serverTimestamp as fbServerTimestamp, push as fbPush } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';   // same module instance XPD uses — subscribe to the RTDB connection edge for the offer slide gate; update/serverTimestamp/push for the driver's own tasks/{id}/arrived (dep C) + driver_problems writes (dep F), since the SDK module is frozen
 import { postActRoute } from './postact-route.js';   // Inicio b: pure post-activation checklist routing decision (tested in postact-route.test.js)
 import { practicaDemoOrder } from './practica-fixture.js';   // Inicio c: the synthetic practice ORDER (brand = registry-only 'synthetic_3' as DATA, never a controller literal)
 import { tabBarHtml } from './tab-bar-view.js';   // O6: the bottom nav bar (Inicio·Pedidos·Ganancias·Cuenta), data-gated pure builder
@@ -4606,6 +4606,24 @@ $('screen-onshift').addEventListener('click', drv2ActionGuard, true);
 /* ===== SLICE3:HELP-HANDLER:START — «¿Por qué no veo pedidos?» opens the diagnosis sheet (S.help), not an alert() ===== */
 $('idle-help-link').addEventListener('click', () => { openHelpSheet(); });
 /* ===== SLICE3:HELP-HANDLER:END ===== */
+/* ===== SLICE3:ARRIVAL-ACTION:START — a SEPARATE delegated listener (outside the frozen STACKED-HANDLERS) for the
+   flag-gated «Llegué · avisar» (dep C): the driver's OWN create of tasks/{id}/arrived = {at,by} notifies the customer
+   (best-effort server WhatsApp). In-flight guard on the button; on write FAILURE re-enable + toast — NEVER claim «ya
+   sabe que llegaste» without a successful write (Codex P2-6; the RTDB sync re-renders the banner on success). Dark
+   until DRV2_CAN_NOTIFY_ARRIVAL flips (the button only renders then). The «Problema» handlers join this listener with
+   the S.problema sheet (slice 3-P / the next commit). ===== */
+$('screen-onshift').addEventListener('click', (e) => {
+  const llegueBtnEl = e.target.closest && e.target.closest('#btn-llegue');
+  if (llegueBtnEl) {
+    const arrTaskId = (llegueBtnEl.dataset && llegueBtnEl.dataset.taskId) || '';
+    if (arrTaskId && !llegueBtnEl.disabled && currentUser) {
+      llegueBtnEl.disabled = true;
+      fbUpdate(fbRef(XPD.getDb(), 'tasks/' + arrTaskId), { arrived: { at: fbServerTimestamp(), by: currentUser.uid } })
+        .catch(() => { llegueBtnEl.disabled = false; toast('No se pudo avisar; reintentá', 'error'); });
+    }
+  }
+});
+/* ===== SLICE3:ARRIVAL-ACTION:END ===== */
 
 // Stacked-order queue → view-only detail sheet
 $('queue-slot').addEventListener('click', (e) => {
@@ -5351,7 +5369,7 @@ function renderActiveAndQueue() {
     const spHeader = spSoloPickup
       ? stopHeaderHtml({ ...soloPickupHeaderInfo(spOrder, spShowReview), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml })
       /* ===== SLICE3DEPS:LLEGUE-HEADER:START (registered carve-out; parent region SINGLE-ORDER-MOUNT) — the ARRIVED-at-customer delivery header «Estás donde {name}» + the flag-gated «avisamos a las {t}» sub (prototype S.llegue); en-route/pickup unchanged. slice3-freeze splices this back to the 07e5ab38 branch. ===== */
-      : (spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, canReportProblem: DRV2_CAN_REPORT_PROBLEM, arrivedCustomer: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()) && !spIsPickup, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, notifiedAt: '' }, { ICONS, esc: escapeHtml }) : '');
+      : (spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, canReportProblem: DRV2_CAN_REPORT_PROBLEM, arrivedCustomer: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()) && !spIsPickup, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, notifiedAt: (soloOrder.deliveryTask && soloOrder.deliveryTask.arrived && typeof soloOrder.deliveryTask.arrived.at === 'number' ? fmtClockHM(soloOrder.deliveryTask.arrived.at) : '') }, { ICONS, esc: escapeHtml }) : '');
       /* ===== SLICE3DEPS:LLEGUE-HEADER:END ===== */
     const spStripStops = drv2Cancel
       ? [{ n: 1, state: 'cancelled', label: drv2FirstWord(drv2Cancel.cancelledName) }, { n: 2, state: 'on', label: drv2FirstWord(spName) }]
