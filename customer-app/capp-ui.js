@@ -1207,6 +1207,7 @@
       if (a === 'guest-signup') { closeLayer(); emit('signin', { ctx: 'refusal' }); return true; }
       if (a === 'err-card') {   // a new card attempt goes through the same placing card — once the restored checkout is priced
         closeLayer(); S.screen = 'checkout';
+        if (S.flow) S.flow.pay = 'online';   // §3.2 (Codex guest r1 #6): «Usar otra tarjeta» EXPLICITLY selects online — never an ambiguous tender
         if (totalsNow().ready) { render(); placeTap(); return true; }
         S.askedKey = null; S.quoteErr = null;
         const asked = requote(); render();   // requote marks its key first: the render does not ask again

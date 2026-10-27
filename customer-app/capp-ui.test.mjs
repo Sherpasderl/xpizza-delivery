@@ -2175,13 +2175,15 @@ const CU = createRequire(import.meta.url)('./capp-ui.js');   // the pure rendere
 // ── G5 frame 7 (approved): the SIGNUP GRANT rides on the placed outcome; the account offer card renders only while it is live ──
 test('G5: a guest\'s paid card return carries the signup grant on its placed outcome (frame 7\'s input); a member\'s never does', async () => {
   const storage = memStore();
-  const a = bootCo({ storage, config: GUEST, script: { ...CODE_OK, chargeOnlineOrder: [CHECKOUT] } });
+  const grant = { token: 'sg_1', expires_at: NOON().getTime() + 15 * 60e3 };
+  const a = bootCo({ storage, config: GUEST, script: { ...CODE_OK, chargeOnlineOrder: [{ status: 200, json: { ...CHECKOUT.json, signup_grant: grant } }] } });   // the contract: the grant comes with the charge's success
   await guestFilled(a); await a.click('#cta'); await a.click('[data-act="tipc"][data-val="0"]'); await a.click('[data-act="tip-place"]'); await viaCode(a); await settle();
   const id = a.srv.of('chargeOnlineOrder')[0].body.order_id; const snap = J(a.ui.cart.snapshot()); a.ui.destroy();
-  const grant = { token: 'sg_1', expires_at: NOON().getTime() + 15 * 60e3 };
-  const c = bootCo({ storage, config: GUEST, search: RET('complete', id), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'paid', signup_grant: grant } }] } });
+  // Codex guest r1 #4: the paid status carries NO grant (none is promised) — it comes from this order's stash, across the redirect
+  const c = bootCo({ storage, config: GUEST, search: RET('complete', id), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'paid' } }] } });
   c.ui.restore(snap); const out = await c.ui.returning; await settle();
-  assert.equal(out.kind, 'placed'); assert.deepEqual(J(out.signup_grant), grant, '🔴 the grant reaches the post-order offer');
+  assert.equal(out.kind, 'placed'); assert.deepEqual(J(out.signup_grant), grant, '🔴 the charge\'s grant reaches the post-order offer across the redirect');
+  assert.equal(storage.getItem('ta_pending_pay'), null, 'the stash (and its grant) is cleared once placed');
   const m = CA.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: EP, guestCardOnly: true }, CappCheckout: CK, member: MEMBER_LIKE(),
     fetch: async () => ({ status: 200, ok: true, json: async () => ({ ok: true, order_id: 'TA1', signup_grant: grant }) }), storage: memStore(), now: () => NOON().getTime(), sleep: async () => {} });
   const f = CK.freshFlow(MEMBER_LIKE()); f.pay = 'cash';
@@ -2213,6 +2215,10 @@ test('G advisor 2026-10-27: a guest\'s declined card ⇒ «Pago no completado» 
   assert.equal(c.text('#layer .errsheet p'), 'Tu banco no autorizó el pago. Podés intentar con otra tarjeta; tu pedido está intacto.');
   assert.deepEqual(c.qa('#layer .errsheet button').map((x) => [x.textContent, x.dataset.act]), [['Usar otra tarjeta', 'err-card']], '🔴 a guest never sees a cash option');
   assert.ok(!/efectivo/i.test(c.text('#layer')), 'no cash anywhere on the sheet');
+  c.ui.state.flow.pay = 'cash';   // whatever the restore left
+  await c.click('#layer [data-act="err-card"]'); await settle();
+  assert.equal(c.ui.state.flow.pay, 'online', '🔴 «Usar otra tarjeta» explicitly selects online');
+  assert.ok(!/No pudimos enviar tu pedido|efectivo/i.test(c.text('#layer') || ''), 'no cash refusal follows');
 });
 
 // ── Codex guest r1 #2 / #7: the code sheet's continuations are owned — closing cancels them; every request is bounded ──
