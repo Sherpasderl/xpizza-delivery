@@ -598,3 +598,33 @@ test('r4: the policy LOCK_INTERRUPTED_CARD — ON (shipped) ⇒ an interrupted c
   const o2 = await O.api.place(placeArgs('cash'));
   assert.deepEqual([o2.kind, O.srv.of('createOrder').length], ['placed', 1], 'lock off: cash is sent (the server decides)');
 });
+
+// ── PLAN-capp-signin-required r5.4 / Codex guest r1 #1 + #5: the guest rules hold at EVERY dispatch; existing payments resolve first ──
+function grig({ script, storage = memStorage(), member = { cur: null } } = {}) {
+  const srv = server(script, storage);
+  const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, guestCardOnly: true },
+    member: () => member.cur, fetch: srv.fetch, storage, now: () => at(12), sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} });
+  return { api: make(), reload: make, srv, storage, member };
+}
+const TICKET = { ticket: 'tk_1', phone: '+50499990000', cart_fp: 'sig1', expires_at: at(12) + 15 * 60e3 };
+const MEMBER = { uid: 'u1', idToken: 'tok' };
+test('Codex guest r1 #1: a member signs out while confirming a price increase ⇒ the resend is REFUSED (no ticketless / tokenless cash, no ticketless card)', async () => {
+  const m = { cur: MEMBER };
+  const R = grig({ member: m, script: { createOrder: [{ status: 409, json: { error: 'price_increased', net_total_cents: 32500 } }, OK_CASH] } });
+  const out = await R.api.place(placeArgs('cash', async () => { m.cur = null; return true; }));
+  assert.deepEqual([out.kind, R.srv.of('createOrder').length], ['guest_cash_not_allowed', 1], '🔴 the resend re-checks identity + tender: no cash for the now-guest');
+  const m2 = { cur: MEMBER };
+  const O = grig({ member: m2, script: { chargeOnlineOrder: [{ status: 409, json: { error: 'price_increased', net_total_cents: 32500 } }, CHECKOUT] } });
+  const out2 = await O.api.place(placeArgs('online', async () => { m2.cur = null; return true; }));
+  assert.deepEqual([out2.kind, O.srv.of('chargeOnlineOrder').length], ['guest_ticket_invalid', 1], '🔴 the resend re-checks the ticket: no ticketless card for the now-guest');
+});
+test('Codex guest r1 #5: a guest whose card checkout was already ISSUED resolves it first (a status poll / resume) — no ticket needed to recover, no new send', async () => {
+  const storage = memStorage();
+  const R = grig({ storage, script: { chargeOnlineOrder: [CHECKOUT], paymentStatus: [PS('pending')] } });
+  const first = await R.api.place({ ...placeArgs('online'), checkoutTicket: TICKET });
+  assert.equal(first.kind, 'redirect', 'premise: issued');
+  const again = await R.reload().place(placeArgs('online'));   // the in-memory ticket is gone (a reload)
+  assert.notEqual(again.kind, 'guest_ticket_invalid', '🔴 recovery never requires a ticket');
+  assert.ok(R.srv.of('paymentStatus').length >= 1, 'the existing payment was read'); assert.equal(R.srv.of('chargeOnlineOrder').length, 1, 'never charged again');
+  assert.deepEqual([again.kind, again.resumed], ['redirect', true], 'back to ITS checkout');
+});

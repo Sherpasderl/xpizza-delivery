@@ -381,14 +381,18 @@
       const ps = placeStrict(); if (!ps.ok) return { frozen: true, unknown: true, order_id: c.frozen_for, live: false };   // r3 #5
       return { frozen: true, order_id: c.frozen_for, live: !!(ps.value && ps.value.order_id === c.frozen_for) };
     }
+    // the capp-guest rules at a dispatch: identity read NOW (memberOf), the tender read NOW (p.flow.pay), the ticket valid NOW
+    function guestGate(p, { ticket }) {
+      if (cfg.guestCardOnly !== true || memberOf()) return null;
+      if (!p.flow || p.flow.pay !== 'online') return { kind: 'guest_cash_not_allowed', local: true };
+      if (ticket && !ticketValid(p.checkoutTicket)) return { kind: 'guest_ticket_invalid', local: true };
+      return null;
+    }
     async function place(p) {
       const method = p.flow.pay === 'online' ? 'online' : 'cash';
-      // PLAN-capp-signin-required §3.2: the transport's tender mapping is part of the ONE invariant — an app GUEST (cfg.guestCardOnly,
-      // no member) never maps to cash: refused here before any record, lock or send
-      if (cfg.guestCardOnly === true && !memberOf() && method !== 'online') return { kind: 'guest_cash_not_allowed', local: true };
-      // §4: an app guest order carries a VALID checkout ticket (the verified WhatsApp code, bound to phone + store + cart, 15 min) or
-      // nothing is recorded, locked or sent
-      if (cfg.guestCardOnly === true && !memberOf() && !ticketValid(p.checkoutTicket)) return { kind: 'guest_ticket_invalid', local: true };
+      // PLAN-capp-signin-required §3.2: an app GUEST (cfg.guestCardOnly, no member NOW) never maps to cash — refused before any record,
+      // lock or send (and re-checked before EVERY dispatch below, Codex guest r1 #1)
+      { const g0 = guestGate(p, { ticket: false }); if (g0) return g0; }
       if (HOSTED) {
         if (markerSuspect) return { kind: 'offline', reconcile: 'marker_unverified' };   // P1-1: fail closed until a fresh mount
         const rc = reconcile();
@@ -424,6 +428,10 @@
       let healed = false; let silentRetried = false;
       for (let guard = 0; guard < 4; guard++) {
         if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded' };   // r2 P2-3: a torn-down page never sends
+        // Codex guest r1 #1 / #5: immediately before EVERY dispatch — the first and every resend (a price acceptance, a healed id) —
+        // the CURRENT identity, tender and ticket: a guest (possibly just signed out) sends only card WITH a valid ticket. Existing
+        // payments were resolved above first (polls, locks, resume never need a ticket)
+        { const g = guestGate(p, { ticket: true }); if (g) return g; }
         let rec;
         try {
           rec = readPlace() || mintPlace(method, p);

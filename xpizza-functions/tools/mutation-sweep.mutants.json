@@ -23581,7 +23581,7 @@
     "slice": "guest",
     "label": "the transport maps a guest's tender to cash",
     "file": "../customer-app/capp-api.js",
-    "from": "      if (cfg.guestCardOnly === true && !memberOf() && method !== 'online') return { kind: 'guest_cash_not_allowed', local: true };\n",
+    "from": "      if (!p.flow || p.flow.pay !== 'online') return { kind: 'guest_cash_not_allowed', local: true };\n",
     "to": "",
     "command": [
       "node",
@@ -23590,7 +23590,8 @@
     ],
     "kills_with": [
       "guest_cash_not_allowed"
-    ]
+    ],
+    "repointed": "Codex guest r1 #1/#5: the guest rules moved into guestGate (checked before every dispatch); the same property"
   },
   {
     "id": "guest-04",
@@ -23613,7 +23614,7 @@
     "slice": "guest",
     "label": "a guest order is placed without a checkout ticket",
     "file": "../customer-app/capp-api.js",
-    "from": "      if (cfg.guestCardOnly === true && !memberOf() && !ticketValid(p.checkoutTicket)) return { kind: 'guest_ticket_invalid', local: true };\n",
+    "from": "      if (ticket && !ticketValid(p.checkoutTicket)) return { kind: 'guest_ticket_invalid', local: true };\n",
     "to": "",
     "command": [
       "node",
@@ -23622,7 +23623,8 @@
     ],
     "kills_with": [
       "no ticket ⇒ nothing recorded or sent"
-    ]
+    ],
+    "repointed": "Codex guest r1 #1/#5: the guest rules moved into guestGate (checked before every dispatch); the same property"
   },
   {
     "id": "guest-06",
