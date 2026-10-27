@@ -2342,7 +2342,7 @@ test('S-picker member path (5f intl recon): a member\'s non-HN number is sent as
   assert.ok(b.q('[data-act="editwho"]'), 'premise: the member row (no edit)');
   await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
   assert.equal(b.srv.of('createOrder')[0].body.customer_phone, '+13055550147', '🔴 the member\'s own E.164, as-is');
-  for (const bad of ['13055550147', '+44 20 7946 0958', '96123']) {
+  for (const bad of ['13055550147', '+44 20 7946 0958', '96123', '9612+3344', 'abc96123344', '( +44 ) 123456']) {   // + Codex S-picker r1 #2
     const u = bootIntl({ member: { ...m, phone: bad } }); await toCheckout(u);
     assert.equal(u.q('[data-act="editwho"]'), null, `${bad}: no member row`);
     assert.equal(u.q('#f-phone').value, '', `🔴 ${bad}: never composed into a +504 guess`); assert.equal(u.text('.fld .cc'), '+504');
@@ -2352,4 +2352,16 @@ test('S-picker member path (5f intl recon): a member\'s non-HN number is sent as
   await o.click('[data-act="pin"]'); await o.click('[data-act="pin-done"]'); await o.type('#f-details', 'Portón negro'); await o.click('[data-act="pay"][data-val="cash"]');
   await o.click('#cta'); await o.click('[data-act="tipc"][data-val="0"]'); await o.click('[data-act="tip-place"]'); await o.click('#layer [data-act="placing-go"]');
   assert.equal(o.srv.of('createOrder')[0].body.customer_phone, '+504 9612-3344', 'off: unchanged');
+});
+test('Codex S-picker r1 #1: a pasted / autofilled QUALIFIED number is read as E.164 first — its own country, never truncated into the selected one; an unsupported one is refused, nothing sent', async () => {
+  for (const [raw, cc, shown] of [['+13055550147', '+1', '(305) 555-0147'], ['+50499990000', '+504', '9999-0000'], ['0013055550147', '+1', '(305) 555-0147'], ['+52 55 1234 5678', '+52', '55 1234 5678']]) {
+    const b = bootIntl(); await toCheckout(b); await b.type('#f-phone', raw);
+    assert.equal(b.text('.fld .cc'), cc, `🔴 ${raw}: a qualified paste keeps its own country`); assert.equal(b.q('#f-phone').value, shown, `${raw}: its own national digits`);
+  }
+  const g = bootIntl({ config: GUEST, script: CODE_OK }); await intlFilled(g, null, '+44 20 7946 0958'); await g.type('#f-email', 'ana.perez@gmail.com');
+  assert.equal(g.text('.fld .cc'), '+504', 'the country kept'); assert.equal(g.q('#f-phone').value, '', '🔴 an unsupported number is refused (the field empty)');
+  g.q('#cta').dispatchEvent(new g.w.MouseEvent('click', { bubbles: true })); await settle();
+  assert.equal(g.srv.of('requestCheckoutCode').length, 0, '🔴 nothing sent for it');
+  const w = bootIntl(); await toCheckout(w); await w.type('#f-phone', '+1305555014');
+  assert.deepEqual([w.text('.fld .cc'), w.q('#f-phone').value], ['+504', ''], 'a supported code with the wrong length: refused, never truncated');
 });

@@ -24204,8 +24204,8 @@
     "slice": "picker",
     "label": "an unreadable member number is composed into a +504 guess",
     "file": "../customer-app/capp-ui.js",
-    "from": "f.cc = P.DEFAULT_CC; f.phone = d.length === 8 ? P.format(P.DEFAULT_CC, d) : '';",
-    "to": "f.cc = P.DEFAULT_CC; f.phone = P.format(P.DEFAULT_CC, d);",
+    "from": "f.phone = ok ? P.format(P.DEFAULT_CC, P.digits(t).slice(-8)) : '';",
+    "to": "f.phone = P.format(P.DEFAULT_CC, P.digits(t));",
     "command": [
       "node",
       "--test",
@@ -24331,6 +24331,41 @@
     "kills_with": [
       "off: the page never reaches for the picker module",
       "off: no picker without the runtime flag"
+    ]
+  },
+  {
+    "id": "picker-09",
+    "slice": "picker",
+    "label": "Codex S-picker r1 #1: a pasted qualified number is formatted into the selected country (truncated)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "        if (/^(\\+|00)/.test(raw)) {",
+    "to": "        if (false) {",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=S-picker",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a qualified paste keeps its own country"
+    ]
+  },
+  {
+    "id": "picker-10",
+    "slice": "picker",
+    "label": "Codex S-picker r1 #2: the legacy member fallback strips anything to 8 digits",
+    "file": "../customer-app/capp-ui.js",
+    "from": "const t = String(raw || '').trim(), ok = LEGACY_PHONE.test(t);",
+    "to": "const t = String(raw || '').trim(), ok = P.digits(t).length >= 8;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=S-picker",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "never composed into a +504 guess",
+      ": no member row"
     ]
   }
 ]

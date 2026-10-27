@@ -563,12 +563,15 @@
     const ccOf = (f) => (f && f.cc && phoneMod().byCc(f.cc) ? f.cc : phoneMod().DEFAULT_CC);
     // a stored / member number into the flow — the plan's wire contract: a QUALIFIED E.164 ⇒ its country; a bare number of EXACTLY 8
     // digits (or 504 + 8) ⇒ Honduras; anything else is unparseable ⇒ false, the phone left empty (never a composed +504 guess)
+    const LEGACY_PHONE = /^(?:\+?504[ -]?)?\d{4}[ -]?\d{4}$/;
     function setPhone(f, raw) {
       const P = phoneMod(), q = P.parseE164(raw);
       if (q) { f.cc = q.cc; f.phone = P.format(q.cc, q.national); return true; }
-      const d = String(raw || '').trim().startsWith('+') ? '' : P.digits(raw).replace(/^504(?=\d{8}$)/, '');
-      f.cc = P.DEFAULT_CC; f.phone = d.length === 8 ? P.format(P.DEFAULT_CC, d) : '';
-      return d.length === 8;
+      // Codex S-picker r1 #2: the legacy fallback accepts ONLY the known legacy syntax — 8 digits with an optional space / dash, an
+      // optional 504 / +504 prefix — checked BEFORE any stripping ('9612+3344', 'abc96123344', '( +44 ) 123456' are never a +504 number)
+      const t = String(raw || '').trim(), ok = LEGACY_PHONE.test(t);
+      f.cc = P.DEFAULT_CC; f.phone = ok ? P.format(P.DEFAULT_CC, P.digits(t).slice(-8)) : '';
+      return ok;
     }
     // the ONE fresh flow: with the picker on, the member's number lands in its own country; a member number that does not parse opens
     // «Tus datos» in edit (the customer types it) — the member path never sends a number it could not read (5f intl recon)
@@ -1381,7 +1384,18 @@
       if (fld === 'tipOther') { S.tipDraft = capDraft(t.value, S.tipDraft || ''); t.value = S.tipDraft || '0'; t.style.width = `calc(${Math.max(1, t.value.length)}ch + 6px)`; return; }
       if (S.flow && fld === 'phone' && intl()) {
         // the country's local format as they type, never past its national length
-        const P = phoneMod(), cc = ccOf(S.flow), v = P.format(cc, t.value);
+        const P = phoneMod(), raw = String(t.value || '').trim();
+        // Codex S-picker r1 #1: a QUALIFIED number (a paste / autofill starting '+' or '00') is read as E.164 FIRST — never formatted
+        // into the selected country's national digits. Supported + exact length ⇒ its country and digits together; anything else ⇒
+        // the country kept, the field empty (the CTA's own «Escribí tu WhatsApp»)
+        if (/^(\+|00)/.test(raw)) {
+          const q = P.parseE164(raw.replace(/^00/, '+'));
+          const was = ccOf(S.flow);
+          if (q) { S.flow.cc = q.cc; S.flow.phone = P.format(q.cc, q.national); } else { S.flow.cc = was; S.flow.phone = ''; }
+          render(); const ph = $('f-phone'); if (ph) { focusTo(ph); try { ph.setSelectionRange(ph.value.length, ph.value.length); } catch (_) {} }
+          syncCta(); return;
+        }
+        const cc = ccOf(S.flow), v = P.format(cc, t.value);
         if (t.value !== v) t.value = v;
         S.flow.phone = v; S.flow.cc = cc;
         const n = $('f-phone-cc'); if (n) { const h = ccNote(S.flow); n.innerHTML = h; n.hidden = !h; }
