@@ -500,7 +500,8 @@ test('Codex s7a2 r1 #4: a LATER terminal outcome settles the return handoff — 
 
 test('Codex s7a2 r1 #5: a tap HELD while the directory read is in flight is released to frame 7 when that read fails', async () => {
   const gate = deferred();
-  const S = bootShell({ dirScript: [gate, 'complete'], storage: memStorage(stored(SC.complete.body, T0 - 1000)) });
+  // menus held: no other event may re-run the held-tap check (only the directory's own notification can release it)
+  const S = bootShell({ dirScript: [gate, 'complete'], envelope: 'hold', storage: memStorage(stored(SC.complete.body, T0 - 1000)) });
   S.click('.rlist .rcard[data-rid="x_pizza"]');
   assert.ok(S.q('.rlist .rcard[data-rid="x_pizza"]').classList.contains('held'), 'premise: held while the read is in flight');
   gate.resolve(resp('unavailable_503')); await flush();
