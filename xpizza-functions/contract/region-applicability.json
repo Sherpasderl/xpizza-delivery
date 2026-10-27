@@ -13796,6 +13796,289 @@
     ],
     "note": "decided by run context (createorder-configured): applies whenever the context does not hold"
    }
+  },
+  "xpizza-functions/arrived-notify.js#eligible@xpizza-functions/arrived-notify.js#notifyArrived": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:notifyArrivedOnTap"
+   ],
+   "authority": "DRIVER C «Llegué» (PLAN-driver-server-C-llegue r3): the arrival notice runs only inside notifyArrivedOnTap, the onValueCreated trigger on a driver's create of tasks/{taskId}/arrived",
+   "whyFalseExcludes": "the complete invocation log shows no notifyArrivedOnTap call → the arrival path (eligible / notifyArrived / its WhatsApp send) never runs",
+   "bind": {
+    "site": "try { first = await eligible(db, { taskId, oid, arrived }); } catch (e) { log.warn(`arrived: eligibility read failed ${oid}`, e && e.message); return { outcome: 'read_failed' }; }",
+    "siteSha": "16449ad87bc8383ffa62dcc3ecd33b726b49ff37cdd4e5ab1eba4c383c733d0c",
+    "scope": "xpizza-functions/arrived-notify.js#notifyArrived",
+    "scopeSha": "17c4bb0b3bbcab473bc0ca458eb5c50480ba062a328ae021aff92edb26b5fcac"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.notifyArrivedOnTap = onValueCreated("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/arrived-notify.js#notifyArrived",
+     "callers": [
+      "xpizza-functions/index.js#notifyArrivedOnTap"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/arrived-notify.js#eligible",
+     "callers": [
+      "xpizza-functions/arrived-notify.js#notifyArrived"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "notifyArrivedOnTap",
+     "counts": {
+      "xpizza-functions/index.js#functions": 1
+     }
+    },
+    {
+     "kind": "R",
+     "name": "notifyArrived",
+     "counts": {
+      "xpizza-functions/arrived-notify.js#functions": 2,
+      "xpizza-functions/index.js#functions": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:notifyArrivedOnTap): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/arrived-notify.js#eligible@xpizza-functions/arrived-notify.js#notifyArrived~2": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:notifyArrivedOnTap"
+   ],
+   "authority": "DRIVER C «Llegué» (PLAN-driver-server-C-llegue r3): the arrival notice runs only inside notifyArrivedOnTap, the onValueCreated trigger on a driver's create of tasks/{taskId}/arrived",
+   "whyFalseExcludes": "the complete invocation log shows no notifyArrivedOnTap call → the arrival path (eligible / notifyArrived / its WhatsApp send) never runs",
+   "bind": {
+    "site": "const again = await eligible(db, { taskId, oid, arrived });   // the FULL recheck, immediately before the mirror + send",
+    "siteSha": "765b324bb4d5a01bfa79b4c19440f9a3a10d70042e9c88486951b9f50962cd07",
+    "scope": "xpizza-functions/arrived-notify.js#notifyArrived",
+    "scopeSha": "17c4bb0b3bbcab473bc0ca458eb5c50480ba062a328ae021aff92edb26b5fcac"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.notifyArrivedOnTap = onValueCreated("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/arrived-notify.js#notifyArrived",
+     "callers": [
+      "xpizza-functions/index.js#notifyArrivedOnTap"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/arrived-notify.js#eligible",
+     "callers": [
+      "xpizza-functions/arrived-notify.js#notifyArrived"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "notifyArrivedOnTap",
+     "counts": {
+      "xpizza-functions/index.js#functions": 1
+     }
+    },
+    {
+     "kind": "R",
+     "name": "notifyArrived",
+     "counts": {
+      "xpizza-functions/arrived-notify.js#functions": 2,
+      "xpizza-functions/index.js#functions": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:notifyArrivedOnTap): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/arrived-notify.js#notifyArrived": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:notifyArrivedOnTap"
+   ],
+   "authority": "DRIVER C «Llegué» (PLAN-driver-server-C-llegue r3): the arrival notice runs only inside notifyArrivedOnTap, the onValueCreated trigger on a driver's create of tasks/{taskId}/arrived",
+   "whyFalseExcludes": "the complete invocation log shows no notifyArrivedOnTap call → the arrival path (eligible / notifyArrived / its WhatsApp send) never runs",
+   "bind": {
+    "site": "result = await wa.sendMessage(order.customer_phone, wa.tplArrived({ customerName: order.customer_name, trackingToken: order.tracking_token, restaurantId: rid }), rid);",
+    "siteSha": "2028ceb29588ac72aa8b1b392580b5565fb2227aac5dc2755ddc3fd8f1d27baa",
+    "scope": "xpizza-functions/arrived-notify.js#notifyArrived",
+    "scopeSha": "17c4bb0b3bbcab473bc0ca458eb5c50480ba062a328ae021aff92edb26b5fcac"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.notifyArrivedOnTap = onValueCreated("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/arrived-notify.js#notifyArrived",
+     "callers": [
+      "xpizza-functions/index.js#notifyArrivedOnTap"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/arrived-notify.js#eligible",
+     "callers": [
+      "xpizza-functions/arrived-notify.js#notifyArrived"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "notifyArrivedOnTap",
+     "counts": {
+      "xpizza-functions/index.js#functions": 1
+     }
+    },
+    {
+     "kind": "R",
+     "name": "notifyArrived",
+     "counts": {
+      "xpizza-functions/arrived-notify.js#functions": 2,
+      "xpizza-functions/index.js#functions": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:notifyArrivedOnTap): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/arrived-notify.js#notifyArrived@xpizza-functions/index.js#notifyArrivedOnTap": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:notifyArrivedOnTap"
+   ],
+   "authority": "DRIVER C «Llegué» (PLAN-driver-server-C-llegue r3): the arrival notice runs only inside notifyArrivedOnTap, the onValueCreated trigger on a driver's create of tasks/{taskId}/arrived",
+   "whyFalseExcludes": "the complete invocation log shows no notifyArrivedOnTap call → the arrival path (eligible / notifyArrived / its WhatsApp send) never runs",
+   "bind": {
+    "site": "await notifyArrived(getDatabase(), { taskId: event.params.taskId, arrived: event.data.val(), now: Date.now() }, {",
+    "siteSha": "519723eda1e431bef875a294c83b8f50246b288d8188157a90dbc0eacefb6c26",
+    "scope": "xpizza-functions/index.js#notifyArrivedOnTap",
+    "scopeSha": "d66e81b2f55c70aec6f4621b9cf568e7f91fb268258346b55745e76db608dfe5"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.notifyArrivedOnTap = onValueCreated("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/arrived-notify.js#notifyArrived",
+     "callers": [
+      "xpizza-functions/index.js#notifyArrivedOnTap"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/arrived-notify.js#eligible",
+     "callers": [
+      "xpizza-functions/arrived-notify.js#notifyArrived"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "notifyArrivedOnTap",
+     "counts": {
+      "xpizza-functions/index.js#functions": 1
+     }
+    },
+    {
+     "kind": "R",
+     "name": "notifyArrived",
+     "counts": {
+      "xpizza-functions/arrived-notify.js#functions": 2,
+      "xpizza-functions/index.js#functions": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:notifyArrivedOnTap): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-orders/status-view.js#statusArrived@xpizza-orders/status-view.js#presentStatus": {
+   "group": "ofd",
+   "appliesWhenAny": [
+    {
+     "outForDelivery": [
+      true
+     ]
+    }
+   ],
+   "authority": "DRIVER C «Llegué» client: presentStatus shows «{Nombre} llegó» only for an out_for_delivery order whose arrival record matches the live driver (statusArrivedApplies)",
+   "whyFalseExcludes": "not yet out for delivery → presentStatus never takes the out_for_delivery branch, so statusArrived cannot run",
+   "bind": {
+    "site": "statusArrived(r, v);",
+    "siteSha": "1e05680c15328b5127fb66b8ccf49ca0f885f96c16500cf87236f5f37504004c",
+    "scope": "xpizza-orders/status-view.js#presentStatus",
+    "scopeSha": "91c96339d7fc55d307989d4c77b6a0f6977d052ff68bd6e32a4ba0a5e240fdc1"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-orders/status-view.js#presentStatus",
+     "text": "} else if (status === 'out_for_delivery') {",
+     "scopeSha": "91c96339d7fc55d307989d4c77b6a0f6977d052ff68bd6e32a4ba0a5e240fdc1"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-orders/status-view.js#presentStatus",
+     "text": "if (statusArrivedApplies(r)) {",
+     "scopeSha": "91c96339d7fc55d307989d4c77b6a0f6977d052ff68bd6e32a4ba0a5e240fdc1"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|out_for_delivery",
+     "S3|x_pizza|out_for_delivery"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ]
+   }
   }
  }
 }
