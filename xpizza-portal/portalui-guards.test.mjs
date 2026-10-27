@@ -171,8 +171,12 @@ test('BRAND-AGNOSTIC: zero restaurant / brand literals in every new portal and o
   assert.ok(hits("rid === 'x_pizza' || name === 'La Musa'") >= 2);
 });
 
+// PLAN-portal-fonts r1.1: index.html's Functions-origin PRECONNECT carries the GCP project id (`xpizza-delivery`), which the
+// /X.?Pizza/ pattern counts — the same project-id case as api.js's BASE (not a brand choice). That one exact link is excluded.
+const FN_PRECONNECT = /<link rel="preconnect" href="https:\/\/us-central1-xpizza-delivery\.cloudfunctions\.net" crossorigin>/g;
 test('BRAND-AGNOSTIC: the pre-existing portal files gain no literal (counts frozen against the base)', () => {
-  for (const f of EXISTING) assert.ok(hits(read(f)) <= hits(base(f)), `${f}: ${hits(base(f))} → ${hits(read(f))} brand literals`);
+  for (const f of EXISTING) { const now = f === 'index.html' ? read(f).replace(FN_PRECONNECT, '') : read(f); assert.ok(hits(now) <= hits(base(f)), `${f}: ${hits(base(f))} → ${hits(now)} brand literals`); }
+  assert.ok(FN_PRECONNECT.test(read('index.html')), 'non-vacuity: the excluded link is the one index.html carries');
 });
 
 // ── slice 2 (PLAN-portal-ui-slice2-equipos r1.1 §5, codex plan r1 P2-4): app.js / ventas.js are BYTE-EQUAL to the approved stack
