@@ -46,6 +46,9 @@ const quiet = async (fn) => { const e = console.error, w = console.warn; console
   // ── 4. the decision ──
   const ask = (phone, restaurantId, strict) => { G._resetForTest(); return G.otpLoginAllowed({ db: dbOf(CFG), phone, restaurantId, strict, now: T, resolve }); };
   assert.strictEqual(await ask('9795-0000', 'tb_brand_a', false), true, 'GATE-HN-ALWAYS');
+  { G._resetForTest(); let reads = 0; const noisy = { ref: () => { reads++; throw new Error('no read expected'); } };
+    assert.strictEqual(await G.otpLoginAllowed({ db: noisy, phone: '+504 9795-0000', restaurantId: 'tb_brand_a', strict: true, now: T, resolve }), true, 'GATE-HN-ZERO-READS allowed');
+    assert.strictEqual(reads, 0, 'GATE-HN-ZERO-READS (today\'s path adds no RTDB read)'); }
   assert.strictEqual(await ask('9795-0000', 'tb_nocreds', false), true, 'GATE-HN-EVEN-UNRESOLVED-SENDER');
   assert.strictEqual(await ask('+1 219 795 0000', 'tb_brand_a', false), true, 'GATE-US-ENABLED-ON-111');
   assert.strictEqual(await ask('+52 55 1234 5678', 'tb_brand_a', false), false, 'GATE-MX-NOT-ENABLED');
