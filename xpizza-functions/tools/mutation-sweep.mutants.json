@@ -23885,5 +23885,152 @@
     "kills_with": [
       "the refused attempt left B un-dispatched"
     ]
+  },
+  {
+    "id": "g6-01",
+    "slice": "g6",
+    "label": "✕ on the done pane closes without signing the member in",
+    "file": "../customer-app/capp-signup.js",
+    "from": "return void (S.pane === 'done' ? finish() : close('close'));",
+    "to": "return void close('close');",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "✕ on the done pane still signs the member in"
+    ]
+  },
+  {
+    "id": "g6-02",
+    "slice": "g6",
+    "label": "closing mid-completion keeps the sign-in (a member without the Términos)",
+    "file": "../customer-app/capp-signup.js",
+    "from": "if (wasSignedIn && !finished && S.completion === 'needed') { try { await auth.signOut(); } catch (_) {} }",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "the sign-in is undone"
+    ]
+  },
+  {
+    "id": "g6-03",
+    "slice": "g6",
+    "label": "a custom-token mint for a closed sheet is kept",
+    "file": "../customer-app/capp-signup.js",
+    "from": "if (!live(g)) { if (uid) { try { await auth.signOut(); } catch (_) {} } return; }",
+    "to": "if (!live(g)) { return; }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "a mint for a closed sheet is signed out"
+    ]
+  },
+  {
+    "id": "g6-04",
+    "slice": "g6",
+    "label": "«Guardar» enabled without the Términos",
+    "file": "../customer-app/capp-signup.js",
+    "from": "if (el.id === 'su-name') { S.name = el.value; const b = host.querySelector('[data-su=\"save\"]'); if (b) b.disabled = !(S.name.trim() && S.terms) || S.busy; return; }",
+    "to": "if (el.id === 'su-name') { S.name = el.value; const b = host.querySelector('[data-su=\"save\"]'); if (b) b.disabled = !(S.name.trim()) || S.busy; return; }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "Términos are required"
+    ]
+  },
+  {
+    "id": "g6-05",
+    "slice": "g6",
+    "label": "requestOtp drops the platform context",
+    "file": "../customer-app/capp-signup-api.js",
+    "from": "body: { phone, context: CONTEXT, ...(linkTicket ? { link_ticket: linkTicket, session_id: sessionId } : {}) } });\n        return r.status",
+    "to": "body: { phone, ...(linkTicket ? { link_ticket: linkTicket, session_id: sessionId } : {}) } });\n        return r.status",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "the platform wire: requestOtp"
+    ]
+  },
+  {
+    "id": "g6-06",
+    "slice": "g6",
+    "label": "completeProfile without the member token",
+    "file": "../customer-app/capp-signup-api.js",
+    "from": "const r = await call(E.completeProfile, { idToken, body:",
+    "to": "const r = await call(E.completeProfile, { body:",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "completeProfile carries the member token"
+    ]
+  },
+  {
+    "id": "g6-07",
+    "slice": "g6",
+    "label": "an ordinary sign-out keeps the cached profile",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "        if (st === 'guest') CappDeviceAccount.forgetProfile(storage);   // an ordinary sign-out: no personal data stays on show\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=G6",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "an ordinary sign-out clears the cached profile"
+    ]
+  },
+  {
+    "id": "g6-08",
+    "slice": "g6",
+    "label": "the profile cache ignores the uid (another member's shown)",
+    "file": "../customer-app/capp-device-account.js",
+    "from": " || v.uid !== uid) return null;",
+    "to": ") return null;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=G6",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "another member"
+    ]
+  },
+  {
+    "id": "g6-09",
+    "slice": "g6",
+    "label": "a restored session ignores the cache (no autofill)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "const c = CappDeviceAccount.readProfile(storage, u.uid); applyMember(c || { uid: u.uid });",
+    "to": "applyMember({ uid: u.uid });",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=G6",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "restored ⇒ autofilled from the cache"
+    ]
   }
 ]

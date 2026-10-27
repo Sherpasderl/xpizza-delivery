@@ -169,10 +169,10 @@ test('G6 transport — `context:\'platform\'` on every call (never a restaurant 
   assert.deepEqual(await api.config(), { ok: true, termsUrl: 't', privacyUrl: 'p', legalReady: true, googleEnabled: true, googleClientId: 'gid' });
   assert.equal(sent[0].u, 'https://fn.test/getSignupConfig?context=platform'); assert.equal(sent[0].i.method, 'GET');
   await api.requestOtp({ phone: '+50499990000' });
-  assert.deepEqual(JSON.parse(sent[1].i.body), { phone: '+50499990000', context: 'platform' });
+  assert.deepEqual(JSON.parse(sent[1].i.body), { phone: '+50499990000', context: 'platform' }, '🔴 the platform wire: requestOtp');
   assert.deepEqual(await api.verifyOtp({ phone: '+50499990000', code: '1' }), { ok: false, reason: 'too_many_attempts', retryInS: 540 });
   await api.completeProfile({ idToken: 'id:u1', email: 'a@b.co', name: 'Ana', promos: true });
-  assert.equal(sent[3].i.headers['x-firebase-id-token'], 'id:u1');
+  assert.equal(sent[3].i.headers['x-firebase-id-token'], 'id:u1', '🔴 completeProfile carries the member token');
   assert.deepEqual(JSON.parse(sent[3].i.body), { context: 'platform', email: 'a@b.co', accept_terms: true, promos: true, name: 'Ana' });
   for (const s of sent) assert.equal(/restaurant_id/.test(String(s.i.body || '') + s.u), false, '🔴 never a restaurant id');
   hang = true;
