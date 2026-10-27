@@ -1,0 +1,19 @@
+{
+  "version": "10.13.2",
+  "capturedAt": "2026-10-27",
+  "source": "the portal's own imports (firebase.js / auth.js / aceptar-boot.js) + their relative chunks",
+  "files": [
+    {
+      "name": "firebase-auth.js",
+      "url": "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js",
+      "sha256": "09211458a3bd82b48e2f58f95c90008c9db715302c408c774118b934b4fa830e",
+      "bytes": 150700
+    },
+    {
+      "name": "firebase-app.js",
+      "url": "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js",
+      "sha256": "7689323827fc416edc653dd06f6bd93314312ff5f71b1077a936e6803d7578d6",
+      "bytes": 102760
+    }
+  ]
+}

@@ -30,9 +30,13 @@ const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 
 // ── one-time capture of the exact SDK files (read-only; like the fonts pin) ──
 if (process.argv.includes('--capture-sdk')) {
+  // ONLY the files the portal itself imports, every import at firebase.js's version (a mixed version would pin the wrong SDK)
+  const imports = [...new Set(fs.readdirSync(path.join(ROOT, SITE)).filter((f) => f.endsWith('.js') || f.endsWith('.html'))
+    .flatMap((f) => [...read(f).matchAll(/https:\/\/www\.gstatic\.com\/firebasejs\/([0-9.]+)\/([a-z-]+\.js)/g)].map((m) => `${m[1]} ${m[2]}`)))];
+  const off = imports.filter((x) => !x.startsWith(`${SDK_VER} `));
+  if (off.length) throw new Error(`capture: SDK imports not at firebase.js's ${SDK_VER}: ${off.join(', ')}`);
   fs.mkdirSync(SDK_DIR, { recursive: true });
-  const want = [...new Set([...FB.matchAll(/firebasejs\/[0-9.]+\/([a-z-]+\.js)/g), ...read('auth.js').matchAll(/firebasejs\/[0-9.]+\/([a-z-]+\.js)/g),
-    ...read('aceptar-boot.js').matchAll(/firebasejs\/[0-9.]+\/([a-z-]+\.js)/g)].map((m) => m[1]))];
+  const want = imports.map((x) => x.split(' ')[1]);
   const files = []; const done = new Set();
   while (want.length) {
     const name = want.shift(); if (done.has(name)) continue; done.add(name);
@@ -41,8 +45,16 @@ if (process.argv.includes('--capture-sdk')) {
     fs.writeFileSync(path.join(SDK_DIR, name), buf);
     files.push({ name, url: SDK_BASE + name, sha256: sha(buf), bytes: buf.length });
     for (const m of buf.toString('utf8').matchAll(/(?:from|import)\s*["']\.\/([a-z0-9-]+\.js)["']/g)) want.push(m[1]);   // relative chunks
+    for (const m of buf.toString('utf8').matchAll(/["']https:\/\/www\.gstatic\.com\/firebasejs\/([0-9.]+)\/([a-z0-9-]+\.js)["']/g)) {   // absolute siblings
+      if (m[1] !== SDK_VER) throw new Error(`capture: ${name} imports ${m[2]} at ${m[1]}, not ${SDK_VER}`); want.push(m[2]); }
   }
-  fs.writeFileSync(SDK_PIN, JSON.stringify({ version: SDK_VER, capturedAt: new Date().toISOString().slice(0, 10), files }, null, 2) + '\n');
+  // the license travels with the copy: each file's own leading license comment, verbatim, collected alongside
+  // (a minified file the CDN serves WITHOUT a header is listed as such — it is the same Apache-2.0 package as the headed one)
+  const notices = files.map((f) => { const head = (/^\s*(\/\*[\s\S]*?\*\/)/.exec(fs.readFileSync(path.join(SDK_DIR, f.name), 'utf8')) || [])[1];
+    return head && /license/i.test(head) ? `== ${f.name} (${f.url})\n${head}\n` : `== ${f.name} (${f.url})\n(served without a license header; same package — the Firebase JS SDK, Apache License 2.0, as firebase-app.js's header in this file states)\n`; });
+  if (!notices.some((n) => /Apache License/.test(n))) throw new Error('capture: no pinned file carries the SDK license header');
+  fs.writeFileSync(path.join(SDK_DIR, 'LICENSE-HEADERS.txt'), `Firebase JS SDK ${SDK_VER} — the license headers of the pinned files, verbatim (the files themselves are unmodified).\n\n${notices.join('\n')}`);
+  fs.writeFileSync(SDK_PIN, JSON.stringify({ version: SDK_VER, capturedAt: new Date().toISOString().slice(0, 10), source: 'the portal\'s own imports (firebase.js / auth.js / aceptar-boot.js) + their relative chunks', files }, null, 2) + '\n');
   console.log(`captured ${files.length} SDK file(s) for ${SDK_VER}: ${files.map((f) => `${f.name} ${f.sha256.slice(0, 10)} ${f.bytes}`).join(', ')}`);
   process.exit(0);
 }
