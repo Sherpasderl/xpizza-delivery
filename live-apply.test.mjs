@@ -13,6 +13,7 @@
 // remote script is REMOVED and fetch is stubbed before a single form script runs, so nothing here can
 // reach the network.
 import assert from 'node:assert';
+import { createRequire } from 'node:module';
 /* The rig lives in form-harness.mjs so Task 9's whole-flow matrix runs on the SAME one. Every note that
    used to sit here — why the default responder never settles, why availability is driven through the
    form's own loader, why windows are closed — moved with it. */
@@ -1950,6 +1951,44 @@ for (const dir of Object.keys(BRAND)) {
     w.closeDetailModal();
     ok(`${dir}: the variant renderer is strict and skips what it cannot resolve — it never dereferences a miss`);
   }
+}
+
+// ── PLAN 4 r4 (Codex r3 #2) — A PRODUCTION-VALID SECOND GROUP, the positive twin of the adversarial ampersand case above ──
+// A second launcher in the REAL la_musa seed source with its OWN correctly parented choices, accepted by validateSource (the
+// portal's own gate) → the real candidate build → the ONE composer → the ONE menu contract → a live apply on the real page, where
+// it draws as a launcher with exactly its own choices. (The ampersand id stays adversarial: validateSource refuses it, by design.)
+{
+  const rq = createRequire(new URL('./xpizza-functions/x.js', import.meta.url));
+  const { buildSourceFromCode } = rq('./tools/seed-source-store');
+  const { validateSource } = rq('./catalog/source-store');
+  const { buildSourceCandidate } = rq('./catalog/candidate-validate');
+  const { composeServedMenu } = rq('./catalog/public-menu');
+  const src = JSON.parse(JSON.stringify(buildSourceFromCode('la_musa')));
+  const [lk, spec] = Object.entries(src.structure.variant_items)[0];
+  const L = src.items.find((i) => i.key === lk);
+  const newL = `${lk}_dos`; const name = `${L.display.name} Dos`;
+  const choices = spec.variantIds.map((vid, i) => {
+    const orig = src.items.find((it) => it.key === String(vid));
+    const key = `${newL}_${i + 1}`;
+    return { ...JSON.parse(JSON.stringify(orig)), key, display: { ...orig.display, id: key, variantOf: newL, name: `${name} - ${orig.display.choice}` } };
+  });
+  src.items.push({ ...JSON.parse(JSON.stringify(L)), key: newL, display: { ...L.display, id: newL, name } }, ...choices);
+  src.structure.item_order.push(newL, ...choices.map((c) => c.key));
+  src.structure.variant_items[newL] = { ...spec, variantIds: choices.map((c) => c.key) };
+  assert.doesNotThrow(() => validateSource(src, 'la_musa'), 'la_musa: the second group passes validateSource — production-valid');
+  const { inputs, built } = buildSourceCandidate('la_musa', src);
+  void inputs;
+  const body = composeServedMenu('la_musa', { items: built.items, structure: built.structure, extras: built.extras });
+  const w = loadForm('la-musa-orders');
+  assert.doesNotThrow(() => w.GroupPicker.validateMenu(body, { variantItems: body.variant_items }), 'la_musa: …and the ONE menu contract accepts it');
+  await serve(w, envelope('la_musa', body, '1d.3'));
+  assert.ok(w.liveMenuGlobalGet('VARIANT_ITEMS')[newL], 'la_musa: the second group applied live');
+  w.openDetailModal(newL);
+  const rows = w.document.getElementById('detail-scroll').querySelectorAll('.detail-variant-row').length;
+  assert.strictEqual(rows, choices.length, `la_musa: it draws as a LAUNCHER with exactly its own ${choices.length} choices`);
+  w.closeDetailModal();
+  assert.ok(w.liveMenuGlobalGet('VARIANT_ITEMS')[lk], 'la_musa: the first group is untouched');
+  ok(`la_musa: a production-valid second group (validateSource ✓, its own ${choices.length} choices) builds, passes the ONE contract and applies live as a launcher`);
 }
 
 closeAll();

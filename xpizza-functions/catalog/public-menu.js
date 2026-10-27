@@ -262,7 +262,9 @@ async function buildPublicMenu(db, rid, deps = {}) {
   // `seq` rides ALONGSIDE the body, not inside it. It moves on every publish — including ones that
   // change nothing a customer sees — so a body carrying it would produce a new etag for an identical
   // menu, and every cache would miss for no reason.
-  return { rid: restaurantId, seq: menu.identity.seq, representation_version: representationVersion, body, etag };
+  // version_id (PLAN 4 r4): which immutable version THIS body is — the reconciler pairs it with the pointer's activation generation.
+  // The endpoint sends rid / representation_version / menu only, so the served response is unchanged.
+  return { rid: restaurantId, seq: menu.identity.seq, version_id: menu.identity.version_id, representation_version: representationVersion, body, etag };
 }
 
 // HOW A FAILURE BECOMES AN HTTP RESPONSE. Pure, and here rather than in index.js, because the

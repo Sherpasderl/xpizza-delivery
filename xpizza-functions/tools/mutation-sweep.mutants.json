@@ -20413,7 +20413,7 @@
   "label": "PLAN 4 r3: the trigger observes the published menu as OLDER than anything stored — it never spends from the budget (never posts)",
   "file": "catalog/form-rebake.js",
   "from": "  const { decision, attempts } = await claimAttempt(rid, read.obs, deps);\n  if (decision !== 'post') return { posted: false, reason: decision };",
-  "to": "  const { decision, attempts } = await claimAttempt(rid, { version: read.obs.version, seq: -1 }, deps);\n  if (decision !== 'post') return { posted: false, reason: decision };",
+  "to": "  const { decision, attempts } = await claimAttempt(rid, { version: read.obs.version, generation: -1 }, deps);\n  if (decision !== 'post') return { posted: false, reason: decision };",
   "command": [
    "node",
    "catalog/form-rebake.test.js"
@@ -20460,8 +20460,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §4/§5: a NEW published menu does not re-arm a stuck rid",
   "file": "catalog/form-rebake.js",
-  "from": "    if (obs.seq > seqOf(c)) c = { ...c, version: obs.version, seq: obs.seq, attempts: 0, stuck: false };   // a NEWER publish re-arms",
-  "to": "    if (obs.seq > seqOf(c)) c = { ...c, version: obs.version, seq: obs.seq };   // a NEWER publish re-arms",
+  "from": "    if (obs.generation > genOf(c)) c = { ...c, version: obs.version, generation: obs.generation, attempts: 0, stuck: false };   // a NEWER activation re-arms",
+  "to": "    if (obs.generation > genOf(c)) c = { ...c, version: obs.version, generation: obs.generation };   // a NEWER activation re-arms",
   "command": [
    "node",
    "catalog/form-rebake.test.js"
@@ -20508,8 +20508,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §4/§5: a converged rid keeps its attempt count (the alarm never clears)",
   "file": "catalog/form-rebake.js",
-  "from": "      return { ...c, version: read.obs.version, seq: read.obs.seq, attempts: 0, stuck: false };\n    });\n    return { rid, decision: 'converged' };",
-  "to": "      return { ...c, version: read.obs.version, seq: read.obs.seq };\n    });\n    return { rid, decision: 'converged' };",
+  "from": "      return { ...c, version: read.obs.version, generation: read.obs.generation, attempts: 0, stuck: false };\n    });\n    return { rid, decision: 'converged' };",
+  "to": "      return { ...c, version: read.obs.version, generation: read.obs.generation };\n    });\n    return { rid, decision: 'converged' };",
   "command": [
    "node",
    "catalog/form-rebake.test.js"
@@ -20856,7 +20856,7 @@
   "slice": "formbake",
   "label": "PLAN 4 r3 (Codex r2 #1): the stale-observation fence is dropped — an OLDER read is treated as current",
   "file": "catalog/form-rebake.js",
-  "from": "    if (obs.seq < seqOf(c)) { decision = 'stale'; return undefined; }                       // an OLDER observation: no write at all\n",
+  "from": "    if (obs.generation < genOf(c)) { decision = 'stale'; return undefined; }                 // an OLDER observation: no write at all\n",
   "to": "",
   "command": [
    "node",
@@ -20866,10 +20866,10 @@
  {
   "id": "fb-90",
   "slice": "formbake",
-  "label": "PLAN 4 r3 (Codex r2 #1): the budget resets on ANY version difference (hash inequality), not only a NEWER publish",
+  "label": "PLAN 4 r4 (Codex r2/r3 #1): the budget resets on ANY generation difference, not only a NEWER activation",
   "file": "catalog/form-rebake.js",
-  "from": "    if (obs.seq > seqOf(c)) c = { ...c, version: obs.version, seq: obs.seq, attempts: 0, stuck: false };   // a NEWER publish re-arms",
-  "to": "    if (obs.seq !== seqOf(c)) c = { ...c, version: obs.version, seq: obs.seq, attempts: 0, stuck: false };   // a NEWER publish re-arms",
+  "from": "    if (obs.generation > genOf(c)) c = { ...c, version: obs.version, generation: obs.generation, attempts: 0, stuck: false };   // a NEWER activation re-arms",
+  "to": "    if (obs.generation !== genOf(c)) c = { ...c, version: obs.version, generation: obs.generation, attempts: 0, stuck: false };   // a NEWER activation re-arms",
   "command": [
    "node",
    "catalog/form-rebake.test.js"
@@ -20897,6 +20897,18 @@
   "command": [
    "node",
    "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-93",
+  "slice": "formbake",
+  "label": "PLAN 4 r4 (Codex r3 #1): the coherent read stops requiring the menu to BE the pointer's version — a generation is paired with another activation's menu",
+  "file": "catalog/form-rebake.js",
+  "from": "    if (p && m && p.version && m.version_id === p.version && Number.isSafeInteger(p.generation)) return { menu: m.body, generation: p.generation };",
+  "to": "    if (p && m && Number.isSafeInteger(p.generation)) return { menu: m.body, generation: p.generation };",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
   ]
  }
 ]

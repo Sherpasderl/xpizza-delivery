@@ -35,19 +35,20 @@ function world({ env = { FORM_BUILD_HOOKS: HOOKS }, hookStatus = 201 } = {}) {
   const published = { x_pizza: generateFormBundle('x_pizza', catalogSnapshot('x_pizza')), la_musa: generateFormBundle('la_musa', catalogSnapshot('la_musa')) };
   const html = { x_pizza: fs.readFileSync(FORMS.x_pizza, 'utf8'), la_musa: fs.readFileSync(FORMS.la_musa, 'utf8') };
   const deployed = { x_pizza: clone(published.x_pizza), la_musa: clone(published.la_musa) };
-  const w = { published, deployed, posts: [], gets: [], alarms: [], logs: [], t: Date.UTC(2026, 9, 26, 12), hookStatus, readFails: new Set(), deployedFails: new Set(), seq: {}, lastHash: {} };
+  const w = { published, deployed, posts: [], gets: [], alarms: [], logs: [], t: Date.UTC(2026, 9, 26, 12), hookStatus, readFails: new Set(), deployedFails: new Set(), gen: {}, lastHash: {} };
   const originOf = (rid) => SITES.deployments.find((d) => d.app === 'orders' && d.context === rid).origins[0];
   w.deps = {
     db: rtdb(), env, now: () => w.t, sites: SITES,
     registry: { ready: async () => {}, known: () => new Set(['la_musa', 'x_pizza', 'synthetic_3']) },
     alarm: async (kind, detail) => { w.alarms.push({ kind, detail }); },
     log: (line, detail) => { w.logs.push(`${line} ${detail}`); },
-    // { menu, seq }: a change of published CONTENT is a publish, so seq advances (monotonic, like identity.seq)
+    // { menu, generation }: a change of published CONTENT is an activation, so the generation advances (the real pointer writer
+    // advances it on every activation — rollbacks included; test 12 drives the real publisher)
     readPublished: async (rid) => {
       if (w.readFails.has(rid)) throw new Error('down');
       const menu = clone(w.published[rid]); const h = JSON.stringify(menu);
-      if (w.lastHash[rid] !== h) { w.seq[rid] = (w.seq[rid] || 0) + 1; w.lastHash[rid] = h; }
-      return { menu, seq: w.seq[rid] };
+      if (w.lastHash[rid] !== h) { w.gen[rid] = (w.gen[rid] || 0) + 1; w.lastHash[rid] = h; }
+      return { menu, generation: w.gen[rid] };
     },
     http: {
       post: async (url) => { w.posts.push(url); if (w.hookStatus === 'throw') throw new Error('ECONNRESET'); return { status: w.hookStatus }; },
@@ -254,10 +255,62 @@ const state = (w, rid) => clone(w.deps.db.data.form_rebake && w.deps.db.data.for
     // a stale observation never even CONVERGES the record: an old read that happens to match the deploy resets nothing
     const w2 = world(); w2.published.la_musa.dishes[0].price += 1; await FR.reconcile(w2.deps);   // attempt 1 for the new version
     const st = clone(w2.deps.db.data.form_rebake.la_musa);
-    const oldRead = { menu: clone(w2.deployed.la_musa), seq: 0 };                                  // an OLDER read equal to the deploy
+    const oldRead = { menu: clone(w2.deployed.la_musa), generation: 0 };                           // an OLDER read equal to the deploy
     w2.deps.readPublished = async () => oldRead; await FR.reconcile(w2.deps);
     assert.deepStrictEqual(clone(w2.deps.db.data.form_rebake.la_musa), st, 'an older read that matches the deploy does not reset the budget');
     ok(`overlapping reads: a reconciliation that read A, resumed after B's trigger, is STALE and writes nothing; B gets exactly ${FR.MAX_ATTEMPTS} POSTs and one alarm; an older read never converges the record`);
+  }
+
+  // ── 12. ROLLBACK (Codex r3 #1), the REAL publisher + rollback + public-menu reader, both brands: publish A, publish B, roll back
+  //        to A — identity.seq goes BACKWARDS, the activation generation goes FORWARD, so the rebake fires (within the budget) ──
+  {
+    const { makeDb } = require('./firestore-fake');
+    const { publishVersion, rollbackVersion } = require('./catalog-publish');
+    const { buildSourceCandidate } = require('./candidate-validate');
+    const { buildPublicMenu } = require('./public-menu');
+    const { getActivePointer } = require('./catalog-firestore');
+    const { buildSourceFromCode } = require('../tools/seed-source-store');
+    for (const rid of ['la_musa', 'x_pizza']) {
+      const fs2 = makeDb();
+      const publish = async (mut) => {
+        const src = clone(buildSourceFromCode(rid)); if (mut) mut(src);
+        const { inputs, built } = buildSourceCandidate(rid, src);
+        const ptr = await getActivePointer(fs2, rid);
+        return publishVersion(fs2, rid, { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha: 'rb' }, { expected: { activeVersionId: ptr.version } });
+      };
+      const A = await publish(null);
+      const B = await publish((src) => { src.items[0].price += 7; src.items[0].display.price += 7; });
+      const read = (r) => FR.readFencedPublished(r, { getPointer: (x) => getActivePointer(fs2, x),
+        readMenu: (x) => buildPublicMenu(fs2, x, { known: new Set(['x_pizza', 'la_musa']), isActive: async () => true, overlayIdentity: false }) });
+      const w = world(); w.deps.readPublished = read;
+      const pB = await read(rid);
+      w.deployed[rid] = clone(pB.menu);                                            // the deploy carries B
+      const seqB = (await buildPublicMenu(fs2, rid, { known: new Set([rid]), isActive: async () => true })).seq;
+      await FR.onMirrorWrite(rid, w.deps);                                         // B's own trigger: attempt 1 of generation(B)
+      const ptrB = await getActivePointer(fs2, rid);
+      await rollbackVersion(fs2, rid, A.versionId, { expected: { activeVersionId: B.versionId } });
+      const ptrA = await getActivePointer(fs2, rid);
+      const seqA = (await buildPublicMenu(fs2, rid, { known: new Set([rid]), isActive: async () => true })).seq;
+      assert.ok(seqA < seqB, `${rid}: premise — identity.seq goes BACKWARDS on the rollback (${seqB} → ${seqA})`);
+      assert.ok(ptrA.generation > ptrB.generation, `${rid}: …while the activation generation goes FORWARD (${ptrB.generation} → ${ptrA.generation})`);
+      w.t += FR.COOLDOWN_MS;
+      const before = w.posts.length;
+      const r = (await FR.reconcile(w.deps)).results.find((x) => x.rid === rid);
+      assert.deepStrictEqual([r.decision, r.attempts], ['post', 1], `${rid}: 🔴 the rollback re-arms and the rebake FIRES (deployed B ≠ published A)`);
+      assert.strictEqual(w.posts.length, before + 1);
+      for (let i = 0; i < 5; i += 1) { w.t += FR.COOLDOWN_MS; await FR.onMirrorWrite(rid, w.deps); await FR.reconcile(w.deps); }
+      assert.strictEqual(w.posts.length - before, FR.MAX_ATTEMPTS, `${rid}: …within the budget for A's re-activation`);
+    }
+    ok('rollback (real publisher, both brands): A → B → roll back to A — seq goes backwards, the generation forwards; the rebake fires and stays within the budget');
+  }
+  // ── 13. the coherent read: an activation landing between the pointer read and the menu read is retried; never mismatched ──
+  {
+    let calls = 0;
+    const r = await FR.readFencedPublished('x', { getPointer: async () => ({ version: calls < 1 ? 'v1' : 'v2', generation: calls < 1 ? 4 : 5 }),
+      readMenu: async () => { calls += 1; return { version_id: 'v2', body: { dishes: [] } }; } });
+    assert.deepStrictEqual(r, { menu: { dishes: [] }, generation: 5 }, 'the pair is the one that AGREES');
+    await assert.rejects(FR.readFencedPublished('x', { getPointer: async () => ({ version: 'v1', generation: 1 }), readMenu: async () => ({ version_id: 'v9', body: {} }) }), /published_unstable/);
+    ok('the coherent read: the generation is taken only from the pointer naming the version the menu IS; a persistent disagreement is unreadable');
   }
 
   FINISHED = true;

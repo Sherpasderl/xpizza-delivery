@@ -78,6 +78,11 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/public-menu.js",
+  "now": "  // menu, and every cache would miss for no reason.\n  // version_id (PLAN 4 r4): which immutable version THIS body is — the reconciler pairs it with the pointer's activation generation.\n  // The endpoint sends rid / representation_version / menu only, so the served response is unchanged.\n  return { rid: restaurantId, seq: menu.identity.seq, version_id: menu.identity.version_id, representation_version: representationVersion, body, etag };\n}\n",
+  "was": "  // menu, and every cache would miss for no reason.\n  return { rid: restaurantId, seq: menu.identity.seq, representation_version: representationVersion, body, etag };\n}\n"
+ },
+ {
+  "file": "catalog/public-menu.js",
   "now": "\nmodule.exports = { buildPublicMenu, composeServedMenu, CARRIED_FROM_STRUCTURE, defaultIsActive, assertWholeBody, publicMenuErrorResponse, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };\n",
   "was": "\nmodule.exports = { buildPublicMenu, defaultIsActive, assertWholeBody, publicMenuErrorResponse, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };\n"
  }

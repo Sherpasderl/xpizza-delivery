@@ -91,21 +91,21 @@ async function postHook(url, rid, deps) {
   return cls;
 }
 
-// ONE RETRY BUDGET (Codex r1 #4), FENCED BY PUBLISH ORDER (Codex r2 #1) — the trigger and the reconciler claim POSTs through THIS
-// transaction, so they share the cooldown, the attempt count and `stuck` for ONE published version. Which version is current is
-// decided by the publish SEQUENCE (identity.seq, monotonic per publish) — never by "the hash differs": an OLDER observation (a
-// reconciliation that read version A before B was published) is STALE and touches nothing, and the count resets only when a
-// NEWER seq is first observed. So the same version gets at most MAX_ATTEMPTS POSTs however the entry points interleave or
-// overlap, then one form_rebake_stuck and silence. obs = { version (content hash, for the record), seq }.
+// ONE RETRY BUDGET (Codex r1 #4), FENCED BY THE ACTIVATION GENERATION (Codex r2 #1, r3 #1) — the trigger and the reconciler claim
+// POSTs through THIS transaction, so they share the cooldown, the attempt count and `stuck` for ONE activation. Which activation is
+// current is decided by the active pointer's GENERATION, which the pointer writer advances on EVERY activation — a rollback
+// included (identity.seq is the VERSION's ordinal and goes BACKWARDS on a rollback, so it cannot fence). An OLDER observation (a
+// reconciliation that read before a later activation) is STALE and touches nothing; the count resets only when a NEWER
+// generation is first observed. obs = { version (content hash, for the record), generation }.
 // → { decision: 'post' | 'cooldown' | 'stuck' | 'stuck_silent' | 'stale', attempts }
-const seqOf = (c) => (typeof c.seq === 'number' && Number.isFinite(c.seq) ? c.seq : -Infinity);
+const genOf = (c) => (typeof c.generation === 'number' && Number.isFinite(c.generation) ? c.generation : -Infinity);
 async function claimAttempt(rid, obs, deps) {
   const now = deps.now();
   let decision = null; let attempts = 0;
   await deps.db.ref(`form_rebake/${rid}`).transaction((cur) => {
     let c = isObj(cur) ? { ...cur } : {};
-    if (obs.seq < seqOf(c)) { decision = 'stale'; return undefined; }                       // an OLDER observation: no write at all
-    if (obs.seq > seqOf(c)) c = { ...c, version: obs.version, seq: obs.seq, attempts: 0, stuck: false };   // a NEWER publish re-arms
+    if (obs.generation < genOf(c)) { decision = 'stale'; return undefined; }                 // an OLDER observation: no write at all
+    if (obs.generation > genOf(c)) c = { ...c, version: obs.version, generation: obs.generation, attempts: 0, stuck: false };   // a NEWER activation re-arms
     if (c.stuck) { decision = 'stuck_silent'; return c; }
     if (typeof c.at === 'number' && now - c.at < COOLDOWN_MS) { decision = 'cooldown'; return c; }
     if ((c.attempts || 0) >= MAX_ATTEMPTS) { decision = 'stuck'; attempts = c.attempts; return { ...c, stuck: true }; }
@@ -115,8 +115,21 @@ async function claimAttempt(rid, obs, deps) {
   if (decision === 'stuck') await deps.alarm('form_rebake_stuck', { rid, attempts });
   return { decision, attempts };
 }
-// readPublished(rid) → { menu, seq }: the published menu WITHOUT the identity overlay, and its publish sequence.
-const observe = (read) => ({ menu: read && read.menu, obs: { version: menuVersion(read && read.menu), seq: Number(read && read.seq) } });
+
+// THE COHERENT READ: the active pointer's { version, generation } and the published menu, accepted only when the menu IS that
+// pointer's version (an activation landing between the two reads is retried; three disagreements = unreadable). Injected:
+// getPointer(rid) → { version, generation }; readMenu(rid) → buildPublicMenu's result (overlay-free), incl. version_id.
+// → { menu, generation }
+async function readFencedPublished(rid, { getPointer, readMenu }, tries = 3) {
+  for (let i = 0; i < tries; i += 1) {
+    const p = await getPointer(rid);
+    const m = await readMenu(rid);
+    if (p && m && p.version && m.version_id === p.version && Number.isSafeInteger(p.generation)) return { menu: m.body, generation: p.generation };
+  }
+  throw new Error('published_unstable');
+}
+// readPublished(rid) → { menu, generation }: the overlay-free published menu and the activation generation it was read at.
+const observe = (read) => ({ menu: read && read.menu, obs: { version: menuVersion(read && read.menu), generation: Number(read && read.generation) } });
 
 // FAST PATH — the mirror-write trigger. It reads the published menu (the same in-process read the reconciler uses) only to
 // learn its VERSION, then spends from the shared budget — an unchanged mirror event after `stuck` posts nothing.
@@ -154,9 +167,9 @@ async function reconcileRid(rid, base, cfg, deps) {
     // convergence resets the budget — fenced like a claim: an OLDER observation touches nothing; a no-op write is skipped
     await deps.db.ref(`form_rebake/${rid}`).transaction((cur) => {
       const c = isObj(cur) ? { ...cur } : {};
-      if (read.obs.seq < seqOf(c)) return undefined;
-      if (!c.attempts && !c.stuck && read.obs.seq === seqOf(c)) return undefined;
-      return { ...c, version: read.obs.version, seq: read.obs.seq, attempts: 0, stuck: false };
+      if (read.obs.generation < genOf(c)) return undefined;
+      if (!c.attempts && !c.stuck && read.obs.generation === genOf(c)) return undefined;
+      return { ...c, version: read.obs.version, generation: read.obs.generation, attempts: 0, stuck: false };
     });
     return { rid, decision: 'converged' };
   }
@@ -184,4 +197,4 @@ async function reconcile(deps) {
   return { dormant: false, results };
 }
 
-module.exports = { parseHooks, isHookUrl, onMirrorWrite, reconcile, reconcileRid, menuVersion, PATH, COOLDOWN_MS, MAX_ATTEMPTS, HOOK_DEADLINE_MS };
+module.exports = { readFencedPublished, parseHooks, isHookUrl, onMirrorWrite, reconcile, reconcileRid, menuVersion, PATH, COOLDOWN_MS, MAX_ATTEMPTS, HOOK_DEADLINE_MS };
