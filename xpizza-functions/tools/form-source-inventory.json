@@ -964,6 +964,7 @@
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/kds-pre-q2-denial.emulator.test.mjs",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
+    "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
     "xpizza-kitchen/avail-write.test.mjs",
     "xpizza-kitchen/card-model.test.mjs",
     "xpizza-kitchen/kds-smoke.test.mjs",
@@ -984,7 +985,8 @@
     "xpizza-functions/contract/token.guard.test.js",
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/test/availability-reset.emulator.test.js",
-    "xpizza-functions/test/kds-cancel-acks-devices.emulator.test.mjs"
+    "xpizza-functions/test/kds-cancel-acks-devices.emulator.test.mjs",
+    "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs"
    ]
   },
   "xpizza-dispatch": {
@@ -1037,6 +1039,7 @@
     "xpizza-functions/test/driver-cash-subscription.emulator.test.js",
     "xpizza-functions/test/h0-dismiss-rules.emulator.test.js",
     "xpizza-functions/test/portal-ops.emulator.test.js",
+    "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
     "xpizza-functions/test/superseded-capture.emulator.test.js",
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
@@ -1098,6 +1101,7 @@
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
     "xpizza-functions/test/driver-assignment-parity.emulator.test.js",
+    "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
     "xpizza-functions/test/unassign.emulator.test.js"
    ],
    "via_helper": [
@@ -1159,6 +1163,7 @@
     "xpizza-functions/test/driver-eligibility-rules.emulator.test.js",
     "xpizza-functions/test/f2-driver-feed-lifecycle.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
     "xpizza-functions/test/web-sdk-loader.emulator.test.mjs",
     "xpizza-functions/tracking/driver-orders.guard.test.js"
    ],
