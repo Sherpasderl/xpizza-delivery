@@ -172,8 +172,11 @@ export async function census(cdp) {
     if (!fonts.length) return;
     const shown = transform(raw, cssText(props, 'text-transform'));
     const clamp = cssText(props, '-webkit-line-clamp');
+    const ellipsis = cssText(props, 'text-overflow') === 'ellipsis' && cssText(props, 'overflow-x') !== 'visible';
     out.push({ nodeId: fontNodeId, path: label, family: cssText(props, 'font-family'), weight: cssText(props, 'font-weight'), style: cssText(props, 'font-style'),
-      clamp: clamp && clamp !== 'none' ? clamp : null,
+      clamp: clamp && clamp !== 'none' ? clamp : (ellipsis ? 'ellipsis' : null),
+      // ligature sequences (ff / fi / fl; ffi / ffl count twice): a font may render each as ONE glyph
+      ligatures: (shown.match(/ff[il]|f[fil]/g) || []).reduce((n, m) => n + m.length - 1, 0),
       codepoints: [...shown].filter((ch) => !/\s/.test(ch)).map((ch) => ch.codePointAt(0)),
       // the most whitespace glyphs this text can render: every NBSP (never collapsed), every whitespace char under pre / pre-wrap /
       // break-spaces, else one per collapsible run (calibrated: «&nbsp;&nbsp;·&nbsp;&nbsp;» renders 5 glyphs)
@@ -253,15 +256,18 @@ export function runsOf(node, probe) {
     const extra = (nodeCounts[f] || 0) - (probeCounts[f] || 0);
     const allowed = f === spaceFont ? node.spaces : 0;
     if (node.clamp) {
-      // LISTED SHAPING EXCEPTION — -webkit-line-clamp: Chrome lays the clamped text out twice and over-reports its glyphs. The SET of
+      // LISTED SHAPING EXCEPTIONS — -webkit-line-clamp and text-overflow:ellipsis: Chrome lays the text out twice (and an ellipsis
+      // truncates it), so its glyph count is not the text's. The SET of
       // fonts must still match the probe exactly, and the node must report at least the probe's non-space glyphs; only the exact
       // count is relaxed (calibrated: .pizza-card-desc, line-clamp 1, 30 chars → 51 glyphs).
       if (!probeCounts[f] && f !== spaceFont) problems.push(`${f}: a clamped node reports a font the probe never attributed`);
       else if (!nodeCounts[f] && probeCounts[f]) problems.push(`${f}: the probe attributes glyphs to a font the clamped node does not report`);
-      else if (extra < 0) problems.push(`${f}: clamped node ${nodeCounts[f] || 0} < probe ${probeCounts[f] || 0}`);
+      else if (extra < 0 && node.clamp !== 'ellipsis') problems.push(`${f}: clamped node ${nodeCounts[f] || 0} < probe ${probeCounts[f] || 0}`);
       continue;
     }
-    if (extra < 0 || extra > allowed) problems.push(`${f}: node ${nodeCounts[f] || 0} vs probe ${probeCounts[f] || 0} (+≤${allowed} spaces)`);
+    // a font may render a ligature sequence as one glyph: the node may fall SHORT by at most the ligature count, on that font only
+    const lig = f === probe.get(`${node.family}|${node.weight}|${node.style}|102`) ? node.ligatures || 0 : 0;   // 102 = 'f'
+    if (extra < -lig || extra > allowed) problems.push(`${f}: node ${nodeCounts[f] || 0} vs probe ${probeCounts[f] || 0} (+≤${allowed} spaces, −≤${lig} ligatures)`);
   }
   return { runs: [...runs].map(([familyName, codepoints]) => ({ familyName, codepoints })), probeCounts, nodeCounts, fidelity: problems };
 }
