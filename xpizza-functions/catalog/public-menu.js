@@ -153,6 +153,14 @@ const defaultIsActive = (rtdb) => async (rid) => {
   const identity = await getIdentity(rtdb, rid);
   return !!(identity && identity.active);
 };
+// S7a directory (PLAN-capp-S7a-r3 §4): ADDITIVE — the SAME getIdentity and the SAME activity predicate as defaultIsActive,
+// plus the identity's source ('fresh' | 'cache') and the identity itself (so the directory reads it once). defaultIsActive
+// above is untouched (a paired test asserts identical activity for fresh / cache / failure).
+const activityWithSource = (rtdb) => async (rid) => {
+  const { getIdentity } = require('../restaurant-config');
+  const identity = await getIdentity(rtdb, rid);
+  return { active: !!(identity && identity.active), source: (identity && identity._source) || null, identity };
+};
 
 async function buildPublicMenu(db, rid, deps = {}) {
   const { known, isActive, representationVersion = REPRESENTATION_VERSION, generate = generateFormBundle,
@@ -260,4 +268,4 @@ function publicMenuErrorResponse(e) {
   return { status: 500, log: 'public_menu_failed', payload: { error: 'error' } };
 }
 
-module.exports = { buildPublicMenu, defaultIsActive, assertWholeBody, publicMenuErrorResponse, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };
+module.exports = { buildPublicMenu, defaultIsActive, activityWithSource, assertWholeBody, publicMenuErrorResponse, REPRESENTATION_VERSION, PUBLIC_MENU_BODY_FIELDS, BODY_CONTRACT };

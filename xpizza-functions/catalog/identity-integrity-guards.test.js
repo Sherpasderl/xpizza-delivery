@@ -39,7 +39,11 @@ try {
   // PLAN-public-menu-display landed after extras: its exact module inverse (tools/pmdisplay-module-inverse.js, proven by
   // pmdisplay-wiring.guard) is reversed FIRST (newest first) — source-store.js gains only the all-or-nothing category-name rule
   const { unapplyPmdisplayModule, FILES: PMD_FILES } = require('../tools/pmdisplay-module-inverse');
-  const pmdRead = (f) => (PMD_FILES.includes(f) ? unapplyPmdisplayModule(f, read(f)) : read(f));
+  // S7a directory core landed after pmdisplay: its exact module inverse (tools/directory-module-inverse.js, proven by
+  // directory-wiring.guard) is applied FIRST (innermost), returning restaurant-registry.js / public-menu.js to the pre-S7a bytes
+  const { unapplyDirectoryModule, FILES: DIR_FILES } = require('../tools/directory-module-inverse');
+  const dirRead = (f) => (DIR_FILES.includes(f) ? unapplyDirectoryModule(f, read(f)) : read(f));
+  const pmdRead = (f) => (PMD_FILES.includes(f) ? unapplyPmdisplayModule(f, dirRead(f)) : dirRead(f));
   const pinned = (f) => (EXTRAS_FILES.includes(f) ? unapplyExtrasModule(f, pmdRead(f)) : pmdRead(f));
   for (const [f, want] of Object.entries(PINS)) assert.strictEqual(sha(pinned(f)), want, `🔴 ${f} changed — c2b imports it and must never edit it`);
   assert.notStrictEqual(sha(`${read('catalog/catalog-verifier.js')} `), PINS['catalog/catalog-verifier.js'], 'sensitivity');

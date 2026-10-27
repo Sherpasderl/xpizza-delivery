@@ -151,6 +151,7 @@
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/createorder-selfheal-client.test.js",
+    "xpizza-functions/directory/directory.test.js",
     "xpizza-functions/f2-client.test.js",
     "xpizza-functions/form-bundle-splice.test.js",
     "xpizza-functions/form-load-execution.test.js",
@@ -370,6 +371,7 @@
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
+    "xpizza-functions/directory/directory.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
@@ -616,6 +618,7 @@
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/createorder-selfheal-client.test.js",
+    "xpizza-functions/directory/directory.test.js",
     "xpizza-functions/f2-client.test.js",
     "xpizza-functions/form-bundle-splice.test.js",
     "xpizza-functions/form-load-execution.test.js",
@@ -835,6 +838,7 @@
     "xpizza-functions/contract/tracer.test.js",
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
+    "xpizza-functions/directory/directory.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
@@ -1803,10 +1807,15 @@
   "catalog/publish-edited-handler.js",
   "catalog/publish-request.js",
   "catalog/reset-draft.js",
+  "catalog/restaurant-registry.js",
   "catalog/snapshot-fallback.js",
   "catalog/source-store.js",
   "catalog/text-version.js",
   "createorder-classify.js",
+  "directory/directory-deps.js",
+  "directory/directory.js",
+  "directory/platform-config.js",
+  "directory/presentation-shape.js",
   "driver-ingest.js",
   "driver-problem-alert.js",
   "form-signal.js",
@@ -2115,6 +2124,17 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/restaurant-registry.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/identity-integrity-guards.test.js",
+     "inverses": [
+      "tools/directory-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
+  },
   "catalog/snapshot-fallback.js": {
    "pins": [],
    "lifts": [
@@ -2173,6 +2193,22 @@
      ]
     }
    ],
+   "lifts": []
+  },
+  "directory/directory-deps.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "directory/directory.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "directory/platform-config.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "directory/presentation-shape.js": {
+   "pins": [],
    "lifts": []
   },
   "driver-ingest.js": {
