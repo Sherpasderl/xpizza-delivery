@@ -204,12 +204,18 @@ await t('(6) a late pointer release from an earlier/disposed controller never ad
   const h = boot();
   h.api.start();                       // controller A, step 0
   const A = h.api.getDemo();
-  h.dragStart('cd-btn-accept');        // A begins a drag (document listeners registered)
-  h.api.start();                       // controller B overwrites companionDemo (A's listeners still live)
+  h.dragStart('cd-btn-accept');        // A begins a drag to completion (document listeners registered, not released)
+  h.api.start();                       // controller B overwrites companionDemo (A's listeners still live, NO teardown)
   const B = h.api.getDemo();
   assert.notEqual(A, B, 'a new controller instance');
-  await h.release();                   // A's onUp fires → identity check (companionDemo !== A) → bail
-  assert.equal(h.api.getDemo().step, 0, 'B was NOT advanced by A\'s late release');
+  assert.ok(h.host().querySelector('#cd-btn-accept'), 'B painted its step 0');
+  await h.release();                   // A's onUp fires → the slide callback's identity check (companionDemo !== A) must bail
+  // The discriminator is the SCREEN, not B.step: without the identity guard A advances ITSELF (self.step) and
+  // A.render() repaints A's step-1 (pickup) OVER B's screen. With the guard A bails → the host still shows B's step 0.
+  assert.equal(h.api.getDemo(), B, 'companionDemo is still B');
+  assert.equal(h.api.getDemo().step, 0, 'B was NOT advanced');
+  assert.ok(h.host().querySelector('#cd-btn-accept'), 'the screen still shows B at step 0');
+  assert.equal(h.host().querySelector('#cd-btn-pickup'), null, 'A\'s late release did NOT advance+repaint over B (slide-callback identity guard held)');
   assert.deepEqual(zeroWrites(h.writes), ALL_ZERO, 'zero writes');
 
   // teardown removes in-flight document listeners (real companionDemoTeardown = the logout/auth-transition callback).
