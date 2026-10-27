@@ -259,12 +259,15 @@
 
   // ── BUSCAR (P searchHtml): store hits from the directory at once; dish hits over the LOADED menus' DISPLAYED items (launchers
   //    priced «desde», never raw variant children), in directory → section → item order, capped at 12 ──
-  function searchModel(rows, q) {
+  // completeness also needs the DIRECTORY (Codex s7a2 r1 #9): a cold directory is still loading, and an errored or partial one may
+  // be missing stores — never «No encontramos» over either
+  function searchModel(rows, q, dirState) {
+    const ds = dirState || { phase: 'ready', partial: false };
     const s = norm(String(q || '').trim());
     const all = (rows || []).map(storeOf).filter((r) => !r.gone);
     const settled = (r) => r.menuState === 'fresh' || r.menuState === 'stale' || r.menuState === 'presentation' || r.menuState === 'failed';
-    const loading = all.some((r) => !settled(r));
-    const complete = all.every((r) => r.menuState === 'fresh');   // a stale / presentation / failed / missing menu ⇒ partial
+    const loading = ds.phase === 'cold' || all.some((r) => !settled(r));
+    const complete = ds.phase === 'ready' && ds.partial !== true && all.every((r) => r.menuState === 'fresh');   // a stale / presentation / failed / missing menu ⇒ partial
     if (!s) return { q: s, stores: [], dishes: [], loading, complete, all };
     const stores = all.filter((r) => norm(r.name + ' ' + r.kicker).includes(s));
     const dishes = all.flatMap((r) => (r.sections || []).flatMap((sec) => sec.items.filter((it) => norm(it.n + ' ' + it.d).includes(s)).map((it) => ({ r, it })))).slice(0, 12);
@@ -278,7 +281,7 @@
   const srowD = ({ r, it }) => `<button class="srow" data-act="open-dish" data-rid="${esc(r.id)}" data-id="${esc(it.id)}">${it.img ? `<img src="${esc(it.img)}" alt="">` : `<span class="noph" style="width:56px;height:56px;flex:none">${esc(it.n[0])}</span>`}<span class="t"><b>${esc(it.n)}</b><span>${esc(r.name)}${it.d ? ' · ' + esc(it.d) : ''}</span></span><span class="pr">${esc(dishPrice(it))}</span></button>`;
   function searchHtml(vm) {
     const q = vm.q || '';
-    const m = searchModel(vm.rows, q);
+    const m = searchModel(vm.rows, q, { phase: vm.phase, partial: vm.partial });
     let body = '';
     if (!m.q) body = (vm.recent || []).length ? `<h3>Búsquedas recientes</h3><div class="recent">${vm.recent.map((x) => `<button class="chip" data-act="recent" data-q="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : '';
     else if (m.loading && !m.dishes.length) {   // frame 6: stores at once; dishes pending (one quiet line)

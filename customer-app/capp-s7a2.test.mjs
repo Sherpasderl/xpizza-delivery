@@ -541,3 +541,14 @@ test('Codex s7a2 r1 #8: ADJACENT tombstones keep their slots — [A,B,C,D] then 
   R.dir.visit();
   assert.deepEqual(R.dir.view().rows.map((r) => r.rid), ['a', 'd']);
 });
+
+test('Codex s7a2 r1 #9: never «No encontramos» over an incomplete DIRECTORY — cold ⇒ «Buscando platos…»; error or partial ⇒ the partial note', () => {
+  const q = 'zzzqqq';
+  const cold = txt(dom(CappHome.searchHtml(VM({ tab: 'search', q, rows: [], phase: 'cold' }))).querySelector('#results'));
+  assert.ok(!/No encontramos/.test(cold) && /Buscando platos…/.test(cold), `🔴 a cold directory is loading: ${cold}`);
+  for (const over of [{ rows: [], phase: 'error' }, { partial: true }]) {
+    const r = txt(dom(CappHome.searchHtml(VM({ tab: 'search', q, ...over }))).querySelector('#results'));
+    assert.ok(!/No encontramos/.test(r) && /^Algunos menús no cargaron; puede haber más platos\./.test(r), `🔴 ${JSON.stringify(over)}: never «No encontramos» — ${r}`);
+  }
+  assert.match(txt(dom(CappHome.searchHtml(VM({ tab: 'search', q }))).querySelector('#results')), /^No encontramos/, 'a ready, complete directory with every menu fresh still says it');
+});
