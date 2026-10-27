@@ -88,11 +88,23 @@
     const PLACE_KEY = `capp:${cfg.restaurantId}:pending_place`;
     const PAY_KEY = cfg.pendingPayKey;
     const E = cfg.endpoints || {};
+    // S7a-1 (PLAN-capp-S7a r3/r3.1): HOSTED by the multi-store shell ⇔ the shell supplies the per-store cart snapshot key and the
+    // completion-marker key. Absent (direct link, every S1-S4 suite) ⇒ every path below is the S2 path, unchanged.
+    const CART_KEY = cfg.cartKey || null, PLACED_KEY = cfg.placedKey || null;
+    const HOSTED = !!(CART_KEY && PLACED_KEY);
 
     // ── storage (every access guarded: unavailable storage reads as empty and refuses writes) ──
     const readJSON = (k) => { try { const v = storage && storage.getItem(k); return v ? JSON.parse(v) : null; } catch (_) { return null; } };
     const writeJSON = (k, v) => { try { if (!storage) return false; const s = JSON.stringify(v); storage.setItem(k, s); return storage.getItem(k) === s; } catch (_) { return false; } };
     const removeKey = (k) => { try { if (storage) storage.removeItem(k); } catch (_) {} };
+    // S7a-1 r3 §1.5: FAILURE-AWARE variants, used ONLY by the hosted reconciliation / freeze / handoff paths (the helpers above are
+    // unchanged): a read error or unparseable value is NOT absence; a write is verified byte for byte; a removal is verified absent
+    function readStrict(k) {
+      try { if (!storage) return { ok: false }; const v = storage.getItem(k); if (v === null || v === undefined) return { ok: true, value: null }; return { ok: true, value: JSON.parse(v) }; } catch (_) { return { ok: false }; }
+    }
+    function writeStrict(k, v) { try { if (!storage) return false; const s = JSON.stringify(v); storage.setItem(k, s); return storage.getItem(k) === s; } catch (_) { return false; } }
+    function removeStrict(k) { try { if (!storage) return false; storage.removeItem(k); return storage.getItem(k) === null; } catch (_) { return false; } }
+    const newGen = () => { const b = randomBytes(8); let r = ''; for (const x of b) r += ID_CHARS[x % 32]; return r; };
 
     // ── the order id: the forms' genOrderId scheme (prefix + yymmdd-hhmmss + 8 CSPRNG chars), on the injected clock ──
     function genOrderId() {
@@ -118,6 +130,16 @@
     function clearPlace(id) {
       const r = readJSON(PLACE_KEY);
       if (r && typeof r === 'object' && r.order_id === id) removeKey(PLACE_KEY);
+    }
+    // S7a-1 r3 §1.6: a placement ENDS (placed / released) ⇒ hosted: the verified completion marker FIRST, then the guarded clear;
+    // a failed marker keeps the lock (recovery retries). Not hosted ⇒ exactly clearPlace(id).
+    function resolvePlace(id, outcome) {
+      if (!HOSTED) { clearPlace(id); return true; }
+      const r = readJSON(PLACE_KEY), s = readJSON(PAY_KEY);
+      const gen = (r && r.order_id === id && r.cart_gen) || (s && s.order_id === id && s.cart_gen) || null;
+      if (!writeStrict(PLACED_KEY, { order_id: id, cart_gen: gen, outcome, at: now() })) { removeKey(PLACED_KEY); return false; }   // an UNVERIFIED marker never drives reconciliation
+      clearPlace(id);
+      return true;
     }
     const fail = (code) => { const e = new Error(code); e.code = code; return e; };
     // a live record is re-written for THIS outgoing identity, then re-read: absent / expired / replaced ⇒ placement_lost
@@ -218,9 +240,9 @@
     }
     // a poll state (payment-poll-state.js) → the outcome, applying the clearing rules to THAT order only
     function outcomeOfState(id, st, j) {
-      if (PAID_STATES.has(st)) { clearPlace(id); clearPayFor(id); return { kind: 'placed', order_id: id, scheduled: st === 'scheduled_paid', tracking_token: (j && j.tracking_token) || null, scheduled_for: (j && j.scheduled_for) || null }; }
-      if (st === 'closed_refunded') { clearPlace(id); clearPayFor(id); return { kind: 'refunded', order_id: id, refunded_total_cents: j && Number.isFinite(j.refunded_total_cents) ? j.refunded_total_cents : null }; }
-      if (st === 'cancelled' || st === 'failed') { clearPlace(id); return { kind: 'payment_failed', order_id: id, state: st }; }   // (S2): the next placement mints
+      if (PAID_STATES.has(st)) { resolvePlace(id, 'placed'); clearPayFor(id); return { kind: 'placed', order_id: id, scheduled: st === 'scheduled_paid', tracking_token: (j && j.tracking_token) || null, scheduled_for: (j && j.scheduled_for) || null }; }
+      if (st === 'closed_refunded') { resolvePlace(id, 'released'); clearPayFor(id); return { kind: 'refunded', order_id: id, refunded_total_cents: j && Number.isFinite(j.refunded_total_cents) ? j.refunded_total_cents : null }; }
+      if (st === 'cancelled' || st === 'failed') { resolvePlace(id, 'released'); return { kind: 'payment_failed', order_id: id, state: st }; }   // (S2): the next placement mints
       return { kind: 'confirming', order_id: id, state: CONFIRMING_STATES.has(st) ? st : 'pending' };   // creds kept, no payment offer
     }
     const recoverySheet = (id) => ({ kind: 'existing_order', order_id: id, reference: ref4(id) });   // no mint, no payment action
@@ -285,8 +307,41 @@
 
     // ── one placement ──
     // p: { flow, ctx: { restaurantId, items, itemsText, member, headers }, sig, expectedNetCents, totals, sheet }
+    // S7a-1 r3 §1.3: ORDERED, idempotent reconciliation of a completion marker — FIRST the guarded clear of THAT order's record,
+    // then the matching-generation cart (placed ⇒ removed; released ⇒ unfrozen), then the marker. Any failure stops (ok:false).
+    function reconcile() {
+      if (!HOSTED) return { ok: true, done: 'none' };
+      const m = readStrict(PLACED_KEY); if (!m.ok) return { ok: false, step: 'read_marker' };
+      const mk = m.value;
+      if (!mk || typeof mk !== 'object' || typeof mk.order_id !== 'string') return mk == null ? { ok: true, done: 'none' } : (removeStrict(PLACED_KEY) ? { ok: true, done: 'none' } : { ok: false, step: 'clear_marker' });
+      const pr = readStrict(PLACE_KEY); if (!pr.ok) return { ok: false, step: 'read_place' };
+      if (pr.value && pr.value.order_id === mk.order_id && !removeStrict(PLACE_KEY)) return { ok: false, step: 'clear_place' };
+      const cr = readStrict(CART_KEY); if (!cr.ok) return { ok: false, step: 'read_cart' };
+      const c = cr.value;
+      if (c && mk.cart_gen && c.cart_gen === mk.cart_gen && c.frozen_for === mk.order_id) {
+        if (mk.outcome === 'placed') { if (!removeStrict(CART_KEY)) return { ok: false, step: 'clear_cart' }; }
+        else { const { frozen_for, ...rest } = c; if (!writeStrict(CART_KEY, rest)) return { ok: false, step: 'unfreeze_cart' }; }
+      }
+      if (!removeStrict(PLACED_KEY)) return { ok: false, step: 'clear_marker' };
+      return { ok: true, done: mk.outcome, order_id: mk.order_id, cart_gen: mk.cart_gen || null };
+    }
+    // the cart's freeze (hosted): { frozen, order_id, live } — live = its placement record still exists
+    function cartFreeze() {
+      if (!HOSTED) return { frozen: false };
+      const c = readJSON(CART_KEY);
+      if (!c || typeof c.frozen_for !== 'string') return { frozen: false };
+      const r = readPlace();
+      return { frozen: true, order_id: c.frozen_for, live: !!(r && r.order_id === c.frozen_for) };
+    }
     async function place(p) {
       const method = p.flow.pay === 'online' ? 'online' : 'cash';
+      if (HOSTED) {
+        const rc = reconcile();
+        if (!rc.ok) return { kind: 'offline', reconcile: rc.step };   // blocked until reconciliation completes (nothing sent)
+        const fz = cartFreeze();
+        // r3 §1.4: a frozen cart whose lock expired with no marker NEVER unlocks — the drawn recovery sheet, never a new placement
+        if (fz.frozen && !fz.live) return recoverySheet(fz.order_id);
+      }
       const live = readPlace();
       if (memLock) return lockedOutcome(memLock);                                         // this page's lock (even if its write failed)
       if (live && live.pay_pending === true) return lockedOutcome(live.order_id);   // locked: zero writes until a definitive poll
@@ -310,6 +365,15 @@
         let rec;
         try {
           rec = readPlace() || mintPlace(method, p);
+          // S7a-1 r3.1 N7: hosted ⇒ a VERIFIED freeze of the purchased cart is a precondition of the FIRST dispatch of an identity;
+          // a failure stops here (zero sends; the drawn «Sin conexión» retry) and the retry reuses THIS identity
+          if (HOSTED && !(Number(rec.dispatched) > 0)) {
+            const snap = readJSON(CART_KEY) || {};
+            const gen = rec.cart_gen || snap.cart_gen || newGen();
+            const lines = p.cartSnapshot && Array.isArray(p.cartSnapshot.lines) ? p.cartSnapshot.lines : snap.lines;
+            if (!writeStrict(CART_KEY, { ...snap, v: snap.v || 1, rid: cfg.restaurantId, mode: p.flow && p.flow.mode, lines, cart_gen: gen, frozen_for: rec.order_id })) return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };
+            if (rec.cart_gen !== gen) rec = patchPlace(rec.order_id, { cart_gen: gen });
+          }
           // an un-issued identity carries the economics of the body actually sent (an issued one keeps its checkout's, and a cash
           // attempt never overwrites a charge's); the method is the record's first one once a charge was ever dispatched (`card` is sticky)
           rec = confirmSend(rec.order_id, method, rec.issued || (rec.card && method !== 'online') ? {} : { ...(rec.card ? {} : { method }), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(expected), totals: p.totals || rec.totals || null });
@@ -323,13 +387,13 @@
         const j = r.json;
         if (r.status === 426) {                                                           // rule iii
           const cur = readPlace();
-          if (cur && cur.order_id === id && Number(cur.dispatched) === 1 && cur.admitted !== true) { clearPlace(id); return { kind: 'update_required', order_id: id }; }
+          if (cur && cur.order_id === id && Number(cur.dispatched) === 1 && cur.admitted !== true) { resolvePlace(id, 'released'); return { kind: 'update_required', order_id: id }; }
           return { ...(await resolveExisting(id)), update_required: true };               // an earlier send / admission may land: kept UNRESOLVED
         }
         if (method === 'online' && r.status === 200) return cardIssued(id, body, j);   // settles only once the creds are stored
         if (method === 'online') settle(id);                                              // a cash answer never settles a charge
         if (method === 'cash') {
-          if (r.status === 200) { clearPlace(id); return { kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent }; }
+          if (r.status === 200) { resolvePlace(id, 'placed'); return { kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent }; }
           if (r.status === 409 && j.error === 'order_conflict') {
             if (healed) return { kind: 'error', order_id: id, error: 'order_conflict' };
             healed = true; clearPlace(id); continue;   // (S1): proven terminal-safe — ONE resend on a fresh id
@@ -378,7 +442,7 @@
     // fresh / reuse 200: persist the creds AFTER the response and BEFORE the redirect (a failed write ⇒ no redirect, and the
     // send stays UNRESOLVED: the checkout exists but cannot be polled)
     function cardIssued(id, body, j) {
-      if (!writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now() })) return { kind: 'stash_failed', order_id: id };   // the send stays unresolved
+      if (!writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now(), ...(HOSTED ? { rid: cfg.restaurantId, cart_gen: (readPlace() || {}).cart_gen || null } : {}) })) return { kind: 'stash_failed', order_id: id };   // the send stays unresolved
       const r = readPlace();
       const seenAt = r && r.order_id === id && r.checkout_url === j.checkout_url && Number.isFinite(r.checkout_at) ? r.checkout_at : now();
       try { patchPlace(id, { issued: true, checkout_url: j.checkout_url, checkout_at: seenAt, unresolved: false }); } catch (_) {}   // a reused checkout keeps the time it was first seen
@@ -391,7 +455,7 @@
         const p = await pollOnce(id, t);
         if (!p.forbidden) return outcomeOfState(id, p.state, p.json);
       }
-      clearPlace(id);   // (3): the server has said the order is paid; no token ⇒ never poll
+      resolvePlace(id, 'placed');   // (3): the server has said the order is paid; no token ⇒ never poll
       return { kind: 'paid_unverified', order_id: id };
     }
 
@@ -432,6 +496,7 @@
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
     return { quote, latestQuote, place, handleReturn, resolveExisting, readPlace, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
+      reconcile, cartFreeze, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY };
   }
 

@@ -418,7 +418,7 @@ const GEO_OK = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, lon
 const GEO_NO = { getCurrentPosition: (_ok, no) => no({ code: 1 }) };
 let RB = 0;
 const INTAKE = 'k_intake_test';   // a test value; production's is deploy-time config, never committed
-function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre, realSheet = false } = {}) {
+function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre, realSheet = false, mountOpts = {} } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(HERE, 'index.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const w = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true }).window;
@@ -430,7 +430,7 @@ function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search 
     config: { ...CONFIG[rid], restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: EP, branch: 'Centro', intakeKey: INTAKE, ...config },
     CappCheckout: CK, CappApi: CA, member, geolocation: geo, navigate: (u) => nav.push(u), search, timers,
     priceSheet: realSheet ? undefined : priceSheet || ((o) => { sheets.push(o); return Promise.resolve(false); }),   // realSheet: the ported confirmPriceSheet
-    apiOpts: { fetch: srv.fetch, storage, now: () => NOON().getTime(), sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RB++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} } });
+    apiOpts: { fetch: srv.fetch, storage, now: () => NOON().getTime(), sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RB++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} }, ...mountOpts });
   const q = (sel) => w.document.querySelector(sel); const qa = (sel) => [...w.document.querySelectorAll(sel)];
   const click = async (sel) => { const el = typeof sel === 'string' ? q(sel) : sel; assert.ok(el, `premise: ${sel} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle(); };
   const type = async (sel, v) => { const el = q(sel); assert.ok(el, `premise: ${sel}`); el.value = v; el.dispatchEvent(new w.Event('input', { bubbles: true })); await settle(); };
@@ -1410,4 +1410,64 @@ test('S2b-geo body: the UI\'s createOrder / chargeOnlineOrder carry address_area
     assert.equal(p.srv.of(ep).length, 1, `${pay}: submit did not wait for the geocode`);
     assert.ok(!('address_area' in p.srv.of(ep)[0].body), `🔴 ${pay}: pending at submit ⇒ no address_area`);
   }
+});
+
+
+// ── S7a-1 client foundation (PLAN-capp-S7a r1 → r3.1): the HOSTED mount — history adapter, onCartChange, the countdown never freezes ──
+// a shell stand-in: a history-like object (no window.history touched) + the device-back subscription
+function shellHist() {
+  const like = { entries: [], get state() { return this.entries.length ? this.entries[this.entries.length - 1] : null; }, pushState(st) { this.entries.push(st); }, back() { this.entries.pop(); }, go(k) { for (let i = 0; i < -k; i++) this.entries.pop(); } };
+  let fn = null; const h = { like, subscribe: (f) => { fn = f; return () => { fn = null; }; }, device: () => { const r = fn ? fn() : 'none'; if (r === 'consumed') like.entries.pop(); return r; }, get subscribed() { return !!fn; } };
+  return h;
+}
+const HOSTED_KEYS = { cartKey: 'capp:rid_a:cart', placedKey: 'capp:rid_a:placed' };
+
+test('S7a-1 history adapter: hosted ⇒ CappUI never touches window.history; device back = consumed (cart closes) / pass (store root); destroy unsubscribes', async () => {
+  const H = shellHist();
+  const b = bootCo({ mountOpts: { history: H } });
+  const len0 = b.w.history.length;
+  b.ui.cart.inc(b.plain.key); b.ui.render(); await b.click('#cart-bar');
+  assert.ok(b.q('#layer .sheet'), 'premise: the cart is open');
+  assert.equal(b.w.history.length, len0, '🔴 hosted: no window.history push');
+  assert.equal(H.device(), 'consumed'); await settle();
+  assert.equal(b.q('#layer').innerHTML, '', 'the cart closed');
+  assert.equal(H.device(), 'pass', 'store root ⇒ the shell pops to its recorded predecessor');
+  b.ui.destroy(); assert.equal(H.subscribed, false, 'destroy unsubscribes');
+});
+
+test('S7a-1 N2 (non-negotiable): device back during «Realizando pedido…» CANCELS — consumed, ZERO sends, and the cart is NEVER frozen; «Enviando» ⇒ blocked', async () => {
+  const H = shellHist(); const storage = memStore();
+  const b = bootCo({ storage, config: HOSTED_KEYS, mountOpts: { history: H } });
+  await filled(b); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]');
+  assert.equal(b.q('#layer .sheet').getAttribute('aria-label'), 'Realizando pedido', 'premise: the countdown is armed');
+  assert.equal(H.device(), 'consumed', '🔴 countdown back is consumed as cancellation');
+  b.timers.flush(); await settle();
+  assert.equal(b.srv.of('createOrder').length, 0, '🔴 countdown back cancels: zero sends');
+  const cart = JSON.parse(storage.getItem('capp:rid_a:cart') || 'null');
+  assert.ok(!cart || cart.frozen_for === undefined, '🔴 cancelling the countdown never freezes');
+  // sending is blocked
+  let go; const held = new Promise((r) => { go = r; });
+  const s2 = bootCo({ storage: memStore(), config: HOSTED_KEYS, mountOpts: { history: shellHist() }, script: { createOrder: [() => held.then(() => ({ status: 200, json: { ok: true, order_id: 'X' } }))] } });
+  const H2 = s2.ui; await filled(s2); await s2.click('#cta'); await s2.click('[data-act="tipc"][data-val="0"]'); await s2.click('[data-act="tip-place"]'); await s2.click('#layer [data-act="placing-go"]');
+  assert.equal(H2.deviceBack(), 'blocked', '«Enviando» is not a back step');
+  go(); await settle();
+});
+
+test('S7a-1 onCartChange: after successful mutations and delivery/pickup changes (with the mode); never after a refused write; a throwing hook never affects the UI', async () => {
+  const seen = [];
+  const b = bootCo({ mountOpts: { onCartChange: (s) => seen.push(s) } });
+  b.ui.cart.inc(b.plain.key); b.ui.render(); await settle();
+  await b.click(`.qty-ctrl-btn[data-act="inc"][data-id="${b.plain.key}"]`).catch(() => {});
+  const n0 = seen.length;
+  await b.click('[data-act="mode"][data-val="pickup"]');
+  assert.equal(seen.length, n0 + 1, 'a mode change notifies');
+  assert.deepEqual([seen.at(-1).mode, seen.at(-1).rid], ['pickup', 'rid_a']);
+  // a refused write (over the 50 cap) notifies nothing
+  const k = b.plain.key; for (let i = 0; i < 60; i++) { try { b.ui.cart.inc(k); } catch (_) { break; } }   // fill to the 50 cap
+  const n1 = seen.length;
+  b.ui.render(); await b.click(`.qty-ctrl-btn[data-act="inc"][data-id="${k}"]`).catch(() => {});
+  assert.equal(seen.length, n1, 'a refused write notifies nothing');
+  const t = bootCo({ mountOpts: { onCartChange: () => { throw new Error('shell bug'); } } });
+  await t.click('[data-act="mode"][data-val="pickup"]');
+  assert.ok(t.q('.screen'), 'a throwing hook never breaks the UI');
 });

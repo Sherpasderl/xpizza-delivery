@@ -129,6 +129,9 @@
     const now = opts.now || (() => new Date());
     let dead = false;   // S2b r1 P2-3: destroy() ⇒ every later callback of this instance is a no-op
     const emit = (name, detail) => { if (dead) return; try { (opts.onEvent || (() => {}))(name, detail); } catch (_) {} };
+    // S7a-1 (PLAN-capp-S7a r2 §1.6): the shell's per-store cart persistence hook — after a SUCCESSFUL mutation, a restore and a
+    // delivery/pickup change; a throwing hook never affects the UI; absent ⇒ nothing is called
+    const notifyCart = () => { if (dead || typeof opts.onCartChange !== 'function') return; try { opts.onCartChange({ ...cart.snapshot(), rid: cfg.restaurantId, mode: S.mode }); } catch (_) {} };
     const cart = CappCart.createCart(menu);
     const $ = (id) => doc.getElementById(id);
     const app = $('app');
@@ -184,6 +187,7 @@
         }
       }
       S.refusal = null;
+      notifyCart();
       return true;
     }
 
@@ -432,7 +436,8 @@
       try {
         C = opts.CappCheckout || (typeof self !== 'undefined' && self.CappCheckout) || require('./capp-checkout.js');
         const A = opts.CappApi || (typeof self !== 'undefined' && self.CappApi) || require('./capp-api.js');
-        api = opts.api || A.createApi({ config: { restaurantId: cfg.restaurantId, orderIdPrefix: cfg.orderIdPrefix, pendingPayKey: cfg.pendingPayKey, endpoints: cfg.endpoints, hours: cfg.hours },
+        api = opts.api || A.createApi({ config: { restaurantId: cfg.restaurantId, orderIdPrefix: cfg.orderIdPrefix, pendingPayKey: cfg.pendingPayKey, endpoints: cfg.endpoints, hours: cfg.hours,
+          cartKey: cfg.cartKey, placedKey: cfg.placedKey },   // S7a-1: hosted by the shell (both absent ⇒ the S2 path, unchanged)
           CappCheckout: C, member, ...(opts.apiOpts || {}) });
         return true;
       } catch (_) { C = null; api = null; return false; }
@@ -691,7 +696,7 @@
       // S2b r1 P2-7: an accepted price change ⇒ «Enviando» shows the ceiling actually sent
       const onExpected = (cents) => { if (dead || !Number.isFinite(cents)) return; S.sendTotals = { total: cents, tip: T.tip }; if (S.screen === 'sending') render(); };
       let out;
-      try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, expectedNetCents: T.total, totals: T, sheet: priceSheet, onExpected, alive: () => !dead }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
+      try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, expectedNetCents: T.total, totals: T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
       if (!dead) onOutcome(out);
     }
     // the 600 ms happy beat: the spinner becomes the green check, then the host takes over (S5)
@@ -793,7 +798,10 @@
     // ── device / browser back (P pushHist / back / backInternal / popstate :1352-1371): «Entrega & Pago» has no back control;
     //    device back → the cart → the menu; the tip step's back → «Entrega & Pago» ──
     let histN = 0, skipPop = 0;
-    const hist = () => doc.defaultView && doc.defaultView.history;
+    // S7a-1 (PLAN-capp-S7a r2 §1.3): hosted ⇒ the shell's history-like object stands in for window.history (pushState / back /
+    // go / state); absent ⇒ window.history, exactly as before
+    const H = opts.history || null;
+    const hist = () => (H ? H.like : doc.defaultView && doc.defaultView.history);
     function pushHist() { histN++; try { hist().pushState({ ca: histN }, ''); } catch (_) {} }
     const ownHist = () => { try { const h = hist(); return histN > 0 && !!h.state && h.state.ca === histN; } catch (_) { return false; } };
     function go(screen) { S.stack.push({ screen: S.screen }); S.stack = S.stack.slice(-12); pushHist(); S.screen = screen; render(); const sc = $('flow'); if (sc) sc.scrollTop = 0; }
@@ -813,9 +821,18 @@
       const n = e && e.state && typeof e.state.ca === 'number' ? e.state.ca : 0;
       if (n < histN) { histN = n; backInternal(); }   // a forward move is ignored: only walks back
     }
+    // S7a-1: a DEVICE back delivered by the shell (hosted). The same decisions as backInternal, reported: the cart closes / the
+    // «Realizando pedido…» countdown is CANCELLED (zero sends) ⇒ consumed; «Enviando» ⇒ blocked; the store root ⇒ pass
+    function deviceBack() {
+      if (dead) return 'pass';
+      if (S.layerKind === 'cart' || S.layerKind === 'placing') { histN = Math.max(0, histN - 1); backInternal(); return 'consumed'; }
+      if (S.screen === 'sending') return 'blocked';
+      if (!S.stack.length) { if (S.layerKind) { closeLayer(); return 'consumed'; } return 'pass'; }
+      histN = Math.max(0, histN - 1); backInternal(); return 'consumed';
+    }
     function checkoutAct(t) {
       const f = S.flow, a = t.dataset.act, v = t.dataset.val;
-      if (a === 'type') { S.mode = v === 'pickup' ? 'pickup' : 'delivery'; C.setMode(f, S.mode); if (S.mode === 'delivery' && !finitePin(f.pin) && S.geo === null) requestGeo(); render(); return true; }
+      if (a === 'type') { S.mode = v === 'pickup' ? 'pickup' : 'delivery'; C.setMode(f, S.mode); notifyCart(); if (S.mode === 'delivery' && !finitePin(f.pin) && S.geo === null) requestGeo(); render(); return true; }
       if (a === 'rm-po') { for (const l of poLines()) mutate(() => cart.setQty(l.key, 0)); if (!cart.count()) toStore(); else render(); return true; }
       if (a === 'editwho') { f.editWho = true; render(); return true; }
       if (a === 'more') { S.more = true; render(); return true; }
@@ -953,7 +970,7 @@
       if (act === 'lclose') { closeLayer(); return; }
       if (act === 'rev') { const k = t.dataset.key, g = t.dataset.grp || '', d = descOf(t); mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(k, g) : cart.lineDec(k, g))); renderStoreKeep(); renderLayer(); focusTo(refind(d) || [...$('layer').querySelectorAll(FOCUSABLE)].find(reachable)); return; }
       if (act === 'edit') { S.layerKind = null; renderLayer(); returnTo = { elId: 'cart-bar', ds: { act: 'pill' } }; openEdit(t.dataset.key, t.dataset.grp || ''); return; }
-      if (act === 'mode') { S.mode = t.dataset.val; renderStoreKeep(); return; }
+      if (act === 'mode') { S.mode = t.dataset.val; notifyCart(); renderStoreKeep(); return; }
       if (act === 'jump') { jumpTo(t.dataset.jump); return; }
       if (act === 'menu') { openLayer('menu'); return; }
       if (act === 'goto') { closeLayer(); jumpTo(t.dataset.goto); return; }
@@ -999,7 +1016,8 @@
     doc.addEventListener('click', onClick);
     doc.addEventListener('input', onInput);
     doc.addEventListener('keydown', onKey);
-    if (doc.defaultView) doc.defaultView.addEventListener('popstate', onPop);
+    if (!H && doc.defaultView) doc.defaultView.addEventListener('popstate', onPop);
+    const unsubBack = H && typeof H.subscribe === 'function' ? H.subscribe(deviceBack) : null;
     render();
     if (mods() && !intakeOk()) { try { (doc.defaultView && doc.defaultView.console || console).error('capp: config error — intakeKey missing; placing disabled'); } catch (_) {} }
     // S2b: a hosted-checkout return (?pay=…)
@@ -1007,12 +1025,16 @@
     const returning = /[?&]pay=/.test(search || '') ? handlePayReturn(search) : null;
     return {
       cart, menu, render, state: S, openCheckout, returning,
-      restore(snapshot) { const r = cart.hydrate(snapshot); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
+      deviceBack,
+      restore(snapshot) {
+        // S7a-1 r3 §1.3 (hosted): reconcile FIRST — blocked until it completes; a purchased (cleared) cart is never restored
+        if (cfg.cartKey && cfg.placedKey && mods() && api.hosted) { const rc = api.reconcile(); if (!rc.ok) return { blocked: true, step: rc.step }; if (rc.done === 'placed' && snapshot && snapshot.cart_gen && snapshot.cart_gen === rc.cart_gen) return { cleared: true }; }
+        const r = cart.hydrate(snapshot); notifyCart(); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
       destroy() {
         dead = true; placingStop(); if (beatT !== null) { T_.clearTimeout(beatT); beatT = null; }
         S.layerKind = null; const L = $('layer'); if (L) L.innerHTML = '';
         for (const el of [...doc.querySelectorAll('.cq-sheet')]) el.remove();   // the ported «El precio cambió» sheet (capp-confirm-quote)
-        doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); if (doc.defaultView) doc.defaultView.removeEventListener('popstate', onPop); },
+        doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); if (!H && doc.defaultView) doc.defaultView.removeEventListener('popstate', onPop); if (typeof unsubBack === 'function') { try { unsubBack(); } catch (_) {} } },
     };
   }
 
