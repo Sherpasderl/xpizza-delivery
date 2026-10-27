@@ -2146,6 +2146,17 @@
   #screen-companion .co-note-warn { text-align:center; font-size:12px; font-weight:800; color:#8A5A09; background:#F6ECD9; padding:10px; border-radius:11px; letter-spacing:.02em; }
   #screen-companion .big-btn { width:100%; }
 </style>
+<!-- ===== SLICE3:PRESENTATION-REVERIFY:START — cascade overrides for re-verified scenes whose base CSS is frozen (it lives in slice-2 regions or outside every region); advisor ruling 2026-10-27. Its own trailing stylesheet so these rules win by source order at equal specificity; no !important, no frozen byte changed. Each block is set exact to the approved prototype and verified by a full computed-style diff, real vs prototype. ===== -->
+<style>
+/* whatsapp (S.whatsapp): .wa-* mapped to the prototype's generic sheet / h4 / sub / button tokens; .wa-sub line-height is neutralized to inherit so the frozen base 1.4 does not leak. */
+.wa-sheet { gap: 12px; }
+.wa-sheet .wa-h4 { margin: 0; font-size: 19px; letter-spacing: -.02em; line-height: 1.15; }
+.wa-sub { margin: 0; line-height: inherit; color: var(--text-soft, #546078); }
+.wa-tpl { gap: 10px; border: 0; border-radius: 12px; background: #E7ECF4; font-size: 13.5px; font-weight: 500; line-height: 1.35; }
+.wa-tpl .wa-txt { line-height: 1.35; font-weight: 500; }
+.wa-tpl .wa-txt small { margin-top: 2px; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-soft, #546078); }
+</style>
+<!-- ===== SLICE3:PRESENTATION-REVERIFY:END ===== -->
 <div id="screen-companion" class="hidden" style="height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
 
 <!-- SLICE2:NAV-SCREENS:START — Cuenta + «App de navegación» screen shells (R7); filled by renderCuenta/renderNavApp. Pure insert. -->
