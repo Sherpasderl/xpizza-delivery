@@ -20490,8 +20490,8 @@
     "slice": "s2a",
     "label": "the card creds are not required before the redirect",
     "file": "../customer-app/capp-api.js",
-    "from": "if (!writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now(), ...(HOSTED ? { rid: cfg.restaurantId, cart_gen: (readPlace() || {}).cart_gen || null } : {}) })) return { kind: 'stash_failed', order_id: id };",
-    "to": "writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now(), ...(HOSTED ? { rid: cfg.restaurantId, cart_gen: (readPlace() || {}).cart_gen || null } : {}) });",
+    "from": "if (!writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now(), ...grantOf(j), ...(HOSTED ? { rid: cfg.restaurantId, cart_gen: (readPlace() || {}).cart_gen || null } : {}) })) return { kind: 'stash_failed', order_id: id };",
+    "to": "writeJSON(PAY_KEY, { order_id: id, t: j.poll_token, order: body, form: null, ts: now(), ...grantOf(j), ...(HOSTED ? { rid: cfg.restaurantId, cart_gen: (readPlace() || {}).cart_gen || null } : {}) });",
     "command": [
       "node",
       "--test",
@@ -20499,7 +20499,8 @@
     ],
     "kills_with": [
       "no token persisted ⇒ no redirect"
-    ]
+    ],
+    "repointed": "Codex guest r1 #4: the pay stash now carries the signup grant; the same guard, re-anchored"
   },
   {
     "id": "s2a-u20",
@@ -21801,8 +21802,8 @@
     "slice": "s7a1",
     "label": "P1-2: a paid end clears the stash although its marker failed",
     "file": "../customer-app/capp-api.js",
-    "from": "if (PAID_STATES.has(st)) { const ok = resolvePlace(id, 'placed'); if (ok) clearPayFor(id);",
-    "to": "if (PAID_STATES.has(st)) { const ok = resolvePlace(id, 'placed'); clearPayFor(id);",
+    "from": "if (PAID_STATES.has(st)) { const g = stashedGrant(id); const ok = resolvePlace(id, 'placed'); if (ok) clearPayFor(id);",
+    "to": "if (PAID_STATES.has(st)) { const g = stashedGrant(id); const ok = resolvePlace(id, 'placed'); clearPayFor(id);",
     "command": [
       "node",
       "--test",
@@ -21810,7 +21811,8 @@
     ],
     "kills_with": [
       "a failed marker keeps the stash"
-    ]
+    ],
+    "repointed": "Codex guest r1 #4: the pay stash now carries the signup grant; the same guard, re-anchored"
   },
   {
     "id": "s7a1-24",
