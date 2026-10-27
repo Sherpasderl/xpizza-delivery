@@ -215,6 +215,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/tab-bar-view.js',                 // O6: bottom nav bar builder + data-gating (SLICE3)
   'xpizza-driver/tab-bar-view.test.js',            // O6: bottom nav bar builder + gating test (SLICE3)
   'xpizza-driver/tab-bar-mount.test.js',           // O6: bottom nav bar host glue jsdom test (SLICE3)
+  'xpizza-driver/offshift.test.js',                // offshift rebuild: renderOffshift + shift-start slide (SLICE3)
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';

@@ -88,7 +88,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = 'abbb40e94704c159702b9b06a732bedb597b7aa19176f61c3a5bad35beb1ab19';
+const SLICE2_GUARD_SHA = '487b8f260507c51eecb8b379e8498f43d4cae4b211bc012110e67df61957c2c1';
 const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -174,6 +174,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/tab-bar-view.js',              // O6: the bottom nav bar builder + data-gating (pure)
   'xpizza-driver/tab-bar-view.test.js',         // O6: the bottom nav bar builder + gating test
   'xpizza-driver/tab-bar-mount.test.js',        // O6: the bottom nav bar host glue (mount/gate/route) jsdom test
+  'xpizza-driver/offshift.test.js',             // offshift rebuild: renderOffshift structure + shift-start slide (jsdom)
 ]);
 
 const REPO = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: __dir }).toString('utf8').trim();

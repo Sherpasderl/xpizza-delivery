@@ -181,6 +181,36 @@
 .tabs .tab-btn { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 3px; font-family: 'Red Hat Text', sans-serif; font-size: 10.5px; font-weight: 600; color: var(--text-soft); cursor: pointer; padding: 4px 0; }
 .tabs .tab-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .tabs .tab-btn.on { color: var(--accent); }
+/* offshift (disponible OFF) rebuilt to prototype S.offshift (renderOffshift overwrites #screen-offshift at runtime;
+   the static shell stays frozen for the initial load-time bindings). Header greeting + Cuenta icon, status chip card,
+   «Efectivo a entregar» stat (+ «Ganado hoy» only when PAGOS_LIVE), «Iniciar turno» slide. Prototype tokens → app. */
+#screen-offshift .off2-hdr { flex: none; display: flex; align-items: center; gap: 11px; padding: 14px 16px 10px; background: var(--surface); border-bottom: 1px solid var(--border-soft, #EAEFF6); }
+#screen-offshift .off2-hm { flex: none; width: 36px; height: 36px; display: block; }
+#screen-offshift .off2-hm svg { width: 36px; height: 36px; border-radius: 9px; }
+#screen-offshift .off2-ttl { flex: 1; min-width: 0; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -.015em; color: var(--text, #0D1424); text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#screen-offshift .off2-cuenta { flex: none; width: 38px; height: 38px; border-radius: 11px; border: 1px solid var(--border); background: var(--surface); color: var(--text-soft); display: grid; place-items: center; cursor: pointer; }
+#screen-offshift .off2-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 10px; }
+#screen-offshift .off2-card { background: var(--surface); border-radius: 16px; box-shadow: 0 1px 2px rgba(20,30,50,.05), 0 8px 20px rgba(20,30,50,.05); padding: 14px; }
+#screen-offshift .off2-status { display: flex; align-items: center; gap: 12px; }
+#screen-offshift .off2-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 11px; border-radius: 999px; background: var(--surface-2, #F5F7FA); color: var(--text-soft); }
+#screen-offshift .off2-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim, #8A93A6); }
+#screen-offshift .off2-gps { margin-left: auto; font-size: 13px; color: var(--text-soft); }
+#screen-offshift .off2-stats { display: grid; gap: 10px; }
+#screen-offshift .off2-stats.two { grid-template-columns: 1fr 1fr; }
+#screen-offshift .off2-stats.one { grid-template-columns: 1fr; }
+#screen-offshift .off2-stat { background: var(--surface); border-radius: 16px; box-shadow: 0 1px 2px rgba(20,30,50,.05), 0 8px 20px rgba(20,30,50,.05); text-align: center; padding: 14px 8px; }
+#screen-offshift .off2-stat b { display: block; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 24px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text, #0D1424); }
+#screen-offshift .off2-stat b.off2-earn { color: var(--success, #15803D); }
+#screen-offshift .off2-stat small { font-size: 11.5px; color: var(--text-soft); font-weight: 600; }
+#screen-offshift .off2-foot { flex: none; padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background: var(--bg); }
+#screen-offshift #duty-toggle-off.hidden { display: none; }
+/* «Iniciar turno» slide — prototype steel-blue, bridged onto the app's attachSlideConfirm markup (.slide-fill/.slide-thumb). */
+.slide-confirm.start { background: var(--accent); border-color: transparent; box-shadow: 0 6px 18px rgba(47,95,184,.26), inset 0 1px 0 rgba(255,255,255,.18); }
+.slide-confirm.start::before { box-shadow: none; }
+.slide-confirm.start .slide-fill { background: rgba(255,255,255,.16); }
+.slide-confirm.start .slide-text { background-image: none; color: #fff; -webkit-text-fill-color: #fff; text-transform: none; letter-spacing: .01em; font-size: 15px; font-weight: 700; }
+.slide-confirm.start .slide-hint { color: rgba(255,255,255,.72); }
+.slide-confirm.start .slide-thumb { background: rgba(255,255,255,.22); box-shadow: inset 0 1.5px 0 rgba(255,255,255,.4); }
 /* ===== SLICE3:PRESENTATION-INICIO:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -2707,6 +2737,47 @@ function syncTabBarForScreen(name) {
   mountTabBar($('screen-offshift'), 'inicio', name === 'offshift' && !hasWork);
   mountTabBar($('screen-cuenta'), 'cuenta', name === 'cuenta' && !hasWork);
 }
+
+// offshift (disponible OFF) rebuilt to prototype S.offshift. Overwrites #screen-offshift at runtime (the static shell
+// stays frozen for the initial load-time bindings); then re-binds the Cuenta icon, re-applies the notif banner + the
+// suspended notice, and populates the name (NATURAL case — render() uppercases the pre-replace element, this wins),
+// the GPS-ready chip, the «Efectivo a entregar» cash stat (+ «Ganado hoy» only when PAGOS_LIVE), and the «Iniciar
+// turno» slide. The slide runs the SAME shift-start path as the (now-hidden) duty-toggle — shiftBusy guard → optimistic
+// on-shift → handleStartShift — so there's no regression and a double-trigger can't start two shifts. «Recibís pedidos
+// de» is OMITTED: no driver→restaurant eligibility data exists (brand-agnostic). Called from showScreen('offshift').
+function renderOffshift() {
+  const host = $('screen-offshift'); if (!host) return;
+  const SOLA_HM = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="var(--marino, #14306B)"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><g><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--celeste, #8EC0FF)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="var(--marino, #14306B)"/></g></svg>';
+  const USER = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c1.3-3.2 4-4.8 7-4.8s5.7 1.6 7 4.8"/></svg>';
+  const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>';
+  const name = (driverState && driverState.name) || (currentUser && currentUser.email ? currentUser.email.split('@')[0] : '');
+  const cash = computeShiftCash(allOrders, currentUser && currentUser.uid, todayMidnightMs(), driverIdentityCutoverMs);
+  const cashStat = `<div class="off2-stat"><b>L ${(cash.cashOwed || 0).toLocaleString('es-HN')}</b><small>Efectivo a entregar</small></div>`;
+  const earnStat = PAGOS_LIVE ? `<div class="off2-stat"><b class="off2-earn">L ${((cash.deliveries || 0) * 70).toLocaleString('es-HN')}</b><small>Ganado hoy</small></div>` : '';
+  host.innerHTML = `
+    <header class="off2-hdr"><span class="off2-hm">${SOLA_HM}</span><div class="off2-ttl">Hola, <span id="off-driver-name"></span></div>
+      <button class="off2-cuenta" id="cuenta-btn" title="Cuenta" aria-label="Cuenta">${USER}</button></header>
+    <div class="off2-body">
+      <div class="off2-card off2-status"><span class="off2-chip"><i></i>Fuera de turno</span><span class="off2-gps">GPS listo</span></div>
+      <div id="notif-banner-offshift" class="notif-banner hidden"></div>
+      <div class="companion-suspended-notice hidden" style="margin:0;padding:11px 13px;border-radius:12px;background:#F6ECD9;color:#8A5A09;font-weight:700;font-size:13px;line-height:1.35;text-align:left;">Despacho pausó tu cuenta. Podés terminar lo que tenés, pero no vas a recibir pedidos nuevos.</div>
+      <div class="off2-stats ${earnStat ? 'two' : 'one'}">${cashStat}${earnStat}</div>
+      <div style="flex:1"></div>
+      <div class="version-tag">v${SYSTEM_VERSION} · driver</div>
+    </div>
+    <div class="off2-foot"><div class="slide-confirm start" id="btn-start-shift"><div class="slide-fill"></div><div class="slide-text">Iniciar turno</div><div class="slide-hint">deslizá</div><div class="slide-thumb">${ARROW}</div></div></div>
+    <button class="duty-toggle hidden" id="duty-toggle-off" aria-hidden="true"></button>`;
+  const nm = $('off-driver-name'); if (nm) nm.textContent = name;
+  const cb = $('cuenta-btn'); if (cb) cb.addEventListener('click', openCuenta);
+  attachSlideConfirm('btn-start-shift', async () => {
+    if (shiftBusy) return;
+    shiftBusy = true;
+    optimisticShift = true; render();
+    try { await handleStartShift(); } finally { shiftBusy = false; }
+  });
+  companionSyncSuspendedNotice();   // re-apply the suspend state on the fresh notice
+  updateNotifBanners();             // re-populate the fresh notif banner (async)
+}
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
    drivers/{uid}/nav_app (own-uid, enum) with a localStorage mirror; «Cerrar sesión» reuses driverSignOut. ===== */
@@ -2983,6 +3054,7 @@ function showScreen(name) {
   /* ===== SLICE3:TABBAR-SHOW:START — O6: offshift + Cuenta always carry the bottom nav bar (mounted/removed per the
      screen being shown). The on-shift bar is owned by the board render (SLICE3:TABBAR-BOARD), so it is not touched
      here. Guarded so it is inert until the bar builder is wired in. ===== */
+  if (name === 'offshift' && typeof renderOffshift === 'function') renderOffshift();   // O6 offshift refresh (overwrites #screen-offshift) before the bar appends
   if (typeof syncTabBarForScreen === 'function') syncTabBarForScreen(name);
   /* ===== SLICE3:TABBAR-SHOW:END ===== */
 }
