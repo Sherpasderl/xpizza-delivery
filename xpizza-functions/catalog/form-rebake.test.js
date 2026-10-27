@@ -73,7 +73,10 @@ const state = (w, rid) => clone(w.deps.db.data.form_rebake && w.deps.db.data.for
     const BAD = [`http://api.netlify.com/build_hooks/${'a'.repeat(24)}`, `https://api.netlify.com.evil.test/build_hooks/${'a'.repeat(24)}`,
       `https://api.netlify.com:444/build_hooks/${'a'.repeat(24)}`, `https://api.netlify.com/build_hooks/${'a'.repeat(24)}?trigger_branch=x`,
       `https://api.netlify.com/build_hooks/${'a'.repeat(23)}`, `https://api.netlify.com/build_hooks/${'A'.repeat(24)}`, `https://api.netlify.com/build_hooks/${'a'.repeat(24)}/`,
-      `https://u:p@api.netlify.com/build_hooks/${'a'.repeat(24)}`, `https://api.netlify.com/build_hooks/${'a'.repeat(24)}#x`, 7, null];
+      `https://u:p@api.netlify.com/build_hooks/${'a'.repeat(24)}`, `https://api.netlify.com/build_hooks/${'a'.repeat(24)}#x`, 7, null,
+      // only the exact-string clause refuses these: the URL parser normalises them to a valid-looking host / port / path
+      `https://API.netlify.com/build_hooks/${'a'.repeat(24)}`, `https://api.netlify.com:443/build_hooks/${'a'.repeat(24)}`,
+      `https://api.netlify.com\\build_hooks\\${'a'.repeat(24)}`, ` https://api.netlify.com/build_hooks/${'a'.repeat(24)}`];
     for (const url of BAD) {
       const p = FR.parseHooks(JSON.stringify({ x_pizza: url }));
       assert.deepStrictEqual([p.hooks, p.bad], [{}, ['x_pizza']], `refused: ${String(url)}`);
@@ -81,7 +84,7 @@ const state = (w, rid) => clone(w.deps.db.data.form_rebake && w.deps.db.data.for
     assert.deepStrictEqual(FR.parseHooks('{not json').bad, ['*']); assert.deepStrictEqual(FR.parseHooks('[1]').bad, ['*']);
     assert.deepStrictEqual(FR.parseHooks(JSON.stringify({ 'Bad Rid': HOOK.x_pizza })).bad, ['*']);
     assert.ok(!JSON.stringify(FR.parseHooks(JSON.stringify({ x_pizza: BAD[1] }))).includes('evil'), 'a refused url is not carried');
-    ok(`hooks: only https://api.netlify.com/build_hooks/<24 lowercase hex> exactly; ${BAD.length} near-misses (scheme, host, port, query, length, case, slash, credentials, fragment, type) refused; bad JSON / non-object / bad rid → '*'; unset → dormant`);
+    ok(`hooks: only https://api.netlify.com/build_hooks/<24 lowercase hex> exactly; ${BAD.length} near-misses (scheme, host, port, query, length, case, slash, credentials, fragment, type, and the parser-normalised host case / :443 / backslashes / leading space) refused; bad JSON / non-object / bad rid → '*'; unset → dormant`);
   }
 
   // ── 2. the trigger: a mirror write POSTs the hook once per cooldown; duplicate events collapse ──

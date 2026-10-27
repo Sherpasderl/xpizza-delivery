@@ -20385,7 +20385,9 @@
   "command": [
    "node",
    "catalog/form-rebake.test.js"
-  ]
+  ],
+  "equivalent": true,
+  "why": "the final exact-string clause (url === `https://${HOOK_HOST}${pathname}`) refuses every foreign host on its own; the deciding clause is fb-99"
  },
  {
   "id": "fb-41",
@@ -20397,7 +20399,9 @@
   "command": [
    "node",
    "catalog/form-rebake.test.js"
-  ]
+  ],
+  "equivalent": true,
+  "why": "the final exact-string clause refuses any query string on its own; the deciding clause is fb-99"
  },
  {
   "id": "fb-42",
@@ -20721,7 +20725,9 @@
   "command": [
    "node",
    "form-bundle-splice.test.js"
-  ]
+  ],
+  "equivalent": true,
+  "why": "since r2 _MENU_OK runs the full validateMenu contract first, so an absent REQUIRED collection already returns at `if (!_MENU_OK)`; the deciding clause is fb-100 (x_pizza) / fb-101 (la_musa)"
  },
  {
   "id": "fb-70",
@@ -20865,7 +20871,9 @@
   "command": [
    "node",
    "catalog/form-rebake.test.js"
-  ]
+  ],
+  "equivalent": true,
+  "why": "line 107 already returns 'stale' for an older generation, so `!==` and `>` differ only for a non-number generation, which readFencedPublished never passes (Number.isSafeInteger); the deciding clause is fb-89"
  },
  {
   "id": "fb-91",
@@ -21009,6 +21017,54 @@
   "command": [
    "node",
    "tools/form-bundle-deployed-check.test.js"
+  ]
+ },
+ {
+  "id": "fb-99",
+  "slice": "formbake",
+  "label": "PLAN 4 (heavy follow-up): the hook check drops its exact-string clause — a parser-normalised url (host case, :443, backslashes, leading space) is accepted",
+  "file": "catalog/form-rebake.js",
+  "from": "    && u.search === '' && u.hash === '' && HOOK_PATH_RE.test(u.pathname) && url === `https://${HOOK_HOST}${u.pathname}`;",
+  "to": "    && u.search === '' && u.hash === '' && HOOK_PATH_RE.test(u.pathname);",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-100",
+  "slice": "formbake",
+  "label": "PLAN 4 (heavy follow-up): x_pizza's boot select ignores a bundle that failed the complete contract — its structures boot one by one",
+  "file": "../xpizza-orders/index.html",
+  "from": "  if (!_MENU_OK) return empty;\n  const v = _BUNDLE[field];",
+  "to": "  const v = _BUNDLE[field];",
+  "command": [
+   "node",
+   "form-bundle-splice.test.js"
+  ]
+ },
+ {
+  "id": "fb-101",
+  "slice": "formbake",
+  "label": "PLAN 4 (heavy follow-up): la_musa's boot select ignores a bundle that failed the complete contract — its structures boot one by one",
+  "file": "../la-musa-orders/index.html",
+  "from": "  if (!_MENU_OK) return empty;\n  const v = _BUNDLE[field];",
+  "to": "  const v = _BUNDLE[field];",
+  "command": [
+   "node",
+   "form-bundle-splice.test.js"
+  ]
+ },
+ {
+  "id": "fb-102",
+  "slice": "formbake",
+  "label": "PLAN 4 (heavy follow-up): la_musa's add-to-cart ignores the broken-boot latch (a refused tap no longer re-announces)",
+  "file": "../la-musa-orders/index.html",
+  "from": "  if(d>0 && _MENU_BROKEN){ announceMenuBroken(); return; }   // PLAN 4 r2: a broken boot adds nothing (removing still works)\n",
+  "to": "",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
   ]
  }
 ]

@@ -50,6 +50,11 @@ try {
       assert.strictEqual(w.liveMenuGlobalGet('MENU').length, 0, `${dir} / ${label}: nothing boots`);
       w.chg(anyId, 1);
       assert.strictEqual(inCart(w, anyId), 0, `${dir} / ${label}: 🔴 adding to the cart is refused`);
+      // …and the refused tap says why: with the announcement cleared, a tap on add shows it again (the cart's own refusal is silent)
+      { const shown = visibleErr(w); shown.textContent = ''; shown.style.display = 'none';
+        w.chg(anyId, 1);
+        assert.ok(shown.style.display === 'block' && /No pudimos actualizar el menú/.test(shown.textContent), `${dir} / ${label}: 🔴 a refused add re-announces the broken menu`);
+        assert.strictEqual(inCart(w, anyId), 0, `${dir} / ${label}: …and still adds nothing`); }
       // the LATCH is what refuses (an empty cart has its own refusal, so the reason is asserted, not just the verdict)
       const warned = []; const realWarn = w.console.warn; w.console.warn = (...a) => { warned.push(a.join(' ')); };
       assert.strictEqual(w.refuseConflictedSend('latch'), true, `${dir} / ${label}: 🔴 the send gate refuses`);
