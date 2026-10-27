@@ -18,9 +18,10 @@ function baseState(over = {}) {
 }
 function ctxFor(S) {
   const calls = [];
-  const act = new Proxy({}, { get: (_t, k) => (...a) => { calls.push(String(k)); return undefined; } });
+  const log = [];
+  const act = new Proxy({}, { get: (_t, k) => (...a) => { calls.push(String(k)); log.push([String(k), ...a]); return undefined; } });
   const sets = [];
-  return { calls, sets, ctx: { now: T, online: true, orders: S.feed.orders, base: 18, sess: { uid: 'u', rid: 'tb_norte', brand_id: 'tb', location_name: 'Norte', prep_default_min: 18 },
+  return { calls, sets, log, ctx: { now: T, online: true, orders: S.feed.orders, base: 18, sess: { uid: 'u', rid: 'tb_norte', brand_id: 'tb', location_name: 'Norte', prep_default_min: 18 },
     driverOf: () => M.driverInfo(null), set: (p) => sets.push(p), act } };
 }
 function handlers(v, path = 'vm', out = []) {
@@ -87,15 +88,17 @@ test('«Entregado» (handed): a ready PICKUP card hands the exact order id to ac
 // buttons → the right action, kiosk / no-session variants, and the frozen status() screen unchanged.
 import fs from 'node:fs';
 import { compile } from './tmpl.js';
+import { repairAction } from './readiness.js';
 const TPL = (() => { const h = fs.readFileSync(new URL('./index.html', import.meta.url), 'utf8'); return compile(h.slice(h.indexOf('<template id="screen">') + 22, h.indexOf('</template>'))); })();
 const EX = { notifications: true, fullScreen: true, channelOk: true, alarmVolumeMax: true, batteryExempt: true, pushReady: true, defaultHome: false, kiosk: false, pushSession: true, native: true, blocked: false };
-const checksOf = (status) => {
-  const S = baseState({ phase: 'checks', status }); const { ctx, calls } = ctxFor(S);
+const checksOf = (status, actOver = null) => {
+  const S = baseState({ phase: 'checks', status }); const { ctx, calls, log } = ctxFor(S);
+  if (actOver) ctx.act = new Proxy(ctx.act, { get: (t, k) => (k in actOver ? actOver[k] : t[k]) });
   const out = TPL.render(buildVM(S, ctx));
-  const body = out.html.slice(out.html.indexOf('Que no se pierda ningún pedido'), out.html.indexOf('Continuar'));
+  const body = out.html.slice(out.html.indexOf('Que no se pierda ningún pedido'));   // the whole screen, line under «Continuar» included
   const text = body.replace(/<[^>]+>/g, '\n').split('\n').map((x) => x.trim()).filter(Boolean);
   const press = (label) => { const m = body.match(new RegExp(`data-act="(\\d+)"[^>]*>${label}<`)); assert.ok(m, `button ${label}`); out.acts[m[1]](); };
-  return { text, body, calls, press, hasBtn: (label) => new RegExp(`>${label}<`).test(body) };
+  return { text, body, calls, log, press, hasBtn: (label) => new RegExp(`>${label}<`).test(body) };
 };
 
 test('readiness: all green — the six rows in the approved order, the new ones with their ok text, no line', () => {
@@ -111,7 +114,12 @@ test('readiness: todo rows show the approved text + button, and each button runs
   assert.ok(r.text.includes('Está silenciado para esta app')); assert.ok(r.text.includes('Tiene que estar permitida para esta app'));
   assert.ok(r.text.includes('Faltan 2 pasos para recibir pedidos.'));
   r.press('Activar'); r.press('Permitir');
-  assert.deepEqual(r.calls, ['openSettings', 'openSettings']);
+  assert.deepEqual(r.log, [['openSettings', 'channel'], ['openSettings', 'fullScreen']], 'exact destinations');
+  // controller → bridge: the real repairAction behind the view's buttons
+  const got = [];
+  const w = checksOf({ ...EX, channelOk: false, fullScreen: false, blocked: true }, { openSettings: repairAction({ openSettings: async (k) => { got.push(k); } }) });
+  w.press('Permitir'); w.press('Activar');
+  assert.deepEqual(got, ['fullScreen', 'channel']);
   const one = checksOf({ ...EX, fullScreen: false, blocked: true });
   assert.ok(one.text.includes('Falta permitir la alerta en pantalla bloqueada.'));
   assert.ok(!one.text.includes('Falta apagar el ahorro de batería.'), 'the board battery line does not show for another gap');
@@ -148,4 +156,12 @@ test('readiness (OWNER 2026-10-26, choice A): a green new row shows «Listo» on
   assert.ok(!/<svg/.test(g.body.slice(g.body.indexOf('Sonido de pedidos'))), 'no check icons (the srow style, not the preview icons)');
   const r = checksOf({ ...EX, channelOk: false, fullScreen: false, pushReady: false, pushSession: true, blocked: true });
   assert.equal(r.text.filter((s) => s === 'Listo').length, 1, 'only the green battery row');
+});
+
+test('readiness (codex b4 r1 P3): the line sits UNDER «Continuar», as approved', () => {
+  const r = checksOf({ ...EX, channelOk: false, fullScreen: false, blocked: true });
+  const btn = r.text.indexOf('Continuar'); const line = r.text.indexOf('Faltan 2 pasos para recibir pedidos.');
+  assert.ok(btn >= 0 && line > btn, r.text.join(' | '));
+  const one = checksOf({ ...EX, pushReady: false, pushSession: false, blocked: true });
+  assert.ok(one.text.indexOf('Falta conectar el equipo para recibir pedidos.') > one.text.indexOf('Continuar'));
 });

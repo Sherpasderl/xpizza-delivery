@@ -38,3 +38,39 @@ export function readiness(st) {
   const line = gaps.length >= 2 ? R.steps(gaps.length) : gaps.length === 1 ? gaps[0] : '';
   return { ex: true, kiosk, channel, fullScreen, push, missingCount: gaps.length, line };
 }
+
+// The checks screen is waiting on push registration («Conectando…»).
+export function connecting(phase, status) {
+  if (phase !== 'checks') return false;
+  const r = readiness(status);
+  return r.ex === true && r.push.state === 'wait';
+}
+
+// codex b4 r1 P2: while «Conectando…» shows, re-read the status every `everyMs` so «Continuar» unblocks as soon as registration
+// lands. sync(waiting) is idempotent (app.js calls it on every state change): it starts the loop, or stops and re-arms it once the
+// screen is ready or left. Bounded: after `max` reads it rests until the waiting state ends (the resume / hourly refresh carry on).
+export function createConnectPoll({ refresh, setTimer = setTimeout, clearTimer = clearTimeout, everyMs = 3000, max = 40 }) {
+  let timer = null; let reads = 0; let inflight = false; let want = false; let exhausted = false;
+  async function tick() {
+    timer = null; inflight = true; reads++;
+    try { await refresh(); } catch (_) { /* the next tick retries */ }
+    inflight = false;
+    if (reads >= max) { exhausted = true; return; }
+    if (want && !timer) timer = setTimer(tick, everyMs);
+  }
+  return {
+    sync(waiting) {
+      if (!waiting) { want = false; if (timer) clearTimer(timer); timer = null; reads = 0; exhausted = false; return; }
+      want = true;
+      if (!timer && !inflight && !exhausted) timer = setTimer(tick, everyMs);
+    },
+    reads: () => reads,
+  };
+}
+
+// The repair buttons → the native screen for that check. Never throws into the click handler.
+export function repairAction(bridge) {
+  return (kind) => {
+    try { const p = bridge.openSettings(kind); if (p && typeof p.catch === 'function') p.catch(() => {}); } catch (_) { /* the resume refresh re-reads */ }
+  };
+}

@@ -83,9 +83,9 @@
         <button class="btn ghost sm" onClick="{{testAlert}}">Probar la alerta</button>
         <sc-if value="{{browserNote}}"><div class="shS">{{browserNote}}</div></sc-if>
         <sc-if value="{{checksBlocked}}"><div class="info">Falta apagar el ahorro de batería.</div></sc-if>
-        <sc-if value="{{exLine}}"><div class="info">{{exLine}}</div></sc-if>
         <div style="flex:1"></div>
         <button class="btn {{checksBtnCls}}" onClick="{{goPinCreate}}">Continuar</button>
+        <sc-if value="{{exLine}}"><div class="info">{{exLine}}</div></sc-if>
       </div>
     </sc-if>
 

@@ -12,6 +12,7 @@ import { startFeeds } from './feeds.js';
 import { createEta, googleRoute } from './eta.js';
 import { startPairing, createSessionStore, hashPin, createPinGate, signOut } from './setup.js';
 import { createBridge, webAudioSound, NATIVE_PLUGIN } from './bridge.js';
+import { connecting, createConnectPoll, repairAction } from './readiness.js';
 import { COPY, BOARD } from './copy.js';
 import { buildVM } from './view.js';
 import { createAuthWatch, runBoot, runPair, signedOutPatch } from './boot.js';
@@ -42,6 +43,8 @@ const sound = webAudioSound(window);
 const cap = window.Capacitor;
 const bridge = createBridge({ isNative: () => !!(cap && cap.isNativePlatform && cap.isNativePlatform()), plugin: cap && cap.Plugins ? cap.Plugins[NATIVE_PLUGIN] || null : null,
   sound, doc: document, wakeLock: navigator.wakeLock || null });
+const repairNow = repairAction(bridge);
+const connectPoll = createConnectPoll({ refresh: () => refreshStatus() });
 const clock = makeClock();
 const rtdb = {
   onQuery(path, child, value, h) {
@@ -89,7 +92,8 @@ function render() {
   });
 }
 root.addEventListener('click', (e) => { const t = e.target.closest('[data-act]'); if (t && acts[t.dataset.act]) { sound.unlock(); acts[t.dataset.act](); } });
-const set = (patch) => { Object.assign(S, patch); render(); };
+// codex b4 r1 P2: every state change re-syncs the «Conectando…» poll (it starts, or stops once the push row is ready / the screen left)
+const set = (patch) => { Object.assign(S, patch); connectPoll.sync(connecting(S.phase, S.status)); render(); };
 let toastTimer = null;
 function toast(msg, undoId = null) {
   clearTimeout(toastTimer);
@@ -136,7 +140,7 @@ function vm() {
     act: { doLogin, doPair, refreshStatus, pinPress, doSignOut, control, openOrder, handed, doReject, doMore, undoReady, doAccept, doReady,
       stopEta: () => stopEta(), checksContinue,
       // readiness rows: the repair buttons open the matching system screen (the resume refresh re-reads the status afterwards)
-      openSettings: (kind) => { bridge.openSettings(kind).catch(() => {}); },
+      openSettings: repairNow,
       testAlert: () => { sound.unlock(); bridge.alarm.start(['__prueba__']); setTimeout(() => bridge.alarm.stop(), 2500); toast('Sonando la alerta de prueba a todo volumen…'); } },
   });
 }

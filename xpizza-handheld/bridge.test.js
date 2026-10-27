@@ -161,3 +161,15 @@ test('H1c: the browser stub and the native-missing bridge — additions are no-o
   assert.equal((await miss.statusEx()).blocked, true);
   await miss.endDeviceSession(); assert.equal(await miss.pushToken(), null);
 });
+
+test('codex b4 r1 P2: each readiness field ABSENT from an otherwise-ready response fails safe — blocked and that row not ready', async () => {
+  const { readiness } = await import('./readiness.js');
+  const row = { channelOk: 'channel', fullScreen: 'fullScreen', pushReady: 'push' };
+  for (const k of ['channelOk', 'fullScreen', 'pushReady']) {
+    const resp = { ...ALL, pushSession: true }; delete resp[k];
+    const s = await nativeRig(resp).b.statusEx();
+    assert.equal(s[k], false, `${k} absent → false`);
+    assert.equal(s.blocked, true, `${k} absent → blocked`);
+    assert.notEqual(readiness(s)[row[k]].state, 'ok', `${k} absent → the row is not ready`);
+  }
+});

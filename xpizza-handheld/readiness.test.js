@@ -2,7 +2,7 @@
 // «Continuar», and the frozen status() path untouched.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readiness } from './readiness.js';
+import { readiness, connecting, createConnectPoll, repairAction } from './readiness.js';
 import { READINESS } from './copy.js';
 
 const GREEN = { notifications: true, fullScreen: true, channelOk: true, alarmVolumeMax: true, batteryExempt: true, pushReady: true, pushSession: true, kiosk: false };
@@ -73,4 +73,64 @@ test('the line: 2+ gaps → «Faltan N pasos…» counting every row (waiting in
   assert.equal(readiness(st({ notifications: false })).line, '');
   assert.equal(readiness(st({ alarmVolumeMax: false })).line, '');
   assert.equal(readiness(st({ notifications: false, alarmVolumeMax: false })).line, 'Faltan 2 pasos para recibir pedidos.');
+});
+
+test('connecting(): only the checks screen with a statusEx push row in «Conectando…»', () => {
+  assert.equal(connecting('checks', st({ pushReady: false, pushSession: true })), true);
+  assert.equal(connecting('checks', st({ pushReady: false })), true, 'pushSession unknown → still waiting');
+  assert.equal(connecting('checks', st({ pushReady: false, pushSession: false })), false, '«Vincular» is not waiting');
+  assert.equal(connecting('checks', GREEN), false);
+  assert.equal(connecting('main', st({ pushReady: false })), false, 'left the screen');
+  assert.equal(connecting('checks', { notifications: true, alarmVolumeMax: true, batteryExempt: true }), false, 'frozen status()');
+});
+
+// a fake clock: setTimer queues, run() fires the due one and lets its refresh settle
+function fakeTimers() {
+  const q = []; let id = 0;
+  return { q, setTimer: (fn, ms) => { const t = { id: ++id, fn, ms }; q.push(t); return t; }, clearTimer: (t) => { const i = q.indexOf(t); if (i >= 0) q.splice(i, 1); },
+    run: async () => { const t = q.shift(); assert.ok(t, 'a tick is scheduled'); await t.fn(); } };
+}
+
+test('poll: re-reads every 3 s while «Conectando…», stops the moment pushReady turns true — «Continuar» unblocks without a resume', async () => {
+  const T = fakeTimers(); let phase = 'checks'; let status = st({ pushReady: false, pushSession: true, blocked: true });
+  const native = [st({ pushReady: false, pushSession: true }), st({ pushReady: false, pushSession: true }), GREEN];
+  let poll;
+  const set = (p) => { ({ phase = phase, status = status } = { phase, status, ...p }); poll.sync(connecting(phase, status)); };
+  poll = createConnectPoll({ refresh: async () => set({ status: native.shift() }), setTimer: T.setTimer, clearTimer: T.clearTimer });
+  set({});
+  assert.equal(T.q.length, 1); assert.equal(T.q[0].ms, 3000);
+  set({}); set({});
+  assert.equal(T.q.length, 1, 'sync is idempotent: one loop');
+  await T.run(); await T.run();
+  assert.equal(readiness(status).push.state, 'wait'); assert.equal(T.q.length, 1, 'still waiting → next tick');
+  await T.run();
+  assert.equal(readiness(status).push.state, 'ok'); assert.equal(readiness(status).line, '', 'ready → no line');
+  assert.equal(T.q.length, 0, 'ready → the loop stops'); assert.equal(poll.reads(), 0, 're-armed for a later wait');
+});
+
+test('poll: leaving the screen stops it; it is bounded; a failing read keeps polling', async () => {
+  const T = fakeTimers();
+  let poll = createConnectPoll({ refresh: async () => {}, setTimer: T.setTimer, clearTimer: T.clearTimer });
+  poll.sync(true); assert.equal(T.q.length, 1);
+  poll.sync(false); assert.equal(T.q.length, 0, 'left → cancelled');
+  poll = createConnectPoll({ refresh: async () => { poll.sync(true); }, setTimer: T.setTimer, clearTimer: T.clearTimer, max: 3 });
+  poll.sync(true);
+  for (let i = 0; i < 3; i++) await T.run();
+  assert.equal(poll.reads(), 3); assert.equal(T.q.length, 0, 'bounded: rests after max reads');
+  poll.sync(true); assert.equal(T.q.length, 0, 'stays resting while still waiting');
+  poll.sync(false); poll.sync(true); assert.equal(T.q.length, 1, 'a new wait re-arms it');
+  const T2 = fakeTimers(); let n = 0;
+  const p2 = createConnectPoll({ refresh: async () => { n++; throw new Error('read failed'); }, setTimer: T2.setTimer, clearTimer: T2.clearTimer });
+  p2.sync(true); await T2.run(); await T2.run();
+  assert.equal(n, 2); assert.equal(T2.q.length, 1, 'a failed read schedules the next one');
+});
+
+test('repairAction: passes the exact kind to bridge.openSettings and never throws into the click', async () => {
+  const got = [];
+  const act = repairAction({ openSettings: (k) => { got.push(k); return Promise.resolve(); } });
+  act('channel'); act('fullScreen');
+  assert.deepEqual(got, ['channel', 'fullScreen']);
+  assert.doesNotThrow(() => repairAction({ openSettings: () => { throw new Error('x'); } })('channel'));
+  assert.doesNotThrow(() => repairAction({ openSettings: () => Promise.reject(new Error('x')) })('channel'));
+  await new Promise((r) => setImmediate(r));
 });
