@@ -22485,5 +22485,21 @@
     "kills_with": [
       "never inherits A's terminal success"
     ]
+  },
+  {
+    "id": "f4-01",
+    "slice": "f4",
+    "label": "the harness disables the HTTP cache again (defeats the preload ⇒ vacuous zeros)",
+    "file": "../customer-app/capp-perf.cdp.mjs",
+    "from": "    /* F4: the HTTP cache stays ON (a disabled cache defeats the preload — 3a cdp-fonts a36afefd); a fresh profile is the cold cache */\n",
+    "to": "    await s('Network.setCacheDisabled', { cacheDisabled: true });\n",
+    "command": [
+      "node",
+      "../customer-app/capp-perf.cdp.mjs"
+    ],
+    "kills_with": [
+      "F4-warm: the faces are LOADED",
+      "F4-warm: a heading at weight"
+    ]
   }
 ]
