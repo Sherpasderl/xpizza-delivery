@@ -251,6 +251,7 @@
     "xpizza-functions/test/publish-request.emulator.test.js",
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/release-race-heal.emulator.test.js",
+    "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/stackseq-writers.emulator.test.js",
@@ -451,6 +452,7 @@
     "xpizza-functions/test/publish-request.emulator.test.js",
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/release-race-heal.emulator.test.js",
+    "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/stackseq-writers.emulator.test.js",
@@ -713,6 +715,7 @@
     "xpizza-functions/test/publish-request.emulator.test.js",
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/release-race-heal.emulator.test.js",
+    "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/stackseq-writers.emulator.test.js",
@@ -914,6 +917,7 @@
     "xpizza-functions/test/publish-request.emulator.test.js",
     "xpizza-functions/test/published-choice-price.emulator.test.js",
     "xpizza-functions/test/release-race-heal.emulator.test.js",
+    "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/stackseq-writers.emulator.test.js",
@@ -2830,6 +2834,12 @@
       "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/test/s4-schedule-only.emulator.test.js",
+     "inverses": [
+      "tools/s4hours-inverse.js"
      ]
     },
     {
