@@ -19,35 +19,46 @@ import { dirname, join } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const SRC = readFileSync(join(here, 'xpizza-delivery.js'), 'utf8');
 
-// ── Lift the real barrier code (guard hook + guarded primitives + authedFetch) and run it over stubs. ──
-function loadBarrier() {
-  const calls = { fbSet: 0, fbUpdate: 0, fbRemove: 0, fbRunTransaction: 0, sherpaTrack: 0, sherpaFetch: 0, getIdToken: 0 };
-  // Extract the guard block through the four guarded primitive aliases.
+// Brace-matched slice of a top-level `[export] [async] function NAME(…) { … }`.
+function sliceFn(src, header) {
+  const start = src.indexOf(header);
+  assert.ok(start !== -1, `source must contain: ${header}`);
+  let i = src.indexOf('{', start), depth = 0;
+  for (; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') { depth--; if (depth === 0) return src.slice(start, i + 1); }
+  }
+  throw new Error(`unbalanced braces for ${header}`);
+}
+
+// ── Lift the REAL barrier code (guard hook + guarded primitives + authedFetch + sendTestPush) over stubs. ──
+function loadBarrier(opts = {}) {
+  const calls = { fbSet: 0, fbUpdate: 0, fbRemove: 0, fbRunTransaction: 0, sherpaTrack: 0, sherpaFetch: 0, getIdToken: 0, onToken: null };
   const guardStart = SRC.indexOf('let authedRequestGuard = null;');
   const primEnd = SRC.indexOf('fbRunTransaction(...a));', guardStart);
   assert.ok(guardStart !== -1 && primEnd !== -1, 'barrier guard block must be present in source');
   const guardBlock = SRC.slice(guardStart, primEnd + 'fbRunTransaction(...a));'.length).replace(/\bexport\s+/g, '');
-  // Extract the authedFetch function.
-  const afStart = SRC.indexOf('async function authedFetch(');
-  const afEnd = SRC.indexOf('\n}', afStart);
-  assert.ok(afStart !== -1 && afEnd !== -1, 'authedFetch must be present in source');
-  const authedFetchSrc = SRC.slice(afStart, afEnd + 2);
+  let authedFetchSrc = sliceFn(SRC, 'async function authedFetch(');
+  let sendTestPushSrc = sliceFn(SRC, 'export async function sendTestPush()').replace(/\bexport\s+/g, '');
+  // Mutation hooks (prove the guards are load-bearing): strip them and the behavior must change.
+  if (opts.stripSendTestPushGuards) sendTestPushSrc = sendTestPushSrc.replace(/\s*if \(authWriteBarred\(\)\) return \{ httpStatus: 0, reason: 'superseded' \};[^\n]*/g, '');
+  if (opts.stripAuthedFetchRecheck) authedFetchSrc = authedFetchSrc.replace(/\s*if \(authWriteBarred\(\)\) throw supersededError\(\);\s*\/\/ re-check[^\n]*/g, '');
 
   const harness = `
     'use strict';
-    // stubs for the primitives/helpers the lifted code closes over
     const fbSet = (...a) => { calls.fbSet++; return Promise.resolve('set'); };
     const fbUpdate = (...a) => { calls.fbUpdate++; return Promise.resolve('update'); };
     const fbRemove = (...a) => { calls.fbRemove++; return Promise.resolve('remove'); };
     const fbRunTransaction = (...a) => { calls.fbRunTransaction++; return Promise.resolve('tx'); };
     const sherpaTrack = (p) => { calls.sherpaTrack++; return p; };
-    const sherpaFetch = (u, o) => { calls.sherpaFetch++; return Promise.resolve({ ok: true, _url: u, _o: o }); };
-    const auth = { currentUser: { getIdToken: async () => { calls.getIdToken++; return 'TOKEN'; } } };
-    let exported;
-    const __exportGuard = (fn) => { exported = fn; };   // capture setAuthedRequestGuard's effect indirectly
+    const sherpaFetch = (u, o) => { calls.sherpaFetch++; return Promise.resolve({ ok: true, status: 200, json: async () => ({}), _url: u, _o: o }); };
+    const functionUrl = (n) => 'https://fn/' + n;
+    // getIdToken awaits; calls.onToken lets a test flip the session DURING the token await (P1-2 window).
+    const auth = { currentUser: { getIdToken: async () => { calls.getIdToken++; if (calls.onToken) await calls.onToken(); return 'TOKEN'; } } };
     ${guardBlock}
     ${authedFetchSrc}
-    return { set, update, remove, runTransaction, authedFetch, setAuthedRequestGuard, authWriteBarred, supersededError };
+    ${sendTestPushSrc}
+    return { set, update, remove, runTransaction, authedFetch, sendTestPush, setAuthedRequestGuard, authWriteBarred, supersededError };
   `;
   // eslint-disable-next-line no-new-func
   const api = new Function('calls', harness)(calls);
@@ -102,6 +113,49 @@ test('guard returning TRUE bars authedFetch BEFORE token/network', async () => {
   assert.equal(b.calls.sherpaFetch, 0, 'no network request issued when barred');
 });
 
+test('P1-2 authedFetch: session barred DURING the token await ⇒ reject, ZERO network calls', async () => {
+  const b = loadBarrier();
+  let barred = false;
+  b.setAuthedRequestGuard(() => barred);
+  b.calls.onToken = () => { barred = true; };   // the session is superseded while getIdToken awaits
+  await assert.rejects(b.authedFetch('https://fn/x', { a: 1 }), (e) => e.code === 'auth/session-superseded');
+  assert.equal(b.calls.getIdToken, 1, 'the token await happened');
+  assert.equal(b.calls.sherpaFetch, 0, 'NO request issued — the re-check after getIdToken caught it');
+});
+test('P1-2 MUTATION: remove authedFetch re-check ⇒ it issues the POST despite being barred mid-token', async () => {
+  const b = loadBarrier({ stripAuthedFetchRecheck: true });
+  let barred = false;
+  b.setAuthedRequestGuard(() => barred);
+  b.calls.onToken = () => { barred = true; };
+  await b.authedFetch('https://fn/x', { a: 1 }).catch(() => {});
+  assert.equal(b.calls.sherpaFetch, 1, 'mutant leaks a network call after barring (proves the re-check is load-bearing)');
+});
+
+test('sendTestPush barred from the start ⇒ {superseded}, no token, no network', async () => {
+  const b = loadBarrier();
+  b.setAuthedRequestGuard(() => true);
+  const r = await b.sendTestPush();
+  assert.deepEqual(r, { httpStatus: 0, reason: 'superseded' });
+  assert.equal(b.calls.getIdToken, 0);
+  assert.equal(b.calls.sherpaFetch, 0);
+});
+test('sendTestPush barred DURING the token await ⇒ {superseded}, ZERO network', async () => {
+  const b = loadBarrier();
+  let barred = false;
+  b.setAuthedRequestGuard(() => barred);
+  b.calls.onToken = () => { barred = true; };
+  const r = await b.sendTestPush();
+  assert.deepEqual(r, { httpStatus: 0, reason: 'superseded' });
+  assert.equal(b.calls.getIdToken, 1);
+  assert.equal(b.calls.sherpaFetch, 0, 'no push issued after barring mid-token');
+});
+test('MUTATION: strip BOTH sendTestPush guards ⇒ it issues the push even when barred', async () => {
+  const b = loadBarrier({ stripSendTestPushGuards: true });
+  b.setAuthedRequestGuard(() => true);
+  await b.sendTestPush();
+  assert.equal(b.calls.sherpaFetch, 1, 'mutant issues the push even when barred (proves both guards are load-bearing)');
+});
+
 test('a guard that flips mid-operation bars the LATER write (re-checked per write, not at entry)', async () => {
   const b = loadBarrier();
   let superseded = false;
@@ -121,19 +175,24 @@ test('tripwire: each firebase write primitive is referenced exactly once (its wr
   }
 });
 
-test('tripwire: the firebase-database import pulls in NO un-aliased or extra write primitive', () => {
-  // Grab the firebase-database import block.
-  const m = SRC.match(/import\s*\{([\s\S]*?)\}\s*from\s*'https:\/\/www\.gstatic\.com\/firebasejs\/[^']*firebase-database\.js'/);
-  assert.ok(m, 'firebase-database import block must be present');
-  const names = m[1].split(',').map((s) => s.trim()).filter(Boolean);
-  // Any write-capable primitive must be imported ONLY under its fb* alias (so raw calls can't bypass the guard).
-  const WRITE_PRIMS = ['set', 'update', 'remove', 'runTransaction', 'push', 'setWithPriority', 'onDisconnect', 'child'];
-  for (const spec of names) {
-    const [orig, , alias] = spec.split(/\s+as\s+|\s+/);
-    const imported = spec.includes(' as ') ? spec.split(/\s+as\s+/)[0].trim() : spec;
-    if (WRITE_PRIMS.includes(imported)) {
-      const localName = spec.includes(' as ') ? spec.split(/\s+as\s+/)[1].trim() : imported;
-      assert.match(localName, /^fb[A-Z]/, `write primitive '${imported}' must be imported as fb*… (got '${localName}') so it cannot bypass the guarded wrappers`);
+test('tripwire: EVERY firebase-database import is allow-listed — only the four writes, each under its exact fb alias', () => {
+  // The EXACT allowed write imports: original -> required local alias. Nothing else that can write may be imported.
+  const ALLOWED = { set: 'fbSet', update: 'fbUpdate', remove: 'fbRemove', runTransaction: 'fbRunTransaction' };
+  // Every firebase-database primitive that MUTATES the tree. Importing any of these other than the allow-listed
+  // four — or an allow-listed one under a non-fb alias — is a bypass and must fail.
+  const WRITE_PRIMS = new Set(['set', 'update', 'remove', 'runTransaction', 'push', 'setWithPriority', 'onDisconnect']);
+
+  const imports = [...SRC.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*'https:\/\/www\.gstatic\.com\/firebasejs\/[^']*firebase-database\.js'/g)];
+  assert.ok(imports.length >= 1, 'at least one firebase-database import must be present');
+  for (const imp of imports) {
+    const specs = imp[1].split(',').map((s) => s.trim()).filter(Boolean);
+    for (const spec of specs) {
+      const parts = spec.split(/\s+as\s+/);
+      const original = parts[0].trim();
+      const local = (parts[1] || parts[0]).trim();
+      if (!WRITE_PRIMS.has(original)) continue;                     // a read/query primitive — fine
+      assert.ok(original in ALLOWED, `write primitive '${original}' may not be imported (only ${Object.keys(ALLOWED).join('/')})`);
+      assert.equal(local, ALLOWED[original], `'${original}' must be imported as '${ALLOWED[original]}' (got '${local}') so raw calls can't bypass the guarded wrapper`);
     }
   }
 });
