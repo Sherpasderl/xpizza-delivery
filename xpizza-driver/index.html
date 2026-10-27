@@ -253,6 +253,12 @@
 #idle-state .disp-gps.stale { color: var(--warn, #8A5A00); }
 #idle-state .idle-check { width: 104px; height: 104px; border-radius: 30px; display: grid; place-items: center; background: #E3F3E9; color: #15803D; margin: 0; }   /* proto .illus.ok (margin 0 — drop the base 20px) */
 #idle-state .idle-check svg { width: 50px; height: 50px; }
+#idle-state .idle-check.returning { background: #E3ECFB; color: #2F5FB8; }   /* proto S.disponibleRegresando: plain .illus (blue pwash) for the navi glyph — NOT the green .ok */
+/* The returning nav button reuses the approved navBtnHtml component, recoloured SOFT (proto navBtn .replace('btn primary','btn soft') = pwash bg / primary ink); only bg+ink change, the shape stays identical to the active-screen nav button. */
+#idle-state .disp-return-nav { width: 100%; margin-top: 13px; }   /* proto parity: the prototype's copy «<p class="sub">» keeps its ~13px default bottom margin above the nav button; .idle-sub (a div) has none, so add it here — scoped to returning, so the approved disponible is untouched */
+#idle-state .disp-return-nav .nav-col { margin: 0; width: 100%; }
+#idle-state .disp-return-nav .nav-primary { background: #E3ECFB; color: #2F5FB8; }   /* proto .btn.soft */
+#idle-state .disp-return-nav .nav-primary .nav-arrow { color: #2F5FB8; }
 #idle-state .idle-msg { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); margin: 0; }   /* proto .h = --fd (margin 0 — drop the base 9px) */
 #idle-state .idle-sub { font-family: var(--fb); font-size: 13px; line-height: 1.4; max-width: none; margin: 6px 0 0; color: var(--text-soft, #546078); }   /* CSS parity with prototype .body.center .sub (advisor): font/size/line-height/width/padding equal, NO max-width, 6px margin-top */
 #screen-onshift #idle-state .idle-help-link { font-family: var(--fb); color: var(--text-soft, #546078); font-weight: 600; font-size: 13px; }   /* proto .btn.txt — darker, semibold (fix) */
@@ -2509,6 +2515,7 @@ import { postActRoute } from './postact-route.js';   // Inicio b: pure post-acti
 import { practicaDemoOrder } from './practica-fixture.js';   // Inicio c: the synthetic practice ORDER (brand = registry-only 'synthetic_3' as DATA, never a controller literal)
 import { tabBarHtml } from './tab-bar-view.js';   // O6: the bottom nav bar (Inicio·Pedidos·Ganancias·Cuenta), data-gated pure builder
 import { fmtClockHM } from './time-format.js';   // ONE source for «7:16» — the cuadre date line + the disponible «desde las {time}» header
+import { brandLabel } from './brand-helpers.js';   // the server-stamped restaurant display name (returning-state nav target label — brand-agnostic, never a literal)
 /* ===== SLICE3:IMPORT-3:END ===== */
 /* ===== SLICE3:LOGIC-3:START — batch-3 module logic (help diagnosis sheet; gpsoff / cierreRechazado / offline to follow) ===== */
 // SLICE3:HELP — the «¿Por qué no veo pedidos?» diagnosis sheet (prototype S.help), mounted on demand (reusing the
@@ -2862,6 +2869,7 @@ function driverRow(icon, label, o) {
 // de» is OMITTED: no driver→restaurant eligibility data exists (brand-agnostic). Called from showScreen('offshift').
 function renderOffshift() {
   const host = $('screen-offshift'); if (!host) return;
+  drv2ClearReturnTarget();   // off-shift / shift-end → drop any returning nav target (advisor: clear on ending the shift)
   const SOLA_HM = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="var(--marino, #14306B)"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><g><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--celeste, #8EC0FF)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="var(--marino, #14306B)"/></g></svg>';
   const USER = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c1.3-3.2 4-4.8 7-4.8s5.7 1.6 7 4.8"/></svg>';   // prototype I.user, filled
   const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>';
@@ -2959,6 +2967,49 @@ function renderOffshift() {
   updateNotifBanners();             // re-populate the fresh notif banner (async)
 }
 
+// returnTarget — the restaurant the driver heads back to while idle-RETURNING (prototype S.disponibleRegresando nav
+// button). Captured ONLY at THIS client's delivery completion (SLICE3:RETURN-TARGET-CAPTURE): the delivered order's
+// display name (brandLabel's server-stamped source) + the hub lat/lng stamped on its pickup task. Held in memory +
+// sessionStorage (so a webview reload mid-return keeps it), stamped with the capturing uid. It NEVER falls back to
+// XPD.RESTAURANT or any brand constant: a completion that did NOT go through this client (another device / offline
+// replay) leaves no snapshot, so the returning nav button HIDES. Cleared on leaving returning (renderDisponible's
+// non-returning branch) and on going off-shift / shift-end (renderOffshift); an account switch is handled by the uid
+// stamp on read. Stacked deliveries: each completion overwrites it, so the LAST completed order's restaurant wins.
+const RETURN_TARGET_KEY = 'sherpa_return_target';
+let returnTarget = null;   // { name, lat, lng, uid } | null
+function drv2SetReturnTarget(t) {
+  const ok = t && t.name && Number.isFinite(t.lat) && Number.isFinite(t.lng) && t.uid;
+  returnTarget = ok ? { name: String(t.name), lat: t.lat, lng: t.lng, uid: String(t.uid) } : null;
+  try {
+    if (returnTarget) sessionStorage.setItem(RETURN_TARGET_KEY, JSON.stringify(returnTarget));
+    else sessionStorage.removeItem(RETURN_TARGET_KEY);
+  } catch (_) { /* private mode / quota — the in-memory copy still serves this session */ }
+}
+function drv2GetReturnTarget() {
+  const uid = currentUser && currentUser.uid;
+  if (!uid) return null;
+  let t = returnTarget;
+  if (!t) {   // rehydrate from sessionStorage after a webview reload mid-return
+    try { const raw = sessionStorage.getItem(RETURN_TARGET_KEY); if (raw) t = JSON.parse(raw); } catch (_) { t = null; }
+  }
+  if (t && t.name && Number.isFinite(t.lat) && Number.isFinite(t.lng) && t.uid === uid) { returnTarget = t; return t; }
+  return null;   // absent, malformed, or a DIFFERENT account (switch) → no target → the nav button hides
+}
+function drv2ClearReturnTarget() {
+  returnTarget = null;
+  try { sessionStorage.removeItem(RETURN_TARGET_KEY); } catch (_) { /* best-effort */ }
+}
+function drv2CaptureReturnTarget(o) {   // at THIS client's delivery completion, the delivered order's entry is in scope
+  const order = (o && o.order) || {};
+  const pk = (o && o.pickupTask) || {};
+  drv2SetReturnTarget({
+    name: brandLabel(order),                 // server-stamped restaurant_display_name — '' when unknown → no target → hidden
+    lat: Number(pk.destination_lat),         // the order's immutable per-restaurant hub (stamped on the pickup task)
+    lng: Number(pk.destination_lng),
+    uid: currentUser && currentUser.uid,
+  });
+}
+
 // renderDisponible — the on-shift IDLE body rebuilt to prototype S.disponible: a calm status card (Disponible chip +
 // GPS freshness) + the check «Esperando pedidos» block + two stat cards. A runtime overwrite of #idle-state (the
 // renderOffshift pattern), called from renderIdleState's IDLE-3 region. The #idle-help-link and #arrive-btn have
@@ -2971,14 +3022,27 @@ function renderDisponible() {
   const helpLink = $('idle-help-link');     // bound once (→ openHelpSheet); preserve
   const arriveBtn = $('arrive-btn');         // bound once (→ the «en el restaurante» action); preserve
   const offerExpired = $('idle-offer-expired');   // the expired-offer notice (mounted by renderActiveAndQueue, with its «Ok» handler); preserve across the rebuild
-  let icon, msg, sub, chip;
+  let icon, msg, sub, chip, iconCls = 'idle-check', navHtml = '';
   if (status === 'returning') {
-    icon = ICONS.uturn; msg = 'Regresando al restaurante'; sub = 'Pulsá abajo cuando hayas llegado'; chip = 'Disponible';
+    // prototype S.disponibleRegresando: a navigation glyph on the BLUE illus + the «head back» copy + a SOFT nav
+    // button to the hub. The manual «Estoy en el restaurante» arrive-btn is KEPT below it (the only trigger for
+    // at_restaurant — advisor ruling #2), preserved via disp-arrive-slot as on every idle status.
+    icon = NAVP_ICONS.navi; iconCls = 'idle-check returning';
+    msg = 'Regresando';
+    sub = 'Volvé hacia la zona de los restaurantes. Si te llega un pedido en el camino, te avisamos.'; chip = 'Disponible';
+    const tgt = drv2GetReturnTarget();
+    if (tgt) {   // ONLY when THIS client captured the completion; no target (other device / offline replay) → button hidden
+      navHtml = '<div class="disp-return-nav">'
+        + navBtnHtml({ lat: tgt.lat, lng: tgt.lng }, (typeof drv2ReadNavPref === 'function' ? drv2ReadNavPref() : undefined), tgt.name, { esc: escapeHtml })
+        + '</div>';
+    }
   } else if (status === 'at_restaurant') {
     icon = ICONS.store; msg = 'En el restaurante'; sub = 'Listo para el siguiente pedido'; chip = 'En restaurante';
+    drv2ClearReturnTarget();   // left the returning state → drop the snapshot (advisor: clear on leaving returning)
   } else {   // available (the prototype disponible) + any other idle status
     icon = ICONS.check; msg = 'Esperando pedidos';
     sub = 'Te avisamos con sonido y vibración. Dejá el app abierto o en segundo plano.'; chip = 'Disponible';
+    drv2ClearReturnTarget();   // left the returning state → drop the snapshot
   }
   const lp = driverState && driverState.last_ping;
   const stale = (XPD && typeof XPD.isStalePing === 'function') ? XPD.isStalePing(lp) : false;
@@ -2990,11 +3054,12 @@ function renderDisponible() {
     + '<div class="disp-status"><span class="disp-chip"><i></i><span id="disp-chip-label">' + chip + '</span></span>'
     + '<span class="disp-gps' + (stale ? ' stale' : '') + '" id="disp-gps">' + gps + '</span></div>'
     + '<div class="disp-center">'
-    + '<div class="idle-check" id="idle-icon">' + icon + '</div>'
+    + '<div class="' + iconCls + '" id="idle-icon">' + icon + '</div>'
     + '<div class="disp-ts">'
     + '<div class="idle-msg" id="idle-msg">' + msg + '</div>'
     + '<div class="idle-sub" id="idle-sub">' + sub + '</div>'
     + '</div>'
+    + navHtml
     + '<span id="disp-help-slot"></span><span id="disp-arrive-slot"></span>'
     + '</div>'
     + '</div>'
@@ -5653,6 +5718,12 @@ function attachActiveCardHandlers(o) {
         throw err;
       }
       toast('¡Entregado!', 'success');
+      /* ===== SLICE3:RETURN-TARGET-CAPTURE:START — snapshot THIS delivery's restaurant (display name + stamped hub)
+         as the returning-state nav target. Runs only on a successful completion through this client's slide (the
+         catch above rethrows), so an other-device / offline-replay completion never sets it — then the returning
+         nav button hides (prototype S.disponibleRegresando). Stacked: the last completion wins (overwrite). ===== */
+      drv2CaptureReturnTarget(o);
+      /* ===== SLICE3:RETURN-TARGET-CAPTURE:END ===== */
     });
   }
 }

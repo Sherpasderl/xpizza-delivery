@@ -37,10 +37,20 @@ function boot({ status = 'available', stale = false } = {}) {
   const ICONS = new Proxy({}, { get: (_, k) => `<svg data-ic="${String(k)}"></svg>` });
   const driverState = { status, last_ping: Date.now() };
   const XPD = { isStalePing: () => stale };
+  // returnTarget deps: this structure suite keeps NO target (drv2GetReturnTarget → null), so the returning nav button
+  // is absent here; the capture/button behaviour is exercised against the REAL functions in return-target.test.js.
+  const NAVP_ICONS = { navi: '<svg data-navi></svg>' };
+  const navBtnHtml = () => '<div class="nav-col"><a class="nav-btn nav-primary"></a></div>';
+  const drv2ReadNavPref = () => 'Waze';
+  const escapeHtml = (s) => String(s == null ? '' : s);
+  const currentUser = { uid: 'drv' };
+  const drv2GetReturnTarget = () => null;
+  const drv2ClearReturnTarget = () => {};
   // tag the startup-bound controls so we can prove the SAME elements survive the rebuild
   $('idle-help-link')._boundMark = 'help'; $('arrive-btn')._boundMark = 'arrive';
   const body = liftFn('renderDisponible') + '\nreturn { renderDisponible };';
-  const api = (new Function('document', '$', 'ICONS', 'driverState', 'XPD', body))(document, $, ICONS, driverState, XPD);
+  const api = (new Function('document', '$', 'ICONS', 'driverState', 'XPD', 'NAVP_ICONS', 'navBtnHtml', 'drv2ReadNavPref', 'escapeHtml', 'currentUser', 'drv2GetReturnTarget', 'drv2ClearReturnTarget', body))(
+    document, $, ICONS, driverState, XPD, NAVP_ICONS, navBtnHtml, drv2ReadNavPref, escapeHtml, currentUser, drv2GetReturnTarget, drv2ClearReturnTarget);
   api.renderDisponible();
   return { document, $, host: $('idle-state') };
 }
@@ -71,11 +81,14 @@ t('the startup-bound #idle-help-link and #arrive-btn are PRESERVED (same element
   assert.ok(h.host.querySelector('.idle-top #idle-help-link'), 'help link sits inside the rebuilt .idle-top');
 });
 
-t('returning: «Regresando al restaurante» + Disponible chip + the uturn icon', () => {
+t('returning: prototype S.disponibleRegresando copy — «Regresando» + the «Volvé…» body + Disponible chip + the blue navi illus (no nav button when no target)', () => {
   const h = boot({ status: 'returning' });
-  assert.equal(h.host.querySelector('#idle-msg').textContent, 'Regresando al restaurante');
+  assert.equal(h.host.querySelector('#idle-msg').textContent, 'Regresando');
+  assert.match(h.host.querySelector('#idle-sub').textContent, /^Volvé hacia la zona de los restaurantes\. Si te llega un pedido en el camino, te avisamos\.$/);
   assert.equal(h.host.querySelector('#disp-chip-label').textContent, 'Disponible');
-  assert.ok(/data-ic="uturn"/.test(h.host.querySelector('#idle-icon').innerHTML), 'uturn icon');
+  assert.ok(h.host.querySelector('#idle-icon').classList.contains('returning'), 'the illus carries .returning (blue, not the green .ok)');
+  assert.ok(/data-navi/.test(h.host.querySelector('#idle-icon').innerHTML), 'the navi glyph (NAVP_ICONS.navi)');
+  assert.ok(!h.host.querySelector('.disp-return-nav'), 'NO nav button in this suite (drv2GetReturnTarget → null)');
 });
 
 t('at_restaurant: «En restaurante» chip + «En el restaurante» + the store icon', () => {
@@ -103,9 +116,17 @@ t('composed: renderIdleState rebuilds the body via the renderDisponible hook (ki
   const ICONS = new Proxy({}, { get: (_, k) => `<svg data-ic="${String(k)}"></svg>` });
   const driverState = { status: 'available', last_ping: Date.now() };
   const XPD = { isStalePing: () => false };
+  const NAVP_ICONS = { navi: '<svg data-navi></svg>' };
+  const navBtnHtml = () => '';
+  const drv2ReadNavPref = () => 'Waze';
+  const escapeHtml = (s) => String(s == null ? '' : s);
+  const currentUser = { uid: 'drv' };
+  const drv2GetReturnTarget = () => null;
+  const drv2ClearReturnTarget = () => {};
   const body = 'function applyGpsoff(){}\nfunction checkLocationStatus(){}\nfunction syncIdleStats(){}\n'
     + liftFn('renderDisponible') + '\n' + liftFn('renderIdleState') + '\nreturn { renderIdleState };';
-  const api = (new Function('document', '$', 'ICONS', 'driverState', 'XPD', body))(document, $, ICONS, driverState, XPD);
+  const api = (new Function('document', '$', 'ICONS', 'driverState', 'XPD', 'NAVP_ICONS', 'navBtnHtml', 'drv2ReadNavPref', 'escapeHtml', 'currentUser', 'drv2GetReturnTarget', 'drv2ClearReturnTarget', body))(
+    document, $, ICONS, driverState, XPD, NAVP_ICONS, navBtnHtml, drv2ReadNavPref, escapeHtml, currentUser, drv2GetReturnTarget, drv2ClearReturnTarget);
   api.renderIdleState();
   assert.ok($('idle-state').querySelector('.disp-status'), 'renderIdleState → renderDisponible rebuilt the body (disp-status present)');
   assert.ok($('idle-state').querySelector('.disp-chip'), 'the «Disponible» chip is present through the composed path');

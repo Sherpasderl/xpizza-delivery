@@ -61,6 +61,7 @@ function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+50
     'function startGpsStream(){}\n' +
     'function ensureOfflineBanner(){}\n' +
     liftFn('handleStartShift') + '\n' +
+    'function drv2ClearReturnTarget(){ _calls.clearReturn = (_calls.clearReturn||0)+1; }\n' +   // renderOffshift drops the returning nav target on off-shift/shift-end
     'function companionSyncSuspendedNotice(){ _calls.sync++; }\n' +
     'function updateNotifBanners(){ _calls.notif++; }\n' +
     'function todayMidnightMs(){ return 0; }\n' +
@@ -105,6 +106,7 @@ await t('structure: greeting (natural case), status chip, «Efectivo a entregar�
   assert.ok(!/version-tag/.test(html) && !/v2\.5\.3/.test(html), 'version line OMITTED (not in the prototype offshift frame)');
   assert.ok(h.host().querySelector('#btn-start-shift .slide-thumb'), '«Iniciar turno» slide present');
   assert.ok(h.host().querySelector('#duty-toggle-off.hidden'), 'the duty-toggle is kept (hidden) for the frozen references');
+  assert.ok(h.calls.clearReturn >= 1, 'renderOffshift clears the returning nav target (off-shift / shift-end — advisor clear hook)');
 });
 
 await t('PAGOS_LIVE → «Ganado hoy» appears as a second stat (no code change, just the flag)', () => {
