@@ -20465,8 +20465,9 @@
       "../customer-app/capp-api.test.mjs"
     ],
     "kills_with": [
-      "with a token: polled faithfully"
-    ]
+      "no token: Already paid ⇒ paid_unverified"
+    ],
+    "repointed": "pre-existing drift since d6ac2952 (S2b r3, advisor-approved poll-first for ANY issued/admitted card record), found by the S7a-1 heavy sweep 2026-10-27; reproduced identically at ff7f2b37 (pre-S7a); advisor-verified; the WITH-token case is polled first and never reaches the 409 line; the line's property (409 Already paid ⇒ paid_unverified, never a failure) is asserted by the no-token cell of the same test"
   },
   {
     "id": "s2a-u18",
@@ -20569,8 +20570,8 @@
     "slice": "s2a",
     "label": "r2 P1#1: a changed issued card placement is not resolved first",
     "file": "../customer-app/capp-api.js",
-    "from": "    const sameEconomics = (r, p) => r.body_sig === (p.sig == null ? null : String(p.sig)) && r.expected_net_cents === num(p.expectedNetCents);",
-    "to": "    const sameEconomics = (r, p) => true;",
+    "from": "        if (pr.state === 'pending' && method === 'online' && live.issued) return resume(live);   // back to ITS checkout — never a send",
+    "to": "        // (mutant: a pending issued card is not resumed — it falls through instead of resolving first)",
     "command": [
       "node",
       "--test",
@@ -20578,7 +20579,8 @@
     ],
     "kills_with": [
       "the SAME live checkout, resumed"
-    ]
+    ],
+    "repointed": "pre-existing drift since d6ac2952 (S2b r3, advisor-approved poll-first for ANY issued/admitted card record), found by the S7a-1 heavy sweep 2026-10-27; reproduced identically at ff7f2b37 (pre-S7a); advisor-verified; the old anchor `sameEconomics` is DEAD code since then (defined, never called) — re-pointed to the live mechanism, the poll-first resume (capp-api.js:397); same property, same kills_with"
   },
   {
     "id": "s2a-u25",
@@ -20609,8 +20611,9 @@
       "../customer-app/capp-api.test.mjs"
     ],
     "kills_with": [
-      "still resolved first"
-    ]
+      "back to card ⇒ recovery, ONE gateway attempt"
+    ],
+    "repointed": "pre-existing drift since d6ac2952 (S2b r3, advisor-approved poll-first for ANY issued/admitted card record), found by the S7a-1 heavy sweep 2026-10-27; reproduced identically at ff7f2b37 (pre-S7a); advisor-verified; the r2 cell's 'still resolved first' is now covered by poll-first; losing the sticky card mark is caught by the r4 money cell (provider-loss 502 ⇒ a SECOND gateway attempt)"
   },
   {
     "id": "s2a-u27",
