@@ -24716,5 +24716,22 @@
     "kills_with": [
       "placed{scheduled, scheduled_for} to the host"
     ]
+  },
+  {
+    "id": "s4-18",
+    "slice": "s4",
+    "label": "one clock: the ASAP card stays on the device zone under schedulingLive",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (cfg.schedulingLive === true && cfg.schedule) { const K = schedMod(); if (K.valid(cfg.schedule)) return K.openAt(cfg.schedule, now().getTime()); }",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=^S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "closed by the served zone"
+    ]
   }
 ]

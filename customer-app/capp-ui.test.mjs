@@ -2552,3 +2552,12 @@ test('S4 restore (r1 §3.3): a returned scheduled order comes back with its slot
   r.ui.restore(snap); await r.ui.returning; await settle();
   assert.equal(r.ui.state.flow.time, 'schedule'); assert.equal(r.ui.state.flow.slot, sent.scheduled_for, '🔴 the slot restored');
 });
+test('S4 one clock: under schedulingLive the ASAP card follows the SERVED zone — a device in another zone never shows «Lo antes posible» open while the served hours say closed', async () => {
+  // the same wall-clock on this device, but a schedule served for UTC−5: 7:05 p.m. here is 8:05 p.m. there, after the 7:45 p.m. close
+  const sched = J(S4_ENTRY.schedule); sched.tz_offset_min = -300;
+  const b = bootS4({ at: hnT(20, 19, 5), config: { schedule: sched } }); await toCheckout(b);
+  assert.ok(b.q('.opts .opt[data-val="asap"]').disabled, '🔴 closed by the served zone'); assert.equal(b.text('.opts .opt[data-val="asap"] span'), 'No disponible · cerrado');
+  assert.equal(b.q('.opts .opt[data-val="schedule"]').getAttribute('aria-pressed'), 'true', 'the closed preselect agrees');
+  const same = bootS4({ at: hnT(20, 19, 5) }); await toCheckout(same);
+  assert.equal(same.q('.opts .opt[data-val="asap"]').disabled, false, 'premise: open in the served UTC−6 zone');
+});

@@ -207,7 +207,10 @@
     // ── hours (the store config's, on the injected clock) ──
     const clock = () => { const d = now(); return { min: d.getHours() * 60 + d.getMinutes(), day: d.getDay() }; };
     const range = (day) => { const h = cfg.hours && cfg.hours[day]; return h ? [h[0] * 60 + h[1], h[2] * 60 + h[3]] : null; };
-    const isOpen = () => { const c = clock(), o = range(c.day); return !!o && c.min >= o[0] && c.min < o[1]; };
+    // S4 one clock (advisor 2026-10-27): under schedulingLive, open / closed is the SERVED schedule's (its zone, [start, end)) — the ASAP
+    // card and the picker never disagree on a device in another zone; absent ⇒ the device-local helper, as before
+    const isOpen = () => { if (cfg.schedulingLive === true && cfg.schedule) { const K = schedMod(); if (K.valid(cfg.schedule)) return K.openAt(cfg.schedule, now().getTime()); }
+      const c = clock(), o = range(c.day); return !!o && c.min >= o[0] && c.min < o[1]; };
     const closesText = () => { const o = range(clock().day); return o ? fmtMin(o[1]) : ''; };
     const opensText = () => { const c = clock(), o = range(c.day); if (o && c.min < o[0]) return 'Abre hoy ' + fmtMin(o[0]); for (let d = 1; d <= 7; d++) { const oo = range((c.day + d) % 7); if (oo) return 'Abre ' + (d === 1 ? 'mañana' : 'el ' + DAYS[(c.day + d) % 7]) + ' ' + fmtMin(oo[0]); } return 'Cerrado por ahora'; };
     const firstSlot = () => { const c = clock(); for (let off = 0; off < 7; off++) { const o = range((c.day + off) % 7); if (!o) continue; let t = off === 0 ? Math.max(c.min + 60, o[0]) : o[0]; t = Math.ceil(t / 15) * 15; if (t + 30 <= o[1] + 15 && t < o[1]) return { off, t }; } return null; };
