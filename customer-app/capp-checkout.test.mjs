@@ -226,13 +226,31 @@ test('S2b-geo pin-version binding: every pin change bumps the version and clears
   C.setPin(f, 15.53, -88.05, false); assert.equal(C.addrLine(f), '', 'confirmed → unconfirmed is a pin change too');
 });
 
-test('S2b-geo: NO address_area in ANY body at this base (the server colonia slice is not here — a fingerprint-null body would lose charge_inputs_fp)', () => {
-  const f = ready(); C.chooseTip(f, 20); C.applyGeocode(f, f.pinV, GC.full);
-  assert.ok(C.addrLine(f), 'premise: the pin has a street and an area');
+test('S2b-geo body (PLAN-colonia §1): a delivery order body carries address_area — RAW — only for the CONFIRMED pin\'s bound, non-empty area; never in the quote body or the cart signature', () => {
+  const ctxO = ctxOf({ orderId: 'XP251025-120000-AAAA' });
+  const f = ready(); C.chooseTip(f, 20);
+  const sig0 = JSON.stringify(C.sigInput(f, ctxOf()));
+  for (const pay of ['cash', 'online']) { f.pay = pay; assert.ok(!('address_area' in C.orderBody(f, ctxO)), `${pay}: pending ⇒ no key (submit never waits)`); }
+  C.applyGeocode(f, f.pinV, GC.full);
   for (const pay of ['cash', 'online']) {
     f.pay = pay;
-    const ob = C.orderBody(f, ctxOf({ orderId: 'XP251025-120000-AAAA' })); const qb = C.quoteBody(f, ctxOf());
-    for (const b of [ob, qb]) assert.ok(!('address_area' in b) && !JSON.stringify(b).includes('Jardines'), `🔴 ${pay}: no area anywhere in the body (${Object.keys(b).join(',')})`);
-    assert.ok(!JSON.stringify(C.sigInput(f, ctxOf())).includes('Jardines'), 'nor in the cart signature');
+    assert.equal(C.orderBody(f, ctxO).address_area, 'Jardines del Valle', `🔴 ${pay}: the bound area rides the order body`);
+    assert.ok(!('address_area' in C.quoteBody(f, ctxOf())) && !JSON.stringify(C.quoteBody(f, ctxOf())).includes('Jardines'), `${pay}: never in the quote body`);
   }
+  assert.equal(JSON.stringify(C.sigInput(f, ctxOf())), sig0, '🔴 the order identity (cart signature) is EQUAL with and without the area');
+  const raw = ready(); C.applyGeocode(raw, raw.pinV, [{ address_components: [{ long_name: 'Casa 14 Calle 3', types: ['neighborhood'] }] }]);
+  assert.equal(C.orderBody(raw, ctxO).address_area, 'Casa 14 Calle 3', 'raw: the server filter is the only authority');
+});
+
+test('S2b-geo body: NO address_area when the area is superseded, empty (street only / none / failure), the pin unconfirmed, or the order is pickup', () => {
+  const ctxO = ctxOf({ orderId: 'XP251025-120000-AAAA' });
+  const moved = ready(); const v1 = moved.pinV; C.setPin(moved, moved.pin.lat + 0.01, moved.pin.lng, true); C.applyGeocode(moved, v1, GC.full);
+  assert.ok(!('address_area' in C.orderBody(moved, ctxO)), '🔴 A\'s area never rides B\'s pin (superseded)');
+  for (const r of [GC.routeOnly, GC.localityOnly, []]) { const f = ready(); C.applyGeocode(f, f.pinV, r); assert.ok(!('address_area' in C.orderBody(f, ctxO)), `empty area ⇒ no key (${JSON.stringify(r).slice(0, 60)})`); }
+  const stale = ready(); stale.geo = { v: stale.pinV - 1, street: '', area: 'Jardines del Valle' };
+  assert.ok(!('address_area' in C.orderBody(stale, ctxO)), '🔴 a geo bound to another version ⇒ no key');
+  const un = ready(); C.setPin(un, un.pin.lat, un.pin.lng, false); un.geo = { v: un.pinV, street: '', area: 'Jardines del Valle' };
+  assert.ok(!('address_area' in C.orderBody(un, ctxO)), '🔴 an unconfirmed pin ⇒ no key');
+  const pk = ready(); C.applyGeocode(pk, pk.pinV, GC.full); C.setMode(pk, 'pickup');
+  assert.ok(!('address_area' in C.orderBody(pk, ctxO)), '🔴 pickup ⇒ no key');
 });

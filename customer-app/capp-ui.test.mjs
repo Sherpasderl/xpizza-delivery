@@ -1336,7 +1336,7 @@ test('S2b-geo a RESTORED return (the card checkout context from the stash) ⇒ i
   assert.equal(c.text('#layer .errsheet h2'), 'Pago no completado', 'the reply re-render keeps the sheet');
 });
 
-test('S2b-geo pickup: no geocode, no line; the body never carries address_area (this base)', async () => {
+test('S2b-geo pickup: no geocode, no line', async () => {
   const b = bootGeo(); await toCheckout(b); await settle();
   b.gc[0].reply(GEO.full); await settle();
   await b.click('[data-act="type"][data-val="pickup"]'); await settle();
@@ -1392,4 +1392,22 @@ test('S2b-geo r1 P3: a reply during «Enviando»\'s completion (the green check)
   s.gc[0].reply(GEO.area); await settle();
   assert.ok(s.q('#sspin.done'), '🔴 the check stays (no rebuild)');
   assert.equal(s.text(s.q('.sndcard .prow .t b')), 'Col. Jardines del Valle', '«Enviando»: patched in place');
+});
+
+// ── S2b-geo body (PLAN-colonia §1): the order request the REAL UI sends ──
+test('S2b-geo body: the UI\'s createOrder / chargeOnlineOrder carry address_area once the confirmed pin\'s reply landed; submitted while pending ⇒ none (never waits)', async () => {
+  for (const pay of ['cash', 'online']) {
+    const ep = pay === 'online' ? 'chargeOnlineOrder' : 'createOrder';
+    const ok = pay === 'online' ? { status: 200, json: { ok: true, checkout_url: 'https://pay.example/c', poll_token: 'pt_1' } } : { status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } };
+    const b = bootGeo({ script: { [ep]: [ok] } });
+    await filled(b, pay); b.gc.forEach((r) => r.reply(GEO.full)); await settle();
+    await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+    assert.equal(b.srv.of(ep)[0].body.address_area, 'Jardines del Valle', `🔴 ${pay}: the bound area rides the order`);
+    assert.ok(!('address_area' in b.srv.of('quoteOrder').at(-1).body), `${pay}: never in the quote`);
+    const p = bootGeo({ script: { [ep]: [ok] } });
+    await filled(p, pay);   // the reply never lands
+    await p.click('#cta'); await p.click('[data-act="tipc"][data-val="0"]'); await p.click('[data-act="tip-place"]'); await p.click('#layer [data-act="placing-go"]');
+    assert.equal(p.srv.of(ep).length, 1, `${pay}: submit did not wait for the geocode`);
+    assert.ok(!('address_area' in p.srv.of(ep)[0].body), `🔴 ${pay}: pending at submit ⇒ no address_area`);
+  }
 });

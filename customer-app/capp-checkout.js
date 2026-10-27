@@ -13,7 +13,9 @@
 //            module's send(). Every quote body (cash AND card) carries entry_mode:'app' (§3.6).
 //   geo      S2b-geo (MOCKUP-capp-S2b-geo-address.html; PLAN-colonia r1 §1): the reverse-geocode of a CONFIRMED pin, bound to
 //            the pin's version (pinV). Every pin change bumps pinV and clears geo SYNCHRONOUSLY; a reply applies only to the
-//            version it was asked for. Display only at this base: NO address_area in any body (the server slice is not here).
+//            version it was asked for. The order body carries address_area (PLAN-colonia §1) ONLY for a delivery whose CONFIRMED pin
+//            has a non-empty area bound to its current version — raw (the server's privacy filter is the only authority); pending,
+//            superseded, failed or pickup ⇒ no key. Never in the quote body or the cart signature.
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -103,6 +105,11 @@
   // Bo. / Residencial / Res., as a whole word — is shown as given (never «Col. Barrio …»); otherwise «Col. {X}». address_area stays raw.
   const fold = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
   const displayArea = (a) => (/^(colonia|col|barrio|bo|residencial|res)(\.|\s)/.test(fold(a) + ' ') ? a : 'Col. ' + a);
+  // PLAN-colonia §1 at submit: the area of THIS confirmed pin version, or '' (pending / superseded / none — submit never waits)
+  function areaOf(f) {
+    const g = f && f.geo;
+    return g && g.v === f.pinV && f.pin && f.pin.confirmed === true && typeof g.area === 'string' ? g.area : '';
+  }
   // the delivery line (A1 «{street}, Col. {X}» · b «{street}» · b2 «Col. {X}»); '' = today's row (c: none, pending, stale)
   function addrLine(f) {
     const g = f && f.geo;
@@ -188,7 +195,7 @@
     const b = { restaurant_id: ctx.restaurantId, order_id: ctx.orderId, customer_name: (f.name || '').trim(), customer_phone: fullPhone(f.phone),
       items: ctx.items, items_text: ctx.itemsText, notes: (f.notes || '').trim() || '—', order_type: f.mode,
       payment_method: f.pay === 'online' ? 'online' : 'cash', razon_social: f.rtn ? (f.razon || '').trim() : '', rtn_cliente: f.rtn ? (f.rtnNum || '').trim() : '' };
-    if (del) { b.lat = f.pin.lat; b.lng = f.pin.lng; b.pin_confirmed = true; b.address_details = (f.details || '').trim(); }
+    if (del) { b.lat = f.pin.lat; b.lng = f.pin.lng; b.pin_confirmed = true; b.address_details = (f.details || '').trim(); const a = areaOf(f); if (a) b.address_area = a; }
     const em = validEmail(f.email); if (em) b.customer_email = em;
     const t = tipCentsOf(f); if (t > 0) b.tip_cents = t;
     if (b.payment_method === 'cash') { const ct = Number(f.tendered); if (Number.isFinite(ct) && ct > 0) b.cash_tendered = ct; }

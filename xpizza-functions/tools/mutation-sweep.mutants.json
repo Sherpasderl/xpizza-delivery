@@ -21337,19 +21337,68 @@
     ]
   },
   {
-    "id": "s2b-g11",
+    "id": "s2b-g19",
     "slice": "s2b",
-    "label": "the order body carries address_area at this base",
+    "label": "the body's area ignores the pin version (a superseded area rides the new pin)",
     "file": "../customer-app/capp-checkout.js",
-    "from": "b.pin_confirmed = true; b.address_details = (f.details || '').trim(); }",
-    "to": "b.pin_confirmed = true; b.address_details = (f.details || '').trim(); if (f.geo && f.geo.area) b.address_area = f.geo.area; }",
+    "from": "return g && g.v === f.pinV && f.pin && f.pin.confirmed === true && typeof g.area === 'string' ? g.area : '';",
+    "to": "return g && f.pin && f.pin.confirmed === true && typeof g.area === 'string' ? g.area : '';",
     "command": [
       "node",
       "--test",
       "../customer-app/capp-checkout.test.mjs"
     ],
     "kills_with": [
-      "no area anywhere in the body"
+      "A's area never rides B's pin",
+      "a geo bound to another version ⇒ no key"
+    ]
+  },
+  {
+    "id": "s2b-g20",
+    "slice": "s2b",
+    "label": "the body's area ignores the pin confirmation",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "return g && g.v === f.pinV && f.pin && f.pin.confirmed === true && typeof g.area === 'string' ? g.area : '';",
+    "to": "return g && g.v === f.pinV && typeof g.area === 'string' ? g.area : '';",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "an unconfirmed pin ⇒ no key"
+    ]
+  },
+  {
+    "id": "s2b-g21",
+    "slice": "s2b",
+    "label": "the order body never carries the bound area",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "const a = areaOf(f); if (a) b.address_area = a; }",
+    "to": " }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "the bound area rides the order body"
+    ]
+  },
+  {
+    "id": "s2b-g22",
+    "slice": "s2b",
+    "label": "the quote body carries the area",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "if (del) b.pin = { lat: f.pin.lat, lng: f.pin.lng, confirmed: f.pin.confirmed === true };",
+    "to": "if (del) { b.pin = { lat: f.pin.lat, lng: f.pin.lng, confirmed: f.pin.confirmed === true }; if (areaOf(f)) b.address_area = areaOf(f); }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-checkout.test.mjs"
+    ],
+    "kills_with": [
+      "never in the quote body"
     ]
   },
   {
@@ -21482,6 +21531,22 @@
     "kills_with": [
       "the UI shows the generic held state for the real 401",
       "the real 401 shows a sheet"
+    ]
+  },
+  {
+    "id": "s2b-e04",
+    "slice": "s2b-e",
+    "label": "the app's order body drops the bound area (the real handlers never see it)",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "const a = areaOf(f); if (a) b.address_area = a; }",
+    "to": " }",
+    "command": [
+      "npm",
+      "run",
+      "test:capp-s2a"
+    ],
+    "kills_with": [
+      "the app sent its raw area"
     ]
   }
 ]

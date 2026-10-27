@@ -60,6 +60,7 @@ const C = require(path.join(ROOT, 'customer-app/capp-checkout.js'));
 const A = require(path.join(ROOT, 'customer-app/capp-api.js'));
 const SC = require(path.join(ROOT, 'platform/client/sherpa-client.js'));
 const { publishVersion } = require('../catalog/catalog-publish');
+const CI = require('../catalog/charge-inputs');   // S2b-geo body: the fingerprint is area-free
 const { buildPublishCandidate } = require('../tools/publish-version');
 const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
 const { buildPublicMenu } = require('../catalog/public-menu');
@@ -619,6 +620,36 @@ const placeOf = (pg) => JSON.parse(pg.storage.getItem(`capp:${pg.rid}:pending_pl
     const b = await quoteAndPlace(pg.reload(), f, cart);
     assert.deepStrictEqual([b.out.kind, b.out.order_id, count('chargeOnlineOrder') - ch0, CHARGED.length], ['existing_order', id, 1, 1], `🔴 back to card ⇒ recovery, ONE gateway attempt (${JSON.stringify(b.out)})`);
     ok(`V card → provider-loss 502 → cash (lock ${A.LOCK_INTERRUPTED_CARD ? 'ON: refused, recovery' : 'off: the real order_exists'}) → card: the card send stays unresolved with its economics; recovery, one gateway attempt`);
+  }
+
+  // ── AA (S2b-geo body, PLAN-colonia §1–§3): the app's OWN order body (orderBody over a geocoded, confirmed pin) through the REAL
+  // createOrder and chargeOnlineOrder ⇒ orders/{oid}/address_area kept by the server's privacy filter, else ABSENT; the charge
+  // fingerprint is defined and EQUAL with and without the area (NON_CHARGE_FIELDS) ──
+  {
+    const GEO_ = (area) => [{ address_components: [{ long_name: 'Calle 10', types: ['route'] }, ...(area ? [{ long_name: area, types: ['neighborhood'] }] : [])] }];
+    const sent = [];
+    for (const [pay, area, want] of [['cash', 'Jardines del Valle', 'Jardines del Valle'], ['online', 'Jardines del Valle', 'Jardines del Valle'],
+      ['cash', 'Casa 14 Calle 3', null], ['online', 'Col. Trejo 12', null], ['cash', '', null], ['online', null, null]]) {
+      await clean();
+      const pg = page('x_pizza'); const f = flowOf(pay); const cart = cartOf('x_pizza');
+      if (area !== null) assert.strictEqual(C.applyGeocode(f, f.pinV, GEO_(area)), true, 'premise: the reply binds to the confirmed pin');   // null: still pending at submit
+      const l0 = LOG.length;
+      const r = await quoteAndPlace(pg, f, cart);
+      assert.ok(['placed', 'redirect'].includes(r.out.kind), `premise: placed (${JSON.stringify(r.out)})`);
+      const body = LOG.slice(l0).find((x) => x.ep === (pay === 'online' ? 'chargeOnlineOrder' : 'createOrder')).body;
+      assert.strictEqual(body.address_area, area ? area : undefined, `the app sent ${area ? 'its raw area' : 'no area'} (${pay})`);
+      const o = await order(r.out.order_id);
+      assert.ok(o, `premise: orders/${r.out.order_id} written (${pay})`);
+      if (want) assert.strictEqual(o.address_area, want, `🔴 ${pay}: a street-free area is KEPT on orders/{oid}`);
+      else assert.ok(!Object.prototype.hasOwnProperty.call(o, 'address_area'), `🔴 ${pay} ${JSON.stringify(area)}: filtered / empty / pending ⇒ the key is ABSENT (${JSON.stringify(o.address_area)})`);
+      sent.push(body);
+    }
+    for (const b of sent) {
+      const fp = CI.chargeInputsFingerprint(b); const { address_area: _a, ...without } = b;
+      assert.ok(fp, `🔴 the real body\'s charge fingerprint is DEFINED with address_area (${Object.keys(b).join(',')})`);
+      assert.strictEqual(fp, CI.chargeInputsFingerprint(without), '🔴 charge_inputs_fp EQUAL with and without the area');
+    }
+    ok('AA the app\'s own body through the REAL createOrder / chargeOnlineOrder: a street-free area is kept on orders/{oid}; a street / digit area, an empty area and a pending geocode ⇒ the key absent; the charge fingerprint is defined and equal with and without the area');
   }
 
   // ── W (S2b r4, Codex r3): paid_unverified through the REAL handlers — a concurrent request completes THIS identity between the
