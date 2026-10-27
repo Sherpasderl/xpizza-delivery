@@ -402,7 +402,7 @@ test('browse-only: a CHANGED menu keeps the surface (its prices) while the custo
   S.click(`.qty-add-btn[data-id="${carn.key}"]`); S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush();
   const ui1 = S.ui.store().ui;
   assert.notEqual(ui1, ui0, 'adopted at checkout entry'); assert.equal(ui1.state.screen, 'store'); assert.equal(ui1.state.layerKind, 'cart');
-  assert.equal(txt(S.q('#layer .cartnote[role="status"]')), 'Cambió el precio de Carnivora: antes L 340, ahora L 366.', '🔴 frame 13: the price notice line');
+  assert.deepEqual(S.qa('#layer .cartnote[role="status"] .cn-l').map((l) => l.textContent), ['Cambió el precio de Carnivora: antes L 340, ahora L 366.'], '🔴 frame 13: the price notice line');
   assert.equal(S.q('#layer .cline .cl-p').innerHTML, '<s class="cl-old">L 340</s>L 366');
   assert.equal(txt(S.q('#layer .ctot .sumrow')), 'Subtotal L 366', 'totals at the new price');
   S.click('[data-act="checkout"]'); await flush();
@@ -506,4 +506,18 @@ test('Codex s7a2 r1 #5: a tap HELD while the directory read is in flight is rele
   assert.ok(S.q('.rlist .rcard[data-rid="x_pizza"]').classList.contains('held'), 'premise: held while the read is in flight');
   gate.resolve(resp('unavailable_503')); await flush();
   assert.equal(txt(S.q('.empty b')), 'No pudimos cargar los restaurantes', '🔴 the failed read releases the held tap to frame 7');
+});
+
+test('Codex s7a2 r1 #6: frame 13 discloses PER CONFIGURATION — two changed configurations of one dish ⇒ two lines, each with its own unit prices', async () => {
+  const S = bootShell({ envelope: 'ok' });
+  await flush();
+  // the mockup's cart (plain + Pepperoni), last seen at today's prices, restored onto a menu where Carnivora is +26
+  const ui0 = (S.click('.rlist .rcard[data-rid="x_pizza"]'), await flush(), S.ui.store().ui);
+  const m = ui0.menu, carn = m.dishes.find((d) => d.name === 'Carnivora'), pep = m.extrasFor(carn.key).find((e) => e.name === 'Pepperoni');
+  const c = (p) => Math.round(p * 100);
+  const snap = { v: 2, rid: 'x_pizza', mode: 'delivery', cart_gen: 'g_2', lines: [{ key: carn.key, qty: 2, ex: [{}, { [pep.key]: 1 }], added: 1, seen: [{ b: c(carn.price - 26), x: {} }, { b: c(carn.price - 26), x: { [pep.key]: c(pep.price) } }] }] };
+  ui0.restore(snap); ui0.openCart(); await flush();
+  assert.deepEqual(S.qa('#layer .cartnote[role="status"] .cn-l').map((l) => l.textContent),
+    [`Cambió el precio de Carnivora: antes L ${carn.price - 26}, ahora L ${carn.price}.`, `Cambió el precio de Carnivora + Pepperoni: antes L ${carn.price - 26 + pep.price}, ahora L ${carn.price + pep.price}.`],
+    '🔴 one line per changed configuration, with its configured unit prices');
 });

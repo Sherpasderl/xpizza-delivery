@@ -467,12 +467,12 @@
       }
       const off = over || soldDishes.length > 0;
       // the owner's frame 13 (approved 2026-10-27; the forms' Plan 5 pattern, b8ba8467): a configuration whose unit price changed
-      // since the customer last saw it — ONE calm note line per dish (its own unit: the plain configuration's change, else its
-      // first), and each changed line's OLD subtotal struck above the new one. Totals at the new price; no block, no accept button
-      // (continuing is acceptance); a sold line keeps frame 14 instead (mixed cases keep today's blocks)
+      // since the customer last saw it — ONE calm note line PER CHANGED CONFIGURATION (r3.4-1; Codex s7a2 r1 #6), named as its cart
+      // line shows it («Carnivora + Pepperoni») with ITS configured unit prices, and each changed line's OLD subtotal struck above the
+      // new one. Totals at the new price; no block, no accept button (continuing is acceptance); a sold line keeps frame 14 instead
       const changes = cart.priceChanges().filter((c) => !isSold(find(c.key)));
-      const perDish = new Map(); for (const c of changes) { const cur = perDish.get(c.key); if (!cur || (c.sig === '' && cur.sig !== '')) perDish.set(c.key, c); }
-      const priceNote = perDish.size && mods() ? `<div class="cartnote" role="status">${IC.info}<span>${[...perDish.values()].map((c) => `<span class="cn-l">${esc(C.priceNoticeText({ name: c.name, from: c.fromCents / 100, to: c.toCents / 100 }))}</span>`).join('')}</span></div>` : '';
+      const confName = (c) => c.name + (c.sig ? ' + ' + c.sig.split(',').map((k) => (menu.extra(k) || { name: k }).name).join(', ') : '');
+      const priceNote = changes.length && mods() ? `<div class="cartnote" role="status">${IC.info}<span>${changes.map((c) => `<span class="cn-l">${esc(C.priceNoticeText({ name: confName(c), from: c.fromCents / 100, to: c.toCents / 100 }))}</span>`).join('')}</span></div>` : '';
       const oldOf = (d) => { const cs = changes.filter((c) => c.key === d.key && c.sig === d.g); return cs.length ? d.total - cs.reduce((a, c) => a + (c.newSubtotalCents - c.oldSubtotalCents) / 100, 0) : null; };
       return head + note + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
         return `<div class="cline${so ? ' sold-out' : ''}">${lineName(d, 'cl-txt')}${lineStep(d, so)}<span class="cl-p">${so ? 'Agotado' : old !== null ? `<s class="cl-old">${money(old)}</s>${money(d.total)}` : money(d.total)}</span></div>`; }).join('')

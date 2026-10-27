@@ -23499,7 +23499,7 @@
     "slice": "s7a2",
     "label": "frame 13: the price notice is not drawn",
     "file": "../customer-app/capp-ui.js",
-    "from": "const priceNote = perDish.size && mods() ?",
+    "from": "const priceNote = changes.length && mods() ?",
     "to": "const priceNote = false ?",
     "command": [
       "node",
