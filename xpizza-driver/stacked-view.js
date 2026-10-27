@@ -1015,8 +1015,11 @@ export function waTemplatesHtml(info = {}, deps = {}) {
     { label: 'Dirección', msg: 'No encuentro la dirección. ¿Me manda su ubicación por aquí?' },
   ];
   const wa = ICONS.whatsapp || '';
+  // Preview-only: bold the brand in the DRAFT PREVIEW (prototype styling). The sent wa.me text stays plain — WhatsApp
+  // messages can't carry bold — so data-href uses the un-bolded msg; only the on-screen preview wraps the brand in <b>.
+  const previewMsg = (m) => brand ? esc(m).replace(` de ${esc(brand)}`, ` de <b>${esc(brand)}</b>`) : esc(m);
   const tplBtn = (msg, label) =>
-    `<button class="wa-tpl" data-href="https://wa.me/${num}?text=${encodeURIComponent(msg)}"><span class="ico">${wa}</span><span class="wa-txt">${esc(msg)}<small>${esc(label)}</small></span></button>`;
+    `<button class="wa-tpl" data-href="https://wa.me/${num}?text=${encodeURIComponent(msg)}"><span class="ico">${wa}</span><span class="wa-txt">${previewMsg(msg)}<small>${esc(label)}</small></span></button>`;
   const freeBtn =
     `<button class="wa-tpl" data-href="https://wa.me/${num}"><span class="ico">${wa}</span><span class="wa-txt">Escribir mi propio mensaje<small>Sin plantilla</small></span></button>`;
   return `<div class="sheet wa-sheet" role="dialog" aria-modal="true">

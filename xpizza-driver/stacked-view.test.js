@@ -449,7 +449,8 @@ t('waTemplatesHtml: 3 phase templates + a free message; brand-from-order + drive
   assert.equal(btns.length, 4, 'exactly 3 templates + 1 free message');
   assert.ok(/En camino<\/small>/.test(html) && /Al llegar<\/small>/.test(html) && /Dirección<\/small>/.test(html) && /Sin plantilla<\/small>/.test(html), 'the four phase labels');
   // the «en camino» template interpolates the driver name + the ORDER brand (never a literal brand)
-  assert.ok(html.includes('soy Marvin, su repartidor de La Musa'), 'driver name + order brand woven into the draft');
+  assert.ok(html.includes('soy Marvin, su repartidor de <b>La Musa</b>'), 'driver name + order brand (brand bolded in the PREVIEW, prototype styling) woven into the draft');
+  assert.ok([...html.matchAll(/data-href="(https:\/\/wa\.me\/[^"]*)"/g)].every((m) => !/%3Cb%3E/i.test(m[1])), 'the sent wa.me text is PLAIN — the <b> is preview-only, never in the message');
   // no fabricated ETA: the prototype's sample «6 minutos» is NOT shipped (no live customer ETA exists)
   assert.ok(html.includes('Voy en camino.') && !/\d+\s*minutos/.test(html), 'template 1 says «Voy en camino.» — no hard-coded minutes');
   // the approved tiny note is part of the screen (advisor 2026-10-25 ruling #1) — verbatim
@@ -464,7 +465,7 @@ t('waTemplatesHtml: 3 phase templates + a free message; brand-from-order + drive
 
 t('waTemplatesHtml: brand-agnostic — a different order brand flows straight through (no hardwired restaurant)', () => {
   const xp = waTemplatesHtml({ name: 'Ana', brand: 'X. Pizza', phone: '98887777', driverName: 'Leo' }, DEPS);
-  assert.ok(xp.includes('su repartidor de X. Pizza') && !xp.includes('La Musa'), 'the X. Pizza brand, nothing hardwired');
+  assert.ok(xp.includes('su repartidor de <b>X. Pizza</b>') && !xp.includes('La Musa'), 'the X. Pizza brand (bolded in the preview), nothing hardwired');
 });
 
 // ---------- offerExpiredBannerHtml (ofertaExpirada / S.ofertaExpirada) ----------
