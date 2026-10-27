@@ -118,6 +118,25 @@
   const BADGE_PRIORITY = ['signature_special', 'chefs_pick', 'must_try', 'crowd_favourite'];
   const BADGE_FALLBACK = { signature_special: 'Especial de la casa', chefs_pick: 'Selección del chef', must_try: 'Imperdible', crowd_favourite: 'Favorito' };
 
+  // ── the view model: the served menu as the prototype's item shape (S7a-2: shared with the shell's Inicio / Buscar, so a search hit
+  //    is exactly an item the store displays — launchers priced «desde», never a raw variant child; `dish` = the canonical dish id) ──
+  function viewSections(menu, cfg) {
+    const photo = (d) => (d && d.img && cfg.assetBase ? cfg.assetBase.replace(/\/?$/, '/') + String(d.img).replace(/^\.?\//, '') : '');
+    const exOf = (k) => menu.extrasFor(k).filter((e) => e.supported).map((e) => e.key);
+    const itemOf = (d) => {
+      const g = menu.groups[d.key];
+      const it = { id: d.key, n: d.name, d: d.desc, p: d.price, img: photo(d), hero: photo(d), tags: d.tags || [], ex: exOf(d.key), cat: d.cat, dish: d.dish_id };
+      if (g) it.group = { label: g.label, choices: g.choices.map((ck) => { const c = menu.dish(ck); return { id: c.key, choice: c.choice || c.name, p: c.price, n: c.name, ex: exOf(c.key) }; }) };
+      return it;
+    };
+    return menu.categories.map((c) => {
+      const cid = String(c.id);
+      const items = menu.dishes.filter((d) => String(d.cat) === cid && !d.variantOf).map(itemOf);
+      const pick = menu.pickupOnlyCats.has(cid), wknd = menu.weekendOnlyCats.has(cid);
+      return { id: cid, name: c.name != null ? c.name : cid, items, pickupOnly: pick, note: pick && wknd ? 'Solo viernes a domingo · para recoger' : '' };
+    }).filter((s) => s.items.length);
+  }
+
   function mount(doc, opts) {
     const CappMenu = opts.CappMenu || (typeof self !== 'undefined' && self.CappMenu) || require('./capp-menu.js');
     const CappCart = opts.CappCart || (typeof self !== 'undefined' && self.CappCart) || require('./capp-cart.js');
@@ -152,21 +171,8 @@
       backScreen: null, sendHint: null, sendTotals: null, pinDraft: null, pinToast: false, pinStepOk: false, lastDelivery: null };
 
     // ── the view model: the served menu as the prototype's item shape ──
-    const photo = (d) => (d && d.img && cfg.assetBase ? cfg.assetBase.replace(/\/?$/, '/') + String(d.img).replace(/^\.?\//, '') : '');
-    const exOf = (k) => menu.extrasFor(k).filter((e) => e.supported).map((e) => e.key);
     const EX = {}; for (const e of menu.extras) EX[e.key] = { n: e.name, p: e.price, c: e.cat, max: 1 };
-    const itemOf = (d) => {
-      const g = menu.groups[d.key];
-      const it = { id: d.key, n: d.name, d: d.desc, p: d.price, img: photo(d), hero: photo(d), tags: d.tags || [], ex: exOf(d.key), cat: d.cat };
-      if (g) it.group = { label: g.label, choices: g.choices.map((ck) => { const c = menu.dish(ck); return { id: c.key, choice: c.choice || c.name, p: c.price, n: c.name, ex: exOf(c.key) }; }) };
-      return it;
-    };
-    const sections = menu.categories.map((c) => {
-      const cid = String(c.id);
-      const items = menu.dishes.filter((d) => String(d.cat) === cid && !d.variantOf).map(itemOf);
-      const pick = menu.pickupOnlyCats.has(cid), wknd = menu.weekendOnlyCats.has(cid);
-      return { id: cid, name: c.name != null ? c.name : cid, items, pickupOnly: pick, note: pick && wknd ? 'Solo viernes a domingo · para recoger' : '' };
-    }).filter((s) => s.items.length);
+    const sections = viewSections(menu, cfg);
     const find = (id) => { for (const s of sections) for (const it of s.items) { if (it.id === id) return it; if (it.group) for (const c of it.group.choices) if (c.id === id) return { ...c, d: it.d, img: it.img, hero: it.hero, tags: [], parent: it }; } return null; };
     const isSoldBy = (it, has) => !!it && (has(it.id) || (it.parent ? has(it.parent.id) : false) || (it.group ? it.group.choices.every((c) => has(c.id)) : false));
     const isSold = (it) => isSoldBy(it, soldOf);
@@ -1125,6 +1131,8 @@
       deviceBack,
       // the host's AUTHORITATIVE availability has been re-read (its Set / function now reflects it): a dispatch refusal yields to it
       availabilityUpdated() { if (dead) return; refused.clear(); render(); },
+      // S7a-2: a Buscar / Inicio dish result opens THAT dish's sheet on this store (P open-dish :2253) — false when it is not here
+      openDetail(key) { if (dead || S.screen !== 'store' || !find(key)) return false; openDetail(key); return true; },
       restore(snapshot) {
         // S7a-1 r3 §1.3 (hosted): reconcile FIRST — blocked until it completes; a purchased (cleared) cart is never restored
         if (cfg.cartKey && cfg.placedKey && mods() && api.hosted) { const rc = api.reconcile(); if (!rc.ok) return { blocked: true, step: rc.step }; if (rc.done === 'placed' && snapshot && snapshot.cart_gen && snapshot.cart_gen === rc.cart_gen) {
@@ -1144,5 +1152,5 @@
     };
   }
 
-  return { mount, FULL_CART };
+  return { mount, viewSections, FULL_CART };
 });

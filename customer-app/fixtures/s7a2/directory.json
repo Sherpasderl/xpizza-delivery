@@ -1,0 +1,1199 @@
+{
+  "source": {
+    "commit": "eb6d9558d2bea94bbb2d0a1829db3be72d07a419",
+    "blobs": {
+      "directory/directory.js": "b462c1b21704e47565e5907e86b80fed8de9ed3a",
+      "directory/directory-deps.js": "d14c2f0000a444baeb90a1f2b21dc27c6e9888f9",
+      "directory/presentation-shape.js": "efb6bae1ba6bf6896fc6186324c12d699a18c088",
+      "directory/platform-config.js": "2cb1bcd6fe8136012c67360de4f4aa7a5d515cfe",
+      "schedule/schedule-only.js": "2d22fae620360e404e2f456b707f93e815dea22e",
+      "schedule/load-schedule.js": "dcca8290713b16c4bd7c9c5aabd5a24ab03834d0",
+      "tools/seed-presentation.js": "ba7f3f580d2e22d4e896dffd899ac9ff0201158a",
+      "seed_identity.js": "e9375ee4c0cd5e555742e73b716f8550ecd85e8b"
+    }
+  },
+  "fake_pricing": {
+    "x_pizza": {
+      "fee": {
+        "state": "priced",
+        "from_cents": 4500
+      },
+      "promo": {
+        "free_delivery": true,
+        "label": "promoción de lanzamiento"
+      },
+      "coverage_km": 7
+    },
+    "la_musa": {
+      "fee": {
+        "state": "priced",
+        "from_cents": 4500
+      },
+      "promo": null,
+      "coverage_km": 9.66
+    }
+  },
+  "scenarios": {
+    "complete": {
+      "status": 200,
+      "headers": {
+        "Access-Control-Expose-Headers": "ETag",
+        "ETag": "\"a933437a880f3f7157d70f8cd532418181aa56bcd54c78c1fb0725b0985d10c0\"",
+        "Cache-Control": "public, max-age=30",
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": {
+        "representation_version": "directory-1",
+        "complete": true,
+        "platform": {
+          "city_label": "San Pedro Sula",
+          "cuisines": [
+            {
+              "id": "pizza",
+              "label": "Pizza"
+            },
+            {
+              "id": "italiana",
+              "label": "Italiana"
+            },
+            {
+              "id": "asiatica",
+              "label": "Asiática"
+            },
+            {
+              "id": "mariscos",
+              "label": "Mariscos"
+            },
+            {
+              "id": "cafe",
+              "label": "Café"
+            },
+            {
+              "id": "desayuno",
+              "label": "Desayuno"
+            }
+          ],
+          "meals": {
+            "desayuno": "Para el desayuno",
+            "compartir": "Para compartir"
+          },
+          "social": {
+            "min_reorders": 50,
+            "min_ratings": 20
+          },
+          "value": {
+            "median_up_to_cents": 20000
+          }
+        },
+        "restaurants": [
+          {
+            "restaurant_id": "x_pizza",
+            "name": "X Pizza",
+            "kicker": "Pizzería",
+            "unit": [
+              "pizza",
+              "pizzas"
+            ],
+            "cuisines": [
+              "pizza",
+              "italiana"
+            ],
+            "logo_url": "https://assets.sherpa.test/img/xp-logo.webp",
+            "logo_wide": false,
+            "hero_url": "https://assets.sherpa.test/img/xp-hero.jpg",
+            "asset_base": "https://assets.sherpa.test/xpizza-orders",
+            "branch": null,
+            "pickup_addr": null,
+            "coverage_km": 7,
+            "hub_lat": 15.507489753573818,
+            "hub_lng": -88.0398486953722,
+            "eta_delivery_min": [
+              30,
+              45
+            ],
+            "eta_pickup_min": [
+              15,
+              20
+            ],
+            "payments": [
+              "online",
+              "cash"
+            ],
+            "pickup": true,
+            "schedule": {
+              "tz_offset_min": -360,
+              "slot_min": 15,
+              "lead_min": {
+                "pickup": 60,
+                "delivery": 60
+              },
+              "horizon_h": 168,
+              "hours": {
+                "sun": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "mon": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "tue": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "wed": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "thu": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                },
+                "fri": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                },
+                "sat": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                }
+              }
+            },
+            "schedule_state": "ok",
+            "fee": {
+              "state": "priced",
+              "from_cents": 4500
+            },
+            "promo": {
+              "free_delivery": true,
+              "label": "promoción de lanzamiento"
+            },
+            "order_id_prefix": "XPZ",
+            "house": [
+              "R9PR4YEYQD",
+              "BT65WM9WMV",
+              "QXS51BGZFS",
+              "SC0PAT01MF"
+            ],
+            "meals": {
+              "ny": "compartir"
+            },
+            "degraded": [
+              "branch",
+              "pickup_addr"
+            ]
+          },
+          {
+            "restaurant_id": "la_musa",
+            "name": "La Musa",
+            "kicker": "Gastropub",
+            "unit": [
+              "plato",
+              "platos"
+            ],
+            "cuisines": [
+              "asiatica",
+              "mariscos"
+            ],
+            "logo_url": "https://assets.sherpa.test/img/lm-logo.png",
+            "logo_wide": true,
+            "hero_url": "https://assets.sherpa.test/img/lm-hero.jpg",
+            "asset_base": null,
+            "branch": null,
+            "pickup_addr": null,
+            "coverage_km": 9.66,
+            "hub_lat": 15.50414,
+            "hub_lng": -88.03848,
+            "eta_delivery_min": [
+              35,
+              50
+            ],
+            "eta_pickup_min": [
+              20,
+              30
+            ],
+            "payments": [
+              "online",
+              "cash"
+            ],
+            "pickup": true,
+            "schedule": {
+              "tz_offset_min": -360,
+              "slot_min": 15,
+              "lead_min": {
+                "pickup": 60,
+                "delivery": 60
+              },
+              "horizon_h": 168,
+              "hours": {
+                "mon": {
+                  "open": false
+                },
+                "tue": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "20:45"
+                },
+                "wed": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "20:45"
+                },
+                "thu": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "20:45"
+                },
+                "fri": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "21:45"
+                },
+                "sat": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "21:45"
+                },
+                "sun": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                }
+              }
+            },
+            "schedule_state": "ok",
+            "fee": {
+              "state": "priced",
+              "from_cents": 4500
+            },
+            "promo": null,
+            "order_id_prefix": "LMS",
+            "house": null,
+            "meals": {
+              "dim_sum": "compartir",
+              "starters": "compartir"
+            },
+            "degraded": [
+              "asset_base",
+              "branch",
+              "house",
+              "pickup_addr"
+            ]
+          }
+        ],
+        "unavailable": []
+      }
+    },
+    "not_modified": {
+      "status": 304,
+      "headers": {
+        "Access-Control-Expose-Headers": "ETag",
+        "ETag": "\"a933437a880f3f7157d70f8cd532418181aa56bcd54c78c1fb0725b0985d10c0\"",
+        "Cache-Control": "public, max-age=30"
+      },
+      "body": null
+    },
+    "partial_presentation": {
+      "status": 200,
+      "headers": {
+        "Access-Control-Expose-Headers": "ETag",
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": {
+        "representation_version": "directory-1",
+        "complete": false,
+        "platform": {
+          "city_label": "San Pedro Sula",
+          "cuisines": [
+            {
+              "id": "pizza",
+              "label": "Pizza"
+            },
+            {
+              "id": "italiana",
+              "label": "Italiana"
+            },
+            {
+              "id": "asiatica",
+              "label": "Asiática"
+            },
+            {
+              "id": "mariscos",
+              "label": "Mariscos"
+            },
+            {
+              "id": "cafe",
+              "label": "Café"
+            },
+            {
+              "id": "desayuno",
+              "label": "Desayuno"
+            }
+          ],
+          "meals": {
+            "desayuno": "Para el desayuno",
+            "compartir": "Para compartir"
+          },
+          "social": {
+            "min_reorders": 50,
+            "min_ratings": 20
+          },
+          "value": {
+            "median_up_to_cents": 20000
+          }
+        },
+        "restaurants": [
+          {
+            "restaurant_id": "x_pizza",
+            "name": "X Pizza",
+            "kicker": "Pizzería",
+            "unit": [
+              "pizza",
+              "pizzas"
+            ],
+            "cuisines": [
+              "pizza",
+              "italiana"
+            ],
+            "logo_url": "https://assets.sherpa.test/img/xp-logo.webp",
+            "logo_wide": false,
+            "hero_url": "https://assets.sherpa.test/img/xp-hero.jpg",
+            "asset_base": "https://assets.sherpa.test/xpizza-orders",
+            "branch": null,
+            "pickup_addr": null,
+            "coverage_km": 7,
+            "hub_lat": 15.507489753573818,
+            "hub_lng": -88.0398486953722,
+            "eta_delivery_min": [
+              30,
+              45
+            ],
+            "eta_pickup_min": [
+              15,
+              20
+            ],
+            "payments": [
+              "online",
+              "cash"
+            ],
+            "pickup": true,
+            "schedule": {
+              "tz_offset_min": -360,
+              "slot_min": 15,
+              "lead_min": {
+                "pickup": 60,
+                "delivery": 60
+              },
+              "horizon_h": 168,
+              "hours": {
+                "sun": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "mon": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "tue": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "wed": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "thu": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                },
+                "fri": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                },
+                "sat": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                }
+              }
+            },
+            "schedule_state": "ok",
+            "fee": {
+              "state": "priced",
+              "from_cents": 4500
+            },
+            "promo": {
+              "free_delivery": true,
+              "label": "promoción de lanzamiento"
+            },
+            "order_id_prefix": "XPZ",
+            "house": [
+              "R9PR4YEYQD",
+              "BT65WM9WMV",
+              "QXS51BGZFS",
+              "SC0PAT01MF"
+            ],
+            "meals": {
+              "ny": "compartir"
+            },
+            "degraded": [
+              "branch",
+              "pickup_addr"
+            ]
+          },
+          {
+            "restaurant_id": "la_musa",
+            "name": "La Musa",
+            "kicker": null,
+            "unit": null,
+            "cuisines": null,
+            "logo_url": null,
+            "logo_wide": null,
+            "hero_url": null,
+            "asset_base": null,
+            "branch": null,
+            "pickup_addr": null,
+            "coverage_km": 9.66,
+            "hub_lat": 15.50414,
+            "hub_lng": -88.03848,
+            "eta_delivery_min": null,
+            "eta_pickup_min": null,
+            "payments": null,
+            "pickup": null,
+            "schedule": {
+              "tz_offset_min": -360,
+              "slot_min": 15,
+              "lead_min": {
+                "pickup": 60,
+                "delivery": 60
+              },
+              "horizon_h": 168,
+              "hours": {
+                "mon": {
+                  "open": false
+                },
+                "tue": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "20:45"
+                },
+                "wed": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "20:45"
+                },
+                "thu": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "20:45"
+                },
+                "fri": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "21:45"
+                },
+                "sat": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "21:45"
+                },
+                "sun": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                }
+              }
+            },
+            "schedule_state": "ok",
+            "fee": {
+              "state": "priced",
+              "from_cents": 4500
+            },
+            "promo": null,
+            "order_id_prefix": null,
+            "house": null,
+            "meals": null,
+            "degraded": [
+              "asset_base",
+              "branch",
+              "cuisines",
+              "eta_delivery_min",
+              "eta_pickup_min",
+              "hero_url",
+              "house",
+              "kicker",
+              "logo_url",
+              "logo_wide",
+              "meals",
+              "order_id_prefix",
+              "payments",
+              "pickup",
+              "pickup_addr",
+              "unit"
+            ]
+          }
+        ],
+        "unavailable": []
+      }
+    },
+    "partial_unavailable": {
+      "status": 200,
+      "headers": {
+        "Access-Control-Expose-Headers": "ETag",
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": {
+        "representation_version": "directory-1",
+        "complete": false,
+        "platform": {
+          "city_label": "San Pedro Sula",
+          "cuisines": [
+            {
+              "id": "pizza",
+              "label": "Pizza"
+            },
+            {
+              "id": "italiana",
+              "label": "Italiana"
+            },
+            {
+              "id": "asiatica",
+              "label": "Asiática"
+            },
+            {
+              "id": "mariscos",
+              "label": "Mariscos"
+            },
+            {
+              "id": "cafe",
+              "label": "Café"
+            },
+            {
+              "id": "desayuno",
+              "label": "Desayuno"
+            }
+          ],
+          "meals": {
+            "desayuno": "Para el desayuno",
+            "compartir": "Para compartir"
+          },
+          "social": {
+            "min_reorders": 50,
+            "min_ratings": 20
+          },
+          "value": {
+            "median_up_to_cents": 20000
+          }
+        },
+        "restaurants": [
+          {
+            "restaurant_id": "x_pizza",
+            "name": "X Pizza",
+            "kicker": "Pizzería",
+            "unit": [
+              "pizza",
+              "pizzas"
+            ],
+            "cuisines": [
+              "pizza",
+              "italiana"
+            ],
+            "logo_url": "https://assets.sherpa.test/img/xp-logo.webp",
+            "logo_wide": false,
+            "hero_url": "https://assets.sherpa.test/img/xp-hero.jpg",
+            "asset_base": "https://assets.sherpa.test/xpizza-orders",
+            "branch": null,
+            "pickup_addr": null,
+            "coverage_km": 7,
+            "hub_lat": 15.507489753573818,
+            "hub_lng": -88.0398486953722,
+            "eta_delivery_min": [
+              30,
+              45
+            ],
+            "eta_pickup_min": [
+              15,
+              20
+            ],
+            "payments": [
+              "online",
+              "cash"
+            ],
+            "pickup": true,
+            "schedule": {
+              "tz_offset_min": -360,
+              "slot_min": 15,
+              "lead_min": {
+                "pickup": 60,
+                "delivery": 60
+              },
+              "horizon_h": 168,
+              "hours": {
+                "sun": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "mon": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "tue": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "wed": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "thu": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                },
+                "fri": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                },
+                "sat": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                }
+              }
+            },
+            "schedule_state": "ok",
+            "fee": {
+              "state": "priced",
+              "from_cents": 4500
+            },
+            "promo": {
+              "free_delivery": true,
+              "label": "promoción de lanzamiento"
+            },
+            "order_id_prefix": "XPZ",
+            "house": [
+              "R9PR4YEYQD",
+              "BT65WM9WMV",
+              "QXS51BGZFS",
+              "SC0PAT01MF"
+            ],
+            "meals": {
+              "ny": "compartir"
+            },
+            "degraded": [
+              "branch",
+              "pickup_addr"
+            ]
+          }
+        ],
+        "unavailable": [
+          "la_musa"
+        ]
+      }
+    },
+    "zero": {
+      "status": 200,
+      "headers": {
+        "Access-Control-Expose-Headers": "ETag",
+        "ETag": "\"5bd088aea30519f8a7235835274a18529dffbf73fc1b023b34beddc4d6f556b4\"",
+        "Cache-Control": "public, max-age=30",
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": {
+        "representation_version": "directory-1",
+        "complete": true,
+        "platform": {
+          "city_label": "San Pedro Sula",
+          "cuisines": [
+            {
+              "id": "pizza",
+              "label": "Pizza"
+            },
+            {
+              "id": "italiana",
+              "label": "Italiana"
+            },
+            {
+              "id": "asiatica",
+              "label": "Asiática"
+            },
+            {
+              "id": "mariscos",
+              "label": "Mariscos"
+            },
+            {
+              "id": "cafe",
+              "label": "Café"
+            },
+            {
+              "id": "desayuno",
+              "label": "Desayuno"
+            }
+          ],
+          "meals": {
+            "desayuno": "Para el desayuno",
+            "compartir": "Para compartir"
+          },
+          "social": {
+            "min_reorders": 50,
+            "min_ratings": 20
+          },
+          "value": {
+            "median_up_to_cents": 20000
+          }
+        },
+        "restaurants": [],
+        "unavailable": []
+      }
+    },
+    "unavailable_503": {
+      "status": 503,
+      "headers": {
+        "Access-Control-Expose-Headers": "ETag",
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": {
+        "ok": false,
+        "error": "directory_unavailable",
+        "retryable": true
+      }
+    },
+    "tombstone": {
+      "status": 200,
+      "headers": {
+        "Access-Control-Expose-Headers": "ETag",
+        "ETag": "\"86152463a4723a31cbdd205b8f5d870b30d1af67e1923e9dd614c6736353dc8e\"",
+        "Cache-Control": "public, max-age=30",
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": {
+        "representation_version": "directory-1",
+        "complete": true,
+        "platform": {
+          "city_label": "San Pedro Sula",
+          "cuisines": [
+            {
+              "id": "pizza",
+              "label": "Pizza"
+            },
+            {
+              "id": "italiana",
+              "label": "Italiana"
+            },
+            {
+              "id": "asiatica",
+              "label": "Asiática"
+            },
+            {
+              "id": "mariscos",
+              "label": "Mariscos"
+            },
+            {
+              "id": "cafe",
+              "label": "Café"
+            },
+            {
+              "id": "desayuno",
+              "label": "Desayuno"
+            }
+          ],
+          "meals": {
+            "desayuno": "Para el desayuno",
+            "compartir": "Para compartir"
+          },
+          "social": {
+            "min_reorders": 50,
+            "min_ratings": 20
+          },
+          "value": {
+            "median_up_to_cents": 20000
+          }
+        },
+        "restaurants": [
+          {
+            "restaurant_id": "x_pizza",
+            "name": "X Pizza",
+            "kicker": "Pizzería",
+            "unit": [
+              "pizza",
+              "pizzas"
+            ],
+            "cuisines": [
+              "pizza",
+              "italiana"
+            ],
+            "logo_url": "https://assets.sherpa.test/img/xp-logo.webp",
+            "logo_wide": false,
+            "hero_url": "https://assets.sherpa.test/img/xp-hero.jpg",
+            "asset_base": "https://assets.sherpa.test/xpizza-orders",
+            "branch": null,
+            "pickup_addr": null,
+            "coverage_km": 7,
+            "hub_lat": 15.507489753573818,
+            "hub_lng": -88.0398486953722,
+            "eta_delivery_min": [
+              30,
+              45
+            ],
+            "eta_pickup_min": [
+              15,
+              20
+            ],
+            "payments": [
+              "online",
+              "cash"
+            ],
+            "pickup": true,
+            "schedule": {
+              "tz_offset_min": -360,
+              "slot_min": 15,
+              "lead_min": {
+                "pickup": 60,
+                "delivery": 60
+              },
+              "horizon_h": 168,
+              "hours": {
+                "sun": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "mon": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "tue": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "wed": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "thu": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                },
+                "fri": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                },
+                "sat": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                }
+              }
+            },
+            "schedule_state": "ok",
+            "fee": {
+              "state": "priced",
+              "from_cents": 4500
+            },
+            "promo": {
+              "free_delivery": true,
+              "label": "promoción de lanzamiento"
+            },
+            "order_id_prefix": "XPZ",
+            "house": [
+              "R9PR4YEYQD",
+              "BT65WM9WMV",
+              "QXS51BGZFS",
+              "SC0PAT01MF"
+            ],
+            "meals": {
+              "ny": "compartir"
+            },
+            "degraded": [
+              "branch",
+              "pickup_addr"
+            ]
+          }
+        ],
+        "unavailable": []
+      }
+    },
+    "fee_none": {
+      "status": 200,
+      "headers": {
+        "Access-Control-Expose-Headers": "ETag",
+        "ETag": "\"d6b6f5e96eadbab42c54dc67b85095c61025282bc13cad14b08a931113f42bae\"",
+        "Cache-Control": "public, max-age=30",
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": {
+        "representation_version": "directory-1",
+        "complete": true,
+        "platform": {
+          "city_label": "San Pedro Sula",
+          "cuisines": [
+            {
+              "id": "pizza",
+              "label": "Pizza"
+            },
+            {
+              "id": "italiana",
+              "label": "Italiana"
+            },
+            {
+              "id": "asiatica",
+              "label": "Asiática"
+            },
+            {
+              "id": "mariscos",
+              "label": "Mariscos"
+            },
+            {
+              "id": "cafe",
+              "label": "Café"
+            },
+            {
+              "id": "desayuno",
+              "label": "Desayuno"
+            }
+          ],
+          "meals": {
+            "desayuno": "Para el desayuno",
+            "compartir": "Para compartir"
+          },
+          "social": {
+            "min_reorders": 50,
+            "min_ratings": 20
+          },
+          "value": {
+            "median_up_to_cents": 20000
+          }
+        },
+        "restaurants": [
+          {
+            "restaurant_id": "x_pizza",
+            "name": "X Pizza",
+            "kicker": "Pizzería",
+            "unit": [
+              "pizza",
+              "pizzas"
+            ],
+            "cuisines": [
+              "pizza",
+              "italiana"
+            ],
+            "logo_url": "https://assets.sherpa.test/img/xp-logo.webp",
+            "logo_wide": false,
+            "hero_url": "https://assets.sherpa.test/img/xp-hero.jpg",
+            "asset_base": "https://assets.sherpa.test/xpizza-orders",
+            "branch": null,
+            "pickup_addr": null,
+            "coverage_km": 7,
+            "hub_lat": 15.507489753573818,
+            "hub_lng": -88.0398486953722,
+            "eta_delivery_min": [
+              30,
+              45
+            ],
+            "eta_pickup_min": [
+              15,
+              20
+            ],
+            "payments": [
+              "online",
+              "cash"
+            ],
+            "pickup": true,
+            "schedule": {
+              "tz_offset_min": -360,
+              "slot_min": 15,
+              "lead_min": {
+                "pickup": 60,
+                "delivery": 60
+              },
+              "horizon_h": 168,
+              "hours": {
+                "sun": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "mon": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "tue": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "wed": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                },
+                "thu": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                },
+                "fri": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                },
+                "sat": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "20:45"
+                }
+              }
+            },
+            "schedule_state": "ok",
+            "fee": {
+              "state": "priced",
+              "from_cents": 4500
+            },
+            "promo": {
+              "free_delivery": true,
+              "label": "promoción de lanzamiento"
+            },
+            "order_id_prefix": "XPZ",
+            "house": [
+              "R9PR4YEYQD",
+              "BT65WM9WMV",
+              "QXS51BGZFS",
+              "SC0PAT01MF"
+            ],
+            "meals": {
+              "ny": "compartir"
+            },
+            "degraded": [
+              "branch",
+              "pickup_addr"
+            ]
+          },
+          {
+            "restaurant_id": "la_musa",
+            "name": "La Musa",
+            "kicker": "Gastropub",
+            "unit": [
+              "plato",
+              "platos"
+            ],
+            "cuisines": [
+              "asiatica",
+              "mariscos"
+            ],
+            "logo_url": "https://assets.sherpa.test/img/lm-logo.png",
+            "logo_wide": true,
+            "hero_url": "https://assets.sherpa.test/img/lm-hero.jpg",
+            "asset_base": null,
+            "branch": null,
+            "pickup_addr": null,
+            "coverage_km": 9.66,
+            "hub_lat": 15.50414,
+            "hub_lng": -88.03848,
+            "eta_delivery_min": [
+              35,
+              50
+            ],
+            "eta_pickup_min": [
+              20,
+              30
+            ],
+            "payments": [
+              "online",
+              "cash"
+            ],
+            "pickup": true,
+            "schedule": {
+              "tz_offset_min": -360,
+              "slot_min": 15,
+              "lead_min": {
+                "pickup": 60,
+                "delivery": 60
+              },
+              "horizon_h": 168,
+              "hours": {
+                "mon": {
+                  "open": false
+                },
+                "tue": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "20:45"
+                },
+                "wed": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "20:45"
+                },
+                "thu": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "20:45"
+                },
+                "fri": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "21:45"
+                },
+                "sat": {
+                  "open": true,
+                  "start": "17:00",
+                  "end": "21:45"
+                },
+                "sun": {
+                  "open": true,
+                  "start": "12:00",
+                  "end": "19:45"
+                }
+              }
+            },
+            "schedule_state": "ok",
+            "fee": {
+              "state": "none"
+            },
+            "promo": null,
+            "order_id_prefix": "LMS",
+            "house": null,
+            "meals": {
+              "dim_sum": "compartir",
+              "starters": "compartir"
+            },
+            "degraded": [
+              "asset_base",
+              "branch",
+              "house",
+              "pickup_addr"
+            ]
+          }
+        ],
+        "unavailable": []
+      }
+    }
+  }
+}
