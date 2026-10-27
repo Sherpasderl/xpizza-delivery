@@ -1923,7 +1923,7 @@ test('S7a-2 seed: a FRESH store entry ⇒ the checkout flow is created with the 
   const geo = geoCount();
   const b = bootGeo({ geo, mountOpts: { seedPin: () => SEED } });
   await toCheckout(b); await settle();
-  assert.deepEqual(J(b.ui.state.flow.pin), SEED);
+  assert.deepEqual(J(b.ui.state.flow.pin), SEED, '🔴 the flow is created with the guest pin');
   assert.equal(geo.n, 0, 'a seeded pin ⇒ no geolocation request');
   assert.deepEqual(b.gc.map((r) => r.at), [{ lat: SEED.lat, lng: SEED.lng }], '🔴 one geocode, at the seed');
 });
@@ -1954,4 +1954,20 @@ test('S7a-2 seed: a pin the customer confirms (pin step «Listo», a GPS fix) is
   assert.deepEqual(J(b.events.filter(([n]) => n === 'pin').map(([, d]) => d)), [{ lat: 15.52, lng: -88.04, confirmed: true, source: 'gps' }]);
   await b.click('[data-act="pin"]'); b.ui.state.pinDraft = { lat: 15.5, lng: -88 }; await b.click('[data-act="pin-done"]');
   assert.deepEqual(J(b.events.filter(([n]) => n === 'pin').at(-1)[1]), { lat: 15.5, lng: -88, confirmed: true, source: 'pin' });
+});
+
+// ── frame 12 (owner-approved 2026-10-27, D1 ruled (a)): «Agotado» takes the PRICE SLOT — no marks line, so the row never grows ──
+test('frame 12: a dish that sells out while the menu is open shows «Agotado» in its price slot; no marks line is added; its + is dimmed', () => {
+  const sold = new Set();
+  const b = boot('x_pizza', { unavailable: sold });
+  const d = b.ui.menu.dishes.find((x) => !x.launcher && !x.variantOf && !x.tags.length);
+  const row = () => b.q(`#dish-${d.key}`);
+  const before = { kids: row().querySelector('.txtbtn').children.length, marks: !!row().querySelector('.marks') };
+  sold.add(d.key); b.ui.render();
+  assert.equal(b.text(`#dish-${d.key} .prrow .pr`), 'Agotado', '«Agotado» is the price');
+  assert.equal(!!row().querySelector('.marks'), before.marks, '🔴 no marks line appears (no row growth)');
+  assert.equal(row().querySelector('.txtbtn').children.length, before.kids, 'the same nodes, the price text replaced');
+  assert.ok(row().classList.contains('sold-out'), 'P\'s .sold-out dims its +');
+  sold.delete(d.key); b.ui.render();
+  assert.equal(b.text(`#dish-${d.key} .prrow .pr`), `L ${d.price}`, 'back on sale ⇒ its price again');
 });

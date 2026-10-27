@@ -81,7 +81,7 @@ test('directory: revalidation sends the stored etag; a matching 304 verifies; a 
   assert.equal(R.calls[0], SC.complete.headers.ETag); assert.equal(R.dir.state('la_musa'), 'enterable');
   const R2 = rigDir({ storage: memStorage(stored(SC.complete.body, T0 - 1000)), script: [{ status: 304, etag: '"other"' }, 'complete'] });
   R2.dir.boot(); await R2.dir.revalidate();
-  assert.deepEqual(R2.calls, [SC.complete.headers.ETag, null]);
+  assert.deepEqual(R2.calls, [SC.complete.headers.ETag, null], '🔴 a 304 naming another etag is re-fetched without a validator');
 });
 test('directory: a complete body omitting a shown store TOMBSTONES it in place (disabled, same slot) until the next visit; it is never enterable', async () => {
   const R = rigDir({ script: ['complete', 'tombstone'] });
@@ -98,7 +98,7 @@ test('directory: a PARTIAL verifies what it lists; an omitted store is held (nev
   const before = R.storage.getItem('capp:directory');
   const v = await R.dir.revalidate();
   assert.equal(v.partial, true); assert.deepEqual(v.rows.map((r) => [r.rid, r.gone]), [['x_pizza', false], ['la_musa', false]]);
-  assert.equal(R.dir.state('x_pizza'), 'enterable'); assert.equal(R.dir.state('la_musa'), 'held');
+  assert.equal(R.dir.state('x_pizza'), 'enterable'); assert.equal(R.dir.state('la_musa'), 'held', '🔴 a partial never tombstones the store it omits');
   assert.equal(R.storage.getItem('capp:directory'), before);
 });
 test('directory: 503 / offline change nothing; with nothing to show ⇒ the error phase (frame 7); a later success clears it', async () => {
@@ -138,7 +138,7 @@ test('Inicio S5-absent: no statistics rows; «Destacados» = «Abiertos ahora y 
   assert.equal(txt(d.querySelector('.hsec[aria-label="Destacados"] p')), 'Abiertos ahora y para pedir hoy');
   // 6:00 p.m.: x_pizza open (12–7:45), la_musa open (5–8:45); 8:00 p.m.: only la_musa ⇒ it leads
   const late = dom(CappHome.homeHtml(VM({ now: new Date(2026, 9, 20, 20, 0) })));
-  assert.deepEqual([...late.querySelectorAll('.hsec[aria-label="Destacados"] .scard .rt')].map((b) => b.dataset.rid), ['la_musa', 'x_pizza']);
+  assert.deepEqual([...late.querySelectorAll('.hsec[aria-label="Destacados"] .scard .rt')].map((b) => b.dataset.rid), ['la_musa', 'x_pizza'], '🔴 Destacados: open first, then directory order');
 });
 test('Inicio house: ids ⇒ those canonical dishes (a dish the loaded menu lacks is dropped); absent ⇒ catalog-tag fallback; [] ⇒ hidden', () => {
   const xp = SC.complete.body.restaurants[0];
@@ -152,13 +152,13 @@ test('Inicio house: ids ⇒ those canonical dishes (a dish the loaded menu lacks
   const photographed = tagged[0].view.sections.flatMap((s) => s.items).filter((it) => it.img).slice(0, 2).map((it) => it.id);
   tagged[0] = { ...tagged[0], entry: { ...xp, house: null }, view: { sections: tagged[0].view.sections.map((s) => ({ ...s, items: s.items.map((it) => (photographed.includes(it.id) ? { ...it, tags: ['chefs_pick'] } : it)) })) } };
   assert.equal(photographed.length, 2, 'premise');
-  assert.deepEqual(names(tagged), tagged[0].view.sections.flatMap((s) => s.items).filter((it) => photographed.includes(it.id)).map((it) => it.n));
+  assert.deepEqual(names(tagged), tagged[0].view.sections.flatMap((s) => s.items).filter((it) => photographed.includes(it.id)).map((it) => it.n), '🔴 house absent ⇒ the catalog-tag fallback');
   assert.deepEqual(names(rowsOf({ ...SC.complete.body, restaurants: [{ ...xp, house: null }] })), [], 'absent + no tags ⇒ no row (never invented)');
 });
 test('Inicio fees: «Envío desde L 45» only for a PRICED fee; no fee text otherwise — never «Envío gratis» / L 0; the promo is the MEMBER price', () => {
   const none = dom(CappHome.homeHtml(VM({ rows: rowsOf(SC.fee_none.body) })));
   const lm = none.querySelector('.rlist .rcard[data-rid="la_musa"]');
-  assert.ok(!/Envío/.test(txt(lm)), txt(lm)); assert.ok(!/L 0\b/.test(txt(lm)));
+  assert.ok(!/Envío/.test(txt(lm)), `🔴 an unpriced fee draws no fee text: ${txt(lm)}`); assert.ok(!/L 0\b/.test(txt(lm)));
   const guest = dom(CappHome.homeHtml(VM()));
   assert.match(txt(guest.querySelector('.rlist .rcard[data-rid="x_pizza"] .meta')), /Envío desde L 45$/);
   assert.equal(txt(guest.querySelector('.scard .tag-deal')), 'Envío gratis con tu cuenta');
@@ -178,7 +178,7 @@ test('Inicio states: 1 loading line · 7 error · 2 zero · 3 B all closed (2nd 
   assert.equal(err.querySelector('.btn2').dataset.act, 'dir-retry');
   assert.equal(txt(dom(CappHome.homeHtml(VM({ rows: [] }))).querySelector('.home-body')), 'Todavía no hay restaurantes aquí Pronto vas a poder pedir en San Pedro Sula.');
   const night = new Date(2026, 9, 20, 22, 30);
-  assert.equal(txt(dom(CappHome.homeHtml(VM({ now: night }))).querySelector('.hnote')), 'Ahora no hay restaurantes abiertos.');
+  assert.equal(txt(dom(CappHome.homeHtml(VM({ now: night }))).querySelector('.hnote')), 'Ahora no hay restaurantes abiertos.', '🔴 3 B: the 2nd sentence only while scheduling is live');
   assert.equal(txt(dom(CappHome.homeHtml(VM({ now: night, schedulingLive: true }))).querySelector('.hnote')), 'Ahora no hay restaurantes abiertos. Podés programar tu pedido.');
   assert.equal(dom(CappHome.homeHtml(VM())).querySelector('.hnote'), null, 'open stores ⇒ no note');
   const part = dom(CappHome.homeHtml(VM({ partial: true })));
@@ -402,7 +402,7 @@ test('browse-only: a CHANGED menu keeps the surface (its prices) while the custo
   S.click(`.qty-add-btn[data-id="${carn.key}"]`); S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush();
   const ui1 = S.ui.store().ui;
   assert.notEqual(ui1, ui0, 'adopted at checkout entry'); assert.equal(ui1.state.screen, 'store'); assert.equal(ui1.state.layerKind, 'cart');
-  assert.equal(S.q('#layer .cartnote[role="status"]').textContent, 'Cambió el precio de Carnivora: antes L 340, ahora L 366.');
+  assert.equal(txt(S.q('#layer .cartnote[role="status"]')), 'Cambió el precio de Carnivora: antes L 340, ahora L 366.', '🔴 frame 13: the price notice line');
   assert.equal(S.q('#layer .cline .cl-p').innerHTML, '<s class="cl-old">L 340</s>L 366');
   assert.equal(txt(S.q('#layer .ctot .sumrow')), 'Subtotal L 366', 'totals at the new price');
   S.click('[data-act="checkout"]'); await flush();

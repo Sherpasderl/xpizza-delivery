@@ -260,10 +260,12 @@
     <button class="qty-add-btn"${n > 0 ? ' style="display:none"' : ''} data-act="${launcher ? 'open' : 'inc'}" data-id="${id}" aria-label="${launcher ? 'Personalizar' : 'Agregar ' + esc(it.n)}">+</button></div>`;
     }
     function rowHtml(it) {
-      const b = badgeOf(it), sold = isSold(it) ? '<span class="mark" style="color:var(--mute)">Agotado</span>' : '';
+      // the owner's frame 12 (D1 ruled (a), approved 2026-10-27): a sold dish's «Agotado» TAKES THE PRICE SLOT (muted ink) — no marks
+      // line is added, so a dish that sells out while the menu is open never grows its row; its + gets P's drawn .sold-out dimming
+      const b = badgeOf(it), sold = isSold(it);
       const label = b ? `<span class="mark" style="color:${b.color}">${esc(b.text)}</span>` : '';
-      const marks = sold || label ? `<span class="marks">${sold}${label}</span>` : '';
-      const price = it.group ? 'desde ' + money(Math.min(...it.group.choices.map((c) => c.p))) : money(it.p);
+      const marks = label ? `<span class="marks">${label}</span>` : '';
+      const price = sold ? 'Agotado' : it.group ? 'desde ' + money(Math.min(...it.group.choices.map((c) => c.p))) : money(it.p);
       const open = `data-act="open" data-id="${esc(it.id)}"`;
       return `<div class="row${isSold(it) ? ' sold-out' : ''}" id="dish-${esc(it.id)}"><button class="txtbtn" ${open}>${marks}<span class="nm">${esc(it.n)}</span>${it.d ? `<span class="ds">${esc(it.d)}</span>` : ''}<span class="prrow"><span class="pr">${esc(price)}</span></span></button>
     ${it.img ? `<div class="thumb"><button class="openimg" ${open} aria-label="Ver ${esc(it.n)}" tabindex="-1"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div>` : `<div class="ovl-inline">${overlayHtml(it)}</div>`}</div>`;

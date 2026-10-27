@@ -21991,8 +21991,8 @@
     "slice": "s7a1",
     "label": "P2-7: a frozen cart accepts mutations",
     "file": "../customer-app/capp-ui.js",
-    "from": "    function mutate(fn) {\n      if (frozenNow()) return false;\n",
-    "to": "    function mutate(fn) {\n",
+    "from": "    function mutate(fn) {\n      if (!orderable || frozenNow()) return false;\n",
+    "to": "    function mutate(fn) {\n      if (!orderable) return false;\n",
     "command": [
       "node",
       "--test",
@@ -22000,7 +22000,8 @@
     ],
     "kills_with": [
       "a frozen cart rejects «+»"
-    ]
+    ],
+    "repointed": "S7a-2 (2026-10-27): the same guard, re-anchored on the line S7a-2 extended (orderable / frame 13)"
   },
   {
     "id": "s7a1-36",
@@ -23004,8 +23005,8 @@
     "slice": "perf-core",
     "label": "frame 14: the price slot shows the price, not «Agotado»",
     "file": "../customer-app/capp-ui.js",
-    "from": "${so ? 'Agotado' : money(d.total)}",
-    "to": "${money(d.total)}",
+    "from": "${so ? 'Agotado' : old !== null",
+    "to": "${old !== null",
     "command": [
       "node",
       "--test",
@@ -23014,7 +23015,8 @@
     ],
     "kills_with": [
       "«Agotado» takes the price slot"
-    ]
+    ],
+    "repointed": "S7a-2 (2026-10-27): the same guard, re-anchored on the line S7a-2 extended (orderable / frame 13)"
   },
   {
     "id": "perf-core-32",
@@ -23072,8 +23074,8 @@
     "slice": "perf-core",
     "label": "frame 14: the checkout handler proceeds with a sold line",
     "file": "../customer-app/capp-ui.js",
-    "from": "if (act === 'checkout') { if (soldBlock()) return;",
-    "to": "if (act === 'checkout') {",
+    "from": "if (act === 'checkout') { if (!orderable || soldBlock()) return;",
+    "to": "if (act === 'checkout') { if (!orderable) return;",
     "command": [
       "node",
       "--test",
@@ -23082,7 +23084,8 @@
     ],
     "kills_with": [
       "the checkout handler itself waits too"
-    ]
+    ],
+    "repointed": "S7a-2 (2026-10-27): the same guard, re-anchored on the line S7a-2 extended (orderable / frame 13)"
   },
   {
     "id": "perf-core-36",
@@ -23232,6 +23235,311 @@
     ],
     "kills_with": [
       "the new verification clears it"
+    ]
+  },
+  {
+    "id": "s7a2-01",
+    "slice": "s7a2",
+    "label": "search over raw dishes (variant children become hits)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      const items = menu.dishes.filter((d) => String(d.cat) === cid && !d.variantOf).map(itemOf);",
+    "to": "      const items = menu.dishes.filter((d) => String(d.cat) === cid).map(itemOf);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "its variant child is not a hit of its own"
+    ]
+  },
+  {
+    "id": "s7a2-02",
+    "slice": "s7a2",
+    "label": "«No encontramos» shown over a partial",
+    "file": "../customer-app/capp-home.js",
+    "from": "        body = m.complete ? `<div class=\"hint\">",
+    "to": "        body = true ? `<div class=\"hint\">",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "never «No encontramos» over a partial"
+    ]
+  },
+  {
+    "id": "s7a2-03",
+    "slice": "s7a2",
+    "label": "house tag fallback dropped",
+    "file": "../customer-app/capp-home.js",
+    "from": ": all.filter((x) => (x.tags || []).some((t) => HOUSE_TAGS.includes(t)));",
+    "to": ": [];",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "house absent ⇒ the catalog-tag fallback"
+    ]
+  },
+  {
+    "id": "s7a2-04",
+    "slice": "s7a2",
+    "label": "an unpriced fee drawn as «Envío gratis»",
+    "file": "../customer-app/capp-home.js",
+    "from": ": priced(r) ? 'Envío desde ' + money(r.fee.from_cents / 100) : '');",
+    "to": ": priced(r) ? 'Envío desde ' + money(r.fee.from_cents / 100) : '<span class=\"free\">Envío gratis</span>');",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "an unpriced fee draws no fee text"
+    ]
+  },
+  {
+    "id": "s7a2-05",
+    "slice": "s7a2",
+    "label": "the guest pin not seeded into a fresh checkout flow",
+    "file": "../customer-app/capp-ui.js",
+    "from": "const sp = seedPin(); if (sp) C.setPin(",
+    "to": "const sp = seedPin(); if (false && sp) C.setPin(",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the flow is created with the guest pin"
+    ]
+  },
+  {
+    "id": "s7a2-06",
+    "slice": "s7a2",
+    "label": "Inicio waits for every envelope before painting its rows",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "      const v = vm();\n      const layer = $('layer')",
+    "to": "      const v = ((x) => (x.rows.every((r) => r.menuState) ? x : { ...x, rows: [], phase: 'cold' }))(vm());\n      const layer = $('layer')",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the list is painted with every envelope pending"
+    ]
+  },
+  {
+    "id": "s7a2-07",
+    "slice": "s7a2",
+    "label": "a directory 304 accepted for another etag",
+    "file": "../customer-app/capp-directory.js",
+    "from": "      let matched = r.status === 304 && !!etag && !!stored && (r.etag == null || r.etag === etag);",
+    "to": "      let matched = r.status === 304 && !!stored;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "a 304 naming another etag is re-fetched without a validator"
+    ]
+  },
+  {
+    "id": "s7a2-08",
+    "slice": "s7a2",
+    "label": "a PARTIAL directory tombstones what it omits",
+    "file": "../customer-app/capp-directory.js",
+    "from": "      elig.verified({ listed: [...ids], complete: false, at: now() });",
+    "to": "      elig.verified({ listed: [...ids], complete: true, at: now() });",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "a partial never tombstones the store it omits"
+    ]
+  },
+  {
+    "id": "s7a2-09",
+    "slice": "s7a2",
+    "label": "an existing checkout flow is re-seeded",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (!S.flow) { S.flow = C.freshFlow(member()); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }",
+    "to": "if (!S.flow) S.flow = C.freshFlow(member()); { const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the mount's own flow wins"
+    ]
+  },
+  {
+    "id": "s7a2-10",
+    "slice": "s7a2",
+    "label": "browse-only: mutate no longer refuses",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (!orderable || frozenNow()) return false;",
+    "to": "      if (frozenNow()) return false;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the handler refuses too (mutate is the choke point)"
+    ]
+  },
+  {
+    "id": "s7a2-11",
+    "slice": "s7a2",
+    "label": "setOrderable re-renders instead of enabling in place",
+    "file": "../customer-app/capp-ui.js",
+    "from": "        for (const el of app.querySelectorAll('[data-ord]')) { el.disabled = false; el.removeAttribute('aria-disabled'); delete el.dataset.ord; }",
+    "to": "        render();",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the same node — enabled in place"
+    ]
+  },
+  {
+    "id": "s7a2-12",
+    "slice": "s7a2",
+    "label": "frame 10: «Ver estado del pedido» goes to checkout (a send path)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "<button class=\"primary\" data-act=\"frozen-status\">Ver estado del pedido</button>",
+    "to": "<button class=\"primary\" data-act=\"checkout\">Ver estado del pedido</button>",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "not live, no credentials ⇒ the recovery sheet",
+      "zero sends"
+    ]
+  },
+  {
+    "id": "s7a2-13",
+    "slice": "s7a2",
+    "label": "frame 11 re-shown on every boot of an ownerless handoff",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "} else if (br && br.handoff && (br.mode === 'persisted' || br.mode === 'memory')) S.neutral",
+    "to": "} else if (br && br.handoff) S.neutral",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "a resumed, ownerless handoff never re-shows the surface"
+    ]
+  },
+  {
+    "id": "s7a2-14",
+    "slice": "s7a2",
+    "label": "frame 12: the sold mark grows the row again",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      const marks = label ? `<span class=\"marks\">${label}</span>` : '';",
+    "to": "      const marks = sold || label ? `<span class=\"marks\">${sold ? '<span class=\"mark\">Agotado</span>' : ''}${label}</span>` : '';",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "no marks line appears (no row growth)"
+    ]
+  },
+  {
+    "id": "s7a2-15",
+    "slice": "s7a2",
+    "label": "a store entered without verified eligibility",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "      if (st === 'enterable' && e && e.body) {",
+    "to": "      if (e && e.body) {",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the drawn pressed state"
+    ]
+  },
+  {
+    "id": "s7a2-16",
+    "slice": "s7a2",
+    "label": "an IDENTICAL verified menu is adopted anyway",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "        st.adopt = a && b && a === b ? null : e.body;",
+    "to": "        st.adopt = e.body;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "same fingerprint ⇒ nothing to adopt; checkout opens"
+    ]
+  },
+  {
+    "id": "s7a2-17",
+    "slice": "s7a2",
+    "label": "frame 13: the price notice is not drawn",
+    "file": "../customer-app/capp-ui.js",
+    "from": "const priceNote = perDish.size && mods() ?",
+    "to": "const priceNote = false ?",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "frame 13: the price notice line"
+    ]
+  },
+  {
+    "id": "s7a2-18",
+    "slice": "s7a2",
+    "label": "frame 3 B: the scheduling sentence shown before scheduling is live",
+    "file": "../customer-app/capp-home.js",
+    "from": "${vm.schedulingLive ? ' Podés programar tu pedido.' : ''}",
+    "to": "${' Podés programar tu pedido.'}",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the 2nd sentence only while scheduling is live"
+    ]
+  },
+  {
+    "id": "s7a2-19",
+    "slice": "s7a2",
+    "label": "Destacados no longer puts open stores first",
+    "file": "../customer-app/capp-home.js",
+    "from": "(open(b[0]) - open(a[0])) || (a[1] - b[1])",
+    "to": "(a[1] - b[1])",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "Destacados: open first, then directory order"
     ]
   }
 ]
