@@ -31,7 +31,7 @@ function memStorage() {
 function server(script, storage) {
   const calls = [];
   const fetch = async (url, init) => {
-    const key = Object.keys(E).find((k) => url.startsWith(E[k]));
+    const key = url.startsWith(EV) ? 'verifyCheckoutCode' : Object.keys(E).find((k) => url.startsWith(E[k]));
     calls.push({ ep: key, body: init && init.body ? JSON.parse(init.body) : null, url, placeAtCall: storage.getItem(`capp:rid_a:pending_place`) });
     const q = script[key] || [];
     const r = q.length > 1 ? q.shift() : q[0];
@@ -40,7 +40,7 @@ function server(script, storage) {
     const res = typeof r === 'function' ? await r(calls[calls.length - 1]) : r;
     return { status: res.status, ok: res.status >= 200 && res.status < 300, json: async () => { if (res.badBody) throw new TypeError('body stream lost'); return res.json; } };
   };
-  return { fetch, calls, of: (ep) => calls.filter((c) => c.ep === ep) };
+  return { fetch, calls, script, of: (ep) => calls.filter((c) => c.ep === ep) };
 }
 let RNG = 0;   // process-wide: a reloaded page must NOT mint the same id by accident of a restarted counter
 function rig({ script, storage = memStorage(), clock = { t: at(12) }, hours = OPEN_ALL, sheet, lock } = {}) {
@@ -602,11 +602,18 @@ test('r4: the policy LOCK_INTERRUPTED_CARD — ON (shipped) ⇒ an interrupted c
 // ── PLAN-capp-signin-required r5.4 / Codex guest r1 #1 + #5: the guest rules hold at EVERY dispatch; existing payments resolve first ──
 function grig({ script, storage = memStorage(), member = { cur: null }, clock = { t: at(12) }, sleep = async () => {} } = {}) {
   const srv = server(script, storage);
-  const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, guestCardOnly: true },
+  const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: { ...E, verifyCheckoutCode: EV }, hours: OPEN_ALL, guestCardOnly: true },
     member: () => member.cur, fetch: srv.fetch, storage, now: () => clock.t, sleep, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} });
   return { api: make(), reload: make, srv, storage, member };
 }
-const TICKET = { ticket: 'tk_1', phone: '+50499990000', cart_fp: 'sig1', expires_at: at(12) + 15 * 60e3 };
+// a ticket from the REAL writer: the id place() will send (orderIdForCode) → verifyCheckoutCode (contract amendment 2026-10-27)
+const EV = 'https://fn.test/verifyCheckoutCode';
+async function ticketFor(R, args) {
+  const orderId = R.api.orderIdForCode(args);
+  R.srv.script.verifyCheckoutCode = [{ status: 200, json: { ok: true, checkout_ticket: 'tk_1' } }];
+  const v = await R.api.verifyCheckoutCode({ phone: '+50499990000', cartFp: 'sig1', code: '123456', orderId });
+  assert.equal(v.ok, true, 'premise: verified'); return v.ticket;
+}
 const MEMBER = { uid: 'u1', idToken: 'tok' };
 test('Codex guest r1 #1: a member signs out while confirming a price increase ⇒ the resend is REFUSED (no ticketless / tokenless cash, no ticketless card)', async () => {
   const m = { cur: MEMBER };
@@ -621,7 +628,8 @@ test('Codex guest r1 #1: a member signs out while confirming a price increase �
 test('Codex guest r1 #5: a guest whose card checkout was already ISSUED resolves it first (a status poll / resume) — no ticket needed to recover, no new send', async () => {
   const storage = memStorage();
   const R = grig({ storage, script: { chargeOnlineOrder: [CHECKOUT], paymentStatus: [PS('pending')] } });
-  const first = await R.api.place({ ...placeArgs('online'), checkoutTicket: TICKET });
+  const a1 = placeArgs('online');
+  const first = await R.api.place({ ...a1, checkoutTicket: await ticketFor(R, a1) });
   assert.equal(first.kind, 'redirect', 'premise: issued');
   const again = await R.reload().place(placeArgs('online'));   // the in-memory ticket is gone (a reload)
   assert.notEqual(again.kind, 'guest_ticket_invalid', '🔴 recovery never requires a ticket');
@@ -636,11 +644,14 @@ test('Codex guest r2 #1: sendCard\'s in-progress RE-SENDS pass the guest gate at
   const o1 = await A1.api.place(placeArgs('online'));
   assert.deepEqual([o1.kind, A1.srv.of('chargeOnlineOrder').length], ['guest_ticket_invalid', 1], '🔴 202 → sign-out → the re-send is refused');
   const clock = { t: at(12) };
-  const A2 = grig({ clock, sleep: async () => { clock.t = TICKET.expires_at + 1; }, script: { chargeOnlineOrder: [IP, CHECKOUT] } });
-  const o2 = await A2.api.place({ ...placeArgs('online'), checkoutTicket: TICKET });
+  let tk2 = null;
+  const A2 = grig({ clock, sleep: async () => { clock.t = tk2.expires_at + 1; }, script: { chargeOnlineOrder: [IP, CHECKOUT] } });
+  const a2 = placeArgs('online'); tk2 = await ticketFor(A2, a2);
+  const o2 = await A2.api.place({ ...a2, checkoutTicket: tk2 });
   assert.deepEqual([o2.kind, A2.srv.of('chargeOnlineOrder').length], ['guest_ticket_invalid', 1], '🔴 the ticket expired during the backoff ⇒ refused');
-  const args = { ...placeArgs('online'), checkoutTicket: TICKET };
+  let args = null;
   const A3 = grig({ sleep: async () => { args.flow.pay = 'cash'; }, script: { chargeOnlineOrder: [IP, CHECKOUT] } });
+  const a3 = placeArgs('online'); args = { ...a3, checkoutTicket: await ticketFor(A3, a3) };
   const o3 = await A3.api.place(args);
   assert.deepEqual([o3.kind, A3.srv.of('chargeOnlineOrder').length], ['guest_cash_not_allowed', 1], '🔴 the tender changed during the backoff ⇒ refused');
 });
@@ -658,7 +669,7 @@ test('identity: the checkout-code calls carry SherpaClient.headers() (X-Client-D
     const api = win.CappApi.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: { ...E, requestCheckoutCode: 'https://fn.test/x/rc', verifyCheckoutCode: 'https://fn.test/x/vc' } },
       CappCheckout: C, createConfirmQuote: require('./capp-confirm-quote.js').createConfirmQuote, storage: null, now: () => at(12) });
     assert.equal((await api.requestCheckoutCode({ phone: '+50499990000', cartFp: 'fp' })).ok, true, `${what}: premise`);
-    assert.equal((await api.verifyCheckoutCode({ phone: '+50499990000', cartFp: 'fp', code: '123456' })).ok, true);
+    assert.equal((await api.verifyCheckoutCode({ phone: '+50499990000', cartFp: 'fp', code: '123456', orderId: 'TA261026-120000-AAAAAAAA' })).ok, true);
     assert.equal(sent.length, 2, 'both through SherpaClient.fetch');
     for (const s of sent) {
       for (const [k, v] of Object.entries(ident)) assert.equal(s.h[k], v, `🔴 ${what}: ${s.u} carries ${k}`);
@@ -666,4 +677,29 @@ test('identity: the checkout-code calls carry SherpaClient.headers() (X-Client-D
       assert.equal(s.h['Content-Type'], 'application/json');
     }
   }
+});
+
+// contract amendment 2026-10-27 (anti-spiral): verifyCheckoutCode takes the client-minted order id; the ticket is bound to it, the
+// order placed with it uses THAT id (a retry keeps it), and another identity needs a new code
+test('amendment: the code is verified FOR the order id place() will send — the same id on a re-verify and on the order; another identity ⇒ refused, nothing sent', async () => {
+  const R = grig({ script: { chargeOnlineOrder: [CHECKOUT] } });
+  const args = placeArgs('online');
+  const id = R.api.orderIdForCode(args);
+  assert.equal(R.api.orderIdForCode(args), id, 'a re-verify (a retry) keeps the SAME id');
+  const tk = await ticketFor(R, args);
+  assert.equal(R.srv.of('verifyCheckoutCode')[0].body.order_id, id, '🔴 the verify carries the order id');
+  assert.equal(tk.order_id, id, 'the ticket remembers it');
+  const out = await R.api.place({ ...args, checkoutTicket: tk });
+  assert.equal(out.kind, 'redirect', 'premise: sent');
+  assert.equal(R.srv.of('chargeOnlineOrder')[0].body.order_id, id, '🔴 the order goes out under the id its code was verified for');
+  // another identity (the record cleared and re-minted) ⇒ the gate refuses before any send
+  const S = grig({ script: { chargeOnlineOrder: [CHECKOUT] } });
+  const a2 = placeArgs('online'); const t2 = await ticketFor(S, a2);
+  S.api.clearPlace(t2.order_id);
+  const o2 = await S.api.place({ ...a2, checkoutTicket: t2 });
+  assert.deepEqual([o2.kind, S.srv.of('chargeOnlineOrder').length], ['guest_ticket_invalid', 0], '🔴 a ticket for another order id is never sent');
+  // no order id ⇒ nothing to bind: never sent
+  const before = S.srv.calls.length;
+  assert.equal((await S.api.verifyCheckoutCode({ phone: '+50499990000', cartFp: 'sig1', code: '123456' })).kind, 'offline');
+  assert.equal(S.srv.calls.length, before, 'an unbound verify is never sent');
 });

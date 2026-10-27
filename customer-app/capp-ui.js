@@ -898,7 +898,9 @@
     async function verifyCode() {
       const o = S.otp; if (!o || o.busy || o.state === 'locked' || o.code.length !== 6) return;
       const my = ++o.seq; o.busy = true; renderLayer();
-      const r = await bounded(api.verifyCheckoutCode({ phone: o.phone, cartFp: cartFpNow(), code: o.code }));
+      // contract amendment 2026-10-27: the ticket is bound to the order id this placement will send (the same id on a retry)
+      const oid = api.orderIdForCode({ flow: S.flow, sig: S.q && S.q.sig });
+      const r = oid ? await bounded(api.verifyCheckoutCode({ phone: o.phone, cartFp: cartFpNow(), code: o.code, orderId: oid })) : { kind: 'offline' };
       if (dead || S.otp !== o || o.seq !== my) return;   // the sheet was closed / a resend superseded it: a late success NEVER sends
       o.busy = false;
       if (r.ok) { S.ticket = r.ticket; closeOtp(); placeNow(); return; }   // advisor 2026-10-27: the verify tap IS the commit — no extra window; straight to the drawn «Enviando»

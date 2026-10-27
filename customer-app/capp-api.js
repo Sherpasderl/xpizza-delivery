@@ -384,10 +384,13 @@
       return { frozen: true, order_id: c.frozen_for, live: !!(ps.value && ps.value.order_id === c.frozen_for) };
     }
     // the capp-guest rules at a dispatch: identity read NOW (memberOf), the tender read NOW (p.flow.pay), the ticket valid NOW
-    function guestGate(p, { ticket }) {
+    // id: the order identity about to be sent — the ticket is bound to it (contract amendment 2026-10-27); another id (a healed /
+    // re-minted identity) needs a new code
+    function guestGate(p, { ticket, id = null }) {
       if (cfg.guestCardOnly !== true || memberOf()) return null;
       if (!p.flow || p.flow.pay !== 'online') return { kind: 'guest_cash_not_allowed', local: true };
       if (ticket && !ticketValid(p.checkoutTicket)) return { kind: 'guest_ticket_invalid', local: true };
+      if (ticket && id !== null && p.checkoutTicket.order_id !== id) return { kind: 'guest_ticket_invalid', local: true };
       return null;
     }
     async function place(p) {
@@ -509,14 +512,14 @@
     // THE order dispatch (Codex guest r2 #1): every network send of an order — the first, a resend, and sendCard's own in-progress
     // re-sends — goes through here, and the guest rules (identity, tender, ticket, read NOW) are checked at the wire
     async function dispatchOrder(p, url, body) {
-      const g = guestGate(p, { ticket: true }); if (g) return { stop: g };
+      const g = guestGate(p, { ticket: true, id: body.order_id }); if (g) return { stop: g };
       return sendOnce(url, body, p.ctx.headers);
     }
     async function sendCard(id, body, p) {
       const alive = p.alive;
       for (let i = 0; i < IN_PROGRESS_TRIES; i++) {
         if (i > 0 && typeof alive === 'function' && !alive()) return { stop: { kind: 'superseded', order_id: id } };   // r3 P2-3: a torn-down page never re-sends (the record keeps its 202: admitted)
-        if (i > 0) { const g = guestGate(p, { ticket: true }); if (g) return { stop: g }; }   // before the re-send is even recorded
+        if (i > 0) { const g = guestGate(p, { ticket: true, id }); if (g) return { stop: g }; }   // before the re-send is even recorded
         if (i > 0) { try { confirmSend(id, 'online'); } catch (e) { return { stop: placeErr(e, id) || await resolveExisting(id) }; } }
         const r = await dispatchOrder(p, E.chargeOnlineOrder, body);
         if (r.network || r.status !== 202 || !r.parsed) return r;
@@ -581,7 +584,7 @@
     }
 
     // ── §4: the guest's checkout code (PLAN-capp-signin-required r5.4; the CONFIRMED wire contract, advisor 2026-10-27) — WhatsApp
-    //    only; the ticket is bound to phone + restaurant + cart fingerprint and expires (TICKET_TTL_MS). Never retried by itself ──
+    //    only; the ticket is bound to phone + restaurant + cart fingerprint + the order id and expires (TICKET_TTL_MS). Never retried by itself ──
     const TICKET_TTL_MS = 15 * 60 * 1000;
     function ticketValid(t) { return !!t && typeof t.ticket === 'string' && t.ticket && Number.isFinite(t.expires_at) && now() < t.expires_at; }
     const secs = (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.round(Number(v)) : null);
@@ -599,12 +602,17 @@
       if (r.status === 400 && j.error === 'country_not_allowed') return { kind: 'country_not_allowed' };
       return { kind: 'offline' };
     }
-    async function verifyCheckoutCode({ phone, cartFp, code }) {
-      if (!E.verifyCheckoutCode) return { kind: 'offline' };
-      const r = await sendOnce(E.verifyCheckoutCode, { phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp, code }, clientIdentity());
+    // the identity the next place() dispatches under — the live record's, else one minted NOW (place reuses it: readPlace() ||
+    // mintPlace); the checkout ticket is bound to it. A failed write ⇒ null (nothing to bind; the caller retries)
+    function orderIdForCode(p) {
+      try { const live = readPlace(); return live ? live.order_id : mintPlace(p && p.flow && p.flow.pay === 'online' ? 'online' : 'cash', p || {}).order_id; } catch (_) { return null; }
+    }
+    async function verifyCheckoutCode({ phone, cartFp, code, orderId }) {
+      if (!E.verifyCheckoutCode || typeof orderId !== 'string' || !orderId) return { kind: 'offline' };
+      const r = await sendOnce(E.verifyCheckoutCode, { phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp, order_id: orderId, code }, clientIdentity());
       if (r.network || !r.parsed) return { kind: 'offline' };
       const j = r.json;
-      if (r.status === 200 && j.ok === true && typeof j.checkout_ticket === 'string' && j.checkout_ticket) return { ok: true, ticket: { ticket: j.checkout_ticket, phone, cart_fp: cartFp, expires_at: now() + TICKET_TTL_MS } };
+      if (r.status === 200 && j.ok === true && typeof j.checkout_ticket === 'string' && j.checkout_ticket) return { ok: true, ticket: { ticket: j.checkout_ticket, phone, cart_fp: cartFp, order_id: orderId, expires_at: now() + TICKET_TTL_MS } };
       if (r.status === 400 && (j.error === 'code_wrong' || j.error === 'code_expired')) return { kind: j.error };
       if (r.status === 429 && j.error === 'too_many_attempts') return { kind: 'too_many_attempts', retryInS: secs(j.retry_in_s) ?? 600 };
       return { kind: 'offline' };
@@ -613,7 +621,7 @@
     // the order body a card send stashed (the return restores the checkout from it)
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
-    return { quote, latestQuote, place, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, ticketValid, TICKET_TTL_MS, readPlace, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
+    return { quote, latestQuote, place, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, ticketValid, TICKET_TTL_MS, readPlace, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY };
   }

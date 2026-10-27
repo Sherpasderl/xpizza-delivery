@@ -2113,9 +2113,12 @@ test('G3 frame 2: «Hacer pedido» ⇒ the code sheet (nothing sent): the code i
   assert.deepEqual(b.qa('#layer .otp input').map((x) => x.value), ['4', '8', '2', '9', '1', '3'], 'a pasted code (with a space) fills all six');
   assert.match(b.text('#layer [data-act="otp-verify"]'), /^Verificar y hacer pedido · L /); assert.ok(!b.q('#layer [data-act="otp-verify"]').disabled);
   await b.click('#layer [data-act="otp-verify"]'); await settle();
-  assert.deepEqual(b.srv.of('verifyCheckoutCode')[0].body, { ...rq, code: '482913' });
+  const vb = b.srv.of('verifyCheckoutCode')[0].body;
+  assert.deepEqual(vb, { ...rq, order_id: vb.order_id, code: '482913' });
   assert.equal(b.q('#layer [data-act="placing-go"]'), null, '🔴 no «Realizando pedido…» window after verify (the tap is the commit)');
   assert.equal(b.srv.of('chargeOnlineOrder')[0].body.checkout_ticket, 'tk_1', '🔴 the order carries its ticket');
+  assert.match(vb.order_id, /^TA\d{6}-\d{6}-[0-9A-Z]{8}$/, 'the client-minted id (the forms\' genOrderId shape)');
+  assert.equal(b.srv.of('chargeOnlineOrder')[0].body.order_id, vb.order_id, '🔴 the order is placed under the order id its code was verified for');
 });
 test('G3 frames 2b–2d: wrong ⇒ red boxes + one red line, cleared; expired ⇒ the amber line + «Reenviar código» at once; too many ⇒ boxes inert + minutes + the two exits; never sent', async () => {
   const b = bootCo({ config: GUEST, script: { requestCheckoutCode: [{ status: 200, json: { ok: true, resend_in_s: 41 } }],

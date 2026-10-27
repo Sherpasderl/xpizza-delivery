@@ -23811,8 +23811,8 @@
     "slice": "guest",
     "label": "verifyCheckoutCode drops the deployment identity (X-Client-*)",
     "file": "../customer-app/capp-api.js",
-    "from": "{ phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp, code }, clientIdentity());",
-    "to": "{ phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp, code });",
+    "from": "cart_fp: cartFp, order_id: orderId, code }, clientIdentity());",
+    "to": "cart_fp: cartFp, order_id: orderId, code });",
     "command": [
       "node",
       "--test",
@@ -23820,6 +23820,54 @@
     ],
     "kills_with": [
       "/x/vc carries X-Client-App"
+    ]
+  },
+  {
+    "id": "guest-18",
+    "slice": "guest",
+    "label": "the guest gate no longer binds the ticket to the order id being sent",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (ticket && id !== null && p.checkoutTicket.order_id !== id) return { kind: 'guest_ticket_invalid', local: true };\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "a ticket for another order id is never sent"
+    ]
+  },
+  {
+    "id": "guest-19",
+    "slice": "guest",
+    "label": "verifyCheckoutCode omits the order id",
+    "file": "../customer-app/capp-api.js",
+    "from": "cart_fp: cartFp, order_id: orderId, code }",
+    "to": "cart_fp: cartFp, code }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "the verify carries the order id"
+    ]
+  },
+  {
+    "id": "guest-20",
+    "slice": "guest",
+    "label": "orderIdForCode mints a fresh id every time (a retry is a new order)",
+    "file": "../customer-app/capp-api.js",
+    "from": "const live = readPlace(); return live ? live.order_id : mintPlace(",
+    "to": "const live = null; return live ? live.order_id : mintPlace(",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "a re-verify (a retry) keeps the SAME id"
     ]
   }
 ]
