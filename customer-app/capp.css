@@ -5,8 +5,8 @@
 :root{
   --pg-bg:#F3F4F6; --pg-surface:#FFFFFF; --pg-ink:#14171C; --pg-muted:#5B6270; --pg-line:#DCDFE5; --pg-soft:#EBEDF1;
   --pg-focus:#2F5FB8; --pg-sel:#D6DEFF; --pg-ok:#15803D; --pg-warn:#8A5A00;
-  --f-ui:'Red Hat Text', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --f-disp:'Red Hat Display', ui-sans-serif, system-ui, sans-serif;
+  --f-ui:'Red Hat Text', 'Red Hat Text Fallback', 'Red Hat Text Fallback Roboto', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --f-disp:'Red Hat Display', 'Red Hat Display Fallback', 'Red Hat Display Fallback Roboto', ui-sans-serif, system-ui, sans-serif;
   color-scheme:light;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
@@ -79,7 +79,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
    ───────────────────────────────────────────────────────────────────────────── */
 .app{position:absolute;inset:0;overflow:hidden;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;
   /* type: the ONE Sherpa typeface, every world */
-  --rhd:'Red Hat Display',ui-sans-serif,system-ui,sans-serif; --rht:'Red Hat Text',ui-sans-serif,system-ui,sans-serif;
+  --rhd:'Red Hat Display','Red Hat Display Fallback','Red Hat Display Fallback Roboto',ui-sans-serif,system-ui,sans-serif; --rht:'Red Hat Text','Red Hat Text Fallback','Red Hat Text Fallback Roboto',ui-sans-serif,system-ui,sans-serif;
   --sans:var(--rht); --head:var(--rhd); --head-style:normal; --head-weight:700; --name:var(--rhd); --name-weight:700;
   /* palette: Cuadra, light. Roles keep the v11 store semantics (bg = page, surf = soft tinted fill, surf2 = white/elevated fill) so the
      approved store → checkout → confirmation screens keep their surface structure; the shell uses the same three values. */

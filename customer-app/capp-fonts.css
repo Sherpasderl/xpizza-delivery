@@ -1,0 +1,32 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   The ONE Sherpa typeface (Red Hat Display / Red Hat Text), SELF-HOSTED (PLAN-capp-S7a r3.3 F4, owner rule: no pop-in from our code).
+   • The woff2 files are Google Fonts' own latin / latin-ext subsets (variable wght), content-hashed in their names (fonts/), served
+     immutable (netlify.toml); index.html preloads the two latin files. OFL 1.1: fonts/OFL.txt.
+   • font-display: optional — the face is used only if it is ready at first render (the preload makes that the normal case); otherwise
+     the page keeps the fallback for its whole life and the font is cached for the next load. Text NEVER swaps after paint ⇒ no reflow.
+   • When the fallback is used, it is METRIC-MATCHED (size-adjust / ascent / descent / line-gap overrides, computed with fontTools over
+     a Spanish UI sample: Red Hat Text @400 and Red Hat Display @700 vs Arial (macOS/iOS/Windows) and Roboto (Android)), so it reads
+     at the same width and line box as the real face. A failed local() face is skipped, so each device lands on the one it has.
+   ───────────────────────────────────────────────────────────────────────────── */
+@font-face{font-family:'Red Hat Text';font-style:normal;font-weight:400 700;font-display:optional;
+  src:url(fonts/red-hat-text-latin.cecc57ca57.woff2) format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'Red Hat Text';font-style:normal;font-weight:400 700;font-display:optional;
+  src:url(fonts/red-hat-text-latin-ext.ec21948590.woff2) format('woff2');
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:'Red Hat Display';font-style:normal;font-weight:500 700;font-display:optional;
+  src:url(fonts/red-hat-display-latin.39d2ddd137.woff2) format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'Red Hat Display';font-style:normal;font-weight:500 700;font-display:optional;
+  src:url(fonts/red-hat-display-latin-ext.bacbe6f55a.woff2) format('woff2');
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
+
+/* metric-matched fallbacks: regular and bold system faces, so weights are real (never synthesized) */
+@font-face{font-family:'Red Hat Text Fallback';font-weight:400 500;src:local('Arial'),local('ArialMT');size-adjust:98.88%;ascent-override:102.95%;descent-override:30.84%;line-gap-override:0%}
+@font-face{font-family:'Red Hat Text Fallback';font-weight:600 700;src:local('Arial Bold'),local('Arial-BoldMT');size-adjust:98.88%;ascent-override:102.95%;descent-override:30.84%;line-gap-override:0%}
+@font-face{font-family:'Red Hat Text Fallback Roboto';font-weight:400 500;src:local('Roboto'),local('Roboto-Regular');size-adjust:99.97%;ascent-override:101.83%;descent-override:30.51%;line-gap-override:0%}
+@font-face{font-family:'Red Hat Text Fallback Roboto';font-weight:600 700;src:local('Roboto Bold'),local('Roboto-Bold');size-adjust:99.97%;ascent-override:101.83%;descent-override:30.51%;line-gap-override:0%}
+@font-face{font-family:'Red Hat Display Fallback';font-weight:500;src:local('Arial'),local('ArialMT');size-adjust:96.15%;ascent-override:105.88%;descent-override:31.72%;line-gap-override:0%}
+@font-face{font-family:'Red Hat Display Fallback';font-weight:600 700;src:local('Arial Bold'),local('Arial-BoldMT');size-adjust:96.15%;ascent-override:105.88%;descent-override:31.72%;line-gap-override:0%}
+@font-face{font-family:'Red Hat Display Fallback Roboto';font-weight:500;src:local('Roboto Medium'),local('Roboto-Medium'),local('Roboto');size-adjust:102.00%;ascent-override:99.80%;descent-override:29.90%;line-gap-override:0%}
+@font-face{font-family:'Red Hat Display Fallback Roboto';font-weight:600 700;src:local('Roboto Bold'),local('Roboto-Bold');size-adjust:102.00%;ascent-override:99.80%;descent-override:29.90%;line-gap-override:0%}

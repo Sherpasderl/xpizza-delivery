@@ -4,3 +4,9 @@
 # Netlify secrets scanning runs because of the build command above. This folder carries no public client key yet, so no
 # SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES list: when one lands (the Maps key, S2b) it is listed here, kept equal to the
 # AIza… values in this folder by secrets-scan-omit.guard.test.js.
+
+# PLAN-capp-S7a r3.3 F4: the self-hosted fonts are content-hashed (a new file = a new name), so they are cached forever.
+[[headers]]
+  for = "/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
