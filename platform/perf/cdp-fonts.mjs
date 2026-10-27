@@ -47,7 +47,7 @@ export function serveDir(root, { rewrite = () => undefined, gate = () => undefin
     const r = rewrite(rel, body); if (r !== undefined) body = Buffer.isBuffer(r) ? r : Buffer.from(r);
     // PRODUCTION's cache headers (netlify.toml: /fonts/* immutable; Netlify's default elsewhere). no-store would defeat the preload: a
     // no-store response never enters the memory cache, so the face fetches the file a SECOND time and misses its window (calibrated).
-    const cc = /(^|\/)fonts\//.test(rel) ? 'public, max-age=31536000, immutable' : 'public, max-age=0, must-revalidate';
+    const cc = /(^|\/)fonts\/[^/]+\.woff2$/.test(rel) ? 'public, max-age=31536000, immutable' : 'public, max-age=0, must-revalidate';   // production: /fonts/*.woff2 only
     res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': cc, 'access-control-allow-origin': '*' });
     res.end(body);
   }
@@ -113,7 +113,7 @@ export async function launch({ width = 390, height = 844, dpr = 2, throttle = fa
 // Returns { holds: Map(url → requestId), release(urlPredicate), failHeld(urlPredicate), finished: Map(url → 'ok'|'failed') }.
 export async function router(cdp, decide) {
   const { s, on } = cdp;
-  const holds = new Map(); const finished = new Map(); const byReq = new Map(); const seen = new Set();
+  const holds = new Map(); const finished = new Map(); const byReq = new Map(); const seen = new Set(); const refused = new Set();
   on('Network.requestWillBeSent', (p) => { byReq.set(p.requestId, p.request.url); seen.add(p.request.url); });
   on('Network.loadingFinished', (p) => { const u = byReq.get(p.requestId); if (u) finished.set(u, 'ok'); });
   on('Network.loadingFailed', (p) => { const u = byReq.get(p.requestId); if (u) finished.set(u, 'failed'); });
@@ -121,7 +121,7 @@ export async function router(cdp, decide) {
     const url = p.request.url; const d = decide(url, p.request);
     try {
       if (d === 'continue') return await s('Fetch.continueRequest', { requestId: p.requestId });
-      if (d === 'fail') return await s('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Failed' });
+      if (d === 'fail') { refused.add(url); return await s('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Failed' }); }   // recorded: the fixture's OWN refusals
       if (d === 'hold') { holds.set(url, p.requestId); return; }
       if (p.request.method === 'OPTIONS') {   // a CORS preflight for a FULFILLED url: answer it as a real CORS endpoint would
         return await s('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 204, responseHeaders: [
@@ -137,7 +137,7 @@ export async function router(cdp, decide) {
   await s('Fetch.enable', { patterns: [{ urlPattern: 'https://*', requestStage: 'Request' }] });
   const take = (pred) => [...holds.entries()].filter(([u]) => pred(u)).map(([u, id]) => { holds.delete(u); return id; });
   return {
-    holds, finished, seen,
+    holds, finished, seen, refused,
     release: async (pred) => { for (const id of take(pred)) await s('Fetch.continueRequest', { requestId: id }).catch(() => {}); },
     failHeld: async (pred) => { for (const id of take(pred)) await s('Fetch.failRequest', { requestId: id, errorReason: 'Failed' }).catch(() => {}); },
   };

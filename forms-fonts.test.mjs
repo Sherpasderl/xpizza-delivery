@@ -55,9 +55,10 @@ for (const site of p.sites) {
   assert.ok(stacks >= 8, `${site}: expected the ≥8 hosted-face stacks (--display/--stamp/--sans/--body, --rk-sans/--rk-serif, the inline fallbacks), found ${stacks}`);
   ok(`${site}: all ${stacks} hosted-face stacks name their metric-matched fallbacks right after the face`);
 
-  assert.match(toml, /for = "\/fonts\/\*"[\s\S]*?Cache-Control = "public, max-age=31536000, immutable"/, `${site}: /fonts/* is served immutable`);
+  assert.match(toml, /for = "\/fonts\/\*\.woff2"\s*\n\s*\[headers\.values\]\s*\n\s*Cache-Control = "public, max-age=31536000, immutable"/, `${site}: the hashed /fonts/*.woff2 are served immutable`);
+  assert.doesNotMatch(toml, /for = "\/fonts\/\*"\s*\n/, `🔴 ${site}: immutable must not cover the whole /fonts/ folder (fonts/OFL.txt is not content-hashed — Codex r1 P3)`);
   assert.match(toml, /bake-form-bundle\.js --this-form && node \.\.\/platform\/stamp-version\.js && node \.\.\/xpizza-functions\/tools\/form-bundle-live-check\.js --this-form/, `${site}: Plan 4's bake → stamp → check is untouched`);
-  ok(`${site}: /fonts/* immutable; the build command is still bake → stamp → check`);
+  ok(`${site}: only the hashed /fonts/*.woff2 are immutable (OFL.txt normal); the build command is still bake → stamp → check`);
 }
 // §4.1 / r6.2 — the committed rendered-font census (forms-fonts.cdp.mjs, both brands): gate (b) has a verdict for EVERY primary
 // declaration the candidate ships and none is a FAIL; every painted hosted run matches a DECLARED discrete face; Special Elite paints

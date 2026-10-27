@@ -20,8 +20,9 @@
   [headers.values]
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# PLAN-forms-fonts-preconnect r6.1: the self-hosted fonts are content-hashed (a new file = a new name), so they are cached forever.
+# PLAN-forms-fonts-preconnect r6.1: the self-hosted font FILES are content-hashed (a new file = a new name), so they are cached
+# forever. ONLY the hashed .woff2 — fonts/OFL.txt is not hashed and keeps Netlify's normal headers (Codex r1 P3).
 [[headers]]
-  for = "/fonts/*"
+  for = "/fonts/*.woff2"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"

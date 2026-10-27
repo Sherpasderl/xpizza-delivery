@@ -35,6 +35,7 @@ const HOSTED = { 'DM Sans': [300, 400, 500, 600, 700, 800], 'Playfair Display': 
 const hostedOf = (platformName) => Object.keys(HOSTED).find((f) => platformName === f || platformName.startsWith(`${f} `)) || null;   // "DM Sans 9pt" → DM Sans
 const firstFamily = (stack) => (stack.split(',')[0] || '').trim().replace(/^["']|["']$/g, '');
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
+const isFontUrl = (u) => /fonts\.gstatic\.com\/s\/|\.woff2(\?|$)/.test(u);
 
 // CSS Fonts 4 §5.2 weight matching against a discrete descriptor set (Codex r1's table: DM Sans 450→500 … 750→800; Playfair 750→900)
 export function matchWeight(w, avail) {
@@ -164,6 +165,8 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
       if (process.env.FONTS_STRIP_NAMES && side === 'candidate' && /(index\.html|account\.js)$/.test(rel)) out = String(out ?? buf).replace(/,\s*'(DM Sans|Playfair Display) Fallback( Roboto| Noto)?'/g, '');   // diagnostic only
       if (process.env.FONTS_SWAP_ONLY && side === 'candidate' && /orders-fonts\.css$/.test(rel)) out = String(out ?? buf).replace(/font-display:optional/g, 'font-display:swap');   // diagnostic only
       if (process.env.FONTS_NO_PF_PRELOAD && side === 'candidate' && /index\.html$/.test(rel)) out = String(out ?? buf).replace(/<link rel="preload" href="fonts\/playfair-display-latin\.[^"]+"[^>]*>/, '');   // diagnostic only
+      if (process.env.FONTS_INJECT_ERR && side === 'candidate' && /index\.html$/.test(rel))   // control: a page error must be caught by FF-failed
+        out = String(out ?? buf).replace('</head>', '<script>console.error("injected control error")</script></head>');
       if (faceChange && side === 'candidate' && /index\.html$/.test(rel))   // FC-ctrl: a deliberate face change (.acct-nm 650→700 face becomes the 600 face)
         out = String(out ?? buf).replace('</head>', '<style>.acct-nm{font-weight:600!important}</style></head>');
       if (process.env.FONTS_SYNTH_NONE && side === 'candidate' && /index\.html$/.test(rel))   // diagnostic: Codex step 1 — scoped synthesis suppression, before first use
@@ -185,8 +188,17 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
     },
   });
   const cdp = await launch({ throttle });
+  let rtRef = null;
   try {
-    const rt = await router(cdp, decideFor(state));
+    // Codex r1 #3: page exceptions and console / log errors, recorded for every run (FF-failed asserts them)
+    const errs = [];
+    const rt = await router(cdp, decideFor(state)); rtRef = rt;
+    // a hold may only ever be a font or the live-menu fetch (which is failed at teardown, never continued)
+    cdp.on('Fetch.requestPaused', (p) => { const u = p.request.url; if (decideFor(state)(u, p.request) === 'hold' && !isFontUrl(u) && !/getPublicMenu/.test(u)) errs.push(`unexpected hold: ${u}`); });
+    await cdp.s('Log.enable');
+    cdp.on('Runtime.exceptionThrown', (p) => errs.push(`exception: ${(p.exceptionDetails.exception && p.exceptionDetails.exception.description) || p.exceptionDetails.text}`.slice(0, 200)));
+    cdp.on('Runtime.consoleAPICalled', (p) => { if (p.type === 'error') errs.push(`console.error: ${p.args.map((a) => a.value ?? a.description ?? '').join(' ')}`.slice(0, 200)); });
+    cdp.on('Log.entryAdded', (p) => { if (p.entry.level === 'error') errs.push({ log: p.entry.text.slice(0, 200), url: p.entry.url || '' }); });
     await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: OBSERVER });
     if (deterministic) for (const src of [FREEZE, QUIET]) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: src });
     if (def.rewards) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: fakeInit(site, typeof def.rewards === 'function' ? def.rewards(site) : def.rewards) });
@@ -196,6 +208,7 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
     for (let i = 0; i < 2400; i++) { if (await cdp.ev(`document.readyState !== 'loading' && !!document.getElementById('s1')`).catch(() => false)) break; await sleep(25); }
     await settle(cdp);
     const bootMs = Date.now() - t0;
+    const paintGeo = await cdp.ev(GEO);   // Codex r1 #2: the geometry AT FIRST PAINT, before the drive and before any font completes
     await def.drive(cdp);
     await settle(cdp);
     if (process.env.FONTS_DEBUG_STAGE) console.log(`  [stage ${side} ${stateName}]`, JSON.stringify(await cdp.ev(`({ active: (document.querySelector('.stage.active') || {}).id, err1: (document.getElementById('err1') || {}).textContent, err3: (document.getElementById('err3') || {}).textContent, sx: (document.getElementById('acct-success-rewards') || {}).innerHTML?.length })`)), 'createOrder seen:', [...rt.seen].some((u) => /createOrder/.test(u)));
@@ -210,7 +223,7 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
       if (srv.heldCount() + rt.holds.size === 0 && !fontUrlsSeen()) throw new Error('premise: no font request was held — the cell would prove nothing');
       await sleep(Math.max(0, holdMs - (Date.now() - t0)));
       heldMs = Date.now() - t0;
-      srv.release(); await rt.release(() => true);
+      srv.release(); await rt.release(isFontUrl);   // ONLY font requests (Codex r1 #1) — a held getPublicMenu is never continued toward production
     }
     // completion: every font request finished or failed; then fonts.ready, then frames until GEO stops changing
     const fontUrls = () => [...rt.seen].filter((u) => /\.woff2(\?|$)/.test(u));
@@ -218,7 +231,7 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
     await cdp.ev('document.fonts.ready.then(() => true)'); await sleep(250);
     let geo = await cdp.ev(GEO); for (let i = 0; i < 20; i++) { await settle(cdp); const g = await cdp.ev(GEO); if (JSON.stringify(g) === JSON.stringify(geo)) break; geo = g; }
     await premisePane(cdp, def.container);
-    const after = { heldMs, bootMs, nodes: await census(cdp), geo, cls: await cdp.ev('window.__cls'), fontsFailed: fontUrls().filter((u) => rt.finished.get(u) === 'failed').length };
+    const after = { heldMs, bootMs, paintGeo, errs, refused: [...rt.refused], nodes: await census(cdp), geo, cls: await cdp.ev('window.__cls'), fontsFailed: fontUrls().filter((u) => rt.finished.get(u) === 'failed').length };
     if (process.env.FONTS_INSPECT) console.log(`  [inspect ${side} ${stateName}]`, JSON.stringify(await cdp.ev(`[...document.querySelectorAll(${JSON.stringify(process.env.FONTS_INSPECT)})].map((e) => { const cs = getComputedStyle(e), r = e.getBoundingClientRect(); return { text: e.textContent.slice(0, 20), ff: cs.fontFamily, fw: cs.fontWeight, fs: cs.fontSize, ls: cs.letterSpacing, x: r.x, y: r.y, w: r.width, h: r.height, op: cs.opacity, filter: cs.filter }; })`)));
     if (process.env.FONTS_INSPECT) { const { root } = await cdp.s('DOM.getDocument', { depth: -1, pierce: true }); const { nodeId } = await cdp.s('DOM.querySelector', { nodeId: root.nodeId, selector: process.env.FONTS_INSPECT });
       const d = await cdp.s('DOM.describeNode', { nodeId, depth: 1 }); const t = (d.node.children || []).find((c) => c.nodeType === 3);
@@ -258,8 +271,15 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
     if (deterministic) { await cdp.ev(`(async () => { const ff = new FontFace('__Invalidate', "local('Arial')"); document.fonts.add(ff); await ff.load(); return true; })()`); await settle(cdp); await sleep(300); }
     const png = deterministic ? await shot() : null;
     const probe = await attribute(cdp, after.nodes);
+    // Codex r1 #1 guard: the live-menu fetch is HELD then FAILED at teardown — it must never have completed (that could only be prod)
+    const menuDone = [...rt.finished].filter(([u, st]) => /getPublicMenu/.test(u) && st === 'ok').map(([u]) => u);
+    if (menuDone.length) throw new Error(`🔴 a getPublicMenu request completed — it must never be continued toward production: ${menuDone.join(', ')}`);
     return { before, after, probe, png, raw };
-  } finally { cdp.close(); srv.close(); }
+  } finally {
+    // nothing held is ever continued at teardown: every remaining hold (getPublicMenu, any font) is FAILED, then the browser closes
+    try { if (rtRef) await rtRef.failHeld(() => true); } catch (_) {}
+    cdp.close(); srv.close();
+  }
 }
 
 // ── PNG → RGBA (8-bit, non-interlaced, color type 2 or 6 — what Chrome writes), for the pixel-exact gate ──
@@ -353,9 +373,11 @@ for (const site of SITES) {
     if (CELLS.includes('fast')) {
       const r = await run(site, {});
       check(hostedPainted(r.after.nodes), `[${rep}] FF-fast: hosted faces paint (census)`);
-      const m = moved(r.before.geo, r.after.geo);
-      check(r.after.geo.length > 50 && m === 0, `[${rep}] FF-fast: 0 of ${r.after.geo.length} boxes moved (${m})`);
-      check(r.after.cls - r.before.cls === 0, `[${rep}] FF-fast: CLS across the font window 0 (${r.after.cls - r.before.cls}; page-load CLS before it ${r.before.cls}, recorded only)`);
+      // Codex r1 #2: observed from FIRST PAINT (geometry snapshot at paint, before any font completes) through font completion,
+      // and the layout-shift total over the WHOLE window from navigation start (buffered observer) must be 0
+      const m = moved(r.after.paintGeo, r.after.geo);
+      check(r.after.geo.length > 50 && m === 0, `[${rep}] FF-fast: 0 of ${r.after.geo.length} boxes moved from FIRST PAINT to settled (${m})`);
+      check(r.after.cls === 0, `[${rep}] FF-fast: CLS 0 over the whole window from navigation start (${r.after.cls})`);
     }
     if (CELLS.includes('slow')) {
       const r = await run(site, { fontGate: 'hold', throttle: true });
@@ -370,6 +392,12 @@ for (const site of SITES) {
       check(r.after.fontsFailed > 0, `[${rep}] FF-failed premise: the font requests really failed (${r.after.fontsFailed})`);
       check(!hostedPainted(r.after.nodes), `[${rep}] FF-failed: the fallback paints and is kept`);
       check(moved(r.before.geo, r.after.geo) === 0, `[${rep}] FF-failed: 0 boxes move; usable (add → #s2 visible, non-empty)`);
+      // Codex r1 #3: no page exception / console error / log error — except the EXPECTED font-network failures
+      // exceptions / console.error: NONE allowed. Network-load errors: allowed ONLY for the font URLs (the cell's own failure) and for
+      // the URLs the fixture router ITSELF refused (Maps, the Firebase SDK — never allowed to reach production; recorded by the router)
+      const unexpected = r.after.errs.filter((e) => !(typeof e === 'object' && /^Failed to load resource/.test(e.log) && (isFontUrl(e.url) || r.after.refused.includes(e.url)))).map((e) => (typeof e === 'object' ? `log: ${e.log} ${e.url}` : e));
+      if (process.env.FONTS_SHOW_ERRS) console.log('    errs:', JSON.stringify(r.after.errs));
+      check(unexpected.length === 0, `[${rep}] FF-failed: no page exceptions / console errors beyond the expected font failures (${unexpected.length ? unexpected.slice(0, 4).join(' | ') : 'none'})`);
     }
     if (CELLS.includes('ctrl')) {
       const r = await run(site, { fontGate: 'hold', throttle: true, oldPolicy: true });
