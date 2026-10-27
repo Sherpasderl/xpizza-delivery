@@ -1009,11 +1009,12 @@ test('S2b pin gate: geolocation DENIED (or failed) ⇒ «Ajustá el pin a tu dir
 
 // ── S2b r1 (Codex) ──
 // a minimal google.maps the page would load: each Map keeps its own centre; `pan` moves it WITHOUT an idle (as a drag in flight)
-function gmaps(w) {
+function gmaps(w, gc) {
   const maps = [];
   class Map { constructor(el, o) { this.el = el; this.c = { ...o.center }; this.l = {}; maps.push(this); } addListener(n, f) { this.l[n] = f; }
     getCenter() { const c = this.c; return { lat: () => c.lat, lng: () => c.lng }; } pan(lat, lng) { this.c = { lat, lng }; } idle() { if (this.l.idle) this.l.idle(); } }
   w.google = { maps: { Map } };
+  if (gc) w.google.maps.Geocoder = class { geocode(req, cb) { gc.push({ at: J(req.location), reply: (results, status = 'OK') => cb(results, status) }); } };   // S2b-geo: the test releases each reply
   return maps;
 }
 test('S2b r1 P1-2: «Listo» confirms the ACTIVE map\'s centre at the tap (no idle yet); an obsolete map\'s late idle never moves the pin or the preview', async () => {
@@ -1237,4 +1238,107 @@ test('S2b r3 P2-5: a CASH record on file + a credentialless cancel ⇒ locked, t
   const r = bootCo({ storage, script: {} });
   await placeVia(r, 'online');
   assert.deepEqual([writes(r), r.q('#layer .sheet').getAttribute('aria-label')], [0, 'Necesitamos revisar tu pedido'], '🔴 a reload stays locked (recovery)');
+});
+
+// ── S2b-geo (MOCKUP-capp-S2b-geo-address.html frames A1 / b / b2 / c; advisor rulings 2026-10-26) ──
+const GEO = {
+  full: [{ address_components: [{ long_name: '10', types: ['street_number'] }, { long_name: 'Calle 10', types: ['route'] }, { long_name: 'Jardines del Valle', types: ['neighborhood', 'political'] }, { long_name: 'San Pedro Sula', types: ['locality', 'political'] }] }],
+  street: [{ address_components: [{ long_name: 'Calle 10', types: ['route'] }, { long_name: 'San Pedro Sula', types: ['locality'] }] }],
+  area: [{ address_components: [{ long_name: 'Unnamed Road', types: ['route'] }, { long_name: 'Jardines del Valle', types: ['neighborhood'] }] }],
+  none: [{ address_components: [{ long_name: 'San Pedro Sula', types: ['locality'] }] }],
+};
+const bold = (b) => b.text('.urows .urow[data-act="pin"] .t b');
+const sub = (b) => b.text('.urows .urow[data-act="pin"] .t > span');
+function bootGeo(o = {}) { const gc = []; let maps; const b = bootCo({ ...o, config: { mapsKey: 'k_test', ...(o.config || {}) }, pre: (w) => { maps = gmaps(w, gc); } }); b.gc = gc; b.maps = () => maps; return b; }
+
+test('S2b-geo a GPS fix (a CONFIRMED pin) ⇒ ONE geocode at the device fix; A1 «Calle 10, Col. Jardines del Valle» replaces «Tu ubicación»; re-renders never ask again', async () => {
+  const b = bootGeo(); await toCheckout(b); await settle();
+  assert.deepEqual(b.gc.map((r) => r.at), [{ lat: 15.52, lng: -88.04 }], 'one request, at the confirmed fix');
+  assert.equal(bold(b), 'Tu ubicación', 'c: pending ⇒ today\'s row, byte for byte');
+  b.gc[0].reply(GEO.full); await settle();
+  assert.equal(bold(b), 'Calle 10, Col. Jardines del Valle', '🔴 A1');
+  assert.equal(sub(b), 'Ajustá el pin a tu dirección', 'the sub (the pin-step state) is unchanged');
+  b.ui.render(); await settle(); b.ui.render(); await settle();
+  assert.equal(b.gc.length, 1, '🔴 one geocode per confirmed pin version');
+});
+
+test('S2b-geo frames b / b2 / c: street only «Calle 10»; colonia only «Col. Jardines del Valle» (never an invented street); nothing / a failure ⇒ «Tu ubicación»', async () => {
+  for (const [results, status, want] of [[GEO.street, 'OK', 'Calle 10'], [GEO.area, 'OK', 'Col. Jardines del Valle'], [GEO.none, 'OK', 'Tu ubicación'], [null, 'ZERO_RESULTS', 'Tu ubicación'], [null, 'ERROR', 'Tu ubicación']]) {
+    const b = bootGeo(); await toCheckout(b); await settle();
+    b.gc[0].reply(results, status); await settle();
+    assert.equal(bold(b), want, `${status} ${JSON.stringify(results && results[0].address_components.map((c) => c.long_name))}`);
+    b.ui.render(); await settle(); assert.equal(b.gc.length, 1, 'a failure settles the version: no retry');
+  }
+});
+
+test('S2b-geo «Listo» on a moved pin ⇒ a new version, its own geocode; released B then A, A is discarded; «Listo» on the same spot asks nothing', async () => {
+  const b = bootGeo(); await toCheckout(b); await settle();
+  await b.click('[data-act="pin"]'); await settle();
+  b.maps().filter((x) => x.el.dataset.gmap === 'pin').at(-1).pan(15.54, -88.06);
+  await b.click('[data-act="pin-done"]'); await settle();
+  assert.deepEqual(b.gc.map((r) => r.at), [{ lat: 15.52, lng: -88.04 }, { lat: 15.54, lng: -88.06 }], 'A (the fix), then B (the moved pin)');
+  b.gc[1].reply(GEO.area); await settle();
+  assert.equal(bold(b), 'Col. Jardines del Valle', 'B applies');
+  b.gc[0].reply(GEO.full); await settle();
+  assert.equal(bold(b), 'Col. Jardines del Valle', '🔴 A\'s late reply never overwrites B');
+  await b.click('[data-act="pin"]'); await settle(); await b.click('[data-act="pin-done"]'); await settle();
+  assert.equal(b.gc.length, 2, '«Listo» without moving: the same pin, no second geocode');
+  assert.equal(bold(b), 'Col. Jardines del Valle');
+});
+
+test('S2b-geo a reply for A that lands AFTER the pin moved to B (B still pending) is discarded — the row stays today\'s until B answers', async () => {
+  const b = bootGeo(); await toCheckout(b); await settle();
+  await b.click('[data-act="pin"]'); await settle();
+  b.maps().filter((x) => x.el.dataset.gmap === 'pin').at(-1).pan(15.54, -88.06);
+  await b.click('[data-act="pin-done"]'); await settle();
+  b.gc[0].reply(GEO.full); await settle();
+  assert.equal(bold(b), 'Tu ubicación', '🔴 superseded: never A\'s street on B\'s pin');
+  b.gc[1].reply(GEO.street); await settle();
+  assert.equal(bold(b), 'Calle 10');
+});
+
+test('S2b-geo location denied: the unconfirmed restaurant fallback is NEVER geocoded («Mové el pin a tu puerta» stays); confirmed on the pin step ⇒ its geo line replaces it', async () => {
+  const b = bootGeo({ geo: GEO_NO, config: { loc: { lat: 15.5, lng: -88.0 } } }); await toCheckout(b); await settle();
+  assert.equal(b.gc.length, 0, '🔴 an unconfirmed fallback pin: zero geocodes');
+  assert.equal(bold(b), 'Mové el pin a tu puerta');
+  await b.click('[data-act="pin"]'); await settle(); await b.click('[data-act="pin-done"]'); await settle();
+  assert.equal(b.gc.length, 1, 'confirmed ⇒ one geocode');
+  assert.equal(bold(b), 'Mové el pin a tu puerta', 'pending ⇒ today\'s copy');
+  b.gc[0].reply(GEO.full); await settle();
+  assert.equal(bold(b), 'Calle 10, Col. Jardines del Valle', '🔴 the geo line replaces «Mové el pin a tu puerta» (ruling 3)');
+});
+
+test('S2b-geo «Realizando pedido…» and «Enviando tu pedido…» carry the SAME line; with no geo line they keep today\'s «Detalles adicionales»', async () => {
+  for (const [results, want] of [[GEO.full, 'Calle 10, Col. Jardines del Valle'], [GEO.area, 'Col. Jardines del Valle'], [GEO.none, 'Portón negro']]) {
+    let go; const held = new Promise((r) => { go = r; });
+    const b = bootGeo({ script: { createOrder: [() => held.then(() => ({ status: 200, json: { ok: true, order_id: 'X' } }))] } });
+    await filled(b); b.gc.forEach((r) => r.reply(results)); await settle();
+    await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]');
+    assert.equal(b.text(b.qa('#layer .placing .prow')[1].querySelector('.t span')), want, `«Realizando»: ${want}`);
+    await b.click('#layer [data-act="placing-go"]');
+    assert.equal(b.text(b.q('.sndcard .prow .t b')), want, `«Enviando»: ${want}`);
+    go(); await settle(); b.ui.destroy();
+  }
+});
+
+test('S2b-geo a RESTORED return (the card checkout context from the stash) ⇒ its confirmed pin is geocoded once', async () => {
+  const storage = memStore();
+  const { id, snap } = await cardRedirected(storage);
+  const gc = []; let maps;
+  const c = bootCo({ storage, search: RET('cancel', id), config: { mapsKey: 'k_test' }, pre: (w) => { maps = gmaps(w, gc); }, script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'cancelled' } }] } });
+  c.ui.restore(snap); await c.ui.returning; await settle();
+  assert.equal(c.text('#layer .errsheet h2'), 'Pago no completado', 'premise: the context is back');
+  assert.equal(gc.length, 1, '🔴 the restored pin: one geocode');
+  assert.deepEqual(gc[0].at, { lat: c.ui.state.flow.pin.lat, lng: c.ui.state.flow.pin.lng });
+  gc[0].reply(GEO.full); await settle();
+  assert.equal(bold(c), 'Calle 10, Col. Jardines del Valle', 'the checkout under the sheet shows it');
+  assert.equal(c.text('#layer .errsheet h2'), 'Pago no completado', 'the reply re-render keeps the sheet');
+});
+
+test('S2b-geo pickup: no geocode, no line; the body never carries address_area (this base)', async () => {
+  const b = bootGeo(); await toCheckout(b); await settle();
+  b.gc[0].reply(GEO.full); await settle();
+  await b.click('[data-act="type"][data-val="pickup"]'); await settle();
+  assert.equal(b.gc.length, 1, 'pickup asks nothing');
+  assert.ok(!b.q('.urows .urow[data-act="pin"]'), 'no address row on pickup');
 });

@@ -163,3 +163,75 @@ test('no restaurant literal in the model', () => {
   const src = readFileSync(join(ROOT, 'customer-app/capp-checkout.js'), 'utf8');
   assert.equal(src.match(/x_pizza|la_musa|xpizza|lamusa|X\.? ?Pizza|La Musa/i), null);
 });
+
+// ── S2b-geo (MOCKUP-capp-S2b-geo-address.html; PLAN-colonia r1 §1) — the reverse-geocode of the confirmed pin, display only ──
+// recorded Google Geocoder result shapes (address_components)
+const GC = {
+  full: [{ address_components: [{ long_name: '10', types: ['street_number'] }, { long_name: 'Calle 10', types: ['route'] }, { long_name: 'Jardines del Valle', types: ['neighborhood', 'political'] }, { long_name: 'San Pedro Sula', types: ['locality', 'political'] }, { long_name: '7FG2+XX', types: ['plus_code'] }] }],
+  routeOnly: [{ address_components: [{ long_name: '5', types: ['street_number'] }, { long_name: 'Calle 10', types: ['route'] }, { long_name: 'San Pedro Sula', types: ['locality', 'political'] }] }],
+  areaOnly: [{ address_components: [{ long_name: 'Unnamed Road', types: ['route'] }, { long_name: 'Jardines del Valle', types: ['sublocality_level_1', 'sublocality', 'political'] }, { long_name: 'San Pedro Sula', types: ['locality'] }] }],
+  localityOnly: [{ address_components: [{ long_name: 'San Pedro Sula', types: ['locality', 'political'] }, { long_name: 'Cortés', types: ['administrative_area_level_1'] }] }],
+  subOnly: [{ address_components: [{ long_name: 'Rivera Hernández', types: ['sublocality', 'political'] }] }],
+  // the neighborhood sits on a later result: priority by TYPE across the results, in result order
+  split: [{ address_components: [{ long_name: 'Calle 10', types: ['route'] }, { long_name: 'Sector Norte', types: ['sublocality_level_1', 'sublocality'] }] }, { address_components: [{ long_name: 'Jardines del Valle', types: ['neighborhood'] }] }],
+};
+const pinned = () => { const f = C.freshFlow(null); C.setPin(f, 15.52, -88.04, true); return f; };
+
+test('S2b-geo areaFromGeocode (PLAN §1): neighborhood ▸ sublocality_level_1 ▸ sublocality; never locality / route / street_number; raw', () => {
+  assert.equal(C.areaFromGeocode(GC.full), 'Jardines del Valle', 'neighborhood');
+  assert.equal(C.areaFromGeocode(GC.areaOnly), 'Jardines del Valle', 'sublocality_level_1 only');
+  assert.equal(C.areaFromGeocode(GC.subOnly), 'Rivera Hernández', 'sublocality only');
+  assert.equal(C.areaFromGeocode(GC.split), 'Jardines del Valle', 'a neighborhood on a later result beats an earlier sublocality');
+  assert.equal(C.areaFromGeocode(GC.localityOnly), '', 'locality only ⇒ none (never the city)');
+  assert.equal(C.areaFromGeocode(GC.routeOnly), '', 'a route is never the area');
+  assert.equal(C.areaFromGeocode([{ address_components: [{ long_name: 'Casa 14 Calle 3', types: ['neighborhood'] }] }]), 'Casa 14 Calle 3', 'a street-bearing name passes through RAW (the server filter is the authority)');
+  for (const empty of [[], null, undefined, [{}], [{ address_components: [{ long_name: '  ', types: ['neighborhood'] }] }]]) assert.equal(C.areaFromGeocode(empty), '', `empty ⇒ '' (${JSON.stringify(empty)})`);
+});
+
+test('S2b-geo routeFrom: the route long_name ONLY — no street_number, no plus_code; «Unnamed Road» is no street', () => {
+  assert.equal(C.routeFrom(GC.full), 'Calle 10', 'the route, not «Calle 10 10» nor the plus code');
+  assert.equal(C.routeFrom(GC.areaOnly), '', '🔴 «Unnamed Road» ⇒ no street');
+  assert.equal(C.routeFrom([{ address_components: [{ long_name: 'unnamed road', types: ['route'] }] }]), '', 'any case');
+  assert.equal(C.routeFrom(GC.localityOnly), '');
+  assert.equal(C.routeFrom([{ address_components: [{ long_name: '7FG2+XX', types: ['plus_code'] }, { long_name: '10', types: ['street_number'] }] }]), '', 'a plus code / number alone is never a street');
+});
+
+test('S2b-geo displayArea (advisor ruling 2026-10-26): a name that already says Colonia / Col. / Barrio / Bo. / Residencial / Res. is shown as given; else «Col. {X}»', () => {
+  for (const given of ['Colonia Trejo', 'Col. Kennedy', 'Col Kennedy', 'Barrio Río de Piedras', 'Bo. Guamilito', 'Bo Guamilito', 'Residencial Los Castaños', 'Res. Lomas', 'RESIDENCIAL Z', 'Cólonia Acento', 'BARRIO Abajo'])
+    assert.equal(C.displayArea(given), given, `${given}: as given`);
+  for (const [x, want] of [['Jardines del Valle', 'Col. Jardines del Valle'], ['Colonial Hills', 'Col. Colonial Hills'], ['Bosques de Jucutuma', 'Col. Bosques de Jucutuma'], ['Resplandor', 'Col. Resplandor'], ['Barrios Unidos', 'Col. Barrios Unidos'], ['Colinas', 'Col. Colinas']])
+    assert.equal(C.displayArea(x), want, `🔴 near-miss ${x}: whole word only`);
+});
+
+test('S2b-geo addrLine: A1 «{street}, Col. {X}» · b «{street}» · b2 «Col. {X}» · c none ⇒ \'\' (today\'s row)', () => {
+  const cases = [[GC.full, 'Calle 10, Col. Jardines del Valle'], [GC.routeOnly, 'Calle 10'], [GC.areaOnly, 'Col. Jardines del Valle'], [GC.localityOnly, ''], [[], '']];
+  for (const [r, want] of cases) { const f = pinned(); assert.equal(C.applyGeocode(f, f.pinV, r), true); assert.equal(C.addrLine(f), want, JSON.stringify(want)); }
+  const f = pinned(); assert.equal(C.addrLine(f), '', 'pending (no reply yet) ⇒ today\'s row');
+  const u = C.freshFlow(null); C.setPin(u, 15.52, -88.04, false); u.geo = { v: u.pinV, street: 'Calle 10', area: 'X' };
+  assert.equal(C.addrLine(u), '', 'an UNCONFIRMED pin never shows a geo line');
+});
+
+test('S2b-geo pin-version binding: every pin change bumps the version and clears the geo SYNCHRONOUSLY; the same pin keeps both; a superseded reply is discarded', () => {
+  const f = pinned(); const v1 = f.pinV;
+  C.applyGeocode(f, v1, GC.full); assert.equal(C.addrLine(f), 'Calle 10, Col. Jardines del Valle');
+  C.setPin(f, 15.52, -88.04, true);
+  assert.deepEqual([f.pinV, C.addrLine(f)], [v1, 'Calle 10, Col. Jardines del Valle'], 'the same coordinates: same version, geo kept (no second geocode)');
+  C.setPin(f, 15.53, -88.05, true); const v2 = f.pinV;
+  assert.deepEqual([v2 === v1 + 1, f.geo, C.addrLine(f)], [true, null, ''], '🔴 a new pin: the old street / area are gone at once');
+  assert.equal(C.applyGeocode(f, v1, GC.full), false, '🔴 A\'s late reply after the pin moved to B is discarded');
+  assert.equal(C.addrLine(f), '');
+  assert.equal(C.applyGeocode(f, v2, GC.areaOnly), true); assert.equal(C.addrLine(f), 'Col. Jardines del Valle', 'B\'s own reply applies');
+  assert.equal(C.applyGeocode(f, v1, GC.full), false, 'released B then A: A never overwrites B'); assert.equal(C.addrLine(f), 'Col. Jardines del Valle');
+  C.setPin(f, 15.53, -88.05, false); assert.equal(C.addrLine(f), '', 'confirmed → unconfirmed is a pin change too');
+});
+
+test('S2b-geo: NO address_area in ANY body at this base (the server colonia slice is not here — a fingerprint-null body would lose charge_inputs_fp)', () => {
+  const f = ready(); C.chooseTip(f, 20); C.applyGeocode(f, f.pinV, GC.full);
+  assert.ok(C.addrLine(f), 'premise: the pin has a street and an area');
+  for (const pay of ['cash', 'online']) {
+    f.pay = pay;
+    const ob = C.orderBody(f, ctxOf({ orderId: 'XP251025-120000-AAAA' })); const qb = C.quoteBody(f, ctxOf());
+    for (const b of [ob, qb]) assert.ok(!('address_area' in b) && !JSON.stringify(b).includes('Jardines'), `🔴 ${pay}: no area anywhere in the body (${Object.keys(b).join(',')})`);
+    assert.ok(!JSON.stringify(C.sigInput(f, ctxOf())).includes('Jardines'), 'nor in the cart signature');
+  }
+});

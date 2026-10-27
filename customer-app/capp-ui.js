@@ -519,6 +519,23 @@
         }
       }).catch(() => {});
     }
+    // S2b-geo: ONE reverse-geocode per CONFIRMED pin version (GPS fix, «Listo», a saved address, a restored return); an unconfirmed
+    // fallback pin is never geocoded. The reply applies only to the version it was asked for (C.applyGeocode); a failure settles
+    // the version with nothing. No Maps key ⇒ no geocode (today's row).
+    let geoAsked = null;   // { f, v }: the flow + version already asked
+    function geocodePin() {
+      const f = S.flow;
+      if (dead || !f || f.mode !== 'delivery' || !(f.pin && f.pin.confirmed === true) || !finitePin(f.pin)) return;
+      const v = f.pinV;
+      if ((f.geo && f.geo.v === v) || (geoAsked && geoAsked.f === f && geoAsked.v === v)) return;
+      const p = loadMaps(); if (!p) return;
+      geoAsked = { f, v };
+      const land = (results) => { if (dead || !C.applyGeocode(f, v, results) || S.flow !== f) return; if (S.screen === 'checkout' || S.screen === 'sending') render(); };   // an open «Realizando» card is not redrawn (its countdown would restart)
+      p.then((gm) => {
+        if (dead) return;
+        try { new gm.Geocoder().geocode({ location: { lat: f.pin.lat, lng: f.pin.lng } }, (results, status) => land(status === 'OK' ? results : [])); } catch (_) { land([]); }
+      }).catch(() => land([]));
+    }
     // the device location (unconfirmed until «Listo»); denied / unavailable ⇒ the drawn «Ubicación desactivada» row
     const geoApi = () => (opts.geolocation !== undefined ? opts.geolocation : (doc.defaultView && doc.defaultView.navigator && doc.defaultView.navigator.geolocation) || null);
     function requestGeo() {
@@ -555,8 +572,10 @@
       const mapBlock = `<button class="map${S.outZone && del ? ' out' : ''}" data-act="pin" aria-label="Ajustar el pin en el mapa">${MAP_SVG}${gmapBox('preview')}<span class="pin">${IC.pinfill}</span><span class="tag">${geoDenied ? 'Pin en el restaurante' : pinOk ? 'Pin confirmado' : 'Tu ubicación'}</span><span class="adj">Ajustar pin</span></button>
     ${geoDenied ? `<div class="locrow">${IC.locoff}<span>Ubicación desactivada</span><button data-act="loc-on">Activar</button></div>` : ''}
     ${S.outZone && del ? `<div class="gate" role="alert"><b>${esc(cfg.name || '')} no llega a esta dirección</b><span class="note">${Number.isFinite(zoneKm) && cfg.branch ? `Entregamos hasta ${esc(zoneKm)} km de ${esc(cfg.branch)}. ` : ''}Mové el pin a una dirección dentro de la zona, o recogé en tienda.</span><div class="row2"><button class="btn2" data-act="pin">Cambiar dirección</button><button class="btn2 dark" data-act="type" data-val="pickup">Recoger en tienda</button></div></div>` : ''}`;
-      // a guest's address line: no reverse geocoding in S2b — the map tag's own copy stands in for the prototype's sample street
-      const addrRow = `<button class="urow" data-act="pin">${IC.pin}<span class="t"><b>${geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
+      // a guest's address line (S2b-geo, MOCKUP-capp-S2b-geo-address.html A1 / b / b2): the confirmed pin's reverse-geocode; c (none,
+      // pending, superseded) keeps today's copy byte for byte
+      const geoLine = C.addrLine(f);
+      const addrRow = `<button class="urow" data-act="pin">${IC.pin}<span class="t"><b>${geoLine ? esc(geoLine) : geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
       const detailsFld = `<div class="fld"><label for="f-details">Detalles adicionales <span class="req">*</span></label><input id="f-details" data-field="details" value="${esc(f.details)}" placeholder="Colonia, portón, piso, referencia…" autocomplete="off"></div>`;
       const detailsRow = m && !S.editDetails && (f.details || '').trim().length >= 3 ? `<div class="urow">${IC.home}<span class="t"><b>${esc(f.details)}</b><span>Detalles adicionales</span></span><button class="act" data-act="editdetails">Cambiar</button></div>` : '';
       const entrega = `<section class="fsec" aria-label="Entrega"><h2>Entrega</h2>
@@ -624,8 +643,9 @@
     function placingStop() { if (placingI !== null) T_.clearInterval(placingI); if (placingT !== null) T_.clearTimeout(placingT); placingI = placingT = null; }
     const etaRange = (mode) => { const e = mode === 'delivery' ? cfg.etaDel : cfg.etaPick; if (!e) return null; const r5 = (x) => Math.round(x / 5) * 5; const n = clock().min; return { k: mode === 'delivery' ? 'Llega' : 'Listo para recoger', v: fmtMin(r5(n + e[0])) + ' – ' + fmtMin(r5(n + e[1])) }; };
     const prow = (ic, b, s) => `<div class="prow">${ic}<span class="t"><b>${b}</b>${s ? `<span>${s}</span>` : ''}</span></div>`;
-    // the delivery address line: the customer's own «Detalles adicionales» (no reverse geocoding in S2b)
-    const addrText = () => esc((S.flow.details || '').trim() || 'Tu ubicación');
+    // the delivery address line: the confirmed pin's geo line (S2b-geo frames a / b2); else today's — the customer's own
+    // «Detalles adicionales», else «Tu ubicación»
+    const addrText = () => esc(C.addrLine(S.flow) || (S.flow.details || '').trim() || 'Tu ubicación');
     function placingHtml() {
       const f = S.flow, del = f.mode === 'delivery', T = totalsNow(), e = etaRange(f.mode), lines = displayLines();
       return `<div class="scrim"></div><div class="sheet" role="dialog" aria-label="Realizando pedido"><div class="grab"></div><div class="placing"><h2>Realizando pedido…</h2>
@@ -902,6 +922,7 @@
       if (had && lost()) { focusTo(refind(had)); if (caret && doc.activeElement && doc.activeElement.id === caret[0]) { try { doc.activeElement.setSelectionRange(caret[1], caret[2]); } catch (_) {} } }
       if (S.screen === 'checkout') wireMaps();
       if (S.screen === 'checkout' || S.screen === 'tip') requote();
+      geocodePin();
     }
     function onClick(ev) {
       const t = ev.target.closest && ev.target.closest('[data-act]'); if (!t || !app.contains(t)) return;
