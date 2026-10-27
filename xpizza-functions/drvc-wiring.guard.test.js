@@ -8,7 +8,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { unapplyDrvcIndex, BEGIN, END } = require('./tools/drvc-inverse');
 
-const src = require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')));   // R-WIRE train re-point: the newer slices reversed first (formsignal innermost → wahealth)
+const src = require('./tools/wahealth-inverse').unapplyWaHealthIndex(require('./tools/formsignal-inverse').unapplyFormSignalIndex(require('./tools/intl-inverse').unapplyIntlIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'))));   // R-WIRE train re-point: the newer slices reversed first (formsignal innermost → wahealth)
 const a = src.indexOf(BEGIN); const b = src.indexOf(END);
 assert.ok(a > 0 && b > a, 'DRVC-WIRE-BLOCK the drvc block exists');
 const block = src.slice(a, b);

@@ -13,7 +13,7 @@ const { BEGIN, END, unapplyFormSignalIndex } = require('./tools/formsignal-inver
 const BASE = 'e836997a';   // R-WIRE train re-point: M13^1, the train state just before formSignal merged (the slice's own base was bd777b6d)
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const real = require('./tools/intl-inverse').unapplyIntlIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // the intl layer (newest) applied innermost
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.notStrictEqual(unapplyFormSignalIndex(real), real, 'non-vacuity: the block is present and removed');
 assert.strictEqual(unapplyFormSignalIndex(real), base, `🔴 index.js minus the formsignal block is not ${BASE}:index.js`);

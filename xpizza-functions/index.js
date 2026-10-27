@@ -827,7 +827,7 @@ createOrderApp.all('*', async (req, res) => {
   const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP });
   reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
 
-  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(await require('./phone/flag').phoneWireStrict(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [create]
   if (errors.length > 0) {
     return badRequest(res, errors.join('; '));
   }
@@ -1533,7 +1533,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   const grace = await resolveGraceKeys(getFirestore, restaurantId, body.items, { stamp: PRICING_KEY_STAMP });
   reportForwardCoverage(String(body.order_id || ''), restaurantId, grace.coverage, grace.disagreements);
 
-  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
+  const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables); require('./phone/wire').applyWireContract(await require('./phone/flag').phoneWireStrict(db), body, errors, fields);   // INTL S-core step 3 — the flagged wire contract (OFF = no-op) [charge]
   if (errors.length > 0) return badRequest(res, errors.join('; '));
 
   // This endpoint is ONLY for online card payments. cash/card_delivery use createOrder.
