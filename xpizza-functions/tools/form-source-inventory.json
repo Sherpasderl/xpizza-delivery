@@ -1839,6 +1839,7 @@
   "phone/identity-corpus.js",
   "phone/intl.js",
   "phone/login-gate.js",
+  "phone/match.js",
   "phone/wire.js",
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
@@ -1891,7 +1892,8 @@
   "tracking/tombstones.js",
   "unassign-core.js",
   "whatsapp.js",
-  "whatsapp/instance-health.js"
+  "whatsapp/instance-health.js",
+  "whatsapp_inbound.js"
  ],
  "server": {
   "access/access-census-core.js": {
@@ -3143,6 +3145,10 @@
    "pins": [],
    "lifts": []
   },
+  "phone/match.js": {
+   "pins": [],
+   "lifts": []
+  },
   "phone/wire.js": {
    "pins": [],
    "lifts": []
@@ -3483,6 +3489,12 @@
   "whatsapp/instance-health.js": {
    "pins": [],
    "lifts": []
+  },
+  "whatsapp_inbound.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/whatsapp-brand.test.js"
+   ]
   }
  },
  "unregistered": []

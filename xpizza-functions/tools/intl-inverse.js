@@ -1,8 +1,9 @@
 'use strict';
-// INTL PHONE S-core steps 3–4 (PLAN-intl-phone r2.3; BUILD-ORDER-intl-core, CASE = FLAG) — the test-only index.js INVERSE. SAME-LINE
+// INTL PHONE S-core steps 3–4 + S-match (PLAN-intl-phone r2.3; BUILD-ORDER-intl-core, CASE = FLAG) — the test-only index.js INVERSE. SAME-LINE
 // hunks (no line inserted ⇒ no R3 call-site line shifts): on the createOrder and chargeOnlineOrder `validateOrderPayload(...)` lines,
 // the flagged wire contract is appended AFTER the call; step 4: on requestOtp's `if (!pHash)` line, the per-sender login gate
 // (phone/login-gate.js) is inserted before the line's trailing comment, answering a refusal with the same uniform response.
+// S-match: onIncomingWhatsApp's STATUS_CHECK suffix match (3 lines, same count) → phone/match.js samePhone (full number).
 // (validateOrderPayload / sanitizePhone themselves untouched; the pinned seam text
 // `validateOrderPayload(body, restaurantId, pricingTables)` intact). unapplyIntlIndex swaps every hunk back, so the result === the base
 // index.js byte-for-byte (intl-wiring.guard). It is the NEWEST layer: every index.js chain and fold applies it FIRST (innermost),
@@ -23,6 +24,11 @@ const HUNKS = Object.freeze([
   "file": "index.js",
   "now": "      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 }); if (!(await require('./phone/login-gate').otpLoginAllowed({ db: getDatabase(), phone, restaurantId, strict: await require('./phone/flag').phoneWireStrict(getDatabase()) }))) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration (INTL S-core step 4: the per-sender login gate refuses uniformly)\n",
   "was": "      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration\n"
+ },
+ {
+  "file": "index.js",
+  "now": "          // Match the FULL number (handles +504, 504, or just 8-digit local) — INTL S-match: phone/match.js samePhone\n          if (!require('./phone/match').samePhone(o.customer_phone, fromPhoneRaw)) {   // null / invalid never matches\n            // (was a two-way last-8 suffix match, which let +502 9795-0000 see +504 9795-0000's order)\n",
+  "was": "          // Match by suffix (handles +504, 504, or just 8-digit local)\n          if (!orderPhoneDigits.endsWith(fromPhoneRaw.slice(-8))\n              && !fromPhoneRaw.endsWith(orderPhoneDigits.slice(-8))) {\n"
  }
 ]);
 function unapplyIntlIndex(src) {

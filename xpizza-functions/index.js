@@ -5827,9 +5827,9 @@ exports.onIncomingWhatsApp = onRequest(
           // wrong restaurant's number falls through to tplStatusCheckNotFound (no cross-restaurant leak).
           if ((o.restaurant_id || 'x_pizza') !== restaurantId) return false;
           const orderPhoneDigits = String(o.customer_phone).replace(/[^\d]/g, '');
-          // Match by suffix (handles +504, 504, or just 8-digit local)
-          if (!orderPhoneDigits.endsWith(fromPhoneRaw.slice(-8))
-              && !fromPhoneRaw.endsWith(orderPhoneDigits.slice(-8))) {
+          // Match the FULL number (handles +504, 504, or just 8-digit local) — INTL S-match: phone/match.js samePhone
+          if (!require('./phone/match').samePhone(o.customer_phone, fromPhoneRaw)) {   // null / invalid never matches
+            // (was a two-way last-8 suffix match, which let +502 9795-0000 see +504 9795-0000's order)
             return false;
           }
           // Active = not delivered, not cancelled
