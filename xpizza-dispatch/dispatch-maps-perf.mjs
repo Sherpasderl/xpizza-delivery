@@ -169,10 +169,20 @@ const INSTRUMENT = `
   })();
 `;
 
+// Hard cap so a page that will not boot (e.g. an interception gap under heavy iteration) can NEVER hang the
+// gate — it returns timedOut, which fails-closed. Each CDP call also races a short timeout for the same reason.
+function withTimeout(promise, ms, onTimeout) {
+  return Promise.race([promise, new Promise((res) => setTimeout(() => res(onTimeout), ms))]);
+}
 async function measureReal(cdp, scenario) {
+  return withTimeout(measureRealInner(cdp, scenario), CONFIG.deadlineMs + 3000, {
+    board_useful: { value: null, timedOut: true }, driver_useful: { value: null, timedOut: true },
+  });
+}
+async function measureRealInner(cdp, scenario) {
   const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' });
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
-  const S = (m, p) => cdp.send(m, p, sessionId);
+  const S = (m, p) => withTimeout(cdp.send(m, p, sessionId), 4000, {});
   await S('Page.enable', {}); await S('Runtime.enable', {}); await S('Network.enable', {});
   await S('Emulation.setCPUThrottlingRate', { rate: CONFIG.throttle.cpu });
   await S('Network.emulateNetworkConditions', { offline: false, latency: CONFIG.throttle.network.latencyMs,
@@ -187,10 +197,7 @@ async function measureReal(cdp, scenario) {
     responseHeaders: [{ name: 'Content-Type', value: type }, { name: 'Access-Control-Allow-Origin', value: '*' }],
   });
   cdp.on(async (msg) => {
-    if (msg.method !== 'Fetch.requestPaused' || msg.params.session !== sessionId && msg.sessionId !== sessionId) {
-      if (msg.method === 'Fetch.requestPaused' && msg.sessionId === sessionId) { /* fallthrough handled below */ } else return;
-    }
-    if (msg.method !== 'Fetch.requestPaused') return;
+    if (msg.method !== 'Fetch.requestPaused' || msg.sessionId !== sessionId) return;
     const { requestId, request } = msg.params; const url = request.url;
     try {
       if (url === ORIGIN || url === ORIGIN + 'index.html') return void fulfil(requestId, indexHtml, 'text/html');
