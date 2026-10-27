@@ -2459,7 +2459,8 @@ test('S4 the closure sheet (P:1974): «… cerró a las …» + «Podés program
 test('S4 frame G: a GUEST tapping «Programar» ⇒ the host\'s sign-in (ctx schedule), the order stays ASAP; once signed in, the picker opens', async () => {
   const b = bootS4({ member: null }); await toCheckout(b);
   await b.click('[data-act="time"][data-val="schedule"]');
-  assert.deepEqual(J(b.events.filter((e) => e[0] === 'signin').pop()), ['signin', { ctx: 'schedule' }]);
+  const si = b.events.filter((e) => e[0] === 'signin').pop(); assert.ok(si, '🔴 frame G: a guest\'s «Programar» asks for the account');
+  assert.deepEqual(J(si), ['signin', { ctx: 'schedule' }]);
   assert.equal(b.q('.opts .opt[data-val="asap"]').getAttribute('aria-pressed'), 'true', 'still ASAP'); assert.equal(b.q('.daychips'), null);
   b.ui.setMember(S4_MEMBER); await settle();
   assert.equal(b.q('.opts .opt[data-val="schedule"]').getAttribute('aria-pressed'), 'true', '🔴 signed in ⇒ the picker'); assert.ok(b.q('.daychips'));
@@ -2496,6 +2497,8 @@ test('S4 row 10 (owner: dim, note A): a scheduled send left unresolved fixes the
   assert.equal(cta(b), 'Reintentar');
   const first = b.srv.of('createOrder')[0].body;
   b.q('.slotgrid .chip:last-child').dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle();   // a forced tap changes nothing
+  // the flow changed behind the lock (another slot, other notes — e.g. a restore): the retained identity still replays what it SENT
+  b.ui.state.flow.slot = Number(b.q('.slotgrid .chip:last-child').dataset.val); b.ui.state.flow.notes = 'otra nota';
   await b.click('#cta'); await settle();
   const re = b.srv.of('createOrder')[1];
   assert.ok(re, 'premise: re-sent'); assert.deepEqual(J(re.body), J(first), '🔴 the SAME body (r1 §3.4)');
@@ -2523,7 +2526,7 @@ test('S4 row 9 (owner-approved): a paid scheduled card order whose slot went to 
   assert.equal(a.nav.length, 1, 'premise: redirected'); const id = a.srv.of('chargeOnlineOrder')[0].body.order_id; const snap = J(a.ui.cart.snapshot()); a.ui.destroy();
   const r = bootS4({ storage, search: `?pay=complete&order=${id}&t=pt_1`, script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'scheduled_review' } }] } });
   r.ui.restore(snap); await r.ui.returning; await settle();
-  assert.equal(r.text('#layer .errsheet h2'), 'Tu pago está hecho; estamos revisando tu horario');
+  assert.equal(r.text('#layer .errsheet h2'), 'Tu pago está hecho; estamos revisando tu horario', '🔴 row 9: paid, the slot under review (never «confirming»)');
   assert.equal(r.text('#layer .errsheet p'), 'Tu horario ya no estaba disponible cuando se confirmó el pago. No hace falta pagar de nuevo: te escribimos por WhatsApp para acordar otro horario.');
   assert.deepEqual(r.qa('#layer .errsheet button').map((x) => x.textContent), ['Entendido'], '🔴 one action, no payment offer');
   assert.equal(r.srv.of('chargeOnlineOrder').length, 0, 'nothing re-sent');

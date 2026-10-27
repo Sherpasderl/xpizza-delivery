@@ -24420,5 +24420,301 @@
       "an unsupported number is cleared on blur",
       "a supported code with the wrong length: refused"
     ]
+  },
+  {
+    "id": "s4-01",
+    "slice": "s4",
+    "label": "the generator offers the closing minute (end inclusive)",
+    "file": "../customer-app/capp-schedule.js",
+    "from": "const m = local(s, ms).mins; return m >= w.a && m < w.b; }",
+    "to": "const m = local(s, ms).mins; return m >= w.a && m <= w.b; }",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-schedule.test.mjs"
+    ],
+    "kills_with": [
+      "the generator and the validator disagree",
+      "offered but refused",
+      "is never offered"
+    ]
+  },
+  {
+    "id": "s4-02",
+    "slice": "s4",
+    "label": "N4: the partial 8th local date is offered",
+    "file": "../customer-app/capp-schedule.js",
+    "from": "if (openAt(s, ms) && inDays.has(dayKey(s, ms))) out.push(ms);",
+    "to": "if (openAt(s, ms)) out.push(ms);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-schedule.test.mjs"
+    ],
+    "kills_with": [
+      "the 8th local date is never offered",
+      "the generator and the validator disagree"
+    ]
+  },
+  {
+    "id": "s4-03",
+    "slice": "s4",
+    "label": "the device zone instead of the served one",
+    "file": "../customer-app/capp-schedule.js",
+    "from": "const d = new Date(ms + offMs(s));",
+    "to": "const d = new Date(ms);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-schedule.test.mjs"
+    ],
+    "kills_with": [
+      "the generator and the validator disagree",
+      "offered but refused",
+      "the device zone changes nothing"
+    ]
+  },
+  {
+    "id": "s4-04",
+    "slice": "s4",
+    "label": "the closure gate blocks a scheduled order",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "    if (f.time !== 'schedule' && (c.open === false || c.closedRefused === true)) return COPY.closed;",
+    "to": "    if (c.open === false || c.closedRefused === true) return COPY.closed;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=^S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the closure gate is ASAP-only",
+      "the closure refusal no longer blocks a scheduled order"
+    ]
+  },
+  {
+    "id": "s4-05",
+    "slice": "s4",
+    "label": "scheduled_for is not sent",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "    if (f.time === 'schedule' && Number.isFinite(f.slot)) b.scheduled_for = f.slot;\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=^S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the slot START"
+    ]
+  },
+  {
+    "id": "s4-06",
+    "slice": "s4",
+    "label": "N3: the 12-chip cap",
+    "file": "../customer-app/capp-ui.js",
+    "from": "${sd.slots.map((ms) =>",
+    "to": "${sd.slots.slice(0, 12).map((ms) =>",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=^S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "N3: every slot"
+    ]
+  },
+  {
+    "id": "s4-07",
+    "slice": "s4",
+    "label": "frame G: a guest schedules without an account",
+    "file": "../customer-app/capp-ui.js",
+    "from": "        if (a === 'time' && v === 'schedule' && !member()) { S.schedAfterSignin = true; emit('signin', { ctx: 'schedule' }); return true; }   // frame G: the order stays ASAP\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=^S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "frame G: a guest",
+      "still ASAP"
+    ]
+  },
+  {
+    "id": "s4-08",
+    "slice": "s4",
+    "label": "no pre-dispatch re-check (a stale slot is sent)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (sched() && f && f.time === 'schedule' && lockedSlot() === null && !schedMod().offered(servedSched(), now().getTime(), f.mode, f.slot)) {",
+    "to": "      if (false) {",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=^S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "nothing sent for a stale slot"
+    ]
+  },
+  {
+    "id": "s4-09",
+    "slice": "s4",
+    "label": "a retained identity rebuilds its body from the flow",
+    "file": "../customer-app/capp-api.js",
+    "from": "if (!fresh && priorSends > 0 && rec.sched_pending === true && typeof rec.sent_body === 'string')",
+    "to": "if (false)",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=^S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the SAME body (r1 §3.4)"
+    ]
+  },
+  {
+    "id": "s4-10",
+    "slice": "s4",
+    "label": "a definitive refusal keeps the replay window open",
+    "file": "../customer-app/capp-api.js",
+    "from": "        if (cfg.schedulingLive === true) { try { patchPlace(id, { sched_pending: false }); } catch (_) {} }   // S4: a definitive answer ends the replay window\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=^S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the new slot, not the refused one",
+      "the slot cleared"
+    ]
+  },
+  {
+    "id": "s4-11",
+    "slice": "s4",
+    "label": "row 10: the picker stays editable while the send is unresolved",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (!r || !(Number(r.dispatched) > 0) || r.sched_pending !== true || typeof r.sent_body !== 'string') return null;   // only an UNCERTAIN send",
+    "to": "      return null;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=^S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "days and slots dimmed",
+      "the cards fixed"
+    ]
+  },
+  {
+    "id": "s4-12",
+    "slice": "s4",
+    "label": "row 9: scheduled_review maps to «confirming»",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (st === 'scheduled_review' && cfg.schedulingLive === true) return { kind: 'scheduled_review', order_id: id };\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=^S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "row 9: paid, the slot under review"
+    ]
+  },
+  {
+    "id": "s4-13",
+    "slice": "s4",
+    "label": "P2: a revalidated schedule is never applied",
+    "file": "../customer-app/capp-ui.js",
+    "from": "    const applyHeldSched = () => { if (S.schedHeld) { S.sched = S.schedHeld; S.schedHeld = null; } };",
+    "to": "    const applyHeldSched = () => {};",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=^S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "applied on the user's action"
+    ]
+  },
+  {
+    "id": "s4-14",
+    "slice": "s4",
+    "label": "frame G: the drawn subtitle instead of B",
+    "file": "../customer-app/capp-signup.js",
+    "from": "S.scheduleGate ? 'Para programar tu pedido necesitás una cuenta.' : ",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "G = B"
+    ]
+  },
+  {
+    "id": "s4-15",
+    "slice": "s4",
+    "label": "frame G: the shell never gates (G6's member-only sheet)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "      const gate = d.ctx === 'schedule' && runtime.schedulingLive === true;",
+    "to": "      const gate = false;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=S4",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G = B"
+    ]
+  },
+  {
+    "id": "s4-16",
+    "slice": "s4",
+    "label": "the Inicio cue ignores the served schedule",
+    "file": "../customer-app/capp-home.js",
+    "from": "return !!cfg && (K.slots(cfg.schedule, ms, 'pickup').length > 0 || K.slots(cfg.schedule, ms, 'delivery').length > 0); };",
+    "to": "return false; };",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=S4",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "where the SERVED schedule offers a slot"
+    ]
+  },
+  {
+    "id": "s4-17",
+    "slice": "s4",
+    "label": "the placed outcome drops the slot",
+    "file": "../customer-app/capp-api.js",
+    "from": "...scheduledOf(j, body), ...settledOf(ok) }; }",
+    "to": "...settledOf(ok) }; }",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=^S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "placed{scheduled, scheduled_for} to the host"
+    ]
   }
 ]
