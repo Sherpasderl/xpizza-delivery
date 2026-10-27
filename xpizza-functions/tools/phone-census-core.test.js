@@ -38,8 +38,21 @@ assert.deepStrictEqual(r, {
 }, 'CENSUS-AGGREGATE');
 const out = JSON.stringify(r);
 for (const leak of ['9795', '+', '"a"', '"b"', '"c"', '"d"', '"e"']) assert.ok(!out.includes(leak), `CENSUS-NO-LEAK ${leak}`);
-assert.strictEqual(C.aggregate({ a: orders.a, b: orders.b }, { nowMs: T, days: 30 }).flip_safe, true, 'CENSUS-FLIP-SAFE when nothing would be rejected');
+assert.strictEqual(C.aggregate({ a: orders.a }, { nowMs: T, days: 30 }).flip_safe, true, 'CENSUS-FLIP-SAFE when nothing would be rejected and no bare-8');
+assert.strictEqual(C.aggregate({ a: orders.a, b: orders.b }, { nowMs: T, days: 30 }).flip_safe, false, 'CENSUS-NOT-FLIP-SAFE-WITH-BARE8 (Option S: bare-8 > 0 ⇒ STOP, Option D)');
+assert.strictEqual(C.aggregate({}, { nowMs: T, days: 30 }).flip_safe, false, 'CENSUS-NOT-FLIP-SAFE-WITH-NO-ORDERS (no evidence is not evidence)');
 ok('aggregate: the window by created_at, per restaurant + totals + would_reject + flip_safe; no phone / digits / order id in the output');
+
+// ── 2b. the census → flag contract (FLIP-ORDER guard): what the census emits is exactly what the flag accepts ──
+{
+  const F = require('../phone/flag');
+  const safe = C.aggregate({ a: orders.a }, { nowMs: T, days: 30 });
+  const quietErr = (fn) => { const e = console.error; console.error = () => {}; try { return fn(); } finally { console.error = e; } };
+  assert.strictEqual(F.evaluateStrict(C.flipConfig(safe, T, T + 3600e3), T + 3600e3), true, 'CENSUS-FLIP-CONFIG-ACCEPTED');
+  assert.strictEqual(quietErr(() => F.evaluateStrict(C.flipConfig(safe, T, T + F.CENSUS_MAX_AGE_MS + 1), T + F.CENSUS_MAX_AGE_MS + 1)), false, 'CENSUS-FLIP-CONFIG-STALE-REFUSED');
+  assert.strictEqual(C.flipConfig(C.aggregate(orders, { nowMs: T, days: 30 }), T, T), null, 'CENSUS-NO-FLIP-CONFIG-WHEN-UNSAFE');
+  ok('flipConfig: a flip-safe census yields the exact value phone/flag.js accepts (within 7 days); stale → refused; unsafe → none');
+}
 
 // ── 3. strict args ──
 assert.deepStrictEqual(C.parseArgs([]), { ok: true, days: 30 }, 'CENSUS-ARGS-DEFAULT');

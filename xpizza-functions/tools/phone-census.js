@@ -5,7 +5,7 @@
 //   node tools/phone-census.js --project xpizza-delivery [--days 30]
 //
 // Classes every order created in the window by what the strict wire contract would do with its stored customer_phone, per restaurant.
-// flip_safe:true ⇔ nothing in the window would be rejected. Output is COUNTS ONLY (no phone, digits, hash or order id).
+// flip_safe:true ⇔ ≥1 order, nothing would be rejected, and no bare-8 (Option S). Output is COUNTS ONLY (no phone, digits, hash or order id).
 // Reads only (one ranged read of /orders on the indexed created_at). Writes nothing anywhere.
 const admin = require('firebase-admin');
 const { requireProject } = require('./require-project');
@@ -22,6 +22,9 @@ admin.initializeApp({ projectId: PROJECT_ID, databaseURL: RTDB_URL });
   const now = Date.now();
   const since = now - parsed.days * 86400e3;
   const orders = (await admin.database().ref('orders').orderByChild('created_at').startAt(since).once('value')).val() || {};
-  console.log(JSON.stringify({ project: PROJECT_ID, generated_at: new Date(now).toISOString(), ...C.aggregate(orders, { nowMs: now, days: parsed.days }) }, null, 2));
+  const r = C.aggregate(orders, { nowMs: now, days: parsed.days });
+  console.log(JSON.stringify({ project: PROJECT_ID, generated_at: new Date(now).toISOString(), generated_at_ms: now, ...r,
+    // the flip (owner, only when flip_safe): config/phone_wire_strict = this object with enabled_at = the flip time (≤ 7 days after)
+    flip_config: C.flipConfig(r, now, '<ms at the flip, within 7 days of generated_at_ms>') || 'NOT FLIP-SAFE — do not flip' }, null, 2));
   process.exit(0);
 })().catch((e) => { console.error('phone-census FAILED:', e && e.code ? e.code : 'error'); process.exit(1); });

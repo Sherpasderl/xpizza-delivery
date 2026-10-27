@@ -4,6 +4,8 @@
 // can decide the flip. COUNTS ONLY: the output never carries a phone, its digits, a hash, a suffix or an order id.
 //   classify(v)                     → 'accept:qualified:<cc>' | 'accept:bare8' | 'reject:<why>' | 'empty'
 //   aggregate(orders, {nowMs, days}) → {window_days, orders_in_window, skipped_no_timestamp, totals, by_restaurant, would_reject, flip_safe}
+//                                     flip_safe (advisor ruling Option S) ⇔ ≥1 order in the window AND would_reject == 0 AND accept:bare8 == 0
+//                                     (bare-8 is the ONE class whose stored form — hence its dedup bucket — changes under strict; > 0 ⇒ STOP, Option D)
 //   parseArgs(argv)                 → {ok, days} | {ok:false, error}   (--project is require-project's; anything else is refused)
 const { parseSubmitted, SUPPORTED } = require('../phone/intl');
 const DAY_MS = 86400e3;
@@ -37,7 +39,13 @@ function aggregate(orders, { nowMs, days }) {
     (byR[rid] = byR[rid] || {})[c] = (byR[rid][c] || 0) + 1;
     if (c.startsWith('reject:')) rejects++;
   }
-  return { window_days: days, orders_in_window: inWin, skipped_no_timestamp: skipped, totals, by_restaurant: byR, would_reject: rejects, flip_safe: rejects === 0 };
+  return { window_days: days, orders_in_window: inWin, skipped_no_timestamp: skipped, totals, by_restaurant: byR, would_reject: rejects, flip_safe: inWin > 0 && rejects === 0 && !totals['accept:bare8'] };
+}
+
+// The exact config/phone_wire_strict value the owner writes at the flip (phone/flag.js evaluateStrict accepts it), or null.
+function flipConfig(report, generatedAtMs, enabledAtMs) {
+  if (!report || report.flip_safe !== true) return null;
+  return { enabled: true, enabled_at: enabledAtMs, census: { flip_safe: true, generated_at: generatedAtMs, orders_in_window: report.orders_in_window } };
 }
 
 function parseArgs(argv) {
@@ -54,4 +62,4 @@ function parseArgs(argv) {
   return { ok: true, days };
 }
 
-module.exports = { classify, aggregate, parseArgs };
+module.exports = { classify, aggregate, flipConfig, parseArgs };
