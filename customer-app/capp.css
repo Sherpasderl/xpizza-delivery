@@ -1011,3 +1011,8 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .guestcard.offer{margin-top:18px}
 .guestcard.offer .sg{padding:0;gap:12px}
 .guestcard.offer .sg .h1{font-size:20px}
+/* G6: the sign-in sheet's own host — an .app layer (it carries the theme tokens) above the store mount, transparent and click-through
+   until a sheet is open */
+.app.su-host{background:transparent;pointer-events:none;z-index:80}
+.app.su-host.open{pointer-events:auto}
+.app.su-host:not(.open){display:none}

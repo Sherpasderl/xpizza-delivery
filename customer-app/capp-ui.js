@@ -528,7 +528,9 @@
     // :1469-1479). Missing ⇒ the app sends nothing: a config error at boot and «Hacer pedido» stays disabled (fail closed)
     const intakeOk = () => typeof cfg.intakeKey === 'string' && cfg.intakeKey !== '';
     const intakeHeaders = () => ({ Authorization: 'Bearer ' + cfg.intakeKey });
-    const member = () => opts.member || null;
+    // G6 §4c: the member can ARRIVE mid-flow (an in-app sign-in): setMember() swaps it and the checkout fills in place
+    let memberCtx = opts.member || null;
+    const member = () => memberCtx;
     // PLAN-capp-signin-required r5.4 §3 (owner FINAL: app guests pay CARD ONLY; frozen approved mockup 2026-10-27). DARK behind the
     // runtime flag cfg.guestCardOnly (the shell sets it); absent ⇒ today's S2 checkout byte for byte. ONE invariant for every
     // dispatch / restore / retry: a guest's effective tender is ONLINE, else it is refused locally (frame 6) — nothing is sent.
@@ -1377,6 +1379,20 @@
       },
       orderable: () => orderable,
       openCart() { if (dead || S.screen !== 'store') return false; openLayer('cart'); return true; },
+      // G6 §4c: a sign-in on THIS checkout — the member's details fill «Tus datos» (name, phone, email; never over what the customer
+      // typed differently), the step and the cart stay; the tender is the customer's (a guest's card stays card)
+      setMember(m) {
+        if (dead) return;
+        memberCtx = m && typeof m === 'object' ? m : null;
+        const f = S.flow;
+        if (f && memberCtx) {
+          if (!String(f.name || '').trim() && memberCtx.name) f.name = String(memberCtx.name);
+          if (!String(f.phone || '').trim() && memberCtx.phone) f.phone = String(memberCtx.phone);
+          if (!String(f.email || '').trim() && memberCtx.email) f.email = String(memberCtx.email);
+          f.editWho = false; S.emailRefused = false;
+        }
+        render();
+      },
       // Codex s7a2 r1 #1: the cart AS IT IS IN MEMORY (the same shape onCartChange persists) — a remount carries this, never only the
       // stored copy, so a failed persistence can never lose an edit
       snapshot() { return { ...cart.snapshot(), rid: cfg.restaurantId, mode: S.mode, ...(hostedKeys() ? { cart_gen: cart.count() ? genNow() : null } : {}) }; },

@@ -42,7 +42,11 @@
     const clock = () => new Date(nowMs());
     const T = o.timers || { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: (f, ms) => setInterval(f, ms), clearInterval: (t) => clearInterval(t) };
     const runtime = o.runtime || {};
-    const auth = o.auth || null;
+    // G6: with the runtime's signup config (runtime.signup = { firebase, endpoints }) the shell owns the auth: the Firebase adapter
+    // (its SDK loaded only AFTER the first paint) feeding CappAuthState, and the in-app sign-in sheet. Absent ⇒ exactly as before
+    // (the host's opts.auth, 'signin' as a host event)
+    const SU = runtime.signup && runtime.signup.firebase && runtime.signup.endpoints ? runtime.signup : null;
+    let auth = o.auth || null, fbAuth = null, signup = null;
     const authNow = () => { try { return auth ? auth.state() : 'unresolved'; } catch (_) { return 'unresolved'; } };
     const emit = (name, detail) => { try { (o.onEvent || (() => {}))(name, detail); } catch (_) {} };
     const $ = (id) => doc.getElementById(id);
@@ -133,10 +137,10 @@
       const apiOpts = { storage, ...(uo.apiOpts || {}) };   // the store's records live in the shell's storage (one device store)
       // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
       const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
-      const ui = CappUI.mount(doc, { ...uo, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
+      const ui = CappUI.mount(doc, { ...uo, ...(S.member ? { member: S.member } : {}), search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
-        onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
+        onEvent: (name, detail) => { if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
       S.store = { rid: entry.rid, ui, entry, body: e.body, fp: null, adopt: null };
       watchMenu(S.store);
       const snap = carried || readJ(cfg.cartKey); if (snap) ui.restore(snap);   // an adoption carries the IN-MEMORY cart (Codex s7a2 r1 #1)
@@ -177,6 +181,33 @@
       if (!mountStore(st.entry, body, carried)) return true;
       S.store.ui.openCart();
       return false;
+    }
+    // ── G6: the in-app sign-in ──
+    function openSignin(d) {
+      if (!SU || !signup) { emit('signin', d); return; }   // no shell auth ⇒ the host's, as before
+      signup.open({ ctx: d.ctx || null, prefill: d.prefill || null, memberOnly: d.ctx === 'schedule' });
+    }
+    async function signedIn(d) {
+      CappDeviceAccount.remember(storage, d.phone);   // §4c: the device marker (full E.164), kept across ordinary sign-outs
+      let idToken = null; try { idToken = await fbAuth.idToken(); } catch (_) { idToken = null; }
+      if (dead) return;
+      S.member = { uid: d.uid, name: d.name || '', phone: String(d.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: d.email || '', idToken };
+      if (S.store) S.store.ui.setMember(S.member);   // §4c: back on the SAME checkout step, filled in
+      schedule();
+    }
+    function startAuth() {
+      if (!SU || fbAuth || dead) return;
+      const CappAuthFirebase = pick(o, 'CappAuthFirebase', './capp-auth-firebase.js'), CappAuthState = pick(o, 'CappAuthState', './capp-auth-state.js'), CappSignup = pick(o, 'CappSignup', './capp-signup.js'), CappSignupApi = pick(o, 'CappSignupApi', './capp-signup-api.js');
+      fbAuth = CappAuthFirebase.createFirebaseAuth({ config: SU.firebase, loadSdk: o.loadSdk });
+      auth = CappAuthState.createAuthState({ subscribe: fbAuth.subscribe, timers: T });
+      auth.onChange((st) => { if (st !== 'member') S.member = null; schedule(); });
+      // the sheet's own host: an .app layer (the theme tokens live on .app) OUTSIDE the store mount's #app, transparent until open
+      const host = doc.createElement('div'); host.className = 'app su-host'; host.id = 'su-host';
+      (app.parentNode || doc.body).appendChild(host);
+      const syncDark = () => host.classList.toggle('dark', app.classList.contains('dark'));
+      signup = CappSignup.createSignup({ doc, host: { addEventListener: (...a) => host.addEventListener(...a), contains: (n) => host.contains(n), querySelector: (q) => host.querySelector(q), set innerHTML(v) { syncDark(); host.classList.toggle('open', !!v); host.innerHTML = v; }, get innerHTML() { return host.innerHTML; } },
+        api: CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch }), auth: fbAuth, google: o.google || null, timers: T,
+        onEvent: (n, d) => { if (n === 'signed-in') signedIn(d); } });
     }
     function settleRet(rid, out) {
       const a = S.retAssoc; if (!a || a.rid !== rid) return;
@@ -298,7 +329,7 @@
       // later slice. Flag absent ⇒ exactly the S7a-2 behaviour: a host event (Codex guest r1 #3)
       if (a === 'tab') { const id = t.dataset.tab; if (id === 'account' && (runtime.guestCardOnly !== true || authNow() === 'member')) { emit('tab', { tab: id }); return; }
         if (id === 'home' || id === 'search' || id === 'account') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
-      if (a === 'signin') { emit('signin', { ctx: t.dataset.ctx || 'account' }); return; }
+      if (a === 'signin') { openSignin({ ctx: t.dataset.ctx || 'account' }); return; }
       if (a === 'help') { emit('help', {}); return; }
       if (a === 'open-store') return enter(t.dataset.rid, null);
       if (a === 'open-dish') return enter(t.dataset.rid, t.dataset.id);
@@ -362,6 +393,7 @@
     dir.revalidate();
     loadMenus();
     if (S.ret) enter(S.ret.rid, null);
+    if (SU) raf(() => startAuth());   // G6: the Auth SDK after the first paint (never awaited by it)
 
     return {
       nav, dir, cache, eligibility: elig, state: S, render: renderNow, store: () => S.store,
