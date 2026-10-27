@@ -23376,8 +23376,8 @@
     "slice": "s7a2",
     "label": "an existing checkout flow is re-seeded",
     "file": "../customer-app/capp-ui.js",
-    "from": "if (!S.flow) { S.flow = C.freshFlow(member()); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }",
-    "to": "if (!S.flow) S.flow = C.freshFlow(member()); { const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }",
+    "from": "if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }",
+    "to": "if (!S.flow) S.flow = newFlow(); { const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }",
     "command": [
       "node",
       "--test",
@@ -24197,6 +24197,140 @@
     ],
     "kills_with": [
       "finalized once: a later close never re-finishes"
+    ]
+  },
+  {
+    "id": "picker-01",
+    "slice": "picker",
+    "label": "an unreadable member number is composed into a +504 guess",
+    "file": "../customer-app/capp-ui.js",
+    "from": "f.cc = P.DEFAULT_CC; f.phone = d.length === 8 ? P.format(P.DEFAULT_CC, d) : '';",
+    "to": "f.cc = P.DEFAULT_CC; f.phone = P.format(P.DEFAULT_CC, d);",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=S-picker",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "never composed into a +504 guess"
+    ]
+  },
+  {
+    "id": "picker-02",
+    "slice": "picker",
+    "label": "a member's unreadable number passes the checkout (intl)",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "    if (f.cc && c.member && !f.editWho && !phoneMod().valid(f.cc, f.phone)) return COPY.phone;\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-phone.test.mjs"
+    ],
+    "kills_with": [
+      "a member with no readable number is stopped"
+    ]
+  },
+  {
+    "id": "picker-03",
+    "slice": "picker",
+    "label": "the order sends the forms' +504 format whatever the country",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "customer_phone: f.cc ? phoneMod().toE164(f.cc, f.phone) : fullPhone(f.phone),",
+    "to": "customer_phone: fullPhone(f.phone),",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-phone.test.mjs"
+    ],
+    "kills_with": [
+      "the chosen country on the wire",
+      "the picker: E.164 for +504 too"
+    ]
+  },
+  {
+    "id": "picker-04",
+    "slice": "picker",
+    "label": "the guest code is asked for a +504 number whatever the country",
+    "file": "../customer-app/capp-ui.js",
+    "from": "const phoneE164 = () => { if (intl()) return S.flow ? phoneMod().toE164(ccOf(S.flow), S.flow.phone) : '';",
+    "to": "const phoneE164 = () => {",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=S-picker",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the code goes to THIS number"
+    ]
+  },
+  {
+    "id": "picker-05",
+    "slice": "picker",
+    "label": "a number longer than the country's national length is valid",
+    "file": "../customer-app/capp-phone.js",
+    "from": "const valid = (cc, s) => { const c = byCc(cc); return !!c && digits(s).length === c.len; };",
+    "to": "const valid = (cc, s) => { const c = byCc(cc); return !!c && digits(s).length >= c.len; };",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-phone.test.mjs"
+    ],
+    "kills_with": [
+      "over the national length is not valid"
+    ]
+  },
+  {
+    "id": "picker-06",
+    "slice": "picker",
+    "label": "a picker country is validated as 8 digits (HN)",
+    "file": "../customer-app/capp-checkout.js",
+    "from": "if (f.cc ? !phoneMod().valid(f.cc, f.phone) : localPhone(f.phone).length !== 8) return COPY.phone;",
+    "to": "if (localPhone(f.phone).length !== 8) return COPY.phone;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-phone.test.mjs"
+    ],
+    "kills_with": [
+      "a US number short of 10 digits is incomplete"
+    ]
+  },
+  {
+    "id": "picker-07",
+    "slice": "picker",
+    "label": "the field is not reformatted while typing",
+    "file": "../customer-app/capp-ui.js",
+    "from": "        if (t.value !== v) t.value = v;\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=S-picker",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the local format, capped at 10"
+    ]
+  },
+  {
+    "id": "picker-08",
+    "slice": "picker",
+    "label": "the picker is on without the runtime flag",
+    "file": "../customer-app/capp-ui.js",
+    "from": "const intl = () => cfg.intlPhone === true;",
+    "to": "const intl = () => true;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=S-picker",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "off: the page never reaches for the picker module",
+      "off: no picker without the runtime flag"
     ]
   }
 ]

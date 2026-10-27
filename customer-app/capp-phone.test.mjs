@@ -26,7 +26,8 @@ test('S-picker format: the local format while typing, never past the national le
   assert.equal(P.format('504', ''), '');
 });
 test('S-picker E.164: compose only when complete; parse only a QUALIFIED number of a supported country with its exact length (+44 rejected, never guessed)', () => {
-  assert.equal(P.toE164('1', '(305) 555-0147'), '+13055550147'); assert.equal(P.toE164('504', '9999-0000'), '+50499990000'); assert.equal(P.toE164('1', '305555014'), '', 'incomplete ⇒ nothing');
+  assert.equal(P.toE164('1', '(305) 555-0147'), '+13055550147');
+  assert.equal(P.valid('1', '305555014799'), false, '🔴 over the national length is not valid'); assert.equal(P.valid('1', '3055550147'), true); assert.equal(P.toE164('504', '9999-0000'), '+50499990000'); assert.equal(P.toE164('1', '305555014'), '', 'incomplete ⇒ nothing');
   for (const c of P.COUNTRIES) { const n = P.digits(c.ph); assert.deepEqual(P.parseE164('+' + c.cc + n), { cc: c.cc, national: n }, `${c.name} round-trips`); }
   assert.deepEqual(P.parseE164('+1 (305) 555-0147'), { cc: '1', national: '3055550147' }, 'punctuation tolerated');
   assert.equal(P.parseE164('+44 20 7946 0958'), null, '🔴 an unsupported country (+44) is rejected');
@@ -49,4 +50,10 @@ test('S-picker checkout: a chosen country validates ITS length and sends E.164 (
 });
 test('no restaurant literal in the country module', () => {
   assert.equal(readFileSync(new URL('./capp-phone.js', import.meta.url), 'utf8').match(/x_pizza|la_musa|xpizza|lamusa|X\.? ?Pizza|La Musa/i), null);
+});
+test('S-picker checkout guard: with a country, a MEMBER\'s unreadable number is incomplete too (never sent); no country ⇒ the member path as today', () => {
+  const f = C.freshFlow(null); Object.assign(f, { name: 'Ana', mode: 'pickup' });
+  assert.equal(C.missingStep({ ...f, cc: '504', phone: '' }, { member: { uid: 'u1' } }), C.COPY.phone, '🔴 a member with no readable number is stopped');
+  assert.notEqual(C.missingStep({ ...f, cc: '1', phone: '(305) 555-0147' }, { member: { uid: 'u1' } }), C.COPY.phone);
+  assert.notEqual(C.missingStep({ ...f, phone: '' }, { member: { uid: 'u1' } }), C.COPY.phone, 'no country: a member is not re-validated, as today');
 });

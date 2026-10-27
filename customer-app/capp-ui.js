@@ -561,15 +561,22 @@
     let PH = null;
     const phoneMod = () => PH || (PH = opts.CappPhone || (typeof self !== 'undefined' && self.CappPhone) || require('./capp-phone.js'));
     const ccOf = (f) => (f && f.cc && phoneMod().byCc(f.cc) ? f.cc : phoneMod().DEFAULT_CC);
-    // a stored / member number into the flow: E.164 ⇒ its country; a bare local (or 504-prefixed) number ⇒ Honduras; never guessed
+    // a stored / member number into the flow — the plan's wire contract: a QUALIFIED E.164 ⇒ its country; a bare number of EXACTLY 8
+    // digits (or 504 + 8) ⇒ Honduras; anything else is unparseable ⇒ false, the phone left empty (never a composed +504 guess)
     function setPhone(f, raw) {
       const P = phoneMod(), q = P.parseE164(raw);
-      if (q) { f.cc = q.cc; f.phone = P.format(q.cc, q.national); return; }
-      const d = P.digits(raw).replace(/^504(?=\d{8}$)/, '');
-      f.cc = P.DEFAULT_CC; f.phone = P.format(P.DEFAULT_CC, d);
+      if (q) { f.cc = q.cc; f.phone = P.format(q.cc, q.national); return true; }
+      const d = String(raw || '').trim().startsWith('+') ? '' : P.digits(raw).replace(/^504(?=\d{8}$)/, '');
+      f.cc = P.DEFAULT_CC; f.phone = d.length === 8 ? P.format(P.DEFAULT_CC, d) : '';
+      return d.length === 8;
     }
-    // the ONE fresh flow: with the picker on, the member's number lands in its own country
-    function newFlow() { const f = C.freshFlow(member()); if (intl()) { const m = member(); setPhone(f, m && m.phone ? m.phone : ''); } return f; }
+    // the ONE fresh flow: with the picker on, the member's number lands in its own country; a member number that does not parse opens
+    // «Tus datos» in edit (the customer types it) — the member path never sends a number it could not read (5f intl recon)
+    function newFlow() {
+      const f = C.freshFlow(member());
+      if (intl()) { const m = member(); if (!setPhone(f, m && m.phone ? m.phone : '') && m) f.editWho = true; }
+      return f;
+    }
     // how a number is shown back (the code sheet, the member row): the picker's '+cc formatted'; off ⇒ the forms' fullPhone, as before
     const phoneShown = (f) => (intl() ? phoneMod().display(ccOf(f), f.phone) : C.fullPhone(f.phone));
     // the modules are resolved LAZILY (the S1 host may load the page without them): no modules ⇒ the store keeps S1's host event
@@ -1440,9 +1447,10 @@
         const f = S.flow;
         if (f && memberCtx) {
           if (!String(f.name || '').trim() && memberCtx.name) f.name = String(memberCtx.name);
-          if (!String(f.phone || '').trim() && memberCtx.phone) { if (intl()) setPhone(f, memberCtx.phone); else f.phone = String(memberCtx.phone); }
+          let unread = false;
+          if (!String(f.phone || '').trim() && memberCtx.phone) { if (intl()) unread = !setPhone(f, memberCtx.phone); else f.phone = String(memberCtx.phone); }
           if (!String(f.email || '').trim() && memberCtx.email) f.email = String(memberCtx.email);
-          f.editWho = false; S.emailRefused = false;
+          f.editWho = unread; S.emailRefused = false;   // an unreadable member number stays in edit (intl)
         }
         render();
       },

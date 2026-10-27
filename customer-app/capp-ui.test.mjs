@@ -2285,8 +2285,10 @@ test('S-picker frame 4: the WhatsApp field = the country button «+504» + the i
   const row = b.q('.fld .phonerow'); assert.ok(row, 'the phone row');
   assert.equal(b.text('.fld .cc'), '+504'); assert.equal(b.q('.fld .cc').getAttribute('aria-label'), 'País del número: Honduras +504');
   assert.equal(b.q('#f-phone').getAttribute('placeholder'), '9999-9999'); assert.ok(b.q('#f-phone-cc').hidden, 'Honduras: no country note');
+  // the flag-absent page (index.html) does not even load the picker module: it must never reach for it
   const o = bootCo(); await toCheckout(o);
-  assert.equal(o.q('.fld .phonerow'), null); assert.equal(o.q('#f-phone').getAttribute('placeholder'), '+504 9999-9999', 'off: unchanged');
+  assert.equal(o.ui.state.screen, 'checkout', '🔴 off: the page never reaches for the picker module (its checkout opens)');
+  assert.equal(o.q('.fld .phonerow'), null, '🔴 off: no picker without the runtime flag'); assert.equal(o.q('#f-phone').getAttribute('placeholder'), '+504 9999-9999', 'off: unchanged');
 });
 test('S-picker frame 5: the country sheet — «País del número» + its line, the ten countries in order, the current one in accent with a check; the button shows it open', async () => {
   const b = bootIntl(); await toCheckout(b); await b.click('[data-act="cc"]');
@@ -2332,4 +2334,22 @@ test('S-picker restore + member: a stored E.164 keeps its country (the return\'s
   await b.click('[data-act="editwho"]'); assert.equal(b.text('.fld .cc'), '+1'); assert.equal(b.q('#f-phone').value, '(305) 555-0147');
   const l = bootIntl({ member: { ...m, phone: '96123344' } }); await toCheckout(l); await l.click('[data-act="editwho"]');
   assert.equal(l.text('.fld .cc'), '+504'); assert.equal(l.q('#f-phone').value, '9612-3344');
+});
+test('S-picker member path (5f intl recon): a member\'s non-HN number is sent as ITS E.164; an unreadable one opens «Tus datos» in edit and is never sent as a +504 guess', async () => {
+  const m = { uid: 'u1', name: 'Ana', phone: '+13055550147', email: 'a@b.co', idToken: 'tok' };
+  const b = bootIntl({ member: m, script: { createOrder: [OK_CASH_UI] } }); await toCheckout(b);
+  await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]'); await b.type('#f-details', 'Portón negro'); await b.click('[data-act="pay"][data-val="cash"]');
+  assert.ok(b.q('[data-act="editwho"]'), 'premise: the member row (no edit)');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.srv.of('createOrder')[0].body.customer_phone, '+13055550147', '🔴 the member\'s own E.164, as-is');
+  for (const bad of ['13055550147', '+44 20 7946 0958', '96123']) {
+    const u = bootIntl({ member: { ...m, phone: bad } }); await toCheckout(u);
+    assert.equal(u.q('[data-act="editwho"]'), null, `${bad}: no member row`);
+    assert.equal(u.q('#f-phone').value, '', `🔴 ${bad}: never composed into a +504 guess`); assert.equal(u.text('.fld .cc'), '+504');
+  }
+  // flag absent: today's member path, unchanged (every member is +504)
+  const o = bootCo({ member: { ...m, phone: '96123344' }, script: { createOrder: [OK_CASH_UI] } }); await toCheckout(o);
+  await o.click('[data-act="pin"]'); await o.click('[data-act="pin-done"]'); await o.type('#f-details', 'Portón negro'); await o.click('[data-act="pay"][data-val="cash"]');
+  await o.click('#cta'); await o.click('[data-act="tipc"][data-val="0"]'); await o.click('[data-act="tip-place"]'); await o.click('#layer [data-act="placing-go"]');
+  assert.equal(o.srv.of('createOrder')[0].body.customer_phone, '+504 9612-3344', 'off: unchanged');
 });

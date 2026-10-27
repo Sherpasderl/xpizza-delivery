@@ -158,6 +158,8 @@
       if (!(f.name || '').trim()) return COPY.name;
       if (f.cc ? !phoneMod().valid(f.cc, f.phone) : localPhone(f.phone).length !== 8) return COPY.phone;
     }
+    // S-picker: with a country (intl on) a MEMBER's number is checked too — the member path never sends a number it could not read
+    if (f.cc && c.member && !f.editWho && !phoneMod().valid(f.cc, f.phone)) return COPY.phone;
     if (f.email && !EMAIL_RE.test(String(f.email).trim())) return COPY.email;
     // PLAN-capp-signin-required §4b: an app GUEST must leave a valid email (format only; never a code) — the shell's own «Revisá tu
     // correo»; a server refusal (guest_email_required) keeps it until the field is edited
