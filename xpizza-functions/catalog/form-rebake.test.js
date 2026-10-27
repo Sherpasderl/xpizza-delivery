@@ -81,7 +81,7 @@ const state = (w, rid) => clone(w.deps.db.data.form_rebake && w.deps.db.data.for
   {
     const w = world();
     const r1 = await FR.onMirrorWrite('la_musa', w.deps);
-    assert.deepStrictEqual(r1, { posted: true, class: 'ok' }); assert.deepStrictEqual(w.posts, [HOOK.la_musa]);
+    assert.deepStrictEqual(r1, { posted: true, class: 'ok', attempts: 1 }); assert.deepStrictEqual(w.posts, [HOOK.la_musa]);
     for (let i = 0; i < 4; i += 1) assert.strictEqual((await FR.onMirrorWrite('la_musa', w.deps)).reason, 'cooldown');
     assert.strictEqual(w.posts.length, 1, 'duplicate mirror events: one POST per cooldown');
     w.t += FR.COOLDOWN_MS - 1; assert.strictEqual((await FR.onMirrorWrite('la_musa', w.deps)).reason, 'cooldown');
@@ -187,6 +187,36 @@ const state = (w, rid) => clone(w.deps.db.data.form_rebake && w.deps.db.data.for
     const r = (await FR.reconcile(w.deps)).results.find((x) => x.rid === 'x_pizza');
     assert.deepStrictEqual([r.decision, r.attempts], ['post', 1], 'a dish only the published menu has must reach the deployed form');
     ok('a published-only addition (a WARN for the build check) still counts as stale here: the hook is POSTed');
+  }
+
+  // ── 10. ONE BUDGET (Codex r1 #4): trigger + reconcile interleaved spend ≤ MAX_ATTEMPTS POSTs per published version, then
+  //        ONE stuck alarm and silence from BOTH entry points; a NEW published version re-arms both ──
+  {
+    const w = world();
+    w.published.x_pizza.dishes[0].price += 3;                                  // published; the deploy stays stale
+    const T = () => FR.onMirrorWrite('x_pizza', w.deps);
+    const R = async () => (await FR.reconcile(w.deps)).results.find((x) => x.rid === 'x_pizza');
+    const seq = [];
+    seq.push((await T()).posted);                       w.t += FR.COOLDOWN_MS;   // trigger: attempt 1
+    seq.push((await R()).decision);                     w.t += FR.COOLDOWN_MS;   // reconcile: attempt 2
+    seq.push((await T()).posted);                       w.t += FR.COOLDOWN_MS;   // trigger: attempt 3
+    seq.push((await R()).decision);                     w.t += FR.COOLDOWN_MS;   // reconcile: budget spent → stuck
+    seq.push((await T()).reason);                       w.t += FR.COOLDOWN_MS;   // an UNCHANGED mirror event → silent
+    seq.push((await R()).decision);
+    assert.deepStrictEqual(seq, [true, 'post', true, 'stuck', 'stuck_silent', 'stuck_silent']);
+    assert.strictEqual(w.posts.length, FR.MAX_ATTEMPTS, `🔴 trigger + reconcile together POSTed ${w.posts.length} times for one version`);
+    assert.deepStrictEqual(w.alarms, [{ kind: 'form_rebake_stuck', detail: { rid: 'x_pizza', attempts: FR.MAX_ATTEMPTS } }]);
+    // inside the cooldown the trigger also waits for a reconciler POST (and vice versa)
+    const w2 = world(); w2.published.x_pizza.dishes[0].price += 1;
+    await FR.reconcile(w2.deps); assert.strictEqual((await FR.onMirrorWrite('x_pizza', w2.deps)).reason, 'cooldown', 'one cooldown across both entry points');
+    // a NEW published version re-arms
+    w.published.x_pizza.dishes[1].price += 3; w.t += FR.COOLDOWN_MS;
+    const re = await T();
+    assert.deepStrictEqual([re.posted, re.attempts], [true, 1], 'a new published version re-arms the trigger');
+    // and an unreadable published menu never spends from the budget
+    const w3 = world(); w3.readFails.add('x_pizza');
+    assert.strictEqual((await FR.onMirrorWrite('x_pizza', w3.deps)).reason, 'published_unreadable'); assert.strictEqual(w3.posts.length, 0);
+    ok(`one budget: trigger + reconcile interleaved → ${FR.MAX_ATTEMPTS} POSTs, ONE form_rebake_stuck, then no POST from either (incl. an unchanged mirror event); one cooldown across both; a new version re-arms; an unreadable published menu spends nothing`);
   }
 
   FINISHED = true;

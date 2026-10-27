@@ -20410,10 +20410,10 @@
  {
   "id": "fb-42",
   "slice": "formbake",
-  "label": "PLAN 4 §4/§5: the trigger ignores the cooldown — every duplicate mirror event POSTs",
+  "label": "PLAN 4 r2 (#4): the trigger spends from the budget WITHOUT the published version — a new publish never re-arms it",
   "file": "catalog/form-rebake.js",
-  "from": "    if (typeof c.at === 'number' && now - c.at < COOLDOWN_MS) { claimed = false; return undefined; }",
-  "to": "",
+  "from": "  const { decision, attempts } = await claimAttempt(rid, menuVersion(published), deps);\n  if (decision !== 'post') return { posted: false, reason: decision };",
+  "to": "  const { decision, attempts } = await claimAttempt(rid, 'v0', deps);\n  if (decision !== 'post') return { posted: false, reason: decision };",
   "command": [
    "node",
    "catalog/form-rebake.test.js"
@@ -20508,8 +20508,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §4/§5: a converged rid keeps its attempt count (the alarm never clears)",
   "file": "catalog/form-rebake.js",
-  "from": "      decision = 'converged'; return { ...c, version, attempts: 0, stuck: false };",
-  "to": "      decision = 'converged'; return { ...c, version };",
+  "from": "      return { ...c, version, attempts: 0, stuck: false };\n    });\n    return { rid, decision: 'converged' };",
+  "to": "      return { ...c, version };\n    });\n    return { rid, decision: 'converged' };",
   "command": [
    "node",
    "catalog/form-rebake.test.js"
@@ -20825,6 +20825,18 @@
   "command": [
    "node",
    "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-87",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 (#4): the mirror trigger POSTs regardless of the shared budget (cooldown / attempts / stuck bypassed)",
+  "file": "catalog/form-rebake.js",
+  "from": "  if (decision !== 'post') return { posted: false, reason: decision };\n  const cls = await postHook(url, rid, deps);\n  await deps.db.ref(`form_rebake/${rid}/last_class`).set(cls);\n  return { posted: true, class: cls, attempts };",
+  "to": "  const cls = await postHook(url, rid, deps);\n  await deps.db.ref(`form_rebake/${rid}/last_class`).set(cls);\n  return { posted: true, class: cls, attempts };",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
   ]
  }
 ]

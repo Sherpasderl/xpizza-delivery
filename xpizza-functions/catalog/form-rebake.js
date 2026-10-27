@@ -91,23 +91,41 @@ async function postHook(url, rid, deps) {
   return cls;
 }
 
-// FAST PATH — the mirror-write trigger.
+// ONE RETRY BUDGET (Codex r1 #4) — the trigger and the reconciler claim POSTs through THIS transaction, so they share the
+// cooldown, the attempt count and `stuck`, all keyed to the PUBLISHED menu's version: a new published menu re-arms; the same one
+// gets at most MAX_ATTEMPTS POSTs however the two entry points interleave, then one form_rebake_stuck and silence.
+// → { decision: 'post' | 'cooldown' | 'stuck' | 'stuck_silent', attempts }
+async function claimAttempt(rid, version, deps) {
+  const now = deps.now();
+  let decision = null; let attempts = 0;
+  await deps.db.ref(`form_rebake/${rid}`).transaction((cur) => {
+    let c = isObj(cur) ? { ...cur } : {};
+    if (c.version !== version) c = { ...c, version, attempts: 0, stuck: false };     // a NEW published menu re-arms the retries
+    if (c.stuck) { decision = 'stuck_silent'; return c; }
+    if (typeof c.at === 'number' && now - c.at < COOLDOWN_MS) { decision = 'cooldown'; return c; }
+    if ((c.attempts || 0) >= MAX_ATTEMPTS) { decision = 'stuck'; attempts = c.attempts; return { ...c, stuck: true }; }
+    decision = 'post'; attempts = (c.attempts || 0) + 1;
+    return { ...c, at: now, attempts };
+  });
+  if (decision === 'stuck') await deps.alarm('form_rebake_stuck', { rid, attempts });
+  return { decision, attempts };
+}
+
+// FAST PATH — the mirror-write trigger. It reads the published menu (the same in-process read the reconciler uses) only to
+// learn its VERSION, then spends from the shared budget — an unchanged mirror event after `stuck` posts nothing.
 async function onMirrorWrite(rid, deps) {
   const cfg = parseHooks(deps.env.FORM_BUILD_HOOKS);
   const url = await hookFor(rid, cfg, deps);
   if (!url) return { posted: false, reason: cfg.configured ? 'no_hook' : 'dormant' };
-  const now = deps.now();
-  let claimed = false;
-  await deps.db.ref(`form_rebake/${rid}`).transaction((cur) => {
-    const c = isObj(cur) ? cur : {};
-    if (typeof c.at === 'number' && now - c.at < COOLDOWN_MS) { claimed = false; return undefined; }
-    claimed = true;
-    return { ...c, at: now };
-  });
-  if (!claimed) return { posted: false, reason: 'cooldown' };
+  let published;
+  try { published = await withDeadline(deps.readPublished(rid), READ_DEADLINE_MS, 'published'); } catch (e) {
+    log(deps, 'form_rebake_published_unreadable', { rid }); return { posted: false, reason: 'published_unreadable' };   // the reconciler retries
+  }
+  const { decision, attempts } = await claimAttempt(rid, menuVersion(published), deps);
+  if (decision !== 'post') return { posted: false, reason: decision };
   const cls = await postHook(url, rid, deps);
   await deps.db.ref(`form_rebake/${rid}/last_class`).set(cls);
-  return { posted: true, class: cls };
+  return { posted: true, class: cls, attempts };
 }
 
 // RECOVERY — one rid. → { rid, decision, ... }
@@ -125,22 +143,17 @@ async function reconcileRid(rid, base, cfg, deps) {
   const { fail, warn } = compareBundle(deployed, published);
   const converged = !fail.length && !warn.length;
   const version = menuVersion(published);
-  const now = deps.now();
-  let decision = null; let attempts = 0;
-  await deps.db.ref(`form_rebake/${rid}`).transaction((cur) => {
-    let c = isObj(cur) ? { ...cur } : {};
-    if (converged) {
-      if (!c.attempts && !c.stuck && c.version === version) { decision = 'converged'; return undefined; }
-      decision = 'converged'; return { ...c, version, attempts: 0, stuck: false };
-    }
-    if (c.version !== version) c = { ...c, version, attempts: 0, stuck: false };     // a NEW published menu re-arms the retries
-    if (c.stuck) { decision = 'stuck_silent'; return c; }
-    if (typeof c.at === 'number' && now - c.at < COOLDOWN_MS) { decision = 'cooldown'; return c; }
-    if ((c.attempts || 0) >= MAX_ATTEMPTS) { decision = 'stuck'; attempts = c.attempts; return { ...c, stuck: true }; }
-    decision = 'post'; attempts = (c.attempts || 0) + 1;
-    return { ...c, at: now, attempts };
-  });
-  if (decision === 'stuck') { await deps.alarm('form_rebake_stuck', { rid, attempts }); return { rid, decision, attempts }; }
+  if (converged) {
+    // convergence resets the budget for THIS version (a no-op write is skipped)
+    await deps.db.ref(`form_rebake/${rid}`).transaction((cur) => {
+      const c = isObj(cur) ? { ...cur } : {};
+      if (!c.attempts && !c.stuck && c.version === version) return undefined;
+      return { ...c, version, attempts: 0, stuck: false };
+    });
+    return { rid, decision: 'converged' };
+  }
+  const { decision, attempts } = await claimAttempt(rid, version, deps);
+  if (decision === 'stuck') return { rid, decision, attempts };
   if (decision !== 'post') return { rid, decision };
   const cls = await postHook(url, rid, deps);
   await deps.db.ref(`form_rebake/${rid}/last_class`).set(cls);
