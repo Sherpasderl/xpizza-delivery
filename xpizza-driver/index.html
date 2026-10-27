@@ -169,7 +169,9 @@
 #screen-companion .co-banner-tx { font-size: 13px; line-height: 1.4; color: var(--text-soft, #546078); }
 #screen-companion .co-banner-tx b { display: block; color: var(--accent, #2F5FB8); font-size: 13.5px; margin-bottom: 1px; }
 /* practica demo (Inicio c) — the real order screens run inside #screen-companion; a «NO es real» ribbon marks it. */
-#screen-companion .co-demo-ribbon { text-align: center; font-size: 11.5px; font-weight: 800; letter-spacing: .02em; color: var(--warn, #8A5A00); background: var(--sv-warn-bg, #F6EEDD); padding: 7px 10px; border-radius: 999px; margin: 0 auto 4px; }
+#screen-companion .co-demo-ribbon { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 800; letter-spacing: .02em; color: var(--warn, #8A5A00); background: var(--sv-warn-bg, #F6EEDD); padding: 7px 12px; border-radius: 999px; margin: 0 auto 4px; }
+#screen-companion .co-demo-ribbon > span { flex: 1; text-align: center; }
+#screen-companion .co-demo-exit { flex: none; color: inherit; background: none; border: 0; font: inherit; text-decoration: underline; padding: 2px 4px; cursor: pointer; }
 #screen-companion .co-demo-host { display: flex; flex-direction: column; min-height: 100%; }
 /* ===== SLICE3:PRESENTATION-INICIO:END ===== */
   :root {
@@ -2382,6 +2384,7 @@ function openWhatsappSheet(btn) {
 import { helpDiagnosisHtml, cierreRechazadoHtml, readyTimeLabel, gpsoffHtml } from './stacked-view.js';   // readyTimeLabel: R1 ready time for the S.oferta offer; gpsoffHtml: the location-off idle state
 import { ref as fbRef, onValue as fbOnValue } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';   // same module instance XPD uses — subscribe to the RTDB connection edge for the offer slide gate
 import { postActRoute } from './postact-route.js';   // Inicio b: pure post-activation checklist routing decision (tested in postact-route.test.js)
+import { practicaDemoOrder } from './practica-fixture.js';   // Inicio c: the synthetic practice ORDER (brand = registry-only 'synthetic_3' as DATA, never a controller literal)
 /* ===== SLICE3:IMPORT-3:END ===== */
 /* ===== SLICE3:LOGIC-3:START — batch-3 module logic (help diagnosis sheet; gpsoff / cierreRechazado / offline to follow) ===== */
 // SLICE3:HELP — the «¿Por qué no veo pedidos?» diagnosis sheet (prototype S.help), mounted on demand (reusing the
@@ -2857,6 +2860,11 @@ function companionWriteProgress(uid, patch) {
   try { localStorage.setItem(companionProgressKey(uid), JSON.stringify(p)); } catch (_) {}
   return p;
 }
+// Inicio c: the live practica demo controller handle (null unless a demo is running). Declared here (inside the
+// slice-3 region) so render() / companionRenderOnboarding can see it. The controller (SLICE3:INICIO-DEMO) owns its own
+// step + an alive() gate; it is disposed to null on any auth transition and whenever alive() turns false (shift
+// active / an order assigned / uid or auth-generation changed) so a real order can never render underneath it.
+let companionDemo = null;
 // The post-activation routing render() delegates to (EXTRACTED so the real lifecycle is unit-testable — r1 P2 tests).
 // Returns true when it rendered the checklist (render() then returns), false to fall through to the app. Gated on the
 // companion feature being ENABLED + a SUCCESSFUL valid active&&enabled read (r1 P2 flag-off/offline), so a flag-off /
@@ -3141,24 +3149,33 @@ function companionRenderOnboarding() {
     /* ===== SLICE3:INICIO-CHECKLIST:END ===== */
   } else { // 'practice'
     /* ===== SLICE3:INICIO-PRACTICA:START — practica rebuilt to prototype S.practica: the intro card (back→checklist,
-       «Nada de esto es real» banner, the 4 named steps) + «Empezar práctica», which runs the ISOLATED demo controller
-       (companionPracticeStart) — the real order screens rendered against a synthetic order, with ZERO RTDB writes. ===== */
-    const BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>';
-    const INFO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5" stroke-linecap="round"/><circle cx="12" cy="7.6" r="1.1" fill="currentColor" stroke="none"/></svg>';
-    const prow = (ic, t, s) => `<div class="co-cki"><span class="co-row-ic">${ic}</span><div class="co-cktx"><div class="co-ckt">${t}</div><div class="co-cksub">${s}</div></div></div>`;
-    el.innerHTML = companionShellHtml(`
-      <div class="co-hdr"><button class="co-back" id="co-practica-back" aria-label="Volver">${BACK}</button><div class="co-hdr-ttl">Pedido de práctica</div></div>
-      <div class="co-banner"><span class="co-banner-ic">${INFO}</span><div class="co-banner-tx"><b>Nada de esto es real</b>Vas a aceptar, recoger, cobrar y entregar un pedido de ejemplo. No se guarda nada.</div></div>
-      <div class="co-card co-list">
-        ${prow(ICONS.bell || '', '1 · Te llega una oferta', 'Tenés 36 s para aceptar deslizando')}
-        ${prow(ICONS.store || '', '2 · Vas al restaurante', 'Revisá el número de pedido y las bebidas')}
-        ${prow(ICONS.cash || '', '3 · Cobrás y das vuelto', 'Solo en pedidos en efectivo')}
-        ${prow(ICONS.check || '', '4 · Deslizás "Entregado"', 'Ves tu resumen y tu +L 70')}
-      </div>
-      <div style="flex:1"></div>`,
-      `<button class="big-btn primary co-onb-btn" id="co-practica-start">Empezar práctica</button>`);
-    $('co-practica-back').addEventListener('click', () => { companionStep = 'checklist'; companionRenderOnboarding(); });
-    $('co-practica-start').addEventListener('click', () => companionPracticeStart());
+       «Nada de esto es real» banner, the 4 named steps) + «Empezar práctica». If an ISOLATED demo is already RUNNING
+       and still alive, re-paint it here instead of the intro — so a routine render() while companionStep==='practice'
+       keeps the live demo (Codex r1 #2) rather than snapping back to the intro. Otherwise show the intro: «Empezar
+       práctica» runs the isolated demo controller (companionPracticeStart). Belt-and-braces (Codex r1 #1): the demo may
+       never START while a shift is active or any order is assigned — the button is DISABLED then (no new copy); the
+       driver in onboarding is never active, so this is defensive. ===== */
+    if (companionDemo && companionDemoAlive()) { companionDemo.render(); }
+    else {
+      companionDemo = null;   // drop a dead controller (alive() false: shift active / order assigned / uid or authGen changed)
+      const BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>';
+      const INFO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5" stroke-linecap="round"/><circle cx="12" cy="7.6" r="1.1" fill="currentColor" stroke="none"/></svg>';
+      const prow = (ic, t, s) => `<div class="co-cki"><span class="co-row-ic">${ic}</span><div class="co-cktx"><div class="co-ckt">${t}</div><div class="co-cksub">${s}</div></div></div>`;
+      const canStart = !(driverState && driverState.active) && drv2LiveBoard().length === 0;
+      el.innerHTML = companionShellHtml(`
+        <div class="co-hdr"><button class="co-back" id="co-practica-back" aria-label="Volver">${BACK}</button><div class="co-hdr-ttl">Pedido de práctica</div></div>
+        <div class="co-banner"><span class="co-banner-ic">${INFO}</span><div class="co-banner-tx"><b>Nada de esto es real</b>Vas a aceptar, recoger, cobrar y entregar un pedido de ejemplo. No se guarda nada.</div></div>
+        <div class="co-card co-list">
+          ${prow(ICONS.bell || '', '1 · Te llega una oferta', 'Tenés 36 s para aceptar deslizando')}
+          ${prow(ICONS.store || '', '2 · Vas al restaurante', 'Revisá el número de pedido y las bebidas')}
+          ${prow(ICONS.cash || '', '3 · Cobrás y das vuelto', 'Solo en pedidos en efectivo')}
+          ${prow(ICONS.check || '', '4 · Deslizás "Entregado"', 'Ves tu resumen y tu +L 70')}
+        </div>
+        <div style="flex:1"></div>`,
+        `<button class="big-btn primary co-onb-btn" id="co-practica-start"${canStart ? '' : ' disabled'}>Empezar práctica</button>`);
+      $('co-practica-back').addEventListener('click', () => { companionStep = 'checklist'; companionRenderOnboarding(); });
+      if (canStart) $('co-practica-start').addEventListener('click', () => companionPracticeStart());
+    }
     /* ===== SLICE3:INICIO-PRACTICA:END ===== */
   }
   /* ===== SLICE2:ONBOARDING-NAV:START — inject the «App de navegación» checklist row (R7, exact prototype copy) +
@@ -3174,49 +3191,114 @@ function companionRenderOnboarding() {
   showScreen('companion');
 }
 
-/* ===== SLICE3:INICIO-DEMO:START — the ISOLATED practica demo controller (Inicio c). «Empezar práctica» runs the REAL
-   order-screen builders (offerScreenHtml / pickupReviewHtml / activeCardHtml / deliverySummaryHtml) against a SYNTHETIC
-   order with a local step machine. It NEVER calls any RTDB write path (acceptTask / pickupComplete / completeTask /
-   submit) — zero-write BY CONSTRUCTION (asserted by practica-demo.test.js with a spying SDK). The order's brand is the
-   registry-only THIRD merchant fixture 'synthetic_3' (name 's3'; cited: xpizza-functions/test/client-floor-cli.emulator.test.js),
-   never X. Pizza / La Musa and never an inline literal. A «NO es real» ribbon marks every demo screen; the last step
-   records practiceDone in the progress store and returns to the checklist. ===== */
+/* ===== SLICE3:INICIO-DEMO:START — the ISOLATED practica demo controller (Inicio c), rebuilt to CLOSE the Codex r1 P1
+   (a demo swipe reproduced a REAL XPD.pickupComplete when a live board was underneath). FULL ISOLATION, belt + braces:
+   • RENDER: the demo paints the REAL order-screen builders (singleOrderCardHtml / pickupReviewHtml / activeCardHtml /
+     deliverySummaryHtml) into a DEDICATED host, but every element id is NAMESPACED (`id="x"` → `id="cd-x"`) so the
+     production slide ids (btn-accept / btn-pickup / btn-delivered) NEVER exist here — production handler attachment
+     (attachSlideConfirm's document-wide getElementById; the #screen-onshift delegated handlers) can never reach a demo
+     node. Every lookup is SCOPED to the host (host.querySelector), never the document-wide $().
+   • GESTURES: a demo-local slide binder (attachDemoSlide) reuses attachSlideConfirm's drag MECHANICS (THUMB_OFFSET 6,
+     0.85 completion threshold, pointer/touch math) but touches NO operational global (no slidingEl / renderPending /
+     renderActiveAndQueue) and calls ONLY the demo's own step advance. The vuelto is a demo-local computeVuelto call. No
+     operational callback is ever bound → zero RTDB write BY CONSTRUCTION (asserted by practica-demo.test.js: the full
+     real flow mounted with the operational handlers PRESENT + an active board underneath, real gestures, feed/auth
+     transitions, a spying SDK — the injected inline-write mutant dies).
+   • LIFECYCLE: companionDemo holds the live controller; alive() disposes it the moment uid/authGen change, a shift goes
+     active, or an order is assigned, so a real order can never render underneath it. A routine render() while
+     companionStep==='practice' re-paints the live demo (INICIO-PRACTICA) instead of snapping to the intro.
+   • EXIT: every demo step carries a «Salir» control in the demo ribbon (dispose → intro); the resumen also has
+     «Terminé la práctica» (records practiceDone → checklist). The «NO es real» ribbon marks every demo screen.
+   The order's brand is the registry-only THIRD merchant 'synthetic_3' (name 's3'), read from the practica-fixture
+   MODULE as DATA — never an inline controller literal (cited: xpizza-functions/test/client-floor-cli.emulator.test.js). ===== */
+// alive() — the demo may run ONLY for the same signed-in driver + auth generation, with NO active shift and NO assigned
+// order. Disposes the handle (→ null) the instant any of those turns false, so a stale controller can never paint or be
+// reused, and a real order can never share the screen with the demo.
+function companionDemoAlive() {
+  const d = companionDemo; if (!d) return false;
+  const ok = !!currentUser && currentUser.uid === d.uid && authGen === d.gen
+    && !(driverState && driverState.active) && drv2LiveBoard().length === 0;
+  if (!ok) companionDemo = null;
+  return ok;
+}
+// Demo-local slide binder — the SAME drag mechanics as attachSlideConfirm, scoped to the passed node, touching NO
+// operational global; on completion it calls only `onConfirm` (the demo's step advance). Idempotent per node.
+function attachDemoSlide(el, onConfirm) {
+  if (!el || el.dataset.cdSlide) return; el.dataset.cdSlide = '1';
+  const thumb = el.querySelector('.slide-thumb'), fill = el.querySelector('.slide-fill');
+  if (!thumb || !fill) return;
+  const OFF = 6, DONE = 0.85;
+  let dragging = false, confirmed = false, startX = 0, startLeft = OFF, maxLeft = 0, thumbW = 0;
+  const getX = (e) => e.touches?.[0]?.clientX ?? e.clientX ?? 0;
+  const paint = (left) => { const c = Math.max(OFF, Math.min(maxLeft, left)); thumb.style.left = `${c}px`; fill.style.width = `${c + thumbW}px`; };
+  const reset = () => { el.classList.remove('dragging'); thumb.style.left = ''; fill.style.width = ''; };
+  function onMove(e) { if (!dragging) return; if (e.cancelable) e.preventDefault(); paint(startLeft + (getX(e) - startX)); }
+  function onUp() {
+    if (!dragging) return; dragging = false;
+    document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onUp); document.removeEventListener('touchcancel', onUp);
+    const left = parseFloat(thumb.style.left) || OFF;
+    if (maxLeft > OFF && (left - OFF) / (maxLeft - OFF) >= DONE && !confirmed) {
+      confirmed = true; el.classList.remove('dragging'); el.classList.add('completed'); thumb.style.left = `${maxLeft}px`; fill.style.width = '100%';
+      onConfirm();   // demo-only: advance the local step. NEVER an operational callback.
+    } else reset();
+  }
+  function onDown(e) {
+    if (confirmed) return;
+    const tw = el.getBoundingClientRect().width; thumbW = thumb.getBoundingClientRect().width; maxLeft = tw - thumbW - OFF;
+    dragging = true; el.classList.add('dragging'); startX = getX(e); startLeft = parseFloat(thumb.style.left) || OFF;
+    document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+    document.addEventListener('touchmove', onMove, { passive: false }); document.addEventListener('touchend', onUp); document.addEventListener('touchcancel', onUp);
+    if (e.cancelable) e.preventDefault();
+  }
+  thumb.addEventListener('mousedown', onDown); thumb.addEventListener('touchstart', onDown, { passive: false });
+}
 function companionPracticeStart() {
   const uid = currentUser && currentUser.uid;
+  // Belt-and-braces (Codex r1 #1): never START the demo while a shift is active or any order is assigned.
+  if ((driverState && driverState.active) || drv2LiveBoard().length > 0) return;
   const R = XPD.RESTAURANT;
-  const DEMO = {
-    orderId: 'practica-demo',
-    pickupTask: { destination_lat: R.lat, destination_lng: R.lng, destination_address: 'Local de ejemplo' },
-    deliveryTask: { destination_lat: R.lat + 0.012, destination_lng: R.lng - 0.012, destination_address: 'Col. de ejemplo, casa 00', recipient_name: 'Cliente de ejemplo' },
-    order: { customer_name: 'Cliente de ejemplo', customer_phone: '', payment_method: 'cash', total: 350, cash_tendered_cents: 40000,
-      display_number: '00', restaurant_display_name: 's3', restaurant_id: 'synthetic_3',
-      address_detected: 'Col. de ejemplo, casa 00', items_text: 'pizza de ejemplo, bebida de ejemplo',
-      lat: R.lat + 0.012, lng: R.lng - 0.012 } };
+  const DEMO = practicaDemoOrder(R);                    // brand/order from the fixture MODULE (data), never a controller literal
   const deps = { ICONS, esc: escapeHtml, scheduledBadge, computeVuelto, RESTAURANT: R, navPref: undefined, collapsedBanners: new Set() };
-  let step = 0;
-  const done = () => { companionWriteProgress(uid, { practiceDone: true }); companionStep = 'checklist'; companionRenderOnboarding(); };
-  const wire = (id, next) => { const e = $(id); if (e) e.addEventListener('click', next, { once: true }); };
-  const paint = (inner) => { $('screen-companion').innerHTML = `<div class="co-demo-host" style="padding:16px 14px"><div class="co-demo-ribbon">Esto NO es un pedido real · práctica</div>${inner}</div>`; showScreen('companion'); };
-  function go() {
-    if (step === 0) {                                   // 1 · Te llega una oferta (single fresh offer)
-      paint(singleOrderCardHtml({ ...DEMO, phase: 'awaiting_acceptance', pickupTask: { ...DEMO.pickupTask, assignment_deadline: Date.now() + 36000 } },
-        { ...deps, arrived: false, atRestaurant: false, nowMs: Date.now(), mapHtml: '', area: 'Col. de ejemplo', ready: '', offerKm: '' }));
-      wire('btn-accept', () => { step = 1; go(); });
-    } else if (step === 1) {                            // 2 · Vas al restaurante (revisás + recogés)
-      paint(pickupReviewHtml({ ...DEMO, phase: 'pickup' }, deps));
-      wire('btn-pickup', () => { step = 2; go(); });
-    } else if (step === 2) {                            // 3 · Cobrás y das vuelto + 4 · Deslizás «Entregado»
-      paint(activeCardHtml({ ...DEMO, phase: 'delivery' }, deps, { ordinal: 1, solo: true, showActualPill: false, arrived: true, navLabel: '', canNotifyArrival: false, previewHtml: '' }));
-      wire('btn-delivered', () => { step = 3; go(); });
-    } else {                                            // resumen (+L 70 style) → Terminé la práctica
-      const vuelto = computeVuelto(DEMO.order.total, DEMO.order.cash_tendered_cents / 100);
-      paint(deliverySummaryHtml({ order: DEMO.order, deliveredName: 'Cliente de ejemplo', time: '', vuelto, showEarnings: false, dayCashOwed: DEMO.order.total }, deps)
-        + `<div style="flex:1"></div><button class="big-btn primary co-onb-btn" id="co-demo-done" style="margin-top:12px">Terminé la práctica</button>`);
-      wire('co-demo-done', done);
-      wire('btn-resumen-done', done);
-    }
-  }
-  go();
+  const NS = (html) => html.replace(/id="([\w-]+)"/g, 'id="cd-$1"');   // namespace EVERY builder id → no production id survives in the demo
+  const RIBBON = '<div class="co-demo-ribbon"><span>Esto NO es un pedido real · práctica</span><button class="co-demo-exit" id="co-demo-exit" aria-label="Salir de la práctica">Salir</button></div>';
+  companionDemo = {
+    uid, gen: authGen, step: 0,
+    render() {
+      if (!companionDemoAlive()) return;                // disposed mid-flight (auth/shift/assignment) → never paint
+      const host = $('screen-companion'); if (!host) return;
+      // `builder` = a REAL order-screen builder's output (gets NAMESPACED). `chrome` = the demo's own controls
+      // (ribbon + resumen button) — NOT namespaced, so co-demo-exit / co-demo-done keep their ids for the scoped
+      // lookups below. Separating them is what lets NS rewrite every production id without touching the demo chrome.
+      let builder = '', chrome = '', slideId = '';
+      if (this.step === 0) {                            // 1 · Te llega una oferta (single fresh offer)
+        builder = singleOrderCardHtml({ ...DEMO, phase: 'awaiting_acceptance', pickupTask: { ...DEMO.pickupTask, assignment_deadline: Date.now() + 36000 } },
+          { ...deps, arrived: false, atRestaurant: false, nowMs: Date.now(), mapHtml: '', area: 'Col. de ejemplo', ready: '', offerKm: '' });
+        slideId = 'cd-btn-accept';
+      } else if (this.step === 1) {                     // 2 · Vas al restaurante (revisás + recogés)
+        builder = pickupReviewHtml({ ...DEMO, phase: 'pickup' }, deps); slideId = 'cd-btn-pickup';
+      } else if (this.step === 2) {                     // 3 · Cobrás y das vuelto + 4 · Deslizás «Entregado»
+        builder = activeCardHtml({ ...DEMO, phase: 'delivery' }, deps, { ordinal: 1, solo: true, showActualPill: false, arrived: true, navLabel: '', canNotifyArrival: false, previewHtml: '' });
+        slideId = 'cd-btn-delivered';
+      } else {                                          // resumen (+L 70 style) → Terminé la práctica
+        const vuelto = computeVuelto(DEMO.order.total, DEMO.order.cash_tendered_cents / 100);
+        builder = deliverySummaryHtml({ order: DEMO.order, deliveredName: 'Cliente de ejemplo', time: '', vuelto, showEarnings: false, dayCashOwed: DEMO.order.total }, deps);
+        chrome = '<div style="flex:1"></div><button class="big-btn primary co-onb-btn" id="co-demo-done" style="margin-top:12px">Terminé la práctica</button>';
+      }
+      host.innerHTML = `<div class="co-demo-host" style="padding:16px 14px">${RIBBON}${NS(builder)}${chrome}</div>`;
+      showScreen('companion');
+      const q = (id) => host.querySelector('#' + id);   // SCOPED to the demo host — never document-wide
+      const exit = q('co-demo-exit');
+      if (exit) exit.addEventListener('click', () => { companionDemo = null; companionStep = 'practice'; companionRenderOnboarding(); }, { once: true });
+      if (slideId) { const sl = q(slideId); if (sl) attachDemoSlide(sl, () => { if (!companionDemoAlive()) return; companionDemo.step += 1; companionDemo.render(); }); }
+      const done = q('co-demo-done');
+      if (done) done.addEventListener('click', () => {
+        if (companionDemoAlive()) companionWriteProgress(companionDemo.uid, { practiceDone: true });
+        companionDemo = null; companionStep = 'checklist'; companionRenderOnboarding();
+      }, { once: true });
+    },
+  };
+  companionDemo.render();
 }
 /* ===== SLICE3:INICIO-DEMO:END ===== */
 // Submit the staged profile at "Pedir aprobación" (A4). The CONTROLLER owns the barrier (submitState), the

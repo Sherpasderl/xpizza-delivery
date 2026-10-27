@@ -88,7 +88,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = '2b767542504cfaca3479212d2fae4ff2f0474f884ab9a72b794d082c7b66efa8';
+const SLICE2_GUARD_SHA = '61a4bdae0640935aecac7de45d5cb8da3ce78b2a62613b02f3401e69f22cd38e';
 const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -151,7 +151,7 @@ const SLICE3_COEXIST_MODIFY = new Set(['xpizza-driver/slice2-freeze.guard.test.j
 // to the reviewed revision so the exemption stays BOUNDED (any later edit re-opens this guard at HIGH effort). One
 // file only; nothing else is exempted.
 const SLICE3_TEST_MODIFY = new Set(['xpizza-driver/onboarding-host.test.js']);
-const SLICE3_TEST_MODIFY_SHA = { 'xpizza-driver/onboarding-host.test.js': 'beb43466688aacd69843e4bd4bc039874bfba2e0c7a54af8b7f230c5972fa78a' };
+const SLICE3_TEST_MODIFY_SHA = { 'xpizza-driver/onboarding-host.test.js': 'be4311c675d176d89aef4fe04e06b68ad085bacf9bc30977f5ff15121169ec05' };
 // Everything slice 3 is allowed to ADD under xpizza-driver/.
 const ALLOWED_ADDS = new Set([
   'xpizza-driver/slice3-regions.json',          // the shared SLICE3 region contract (non-executable data)
@@ -169,7 +169,8 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/fa4400-neverships.proof.sh',   // SLICE3 never-ship mutant proof (both halves)
   'xpizza-driver/postact-route.js',             // Inicio b: pure post-activation checklist routing decision
   'xpizza-driver/postact-route.test.js',        // Inicio b: the 4 post-activation routing paths + suspended
-  'xpizza-driver/practica-demo.test.js',        // Inicio c: the practica demo is client-only + ZERO RTDB writes (spying SDK)
+  'xpizza-driver/practica-fixture.js',          // Inicio c: the synthetic practice ORDER (brand 'synthetic_3' as DATA, no controller literal)
+  'xpizza-driver/practica-demo.test.js',        // Inicio c: the practica demo is client-only + ZERO RTDB writes + ISOLATED (jsdom gesture harness)
 ]);
 
 const REPO = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: __dir }).toString('utf8').trim();

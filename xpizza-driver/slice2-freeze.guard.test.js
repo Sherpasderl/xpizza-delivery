@@ -210,7 +210,8 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/fa4400-neverships.proof.sh',      // SLICE3 brand-orange never-ship mutant proof (SLICE3)
   'xpizza-driver/postact-route.js',                // Inicio b: pure post-activation checklist routing decision (SLICE3)
   'xpizza-driver/postact-route.test.js',           // Inicio b: post-activation routing paths test (SLICE3)
-  'xpizza-driver/practica-demo.test.js',           // Inicio c: practica demo zero-write spy test (SLICE3)
+  'xpizza-driver/practica-fixture.js',             // Inicio c: synthetic practice ORDER data module (SLICE3)
+  'xpizza-driver/practica-demo.test.js',           // Inicio c: practica demo zero-write + isolation spy test (SLICE3)
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';
