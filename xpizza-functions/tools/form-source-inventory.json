@@ -1838,6 +1838,7 @@
   "phone/flag.js",
   "phone/identity-corpus.js",
   "phone/intl.js",
+  "phone/login-gate.js",
   "phone/wire.js",
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
@@ -3135,6 +3136,10 @@
    "lifts": []
   },
   "phone/intl.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "phone/login-gate.js": {
    "pins": [],
    "lifts": []
   },

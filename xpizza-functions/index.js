@@ -7186,7 +7186,7 @@ exports.requestOtp = onRequest(
       const { phone, restaurant_id } = req.body || {};
       const { restaurantId } = resolveRestaurantId(restaurant_id, restaurantRegistry().known());
       const pHash = OTP.phoneHash(phone);
-      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration
+      if (!pHash) return res.status(200).json({ ok: true, cooldown: 30 }); if (!(await require('./phone/login-gate').otpLoginAllowed({ db: getDatabase(), phone, restaurantId, strict: await require('./phone/flag').phoneWireStrict(getDatabase()) }))) return res.status(200).json({ ok: true, cooldown: 30 });   // uniform — no enumeration (INTL S-core step 4: the per-sender login gate refuses uniformly)
       const now = Date.now();
       const db = getDatabase();
       // per-IP soft cap (secondary; req.ip is the Cloud Run-trusted peer, NOT spoofable XFF — H4)
