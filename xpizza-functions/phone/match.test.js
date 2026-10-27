@@ -78,6 +78,17 @@ ok("muteKeyFor: the identity digits (writer data.to and reader from agree); +502
   // a non-phone `from` never reads the parent node (today's '' key read whatsapp_mute/<rid>/ itself)
   const junk = dbOf({}); assert.strictEqual(await M.readMute(junk, 'tb_r1', 'abc'), null, 'MUTE-NON-PHONE-NULL');
   assert.ok(junk.reads.every((p) => !p.endsWith('/')), 'MUTE-NEVER-READS-THE-PARENT');
+  // codex r2 #4: NO read without a valid identity; the legacy last-8 only from a valid HN identity
+  for (const bad of ['123', '1234567897950000', 'abc', '', null, '+', '97950']) {
+    const d = dbOf({ [W8 + '97950000']: { at: T }, [W8 + '123']: { at: T } });
+    assert.strictEqual(await M.readMute(d, 'tb_r1', bad), null, `MUTE-NO-READ-WITHOUT-IDENTITY ${JSON.stringify(bad)}`);
+    assert.deepStrictEqual(d.reads, [], `MUTE-NO-READ-WITHOUT-IDENTITY reads ${JSON.stringify(bad)}`);
+  }
+  { const us = dbOf({ [W8 + '97950000']: { at: T } });   // an HN customer's legacy leaf must never answer for a +1 number with that suffix
+    assert.strictEqual(await M.readMute(us, 'tb_r1', '12197950000'), null, 'MUTE-LEGACY-ONLY-FOR-HN');
+    assert.deepStrictEqual(us.reads, [W8 + '12197950000'], 'MUTE-NON-HN-READS-IDENTITY-ONLY'); }
+  { const uk = dbOf({ [W8 + '447911123456']: { at: T } });   // an unsupported-country chatter keeps its identity mute (writer + reader agree)
+    assert.deepStrictEqual(await M.readMute(uk, 'tb_r1', '447911123456@c.us'), { at: T }, 'MUTE-UNSUPPORTED-CC-IDENTITY-STILL-MUTES'); }
   // a read error propagates (the caller's existing try is FAIL-OPEN, unchanged)
   await assert.rejects(() => M.readMute({ ref: () => ({ once: async () => { throw new Error('down'); } }) }, 'tb_r1', from), /down/, 'MUTE-READ-ERROR-PROPAGATES');
   ok('readMute: identity + legacy last-8 leaves, latest wins → a pre-deploy legacy mute still mutes, the post-deploy identity mute is the ONE state; non-phone → null; errors propagate to the fail-open caller');

@@ -7,7 +7,8 @@
 //   samePhone(a, b)      both identities present AND equal. A null / invalid operand NEVER matches.
 //   muteKeyFor(phone)    the auto-mute leaf key: the identity digits ('' when not a phone — the caller skips). Existing last-8 mute
 //                        leaves are short-lived (a staff-reply window) and simply EXPIRE; there is NO suffix fallback (plan r1 §5).
-const DEFAULT_COUNTRY_CODE = '504';   // whatsapp.js:33 — parity asserted by the corpus test
+const DEFAULT_COUNTRY_CODE = '504';
+const { parseSubmitted } = require('./intl');   // whatsapp.js:33 — parity asserted by the corpus test
 
 function storedIdentity(raw) {
   if (!raw) return null;
@@ -36,9 +37,14 @@ function legacyMuteKeyFor(phone) {
 }
 // → the mute record to decide on (the latest finite `at` of the identity + legacy leaves), or null. A non-phone never reads the parent
 // node. A read error PROPAGATES (onIncomingWhatsApp's existing try is fail-open, unchanged).
+// codex r2 #4: NO read is built without a VALID identity (storedIdentity non-null — the same rule the writer keys by), and the legacy
+// last-8 leaf is consulted ONLY for a valid HN identity (504 + 8): '123' or a 16-digit string read nothing, and a +1 number never
+// reads an HN customer's legacy leaf that happens to share its last 8.
 async function readMute(db, restaurantId, phone) {
-  const keys = [...new Set([muteKeyFor(phone), legacyMuteKeyFor(phone)])].filter((k) => /^\d+$/.test(k));
-  if (!keys.length) return null;
+  const id = storedIdentity(phone);
+  if (!id) return null;
+  const p = parseSubmitted('+' + id);
+  const keys = p && p.cc === '504' ? [id, p.national] : [id];
   const recs = (await Promise.all(keys.map((k) => db.ref(`whatsapp_mute/${restaurantId}/${k}`).once('value').then((s) => s.val())))).filter((r) => r != null);
   if (!recs.length) return null;
   const at = (r) => (r && Number.isFinite(r.at) ? r.at : -Infinity);
