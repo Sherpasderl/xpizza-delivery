@@ -132,8 +132,8 @@ const STATES = {
   'OK-guest':      { container: '#acct-success-rewards', drive: async (c) => { await order(c); } },
   'OK-logged':     { container: '#acct-success-rewards', rewards: { balance: 5, reserved: 0 }, drive: async (c) => { await sleep(300); await order(c); } },
   'G-musa-below':  { only: 'la-musa-orders', container: '#acct-success-rewards', totalCents: 24900, drive: async (c) => { await order(c); } },
-  'R-picker':      { container: '#rk-sheet-root .rk-sheet', rewards: { balance: 8, reserved: 0, canary: true }, drive: async (c) => { await openPicker(c); } },
-  'R-picker-sel':  { only: 'la-musa-orders', container: '#rk-sheet-root .rk-sheet', rewards: { balance: 8, reserved: 0, canary: true }, drive: async (c) => { await openPicker(c); await c.ev(click('#rk-sheet-root .rk-row:not(.rk-off)')); await sleep(300); } },
+  'R-picker':      { container: '#rk-sheet-root .rk-sheet', rewards: (site) => (BRAND[site].rid === 'la_musa' ? { balance: 100000, reserved: 0, canary: true } : { balance: 8, reserved: 0, canary: true }), drive: async (c) => { await openPicker(c); } },
+  'R-picker-sel':  { only: 'la-musa-orders', container: '#rk-sheet-root .rk-sheet', rewards: () => ({ balance: 100000, reserved: 0, canary: true }), drive: async (c) => { await openPicker(c); await c.ev(click('#rk-sheet-root .rk-row:not(.rk-off)')); await sleep(300); } },
 };
 async function openPicker(c) {
   await sleep(300); await c.ev(addOne); await c.ev('goToLocation(), true'); await sleep(300);
@@ -189,7 +189,7 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
     const rt = await router(cdp, decideFor(state));
     await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: OBSERVER });
     if (deterministic) for (const src of [FREEZE, QUIET]) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: src });
-    if (def.rewards) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: fakeInit(site, def.rewards) });
+    if (def.rewards) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: fakeInit(site, typeof def.rewards === 'function' ? def.rewards(site) : def.rewards) });
     const t0 = Date.now();
     await cdp.s('Page.navigate', { url: `${srv.base}/${site}/index.html` });
     // painted = the DOM parsed and #s1 present, then two frames. NOT readyState 'complete': the load event also waits for HELD fonts.
