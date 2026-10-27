@@ -45,6 +45,10 @@
       // PLAN-intl-phone r2.3 (S-picker): the WhatsApp country picker + E.164 on the wire — the RUNTIME's switch. FLIP PRECONDITION
       // (advisor 2026-10-27): only after S-core / S-match (server) land AND the per-sender UltraMsg country gate passes
       ...(rt.intlPhone === true ? { intlPhone: true } : {}),
+      // PLAN-capp-S4 (r5): scheduled orders — the RUNTIME's one switch; with it, the store gets the SERVED schedule (the directory
+      // entry's, P1) the picker computes from. FLIP PRECONDITIONS (advisor 2026-10-27): signup LIVE (G6) + PIN owner records
+      // (platform_config/delivery_pin.generate === true); the «revisando» / tracker transitions need the (d) owner lookup
+      ...(rt.schedulingLive === true ? { schedulingLive: true, schedule: d.schedule && typeof d.schedule === 'object' ? d.schedule : null } : {}),
     };
   }
 

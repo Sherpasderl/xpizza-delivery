@@ -10,7 +10,8 @@
 //        FAIL-OPEN: every dish available, exactly as the forms' loadAvailability; the server refuses at intake)
 //   opts.runtime { endpoints, intakeKey, mapsKey }   the app deployment's transport (configFor's runtime)
 //   opts.auth  a CappAuthState instance (absent ⇒ unresolved — never assumed guest)
-//   opts.schedulingLive  S4's switch (frame 3 B's second sentence, «Programar pedido»); default false
+//   runtime.schedulingLive  S4's ONE switch (frame 3 B's second sentence, «Programar pedido», and the store's scheduling via
+//                           configFor); absent ⇒ off. Replaces the former opts.schedulingLive (one source)
 //   opts.storage, opts.now (ms), opts.timers, opts.win, opts.uiOpts (passed through to CappUI.mount: apiOpts, geolocation, …)
 //   opts.onEvent(name, detail)  the controls whose screens land in later slices ('tab' orders / account, 'addr', 'loc-on')
 //
@@ -305,7 +306,7 @@
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
       return { phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), cuisine: S.cuisine, filters: S.filters,
-        schedulingLive: o.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent };
+        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
     function saveScreen() {

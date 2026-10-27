@@ -127,7 +127,10 @@
   const isOpen = (cfg, now) => { const c = clockOf(now), o = rangeOf(cfg, c.day); return !!o && c.min >= o[0] && c.min < o[1]; };
   const closesText = (cfg, now) => { const o = rangeOf(cfg, clockOf(now).day); return o ? fmtMin(o[1]) : ''; };
   const opensText = (cfg, now) => { const c = clockOf(now), o = rangeOf(cfg, c.day); if (o && c.min < o[0]) return 'Abre hoy ' + fmtMin(o[0]); for (let d = 1; d <= 7; d++) { const oo = rangeOf(cfg, (c.day + d) % 7); if (oo) return 'Abre ' + (d === 1 ? 'mañana' : 'el ' + DAYS[(c.day + d) % 7]) + ' ' + fmtMin(oo[0]); } return 'Cerrado por ahora'; };
-  const hasSlot = (cfg, now) => { const c = clockOf(now); for (let off = 0; off < 7; off++) { const o = rangeOf(cfg, (c.day + off) % 7); if (!o) continue; let t = off === 0 ? Math.max(c.min + 60, o[0]) : o[0]; t = Math.ceil(t / 15) * 15; if (t + 30 <= o[1] + 15 && t < o[1]) return true; } return false; };
+  // S4 (read only under schedulingLive): «Programar pedido» only when the SERVED schedule offers a slot — the picker's own generator
+  // (CappSchedule), so the cue never promises a slot the picker would not show
+  const schedMod = () => (typeof self !== 'undefined' && self.CappSchedule) || require('./capp-schedule.js');
+  const hasSlot = (cfg, now) => { const K = schedMod(), ms = typeof now === 'number' ? now : now.getTime(); return !!cfg && (K.slots(cfg.schedule, ms, 'pickup').length > 0 || K.slots(cfg.schedule, ms, 'delivery').length > 0); };
 
   // ── the store as the prototype's `r`: directory entry (presentation) + its CappUI config + its displayed menu (if loaded) ──
   function storeOf(row) {
