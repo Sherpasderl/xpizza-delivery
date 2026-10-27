@@ -7666,7 +7666,7 @@ exports.sweepFormSignals = onSchedule(
 // handlers live in checkout-otp.js; this block is folded back by tools/checkout-inverse.js (checkout-wiring.guard.test.js).
 const CHECKOUT_OTP = require('./checkout-otp').makeCheckoutOtp({
   getDatabase,
-  knownRid: async (rid) => { await restaurantRegistry().ready(); return restaurantRegistry().known().has(rid); },   // a KNOWN rid, never defaulted
+  registry: restaurantRegistry,   // checkout-otp warms it and checks a KNOWN rid (never defaulted, never resolveRestaurantId's default)
 });
 exports.requestCheckoutCode = onRequest(
   { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },

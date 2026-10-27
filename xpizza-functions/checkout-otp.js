@@ -35,8 +35,10 @@ async function sendPlatformOtp(toDigits, code, { env = process.env, fetchImpl = 
   } catch (_) { return { ok: false, reason: 'threw' }; }
 }
 
-// deps: { getDatabase, knownRid: async (rid) => boolean, now?, env?, fetchImpl?, OTP? (lazy otp-lib), whatsapp? }
+// deps: { getDatabase, registry (() => the restaurant registry) | knownRid (async (rid) => boolean, tests), now?, env?, fetchImpl?, OTP?, whatsapp? }
 function makeCheckoutOtp(deps) {
+  // a KNOWN rid only, never defaulted: the registry is warmed first (a cold instance must not refuse a real merchant)
+  const knownRid = deps.knownRid || (async (rid) => { const r = deps.registry(); await r.ready(); return r.known().has(rid); });
   const now = deps.now || (() => Date.now());
   const loadOtp = () => deps.OTP || require('./otp-lib');            // lazy: otp-lib fails closed on a short OTP_SALT (500)
   const wa = () => deps.whatsapp || require('./whatsapp');
@@ -47,7 +49,7 @@ function makeCheckoutOtp(deps) {
     if (typeof b.phone_e164 !== 'string' || !/^\+\d{8,15}$/.test(b.phone_e164.trim())) return { err: [400, { error: 'bad_request' }] };
     const p = parseE164(b.phone_e164);
     if (!p) return { err: [400, { error: 'country_not_allowed' }] };
-    if (typeof b.restaurant_id !== 'string' || !(await deps.knownRid(b.restaurant_id))) return { err: [400, { error: 'bad_request' }] };   // known, never defaulted
+    if (typeof b.restaurant_id !== 'string' || !(await knownRid(b.restaurant_id))) return { err: [400, { error: 'bad_request' }] };   // known, never defaulted
     if (typeof b.cart_fp !== 'string' || !HEX64_RE.test(b.cart_fp)) return { err: [400, { error: 'bad_request' }] };
     const digits = wa().normalizePhone(p.e164);
     if (!digits) return { err: [400, { error: 'bad_request' }] };

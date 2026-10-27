@@ -3565,7 +3565,7 @@
   },
   {
    "id": "xpizza-functions/checkout-otp.js#common#restaurant_id#0",
-   "line": 50,
+   "line": 52,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -3575,7 +3575,7 @@
   },
   {
    "id": "xpizza-functions/checkout-otp.js#common#restaurant_id#1",
-   "line": 50,
+   "line": 52,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -3585,7 +3585,7 @@
   },
   {
    "id": "xpizza-functions/checkout-otp.js#common#restaurant_id#2",
-   "line": 54,
+   "line": 56,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -3595,7 +3595,7 @@
   },
   {
    "id": "xpizza-functions/checkout-otp.js#requestCheckoutCode#restaurant_id#0",
-   "line": 81,
+   "line": 83,
    "kind": "projection",
    "facts": [
     "BRAND"
@@ -3606,7 +3606,7 @@
   },
   {
    "id": "xpizza-functions/checkout-otp.js#verifyCheckoutCode#order_id#0",
-   "line": 102,
+   "line": 104,
    "kind": "member",
    "facts": [
     "NUM"
@@ -3616,7 +3616,7 @@
   },
   {
    "id": "xpizza-functions/checkout-otp.js#verifyCheckoutCode#order_id#1",
-   "line": 102,
+   "line": 104,
    "kind": "member",
    "facts": [
     "NUM"
@@ -3626,7 +3626,7 @@
   },
   {
    "id": "xpizza-functions/checkout-otp.js#verifyCheckoutCode>anon#restaurant_id#0",
-   "line": 114,
+   "line": 116,
    "kind": "projection",
    "facts": [
     "BRAND"
@@ -3637,7 +3637,7 @@
   },
   {
    "id": "xpizza-functions/checkout-otp.js#verifyCheckoutCode>anon#restaurant_id#1",
-   "line": 114,
+   "line": 116,
    "kind": "projection",
    "facts": [
     "BRAND"
@@ -3648,7 +3648,7 @@
   },
   {
    "id": "xpizza-functions/checkout-otp.js#verifyCheckoutCode#restaurant_id#0",
-   "line": 129,
+   "line": 131,
    "kind": "projection",
    "facts": [
     "BRAND"
@@ -3659,7 +3659,7 @@
   },
   {
    "id": "xpizza-functions/checkout-otp.js#verifyCheckoutCode#order_id#2",
-   "line": 129,
+   "line": 131,
    "kind": "member",
    "facts": [
     "NUM"
@@ -47081,7 +47081,7 @@
    "file": "xpizza-functions/checkout-otp.js",
    "alias": "rid",
    "field": "restaurant_id",
-   "line": 54,
+   "line": 56,
    "round": 1
   },
   {
@@ -47089,7 +47089,7 @@
    "file": "xpizza-functions/checkout-otp.js",
    "alias": "orderId",
    "field": "order_id",
-   "line": 129,
+   "line": 131,
    "round": 1
   },
   {
@@ -48524,7 +48524,7 @@
   },
   {
    "key": "xpizza-functions/checkout-otp.js:makeCheckoutOtp>anon:Date.now()",
-   "line": 40,
+   "line": 42,
    "class": "business-sample"
   },
   {
