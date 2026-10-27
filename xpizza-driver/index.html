@@ -239,21 +239,30 @@
 /* ===== disponible (on-shift idle) — prototype S.disponible, scoped to #idle-state. Calm status card (Disponible chip
    + GPS freshness), the check «Esperando pedidos» block, two stat cards. Verbatim prototype tokens; body-bold = --fb,
    headings = Display (--fd). ===== */
-#idle-state .disp-status { width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); padding: 14px; }
+/* LAYOUT (override the base #idle-state/.idle-top centering, higher specificity): stack from the TOP, prototype 16px
+   side margins, status card → center block → stats → spacer. */
+#screen-onshift #idle-state { padding: 4px 16px 10px; justify-content: flex-start; gap: 14px; }   /* proto .body gap 14px; NOT vertically centred */
+#screen-onshift #idle-state .idle-top { flex: none; justify-content: flex-start; align-items: stretch; text-align: left; gap: 14px; padding: 0; }
+#idle-state .disp-center { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 4px 0 0; }   /* proto .body.center */
+#idle-state .disp-sp { flex: 1; min-height: 6px; }   /* proto .sp — fills below the stats so the block stays top-aligned */
+#idle-state .disp-status { width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); padding: 14px; }   /* FULL width (proto .card) */
 #idle-state .disp-chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--fb); font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; line-height: 1.2; white-space: nowrap; background: #E3F3E9; color: #15803D; }   /* proto .chip.ok (--p-okwash / --p-ok) */
 #idle-state .disp-chip i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
 #idle-state .disp-gps { margin-left: auto; font-size: 13px; color: var(--text-soft, #546078); }   /* proto .sub */
 #idle-state .disp-gps.stale { color: var(--warn, #8A5A00); }
-#idle-state .idle-top { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; padding: 4px 0 0; }   /* outer idle column: status card (full-width) + the centered check block; proto gap 14px */
-#idle-state .disp-status + .idle-check { margin-top: 2px; }
 #idle-state .idle-check { width: 104px; height: 104px; border-radius: 30px; display: grid; place-items: center; background: #E3F3E9; color: #15803D; }   /* proto .illus.ok */
 #idle-state .idle-check svg { width: 50px; height: 50px; }
 #idle-state .idle-msg { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); }   /* proto .h = --fd */
-#idle-state .idle-sub { font-family: var(--fb); font-size: 13px; color: var(--text-soft, #546078); max-width: 300px; }   /* proto .sub */
-#idle-state .disp-stat2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+#idle-state .idle-sub { font-family: var(--fb); font-size: 13px; color: var(--text-soft, #546078); max-width: 320px; }   /* proto .sub */
+#screen-onshift #idle-state .idle-help-link { font-family: var(--fb); color: var(--text-soft, #546078); font-weight: 600; font-size: 13px; }   /* proto .btn.txt — darker, semibold (fix) */
+#idle-state .disp-stat2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 #idle-state .disp-statcard { background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); text-align: center; padding: 12px 8px; }
 #idle-state .disp-statcard b { display: block; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 24px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text, #0D1424); }   /* proto .stat2 .card b = --fd */
 #idle-state .disp-statcard small { font-family: var(--fb); font-size: 11.5px; color: var(--text-soft, #546078); font-weight: 600; }
+/* idle «En turno» header: on the PAGE background, no white bar / no border (like the offshift header), muted Text sub.
+   DISP-HEADER adds .enturno for available/returning; the normal (non-idle) status bar keeps the white bar + border. */
+.status-bar.enturno { background: transparent; border-bottom: none; }
+.status-bar.enturno .gps-meta { font-family: var(--fb); font-weight: 500; font-size: 12px; color: var(--text-soft, #546078); letter-spacing: 0; }
 /* disponible header: the status dot becomes the Sola mark in the idle «En turno» header (SLICE3:DISP-HEADER sets
    .sola + the SVG). A normal dot hides any leftover svg, so an idle→non-idle transition reverts cleanly to the dot. */
 .status-dot svg { display: none; }
@@ -2952,15 +2961,18 @@ function renderDisponible() {
     '<div class="idle-top">'
     + '<div class="disp-status"><span class="disp-chip"><i></i><span id="disp-chip-label">' + chip + '</span></span>'
     + '<span class="disp-gps' + (stale ? ' stale' : '') + '" id="disp-gps">' + gps + '</span></div>'
+    + '<div class="disp-center">'
     + '<div class="idle-check" id="idle-icon">' + icon + '</div>'
     + '<div class="idle-msg" id="idle-msg">' + msg + '</div>'
     + '<div class="idle-sub" id="idle-sub">' + sub + '</div>'
     + '<span id="disp-help-slot"></span><span id="disp-arrive-slot"></span>'
     + '</div>'
+    + '</div>'
     + '<div class="disp-stat2" id="idle-statbar">'
     + '<div class="disp-statcard"><b id="stat-deliveries">0</b><small>Entregas hoy</small></div>'
     + '<div class="disp-statcard"><b id="stat-cash">L 0</b><small>Efectivo a entregar</small></div>'
-    + '</div>';
+    + '</div>'
+    + '<div class="disp-sp"></div>';
   const helpSlot = $('disp-help-slot'); if (helpLink && helpSlot) helpSlot.replaceWith(helpLink);   // re-insert the bound controls
   const arriveSlot = $('disp-arrive-slot'); if (arriveBtn && arriveSlot) arriveSlot.replaceWith(arriveBtn);
 }
@@ -4846,6 +4858,7 @@ function renderStatusBar() {
      dedup is on the batch checklist (before Codex). ===== */
   if (status === 'available' || status === 'returning') {
     dot.className = 'status-dot sola';
+    const sb = dot.closest && dot.closest('.status-bar'); if (sb) sb.classList.add('enturno');   // idle «En turno» header = page-bg, no white bar. Only available/returning reach here; the status bar is hidden while delivering, and pausa (3-P) will own its own header.
     dot.innerHTML = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="var(--marino, #14306B)"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><g><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--celeste, #8EC0FF)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="var(--marino, #14306B)"/></g></svg>';
     lbl.textContent = 'En turno';
     const start = driverState && driverState.shift_started_at;
