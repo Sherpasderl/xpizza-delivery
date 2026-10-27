@@ -23987,8 +23987,8 @@
     "slice": "g6",
     "label": "an ordinary sign-out keeps the cached profile",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearPending(); }",
-    "to": "if (st === 'guest') { clearPending(); }",
+    "from": "if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); }",
+    "to": "if (st === 'guest') { clearComplete(); }",
     "command": [
       "node",
       "--test",
@@ -24085,18 +24085,18 @@
   {
     "id": "g6-13",
     "slice": "g6",
-    "label": "Codex G6 r1 #2: a restored pending uid becomes a member",
+    "label": "Codex G6 r2 #2: a restored uid is applied without its completion mark",
     "file": "../customer-app/capp-shell-ui.js",
-    "from": "        if (u && u.uid && pendingUid() === u.uid) { dropMember(); clearPending(); fbAuth.signOut().catch(() => {}); schedule(); return; }\n",
+    "from": "        if (u && u.uid && completeUid() !== u.uid) { dropMember(); fbAuth.signOut().catch(() => {}); schedule(); return; }\n",
     "to": "",
     "command": [
       "node",
       "--test",
-      "--test-name-pattern=Codex G6 r1",
+      "--test-name-pattern=Codex G6 r2",
       "../customer-app/capp-s7a2.test.mjs"
     ],
     "kills_with": [
-      "a restored pending uid is never a member"
+      "a restored uid without its mark is never a member"
     ]
   },
   {
@@ -24136,7 +24136,7 @@
   {
     "id": "g6-16",
     "slice": "g6",
-    "label": "the SDK callback applies a member while the sheet is mid-flow (before the Términos)",
+    "label": "the SDK callback acts on a session the open sheet owns (signs it out mid-flow)",
     "file": "../customer-app/capp-shell-ui.js",
     "from": "        if (signup && signup.state.open) { schedule(); return; }\n",
     "to": "",
@@ -24147,7 +24147,24 @@
       "../customer-app/capp-s7a2.test.mjs"
     ],
     "kills_with": [
-      "mid-completion the checkout is not a member"
+      "mid-sheet the SDK callback never signs the sheet"
+    ]
+  },
+  {
+    "id": "g6-17",
+    "slice": "g6",
+    "label": "Codex G6 r2 #2: the uid is marked before its sign-out is confirmed (a rejected sign-out admits it at the next restore)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "completeUid() !== u.uid) { dropMember(); fbAuth.signOut().catch(() => {});",
+    "to": "completeUid() !== u.uid) { dropMember(); markComplete(u.uid); fbAuth.signOut().catch(() => {});",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G6 r2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "still not a member after a rejected sign-out"
     ]
   }
 ]

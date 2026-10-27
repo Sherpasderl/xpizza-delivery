@@ -189,14 +189,17 @@
       if (!SU || !signup) { emit('signin', d); return; }   // no shell auth ⇒ the host's, as before
       signup.open({ ctx: d.ctx || null, prefill: d.prefill || null, memberOnly: d.ctx === 'schedule' });
     }
-    // Codex G6 r1 #2: the «completion pending» mark — a verified sign-in that has not accepted the Términos yet. Persisted (per uid)
-    // so a RELOAD in that window never restores the uid as a member; cleared at «Listo» and by any sign-out
-    const PENDING_KEY = 'capp:signup_pending';
-    const pendingUid = () => { try { const v = JSON.parse(storage.getItem(PENDING_KEY) || 'null'); return v && v.v === 1 && typeof v.uid === 'string' ? v.uid : null; } catch (_) { return null; } };
-    const setPending = (uid) => { try { storage.setItem(PENDING_KEY, JSON.stringify({ v: 1, uid })); } catch (_) {} };
-    const clearPending = () => { try { storage.removeItem(PENDING_KEY); } catch (_) {} };
+    // Codex G6 r1 #2 / r2 (an ALLOW-list, closed by construction): capp:member_complete {v:1, uid} is written ONLY at «Listo» — a new
+    // account's completion, or an existing account the server confirmed complete. A RESTORED session becomes a member ONLY when the
+    // mark names its uid; anything else (no mark — e.g. a crash between the SDK persisting the uid and «Listo» —, another uid) is
+    // signed out and never applied, restore after restore until the sign-out is CONFIRMED (the 'guest' callback). An ordinary sign-out
+    // clears the mark. (The app has never been live: no session predates the mark — nothing to grandfather.)
+    const COMPLETE_KEY = 'capp:member_complete';
+    const completeUid = () => { try { const v = JSON.parse(storage.getItem(COMPLETE_KEY) || 'null'); return v && v.v === 1 && typeof v.uid === 'string' ? v.uid : null; } catch (_) { return null; } };
+    const markComplete = (uid) => { try { storage.setItem(COMPLETE_KEY, JSON.stringify({ v: 1, uid })); } catch (_) {} };
+    const clearComplete = () => { try { storage.removeItem(COMPLETE_KEY); } catch (_) {} };
     async function signedIn(d) {
-      clearPending();
+      markComplete(d.uid);
       CappDeviceAccount.remember(storage, d.phone);   // §4c: the device marker (full E.164), kept across ordinary sign-outs
       CappDeviceAccount.rememberProfile(storage, d);   // the member's own profile, for a RESTORED session's autofill
       await applyMember(d);
@@ -225,13 +228,14 @@
       fbAuth = CappAuthFirebase.createFirebaseAuth({ config: SU.firebase, loadSdk: o.loadSdk });
       auth = CappAuthState.createAuthState({ subscribe: fbAuth.subscribe, timers: T });
       auth.onChange((st) => {
-        if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearPending(); }   // an ordinary sign-out: no personal data stays on show
+        if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); }   // a CONFIRMED sign-out: no personal data stays on show
         if (st !== 'member') { dropMember(); schedule(); return; }
         const u = auth.user && auth.user();
         // the sheet in progress owns its outcome: a member only at «Listo» (its 'signed-in'), never by the SDK's callback mid-flow
         if (signup && signup.state.open) { schedule(); return; }
-        // a RESTORED session that never completed (the pending mark for THIS uid): signed out, never a member
-        if (u && u.uid && pendingUid() === u.uid) { dropMember(); clearPending(); fbAuth.signOut().catch(() => {}); schedule(); return; }
+        // a RESTORED session without THIS uid's completion mark: never a member; signed out (a rejected sign-out is retried at the next
+        // restore — nothing is cleared until the 'guest' callback confirms it)
+        if (u && u.uid && completeUid() !== u.uid) { dropMember(); fbAuth.signOut().catch(() => {}); schedule(); return; }
         // a session the SDK RESTORED (no sheet ran): the cached profile of THIS uid, at once (cached-first)
         if (u && u.uid && (!S.member || S.member.uid !== u.uid)) { const c = CappDeviceAccount.readProfile(storage, u.uid); applyMember(c || { uid: u.uid }); return; }
         schedule();
@@ -242,7 +246,7 @@
       const syncDark = () => host.classList.toggle('dark', app.classList.contains('dark'));
       signup = CappSignup.createSignup({ doc, host: { addEventListener: (...a) => host.addEventListener(...a), contains: (n) => host.contains(n), querySelector: (q) => host.querySelector(q), set innerHTML(v) { syncDark(); host.classList.toggle('open', !!v); host.innerHTML = v; }, get innerHTML() { return host.innerHTML; } },
         api: CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch }), auth: fbAuth, google: o.google || null, timers: T,
-        onEvent: (n, d) => { if (n === 'signed-in') signedIn(d); else if (n === 'pending' && d && d.uid) setPending(d.uid); } });
+        onEvent: (n, d) => { if (n === 'signed-in') signedIn(d); } });
     }
     function settleRet(rid, out) {
       const a = S.retAssoc; if (!a || a.rid !== rid) return;

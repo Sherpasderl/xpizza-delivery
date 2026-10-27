@@ -651,7 +651,7 @@ test('stamp: shell.html is stamped as orders-app; on the stamped shell SherpaCli
 });
 
 // ── G6: the in-app sign-in, owned by the shell when the runtime carries the signup config (DARK: absent ⇒ exactly as before) ──
-function fakeFirebase({ persisted = null, hold = null } = {}) {
+function fakeFirebase({ persisted = null, hold = null, failSignOut = 0 } = {}) {
   const calls = { load: 0, ct: [], out: 0 }; let listeners = [], user = persisted;
   // hold: { on, q } — while on, every token read waits for the test to release it (a slow SDK)
   const tok = (u) => (hold && hold.on ? new Promise((r) => hold.q.push(() => r(`id:${u}`))) : Promise.resolve(`id:${u}`));
@@ -660,7 +660,7 @@ function fakeFirebase({ persisted = null, hold = null } = {}) {
   const authMod = { browserLocalPersistence: 'LOCAL', getAuth: () => auth, setPersistence: async () => {},
     onAuthStateChanged: (a, next) => { listeners.push(next); Promise.resolve().then(() => next(user ? { uid: user } : null)); return () => { listeners = listeners.filter((x) => x !== next); }; },
     signInWithCustomToken: async (a, t) => { calls.ct.push(t); user = t.replace(/^ct:/, ''); emitU(); return { user: { uid: user } }; },
-    signOut: async () => { calls.out++; user = null; emitU(); } };
+    signOut: async () => { calls.out++; if (failSignOut > 0) { failSignOut--; throw new Error('network'); } user = null; emitU(); } };
   return { calls, loadSdk: async () => { calls.load++; return { initializeApp: () => ({}), authMod }; } };
 }
 const SU_EP = Object.fromEntries(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant'].map((k) => [k, `https://fn.test/${k}`]));
@@ -716,11 +716,11 @@ test('G6 shell: the SDK after the first paint; «Entrá» opens the sheet; a ver
 test('G6 shell: a RESTORED session autofills from the cached profile of THAT uid at once; another uid\'s cache is never used', async () => {
   const prof = JSON.stringify({ v: 1, uid: 'u_ana', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com' });
   const fb = fakeFirebase({ persisted: 'u_ana' });
-  const S = bootShell({ auth: 'unresolved', storage: memStorage({ 'capp:member_profile': prof }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  const S = bootShell({ auth: 'unresolved', storage: memStorage({ 'capp:member_profile': prof, 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }) }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
   await flush(); await flush();
   assert.deepEqual(J(S.ui.state.member), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: 'id:u_ana' }, '🔴 restored ⇒ autofilled from the cache');
   const fb2 = fakeFirebase({ persisted: 'u_other' });
-  const O = bootShell({ auth: 'unresolved', storage: memStorage({ 'capp:member_profile': prof }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb2.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  const O = bootShell({ auth: 'unresolved', storage: memStorage({ 'capp:member_profile': prof, 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_other' }) }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb2.loadSdk, signupFetch: signupServer(ANA).fetch } });
   await flush(); await flush();
   assert.deepEqual(J(O.ui.state.member), { uid: 'u_other', name: '', phone: '', email: '', idToken: 'id:u_other' }, '🔴 another member\'s cached profile is never shown');
 });
@@ -747,6 +747,7 @@ test('Codex G6 r1 #1: a sign-out — and a close mid-completion — reaches the 
   const S = bootShell({ auth: 'unresolved', runtime: SU_RUNTIME, apiFetch, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } }); await flush(); await flush();
   const ui = await toShellCheckout(S);
   S.click('#app [data-act="signin"]'); await flush(); await sheetVerify(S);
+  assert.equal(fb.calls.out, 0, '🔴 mid-sheet the SDK callback never signs the sheet\'s own session out (the sheet owns its outcome)');
   S.click(suHost(S).querySelector('[data-su="finish"]')); await flush(); await flush();
   S.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();
   assert.equal(quotes[quotes.length - 1], 'id:u_ana', 'premise: the member\'s quote carries the member token');
@@ -760,6 +761,7 @@ test('Codex G6 r1 #1: a sign-out — and a close mid-completion — reaches the 
   await toShellCheckout(M);
   M.click('#app [data-act="signin"]'); await flush(); await sheetVerify(M);
   assert.equal(txt(suHost(M).querySelector('.sg .h1')), 'Tu correo', 'premise: verified, completion owed');
+  assert.equal(fb2.calls.out, 0, '🔴 mid-sheet the SDK callback never signs the sheet\'s own session out (the sheet owns its outcome)');
   M.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();
   assert.equal(q2[q2.length - 1], null, '🔴 mid-completion the checkout is not a member');
   M.click(suHost(M).querySelector('[data-su="close"]')); await flush(); await flush();
@@ -767,26 +769,44 @@ test('Codex G6 r1 #1: a sign-out — and a close mid-completion — reaches the 
   assert.equal(q2[q2.length - 1], null, '🔴 closed mid-completion ⇒ no member token');
   assert.equal(M.ui.state.member, null);
 });
-test('Codex G6 r1 #2: a reload while the completion is owed restores NO member — the pending uid is signed out and its mark cleared', async () => {
-  const fb = fakeFirebase({ persisted: 'u_new' }); const storage = memStorage({ 'capp:signup_pending': JSON.stringify({ v: 1, uid: 'u_new' }) });
+test('Codex G6 r2 #2 — the ALLOW-list: a restored uid is a member ONLY with its completion mark; the mark is written at «Listo», cleared by a confirmed sign-out', async () => {
+  const boot = (fb, storage) => bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  // a crash between the SDK persisting the uid and «Listo»: the uid is there, no mark
+  const fb = fakeFirebase({ persisted: 'u_new' }); const S = boot(fb, memStorage()); await flush(); await flush(); await flush();
+  assert.equal(S.ui.state.member, null, '🔴 a restored uid without its mark is never a member'); assert.equal(fb.calls.out, 1, 'signed out');
+  // a mark for A, B restored ⇒ signed out
+  const fb2 = fakeFirebase({ persisted: 'u_b' }); const st2 = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_a' }) });
+  const B = boot(fb2, st2); await flush(); await flush(); await flush();
+  assert.equal(B.ui.state.member, null, '🔴 another uid\'s mark never admits this one'); assert.equal(fb2.calls.out, 1);
+  // a completed member restores normally
+  const fb3 = fakeFirebase({ persisted: 'u_ana' }); const M = boot(fb3, memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }) })); await flush(); await flush(); await flush();
+  assert.equal(M.ui.state.member && M.ui.state.member.uid, 'u_ana'); assert.equal(fb3.calls.out, 0, 'never signed out');
+  // «Listo» writes the mark; a confirmed sign-out clears it
+  const st4 = memStorage(); const fb4 = fakeFirebase(); const P = boot(fb4, st4); await flush(); await flush();
+  await signInViaSheet(P); P.click(suHost(P).querySelector('[data-su="finish"]')); await flush();
+  assert.deepEqual(JSON.parse(st4.getItem('capp:member_complete')), { v: 1, uid: 'u_ana' }, 'written at «Listo»');
+  await (await fb4.loadSdk()).authMod.signOut(); await flush();
+  assert.equal(st4.getItem('capp:member_complete'), null, 'cleared by the confirmed sign-out');
+});
+test('Codex G6 r2 #2 — a REJECTED sign-out admits nothing: still not a member at the next restore, and the sign-out is retried', async () => {
+  const storage = memStorage(); const fb = fakeFirebase({ persisted: 'u_new', failSignOut: 1 });
   const S = bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } }); await flush(); await flush(); await flush();
-  assert.equal(S.ui.state.member, null, '🔴 a restored pending uid is never a member'); assert.equal(fb.calls.out, 1, 'signed out');
-  assert.equal(storage.getItem('capp:signup_pending'), null, 'the mark cleared');
-  // the sheet writes the mark at verify and «Listo» clears it
-  const st2 = memStorage(); const fb2 = fakeFirebase();
-  const P = bootShell({ auth: 'unresolved', storage: st2, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb2.loadSdk, signupFetch: signupServer({ ok: true, token: 'ct:u_new', is_new: true, completion: 'needed' }).fetch } }); await flush(); await flush();
-  P.click('.tabbar [data-tab="account"]'); await flush(); P.click('.guestcard .primary'); await flush(); await sheetVerify(P);
-  assert.deepEqual(JSON.parse(st2.getItem('capp:signup_pending')), { v: 1, uid: 'u_new' }, 'marked at verify');
+  assert.equal(S.ui.state.member, null); assert.equal(fb.calls.out, 1, 'premise: the sign-out was tried (and rejected)');
+  // the next page load: the SDK still restores u_new (the sign-out never happened)
+  const fb2 = fakeFirebase({ persisted: 'u_new' });
+  const R = bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb2.loadSdk, signupFetch: signupServer(ANA).fetch } }); await flush(); await flush(); await flush();
+  assert.equal(R.ui.state.member, null, '🔴 still not a member after a rejected sign-out'); assert.equal(fb2.calls.out, 1, 'retried');
 });
 test('Codex G6 r1 #3: a member apply delayed by a slow token never lands after a sign-out or a switch to another account', async () => {
   for (const after of ['signout', 'switch']) {
-    const hold = { on: false, q: [] }; const fb = fakeFirebase({ hold });
-    const S = bootShell({ auth: 'unresolved', runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } }); await flush(); await flush();
+    const hold = { on: false, q: [] }; const fb = fakeFirebase({ hold }); const storage = memStorage();
+    const S = bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } }); await flush(); await flush();
     S.click('.tabbar [data-tab="account"]'); await flush(); S.click('.guestcard .primary'); await flush(); await sheetVerify(S);
     hold.on = true; S.click(suHost(S).querySelector('[data-su="finish"]')); await flush();
     assert.equal(S.ui.state.member, null, 'premise: A\'s apply is waiting on its token');
     const { authMod } = await fb.loadSdk();
-    if (after === 'signout') await authMod.signOut(); else await authMod.signInWithCustomToken(null, 'ct:u_b');
+    // the switch: B, an account whose completion is on record (the allow-list admits it)
+    if (after === 'signout') await authMod.signOut(); else { storage.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_b' })); await authMod.signInWithCustomToken(null, 'ct:u_b'); }
     await flush(); hold.on = false; for (const r of hold.q.splice(0)) r(); await flush(); await flush();
     if (after === 'signout') assert.equal(S.ui.state.member, null, '🔴 a late apply never revives a signed-out member');
     else assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_b', '🔴 a late apply for A never overwrites B');
