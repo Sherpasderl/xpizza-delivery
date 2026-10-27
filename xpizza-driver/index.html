@@ -329,7 +329,8 @@
 .rc-big .l,
 .rc-row .l,
 .offer-card .of-dist, .of2-card .of-dist,
-.offer-card .of-lock { font-family: var(--fb); }
+.offer-card .of-lock,
+#idle-state .disp-cancel-row .dci-txt b { font-family: var(--fb); }   /* S.cancelado row titles: bold Red Hat TEXT (proto .row .t), not Display */
 /* ===== SLICE3:PRESENTATION-INICIO:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -3061,13 +3062,13 @@ function renderSoloCancel(host, helpLink, arriveBtn, offerExpired) {
     '<div class="disp-cancel-banner" id="disp-cancel-banner">' + ICONS.warn
       + '<div><b>Pedido ' + escapeHtml(num) + ' cancelado por despacho</b>'
       + '<span class="dcb-body">No cobrés nada. ' + brandPhrase + '. Si ya la tenés, avisá en ventanilla.</span>'
-      + '<span class="dcb-chiprow"><span class="dcb-chip">Queda a la vista hasta que toques «Entendido»</span></span>'
+      + '<span class="dcb-chiprow"><span class="dcb-chip">Queda a la vista hasta que toques “Entendido”</span></span>'
       + '</div></div>'
     + '<button class="disp-cancel-ack" id="btn-solo-cancel-ack">Entendido</button>'
     + '<div class="disp-status"><span class="disp-chip"><i></i><span>Disponible</span></span>'
       + '<span class="disp-gps' + (stale ? ' stale' : '') + '" id="disp-gps">' + gps + '</span></div>'
     + '<div class="disp-cancel-info">'
-      + '<div class="disp-cancel-row"><span class="dci-ic ok">' + ICONS.cash + '</span><span class="dci-txt"><b>Tu cuadre no cambia</b><small>Este pedido no suma ni resta efectivo</small></span></div>'
+      + '<div class="disp-cancel-row"><span class="dci-ic ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5" stroke-linecap="round"/></svg></span><span class="dci-txt"><b>Tu cuadre no cambia</b><small>Este pedido no suma ni resta efectivo</small></span></div>'
       + '<div class="disp-cancel-row tap hidden" id="disp-cancel-dispatch"><span class="dci-ic">' + ICONS.phone + '</span><span class="dci-txt"><b>¿Dudas? Llamá a despacho</b></span><span class="dci-chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span></div>'
       + '</div>'
     + '<div class="disp-sp"></div>'

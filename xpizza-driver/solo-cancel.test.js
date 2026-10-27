@@ -79,7 +79,7 @@ t('renderDisponible shows the S.cancelado takeover: banner (num + brand), «Ente
   assert.ok(h.host.querySelector('.disp-cancel-banner'), 'cancel banner present');
   assert.match(html, /Pedido #1042 cancelado por despacho/, 'banner title with the cancelled number');
   assert.match(html, /Regresá la comida a X\. Pizza/, 'brand is data-driven (cancelledBrand)');
-  assert.match(html, /Queda a la vista hasta que toques «Entendido»/, 'the persistence chip');
+  assert.match(html, /Queda a la vista hasta que toques “Entendido”/, 'the persistence chip');
   assert.ok(h.host.querySelector('#btn-solo-cancel-ack'), '«Entendido» button present');
   assert.equal(h.host.querySelector('.disp-chip span:last-child').textContent, 'Disponible', 'the «Disponible» status card');
   assert.match(html, /Tu cuadre no cambia/, 'cuadre-unchanged row');
