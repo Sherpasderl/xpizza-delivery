@@ -37,7 +37,7 @@ const ROOT = join(__dirname, '..');
    the working tree mutated under whoever asked. That happened in three sessions. So the arguments are
    checked FIRST, before the catalogue is read or anything is printed or run: an unknown or malformed
    one prints the usage and exits 2; `--help` / `-h` print it and exit 0. `--slice=` with no value
-   is malformed too — an empty slice used to mean "every mutant". */
+   (or all-whitespace) is malformed too — an empty slice used to mean "every mutant". */
 const USAGE = `usage: node tools/mutation-sweep.js [--slice=<name>] [--list] [--mutants=<catalogue.json>]
   (no flags)        run EVERY mutant (each runs its full suite; the tree is mutated while it runs)
   --slice=<name>    only the mutants of one slice
@@ -50,7 +50,7 @@ const USAGE = `usage: node tools/mutation-sweep.js [--slice=<name>] [--list] [--
   for (const a of process.argv.slice(2)) {
     if (a === '--help' || a === '-h' || a === '--list') { seen.add(a); continue; }
     const m = /^--([a-z]+)=(.*)$/s.exec(a);
-    if (m && VALUED.includes(m[1]) && m[2] !== '' && !seen.has(m[1])) { seen.add(m[1]); continue; }
+    if (m && VALUED.includes(m[1]) && m[2].trim() !== '' && !seen.has(m[1])) { seen.add(m[1]); continue; }   // blank = empty; inner spaces kept
     bad.push(a);
   }
   if (bad.length) {
