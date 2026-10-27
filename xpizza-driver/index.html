@@ -236,6 +236,24 @@
 .pr-chev { color: var(--text-dim, #8A93A6); flex: none; align-self: center; }
 .pr-chev svg { width: 16px; height: 16px; }
 
+/* ===== disponible (on-shift idle) — prototype S.disponible, scoped to #idle-state. Calm status card (Disponible chip
+   + GPS freshness), the check «Esperando pedidos» block, two stat cards. Verbatim prototype tokens; body-bold = --fb,
+   headings = Display (--fd). ===== */
+#idle-state .disp-status { display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); padding: 14px; }
+#idle-state .disp-chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--fb); font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; line-height: 1.2; white-space: nowrap; background: #E3F3E9; color: #15803D; }   /* proto .chip.ok (--p-okwash / --p-ok) */
+#idle-state .disp-chip i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+#idle-state .disp-gps { margin-left: auto; font-size: 13px; color: var(--text-soft, #546078); }   /* proto .sub */
+#idle-state .disp-gps.stale { color: var(--warn, #8A5A00); }
+#idle-state .idle-top { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 14px 0 0; }   /* proto .body.center */
+#idle-state .idle-check { width: 104px; height: 104px; border-radius: 30px; display: grid; place-items: center; background: #E3F3E9; color: #15803D; }   /* proto .illus.ok */
+#idle-state .idle-check svg { width: 50px; height: 50px; }
+#idle-state .idle-msg { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); }   /* proto .h = --fd */
+#idle-state .idle-sub { font-family: var(--fb); font-size: 13px; color: var(--text-soft, #546078); max-width: 300px; }   /* proto .sub */
+#idle-state .disp-stat2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+#idle-state .disp-statcard { background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); text-align: center; padding: 12px 8px; }
+#idle-state .disp-statcard b { display: block; font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 24px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text, #0D1424); }   /* proto .stat2 .card b = --fd */
+#idle-state .disp-statcard small { font-family: var(--fb); font-size: 11.5px; color: var(--text-soft, #546078); font-weight: 600; }
+
 /* ===== Prototype body-bold parity (ONE source; owner no-clones). The brand-neutral base alias 'Plus Jakarta Sans'
    routes weight >=501 to the Red Hat DISPLAY woff2, but the prototype's bold BODY text is Red Hat Text (--fb) and
    only headings use Display. --fb pins the prototype body-bold elements (chips, small stat/caption labels, currency
