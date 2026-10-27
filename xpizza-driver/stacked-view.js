@@ -374,9 +374,12 @@ export function activeCardHtml(o, deps = {}, opts = {}) {
     }
   }
   // «Llegué · avisar a {Nombre}» (L1): a TAP that notifies the customer — the driver's own create of tasks/{id}/arrived
-  // (dep C). Rendered ONLY when the capability exists (opts.canNotifyArrival) AND the driver has NOT yet notified
-  // (tasks/{id}/arrived absent); once notified the banner replaces it. Carries the delivery-task id for the write.
-  const notified = !!(o.deliveryTask && o.deliveryTask.arrived);
+  // (dep C). Rendered ONLY when the capability exists (opts.canNotifyArrival) AND the driver has NOT yet notified.
+  // Codex r2 P2-6: `notified` is the driver's OWN ACKNOWLEDGED write — opts.arrivalAck, which the caller sets true
+  // only when its local update() promise RESOLVED for THIS task AND tasks/{id}/arrived.by === the acting uid. A raw
+  // `arrived` leaf is NOT enough: a pending offline write or a foreign driver's arrived.by must keep «Llegué» showing
+  // and claim nothing. Pure: the ack decision stays in the caller; this builder only reads the flag it is handed.
+  const notified = opts.arrivalAck === true;
   const llegueBtn = (opts.canNotifyArrival === true && accepted && !isPickup && !notified)
     ? `<button class="llegue-btn" id="btn-llegue" data-order-id="${esc(o.orderId)}" data-task-id="${esc((o.deliveryTask && o.deliveryTask.id) || '')}" data-recipient="${esc(firstName(name))}"><span class="ico">${ICONS.bell || ''}</span>Llegué · avisar a ${esc(firstName(name))}</button>`
     : '';
@@ -728,7 +731,10 @@ export function stopHeaderHtml(info = {}, deps = {}) {
   // entry during a delivery → the existing end-shift path → O4 sheet → cuadre, unchanged) — then the Ayuda icon,
   // gated on the Problema capability (R9/F; hidden until that endpoint exists). Left: the subtle Sola brand mark.
   const endShift = `<button class="ib sh-end" id="btn-end-shift" aria-label="Terminar turno" title="Terminar turno">${ICONS.power || POWER_SVG}</button>`;
-  const ayuda = canReportProblem === true ? `<button class="ib sh-ayuda" id="btn-problema" data-order-id="${esc(info.orderId || '')}" aria-label="Ayuda" title="Ayuda">${ICONS.help || '?'}</button>` : '';
+  // Codex r2 P2-7: render the Ayuda/«Problema» icon ONLY when there is a real order id to report against. A header
+  // that reaches here without one (an unaccepted offer, or a caller that forgot to thread it) renders NO button
+  // instead of a dead `data-order-id=""` whose tap silently returns.
+  const ayuda = (canReportProblem === true && info.orderId) ? `<button class="ib sh-ayuda" id="btn-problema" data-order-id="${esc(info.orderId)}" aria-label="Ayuda" title="Ayuda">${ICONS.help || '?'}</button>` : '';
   return `<div class="stop-header">
       <div class="sh-logo">${ICONS.sola || SOLA_SVG}</div>
       <div class="sh-titles"><div class="sh-title">${title}${titleDl}</div>${sub ? `<div class="sh-sub">${sub}</div>` : ''}</div>

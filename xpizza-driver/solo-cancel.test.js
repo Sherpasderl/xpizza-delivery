@@ -29,8 +29,10 @@ function liftFn(name) {
   throw new Error(`unbalanced ${name}`);
 }
 
-function boot({ cancel, dispatch = '+504 9999 8888' } = {}) {
-  const dom = new JSDOM('<!doctype html><html><body><div id="idle-state">'
+function boot({ cancel, dispatch = '+504 9999 8888', realRaq = false, orders = [], drv2Cancel = null } = {}) {
+  const dom = new JSDOM('<!doctype html><html><body><div id="screen-onshift"></div>'
+    + '<div id="incoming-banner-slot"></div><div id="active-order-slot"></div><div id="queue-slot"></div>'
+    + '<div id="idle-state">'
     + '<div class="idle-top"><div class="idle-check" id="idle-icon"></div><div class="idle-msg" id="idle-msg">x</div>'
     + '<div class="idle-sub" id="idle-sub">x</div><button class="idle-help-link" id="idle-help-link">h</button>'
     + '<button class="big-btn primary hidden" id="arrive-btn">Estoy en el restaurante</button></div>'
@@ -40,21 +42,29 @@ function boot({ cancel, dispatch = '+504 9999 8888' } = {}) {
   const $ = (id) => document.getElementById(id);
   const ICONS = new Proxy({}, { get: (_, k) => `<svg data-ic="${String(k)}"></svg>` });
   const driverState = { status: 'available', last_ping: Date.now() };
-  const XPD = { isStalePing: () => false, getDb: () => ({}) };
+  const XPD = { isStalePing: () => false, getDb: () => ({}), getDriverOrders: () => orders };
   const fbRef = () => ({});
   const fbOnValue = (ref, cb) => { cb(dispatch == null ? null : { val: () => dispatch }); return () => {}; };
   const escapeHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const currentUser = { uid: 'drv' };
   $('idle-help-link')._mark = 'help'; $('arrive-btn')._mark = 'arrive';
-  const body = 'let drv2SoloCancel = _cancel;\nfunction renderActiveAndQueue(){ _calls.raq = (_calls.raq||0)+1; }\n'
+  // Codex r2 P2-8: drive the REAL renderActiveAndQueue (not a stub) so the empty-board → SOLO-CANCEL capture →
+  // renderIdleState path is exercised; a mutant that SKIPS the idle render then shows no cancel banner → RED.
+  const raqBlock = realRaq
+    ? ('let slidingEl = null, renderPending = false, allTasks = {}, allOrders = {}, queuedOrders = [], drv2Cancel = _drv2Cancel, drv2OfferExpired = null;\n'
+       + 'const collapsedBanners = new Set();\n'
+       + 'function applyOfflineBanner(){} function drv2ResolveActivePointer(){ return null; } function drv2NavArmed(){ return true; } function drv2Observe(){} function drv2ShowInterlude(){} function drv2DismissInterlude(){} function drv2ResetRun(){} function mountTabBar(){} function offerExpiredBannerHtml(){ return ""; }\n'
+       + liftFn('renderActiveAndQueue') + '\n')
+    : 'function renderActiveAndQueue(){ _calls.raq = (_calls.raq||0)+1; }\n';
+  const body = 'let drv2SoloCancel = _cancel;\n' + raqBlock
     + 'let NAVP_ICONS = {}, navBtnHtml = () => "", drv2ReadNavPref = () => "Waze";\n'
     + 'function drv2GetReturnTarget(){ return null; } function drv2ClearReturnTarget(){}\n'
     + 'function applyGpsoff(){} function checkLocationStatus(){} function syncIdleStats(){}\n'
     + liftFn('renderSoloCancel') + '\n' + liftFn('wireDispatchCallRow') + '\n' + liftFn('renderDisponible') + '\n' + liftFn('renderIdleState') + '\n'
-    + 'return { renderDisponible, renderIdleState, getCancel: () => drv2SoloCancel, setCancel: (c) => { drv2SoloCancel = c; } };';
+    + 'return { renderDisponible, renderIdleState, renderActiveAndQueue, getCancel: () => drv2SoloCancel, setCancel: (c) => { drv2SoloCancel = c; } };';
   const calls = {};
-  const names = ['document', '$', 'ICONS', 'driverState', 'XPD', 'fbRef', 'fbOnValue', 'escapeHtml', 'currentUser', 'window', '_cancel', '_calls'];
-  const api = (new Function(...names, body))(document, $, ICONS, driverState, XPD, fbRef, fbOnValue, escapeHtml, currentUser, window, cancel, calls);
+  const names = ['document', '$', 'ICONS', 'driverState', 'XPD', 'fbRef', 'fbOnValue', 'escapeHtml', 'currentUser', 'window', '_cancel', '_calls', '_drv2Cancel'];
+  const api = (new Function(...names, body))(document, $, ICONS, driverState, XPD, fbRef, fbOnValue, escapeHtml, currentUser, window, cancel, calls, drv2Cancel);
   return { api, document, window, host: $('idle-state'), $, calls };
 }
 
@@ -138,6 +148,15 @@ t('capture: a new unaccepted OFFER clears a prior solo-cancel (Codex P2-3)', () 
 });
 t('capture: persists across idle re-renders once drv2Cancel is nulled (no re-set, no clear)', () => {
   assert.deepEqual(runCapture([], null, CANCEL), CANCEL, 'idle re-render keeps the banner');
+});
+t('P2-8: the REAL renderActiveAndQueue on an EMPTY board captures the no-survivor cancel AND renders the idle takeover (kills the skip-idle-render + skip-capture mutants)', () => {
+  // Drive the REAL board renderer (not the stub): empty board + a no-survivor drv2Cancel → the live SOLO-CANCEL
+  // region captures it, then the empty-board branch calls renderIdleState → renderDisponible → renderSoloCancel.
+  const h = boot({ cancel: null, realRaq: true, orders: [], drv2Cancel: { ...RAW } });   // drv2SoloCancel starts null
+  h.api.renderActiveAndQueue();
+  assert.ok(h.host.querySelector('.disp-cancel-banner'), 'the REAL render reached the idle cancel takeover (a skip-idle-render mutant → no banner → RED)');
+  assert.match(h.host.innerHTML, /Pedido #1042 cancelado por despacho/, 'the captured cancel is actually shown');
+  assert.deepEqual(h.api.getCancel(), { ...RAW, _uid: 'drv' }, 'the live SOLO-CANCEL region captured + uid-stamped it (a skip-capture mutant → null → RED)');
 });
 
 // «Tu cuadre no cambia» truth-check: a cancelled cash order never enters computeShiftCash (no delivered_at)

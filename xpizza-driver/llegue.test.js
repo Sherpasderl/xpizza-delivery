@@ -29,9 +29,10 @@ const order = {
 const deliveryEntry = { orderId: 'o1', phase: 'delivery', order, deliveryTask: { id: 'd1', destination_address: order.address_detected, recipient_name: 'Daniela' }, pickupTask: { id: 'p1', destination_lat: 15.5, destination_lng: -88.03 } };
 // the SOLO arrived-at-customer card passes the explicit soloArrival discriminator (Codex P2-4)
 const card = (opts) => activeCardHtml(deliveryEntry, deps, { ordinal: 1, solo: true, showActualPill: true, navLabel: '', previewHtml: '', soloArrival: true, ...opts });
-// the driver has written tasks/{id}/arrived (dep C) → the delivery task carries `arrived` → the banner is allowed
+// the driver has written tasks/{id}/arrived (dep C) AND the caller acknowledged it (Codex r2 P2-6: arrivalAck true =
+// its own update() resolved AND arrived.by === this uid) → the banner / «avisamos a las {t}» are allowed.
 const notifiedEntry = { ...deliveryEntry, deliveryTask: { ...deliveryEntry.deliveryTask, arrived: { at: 1799999000000, by: 'drv' } } };
-const cardN = (opts) => activeCardHtml(notifiedEntry, deps, { ordinal: 1, solo: true, showActualPill: true, navLabel: '', previewHtml: '', soloArrival: true, ...opts });
+const cardN = (opts) => activeCardHtml(notifiedEntry, deps, { ordinal: 1, solo: true, showActualPill: true, navLabel: '', previewHtml: '', soloArrival: true, arrivalAck: true, ...opts });
 // a STACKED / promoted-survivor delivery card: NO soloArrival → must stay byte-identical (the arrival restyle never applies)
 const stackedCard = (opts) => activeCardHtml(deliveryEntry, deps, { ordinal: 2, solo: false, showActualPill: true, navLabel: '', previewHtml: '<div class="after-card"></div>', ...opts });
 
@@ -145,12 +146,15 @@ t('P2-8: the LLEGUE-MAP carve SUPPRESSES the map when arrived+FRESH, keeps it wh
   const m = INDEX.match(/SLICE3DEPS:LLEGUE-MAP:START[\s\S]*?===== \*\/\n([\s\S]*?)\n\s*\/\* ===== SLICE3DEPS:LLEGUE-MAP:END/);
   assert.ok(m, 'LLEGUE-MAP carve found');
   const cond = m[1].match(/const soloMapHtml = (\(.*\))\s*$/m)[1];   // the show-map condition expression
-  const show = (spArrived, spIsPickup, stale, phase) => new Function('spArrived', 'spIsPickup', 'driverState', 'soloOrder', 'isStaleFix',
-    'return ' + cond + ';')(spArrived, spIsPickup, { last_location_ts: 0 }, { phase }, () => stale);
+  const show = (spArrived, spIsPickup, stale, phase, spStacked = false) => new Function('spArrived', 'spIsPickup', 'driverState', 'soloOrder', 'isStaleFix', 'spStacked',
+    'return ' + cond + ';')(spArrived, spIsPickup, { last_location_ts: 0 }, { phase }, () => stale, spStacked);
   assert.equal(show(true, false, false, 'delivery'), false, 'arrived + FRESH delivery → map suppressed (prototype S.llegue)');
   assert.equal(show(true, false, true, 'delivery'), true, 'STALE GPS → map kept (en-route), one freshness predicate (P2-5)');
   assert.equal(show(false, false, false, 'delivery'), true, 'not arrived → map kept');
   assert.equal(show(true, true, false, 'pickup'), true, 'pickup → map kept (arrival restyle is delivery-only)');
+  // Codex r2 P2-4: a PROMOTED arrived survivor (spStacked) keeps its map — the map uses the SAME !spStacked
+  // solo-arrival discriminator as the card, so promoting doesn't strip the map out from under a stacked delivery.
+  assert.equal(show(true, false, false, 'delivery', true), true, 'promoted arrived survivor (spStacked) → map KEPT');
 });
 
 t('P2-6: «Llegué» writes tasks/{id}/arrived; SUCCESS disables the button; FAILURE re-enables it + toasts (no false claim)', async () => {
@@ -158,11 +162,13 @@ t('P2-6: «Llegué» writes tasks/{id}/arrived; SUCCESS disables the button; FAI
   const dom = new JSDOM('<!doctype html><body><div id="screen-onshift"><button class="llegue-btn" id="btn-llegue" data-task-id="d1">Llegué</button></div></body>', { pretendToBeVisual: true });
   const { document, window } = dom.window;
   const $ = (id) => document.getElementById(id);
-  let wrote = null, failNext = false, toasts = 0;
+  let wrote = null, failNext = false, toasts = 0, rerenders = 0;
   const fbUpdate = (ref, val) => { if (failNext) return Promise.reject(new Error('offline')); wrote = { ref, val }; return Promise.resolve(); };
   const fbRef = (db, path) => ({ path });
-  const api = { $, fbUpdate, fbRef, fbServerTimestamp: () => 'TS', XPD: { getDb: () => ({}) }, currentUser: { uid: 'drv' }, toast: () => { toasts++; } };
-  new Function(...Object.keys(api), region)(...Object.values(api));   // register the REAL listener
+  const drv2ArrivedAck = new Set();   // Codex r2 P2-6: the ack set the resolve path must populate
+  const api = { $, fbUpdate, fbRef, fbServerTimestamp: () => 'TS', XPD: { getDb: () => ({}) }, currentUser: { uid: 'drv' }, toast: () => { toasts++; },
+    DRV2_CAN_NOTIFY_ARRIVAL: true, DRV2_CAN_REPORT_PROBLEM: false, drv2ArrivedAck, renderActiveAndQueue: () => { rerenders++; }, openProblemaSheet: () => {} };
+  new Function(...Object.keys(api), region)(...Object.values(api));   // register the REAL listener (flag-gated, flag true)
   const btn = $('btn-llegue');
   // success
   btn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
@@ -170,6 +176,9 @@ t('P2-6: «Llegué» writes tasks/{id}/arrived; SUCCESS disables the button; FAI
   await Promise.resolve(); await Promise.resolve();
   assert.match(wrote.ref.path, /^tasks\/d1$/, 'wrote tasks/{deliveryTaskId}/arrived');
   assert.deepEqual(wrote.val, { arrived: { at: 'TS', by: 'drv' } }, 'arrived = {at: serverTimestamp, by: uid} (dep C)');
+  // Codex r2 P2-6: the ACK is recorded ONLY on the resolved write (local optimism alone never claims), then a re-render
+  assert.ok(drv2ArrivedAck.has('d1'), 'the task id is acked only after update() RESOLVED (the claim gate)');
+  assert.ok(rerenders >= 1, 're-render after the ack so the banner/«avisamos a las {t}» can appear');
   // failure: the write rejects → button re-enabled + a toast, and NOTHING claims the notification
   const btn2 = document.createElement('button'); btn2.id = 'btn-llegue'; btn2.className = 'llegue-btn'; btn2.dataset.taskId = 'd9';
   $('screen-onshift').innerHTML = ''; $('screen-onshift').appendChild(btn2);
@@ -178,8 +187,23 @@ t('P2-6: «Llegué» writes tasks/{id}/arrived; SUCCESS disables the button; FAI
   await Promise.resolve(); await Promise.resolve();
   assert.ok(!btn2.disabled, 'write failed → button re-enabled so the driver can retry');
   assert.equal(toasts, 1, 'a toast on failure, never a «ya sabe» claim');
+  assert.ok(!drv2ArrivedAck.has('d9'), 'a FAILED (or pending/offline) write never acks → no claim, «Llegué» stays');
 });
 
+t('flags-false (Codex r2): with BOTH capability flags OFF, the ARRIVAL-ACTION listener is NEVER registered (no dead handler)', () => {
+  const region = INDEX.match(/SLICE3:ARRIVAL-ACTION:START[\s\S]*?===== \*\/\n([\s\S]*?)\n\s*\/\* ===== SLICE3:ARRIVAL-ACTION:END/)[1];
+  const dom = new JSDOM('<!doctype html><body><div id="screen-onshift"><button class="llegue-btn" id="btn-llegue" data-task-id="d1">Llegué</button><button id="btn-problema-body" data-order-id="o1">?</button></div></body>', { pretendToBeVisual: true });
+  const { document, window } = dom.window;
+  const $ = (id) => document.getElementById(id);
+  let wrote = false, opened = 0;
+  const api = { $, fbUpdate: () => { wrote = true; return Promise.resolve(); }, fbRef: () => ({}), fbServerTimestamp: () => 'TS', XPD: { getDb: () => ({}) }, currentUser: { uid: 'drv' }, toast: () => {},
+    DRV2_CAN_NOTIFY_ARRIVAL: false, DRV2_CAN_REPORT_PROBLEM: false, drv2ArrivedAck: new Set(), renderActiveAndQueue: () => {}, openProblemaSheet: () => { opened++; } };
+  new Function(...Object.keys(api), region)(...Object.values(api));   // run the REAL region source with both flags OFF
+  $('btn-llegue').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  $('btn-problema-body').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  assert.equal(wrote, false, 'no arrival write — the listener was never bound while both flags are off (a mutant that registers unconditionally → write → RED)');
+  assert.equal(opened, 0, 'no problema sheet opened either — no dead handler');
+});
 t('P2-7 builder: the S.problema sheet lists the 6 reasons by their CONTRACT keys; send disabled until a pick', () => {
   const html = problemaSheetHtml({ ICONS, esc: (s) => String(s == null ? '' : s) });
   ['waiting_restaurant', 'not_ready_incomplete', 'customer_no_answer', 'address_not_found', 'restaurant_closed', 'other']
@@ -187,40 +211,66 @@ t('P2-7 builder: the S.problema sheet lists the 6 reasons by their CONTRACT keys
   assert.match(html, /id="btn-problema-send"[^>]*disabled/, 'send disabled until a reason is picked');
   assert.equal(problemaReasonLabel('customer_no_answer'), 'El cliente no contesta', 'key → display label (for the confirmation)');
 });
-t('P2-7: openProblemaSheet writes driver_problems/{oid}/{pid} = {reason(KEY), by, at}; send disabled in flight; a fresh pid; FAILURE re-enables', async () => {
+t('P2-7/NEW-1/NEW-2: openProblemaSheet — dep-F write shape; the module in-flight guard survives a re-select; a stale ack never overwrites a newer sheet; FAILURE re-enables', async () => {
   const SCRIPT = INDEX.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
   function liftFn(name) { let s = SCRIPT.indexOf('function ' + name + '('); let d = 0, seen = false; for (let i = s; i < SCRIPT.length; i++) { if (SCRIPT[i] === '{') { d++; seen = true; } else if (SCRIPT[i] === '}') { d--; if (seen && d === 0) return SCRIPT.slice(s, i + 1); } } }
   const dom = new JSDOM('<!doctype html><body></body>', { url: 'https://driver.test/', pretendToBeVisual: true });
   const { document, window } = dom.window;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s);
-  let wrote = null, pids = [], failNext = false, toasts = 0;
+  // a CONTROLLABLE fbUpdate: each call records a deferred we resolve/reject on demand (so o1 can resolve AFTER o2 opens)
+  let pids = [], updates = [], toasts = 0;
   const fbRef = (db, path) => ({ path });
   const fbPush = (r) => { const key = 'pid' + (pids.length + 1); pids.push(key); return { key }; };
-  const fbUpdate = (r, val) => { if (failNext) return Promise.reject(new Error('offline')); wrote = { path: r.path, val }; return Promise.resolve(); };
-  const api = { $, ICONS, escapeHtml: esc, problemaSheetHtml, problemaEnviadoHtml: (l, t2) => `<div class="sheet"><h4>Despacho ya lo sabe</h4><div>${esc(l)} · ${esc(t2)}</div></div>`, problemaReasonLabel, fbRef, fbPush, fbUpdate, fbServerTimestamp: () => 'TS', XPD: { getDb: () => ({}) }, currentUser: { uid: 'drv' }, toast: () => { toasts++; }, fmtClockHM: () => '7:44', document };
-  (new Function(...Object.keys(api), liftFn('openProblemaSheet') + '\nreturn openProblemaSheet;'))(...Object.values(api))('o1');
-  const ov = $('drv2-problema');
-  assert.ok(ov && ov.classList.contains('open'), 'sheet opened');
-  // pick a reason → send enabled
-  ov.querySelector('[data-reason="customer_no_answer"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  const fbUpdate = (r, val) => { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); updates.push({ path: r.path, val, resolve: res, reject: rej }); return p; };
+  const api = { $, ICONS, escapeHtml: esc, problemaSheetHtml, problemaEnviadoHtml: (l, t2) => `<div class="sheet done"><h4>Despacho ya lo sabe</h4><div>${esc(l)} · ${esc(t2)}</div></div>`, problemaReasonLabel, fbRef, fbPush, fbUpdate, fbServerTimestamp: () => 'TS', XPD: { getDb: () => ({}) }, currentUser: { uid: 'drv' }, toast: () => { toasts++; }, fmtClockHM: () => '7:44', document };
+  // ONE instance, sharing the generation + in-flight module state via a wrapper closure (what index.html gives it).
+  const openProblemaSheet = (new Function(...Object.keys(api), 'let drv2ProblemGen = 0, drv2ProblemInFlight = false;\n' + liftFn('openProblemaSheet') + '\nreturn openProblemaSheet;'))(...Object.values(api));
+  const pick = (reason) => $('drv2-problema').querySelector(`[data-reason="${reason}"]`).dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  const tapSend = () => $('btn-problema-send').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+
+  // --- write shape + in-flight ---
+  openProblemaSheet('o1');
+  assert.ok($('drv2-problema').classList.contains('open'), 'sheet opened');
+  pick('customer_no_answer');
   assert.ok(!$('btn-problema-send').disabled, 'send enabled after a pick');
-  // send → write + disable in flight
-  $('btn-problema-send').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-  assert.ok($('btn-problema-send').disabled, 'send disabled in flight (no double-submit — dep F create-only)');
+  tapSend();
+  assert.ok($('btn-problema-send').disabled, 'send disabled in flight');
+  assert.equal(updates.length, 1, 'one write started');
+  assert.equal(updates[0].path, 'driver_problems/o1/pid1', 'driver_problems/{oid}/{fresh pid}');
+  assert.deepEqual(updates[0].val, { reason: 'customer_no_answer', by: 'drv', at: 'TS' }, 'the CONTRACT key + by + at (dep F)');
+
+  // --- NEW-1: re-selecting a reason while in flight must NOT re-enable Send; and even if the button is forced
+  //     enabled by any path, the MODULE guard (not the button's disabled property) still blocks a second create ---
+  pick('other');
+  assert.ok($('btn-problema-send').disabled, 'NEW-1: re-selecting a reason does NOT re-enable Send while in flight');
+  $('btn-problema-send').disabled = false;   // simulate ANY path re-enabling the button; the guard must be independent of it
+  tapSend();
+  assert.equal(updates.length, 1, 'NEW-1: the MODULE in-flight guard (not sendBtn.disabled) blocks a second create → no duplicate dispatcher alert');
+  updates[0].resolve();
   await Promise.resolve(); await Promise.resolve();
-  assert.equal(wrote.path, 'driver_problems/o1/pid1', 'wrote driver_problems/{oid}/{fresh pid}');
-  assert.deepEqual(wrote.val, { reason: 'customer_no_answer', by: 'drv', at: 'TS' }, 'the CONTRACT key + by + at (dep F)');
-  assert.match(ov.innerHTML, /Despacho ya lo sabe/, 'the confirmation shows');
-  // FAILURE path
-  const dom2vals = { ...api, toast: () => { toasts++; }, fbUpdate: () => Promise.reject(new Error('x')) };
-  (new Function(...Object.keys(dom2vals), liftFn('openProblemaSheet') + '\nreturn openProblemaSheet;'))(...Object.values(dom2vals))('o2');
-  const ov2 = $('drv2-problema');
-  ov2.querySelector('[data-reason="other"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-  $('btn-problema-send').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  assert.match($('drv2-problema').innerHTML, /Despacho ya lo sabe/, 'o1 confirmation shows on its own resolve');
+
+  // --- NEW-2: o1b send in flight, reopen for o2, THEN resolve o1b → o2's sheet must NOT become o1b's confirmation ---
+  openProblemaSheet('o1b');
+  pick('restaurant_closed');
+  tapSend();
+  assert.equal(updates.length, 2, 'o1b write started');
+  openProblemaSheet('o2');   // reopen for another order → fresh picker + a new generation invalidates o1b's callback
+  assert.ok(!/Despacho ya lo sabe/.test($('drv2-problema').innerHTML), 'o2 shows a fresh picker, not a confirmation');
+  updates[1].resolve();      // o1b's STALE ack resolves after o2 opened
   await Promise.resolve(); await Promise.resolve();
-  assert.ok(!$('btn-problema-send').disabled, 'write failed → send re-enabled for retry');
-  assert.ok(toasts >= 1, 'a toast on failure');
+  assert.ok(!/Despacho ya lo sabe/.test($('drv2-problema').innerHTML), 'NEW-2: the stale o1b ack does NOT overwrite the o2 sheet');
+
+  // --- FAILURE: a fresh o2 send that rejects → Send re-enabled + a toast ---
+  pick('address_not_found');
+  tapSend();
+  assert.equal(updates.length, 3, 'o2 write started');
+  const before = toasts;
+  updates[2].reject(new Error('x'));
+  await Promise.resolve(); await Promise.resolve();
+  assert.ok(!$('btn-problema-send').disabled, 'write failed → Send re-enabled for retry');
+  assert.ok(toasts > before, 'a toast on failure');
 });
 
 console.log(`✓ llegue: ${passed} tests passed`);

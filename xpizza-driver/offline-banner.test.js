@@ -59,7 +59,7 @@ function build({ rtdb = true, online = true } = {}) {
     ResizeObserver: class { constructor(cb) { roCb = cb; } observe() {} disconnect() { roCb = null; } },
     queueMicrotask: (fn) => Promise.resolve().then(fn),   // the board-render boundary queues this; the test awaits a tick
   };
-  const body = 'let currentUser = { uid: "drv" };\n'
+  const body = 'let currentUser = { uid: "drv" };\nfunction drv2SessionTeardown(){}\n'   // Codex r2 P2-3: the teardown region now also drops per-session UI state; stubbed here (behavior is proven in return-target.test.js)
     + liftFn('offerIsOffline') + '\n' + BANNER_BLOCK + '\n'
     // the REAL host wiring, built from the shipped region bodies (a removed call in any region → a RED test):
     + 'function hostStartClean() {\n' + R_STARTGEN + '\n' + R_INIT + '\n}\n'

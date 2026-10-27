@@ -308,7 +308,7 @@ function runReal({ seed: initial, driverState = { lat: 15.47, lng: -88.015, acti
     + 'let feedReady=true, cutoverLoaded=true, driverFeed=null, driverIdentityCutoverMs=null;\n'
     + NAV_BLOCK + '\n'   // REAL drv2ReadNavPref/drv2WriteNavPref (not a Waze stub) — server-truth + per-uid hydration (Codex r1 P2-10)
     + DRV2_BLOCK + '\n'
-    + 'let drv2SoloCancel = null; function drv2ClearReturnTarget(){}\n'
+    + 'let drv2SoloCancel = null; function drv2ClearReturnTarget(){} function drv2SessionTeardown(){} function drv2ArrivalAck(){ return false; }\n'
     + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate (reads driverState) — the resumen reuses it
     + 'let offerTakeoverGen=0,offerTakeoverTimer=null,offerTakeoverTaskId=null,offerConnHandler=null; function readyTimeLabel(){ return ""; } function mountOfferTakeover(){} function stopOfferTakeover(){} function applyOfflineBanner(){}\n'
     + liftConst(MY_SCRIPT, 'PAGOS_LIVE') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_PEDIDOS') + '\n' + liftConst(MY_SCRIPT, 'TAB_SHOW_GANANCIAS') + '\n'   // O6: the REAL production gating constants (lifted)
@@ -418,7 +418,7 @@ function run({ orders, driverState = null, dist = 999, latchInit = null, authGen
     // SLICE3:RESUMEN money-grade readiness (see block 1): default money-ready; a cell flips via setFeed.
     + 'let feedReady=true, cutoverLoaded=true, driverFeed=null, driverIdentityCutoverMs=null;\n'
     + DRV2_BLOCK + '\n'
-    + 'let drv2SoloCancel = null; function drv2ClearReturnTarget(){}\n'
+    + 'let drv2SoloCancel = null; function drv2ClearReturnTarget(){} function drv2SessionTeardown(){} function drv2ArrivalAck(){ return false; }\n'
     + liftFn(MY_SCRIPT, 'shiftIdentity') + '\n'   // REAL shift-identity gate the resumen reuses
     // REAL offer-takeover wiring so the cross-hub 2nd-order accept drives the REAL acceptSecondOrder over the mock;
     // only the 5 s repeat is stubbed (its own interval is tested in offer-takeover.test.js).
@@ -1015,6 +1015,7 @@ function runLifecycle() {
     + liftFn(MY_SCRIPT, 'stopSlice2MapAgeTimer') + '\n'
     + 'let shiftSessionGen = 0;\n'   // the OFFLINE-TEARDOWN-3 splice bumps this (cleanupShift); the offline banner's own tests cover it
     + 'function stopOfflineBanner(){ _spies.offlineTeardown = (_spies.offlineTeardown||0) + 1; }\n'   // the OFFLINE-TEARDOWN-3 splice in cleanupShift (its own behaviour is covered in offline-banner.test.js)
+    + 'function drv2SessionTeardown(){ _spies.sessionTeardown = (_spies.sessionTeardown||0) + 1; }\n'   // Codex r2 P2-3: cleanupShift now also drops per-session UI state (proven in return-target.test.js)
     + liftFn(MY_SCRIPT, 'cleanupShift') + '\n'
     + liftVisibilityHandler(MY_SCRIPT) + '\n'
     + 'return { ensure: ensureSlice2MapAgeTimer, stop: stopSlice2MapAgeTimer, cleanup: cleanupShift, timerSet: () => slice2MapAgeTimer != null, doneRun: () => drv2DoneRun };';

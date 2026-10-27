@@ -243,7 +243,11 @@ t('stopHeaderHtml: deadline only with data (R1); «Única parada»; «Recoger N 
   assert.ok(stopHeaderHtml({ ordinal: 1, total: 2, deadline: '7:48' }, DEPS).includes('Parada 1 de 2 · antes de 7:48'));
   assert.ok(stopHeaderHtml({ single: true }, DEPS).includes('Única parada'));
   assert.ok(stopHeaderHtml({ pickupCount: 2 }, DEPS).includes('Recoger 2 pedidos'));
-  assert.ok(stopHeaderHtml({ ordinal: 1, total: 1, canReportProblem: true }, DEPS).includes('id="btn-problema"'));
+  // Codex r2 P2-7: the Ayuda/«Problema» icon renders ONLY with a real order id — an empty/absent one yields NO button.
+  assert.ok(stopHeaderHtml({ ordinal: 1, total: 1, canReportProblem: true, orderId: 'O1' }, DEPS).includes('id="btn-problema"'), 'Ayuda shown when capable AND an order id is threaded');
+  assert.ok(stopHeaderHtml({ ordinal: 1, total: 1, canReportProblem: true, orderId: 'O1' }, DEPS).includes('data-order-id="O1"'), 'the real order id is on the button');
+  assert.ok(!stopHeaderHtml({ ordinal: 1, total: 1, canReportProblem: true }, DEPS).includes('id="btn-problema"'), 'no order id → NO dead button (never data-order-id="")');
+  assert.ok(!stopHeaderHtml({ ordinal: 1, total: 1, canReportProblem: true, orderId: '' }, DEPS).includes('id="btn-problema"'), 'empty order id → NO button');
 });
 t('stopHeaderHtml: explicit title override wins over the stop-count vocabulary (solo-pickup «Recoger ~H:MM» / «Revisá el pedido»)', () => {
   assert.ok(stopHeaderHtml({ title: 'Recoger ~7:22', sub: 'X. Pizza' }, DEPS).includes('Recoger ~7:22'), 'title override shown');

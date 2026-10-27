@@ -160,4 +160,33 @@ t('P2-8: the btn-delivered SLICE3:RETURN-TARGET-CAPTURE region actually CAPTURES
   assert.ok(h.host.querySelector('.disp-return-nav'), 'the region captured the target — emptying the region → no button → RED');
 });
 
+t('P2-3/NEW-2: drv2SessionTeardown clears returnTarget + drv2SoloCancel + the problema overlay; BOTH teardown points call it (A→B→A / shift-end)', () => {
+  // Structural: the EVERY-auth-transition teardown (covers a uid change A→B→A where B never renders the returning
+  // state) AND cleanupShift (shift end / sign-out) both call drv2SessionTeardown — removing either call → RED.
+  const authRegion = SCRIPT.match(/SLICE3:INICIO-DEMO-TEARDOWN:START[\s\S]*?===== \*\/\n([\s\S]*?)\n\s*\/\* ===== SLICE3:INICIO-DEMO-TEARDOWN:END/)[1];
+  const shiftRegion = SCRIPT.match(/SLICE3:OFFLINE-TEARDOWN-3:START[\s\S]*?===== \*\/\n([\s\S]*?)\n\s*\/\* ===== SLICE3:OFFLINE-TEARDOWN-3:END/)[1];
+  assert.match(authRegion, /drv2SessionTeardown\(\)/, 'the every-auth-transition teardown calls drv2SessionTeardown (uid change A→B→A)');
+  assert.match(shiftRegion, /drv2SessionTeardown\(\)/, 'cleanupShift (shift end / sign-out → onAuth null) calls drv2SessionTeardown');
+  // Behavioral: lift the REAL drv2SessionTeardown and prove it clears every per-session state.
+  const dom = new JSDOM('<!doctype html><body><div id="drv2-problema" class="open"></div></body>', { url: 'https://driver.test/', pretendToBeVisual: true });
+  const { document } = dom.window;
+  const $ = (id) => document.getElementById(id);
+  const sessionStorage = dom.window.sessionStorage;
+  sessionStorage.setItem(RETURN_TARGET_KEY, JSON.stringify({ name: 'X', lat: 1, lng: 1, uid: 'drvA' }));
+  const body = KEY_LINE + '\nlet returnTarget = { name: "X", lat: 1, lng: 1, uid: "drvA" };\nlet drv2SoloCancel = { cancelledNum: 7 };\nlet drv2ProblemGen = 5, drv2ProblemInFlight = true;\n'
+    + liftFn('drv2ClearReturnTarget') + '\n' + liftFn('drv2SessionTeardown') + '\n'
+    + 'return { run: () => drv2SessionTeardown(), state: () => ({ returnTarget, drv2SoloCancel, drv2ProblemGen, drv2ProblemInFlight }), raw: () => { try { return sessionStorage.getItem(RETURN_TARGET_KEY); } catch { return null; } } };';
+  const api = (new Function('document', '$', 'sessionStorage', body))(document, $, sessionStorage);
+  assert.ok($('drv2-problema'), 'the problema overlay is mounted before teardown');
+  const before = api.state();
+  api.run();
+  const after = api.state();
+  assert.equal(after.returnTarget, null, 'returnTarget cleared (A→B→A cannot resurrect it)');
+  assert.equal(api.raw(), null, 'the sessionStorage target is removed too');
+  assert.equal(after.drv2SoloCancel, null, 'drv2SoloCancel banner cleared');
+  assert.equal(after.drv2ProblemInFlight, false, 'problema in-flight reset');
+  assert.ok(after.drv2ProblemGen > before.drv2ProblemGen, 'problema generation bumped → any in-flight ack is invalidated');
+  assert.ok(!$('drv2-problema'), 'the body-mounted problema overlay is removed from the DOM (NEW-2: must not survive teardown)');
+});
+
 console.log(`✓ return-target: ${passed} tests passed`);
