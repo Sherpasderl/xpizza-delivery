@@ -243,7 +243,7 @@
    side margins, status card → center block → stats → spacer. */
 #screen-onshift #idle-state { padding: 4px 16px 10px; justify-content: flex-start; gap: 14px; }   /* proto .body gap 14px; NOT vertically centred */
 #screen-onshift #idle-state .idle-top { flex: none; justify-content: flex-start; align-items: stretch; text-align: left; gap: 14px; padding: 0; }
-#idle-state .disp-center { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 4px 0 0; }   /* proto .body.center */
+#idle-state .disp-center { width: 100%; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 4px 0 0; }   /* proto .body.center — full content width (not shrunk to the title) so .sub wraps at the design 358px */
 #idle-state .disp-sp { flex: 1; min-height: 6px; }   /* proto .sp — fills below the stats so the block stays top-aligned */
 #idle-state .disp-status { width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); padding: 14px; }   /* FULL width (proto .card) */
 #idle-state .disp-chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--fb); font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; line-height: 1.2; white-space: nowrap; background: #E3F3E9; color: #15803D; }   /* proto .chip.ok (--p-okwash / --p-ok) */
@@ -263,6 +263,7 @@
    DISP-HEADER adds .enturno for available/returning; the normal (non-idle) status bar keeps the white bar + border. */
 .status-bar.enturno { background: transparent; border-bottom: none; padding: 6px 16px 10px; }   /* match proto .top header height */
 .status-bar.enturno .gps-meta { font-family: var(--fb); font-weight: 500; font-size: 12px; color: var(--text-soft, #546078); letter-spacing: 0; }
+.status-bar.enturno .status-label { font-family: 'Red Hat Display', sans-serif; font-size: 18px; font-weight: 700; letter-spacing: -0.015em; }   /* match proto .top .ttl */
 /* disponible header: the status dot becomes the Sola mark in the idle «En turno» header (SLICE3:DISP-HEADER sets
    .sola + the SVG). A normal dot hides any leftover svg, so an idle→non-idle transition reverts cleanly to the dot. */
 .status-dot svg { display: none; }
