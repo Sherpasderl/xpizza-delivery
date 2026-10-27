@@ -2214,3 +2214,36 @@ test('G advisor 2026-10-27: a guest\'s declined card ⇒ «Pago no completado» 
   assert.deepEqual(c.qa('#layer .errsheet button').map((x) => [x.textContent, x.dataset.act]), [['Usar otra tarjeta', 'err-card']], '🔴 a guest never sees a cash option');
   assert.ok(!/efectivo/i.test(c.text('#layer')), 'no cash anywhere on the sheet');
 });
+
+// ── Codex guest r1 #2 / #7: the code sheet's continuations are owned — closing cancels them; every request is bounded ──
+test('Codex guest r1 #2: closing the code sheet while its verification waits ⇒ a LATE success never sends (no window, no order)', async () => {
+  let release; const held = new Promise((r) => { release = r; });
+  const b = bootCo({ config: GUEST, script: { requestCheckoutCode: [{ status: 200, json: { ok: true, resend_in_s: 41 } }], verifyCheckoutCode: [() => held], chargeOnlineOrder: [CHECKOUT] } });
+  await toCodeSheet(b);
+  const box = b.q('#layer .otp input[data-i="0"]'); box.value = '482913'; box.dispatchEvent(new b.w.Event('input', { bubbles: true })); await settle();
+  await b.click('#layer [data-act="otp-verify"]');
+  await b.click('#layer [data-act="lclose"]'); await settle();
+  release({ status: 200, json: { ok: true, checkout_ticket: 'tk_late' } }); await settle(); await settle();
+  assert.equal(writes(b), 0, '🔴 a closed verification never sends'); assert.equal(b.q('#layer [data-act="placing-go"]'), null);
+  assert.notEqual(b.ui.state.screen, 'sending');
+});
+test('Codex guest r1 #7: a hung code request is BOUNDED ⇒ 3a «Intento 1 de 3»; «Reintentar» sends a fresh request; the late first answer is dropped; «Reenviar» is never a silent no-op', async () => {
+  let lateFirst; const hung = new Promise((r) => { lateFirst = r; });
+  const b = bootCo({ config: GUEST, script: { requestCheckoutCode: [() => hung, { status: 200, json: { ok: true, resend_in_s: 41 } }] } });
+  await toCodeSheet(b);
+  assert.equal(b.srv.of('requestCheckoutCode').length, 1);
+  b.timers.flush(); await settle();   // the bound elapses
+  assert.equal(b.text('#layer .errsheet h2'), 'No pudimos enviar tu código por WhatsApp'); assert.equal(b.text('#layer .errsheet .note'), 'Intento 1 de 3', '🔴 a hung request ends in the drawn retry state');
+  await b.click('#layer [data-act="otp-resend"]'); await settle();
+  assert.equal(b.srv.of('requestCheckoutCode').length, 2, 'a fresh request');
+  assert.ok(b.q('#layer .otp'), 'the code sheet again');
+  lateFirst({ status: 502, json: { ok: false, error: 'send_failed', attempt: 3, max_attempts: 3 } }); await settle();
+  assert.ok(b.q('#layer .otp') && !b.q('#layer .errsheet'), '🔴 the superseded late answer is dropped');
+  // «Reenviar código» while a request is still in flight starts a NEW one (never a no-op)
+  let hang2; const h2 = new Promise((r) => { hang2 = r; }); void hang2;
+  const c = bootCo({ config: GUEST, script: { requestCheckoutCode: [() => h2, { status: 200, json: { ok: true, resend_in_s: 41 } }] } });
+  await toCodeSheet(c);
+  assert.equal(c.text('#layer .rowx [data-act="otp-resend"]'), 'Reenviar código', 'premise: no timer yet');
+  await c.click('#layer .rowx [data-act="otp-resend"]'); await settle();
+  assert.equal(c.srv.of('requestCheckoutCode').length, 2, '🔴 «Reenviar» while busy sends a fresh request');
+});

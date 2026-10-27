@@ -487,7 +487,8 @@
       box.innerHTML = !nq ? '' : hits.length ? `<div class="rcount">${hits.length} resultado${hits.length === 1 ? '' : 's'}</div>${hits.map(rowHtml).join('')}` : `<div class="noresults">Nada con «${esc(q)}». Probá otra palabra.</div>`;
     }
     function openLayer(kind) { if (kind === 'cart' && S.layerKind !== 'cart') pushHist(); returnTo = descOf(doc.activeElement); S.layerKind = kind; renderLayer(true); }   // the cart is a back step (P openCart :1752)
-    function closeLayer() { if (S.layerKind === 'otp' || S.layerKind === 'err') otpTickStop(); if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'pin') dropPinMap(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
+    function closeLayer() { if (S.layerKind === 'otp' || S.layerKind === 'err') { otpTickStop(); S.otp = null; }   // Codex guest r1 #2: closing / back invalidates a pending verification (its late success never sends)
+      if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'pin') dropPinMap(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
     // a quote that failed while another layer was open: its sheet once that layer closes (still the same failed state)
     function closeLayerThen() { if (S.quoteErrSheet && !S.layerKind && (S.screen === 'checkout' || S.screen === 'tip')) { S.quoteErrSheet = false; if (S.quoteErr && S.quoteErr === stateKey()) showErr(ERR.generic('err-requote')); } }
     function renderLayer(fresh) {
@@ -856,7 +857,7 @@
     }
     function openCode() {
       if (!mods() || !api.requestCheckoutCode) return;
-      S.otp = { state: 'entry', code: '', resendAt: null, lockedUntil: null, blockedUntil: null, phone: phoneE164(), busy: false };
+      S.otp = { state: 'entry', code: '', resendAt: null, lockedUntil: null, blockedUntil: null, phone: phoneE164(), busy: false, seq: 0, localFails: 0 };
       S.ticket = null; openLayer('otp'); otpTickStart(); requestCode();
     }
     function closeOtp() { otpTickStop(); S.otp = null; closeLayer(); }
@@ -869,28 +870,35 @@
         acts: blocked ? [{ act: 'otp-resend', label: 'Reintentar en ' + mmss(blockedMs), primary: true, disabled: true, id: 'otp-retry' }, { act: 'otp-change', label: 'Cambiar número' }, { act: 'otp-back', label: 'Volver al pedido' }]
           : [{ act: 'otp-resend', label: 'Reintentar', primary: true }, { act: 'otp-change', label: 'Cambiar número' }] };
     };
+    // Codex guest r1 #7: every code request / verify is BOUNDED (CODE_TIMEOUT_MS) and owned by a sequence number — a late or superseded
+    // answer is dropped; «Reenviar» always starts a fresh request (never a silent no-op behind a hung one)
+    const CODE_TIMEOUT_MS = 15000;
+    const bounded = (p) => new Promise((res) => { const t = T_.setTimeout(() => res({ kind: 'timeout' }), CODE_TIMEOUT_MS); Promise.resolve(p).then((v) => { T_.clearTimeout(t); res(v || { kind: 'offline' }); }, () => { T_.clearTimeout(t); res({ kind: 'offline' }); }); });
     async function requestCode() {
-      const o = S.otp; if (!o || o.busy) return;
-      o.busy = true; o.phone = phoneE164();
-      let r; try { r = await api.requestCheckoutCode({ phone: o.phone, cartFp: cartFpNow() }); } catch (_) { r = { kind: 'offline' }; }
+      const o = S.otp; if (!o) return;
+      const my = ++o.seq; o.busy = true; o.phone = phoneE164();
+      const r = await bounded(api.requestCheckoutCode({ phone: o.phone, cartFp: cartFpNow() }));
+      if (dead || S.otp !== o || o.seq !== my) return;   // closed, or superseded by a newer request
       o.busy = false;
-      if (dead || S.otp !== o) return;
       if (r.ok) { o.state = o.state === 'locked' ? 'locked' : 'entry'; o.code = ''; o.resendAt = nowMs() + r.resendInS * 1000; S.layerKind = 'otp'; S.err = null; renderLayer(); return; }
-      if (r.kind === 'send_failed' && r.attempt < r.max) { S.err = codeErr(r.attempt, r.max); S.layerKind = 'err'; renderLayer(); return; }   // frame 3a
-      if (r.kind === 'send_failed' || r.kind === 'rate_limited') { o.blockedUntil = nowMs() + (r.kind === 'rate_limited' ? r.retryInS : 600) * 1000; S.err = codeErr(r.max, r.max, o.blockedUntil - nowMs()); S.layerKind = 'err'; renderLayer(); return; }   // frame 3b
-      S.err = { ...ERR.generic('otp-resend') }; S.layerKind = 'err'; renderLayer();   // offline / a country the sender cannot reach (undrawn ⇒ the generic sheet)
+      // a timeout or a dropped connection is a failed SEND (we cannot know it arrived): counted here, the drawn 3a / 3b
+      let rr = r;
+      if (r.kind === 'timeout' || r.kind === 'offline') { o.localFails += 1; rr = { kind: 'send_failed', attempt: o.localFails, max: 3 }; }
+      if (rr.kind === 'send_failed' && rr.attempt < rr.max) { S.err = codeErr(rr.attempt, rr.max); S.layerKind = 'err'; renderLayer(); return; }   // frame 3a
+      if (rr.kind === 'send_failed' || rr.kind === 'rate_limited') { o.blockedUntil = nowMs() + (rr.kind === 'rate_limited' ? rr.retryInS : 600) * 1000; S.err = codeErr(3, 3, o.blockedUntil - nowMs()); S.layerKind = 'err'; renderLayer(); return; }   // frame 3b
+      S.err = { ...ERR.generic('otp-resend') }; S.layerKind = 'err'; renderLayer();   // a country the sender cannot reach (undrawn ⇒ the generic sheet)
     }
     async function verifyCode() {
       const o = S.otp; if (!o || o.busy || o.state === 'locked' || o.code.length !== 6) return;
-      o.busy = true; renderLayer();
-      let r; try { r = await api.verifyCheckoutCode({ phone: o.phone, cartFp: cartFpNow(), code: o.code }); } catch (_) { r = { kind: 'offline' }; }
+      const my = ++o.seq; o.busy = true; renderLayer();
+      const r = await bounded(api.verifyCheckoutCode({ phone: o.phone, cartFp: cartFpNow(), code: o.code }));
+      if (dead || S.otp !== o || o.seq !== my) return;   // the sheet was closed / a resend superseded it: a late success NEVER sends
       o.busy = false;
-      if (dead || S.otp !== o) return;
       if (r.ok) { S.ticket = r.ticket; closeOtp(); placeNow(); return; }   // advisor 2026-10-27: the verify tap IS the commit — no extra window; straight to the drawn «Enviando»
       if (r.kind === 'code_wrong') { o.state = 'wrong'; o.code = ''; }
       else if (r.kind === 'code_expired') { o.state = 'expired'; o.code = ''; o.resendAt = null; }
       else if (r.kind === 'too_many_attempts') { o.state = 'locked'; o.code = ''; o.lockedUntil = nowMs() + r.retryInS * 1000; }
-      else { S.err = { ...ERR.generic('otp-verify') }; S.layerKind = 'err'; renderLayer(); return; }
+      else { S.err = { ...ERR.generic('otp-verify-retry') }; S.layerKind = 'err'; renderLayer(); return; }   // timeout / offline: «Reintentar» re-verifies the same code
       renderLayer(); const b0 = doc.querySelector('#layer .otp input'); if (b0 && !b0.disabled) focusTo(b0);
     }
     // the six boxes; a whole code pasted (with spaces or a dash) into any box fills them all (WhatsApp has no OS autofill)
@@ -1190,6 +1198,7 @@
       if (a === 'err-cash') { closeLayer(); if (cardOnlyGuest()) { showErr(ERR.guestCash()); return true; } emit('pay-cash', {}); return true; }   // TODO(ruling pending); a guest never reaches cash (§3.2)
       if (a === 'reauth') { closeLayer(); emit('signin', { ctx: 'reauth' }); return true; }   // the host re-authenticates, then this checkout continues
       if (a === 'otp-verify') { verifyCode(); return true; }
+      if (a === 'otp-verify-retry') { closeCodeErr(); verifyCode(); return true; }
       if (a === 'otp-resend') { closeCodeErr(); requestCode(); return true; }
       if (a === 'otp-change') { closeOtp(); S.screen = 'checkout'; render(); const ph = $('f-phone'); if (ph) focusTo(ph); return true; }   // «Cambiar número»: back to Tus datos, the phone focused
       if (a === 'otp-signin') { closeOtp(); emit('signin', { ctx: 'code' }); return true; }
