@@ -133,6 +133,33 @@
 /* the esperando «Actualizar» ghost button: sentence-case Cuadra type, not the legacy uppercase .big-btn. Scoped to
    this refresh button so the yet-unrefreshed onboarding + neutral-hold buttons stay untouched (commit-(a) scope). */
 #screen-companion .co-refresh-btn { text-transform: none; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; min-height: 52px; border-radius: 14px; padding: 15px 14px; }
+/* perfil + checklist (Inicio b) — proto S.perfil / S.checklist, scoped to #screen-companion. */
+#screen-companion .co-hdr-sub { font-family: 'Red Hat Text', sans-serif; font-weight: 500; font-size: 12px; color: var(--text-soft, #546078); margin-top: 1px; }
+#screen-companion .co-form { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
+#screen-companion .co-fld { display: flex; flex-direction: column; gap: 5px; }
+#screen-companion .co-fld label { font-size: 11.5px; font-weight: 700; color: var(--text-soft, #546078); letter-spacing: .03em; }
+#screen-companion .co-fld-in { width: 100%; box-sizing: border-box; background: var(--surface, #fff); border: 1px solid var(--border, #DCE2EC); border-radius: 12px; padding: 12px 13px; font-size: 15px; font-weight: 600; color: var(--text, #0D1424); }
+#screen-companion .co-fld-in:focus { outline: none; border-color: var(--accent, #2F5FB8); }
+#screen-companion .co-photo { display: flex; align-items: center; gap: 10px; border: 1px dashed var(--border, #DCE2EC); border-radius: 12px; padding: 11px 12px; }
+#screen-companion .co-photo-av { width: 34px; height: 34px; border-radius: 50%; background: var(--surface-2, #F5F7FA); display: grid; place-items: center; flex: none; color: var(--text-dim, #8A93A6); }
+#screen-companion .co-photo-av svg { width: 18px; height: 18px; }
+#screen-companion .co-photo-tx { color: var(--text, #0D1424); font-weight: 700; font-size: 13px; }
+#screen-companion .co-photo-soon { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--text-dim, #8A93A6); }
+#screen-companion .co-hint { font-size: 11.5px; color: var(--text-soft, #546078); text-align: center; }
+#screen-companion .co-onb-btn { text-transform: none; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; min-height: 52px; border-radius: 14px; padding: 15px 14px; }
+#screen-companion .co-onb-btn.co-btn-soft { background: var(--sv-p-bg, #E8F0FB); color: var(--accent, #2F5FB8); }
+#screen-companion .co-list { padding: 2px 14px; }
+#screen-companion .co-cki { display: flex; align-items: flex-start; gap: 11px; padding: 11px 0; border-top: 1px solid var(--border, #DCE2EC); text-align: left; }
+#screen-companion .co-cki:first-child { border-top: none; }
+#screen-companion .co-cki.tap { cursor: pointer; }
+#screen-companion .co-ckbx { width: 24px; height: 24px; border-radius: 7px; border: 2px solid var(--border, #CFCCC3); flex: 0 0 auto; display: grid; place-items: center; color: #fff; margin-top: 1px; }
+#screen-companion .co-ckbx svg { width: 14px; height: 14px; }
+#screen-companion .co-ckbx.on { background: var(--success, #15803D); border-color: var(--success, #15803D); }
+#screen-companion .co-cktx { flex: 1; min-width: 0; }
+#screen-companion .co-ckt { font-weight: 700; font-size: 14px; color: var(--text, #0D1424); }
+#screen-companion .co-cksub { font-size: 12.5px; color: var(--text-soft, #546078); margin-top: 1px; line-height: 1.3; }
+#screen-companion .co-chev { color: var(--text-dim, #8A93A6); flex: none; align-self: center; }
+#screen-companion .co-chev svg { width: 20px; height: 20px; }
 /* ===== SLICE3:PRESENTATION-INICIO:END ===== */
   :root {
     /* Backgrounds — Clean Light Pro */
@@ -2343,6 +2370,7 @@ function openWhatsappSheet(btn) {
 /* ===== SLICE3:IMPORT-3:START — batch-3 pure builders ===== */
 import { helpDiagnosisHtml, cierreRechazadoHtml, readyTimeLabel, gpsoffHtml } from './stacked-view.js';   // readyTimeLabel: R1 ready time for the S.oferta offer; gpsoffHtml: the location-off idle state
 import { ref as fbRef, onValue as fbOnValue } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';   // same module instance XPD uses — subscribe to the RTDB connection edge for the offer slide gate
+import { postActRoute } from './postact-route.js';   // Inicio b: pure post-activation checklist routing decision (tested in postact-route.test.js)
 /* ===== SLICE3:IMPORT-3:END ===== */
 /* ===== SLICE3:LOGIC-3:START — batch-3 module logic (help diagnosis sheet; gpsoff / cierreRechazado / offline to follow) ===== */
 // SLICE3:HELP — the «¿Por qué no veo pedidos?» diagnosis sheet (prototype S.help), mounted on demand (reusing the
@@ -2787,6 +2815,18 @@ let companionBootBarrier = Promise.resolve();
 // same-uid reload. Reset to null on every auth transition (logout / uid change) so a draft never leaks sessions.
 let companionDraft = null;
 const companionDraftKey = (uid) => `sherpa_driver_onboarding_draft_${uid}`;
+/* ===== SLICE3:INICIO-CHECKLIST-FLAG:START — on-device "post-activation checklist pending" flag (Inicio b). Set the
+   moment a profile_submitted→active transition is OBSERVED on THIS device; the checklist shows while it's set and
+   «Terminar» hasn't cleared it. An already-active driver (decide()='legacy' — no transition observed on this device,
+   e.g. everyone on upgrade) NEVER gets the flag, so they go straight to the app. In-memory authoritative +
+   localStorage best-effort (mirrors the onboarding draft) so a storage failure can't strand the fresh-activation
+   path; keyed by uid so it never leaks across accounts. No server field. ===== */
+let companionChecklistPendingMem = null;   // uid whose post-activation checklist is pending THIS session (authoritative)
+const companionChecklistKey = (uid) => `sherpa_driver_checklist_pending_${uid}`;
+function companionSetChecklistPending(uid) { if (!uid) return; companionChecklistPendingMem = uid; try { localStorage.setItem(companionChecklistKey(uid), '1'); } catch (_) {} }
+function companionChecklistPending(uid) { if (!uid) return false; if (companionChecklistPendingMem === uid) return true; try { return localStorage.getItem(companionChecklistKey(uid)) === '1'; } catch (_) { return false; } }
+function companionClearChecklistPending(uid) { if (companionChecklistPendingMem === uid) companionChecklistPendingMem = null; try { if (uid) localStorage.removeItem(companionChecklistKey(uid)); } catch (_) {} }
+/* ===== SLICE3:INICIO-CHECKLIST-FLAG:END ===== */
 
 const $ = (id) => document.getElementById(id);
 
@@ -2975,21 +3015,29 @@ function companionRenderOnboarding() {
     // typing), don't rebuild it — that would wipe unsaved input, and it's how typed values survive even if
     // localStorage is unavailable. Only build it when it isn't already showing (first entry / step change).
     if ($('co-name') && !$('screen-companion').classList.contains('hidden')) { showScreen('companion'); return; }
+    /* ===== SLICE3:INICIO-PERFIL:START — perfil rebuilt to prototype S.perfil (Sola header + «Paso 1 de 2», one-card
+       sentence-case fields, foto restyled but kept non-functional «Próximamente» per the ledger). The pending flow is
+       profile-only now: «Pedir aprobación» submits directly (companionSubmit) — the checklist moved to post-activation. ===== */
     const veh = d.vehicle || 'moto';
+    const USER_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c1.3-3.2 4-4.8 7-4.8s5.7 1.6 7 4.8"/></svg>';
+    const SOLA_HM = '<svg class="sola-hm" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="var(--marino, #14306B)"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><g><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--celeste, #8EC0FF)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="var(--marino, #14306B)"/></g></svg>';
     el.innerHTML = companionShellHtml(`
-      <div class="co-title">Completá tu perfil</div>
-      <div><div class="co-lbl">Nombre</div><input class="co-field" id="co-name" value="${escapeHtml(d.name || '')}" placeholder="Tu nombre"></div>
-      <div><div class="co-lbl">Teléfono</div><input class="co-field" id="co-phone" value="${escapeHtml(d.phone || '')}" placeholder="+504 ...."></div>
-      <div><div class="co-lbl">Vehículo</div>
-        <div class="co-seg" id="co-veh">
-          <div data-v="moto" class="${veh === 'moto' ? 'on' : ''}">Moto</div>
-          <div data-v="carro" class="${veh === 'carro' ? 'on' : ''}">Carro</div>
-          <div data-v="bici" class="${veh === 'bici' ? 'on' : ''}">Bici</div>
-        </div></div>
-      <div><div class="co-lbl">Placa</div><input class="co-field" id="co-plate" value="${escapeHtml(d.plate || '')}" placeholder="ABC 1234"></div>
-      <div class="co-card" style="display:flex;align-items:center;gap:11px"><div style="font-weight:700;font-size:13px">Foto del repartidor</div><div class="co-sub" style="margin-left:auto">Próximamente</div></div>
-      <div style="flex:1"></div>`,
-      `<button class="big-btn primary" id="co-save">Guardar perfil</button>`);
+      <div class="co-hdr">${SOLA_HM}<div><div class="co-hdr-ttl">Completá tu perfil</div><div class="co-hdr-sub">Paso 1 de 2 · despacho lo revisa</div></div></div>
+      <div class="co-card co-form">
+        <div class="co-fld"><label>Nombre</label><input class="co-fld-in" id="co-name" value="${escapeHtml(d.name || '')}" placeholder="Tu nombre"></div>
+        <div class="co-fld"><label>Teléfono</label><input class="co-fld-in" id="co-phone" value="${escapeHtml(d.phone || '')}" placeholder="+504 ...."></div>
+        <div class="co-fld"><label>Vehículo</label>
+          <div class="co-seg" id="co-veh">
+            <div data-v="moto" class="${veh === 'moto' ? 'on' : ''}">Moto</div>
+            <div data-v="carro" class="${veh === 'carro' ? 'on' : ''}">Carro</div>
+            <div data-v="bici" class="${veh === 'bici' ? 'on' : ''}">Bici</div>
+          </div></div>
+        <div class="co-fld"><label>Placa</label><input class="co-fld-in" id="co-plate" value="${escapeHtml(d.plate || '')}" placeholder="ABC 1234"></div>
+        <div class="co-fld"><label>Foto (opcional por ahora)</label><div class="co-photo"><span class="co-photo-av">${USER_SVG}</span><span class="co-photo-tx">Foto del repartidor</span><span class="co-photo-soon">Próximamente</span></div></div>
+      </div>
+      <div style="flex:1"></div>
+      <div class="co-hint">Despacho aprueba tu cuenta. Te avisamos aquí mismo.</div>`,
+      `<button class="big-btn primary co-onb-btn" id="co-save">Pedir aprobación</button>`);
     let vehicle = veh;
     // P2-12: stage every edit to the draft LIVE (on input / vehicle tap) so a routine driver/task/order render
     // that rebuilds this form restores the in-progress values instead of wiping typed input.
@@ -3002,24 +3050,40 @@ function companionRenderOnboarding() {
     }));
     $('co-save').addEventListener('click', () => {
       companionWriteDraft({ name: $('co-name').value.trim(), phone: $('co-phone').value.trim(), vehicle, plate: $('co-plate').value.trim() });
-      companionStep = 'checklist';
-      companionRenderOnboarding();
+      companionSubmit();
     });
+    /* ===== SLICE3:INICIO-PERFIL:END ===== */
   } else if (companionStep === 'checklist') {
-    const ck = (on) => on ? 'on' : '';
+    /* ===== SLICE3:INICIO-CHECKLIST:START — post-activation checklist rebuilt to prototype S.checklist (Sola header +
+       «Paso 2 de 2», «Cuenta activada» chip, one card + dividers, two-line rows, «Hacer el pedido de práctica» +
+       «Terminar»). «Terminar» clears the device checklist-pending flag → render() routes to the app. The nav row is
+       included DIRECTLY (using a non-«co-practice-row» id for the practice row) so the frozen SLICE2:ONBOARDING-NAV
+       injection — guarded on $('co-practice-row') — no longer fires: no duplicate; that region is left frozen + dead. ===== */
+    const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+    const SOLA_HM = '<svg class="sola-hm" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="var(--marino, #14306B)"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><g><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--celeste, #8EC0FF)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="var(--marino, #14306B)"/></g></svg>';
+    const navChosen = !!d.navChosen;
+    const box = (on) => `<span class="co-ckbx ${on ? 'on' : ''}">${on ? CHECK : ''}</span>`;
     el.innerHTML = companionShellHtml(`
-      <div class="co-title">Listo para repartir</div>
-      <div class="co-sub">Terminá estos pasos para pedir tu aprobación.</div>
-      <div class="co-card co-ck"><span class="co-box on">✓</span>Perfil completo</div>
-      <label class="co-card co-ck"><span class="co-box ${ck(d.ackPerms)}" id="co-bx-perms">${d.ackPerms ? '✓' : ''}</span>Permisos y batería (ubicación + "sin restricción")</label>
-      <label class="co-card co-ck"><span class="co-box ${ck(d.ackCash)}" id="co-bx-cash">${d.ackCash ? '✓' : ''}</span>Reglas de efectivo + cambio inicial (entregás 100% · llevás sencillo)</label>
-      <div class="co-card co-ck" id="co-practice-row"><span class="co-box ${ck(d.practiceDone)}">${d.practiceDone ? '✓' : ''}</span>Pedido de práctica${d.practiceDone ? '' : ' <span class="co-sub" style="margin-left:auto">Abrir →</span>'}</div>
+      <div class="co-hdr">${SOLA_HM}<div><div class="co-hdr-ttl">Listo para repartir</div><div class="co-hdr-sub">Paso 2 de 2 · una sola vez</div></div></div>
+      <span class="co-badge-ok" style="align-self:flex-start">Cuenta activada</span>
+      <div class="co-card co-list">
+        <div class="co-cki">${box(true)}<div class="co-cktx"><div class="co-ckt">Perfil completo</div></div></div>
+        <label class="co-cki" id="co-ck-perms">${box(!!d.ackPerms)}<div class="co-cktx"><div class="co-ckt">Ubicación y batería</div><div class="co-cksub">Permiso «siempre» · batería sin restricción</div></div></label>
+        <label class="co-cki" id="co-ck-cash">${box(!!d.ackCash)}<div class="co-cktx"><div class="co-ckt">Reglas de efectivo</div><div class="co-cksub">Entregás el 100% del efectivo · llevás sencillo para dar vuelto</div></div></label>
+        <div class="co-cki tap" id="co-ck-practice">${box(!!d.practiceDone)}<div class="co-cktx"><div class="co-ckt">Pedido de práctica</div><div class="co-cksub">5 minutos, sin pedido real ni efectivo</div></div>${d.practiceDone ? '' : `<span class="co-chev">${CHEV}</span>`}</div>
+        <div class="co-cki tap" id="co-ck-nav">${box(navChosen)}<div class="co-cktx"><div class="co-ckt">App de navegación</div><div class="co-cksub">Elegí Waze o Google Maps; lo cambiás en Cuenta</div></div>${navChosen ? '' : `<span class="co-chev">${CHEV}</span>`}</div>
+      </div>
       <div style="flex:1"></div>`,
-      `<button class="big-btn primary" id="co-request" ${(d.ackPerms && d.ackCash && d.practiceDone) ? '' : 'disabled'}>Pedir aprobación</button>`);
-    $('co-bx-perms').closest('label').addEventListener('click', () => { const n = companionWriteDraft({ ackPerms: !companionReadDraft().ackPerms }); companionRenderOnboarding(); void n; });
-    $('co-bx-cash').closest('label').addEventListener('click', () => { companionWriteDraft({ ackCash: !companionReadDraft().ackCash }); companionRenderOnboarding(); });
-    if (!d.practiceDone) $('co-practice-row').addEventListener('click', () => { companionStep = 'practice'; companionRenderOnboarding(); });
-    const req = $('co-request'); if (req && !req.disabled) req.addEventListener('click', () => companionSubmit());
+      `<button class="big-btn co-onb-btn co-btn-soft" id="co-practice-go">Hacer el pedido de práctica</button>
+       <button class="big-btn primary co-onb-btn" id="co-terminar">Terminar</button>`);
+    $('co-ck-perms').addEventListener('click', () => { companionWriteDraft({ ackPerms: !companionReadDraft().ackPerms }); companionRenderOnboarding(); });
+    $('co-ck-cash').addEventListener('click', () => { companionWriteDraft({ ackCash: !companionReadDraft().ackCash }); companionRenderOnboarding(); });
+    $('co-ck-practice').addEventListener('click', () => { companionStep = 'practice'; companionRenderOnboarding(); });
+    $('co-practice-go').addEventListener('click', () => { companionStep = 'practice'; companionRenderOnboarding(); });
+    $('co-ck-nav').addEventListener('click', () => { drv2NavReturn = 'companion'; renderNavApp(); });
+    $('co-terminar').addEventListener('click', () => { companionClearChecklistPending(currentUser && currentUser.uid); render(); });
+    /* ===== SLICE3:INICIO-CHECKLIST:END ===== */
   } else { // 'practice'
     // Guided practice — writes NOTHING real; brand-agnostic (a synthetic order with no brand → neutral greeting).
     const steps = [
@@ -4194,7 +4258,19 @@ function render() {
       }
     } else {
       companionNeutralNotice = false;
-      if (r.action === 'activated') { companionShowActivatedTransient(); return; }
+      /* ===== SLICE3:INICIO-POSTACT-ROUTE:START — post-activation checklist (Inicio b). The prototype has no
+         «Activado» transient (companionShowActivatedTransient is now unreferenced — frozen baseline, left in place);
+         «Cuenta activada» on the checklist is the acknowledgement. On the OBSERVED profile_submitted→active
+         transition (action 'activated') flag the checklist pending on THIS device, then show it while pending and
+         «Terminar» hasn't cleared it. active&&enabled is gated via companion._state.lastValid (a suspended account
+         never lands here); an already-active driver with no device flag (everyone on upgrade) goes straight to the app. ===== */
+      const _lv = companion._state && companion._state.lastValid;
+      const _activeEnabled = !!(_lv && _lv.state === 'active' && _lv.enabled === true);
+      const _uid = currentUser && currentUser.uid;
+      const _route = postActRoute(_activeEnabled, r.action, companionChecklistPending(_uid));
+      if (_route.setPending) companionSetChecklistPending(_uid);
+      if (_route.showChecklist) { companionStep = 'checklist'; companionRenderScreen('onboarding'); return; }
+      /* ===== SLICE3:INICIO-POSTACT-ROUTE:END ===== */
       // 'legacy' (optionally with suspended) falls through to the existing render below
     }
   }

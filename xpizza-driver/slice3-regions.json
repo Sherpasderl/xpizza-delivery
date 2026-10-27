@@ -339,6 +339,73 @@
     "      `<button class=\"big-btn\" id=\"co-refresh\" style=\"background:#fff;color:#15181E;border:1.5px solid #D7D3CB\">Actualizar</button>`);",
     "    const r = $('co-refresh'); if (r) r.addEventListener('click', () => { if (companion) companion.refresh(); });"
    ]
+  },
+  {
+   "name": "INICIO-CHECKLIST-FLAG",
+   "kind": "insert"
+  },
+  {
+   "name": "INICIO-POSTACT-ROUTE",
+   "kind": "replace",
+   "restore": [
+    "      if (r.action === 'activated') { companionShowActivatedTransient(); return; }"
+   ]
+  },
+  {
+   "name": "INICIO-PERFIL",
+   "kind": "replace",
+   "restore": [
+    "    const veh = d.vehicle || 'moto';",
+    "    el.innerHTML = companionShellHtml(`",
+    "      <div class=\"co-title\">Completá tu perfil</div>",
+    "      <div><div class=\"co-lbl\">Nombre</div><input class=\"co-field\" id=\"co-name\" value=\"${escapeHtml(d.name || '')}\" placeholder=\"Tu nombre\"></div>",
+    "      <div><div class=\"co-lbl\">Teléfono</div><input class=\"co-field\" id=\"co-phone\" value=\"${escapeHtml(d.phone || '')}\" placeholder=\"+504 ....\"></div>",
+    "      <div><div class=\"co-lbl\">Vehículo</div>",
+    "        <div class=\"co-seg\" id=\"co-veh\">",
+    "          <div data-v=\"moto\" class=\"${veh === 'moto' ? 'on' : ''}\">Moto</div>",
+    "          <div data-v=\"carro\" class=\"${veh === 'carro' ? 'on' : ''}\">Carro</div>",
+    "          <div data-v=\"bici\" class=\"${veh === 'bici' ? 'on' : ''}\">Bici</div>",
+    "        </div></div>",
+    "      <div><div class=\"co-lbl\">Placa</div><input class=\"co-field\" id=\"co-plate\" value=\"${escapeHtml(d.plate || '')}\" placeholder=\"ABC 1234\"></div>",
+    "      <div class=\"co-card\" style=\"display:flex;align-items:center;gap:11px\"><div style=\"font-weight:700;font-size:13px\">Foto del repartidor</div><div class=\"co-sub\" style=\"margin-left:auto\">Próximamente</div></div>",
+    "      <div style=\"flex:1\"></div>`,",
+    "      `<button class=\"big-btn primary\" id=\"co-save\">Guardar perfil</button>`);",
+    "    let vehicle = veh;",
+    "    // P2-12: stage every edit to the draft LIVE (on input / vehicle tap) so a routine driver/task/order render",
+    "    // that rebuilds this form restores the in-progress values instead of wiping typed input.",
+    "    const stageField = (id, key) => { const x = $(id); if (x) x.addEventListener('input', () => companionWriteDraft({ [key]: x.value })); };",
+    "    stageField('co-name', 'name'); stageField('co-phone', 'phone'); stageField('co-plate', 'plate');",
+    "    el.querySelectorAll('#co-veh div').forEach(x => x.addEventListener('click', () => {",
+    "      vehicle = x.getAttribute('data-v');",
+    "      el.querySelectorAll('#co-veh div').forEach(y => y.classList.toggle('on', y === x));",
+    "      companionWriteDraft({ vehicle });",
+    "    }));",
+    "    $('co-save').addEventListener('click', () => {",
+    "      companionWriteDraft({ name: $('co-name').value.trim(), phone: $('co-phone').value.trim(), vehicle, plate: $('co-plate').value.trim() });",
+    "      companionStep = 'checklist';",
+    "      companionRenderOnboarding();",
+    "    });"
+   ]
+  },
+  {
+   "name": "INICIO-CHECKLIST",
+   "kind": "replace",
+   "restore": [
+    "    const ck = (on) => on ? 'on' : '';",
+    "    el.innerHTML = companionShellHtml(`",
+    "      <div class=\"co-title\">Listo para repartir</div>",
+    "      <div class=\"co-sub\">Terminá estos pasos para pedir tu aprobación.</div>",
+    "      <div class=\"co-card co-ck\"><span class=\"co-box on\">✓</span>Perfil completo</div>",
+    "      <label class=\"co-card co-ck\"><span class=\"co-box ${ck(d.ackPerms)}\" id=\"co-bx-perms\">${d.ackPerms ? '✓' : ''}</span>Permisos y batería (ubicación + \"sin restricción\")</label>",
+    "      <label class=\"co-card co-ck\"><span class=\"co-box ${ck(d.ackCash)}\" id=\"co-bx-cash\">${d.ackCash ? '✓' : ''}</span>Reglas de efectivo + cambio inicial (entregás 100% · llevás sencillo)</label>",
+    "      <div class=\"co-card co-ck\" id=\"co-practice-row\"><span class=\"co-box ${ck(d.practiceDone)}\">${d.practiceDone ? '✓' : ''}</span>Pedido de práctica${d.practiceDone ? '' : ' <span class=\"co-sub\" style=\"margin-left:auto\">Abrir →</span>'}</div>",
+    "      <div style=\"flex:1\"></div>`,",
+    "      `<button class=\"big-btn primary\" id=\"co-request\" ${(d.ackPerms && d.ackCash && d.practiceDone) ? '' : 'disabled'}>Pedir aprobación</button>`);",
+    "    $('co-bx-perms').closest('label').addEventListener('click', () => { const n = companionWriteDraft({ ackPerms: !companionReadDraft().ackPerms }); companionRenderOnboarding(); void n; });",
+    "    $('co-bx-cash').closest('label').addEventListener('click', () => { companionWriteDraft({ ackCash: !companionReadDraft().ackCash }); companionRenderOnboarding(); });",
+    "    if (!d.practiceDone) $('co-practice-row').addEventListener('click', () => { companionStep = 'practice'; companionRenderOnboarding(); });",
+    "    const req = $('co-request'); if (req && !req.disabled) req.addEventListener('click', () => companionSubmit());"
+   ]
   }
  ],
  "deps": [

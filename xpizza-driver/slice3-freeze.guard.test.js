@@ -43,8 +43,8 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 // `process.exit(0)` appended to it cannot short-circuit this guard (Codex r2 P1). A tampered contract (widened/
 // dropped restore, added/removed/shrunk region, changed kind) is caught even though the file is editable.
 const SLICE3_PINS = {
-  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO'],
-  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace'],
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO', 'INICIO-CHECKLIST-FLAG', 'INICIO-POSTACT-ROUTE', 'INICIO-PERFIL', 'INICIO-CHECKLIST'],
+  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace', 'insert', 'replace', 'replace', 'replace'],
   restoreSha: {
     'HELP-HANDLER': 'e823efd01be83461f6b7b900e8e60a9065d9c44bfedb1b32c2624f1d6c00206f',
     'CUADRE-CSS': '41327b6fa5e535b774d323c235e755019b6020516a10ac20340b004667f8a4ec',
@@ -55,8 +55,11 @@ const SLICE3_PINS = {
     'OFFER-TAKEOVER': '88bdef966a96defc21a3b6bc407f595201c0808456016662832f6ae14c60a855',
     'INICIO-LOGIN': 'c88bdf37eb700d815067bda2ed13a24478b983b0ead7321713095d18c402fc32',
     'INICIO-ESPERANDO': '582717c999424ab08ce8bb1bdeb34fb2378b3563f6c66ca5957c91b695bfa06f',
+    'INICIO-POSTACT-ROUTE': '6b94288ed1e68f936c327b57c45ec3d738fc79d791b23bd6707ccfb90ab6d26e',
+    'INICIO-PERFIL': 'e3cc6d98b928d95cb49c8b9016ca142730759778e6d6862eb75d68665ff8ca80',
+    'INICIO-CHECKLIST': 'f270a45d4f0bc010c18de365e97fd1427138962b2b8d2abbdc07270db8cc4d74',
   },
-  fileSha: 'cafca93383b079b0446b0939d2f8311ba27ac2e3aeef9d96f28adb78347946bf',
+  fileSha: 'f156e30da8602ccc7fa6a300e48447ad4a6369935b73bafddba51810bc22925c',
 };
 // SLICE3DEPS carve-outs (advisor 2026-10-26): a REGISTERED exception to the non-nesting rule — a tiny span that MAY
 // live inside its declared SLICE2 parent, so slice 3 can edit slice-2-added host code (the fresh-offer deps object)
@@ -84,7 +87,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = '9a287ee0fae2b4c1714cedfe84cdbc716cbc82e97e9af7ffcddfe4832544601a';
+const SLICE2_GUARD_SHA = 'a62fe74d43ef815a24a205827369d52718692d57f37c97642bf4eedbdf45626e';
 const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -140,6 +143,14 @@ function sovRest() {   // the current single-order-view.js with the SLICE3:OFERT
 }
 // The ONE guard this slice-3 guard commit also edits: slice2-freeze's coexistence splice (see slice3-regions.js).
 const SLICE3_COEXIST_MODIFY = new Set(['xpizza-driver/slice2-freeze.guard.test.js']);
+// SLICE3 TEST exemption (advisor-approved 2026-10-26, on the slice2 SLICE2_TEST_MODIFY precedent for this same file):
+// onboarding-host.test.js is the ONE frozen test slice 3 may rewrite — the Inicio-(b) flow reorder changes the
+// onboarding behaviour it asserts (perfil «Pedir aprobación»→companionSubmit; the post-activation checklist's
+// #co-ck-nav / #co-ck-perms / #co-ck-cash). It is byte-EXEMPT from the 07e5ab38 frozen-files check, but PINNED here
+// to the reviewed revision so the exemption stays BOUNDED (any later edit re-opens this guard at HIGH effort). One
+// file only; nothing else is exempted.
+const SLICE3_TEST_MODIFY = new Set(['xpizza-driver/onboarding-host.test.js']);
+const SLICE3_TEST_MODIFY_SHA = { 'xpizza-driver/onboarding-host.test.js': '46f0f6771fc0605815c4e2d97eeeced26f1e45ec8231abb89383e07bcaa6ea4e' };
 // Everything slice 3 is allowed to ADD under xpizza-driver/.
 const ALLOWED_ADDS = new Set([
   'xpizza-driver/slice3-regions.json',          // the shared SLICE3 region contract (non-executable data)
@@ -155,6 +166,8 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/fa4400-neverships.test.js',    // SLICE3 never-ship (static): brand-orange #FA4400 confined to .rchip.xp .rdot
   'xpizza-driver/fa4400-render.browser.test.js', // SLICE3 never-ship (browser): computed --accent + slide backgrounds are steel, never orange
   'xpizza-driver/fa4400-neverships.proof.sh',   // SLICE3 never-ship mutant proof (both halves)
+  'xpizza-driver/postact-route.js',             // Inicio b: pure post-activation checklist routing decision
+  'xpizza-driver/postact-route.test.js',        // Inicio b: the 4 post-activation routing paths + suspended
 ]);
 
 const REPO = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: __dir }).toString('utf8').trim();
@@ -173,7 +186,7 @@ const t = (name, fn) => {
 };
 // Belt-and-braces (Codex r2 P1): force RED on ANY early exit — if fewer than the expected checks completed (an
 // injected process.exit, a thrown/short-circuited load, a skipped check), the process exit code is forced to 1.
-const EXPECTED_CHECKS = 22;
+const EXPECTED_CHECKS = 23;
 process.on('exit', () => {
   if (passed !== EXPECTED_CHECKS) {
     console.error(`slice3-freeze.guard INCOMPLETE: ${passed}/${EXPECTED_CHECKS} checks ran — early exit / skipped check`);
@@ -313,6 +326,14 @@ t('coexistence pin: slice2-freeze.guard.test.js is the approved revision + still
     `slice2-freeze must still report exactly ${SLICE2_GUARD_CHECKS} checks — removing a check (e.g. the stacked-view.js purity check) drops the count`);
 });
 
+// ---------- SLICE3 TEST exemption: the one rewritable frozen test is pinned (bounded exemption) ----------
+t('SLICE3_TEST_MODIFY: onboarding-host.test.js matches its pinned reviewed revision', () => {
+  for (const p of SLICE3_TEST_MODIFY) {
+    assert.equal(sha256(readFileSync(join(__dir, p.slice(PFX.length)))), SLICE3_TEST_MODIFY_SHA[p],
+      `${p} changed from the reviewed revision — the SLICE3 test exemption is bounded; re-gate at HIGH effort`);
+  }
+});
+
 // ---------- 5. replace-span safety (proven first — the other checks rely on it) ----------
 t('each SLICE3 replace span is byte-identical in BOTH e2266b24 and 07e5ab38 (so a shared restore recovers either)', () => {
   const s3 = gitStr('show', `${BASELINE}:${ALLOWED_MODIFY}`);
@@ -330,7 +351,7 @@ t('frozen: every file tracked at 07e5ab38 is byte-identical, except index.html, 
   const baseFiles = gitStr('ls-tree', '-r', '--name-only', BASELINE, '--', 'xpizza-driver')
     .split('\n').map((s) => s.trim()).filter(Boolean);
   assert.ok(baseFiles.length > 10, 'baseline file list looks empty — wrong ref?');
-  const exempt = new Set([ALLOWED_MODIFY, ...SLICE3_EDITABLE, ...SLICE3_COEXIST_MODIFY]);
+  const exempt = new Set([ALLOWED_MODIFY, ...SLICE3_EDITABLE, ...SLICE3_COEXIST_MODIFY, ...SLICE3_TEST_MODIFY]);
   const drift = [];
   for (const repoPath of baseFiles) {
     if (exempt.has(repoPath)) continue;
@@ -442,7 +463,7 @@ t('file-level: only the allowed MODIFY set changed; only the slice-3 allowlist a
   for (const p of gitStr('ls-files', '--others', '--exclude-standard', '--', 'xpizza-driver').split('\n').map((s) => s.trim()).filter(Boolean)) added.push(p);
 
   assert.deepEqual(otherOps, [], `forbidden op(s) (delete/rename/copy/type):\n  ${otherOps.join('\n  ')}`);
-  const allowedModify = new Set([ALLOWED_MODIFY, ...SLICE3_EDITABLE, ...SLICE3_COEXIST_MODIFY]);
+  const allowedModify = new Set([ALLOWED_MODIFY, ...SLICE3_EDITABLE, ...SLICE3_COEXIST_MODIFY, ...SLICE3_TEST_MODIFY]);
   const strayMods = modified.filter((p) => !allowedModify.has(p));
   assert.deepEqual(strayMods, [], `modified outside the allowed set:\n  ${strayMods.join('\n  ')}`);
   const strayAdds = added.filter((p) => !ALLOWED_ADDS.has(p));

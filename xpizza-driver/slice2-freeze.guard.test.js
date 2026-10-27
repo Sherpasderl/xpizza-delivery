@@ -45,8 +45,8 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 // — a tampered shared module (widened/dropped restore, added/removed region, changed kind) is caught HERE too, not
 // just in slice3-freeze. Mirror of slice3-freeze's SLICE3_PINS; both must agree with the byte-frozen contract file.
 const SLICE3_PINS = {
-  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO'],
-  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace'],
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO', 'INICIO-CHECKLIST-FLAG', 'INICIO-POSTACT-ROUTE', 'INICIO-PERFIL', 'INICIO-CHECKLIST'],
+  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace', 'insert', 'replace', 'replace', 'replace'],
   restoreSha: {
     'HELP-HANDLER': 'e823efd01be83461f6b7b900e8e60a9065d9c44bfedb1b32c2624f1d6c00206f',
     'CUADRE-CSS': '41327b6fa5e535b774d323c235e755019b6020516a10ac20340b004667f8a4ec',
@@ -57,8 +57,11 @@ const SLICE3_PINS = {
     'OFFER-TAKEOVER': '88bdef966a96defc21a3b6bc407f595201c0808456016662832f6ae14c60a855',
     'INICIO-LOGIN': 'c88bdf37eb700d815067bda2ed13a24478b983b0ead7321713095d18c402fc32',
     'INICIO-ESPERANDO': '582717c999424ab08ce8bb1bdeb34fb2378b3563f6c66ca5957c91b695bfa06f',
+    'INICIO-POSTACT-ROUTE': '6b94288ed1e68f936c327b57c45ec3d738fc79d791b23bd6707ccfb90ab6d26e',
+    'INICIO-PERFIL': 'e3cc6d98b928d95cb49c8b9016ca142730759778e6d6862eb75d68665ff8ca80',
+    'INICIO-CHECKLIST': 'f270a45d4f0bc010c18de365e97fd1427138962b2b8d2abbdc07270db8cc4d74',
   },
-  fileSha: 'cafca93383b079b0446b0939d2f8311ba27ac2e3aeef9d96f28adb78347946bf',
+  fileSha: 'f156e30da8602ccc7fa6a300e48447ad4a6369935b73bafddba51810bc22925c',
 };
 // Load the contract as DATA: read bytes → verify the sha256 pin FIRST → only then JSON.parse (Codex r2 P1). No
 // require/import of editable code; a tampered or executable contract fails the sha (and JSON.parse) before use.
@@ -204,6 +207,8 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/fa4400-neverships.test.js',       // SLICE3 brand-orange never-ship test, static (SLICE3)
   'xpizza-driver/fa4400-render.browser.test.js',   // SLICE3 brand-orange never-ship test, browser/computed-style (SLICE3)
   'xpizza-driver/fa4400-neverships.proof.sh',      // SLICE3 brand-orange never-ship mutant proof (SLICE3)
+  'xpizza-driver/postact-route.js',                // Inicio b: pure post-activation checklist routing decision (SLICE3)
+  'xpizza-driver/postact-route.test.js',           // Inicio b: post-activation routing paths test (SLICE3)
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { driverGreeting } from './brand-helpers.js';
 import { makeCompanionController } from './onboarding-helpers.js';
+import { postActRoute } from './postact-route.js';   // Inicio b: the pure post-activation routing the host interpose consults
 
 const SCRIPT = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.html'), 'utf8')
   .match(/<script type="module">([\s\S]*?)<\/script>/)[1];
@@ -96,29 +97,55 @@ const makeCtl = (xpd, currentUser) => makeCompanionController({
   submit: (f) => xpd.submitDriverProfile(f), clearDraft: () => {}, bootSettled: async () => {}, rerender: () => {},
 });
 
-// ---- A3 "Guardar perfil" STAGES, never submits ----
-t('A3 "Guardar perfil" writes the draft + advances to the checklist, and does NOT call submitDriverProfile', async () => {
+// ---- A3 perfil «Pedir aprobación» (co-save) SUBMITS with exactly {name,phone,vehicle,plate} (Inicio b reorder:
+// pending onboarding is profile-only; the checklist moved to post-activation, so co-save submits directly) ----
+t('perfil «Pedir aprobación» (co-save) submits via companionSubmit with exactly {name,phone,vehicle,plate}', async () => {
   const dom = makeDom(); const user = { uid: 'A', email: 'elmer@x.hn' }; const xpd = makeXPD(); const store = {};
   const host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store });
   host.setStep('profile'); host.companionRenderOnboarding();
   dom.$('co-name').value = 'Elmer Padilla'; dom.$('co-phone').value = '+504 9'; dom.$('co-plate').value = 'ABC 1234';
-  dom.$('co-save').click(); await tick();               // RUN the real co-save handler (+ settle any mutated submit)
+  dom.$('co-save').click(); await tick();               // RUN the real co-save handler (submits directly)
   const draft = JSON.parse(store[`sherpa_driver_onboarding_draft_A`]);
-  assert.equal(draft.name, 'Elmer Padilla');            // staged to the draft
-  assert.equal(host.getStep(), 'checklist');            // advanced
-  assert.equal(xpd.calls.submit, 0, 'Guardar perfil must NOT submit');
+  assert.equal(draft.name, 'Elmer Padilla');            // still staged to the draft before submit
+  assert.equal(xpd.calls.submit, 1, '«Pedir aprobación» submits exactly once');
+  assert.deepEqual(xpd.calls.submitFields, { name: 'Elmer Padilla', phone: '+504 9', vehicle: 'moto', plate: 'ABC 1234' },
+    'submits EXACTLY {name,phone,vehicle,plate} — no extra fields');
 });
 
-// ---- SLICE2:ONBOARDING-NAV: the «App de navegación» row is injected + wired after the checklist renders ----
-// (Codex r4-followup): covers the shipped index.html insertAdjacentHTML injection, not merely the absence of a
-// crash. Removing the ONBOARDING-NAV injection turns this RED.
-t('the «App de navegación» row (co-nav-row) is injected after the checklist renders and is WIRED', async () => {
+// ---- the «App de navegación» row is in the POST-ACTIVATION checklist (#co-ck-nav) and WIRED (Inicio b): the row is
+// now included directly in the rebuilt checklist, so a tap must reach the nav-pref flow (drv2NavReturn + renderNavApp).
+t('the post-activation checklist renders #co-ck-nav WIRED: a tap reaches the nav-pref flow', async () => {
   const dom = makeDom(); const user = { uid: 'A', email: 'e@x.hn' }; const xpd = makeXPD(); const store = {};
   const host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store });
-  host.setStep('checklist'); host.companionRenderOnboarding();
-  assert.ok(dom.$('co-nav-row'), 'co-nav-row exists after the checklist renders (afterend sibling injection)');
-  assert.ok(host.getScreenHtml().includes('App de navegación'), 'the nav-row markup is present in the companion screen');
-  assert.ok(dom.$('co-nav-row')._h && typeof dom.$('co-nav-row')._h.click === 'function', 'co-nav-row is WIRED (has a click handler)');
+  // The lifted handler resolves its free `renderNavApp`/`drv2NavReturn` from globals (sloppy new Function), so spy there.
+  let navOpened = 0; const prevNav = globalThis.renderNavApp, prevRet = globalThis.drv2NavReturn;
+  globalThis.renderNavApp = () => { navOpened++; };
+  try {
+    host.setStep('checklist'); host.companionRenderOnboarding();
+    assert.ok(dom.$('co-ck-nav'), '#co-ck-nav exists in the post-activation checklist');
+    assert.ok(host.getScreenHtml().includes('App de navegación'), 'the nav-row markup is present in the companion screen');
+    assert.ok(dom.$('co-ck-nav')._h && typeof dom.$('co-ck-nav')._h.click === 'function', '#co-ck-nav is WIRED (has a click handler)');
+    dom.$('co-ck-nav').click();                          // RUN the real handler
+    assert.equal(navOpened, 1, 'a tap reaches the nav-pref flow (renderNavApp)');
+    assert.equal(globalThis.drv2NavReturn, 'companion', 'the nav return target is set so choosing an app comes back to the companion');
+  } finally { globalThis.renderNavApp = prevNav; globalThis.drv2NavReturn = prevRet; }
+});
+
+// ---- Inicio b LEGACY GUARD: an already-active driver (cold start, no observed transition, no device flag — i.e.
+// EVERYONE on upgrade) goes straight to the app, NEVER the post-activation checklist. Exercises the REAL controller
+// (decide() must yield 'legacy', not 'activated') + the REAL routing predicate the host interpose consults.
+t('legacy active driver (no observed transition, no flag) → app, never the post-activation checklist', async () => {
+  const user = { uid: 'L', email: 'l@x.hn' };
+  const xpd = makeXPD({ account: { onboarding_state: 'active', enabled: true } });   // already active before this session
+  const ctl = makeCtl(xpd, user);
+  await ctl.refresh();                                   // cold-start read of an active account (no prevValid transition)
+  const dec = ctl.decide();
+  assert.equal(dec.action, 'legacy', 'a cold-start active account yields decide()=legacy (no observed transition → no «activated»)');
+  // the host interpose: active&&enabled, but with NO device flag set and a 'legacy' action → never the checklist
+  assert.equal(postActRoute(true, dec.action, /* priorPending */ false).showChecklist, false, 'legacy + no flag → app, never the checklist');
+  // and the gated paths that WOULD show it, to pin the guard's shape:
+  assert.equal(postActRoute(true, 'activated', false).showChecklist, true, 'only a fresh on-device transition opens the checklist');
+  assert.equal(postActRoute(true, 'legacy', true).showChecklist, true, 'and it stays until «Terminar» clears the flag');
 });
 
 // ---- "Pedir aprobación" (A4) is the submit path ----
@@ -183,13 +210,14 @@ t('a submit outcome is forced to legacy (no E2) when the last read confirmed the
   assert.ok(host.renderCalls.length >= 1, 'flag-off falls through to the legacy render');
 });
 
-// ---- codex r3 #4: onboarding progress advances through the REAL handlers even when localStorage writes fail ----
-t('checklist acknowledgments advance through the REAL handlers even when localStorage.setItem throws', async () => {
+// ---- codex r3 #4 (Inicio b: the acks are now #co-ck-perms / #co-ck-cash on the rebuilt post-activation checklist):
+// onboarding progress advances through the REAL handlers even when localStorage writes fail ----
+t('post-activation checklist acks (#co-ck-perms / #co-ck-cash) advance through the REAL handlers even when localStorage.setItem throws', async () => {
   const dom = makeDom(); const user = { uid: 'A', email: 'e@x.hn' }; const xpd = makeXPD(); const store = {};
   const host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store, storageThrows: true });
   host.setStep('checklist'); host.companionRenderOnboarding();
-  dom.$('co-bx-perms').closest('label').click();        // RUN the real perms-ack handler (writes draft + re-renders)
-  dom.$('co-bx-cash').closest('label').click();         // RUN the real cash-ack handler
+  dom.$('co-ck-perms').click();                          // RUN the real perms-ack handler (writes draft + re-renders)
+  dom.$('co-ck-cash').click();                           // RUN the real cash-ack handler
   const d = host.companionReadDraft();
   assert.equal(d.ackPerms, true, 'perms ack retained in-memory despite the storage failure');
   assert.equal(d.ackCash, true, 'cash ack retained in-memory despite the storage failure');
