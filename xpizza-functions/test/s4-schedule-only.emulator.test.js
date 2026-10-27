@@ -122,7 +122,9 @@ const cartFor = (rid) => {
 
 (async () => {
   // fixtures: the registry learns the tb_ rids from Firestore restaurants/*; RTDB identities + the public projection
-  for (const rid of [PUB, UNPUB, BADH]) await fs.collection('restaurants').doc(rid).set({ name: rid });
+  // section C's LEG ('tb_s4leg') is seeded HERE too: the registry learns rids from Firestore with a 5-min TTL, so a doc created after
+  // the first registry read (section C) is never learned in time — S4E-LEG-WARM failed exactly that way (heavy run 2026-10-27)
+  for (const rid of [PUB, UNPUB, BADH, 'tb_s4leg']) await fs.collection('restaurants').doc(rid).set({ name: rid });
   await rtdb.ref().update({
     [`restaurants/${PUB}/identity`]: identity(PUB, H7),
     [`restaurants/${UNPUB}/identity`]: identity(UNPUB, H7),
