@@ -189,9 +189,14 @@
     }
     async function signedIn(d) {
       CappDeviceAccount.remember(storage, d.phone);   // §4c: the device marker (full E.164), kept across ordinary sign-outs
+      CappDeviceAccount.rememberProfile(storage, d);   // the member's own profile, for a RESTORED session's autofill
+      await applyMember(d);
+    }
+    // the member the store mounts / fills from: the profile + the member token the transport sends
+    async function applyMember(p) {
       let idToken = null; try { idToken = await fbAuth.idToken(); } catch (_) { idToken = null; }
       if (dead) return;
-      S.member = { uid: d.uid, name: d.name || '', phone: String(d.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: d.email || '', idToken };
+      S.member = { uid: p.uid, name: p.name || '', phone: String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', idToken };
       if (S.store) S.store.ui.setMember(S.member);   // §4c: back on the SAME checkout step, filled in
       schedule();
     }
@@ -200,7 +205,14 @@
       const CappAuthFirebase = pick(o, 'CappAuthFirebase', './capp-auth-firebase.js'), CappAuthState = pick(o, 'CappAuthState', './capp-auth-state.js'), CappSignup = pick(o, 'CappSignup', './capp-signup.js'), CappSignupApi = pick(o, 'CappSignupApi', './capp-signup-api.js');
       fbAuth = CappAuthFirebase.createFirebaseAuth({ config: SU.firebase, loadSdk: o.loadSdk });
       auth = CappAuthState.createAuthState({ subscribe: fbAuth.subscribe, timers: T });
-      auth.onChange((st) => { if (st !== 'member') S.member = null; schedule(); });
+      auth.onChange((st) => {
+        if (st === 'guest') CappDeviceAccount.forgetProfile(storage);   // an ordinary sign-out: no personal data stays on show
+        if (st !== 'member') { S.member = null; schedule(); return; }
+        const u = auth.user && auth.user();
+        // a session the SDK RESTORED (no sheet ran): the cached profile of THIS uid, at once (cached-first)
+        if (u && u.uid && (!S.member || S.member.uid !== u.uid)) { const c = CappDeviceAccount.readProfile(storage, u.uid); applyMember(c || { uid: u.uid }); return; }
+        schedule();
+      });
       // the sheet's own host: an .app layer (the theme tokens live on .app) OUTSIDE the store mount's #app, transparent until open
       const host = doc.createElement('div'); host.className = 'app su-host'; host.id = 'su-host';
       (app.parentNode || doc.body).appendChild(host);

@@ -30,5 +30,23 @@
   // ONLY «Cerrar sesión y olvidar este teléfono» / account deletion — an ordinary sign-out never calls this
   function forget(storage) { try { storage.removeItem(KEY); return storage.getItem(KEY) === null; } catch (_) { return false; } }
 
-  return { read, remember, forget, KEY };
+  // ── the MEMBER PROFILE cache (advisor 2026-10-27): the signed-in member's own name / phone / email, so a session the Auth SDK
+  // RESTORES (it carries only a uid) autofills at once — cached-first; getMyProfile revalidates at checkout entry once it exists.
+  // Bound to the uid (another member's is never used); written at sign-in / completion; cleared by an ORDINARY sign-out too (unlike
+  // the marker above: it holds personal data, and a signed-out device shows none of it).
+  const PROFILE_KEY = 'capp:member_profile';
+  function readProfile(storage, uid) {
+    let v = null;
+    try { const s = storage && storage.getItem(PROFILE_KEY); v = s ? JSON.parse(s) : null; } catch (_) { v = null; }
+    if (!v || typeof v !== 'object' || v.v !== 1 || typeof v.uid !== 'string' || !v.uid || v.uid !== uid) return null;
+    const str = (x, n) => (typeof x === 'string' ? x.slice(0, n) : '');
+    return { uid: v.uid, name: str(v.name, 80), phone: typeof v.phone === 'string' && E164.test(v.phone) ? v.phone : '', email: str(v.email, 254) };
+  }
+  function rememberProfile(storage, p) {
+    if (!p || typeof p.uid !== 'string' || !p.uid) return false;
+    try { storage.setItem(PROFILE_KEY, JSON.stringify({ v: 1, uid: p.uid, name: p.name || '', phone: E164.test(p.phone || '') ? p.phone : '', email: p.email || '' })); return true; } catch (_) { return false; }
+  }
+  function forgetProfile(storage) { try { storage.removeItem(PROFILE_KEY); return storage.getItem(PROFILE_KEY) === null; } catch (_) { return false; } }
+
+  return { read, remember, forget, KEY, readProfile, rememberProfile, forgetProfile, PROFILE_KEY };
 });
