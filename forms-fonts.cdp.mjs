@@ -154,6 +154,7 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
     rewrite: (rel, buf) => {
       let out;
       if (def.rewards && /account\.js$/.test(rel)) out = seamed(out ?? buf);
+      if (process.env.FONTS_STRIP_NAMES && side === 'candidate' && /(index\.html|account\.js)$/.test(rel)) out = String(out ?? buf).replace(/,\s*'(DM Sans|Playfair Display) Fallback( Roboto| Noto)?'/g, '');   // diagnostic only
       if (oldPolicy) {   // the OLD policy, rewritten in flight: font-display:swap and no fallback faces / stack names
         if (/orders-fonts\.css$/.test(rel)) out = String(out ?? buf).replace(/font-display:optional/g, 'font-display:swap').replace(/@font-face\{font-family:'[^']+ Fallback[^']*';[^}]*\}/g, '');
         if (/(index\.html|account\.js)$/.test(rel)) out = String(out ?? buf).replace(/,\s*'(DM Sans|Playfair Display) Fallback( Roboto| Noto)?'/g, '');
@@ -195,6 +196,12 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
     let geo = await cdp.ev(GEO); for (let i = 0; i < 20; i++) { await settle(cdp); const g = await cdp.ev(GEO); if (JSON.stringify(g) === JSON.stringify(geo)) break; geo = g; }
     await premisePane(cdp, def.container);
     const after = { heldMs, bootMs, nodes: await census(cdp), geo, cls: await cdp.ev('window.__cls'), fontsFailed: fontUrls().filter((u) => rt.finished.get(u) === 'failed').length };
+    if (process.env.FONTS_INSPECT) console.log(`  [inspect ${side} ${stateName}]`, JSON.stringify(await cdp.ev(`[...document.querySelectorAll(${JSON.stringify(process.env.FONTS_INSPECT)})].map((e) => { const cs = getComputedStyle(e), r = e.getBoundingClientRect(); return { text: e.textContent.slice(0, 20), ff: cs.fontFamily, fw: cs.fontWeight, fs: cs.fontSize, ls: cs.letterSpacing, x: r.x, y: r.y, w: r.width, h: r.height, op: cs.opacity, filter: cs.filter }; })`)));
+    if (process.env.FONTS_INSPECT) { const { root } = await cdp.s('DOM.getDocument', { depth: -1, pierce: true }); const { nodeId } = await cdp.s('DOM.querySelector', { nodeId: root.nodeId, selector: process.env.FONTS_INSPECT });
+      const d = await cdp.s('DOM.describeNode', { nodeId, depth: 1 }); const t = (d.node.children || []).find((c) => c.nodeType === 3);
+      const { node: tn } = t ? await cdp.s('DOM.describeNode', { backendNodeId: t.backendNodeId }) : { node: null };
+      const pushed = t ? (await cdp.s('DOM.pushNodesByBackendIdsToFrontend', { backendNodeIds: [t.backendNodeId] })).nodeIds[0] : nodeId;
+      console.log(`  [inspect-font ${side}]`, JSON.stringify((await cdp.s('CSS.getPlatformFontsForNode', { nodeId: pushed })).fonts)); }
     const png = deterministic ? Buffer.from((await cdp.s('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })).data, 'base64') : null;
     const probe = await attribute(cdp, after.nodes);
     return { before, after, probe, png };
@@ -317,11 +324,12 @@ for (const site of SITES) {
       check(m > 0, `[${rep}] FF-ctrl: the geometry check SEES it — ${m} of ${r.after.geo.length} boxes moved (CLS ${r.after.cls}, recorded only)`);
     }
     if (CELLS.includes('same')) {
-      const states = Object.keys(STATES).filter((st) => !STATES[st].only || STATES[st].only === site);
+      const states = Object.keys(STATES).filter((st) => (!STATES[st].only || STATES[st].only === site) && (!arg('states') || arg('states').includes(st)));
       const byState = {}; const record = { site, rep, states: {} };
       for (const st of states) {
         const base = await run(site, { side: 'baseline', stateName: st, deterministic: true });
-        const cand = await run(site, { side: 'candidate', stateName: st, deterministic: true });
+        // FONTS_SELF_CONTROL=1: the determinism control — the 'candidate' slot is ANOTHER baseline run (baseline vs baseline)
+        const cand = await run(site, { side: process.env.FONTS_SELF_CONTROL ? 'baseline' : 'candidate', stateName: st, deterministic: true });
         byState[st] = cand;
         fidelity(base, `[${rep}] ${st} baseline`); fidelity(cand, `[${rep}] ${st} candidate`);
         check(hostedPainted(base.after.nodes) && hostedPainted(cand.after.nodes), `[${rep}] ${st}: brand faces paint on BOTH sides`);
