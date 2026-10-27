@@ -7,10 +7,10 @@
 //   endpoints: { requestOtp, verifyOtp, getSignupConfig, googleStart, googleSignIn, completeProfile, redeemSignupGrant } — the app
 //   runtime's (the same deployed functions the forms call; the app's web origin is already in their CORS list).
 (function (root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.CappSignupApi = api;
-})(typeof self !== 'undefined' ? self : this, function () {
+})(typeof self !== 'undefined' ? self : this, function (root) {
   'use strict';
 
   const CONTEXT = 'platform';
@@ -21,7 +21,9 @@
     const E = o.endpoints || {};
     const T = o.timers || { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t) };
     const timeoutMs = Number.isFinite(o.timeoutMs) && o.timeoutMs > 0 ? o.timeoutMs : TIMEOUT_MS;
-    const doFetch = typeof o.fetch === 'function' ? o.fetch : (u, i) => fetch(u, i);
+    // the forms' canonical wrapper (pselfupdate-wrapper-lint): the page loads sherpa-client.js first
+    function sherpaFetch(u, o){ var S = root && root.SherpaClient; return (S && typeof S.fetch === 'function') ? S.fetch(u, o) : fetch(u, o); }
+    const doFetch = typeof o.fetch === 'function' ? o.fetch : sherpaFetch;
     async function call(url, { method = 'POST', body = null, idToken = null } = {}) {
       if (!url) return { status: 0, json: null };
       const headers = { 'Content-Type': 'application/json', ...(idToken ? { 'x-firebase-id-token': idToken } : {}) };
