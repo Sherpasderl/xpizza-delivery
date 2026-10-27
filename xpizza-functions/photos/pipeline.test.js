@@ -11,6 +11,10 @@ const { processImage, PIPELINE } = require('./pipeline');
 const { sniffImage } = require('./sniff');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+// WATCHDOG (advisor ruling 2026-10-27, after mutants p4/p8 hung at 0 % CPU under a 100+ load): the suite normally takes ~10 s; past
+// 120 s it reports a named failure and SIGKILLs itself, so a wedged native (libvips) thread can never turn a mutant run into a hang
+const WATCHDOG = setTimeout(() => { console.error('pipeline: FAILED — watchdog (120 s)'); process.kill(process.pid, 'SIGKILL'); }, 120000);
+WATCHDOG.unref();
 const FULL = { card: { x: 0, y: 0, w: 800, h: 600 }, hero: { x: 0, y: 0, w: 960, h: 600 } };
 // a non-uniform image (a gradient + a marker block) so crops and orientation are observable in the pixels
 async function photo(w, h, fmt = 'jpeg', opts = {}) {
