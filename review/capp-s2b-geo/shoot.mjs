@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
 const GRILL = path.join(os.homedir(), 'Downloads/xpizza-D4c-grill');
+const PROTO = path.join(GRILL, 'customer-app-prototype/APPROVED-v6');
 const MOCK = path.join(GRILL, 'MOCKUP-capp-S2b-geo-address.html');   // owner-approved 2026-10-26 (A1 + b + b2 + c)
 const OUT = path.join(HERE, 'shots');
 const W = 390, H = 844;
@@ -41,7 +42,7 @@ function chromeBin() {
 }
 const server = http.createServer((req, res) => {
   const rel = decodeURIComponent(new URL(req.url, 'http://x').pathname).replace(/^\/+/, '');
-  const file = rel === 'mock.html' ? MOCK : path.join(ROOT, rel);
+  const file = rel.startsWith('proto/') ? path.join(PROTO, rel.slice(6)) : rel === 'mock.html' ? MOCK : path.join(ROOT, rel);   // proto/img: the harness fixture's logo / hero
   if (!(file.startsWith(ROOT) || file.startsWith(GRILL)) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
   fs.createReadStream(file).pipe(res);
