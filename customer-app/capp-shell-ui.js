@@ -1,0 +1,247 @@
+// Customer app S7a-2 (PLAN-capp-S7a r1-r3.4, APPROVED; MOCKUP-capp-S7a-states APPROVED 2026-10-27) — the multi-store SHELL host:
+// Inicio, Buscar and store entry over the directory (capp-directory), the ONE shared menu cache (capp-menu-cache), store-entry
+// eligibility (capp-eligibility), the shell navigation (capp-shell-nav) and the store mount (capp-ui, configured by capp-shell's
+// configFor). Brand-agnostic (no restaurant id or name in this file — guarded). DARK: only the undeployed shell.html loads it.
+//
+// mount(doc, opts)
+//   opts.fetchDirectory(etag|null) → Promise<{ status, body?, etag? }>       the directory transport (status 0 = network failure)
+//   opts.fetchEnvelope(rid, etag|null) → Promise<{ status, body?, etag? }>   getPublicMenu
+//   opts.readAvailability(rid, menu) → Promise<iterable of sold dish keys | null>   the live availability read (null = failed ⇒
+//        FAIL-OPEN: every dish available, exactly as the forms' loadAvailability; the server refuses at intake)
+//   opts.runtime { endpoints, intakeKey, mapsKey }   the app deployment's transport (configFor's runtime)
+//   opts.auth  a CappAuthState instance (absent ⇒ unresolved — never assumed guest)
+//   opts.schedulingLive  S4's switch (frame 3 B's second sentence, «Programar pedido»); default false
+//   opts.storage, opts.now (ms), opts.timers, opts.win, opts.uiOpts (passed through to CappUI.mount: apiOpts, geolocation, …)
+//   opts.onEvent(name, detail)  the controls whose screens land in later slices ('tab' orders / account, 'addr', 'loc-on')
+//
+// Paint is never awaited (r3.3-F6): the stored directory and stored menus paint at once as PRESENTATION; every read runs after.
+// A store row enters ONLY while its eligibility is verified (< 60 s) AND its menu body is in hand; otherwise the tap is HELD (the
+// drawn pressed state) and opens the moment both are true — a tombstone releases it, a failed directory shows frame 7.
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.CappShellUI = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const DIR_EVERY_MS = 60 * 1000, AVAIL_EVERY_MS = 30 * 1000, MENU_LRU = 8, RECENT_MAX = 5;
+  const MENU_KEY = (rid) => `capp:menu:${rid}`, AVAIL_KEY = (rid) => `capp:avail:${rid}`, LRU_KEY = 'capp:menu:lru', RECENT_KEY = 'capp:recent';
+  const g = typeof self !== 'undefined' ? self : {};
+  const pick = (opts, name, file) => opts[name] || g[name] || (typeof require === 'function' ? require(file) : null);
+
+  function mount(doc, opts) {
+    const o = opts || {};
+    const CappDirectory = pick(o, 'CappDirectory', './capp-directory.js'), CappEligibility = pick(o, 'CappEligibility', './capp-eligibility.js');
+    const CappMenuCache = pick(o, 'CappMenuCache', './capp-menu-cache.js'), CappMenu = pick(o, 'CappMenu', './capp-menu.js');
+    const CappUI = pick(o, 'CappUI', './capp-ui.js'), CappShell = pick(o, 'CappShell', './capp-shell.js');
+    const CappShellNav = pick(o, 'CappShellNav', './capp-shell-nav.js'), CappHome = pick(o, 'CappHome', './capp-home.js');
+    const win = o.win || doc.defaultView;
+    const storage = o.storage !== undefined ? o.storage : (() => { try { return win.localStorage; } catch (_) { return null; } })();
+    const nowMs = typeof o.now === 'function' ? o.now : () => Date.now();
+    const clock = () => new Date(nowMs());
+    const T = o.timers || { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: (f, ms) => setInterval(f, ms), clearInterval: (t) => clearInterval(t) };
+    const runtime = o.runtime || {};
+    const auth = o.auth || null;
+    const authNow = () => { try { return auth ? auth.state() : 'unresolved'; } catch (_) { return 'unresolved'; } };
+    const emit = (name, detail) => { try { (o.onEvent || (() => {}))(name, detail); } catch (_) {} };
+    const $ = (id) => doc.getElementById(id);
+    const app = $('app');
+    const readJ = (k) => { try { const v = storage && storage.getItem(k); return v ? JSON.parse(v) : null; } catch (_) { return null; } };
+    const writeJ = (k, v) => { try { const s = JSON.stringify(v); storage.setItem(k, s); return storage.getItem(k) === s; } catch (_) { return false; } };
+    let dead = false;
+
+    const S = { tab: 'home', cuisine: '', filters: new Set(), q: '', recent: (readJ(RECENT_KEY) || []).filter((x) => typeof x === 'string').slice(0, RECENT_MAX),
+      held: null, heldErr: false, store: null };
+
+    // ── the menus: ONE cache; a validated fresh body is persisted (LRU of MENU_LRU stores) and seeded as presentation at boot ──
+    const validateBody = (rid, b) => { if (!b || b.rid !== rid) return false; CappMenu.adaptMenu(b); return true; };
+    function persist(rid, rec) {
+      if (!writeJ(MENU_KEY(rid), rec)) return;
+      const lru = [rid, ...(readJ(LRU_KEY) || []).filter((x) => x !== rid)];
+      for (const old of lru.slice(MENU_LRU)) { try { storage.removeItem(MENU_KEY(old)); storage.removeItem(AVAIL_KEY(old)); } catch (_) {} }
+      writeJ(LRU_KEY, lru.slice(0, MENU_LRU));
+    }
+    const cache = CappMenuCache.createMenuCache({ fetchEnvelope: o.fetchEnvelope, now: nowMs, validateBody, persist });
+    const elig = CappEligibility.createEligibility({ now: nowMs });
+    const dir = CappDirectory.createDirectory({ fetchDirectory: o.fetchDirectory, storage, now: nowMs, eligibility: elig });
+    const cfgOf = (entry) => CappShell.configFor(entry, runtime);
+    const views = new Map();   // rid → { body, view } (adapted once per body)
+    function viewOf(rid, entry) {
+      const e = cache.peek(rid); if (!e || !e.body) return null;
+      const memo = views.get(rid); if (memo && memo.body === e.body) return memo.view;
+      let view = null;
+      try { const menu = CappMenu.adaptMenu(e.body); view = { menu, sections: CappUI.viewSections(menu, cfgOf(entry) || {}) }; } catch (_) { view = null; }
+      views.set(rid, { body: e.body, view });
+      return view;
+    }
+    const subscribed = new Set();
+    function loadMenus() {
+      for (const r of dir.view().rows) {
+        if (r.gone) continue;
+        if (!subscribed.has(r.rid)) { subscribed.add(r.rid); cache.subscribe(r.rid, () => { schedule(); checkHeld(); }); }
+        cache.get(r.rid);   // directory order = visible stores first; the cache's global concurrency (3) and dedupe apply
+      }
+    }
+
+    // ── availability (r3.3-F2): per MOUNTED store, sequence-guarded, fail-open; the last good map persisted with the menu ──
+    const avail = new Map();   // rid → Set of sold dish keys (the Set the mount reads at render AND action time)
+    const availOf = (rid) => { if (!avail.has(rid)) avail.set(rid, new Set((readJ(AVAIL_KEY(rid)) || []).filter((x) => typeof x === 'string'))); return avail.get(rid); };
+    let availSeq = 0, availTimer = null;
+    async function readAvail(rid, menu) {
+      let keys = null;
+      try { keys = typeof o.readAvailability === 'function' ? await o.readAvailability(rid, menu) : null; } catch (_) { keys = null; }
+      return keys == null ? null : [...keys].map(String);
+    }
+    async function pollAvail() {
+      const st = S.store; if (!st) return;
+      const seq = ++availSeq;
+      const keys = await readAvail(st.rid, st.ui.menu);
+      if (seq !== availSeq || dead || S.store !== st) return;   // superseded, or the store was left
+      const set = availOf(st.rid); set.clear();
+      if (keys) { for (const k of keys) set.add(k); writeJ(AVAIL_KEY(st.rid), [...set]); }   // failed ⇒ every dish available (fail-open)
+      st.ui.availabilityUpdated();
+    }
+
+    // ── the store mount ──
+    function mountStore(entry) {
+      const row = dir.view().rows.find((r) => r.rid === entry.rid);
+      const cfg = row && cfgOf(row.entry), e = cache.peek(entry.rid);
+      if (!cfg || !e || !e.body) return false;
+      const uo = o.uiOpts || {};
+      const ui = CappUI.mount(doc, { ...uo, envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry),
+        readAvailability: () => readAvail(entry.rid, ui && ui.menu),
+        onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
+        onEvent: (name, detail) => { if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } emit(name, { rid: entry.rid, ...(detail || {}) }); } });
+      S.store = { rid: entry.rid, ui };
+      const snap = readJ(cfg.cartKey); if (snap) ui.restore(snap);
+      if (entry.dish) ui.openDetail(entry.dish);
+      pollAvail(); availTimer = T.setInterval(pollAvail, AVAIL_EVERY_MS);
+      return true;
+    }
+    function unmountStore() {
+      const st = S.store; if (!st) return;
+      if (availTimer !== null) { T.clearInterval(availTimer); availTimer = null; }
+      availSeq++; st.ui.destroy(); S.store = null;
+    }
+
+    // ── the shell navigation (one history owner) ──
+    const nav = CappShellNav.createShellNav({ win, home: { name: 'home' },
+      onShow: (entry, x) => {
+        if (entry.name === 'store') { if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); return; }
+        S.tab = entry.name; dir.visit(); dir.revalidate(); loadMenus();
+        renderNow(x && x.restored ? x.restored : null);
+      },
+      onLeave: () => unmountStore() });
+
+    // a store / dish tap: in now when eligible with a menu in hand; otherwise HELD until both (or released by a tombstone / failure)
+    function enter(rid, dish) {
+      if (dir.state(rid) === 'gone') return;
+      S.held = { rid, dish: dish || null }; S.heldErr = false;
+      if (checkHeld()) return;
+      renderNow();   // the drawn pressed state
+      if (dir.state(rid) !== 'enterable') dir.revalidate();
+      cache.get(rid);
+    }
+    function checkHeld() {
+      const h = S.held; if (!h || S.store) return false;
+      const st = dir.state(h.rid), e = cache.peek(h.rid);
+      if (st === 'gone' || st === 'unknown') { S.held = null; schedule(); return false; }
+      if (st === 'enterable' && e && e.body) {
+        S.held = null;
+        if (S.q && S.tab === 'search') remember(S.q);
+        nav.go({ name: 'store', rid: h.rid, dish: h.dish }, saveScreen());
+        return true;
+      }
+      const v = dir.view();
+      if (st !== 'enterable' && v.failed && !v.pending) { S.held = null; S.heldErr = true; schedule(); }   // r3.3-F1: frame 7 for the held tap
+      return false;
+    }
+    dir.subscribe(() => { loadMenus(); checkHeld(); schedule(); });
+    function remember(q) { const t = String(q).trim(); if (!t) return; S.recent = [t, ...S.recent.filter((x) => x !== t)].slice(0, RECENT_MAX); writeJ(RECENT_KEY, S.recent); }
+
+    // ── render: the shell screens (a mounted store owns #app) ──
+    function vm() {
+      const v = dir.view();
+      const rows = S.heldErr ? [] : v.rows.map((r) => {
+        const cfg = cfgOf(r.entry) || {}, e = cache.peek(r.rid);
+        return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid };
+      });
+      const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
+      return { phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), cuisine: S.cuisine, filters: S.filters,
+        schedulingLive: o.schedulingLive === true, outOfZone: false, addr: null, locDenied: false, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent };
+    }
+    // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
+    function saveScreen() {
+      const sc = app.querySelector('.scroller, .results'), rows = {};
+      for (const r of app.querySelectorAll('.hsec')) { const h = r.querySelector('.hrow'); if (h) rows[r.getAttribute('aria-label')] = h.scrollLeft; }
+      const a = doc.activeElement;
+      return { top: sc ? sc.scrollTop : 0, rows, q: S.q, focus: a && app.contains(a) ? (a.id ? `#${a.id}` : a.dataset && a.dataset.act ? `[data-act="${a.dataset.act}"]${a.dataset.rid ? `[data-rid="${a.dataset.rid}"]` : ''}${a.dataset.val !== undefined ? `[data-val="${a.dataset.val}"]` : ''}` : null) : null,
+        caret: a && a.id === 'gq' ? [a.selectionStart, a.selectionEnd] : null };
+    }
+    function restoreScreen(s) {
+      if (!s) return;
+      const sc = app.querySelector('.scroller, .results'); if (sc) sc.scrollTop = s.top || 0;
+      for (const r of app.querySelectorAll('.hsec')) { const h = r.querySelector('.hrow'), x = s.rows && s.rows[r.getAttribute('aria-label')]; if (h && x) h.scrollLeft = x; }
+      if (s.focus) { const el = app.querySelector(s.focus); if (el) { try { el.focus({ preventScroll: true }); if (s.caret && el.setSelectionRange) el.setSelectionRange(s.caret[0], s.caret[1]); } catch (_) {} } }
+    }
+    function renderNow(restored) {
+      if (dead || S.store) return;
+      const keep = restored || (app.firstElementChild ? saveScreen() : null);
+      if (restored && typeof restored.q === 'string') S.q = restored.q;
+      const v = vm();
+      app.innerHTML = `<div class="screen">${S.tab === 'search' ? CappHome.searchHtml(v) : CappHome.homeHtml(v)}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`;
+      restoreScreen(keep);
+    }
+    let pending = null;
+    const raf = win && typeof win.requestAnimationFrame === 'function' ? (f) => win.requestAnimationFrame(f) : (f) => T.setTimeout(f, 16);
+    function schedule() { if (pending || dead) return; pending = true; raf(() => { pending = null; renderNow(); }); }
+
+    // ── controls ──
+    function onClick(ev) {
+      if (dead || S.store) return;
+      const t = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
+      if (!t || !app.contains(t) || t.disabled) return;
+      const a = t.dataset.act;
+      if (a === 'tab') { const id = t.dataset.tab; if (id === 'home' || id === 'search') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
+      if (a === 'open-store') return enter(t.dataset.rid, null);
+      if (a === 'open-dish') return enter(t.dataset.rid, t.dataset.id);
+      if (a === 'cuisine') { S.cuisine = t.dataset.val || ''; return renderNow(); }
+      if (a === 'filter') { const k = t.dataset.val; if (S.filters.has(k)) S.filters.delete(k); else S.filters.add(k); return renderNow(); }
+      if (a === 'clearfilters') { S.cuisine = ''; S.filters.clear(); return renderNow(); }
+      if (a === 'rownext') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }
+      if (a === 'dir-retry') { S.heldErr = false; dir.revalidate(); return renderNow(); }
+      if (a === 'recent') { S.q = t.dataset.q; return renderNow(); }
+      if (a === 'clearq') { S.q = ''; renderNow(); const i = $('gq'); if (i) i.focus(); return; }
+      emit(a, {});   // 'addr', 'loc-on': the guest location (its own step)
+    }
+    function onInput(ev) {
+      if (dead || S.store) return;
+      const el = ev.target; if (!el || !el.dataset || el.dataset.field !== 'q') return;
+      S.q = el.value; renderNow();
+    }
+    function onVisible() { if (doc.visibilityState === 'visible' && !S.store) { dir.revalidate(); loadMenus(); } }
+    doc.addEventListener('click', onClick);
+    doc.addEventListener('input', onInput);
+    doc.addEventListener('visibilitychange', onVisible);
+    const dirTimer = T.setInterval(() => { if (!S.store && doc.visibilityState !== 'hidden') dir.revalidate(); }, DIR_EVERY_MS);
+    const unAuth = auth && typeof auth.onChange === 'function' ? auth.onChange(() => schedule()) : null;
+
+    // ── boot: paint from storage (presentation) at once; then every read ──
+    dir.boot();
+    for (const r of dir.view().rows) cache.seed(r.rid, readJ(MENU_KEY(r.rid)));
+    app.classList.add('app');
+    renderNow();
+    dir.revalidate();
+    loadMenus();
+
+    return {
+      nav, dir, cache, eligibility: elig, state: S, render: renderNow, store: () => S.store,
+      destroy() {
+        dead = true; unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth();
+        doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('visibilitychange', onVisible); nav.destroy();
+      },
+    };
+  }
+
+  return { mount, DIR_EVERY_MS, AVAIL_EVERY_MS, MENU_LRU };
+});
