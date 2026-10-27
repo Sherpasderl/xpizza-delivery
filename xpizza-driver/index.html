@@ -2822,10 +2822,47 @@ const companionDraftKey = (uid) => `sherpa_driver_onboarding_draft_${uid}`;
    localStorage best-effort (mirrors the onboarding draft) so a storage failure can't strand the fresh-activation
    path; keyed by uid so it never leaks across accounts. No server field. ===== */
 let companionChecklistPendingMem = null;   // uid whose post-activation checklist is pending THIS session (authoritative)
+let companionChecklistClearedMem = null;   // uid whose checklist was CLEARED this session — beats a persisted '1' if removeItem threw (r1 P2)
 const companionChecklistKey = (uid) => `sherpa_driver_checklist_pending_${uid}`;
-function companionSetChecklistPending(uid) { if (!uid) return; companionChecklistPendingMem = uid; try { localStorage.setItem(companionChecklistKey(uid), '1'); } catch (_) {} }
-function companionChecklistPending(uid) { if (!uid) return false; if (companionChecklistPendingMem === uid) return true; try { return localStorage.getItem(companionChecklistKey(uid)) === '1'; } catch (_) { return false; } }
-function companionClearChecklistPending(uid) { if (companionChecklistPendingMem === uid) companionChecklistPendingMem = null; try { if (uid) localStorage.removeItem(companionChecklistKey(uid)); } catch (_) {} }
+function companionSetChecklistPending(uid) { if (!uid) return; companionChecklistPendingMem = uid; if (companionChecklistClearedMem === uid) companionChecklistClearedMem = null; try { localStorage.setItem(companionChecklistKey(uid), '1'); } catch (_) {} }
+function companionChecklistPending(uid) { if (!uid) return false; if (companionChecklistClearedMem === uid) return false; if (companionChecklistPendingMem === uid) return true; try { return localStorage.getItem(companionChecklistKey(uid)) === '1'; } catch (_) { return false; } }
+function companionClearChecklistPending(uid) { if (!uid) return; companionChecklistClearedMem = uid; if (companionChecklistPendingMem === uid) companionChecklistPendingMem = null; try { localStorage.removeItem(companionChecklistKey(uid)); } catch (_) {} }
+// Post-activation checklist PROGRESS (acks + practiceDone + navChosen) — a per-uid store SEPARATE from the pending-
+// profile draft, which the controller CLEARS on leaving 'pending' (so the draft cannot hold post-activation progress
+// — r1 P2 "progress lost"). In-memory authoritative + localStorage best-effort; keyed by uid.
+let companionProgressMem = {};
+const companionProgressKey = (uid) => `sherpa_driver_checklist_progress_${uid}`;
+function companionReadProgress(uid) {
+  if (!uid) return {};
+  if (companionProgressMem[uid]) return companionProgressMem[uid];
+  let restored = {};
+  try { restored = JSON.parse(localStorage.getItem(companionProgressKey(uid)) || '{}') || {}; } catch (_) { restored = {}; }
+  companionProgressMem[uid] = restored; return restored;
+}
+function companionWriteProgress(uid, patch) {
+  if (!uid) return {};
+  const p = { ...companionReadProgress(uid), ...patch };
+  companionProgressMem[uid] = p;
+  try { localStorage.setItem(companionProgressKey(uid), JSON.stringify(p)); } catch (_) {}
+  return p;
+}
+// The post-activation routing render() delegates to (EXTRACTED so the real lifecycle is unit-testable — r1 P2 tests).
+// Returns true when it rendered the checklist (render() then returns), false to fall through to the app. Gated on the
+// companion feature being ENABLED + a SUCCESSFUL valid active&&enabled read (r1 P2 flag-off/offline), so a flag-off /
+// failed / stale read never routes here. On the one OBSERVED activation it records checklist-pending AND consumes the
+// approval transition (r1 P1 — so 'activated' fires once and «Terminar» does not loop). A routine render while the
+// driver is in the practice sub-flow must NOT reset companionStep (r1 P2 practice).
+function companionPostActStep(r) {
+  if (!companion) return false;
+  const acct = companion._state && companion._state.account;
+  const flagOn = !!(companion._state && companion._state.flag === true);
+  const activeEnabled = !!(flagOn && acct && acct.meta === 'valid' && acct.state === 'active' && acct.enabled === true);
+  const uid = currentUser && currentUser.uid;
+  const route = postActRoute(activeEnabled, r.action, companionChecklistPending(uid));
+  if (route.setPending) { companionSetChecklistPending(uid); if (companion.consumeApprovalTransition) companion.consumeApprovalTransition(); }
+  if (route.showChecklist) { if (companionStep !== 'practice') companionStep = 'checklist'; companionRenderScreen('onboarding'); return true; }
+  return false;
+}
 /* ===== SLICE3:INICIO-CHECKLIST-FLAG:END ===== */
 
 const $ = (id) => document.getElementById(id);
@@ -3062,23 +3099,30 @@ function companionRenderOnboarding() {
     const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
     const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
     const SOLA_HM = '<svg class="sola-hm" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="var(--marino, #14306B)"/><path d="M24 9.2 A14.8 14.8 0 1 1 24 38.8 A14.8 14.8 0 1 1 24 9.2" stroke="#FFFFFF" stroke-width="4.4" fill="none" stroke-linecap="round"/><g><path d="M24 12.6L27.3 24L20.7 24Z" fill="var(--celeste, #8EC0FF)"/><path d="M27.3 24L24 31.6L20.7 24Z" fill="#FFFFFF"/><circle cx="24" cy="24" r="2.1" fill="var(--marino, #14306B)"/></g></svg>';
-    const navChosen = !!d.navChosen;
+    const _puid = currentUser && currentUser.uid;
+    // r1 P2 "progress lost": acks / practiceDone / navChosen live in the durable per-uid PROGRESS store, NOT the
+    // pending draft (the controller clears that on leaving 'pending'). navChosen (written by the frozen NAVPREF nav
+    // return) and practiceDone (written by the practice branch) go to the draft, so sync them forward into progress.
+    let prog = companionReadProgress(_puid);
+    if (d.navChosen && !prog.navChosen) prog = companionWriteProgress(_puid, { navChosen: true });
+    if (d.practiceDone && !prog.practiceDone) prog = companionWriteProgress(_puid, { practiceDone: true });
+    const navChosen = !!prog.navChosen;
     const box = (on) => `<span class="co-ckbx ${on ? 'on' : ''}">${on ? CHECK : ''}</span>`;
     el.innerHTML = companionShellHtml(`
       <div class="co-hdr">${SOLA_HM}<div><div class="co-hdr-ttl">Listo para repartir</div><div class="co-hdr-sub">Paso 2 de 2 · una sola vez</div></div></div>
       <span class="co-badge-ok" style="align-self:flex-start">Cuenta activada</span>
       <div class="co-card co-list">
         <div class="co-cki">${box(true)}<div class="co-cktx"><div class="co-ckt">Perfil completo</div></div></div>
-        <label class="co-cki" id="co-ck-perms">${box(!!d.ackPerms)}<div class="co-cktx"><div class="co-ckt">Ubicación y batería</div><div class="co-cksub">Permiso «siempre» · batería sin restricción</div></div></label>
-        <label class="co-cki" id="co-ck-cash">${box(!!d.ackCash)}<div class="co-cktx"><div class="co-ckt">Reglas de efectivo</div><div class="co-cksub">Entregás el 100% del efectivo · llevás sencillo para dar vuelto</div></div></label>
-        <div class="co-cki tap" id="co-ck-practice">${box(!!d.practiceDone)}<div class="co-cktx"><div class="co-ckt">Pedido de práctica</div><div class="co-cksub">5 minutos, sin pedido real ni efectivo</div></div>${d.practiceDone ? '' : `<span class="co-chev">${CHEV}</span>`}</div>
+        <label class="co-cki" id="co-ck-perms">${box(!!prog.ackPerms)}<div class="co-cktx"><div class="co-ckt">Ubicación y batería</div><div class="co-cksub">Permiso «siempre» · batería sin restricción</div></div></label>
+        <label class="co-cki" id="co-ck-cash">${box(!!prog.ackCash)}<div class="co-cktx"><div class="co-ckt">Reglas de efectivo</div><div class="co-cksub">Entregás el 100% del efectivo · llevás sencillo para dar vuelto</div></div></label>
+        <div class="co-cki tap" id="co-ck-practice">${box(!!prog.practiceDone)}<div class="co-cktx"><div class="co-ckt">Pedido de práctica</div><div class="co-cksub">5 minutos, sin pedido real ni efectivo</div></div>${prog.practiceDone ? '' : `<span class="co-chev">${CHEV}</span>`}</div>
         <div class="co-cki tap" id="co-ck-nav">${box(navChosen)}<div class="co-cktx"><div class="co-ckt">App de navegación</div><div class="co-cksub">Elegí Waze o Google Maps; lo cambiás en Cuenta</div></div>${navChosen ? '' : `<span class="co-chev">${CHEV}</span>`}</div>
       </div>
       <div style="flex:1"></div>`,
       `<button class="big-btn co-onb-btn co-btn-soft" id="co-practice-go">Hacer el pedido de práctica</button>
        <button class="big-btn primary co-onb-btn" id="co-terminar">Terminar</button>`);
-    $('co-ck-perms').addEventListener('click', () => { companionWriteDraft({ ackPerms: !companionReadDraft().ackPerms }); companionRenderOnboarding(); });
-    $('co-ck-cash').addEventListener('click', () => { companionWriteDraft({ ackCash: !companionReadDraft().ackCash }); companionRenderOnboarding(); });
+    $('co-ck-perms').addEventListener('click', () => { companionWriteProgress(_puid, { ackPerms: !companionReadProgress(_puid).ackPerms }); companionRenderOnboarding(); });
+    $('co-ck-cash').addEventListener('click', () => { companionWriteProgress(_puid, { ackCash: !companionReadProgress(_puid).ackCash }); companionRenderOnboarding(); });
     $('co-ck-practice').addEventListener('click', () => { companionStep = 'practice'; companionRenderOnboarding(); });
     $('co-practice-go').addEventListener('click', () => { companionStep = 'practice'; companionRenderOnboarding(); });
     $('co-ck-nav').addEventListener('click', () => { drv2NavReturn = 'companion'; renderNavApp(); });
@@ -4258,18 +4302,12 @@ function render() {
       }
     } else {
       companionNeutralNotice = false;
-      /* ===== SLICE3:INICIO-POSTACT-ROUTE:START — post-activation checklist (Inicio b). The prototype has no
-         «Activado» transient (companionShowActivatedTransient is now unreferenced — frozen baseline, left in place);
-         «Cuenta activada» on the checklist is the acknowledgement. On the OBSERVED profile_submitted→active
-         transition (action 'activated') flag the checklist pending on THIS device, then show it while pending and
-         «Terminar» hasn't cleared it. active&&enabled is gated via companion._state.lastValid (a suspended account
-         never lands here); an already-active driver with no device flag (everyone on upgrade) goes straight to the app. ===== */
-      const _lv = companion._state && companion._state.lastValid;
-      const _activeEnabled = !!(_lv && _lv.state === 'active' && _lv.enabled === true);
-      const _uid = currentUser && currentUser.uid;
-      const _route = postActRoute(_activeEnabled, r.action, companionChecklistPending(_uid));
-      if (_route.setPending) companionSetChecklistPending(_uid);
-      if (_route.showChecklist) { companionStep = 'checklist'; companionRenderScreen('onboarding'); return; }
+      /* ===== SLICE3:INICIO-POSTACT-ROUTE:START — post-activation checklist (Inicio b). No «Activado» transient
+         (companionShowActivatedTransient is unreferenced — frozen baseline, left in place); «Cuenta activada» on the
+         checklist is the acknowledgement. The whole decision (feature-enabled + valid active&&enabled gate; set +
+         consume the one-shot transition; practice-safe step) lives in companionPostActStep so the real lifecycle is
+         unit-testable (r1 P1/P2). true → it rendered the checklist. ===== */
+      if (companionPostActStep(r)) return;
       /* ===== SLICE3:INICIO-POSTACT-ROUTE:END ===== */
       // 'legacy' (optionally with suspended) falls through to the existing render below
     }
