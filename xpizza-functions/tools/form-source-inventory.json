@@ -126,6 +126,7 @@
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
+    "xpizza-functions/checkout-guest-lib.test.js",
     "xpizza-functions/claim-address-capture.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -590,6 +591,7 @@
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/verify-vs-active.test.js",
+    "xpizza-functions/checkout-guest-lib.test.js",
     "xpizza-functions/claim-address-capture.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -1806,6 +1808,7 @@
   "catalog/snapshot-fallback.js",
   "catalog/source-store.js",
   "catalog/text-version.js",
+  "checkout-guest-lib.js",
   "createorder-classify.js",
   "driver-ingest.js",
   "driver-problem-alert.js",
@@ -1835,6 +1838,7 @@
   "merchant/merchant-transitions.js",
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
+  "phone-countries.js",
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
@@ -2147,6 +2151,10 @@
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js"
    ]
+  },
+  "checkout-guest-lib.js": {
+   "pins": [],
+   "lifts": []
   },
   "createorder-classify.js": {
    "pins": [
@@ -3081,6 +3089,10 @@
    "lifts": []
   },
   "merchant/merchant-wiring.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "phone-countries.js": {
    "pins": [],
    "lifts": []
   },
