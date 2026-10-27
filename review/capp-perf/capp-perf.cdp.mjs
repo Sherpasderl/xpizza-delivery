@@ -1,5 +1,5 @@
 // Customer app — the CDP performance harness (PLAN-capp-S7a r3.3 / PLAN-capp-S4 r5.3: ONE tool, both slices). Run at hand-back:
-//   node customer-app/capp-perf.cdp.mjs            (CHROME_BIN overrides the browser; no emulator, no network beyond 127.0.0.1)
+//   node review/capp-perf/capp-perf.cdp.mjs            (CHROME_BIN overrides the browser; no emulator, no network beyond 127.0.0.1)
 // Cell F4 (this slice): the self-hosted fonts NEVER move layout. The REAL customer-app/index.html (its own <head>: preloads,
 // capp-fonts.css, capp.css) is served with ONE host script appended that mounts the REAL CappUI on the REAL served envelope
 // (review/capp-s2b/envelopes.json), at 390×844 DPR 2. Layout shifts are read from the page's own PerformanceObserver.
@@ -26,7 +26,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');   // review/capp-perf/ → the repo (never under customer-app/: that folder deploys)
 const W = 390, H = 844;
 const chromeBin = () => {
   if (process.env.CHROME_BIN) return process.env.CHROME_BIN;

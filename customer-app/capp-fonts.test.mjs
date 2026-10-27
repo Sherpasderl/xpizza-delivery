@@ -1,5 +1,5 @@
 // Customer app — self-hosted fonts, no reflow (PLAN-capp-S7a r3.3 F4; owner rule: no pop-in from our code). Static guards over the
-// REAL files the page ships: index.html, capp-fonts.css, capp.css, fonts/. The CLS=0 proof in a real browser is capp-perf.cdp.mjs.
+// REAL files the page ships: index.html, capp-fonts.css, capp.css, fonts/. The CLS=0 proof in a real browser is review/capp-perf/capp-perf.cdp.mjs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
