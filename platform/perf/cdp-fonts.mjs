@@ -123,6 +123,11 @@ export async function router(cdp, decide) {
       if (d === 'continue') return await s('Fetch.continueRequest', { requestId: p.requestId });
       if (d === 'fail') return await s('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Failed' });
       if (d === 'hold') { holds.set(url, p.requestId); return; }
+      if (p.request.method === 'OPTIONS') {   // a CORS preflight for a FULFILLED url: answer it as a real CORS endpoint would
+        return await s('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 204, responseHeaders: [
+          { name: 'access-control-allow-origin', value: '*' }, { name: 'access-control-allow-methods', value: 'GET, POST, OPTIONS' },
+          { name: 'access-control-allow-headers', value: p.request.headers['Access-Control-Request-Headers'] || '*' }, { name: 'access-control-max-age', value: '600' }] });
+      }
       const body = Buffer.isBuffer(d.body) ? d.body : Buffer.from(String(d.body ?? ''));
       const headers = Object.entries({ 'content-type': 'application/json', 'access-control-allow-origin': '*', ...(d.headers || {}) }).map(([name, value]) => ({ name, value: String(value) }));
       await s('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: d.status || 200, responseHeaders: headers, body: body.toString('base64') });
@@ -169,7 +174,11 @@ export async function census(cdp) {
     const clamp = cssText(props, '-webkit-line-clamp');
     out.push({ nodeId: fontNodeId, path: label, family: cssText(props, 'font-family'), weight: cssText(props, 'font-weight'), style: cssText(props, 'font-style'),
       clamp: clamp && clamp !== 'none' ? clamp : null,
-      codepoints: [...shown].filter((ch) => !/\s/.test(ch)).map((ch) => ch.codePointAt(0)), spaces: (shown.match(/\s+/g) || []).length,
+      codepoints: [...shown].filter((ch) => !/\s/.test(ch)).map((ch) => ch.codePointAt(0)),
+      // the most whitespace glyphs this text can render: every NBSP (never collapsed), every whitespace char under pre / pre-wrap /
+      // break-spaces, else one per collapsible run (calibrated: «&nbsp;&nbsp;·&nbsp;&nbsp;» renders 5 glyphs)
+      spaces: /^(pre|pre-wrap|break-spaces)$/.test(cssText(props, 'white-space')) ? (shown.match(/\s/g) || []).length
+        : (shown.match(/\u00a0/g) || []).length + (shown.replace(/\u00a0/g, '').match(/\s+/g) || []).length,
       fonts: fonts.map(({ familyName, isCustomFont, glyphCount }) => ({ familyName, isCustomFont, glyphCount })) });
   };
   const visit = async (node, trail) => {

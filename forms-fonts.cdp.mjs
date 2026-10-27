@@ -112,7 +112,14 @@ const addOne = `(() => { const d = MENU.find((x) => x.price > 0 && !x.variantOf 
   document.getElementById('cphone').value = '9'.repeat(phoneCountry().len);
   return d.id; })()`;
 const click = (sel) => `(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) throw new Error('no ' + ${JSON.stringify(sel)}); e.click(); return true; })()`;
-const order = async (cdp) => { await cdp.ev(addOne); await cdp.ev('requestServerQuote(true), true'); await sleep(300); await cdp.ev(`selectPay('cash'); if (!buildOrder()) throw new Error('premise: buildOrder refused'); submitOrder('confirmed'); true`); await sleep(1200); };
+const order = async (cdp) => { await cdp.ev(addOne); await cdp.ev('requestServerQuote(true), true'); await sleep(300); await cdp.ev(`selectPay('cash'); if (!buildOrder()) throw new Error('premise: buildOrder refused'); submitOrder('confirmed'); true`);
+  for (let i = 0; ; i++) {   // the REAL flow: createOrder (fixture) → showSuccess → #s5; wait for it, never a fixed sleep
+    const st = await cdp.ev(`(document.querySelector('.stage.active') || {}).id || ''`);
+    if (st === 's5') break;
+    if (i > 600) throw new Error(`premise: the order never reached the success stage (still on ${st})`);
+    await sleep(25);
+  }
+  await sleep(300); };
 const typePhone = `(() => { const i = document.querySelector('#acct-pane-phone input'); if (!i) throw new Error('no phone input'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, '9999 0000'); i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); return true; })()`;
 
 const STATES = {
@@ -185,6 +192,7 @@ async function run(site, { side = 'candidate', fontGate, throttle = false, oldPo
     const bootMs = Date.now() - t0;
     await def.drive(cdp);
     await settle(cdp);
+    if (process.env.FONTS_DEBUG_STAGE) console.log(`  [stage ${side} ${stateName}]`, JSON.stringify(await cdp.ev(`({ active: (document.querySelector('.stage.active') || {}).id, err1: (document.getElementById('err1') || {}).textContent, err3: (document.getElementById('err3') || {}).textContent, sx: (document.getElementById('acct-success-rewards') || {}).innerHTML?.length })`)), 'createOrder seen:', [...rt.seen].some((u) => /createOrder/.test(u)));
     const fontUrlsSeen = () => [...rt.seen].some((u) => /\.woff2(\?|$)/.test(u));
     const before = { nodes: await census(cdp), geo: await cdp.ev(GEO), bootMs, cls: await cdp.ev('window.__cls') };
     let heldMs = 0;
