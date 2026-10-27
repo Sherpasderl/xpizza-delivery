@@ -206,6 +206,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/statusbar-disp-header.test.js',   // SLICE3:DISP-HEADER idle «En turno» header + non-idle byte-identity (SLICE3)
   'xpizza-driver/time-format.js',                  // ONE source for «7:16» — shared clock formatter (SLICE3)
   'xpizza-driver/time-format.test.js',             // the shared formatter's spec test (SLICE3)
+  'xpizza-driver/disponible.test.js',              // renderDisponible body (prototype S.disponible) test (SLICE3)
   'xpizza-driver/offline-banner.test.js',          // SLICE3 offline banner handler test (SLICE3)
   'xpizza-driver/gpsoff.test.js',                  // SLICE3 gpsoff builder + apply logic test (SLICE3)
   'xpizza-driver/fa4400-neverships.test.js',       // SLICE3 brand-orange never-ship test, static (SLICE3)

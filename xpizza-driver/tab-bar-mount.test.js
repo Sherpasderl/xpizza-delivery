@@ -41,7 +41,7 @@ function boot() {
   const calls = { render: 0, openCuenta: 0, openHistory: 0, origBack: 0 };
   const boardRef = { list: [] };
   const $ = (id) => document.getElementById(id);
-  document.getElementById('screen-cuenta').innerHTML = '<button id="cuenta-back"></button>';   // as renderCuenta would leave it
+  document.getElementById('screen-cuenta').innerHTML = '<button id="cuenta-back"></button><div class="set-body"><div class="set-card"></div></div>';   // as renderCuenta would leave it (nav row card)
   // the FROZEN slice2 cuenta-back listener (showScreen('offshift')) — the rebind must strip it
   document.getElementById('cuenta-back').addEventListener('click', () => { calls.origBack++; });
 
@@ -50,6 +50,8 @@ function boot() {
     'function render(){ _calls.render++; }\n' +
     'function openCuenta(){ _calls.openCuenta++; }\n' +
     'function openHistoryModal(){ _calls.openHistory++; }\n' +
+    'let soundOn = true;\n' +
+    'function toast(){ _calls.toasts = (_calls.toasts||0) + 1; }\n' +
     'function updateNotifBanners(){}\n' +
     liftConst('PAGOS_LIVE') + '\n' +
     liftConst('TAB_SHOW_PEDIDOS') + '\n' +
@@ -57,7 +59,7 @@ function boot() {
     liftFn('mountTabBar') + '\n' +
     liftFn('syncTabBarForScreen') + '\n' +
     liftFn('showScreen') + '\n' +
-    'return { showScreen, syncTabBarForScreen, mountTabBar };';
+    'return { showScreen, syncTabBarForScreen, mountTabBar, getSoundOn: () => soundOn };';
   const api = (new Function('document', '$', 'tabBarHtml', 'drv2LiveBoard', '_calls', body))(
     document, $, tabBarHtml, () => boardRef.list, calls);
   return { api, document, window, calls, $, boardRef,
@@ -117,6 +119,24 @@ t('tab buttons route: Inicio → render(), Pedidos → openHistoryModal(), Cuent
   const r0 = h.calls.render;
   ob.querySelector('[data-tab="inicio"]').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
   assert.equal(h.calls.render, r0 + 1, 'Inicio → render (go home)');
+});
+
+t('Cuenta: the «Sonido y notificaciones» row is injected into the card and its switch toggles the SAME soundOn state', () => {
+  const h = boot();
+  h.api.showScreen('cuenta');   // syncTabBarForScreen('cuenta') injects the row
+  const card = h.document.getElementById('screen-cuenta').querySelector('.set-card');
+  const row = card.querySelector('#cuenta-sound');
+  assert.ok(row, 'the sound row is injected into the Cuenta card');
+  assert.ok(/Sonido y notificaciones/.test(row.textContent), 'row label');
+  const sw = row.querySelector('#cuenta-sound-sw');
+  assert.ok(sw.classList.contains('on'), 'switch ON reflects soundOn=true');
+  assert.equal(h.api.getSoundOn(), true, 'starts enabled');
+  row.dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(h.api.getSoundOn(), false, 'tapping the row flips the REAL soundOn (the chime gate)');
+  assert.ok(!sw.classList.contains('on'), 'switch reflects the new state');
+  // idempotent: a re-sync does not inject a second row
+  h.api.showScreen('offshift'); h.api.showScreen('cuenta');
+  assert.equal(h.document.getElementById('screen-cuenta').querySelectorAll('#cuenta-sound').length, 1, 'no duplicate row on re-render');
 });
 
 console.log(`✓ tab-bar-mount: ${passed} tests passed`);

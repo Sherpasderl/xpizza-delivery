@@ -2943,8 +2943,11 @@ function renderDisponible() {
     icon = ICONS.check; msg = 'Esperando pedidos';
     sub = 'Te avisamos con sonido y vibración. Dejá el app abierto o en segundo plano.'; chip = 'Disponible';
   }
-  const stale = (XPD && typeof XPD.isStalePing === 'function') ? XPD.isStalePing(driverState && driverState.last_ping) : false;
-  const gps = stale ? 'GPS inactivo' : 'GPS vivo';   // body GPS freshness; the live «· hace N s» is added with the tick wiring
+  const lp = driverState && driverState.last_ping;
+  const stale = (XPD && typeof XPD.isStalePing === 'function') ? XPD.isStalePing(lp) : false;
+  // GPS freshness «GPS vivo · hace N s» (prototype). The «hace N s» is a snapshot here + refreshed on the 30s tick by
+  // SLICE3:DISP-HEADER (renderStatusBar), so it never shows a stale count while the driver sits idle.
+  const gps = stale ? 'GPS inactivo' : ('GPS vivo' + (typeof lp === 'number' ? ' · hace ' + Math.max(0, Math.round((Date.now() - lp) / 1000)) + ' s' : ''));
   host.innerHTML =
     '<div class="idle-top">'
     + '<div class="disp-status"><span class="disp-chip"><i></i><span id="disp-chip-label">' + chip + '</span></span>'
@@ -4854,6 +4857,14 @@ function renderStatusBar() {
       meta.textContent = '';
     }
     meta.classList.remove('stale');
+    // keep the body status card's «GPS vivo · hace N s» fresh on the 30s tick (the idle body itself does not re-render then)
+    const dg = $('disp-gps');
+    if (dg) {
+      const lp = driverState && driverState.last_ping;
+      const dgStale = (XPD && typeof XPD.isStalePing === 'function') ? XPD.isStalePing(lp) : false;
+      dg.textContent = dgStale ? 'GPS inactivo' : ('GPS vivo' + (typeof lp === 'number' ? ' · hace ' + Math.max(0, Math.round((Date.now() - lp) / 1000)) + ' s' : ''));
+      dg.classList.toggle('stale', !!dgStale);
+    }
     return;
   }
   /* ===== SLICE3:DISP-HEADER:END ===== */
