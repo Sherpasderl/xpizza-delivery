@@ -827,7 +827,7 @@ export function deliverySummaryHtml(info = {}, deps = {}) {
   else if (c.kind === 'paid_online') { cobT = 'No cobraste nada'; cobSub = 'Ya estaba pagado en línea'; cobV = ''; }
   else if (c.kind === 'free') { cobT = 'Pedido gratis'; cobSub = 'Nada que cobrar'; cobV = ''; }
   else { cobT = 'Sin cobro confirmado'; cobSub = 'Consultá a despacho'; cobV = ''; }   // warning — never «cobraste»
-  const rsRow = (icon, t, sub, v) => `<div class="rs-row"><span class="ico">${icon}</span><div class="rs-rtext"><div class="rs-rt">${esc(t)}</div>${sub ? `<div class="rs-rd">${esc(sub)}</div>` : ''}</div>${v ? `<div class="rs-rv">${v}</div>` : ''}</div>`;
+  const rsRow = (icon, t, sub, v, variant = '') => `<div class="rs-row"><span class="ico ${variant}">${icon}</span><div class="rs-rtext"><div class="rs-rt">${esc(t)}</div>${sub ? `<div class="rs-rd">${esc(sub)}</div>` : ''}</div>${v ? `<div class="rs-rv">${v}</div>` : ''}</div>`;
   const vueltoRow = (c.kind === 'cash' && vuelto != null)
     ? rsRow(ICONS.cash || '', 'Diste de vuelto', '', `L ${Number(vuelto).toLocaleString('es-HN')}`) : '';
   const earnRow = showEarnings === true
@@ -837,7 +837,7 @@ export function deliverySummaryHtml(info = {}, deps = {}) {
   const sub = [displayOrderLabel(order), time].filter(Boolean).map(esc).join(' · ');
   return `<div class="rs-sheet" role="dialog" aria-modal="true" aria-live="polite">
       <div class="rs-head"><span class="rs-illus">${ICONS.check || '✓'}</span><div><div class="rs-title">Entregado${deliveredName ? ' a ' + esc(firstName(deliveredName)) : ''}</div>${sub ? `<div class="rs-sub">${sub}</div>` : ''}</div></div>
-      <div class="rs-card">${rsRow(ICONS.cash || '', cobT, cobSub, cobV)}${vueltoRow}${earnRow}</div>
+      <div class="rs-card">${rsRow(ICONS.cash || '', cobT, cobSub, cobV, c.collect === true ? 'ok' : '')}${vueltoRow}${earnRow}</div>
       ${stat}
       <button class="rs-done" id="btn-resumen-done">Listo</button>
     </div>`;

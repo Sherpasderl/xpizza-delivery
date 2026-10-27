@@ -421,6 +421,16 @@ t('deliverySummaryHtml: affirmative-only + Pagos gate — paid-online never «Co
   const earn = deliverySummaryHtml({ order: { payment_method: 'cash', total: 385 }, deliveredName: 'Daniela', vuelto: 115, showEarnings: true, dayCashOwed: 385 }, DEPS);
   assert.ok(earn.includes('+ L 70') && earn.includes('Tu pago por esta entrega'), 'earnings on → +L 70 shows');
 });
+t('deliverySummaryHtml: cobro icon is the green .ok tile ONLY when collected (cash/card); never for sin-cobro/paid-online', () => {
+  const cash = deliverySummaryHtml({ order: { payment_method: 'cash', total: 385 }, deliveredName: 'Daniela', dayCashOwed: 385 }, DEPS);
+  assert.ok(/<span class="ico ok">/.test(cash), 'cash is collected → green .ok cobro tile');
+  const card = deliverySummaryHtml({ order: { payment_method: 'card_delivery', total: 520 }, deliveredName: 'Ana', dayCashOwed: 0 }, DEPS);
+  assert.ok(/<span class="ico ok">/.test(card), 'card_delivery is collected at the door → green .ok cobro tile');
+  const warn = deliverySummaryHtml({ order: { payment_method: 'online', total: 410 }, deliveredName: 'Ana', dayCashOwed: 0 }, DEPS);
+  assert.ok(warn.includes('Sin cobro confirmado') && !/class="ico ok"/.test(warn), 'sin-cobro → NEVER a green .ok tile');
+  const paid = deliverySummaryHtml({ order: { payment_method: 'online', payment_status: 'confirmed', total: 410 }, deliveredName: 'Ana', dayCashOwed: 0 }, DEPS);
+  assert.ok(!/class="ico ok"/.test(paid), 'paid-online → nothing collected → no green tile');
+});
 
 // ---------- contactRowHtml + waTemplatesHtml (whatsapp / S.whatsapp) ----------
 t('contactRowHtml: tel link for Llamar; WhatsApp is a BUTTON carrying phone/name/brand-from-order (no href, no greeting)', () => {
