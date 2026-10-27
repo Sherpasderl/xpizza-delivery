@@ -13,7 +13,7 @@ const { BEGIN, END, unapplyFormSignalIndex } = require('./tools/formsignal-inver
 const BASE = 'e836997a';   // R-WIRE train re-point: M13^1, the train state just before formSignal merged (the slice's own base was bd777b6d)
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const real = require('./tools/checkout-inverse').unapplyCheckoutIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // innermost: the newer checkout slice folded first
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.notStrictEqual(unapplyFormSignalIndex(real), real, 'non-vacuity: the block is present and removed');
 assert.strictEqual(unapplyFormSignalIndex(real), base, `🔴 index.js minus the formsignal block is not ${BASE}:index.js`);
@@ -29,7 +29,7 @@ assert.throws(() => unapplyFormSignalIndex(real.replace(`\n${BEGIN}`, `;${BEGIN}
 assert.notStrictEqual(unapplyFormSignalIndex(real.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'a byte OUTSIDE the block survives (the base pin catches it)');
 ok(`index.js: unapplyFormSignalIndex → ${BASE}:index.js byte-for-byte (one appended block: formSignal + sweepFormSignals); missing / duplicate / order / separator / outside each caught`);
 const { foldPortalSplit } = require('./tools/portal-split');
-const fold = foldPortalSplit();
+const fold = foldPortalSplit(undefined, require('./tools/checkout-inverse').unapplyCheckoutIndex(require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8')));
 assert.ok(fold.includes(block), 'premise: the block survives the portal fold');
 assert.ok(!unapplyFormSignalIndex(fold).includes(BEGIN), 'the same inverse strips it from a fold');
 ok('FOLD: the block survives foldPortalSplit and unapplyFormSignalIndex strips it there too');

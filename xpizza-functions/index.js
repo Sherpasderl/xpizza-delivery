@@ -7660,3 +7660,20 @@ exports.sweepFormSignals = onSchedule(
   },
 );
 /* formsignal:end */
+/* checkout:begin endpoints */
+// PLAN-guest-checkout-server r4 (FINAL) §1 — S1: the checkout-purpose WhatsApp code for the customer app's guest checkout.
+// NEW endpoints only; requestOtp / verifyOtp are untouched (the forms' wire and the signup inverse are unaffected). The
+// handlers live in checkout-otp.js; this block is folded back by tools/checkout-inverse.js (checkout-wiring.guard.test.js).
+const CHECKOUT_OTP = require('./checkout-otp').makeCheckoutOtp({
+  getDatabase,
+  knownRid: async (rid) => { await restaurantRegistry().ready(); return restaurantRegistry().known().has(rid); },   // a KNOWN rid, never defaulted
+});
+exports.requestCheckoutCode = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  CHECKOUT_OTP.requestCheckoutCode,
+);
+exports.verifyCheckoutCode = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  CHECKOUT_OTP.verifyCheckoutCode,
+);
+/* checkout:end endpoints */
