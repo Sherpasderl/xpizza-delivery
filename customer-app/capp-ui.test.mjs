@@ -1587,3 +1587,29 @@ test('Codex r2 New 3: a REAL CappUI holding a create-order response (sending) is
   assert.deepEqual([nav.tab({ name: 'orders' }), nav.back(), nav.go({ name: 'search' }), left.length, nav.current().name], [false, false, false, 0, 'store'], '🔴 a sending mount is never left or destroyed');
   release(); await settle();
 });
+
+test('advisor ruling (a): a frozen-but-NOT-live cart (§1.4, the lock expired, no marker) may be LEFT — tab and Back leave, the cart is still frozen on return; an UNKNOWN freeze state still blocks', async () => {
+  const { createShellNav } = await import('./capp-shell-nav.js').then((m) => m.default || m);
+  const b0 = bootCo(); b0.ui.cart.inc(b0.plain.key);
+  const snap = { ...J(b0.ui.cart.snapshot()), rid: 'rid_a', mode: 'delivery', cart_gen: 'GEN_A', frozen_for: 'TA_OLD' };   // no pending_place: not live
+  const storage = memStore(); storage.setItem('capp:rid_a:cart', JSON.stringify(snap));
+  const mountUnder = (nav) => { const b = bootCo({ storage, config: HOSTED_KEYS, mountOpts: { history: nav.adapterFor(nav.current()) } }); b.ui.restore(snap); return b; };
+  // a tab leaves
+  const w1 = faithfulWin(); const left = []; const n1 = createShellNav({ win: w1, onShow: () => {}, onLeave: (e) => left.push(e) });
+  n1.go({ name: 'search' }); n1.go({ name: 'store', rid: 'rid_a' }); mountUnder(n1); await settle();
+  assert.deepEqual([n1.tab({ name: 'orders' }), left.length, n1.current().name], [true, 1, 'orders'], '🔴 a frozen-not-live cart may be left (tab)');
+  // device Back from the store root leaves
+  const w2 = faithfulWin(); const n2 = createShellNav({ win: w2, onShow: () => {}, onLeave: () => {} });
+  n2.go({ name: 'search' }); n2.go({ name: 'store', rid: 'rid_a' }); mountUnder(n2); await settle();
+  assert.deepEqual([w2.device(), n2.current().name], ['pass', 'search'], '🔴 a frozen-not-live cart may be left (Back)');
+  // on return: still frozen (read-only), the recovery sheet on placement
+  assert.equal(JSON.parse(storage.getItem('capp:rid_a:cart')).frozen_for, 'TA_OLD', 'still frozen on return');
+  const back = mountUnder(createShellNav({ win: faithfulWin(), onShow: () => {}, onLeave: () => {} })); await settle();
+  await back.click('#cart-bar'); await back.click('#layer [data-act="rev"][data-rev="1"]');
+  assert.equal(back.ui.cart.count(), 1, 're-mounted frozen: «+» refused');
+  // an UNKNOWN freeze state (an unreadable cart) still blocks leaving — fail closed
+  const H = shellHist(); const u = bootCo({ storage, config: HOSTED_KEYS, mountOpts: { history: H.adapter } }); u.ui.restore(snap); await settle();
+  const g = storage.getItem; storage.getItem = (k) => { if (k === 'capp:rid_a:cart') throw new Error('read'); return g(k); };
+  assert.deepEqual([u.ui.deviceBack('leave'), H.device()], ['blocked', 'blocked'], '🔴 an unknown freeze state never leaves');
+  storage.getItem = g;
+});

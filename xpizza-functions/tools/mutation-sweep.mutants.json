@@ -22246,8 +22246,8 @@
     "slice": "s7a1",
     "label": "r2 P2-6: a frozen-for-order (recovery) cart is not a lock",
     "file": "../customer-app/capp-ui.js",
-    "from": "const lockedHere = () => hostedKeys() && (frozenNow() || ",
-    "to": "const lockedHere = () => hostedKeys() && (false || ",
+    "from": "return !!(fz.unknown || (fz.frozen && fz.live) || (typeof api.holdsLock",
+    "to": "return !!(fz.unknown || false || (typeof api.holdsLock",
     "command": [
       "node",
       "--test",
@@ -22335,6 +22335,38 @@
     ],
     "kills_with": [
       "ONE retry ⇒ fresh"
+    ]
+  },
+  {
+    "id": "s7a1-51",
+    "slice": "s7a1",
+    "label": "ruling (a): a frozen-but-NOT-live cart traps the customer in the store",
+    "file": "../customer-app/capp-ui.js",
+    "from": "return !!(fz.unknown || (fz.frozen && fz.live) ||",
+    "to": "return !!(fz.unknown || fz.frozen ||",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a frozen-not-live cart may be left"
+    ]
+  },
+  {
+    "id": "s7a1-52",
+    "slice": "s7a1",
+    "label": "ruling (a): an unknown freeze state may be left (fail open)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "return !!(fz.unknown || (fz.frozen",
+    "to": "return !!(false || (fz.frozen",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "an unknown freeze state never leaves"
     ]
   }
 ]

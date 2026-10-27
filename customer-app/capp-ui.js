@@ -842,9 +842,17 @@
     // «Realizando pedido…» countdown is CANCELLED (zero sends) ⇒ consumed; «Enviando» ⇒ blocked; the store root ⇒ pass.
     // Codex r1 P2-6: a held / locked sheet (pending, recovery) ⇒ blocked; a payment lock this page holds ⇒ the store root is NOT
     // an unlocked root — blocked, never pass (the shell must not tear the store down over the lock)
-    // Codex r2 P2-6: EVERY recovery / frozen-for-an-order state locks the store (a held record, the pending lock, a frozen or
-    // unknown cart), not only the in-memory / pay_pending lock
-    const lockedHere = () => hostedKeys() && (frozenNow() || !!(api && typeof api.holdsLock === 'function' && api.holdsLock()));
+    // Codex r2 P2-6 + advisor ruling (a), 2026-10-27: only a LIVE lock keeps the store — the pending lock (memLock / pay_pending),
+    // a cart frozen for an order whose record still exists (a held recovery, an unresolved send), or an UNKNOWN freeze state
+    // (fail closed). A frozen-but-NOT-live cart (§1.4, the lock expired with no marker) may be left: its freeze and evidence are
+    // fully persisted, so leaving loses nothing — it re-mounts frozen
+    function lockedHere() {
+      if (!hostedKeys()) return false;
+      if (!mods() || !api.hosted) return true;
+      const rc = api.reconcile(); if (!rc.ok) return true;
+      const fz = api.cartFreeze();
+      return !!(fz.unknown || (fz.frozen && fz.live) || (typeof api.holdsLock === 'function' && api.holdsLock()));
+    }
     // Codex r2 New 3: a SHELL exit (a tab, the shell's own back, a shell screen opened over the store) asks with intent 'leave' —
     // answered without acting: blocked while sending, over a held sheet, or under a lock; otherwise pass (destroy() then cancels
     // a «Realizando pedido…» countdown: zero sends)
