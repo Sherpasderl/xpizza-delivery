@@ -2821,12 +2821,12 @@ const companionDraftKey = (uid) => `sherpa_driver_onboarding_draft_${uid}`;
    e.g. everyone on upgrade) NEVER gets the flag, so they go straight to the app. In-memory authoritative +
    localStorage best-effort (mirrors the onboarding draft) so a storage failure can't strand the fresh-activation
    path; keyed by uid so it never leaks across accounts. No server field. ===== */
-let companionChecklistPendingMem = null;   // uid whose post-activation checklist is pending THIS session (authoritative)
-let companionChecklistClearedMem = null;   // uid whose checklist was CLEARED this session — beats a persisted '1' if removeItem threw (r1 P2)
+const companionChecklistPendingMem = {};   // uid -> true: pending THIS session (authoritative). PER-UID so concurrent accounts don't clobber each other.
+const companionChecklistClearedMem = {};   // uid -> true: CLEARED this session — beats a persisted '1' if removeItem threw (r1 P2). PER-UID MAP (r2): A's dismissal survives B's activation+dismissal.
 const companionChecklistKey = (uid) => `sherpa_driver_checklist_pending_${uid}`;
-function companionSetChecklistPending(uid) { if (!uid) return; companionChecklistPendingMem = uid; if (companionChecklistClearedMem === uid) companionChecklistClearedMem = null; try { localStorage.setItem(companionChecklistKey(uid), '1'); } catch (_) {} }
-function companionChecklistPending(uid) { if (!uid) return false; if (companionChecklistClearedMem === uid) return false; if (companionChecklistPendingMem === uid) return true; try { return localStorage.getItem(companionChecklistKey(uid)) === '1'; } catch (_) { return false; } }
-function companionClearChecklistPending(uid) { if (!uid) return; companionChecklistClearedMem = uid; if (companionChecklistPendingMem === uid) companionChecklistPendingMem = null; try { localStorage.removeItem(companionChecklistKey(uid)); } catch (_) {} }
+function companionSetChecklistPending(uid) { if (!uid) return; companionChecklistPendingMem[uid] = true; delete companionChecklistClearedMem[uid]; try { localStorage.setItem(companionChecklistKey(uid), '1'); } catch (_) {} }
+function companionChecklistPending(uid) { if (!uid) return false; if (companionChecklistClearedMem[uid]) return false; if (companionChecklistPendingMem[uid]) return true; try { return localStorage.getItem(companionChecklistKey(uid)) === '1'; } catch (_) { return false; } }
+function companionClearChecklistPending(uid) { if (!uid) return; companionChecklistClearedMem[uid] = true; delete companionChecklistPendingMem[uid]; try { localStorage.removeItem(companionChecklistKey(uid)); } catch (_) {} }
 // Post-activation checklist PROGRESS (acks + practiceDone + navChosen) — a per-uid store SEPARATE from the pending-
 // profile draft, which the controller CLEARS on leaving 'pending' (so the draft cannot hold post-activation progress
 // — r1 P2 "progress lost"). In-memory authoritative + localStorage best-effort; keyed by uid.

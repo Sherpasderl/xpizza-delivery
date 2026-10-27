@@ -31,10 +31,10 @@ function liftFn(name) {
 // $('co-name') is null before the form renders — matching a real DOM, so the profile-preserve guard behaves.
 function makeDom() {
   const els = {};
-  const exists = new Set(['screen-companion']);
+  const exists = new Set(['screen-companion', 'off-driver-name']);   // off-driver-name: the shipped render()'s offshift fall-through writes it
   const mkEl = (id) => ({ value: '', _text: '', _html: '', _h: {},
     get innerHTML() { return this._html; },
-    set innerHTML(v) { this._html = String(v); if (id === 'screen-companion') { exists.clear(); exists.add('screen-companion'); for (const m of String(v).matchAll(/id="([\w-]+)"/g)) exists.add(m[1]); } },
+    set innerHTML(v) { this._html = String(v); if (id === 'screen-companion') { exists.clear(); exists.add('screen-companion'); exists.add('off-driver-name'); for (const m of String(v).matchAll(/id="([\w-]+)"/g)) exists.add(m[1]); } },
     addEventListener(ev, fn) { this._h[ev] = fn; }, click() { return this._h.click && this._h.click(); },
     classList: { toggle() {}, contains() { return false; }, add() {}, remove() {} },
     closest() { return this; }, querySelectorAll() { return []; }, getAttribute() { return null; },
@@ -54,37 +54,43 @@ function buildHost({ dom, XPD, currentUser, controller, store, storageThrows = f
     liftFn('companionShellHtml'), liftFn('companionReadDraft'), liftFn('companionWriteDraft'),
     liftFn('companionClearDraft'), liftFn('companionRenderScreen'), liftFn('companionRenderE2'),
     liftFn('companionRenderOnboarding'), liftFn('companionHasHeldWork'), liftFn('companionSubmit'),
-    // Inicio b r1: the post-activation progress store, the device-flag helpers, and the routing step render()
-    // delegates to — lifted so the REAL flag/routing lifecycle is driven by the tests (not re-implemented).
+    // Inicio b r1/r2: the progress store, device-flag helpers, the routing step, and the SHIPPED render() — all lifted
+    // so the tests drive the REAL render→controller→flag lifecycle (r2: render() so deleting the interpose dies).
     liftFn('companionReadProgress'), liftFn('companionWriteProgress'), liftFn('companionSetChecklistPending'),
     liftFn('companionChecklistPending'), liftFn('companionClearChecklistPending'), liftFn('companionPostActStep'),
+    liftFn('render'),
   ].join('\n');
   const localStorage = {
     getItem: (k) => (k in store ? store[k] : null),
     setItem: (k, v) => { if (storageThrows) throw new Error('quota exceeded'); store[k] = String(v); },
     removeItem: (k) => { if (removeThrows) throw new Error('remove failed'); delete store[k]; },
   };
+  const showScreenCalls = [];
+  const toastCalls = [];
   const fn = new Function(
-    '$', 'escapeHtml', 'showScreen', 'toast', 'driverGreeting', 'render', 'XPD', 'currentUser', 'companion',
+    '$', 'escapeHtml', 'showScreen', 'toast', 'driverGreeting', 'XPD', 'currentUser', 'companion',
     'localStorage', 'allTasks', 'companionDraftKey', 'postActRoute', '__out',
     `let companionStep = 'profile'; let companionDraft = null;\n` +
-    `let companionChecklistPendingMem = null; let companionChecklistClearedMem = null; let companionProgressMem = {};\n` +
+    // r2: per-uid MAPS, so a dismissal for one uid survives another uid's activation + dismissal.
+    `const companionChecklistPendingMem = {}; const companionChecklistClearedMem = {}; let companionProgressMem = {};\n` +
+    // render()'s ambient state + the non-companion renderers it reaches on the legacy fall-through (stubbed inert;
+    // driverState inactive → the short offshift fall-through, enough to tell checklist (companion) vs app (offshift)):
+    `let companionSuspended = false; let companionNeutralNotice = false; let driverState = null; let optimisticShift = null;\n` +
+    `function companionSyncSuspendedNotice() {} function stopKeepAlive() {} function renderStatusBar() {} function renderActiveAndQueue() {} function ensureOfflineBanner() {}\n` +
     `const companionChecklistKey = (uid) => \`sherpa_driver_checklist_pending_\${uid}\`;\n` +
     `const companionProgressKey = (uid) => \`sherpa_driver_checklist_progress_\${uid}\`;\n` +
     `${body}\n` +
     'return { companionRenderOnboarding, companionSubmit, companionRenderE2, companionHasHeldWork, ' +
-    'companionReadDraft, companionWriteDraft, companionReadProgress, companionWriteProgress, ' +
-    'companionChecklistPending, companionSetChecklistPending, companionClearChecklistPending, companionPostActStep, ' +
+    'companionReadDraft, companionWriteDraft, companionClearDraft, companionReadProgress, companionWriteProgress, ' +
+    'companionChecklistPending, companionSetChecklistPending, companionClearChecklistPending, companionPostActStep, render, ' +
+    'setDriverState: (v) => { driverState = v; }, ' +
     'getStep: () => companionStep, setStep: (s) => { companionStep = s; }, ' +
     'getScreenHtml: () => $("screen-companion").innerHTML };',
   );
-  const showScreenCalls = [];
-  const toastCalls = [];
-  const renderCalls = [];
   const api = fn(dom.$, escapeHtml, (n) => showScreenCalls.push(n), (m, k) => toastCalls.push([m, k]),
-    driverGreeting, () => renderCalls.push(1), XPD, currentUser, controller,
+    driverGreeting, XPD, currentUser, controller,
     localStorage, {}, (uid) => `sherpa_driver_onboarding_draft_${uid}`, postActRoute, {});
-  api.showScreenCalls = showScreenCalls; api.toastCalls = toastCalls; api.renderCalls = renderCalls;
+  api.showScreenCalls = showScreenCalls; api.toastCalls = toastCalls;
   return api;
 }
 
@@ -187,7 +193,7 @@ t('MUTANT Terminar-no-op + P2 cleared-beats-persisted: «Terminar» → app on t
     dom.$('co-terminar').click();                          // RUN the real «Terminar» handler (clears flag + render())
     assert.equal(host.companionChecklistPending('A'), false, `«Terminar» cleared the flag (removeThrows=${removeThrows}: cleared marker beats any persisted '1')`);
     assert.equal(host.companionPostActStep(ctl.decide()), false, 'after «Terminar» → app, never the checklist');
-    assert.ok(host.renderCalls.length >= 1, '«Terminar» triggered render()');
+    assert.equal(host.showScreenCalls.at(-1), 'offshift', '«Terminar» → the SHIPPED render() showed the app (offshift), not the checklist');
   }
 });
 
@@ -219,14 +225,48 @@ t('P2 flag-off read never routes to the checklist (even with a stale pending fla
   assert.equal(host.companionPostActStep(ctl.decide()), false, 'flag-off → normal routing (never the checklist), despite the pending flag');
 });
 
-t('P2 "progress lost" FIXED: checklist acks live in the durable progress store and survive the controller clearing the draft', async () => {
-  const { ctl, host, dom } = await activate('A');
+t('r2 MUTANT interpose-deleted-from-render(): the SHIPPED render() routes a fresh activation to the checklist, not the app', async () => {
+  const { ctl, host } = await activate('A');
+  assert.equal(ctl.decide().action, 'activated');
+  host.render();                                           // the REAL shipped render() — its companion block must route here
+  assert.equal(host.showScreenCalls.at(-1), 'companion', 'render() showed the companion checklist — deleting `if (companionPostActStep(r)) return;` would show offshift (the app) here');
+  assert.ok(host.getScreenHtml().includes('Listo para repartir'), 'the checklist is what the shipped render() rendered');
+  assert.equal(host.companionChecklistPending('A'), true, 'render() recorded checklist-pending');
+});
+
+t('r2 cleared-state is PER-UID: A dismisses, B activates+dismisses (same session), back to A → still dismissed, with removeItem throwing', async () => {
+  const { host } = await activate('A', { removeThrows: true });   // one host = one in-memory maps instance
+  host.companionSetChecklistPending('A'); host.companionClearChecklistPending('A');   // A: pending → Terminar (localStorage keeps '1' — removeItem threw)
+  assert.equal(host.companionChecklistPending('A'), false, 'A dismissed');
+  host.companionSetChecklistPending('B'); host.companionClearChecklistPending('B');   // B: pending → Terminar (same session)
+  assert.equal(host.companionChecklistPending('B'), false, 'B dismissed');
+  // a SINGLE-uid cleared marker would have been overwritten by B's clear → A would resurface from the persisted '1'.
+  assert.equal(host.companionChecklistPending('A'), false, "A's dismissal SURVIVED B's cycle (per-uid cleared MAP, not a single uid)");
+});
+
+t('r2 "progress lost" FIXED through a REAL controller draft-clear (the draft is genuinely cleared, the ack survives)', async () => {
+  const user = { uid: 'A', email: 'a@x.hn' }; const store = {}; const dom = makeDom();
+  const xpd = makeXPD(); let acct = { onboarding_state: 'profile_submitted', enabled: false };
+  xpd.readOwnAccount = async () => acct;
+  const hostRef = {};
+  const ctl = makeCompanionController({
+    getUid: () => user.uid, readFlag: () => xpd.readDriverAdminFlag(), readAccount: (u) => xpd.readOwnAccount(u),
+    submit: (f) => xpd.submitDriverProfile(f),
+    clearDraft: () => { if (hostRef.host) hostRef.host.companionClearDraft(user.uid); },   // the REAL host draft-clear, as companionEnsure wires it
+    bootSettled: async () => {}, rerender: () => {},
+  });
+  const host = buildHost({ dom, XPD: xpd, currentUser: user, controller: ctl, store });
+  hostRef.host = host;
+  await ctl.refresh();                                     // profile_submitted
+  host.companionWriteDraft({ name: 'Draftee' });           // something in the pending draft
+  acct = { onboarding_state: 'active', enabled: true }; await ctl.refresh();   // OBSERVED transition
   host.companionPostActStep(ctl.decide());                 // → checklist
   host.setStep('checklist'); host.companionRenderOnboarding();
-  dom.$('co-ck-perms').click();                            // ack → progress store
-  await ctl.refresh();                                     // the controller clears the pending-profile DRAFT (active ≠ pending)
-  assert.equal(host.companionReadProgress('A').ackPerms, true, 'the ack persists in the progress store across a draft-clearing refresh');
-  assert.equal(host.companionReadDraft().ackPerms, undefined, 'and it was NOT written to the (cleared) pending draft');
+  dom.$('co-ck-perms').click();                            // ack → PROGRESS store
+  assert.equal(host.companionReadProgress('A').ackPerms, true);
+  await ctl.refresh();                                     // active ≠ pending → env.clearDraft() → REAL host.companionClearDraft('A')
+  assert.equal(host.companionReadDraft().name, undefined, 'the controller GENUINELY cleared the pending draft');
+  assert.equal(host.companionReadProgress('A').ackPerms, true, 'the ack survives in the progress store across the REAL draft-clear');
 });
 
 // ---- "Pedir aprobación" (A4) is the submit path ----
@@ -288,7 +328,7 @@ t('a submit outcome is forced to legacy (no E2) when the last read confirmed the
   await ctl.refresh();                                   // completed flag-off read → controller.isFlagOff() === true
   await host.companionSubmit();                          // callable returns an explicit deactivation
   assert.ok(!host.getScreenHtml().includes('Cuenta desactivada'), 'flag-off must NOT show E2');
-  assert.ok(host.renderCalls.length >= 1, 'flag-off falls through to the legacy render');
+  assert.ok(host.showScreenCalls.includes('offshift'), 'flag-off falls through to the shipped render (the app)');
 });
 
 // ---- codex r3 #4 (Inicio b: the acks are now #co-ck-perms / #co-ck-cash on the rebuilt post-activation checklist):
