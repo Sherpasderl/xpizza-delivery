@@ -16,9 +16,21 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
 const FIXTURE = readFileSync(join(HERE, 'fixtures/price-notice-text.body.txt'));
 const FIXTURE_SHA = 'f3a81b9e7dd7dcbe02a7e8ea02702f6886e22a5ff35646134c4190d77b53bdb0';
-const HEAD = 'function priceNoticeText(e){';
-// every body of `function priceNoticeText(e){ … }` in a source (the helper is one line; its body holds no braces)
-const bodies = (src) => { const out = []; let i = src.indexOf(HEAD); while (i !== -1) { const a = i + HEAD.length, z = src.indexOf('}', a); out.push(src.slice(a, z)); i = src.indexOf(HEAD, z); } return out; };
+// Codex perf-core r1 #8: PRESENCE is detected loosely (any spacing), EXTRACTION strictly; present-but-not-extractable FAILS
+const PRESENT = /function\s+priceNoticeText\s*\(/g;
+const EXTRACT = /function\s+priceNoticeText\s*\(\s*e\s*\)\s*\{([^}]*)\}/g;
+const bodies = (src) => [...src.matchAll(EXTRACT)].map((m) => m[1]);
+// one form source → 'absent' | 'ok' | throws (present but not exactly one extractable, non-empty body equal to the fixture)
+function checkForm(label, src) {
+  const present = (src.match(PRESENT) || []).length;
+  if (!present) return 'absent';
+  const b = bodies(src);
+  assert.equal(present, 1, `🔴 ${label}: exactly one priceNoticeText (${present} present)`);
+  assert.equal(b.length, 1, `🔴 ${label}: present but not extractable`);
+  assert.ok(b[0].length > 0, `🔴 ${label}: a non-empty body`);
+  assert.ok(sameAsFixture(b[0]), `🔴 ${label}: differs from the fixture: ${JSON.stringify(b[0])}`);
+  return 'ok';
+}
 const capp = () => readFileSync(join(HERE, 'capp-checkout.js'), 'utf8');
 const sameAsFixture = (body) => Buffer.from(body, 'utf8').equals(FIXTURE);
 
@@ -34,17 +46,22 @@ test('r3.4-2: the capp priceNoticeText body is BYTE-EQUAL to the fixture (exactl
   assert.ok(sameAsFixture(b[0]), `🔴 the capp copy drifted from the forms': ${JSON.stringify(b[0])}`);
 });
 
-test('r3.4-2: where a form carries the helper in THIS base, exactly one non-empty body per form, each equal to the fixture', () => {
+test('r3.4-2: where a form carries the helper in THIS base, exactly one extractable non-empty body per form, each equal to the fixture', () => {
   for (const f of ['xpizza-orders/index.html', 'la-musa-orders/index.html']) {
     const p = join(ROOT, f);
     assert.ok(existsSync(p), `premise: ${f} exists`);
-    const src = readFileSync(p, 'utf8');
-    if (!src.includes(HEAD)) { console.log(`    ${f}: priceNoticeText not in base (pre-Plan-5) — the fixture alone pins the copy`); continue; }
-    const b = bodies(src);
-    assert.equal(b.length, 1, `🔴 ${f}: exactly one priceNoticeText`);
-    assert.ok(b[0].length > 0, `🔴 ${f}: a non-empty body`);
-    assert.ok(sameAsFixture(b[0]), `🔴 ${f}: differs from the fixture`);
+    if (checkForm(f, readFileSync(p, 'utf8')) === 'absent') console.log(`    ${f}: priceNoticeText not in base (pre-Plan-5) — the fixture alone pins the copy`);
   }
+});
+
+test('r3.4-2 NEGATIVE CONTROLS (Codex perf-core r1 #8): a present helper with the WRONG COPY, or one that cannot be extracted, FAILS', () => {
+  const base = readFileSync(join(ROOT, 'xpizza-orders/index.html'), 'utf8');
+  const wrong = base + "\nfunction priceNoticeText(e) { return 'WRONG COPY'; }\n";
+  assert.throws(() => checkForm('wrong-copy', wrong), /differs from the fixture/, '🔴 a WRONG COPY injection is caught (any spacing)');
+  const odd = base + "\nfunction priceNoticeText (e, x) { return 'x'; }\n";
+  assert.throws(() => checkForm('unextractable', odd), /present but not extractable/, '🔴 present but unextractable fails, never "not in base"');
+  const right = base + `\nfunction priceNoticeText(e){${FIXTURE.toString('utf8')}}\n`;
+  assert.equal(checkForm('right', right), 'ok', 'premise: the fixture body itself passes');
 });
 
 test('r3.4-2 NEGATIVE CONTROL: a one-character copy mutation of the capp body is caught by the same comparison', () => {

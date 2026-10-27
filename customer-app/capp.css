@@ -463,6 +463,13 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .cline{display:flex;align-items:center;gap:12px;padding:14px 20px;border-top:1px solid var(--line)}
 .cline .cl-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .cline .cl-p{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;min-width:60px;text-align:right}
+/* frame 14 (owner-approved 2026-10-27): a sold-out cart line keeps its row — «Agotado» in the price slot, muted (frame 12); the name
+   block at .45; its + inert at .4 (P's .sold-out .qty-add-btn); its trash / − stays live. No new line, so no row growth. */
+.cline.sold-out .cl-txt{opacity:.45}
+.cline.sold-out .cl-p{color:var(--mute)}
+.cline.sold-out .cstep button[data-rev="1"]{opacity:.4;cursor:default}
+.cartnote .cn-l{display:block}
+.primary.sold-wait[disabled]{opacity:.45}   /* frame 14: «Ir al checkout» waits, at .45 over the drawn disabled treatment */
 .lnedit,.lnstatic{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left}
 .lnedit{min-height:44px;justify-content:center;padding:0;border:0;background:transparent;color:var(--ink);font:inherit;cursor:pointer}
 .ln-n{font-size:15px;font-weight:600}.ln-x{font-size:13px;color:var(--mute)}

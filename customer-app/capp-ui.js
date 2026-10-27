@@ -125,10 +125,7 @@
     const menu = CappMenu.adaptMenu(opts.envelope);
     const cfg = opts.config || {};
     const unavailable = opts.unavailable || new Set();
-    // PLAN-capp-S7a r3.3-F2 (perf, APPROVED): a dispatch re-check's result. A Set input is updated IN PLACE (the host's own state);
-    // a function input cannot be, so the fresh read overrides it from then on (null = no re-check has run)
-    let availOverride = null;
-    const soldOf = (key) => { try { if (availOverride) return availOverride.has(key); return typeof unavailable === 'function' ? !!unavailable(key) : unavailable.has(key); } catch (_) { return false; } };
+    const soldOf = (key) => { try { return typeof unavailable === 'function' ? !!unavailable(key) : unavailable.has(key); } catch (_) { return false; } };
     const now = opts.now || (() => new Date());
     let dead = false;   // S2b r1 P2-3: destroy() ⇒ every later callback of this instance is a no-op
     const emit = (name, detail) => { if (dead) return; try { (opts.onEvent || (() => {}))(name, detail); } catch (_) {} };
@@ -166,7 +163,8 @@
       return { id: cid, name: c.name != null ? c.name : cid, items, pickupOnly: pick, note: pick && wknd ? 'Solo viernes a domingo · para recoger' : '' };
     }).filter((s) => s.items.length);
     const find = (id) => { for (const s of sections) for (const it of s.items) { if (it.id === id) return it; if (it.group) for (const c of it.group.choices) if (c.id === id) return { ...c, d: it.d, img: it.img, hero: it.hero, tags: [], parent: it }; } return null; };
-    const isSold = (it) => !!it && (soldOf(it.id) || (it.parent ? soldOf(it.parent.id) : false) || (it.group ? it.group.choices.every((c) => soldOf(c.id)) : false));
+    const isSoldBy = (it, has) => !!it && (has(it.id) || (it.parent ? has(it.parent.id) : false) || (it.group ? it.group.choices.every((c) => has(c.id)) : false));
+    const isSold = (it) => isSoldBy(it, soldOf);
     const unit = cfg.unit && cfg.unit.length === 2 ? cfg.unit : ['plato', 'platos'];
     const unitOf = (n) => n + ' ' + (n === 1 ? unit[0] : unit[1]);
     const badgeOf = (it) => { const k = BADGE_PRIORITY.find((t) => (it.tags || []).includes(t)); if (!k) return null; const served = menu.badges && menu.badges[k] && menu.badges[k].label; return { text: served || BADGE_FALLBACK[k], color: k === 'must_try' || k === 'crowd_favourite' ? 'var(--acc)' : 'var(--price)' }; };
@@ -398,17 +396,28 @@
     const lineName = (d, cls) => (d.editable
       ? `<button class="lnedit ${cls}" data-act="edit" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Editar ${esc(d.item.n)}"><span class="ln-n">${esc(d.item.n)}</span>${d.extras ? `<span class="ln-x">+ ${esc(d.extras)}</span>` : ''}<span class="ln-ed">Editar</span></button>`
       : `<div class="lnstatic ${cls}"><span class="ln-n">${esc(d.item.n)}</span>${d.extras ? `<span class="ln-x">+ ${esc(d.extras)}</span>` : ''}</div>`);
-    const lineStep = (d) => `<div class="cstep"><button data-act="rev" data-rev="-1" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Quitar uno de ${esc(d.item.n)}">${d.n <= 1 ? TRASH(14) : '−'}</button><span>${d.n}</span><button data-act="rev" data-rev="1" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Agregar otro igual: ${esc(d.item.n)}">+</button></div>`;
+    const lineStep = (d, sold = false) => `<div class="cstep"><button data-act="rev" data-rev="-1" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Quitar uno de ${esc(d.item.n)}">${d.n <= 1 ? TRASH(14) : '−'}</button><span>${d.n}</span><button data-act="rev" data-rev="1" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Agregar otro igual: ${esc(d.item.n)}"${sold ? ' disabled aria-disabled="true"' : ''}>+</button></div>`;
     function cartInner() {
-      const lines = displayLines(), mode = S.mode, total = cartTotal();
+      const lines = displayLines(), mode = S.mode;
+      // the owner's frame 14 (MOCKUP-capp-S7a-states.html, approved 2026-10-27): a line whose dish is unavailable NOW — after a
+      // dispatch refusal, or known before — keeps its row: «Agotado» in the price slot (muted, frame 12), the name block .45,
+      // its + inert at .4, its trash / − LIVE; ONE calm note line per sold dish; the Subtotal leaves those lines out; «Ir al
+      // checkout» stays disabled until they are removed. The mark follows the live availability (an update that says the dish
+      // is back clears it) — never a stored flag.
+      const soldOfLine = (d) => isSold(find(d.key));
+      const soldDishes = [...new Map(lines.filter(soldOfLine).map((d) => [d.key, d.item.n])).values()];
+      const total = lines.reduce((a, d) => a + (soldOfLine(d) ? 0 : d.total), 0);
       const head = `<div class="sheethead"><div><h2>Tu pedido</h2><small>${lines.length ? unitOf(cart.count()) + ' · ' : ''}${mode === 'delivery' ? 'Delivery' : 'Pickup'}</small></div><button class="iconbtn" data-act="cartclose" aria-label="Cerrar el carrito">${IC.close}</button></div>`;
       const note = S.cartNote ? `<div class="cartnote">${IC.info}<span>${S.cartNote === 1 ? '1 plato ya no está disponible' : S.cartNote + ' platos ya no están disponibles'}</span></div>` : '';
       const over = tooLong();
       const refusal = S.refusal || over ? `<div class="cartnote">${IC.info}<span>${esc(over ? FULL_CART : S.refusal)}</span></div>` : '';
       if (!lines.length) return head + note + `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span><button class="btn2" data-act="cartclose">Ver el menú</button></div>`;
-      return head + note + refusal + lines.map((d) => `<div class="cline">${lineName(d, 'cl-txt')}${lineStep(d)}<span class="cl-p">${money(d.total)}</span></div>`).join('')
+      const soldNote = soldDishes.length ? `<div class="cartnote" role="status">${IC.info}<span>${soldDishes.map((n) => `<span class="cn-l">${esc(n)} se agotó. Quitalo para enviar tu pedido.</span>`).join('')}</span></div>` : '';
+      const off = over || soldDishes.length > 0;
+      return head + note + refusal + soldNote + lines.map((d) => { const so = soldOfLine(d);
+        return `<div class="cline${so ? ' sold-out' : ''}">${lineName(d, 'cl-txt')}${lineStep(d, so)}<span class="cl-p">${so ? 'Agotado' : money(d.total)}</span></div>`; }).join('')
         + `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>`
-        + `<div class="sheetbar"><button class="primary" data-act="checkout"${over ? ' disabled aria-disabled="true"' : ''}>Ir al checkout</button></div>`;
+        + `<div class="sheetbar"><button class="primary${soldDishes.length ? ' sold-wait' : ''}" data-act="checkout"${off ? ' disabled aria-disabled="true"' : ''}>Ir al checkout</button></div>`;
     }
     function runStoreSearch(q) {
       const box = $('sresults'); if (!box) return;
@@ -501,7 +510,7 @@
     const sectionOfKey = (k) => sections.find((s) => s.items.some((it) => it.id === k || (it.group && it.group.choices.some((c) => c.id === k))));
     // r3.3-F2: a cart line whose dish (or its choice's launcher) is known unavailable NOW blocks placement — cash and card alike (no
     // new copy: the line carries the drawn «Agotado» mark; the CTA stays as labelled, disabled)
-    const soldLines = () => cart.lines().filter((l) => isSold(find(l.key)));
+    const soldLines = (has = soldOf) => cart.lines().filter((l) => isSoldBy(find(l.key), has));
     const soldBlock = () => soldLines().length > 0;
     const gateCtx = () => ({ open: isOpen(), closedRefused: S.closedRefused, pickupOnlyCount: poLines().length, outZone: S.outZone, member: member(), unavailableLines: soldLines().length });
     const need = () => C.missingStep(S.flow, gateCtx());
@@ -693,7 +702,11 @@
     <div class="acts"><button class="primary okbtn" data-act="placing-go"><i class="fill" aria-hidden="true"></i><span>Se ve bien (<span class="cd">0:02</span>)</span></button><button class="btn2 wide" data-act="placing-back">Volver</button></div></div></div>`;
     }
     function placeTap() {
-      if (dead || !intakeOk() || !S.flow || need() || !C.tipChosen(S.flow) || !totalsNow().ready) return;
+      // the ONE choke point every caller goes through (the CTAs AND «Usar otra tarjeta», which calls this directly): a
+      // known-unavailable line never starts a countdown (Codex perf-core r1 #7); the button-level gates stay as well
+      if (dead) return;
+      if (soldBlock()) { openLayer('cart'); return; }   // never silently nothing: the cart shows which dish sold out (frame 14)
+      if (!intakeOk() || !S.flow || need() || !C.tipChosen(S.flow) || !totalsNow().ready) return;
       placingStop(); S.backScreen = S.screen; openLayer('placing');
       let left = 2;
       placingI = T_.setInterval(() => { left = Math.max(0, left - 1); const cd = doc.querySelector('[data-act="placing-go"] .cd'); if (cd) cd.textContent = '0:0' + left; }, 1000);
@@ -716,14 +729,19 @@
     // AVAIL_RECHECK_MS, with the forms' FAIL-OPEN rule: a failed / non-OK / timed-out read CLEARS the sold-outs (agotado-failopen).
     // opts.readAvailability() → Promise<iterable of sold dish keys | null on failure>. Absent ⇒ no re-check (today's behaviour).
     const AVAIL_RECHECK_MS = 1500;
-    async function recheckAvailability() {
+    // Codex perf-core r1 #3/#4: the result belongs to ONE dispatch attempt. It is applied only if this mount is alive and the
+    // attempt still current (a destroyed / superseded mount never touches the host's state). A Set input is the host's own live
+    // state, updated in place; a function input is NOT overridden — the fresh read decides this dispatch only, then the host's
+    // function governs again (so a later "available" from the host re-enables placement). Returns the fresh Set, or null if stale.
+    async function recheckAvailability(attempt) {
       let keys = null;
       try {
         keys = await new Promise((res) => { const t = T_.setTimeout(() => res(null), AVAIL_RECHECK_MS); Promise.resolve().then(() => opts.readAvailability()).then((v) => { T_.clearTimeout(t); res(v); }, () => { T_.clearTimeout(t); res(null); }); });
       } catch (_) { keys = null; }
+      if (dead || attempt !== attemptSeq) return null;
       const fresh = new Set(); try { if (keys) for (const k of keys) fresh.add(String(k)); } catch (_) { fresh.clear(); }
       if (unavailable && typeof unavailable !== 'function' && typeof unavailable.clear === 'function' && typeof unavailable.add === 'function') { unavailable.clear(); for (const k of fresh) unavailable.add(k); }
-      else availOverride = fresh;
+      return fresh;
     }
     async function send() {
       const f = S.flow, T = totalsNow();
@@ -731,13 +749,16 @@
       let c; try { c = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { return; }   // the key only where the server requires it
       const attempt = ++attemptSeq; S.terminal = null;   // Codex r4 #2: THIS attempt's settled outcome only
       S.screen = 'sending'; S.sendHint = null; S.sendTotals = { total: T.total, tip: T.tip }; render();
+      let has = soldOf;
       if (typeof opts.readAvailability === 'function') {
-        await recheckAvailability();   // the FRESH read decides (a stale sold-out is cleared on failure, never trusted)
-        if (dead || attempt !== attemptSeq) return;
+        const fresh = await recheckAvailability(attempt);   // the FRESH read decides (a stale sold-out is cleared on failure, never trusted)
+        if (fresh === null || dead || attempt !== attemptSeq) return;
+        has = (k) => fresh.has(k);
       }
       // a line known unavailable at dispatch (incl. one that sold out during the countdown): NOTHING is sent — back to where the
-      // customer tapped, the cart open with the line still in it
-      if (soldBlock()) { emit('dispatch_refused', { reason: 'unavailable', keys: soldLines().map((l) => l.key) }); backTo(); openLayer('cart'); return; }
+      // customer tapped, the cart open with the line still in it (its «Agotado» mark is the owner's frame 14 — not built yet)
+      const soldNow = soldLines(has);
+      if (soldNow.length) { emit('dispatch_refused', { reason: 'unavailable', keys: soldNow.map((l) => l.key) }); backTo(); openLayer('cart'); return; }
       // S2b r1 P2-7: an accepted price change ⇒ «Enviando» shows the ceiling actually sent
       const onExpected = (cents) => { if (dead || !Number.isFinite(cents)) return; S.sendTotals = { total: cents, tip: T.tip }; if (S.screen === 'sending') render(); };
       let out;
@@ -1026,7 +1047,7 @@
       // S2b: the open layer's controls, then the current screen's
       if (S.layerKind && ['err', 'placing', 'tipother', 'pin', 'feeinfo'].includes(S.layerKind)) { if (act === 'lclose') { closeLayer(); return; } if (layerAct(t)) return; }
       if (S.screen === 'checkout' && !S.layerKind) {
-        if (act === 'rev') { mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(t.dataset.key, t.dataset.grp || '') : cart.lineDec(t.dataset.key, t.dataset.grp || ''))); if (!cart.count()) toStore(); else render(); return; }
+        if (act === 'rev') { if (Number(t.dataset.rev) > 0 && isSold(find(t.dataset.key))) return; mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(t.dataset.key, t.dataset.grp || '') : cart.lineDec(t.dataset.key, t.dataset.grp || ''))); if (!cart.count()) toStore(); else render(); return; }
         if (checkoutAct(t)) return;
       }
       if (S.screen === 'tip' && !S.layerKind && tipAct(t)) return;
@@ -1037,7 +1058,7 @@
       if (act === 'pill') { openLayer('cart'); return; }
       if (act === 'cartclose') { back(); return; }   // closing the cart is a back step → the menu (P :2297)
       if (act === 'lclose') { closeLayer(); return; }
-      if (act === 'rev') { const k = t.dataset.key, g = t.dataset.grp || '', d = descOf(t); mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(k, g) : cart.lineDec(k, g))); renderStoreKeep(); renderLayer(); focusTo(refind(d) || [...$('layer').querySelectorAll(FOCUSABLE)].find(reachable)); return; }
+      if (act === 'rev') { const k = t.dataset.key, g = t.dataset.grp || '', d = descOf(t); if (Number(t.dataset.rev) > 0 && isSold(find(k))) return; mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(k, g) : cart.lineDec(k, g))); renderStoreKeep(); renderLayer(); focusTo(refind(d) || [...$('layer').querySelectorAll(FOCUSABLE)].find(reachable)); return; }
       if (act === 'edit') { S.layerKind = null; renderLayer(); returnTo = { elId: 'cart-bar', ds: { act: 'pill' } }; openEdit(t.dataset.key, t.dataset.grp || ''); return; }
       if (act === 'mode') { if (frozenNow()) return; S.mode = t.dataset.val; notifyCart(); renderStoreKeep(); return; }
       if (act === 'jump') { jumpTo(t.dataset.jump); return; }
@@ -1045,7 +1066,7 @@
       if (act === 'goto') { closeLayer(); jumpTo(t.dataset.goto); return; }
       if (act === 'ssearch') { openLayer('ssearch'); return; }
       if (act === 'back') { emit('back'); return; }
-      if (act === 'checkout') { let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return; } emit('checkout', { body, mode: S.mode }); openCheckout(); return; }
+      if (act === 'checkout') { if (soldBlock()) return; let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return; } emit('checkout', { body, mode: S.mode }); openCheckout(); return; }
       if (act === 'closed-sched') { emit('schedule'); return; }
     }
     const FLOW_FIELDS = ['details', 'name', 'phone', 'email', 'notes', 'tendered'];

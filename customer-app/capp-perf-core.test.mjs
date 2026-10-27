@@ -176,7 +176,23 @@ test('r3.3-F1: enterable for 60 s after the last SUCCESSFUL verification; a hang
   assert.deepEqual([el.state('a'), el.state('b')], ['enterable', 'held'], 'a partial verifies what it lists and never tombstones');
   el.verified({ listed: ['a'], complete: true, at: t });
   assert.equal(el.state('b'), 'gone', 'a complete response that omits a store tombstones it');
-  t -= 5000; assert.equal(el.state('a'), 'held', 'a clock that moved backwards is not trusted');
+});
+test('Codex perf-core r1 #1: a PARTIAL that omits a store still inside its window makes it HELD (not tombstoned, not left enterable)', () => {
+  let t = 1000; const el = createEligibility({ now: () => t });
+  el.verified({ listed: ['a', 'b'], complete: true, at: t });
+  t += 1000; assert.equal(el.state('b'), 'enterable', 'premise: B is still fresh when the partial arrives');
+  el.verified({ listed: ['a'], complete: false, at: t });
+  assert.deepEqual([el.state('a'), el.state('b')], ['enterable', 'held'], '🔴 omitted by a partial ⇒ held (never tombstoned)');
+  el.verified({ listed: ['a', 'b'], complete: false, at: t });
+  assert.equal(el.state('b'), 'enterable', 'a later response that lists it verifies it again');
+});
+test('Codex perf-core r1 #2: once expiry has been observed, a clock rolled BACK cannot revive eligibility (high-water clock)', () => {
+  let t = 1000; const el = createEligibility({ now: () => t });
+  el.verified({ listed: ['a'], complete: true, at: t });
+  t = 61000; assert.equal(el.state('a'), 'held', 'premise: expired');
+  t = 30000; assert.equal(el.state('a'), 'held', '🔴 a rollback never revives an expired eligibility');
+  el.verified({ listed: ['a'], complete: true, at: t });
+  assert.equal(el.state('a'), 'enterable', 'only a NEW successful verification does');
 });
 
 // ── r3.3-F5: auth state ──
@@ -207,4 +223,12 @@ test('r3.3-F5: no first callback in 10 s, or an init failure ⇒ `unavailable`, 
   assert.equal(b.retry(), true); assert.deepEqual([b.state(), R2.subs()], ['unresolved', 2], '«Reintentar» re-initializes');
   const c3 = createAuthState({ subscribe: () => { throw new Error('sdk missing'); }, timers: R2.T });
   assert.equal(c3.state(), 'unavailable', 'an SDK that throws ⇒ unavailable');
+});
+test('Codex perf-core r1 #5: with NO validateBody nothing is seeded — not even a body that names its rid (never trusted unchecked)', async () => {
+  const cache = createMenuCache({ now: () => T0, fetchEnvelope: () => Promise.resolve({ status: 304 }) });
+  assert.equal(cache.seed('a', { v: 1, rid: 'a', etag: 'e', fetched_at: T0, body: { rid: 'a' } }), false, '🔴 {body:{rid:"a"}} is refused without a validator');
+  assert.equal(cache.seed(ENV.rid, rec(0)), false, 'even a real envelope: a persisted body is never trusted unchecked');
+  assert.equal(cache.peek('a'), null);
+  await cache.get('a');
+  assert.equal(cache.complete(['a']), false, 'so a later 304 can never promote an unchecked body');
 });

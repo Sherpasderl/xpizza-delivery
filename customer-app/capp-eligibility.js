@@ -5,7 +5,10 @@
 //   SUCCESSFUL verification that listed the store as active (a complete 200, a matching 304, or a partial that lists it). Nothing
 //   else extends it: a pending or hanging request never does. Past the window the row reverts to HELD entry (the tap is held,
 //   then opens on the next successful verification). A complete response that omits a store TOMBSTONES it (dropped: never
-//   enterable again from cache, removed from the stored directory by the caller); a partial never tombstones.
+//   enterable again from cache, removed from the stored directory by the caller); a PARTIAL that omits a store makes it HELD
+//   (no longer verified — never tombstoned), even while its earlier verification would still be inside the window.
+//   Codex perf-core r1 #2: the clock is a HIGH-WATER mark — every check and verification is evaluated at max(now, the latest
+//   time seen), so a clock that moves backwards can never revive an eligibility that has already expired.
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -21,13 +24,17 @@
     const windowMs = Number.isFinite(o.windowMs) && o.windowMs > 0 ? o.windowMs : WINDOW_MS;
     const verifiedAt = new Map();   // rid → receipt time of its last successful verification
     const tombstoned = new Set();
+    const known = new Set();   // every store ever verified (a complete response tombstones whichever of them it omits, held or not)
+    let hw = -Infinity;   // the latest time observed
+    const clock = () => { const t = now(); if (Number.isFinite(t) && t > hw) hw = t; return hw; };
 
     // a SUCCESSFUL verification, at its receipt time: `listed` = the rids it lists as active; `complete` = it is the whole directory
     function verified({ listed, complete, at }) {
-      const t = Number.isFinite(at) ? at : now();
+      const cur = clock();
+      const t = Number.isFinite(at) ? Math.min(at, cur) : cur;   // a receipt time is never later than the time seen
       const ids = new Set((listed || []).map(String));
-      for (const rid of ids) { verifiedAt.set(rid, t); tombstoned.delete(rid); }
-      if (complete === true) for (const rid of [...verifiedAt.keys()]) if (!ids.has(rid)) { verifiedAt.delete(rid); tombstoned.add(rid); }
+      for (const rid of ids) { verifiedAt.set(rid, t); tombstoned.delete(rid); known.add(rid); }
+      for (const rid of known) if (!ids.has(rid)) { verifiedAt.delete(rid); if (complete === true) tombstoned.add(rid); }   // omitted: tombstoned (complete) or held (partial)
       return [...tombstoned];
     }
     // a store the caller knows only from the stored directory (presentation) is never enterable until verified
@@ -36,8 +43,8 @@
       if (tombstoned.has(k)) return 'gone';
       const t = verifiedAt.get(k);
       if (t === undefined) return 'held';
-      const age = now() - t;
-      return age >= 0 && age < windowMs ? 'enterable' : 'held';   // a clock that moved backwards is not trusted: held
+      const age = clock() - t;
+      return age < windowMs ? 'enterable' : 'held';   // evaluated at the high-water time: a rollback cannot revive it
     }
     return { verified, state, enterable: (rid) => state(rid) === 'enterable', verifiedAt: (rid) => verifiedAt.get(String(rid)) };
   }

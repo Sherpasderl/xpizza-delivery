@@ -22684,8 +22684,8 @@
     "slice": "perf-core",
     "label": "r3.3-F1: the window includes its 60th second",
     "file": "../customer-app/capp-eligibility.js",
-    "from": "return age >= 0 && age < windowMs ? 'enterable' : 'held';",
-    "to": "return age >= 0 && age <= windowMs ? 'enterable' : 'held';",
+    "from": "return age < windowMs ? 'enterable' : 'held';",
+    "to": "return age <= windowMs ? 'enterable' : 'held';",
     "command": [
       "node",
       "--test",
@@ -22693,15 +22693,16 @@
     ],
     "kills_with": [
       "60 s after the last success"
-    ]
+    ],
+    "repointed": "perf-core r1 #2: evaluated at the high-water clock (same mutation)"
   },
   {
     "id": "perf-core-13",
     "slice": "perf-core",
     "label": "r3.3-F1: a partial response tombstones",
     "file": "../customer-app/capp-eligibility.js",
-    "from": "if (complete === true) for (const rid",
-    "to": "if (true) for (const rid",
+    "from": "verifiedAt.delete(rid); if (complete === true) tombstoned.add(rid); }",
+    "to": "verifiedAt.delete(rid); tombstoned.add(rid); }",
     "command": [
       "node",
       "--test",
@@ -22709,7 +22710,8 @@
     ],
     "kills_with": [
       "a partial verifies what it lists and never tombstones"
-    ]
+    ],
+    "repointed": "perf-core r1 #1: omitted stores loop over every known store (same mutation: a partial tombstones)"
   },
   {
     "id": "perf-core-14",
@@ -22748,17 +22750,18 @@
     "slice": "perf-core",
     "label": "r3.3-F2 r2-2: no availability re-read at dispatch",
     "file": "../customer-app/capp-ui.js",
-    "from": "        await recheckAvailability();   // the FRESH read decides",
-    "to": "        // (no re-check)",
+    "from": "        const fresh = await recheckAvailability(attempt);   // the FRESH read decides",
+    "to": "        const fresh = new Set([...unavailable]);   // (no re-check)",
     "command": [
       "node",
       "--test",
-      "--test-name-pattern=perf r2-2",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
       "../customer-app/capp-ui.test.mjs"
     ],
     "kills_with": [
       "the failed read cleared the stale sold-out"
-    ]
+    ],
+    "repointed": "perf-core r1 #3/#4: the re-read now returns the attempt's fresh Set (same mutation: no re-read)"
   },
   {
     "id": "perf-core-17",
@@ -22770,7 +22773,7 @@
     "command": [
       "node",
       "--test",
-      "--test-name-pattern=perf r2-2",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
       "../customer-app/capp-ui.test.mjs"
     ],
     "kills_with": [
@@ -22782,17 +22785,18 @@
     "slice": "perf-core",
     "label": "r3.3-F2 r2-2: dispatch ignores a known-unavailable line",
     "file": "../customer-app/capp-ui.js",
-    "from": "if (soldBlock()) { emit('dispatch_refused',",
+    "from": "if (soldNow.length) { emit('dispatch_refused',",
     "to": "if (false) { emit('dispatch_refused',",
     "command": [
       "node",
       "--test",
-      "--test-name-pattern=perf r2-2",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
       "../customer-app/capp-ui.test.mjs"
     ],
     "kills_with": [
       "nothing is dispatched for a line now unavailable"
-    ]
+    ],
+    "repointed": "perf-core r1 #3: the dispatch decision uses the attempt's fresh read (same mutation)"
   },
   {
     "id": "perf-core-19",
@@ -22804,7 +22808,7 @@
     "command": [
       "node",
       "--test",
-      "--test-name-pattern=perf r2-2",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
       "../customer-app/capp-ui.test.mjs"
     ],
     "kills_with": [
@@ -22821,7 +22825,7 @@
     "command": [
       "node",
       "--test",
-      "--test-name-pattern=perf r2-2",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
       "../customer-app/capp-ui.test.mjs"
     ],
     "kills_with": [
@@ -22831,19 +22835,20 @@
   {
     "id": "perf-core-21",
     "slice": "perf-core",
-    "label": "r3.3-F2 r2-2: a function-form input ignores the fresh read",
+    "label": "r3.3-F2 r2-2: a function-form dispatch ignores the fresh read",
     "file": "../customer-app/capp-ui.js",
-    "from": "      else availOverride = fresh;\n",
+    "from": "        has = (k) => fresh.has(k);\n",
     "to": "",
     "command": [
       "node",
       "--test",
-      "--test-name-pattern=perf r2-2",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
       "../customer-app/capp-ui.test.mjs"
     ],
     "kills_with": [
       "the fresh read says sold"
-    ]
+    ],
+    "repointed": "perf-core r1 #3: the function-form override is GONE; the fresh read decides THIS dispatch only — mutant: the dispatch ignores it"
   },
   {
     "id": "perf-core-22",
@@ -22871,11 +22876,229 @@
     "command": [
       "node",
       "--test",
-      "--test-name-pattern=perf r2-2",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
       "../customer-app/capp-ui.test.mjs"
     ],
     "kills_with": [
       "the pickup CTA is disabled for an unavailable line"
+    ]
+  },
+  {
+    "id": "perf-core-24",
+    "slice": "perf-core",
+    "label": "r1 #1: a partial leaves an omitted store enterable",
+    "file": "../customer-app/capp-eligibility.js",
+    "from": "verifiedAt.delete(rid); if (complete === true)",
+    "to": "if (complete === true)",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "omitted by a partial ⇒ held"
+    ]
+  },
+  {
+    "id": "perf-core-25",
+    "slice": "perf-core",
+    "label": "r1 #2: eligibility evaluated at the raw clock (rollback revives)",
+    "file": "../customer-app/capp-eligibility.js",
+    "from": "const age = clock() - t;",
+    "to": "const age = now() - t;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "a rollback never revives an expired eligibility"
+    ]
+  },
+  {
+    "id": "perf-core-26",
+    "slice": "perf-core",
+    "label": "r1 #4: a destroyed / superseded mount applies its read to the host Set",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (dead || attempt !== attemptSeq) return null;\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the stale read did not clear the host"
+    ]
+  },
+  {
+    "id": "perf-core-27",
+    "slice": "perf-core",
+    "label": "r1 #5: seeding without a validator trusts the body",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "const validBody = typeof o.validateBody === 'function' ? o.validateBody : null;",
+    "to": "const validBody = typeof o.validateBody === 'function' ? o.validateBody : (rid, body) => !!body && body.rid === rid;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "is refused without a validator"
+    ]
+  },
+  {
+    "id": "perf-core-28",
+    "slice": "perf-core",
+    "label": "r1 #7: placeTap (the choke point) starts a countdown for a sold line",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (soldBlock()) { openLayer('cart'); return; }   // never silently nothing",
+    "to": "      if (false) { openLayer('cart'); return; }   // never silently nothing",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "no countdown for a sold line"
+    ]
+  },
+  {
+    "id": "perf-core-29",
+    "slice": "perf-core",
+    "label": "frame 14: the Subtotal counts the sold line",
+    "file": "../customer-app/capp-ui.js",
+    "from": "(soldOfLine(d) ? 0 : d.total)",
+    "to": "d.total",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the Subtotal leaves the sold line out"
+    ]
+  },
+  {
+    "id": "perf-core-30",
+    "slice": "perf-core",
+    "label": "frame 14: «Ir al checkout» stays live with a sold line",
+    "file": "../customer-app/capp-ui.js",
+    "from": "const off = over || soldDishes.length > 0;",
+    "to": "const off = over;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "«Ir al checkout» waits until it is removed"
+    ]
+  },
+  {
+    "id": "perf-core-31",
+    "slice": "perf-core",
+    "label": "frame 14: the price slot shows the price, not «Agotado»",
+    "file": "../customer-app/capp-ui.js",
+    "from": "${so ? 'Agotado' : money(d.total)}",
+    "to": "${money(d.total)}",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "«Agotado» takes the price slot"
+    ]
+  },
+  {
+    "id": "perf-core-32",
+    "slice": "perf-core",
+    "label": "frame 14: the sold line's + is not disabled",
+    "file": "../customer-app/capp-ui.js",
+    "from": "${sold ? ' disabled aria-disabled=\"true\"' : ''}>+</button>",
+    "to": ">+</button>",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "its + is inert"
+    ]
+  },
+  {
+    "id": "perf-core-33",
+    "slice": "perf-core",
+    "label": "frame 14: the cart's + handler adds to a sold line",
+    "file": "../customer-app/capp-ui.js",
+    "from": "d = descOf(t); if (Number(t.dataset.rev) > 0 && isSold(find(k))) return;",
+    "to": "d = descOf(t);",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the + handler itself refuses a sold line"
+    ]
+  },
+  {
+    "id": "perf-core-34",
+    "slice": "perf-core",
+    "label": "frame 14: the checkout summary's + handler adds to a sold line",
+    "file": "../customer-app/capp-ui.js",
+    "from": "        if (act === 'rev') { if (Number(t.dataset.rev) > 0 && isSold(find(t.dataset.key))) return;",
+    "to": "        if (act === 'rev') {",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the checkout summary's + handler refuses a sold line"
+    ]
+  },
+  {
+    "id": "perf-core-35",
+    "slice": "perf-core",
+    "label": "frame 14: the checkout handler proceeds with a sold line",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (act === 'checkout') { if (soldBlock()) return;",
+    "to": "if (act === 'checkout') {",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the checkout handler itself waits too"
+    ]
+  },
+  {
+    "id": "perf-core-36",
+    "slice": "perf-core",
+    "label": "frame 14: the note copy drifts from the approved «{plato} se agotó. Quitalo para enviar tu pedido.»",
+    "file": "../customer-app/capp-ui.js",
+    "from": "se agotó. Quitalo para enviar tu pedido.</span>",
+    "to": "se agotó.</span>",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf r2-2|perf-core r1|frame 14",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the approved note, one line for the one dish"
     ]
   }
 ]

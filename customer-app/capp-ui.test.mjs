@@ -1773,3 +1773,87 @@ test('perf r2-2 (pickup): a known-unavailable line disables «Confirmar pedido»
   await b.click('#cta'); b.timers.flush(); await settle();
   assert.equal(b.srv.of('createOrder').length, 0, 'nothing is dispatched');
 });
+
+// ── Codex perf-core r1 fixes #3 / #4 / #7 + the owner's frame 14 (MOCKUP-capp-S7a-states.html, approved 2026-10-27) ──
+const heldRead = () => { let res; const p = new Promise((r) => { res = r; }); return { p, res }; };
+test('perf-core r1 #3: a function-form host is never overridden — refused at dispatch, then the host says available ⇒ placement re-enabled', async () => {
+  let hostSold = false; let key = null;
+  const b = bootCo({ mountOpts: { unavailable: () => hostSold, readAvailability: () => Promise.resolve([key]) } });
+  key = b.plain.key;
+  await toPlacing(b, 'cash'); b.timers.flush(); await settle();
+  assert.equal(b.srv.of('createOrder').length, 0, 'premise: the dispatch read refused it');
+  hostSold = true; b.ui.render(); await settle();
+  assert.equal(b.q('#layer [data-act="checkout"]').disabled, true, 'the host now reports it sold: «Ir al checkout» disabled');
+  hostSold = false; b.ui.render(); await settle();
+  assert.equal(b.q('#layer [data-act="checkout"]').disabled, false, '🔴 the host says available again ⇒ re-enabled (no stale override)');
+  assert.equal(b.q('#layer .cline.sold-out'), null, 'the mark cleared with it');
+});
+test('perf-core r1 #4: a DESTROYED mount never applies its held read to the host\'s live Set', async () => {
+  const sold = new Set(); const d = heldRead();
+  const b = bootCo({ mountOpts: { unavailable: sold, readAvailability: () => d.p } });
+  await toPlacing(b, 'cash'); b.timers.flush(); await settle();
+  b.ui.destroy();
+  sold.add('host-newer');   // the host's newer state, after the mount died
+  d.res([]); await settle();
+  assert.deepEqual([...sold], ['host-newer'], '🔴 the stale read did not clear the host\'s newer state');
+  assert.equal(b.srv.of('createOrder').length, 0, 'and nothing was sent');
+});
+test('perf-core r1 #7: «Usar otra tarjeta» (which calls placeTap directly) never starts a countdown for a sold line — it opens the cart instead', async () => {
+  const storage = memStore();
+  const { id, snap } = await cardRedirected(storage);
+  const sold = new Set();
+  const c = bootCo({ storage, search: RET('cancel', id), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'cancelled' } }], chargeOnlineOrder: [CHECKOUT] }, mountOpts: { unavailable: sold } });
+  c.ui.restore(snap); await c.ui.returning; await settle();
+  assert.deepEqual(c.qa('#layer .errsheet .acts button').map((x) => x.textContent), ['Pagar en efectivo', 'Usar otra tarjeta'], 'premise: the definitive-cancel sheet');
+  sold.add(c.plain.key);
+  await c.click('#layer [data-act="err-card"]'); await settle();
+  assert.notEqual(c.q('#layer .sheet') && c.q('#layer .sheet').getAttribute('aria-label'), 'Realizando pedido', '🔴 no countdown for a sold line');
+  assert.ok(c.text('#layer .cartnote[role="status"]').includes('se agotó'), 'the cart explains which dish sold out');
+  c.timers.flush(); await settle();
+  assert.equal(c.srv.of('chargeOnlineOrder').length, 0, 'nothing is charged');
+});
+test('frame 14: a sold cart line keeps its row — «Agotado» in the price slot, + inert, trash live; one note line per dish; Subtotal and «Ir al checkout» exclude / wait', async () => {
+  const sold = new Set();
+  const b = bootCo({ mountOpts: { unavailable: sold } });
+  const m = b.ui.menu; const other = m.dishes.find((x) => !x.launcher && !x.variantOf && x.key !== b.plain.key && !m.pickupOnlyCats.has(String(x.cat)));
+  b.ui.cart.inc(b.plain.key); b.ui.cart.inc(other.key); b.ui.render(); await b.click('#cart-bar');
+  const before = b.qa('#layer .cline').map((l) => l.children.length);
+  sold.add(b.plain.key); b.ui.render(); await settle();
+  const line = b.qa('#layer .cline').find((l) => l.classList.contains('sold-out'));
+  assert.ok(line, 'the sold line is marked');
+  assert.deepEqual(b.qa('#layer .cline').map((l) => l.children.length), before, '🔴 no new element in any row (no row growth)');
+  assert.equal(b.text(line.querySelector('.cl-p')), 'Agotado', '«Agotado» takes the price slot');
+  assert.equal(line.querySelector('[data-rev="1"]').disabled, true, 'its + is inert');
+  assert.equal(line.querySelector('[data-rev="-1"]').disabled, false, 'its trash stays live');
+  assert.equal(b.text('#layer .cartnote[role="status"]'), `${b.plain.name} se agotó. Quitalo para enviar tu pedido.`, 'the approved note, one line for the one dish');
+  assert.equal(b.text('#layer .ctot .sumrow'), `Subtotal L ${other.price}`, '🔴 the Subtotal leaves the sold line out');
+  assert.equal(b.q('#layer [data-act="checkout"]').disabled, true, '🔴 «Ir al checkout» waits until it is removed');
+  line.querySelector('[data-rev="1"]').disabled = false; await b.click(line.querySelector('[data-rev="1"]'));
+  assert.equal(b.ui.cart.count(), 2, '🔴 the + handler itself refuses a sold line (not only the disabled attribute)');
+  b.q('#layer [data-act="checkout"]').disabled = false; await b.click('#layer [data-act="checkout"]');
+  assert.equal(b.events.some((e) => e[0] === 'checkout'), false, '🔴 the checkout handler itself waits too');
+  b.ui.render(); await settle();
+  await b.click(b.qa('#layer .cline').find((l) => l.classList.contains('sold-out')).querySelector('[data-rev="-1"]'));
+  assert.equal(b.q('#layer .cartnote[role="status"]'), null, 'removed ⇒ the note clears');
+  assert.equal(b.q('#layer [data-act="checkout"]').disabled, false, 'removed ⇒ «Ir al checkout» is live again');
+});
+test('frame 14: two sold dishes ⇒ one note line EACH; an update that says a dish is back clears its mark', async () => {
+  const sold = new Set();
+  const b = bootCo({ mountOpts: { unavailable: sold } });
+  const m = b.ui.menu; const other = m.dishes.find((x) => !x.launcher && !x.variantOf && x.key !== b.plain.key && !m.pickupOnlyCats.has(String(x.cat)));
+  b.ui.cart.inc(b.plain.key); b.ui.cart.inc(other.key); b.ui.render(); await b.click('#cart-bar');
+  sold.add(b.plain.key); sold.add(other.key); b.ui.render(); await settle();
+  assert.deepEqual(b.qa('#layer .cartnote[role="status"] .cn-l').map((x) => x.textContent), [`${b.plain.name} se agotó. Quitalo para enviar tu pedido.`, `${other.name} se agotó. Quitalo para enviar tu pedido.`]);
+  sold.delete(other.key); b.ui.render(); await settle();
+  assert.deepEqual(b.qa('#layer .cline.sold-out').length, 1, 'the dish that came back is no longer marked');
+});
+test('frame 14: a dish that sells out while on «Entrega & Pago» — the summary\'s + refuses it there too', async () => {
+  const sold = new Set();
+  const b = bootCo({ mountOpts: { unavailable: sold } });
+  await filled(b, 'cash'); await b.click('[data-act="sumtoggle"]');
+  const plus = b.q(`[data-act="rev"][data-rev="1"][data-key="${b.plain.key}"]`);
+  assert.ok(plus && !b.q('#layer .sheet'), 'premise: the checkout summary\'s own + (no layer open)');
+  sold.add(b.plain.key);
+  await b.click(plus);
+  assert.equal(b.ui.cart.count(), 1, '🔴 the checkout summary\'s + handler refuses a sold line');
+});

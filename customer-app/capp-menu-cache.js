@@ -30,7 +30,8 @@
     const now = o.now || (() => Date.now());
     const limit = o.concurrency || CONCURRENCY;
     // the persisted record's body check (the shell passes the real adapter: rid match + CappMenu.adaptMenu succeeds)
-    const validBody = typeof o.validateBody === 'function' ? o.validateBody : (rid, body) => !!body && typeof body === 'object' && body.rid === rid;
+    // REQUIRED for seeding (Codex perf-core r1 #5): without it nothing is seeded — a persisted body is never trusted unchecked
+    const validBody = typeof o.validateBody === 'function' ? o.validateBody : null;
     const persist = typeof o.persist === 'function' ? o.persist : null;   // (rid, { v:1, rid, etag, fetched_at, body }) on every network-fresh body
     const entries = new Map(), inflight = new Map(), listeners = new Map();
     const queue = []; let active = 0;
@@ -97,7 +98,7 @@
     // PRESENT_MS by its ORIGINAL fetched_at (never refreshed by a read), and not from the future beyond SKEW_MS (clock anomaly).
     // A body already held in memory (fresh / stale / pending) is never replaced by an older persisted one.
     function seed(rid, rec) {
-      if (entries.has(rid)) return false;
+      if (entries.has(rid) || !validBody) return false;
       if (!rec || typeof rec !== 'object' || rec.v !== 1 || rec.rid !== rid || !Number.isFinite(rec.fetched_at)) return false;
       const t = now();
       if (rec.fetched_at > t + SKEW_MS || t - rec.fetched_at >= PRESENT_MS) return false;
