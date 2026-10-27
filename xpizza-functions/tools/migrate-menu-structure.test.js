@@ -16,10 +16,20 @@ let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('migrate-menu-structure: FAILED — exited without completing'); process.exitCode = 1; } });
 const clone = (v) => JSON.parse(JSON.stringify(v));
 const RIDS = ['la_musa', 'x_pizza'];
+// A PRODUCTION store BEFORE the migration: the seed WITHOUT the fields the reviewed rows author (since the GATED commit the
+// in-repo seed carries them — G1 — but the live drafts this migration targets do not).
+function preMigration(rid, s) {
+  const r = DATA.restaurants[rid] || {};
+  for (const f of Object.keys(r.structure || {})) delete s.structure[f];
+  for (const [coll, list] of [['items', s.items], ['extras', s.extras]]) {
+    for (const [key, row] of Object.entries(r[coll] || {})) { const rec = list.find((x) => x.key === key); for (const f of Object.keys(row.display)) delete rec.display[f]; }
+  }
+  return s;
+}
 async function seeded(mut = {}) {
   const db = makeDb();
   for (const rid of RIDS) {
-    const s = buildSourceFromCode(rid);
+    const s = preMigration(rid, buildSourceFromCode(rid));
     if (mut[rid]) mut[rid](s);
     await sourceRefOf(db, rid).set(s);
   }
@@ -145,7 +155,7 @@ const itemBy = (s, pred) => s.items.find(pred);
     await assert.rejects(migrateRestaurant(db, 'x_pizza', bad.restaurants.x_pizza, { write: true }), /reward_icon/);
     assert.deepStrictEqual((await sourceRefOf(db, 'x_pizza').get()).updateTime, rev, 'refused → no write');
     const bad2 = clone(DATA); bad2.restaurants.la_musa.structure.badge_priority = ['ghost'];
-    assert.throws(() => planMigration('la_musa', buildSourceFromCode('la_musa'), bad2.restaurants.la_musa), /badge_priority names ghost/);
+    assert.throws(() => planMigration('la_musa', preMigration('la_musa', buildSourceFromCode('la_musa')), bad2.restaurants.la_musa), /badge_priority names ghost/);
     ok('invalid result (an off-set icon, a priority naming no badge) refuses at validateSource; nothing written');
 
     const dry = await migrateMenuStructure(db, DATA, { write: false });

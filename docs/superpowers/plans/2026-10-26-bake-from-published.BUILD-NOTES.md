@@ -65,3 +65,33 @@ Proofs:
 The `payment_form_rebake_{stuck,bad_hook,missing_hook}` alerts reach the desktop Torre through `paymentAlert`. With no case in `alertContent`, they render through the unknown-type fallback as «Alerta — form rebake stuck»: English, with no restaurant named and no action. This is not payment copy (category «otros»), but it is not acceptable dispatcher copy either.
 - **Follow-up (the dispatch lane, owner mockup):** Spanish title and detail for the three types, naming the restaurant and giving the action.
 - **ACTIVATION PREREQUISITE:** `FORM_BUILD_HOOKS` stays UNSET, so the feature stays dormant, until that dispatch copy ships.
+
+## 6. The GATED commit moves the in-repo BOOTSTRAP to post-migration data. Advisor: APPROVED (G1)
+
+Deleting the literal mappings alone left two real gaps:
+1. The committed (pre-bake) forms carried no migration data. Nutella offered all 14 extras, and La Musa chose no badge.
+2. `catalog/exposure-source.js` DERIVED the catalog's Nutella exclusion by scanning the form's `dish.name === 'Nutella'` check.
+
+G1 closes both from ONE source, the reviewed data file:
+- `catalog/menu-structure-rows.js` `applyBootstrapRows` is applied ADDITIVELY by buildCatalogV2's text path and by `seed-source-store`. A row naming a record the bootstrap lacks is `bootstrap_rows_drift`.
+- La Musa's `badge_priority` arrives on the text path from the rows.
+- The exposure's "no options" = dishes whose `extras_policy` is `'none'`. The exclusion travels with the dish: a rename keeps it, lifting the policy drops it. The guard now asserts the renderer compares NO dish name.
+- No form literal duplicates the data.
+
+Goldens and pins that moved, each for one reason (the bootstrap now carries the reviewed rows):
+- `catalog/choice-badges-noop.golden.json`, re-captured HONESTLY:
+  1. on the original tree (5b, `b1000b7a`, a throwaway worktree), a capture reproduces the committed golden byte for byte;
+  2. on the GATED tree, the same five artifacts × both brands with ONLY the reviewed rows' fields stripped hash identically to that golden, so the rows are the whole delta;
+  3. then the GATED tree is captured.
+- The 1c parity pins compare against the literal plus the rows (`withBootstrapRows`, the same function):
+  - `catalog-form-bundle` §1/§2/§2b;
+  - `form-bundle-splice` §2;
+  - `catalog-menu` §5;
+  - `migration-parity` 6c / the deployed-records cell;
+  - `form-data-path`.
+- `catalog/source-store.test.js`: the seed's field contract gains `items[].display.{extras_policy,reward_icon}`, `extras[].display.reward_icon` and `structure.badge_priority[ ]`. The pinned counts become x_pizza 49/215/133 and la_musa 72/309/207. The "delete every badge definition" cell drops the priority with its definitions.
+- `catalog/renderer-contract.test.js`: the badge-free fixture drops `badge_priority` with the badges.
+- `catalog/plan4-display-fields.test.js`: the seed now carries the reviewed priority, pinned equal to the data file.
+- Mutants: `task8-14` is RETIRED (the name-list missing-item check no longer exists by design) and replaced by fb-71 (the exclusion follows `extras_policy`); fb-72..74 added; fb-4/66/67 re-anchored.
+
+The GATED commit lands ONLY after the owner's migration `--write`, the one publish, and the read-only verification.

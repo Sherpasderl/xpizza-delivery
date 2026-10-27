@@ -82,7 +82,8 @@ const EXPECTED = [
   'restaurant-config.js', 'pickup-label.js',
   'merchant/merchant-control.js', 'tools/order-control-core.js', 'order-control-state.js', 'scheduled-orders.js', 'avail-key.js', 'availability-reset.js',
   'catalog/catalog-firestore.js', 'catalog/catalog-menu.js', 'catalog/catalog-transform.js', 'catalog/catalog-integrity.js', 'catalog/content-hash.js', 'catalog/canonical-json.js',
-  'catalog/form-menu-source.js', 'catalog/redeem-source.js', 'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'menu-pricing.js', 'price-valid.js', 'rewards-redeem-config.js',
+  'catalog/form-menu-source.js', 'catalog/menu-structure-rows.js', 'tools/migrations/2026-10-26-menu-structure.json',   // plan 4 GATED (G1): the reviewed rows + their data file (pure / data)
+  'catalog/redeem-source.js', 'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'menu-pricing.js', 'price-valid.js', 'rewards-redeem-config.js',
 ].sort();
 const CONDITIONAL = ['lib/emulator-endpoint.js'];   // reached via lib/admin.js only when an emulator env var is set
 const FORBIDDEN = /^(catalog\/catalog-publish\.js|catalog\/portal-reads\.js|stats\/.*|factura\/.*|index\.js|merchant\/merchant-location\.js|merchant\/merchant-orders\.js|portal\/functions\.js)$/;

@@ -27,13 +27,13 @@
 // ---------------------------------------------------------------------------
 const { deriveLegacyMaps, ALL } = require('./extras-exposure');
 
-// x_pizza's renderer excludes these dishes from extras entirely, by name. Authored as data so a
-// merchant could change it; guarded against the form so it cannot silently stop being true.
-const X_PIZZA_NO_EXTRAS = ['Nutella'];
+// PLAN 4 GATED (G1): "this dish is offered nothing" is DATA — a dish's display.extras_policy 'none' (the reviewed data file
+// authors it for Nutella; the portal can set it) — never a name list here or a name comparison in a renderer.
+const noExtrasKeys = (items) => items.filter((i) => i && i.display && i.display.extras_policy === 'none').map((i) => i.key);
 
 const RENDERERS = {
-  // allow-all + a per-item deny; there is no map in the form to read
-  x_pizza: { authored: true, noExtras: X_PIZZA_NO_EXTRAS },
+  // allow-all + a per-item deny for every dish whose extras_policy is 'none'; there is no map in the form to read
+  x_pizza: { authored: true },
   // two real maps; extracted verbatim
   la_musa: { authored: false },
 };
@@ -70,16 +70,8 @@ function deriveExposure(restaurantId, { dishCategories = [], extraCategories = [
   for (const cat of dishCategories) category_allow[cat] = extraCategories.slice();
   // ...and the named dishes are offered nothing at all.
   const item_overrides = {};
-  const keys = new Set(items.map((i) => i.key));
-  for (const key of spec.noExtras) {
-    // A dish that has been renamed or removed must not quietly lose its exclusion: the catalog would
-    // start offering extras for a pizza the form still refuses to show them for, and the only symptom
-    // would be a customer being offered pepperoni on a Nutella dessert.
-    if (!keys.has(key)) {
-      throw new Error(`exposure_source_missing_item: ${restaurantId}/${key} — the dish this exclusion names is not in the menu`);
-    }
-    item_overrides[key] = { deny: [ALL] };
-  }
+  // The exclusion now travels ON the dish (extras_policy), so a renamed dish keeps it and a removed one takes it with it.
+  for (const key of noExtrasKeys(items)) item_overrides[key] = { deny: [ALL] };
   return { category_allow, item_overrides };
 }
 
@@ -101,12 +93,11 @@ function assertExposureMatchesToday(restaurantId, formText) {
   const found = new Set([...String(formText).matchAll(/(typeof\s+)?[A-Za-z_$][\w$]*\.name\s*[!=]==\s*'([^']+)'/g)]
     .filter((m) => !m[1])
     .map((m) => m[2]));
-  const authored = new Set(spec.noExtras);
-  const missing = [...authored].filter((k) => !found.has(k));
-  const extra = [...found].filter((k) => !authored.has(k));
-  if (missing.length || extra.length) {
-    throw new Error(`exposure_source_drift: ${restaurantId} — the form compares dish names ${JSON.stringify([...found])} `
-      + `but the authored exclusion set is ${JSON.stringify([...authored])}; author the difference rather than letting the two disagree`);
+  // PLAN 4 GATED (G1): the renderer decides "no options" from extras_policy alone, so it must compare NO dish name at all —
+  // a name comparison reappearing is an exclusion the data cannot see.
+  if (found.size) {
+    throw new Error(`exposure_source_drift: ${restaurantId} — the form compares dish names ${JSON.stringify([...found])}; "no options" `
+      + `is the dish's extras_policy, so author it as data rather than as a name check`);
   }
   return true;
 }
@@ -141,4 +132,4 @@ function attachExposure(restaurantId, structure, items, { byCategory = null, byI
   return structure;
 }
 
-module.exports = { deriveExposure, attachExposure, assertExposureMatchesToday, exposureCtx, X_PIZZA_NO_EXTRAS, RENDERERS };
+module.exports = { deriveExposure, attachExposure, assertExposureMatchesToday, exposureCtx, noExtrasKeys, RENDERERS };

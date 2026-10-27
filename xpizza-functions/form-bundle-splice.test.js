@@ -14,6 +14,10 @@ const { catalogSnapshot } = require('./catalog/generate-form-bundle');
 // PLAN 4 (gap resolution A): the spliced bundle is the PUBLISHED shape — the ONE composer getPublicMenu serves
 const { composeServedMenu } = require('./catalog/public-menu');
 const generateFormBundle = composeServedMenu;
+
+// PLAN 4 GATED (G1): the bootstrap's record set = the form literals + the ONE reviewed data file's rows (reward_icon / extras_policy)
+const { withBootstrapRows } = require('./catalog/menu-structure-rows');
+const BR = (rid, src) => withBootstrapRows(rid, { dishes: readLiteral(src, 'MENU'), extras: readLiteral(src, 'EXTRAS') });
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 const ROOT = join(__dirname, '..');
@@ -32,7 +36,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
 //     menu change). If these ever differ, customers see a different menu than today. ────────────
 for (const rid of ['x_pizza', 'la_musa']) {
   const src = html(rid), b = S.extractBundle(src);
-  assert.deepStrictEqual(b.dishes, readLiteral(src, 'MENU'), `${rid}: served dishes == the hard-coded fallback, field for field AND in order`);
+  assert.deepStrictEqual(b.dishes, BR(rid, src).dishes, `${rid}: served dishes == the hard-coded fallback (+ the reviewed rows), field for field AND in order`);
   ok(`byte-parity ${rid}: ${b.dishes.length} served dishes identical to the current hard-coded menu`);
 }
 {
@@ -159,7 +163,6 @@ function runSelect(rid, bundleGlobal) {
     announceMenuBroken: () => announced.push(1), console: { error: () => {}, warn: () => {} },
     document: { readyState: 'complete', addEventListener: () => {} },
   };
-  if (rid === 'la_musa') sandbox.TAG_PRIORITY = readLiteral(src, 'TAG_PRIORITY');
   vm.createContext(sandbox);
   const helpers = ['const _BUNDLE = ', 'const _okDishes = ', 'const _okStrArr = '].concat(rid === 'la_musa' ? ['const _okCats = ', 'const _okObj = '] : []);
   const selects = SELECT_NAMES[rid].map((k) => `let ${k} = ${k === 'HAS_PHOTO' ? 'new Set(_bootSelect(' : '_bootSelect('}`);
@@ -212,7 +215,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
   const opt = { ...b }; delete opt.extras_by_item; delete opt.badges; delete opt.badge_priority;
   const o2 = runSelect('la_musa', opt);
   assert.deepStrictEqual([o2.EXTRAS_BY_ITEM, o2.TAG_BADGES, o2._BOOT_BROKEN], [{}, {}, []], 'an OPTIONAL structure that is absent is simply none — not broken');
-  assert.deepStrictEqual(o2.BADGE_PRIORITY, readLiteral(src, 'TAG_PRIORITY'), 'until the published menu carries a priority, TAG_PRIORITY orders the badges (removed by the GATED commit)');
+  assert.deepStrictEqual(o2.BADGE_PRIORITY, [], 'PLAN 4 GATED: with no published priority NO badge is chosen — there is no literal order to fall back to');
   const o3 = runSelect('la_musa', { ...b, badge_priority: ['must_try', 'chefs_pick'] });
   assert.deepStrictEqual(o3.BADGE_PRIORITY, ['must_try', 'chefs_pick'], 'a published priority wins');
   const o4 = runSelect('la_musa', { ...b, extras_by_category: { ...b.extras_by_category, ghost: [] } });

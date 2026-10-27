@@ -65,6 +65,7 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/identity-partition.js', 'catalog/identity-plan.js', 'catalog/identity-reconcile.js', 'catalog/identity-registry.js',
   'catalog/identity-stampmap.js', 'catalog/identity-verdict.js', 'catalog/identity-writer.js',
   'catalog/kds-manifest.js',                // 1D add-product A: the conditional /menus writer, after a successful publish
+  'catalog/menu-structure-rows.js',         // plan 4 GATED (G1): the reviewed rows the bootstrap applies, via form-menu-source.js (pure; no I/O)
   'catalog/mirror-rtdb.js',
   'catalog/platform-extras.js',             // per-product extras: the platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/platform-groups.js',             // 1D add-product B: the ONE platform authoring switch (editCatalog / publishEdited); no I/O
@@ -82,6 +83,7 @@ const PORTAL_GRAPH_LOCAL = [
   'rewards-redeem-config.js', 'scheduled-orders.js',
   'stats/keyer.js', 'stats/stats-api.js', 'stats/stats-build.js', 'stats/stats-classify.js', 'stats/stats-identity.js', 'stats/stats-index.js',
   'stats/stats-indexing.js', 'stats/stats-job.js', 'stats/stats-store.js', 'stats/stats-time.js',
+  'tools/migrations/2026-10-26-menu-structure.json',   // plan 4 GATED (G1): the reviewed data file those rows come from (data)
 ];
 const PORTAL_GRAPH_NPM = ['firebase-admin', 'firebase-functions', 'node:crypto', 'node:fs', 'node:path'];
 // Never in a portal instance: the order / payment / driver / messaging / fiscal-writer surface and the heavy npm deps.

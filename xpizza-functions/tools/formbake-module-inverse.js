@@ -38,7 +38,17 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/form-menu-source.js",
-  "now": "  carryStructure('badges', () => readLiteral(src, 'TAG_BADGES', '{', '}'));\n  // PLAN 4 r3 §8.1 — the ORDER badges are chosen in: STORE-ONLY. It reaches the store through the additive migration\n  // (§8.2), never the bootstrap text, so the text path stays byte-identical (and so do the goldens it feeds).\n  carryStructure('badge_priority', () => undefined);\n  // 🔴 THE STORE WINS ONCE IT HAS AUTHORED ONE. This read `structure.extra_categories === undefined`\n",
+  "now": "const { attachExposure } = require('./exposure-source');\nconst { applyBootstrapRows } = require('./menu-structure-rows');\nconst { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./../menu-pricing');\n",
+  "was": "const { attachExposure } = require('./exposure-source');\nconst { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./../menu-pricing');\n"
+ },
+ {
+  "file": "catalog/form-menu-source.js",
+  "now": "  }\n  // PLAN 4 GATED (G1): the TEXT bootstrap takes the post-migration data from the ONE reviewed data file (additive; the store\n  // path already carries it once the migration ran). Before the exposure is derived — \"no options\" is the data's extras_policy.\n  const bootstrapStructure = fd ? {} : applyBootstrapRows(restaurantId, { items, extras });\n  // 🔴 EXTRA_ORDER IS THE MIRROR OF ITEM_ORDER, and it exists for the same reason: Firestore hands\n",
+  "was": "  }\n  // 🔴 EXTRA_ORDER IS THE MIRROR OF ITEM_ORDER, and it exists for the same reason: Firestore hands\n"
+ },
+ {
+  "file": "catalog/form-menu-source.js",
+  "now": "  carryStructure('badges', () => readLiteral(src, 'TAG_BADGES', '{', '}'));\n  // PLAN 4 r3 §8.1 — the ORDER badges are chosen in: STORE-ONLY. It reaches the store through the additive migration\n  // (§8.2), never the bootstrap text, so the text path stays byte-identical (and so do the goldens it feeds).\n  carryStructure('badge_priority', () => bootstrapStructure.badge_priority);\n  // 🔴 THE STORE WINS ONCE IT HAS AUTHORED ONE. This read `structure.extra_categories === undefined`\n",
   "was": "  carryStructure('badges', () => readLiteral(src, 'TAG_BADGES', '{', '}'));\n  // 🔴 THE STORE WINS ONCE IT HAS AUTHORED ONE. This read `structure.extra_categories === undefined`\n"
  },
  {

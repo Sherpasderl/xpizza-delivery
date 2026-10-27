@@ -39,11 +39,15 @@ const refuses = (fn, re, label) => assert.throws(fn, (e) => re.test(String(e && 
   }
 
   // ── 2. validateSource: badge_priority (la_musa's real seed + today's TAG_PRIORITY) ──
-  const LM = buildSourceFromCode('la_musa');
+  // PLAN 4 GATED (G1): the seed now carries the reviewed data file's badge_priority; LM is that seed WITHOUT it (the
+  // pre-migration shape these cells reason about), and the G1 cell below pins what the seed carries.
+  const LM = buildSourceFromCode('la_musa'); const SEED_PRIORITY = LM.structure.badge_priority; delete LM.structure.badge_priority;
   const TAG_PRIORITY = readLiteral(formSource('la_musa'), 'TAG_PRIORITY');
   {
     assert.ok(KNOWN_STRUCTURE_FIELDS.includes('badge_priority'));
-    assert.strictEqual(LM.structure.badge_priority, undefined, 'the seed authors no priority (it arrives by the additive migration, §8.2)');
+    assert.deepStrictEqual(SEED_PRIORITY, require('../tools/migrations/2026-10-26-menu-structure.json').restaurants.la_musa.structure.badge_priority,
+      'G1: the seed carries the badge_priority of the ONE reviewed data file');
+    assert.deepStrictEqual(SEED_PRIORITY, TAG_PRIORITY, '… which is today\'s order (the seed literal it was generated from)');
     const s = clone(LM); s.structure.badge_priority = TAG_PRIORITY.slice();
     validateSource(s, 'la_musa');
     const bad = (mut, re, label) => { const x = clone(s); mut(x.structure); refuses(() => validateSource(x, 'la_musa'), re, label); };

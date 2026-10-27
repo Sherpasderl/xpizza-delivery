@@ -1744,8 +1744,10 @@
   "catalog/catalog-edit.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
+  "catalog/exposure-source.js",
   "catalog/form-menu-source.js",
   "catalog/form-rebake.js",
+  "catalog/menu-structure-rows.js",
   "catalog/portal-reads.js",
   "catalog/public-menu.js",
   "catalog/public-photos.js",
@@ -1918,6 +1920,10 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/exposure-source.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/form-menu-source.js": {
    "pins": [
     {
@@ -1930,6 +1936,10 @@
    "lifts": []
   },
   "catalog/form-rebake.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/menu-structure-rows.js": {
    "pins": [],
    "lifts": []
   },

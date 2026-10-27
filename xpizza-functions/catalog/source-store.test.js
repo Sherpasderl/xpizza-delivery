@@ -498,6 +498,12 @@ const GOOD = () => ({
     'structure.categories[].layout':  { collectionAbsent: NA('every category defaulting to the grid is legitimate'), absent: NA('optional — absence means the default grid'), invalid: (s) => { cat0(s).layout = 'masonry'; }, refs: NA('this value is content, not a reference to another catalog entity') },
     'structure.categories[].subcats': { collectionAbsent: NA('a menu where no category groups by subcategory is legitimate'), absent: NA('optional — most categories do not group'), invalid: NA('covered by refs and duplicate'), refs: (s) => { const c = subCat(s); c.subcats = [...c.subcats, 'NeverUsed']; } },
     'structure.categories[].subcats[]': { absent: NA('an element cannot be absent'), invalid: (s) => { subCat(s).subcats[0] = '   '; }, refs: (s) => { const c = subCat(s); c.subcats = [...c.subcats, 'NeverUsed']; } },
+    // ── PLAN 4 GATED (G1): the post-migration fields the seed now carries from the reviewed data file ──
+    'items[].display.extras_policy': { collectionAbsent: NA('absent is the ordinary dish — only "no options" dishes carry it'), absent: NA('optional — absent means the dish offers its options'), invalid: (s) => { s.items.find((i) => i.display.extras_policy !== undefined).display.extras_policy = 'some'; }, refs: NA('this value is content, not a reference to another catalog entity') },
+    'items[].display.reward_icon': { collectionAbsent: NA('a menu whose picker draws no icons is legitimate'), absent: NA('optional — the picker falls back to its default icon'), invalid: (s) => { s.items.find((i) => i.display.reward_icon !== undefined).display.reward_icon = 'pizza'; }, refs: NA('a closed set of sprite names, not a catalog entity') },
+    'extras[].display.reward_icon': { collectionAbsent: NA('most extras are never offered as a reward'), absent: NA('optional — only an extra the picker offers carries one'), invalid: (s) => { s.extras.find((e) => e.display.reward_icon !== undefined).display.reward_icon = 'gift'; }, refs: NA('a closed set of sprite names, not a catalog entity') },
+    'structure.badge_priority': { absent: NA('optional — absent, no badge is chosen'), invalid: NA('covered per element and by duplicate'), refs: (s) => { s.structure.badge_priority = [...s.structure.badge_priority, 'ghost_badge']; } },
+    'structure.badge_priority[]': { absent: NA('an element cannot be absent'), invalid: (s) => { s.structure.badge_priority[0] = 'ghost_badge'; }, refs: (s) => { s.structure.badge_priority = [...s.structure.badge_priority, 'ghost_badge']; } },
     'structure.extra_categories':     { invalid: NA('covered per element and by duplicate'), refs: (s) => { s.structure.extra_categories = [...s.structure.extra_categories, 'GhostCat']; } },
     'structure.extra_categories[]':   { absent: NA('an element cannot be absent'), invalid: (s) => { s.structure.extra_categories[0] = '   '; }, refs: (s) => { s.structure.extra_categories = [...s.structure.extra_categories, 'GhostCat']; } },
     'structure.item_order':     { invalid: (s) => { s.structure.item_order.pop(); }, refs: (s) => { s.structure.item_order[0] = 'ghost_item'; } },
@@ -667,7 +673,7 @@ const GOOD = () => ({
     // choosing a record that carries the field, removes coverage without failing anything — the
     // census would simply do less and still report success. Pinning the counts makes any reduction a
     // build failure, and any genuine addition a deliberate edit.
-    const EXPECTED = { x_pizza: { paths: 47, planted: 209, exempt: 125 }, la_musa: { paths: 68, planted: 295, exempt: 193 } }[rid];
+    const EXPECTED = { x_pizza: { paths: 49, planted: 215, exempt: 133 }, la_musa: { paths: 72, planted: 309, exempt: 207 } }[rid];
     assert.strictEqual(paths.length, EXPECTED.paths, `${rid} — path count moved; the walker or the seed changed`);
     assert.strictEqual(planted, EXPECTED.planted, `${rid} — plant count moved (got ${planted}); coverage was added or removed`);
     // The EXEMPTION count is pinned too. Only the plants were, so an exemption could be added — turning
@@ -720,6 +726,7 @@ const GOOD = () => ({
 
   const undeclared = JSON.parse(JSON.stringify(source));
   undeclared.structure.badges = {};                      // the merchant deleted every definition...
+  delete undeclared.structure.badge_priority;            // (PLAN 4 GATED: and with them their order — a priority names definitions)
   assert.doesNotThrow(() => validateSource(undeclared, 'la_musa'),
     '🔴 a tag naming a badge the SHIPPED RENDERER can select must be accepted even when this document declares none of them');
 

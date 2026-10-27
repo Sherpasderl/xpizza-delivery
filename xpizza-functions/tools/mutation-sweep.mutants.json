@@ -461,14 +461,6 @@
   "to": "  const found = new Set(spec.noExtras);"
  },
  {
-  "id": "task8-14",
-  "slice": "task8",
-  "label": "a dish the exclusion names but the menu lacks is ignored",
-  "file": "catalog/exposure-source.js",
-  "from": "    if (!keys.has(key)) {\n      throw new Error(`exposure_source_missing_item:",
-  "to": "    if (false) {\n      throw new Error(`exposure_source_missing_item:"
- },
- {
   "id": "task8-15",
   "slice": "task8",
   "label": "an extracted brand invents an allow-list when it has no map",
@@ -20064,7 +20056,7 @@
   "slice": "formbake",
   "label": "PLAN 4 §8.1: the store path stops carrying badge_priority into the built structure — a published version silently loses the priority",
   "file": "catalog/form-menu-source.js",
-  "from": "  carryStructure('badge_priority', () => undefined);",
+  "from": "  carryStructure('badge_priority', () => bootstrapStructure.badge_priority);",
   "to": "",
   "command": [
    "node",
@@ -20688,8 +20680,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §1: x_pizza's reward picker ignores the published reward_icon",
   "file": "../xpizza-orders/index.html",
-  "from": "icon:p.reward_icon||ICON[p.name]||'slice' }));",
-  "to": "icon:ICON[p.name]||'slice' }));",
+  "from": "icon:p.reward_icon||'slice' }));   // PLAN 4 GATED: the published reward_icon (the name-keyed literal map is gone)",
+  "to": "icon:'slice' }));",
   "command": [
    "node",
    "../post-bake-artifact.test.mjs"
@@ -20700,8 +20692,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §1: la_musa's reward picker ignores the published reward_icon",
   "file": "../la-musa-orders/index.html",
-  "from": "section:c[0], icon:p.reward_icon||c[1] }); });",
-  "to": "section:c[0], icon:c[1] }); });",
+  "from": "section:c, icon:p.reward_icon||'slice' }); });",
+  "to": "section:c, icon:'slice' }); });",
   "command": [
    "node",
    "../post-bake-artifact.test.mjs"
@@ -20909,6 +20901,54 @@
   "command": [
    "node",
    "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-71",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (G1): the exposure exclusion no longer follows extras_policy — a \"no options\" dish is offered every option (replaces task8-14, whose name-list check G1 removed by design)",
+  "file": "catalog/exposure-source.js",
+  "from": "const noExtrasKeys = (items) => items.filter((i) => i && i.display && i.display.extras_policy === 'none').map((i) => i.key);",
+  "to": "const noExtrasKeys = (items) => [];",
+  "command": [
+   "node",
+   "catalog/migration-parity.test.js"
+  ]
+ },
+ {
+  "id": "fb-72",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (G1): a dish-name comparison reappearing in the renderer passes the exposure guard",
+  "file": "catalog/exposure-source.js",
+  "from": "  if (found.size) {",
+  "to": "  if (false) {",
+  "command": [
+   "node",
+   "catalog/migration-parity.test.js"
+  ]
+ },
+ {
+  "id": "fb-73",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (G1): the text bootstrap skips the reviewed rows — the committed forms lose reward icons / extras_policy / the badge order",
+  "file": "catalog/form-menu-source.js",
+  "from": "  const bootstrapStructure = fd ? {} : applyBootstrapRows(restaurantId, { items, extras });",
+  "to": "  const bootstrapStructure = {};",
+  "command": [
+   "node",
+   "catalog-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-74",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED: la_musa's badge order falls back to the seed literal at runtime",
+  "file": "../la-musa-orders/index.html",
+  "from": "let BADGE_PRIORITY = _bootSelect('badge_priority', (v) => _okStrArr(v) && _DISPLAY_OK, [], false);",
+  "to": "let BADGE_PRIORITY = _bootSelect('badge_priority', (v) => _okStrArr(v) && _DISPLAY_OK, FALLBACK_TAG_PRIORITY, false);",
+  "command": [
+   "node",
+   "form-runtime-literals.guard.test.js"
   ]
  }
 ]

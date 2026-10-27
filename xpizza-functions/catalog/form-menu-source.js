@@ -23,6 +23,7 @@ const { readFileSync } = require('fs');
 const { join } = require('path');
 const { attachRedeemFields } = require('./redeem-source');
 const { attachExposure } = require('./exposure-source');
+const { applyBootstrapRows } = require('./menu-structure-rows');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('./../menu-pricing');
 
 // Relative to this file (xpizza-functions/catalog/) → up two, to the repo root.
@@ -194,6 +195,9 @@ function buildCatalogV2(restaurantId, opts = {}) {
   for (const key of Object.keys(extrasTable)) {
     if (!byKey.has(key)) throw new Error(`bootstrap_missing_extra_display_record: ${restaurantId}/${key}`);
   }
+  // PLAN 4 GATED (G1): the TEXT bootstrap takes the post-migration data from the ONE reviewed data file (additive; the store
+  // path already carries it once the migration ran). Before the exposure is derived — "no options" is the data's extras_policy.
+  const bootstrapStructure = fd ? {} : applyBootstrapRows(restaurantId, { items, extras });
   // 🔴 EXTRA_ORDER IS THE MIRROR OF ITEM_ORDER, and it exists for the same reason: Firestore hands
   // docs back in hashed-id order, so an ordering that is not carried explicitly is an ordering that
   // is lost. Items have had this since 1c-a; extras never did, because nothing read them back. Once
@@ -261,7 +265,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   carryStructure('badges', () => readLiteral(src, 'TAG_BADGES', '{', '}'));
   // PLAN 4 r3 §8.1 — the ORDER badges are chosen in: STORE-ONLY. It reaches the store through the additive migration
   // (§8.2), never the bootstrap text, so the text path stays byte-identical (and so do the goldens it feeds).
-  carryStructure('badge_priority', () => undefined);
+  carryStructure('badge_priority', () => bootstrapStructure.badge_priority);
   // 🔴 THE STORE WINS ONCE IT HAS AUTHORED ONE. This read `structure.extra_categories === undefined`
   // without ever COPYING fd.extra_categories, so the check always fell through and a merchant who
   // reordered their option groups had that order silently replaced by first-appearance .cat order.
