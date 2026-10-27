@@ -1,0 +1,149 @@
+// solo-cancel.test.js — the no-survivor cancellation that takes over the idle screen (prototype S.cancelado).
+// Drives the REAL renderSoloCancel + wireDispatchCallRow (via the REAL renderDisponible branch), and runs the REAL
+// SLICE3:SOLO-CANCEL capture snippet (extracted from source) for the solo-vs-survivor / active-work logic. Proves:
+//   • renderDisponible shows the cancel banner (num + brand data-driven, fallback «al restaurante»), «Entendido»,
+//     the «Disponible» card, «Tu cuadre no cambia», and the dispatch row (shown+tel: when a number exists, else hidden);
+//   • «Entendido» clears drv2SoloCancel and re-renders;
+//   • the startup-bound #idle-help-link / #arrive-btn survive the takeover (preserved, invisible);
+//   • capture: a cancel with NO survivor on an EMPTY board sets it; a survivor cancel does NOT; active work clears it.
+// Run: `node solo-cancel.test.js`
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
+import { computeShiftCash } from './cash-helpers.js';   // the «Tu cuadre no cambia» truth-check
+
+const __dir = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(join(__dir, '..', 'xpizza-functions', 'package.json'));
+const { JSDOM } = require('jsdom');
+const SCRIPT = readFileSync(join(__dir, 'index.html'), 'utf8').match(/<script type="module">([\s\S]*?)<\/script>/)[1];
+function liftFn(name) {
+  let start = SCRIPT.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `function ${name} not found`);
+  let depth = 0, seen = false;
+  for (let i = start; i < SCRIPT.length; i++) {
+    if (SCRIPT[i] === '{') { depth++; seen = true; }
+    else if (SCRIPT[i] === '}') { depth--; if (seen && depth === 0) return SCRIPT.slice(start, i + 1); }
+  }
+  throw new Error(`unbalanced ${name}`);
+}
+
+function boot({ cancel, dispatch = '+504 9999 8888' } = {}) {
+  const dom = new JSDOM('<!doctype html><html><body><div id="idle-state">'
+    + '<div class="idle-top"><div class="idle-check" id="idle-icon"></div><div class="idle-msg" id="idle-msg">x</div>'
+    + '<div class="idle-sub" id="idle-sub">x</div><button class="idle-help-link" id="idle-help-link">h</button>'
+    + '<button class="big-btn primary hidden" id="arrive-btn">Estoy en el restaurante</button></div>'
+    + '<div class="statbar" id="idle-statbar"><div id="stat-deliveries">0</div><div id="stat-cash">L 0</div></div>'
+    + '</div></body></html>', { url: 'https://driver.test/', pretendToBeVisual: true });
+  const { document, window } = dom.window;
+  const $ = (id) => document.getElementById(id);
+  const ICONS = new Proxy({}, { get: (_, k) => `<svg data-ic="${String(k)}"></svg>` });
+  const driverState = { status: 'available', last_ping: Date.now() };
+  const XPD = { isStalePing: () => false, getDb: () => ({}) };
+  const fbRef = () => ({});
+  const fbOnValue = (ref, cb) => { cb(dispatch == null ? null : { val: () => dispatch }); return () => {}; };
+  const escapeHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const currentUser = { uid: 'drv' };
+  $('idle-help-link')._mark = 'help'; $('arrive-btn')._mark = 'arrive';
+  const body = 'let drv2SoloCancel = _cancel;\nfunction renderActiveAndQueue(){ _calls.raq = (_calls.raq||0)+1; }\n'
+    + 'let NAVP_ICONS = {}, navBtnHtml = () => "", drv2ReadNavPref = () => "Waze";\n'
+    + liftFn('renderSoloCancel') + '\n' + liftFn('wireDispatchCallRow') + '\n' + liftFn('renderDisponible') + '\n'
+    + 'return { renderDisponible, getCancel: () => drv2SoloCancel };';
+  const calls = {};
+  const names = ['document', '$', 'ICONS', 'driverState', 'XPD', 'fbRef', 'fbOnValue', 'escapeHtml', 'currentUser', 'window', '_cancel', '_calls'];
+  const api = (new Function(...names, body))(document, $, ICONS, driverState, XPD, fbRef, fbOnValue, escapeHtml, currentUser, window, cancel, calls);
+  return { api, document, window, host: $('idle-state'), $, calls };
+}
+
+// the REAL capture snippet from the SLICE3:SOLO-CANCEL region — run it against (orders, drv2Cancel) to prove the logic
+const CAPTURE = (() => {
+  const m = SCRIPT.match(/SLICE3:SOLO-CANCEL:START[\s\S]*?===== \*\/\n([\s\S]*?)\n\s*\/\* ===== SLICE3:SOLO-CANCEL:END/);
+  assert.ok(m, 'SOLO-CANCEL capture snippet not found');
+  return m[1];
+})();
+function runCapture(orders, drv2Cancel, prior = null) {
+  const fn = new Function('orders', 'drv2Cancel', 'drv2SoloCancel', CAPTURE + '\nreturn drv2SoloCancel;');
+  return fn(orders, drv2Cancel, prior);
+}
+
+let passed = 0;
+const t = (name, fn) => { try { fn(); passed += 1; } catch (e) { console.error(`✗ ${name}`); throw e; } };
+
+const CANCEL = { cancelledNum: '#1042', cancelledName: 'Daniela', cancelledAmount: 385, survivorName: '', cancelledBrand: 'X. Pizza' };
+
+t('renderDisponible shows the S.cancelado takeover: banner (num + brand), «Entendido», «Disponible» card, «cuadre no cambia», dispatch row', () => {
+  const h = boot({ cancel: CANCEL });
+  h.api.renderDisponible();
+  const html = h.host.innerHTML;
+  assert.ok(h.host.querySelector('.disp-cancel-banner'), 'cancel banner present');
+  assert.match(html, /Pedido #1042 cancelado por despacho/, 'banner title with the cancelled number');
+  assert.match(html, /Regresá la comida a X\. Pizza/, 'brand is data-driven (cancelledBrand)');
+  assert.match(html, /Queda a la vista hasta que toques «Entendido»/, 'the persistence chip');
+  assert.ok(h.host.querySelector('#btn-solo-cancel-ack'), '«Entendido» button present');
+  assert.equal(h.host.querySelector('.disp-chip span:last-child').textContent, 'Disponible', 'the «Disponible» status card');
+  assert.match(html, /Tu cuadre no cambia/, 'cuadre-unchanged row');
+  assert.ok(!h.host.querySelector('.disp-status + * .disp-statcard') && !/Esperando pedidos/.test(html), 'the normal idle «Esperando pedidos» body is replaced');
+});
+
+t('brand-agnostic fallback: no cancelledBrand → «Regresá la comida al restaurante» (never a literal)', () => {
+  const h = boot({ cancel: { ...CANCEL, cancelledBrand: '' } });
+  h.api.renderDisponible();
+  assert.match(h.host.innerHTML, /Regresá la comida al restaurante/, 'neutral fallback');
+  assert.doesNotMatch(h.host.innerHTML, /X\. Pizza|La Musa/, 'no hard-coded brand');
+});
+
+t('«Entendido» clears drv2SoloCancel and re-renders', () => {
+  const h = boot({ cancel: CANCEL });
+  h.api.renderDisponible();
+  h.host.querySelector('#btn-solo-cancel-ack').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(h.api.getCancel(), null, 'the cancel state is cleared');
+  assert.ok(h.calls.raq >= 1, 're-rendered via renderActiveAndQueue');
+});
+
+t('dispatch row: shown + tel: when a number exists; hidden when absent (no dead affordance)', () => {
+  const h1 = boot({ cancel: CANCEL, dispatch: '+504 9999 8888' });
+  h1.api.renderDisponible();
+  const row = h1.host.querySelector('#disp-cancel-dispatch');
+  assert.ok(row && !row.classList.contains('hidden'), 'dispatch row shown with a valid number');
+  assert.match(row.textContent, /Llamá a despacho/, 'row label');
+  const h2 = boot({ cancel: CANCEL, dispatch: null });
+  h2.api.renderDisponible();
+  assert.ok(h2.host.querySelector('#disp-cancel-dispatch').classList.contains('hidden'), 'row hidden when no dispatch number');
+});
+
+t('the startup-bound #idle-help-link and #arrive-btn survive the takeover (preserved, invisible)', () => {
+  const h = boot({ cancel: CANCEL });
+  h.api.renderDisponible();
+  assert.equal(h.$('idle-help-link')._mark, 'help', 'help-link is the SAME element (not re-created)');
+  assert.equal(h.$('arrive-btn')._mark, 'arrive', 'arrive-btn is the SAME element');
+  assert.ok(h.$('idle-help-link').closest('#disp-preserve'), 'preserved inside the hidden holder');
+});
+
+// the capture logic (REAL snippet)
+t('capture: a NO-survivor cancel on an EMPTY board → drv2SoloCancel set', () => {
+  assert.deepEqual(runCapture([], CANCEL, null), CANCEL, 'solo cancel captured');
+});
+t('capture: a SURVIVOR cancel → NOT captured (survivor path owns it)', () => {
+  assert.equal(runCapture([], { ...CANCEL, survivorName: 'Carlos' }, null), null, 'survivor cancel not captured as solo');
+});
+t('capture: active work clears a prior solo-cancel (next order)', () => {
+  assert.equal(runCapture([{ phase: 'pickup' }], null, CANCEL), null, 'cleared once there is active work');
+});
+t('capture: persists across idle re-renders once drv2Cancel is nulled (no re-set, no clear)', () => {
+  assert.deepEqual(runCapture([], null, CANCEL), CANCEL, 'idle re-render keeps the banner');
+});
+
+// «Tu cuadre no cambia» truth-check: a cancelled cash order never enters computeShiftCash (no delivered_at)
+t('computeShiftCash: a CANCELLED cash order is NOT counted — the «Tu cuadre no cambia» claim holds', () => {
+  const orders = {
+    good: { total: 385, payment_method: 'cash', delivered_by_driver_uid: 'me', delivered_at: 3000 },
+    cxl: { total: 500, payment_method: 'cash', status: 'cancelled', delivered_by_driver_uid: 'me' },   // never delivered → no delivered_at
+  };
+  const r = computeShiftCash(orders, 'me', 1000, 5000);
+  assert.equal(r.cashOwed, 385, 'only the delivered order is in the cash — the cancelled one adds nothing');
+  assert.equal(r.cashOrderCount, 1, 'the cancelled cash order is not a cash-owed order');
+  assert.equal(r.deliveries, 1, 'the cancelled order is not a delivery');
+});
+
+console.log(`✓ solo-cancel: ${passed} tests passed`);

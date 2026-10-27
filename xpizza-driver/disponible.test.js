@@ -48,7 +48,7 @@ function boot({ status = 'available', stale = false } = {}) {
   const drv2ClearReturnTarget = () => {};
   // tag the startup-bound controls so we can prove the SAME elements survive the rebuild
   $('idle-help-link')._boundMark = 'help'; $('arrive-btn')._boundMark = 'arrive';
-  const body = liftFn('renderDisponible') + '\nreturn { renderDisponible };';
+  const body = 'let drv2SoloCancel = null;\nfunction renderSoloCancel(){}\n' + liftFn('renderDisponible') + '\nreturn { renderDisponible };';
   const api = (new Function('document', '$', 'ICONS', 'driverState', 'XPD', 'NAVP_ICONS', 'navBtnHtml', 'drv2ReadNavPref', 'escapeHtml', 'currentUser', 'drv2GetReturnTarget', 'drv2ClearReturnTarget', body))(
     document, $, ICONS, driverState, XPD, NAVP_ICONS, navBtnHtml, drv2ReadNavPref, escapeHtml, currentUser, drv2GetReturnTarget, drv2ClearReturnTarget);
   api.renderDisponible();
@@ -123,7 +123,7 @@ t('composed: renderIdleState rebuilds the body via the renderDisponible hook (ki
   const currentUser = { uid: 'drv' };
   const drv2GetReturnTarget = () => null;
   const drv2ClearReturnTarget = () => {};
-  const body = 'function applyGpsoff(){}\nfunction checkLocationStatus(){}\nfunction syncIdleStats(){}\n'
+  const body = 'let drv2SoloCancel = null;\nfunction renderSoloCancel(){}\nfunction applyGpsoff(){}\nfunction checkLocationStatus(){}\nfunction syncIdleStats(){}\n'
     + liftFn('renderDisponible') + '\n' + liftFn('renderIdleState') + '\nreturn { renderIdleState };';
   const api = (new Function('document', '$', 'ICONS', 'driverState', 'XPD', 'NAVP_ICONS', 'navBtnHtml', 'drv2ReadNavPref', 'escapeHtml', 'currentUser', 'drv2GetReturnTarget', 'drv2ClearReturnTarget', body))(
     document, $, ICONS, driverState, XPD, NAVP_ICONS, navBtnHtml, drv2ReadNavPref, escapeHtml, currentUser, drv2GetReturnTarget, drv2ClearReturnTarget);

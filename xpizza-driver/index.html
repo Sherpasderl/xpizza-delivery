@@ -267,6 +267,27 @@
    height/radius/type; SAME element + handler, no behaviour change. Scoped to #idle-state (shown only while returning). */
 #idle-state #arrive-btn { text-transform: none; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; width: auto; min-height: 52px; padding: 14px 18px; border-radius: 14px; background: var(--surface, #fff); color: var(--text, #0D1424); box-shadow: inset 0 0 0 1px var(--line, #E2E6EE); }
 #idle-state #arrive-btn:active { background: var(--surface-2, #F5F7FA); transform: none; }
+/* S.cancelado — a no-survivor cancellation takes over the idle screen (renderSoloCancel). Children get #idle-state's gap:14px. */
+#idle-state .disp-cancel-banner { display: flex; gap: 11px; align-items: flex-start; padding: 12px 13px; border-radius: 13px; font-size: 13.5px; line-height: 1.35; background: #FBE7E8; color: #B9323A; }   /* proto .banner.err */
+#idle-state .disp-cancel-banner svg { width: 20px; height: 20px; flex: none; margin-top: 1px; }
+#idle-state .disp-cancel-banner b { display: block; font-family: 'Red Hat Display', sans-serif; font-size: 14.5px; }
+#idle-state .disp-cancel-banner .dcb-body { display: block; margin-top: 2px; }
+#idle-state .disp-cancel-banner .dcb-chiprow { display: block; margin-top: 8px; }
+#idle-state .disp-cancel-banner .dcb-chip { display: inline-block; font: 700 12px 'Red Hat Text', sans-serif; background: transparent; border: 1px solid currentColor; border-radius: 999px; padding: 4px 10px; }   /* proto .chip.err transparent + border */
+#idle-state .disp-cancel-ack { appearance: none; border: 0; width: 100%; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; border-radius: 14px; padding: 15px 14px; min-height: 52px; background: #2F5FB8; color: #fff; cursor: pointer; }   /* proto .btn.primary «Entendido» */
+#idle-state .disp-cancel-ack:active { background: #24488C; }
+#idle-state .disp-cancel-info { background: var(--surface, #fff); border-radius: 14px; box-shadow: 0 1px 2px rgba(13,20,36,.05), 0 6px 18px rgba(13,20,36,.06); padding: 4px 14px; }   /* proto .card (S.cancelado padding 4px 14px) */
+#idle-state .disp-cancel-row { display: flex; gap: 11px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line, #E2E6EE); }   /* proto .row */
+#idle-state .disp-cancel-row:first-child { border-top: 0; }
+#idle-state .disp-cancel-row.tap { cursor: pointer; }
+#idle-state .disp-cancel-row .dci-ic { width: 30px; height: 30px; border-radius: 9px; background: #E7ECF4; color: #546078; display: grid; place-items: center; flex: none; }   /* proto .row .ic */
+#idle-state .disp-cancel-row .dci-ic svg { width: 17px; height: 17px; }
+#idle-state .disp-cancel-row .dci-ic.ok { background: #E3F3E9; color: #15803D; }   /* proto .row .ic.ok */
+#idle-state .disp-cancel-row .dci-txt { min-width: 0; flex: 1; }
+#idle-state .disp-cancel-row .dci-txt b { display: block; font-weight: 700; font-size: 14px; line-height: 1.3; }
+#idle-state .disp-cancel-row .dci-txt small { display: block; font-size: 12.5px; color: var(--text-soft, #546078); margin-top: 1px; }
+#idle-state .disp-cancel-row .dci-chev { color: #8A95AB; flex: none; align-self: center; }   /* proto .row .chev (--p-dim) */
+#idle-state .disp-cancel-row .dci-chev svg { width: 16px; height: 16px; }
 #idle-state .idle-msg { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); margin: 0; }   /* proto .h = --fd (margin 0 — drop the base 9px) */
 #idle-state .idle-sub { font-family: var(--fb); font-size: 13px; line-height: 1.4; max-width: none; margin: 6px 0 0; color: var(--text-soft, #546078); }   /* CSS parity with prototype .body.center .sub (advisor): font/size/line-height/width/padding equal, NO max-width, 6px margin-top */
 #screen-onshift #idle-state .idle-help-link { font-family: var(--fb); color: var(--text-soft, #546078); font-weight: 600; font-size: 13px; }   /* proto .btn.txt — darker, semibold (fix) */
@@ -2985,6 +3006,9 @@ function renderOffshift() {
 // stamp on read. Stacked deliveries: each completion overwrites it, so the LAST completed order's restaurant wins.
 const RETURN_TARGET_KEY = 'sherpa_return_target';
 let returnTarget = null;   // { name, lat, lng, uid } | null
+// A no-survivor cancellation surviving into the idle screen (prototype S.cancelado). Set by drv2Observe's SOLO-CANCEL
+// region from drv2Cancel when a cancel empties the board; shown by renderDisponible; cleared on «Entendido» / next order.
+let drv2SoloCancel = null;   // { cancelledNum, cancelledName, cancelledAmount, survivorName, cancelledBrand } | null
 function drv2SetReturnTarget(t) {
   const ok = t && t.name && Number.isFinite(t.lat) && Number.isFinite(t.lng) && t.uid;
   returnTarget = ok ? { name: String(t.name), lat: t.lat, lng: t.lng, uid: String(t.uid) } : null;
@@ -3018,6 +3042,59 @@ function drv2CaptureReturnTarget(o) {   // at THIS client's delivery completion,
   });
 }
 
+// renderSoloCancel — the prototype S.cancelado body: a no-survivor cancellation that took over the idle screen. The
+// cancel banner (brand data-driven), «Entendido» (clears drv2SoloCancel → re-render), the «Disponible» status card,
+// and a card with «Tu cuadre no cambia» (TRUE: a cancelled order has no delivered_at, so computeShiftCash never counts
+// it) + «¿Dudas? Llamá a despacho» (from config/dispatch_contact, hidden if absent). The startup-bound help-link +
+// arrive-btn are preserved (invisible) so a later normal render still finds them. The survivor/stacked cancel path
+// (cancelBannerHtml over the active order) is untouched.
+function renderSoloCancel(host, helpLink, arriveBtn, offerExpired) {
+  const c = drv2SoloCancel || {};
+  const num = String(c.cancelledNum || '').trim();
+  const brandPhrase = c.cancelledBrand
+    ? ('Regresá la comida a ' + escapeHtml(String(c.cancelledBrand)))   // brand from the order — never a literal
+    : 'Regresá la comida al restaurante';                               // brand-agnostic fallback when the order carried no brand
+  const lp = driverState && driverState.last_ping;
+  const stale = (XPD && typeof XPD.isStalePing === 'function') ? XPD.isStalePing(lp) : false;
+  const gps = stale ? 'GPS inactivo' : ('GPS vivo' + (typeof lp === 'number' ? ' · hace ' + Math.max(0, Math.round((Date.now() - lp) / 1000)) + ' s' : ''));
+  host.innerHTML =
+    '<div class="disp-cancel-banner" id="disp-cancel-banner">' + ICONS.warn
+      + '<div><b>Pedido ' + escapeHtml(num) + ' cancelado por despacho</b>'
+      + '<span class="dcb-body">No cobrés nada. ' + brandPhrase + '. Si ya la tenés, avisá en ventanilla.</span>'
+      + '<span class="dcb-chiprow"><span class="dcb-chip">Queda a la vista hasta que toques «Entendido»</span></span>'
+      + '</div></div>'
+    + '<button class="disp-cancel-ack" id="btn-solo-cancel-ack">Entendido</button>'
+    + '<div class="disp-status"><span class="disp-chip"><i></i><span>Disponible</span></span>'
+      + '<span class="disp-gps' + (stale ? ' stale' : '') + '" id="disp-gps">' + gps + '</span></div>'
+    + '<div class="disp-cancel-info">'
+      + '<div class="disp-cancel-row"><span class="dci-ic ok">' + ICONS.cash + '</span><span class="dci-txt"><b>Tu cuadre no cambia</b><small>Este pedido no suma ni resta efectivo</small></span></div>'
+      + '<div class="disp-cancel-row tap hidden" id="disp-cancel-dispatch"><span class="dci-ic">' + ICONS.phone + '</span><span class="dci-txt"><b>¿Dudas? Llamá a despacho</b></span><span class="dci-chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span></div>'
+      + '</div>'
+    + '<div class="disp-sp"></div>'
+    + '<span id="disp-preserve" style="display:none"></span>';
+  const pres = $('disp-preserve');
+  if (pres) { if (helpLink) pres.appendChild(helpLink); if (arriveBtn) pres.appendChild(arriveBtn); }   // keep the bound controls alive (invisible)
+  if (offerExpired) host.insertBefore(offerExpired, host.firstChild);
+  const ack = $('btn-solo-cancel-ack');
+  if (ack) ack.onclick = () => { drv2SoloCancel = null; renderActiveAndQueue(); };   // «Entendido» → dismiss + re-render
+  wireDispatchCallRow($('disp-cancel-dispatch'));
+}
+
+// Wire a «Llamá a despacho» row to config/dispatch_contact: show it (tel: on tap) only when a valid number exists,
+// else keep it hidden (no dead affordance). Mirrors the offshift suspendida contact-row read. Best-effort + async.
+function wireDispatchCallRow(row) {
+  if (!row) return;
+  const finish = (val) => {
+    const s = (val == null ? '' : String(val)).trim();
+    const digits = s.replace(/[^\d]/g, '');
+    if (!/^\+?[1-9][\d ]{6,}$/.test(s) || digits.length < 7) { row.classList.add('hidden'); return; }
+    row.onclick = () => { try { window.location.href = 'tel:' + s.replace(/[^\d+]/g, ''); } catch (_) { /* no dialer */ } };
+    row.classList.remove('hidden');
+  };
+  try { fbOnValue(fbRef(XPD.getDb(), 'config/dispatch_contact'), (snap) => finish(snap && snap.val()), () => finish(null)); }
+  catch (_) { finish(null); }
+}
+
 // renderDisponible — the on-shift IDLE body rebuilt to prototype S.disponible: a calm status card (Disponible chip +
 // GPS freshness) + the check «Esperando pedidos» block + two stat cards. A runtime overwrite of #idle-state (the
 // renderOffshift pattern), called from renderIdleState's IDLE-3 region. The #idle-help-link and #arrive-btn have
@@ -3030,6 +3107,7 @@ function renderDisponible() {
   const helpLink = $('idle-help-link');     // bound once (→ openHelpSheet); preserve
   const arriveBtn = $('arrive-btn');         // bound once (→ the «en el restaurante» action); preserve
   const offerExpired = $('idle-offer-expired');   // the expired-offer notice (mounted by renderActiveAndQueue, with its «Ok» handler); preserve across the rebuild
+  if (drv2SoloCancel) { renderSoloCancel(host, helpLink, arriveBtn, offerExpired); return; }   // a no-survivor cancel takes over the idle screen (prototype S.cancelado)
   let icon, msg, sub, chip, iconCls = 'idle-check', navHtml = '';
   if (status === 'returning') {
     // prototype S.disponibleRegresando: a navigation glyph on the BLUE illus + the «head back» copy + a SOFT nav
@@ -5091,6 +5169,16 @@ function renderActiveAndQueue() {
      the prototype (which draws the tab bar on disponible/pausa/regresando/cancelado, never on an order screen). ===== */
   mountTabBar($('screen-onshift'), 'inicio', orders.length === 0);
   /* ===== SLICE3:TABBAR-BOARD:END ===== */
+  /* ===== SLICE3:SOLO-CANCEL:START — a cancellation that leaves NO survivor (the driver's only order) survives into
+     the idle screen as the prototype S.cancelado banner. drv2Observe (RUN-OBSERVER, just above) has set drv2Cancel;
+     capture it HERE — BEFORE the idle block's drv2ResetRun nulls it — when the board is empty and the cancel has no
+     survivor. It persists across idle re-renders (never re-set once drv2Cancel is nulled) and drops the instant there
+     is active work again. «Entendido» clears it in renderDisponible. The survivor/stacked path is untouched (that
+     shows cancelBannerHtml over the active order). ===== */
+  const drv2HasActiveWork = (orders || []).some((o) => o && (o.phase === 'pickup' || o.phase === 'delivery'));
+  if (drv2HasActiveWork) drv2SoloCancel = null;
+  else if (drv2Cancel && !drv2Cancel.survivorName) drv2SoloCancel = drv2Cancel;
+  /* ===== SLICE3:SOLO-CANCEL:END ===== */
   const idleSlot = $('idle-state');
   const bannerSlot = $('incoming-banner-slot');
   const activeSlot = $('active-order-slot');

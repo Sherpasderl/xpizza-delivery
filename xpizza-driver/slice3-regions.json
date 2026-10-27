@@ -460,6 +460,10 @@
   {
    "name": "RETURN-TARGET-CAPTURE",
    "kind": "insert"
+  },
+  {
+   "name": "SOLO-CANCEL",
+   "kind": "insert"
   }
  ],
  "deps": [
