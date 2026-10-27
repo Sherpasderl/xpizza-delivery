@@ -9,13 +9,19 @@ const require = createRequire(import.meta.url);
 const { createShellNav } = require('./capp-shell-nav.js');
 const { createMenuCache, STALE_MS, FRESH_MS } = require('./capp-menu-cache.js');
 
+// a FAITHFUL session history (Codex r2 New 4): indexed entries; pushState truncates the forward entries; back / forward / go move
+// the index and queue an ASYNC popstate carrying the destination entry's state
 function fakeWin() {
-  const win = { _l: null, _pending: 0 };
-  win.history = { entries: [{ root: 1 }], pushState(st) { this.entries.push(st); }, back() { this.entries.pop(); win._pending++; }, go(k) { for (let i = 0; i < -k; i++) this.entries.pop(); win._pending++; } };
+  const win = { _l: null, q: [] };
+  win.history = { entries: [null], i: 0, get state() { return this.entries[this.i]; },
+    pushState(st) { this.entries = this.entries.slice(0, this.i + 1); this.entries.push(st); this.i = this.entries.length - 1; },
+    go(k) { const j = Math.max(0, Math.min(this.entries.length - 1, this.i + k)); if (j === this.i) return; this.i = j; win.q.push({ state: this.entries[j] }); },
+    back() { this.go(-1); }, forward() { this.go(1); } };
   win.addEventListener = (t, f) => { if (t === 'popstate') win._l = f; };
   win.removeEventListener = (t, f) => { if (win._l === f) win._l = null; };
-  win.flush = () => { const out = []; while (win._pending > 0) { win._pending--; out.push(win._l ? win._l() : 'none'); } return out; };   // the async popstates of UI-caused backs
-  win.device = () => { win.history.entries.pop(); return win._l ? win._l() : 'none'; };                                                   // a device / browser back
+  win.flush = () => { const out = []; while (win.q.length) { const e = win.q.shift(); out.push(win._l ? win._l(e) : 'none'); } return out; };   // deliver the queued popstates
+  win.device = () => { win.history.back(); return win.flush()[0]; };     // a device / browser Back
+  win.fwd = () => { win.history.forward(); return win.flush(); };        // a browser Forward
   return win;
 }
 function rigNav() {
@@ -34,7 +40,7 @@ test('S7a-1 N4: store-root `pass` returns to the RECORDED predecessor — Buscar
   const last = R.shown.at(-1);
   assert.deepEqual([last.e.name, last.x.restored], ['search', { q: 'pizza', scroll: 120 }], '🔴 Buscar → store back returns to Buscar with its query');
   assert.deepEqual(R.left.map((e) => e.rid), ['rid_a'], 'the store mount is left (destroyed) only after pass');
-  const D = rigNav(); D.nav.tab({ name: 'store', rid: 'rid_b' }); D.nav.adapterFor(D.nav.current()).subscribe(() => 'pass');
+  const D = rigNav(); D.nav.go({ name: 'search' }); D.nav.tab({ name: 'store', rid: 'rid_b' }); D.nav.adapterFor(D.nav.current()).subscribe(() => 'pass');   // a tab to the store: no recorded predecessor
   D.win.device(); assert.equal(D.shown.at(-1).e.name, 'home', 'no predecessor (a deep link) ⇒ the Inicio fallback');
 });
 
@@ -43,11 +49,11 @@ test('S7a-1 §1.3: consumed ⇒ the mount handled it (the store stays); blocked 
   R.nav.go({ name: 'store', rid: 'rid_a' });
   const ad = R.nav.adapterFor(R.nav.current()); let result = 'consumed', calls = 0; ad.subscribe(() => { calls++; return result; });
   ad.push(); ad.push();   // checkout → tip
-  const len = R.win.history.entries.length;
   assert.equal(R.win.device(), 'consumed'); assert.deepEqual([ad.owns(), R.left.length], [true, 0], 'one in-store entry left, the store stays');
+  const at = R.win.history.i;
   result = 'blocked';
   assert.equal(R.win.device(), 'blocked');
-  assert.equal(R.win.history.entries.length, len - 1, '🔴 blocked: the popped browser entry is restored (re-pushed)');
+  assert.equal(R.win.history.i, at, '🔴 blocked: the popped browser entry is restored (re-pushed)');
   assert.equal(R.left.length, 0, 'blocked never leaves or destroys the store');
   calls = 0; ad.back(); assert.deepEqual(R.win.flush(), ['self']); assert.equal(calls, 0, '🔴 a UI-caused back is never re-delivered to the mount');
   ad.push(); ad.push(); assert.equal(ad.owns(), true); ad.go(-2); assert.deepEqual(R.win.flush(), ['self']); assert.equal(ad.owns(), false, 'go(-k) pops k of the mount\'s entries');
@@ -59,6 +65,27 @@ test('S7a-1: a tab switch leaves a top store mount; destroy unsubscribes the pop
   R.nav.tab({ name: 'orders' });
   assert.deepEqual([R.left.map((e) => e.rid), R.nav.current().name, R.nav.depth()], [['rid_a'], 'orders', 1]);
   R.nav.destroy(); assert.equal(R.win._l, null);
+});
+
+test('Codex r2 New 3: EVERY shell exit asks the mount — tab / the shell\'s back / a screen over the store are refused while it answers blocked; nothing is left or destroyed', () => {
+  const R = rigNav(); R.nav.go({ name: 'search' }); R.nav.go({ name: 'store', rid: 'rid_a' });
+  let verdict = 'blocked'; const asked = []; R.nav.adapterFor(R.nav.current()).subscribe((intent) => { asked.push(intent); return intent === 'leave' ? verdict : 'consumed'; });
+  const shown0 = R.shown.length, at = R.win.history.i;
+  assert.deepEqual([R.nav.tab({ name: 'orders' }), R.nav.back(), R.nav.go({ name: 'search' })], [false, false, false], '🔴 a blocked mount is never left, destroyed or covered (each exit refused)');
+  assert.deepEqual([R.nav.current().name, R.left.length, R.shown.length, R.win.history.i, asked], ['store', 0, shown0, at, ['leave', 'leave', 'leave']], '🔴 a blocked mount is never left, destroyed or covered');
+  verdict = 'pass';
+  assert.equal(R.nav.tab({ name: 'orders' }), true);
+  assert.deepEqual([R.nav.current().name, R.left.map((e) => e.rid)], ['orders', ['rid_a']], 'a mount that may leave is left on the tab');
+});
+
+test('Codex r2 New 4: browser Forward is never processed as a Back — Inicio → Buscar → store, Back ⇒ Buscar, Forward ⇒ undone (Buscar stays, the predecessor intact), Back ⇒ Inicio', () => {
+  const R = rigNav(); R.nav.go({ name: 'search' }, { q: 'pizza' }); R.nav.go({ name: 'store', rid: 'rid_a' }, { q: 'pizza' });
+  R.nav.adapterFor(R.nav.current()).subscribe(() => 'pass');
+  assert.equal(R.win.device(), 'pass'); assert.equal(R.nav.current().name, 'search');
+  const shown = R.shown.length;
+  assert.deepEqual(R.win.fwd(), ['forward', 'self'], 'the forward move is undone (one self-caused correction)');
+  assert.deepEqual([R.nav.current().name, R.nav.depth(), R.shown.length, R.win.history.i], ['search', 2, shown, 1], '🔴 a Forward never pops the recorded predecessor');
+  assert.equal(R.win.device(), 'popped'); assert.equal(R.nav.current().name, 'home', 'Back from Buscar ⇒ Inicio');
 });
 
 // ── MenuCache ──
@@ -102,6 +129,25 @@ test('S7a-2 MenuCache: a 200 for another rid fails; a 304 needs the retained mat
   const es = await M.get('y'); assert.equal(es.state, 'stale');
   assert.equal(M.complete(['y', 'z']), false, '🔴 a stale rid makes search partial — never a complete «No encontramos»');
   t += STALE_MS; assert.equal(M.peek('y').state, 'failed', 'past the stale window ⇒ failed');
+});
+
+test('Codex r2 New 5: the deadlines apply at READ time — a body past FRESH_MS reads stale, past STALE_MS failed, even while its revalidation is pending; never complete', async () => {
+  let t = 0; const F = deferredFetcher(); const M = createMenuCache({ fetchEnvelope: F.fetchEnvelope, now: () => t });
+  const g = M.get('a'); await tick(); F.answer(0, env('a')); await g;
+  assert.deepEqual([M.peek('a').state, M.complete(['a'])], ['fresh', true]);
+  t += FRESH_MS + 1; M.get('a'); await tick();   // a revalidation is pending
+  assert.deepEqual([M.peek('a').state, !!M.peek('a').body, M.complete(['a'])], ['stale', true, false], '🔴 past FRESH_MS: stale (renderable), never complete');
+  t += STALE_MS; 
+  assert.deepEqual([M.peek('a').state, M.peek('a').body, M.complete(['a'])], ['failed', null, false], '🔴 past STALE_MS: failed, even while revalidating');
+  F.answer(1, env('a')); await tick(); await tick();
+  assert.equal(M.peek('a').state, 'fresh', 'the revalidation lands ⇒ fresh');
+});
+
+test('Codex r2 New 6: the validator-less re-fetch after an unusable 304 gets the same ONE retry', async () => {
+  const seq = [{ status: 304 }, { status: 503 }, env('w')]; const seen = [];
+  const M = createMenuCache({ fetchEnvelope: async (rid, etag) => { seen.push(etag); return seq.shift(); } });
+  const e = await M.get('w');
+  assert.deepEqual([e.state, seen.length], ['fresh', 3], '🔴 304 ⇒ re-fetch ⇒ 503 ⇒ ONE retry ⇒ fresh');
 });
 
 test('S7a-2 MenuCache: ONE retry on a network error / 5xx', async () => {

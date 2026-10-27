@@ -21780,8 +21780,8 @@
     "slice": "s7a1",
     "label": "P1-1: a reconciled purchased cart is dispatched again (new identity)",
     "file": "../customer-app/capp-api.js",
-    "from": "if (purchased) return recoverySheet(purchased);",
-    "to": "",
+    "from": "if (purchased.size && (cg === null || purchased.has(cg))) return recoverySheet(",
+    "to": "if (false) return recoverySheet(",
     "command": [
       "node",
       "--test",
@@ -21972,7 +21972,7 @@
     "slice": "s7a1",
     "label": "P2-6: a held lock passes to the shell at the store root",
     "file": "../customer-app/capp-ui.js",
-    "from": "return api && api.hosted && typeof api.holdsLock === 'function' && api.holdsLock() ? 'blocked' : 'pass'; }",
+    "from": "return lockedHere() ? 'blocked' : 'pass'; }",
     "to": "return 'pass'; }",
     "command": [
       "node",
@@ -22100,7 +22100,7 @@
     "slice": "s7a1",
     "label": "a UI-caused back is re-delivered to the mount",
     "file": "../customer-app/capp-shell-nav.js",
-    "from": "      if (skip > 0) { skip--; return 'self'; }\n",
+    "from": "      if (skip > 0) { skip--; pos = idx; return 'self'; }\n",
     "to": "",
     "command": [
       "node",
@@ -22173,6 +22173,168 @@
     ],
     "kills_with": [
       "envelope.rid must equal the requested rid"
+    ]
+  },
+  {
+    "id": "s7a1-40",
+    "slice": "s7a1",
+    "label": "r2 P1-1: the purchased generation is not recorded before the removal steps",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (mk.outcome === 'placed') purchased.set(mk.cart_gen, mk.order_id);   // r2 P1-1: before ANY removal step\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "the purchased cart is never sent again",
+      "never re-sent under a new identity"
+    ]
+  },
+  {
+    "id": "s7a1-41",
+    "slice": "s7a1",
+    "label": "r2 New 1: the latch traps every cart, not only the purchased generation",
+    "file": "../customer-app/capp-api.js",
+    "from": "if (purchased.size && (cg === null || purchased.has(cg)))",
+    "to": "if (purchased.size)",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "a new cart places normally in the same mount"
+    ]
+  },
+  {
+    "id": "s7a1-42",
+    "slice": "s7a1",
+    "label": "r2 New 1: the UI places without its cart generation",
+    "file": "../customer-app/capp-ui.js",
+    "from": "cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() });",
+    "to": "cartSnapshot: cart.snapshot() });",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a new cart after a purchased restore places normally"
+    ]
+  },
+  {
+    "id": "s7a1-43",
+    "slice": "s7a1",
+    "label": "r2 New 2: an unsettled issued-card end falls through to a second charge",
+    "file": "../customer-app/capp-api.js",
+    "from": "if (out.kind !== 'payment_failed' || out.unsettled) return out;",
+    "to": "if (out.kind !== 'payment_failed') return out;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1.test.mjs"
+    ],
+    "kills_with": [
+      "the unsettled end is returned",
+      "never a second charge"
+    ]
+  },
+  {
+    "id": "s7a1-44",
+    "slice": "s7a1",
+    "label": "r2 P2-6: a frozen-for-order (recovery) cart is not a lock",
+    "file": "../customer-app/capp-ui.js",
+    "from": "const lockedHere = () => hostedKeys() && (frozenNow() || ",
+    "to": "const lockedHere = () => hostedKeys() && (false || ",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "a recovery lock never passes to the shell"
+    ]
+  },
+  {
+    "id": "s7a1-45",
+    "slice": "s7a1",
+    "label": "r2 New 3: shell exits never ask the mount",
+    "file": "../customer-app/capp-shell-nav.js",
+    "from": "const mayLeave = () => !(top().name === 'store' && typeof mountBack === 'function' && mountBack('leave') === 'blocked');",
+    "to": "const mayLeave = () => true;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "a blocked mount is never left, destroyed or covered"
+    ]
+  },
+  {
+    "id": "s7a1-47",
+    "slice": "s7a1",
+    "label": "r2 New 4: a browser Forward is processed as a Back",
+    "file": "../customer-app/capp-shell-nav.js",
+    "from": "if (idx > pos) { skip++;",
+    "to": "if (false) { skip++;",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "the forward move is undone"
+    ]
+  },
+  {
+    "id": "s7a1-48",
+    "slice": "s7a1",
+    "label": "r2 New 5: a fresh body past FRESH_MS still reads fresh",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "      if (e.state === 'fresh' && age >= FRESH_MS) return { ...e, state: 'stale' };\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "past FRESH_MS: stale"
+    ]
+  },
+  {
+    "id": "s7a1-49",
+    "slice": "s7a1",
+    "label": "r2 New 5: the retention deadline applies only to stale entries at read time",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "if (age >= STALE_MS) return { ...e, state: 'failed', body: null };",
+    "to": "if (e.state === 'stale' && age >= STALE_MS) return { ...e, state: 'failed', body: null };",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "past STALE_MS: failed"
+    ]
+  },
+  {
+    "id": "s7a1-50",
+    "slice": "s7a1",
+    "label": "r2 New 6: the re-fetch after an unusable 304 has no retry",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "else { const f = await attemptRetry(rid, null);",
+    "to": "else { const f = await attempt(rid, null);",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-s7a1-shell.test.mjs"
+    ],
+    "kills_with": [
+      "ONE retry ⇒ fresh"
     ]
   }
 ]

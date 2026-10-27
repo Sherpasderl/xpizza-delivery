@@ -46,7 +46,8 @@ const flowOf = (pay = 'cash') => { const f = C.freshFlow(null); C.setPin(f, 15.5
 // the CappCart v2 snapshot shape (cart.snapshot(): { v: 2, lines: [{ key, qty, ex, added }] }); the real writer's own output is
 // composed in capp-ui.test.mjs (Codex r1 P2-8)
 const SNAP = { v: 2, lines: [{ key: 'd_1', qty: 1, ex: [{}], added: 1 }] };
-const args = (pay = 'cash') => ({ flow: flowOf(pay), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, cartSnapshot: SNAP });
+// the hosted UI places with its cart's generation (r2 §1.4; Codex r2 New 1)
+const args = (pay = 'cash', gen = 'GEN_A') => ({ flow: flowOf(pay), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, cartSnapshot: { ...SNAP, cart_gen: gen } });
 const OK_CASH = { status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } };
 const seedCart = (st, extra = {}) => st.setItem(K.cart, JSON.stringify({ v: 2, rid: 'rid_a', mode: 'delivery', lines: SNAP.lines, cart_gen: 'GEN_A', ...extra }));
 
@@ -102,6 +103,42 @@ test('S7a-1 Codex r1 P1-1: an UNVERIFIED marker whose removal ALSO fails ⇒ fai
   assert.deepEqual([c.kind, c.order_id, R.srv.sends()], ['existing_order', id, 1], '🔴 a fresh mount reconciles the purchased cart and never re-dispatches it');
 });
 
+test('Codex r2 P1-1: a PARTIAL reconciliation (the purchased cart removed, the marker removal FAILED) never lets that cart be sent again — not in the mount, not after a restart', async () => {
+  for (const restart of [false, true]) {
+    const R = rig({ script: { createOrder: [OK_CASH] } }); seedCart(R.storage);
+    const a = await R.api.place(args());
+    const id = R.srv.calls[0].body.order_id; assert.equal(a.kind, 'placed');
+    R.storage.fail.remove.add(K.placed);
+    const b = await R.api.place(args());
+    assert.deepEqual([b.kind, b.reconcile, J(R.storage, K.cart), J(R.storage, K.placed).order_id], ['offline', 'clear_marker', null, id], 'premise: cart removed, marker kept');
+    R.storage.fail.remove.delete(K.placed);   // storage recovers
+    const api = restart ? R.reload() : R.api;
+    const c = await api.place(args());
+    assert.deepEqual([c.kind, c.order_id, R.srv.sends()], ['existing_order', id, 1], `🔴 ${restart ? 'after a restart' : 'in the mount'}: the purchased cart is never re-sent under a new identity`);
+  }
+});
+
+test('Codex r2 New 1: the purchase latch binds to the purchased GENERATION — a NEW cart (a new gen) in the same mount places normally; the purchased one stays refused', async () => {
+  const R = rig({ script: { createOrder: [OK_CASH] } }); seedCart(R.storage);
+  await R.api.place(args());
+  const idA = R.srv.calls[0].body.order_id;
+  assert.equal((await R.api.place(args())).kind, 'existing_order', 'premise: the purchased cart is latched');
+  const b = await R.api.place(args('cash', 'GEN_B'));
+  assert.deepEqual([b.kind, R.srv.sends()], ['placed', 2], '🔴 a new cart places normally in the same mount');
+  assert.notEqual(R.srv.calls[1].body.order_id, idA);
+  assert.deepEqual([(await R.api.place(args())).kind, R.srv.sends()], ['existing_order', 2], 'the purchased generation is still refused');
+});
+
+test('Codex r2 New 2: on the ISSUED-card path an UNSETTLED end (a failed poll whose released marker did not land) is returned — never a second charge for the same id', async () => {
+  const R = rig({ script: { chargeOnlineOrder: [{ status: 200, json: { checkout_url: 'https://pay.test/1', poll_token: 'pt_1', attempt_id: 'a1' } }], paymentStatus: [{ status: 200, json: { ok: true, state: 'failed' } }] } }); seedCart(R.storage);
+  const a = await R.api.place(args('online')); assert.equal(a.kind, 'redirect');
+  R.storage.fail.write.add(K.placed);
+  const b = await R.api.place(args('online'));
+  assert.deepEqual([b.kind, b.unsettled, b.order_id], ['payment_failed', true, a.order_id], 'the unsettled end is returned');
+  assert.equal(R.srv.calls.filter((c) => c.ep === 'chargeOnlineOrder').length, 1, '🔴 never a second charge for the same id');
+  assert.equal(J(R.storage, K.place).order_id, a.order_id, 'the lock is held');
+});
+
 test('S7a-1 Codex r1 P1-2: a paid poll whose marker write FAILS keeps the stash (the recovery credentials) and is UNSETTLED — never terminal for the shell; a later poll completes it', async () => {
   const R = rig({ script: { chargeOnlineOrder: [{ status: 200, json: { checkout_url: 'https://pay.test/1', poll_token: 'pt_1', attempt_id: 'a1' } }] } }); seedCart(R.storage);
   const a = await R.api.place(args('online')); assert.equal(a.kind, 'redirect');
@@ -143,7 +180,7 @@ test('S7a-1 Codex r1 P1-4: a STALE late completion for A never replaces B\'s mar
   assert.equal(page2.reconcile().cart, 'cleared', 'A reconciled: its purchased cart removed');
   seedCart(R.storage, { cart_gen: 'GEN_B' });
   const page3 = R.reload();
-  assert.equal((await page3.place(args())).kind, 'placed');   // B (a new cart, a new identity)
+  assert.equal((await page3.place(args('cash', 'GEN_B'))).kind, 'placed');   // B (a new cart, a new identity)
   const idB = R.srv.calls[2].body.order_id; assert.notEqual(idB, idA);
   release(); const late = await p1;                    // the original A finally answers
   assert.equal(late.kind, 'placed');

@@ -92,9 +92,12 @@
     // completion-marker key. Absent (direct link, every S1-S4 suite) ⇒ every path below is the S2 path, unchanged.
     const CART_KEY = cfg.cartKey || null, PLACED_KEY = cfg.placedKey || null;
     const HOSTED = !!(CART_KEY && PLACED_KEY);
-    // Codex r1 P1-1: page latches (hosted). markerSuspect ⇒ an UNVERIFIED marker could not be removed: no placement this page;
-    // purchased ⇒ reconciliation REMOVED a purchased cart: this page never dispatches that cart again (under any identity)
-    let markerSuspect = false, purchased = null;
+    // Codex r1 P1-1: page latches (hosted). markerSuspect ⇒ an UNVERIFIED marker could not be removed: no placement this page.
+    // Codex r2 P1-1 / New 1: purchased = cart_gen → order_id of every PURCHASED cart this page has seen a placed marker for —
+    // recorded BEFORE any removal step (a partial reconciliation keeps it; a restart re-derives it from the marker, which stays
+    // until its removal is verified). A cart of THAT generation is never dispatched again; a new cart (a new gen) places normally.
+    let markerSuspect = false;
+    const purchased = new Map();
 
     // ── storage (every access guarded: unavailable storage reads as empty and refuses writes) ──
     const readJSON = (k) => { try { const v = storage && storage.getItem(k); return v ? JSON.parse(v) : null; } catch (_) { return null; } };
@@ -334,6 +337,7 @@
       const mk = m.value;
       // a marker without a generation is not evidence (Codex r1 P1-4): removed, nothing else touched (the freeze stays, §1.4)
       if (!mk || typeof mk !== 'object' || typeof mk.order_id !== 'string' || typeof mk.cart_gen !== 'string' || !mk.cart_gen) return mk == null ? { ok: true, done: 'none' } : (removeStrict(PLACED_KEY) ? { ok: true, done: 'none' } : { ok: false, step: 'clear_marker' });
+      if (mk.outcome === 'placed') purchased.set(mk.cart_gen, mk.order_id);   // r2 P1-1: before ANY removal step
       const pr = readStrict(PLACE_KEY); if (!pr.ok) return { ok: false, step: 'read_place' };
       if (pr.value && pr.value.order_id === mk.order_id && !removeStrict(PLACE_KEY)) return { ok: false, step: 'clear_place' };
       const cr = readStrict(CART_KEY); if (!cr.ok) return { ok: false, step: 'read_cart' };
@@ -344,7 +348,6 @@
         else { const { frozen_for, ...rest } = c; if (!writeStrict(CART_KEY, rest)) return { ok: false, step: 'unfreeze_cart' }; cart = 'unfrozen'; }
       }
       if (!removeStrict(PLACED_KEY)) return { ok: false, step: 'clear_marker' };
-      if (mk.outcome === 'placed' && cart === 'cleared') purchased = mk.order_id;   // P1-1: that cart is never dispatched again here
       return { ok: true, done: mk.outcome, order_id: mk.order_id, cart_gen: mk.cart_gen, cart };
     }
     // the cart's freeze (hosted): { frozen, order_id, live } — live = its placement record still exists. Codex r1 P1-3: a read
@@ -363,7 +366,10 @@
         if (markerSuspect) return { kind: 'offline', reconcile: 'marker_unverified' };   // P1-1: fail closed until a fresh mount
         const rc = reconcile();
         if (!rc.ok) return { kind: 'offline', reconcile: rc.step };   // blocked until reconciliation completes (nothing sent)
-        if (purchased) return recoverySheet(purchased);                // P1-1: a purchased cart is never re-dispatched (new identity or not)
+        // P1-1 (r2): a PURCHASED cart is never re-dispatched (new identity or not) — bound to its generation; a cart that carries no
+        // generation is unknown ⇒ blocked once any purchase is on record here
+        const cg = p.cartSnapshot && typeof p.cartSnapshot.cart_gen === 'string' && p.cartSnapshot.cart_gen ? p.cartSnapshot.cart_gen : null;
+        if (purchased.size && (cg === null || purchased.has(cg))) return recoverySheet(cg === null ? [...purchased.values()].pop() : purchased.get(cg));
         const fz = cartFreeze();
         if (fz.unknown) return { kind: 'offline', reconcile: 'read_cart' };   // P1-3: unknown freeze state ⇒ blocked
         // r3 §1.4: a frozen cart whose lock expired with no marker NEVER unlocks — the drawn recovery sheet, never a new placement
@@ -382,7 +388,9 @@
         if (pr.forbidden) return recoverySheet(live.order_id);
         if (pr.state === 'pending' && method === 'online' && live.issued) return resume(live);   // back to ITS checkout — never a send
         const out = outcomeOfState(live.order_id, pr.state, pr.json);
-        if (out.kind !== 'payment_failed') return out;                                    // placed / refunded / confirming
+        // placed / refunded / confirming — and (Codex r2 New 2) an UNSETTLED end: its marker did not land, so the record is still
+        // A's and the loop below would re-dispatch A; it is returned, never re-sent
+        if (out.kind !== 'payment_failed' || out.unsettled) return out;
         // cancelled / failed: cleared ⇒ a NEW placement (falls through and mints)
       }
       let expected = p.expectedNetCents;
@@ -397,10 +405,12 @@
           if (HOSTED && !(Number(rec.dispatched) > 0)) {
             const sr = readStrict(CART_KEY); if (!sr.ok) return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };   // P1-3
             const snap = sr.value && typeof sr.value === 'object' ? sr.value : {};
-            // the cart's own generation unless it is bound to ANOTHER order (never borrowed across orders)
-            const gen = rec.cart_gen || ((!snap.frozen_for || snap.frozen_for === rec.order_id) && typeof snap.cart_gen === 'string' && snap.cart_gen) || newGen();
-            // Codex r1 P2-8: the supplied snapshot's own version (v2 — CappCart.hydrate accepts only v2), never a v1 default
             const cs = p.cartSnapshot && Array.isArray(p.cartSnapshot.lines) ? p.cartSnapshot : null;
+            // the cart's own generation unless it is bound to ANOTHER order (never borrowed across orders)
+            // the generation: this identity's own, else the cart's own (the UI's, §1.4), else the stored cart's unless it is bound to
+            // ANOTHER order (never borrowed across orders), else a new one
+            const gen = rec.cart_gen || (cs && typeof cs.cart_gen === 'string' && cs.cart_gen) || ((!snap.frozen_for || snap.frozen_for === rec.order_id) && typeof snap.cart_gen === 'string' && snap.cart_gen) || newGen();
+            // Codex r1 P2-8: the supplied snapshot's own version (v2 — CappCart.hydrate accepts only v2), never a v1 default
             if (!writeStrict(CART_KEY, { ...snap, v: cs ? cs.v : snap.v, rid: cfg.restaurantId, mode: p.flow && p.flow.mode, lines: cs ? cs.lines : snap.lines, cart_gen: gen, frozen_for: rec.order_id })) return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };
             if (rec.cart_gen !== gen) rec = patchPlace(rec.order_id, { cart_gen: gen });
           }
@@ -526,7 +536,7 @@
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
     return { quote, latestQuote, place, handleReturn, resolveExisting, readPlace, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
-      reconcile, cartFreeze, holdsLock, readStrict, writeStrict, removeStrict, hosted: HOSTED,
+      reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY };
   }
 

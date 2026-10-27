@@ -7,7 +7,9 @@
 //   • a 200 must carry envelope.rid === rid (else a failed fetch); a 304 is accepted ONLY with a retained body whose etag equals the
 //     request's If-None-Match (else re-fetched without a validator)
 //   • failed (re)validation: the stale body is kept for STALE_MS after it was fetched, then the entry is `failed`
-//   • one retry on a network error / 5xx
+//   • the deadlines apply at READ time too (peek / complete / what subscribers receive), also while a revalidation is pending:
+//     older than FRESH_MS ⇒ stale (renderable, search partial); older than STALE_MS ⇒ failed (Codex r2 New 5)
+//   • one retry on a network error / 5xx — on every request, the validator-less re-fetch after an unusable 304 included (New 6)
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -25,7 +27,7 @@
     const limit = o.concurrency || CONCURRENCY;
     const entries = new Map(), inflight = new Map(), listeners = new Map();
     const queue = []; let active = 0;
-    const notify = (rid) => { for (const fn of [...(listeners.get(rid) || [])]) { try { fn(entries.get(rid) || null); } catch (_) {} } };
+    const notify = (rid) => { for (const fn of [...(listeners.get(rid) || [])]) { try { fn(peek(rid)); } catch (_) {} } };
     function slot(task) {
       return new Promise((resolve) => {
         const run = () => { active++; Promise.resolve().then(task).then(resolve, () => resolve(null)).finally(() => { active--; const next = queue.shift(); if (next) next(); }); };
@@ -36,16 +38,19 @@
       let r; try { r = await fetchEnvelope(rid, etag); } catch (_) { r = { status: 0 }; }
       return r || { status: 0 };
     }
+    async function attemptRetry(rid, etag) {
+      const r = await attempt(rid, etag);
+      return r.status === 0 || r.status >= 500 ? attempt(rid, etag) : r;   // ONE retry
+    }
     async function load(rid) {
       const cur = entries.get(rid) || null;
       const gen = (cur ? cur.gen : 0) + 1;
       const etag = cur && cur.body && cur.etag ? cur.etag : null;
-      let r = await attempt(rid, etag);
-      if (r.status === 0 || r.status >= 500) r = await attempt(rid, etag);   // ONE retry
+      const r = await attemptRetry(rid, etag);
       let next;
       if (r.status === 304) {
         if (etag && cur && cur.body && cur.etag === etag) next = { ...cur, state: 'fresh', fetched_at: now(), gen };   // the retained body IS that etag
-        else { const f = await attempt(rid, null); next = okBody(rid, f, gen) || failOf(cur, gen); }   // no matching body ⇒ re-fetch without a validator
+        else { const f = await attemptRetry(rid, null); next = okBody(rid, f, gen) || failOf(cur, gen); }   // no matching body ⇒ re-fetch without a validator
       } else {
         next = okBody(rid, r, gen) || failOf(cur, gen);
       }
@@ -68,10 +73,14 @@
       inflight.set(rid, p);
       return p;
     }
-    // the render-side read: what is there NOW (fresh / stale / failed), without fetching; stale entries past STALE_MS read as failed
+    // the render-side read: what is there NOW, without fetching, the deadlines applied at read time: past STALE_MS ⇒ failed (the
+    // body dropped); a fresh body past FRESH_MS ⇒ stale (renderable, never complete) until a revalidation lands
     function peek(rid) {
       const e = entries.get(rid); if (!e) return null;
-      if (e.state === 'stale' && now() - e.fetched_at >= STALE_MS) return { ...e, state: 'failed', body: null };
+      if (e.state === 'failed') return e;
+      const age = now() - e.fetched_at;
+      if (age >= STALE_MS) return { ...e, state: 'failed', body: null };
+      if (e.state === 'fresh' && age >= FRESH_MS) return { ...e, state: 'stale' };
       return e;
     }
     function subscribe(rid, fn) {

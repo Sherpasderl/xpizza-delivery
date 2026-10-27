@@ -1519,11 +1519,22 @@ test('S7a-1 Codex r1 P2-8: the freeze persists the REAL v2 snapshot with no stor
   assert.deepEqual([h.dropped, r.ui.cart.count()], [0, b.ui.cart.count()], 'every line hydrates');
 });
 
+// a FAITHFUL session history for the shell nav (Codex r2 New 4): indexed entries, async popstate carrying the destination state
+function faithfulWin() {
+  const win = { _l: null, q: [] };
+  win.history = { entries: [null], i: 0, get state() { return this.entries[this.i]; },
+    pushState(st) { this.entries = this.entries.slice(0, this.i + 1); this.entries.push(st); this.i = this.entries.length - 1; },
+    go(k) { const j = Math.max(0, Math.min(this.entries.length - 1, this.i + k)); if (j === this.i) return; this.i = j; win.q.push({ state: this.entries[j] }); },
+    back() { this.go(-1); }, forward() { this.go(1); } };
+  win.addEventListener = (t, f) => { if (t === 'popstate') win._l = f; };
+  win.removeEventListener = () => { win._l = null; };
+  win.device = () => { win.history.back(); const out = []; while (win.q.length) { const e = win.q.shift(); out.push(win._l ? win._l(e) : 'none'); } return out[0]; };
+  return win;
+}
+
 test('S7a-1 composed: the REAL CappUI under the shell nav — Buscar → store → checkout → tip, device backs walk ONE stack (tip → checkout → cart → menu), the store root returns to Buscar with its query', async () => {
   const { createShellNav } = await import('./capp-shell-nav.js').then((m) => m.default || m);
-  const win = { _l: null, history: { entries: [{}], pushState(st) { this.entries.push(st); }, back() { this.entries.pop(); }, go(k) { for (let i = 0; i < -k; i++) this.entries.pop(); } },
-    addEventListener(t, f) { if (t === 'popstate') this._l = f; }, removeEventListener() { this._l = null; } };
-  const device = () => { win.history.entries.pop(); return win._l(); };
+  const win = faithfulWin(); const device = () => win.device();
   const shown = []; const nav = createShellNav({ win, onShow: (e, x) => shown.push({ name: e.name, restored: x && x.restored }), onLeave: () => {} });
   nav.go({ name: 'search' }); nav.go({ name: 'store', rid: 'rid_a' }, { q: 'pizza', scroll: 40 });
   const b = bootCo({ mountOpts: { history: nav.adapterFor(nav.current()) } });
@@ -1535,4 +1546,44 @@ test('S7a-1 composed: the REAL CappUI under the shell nav — Buscar → store �
   if (b.q('#layer .sheet')) { assert.equal(device(), 'consumed'); await settle(); }
   assert.equal(device(), 'pass', 'the store root');
   assert.deepEqual(shown.at(-1), { name: 'search', restored: { q: 'pizza', scroll: 40 } }, '🔴 back to Buscar with its query');
+});
+
+test('Codex r2 P2-6: a CASH order_exists recovery lock ⇒ after «Volver al pedido» device back walks the store but NEVER passes — the frozen-for-order cart keeps the store', async () => {
+  const storage = memStore(); const H = shellHist();
+  const b = bootCo({ storage, config: HOSTED_KEYS, mountOpts: { history: H.adapter }, script: { createOrder: [{ status: 409, json: { error: 'order_exists' } }] } });
+  await placeVia(b, 'cash');
+  assert.equal(b.q('#layer .sheet').getAttribute('aria-label'), 'Necesitamos revisar tu pedido', 'premise: the held recovery sheet');
+  const id = b.srv.of('createOrder')[0].body.order_id;
+  assert.equal(H.device(), 'blocked', 'the held sheet ⇒ blocked');
+  await b.click('#layer [data-act="lclose"]');
+  const seen = []; for (let i = 0; i < 6; i++) { seen.push(H.device()); await settle(); }
+  assert.ok(!seen.includes('pass'), `🔴 a recovery lock never passes to the shell (${seen.join(',')})`);
+  assert.deepEqual([seen.at(-1), JSON.parse(storage.getItem('capp:rid_a:cart')).frozen_for, writes(b)], ['blocked', id, 1], 'the root under the lock is blocked; still frozen; nothing re-sent');
+});
+
+test('Codex r2 New 1: after a restore that found the cart PURCHASED (cleared), a NEW cart in the same mount places normally — never «Necesitamos revisar tu pedido»', async () => {
+  const b0 = bootCo(); b0.ui.cart.inc(b0.plain.key);
+  const snap = { ...J(b0.ui.cart.snapshot()), rid: 'rid_a', mode: 'delivery', cart_gen: 'GEN_A', frozen_for: 'TA_A' };
+  const storage = memStore();
+  storage.setItem('capp:rid_a:cart', JSON.stringify(snap));
+  storage.setItem('capp:rid_a:placed', JSON.stringify({ order_id: 'TA_A', cart_gen: 'GEN_A', outcome: 'placed', at: NOON().getTime() }));
+  const b = bootCo({ storage, config: HOSTED_KEYS, script: { createOrder: [{ status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }] } });
+  assert.deepEqual(J(b.ui.restore(snap)), { cleared: true }, 'premise: the purchased cart is cleared, not restored');
+  await placeVia(b, 'cash');   // a new dish: a NEW cart
+  assert.equal(writes(b), 1, '🔴 a new cart after a purchased restore places normally');
+  assert.ok(!/Necesitamos revisar/.test(b.text('#layer') || ''), 'never the recovery sheet');
+  assert.notEqual(JSON.parse(storage.getItem('capp:rid_a:cart') || '{}').cart_gen, 'GEN_A', 'a new generation');
+});
+
+test('Codex r2 New 3: a REAL CappUI holding a create-order response (sending) is never torn down by the shell — tab / the shell\'s back refused, the mount alive; it leaves once settled', async () => {
+  const { createShellNav } = await import('./capp-shell-nav.js').then((m) => m.default || m);
+  const win = faithfulWin(); const left = [];
+  const nav = createShellNav({ win, onShow: () => {}, onLeave: (e) => left.push(e) });
+  nav.go({ name: 'search' }); nav.go({ name: 'store', rid: 'rid_a' });
+  let release; const held = new Promise((r) => { release = r; });
+  const b = bootCo({ storage: memStore(), config: HOSTED_KEYS, mountOpts: { history: nav.adapterFor(nav.current()) }, script: { createOrder: [() => held.then(() => ({ status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }))] } });
+  await placeVia(b, 'cash');
+  assert.equal(b.ui.state.screen, 'sending', 'premise: «Enviando», the response held');
+  assert.deepEqual([nav.tab({ name: 'orders' }), nav.back(), nav.go({ name: 'search' }), left.length, nav.current().name], [false, false, false, 0, 'store'], '🔴 a sending mount is never left or destroyed');
+  release(); await settle();
 });

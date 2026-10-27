@@ -131,7 +131,13 @@
     const emit = (name, detail) => { if (dead) return; try { (opts.onEvent || (() => {}))(name, detail); } catch (_) {} };
     // S7a-1 (PLAN-capp-S7a r2 §1.6): the shell's per-store cart persistence hook — after a SUCCESSFUL mutation, a restore and a
     // delivery/pickup change; a throwing hook never affects the UI; absent ⇒ nothing is called
-    const notifyCart = () => { if (dead || typeof opts.onCartChange !== 'function' || frozenNow()) return; try { opts.onCartChange({ ...cart.snapshot(), rid: cfg.restaurantId, mode: S.mode }); } catch (_) {} };
+    const notifyCart = () => { if (dead || typeof opts.onCartChange !== 'function' || frozenNow()) return; try { opts.onCartChange({ ...cart.snapshot(), rid: cfg.restaurantId, mode: S.mode, ...(hostedKeys() ? { cart_gen: cart.count() ? genNow() : null } : {}) }); } catch (_) {} };
+    // S7a-1 (PLAN-capp-S7a r2 §1.4; Codex r2 New 1): hosted ⇒ the cart's GENERATION is the UI's — re-minted whenever the cart starts
+    // empty (or a restore found it purchased and cleared), restored with a snapshot, carried with every placement and every
+    // onCartChange; the purchase latch binds to it, so a purchased cart is never re-sent while a NEW cart places normally
+    const hostedKeys = () => !!(cfg.cartKey && cfg.placedKey);
+    let cartGen = null;
+    const genNow = () => { if (!cartGen && api && typeof api.newGen === 'function') cartGen = api.newGen(); return cartGen; };
     const cart = CappCart.createCart(menu);
     const $ = (id) => doc.getElementById(id);
     const app = $('app');
@@ -197,6 +203,7 @@
         }
       }
       S.refusal = null;
+      if (!cart.count()) cartGen = null;   // an emptied cart: the next one is a NEW cart (a new generation)
       notifyCart();
       return true;
     }
@@ -706,7 +713,7 @@
       // S2b r1 P2-7: an accepted price change ⇒ «Enviando» shows the ceiling actually sent
       const onExpected = (cents) => { if (dead || !Number.isFinite(cents)) return; S.sendTotals = { total: cents, tip: T.tip }; if (S.screen === 'sending') render(); };
       let out;
-      try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, expectedNetCents: T.total, totals: T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
+      try { out = await api.place({ flow: f, ctx: c, sig: S.q.sig, expectedNetCents: T.total, totals: T, sheet: priceSheet, onExpected, alive: () => !dead, cartSnapshot: api.hosted ? { ...cart.snapshot(), cart_gen: genNow() } : cart.snapshot() }); } catch (e) { out = { kind: 'error', error: String(e && e.message) }; }
       if (!dead) onOutcome(out);
     }
     // the 600 ms happy beat: the spinner becomes the green check, then the host takes over (S5)
@@ -835,12 +842,19 @@
     // «Realizando pedido…» countdown is CANCELLED (zero sends) ⇒ consumed; «Enviando» ⇒ blocked; the store root ⇒ pass.
     // Codex r1 P2-6: a held / locked sheet (pending, recovery) ⇒ blocked; a payment lock this page holds ⇒ the store root is NOT
     // an unlocked root — blocked, never pass (the shell must not tear the store down over the lock)
-    function deviceBack() {
+    // Codex r2 P2-6: EVERY recovery / frozen-for-an-order state locks the store (a held record, the pending lock, a frozen or
+    // unknown cart), not only the in-memory / pay_pending lock
+    const lockedHere = () => hostedKeys() && (frozenNow() || !!(api && typeof api.holdsLock === 'function' && api.holdsLock()));
+    // Codex r2 New 3: a SHELL exit (a tab, the shell's own back, a shell screen opened over the store) asks with intent 'leave' —
+    // answered without acting: blocked while sending, over a held sheet, or under a lock; otherwise pass (destroy() then cancels
+    // a «Realizando pedido…» countdown: zero sends)
+    function deviceBack(intent) {
       if (dead) return 'pass';
+      if (intent === 'leave') return S.screen === 'sending' || (S.layerKind === 'err' && S.err && S.err.held === true) || lockedHere() ? 'blocked' : 'pass';
       if (S.layerKind === 'err' && S.err && S.err.held === true) return 'blocked';
       if (S.layerKind === 'cart' || S.layerKind === 'placing') { histN = Math.max(0, histN - 1); backInternal(); return 'consumed'; }
       if (S.screen === 'sending') return 'blocked';
-      if (!S.stack.length) { if (S.layerKind) { closeLayer(); return 'consumed'; } return api && api.hosted && typeof api.holdsLock === 'function' && api.holdsLock() ? 'blocked' : 'pass'; }
+      if (!S.stack.length) { if (S.layerKind) { closeLayer(); return 'consumed'; } return lockedHere() ? 'blocked' : 'pass'; }
       histN = Math.max(0, histN - 1); backInternal(); return 'consumed';
     }
     function checkoutAct(t) {
@@ -1041,7 +1055,8 @@
       deviceBack,
       restore(snapshot) {
         // S7a-1 r3 §1.3 (hosted): reconcile FIRST — blocked until it completes; a purchased (cleared) cart is never restored
-        if (cfg.cartKey && cfg.placedKey && mods() && api.hosted) { const rc = api.reconcile(); if (!rc.ok) return { blocked: true, step: rc.step }; if (rc.done === 'placed' && snapshot && snapshot.cart_gen && snapshot.cart_gen === rc.cart_gen) return { cleared: true };
+        if (cfg.cartKey && cfg.placedKey && mods() && api.hosted) { const rc = api.reconcile(); if (!rc.ok) return { blocked: true, step: rc.step }; if (rc.done === 'placed' && snapshot && snapshot.cart_gen && snapshot.cart_gen === rc.cart_gen) { cartGen = null; return { cleared: true }; }
+          cartGen = snapshot && typeof snapshot.cart_gen === 'string' && snapshot.cart_gen ? snapshot.cart_gen : null;   // the restored cart keeps its generation
           // Codex r1 P2-7: the persisted mode is restored with the lines (a frozen pickup cart is never re-shown as delivery)
           if (snapshot && (snapshot.mode === 'pickup' || snapshot.mode === 'delivery')) { S.mode = snapshot.mode; if (S.flow && C) C.setMode(S.flow, S.mode); } }
         const r = cart.hydrate(snapshot); notifyCart(); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },

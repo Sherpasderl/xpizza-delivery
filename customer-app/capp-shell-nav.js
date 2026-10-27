@@ -9,7 +9,11 @@
 //                   consumed ⇒ its entry is gone (the mount handled it) · blocked ⇒ the entry is RE-PUSHED, nothing changes ·
 //                   pass ⇒ the store is left: back to the RECORDED PREDECESSOR (Buscar keeps its query / scroll), Inicio only as
 //                   the fallback (prototype go/back :1355-1367)
-//   accounting    a UI-caused back (the shell's or the mount's) marks its own popstate as self-caused (skip), never re-delivered
+//   accounting    a UI-caused back (the shell's or the mount's) marks its own popstate as self-caused (skip), never re-delivered;
+//                 every entry carries its index (sh), so the DIRECTION of a popstate is known: a Forward is undone, never
+//                 processed as a Back (Codex r2 New 4)
+//   exits         every shell exit from a store (a tab, the shell's own back, a screen opened over it) first asks the mount with
+//                 intent 'leave'; `blocked` ⇒ nothing changes (§1.3: never destroyed while sending / locked; Codex r2 New 3)
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -25,22 +29,29 @@
     const onLeave = typeof o.onLeave === 'function' ? o.onLeave : () => {};  // (storeEntry) ⇒ destroy its mount (only after `pass` / a tab)
     const stack = [{ ...home, saved: null }];   // shell screens
     const subs = [];                            // in-store browser entries owned by the TOP store mount (one per push)
-    let n = 0, skip = 0, mountBack = null;
-    const push = (tag) => { n++; try { win.history.pushState({ sh: n, ...tag }, ''); } catch (_) {} };
+    let n = 0, pos = 0, skip = 0, mountBack = null;   // pos = the index (sh) of the browser entry we stand on (the page root = 0)
+    const push = (tag) => { n++; pos = n; try { win.history.pushState({ sh: n, ...tag }, ''); } catch (_) {} };
+    const idxOf = (e) => (e && e.state && typeof e.state.sh === 'number' ? e.state.sh : 0);
+    // a store on top is asked before ANY shell exit; no mount (or not a store) ⇒ free to leave
+    const mayLeave = () => !(top().name === 'store' && typeof mountBack === 'function' && mountBack('leave') === 'blocked');
     const top = () => stack[stack.length - 1];
     const predecessor = () => (stack.length > 1 ? stack[stack.length - 2] : null);
 
     // a shell screen on top of the current one (open-store, Buscar, a dish result…) — the current screen's state is saved first
     function go(entry, saved) {
+      if (!mayLeave()) return false;
       top().saved = saved === undefined ? top().saved : saved;
       stack.push({ ...entry, saved: null }); subs.length = 0; push({ screen: entry.name });
       onShow(top(), { from: stack[stack.length - 2] });
+      return true;
     }
     // a tab: the stack restarts at that tab (prototype tab(): S.stack = []); a store mount on top is left first
     function tab(entry) {
+      if (!mayLeave()) return false;
       if (top().name === 'store') onLeave(top());
       stack.length = 0; stack.push({ ...entry, saved: null }); subs.length = 0; mountBack = null;
       onShow(top(), { from: null });
+      return true;
     }
     // leave the top store (pass) or a shell screen ⇒ its recorded predecessor, else the fallback
     function popScreen() {
@@ -52,7 +63,7 @@
     }
     // the shell's own back control (a «‹» / X on a shell screen): UI-caused ⇒ its popstate is skipped
     function back() {
-      if (stack.length <= 1) return false;
+      if (stack.length <= 1 || !mayLeave()) return false;
       skip++; try { win.history.back(); } catch (_) { skip--; }
       popScreen(); return true;
     }
@@ -70,8 +81,12 @@
     }
 
     // a DEVICE / browser back (not caused by the shell or the mount)
-    function onPop() {
-      if (skip > 0) { skip--; return 'self'; }
+    function onPop(e) {
+      const idx = idxOf(e);
+      if (skip > 0) { skip--; pos = idx; return 'self'; }
+      if (idx > pos) { skip++; try { win.history.go(pos - idx); } catch (_) { skip--; } return 'forward'; }   // undone: back to where we stand
+      if (idx === pos) return 'none';
+      pos = idx;
       if (top().name === 'store' && typeof mountBack === 'function') {
         const r = mountBack();
         if (r === 'consumed') { subs.pop(); return r; }
