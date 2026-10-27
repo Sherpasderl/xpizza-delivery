@@ -190,6 +190,12 @@ t('P2-6: «Llegué» writes tasks/{id}/arrived; SUCCESS disables the button; FAI
   assert.ok(!drv2ArrivedAck.has('d9'), 'a FAILED (or pending/offline) write never acks → no claim, «Llegué» stays');
 });
 
+t('P2-7 threading: the solo-pickup, stacked-delivery and combined-pickup header carves each thread an order id into stopHeaderHtml (no empty data-order-id)', () => {
+  const carve = (name) => { const m = INDEX.match(new RegExp('SLICE3DEPS:' + name + ':START[\\s\\S]*?===== \\*/\\n([\\s\\S]*?)\\n\\s*/\\* ===== SLICE3DEPS:' + name + ':END')); assert.ok(m, name + ' carve found'); return m[1]; };
+  assert.match(carve('SOLO-PICKUP-HEADER'), /orderId: soloOrder\.orderId/, 'solo-pickup header threads soloOrder.orderId (a mutant dropping it → empty id → no button → RED with the builder guard)');
+  assert.match(carve('STACKED-DELIV-HEADER'), /orderId: activeAccepted2 \? active\.orderId : ''/, 'stacked-delivery header threads active.orderId, empty for an unaccepted offer');
+  assert.match(carve('COMBINED-PICKUP-HEADER'), /orderId: \(stacked2\[0\] && stacked2\[0\]\.orderId\) \|\| ''/, 'combined-pickup header threads the first bag order id');
+});
 t('flags-false (Codex r2): with BOTH capability flags OFF, the ARRIVAL-ACTION listener is NEVER registered (no dead handler)', () => {
   const region = INDEX.match(/SLICE3:ARRIVAL-ACTION:START[\s\S]*?===== \*\/\n([\s\S]*?)\n\s*\/\* ===== SLICE3:ARRIVAL-ACTION:END/)[1];
   const dom = new JSDOM('<!doctype html><body><div id="screen-onshift"><button class="llegue-btn" id="btn-llegue" data-task-id="d1">Llegué</button><button id="btn-problema-body" data-order-id="o1">?</button></div></body>', { pretendToBeVisual: true });

@@ -5473,7 +5473,9 @@ function renderActiveAndQueue() {
     const spSoloPickup = soloOrder.phase === 'pickup';
     const spShowReview = spSoloPickup && (spAtRestaurant || spArrived);
     const spHeader = spSoloPickup
-      ? stopHeaderHtml({ ...soloPickupHeaderInfo(spOrder, spShowReview), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml })
+      /* ===== SLICE3DEPS:SOLO-PICKUP-HEADER:START (registered carve-out; parent region SINGLE-ORDER-MOUNT) — thread the solo-pickup header's order id into stopHeaderHtml so the flag-on Ayuda/«Problema» button targets a real order (Codex r2 P2-7). slice3-freeze splices this back to the 07e5ab38 line. ===== */
+      ? stopHeaderHtml({ ...soloPickupHeaderInfo(spOrder, spShowReview), orderId: soloOrder.orderId, canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml })
+      /* ===== SLICE3DEPS:SOLO-PICKUP-HEADER:END ===== */
       /* ===== SLICE3DEPS:LLEGUE-HEADER:START (registered carve-out; parent region SINGLE-ORDER-MOUNT) — the ARRIVED-at-customer delivery header «Estás donde {name}» + the flag-gated «avisamos a las {t}» sub (prototype S.llegue); en-route/pickup unchanged. slice3-freeze splices this back to the 07e5ab38 branch. ===== */
       : (spStopScreen ? stopHeaderHtml({ ordinal: spOrdinal, total: spTotalM, name: spName, area: coloniaOf(soloOrder), single: spTotalM === 1, orderId: soloOrder.orderId, canReportProblem: DRV2_CAN_REPORT_PROBLEM, arrivedCustomer: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()) && !spIsPickup && !spStacked, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, notifiedAt: (drv2ArrivalAck(soloOrder) && soloOrder.deliveryTask && soloOrder.deliveryTask.arrived && typeof soloOrder.deliveryTask.arrived.at === 'number' ? fmtClockHM(soloOrder.deliveryTask.arrived.at) : '') }, { ICONS, esc: escapeHtml }) : '');
       /* ===== SLICE3DEPS:LLEGUE-HEADER:END ===== */
@@ -5613,7 +5615,9 @@ function renderActiveAndQueue() {
     ...stacked2.map((s, i) => ({ n: deliveredCount2 + 1 + i, state: i === 0 ? 'on' : '', label: drv2FirstWord(nameOf2(s)) })),
   ];
   bannerSlot.innerHTML = incomingBannerHtml(pendingAccept, deps2);
-  activeSlot.innerHTML = stopHeaderHtml({ ordinal: activeOrdinal2, total: totalM2, name: activeAccepted2 ? nameOf2(active) : '', area: activeAccepted2 ? coloniaOf(active) : '', canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)
+  /* ===== SLICE3DEPS:STACKED-DELIV-HEADER:START (registered carve-out; parent region STACKED-BRANCH) — thread the active delivery's order id so the flag-on «Problema» header button targets it (Codex r2 P2-7); empty for an unaccepted offer → no button. slice3-freeze splices this back to the 07e5ab38 line. ===== */
+  activeSlot.innerHTML = stopHeaderHtml({ ordinal: activeOrdinal2, total: totalM2, name: activeAccepted2 ? nameOf2(active) : '', area: activeAccepted2 ? coloniaOf(active) : '', orderId: activeAccepted2 ? active.orderId : '', canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)
+  /* ===== SLICE3DEPS:STACKED-DELIV-HEADER:END ===== */
     + (drv2Cancel ? cancelBannerHtml(drv2Cancel, { ICONS, esc: escapeHtml }) : '')
     + phaseStripHtml(stripStops2, escapeHtml)
     + overviewMapSvg({ driver: mapDriver2, hubs: mapHubs2, stops: mapStops2, phase: mapPhase2, stale: mapStale2 })
@@ -5630,7 +5634,9 @@ function renderActiveAndQueue() {
     const pkTarget = { lat: active.pickupTask?.destination_lat ?? XPD.RESTAURANT.lat, lng: active.pickupTask?.destination_lng ?? XPD.RESTAURANT.lng };
     const pkLabel = (labels2[0] && labels2[0].base) || 'el restaurante';
     bannerSlot.innerHTML = '';
-    activeSlot.innerHTML = stopHeaderHtml({ pickupCount: stacked2.length, sub: pickupSubLabel(stacked2.map((s) => s.order)), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)
+    /* ===== SLICE3DEPS:COMBINED-PICKUP-HEADER:START (registered carve-out; parent region STACKED-BRANCH) — thread the first bag's order id so the flag-on «Problema» header button on the combined pickup targets a real order (Codex r2 P2-7). slice3-freeze splices this back to the 07e5ab38 line. ===== */
+    activeSlot.innerHTML = stopHeaderHtml({ pickupCount: stacked2.length, sub: pickupSubLabel(stacked2.map((s) => s.order)), orderId: (stacked2[0] && stacked2[0].orderId) || '', canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)
+    /* ===== SLICE3DEPS:COMBINED-PICKUP-HEADER:END ===== */
       + phaseStripHtml(stacked2.map((s, i) => ({ n: i + 1, state: i === 0 ? 'on' : '', label: 'Recoger' })), escapeHtml)
       + combinedPickupHtml(stacked2, deps2, new Set())
       + navBtnHtml(pkTarget, deps2.navPref, pkLabel, { ...deps2, navTaskId: active.pickupTask && active.pickupTask.id })

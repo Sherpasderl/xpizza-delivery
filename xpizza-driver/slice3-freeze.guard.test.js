@@ -60,7 +60,7 @@ const SLICE3_PINS = {
     'INICIO-CHECKLIST': 'f270a45d4f0bc010c18de365e97fd1427138962b2b8d2abbdc07270db8cc4d74',
     'INICIO-PRACTICA': 'dc6e3b5213046e049f1ba47cd428392caca2cfcb84c7ffea4744c83f312e1e13',
   },
-  fileSha: '56409795d8fd3df1e35c1e851a2336c9e3208f0f63e807b442e8a3d2bd278e0a',
+  fileSha: '8402004e2589e233c9530507f8ab6d9206a7f0284a6d0489d68d2a3d4a3541a0',
 };
 // SLICE3DEPS carve-outs (advisor 2026-10-26): a REGISTERED exception to the non-nesting rule — a tiny span that MAY
 // live inside its declared SLICE2 parent, so slice 3 can edit slice-2-added host code (the fresh-offer deps object)
@@ -69,14 +69,17 @@ const SLICE3_PINS = {
 // carve (still inside the parent) still goes RED. An UNREGISTERED carve, or one in the wrong parent / partially
 // overlapping / double-nested, FAILS (negative self-tests below).
 const SLICE3_DEPS_PINS = {
-  names: ['OFFER-RENDER', 'LLEGUE-MAP', 'LLEGUE-HEADER', 'LLEGUE-CARD'],
-  kinds: ['slice3deps', 'slice3deps', 'slice3deps', 'slice3deps'],
-  parents: ['SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT'],
+  names: ['OFFER-RENDER', 'LLEGUE-MAP', 'LLEGUE-HEADER', 'LLEGUE-CARD', 'SOLO-PICKUP-HEADER', 'STACKED-DELIV-HEADER', 'COMBINED-PICKUP-HEADER'],
+  kinds: ['slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps'],
+  parents: ['SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'STACKED-BRANCH', 'STACKED-BRANCH'],
   restoreSha: {
     'OFFER-RENDER': 'f7bd685aa3efa75a6bd3df1757c120d16538876645961bfe5f68cf63170a9c3e',
     'LLEGUE-MAP': '4ce5b4226d369d69d82193fc06d09ab840cce26605c33cc2594c67693654c94f',
     'LLEGUE-HEADER': 'e7db20aa5da75a093f1d8ab99b74d8c0787cfee524c633fd6b170eec9cd5f07f',
     'LLEGUE-CARD': '872db1af8ca1fa97f5a945827fddb108abf19c094bd8c16b8d6a3dfcfa98802c',
+    'SOLO-PICKUP-HEADER': 'dcdcac2ad39d573b2c94c2a61495a349b471b6a7d88137c3ea315ecf313a78f2',
+    'STACKED-DELIV-HEADER': '6a21594a2304a33c5c80bb9ab59465827a02a535dab69ca14d8e8b31418ddc1a',
+    'COMBINED-PICKUP-HEADER': '1deee0271711fa8d3f2c6cb2922479e99589b20a6c7fac57850169dd635476c5',
   },
 };
 function loadContract() {   // bytes → sha pin FIRST → JSON.parse; no import/require of editable code (Codex r2 P1)
@@ -93,7 +96,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = '8cece10505319e7a7bbd43e45628a5f53b2e0234f97ab5f1a1bc63bda3b18c2d';
+const SLICE2_GUARD_SHA = '51ea13006976dc0401d7a5829f31e902600c06037d04ece72497ed7605a14d81';
 const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs

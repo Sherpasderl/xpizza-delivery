@@ -506,6 +506,30 @@
    "restore": [
     "      ? activeCardHtml(soloOrder, spCardDeps, { ordinal: spOrdinal, solo: false, showActualPill: true, arrived: spArrived && !isStaleFix(driverState && driverState.last_location_ts, Date.now()), navLabel: stopNavInfo(soloOrder, XPD.RESTAURANT, spIsPickup).base, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: '' })"
    ]
+  },
+  {
+   "name": "SOLO-PICKUP-HEADER",
+   "kind": "slice3deps",
+   "parent": "SINGLE-ORDER-MOUNT",
+   "restore": [
+    "      ? stopHeaderHtml({ ...soloPickupHeaderInfo(spOrder, spShowReview), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, { ICONS, esc: escapeHtml })"
+   ]
+  },
+  {
+   "name": "STACKED-DELIV-HEADER",
+   "kind": "slice3deps",
+   "parent": "STACKED-BRANCH",
+   "restore": [
+    "  activeSlot.innerHTML = stopHeaderHtml({ ordinal: activeOrdinal2, total: totalM2, name: activeAccepted2 ? nameOf2(active) : '', area: activeAccepted2 ? coloniaOf(active) : '', canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)"
+   ]
+  },
+  {
+   "name": "COMBINED-PICKUP-HEADER",
+   "kind": "slice3deps",
+   "parent": "STACKED-BRANCH",
+   "restore": [
+    "    activeSlot.innerHTML = stopHeaderHtml({ pickupCount: stacked2.length, sub: pickupSubLabel(stacked2.map((s) => s.order)), canReportProblem: DRV2_CAN_REPORT_PROBLEM }, deps2)"
+   ]
   }
  ]
 }
