@@ -893,11 +893,17 @@
     },
     "checkout_otp": {
       ".read": false,
-      ".write": false
+      ".write": false,
+      ".indexOn": [
+        "expires_at"
+      ]
     },
     "otp_budget": {
       ".read": false,
-      ".write": false
+      ".write": false,
+      ".indexOn": [
+        "last"
+      ]
     },
     "checkout_tickets": {
       ".read": false,
