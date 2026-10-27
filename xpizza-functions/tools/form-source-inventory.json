@@ -1734,8 +1734,10 @@
   "photos/crops.js",
   "photos/errors.js",
   "photos/pipeline.js",
+  "photos/process.js",
   "photos/signer.js",
   "photos/sniff.js",
+  "photos/upload-start.js",
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
@@ -2610,11 +2612,19 @@
    "pins": [],
    "lifts": []
   },
+  "photos/process.js": {
+   "pins": [],
+   "lifts": []
+  },
   "photos/signer.js": {
    "pins": [],
    "lifts": []
   },
   "photos/sniff.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/upload-start.js": {
    "pins": [],
    "lifts": []
   },
