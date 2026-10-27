@@ -2155,6 +2155,19 @@
 .wa-tpl { gap: 10px; border: 0; border-radius: 12px; background: #E7ECF4; font-size: 13.5px; font-weight: 500; line-height: 1.35; }
 .wa-tpl .wa-txt { line-height: 1.35; font-weight: 500; }
 .wa-tpl .wa-txt small { margin-top: 2px; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-soft, #546078); }
+/* resumen (S.resumen): .rs-* tokens mapped to the prototype generic illus.ok / h4 / sub / card / row / stat / btn.primary. The full-screen-vs-sheet presentation, the missing 2nd stat card, the row-icon tiles and the row divider model are STRUCTURAL/component deltas tabled for the owner, not changed here. */
+.rs-illus { width: 44px; height: 44px; border-radius: 14px; background: #E3F3E9; color: #15803D; }
+.rs-illus svg { width: 22px; height: 22px; }
+.rs-title { font-size: 19px; letter-spacing: -.02em; line-height: 1.15; }
+.rs-sub { color: var(--text-soft, #546078); margin-top: 0; }
+.rs-card { background: #E7ECF4; padding: 4px 14px; }
+.rs-row { gap: 11px; padding: 10px 0; }
+.rs-rt { font-size: 14px; line-height: 1.3; }
+.rs-rd { margin-top: 1px; line-height: 1.4; }
+.rs-rv { font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; }
+.rs-stat b { font-size: 24px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.rs-stat small { font-size: 11.5px; font-weight: 600; color: var(--text-soft, #546078); }
+.rs-done { font-weight: 700; font-size: 16px; letter-spacing: -.01em; padding: 15px 14px; min-height: 52px; margin-top: 0; }
 </style>
 <!-- ===== SLICE3:PRESENTATION-REVERIFY:END ===== -->
 <div id="screen-companion" class="hidden" style="height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
