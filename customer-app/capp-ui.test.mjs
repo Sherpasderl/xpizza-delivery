@@ -1785,6 +1785,8 @@ test('perf-core r1 #3: a function-form host is never overridden — refused at d
   hostSold = true; b.ui.render(); await settle();
   assert.equal(b.q('#layer [data-act="checkout"]').disabled, true, 'the host now reports it sold: «Ir al checkout» disabled');
   hostSold = false; b.ui.render(); await settle();
+  assert.equal(b.q('#layer [data-act="checkout"]').disabled, true, 'a mere re-render is NOT an availability update: the refusal stands (r2 #6)');
+  b.ui.availabilityUpdated(); await settle();
   assert.equal(b.q('#layer [data-act="checkout"]').disabled, false, '🔴 the host says available again ⇒ re-enabled (no stale override)');
   assert.equal(b.q('#layer .cline.sold-out'), null, 'the mark cleared with it');
 });
@@ -1857,3 +1859,35 @@ test('frame 14: a dish that sells out while on «Entrega & Pago» — the summar
   await b.click(plus);
   assert.equal(b.ui.cart.count(), 1, '🔴 the checkout summary\'s + handler refuses a sold line');
 });
+for (const pay of ['cash', 'online']) {
+  test(`perf-core r2 #6 (${pay}): a FUNCTION host refused at dispatch ⇒ the cart shows frame 14 (note, mark, Subtotal, CTA, + gate) until an update or removal`, async () => {
+    let key = null;
+    const b = bootCo({ script: { chargeOnlineOrder: [{ status: 200, json: { checkout_url: 'https://pay.test/1', poll_token: 'pt_1', attempt_id: 'a1' } }] },
+      mountOpts: { unavailable: () => false, readAvailability: () => Promise.resolve([key]) } });
+    key = b.plain.key;
+    await toPlacing(b, pay); b.timers.flush(); await settle();
+    assert.equal(sent(b), 0, 'premise: refused at dispatch');
+    const line = b.qa('#layer .cline').find((l) => l.classList.contains('sold-out'));
+    assert.ok(line, '🔴 the refused line carries the frame-14 mark (function host)');
+    assert.equal(b.text('#layer .cartnote[role="status"]'), `${b.plain.name} se agotó. Quitalo para enviar tu pedido.`, '🔴 the note is shown');
+    assert.equal(b.text('#layer .ctot .sumrow'), 'Subtotal L 0', '🔴 the Subtotal leaves it out (no L 340)');
+    assert.equal(b.q('#layer [data-act="checkout"]').disabled, true, '🔴 «Ir al checkout» waits');
+    line.querySelector('[data-rev="1"]').disabled = false; await b.click(line.querySelector('[data-rev="1"]'));
+    assert.equal(b.ui.cart.count(), 1, '🔴 + stays 1 → 1');
+    b.ui.availabilityUpdated(); await settle();
+    assert.equal(b.q('#layer .cline.sold-out'), null, 'the host\'s authoritative update clears the refusal');
+  });
+}
+test('perf-core r2 #6: removing the refused line clears its refusal (the dish is not left sold elsewhere)', async () => {
+  let key = null;
+  const b = bootCo({ mountOpts: { unavailable: () => false, readAvailability: () => Promise.resolve([key]) } });
+  key = b.plain.key;
+  await toPlacing(b, 'cash'); b.timers.flush(); await settle();
+  assert.ok(b.q('#layer .cline.sold-out'), 'premise: refused');
+  await b.click(b.q('#layer .cline.sold-out [data-rev="-1"]'));
+  assert.equal(b.ui.cart.count(), 0, 'removed');
+  b.ui.state.layerKind = null; b.ui.state.screen = 'store'; b.ui.render(); await settle();   // back on the menu
+  await b.click(`.qty-add-btn[data-id="${b.plain.key}"]`);   // the store's own + (its handler refuses a sold dish)
+  assert.equal(b.ui.cart.count(), 1, '🔴 removed ⇒ the refusal is gone: the dish can be added again');
+});
+

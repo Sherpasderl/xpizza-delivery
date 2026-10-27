@@ -9,6 +9,8 @@
 //   (no longer verified — never tombstoned), even while its earlier verification would still be inside the window.
 //   Codex perf-core r1 #2: the clock is a HIGH-WATER mark — every check and verification is evaluated at max(now, the latest
 //   time seen), so a clock that moves backwards can never revive an eligibility that has already expired.
+//   Codex perf-core r2: a rollback BEFORE expiry — the raw clock reads earlier than a store's verified_at — makes that store
+//   SUSPECT: HELD until a NEW successful verification (the high-water age alone would freeze and keep it enterable).
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -26,14 +28,19 @@
     const tombstoned = new Set();
     const known = new Set();   // every store ever verified (a complete response tombstones whichever of them it omits, held or not)
     let hw = -Infinity;   // the latest time observed
-    const clock = () => { const t = now(); if (Number.isFinite(t) && t > hw) hw = t; return hw; };
+    const suspect = new Set();   // stores whose verification the raw clock has gone behind: held until verified again
+    const clock = () => {
+      const t = now();
+      if (Number.isFinite(t)) { if (t > hw) hw = t; for (const [rid, at] of verifiedAt) if (t < at) suspect.add(rid); }
+      return hw;
+    };
 
     // a SUCCESSFUL verification, at its receipt time: `listed` = the rids it lists as active; `complete` = it is the whole directory
     function verified({ listed, complete, at }) {
       const cur = clock();
       const t = Number.isFinite(at) ? Math.min(at, cur) : cur;   // a receipt time is never later than the time seen
       const ids = new Set((listed || []).map(String));
-      for (const rid of ids) { verifiedAt.set(rid, t); tombstoned.delete(rid); known.add(rid); }
+      for (const rid of ids) { verifiedAt.set(rid, t); tombstoned.delete(rid); suspect.delete(rid); known.add(rid); }
       for (const rid of known) if (!ids.has(rid)) { verifiedAt.delete(rid); if (complete === true) tombstoned.add(rid); }   // omitted: tombstoned (complete) or held (partial)
       return [...tombstoned];
     }
@@ -44,6 +51,7 @@
       const t = verifiedAt.get(k);
       if (t === undefined) return 'held';
       const age = clock() - t;
+      if (suspect.has(k)) return 'held';   // the clock went behind its verification: only a NEW verification clears it
       return age < windowMs ? 'enterable' : 'held';   // evaluated at the high-water time: a rollback cannot revive it
     }
     return { verified, state, enterable: (rid) => state(rid) === 'enterable', verifiedAt: (rid) => verifiedAt.get(String(rid)) };

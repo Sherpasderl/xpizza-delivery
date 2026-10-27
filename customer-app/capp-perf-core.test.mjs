@@ -186,6 +186,22 @@ test('Codex perf-core r1 #1: a PARTIAL that omits a store still inside its windo
   el.verified({ listed: ['a', 'b'], complete: false, at: t });
   assert.equal(el.state('b'), 'enterable', 'a later response that lists it verifies it again');
 });
+test('Codex perf-core r2: a rollback BEFORE expiry ⇒ HELD (verify at 1,000,000, roll back to 0, advance to 600,000 ⇒ still held) until a NEW verification', () => {
+  let t = 1000000; const el = createEligibility({ now: () => t });
+  el.verified({ listed: ['a'], complete: true, at: t });
+  assert.equal(el.state('a'), 'enterable', 'premise: fresh');
+  t = 0; assert.equal(el.state('a'), 'held', '🔴 the clock went behind the verification ⇒ held');
+  t = 600000; assert.equal(el.state('a'), 'held', '🔴 ten minutes later on the rolled-back clock: STILL held (no frozen age)');
+  t = 1000500; assert.equal(el.state('a'), 'held', 'even back past the verification time: held until verified again');
+  el.verified({ listed: ['a'], complete: true, at: t });
+  assert.equal(el.state('a'), 'enterable', 'a NEW successful verification clears it');
+});
+test('Codex perf-core r2: a rollback the checks never observe (between two queries) is still caught at the next query', () => {
+  let t = 5000; const el = createEligibility({ now: () => t });
+  el.verified({ listed: ['a'], complete: true, at: t });
+  t = 4000; el.verified({ listed: ['b'], complete: false, at: t });   // any clock read behind a's verification marks it
+  t = 6000; assert.equal(el.state('a'), 'held', 'a was verified "in the future" of a later reading ⇒ held');
+});
 test('Codex perf-core r1 #2: once expiry has been observed, a clock rolled BACK cannot revive eligibility (high-water clock)', () => {
   let t = 1000; const el = createEligibility({ now: () => t });
   el.verified({ listed: ['a'], complete: true, at: t });

@@ -22785,8 +22785,8 @@
     "slice": "perf-core",
     "label": "r3.3-F2 r2-2: dispatch ignores a known-unavailable line",
     "file": "../customer-app/capp-ui.js",
-    "from": "if (soldNow.length) { emit('dispatch_refused',",
-    "to": "if (false) { emit('dispatch_refused',",
+    "from": "if (soldNow.length) { for (const l of soldNow) refused.add(l.key); emit('dispatch_refused',",
+    "to": "if (false) { for (const l of soldNow) refused.add(l.key); emit('dispatch_refused',",
     "command": [
       "node",
       "--test",
@@ -22796,7 +22796,7 @@
     "kills_with": [
       "nothing is dispatched for a line now unavailable"
     ],
-    "repointed": "perf-core r1 #3: the dispatch decision uses the attempt's fresh read (same mutation)"
+    "repointed": "perf-core r1 #3: the dispatch decision uses the attempt's fresh read (same mutation) | perf-core r2 #6: the refusal now also records presentation state on that line (same mutation)"
   },
   {
     "id": "perf-core-19",
@@ -23099,6 +23099,89 @@
     ],
     "kills_with": [
       "the approved note, one line for the one dish"
+    ]
+  },
+  {
+    "id": "perf-core-37",
+    "slice": "perf-core",
+    "label": "r2 #6: a dispatch refusal is not kept (a function host shows no frame 14)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "for (const l of soldNow) refused.add(l.key); ",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf-core r2 #6|perf-core r1 #3",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the refused line carries the frame-14 mark"
+    ]
+  },
+  {
+    "id": "perf-core-38",
+    "slice": "perf-core",
+    "label": "r2 #6: an authoritative host update does not clear the refusal",
+    "file": "../customer-app/capp-ui.js",
+    "from": "availabilityUpdated() { if (dead) return; refused.clear(); render(); },",
+    "to": "availabilityUpdated() { if (dead) return; render(); },",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf-core r2 #6|perf-core r1 #3",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "clears the refusal"
+    ]
+  },
+  {
+    "id": "perf-core-39",
+    "slice": "perf-core",
+    "label": "r2 #6: removing the refused line leaves the dish refused",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (refused.size) { const inCart = new Set(cart.lines().map((l) => l.key)); for (const k of [...refused]) if (!inCart.has(k)) refused.delete(k); }   // removed ⇒ the refusal clears\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=perf-core r2 #6|perf-core r1 #3",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "the refusal is gone"
+    ]
+  },
+  {
+    "id": "perf-core-40",
+    "slice": "perf-core",
+    "label": "r2: a rollback before expiry leaves the store enterable (frozen high-water age)",
+    "file": "../customer-app/capp-eligibility.js",
+    "from": "      if (suspect.has(k)) return 'held';   // the clock went behind its verification: only a NEW verification clears it\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "the clock went behind the verification ⇒ held"
+    ]
+  },
+  {
+    "id": "perf-core-41",
+    "slice": "perf-core",
+    "label": "r2: a clock read behind a verification is not noticed",
+    "file": "../customer-app/capp-eligibility.js",
+    "from": "for (const [rid, at] of verifiedAt) if (t < at) suspect.add(rid);",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "../customer-app/capp-perf-core.test.mjs"
+    ],
+    "kills_with": [
+      "the clock went behind the verification ⇒ held"
     ]
   }
 ]
