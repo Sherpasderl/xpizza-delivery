@@ -60,6 +60,7 @@
     "test:pricing-cutover": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/pricing-cutover.emulator.test.js\"",
     "test:catalog-schemav2": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/catalog-schemav2.emulator.test.js\"",
     "test:catalog-generation": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/catalog-generation.emulator.test.js\"",
+    "test:photos-emulator": "node tools/emulator-run.js --only firestore,database,storage --project demo-xpizza \"node test/photos.emulator.test.js\"",
     "test:public-menu": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/public-menu.emulator.test.js\"",
     "test:backfill-identities": "node tools/emulator-run.js --only firestore --project xpizza-delivery \"node test/backfill-identities.emulator.test.js\"",
     "test:identity-shadow": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/identity-shadow.emulator.test.js\"",
