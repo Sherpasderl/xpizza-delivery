@@ -471,6 +471,26 @@
           // Codex amendment r1 P2: the ticket ↔ order-id binding BEFORE anything is recorded for this identity (the freeze, confirmSend) —
           // a refused attempt leaves the record un-dispatched, so the re-verify binds to THIS id and the next place() sends it
           { const g = guestGate(p, { ticket: true, id: rec.order_id }); if (g) return g; }
+          // S4 r1 §3.4 (under schedulingLive): a retained identity whose earlier send is UNCERTAIN (sched_pending, no definitive answer)
+          // re-sends the EXACT bytes it first sent (`sent_body`: the quote token and ceiling included — no refresh mid-uncertainty, Codex
+          // r1 #3); otherwise the FINAL outgoing body (after cq.send) is persisted and VERIFIED before anything is dispatched — a failed
+          // write sends nothing (the drawn «Sin conexión», Codex r1 #2). The accepted-price resend is the one refresh
+          body = null; replay = false;
+          if (cfg.schedulingLive === true) {
+            if (!fresh && priorSends > 0 && rec.sched_pending === true && !schedSettled.has(rec.order_id) && typeof rec.sent_body === 'string') {
+              try { const b = JSON.parse(rec.sent_body); if (b && typeof b === 'object' && b.order_id === rec.order_id) { body = b; replay = true; } } catch (_) { /* unreadable ⇒ the rebuilt body */ }
+            }
+            if (!replay) { body = C.orderBody(p.flow, { ...p.ctx, orderId: rec.order_id }); cq.send(body, p.sig, expected); }
+            // Codex S4 r2 (G=B): the account rule on the OUTGOING / replayed body BEFORE anything is recorded for this send (no
+            // dispatched++, no card / unresolved lock, no cart freeze) — an earlier uncertain send keeps its record exactly as it was
+            if (body.scheduled_for != null && !memberOf()) return { kind: 'schedule_needs_account', order_id: rec.order_id, local: true };
+            if (replay) { if (num(body.expected_net_cents) !== null) expected = body.expected_net_cents; }   // the replayed bytes' ceiling is what this send stands behind
+            else {
+              try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true }); } catch (_) { return { kind: 'offline', order_id: rec.order_id }; }
+              if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true) return { kind: 'offline', order_id: rec.order_id };
+              schedSettled.delete(rec.order_id);
+            }
+          }
           // S7a-1 r3.1 N7: hosted ⇒ a VERIFIED freeze of the purchased cart is a precondition of the FIRST dispatch of an identity;
           // a failure stops here (zero sends; the drawn «Sin conexión» retry) and the retry reuses THIS identity
           if (HOSTED && !(Number(rec.dispatched) > 0)) {
@@ -484,24 +504,6 @@
             // Codex r1 P2-8: the supplied snapshot's own version (v2 — CappCart.hydrate accepts only v2), never a v1 default
             if (!writeStrict(CART_KEY, { ...snap, v: cs ? cs.v : snap.v, rid: cfg.restaurantId, mode: p.flow && p.flow.mode, lines: cs ? cs.lines : snap.lines, cart_gen: gen, frozen_for: rec.order_id })) return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };
             if (rec.cart_gen !== gen) rec = patchPlace(rec.order_id, { cart_gen: gen });
-          }
-          // S4 r1 §3.4 (under schedulingLive): a retained identity whose earlier send is UNCERTAIN (sched_pending, no definitive answer)
-          // re-sends the EXACT bytes it first sent (`sent_body`: the quote token and ceiling included — no refresh mid-uncertainty, Codex
-          // r1 #3); otherwise the FINAL outgoing body (after cq.send) is persisted and VERIFIED before anything is dispatched — a failed
-          // write sends nothing (the drawn «Sin conexión», Codex r1 #2). The accepted-price resend is the one refresh
-          body = null; replay = false;
-          if (cfg.schedulingLive === true) {
-            if (!fresh && priorSends > 0 && rec.sched_pending === true && !schedSettled.has(rec.order_id) && typeof rec.sent_body === 'string') {
-              try { const b = JSON.parse(rec.sent_body); if (b && typeof b === 'object' && b.order_id === rec.order_id) { body = b; replay = true; } } catch (_) { /* unreadable ⇒ the rebuilt body */ }
-            }
-            if (replay) { if (num(body.expected_net_cents) !== null) expected = body.expected_net_cents; }   // the replayed bytes' ceiling is what this send stands behind
-            else {
-              body = C.orderBody(p.flow, { ...p.ctx, orderId: rec.order_id });
-              cq.send(body, p.sig, expected);
-              try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true }); } catch (_) { return { kind: 'offline', order_id: rec.order_id }; }
-              if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true) return { kind: 'offline', order_id: rec.order_id };
-              schedSettled.delete(rec.order_id);
-            }
           }
           // an un-issued identity carries the economics of the body actually sent (an issued one keeps its checkout's, and a cash
           // attempt never overwrites a charge's); the method is the record's first one once a charge was ever dispatched (`card` is sticky)

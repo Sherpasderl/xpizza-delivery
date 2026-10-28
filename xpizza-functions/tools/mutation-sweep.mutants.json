@@ -24514,8 +24514,8 @@
     "slice": "s4",
     "label": "N3: the 12-chip cap",
     "file": "../customer-app/capp-ui.js",
-    "from": "${sd.slots.map((ms) =>",
-    "to": "${sd.slots.slice(0, 12).map((ms) =>",
+    "from": "${daySlots.map((ms) =>",
+    "to": "${daySlots.slice(0, 12).map((ms) =>",
     "command": [
       "node",
       "--test",
@@ -24531,7 +24531,7 @@
     "slice": "s4",
     "label": "frame G: a guest schedules without an account",
     "file": "../customer-app/capp-ui.js",
-    "from": "        if (a === 'time' && v === 'schedule' && !member()) { S.schedAfterSignin = true; emit('signin', { ctx: 'schedule' }); return true; }   // frame G: the order stays ASAP\n",
+    "from": "        if (a === 'time' && v === 'schedule' && !canSchedule()) { scheduleGate(); return true; }   // frame G: the order stays ASAP\n",
     "to": "",
     "command": [
       "node",
@@ -24549,7 +24549,7 @@
     "slice": "s4",
     "label": "no pre-dispatch re-check (a stale slot is sent)",
     "file": "../customer-app/capp-ui.js",
-    "from": "      if (sched() && f && f.time === 'schedule' && lockedSlot() === null && !schedMod().offered(servedSched(), now().getTime(), f.mode, f.slot)) {",
+    "from": "      if (sched() && f && f.time === 'schedule' && lockedSlot() === null && !schedMod().offered(S.schedHeld || servedSched(), now().getTime(), f.mode, f.slot)) {",
     "to": "      if (false) {",
     "command": [
       "node",
@@ -24566,7 +24566,7 @@
     "slice": "s4",
     "label": "a retained identity rebuilds its body from the flow",
     "file": "../customer-app/capp-api.js",
-    "from": "if (!fresh && priorSends > 0 && rec.sched_pending === true && typeof rec.sent_body === 'string')",
+    "from": "if (!fresh && priorSends > 0 && rec.sched_pending === true && !schedSettled.has(rec.order_id) && typeof rec.sent_body === 'string')",
     "to": "if (false)",
     "command": [
       "node",
@@ -24583,7 +24583,7 @@
     "slice": "s4",
     "label": "a definitive refusal keeps the replay window open",
     "file": "../customer-app/capp-api.js",
-    "from": "        if (cfg.schedulingLive === true) { try { patchPlace(id, { sched_pending: false }); } catch (_) {} }   // S4: a definitive answer ends the replay window\n",
+    "from": "        if (cfg.schedulingLive === true) { schedSettled.add(id); try { patchPlace(id, { sched_pending: false }); } catch (_) {} }   // S4: a definitive answer ends the replay window (memory first)\n",
     "to": "",
     "command": [
       "node",
@@ -24748,7 +24748,8 @@
       "../customer-app/capp-api.test.mjs"
     ],
     "kills_with": [
-      "S4-acct"
+      "S4-acct",
+      "S4-wire"
     ]
   },
   {
@@ -24907,6 +24908,23 @@
     ],
     "kills_with": [
       "S4-row10: the retained slot shown"
+    ]
+  },
+  {
+    "id": "s4-29",
+    "slice": "s4",
+    "label": "the account refusal runs only at the wire (after the send is recorded: a false card lock)",
+    "file": "../customer-app/capp-api.js",
+    "from": "            if (body.scheduled_for != null && !memberOf()) return { kind: 'schedule_needs_account', order_id: rec.order_id, local: true };\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex S4",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "S4-r2-norecord"
     ]
   }
 ]

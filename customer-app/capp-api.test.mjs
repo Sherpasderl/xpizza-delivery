@@ -739,10 +739,10 @@ test('G6 member token: a token past its expiry ⇒ the send carries the REFRESHE
 
 // ── S4 (Codex S4 r1 #1–#3): the scheduled send under schedulingLive — the account rule at the wire, the VERIFIED replay record, the
 // exact outgoing bytes replayed, a definitive answer that holds even when storage does not ──
-function srig({ script, storage = memStorage(), member = { cur: MEMBER }, clock = { t: at(12) } } = {}) {
+function srig({ script, storage = memStorage(), member = { cur: MEMBER }, clock = { t: at(12) }, sleep = async () => {} } = {}) {
   const srv = server(script, storage);
   const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, schedulingLive: true },
-    member: () => member.cur, fetch: srv.fetch, storage, now: () => clock.t, sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} });
+    member: () => member.cur, fetch: srv.fetch, storage, now: () => clock.t, sleep, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} });
   return { api: make(), reload: make, srv, storage, member, clock };
 }
 const SLOT = at(15), SLOT2 = at(16);
@@ -793,4 +793,27 @@ test('Codex S4 r1 #3: an uncertain send replays the EXACT outgoing bytes (its qu
   const api2 = R.reload(); const b = sArgs(SLOT2); const q2 = await api2.quote(b.flow, b.ctx);   // a refreshed quote (token B, another net) and an edited slot
   await api2.place({ ...b, sig: q2.record.sig, expectedNetCents: 32500 });
   assert.deepEqual(R.srv.of('createOrder')[1].body, first, '🔴 S4-bytes: the same token, ceiling and slot');
+});
+test('Codex S4 r2: the account refusal records NOTHING — an uncertain scheduled cash send, a signed-out reload choosing card (refused, 0 charges), then sign-in ⇒ the retry dispatches (no false card lock)', async () => {
+  const m = { cur: MEMBER };
+  const R = srig({ member: m, script: { createOrder: ['network', OK_CASH], chargeOnlineOrder: [CHECKOUT] } });
+  assert.equal((await R.api.place(sArgs())).kind, 'offline', 'premise: the response lost');
+  const before = placeRec(R.storage);
+  m.cur = null;
+  const card = sArgs(); card.flow.pay = 'online';
+  const out = await R.reload().place(card);
+  assert.deepEqual([out.kind, R.srv.of('chargeOnlineOrder').length], ['schedule_needs_account', 0], 'premise: refused, never charged');
+  const after = placeRec(R.storage);
+  assert.deepEqual([after.card, after.unresolved, after.dispatched, after.sent_body, after.sched_pending], [before.card, before.unresolved, before.dispatched, before.sent_body, true], '🔴 S4-r2-norecord: the refusal recorded nothing');
+  m.cur = MEMBER;
+  const re = await R.reload().place(sArgs());
+  assert.equal(re.kind, 'placed', '🔴 S4-r2-retry: the signed-in retry dispatches (never «Necesitamos revisar tu pedido»)');
+  const s = R.srv.of('createOrder'); assert.equal(s.length, 2); assert.deepEqual(s[1].body, s[0].body, 'the uncertain send replayed exactly');
+});
+test('Codex S4 r2: the WIRE guard holds where only it can — a scheduled card admitted (202) whose member signs out during the backoff is never re-sent', async () => {
+  const m = { cur: MEMBER };
+  const R = srig({ member: m, sleep: async () => { m.cur = null; }, script: { chargeOnlineOrder: [{ status: 202, json: { ok: true, status: 'in_progress' } }, CHECKOUT] } });
+  const a = sArgs(); a.flow.pay = 'online';
+  const out = await R.api.place(a);
+  assert.deepEqual([out.kind, R.srv.of('chargeOnlineOrder').length], ['schedule_needs_account', 1], '🔴 S4-wire: the in-progress re-send refused at the wire');
 });
