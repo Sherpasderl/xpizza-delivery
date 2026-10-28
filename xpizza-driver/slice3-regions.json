@@ -539,6 +539,10 @@
     "      <div class=\"es-addr\">${escapeHtml(o.address)}</div>",
     "    </div><span class=\"phase-pill delivery\">Entregar</span></div>`).join('');"
    ]
+  },
+  {
+   "name": "MONEY-CERRADO",
+   "kind": "insert"
   }
  ],
  "deps": [

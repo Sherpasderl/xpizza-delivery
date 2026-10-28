@@ -2219,6 +2219,17 @@
 #endshift-sheet .es-ic svg { width: 19px; height: 19px; }
 #endshift-sheet .es-cancel { background: var(--surface, #fff); border: 1px solid var(--border, #DCE2EC); }   /* proto .btn.ghost: white + 1px border */
 #endshift-sheet .es-confirm { background: var(--accent, #2F5FB8); box-shadow: none; }
+/* cerrado (showCerrado, S.cerrado): the «Turno cerrado» summary overlay — green check, the shift totals line, «Listo». «Ganado hoy» card is intentionally absent (no pay-rate reader; see STRUCTURAL note). */
+#cerrado-screen { position: fixed; inset: 0; background: var(--bg, #F5F7FA); z-index: 260; display: none; flex-direction: column; padding: calc(24px + var(--safe-top, 0px)) 20px calc(16px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
+#cerrado-screen.open { display: flex; }
+#cerrado-screen .cerrado-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; }
+#cerrado-screen .cerrado-illus { width: 104px; height: 104px; border-radius: 30px; display: grid; place-items: center; background: var(--green-bg, #EBF7F0); color: var(--success, #15803D); }
+#cerrado-screen .cerrado-illus svg { width: 50px; height: 50px; }
+#cerrado-screen .cerrado-h { font-family: 'Red Hat Display', sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -.02em; color: var(--text, #0D1424); }
+#cerrado-screen .cerrado-sub { font-size: 13px; font-weight: 400; color: var(--text-soft, #546078); line-height: 1.4; margin-top: 6px; }
+#cerrado-screen .cerrado-sub b { font-weight: 700; color: var(--text, #0D1424); }
+#cerrado-screen .cerrado-foot { flex: none; }
+#cerrado-screen .cerrado-done { width: 100%; padding: 15px 14px; min-height: 52px; border-radius: 14px; background: var(--accent, #2F5FB8); color: #fff; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; border: 0; cursor: pointer; }
 </style>
 <!-- ===== SLICE3:PRESENTATION-REVERIFY:END ===== -->
 <!-- ===== SLICE3:CUENTA-CARD:START — cuenta account-hub additions (owner ruled BUILD 2026-10-27). The profile card (display-only) is injected above the frozen .set-card; the Reglas/Ayuda rows are injected into it. Own trailing stylesheet, new classes only, zero frozen bytes. Light-only (the driver app has no dark theme). Exact to prototype S.cuenta card 1 + rows; the profile card mirrors the frozen .set-card surface, rows reuse the frozen .set-row/.set-ic/.set-tx. ===== -->
@@ -5279,6 +5290,35 @@ function cuadreSubmitting(label) {
 }
 /* ===== SLICE3:CUADRE-SUBMIT:END ===== */
 
+/* ===== SLICE3:MONEY-CERRADO:START — the «Turno cerrado» summary (prototype S.cerrado), shown after a successful
+   cuadre clock-out. On-demand overlay; reuses the cuadre's SUBMITTED cash (cashOwed + deliveries) and a
+   start→closedAt duration (the instant the cuadre recorded, NOT Date.now() at render). «Ganado hoy» is OMITTED:
+   it needs PAGOS live AND a real pay-rate reader, and the driver app has neither (only a hardcoded L70/delivery) —
+   so it must not invent the number. «Listo» → offshift. Wiring into onCuadreConfirm is held for the advisor. ===== */
+function showCerrado(cash, startMs, closedAtMs) {
+  const deliveries = (cash && cash.deliveries) || 0;
+  const cashOwed = (cash && cash.cashOwed) || 0;
+  let dur = '';
+  if (typeof startMs === 'number' && typeof closedAtMs === 'number' && closedAtMs > startMs) {
+    const mins = Math.round((closedAtMs - startMs) / 60000);
+    const h = Math.floor(mins / 60), m = mins % 60;
+    dur = h > 0 ? (m > 0 ? `${h} h ${m} min` : `${h} h`) : `${m} min`;
+  }
+  const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  const ent = deliveries === 1 ? 'entrega' : 'entregas';
+  let ov = document.getElementById('cerrado-screen');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'cerrado-screen'; document.body.appendChild(ov); }
+  ov.innerHTML = `
+    <div class="cerrado-body">
+      <div class="cerrado-illus">${CHECK}</div>
+      <div><div class="cerrado-h">Turno cerrado</div><p class="cerrado-sub">Entregaste <b>L ${cashOwed.toLocaleString('es-HN')}</b> en efectivo · ${deliveries} ${ent}${dur ? ` · ${dur}` : ''}.</p></div>
+    </div>
+    <div class="cerrado-foot"><button class="cerrado-done" id="cerrado-done">Listo</button></div>`;
+  ov.classList.add('open');
+  const done = document.getElementById('cerrado-done');
+  if (done) done.addEventListener('click', () => { ov.classList.remove('open'); if (typeof showScreen === 'function') showScreen('offshift'); });
+}
+/* ===== SLICE3:MONEY-CERRADO:END ===== */
 async function cleanupShift() {
   /* ===== SLICE2:SHIFT-CLEANUP:START — stop the map-aging timer on shift/session disposal (Codex r1 P2-7) ===== */
   // Shift end is a disposal: stop the display-only aging timer SYNCHRONOUSLY here (the visibilitychange handler
