@@ -582,6 +582,11 @@
       let b = null; try { b = JSON.parse(r.sent_body); } catch (_) { b = null; }
       return b && Number.isFinite(b.scheduled_for) ? b.scheduled_for : null;
     }
+    // Codex S4 r1 #1 (owner G=B): scheduling requires an account — the ONE guard every scheduling entry (the cards, the closed
+    // preselect, the closure sheet's «Programar», the Inicio cue, a restore) and the dispatch go through; a non-member gets frame G
+    // (the order stays ASAP, so a closed store's closure refusal stands)
+    const canSchedule = () => !!member();
+    function scheduleGate() { S.schedAfterSignin = true; emit('signin', { ctx: 'schedule' }); }
     let PH = null;
     const phoneMod = () => PH || (PH = opts.CappPhone || (typeof self !== 'undefined' && self.CappPhone) || require('./capp-phone.js'));
     const ccOf = (f) => (f && f.cc && phoneMod().byCc(f.cc) ? f.cc : phoneMod().DEFAULT_CC);
@@ -601,7 +606,7 @@
     // «Tus datos» in edit (the customer types it) — the member path never sends a number it could not read (5f intl recon)
     function newFlow() {
       const f = C.freshFlow(member());
-      if (sched()) { f.time = isOpen() ? 'asap' : 'schedule'; f.slot = null; f.slotDay = null; }
+      if (sched()) { f.time = isOpen() || !canSchedule() ? 'asap' : 'schedule'; f.slot = null; f.slotDay = null; }
       if (intl()) { const m = member(); if (!setPhone(f, m && m.phone ? m.phone : '') && m) f.editWho = true; }
       return f;
     }
@@ -661,7 +666,7 @@
     // new copy: the line carries the drawn «Agotado» mark; the CTA stays as labelled, disabled)
     const soldLines = (has = soldOf) => cart.lines().filter((l) => isSoldBy(find(l.key), has));
     const soldBlock = () => soldLines().length > 0;
-    const gateCtx = () => ({ open: isOpen(), closedRefused: S.closedRefused, ...(sched() ? { anySlot: anySlotNow() } : {}), pickupOnlyCount: poLines().length, outZone: S.outZone, member: member(), unavailableLines: soldLines().length,
+    const gateCtx = () => ({ open: isOpen(), closedRefused: S.closedRefused, ...(sched() ? { anySlot: lockedSlot() !== null || anySlotNow() } : {}), pickupOnlyCount: poLines().length, outZone: S.outZone, member: member(), unavailableLines: soldLines().length,
       ...(cardOnlyGuest() ? { guestEmail: true, emailRefused: S.emailRefused === true } : {}) });
     const need = () => C.missingStep(S.flow, gateCtx());
     function ctaLabel(T) {
@@ -758,8 +763,10 @@
       <button class="opt" aria-pressed="${f.time === 'schedule'}" data-act="time" data-val="schedule"><b>Programar</b><span>${Number.isFinite(f.slot) ? esc(K.slotWhen(s, t0, f.slot)) : 'Hasta 7 días'}</span></button></div>`;
       if (f.time !== 'schedule') return cards;
       const chips = `<div class="daychips" role="group" aria-label="Día">${ds.map((d) => `<button class="daychip" aria-pressed="${d.key === sdayKey}" data-act="slotday" data-val="${d.key}"${d.slots.length && lk === null ? '' : ' disabled'}><b>${esc(K.chipDay(d))}</b><span>${esc(K.chipSub(d))}</span></button>`).join('')}</div>`;
-      const grid = sd && sd.slots.length
-        ? `<div class="chips slotgrid" role="group" aria-label="Horario">${sd.slots.map((ms) => `<button class="chip" aria-pressed="${f.slot === ms}" data-act="slot" data-val="${ms}"${f.slot === ms ? '' : dis}>${esc(K.slotTime(s, ms))}</button>`).join('')}</div><span class="note">Cada horario es una ventana de 30 minutos.</span>${lk !== null ? '<span class="note">Estamos confirmando este horario; no se puede cambiar mientras tanto.</span>' : ''}`
+      // Codex S4 r1 #5: the retained send's slot is shown as recorded even when the generator no longer offers it (the server decides)
+      const daySlots = lk !== null ? [...new Set([...(sd && sd.key === K.dayKey(s, lk) ? sd.slots : []), lk])].sort((x, y) => x - y) : sd ? sd.slots : [];
+      const grid = daySlots.length
+        ? `<div class="chips slotgrid" role="group" aria-label="Horario">${daySlots.map((ms) => `<button class="chip" aria-pressed="${f.slot === ms}" data-act="slot" data-val="${ms}"${f.slot === ms ? '' : dis}>${esc(K.slotTime(s, ms))}</button>`).join('')}</div><span class="note">Cada horario es una ventana de 30 minutos.</span>${lk !== null ? '<span class="note">Estamos confirmando este horario; no se puede cambiar mientras tanto.</span>' : ''}`
         : `<div class="gate"><b>${sd && sd.off === 0 ? 'Hoy ya no hay horarios' : 'Sin horarios disponibles'}</b><span class="note">Elegí otro día.</span></div>`;
       return cards + chips + grid;
     }
@@ -1039,8 +1046,10 @@
     async function send() {
       const f = S.flow, T = totalsNow();
       if (dead || !intakeOk() || !T.ready || !mods()) return;
-      if (sched() && f && f.time === 'schedule' && lockedSlot() === null && !schedMod().offered(servedSched(), now().getTime(), f.mode, f.slot)) {
-        f.slot = null; backTo('checkout'); return;   // the picker shows «Elegí un horario»; nothing was sent
+      if (sched() && f && f.time === 'schedule' && !canSchedule()) { backTo('checkout'); scheduleGate(); return; }   // G=B: never sent
+      // Codex S4 r1 #4: the NEWEST received schedule decides (a held P2 revalidation included; painting stays deferred until here)
+      if (sched() && f && f.time === 'schedule' && lockedSlot() === null && !schedMod().offered(S.schedHeld || servedSched(), now().getTime(), f.mode, f.slot)) {
+        applyHeldSched(); f.slot = null; backTo('checkout'); return;   // the picker shows «Elegí un horario»; nothing was sent
       }
       if (guestCashBlocked()) return;   // no key ⇒ nothing is sent (the record stays clean)
       let c; try { c = { ...ctxBase(), headers: intakeHeaders() }; } catch (_) { return; }   // the key only where the server requires it
@@ -1146,6 +1155,7 @@
       if (k === 'guest_cash_not_allowed') { if (S.flow && cardOnlyGuest()) S.flow.pay = 'online'; backTo('checkout'); showErr(ERR.guestCash()); return; }   // §3.3 server refusal ⇒ frame 6
       if (k === 'guest_ticket_invalid') { S.ticket = null; backTo(); openCode(); return; }   // §4: re-verify (expired / consumed / missing) — the code sheet over the screen of the tap
       if (k === 'guest_email_required') { S.emailRefused = true; backTo('checkout'); return; }   // §4b ⇒ frame 1b: the email field red, CTA «Revisá tu correo»
+      if (k === 'schedule_needs_account') { backTo('checkout'); scheduleGate(); return; }   // capp-api's wire guard (G=B): nothing was sent
       if (k === 'offline') { backTo(sched() && S.flow && S.flow.time === 'schedule' ? 'checkout' : undefined); showErr(ERR.offline()); return; }   // S4 frame 10a: over «Entrega & Pago» (its picker becomes row 10b)
       if (k === 'closed') { S.closedRefused = true; backTo(); showErr(ERR.closed()); return; }   // over the screen of the tap (P placeTap :1975)
       if (k === 'slot_refused') { backTo('checkout'); showErr(ERR.slotRefused()); return; }   // S4 N1
@@ -1268,7 +1278,7 @@
       if (sched() && (a === 'time' || a === 'slotday' || a === 'slot')) {
         if (lockedSlot() !== null) return true;   // row 10: fixed while the send is unresolved
         applyHeldSched();   // P2: a revalidated schedule lands on a USER action, never under a finger
-        if (a === 'time' && v === 'schedule' && !member()) { S.schedAfterSignin = true; emit('signin', { ctx: 'schedule' }); return true; }   // frame G: the order stays ASAP
+        if (a === 'time' && v === 'schedule' && !canSchedule()) { scheduleGate(); return true; }   // frame G: the order stays ASAP
         if (a === 'time') { f.time = v === 'schedule' ? 'schedule' : 'asap'; if (f.time === 'asap') f.slot = null; }
         if (a === 'slotday') { f.slotDay = v; f.slot = null; }
         if (a === 'slot') { const ms = Number(v); if (Number.isFinite(ms)) { f.slot = ms; f.slotDay = schedMod().dayKey(servedSched(), ms); } }
@@ -1326,6 +1336,7 @@
         closeLayer(); render(); return true;
       }
       if (a === 'err-retry') { closeLayer(); send(); return true; }   // the SAME placement (capp-api keeps the id)
+      if ((a === 'err-sched' || a === 'err-slot') && sched() && S.flow && !canSchedule()) { closeLayer(); backTo('checkout'); scheduleGate(); return true; }   // frame G
       if (a === 'err-sched' && sched() && S.flow) { closeLayer(); S.closedRefused = false; applyHeldSched(); S.flow.time = 'schedule'; S.flow.slot = null; backTo('checkout'); return true; }   // P:2287: the picker
       if (a === 'err-slot' && sched() && S.flow) { closeLayer(); applyHeldSched(); S.flow.time = 'schedule'; S.flow.slot = null; backTo('checkout'); return true; }   // N1: the picker, the slot cleared
       if (a === 'err-requote') { closeLayer(); S.quoteErr = null; requote(); return true; }   // the failed quote, asked again (its key was released)
@@ -1361,7 +1372,7 @@
       Object.assign(f, { name: String(b.customer_name || ''), phone: String(b.customer_phone || '').replace(/^\+504\s*/, ''), email: String(b.customer_email || ''),
         notes: b.notes && b.notes !== '—' ? String(b.notes) : '', pay: b.payment_method === 'online' || cardOnlyGuest() ? 'online' : 'cash' });   // §3.2: a guest's restore is never cash
       if (intl()) setPhone(f, b.customer_phone);   // the picker's wire is E.164: the restored number keeps its country
-      if (sched()) { const sf = Number(b.scheduled_for); if (b.scheduled_for != null && Number.isFinite(sf)) { f.time = 'schedule'; f.slot = sf; f.slotDay = schedMod().dayKey(servedSched(), sf); } else { f.time = 'asap'; f.slot = null; } }
+      if (sched()) { const sf = Number(b.scheduled_for); if (b.scheduled_for != null && Number.isFinite(sf) && canSchedule()) { f.time = 'schedule'; f.slot = sf; f.slotDay = schedMod().dayKey(servedSched(), sf); } else { f.time = 'asap'; f.slot = null; } }
       if (f.mode === 'delivery') {
         if (!Number.isFinite(b.lat) || !Number.isFinite(b.lng)) return null;
         C.setPin(f, b.lat, b.lng, true); f.details = String(b.address_details || '');
@@ -1445,8 +1456,8 @@
       if (act === 'closed-sched' && sched()) {
         if (!cart.count()) { toast('Agregá platos y programá al final'); return; }
         if (!S.flow) S.flow = newFlow();
-        if (member()) { S.flow.time = 'schedule'; S.flow.slot = null; } else S.schedAfterSignin = false;
-        openCheckout(); if (!member()) { S.schedAfterSignin = true; emit('signin', { ctx: 'schedule' }); }
+        if (canSchedule()) { S.flow.time = 'schedule'; S.flow.slot = null; } else S.schedAfterSignin = false;
+        openCheckout(); if (!canSchedule()) scheduleGate();
         return;
       }
       if (act === 'closed-sched') { emit('schedule'); return; }
@@ -1545,6 +1556,7 @@
         memberCtx = m && typeof m === 'object' ? m : null;
         if (!memberCtx) S.schedAfterSignin = false;
         const f = S.flow;
+        if (!memberCtx && f && sched() && f.time === 'schedule' && lockedSlot() === null) { f.time = 'asap'; f.slot = null; }   // signed out ⇒ no scheduling (G=B)
         if (f && memberCtx) {
           if (!String(f.name || '').trim() && memberCtx.name) f.name = String(memberCtx.name);
           let unread = false;

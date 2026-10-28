@@ -2561,3 +2561,45 @@ test('S4 one clock: under schedulingLive the ASAP card follows the SERVED zone �
   const same = bootS4({ at: hnT(20, 19, 5) }); await toCheckout(same);
   assert.equal(same.q('.opts .opt[data-val="asap"]').disabled, false, 'premise: open in the served UTC−6 zone');
 });
+test('Codex S4 r1 #1 (owner G=B): a GUEST never schedules — a closed store opens ASAP (the closure refusal stands), the closure sheet\'s «Programar» and a direct send both go to frame G; nothing scheduled is sent', async () => {
+  const b = bootS4({ member: null, at: hnT(20, 20, 30), script: { createOrder: [OK_CASH_UI] } });
+  await toCheckout(b); await schedFill(b);
+  assert.equal(b.q('.opts .opt[data-val="asap"]').getAttribute('aria-pressed'), 'true', '🔴 S4-guest-pre: no scheduling preselect for a guest');
+  assert.equal(b.q('.daychips'), null); assert.notEqual(cta(b), 'Elegí un horario', 'the closure gate, not the picker');
+  const c = bootS4({ member: null, at: hnT(20, 13, 1), script: { createOrder: [{ status: 400, json: { error: 'Restaurant closed' } }] } });
+  await toCheckout(c); await schedFill(c);
+  await c.click('#cta'); await c.click('[data-act="tipc"][data-val="0"]'); await c.click('[data-act="tip-place"]'); await c.click('#layer [data-act="placing-go"]');
+  await c.click('#layer [data-act="err-sched"]');
+  assert.deepEqual(J(c.events.filter((e) => e[0] === 'signin').pop()), ['signin', { ctx: 'schedule' }], '🔴 S4-guest-sheet: «Programar» ⇒ frame G');
+  assert.equal(c.ui.state.flow.time, 'asap', 'the order stays ASAP'); assert.equal(c.q('.daychips'), null);
+  // a scheduled flow reaching send() as a guest (a sign-out, a restore): frame G, NOTHING sent
+  const d = bootS4({ member: null, script: { createOrder: [OK_CASH_UI] } });
+  await toCheckout(d); await schedFill(d); await d.click('#cta'); await d.click('[data-act="tipc"][data-val="0"]'); await d.click('[data-act="tip-place"]');
+  d.ui.state.flow.time = 'schedule'; d.ui.state.flow.slot = require('./capp-schedule.js').slots(S4_CFG.schedule, hnT(20, 13, 1).getTime(), 'delivery')[0];
+  await d.click('#layer [data-act="placing-go"]');
+  assert.equal(d.srv.of('createOrder').length, 0, '🔴 S4-guest-send: never sent'); assert.ok(d.events.some((e) => e[0] === 'signin' && e[1] && e[1].ctx === 'schedule'), 'frame G');
+});
+test('Codex S4 r1 #4: the pre-dispatch check uses the NEWEST received schedule — a P2 revalidation that closed the chosen day (held, unpainted) refuses the send', async () => {
+  const closedWed = J(S4_ENTRY.schedule); closedWed.hours.wed = { open: false };
+  let release; const late = new Promise((r) => { release = r; });
+  const b = bootS4({ script: { createOrder: [OK_CASH_UI], quoteOrder: [(body) => (body.schedule_only ? late.then(() => ({ status: 200, json: { ok: true, schedule: closedWed } })) : QUOTE(body))] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.daychip[data-val="2026-10-21"]'); await b.click('.slotgrid .chip');
+  release(); await settle();   // P2 lands AFTER the pick: held, the picker unchanged under the finger
+  assert.ok(b.q('.slotgrid .chip[aria-pressed="true"]'), 'premise: the pick still painted');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.srv.of('createOrder').length, 0, '🔴 S4-newest: a slot the newest schedule refuses is never sent'); assert.equal(cta(b), 'Elegí un horario');
+});
+test('Codex S4 r1 #5: row 10 stays retryable when the generator no longer offers the retained slot — the slot shown as recorded, «Reintentar» enabled, the SAME body re-sent', async () => {
+  const sole = J(S4_ENTRY.schedule); for (const k of Object.keys(sole.hours)) sole.hours[k] = { open: false }; sole.hours.tue = { open: true, start: '12:00', end: '14:15' };
+  const clock = { t: hnT(20, 12, 59).getTime() };
+  const b = bootS4({ clock, config: { schedule: sole }, script: { quoteOrder: [(body) => (body.schedule_only ? { status: 200, json: { ok: true, schedule: sole } } : QUOTE(body))], createOrder: ['network', (body) => ({ status: 200, json: { ok: true, idempotent: true, scheduled: true, order_id: body.order_id, scheduled_for: body.scheduled_for } })] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]');
+  const chip = b.q('.slotgrid .chip'); assert.equal(chip.textContent, '2:00 p.m.', 'premise: the sole slot'); await b.click(chip);
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  await b.click('#layer [data-act="lclose"]');
+  clock.t = hnT(20, 13, 1).getTime(); b.ui.render(); await settle();   // the lead now excludes 2:00 p.m.
+  assert.equal(b.q('.slotgrid .chip[aria-pressed="true"]') && b.q('.slotgrid .chip[aria-pressed="true"]').textContent, '2:00 p.m.', '🔴 S4-row10: the retained slot shown as recorded');
+  assert.equal(cta(b), 'Reintentar'); assert.equal(b.q('#cta').disabled, false, '🔴 S4-row10: «Reintentar» stays enabled');
+  await b.click('#cta'); await settle();
+  const s = b.srv.of('createOrder'); assert.equal(s.length, 2, '🔴 the retry dispatches'); assert.deepEqual(J(s[1].body), J(s[0].body));
+});

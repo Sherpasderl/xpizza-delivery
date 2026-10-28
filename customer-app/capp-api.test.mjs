@@ -736,3 +736,61 @@ test('G6 member token: a token past its expiry ⇒ the send carries the REFRESHE
   await G.api.place(placeArgs('cash'));
   assert.equal('x-firebase-id-token' in G.srv.of('createOrder')[0].headers, false, 'a guest sends no member token');
 });
+
+// ── S4 (Codex S4 r1 #1–#3): the scheduled send under schedulingLive — the account rule at the wire, the VERIFIED replay record, the
+// exact outgoing bytes replayed, a definitive answer that holds even when storage does not ──
+function srig({ script, storage = memStorage(), member = { cur: MEMBER }, clock = { t: at(12) } } = {}) {
+  const srv = server(script, storage);
+  const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, schedulingLive: true },
+    member: () => member.cur, fetch: srv.fetch, storage, now: () => clock.t, sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} });
+  return { api: make(), reload: make, srv, storage, member, clock };
+}
+const SLOT = at(15), SLOT2 = at(16);
+const sArgs = (slot = SLOT, x = {}) => { const f = flowOf('cash'); f.time = 'schedule'; f.slot = slot; return { flow: f, ctx: { ...CTX, appCash: true }, sig: 'sig1', expectedNetCents: 31500, ...x }; };
+const SLOT_REFUSED = { status: 400, json: { error: 'Bad Request', detail: 'Invalid scheduled time (closed_at_slot)' } };
+const failPlaceWrites = (s, pred) => { const real = s.setItem; s.setItem = (k, v) => { if (k.endsWith(':pending_place') && pred(String(v))) throw new Error('quota'); real(k, v); }; };
+
+test('Codex S4 r1 #1 (owner G=B): a NON-member\'s body carrying scheduled_for is never sent — refused at the wire', async () => {
+  const R = srig({ member: { cur: null }, script: { createOrder: [OK_CASH], chargeOnlineOrder: [CHECKOUT] } });
+  const out = await R.api.place(sArgs());
+  assert.deepEqual([out.kind, R.srv.calls.length], ['schedule_needs_account', 0], '🔴 S4-acct: no scheduled send without an account');
+  const card = sArgs(); card.flow.pay = 'online';
+  assert.equal((await R.reload().place(card)).kind, 'schedule_needs_account'); assert.equal(R.srv.calls.length, 0, '🔴 S4-acct: nor a scheduled charge');
+  const M = srig({ script: { createOrder: [OK_CASH] } });
+  assert.equal((await M.api.place(sArgs())).kind, 'placed', 'premise: a member places');
+});
+test('Codex S4 r1 #2: the replay record (sent_body) is VERIFIED before any dispatch — a failed write sends nothing', async () => {
+  const R = srig({ script: { createOrder: [OK_CASH] } });
+  failPlaceWrites(R.storage, (v) => v.includes('"sent_body"'));
+  const out = await R.api.place(sArgs());
+  assert.deepEqual([out.kind, R.srv.of('createOrder').length], ['offline', 0], '🔴 S4-persist: an unrecorded body is never sent');
+});
+test('Codex S4 r1 #2: a DEFINITIVE refusal ends the replay window even when its write fails — the next send carries the new slot, never the refused one', async () => {
+  const R = srig({ script: { createOrder: [SLOT_REFUSED, OK_CASH] } });
+  failPlaceWrites(R.storage, (v) => v.includes('"sched_pending":false'));
+  assert.equal((await R.api.place(sArgs(SLOT))).kind, 'slot_refused', 'premise: N1');
+  await R.api.place(sArgs(SLOT2));
+  const s = R.srv.of('createOrder');
+  assert.equal(s.length, 2); assert.equal(s[0].body.order_id, s[1].body.order_id, 'the same identity');
+  assert.equal(s[1].body.scheduled_for, SLOT2, '🔴 S4-settled: the refused slot is never re-sent');
+});
+test('Codex S4 r1 #2: the UI reads a memory-held definitive answer as the window closed (row 10 never locks a refused slot)', async () => {
+  const R = srig({ script: { createOrder: [SLOT_REFUSED] } });
+  failPlaceWrites(R.storage, (v) => v.includes('"sched_pending":false'));
+  assert.equal((await R.api.place(sArgs(SLOT))).kind, 'slot_refused', 'premise: N1');
+  assert.equal(JSON.parse(R.storage.getItem('capp:rid_a:pending_place')).sched_pending, true, 'premise: the write failed');
+  assert.equal(R.api.readPlace().sched_pending, false, 'the UI sees the window closed (no row 10 lock)');
+});
+test('Codex S4 r1 #3: an uncertain send replays the EXACT outgoing bytes (its quote token and ceiling) — a refreshed quote never rides it', async () => {
+  let tok = 0;
+  const QT = () => ({ status: 200, json: { ok: true, total_cents: 25000, net_total_cents: 31500 + tok * 1000, quote_token: `tok_${++tok}` } });
+  const R = srig({ script: { quoteOrder: [QT], createOrder: ['network', OK_CASH] } });
+  const a = sArgs(); const q1 = await R.api.quote(a.flow, a.ctx);
+  assert.equal(q1.kind, 'ok', 'premise: quoted');
+  assert.equal((await R.api.place({ ...a, sig: q1.record.sig, expectedNetCents: 31500 })).kind, 'offline', 'premise: the response lost');
+  const first = R.srv.of('createOrder')[0].body;
+  assert.equal(first.quote_token, 'tok_1', 'premise: the first send was signed');
+  const api2 = R.reload(); const b = sArgs(SLOT2); const q2 = await api2.quote(b.flow, b.ctx);   // a refreshed quote (token B, another net) and an edited slot
+  await api2.place({ ...b, sig: q2.record.sig, expectedNetCents: 32500 });
+  assert.deepEqual(R.srv.of('createOrder')[1].body, first, '🔴 S4-bytes: the same token, ceiling and slot');
+});

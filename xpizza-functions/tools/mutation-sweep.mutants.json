@@ -24733,5 +24733,180 @@
     "kills_with": [
       "closed by the served zone"
     ]
+  },
+  {
+    "id": "s4-19",
+    "slice": "s4",
+    "label": "the wire guard: a non-member's scheduled body is sent",
+    "file": "../customer-app/capp-api.js",
+    "from": "      if (cfg.schedulingLive === true && body.scheduled_for != null && !memberOf()) return { stop: { kind: 'schedule_needs_account', order_id: body.order_id, local: true } };\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex S4",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "S4-acct"
+    ]
+  },
+  {
+    "id": "s4-20",
+    "slice": "s4",
+    "label": "a failed sent_body write is swallowed and the send goes out",
+    "file": "../customer-app/capp-api.js",
+    "from": "              try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true }); } catch (_) { return { kind: 'offline', order_id: rec.order_id }; }\n              if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true) return { kind: 'offline', order_id: rec.order_id };\n",
+    "to": "              try { patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true }); } catch (_) {}\n",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex S4",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "S4-persist"
+    ]
+  },
+  {
+    "id": "s4-21",
+    "slice": "s4",
+    "label": "a definitive answer is not held in memory (a failed write re-opens the replay)",
+    "file": "../customer-app/capp-api.js",
+    "from": "{ schedSettled.add(id); try { patchPlace(id, { sched_pending: false }); }",
+    "to": "{ try { patchPlace(id, { sched_pending: false }); }",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex S4",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "S4-settled"
+    ]
+  },
+  {
+    "id": "s4-22",
+    "slice": "s4",
+    "label": "the UI reads the raw record (a memory-only definitive answer still locks row 10)",
+    "file": "../customer-app/capp-api.js",
+    "from": "readPlace: readPlaceView,",
+    "to": "readPlace,",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex S4",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "the UI sees the window closed"
+    ]
+  },
+  {
+    "id": "s4-23",
+    "slice": "s4",
+    "label": "the replay re-signs the body with the CURRENT quote",
+    "file": "../customer-app/capp-api.js",
+    "from": "if (replay) { if (num(body.expected_net_cents) !== null) expected = body.expected_net_cents; }",
+    "to": "if (replay) { cq.send(body, p.sig, expected); }",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex S4",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "S4-bytes"
+    ]
+  },
+  {
+    "id": "s4-24",
+    "slice": "s4",
+    "label": "a closed store preselects scheduling for a guest",
+    "file": "../customer-app/capp-ui.js",
+    "from": "f.time = isOpen() || !canSchedule() ? 'asap' : 'schedule';",
+    "to": "f.time = isOpen() ? 'asap' : 'schedule';",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=Codex S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "S4-guest-pre"
+    ]
+  },
+  {
+    "id": "s4-25",
+    "slice": "s4",
+    "label": "the closure sheet's «Programar» opens the picker for a guest",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if ((a === 'err-sched' || a === 'err-slot') && sched() && S.flow && !canSchedule()) { closeLayer(); backTo('checkout'); scheduleGate(); return true; }   // frame G\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=Codex S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "S4-guest-sheet"
+    ]
+  },
+  {
+    "id": "s4-26",
+    "slice": "s4",
+    "label": "the pre-dispatch check ignores a held (newer) schedule",
+    "file": "../customer-app/capp-ui.js",
+    "from": "!schedMod().offered(S.schedHeld || servedSched(),",
+    "to": "!schedMod().offered(servedSched(),",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=Codex S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "S4-newest"
+    ]
+  },
+  {
+    "id": "s4-27",
+    "slice": "s4",
+    "label": "row 10's CTA depends on fresh-slot availability",
+    "file": "../customer-app/capp-ui.js",
+    "from": "anySlot: lockedSlot() !== null || anySlotNow()",
+    "to": "anySlot: anySlotNow()",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=Codex S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "S4-row10: «Reintentar» stays enabled"
+    ]
+  },
+  {
+    "id": "s4-28",
+    "slice": "s4",
+    "label": "row 10 hides the retained slot once the generator drops it",
+    "file": "../customer-app/capp-ui.js",
+    "from": "const daySlots = lk !== null ? [...new Set([...(sd && sd.key === K.dayKey(s, lk) ? sd.slots : []), lk])].sort((x, y) => x - y) : sd ? sd.slots : [];",
+    "to": "const daySlots = sd ? sd.slots : [];",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=Codex S4",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "S4-row10: the retained slot shown"
+    ]
   }
 ]

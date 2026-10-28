@@ -188,6 +188,11 @@
       return r;
     }
     const num = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+    // S4 (Codex r1 #2): identities whose send got a DEFINITIVE answer this page — the replay window is closed for them even when the
+    // record's sched_pending:false could not be written (a refused slot is never re-sent)
+    const schedSettled = new Set();
+    // the record as the UI sees it: a definitive answer held only in memory reads as closed
+    function readPlaceView() { const r = readPlace(); return r && schedSettled.has(r.order_id) && r.sched_pending === true ? { ...r, sched_pending: false } : r; }
     // the economics a placement stands behind: the cart signature (cart / mode / pin / tip / auth) and the agreed net
     const sameEconomics = (r, p) => r.body_sig === (p.sig == null ? null : String(p.sig)) && r.expected_net_cents === num(p.expectedNetCents);
 
@@ -452,7 +457,7 @@
       let healed = false; let silentRetried = false;
       // S4 r1 §3.4 (under schedulingLive): a retained identity re-sends the EXACT body it first sent (`sent_body`) — never rebuilt from
       // the current flow (an edited slot never rides a possibly-landed order); the accepted-price resend is the one refresh
-      let priorSends = 0, fresh = false;
+      let priorSends = 0, fresh = false, body = null, replay = false;
       for (let guard = 0; guard < 4; guard++) {
         if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded' };   // r2 P2-3: a torn-down page never sends
         // Codex guest r1 #1 / #5: immediately before EVERY dispatch — the first and every resend (a price acceptance, a healed id) —
@@ -480,24 +485,38 @@
             if (!writeStrict(CART_KEY, { ...snap, v: cs ? cs.v : snap.v, rid: cfg.restaurantId, mode: p.flow && p.flow.mode, lines: cs ? cs.lines : snap.lines, cart_gen: gen, frozen_for: rec.order_id })) return { kind: 'offline', order_id: rec.order_id, freeze_failed: true };
             if (rec.cart_gen !== gen) rec = patchPlace(rec.order_id, { cart_gen: gen });
           }
+          // S4 r1 §3.4 (under schedulingLive): a retained identity whose earlier send is UNCERTAIN (sched_pending, no definitive answer)
+          // re-sends the EXACT bytes it first sent (`sent_body`: the quote token and ceiling included — no refresh mid-uncertainty, Codex
+          // r1 #3); otherwise the FINAL outgoing body (after cq.send) is persisted and VERIFIED before anything is dispatched — a failed
+          // write sends nothing (the drawn «Sin conexión», Codex r1 #2). The accepted-price resend is the one refresh
+          body = null; replay = false;
+          if (cfg.schedulingLive === true) {
+            if (!fresh && priorSends > 0 && rec.sched_pending === true && !schedSettled.has(rec.order_id) && typeof rec.sent_body === 'string') {
+              try { const b = JSON.parse(rec.sent_body); if (b && typeof b === 'object' && b.order_id === rec.order_id) { body = b; replay = true; } } catch (_) { /* unreadable ⇒ the rebuilt body */ }
+            }
+            if (replay) { if (num(body.expected_net_cents) !== null) expected = body.expected_net_cents; }   // the replayed bytes' ceiling is what this send stands behind
+            else {
+              body = C.orderBody(p.flow, { ...p.ctx, orderId: rec.order_id });
+              cq.send(body, p.sig, expected);
+              try { rec = patchPlace(rec.order_id, { sent_body: JSON.stringify(body), sched_pending: true }); } catch (_) { return { kind: 'offline', order_id: rec.order_id }; }
+              if (rec.sent_body !== JSON.stringify(body) || rec.sched_pending !== true) return { kind: 'offline', order_id: rec.order_id };
+              schedSettled.delete(rec.order_id);
+            }
+          }
           // an un-issued identity carries the economics of the body actually sent (an issued one keeps its checkout's, and a cash
           // attempt never overwrites a charge's); the method is the record's first one once a charge was ever dispatched (`card` is sticky)
           rec = confirmSend(rec.order_id, method, rec.issued || (rec.card && method !== 'online') ? {} : { ...(rec.card ? {} : { method }), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(expected), totals: p.totals || rec.totals || null });
         } catch (e) { const pe = placeErr(e, rec && rec.order_id); return pe || (rec ? resolveExisting(rec.order_id) : { kind: 'error', error: 'placement_lost' }); }
         const id = rec.order_id;
-        let body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
-        if (cfg.schedulingLive === true) {
-          // replay ONLY while the earlier send is uncertain (sched_pending: no definitive answer yet); after a definitive one (a refusal,
-          // N1) the next send carries the customer's new choice
-          if (!fresh && priorSends > 0 && rec.sched_pending === true && typeof rec.sent_body === 'string') { try { body = JSON.parse(rec.sent_body); } catch (_) { /* unreadable ⇒ the rebuilt body */ } }
-          else { try { patchPlace(id, { sent_body: JSON.stringify(body), sched_pending: true }); } catch (_) {} }
-        }
-        if (cfg.guestCardOnly === true && !memberOf() && p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;   // §4 (consumed at placement by the server)
-        cq.send(body, p.sig, expected);
+        if (body === null) {   // the flag absent: today's build, byte for byte
+          body = C.orderBody(p.flow, { ...p.ctx, orderId: id });
+          if (cfg.guestCardOnly === true && !memberOf() && p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;   // §4 (consumed at placement by the server)
+          cq.send(body, p.sig, expected);
+        } else if (cfg.guestCardOnly === true && !memberOf() && p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;   // S4: the ticket is read NOW, never replayed
         const r = method === 'cash' ? await dispatchOrder(p, E.createOrder, body) : await sendCard(id, body, p);
         if (r && r.stop) return r.stop;
         if (!definitive(method, r)) return method === 'cash' ? { kind: 'offline', order_id: id } : resolveExisting(id);   // rule ii
-        if (cfg.schedulingLive === true) { try { patchPlace(id, { sched_pending: false }); } catch (_) {} }   // S4: a definitive answer ends the replay window
+        if (cfg.schedulingLive === true) { schedSettled.add(id); try { patchPlace(id, { sched_pending: false }); } catch (_) {} }   // S4: a definitive answer ends the replay window (memory first)
         const j = r.json;
         if (r.status === 426) {                                                           // rule iii
           const cur = readPlace();
@@ -546,6 +565,8 @@
     // THE order dispatch (Codex guest r2 #1): every network send of an order — the first, a resend, and sendCard's own in-progress
     // re-sends — goes through here, and the guest rules (identity, tender, ticket, read NOW) are checked at the wire
     async function dispatchOrder(p, url, body) {
+      // S4 (Codex r1 #1; owner G=B): scheduling requires an account — a non-member's body carrying scheduled_for is never sent
+      if (cfg.schedulingLive === true && body.scheduled_for != null && !memberOf()) return { stop: { kind: 'schedule_needs_account', order_id: body.order_id, local: true } };
       const g = guestGate(p, { ticket: true, id: body.order_id }); if (g) return { stop: g };
       return sendOnce(url, body, p.ctx.headers);
     }
@@ -662,7 +683,7 @@
     // the order body a card send stashed (the return restores the checkout from it)
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
-    return { quote, latestQuote, place, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
+    return { quote, latestQuote, place, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY };
   }
