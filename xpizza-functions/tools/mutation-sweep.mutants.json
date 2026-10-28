@@ -23756,7 +23756,8 @@
       "../customer-app/capp-ui.test.mjs"
     ],
     "kills_with": [
-      "a pasted code (with a space) fills all six"
+      "a pasted code (with a space) fills all six",
+      "a whole code pasted into a later box is distributed from the first"
     ]
   },
   {

@@ -2038,7 +2038,7 @@ test('G1 §3.2: ONE invariant — a guest flow carrying cash (a restore, a stale
   await b.click('#cta'); await settle();
   if (b.q('[data-act="tipc"]')) { await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); }
   await settle();
-  assert.equal(b.text('#layer .errsheet h2'), 'No pudimos enviar tu pedido');
+  assert.equal(b.text('#layer .errsheet h2'), 'No pudimos enviar tu pedido', '🔴 frame 6, refused locally (the sheet)');
   assert.equal(b.text('#layer .errsheet p'), 'El pago en efectivo es solo para cuentas. Pagá con tarjeta o creá tu cuenta.', '🔴 frame 6, refused locally');
   assert.equal(writes(b), 0, '🔴 nothing sent');
   assert.deepEqual(b.qa('#layer .errsheet button').map((x) => [x.textContent.trim(), x.dataset.act]), [['Pagar con tarjeta', 'guest-card'], ['Creá tu cuenta', 'guest-signup']]);
@@ -2084,7 +2084,7 @@ test('G2 frame 1c: a device that had an account ⇒ «Ya tenés cuenta en este t
   const b = bootCo({ config: GUEST, mountOpts: { deviceAccount: () => ({ e164: '+50496123344', last4: '3344' }) } });
   await toCheckout(b); await settle();
   assert.equal(b.text('.signin .note'), 'Ya tenés cuenta en este teléfono');
-  assert.equal(b.text('.signin .primary'), 'Entrá de nuevo · ···· 3344');
+  assert.equal(b.text('.signin .primary'), 'Entrá de nuevo · ···· 3344', '🔴 only the last 4 digits are displayed (the row)');
   assert.ok(!/96123344|9612/.test(b.q('.signin').textContent), '🔴 only the last 4 digits are displayed');
   await b.click('.signin .primary');
   assert.deepEqual(J(b.events.filter(([n]) => n === 'signin').at(-1)[1]), { ctx: 'checkout-returning', prefill: '+50496123344' }, '🔴 the full number is pre-filled at sign-in');
@@ -2111,6 +2111,9 @@ test('G3 frame 2: «Hacer pedido» ⇒ the code sheet (nothing sent): the code i
   assert.deepEqual(rq, { phone_e164: '+50499990000', restaurant_id: 'rid_a', cart_fp: String(b.ui.state.q.sig) }, 'bound to phone + store + cart');
   const box = b.q('#layer .otp input[data-i="0"]'); box.value = '482 913'; box.dispatchEvent(new b.w.Event('input', { bubbles: true })); await settle();
   assert.deepEqual(b.qa('#layer .otp input').map((x) => x.value), ['4', '8', '2', '9', '1', '3'], 'a pasted code (with a space) fills all six');
+  // guest-13: a whole code pasted into a LATER box over digits already typed replaces them (never appended after them)
+  { const o = b.ui.state.otp; o.code = '12'; const b2 = b.q('#layer .otp input[data-i="2"]'); b2.value = '482-913'; b2.dispatchEvent(new b.w.Event('input', { bubbles: true })); await settle();
+    assert.deepEqual(b.qa('#layer .otp input').map((x) => x.value), ['4', '8', '2', '9', '1', '3'], '🔴 a whole code pasted into a later box is distributed from the first'); }
   assert.match(b.text('#layer [data-act="otp-verify"]'), /^Verificar y hacer pedido · L /); assert.ok(!b.q('#layer [data-act="otp-verify"]').disabled);
   await b.click('#layer [data-act="otp-verify"]'); await settle();
   const vb = b.srv.of('verifyCheckoutCode')[0].body;
