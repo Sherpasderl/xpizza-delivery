@@ -575,13 +575,17 @@
     const schedDays = () => schedMod().days(servedSched(), now().getTime(), S.flow ? S.flow.mode : 'delivery');
     const anySlotNow = () => schedDays().some((d) => d.slots.length > 0);
     // row 10: a RETAINED scheduled identity (dispatched, its body recorded) — its slot is fixed until the send resolves
-    function lockedSlot() {
+    function lockedBody() {
       if (!sched() || !api || !S.flow || S.flow.time !== 'schedule') return null;
       let r = null; try { r = api.readPlace(); } catch (_) { r = null; }
       if (!r || !(Number(r.dispatched) > 0) || r.sched_pending !== true || typeof r.sent_body !== 'string') return null;   // only an UNCERTAIN send
       let b = null; try { b = JSON.parse(r.sent_body); } catch (_) { b = null; }
-      return b && Number.isFinite(b.scheduled_for) ? b.scheduled_for : null;
+      return b && Number.isFinite(b.scheduled_for) ? b : null;
     }
+    function lockedSlot() { const b = lockedBody(); return b ? b.scheduled_for : null; }
+    // advisor ruling (a), Codex S4 r2: the TENDER of a retained send is fixed with its slot — the recorded one (the replay re-sends
+    // those bytes to that tender's endpoint); null ⇒ not locked
+    function lockedPay() { const b = lockedBody(); return b ? (b.payment_method === 'online' ? 'online' : 'cash') : null; }
     // Codex S4 r1 #1 (owner G=B): scheduling requires an account — the ONE guard every scheduling entry (the cards, the closed
     // preselect, the closure sheet's «Programar», the Inicio cue, a restore) and the dispatch go through; a non-member gets frame G
     // (the order stays ASAP, so a closed store's closure refusal stands)
@@ -826,16 +830,18 @@
       const pedido = `<section class="fsec" aria-label="Resumen del pedido"><h2>Tu pedido</h2>
     <div class="osum flat">${sumRow}${sumBody}
       <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : ''}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
-      // Pago
+      // Pago — row 10: a retained scheduled send fixes its tender (the other option in the drawn disabled .45, as the other slots)
+      const lp = lockedPay(); if (lp !== null) f.pay = lp;
+      const payOff = (v) => (lp !== null && lp !== v ? ' disabled' : '');
       const payOpts = `<div class="optrow" role="radiogroup" aria-label="Forma de pago">
-      <button class="opt" aria-pressed="${f.pay === 'online'}" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea<span class="rec">Recomendado</span></b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).</span></span></button>
-      <button class="opt" aria-pressed="${f.pay === 'cash'}" data-act="pay" data-val="cash"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Efectivo ${del ? 'al entregar' : 'al recoger'}</b><span>${del ? 'Pagás cuando llegue tu pedido.' : 'Pagás en tienda al recoger.'}</span></span></button></div>`;
+      <button class="opt" aria-pressed="${f.pay === 'online'}" data-act="pay" data-val="online"${payOff('online')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea<span class="rec">Recomendado</span></b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).</span></span></button>
+      <button class="opt" aria-pressed="${f.pay === 'cash'}" data-act="pay" data-val="cash"${payOff('cash')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Efectivo ${del ? 'al entregar' : 'al recoger'}</b><span>${del ? 'Pagás cuando llegue tu pedido.' : 'Pagás en tienda al recoger.'}</span></span></button></div>`;
       // §3.1 (frame 1): a guest has ONE option — card, already selected (cash ABSENT, not dimmed) — and the fixed line with the why
       const pagoGuest = `<section class="fsec" aria-label="Pago"><h2>Pago</h2><div class="optrow" role="radiogroup" aria-label="Forma de pago">
       <button class="opt" aria-pressed="true" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).</span></span></button></div>
       <p class="paynote">Pagás con tarjeta. <button class="lnk" data-act="signin" data-ctx="paynote">Creá una cuenta</button> para pagar en efectivo y sumar recompensas.</p></section>`;
       const pago = g ? pagoGuest : `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
-        ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D Secure'}</span></span><button class="act" data-act="showpay">Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
+        ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D Secure'}</span></span><button class="act" data-act="showpay"${lp !== null ? ' disabled' : ''}>Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
       const bar = `<div class="paybar"><button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button></div>`;
       // the prototype's footer «¿Problemas con tu pedido? Escribinos al …» (:1886) is omitted — pending a ruling
       return `<div class="flow" id="flow"><div class="flowbar plain"><h1>Entrega &amp; Pago</h1></div>
@@ -1288,6 +1294,7 @@
       if (a === 'more') { S.more = true; render(); return true; }
       if (a === 'editdetails') { S.editDetails = true; render(); return true; }
       if (a === 'sumtoggle') { S.sumOpen = !S.sumOpen; render(); return true; }
+      if ((a === 'pay' || a === 'showpay') && lockedPay() !== null) return true;   // row 10: the tender is fixed while the send is unresolved
       if (a === 'pay') { f.pay = v === 'online' || cardOnlyGuest() ? 'online' : 'cash'; S.showPay = false; render(); return true; }
       if (a === 'showpay') { S.showPay = true; render(); return true; }
       if (a === 'tender') { f.tendered = v; render(); return true; }

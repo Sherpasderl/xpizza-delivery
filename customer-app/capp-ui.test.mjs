@@ -2606,3 +2606,18 @@ test('Codex S4 r1 #5: row 10 stays retryable when the generator no longer offers
   await b.click('#cta'); await settle();
   const s = b.srv.of('createOrder'); assert.equal(s.length, 2, '🔴 the retry dispatches'); assert.deepEqual(J(s[1].body), J(s[0].body));
 });
+test('S4 row 10 (advisor ruling (a), Codex S4 r2): the TENDER of a retained scheduled send is fixed with its slot — the other tender disabled, a forced tap changes nothing, «Reintentar» re-sends to the recorded tender', async () => {
+  const b = bootS4({ script: { createOrder: ['network', (body) => ({ status: 200, json: { ok: true, idempotent: true, scheduled: true, order_id: body.order_id, scheduled_for: body.scheduled_for } })], chargeOnlineOrder: [CHECKOUT] } });
+  await toCheckout(b); await schedFill(b); await b.click('[data-act="time"][data-val="schedule"]'); await b.click('.slotgrid .chip');
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  await b.click('#layer [data-act="lclose"]');
+  assert.equal(b.ui.state.flow.pay, 'cash', 'premise: a cash send retained');
+  const change = b.q('[data-act="showpay"]');
+  if (change) { assert.ok(change.disabled, '🔴 S4-tender: «Cambiar» disabled while confirming'); change.dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle(); }
+  const card = b.q('[data-act="pay"][data-val="online"]');
+  if (card) { assert.ok(card.disabled, '🔴 S4-tender: the other tender disabled'); card.dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); await settle(); }
+  b.ui.state.flow.pay = 'online'; b.ui.render(); await settle();   // a flow edited behind the lock (a restore): the render puts the recorded tender back
+  assert.equal(b.ui.state.flow.pay, 'cash', '🔴 S4-tender: the recorded tender stands');
+  await b.click('#cta'); await settle();
+  assert.deepEqual([b.srv.of('createOrder').length, b.srv.of('chargeOnlineOrder').length], [2, 0], '🔴 S4-tender: re-sent to the recorded tender, never charged');
+});

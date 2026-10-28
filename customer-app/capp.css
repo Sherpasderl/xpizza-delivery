@@ -530,6 +530,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .opt b{font-size:15px;font-weight:600}.opt span{font-size:13px;color:var(--mute)}
 .opt[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
 .opt[disabled]{opacity:.45;cursor:default}
+.urow .act[disabled]{opacity:.45;cursor:default}   /* S4 row 10: the tender fixed (the drawn .45) */
 .optrow{display:flex;flex-direction:column;gap:10px}
 .optrow .opt{flex-direction:row;align-items:flex-start;gap:12px}
 .optrow .opt .txt{display:flex;flex-direction:column;gap:3px;min-width:0}

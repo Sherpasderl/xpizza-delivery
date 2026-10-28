@@ -24945,5 +24945,41 @@
     "kills_with": [
       "S4-ticket"
     ]
+  },
+  {
+    "id": "s4-30",
+    "slice": "s4",
+    "label": "the retained send's tender is not re-applied at render (a restored / edited flow switches tender)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "const lp = lockedPay(); if (lp !== null) f.pay = lp;",
+    "to": "const lp = lockedPay();",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^S4 row 10",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "S4-tender: the recorded tender stands"
+    ]
+  },
+  {
+    "id": "s4-31",
+    "slice": "s4",
+    "label": "the pay handlers stay live while a scheduled send is retained",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if ((a === 'pay' || a === 'showpay') && lockedPay() !== null) return true;   // row 10: the tender is fixed while the send is unresolved\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^S4 row 10",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "S4-tender"
+    ]
   }
 ]
