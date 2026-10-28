@@ -2210,7 +2210,10 @@
 #vuelto-sheet .vt-chip::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 44px; }   /* invisible hit box, keeps the painted pill small */
 #vuelto-sheet .vt-chip.on { background: var(--sv-p-bg, #E3ECFB); color: var(--accent, #2F5FB8); }
 #vuelto-sheet .vt-done { background: var(--accent, #2F5FB8); color: #fff; }
-/* terminar (openEndShiftSheet, S.terminar): a bag icon on each pending-order row (proto row .ic), and «Terminar igual» as a primary-blue button (proto .btn.primary) — not the X.Pizza orange gradient. */
+/* terminar (openEndShiftSheet, S.terminar): a bag icon on each pending-order row (proto row .ic), the order card
+   filled light blue-grey with NO border (proto .card surface2), and «Terminar igual» primary-blue (proto .btn.primary)
+   — not the white-bordered list / X.Pizza orange gradient. */
+#endshift-sheet .es-list { background: var(--surface-3, #EAEFF6); border: none; }
 #endshift-sheet .es-row { gap: 11px; }
 #endshift-sheet .es-ic { width: 30px; height: 30px; border-radius: 9px; background: var(--surface, #fff); color: var(--text-soft, #546078); display: grid; place-items: center; flex: none; }
 #endshift-sheet .es-ic svg { width: 17px; height: 17px; }
