@@ -2201,13 +2201,20 @@
 #vuelto-sheet .vt-card.vt-card-ok .vt-card-big .vt-cur { color: var(--success, #15803D); opacity: .55; }
 #vuelto-sheet .vt-card.hidden { display: none; }
 /* field label sentence case (proto .field label) + regular-weight input value (proto .in) */
-#vuelto-sheet .vt-inlbl { text-transform: none; letter-spacing: .01em; font-weight: 700; color: var(--text-soft, #546078); font-size: 12px; }
-#vuelto-sheet .vt-input > span, #vuelto-sheet .vt-input input { font-weight: 600; }
-/* preset chips as proto pills (rounded, content-width, left) with a ≥44px tap area; selected = blue (proto .chip.p) */
+#vuelto-sheet .vt-inlbl { text-transform: none; letter-spacing: .02em; font-family: 'Red Hat Text', sans-serif; font-weight: 700; color: var(--text-soft, #546078); font-size: 11.5px; }   /* proto .field label (Red Hat Text 700) */
+#vuelto-sheet .vt-input input { font-weight: 600; }
+#vuelto-sheet .vt-input > span { font-weight: 600; color: var(--text, #0D1424); }   /* the «L» is ink, not grey (proto .in) */
+/* preset chips: VISIBLE pill at the proto size; the ≥44px tap area is an invisible ::before overlay (no bigger painted pill) */
 #vuelto-sheet .vt-chips { flex-wrap: wrap; }
-#vuelto-sheet .vt-chip { flex: 0 0 auto; padding: 12px 17px; min-height: 44px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+#vuelto-sheet .vt-chip { flex: 0 0 auto; padding: 6px 14px; min-height: 0; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; position: relative; }
+#vuelto-sheet .vt-chip::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 44px; }   /* invisible hit box, keeps the painted pill small */
 #vuelto-sheet .vt-chip.on { background: var(--sv-p-bg, #E3ECFB); color: var(--accent, #2F5FB8); }
 #vuelto-sheet .vt-done { background: var(--accent, #2F5FB8); color: #fff; }
+/* terminar (openEndShiftSheet, S.terminar): a bag icon on each pending-order row (proto row .ic), and «Terminar igual» as a primary-blue button (proto .btn.primary) — not the X.Pizza orange gradient. */
+#endshift-sheet .es-row { gap: 11px; }
+#endshift-sheet .es-ic { width: 30px; height: 30px; border-radius: 9px; background: var(--surface, #fff); color: var(--text-soft, #546078); display: grid; place-items: center; flex: none; }
+#endshift-sheet .es-ic svg { width: 17px; height: 17px; }
+#endshift-sheet .es-confirm { background: var(--accent, #2F5FB8); box-shadow: none; }
 </style>
 <!-- ===== SLICE3:PRESENTATION-REVERIFY:END ===== -->
 <!-- ===== SLICE3:CUENTA-CARD:START — cuenta account-hub additions (owner ruled BUILD 2026-10-27). The profile card (display-only) is injected above the frozen .set-card; the Reglas/Ayuda rows are injected into it. Own trailing stylesheet, new classes only, zero frozen bytes. Light-only (the driver app has no dark theme). Exact to prototype S.cuenta card 1 + rows; the profile card mirrors the frozen .set-card surface, rows reuse the frozen .set-row/.set-ic/.set-tx. ===== -->
@@ -4764,11 +4771,15 @@ async function handleEndShift() {
 // EXACTLY once (the `settled` guard), so a double-tap on Terminar igual continues the shift-end a single time.
 function openEndShiftSheet(prompt) {
   const opener = document.activeElement;
+  /* ===== SLICE3:MONEY-TERMINAR:START — pending-order rows refreshed to prototype S.terminar's row(): a bag icon,
+     «{label} · {name}» title and «{address} · Entregar» subtitle (no separate phase-pill). ===== */
+  const ES_BAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 8h12l-1 12H7z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg>';
   const rows = prompt.orders.map((o) => `
-    <div class="es-row"><div class="es-mid">
-      <div class="es-name"><span class="order-num">${escapeHtml(o.label)}</span>${escapeHtml(o.name)}</div>
-      <div class="es-addr">${escapeHtml(o.address)}</div>
-    </div><span class="phase-pill delivery">Entregar</span></div>`).join('');
+    <div class="es-row"><span class="es-ic">${ES_BAG}</span><div class="es-mid">
+      <div class="es-name">${escapeHtml(o.label)} · ${escapeHtml(o.name)}</div>
+      <div class="es-addr">${escapeHtml(o.address)} · Entregar</div>
+    </div></div>`).join('');
+  /* ===== SLICE3:MONEY-TERMINAR:END ===== */
   const backdrop = document.createElement('div');
   backdrop.className = 'sheet-backdrop';
   backdrop.id = 'endshift-sheet';

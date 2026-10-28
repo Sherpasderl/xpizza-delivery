@@ -528,6 +528,17 @@
     "  recompute();",
     "  $('vuelto-sheet').classList.add('open');"
    ]
+  },
+  {
+   "name": "MONEY-TERMINAR",
+   "kind": "replace",
+   "restore": [
+    "  const rows = prompt.orders.map((o) => `",
+    "    <div class=\"es-row\"><div class=\"es-mid\">",
+    "      <div class=\"es-name\"><span class=\"order-num\">${escapeHtml(o.label)}</span>${escapeHtml(o.name)}</div>",
+    "      <div class=\"es-addr\">${escapeHtml(o.address)}</div>",
+    "    </div><span class=\"phase-pill delivery\">Entregar</span></div>`).join('');"
+   ]
   }
  ],
  "deps": [
