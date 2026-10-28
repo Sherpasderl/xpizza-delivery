@@ -2190,17 +2190,22 @@
    proto's .lbl (uppercase) + .big (46px, Red Hat Display) tokens; blue selected chip (proto .chip.p = pwash/p),
    sentence-case field label (proto .field label), and a primary-blue «Listo» (proto .btn.primary). New card classes;
    the baseline .vt-* row CSS is left frozen, these ID-scoped rules win. */
+#vuelto-sheet .vt-title { text-align: left; }
 #vuelto-sheet .vt-card { background: var(--surface-2, #F5F7FA); border-radius: 13px; padding: 16px 14px; text-align: center; margin-bottom: 14px; }
 #vuelto-sheet .vt-card .vt-card-l { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-dim, #8A93A6); }
 #vuelto-sheet .vt-card .vt-card-big { margin-top: 5px; font-family: 'Red Hat Display', sans-serif; font-size: 46px; font-weight: 800; color: var(--text, #0D1424); letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
-#vuelto-sheet .vt-card .vt-card-big span { font-size: 22px; font-weight: 700; color: var(--text-dim, #8A93A6); vertical-align: top; margin-right: 3px; line-height: 1.6; }
+#vuelto-sheet .vt-card .vt-card-big .vt-cur { font-size: 22px; font-weight: 700; color: var(--text-dim, #8A93A6); vertical-align: top; margin-right: 2px; line-height: 1.6; }   /* only the «L», superscript + tight */
 #vuelto-sheet .vt-card.vt-card-ok { background: var(--green-bg); }
-#vuelto-sheet .vt-card.vt-card-ok .vt-card-l { color: var(--green); }
-#vuelto-sheet .vt-card.vt-card-ok .vt-card-big { color: var(--green); }
-#vuelto-sheet .vt-card.vt-card-ok .vt-card-big span { color: var(--green); opacity: .6; }
+#vuelto-sheet .vt-card.vt-card-ok .vt-card-l { color: var(--success, #15803D); }
+#vuelto-sheet .vt-card.vt-card-ok .vt-card-big { color: var(--success, #15803D); }   /* the Vuelto number: big, bold, DARK green */
+#vuelto-sheet .vt-card.vt-card-ok .vt-card-big .vt-cur { color: var(--success, #15803D); opacity: .55; }
 #vuelto-sheet .vt-card.hidden { display: none; }
-/* field label sentence case (proto .field label, not the uppercase .vt-inlbl); selected chip blue (proto .chip.p); «Listo» primary blue (proto .btn.primary) */
+/* field label sentence case (proto .field label) + regular-weight input value (proto .in) */
 #vuelto-sheet .vt-inlbl { text-transform: none; letter-spacing: .01em; font-weight: 700; color: var(--text-soft, #546078); font-size: 12px; }
+#vuelto-sheet .vt-input > span, #vuelto-sheet .vt-input input { font-weight: 600; }
+/* preset chips as proto pills (rounded, content-width, left) with a ≥44px tap area; selected = blue (proto .chip.p) */
+#vuelto-sheet .vt-chips { flex-wrap: wrap; }
+#vuelto-sheet .vt-chip { flex: 0 0 auto; padding: 12px 17px; min-height: 44px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
 #vuelto-sheet .vt-chip.on { background: var(--sv-p-bg, #E3ECFB); color: var(--accent, #2F5FB8); }
 #vuelto-sheet .vt-done { background: var(--accent, #2F5FB8); color: #fff; }
 </style>
@@ -6247,12 +6252,11 @@ function openVuelto(total, tenderedPrefill) {
   body.innerHTML = `
     <div class="grab"></div>
     <div class="vt-title">Vuelto</div>
-    <div class="vt-sub">El cliente indicó este monto al ordenar — editá solo si paga con otra cosa</div>
-    <div class="vt-card"><div class="vt-card-l">Total a cobrar</div><div class="vt-card-big"><span>L</span> ${t.toLocaleString('es-HN')}</div></div>
+    <div class="vt-card"><div class="vt-card-l">Total a cobrar</div><div class="vt-card-big"><span class="vt-cur">L</span>${t.toLocaleString('es-HN')}</div></div>
     <div class="vt-inlbl">El cliente paga con</div>
     <div class="vt-input"><span>L</span><input id="vt-tendered" inputmode="numeric" type="text" value="${tenderedPrefill != null && tenderedPrefill !== '' ? tenderedPrefill : ''}" placeholder="0"></div>
     <div class="vt-chips">${sugg.map(s => `<button class="vt-chip" data-amt="${s}">L ${s.toLocaleString('es-HN')}</button>`).join('')}</div>
-    <div class="vt-card vt-card-ok hidden" id="vt-result"><div class="vt-card-l">Vuelto</div><div class="vt-card-big"><span>L</span> <span id="vt-amount">0</span></div></div>
+    <div class="vt-card vt-card-ok hidden" id="vt-result"><div class="vt-card-l">Vuelto</div><div class="vt-card-big"><span class="vt-cur">L</span><span id="vt-amount">0</span></div></div>
     <button class="vt-done" id="vuelto-done">Listo</button>`;
   const input = $('vt-tendered');
   const resultEl = $('vt-result');
