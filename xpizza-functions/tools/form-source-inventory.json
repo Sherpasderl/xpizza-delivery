@@ -1789,11 +1789,13 @@
   "brands/brand-store.js",
   "brands/brands-admin-core.js",
   "cancel-order-core.js",
+  "cart-sig.js",
   "catalog/add-product.js",
   "catalog/bound-reuse.js",
   "catalog/canonical-binding.js",
   "catalog/catalog-edit-auth.js",
   "catalog/catalog-edit.js",
+  "catalog/charge-inputs.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
   "catalog/identity-record-verifier.js",
@@ -1808,6 +1810,7 @@
   "catalog/snapshot-fallback.js",
   "catalog/source-store.js",
   "catalog/text-version.js",
+  "checkout-guest-gate.js",
   "checkout-guest-lib.js",
   "checkout-otp.js",
   "createorder-classify.js",
@@ -2037,6 +2040,12 @@
     "xpizza-functions/rewards-reversal-placement.test.js"
    ]
   },
+  "cart-sig.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/cart-sig-sync.guard.test.js"
+   ]
+  },
   "catalog/add-product.js": {
    "pins": [],
    "lifts": [
@@ -2063,6 +2072,12 @@
   "catalog/catalog-edit.js": {
    "pins": [],
    "lifts": []
+  },
+  "catalog/charge-inputs.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/addproduct-b-wiring.guard.test.js"
+   ]
   },
   "catalog/draft-assess.js": {
    "pins": [],
@@ -2153,9 +2168,17 @@
     "xpizza-functions/a1-wiring.guard.test.js"
    ]
   },
+  "checkout-guest-gate.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/catalog/charge-inputs.test.js"
+   ]
+  },
   "checkout-guest-lib.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/catalog/charge-inputs.test.js"
+   ]
   },
   "checkout-otp.js": {
    "pins": [],
