@@ -257,7 +257,7 @@
       : sec('Destacados', 'Abiertos ahora y para pedir hoy', featured.map((r) => scard(r, vm)))
         + sec('La casa recomienda', [...new Set(houseList.map((x) => x.r.name))].join(' · '), houseList.map(dcard))
         + meals.map(([title, d]) => sec(title, [...new Set(d.map((x) => x.r.name))].join(' · '), d.map(dcard))).join('')
-        + `<section class="hsec" aria-label="Todos los restaurantes"><div class="hd"><div><h2>Todos los restaurantes</h2><p>${vis.length === all.length ? (c ? `${nLive} en ${esc(c)}` : `${nLive}`) : `${vis.filter((r) => !r.gone).length} de ${nLive}`}</p></div></div><div class="rlist" style="padding-top:0">${vis.map((r) => rcardHtml(r, vm)).join('')}</div></section>`;
+        + `<section class="hsec" aria-label="Todos los restaurantes"><div class="hd"><div><h2>Todos los restaurantes</h2><p>${vis.length === all.length ? (c ? `${nLive} en ${esc(c)}` : `${nLive} restaurantes`) : `${vis.filter((r) => !r.gone).length} de ${nLive}`}</p></div></div><div class="rlist" style="padding-top:0">${vis.map((r) => rcardHtml(r, vm)).join('')}</div></section>`;
     return page(notes.join('') + cuisRow + fchips + rows, `<div class="credit">${nLive} restaurantes${c ? ` en ${esc(c)}` : ''}</div>`);
   }
 
@@ -287,9 +287,12 @@
     const q = vm.q || '';
     const m = searchModel(vm.rows, q, { phase: vm.phase, partial: vm.partial });
     let body = '';
-    if (!m.q) body = (vm.recent || []).length ? `<h3>Búsquedas recientes</h3><div class="recent">${vm.recent.map((x) => `<button class="chip" data-act="recent" data-q="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : '';
+    if (!m.q) body = (vm.recent || []).length ? `<h3>Búsquedas recientes</h3><div class="recent">${vm.recent.map((x) => `<button class="chip" data-act="recent" data-q="${esc(x)}">${esc(x)}</button>`).join('')}</div>`
+      : emptyHtml('search', 'Buscá restaurantes o platos', 'Tus búsquedas recientes van a aparecer aquí.');   // frame 18
     else if (m.loading && !m.dishes.length) {   // frame 6: stores at once; dishes pending (one quiet line)
       body = (m.stores.length ? `<h3>Restaurantes</h3>${m.stores.map((r) => srowR(r, vm)).join('')}` : '') + '<h3>Platos</h3><p class="note sload">Buscando platos…</p>';
+    } else if (m.all.length && m.all.every((r) => r.menuState === 'failed')) {   // frame 16: no menu answered — the directory's matches, then the drawn block
+      body = (m.stores.length ? `<h3>Restaurantes</h3>${m.stores.map((r) => srowR(r, vm)).join('')}` : '') + emptyHtml('alert', 'No pudimos buscar platos', 'Ningún menú cargó. Revisá tu conexión e intentá de nuevo.', ['menus-retry', 'Reintentar']);
     } else {
       const partialNote = !m.complete ? '<p class="note spart">Algunos menús no cargaron; puede haber más platos.</p>' : '';   // frame 8
       if (!m.stores.length && !m.dishes.length) {

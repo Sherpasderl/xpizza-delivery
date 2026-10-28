@@ -277,6 +277,7 @@
     function enter(rid, dish) {
       if (dir.state(rid) === 'gone') return;
       S.held = { rid, dish: dish || null }; S.heldErr = false;
+      { const pe = cache.peek(rid); if (pe && pe.state === 'failed') cache.get(rid); }   // frame 15: a failed menu is re-fetched before its sheet is ever shown
       if (checkHeld()) return;
       renderNow();   // the drawn pressed state
       if (dir.state(rid) !== 'enterable') dir.revalidate();
@@ -293,6 +294,9 @@
         nav.go({ name: 'store', rid: h.rid, dish: h.dish }, saveScreen());
         return true;
       }
+      // S7a-2 frame 15: an enterable store whose menu did not load (no load in flight) ⇒ the app's error sheet over Inicio, the row
+      // kept in its pressed state; «Reintentar» re-fetches (the hold stays), «Cerrar» releases it
+      if (st === 'enterable' && e && e.state === 'failed' && !cache.pending(h.rid)) { if (S.layer !== 'menuerr') openLayer('menuerr'); return false; }
       const v = dir.view();
       if (st !== 'enterable' && v.failed && !v.pending) { S.held = null; S.heldErr = true; schedule(); }   // r3.3-F1: frame 7 for the held tap
       return false;
@@ -342,7 +346,7 @@
     function renderLayer() {
       const L = $('layer'); if (!L) return;
       pinGen++; pinMap = null;   // any open pin map is obsolete
-      L.innerHTML = S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
+      L.innerHTML = S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
       if (S.layer !== 'pin') return;
       const firstHub = dir.view().rows.map((r) => r.entry).find((e) => Number.isFinite(e.hub_lat) && Number.isFinite(e.hub_lng));
       pinDraft = S.loc ? { lat: S.loc.lat, lng: S.loc.lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
@@ -356,6 +360,11 @@
         pinMap = { gen, m };
         m.addListener('idle', () => { if (gen !== pinGen || dead) return; const c = m.getCenter(); if (c) pinDraft = { lat: c.lat(), lng: c.lng() }; });
       }).catch(() => {});
+    }
+    function menuErrHtml() {
+      const h = S.held, row = h ? dir.view().rows.find((r) => r.rid === h.rid) : null;   // the name is data (the directory's, as on the row)
+      return CappUI.errSheetHtml({ title: `No pudimos abrir ${row ? CappHome.storeOf(row).name : ''}`, body: 'Su menú no cargó. Revisá tu conexión e intentá de nuevo.', icon: 'warn',
+        acts: [{ act: 'menu-retry', label: 'Reintentar', primary: true }, { act: 'menu-close', label: 'Cerrar' }] });
     }
     function openLayer(k) { S.layer = k; renderLayer(); }
     function closeLayer() { S.layer = null; renderLayer(); }
@@ -381,6 +390,9 @@
       if (a === 'filter') { const k = t.dataset.val; if (S.filters.has(k)) S.filters.delete(k); else S.filters.add(k); return renderNow(); }
       if (a === 'clearfilters') { S.cuisine = ''; S.filters.clear(); return renderNow(); }
       if (a === 'rownext') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }
+      if (a === 'menu-retry') { closeLayer(); if (S.held) cache.get(S.held.rid); return; }   // frame 15: the row stays held until the menu answers
+      if (a === 'menu-close') { S.held = null; closeLayer(); return renderNow(); }
+      if (a === 'menus-retry') { loadMenus(); return renderNow(); }   // frame 16
       if (a === 'dir-retry') { S.heldErr = false; dir.revalidate(); return renderNow(); }
       if (a === 'recent') { S.q = t.dataset.q; return renderNow(); }
       if (a === 'clearq') { S.q = ''; renderNow(); const i = $('gq'); if (i) i.focus(); return; }

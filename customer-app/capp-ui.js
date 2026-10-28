@@ -155,6 +155,12 @@
     return w.__cappMapsP;
   }
 
+  // the app's error sheet (.errsheet) — also the shell's (S7a-2 frame 15)
+  function errSheetHtml(e) {
+    const acts = e.acts.map((a) => `<button class="${a.primary ? 'primary' : 'btn2 wide'}" data-act="${a.act}"${a.disabled ? ' disabled' : ''}${a.id ? ` id="${a.id}"` : ''}>${esc(a.label)}</button>`).join('');
+    const ic = e.ic ? IC[e.ic] : e.icon === 'ok' ? IC.check : e.icon === 'warn' || e.icon === 'calm' ? IC.alert : IC.close;
+    return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${esc(e.title)}"><div class="grab"></div><div class="errsheet"><div class="icon${e.icon ? ' ' + e.icon : ''}">${ic}</div><h2>${esc(e.title)}</h2><p>${e.bodyHtml != null ? e.bodyHtml : esc(e.body)}</p>${e.note ? `<p class="note">${e.note}</p>` : ''}<div class="acts">${acts}</div></div></div>`;
+  }
   function mount(doc, opts) {
     const CappMenu = opts.CappMenu || (typeof self !== 'undefined' && self.CappMenu) || require('./capp-menu.js');
     const CappCart = opts.CappCart || (typeof self !== 'undefined' && self.CappCart) || require('./capp-cart.js');
@@ -1183,11 +1189,7 @@
       // update_required (426) is the shared self-update module's «Actualización pendiente»; price_declined: the ported sheet was answered
       backTo();
     }
-    function errSheet(e) {
-      const acts = e.acts.map((a) => `<button class="${a.primary ? 'primary' : 'btn2 wide'}" data-act="${a.act}"${a.disabled ? ' disabled' : ''}${a.id ? ` id="${a.id}"` : ''}>${esc(a.label)}</button>`).join('');
-      const ic = e.ic ? IC[e.ic] : e.icon === 'ok' ? IC.check : e.icon === 'warn' || e.icon === 'calm' ? IC.alert : IC.close;
-      return `<div class="scrim"></div><div class="sheet" role="alertdialog" aria-label="${esc(e.title)}"><div class="grab"></div><div class="errsheet"><div class="icon${e.icon ? ' ' + e.icon : ''}">${ic}</div><h2>${esc(e.title)}</h2><p>${e.bodyHtml != null ? e.bodyHtml : esc(e.body)}</p>${e.note ? `<p class="note">${e.note}</p>` : ''}<div class="acts">${acts}</div></div></div>`;
-    }
+    const errSheet = errSheetHtml;
     const feeInfoHtml = () => { const d = S.lastDelivery || {}; return `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Envío"><div class="grab"></div><div class="errsheet"><h2>Envío</h2><p>Sherpa calcula el envío según la distancia entre la sucursal y tu dirección. Desde ${moneyC(d.from_cents)}; zona de entrega hasta ${esc(d.max_km)} km de ${storeLine()}.</p><div class="acts"><button class="btn2 wide" data-act="lclose">Entendido</button></div></div></div>`; };
     // ── the full-screen pin step (prototype pinStepHtml :2186-2190; the prototype-only «Simulación» strip dropped) ──
     function pinStepHtml() {
@@ -1612,5 +1614,5 @@
       <button class="cta" type="button" data-act="offer-create">Crear mi cuenta</button><button class="lnk" type="button" data-act="offer-skip">Ahora no</button></div></div>`;
   }
 
-  return { mount, viewSections, loadMapsFor, MAP_SVG, FULL_CART, accountOfferHtml };
+  return { mount, viewSections, loadMapsFor, MAP_SVG, FULL_CART, accountOfferHtml, errSheetHtml };
 });

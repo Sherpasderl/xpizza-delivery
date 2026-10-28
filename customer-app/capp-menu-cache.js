@@ -34,6 +34,7 @@
     const validBody = typeof o.validateBody === 'function' ? o.validateBody : null;
     const persist = typeof o.persist === 'function' ? o.persist : null;   // (rid, { v:1, rid, etag, fetched_at, body }) on every network-fresh body
     const entries = new Map(), inflight = new Map(), listeners = new Map();
+    const landed = new Set();   // S7a-2 frame 15: an in-flight load whose result is already in (its subscribers run before the promise settles)
     const queue = []; let active = 0;
     const notify = (rid) => { for (const fn of [...(listeners.get(rid) || [])]) { try { fn(peek(rid)); } catch (_) {} } };
     function slot(task) {
@@ -62,7 +63,7 @@
       } else {
         next = okBody(rid, r, gen) || failOf(cur, gen);
       }
-      entries.set(rid, next); notify(rid);
+      entries.set(rid, next); landed.add(rid); notify(rid);
       if (persist && next.state === 'fresh') { try { persist(rid, { v: 1, rid, etag: next.etag, fetched_at: next.fetched_at, body: next.body }); } catch (_) {} }
       return next;
     }
@@ -79,6 +80,7 @@
       const cur = entries.get(rid);
       if (cur && cur.state === 'fresh' && now() - cur.fetched_at < FRESH_MS) return Promise.resolve(cur);
       if (inflight.has(rid)) return inflight.get(rid);
+      landed.delete(rid);
       const p = slot(() => load(rid)).finally(() => inflight.delete(rid));
       inflight.set(rid, p);
       return p;
@@ -115,7 +117,9 @@
     }
     // search completeness: every listed rid has a FRESH body (stale / failed / missing ⇒ partial)
     const complete = (rids) => rids.every((rid) => { const e = peek(rid); return !!e && e.state === 'fresh'; });
-    return { get, peek, seed, subscribe, complete, _active: () => active, _queued: () => queue.length };
+    // S7a-2 frame 15: a load for this rid is queued or running and has not produced its answer yet
+    const pending = (rid) => inflight.has(rid) && !landed.has(rid);
+    return { get, peek, seed, subscribe, complete, pending, _active: () => active, _queued: () => queue.length };
   }
 
   return { createMenuCache, CONCURRENCY, FRESH_MS, STALE_MS, PRESENT_MS, SKEW_MS };

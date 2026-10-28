@@ -854,3 +854,46 @@ test('S4 frame G in the shell (schedulingLive + G6): a guest\'s «Programar» in
   S.click(h.querySelector('[data-su="guest"]')); await flush();
   assert.equal(ui.state.flow.time, 'asap', 'the order stays ASAP');
 });
+
+// ── S7a-2 follow-up (MOCKUP-capp-S7a-states frames 15–18, approved) ──
+test('S7a-2 frames 16 / 17 / 18: every menu down ⇒ «No pudimos buscar platos» + [Reintentar] under the directory\'s matches; no city ⇒ «{N} restaurantes»; no recents ⇒ the search .empty (no button)', () => {
+  const allDown = rowsOf(SC.complete.body, { x_pizza: 'failed', la_musa: 'failed' });
+  const down = dom(CappHome.searchHtml(VM({ tab: 'search', q: 'camarones', rows: allDown })));
+  assert.equal(txt(down.querySelector('#results')), 'No pudimos buscar platos Ningún menú cargó. Revisá tu conexión e intentá de nuevo. Reintentar', '🔴 F16: the drawn all-menus-down block');
+  assert.equal(down.querySelector('.empty .btn2').dataset.act, 'menus-retry');
+  const nm = CappHome.storeOf(allDown[0]).name;
+  const withStore = dom(CappHome.searchHtml(VM({ tab: 'search', q: nm, rows: allDown })));
+  assert.deepEqual([...withStore.querySelectorAll('#results > h3, #results > .empty > b')].map((x) => x.textContent), ['Restaurantes', 'No pudimos buscar platos'], 'F16: the directory\'s matches above');
+  const one = txt(dom(CappHome.searchHtml(VM({ tab: 'search', q: 'camarones', rows: rowsOf(SC.complete.body, { x_pizza: 'failed', la_musa: 'fresh' }) }))).querySelector('#results'));
+  assert.ok(!/No pudimos buscar platos/.test(one), 'F16 premise: one menu answered ⇒ not frame 16');
+  const noCity = { ...SC.complete.body.platform }; delete noCity.city_label;
+  const home = dom(CappHome.homeHtml(VM({ platform: noCity })));
+  assert.equal(txt(home.querySelector('.hsec[aria-label="Todos los restaurantes"] .hd p')), '2 restaurantes', '🔴 F17: «{N} restaurantes», never a bare number');
+  assert.equal(txt(dom(CappHome.homeHtml(VM())).querySelector('.hsec[aria-label="Todos los restaurantes"] .hd p')), '2 en San Pedro Sula', 'F17 premise: with a city, as before');
+  const empty = dom(CappHome.searchHtml(VM({ tab: 'search' })));
+  assert.equal(txt(empty.querySelector('#results')), 'Buscá restaurantes o platos Tus búsquedas recientes van a aparecer aquí.', '🔴 F18: no recents ⇒ the drawn .empty');
+  assert.ok(empty.querySelector('#results .empty svg') && !empty.querySelector('#results .empty button'), 'F18: the search icon, no button');
+  const rec = dom(CappHome.searchHtml(VM({ tab: 'search', recent: ['pizza'] })));
+  assert.equal(rec.querySelector('#results .empty'), null); assert.equal(rec.querySelector('#results h3').textContent, 'Búsquedas recientes');
+});
+test('S7a-2 frame 15: a held tap whose MENU does not load ⇒ «No pudimos abrir {restaurante}» over Inicio, the row still pressed; «Reintentar» re-fetches and enters; «Cerrar» releases the row', async () => {
+  let mode = 'fail';
+  const S = bootShell({ envelope: (rid) => (rid === 'la_musa' ? mode : 'ok') });
+  await flush();
+  const nm = S.q('.rlist .rcard[data-rid="la_musa"]') && CappHome.storeOf({ rid: 'la_musa', entry: SC.complete.body.restaurants.find((r) => r.restaurant_id === 'la_musa'), cfg: {} }).name;
+  const before = S.envCalls.filter((r) => r === 'la_musa').length;
+  S.click('.rlist .rcard[data-rid="la_musa"]'); await flush();
+  assert.ok(S.envCalls.filter((r) => r === 'la_musa').length > before, '🔴 F15-refetch: a failed menu is re-fetched on the tap before the sheet');
+  assert.equal(S.q('#layer .errsheet h2') && S.q('#layer .errsheet h2').textContent, `No pudimos abrir ${nm}`, '🔴 F15: the sheet over Inicio');
+  assert.equal(S.q('#layer .errsheet p').textContent, 'Su menú no cargó. Revisá tu conexión e intentá de nuevo.');
+  assert.deepEqual(S.qa('#layer .errsheet button').map((b) => b.textContent), ['Reintentar', 'Cerrar']);
+  assert.ok(S.q('#layer .errsheet .icon.warn'), 'the .warn tint («Sin conexión»\'s)');
+  assert.ok(S.q('.rlist .rcard[data-rid="la_musa"]').classList.contains('held'), '🔴 F15-held: the row stays pressed under the sheet');
+  assert.equal(S.ui.store(), null);
+  S.click('#layer [data-act="menu-close"]'); await flush();
+  assert.equal(S.q('#layer .errsheet'), null); assert.ok(!S.q('.rlist .rcard[data-rid="la_musa"]').classList.contains('held'), 'F15: «Cerrar» releases the row');
+  S.click('.rlist .rcard[data-rid="la_musa"]'); await flush();
+  assert.ok(S.q('#layer .errsheet'), 'premise: the sheet again');
+  mode = 'ok'; S.click('#layer [data-act="menu-retry"]'); await flush();
+  assert.equal(S.ui.store() && S.ui.store().rid, 'la_musa', '🔴 F15-retry: «Reintentar» re-fetches and enters');
+});
