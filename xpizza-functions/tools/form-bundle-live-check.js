@@ -28,42 +28,12 @@ const { FORMS } = require('./splice-form-bundle');
 const { SCRIPT_OPEN, extractBundle } = require('../catalog/splice-form-bundle');
 
 const REPO_ROOT = join(__dirname, '..', '..');
+
+// The comparator lives in catalog/bundle-compare.js (PLAN 4: shared with the reconciler, no CLI in the functions closure).
+// The identity keys stay HERE — this CLI is outside the deployed closure — and are passed in as the ignored set.
+const { compareBundle: compareWith } = require('../catalog/bundle-compare');
 const IDENTITY_KEYS = new Set(['identity_id', 'dish_id', 'extra_id']);
-
-const sorted = (v) => (v && typeof v === 'object' && !Array.isArray(v)
-  ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted(v[k])]))
-  : Array.isArray(v) ? v.map(sorted) : v);
-const same = (a, b) => JSON.stringify(sorted(a)) === JSON.stringify(sorted(b));
-const strip = (r) => Object.fromEntries(Object.entries(r || {}).filter(([k]) => !IDENTITY_KEYS.has(k)));
-
-// Keyed collections compared record by record. `entries` turns a collection into [key, record] pairs.
-function compareKeyed(label, bakedEntries, liveEntries, out) {
-  const live = new Map(liveEntries);
-  const baked = new Map(bakedEntries);
-  for (const [k, b] of baked) {
-    if (!live.has(k)) { out.fail.push(`${label} ${k}: baked but absent from the published menu`); continue; }
-    const l = strip(live.get(k)), bb = strip(b);
-    for (const f of new Set([...Object.keys(bb), ...Object.keys(l)])) {
-      if (!same(bb[f], l[f])) out.fail.push(`${label} ${k}${b && b.name ? ` (${b.name})` : ''} ${f}: baked ${JSON.stringify(bb[f])} | published ${JSON.stringify(l[f])}`);
-    }
-  }
-  for (const [k, l] of live) if (!baked.has(k)) out.warn.push(`${label} ${k}${l && l.name ? ` (${l.name})` : ''}: published only (appears once the live menu applies)`);
-}
-const byId = (arr) => (Array.isArray(arr) ? arr.map((r) => [String(r && r.id), r]) : []);
-const byKey = (obj) => (obj && typeof obj === 'object' ? Object.entries(obj) : []);
-const asSet = (arr) => (Array.isArray(arr) ? arr.map((id) => [String(id), true]) : []);
-
-// Pure: the baked bundle against the published menu body. Returns { fail: [...], warn: [...] }.
-function compareBundle(baked, published) {
-  const out = { fail: [], warn: [] };
-  if (!published || !Array.isArray(published.dishes)) { out.fail.push('published menu has no dishes'); return out; }
-  compareKeyed('dish', byId(baked.dishes), byId(published.dishes), out);
-  compareKeyed('extra', byId(baked.extras), byId(published.extras), out);
-  compareKeyed('variant_group', byKey(baked.variant_items), byKey(published.variant_items), out);
-  compareKeyed('category', byId(baked.categories), byId(published.categories), out);
-  compareKeyed('has_photo', asSet(baked.has_photo), asSet(published.has_photo), out);
-  return out;
-}
+const compareBundle = (baked, published) => compareWith(baked, published, { ignore: IDENTITY_KEYS });
 
 // Every top-level folder whose index.html carries a bundle block must be a registered form.
 function unregisteredForms(forms = FORMS, root = REPO_ROOT) {
@@ -95,13 +65,17 @@ function selectForms(argv, cwd, forms = FORMS) {
 // UNCHECKED. So: one settle path; 'aborted' / 'error' / a 'close' before 'end' reject; `timeoutMs` bounds inactivity and
 // `totalMs` bounds the WHOLE request (a server dribbling a byte a second never ends), both cleared on settle.
 // `get` is injectable for the loopback regression tests; production uses https.get.
-function getJson(url, { timeoutMs = 20000, totalMs = 45000, get = https.get } = {}) {
+// `headers` (PLAN 4 §3): the bake and this check ask for a FRESH read — Cache-Control: no-cache beside a build-unique query.
+function getJson(url, opts = {}) { return getRaw(url, opts, true); }
+// PLAN 4 r2 (Codex r1 #6): the same settle path for an HTML page — the DEPLOYED form, for --deployed.
+function getText(url, opts = {}) { return getRaw(url, { headers: { accept: 'text/html' }, ...opts }, false); }
+function getRaw(url, { timeoutMs = 20000, totalMs = 45000, get = https.get, headers = { accept: 'application/json' } } = {}, asJson = true) {
   return new Promise((done, fail) => {
     let settled = false, deadline = null, req = null;
     const settle = (fn, v) => { if (settled) return; settled = true; clearTimeout(deadline); fn(v); };
     const reject = (msg) => { settle(fail, new Error(`${url} ${msg}`)); if (req) req.destroy(); };
     deadline = setTimeout(() => reject(`did not complete within ${totalMs} ms`), totalMs);
-    req = get(url, { headers: { accept: 'application/json' }, timeout: timeoutMs }, (res) => {
+    req = get(url, { headers, timeout: timeoutMs }, (res) => {
       let raw = '', ended = false;
       res.setEncoding('utf8');
       res.on('data', (c) => { raw += c; });
@@ -111,6 +85,7 @@ function getJson(url, { timeoutMs = 20000, totalMs = 45000, get = https.get } = 
       res.on('end', () => {
         ended = true;
         if (res.statusCode !== 200) return reject(`answered ${res.statusCode}`);
+        if (!asJson) return settle(done, raw);
         let body;
         try { body = JSON.parse(raw); } catch (e) { return reject('returned non-JSON'); }
         settle(done, body);
@@ -121,6 +96,31 @@ function getJson(url, { timeoutMs = 20000, totalMs = 45000, get = https.get } = 
   });
 }
 
+// PLAN 4 r2 (Codex r1 #6) — the DEPLOYED-ORIGIN comparison an operator repairs with: the bundle the LIVE site serves (its orders
+// origin from the platform manifest, fetched fresh) against the published menu (fresh). The checkout's own index.html supplies
+// only the menu endpoint; it is never the thing compared. → { origin, fail, warn }
+async function deployedCheck(rid, html, { sites = require('../../platform/sites.json'), fetchText = getText, fetchJson = getJson, now = Date.now } = {}) {
+  const { assetBaseFor } = require('../catalog/public-photos');
+  const origin = assetBaseFor(rid, sites);
+  if (!origin) throw new Error(`no single orders origin for ${rid} in platform/sites.json`);
+  const t = now();
+  const deployedHtml = await fetchText(`${origin}?_deployed=${t}`, { headers: { accept: 'text/html', 'cache-control': 'no-cache' } });
+  const body = await fetchJson(`${publicMenuUrl(html, rid)}?_check=${t}`, { headers: { accept: 'application/json', 'cache-control': 'no-cache' } });
+  return { origin, ...withPremigration(rid, compareBundle(extractBundle(deployedHtml), body && body.menu), body && body.menu) };
+}
+
+// PLAN 4 GATED (Codex r3 #3, r4): BOTH modes refuse a pre-migration published body — the GATED runtime has no literal fallback.
+function withPremigration(rid, res, menu) {
+  const gaps = require('../catalog/menu-structure-rows').premigrationGaps(rid, menu);
+  return { ...res, fail: res.fail.concat(gaps.map((g) => `premigration_body: ${g} is missing from the published menu (run the menu-structure migration + publish)`)) };
+}
+// The default (--this-form / every form) mode: the checkout's baked bundle against the published menu (fresh). → { fail, warn }
+async function thisFormCheck(rid, html, { fetchJson = getJson, now = Date.now } = {}) {
+  // a FRESH read, like the bake's: a cached older body would fail a build whose bake read the newer one
+  const body = await fetchJson(`${publicMenuUrl(html, rid)}?_check=${now()}`, { headers: { accept: 'application/json', 'cache-control': 'no-cache' } });
+  return withPremigration(rid, compareBundle(extractBundle(html), body && body.menu), body && body.menu);
+}
+
 async function main() {
   // Belt for the class P1 belongs to: the exit code is a FAILURE until the very end proves otherwise, so any path that leaves
   // the event loop without finishing (a promise that never settles) fails the build rather than passing it.
@@ -129,12 +129,21 @@ async function main() {
   for (const p of unregisteredForms()) { console.error(`FAIL ${p}: carries a baked menu but is not in tools/splice-form-bundle.js FORMS`); failed = true; }
   const selected = selectForms(process.argv.slice(2), process.cwd());
   if (!selected) { console.error(`FAIL ${process.cwd()}: --this-form, but this folder is not a registered form`); process.exit(1); }
+  const deployed = process.argv.includes('--deployed');
   for (const [rid, file] of selected) {
     const html = readFileSync(file, 'utf8');
-    const url = publicMenuUrl(html, rid);
-    let body;
-    try { body = await getJson(url); } catch (e) { console.error(`FAIL ${rid}: ${e.message}`); failed = true; continue; }
-    const { fail, warn } = compareBundle(extractBundle(html), body && body.menu);
+    if (deployed) {
+      let res;
+      try { res = await deployedCheck(rid, html); } catch (e) { console.error(`FAIL ${rid} (deployed): ${e.message}`); failed = true; continue; }
+      for (const w of res.warn) console.log(`WARN ${rid} (deployed ${res.origin}) ${w}`);
+      for (const f of res.fail) console.error(`FAIL ${rid} (deployed ${res.origin}) ${f}`);
+      if (res.fail.length || res.warn.length) failed = true;   // the deployed form must EQUAL published (a published-only addition = a stale deploy)
+      console.log(`${rid}: the DEPLOYED form at ${res.origin} ${res.fail.length || res.warn.length ? `differs from the published menu (${res.fail.length} fail, ${res.warn.length} published-only)` : 'carries the published menu'}`);
+      continue;
+    }
+    let res;
+    try { res = await thisFormCheck(rid, html); } catch (e) { console.error(`FAIL ${rid}: ${e.message}`); failed = true; continue; }
+    const { fail, warn } = res;
     for (const w of warn) console.log(`WARN ${rid} ${w}`);
     for (const f of fail) console.error(`FAIL ${rid} ${f}`);
     if (fail.length) failed = true;
@@ -145,4 +154,4 @@ async function main() {
   process.exitCode = 0;
 }
 if (require.main === module) main().catch((e) => { console.error('form-bundle-live-check: ERROR', e && e.message); process.exit(1); });
-module.exports = { compareBundle, unregisteredForms, publicMenuUrl, selectForms, getJson, IDENTITY_KEYS };
+module.exports = { compareBundle, unregisteredForms, publicMenuUrl, selectForms, getJson, getText, deployedCheck, thisFormCheck, IDENTITY_KEYS };

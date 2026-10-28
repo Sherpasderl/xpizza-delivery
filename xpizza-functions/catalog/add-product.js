@@ -480,8 +480,17 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
     refuse('item_order_changed', 'existing products cannot be reordered here; new products go at the end', { field: 'item_order' });
   }
   const authored = draftAuthored instanceof Set ? draftAuthored : new Set(draftAuthored || []);
-  for (const f of [...ALWAYS_COMPARED.filter((x) => x !== 'variant_items'), ...COMPARED_WHEN_AUTHORED.filter((x) => authored.has(x) && x !== 'exposure')]) {   // variant_items, exposure: their own rules
+  for (const f of [...ALWAYS_COMPARED.filter((x) => x !== 'variant_items' && x !== 'categories'), ...COMPARED_WHEN_AUTHORED.filter((x) => authored.has(x) && x !== 'exposure')]) {   // variant_items, categories, exposure: their own rules
     if (!sameJson(draftBuilt.structure[f], activeBuilt.structure[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });
+  }
+  // categories (PLAN-public-menu-display r2 T1): frozen except each category's display `name` — same count, the same id
+  // at every index, every other field equal. A draft that renames must change NOTHING else (rename_not_alone), so the
+  // reviewed diff shows the rename alone and never a rename riding beside a price edit.
+  if (!sameCategoriesExceptName(draftBuilt.structure.categories, activeBuilt.structure.categories)) {
+    refuse('structure_changed', "the menu's categories cannot change here", { field: 'categories' });
+  }
+  if (!sameJson(draftBuilt.structure.categories, activeBuilt.structure.categories) && !changesNothingElse(draftBuilt, activeBuilt, additions, removals)) {
+    refuse('rename_not_alone', 'a category rename must be published on its own, with no other change', { field: 'categories' });
   }
   // exposure (§8): EVERYTHING is frozen except the typed, key-only deny_extras lists — compared after removing only those
   // and normalizing an override left empty by that removal (an existing `add` is never deleted by the normalization)
@@ -491,6 +500,24 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
     if (!sameJson(denyExtrasOf(de), denyExtrasOf(ae)) && !extrasAuthoring) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
   }
   return { additions: additions.map((it) => it.key), removals };
+}
+
+// Two category lists that differ at most in `name`: same length, and at each index every field but `name` equal — the id
+// among them, so the same ids in the same order (a field present on one side only is a change).
+function sameCategoriesExceptName(d, a) {
+  if (!Array.isArray(d) || !Array.isArray(a)) return sameJson(d, a);
+  if (d.length !== a.length) return false;
+  return d.every((c, i) => isObj(c) && isObj(a[i]) && sameJson(without(c, ['name']), without(a[i], ['name'])));
+}
+// Nothing but the categories differs: no product added or removed, every product and extra record (price included) equal,
+// and every OTHER structure field equal (an allowed structure edit — deny_extras under extras authoring — is a change too).
+function changesNothingElse(draftBuilt, activeBuilt, additions, removals) {
+  if (additions.length || removals.length) return false;
+  if (!sameJson(without(draftBuilt.structure, ['categories']), without(activeBuilt.structure, ['categories']))) return false;
+  const da = new Map(draftBuilt.items.map((it) => [it.key, it]));
+  if (!activeBuilt.items.every((a) => { const d = da.get(a.key); return d && d.price === a.price && sameJson(d.display, a.display) && !!d.has_photo === !!a.has_photo; })) return false;
+  const de = new Map((draftBuilt.extras || []).map((e) => [e.key, e]));
+  return (activeBuilt.extras || []).every((a) => { const d = de.get(a.key); return d && d.price === a.price && sameJson(d.display, a.display); });
 }
 
 // exposure minus the typed deny_extras: each override without the field, and an override left EMPTY by that removal
@@ -532,5 +559,6 @@ function assertSameAuthoredFields(incomingStructure, storedStructure, { activeHa
 module.exports = {
   MAX_ADDITIONS, TMP_RE, AddProductError, normalizeName, tidyName, slugify, sameJson,
   resolveKeyMode, classifyItems, allocateAdditions, compareToActive, assertSameAuthoredFields, isGroupVariant, optionName, prospectiveAdditionNames,
+  changesNothingElse,   // PLAN-public-menu-display T1 (portal r1 #3): the SAME «anything but a category name» rule, read by draft-assess
   ALWAYS_COMPARED, COMPARED_WHEN_AUTHORED,
 };

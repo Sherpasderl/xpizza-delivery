@@ -10,7 +10,8 @@ const { execFileSync } = require('child_process');
 const { BASE, HUNKS, unapplyMenuWarmIndex } = require('./tools/menu-warm-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = require('./tools/photos-inverse').unapplyPhotosIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // the photos slice is newer: removed FIRST
+// PLAN 4 (formbake) landed later: its appended index.js block is reversed FIRST (proven by formbake-wiring.guard)
+const real = require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/photos-inverse').unapplyPhotosIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')));   // the photos slice is newest: removed FIRST
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.strictEqual(HUNKS.length, 1, 'one hunk');
 assert.notStrictEqual(unapplyMenuWarmIndex(real), real, 'non-vacuity: the hunk is present and swapped back');

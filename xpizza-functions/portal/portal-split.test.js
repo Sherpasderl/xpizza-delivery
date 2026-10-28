@@ -65,10 +65,12 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/identity-partition.js', 'catalog/identity-plan.js', 'catalog/identity-reconcile.js', 'catalog/identity-registry.js',
   'catalog/identity-stampmap.js', 'catalog/identity-verdict.js', 'catalog/identity-writer.js',
   'catalog/kds-manifest.js',                // 1D add-product A: the conditional /menus writer, after a successful publish
+  'catalog/menu-structure-rows.js',         // plan 4 GATED (G1): the reviewed rows the bootstrap applies, via form-menu-source.js (pure; no I/O)
   'catalog/mirror-rtdb.js',
   'catalog/platform-extras.js',             // per-product extras: the platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/platform-groups.js',             // 1D add-product B: the ONE platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/portal-reads.js', 'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',
+  'catalog/reward-icons.js',                // plan 4 r3 §8.1: the closed reward_icon set, via source-store.js (a frozen list; no I/O)
   'catalog/seed-catalog-core.js', 'catalog/source-store.js',
   'factura/eligibility.js',                 // usesPlatformFactura (getEditableCatalog's fiscal capability) — pure
   'index.js',                               // the entry: only its early branch runs
@@ -81,6 +83,7 @@ const PORTAL_GRAPH_LOCAL = [
   'rewards-redeem-config.js', 'scheduled-orders.js',
   'stats/keyer.js', 'stats/stats-api.js', 'stats/stats-build.js', 'stats/stats-classify.js', 'stats/stats-identity.js', 'stats/stats-index.js',
   'stats/stats-indexing.js', 'stats/stats-job.js', 'stats/stats-store.js', 'stats/stats-time.js',
+  'tools/migrations/2026-10-26-menu-structure.json',   // plan 4 GATED (G1): the reviewed data file those rows come from (data)
 ];
 const PORTAL_GRAPH_NPM = ['firebase-admin', 'firebase-functions', 'node:crypto', 'node:fs', 'node:path'];
 // Never in a portal instance: the order / payment / driver / messaging / fiscal-writer surface and the heavy npm deps.
@@ -143,7 +146,7 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
   // ── 1. ROUTING ────────────────────────────────────────────────────────────────────────────────────────────────
   // PORTAL-UI 1a: the ops early branch is appended to the Set line (a same-line hunk); its own pin + routing proofs live in
   // portal/ops-split.test.js, so this section pins the five-target branch on index.js minus the portal-ui hunks.
-  const idx = require('../tools/portalui-inverse').unapplyPortalUiIndex(require('../tools/menu-warm-inverse').unapplyMenuWarmIndex(require('../tools/photos-inverse').unapplyPhotosIndex(read('index.js'))));
+  const idx = require('../tools/portalui-inverse').unapplyPortalUiIndex(require('../tools/menu-warm-inverse').unapplyMenuWarmIndex(require('../tools/formbake-inverse').unapplyFormbakeIndex(require('../tools/photos-inverse').unapplyPhotosIndex(read('index.js')))));
   const EARLY_BRANCH = "const PORTAL_ISOLATED_TARGETS = Object.freeze(new Set(['getMyRestaurants', 'getEditableCatalog', 'editCatalog', 'publishEdited', 'getSalesStats']));\n"
     + 'if (PORTAL_ISOLATED_TARGETS.has(process.env.FUNCTION_TARGET)) {\n'
     + "  console.log('portal_isolated_entry', process.env.FUNCTION_TARGET);   // §8 deploy check: the isolated branch ran\n"
@@ -408,7 +411,7 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
 // D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed
 // after the WhatsApp-cancel block (tools/wacancel-inverse.js unapplyWaCancelIndex), which is reversed after the per-product extras blocks
 // (tools/extras-inverse.js unapplyExtrasIndex — the newest, reversed FIRST).
-    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('../tools/d12b-inverse').unapplyD12bIndex(require('../tools/wacancel-inverse').unapplyWaCancelIndex(require('../tools/extras-inverse').unapplyExtrasIndex(require('../tools/serial3-inverse').unapplySerial3Index(require('../tools/h0-inverse').unapplyH0Index(require('../tools/s1a-inverse').unapplyS1aIndex(require('../tools/a1-inverse').unapplyA1Index(require('../tools/s1b-inverse').unapplyS1bIndex(require('../tools/s5-inverse').unapplyS5Index(require('../tools/h1-inverse').unapplyH1Index(require('../tools/h1c-inverse').unapplyH1cIndex(require('../tools/signup-inverse').unapplySignupIndex(require('../tools/unassign-inverse').unapplyUnassignIndex(require('../tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('../tools/release-race-inverse').unapplyReleaseRaceIndex(require('../tools/brand-server-inverse').unapplyBrandServerIndex(require('../tools/dlite-push-inverse').unapplyDlitePushIndex(require('../tools/membership-inverse').unapplyMembershipIndex(require('../tools/portalui-inverse').unapplyPortalUiFold(require('../tools/menu-warm-inverse').unapplyMenuWarmIndex(require('../tools/photos-inverse').unapplyPhotosFold(foldPortalSplit(root))))))))))))))))))))))))))));
+    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('../tools/d12b-inverse').unapplyD12bIndex(require('../tools/wacancel-inverse').unapplyWaCancelIndex(require('../tools/extras-inverse').unapplyExtrasIndex(require('../tools/serial3-inverse').unapplySerial3Index(require('../tools/h0-inverse').unapplyH0Index(require('../tools/s1a-inverse').unapplyS1aIndex(require('../tools/a1-inverse').unapplyA1Index(require('../tools/s1b-inverse').unapplyS1bIndex(require('../tools/s5-inverse').unapplyS5Index(require('../tools/h1-inverse').unapplyH1Index(require('../tools/h1c-inverse').unapplyH1cIndex(require('../tools/signup-inverse').unapplySignupIndex(require('../tools/unassign-inverse').unapplyUnassignIndex(require('../tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('../tools/release-race-inverse').unapplyReleaseRaceIndex(require('../tools/brand-server-inverse').unapplyBrandServerIndex(require('../tools/dlite-push-inverse').unapplyDlitePushIndex(require('../tools/membership-inverse').unapplyMembershipIndex(require('../tools/portalui-inverse').unapplyPortalUiFold(require('../tools/menu-warm-inverse').unapplyMenuWarmIndex(require('../tools/formbake-inverse').unapplyFormbakeIndex(require('../tools/photos-inverse').unapplyPhotosFold(foldPortalSplit(root)))))))))))))))))))))))))))));
     assert.strictEqual(sha(foldToParent()), PARENT_INDEX, 'premise: the real tree folds back to the parent');
     const FILES = ['index.js', 'lib/admin.js', 'lib/payment-alert.js', 'portal/origins.js', 'portal/functions.js', 'stats/keyer.js'];
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-split-'));

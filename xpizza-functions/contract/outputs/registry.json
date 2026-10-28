@@ -1714,7 +1714,7 @@
   "xpizza-functions/stats/stats-classify.js#isSale@xpizza-functions/stats/stats-classify.js#<top>>anon": {
    "status": "pending"
   },
-  "xpizza-functions/stats/stats-gen.js#generate@xpizza-functions/catalog/public-menu.js#buildPublicMenu": {
+  "xpizza-functions/stats/stats-gen.js#generate@xpizza-functions/catalog/public-menu.js#composeServedMenu": {
    "status": "pending"
   },
   "xpizza-functions/stats/stats-job.js#readOrdersBounded>anon@self": {

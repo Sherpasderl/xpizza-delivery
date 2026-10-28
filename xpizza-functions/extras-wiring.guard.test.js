@@ -25,7 +25,7 @@ const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-func
 
 // ── 1a. index.js ──
 {
-  const real = require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('./tools/release-race-inverse').unapplyReleaseRaceIndex(require('./tools/brand-server-inverse').unapplyBrandServerIndex(require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/photos-inverse').unapplyPhotosIndex(read('index.js')))))))))))))))))));   // the newer §3 serial3 blocks are reversed FIRST
+  const real = require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(require('./tools/h1-inverse').unapplyH1Index(require('./tools/h1c-inverse').unapplyH1cIndex(require('./tools/signup-inverse').unapplySignupIndex(require('./tools/unassign-inverse').unapplyUnassignIndex(require('./tools/tracker-fixes-inverse').unapplyTrackerFixesIndex(require('./tools/release-race-inverse').unapplyReleaseRaceIndex(require('./tools/brand-server-inverse').unapplyBrandServerIndex(require('./tools/dlite-push-inverse').unapplyDlitePushIndex(require('./tools/membership-inverse').unapplyMembershipIndex(require('./tools/portalui-inverse').unapplyPortalUiIndex(require('./tools/menu-warm-inverse').unapplyMenuWarmIndex(require('./tools/formbake-inverse').unapplyFormbakeIndex(require('./tools/photos-inverse').unapplyPhotosIndex(read('index.js'))))))))))))))))))));   // the newer §3 serial3 blocks are reversed FIRST
   const base = baseOf('index.js', INDEX_BASE);
   assert.notStrictEqual(unapplyExtrasIndex(real), real, 'non-vacuity: the blocks are present and swapped back');
   assert.strictEqual(unapplyExtrasIndex(real), base, `🔴 index.js minus the extras blocks is not ${INDEX_BASE}:index.js`);
@@ -39,8 +39,13 @@ const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-func
 // ── 1b. the pinned modules ──
 {
   assert.deepStrictEqual([...FILES].sort(), ['catalog/catalog-publish.js', 'catalog/source-store.js', 'menu-pricing.js']);
-  for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, unapplyPriceSync(f, read(f))), baseOf(f), `🔴 ${f} minus the price-sync and extras hunks is not ${BASE}:${f}`);
-  const f = 'catalog/source-store.js'; const src = read(f);
+  // PLAN-public-menu-display landed later: its exact module inverse (proven by pmdisplay-wiring.guard) is reversed FIRST
+  const { unapplyPmdisplayModule } = require('./tools/pmdisplay-module-inverse');
+  // PLAN 4 landed after public-menu-display: its exact module inverse (proven by formbake-module-wiring.guard) is reversed FIRST
+  const { unapplyFormbakeModule } = require('./tools/formbake-module-inverse');
+  const pmdRead = (f) => unapplyPmdisplayModule(f, unapplyFormbakeModule(f, read(f)));
+  for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, unapplyPriceSync(f, pmdRead(f))), baseOf(f), `🔴 ${f} minus the price-sync and extras hunks is not ${BASE}:${f}`);
+  const f = 'catalog/source-store.js'; const src = pmdRead(f);
   const h = HUNKS.find((x) => x.file === f && x.now.includes('deny_extras'));
   assert.throws(() => unapplyExtrasModule(f, src.replace(h.now, h.now.replace('deny_extras', 'deny_extraz'))), /occurs 0 times/, 'a byte INSIDE a hunk');
   assert.throws(() => unapplyExtrasModule(f, src + h.now), /occurs 2 times/, 'a duplicated hunk');

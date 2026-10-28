@@ -19,6 +19,7 @@ const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { formSource, readLiteral, readSetLiteral, pricingKeyOf } = require('../catalog/form-menu-source');
 const { attachRedeemFields } = require('../catalog/redeem-source');
 const { attachExposure } = require('../catalog/exposure-source');
+const { applyBootstrapRows } = require('../catalog/menu-structure-rows');
 const { validateSource, sourceRefOf, canonicalize, extrasKeyOf } = require('../catalog/source-store');
 
 // Pure: assemble the store object for one restaurant from the current code + form sources.
@@ -53,6 +54,9 @@ function buildSourceFromCode(restaurantId) {
   for (const key of Object.keys(extrasTable)) {
     if (!extras.some((e) => e.key === key)) throw new Error(`seed_missing_extra_display: ${restaurantId}/${key}`);
   }
+
+  // PLAN 4 GATED (G1): the post-migration data from the ONE reviewed data file, exactly as the text bootstrap applies it
+  const bootstrapStructure = applyBootstrapRows(restaurantId, { items, extras });
 
   const structure = { schema_version: 1, item_order: items.map((i) => i.key) };
   if (restaurantId === 'la_musa') {
@@ -107,6 +111,7 @@ function buildSourceFromCode(restaurantId) {
     const badges = readLiteral(src, 'TAG_BADGES', '{', '}');
     if (badges && Object.keys(badges).length) structure.badges = badges;
   } catch (_) { /* a brand with no badge literal simply declares none */ }
+  if (bootstrapStructure.badge_priority) structure.badge_priority = bootstrapStructure.badge_priority;
 
   // 🔴 EXPOSURE — which options each dish is offered — through the SAME derivation the code-side
   // parity build uses, and the LEGACY maps derived from it rather than copied beside it. The maps

@@ -47,8 +47,10 @@ export const envelope = (rid, menu, representationVersion = '1b.1') => ({ rid, r
 /* `transforms` ({ 'account.js': (code) => code }) rewrites ONE local script before it is inlined — for a seam the page has
    no other way to offer (account.js loads the Firebase SDK by dynamic https import, which jsdom cannot run). A transform
    must replace only the unreachable dependency; everything around it runs as shipped. */
-export function loadForm(dir, { omit = [], transforms = {} } = {}) {
-  let html = readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8');
+/* `html` (PLAN 4) boots a page OTHER than the committed one — the BAKED index.html a build produces — while the form's local
+   scripts are still inlined from `dir`, exactly as the deployed site serves them beside it. */
+export function loadForm(dir, { omit = [], transforms = {}, html: pageHtml = null } = {}) {
+  let html = pageHtml !== null ? pageHtml : readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8');
   html = html.replace(/<script src="(?!https?:)([^"]+)"><\/script>/g, (m, src) => {
     if (omit.indexOf(src) !== -1) return '';
     try {
@@ -132,9 +134,13 @@ export const BRAND = {
     containers: ['menu-individual', 'menu-ny'],
     menu: (w) => {
       const live = w.liveMenuGlobalGet('MENU');
+      // PLAN 4 r2: the categories the published x_pizza body always carries (the composer emits them; the one menu contract
+      // requires them) — first appearance in MENU, exactly as the catalog derives them. A body without them is laxer than prod.
+      const cats = []; for (const d of live) if (!cats.includes(d.cat)) cats.push(d.cat);
       return {
         dishes: live.map((d) => ({ ...d })),
         extras: w.liveMenuGlobalGet('EXTRAS').map((e) => ({ ...e })),
+        categories: cats.map((id) => ({ id })),
       };
     },
   },

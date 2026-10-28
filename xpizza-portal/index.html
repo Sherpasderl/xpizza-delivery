@@ -95,6 +95,8 @@
     <div class="hidden" id="pubreq"></div>
     <!-- PORTAL-UI 1a: «Agotados ahora» per branch (availability.js) -->
     <div class="ops hidden" id="availstrip"></div>
+    <!-- PLAN-public-menu-display T1: «Tus secciones todavía no tienen nombre» (app.js; shown only while no section has a name) -->
+    <div class="hidden" id="seccall"></div>
     <div class="split">
       <div class="rail" id="rail"></div>
       <div class="detail" id="detail">
@@ -149,6 +151,9 @@
       </div>
     </div>
   </div>
+
+  <!-- PLAN-public-menu-display T1: «Ponerles nombre a tus secciones» — every section named at once (app.js) -->
+  <div class="scrim" id="namescrim"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="nameTitle" id="namemodal"></div></div>
 
   <!-- The item drawer (Task 3: price only). Filled by app.js; empty and inert until a row is opened. -->
   <aside class="drawer" id="drawer" aria-label="Editar producto"></aside>

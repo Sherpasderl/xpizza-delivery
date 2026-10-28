@@ -36,7 +36,15 @@ try {
   // per-product extras (stage 2) landed later: its exact module inverse (tools/extras-module-inverse.js, proven by
   // extras-wiring.guard) is reversed FIRST for the files it touches (catalog-publish.js, source-store.js)
   const { unapplyExtrasModule, FILES: EXTRAS_FILES } = require('../tools/extras-module-inverse');
-  const pinned = (f) => (EXTRAS_FILES.includes(f) ? unapplyExtrasModule(f, read(f)) : read(f));
+  // PLAN-public-menu-display landed after extras: its exact module inverse (tools/pmdisplay-module-inverse.js, proven by
+  // pmdisplay-wiring.guard) is reversed FIRST (newest first) — source-store.js gains only the all-or-nothing category-name rule
+  const { unapplyPmdisplayModule, FILES: PMD_FILES } = require('../tools/pmdisplay-module-inverse');
+  // PLAN 4 (bake from published) landed after public-menu-display: its exact module inverse (tools/formbake-module-inverse.js,
+  // proven by formbake-module-wiring.guard) is reversed FIRST (newest first) — source-store.js gains badge_priority / reward_icon
+  const { unapplyFormbakeModule, FILES: FB_FILES } = require('../tools/formbake-module-inverse');
+  const fbRead = (f) => (FB_FILES.includes(f) ? unapplyFormbakeModule(f, read(f)) : read(f));
+  const pmdRead = (f) => (PMD_FILES.includes(f) ? unapplyPmdisplayModule(f, fbRead(f)) : fbRead(f));
+  const pinned = (f) => (EXTRAS_FILES.includes(f) ? unapplyExtrasModule(f, pmdRead(f)) : pmdRead(f));
   for (const [f, want] of Object.entries(PINS)) assert.strictEqual(sha(pinned(f)), want, `🔴 ${f} changed — c2b imports it and must never edit it`);
   assert.notStrictEqual(sha(`${read('catalog/catalog-verifier.js')} `), PINS['catalog/catalog-verifier.js'], 'sensitivity');
   ok(`zero diff: the ${Object.keys(PINS).length} existing modules c2b imports (evidence, encoding, verifier, c1 gates, registry, pointer reader, source store, identity registry, publisher, bootstrap) are byte-identical to the integration base 2cb5a1c`);

@@ -66,10 +66,10 @@ ok('--this-form: a form\'s build checks only its own brand; an unregistered fold
 for (const rid of rids) {
   const toml = readFileSync(join(dirname(FORMS[rid]), 'netlify.toml'), 'utf8');
   const cmd = (toml.match(/^\s*command\s*=\s*"([^"]*)"/m) || [])[1] || '';
-  assert.strictEqual(cmd, 'node ../platform/stamp-version.js && node ../xpizza-functions/tools/form-bundle-live-check.js --this-form',
-    `${rid}: its Netlify build command stamps, then runs the baked-menu check for this form only`);
+  assert.strictEqual(cmd, 'node ../xpizza-functions/tools/bake-form-bundle.js --this-form && node ../platform/stamp-version.js && node ../xpizza-functions/tools/form-bundle-live-check.js --this-form',
+    `${rid}: its Netlify build command BAKES from the published catalog, stamps, then runs the baked-menu check for this form only (PLAN 4 §3)`);
 }
-ok('every registered form\'s Netlify build runs the check (--this-form) after the version stamp');
+ok('every registered form\'s Netlify build: bake (--this-form) → version stamp → check (--this-form), in that order');
 // ── the GET can never pass a build it did not finish (codex guard r1 P1/P2) — driven against a LOOPBACK server ──
 (async () => {
   const timers = new Set();

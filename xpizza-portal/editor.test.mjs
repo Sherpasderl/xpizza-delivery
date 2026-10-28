@@ -762,3 +762,87 @@ test('🔴 every group mutator respects the STATE boundary', () => {
   removeChoice(d, REF, O[0]); setChoiceName(d, O[0], 'A'); setChoiceRecommended(d, O[0], true); setChoicePrice(d, O[0], '5'); setGroupPrice(d, REF, '7');
   assert.strictEqual(JSON.stringify(draftSource(d)), before, 'a locked draft refuses all nine');
 });
+
+// ── PLAN-public-menu-display T1 — a SECTION'S NAME (synthetic third brand: marca_s) ──────────────────────────────────────
+import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
+const SECTIONS = (named) => ({ restaurant_id: 'marca_s', items: [{ key: 'k1', price: 100, display: { cat: 'uno', name: 'Uno', price: 100 } }], extras: [],
+  structure: { item_order: ['k1'], categories: named ? [{ id: 'uno', name: 'Primera', layout: 'list' }, { id: 'dos', name: 'Segunda', subcats: ['a'] }] : [{ id: 'uno', layout: 'list' }, { id: 'dos', subcats: ['a'] }] } });
+
+test('T1: setCategoryNames writes ONLY `name` — id, order, count and every other field stay byte-identical', () => {
+  const d = createDraft(SECTIONS(true));
+  setCategoryNames(d, [['dos', '  Pizzas   de la casa ']]);
+  const cats = draftSource(d).structure.categories;
+  assert.deepStrictEqual(cats, [{ id: 'uno', name: 'Primera', layout: 'list' }, { id: 'dos', name: 'Pizzas de la casa', subcats: ['a'] }], 'trimmed, inner spaces collapsed; nothing else moved');
+  assert.deepStrictEqual(pendingRenames(d), [{ id: 'dos', from: 'Segunda', to: 'Pizzas de la casa' }]);
+  assert.strictEqual(pendingCount(d), 0, 'a rename is not a price change — the two are reported apart');
+  assert.deepStrictEqual(draftSource(d).items, SECTIONS(true).items, 'no item touched');
+});
+
+test('T1: ALL-OR-NOTHING — one bad name in the set changes nothing at all; an unknown id changes nothing', () => {
+  const d = createDraft(SECTIONS(false));
+  const before = JSON.stringify(draftSource(d));
+  setCategoryNames(d, [['uno', 'Primera'], ['dos', '   ']]);
+  assert.strictEqual(JSON.stringify(draftSource(d)), before, '🔴 a half-named set is the state the server refuses — never applied');
+  setCategoryNames(d, [['uno', 'Primera'], ['tres', 'Nueva']]);
+  assert.strictEqual(JSON.stringify(draftSource(d)), before, 'an undeclared section is not created');
+  assert.strictEqual(categoriesUnnamed(d), true);
+  setCategoryNames(d, [['uno', 'Primera'], ['dos', 'Segunda']]);
+  assert.strictEqual(categoriesUnnamed(d), false);
+  assert.deepStrictEqual(pendingRenames(d), [{ id: 'uno', from: null, to: 'Primera' }, { id: 'dos', from: null, to: 'Segunda' }]);
+});
+
+test('T1: a name is non-empty, at most 40 characters and carries no markup (the server’s body sink)', () => {
+  assert.strictEqual(categoryNameProblem('Pizzas & Pastas'), null, 'an ampersand is fine');
+  assert.strictEqual(categoryNameProblem(''), 'empty');
+  assert.strictEqual(categoryNameProblem('   '), 'empty');
+  assert.strictEqual(categoryNameProblem('x'.repeat(40)), null);
+  assert.strictEqual(categoryNameProblem('x'.repeat(41)), 'long');
+  for (const bad of ['<b>', 'a > b', 'a &lt; b', '&#60;', '&#x3e;']) assert.strictEqual(categoryNameProblem(bad), 'markup', bad);
+  const d = createDraft(SECTIONS(true));
+  const before = JSON.stringify(draftSource(d));
+  setCategoryNames(d, [['uno', '<script>']]);
+  assert.strictEqual(JSON.stringify(draftSource(d)), before);
+});
+
+test('T1: a locked draft (an operation owns it) refuses a rename; discard drops a pending one', () => {
+  let locked = true;
+  const d = createDraft(SECTIONS(true), { canEdit: () => !locked });
+  setCategoryNames(d, [['uno', 'Otra']]);
+  assert.deepStrictEqual(pendingRenames(d), [], 'refused by the canEdit boundary');
+  locked = false;
+  setCategoryNames(d, [['uno', 'Otra']]);
+  assert.strictEqual(pendingRenames(d).length, 1);
+  discard(d);
+  assert.deepStrictEqual(pendingRenames(d), []);
+  setCategoryNames(d, [['uno', 'Otra']]);
+  commit(d);
+  assert.deepStrictEqual(pendingRenames(d), [], 'published: the new name is the baseline');
+});
+
+test('T1 (Codex r1 #2/#3): a rename publishes ALONE — held at the state boundary, locally and from the server’s saved state', () => {
+  // local: a pending price refuses a name; a pending name refuses a price
+  const d = createDraft(SECTIONS(true));
+  setItemPrice(d, 'k1', '150');
+  setCategoryNames(d, [['uno', 'Otra']]);
+  assert.deepStrictEqual(pendingRenames(d), [], '🔴 a name cannot join a pending price');
+  setItemPrice(d, 'k1', '100');
+  setCategoryNames(d, [['uno', 'Otra']]);
+  assert.strictEqual(pendingRenames(d).length, 1);
+  setItemPrice(d, 'k1', '150');
+  assert.strictEqual(draftSource(d).items[0].price, 100, '🔴 a price cannot join a pending name');
+  addProduct(d, { ref: 'tmp:x1', cat: 'uno' });
+  assert.strictEqual(draftSource(d).items.length, 1, 'nor a new product');
+  // saved (the server says the SAVED draft has it pending): held() from the caller
+  let held = 'names';
+  const s = createDraft(SECTIONS(true), { held: () => held });
+  setItemPrice(s, 'k1', '150');
+  assert.strictEqual(draftSource(s).items[0].price, 100, 'a saved name holds prices');
+  setCategoryNames(s, [['uno', 'Otra']]);
+  assert.strictEqual(pendingRenames(s).length, 1, 'more names may join a saved name');
+  held = 'prices';
+  const t = createDraft(SECTIONS(true), { held: () => held });
+  setCategoryNames(t, [['uno', 'Otra']]);
+  assert.deepStrictEqual(pendingRenames(t), [], 'a saved price holds names');
+  setItemPrice(t, 'k1', '150');
+  assert.strictEqual(draftSource(t).items[0].price, 150, 'more prices may join a saved price');
+});

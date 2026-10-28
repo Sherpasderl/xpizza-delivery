@@ -88,7 +88,7 @@ function captureWarn(w) {
     {
       const w = loadForm(dir); await settle();
       const cap = captureWarn(w);
-      const out = w.__LIVE_MENU_ADAPTER.validateSnapshot(envelope(BRAND[dir].rid, await servedMenu(dir), '1d.1'));
+      const out = w.__LIVE_MENU_ADAPTER.validateSnapshot(envelope(BRAND[dir].rid, await servedMenu(dir), '1d.3'));
       cap.restore();
       assert.ok(out, 'the live representation is accepted');
       assert.ok(!cap.has('menu_representation_changed'),
@@ -103,11 +103,11 @@ function captureWarn(w) {
        alarm on, and no way to tell "the merchant published something bad" from "the request failed". */
     {
       const w = loadForm(dir); await settle();
-      const good = envelope(BRAND[dir].rid, await servedMenu(dir), '1d.1');
+      const good = envelope(BRAND[dir].rid, await servedMenu(dir), '1d.3');
       const cases = {
         raw_not_object: null,
         rid_mismatch: { ...good, rid: 'someone_elses_brand' },
-        menu_missing: { rid: good.rid, representation_version: '1d.1' },
+        menu_missing: { rid: good.rid, representation_version: '1d.3' },
         structural: { ...good, menu: { ...good.menu, dishes: [{ id: 1, name: '', price: 0 }] } },
       };
       const reasons = [];
@@ -132,7 +132,7 @@ function captureWarn(w) {
        refusal is the structure talking and not a version mismatch in disguise. */
     {
       const w = loadForm(dir); await settle();
-      const good = envelope(BRAND[dir].rid, await servedMenu(dir), '1d.1');
+      const good = envelope(BRAND[dir].rid, await servedMenu(dir), '1d.3');
       const broken = {
         'a dish with an empty id': [{ ...good.menu.dishes[0], id: '' }],
         'a dish with a zero price': [{ ...good.menu.dishes[0], price: 0 }],
@@ -161,7 +161,7 @@ function captureWarn(w) {
          serve() puts a body on the wire and lets the real coordinator do the rest. */
       const w = loadForm(dir); await settle();
       const menu = await servedMenu(dir);
-      await serve(w, envelope(BRAND[dir].rid, menu, '1d.1'));
+      await serve(w, envelope(BRAND[dir].rid, menu, '1d.3'));
       await settle();
 
       const liveMenu = w.liveMenuGlobalGet('MENU');
@@ -245,7 +245,7 @@ function captureWarn(w) {
     assert.ok(/menu_representation_changed/.test(code), 'the marker is kept as observability');
     for (const dir of DIRS) {
       const src = readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8');
-      assert.ok(src.includes("const LIVE_MENU_REPRESENTATION = '1d.1';"), `${dir}: the marker tracks the current representation`);
+      assert.ok(src.includes("const LIVE_MENU_REPRESENTATION = '1d.3';"), `${dir}: the marker tracks the current representation (PLAN 4 r3 §8.1: 1d.3)`);
     }
     ok('both forms carry the identical adapter, with the gate gone and the marker kept');
   }

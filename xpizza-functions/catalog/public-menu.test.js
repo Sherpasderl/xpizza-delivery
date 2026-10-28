@@ -287,8 +287,12 @@ async function seeded(rid, over = {}) {
     await publishVersion(twinDb, 'x_pizza', input, { expected: { activeVersionId: null } });
     await publishVersion(twinDb, CLONE, input, { expected: { activeVersionId: null } });
 
-    const one = await buildPublicMenu(twinDb, 'x_pizza', { known, ...active });
-    const two = await buildPublicMenu(twinDb, CLONE, { known: new Set([...known, CLONE]), ...active });
+    // PLAN-public-menu-display T2: `photos` is per brand (its order site's origin), so the twin gets an order site with the
+    // SAME origin — the bodies stay identical in content and the etags must still differ for the rid alone
+    const twinSites = { deployments: ['x_pizza', CLONE].map((r) => ({ app: 'orders', context: r, origins: ['https://orders.tb-twin.test'] })) };
+    const one = await buildPublicMenu(twinDb, 'x_pizza', { known, ...active, sites: twinSites });
+    const two = await buildPublicMenu(twinDb, CLONE, { known: new Set([...known, CLONE]), ...active, sites: twinSites });
+    assert.ok(one.body.photos && Object.keys(one.body.photos).length > 0, 'non-vacuity: the twins carry photos, and the same ones');
     /* 🔴 THE PREMISE, MINUS IDENTITY — and the change is worth naming. Before D1 two restaurants with
        the same menu served byte-identical bodies, which is what made this cell's point sharp: the
        etags had to differ for a reason other than the content. They now differ in content too, because
@@ -311,8 +315,8 @@ async function seeded(rid, over = {}) {
        brands' bodies are equal byte for byte, and the etags must still differ. */
     const [TWIN_A, TWIN_B] = [one.rid, two.rid];   // the pair above, by its own ids — no brand named here
     for (const p of [...twinDb._raw.keys()]) if ([TWIN_A, TWIN_B].some((r) => p.startsWith(`restaurants/${r}/identity/`))) twinDb._raw.delete(p);
-    const bare1 = await buildPublicMenu(twinDb, TWIN_A, { known, ...active });
-    const bare2 = await buildPublicMenu(twinDb, TWIN_B, { known: new Set([...known, TWIN_B]), ...active });
+    const bare1 = await buildPublicMenu(twinDb, TWIN_A, { known, ...active, sites: twinSites });
+    const bare2 = await buildPublicMenu(twinDb, TWIN_B, { known: new Set([...known, TWIN_B]), ...active, sites: twinSites });
     assert.strictEqual(JSON.stringify(bare2.body), JSON.stringify(bare1.body),
       'premise: with no identity applied, the two restaurants serve a byte-identical body');
     assert.ok(!bare1.body.dishes.some((d) => d.dish_id), 'premise: no identity was applied');

@@ -14,6 +14,7 @@
 // ---------------------------------------------------------------------------
 const { pricingKeyOf, deriveStartingPrice } = require('./form-menu-source');
 const { assertDisplaySafe, checkValue: assertFieldSafe } = require('./display-safety');
+const { REWARD_ICONS } = require('./reward-icons');
 
 // The COMPLETE display schema. A source stamped with this validates as a full customer-display
 // payload — every dish priced and described, every extra a first-class record, exposure resolvable,
@@ -50,6 +51,7 @@ const KNOWN_STRUCTURE_FIELDS = Object.freeze([
   'schema_version', 'item_order', 'extra_order', 'categories', 'extra_categories',
   'variant_items', 'badges', 'exposure', 'extras_by_category', 'extras_by_item',
   'pickup_only_cats', 'weekend_only_cats',
+  'badge_priority',
   'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras',
 ]);
 
@@ -229,6 +231,12 @@ function validateSource(source, rid) {
     subcats: { required: false, type: 'string_array', unique: true },
     layout: { required: false, type: 'string', enum: ['list', 'grid'] },
   };
+  // PLAN-public-menu-display r2 T1: where names are OPTIONAL (the renderer prints none), they are all-or-nothing — a
+  // partially named set is never coherent. Where they are REQUIRED (above), the per-category rule already says more.
+  if (!contract.categoriesNamed) {
+    const namedCount = st.categories.filter((cat) => cat && cat.name !== undefined).length;
+    if (namedCount !== 0 && namedCount !== st.categories.length) fail(`${rid} — structure.categories names are all-or-nothing (${namedCount} of ${st.categories.length} named)`);
+  }
   for (const c of st.categories) {
     for (const [f, rule] of Object.entries(CATEGORY_RULES)) checkField(c && c[f], rule, `${rid}/cat ${c && c.id}`, f);
     // Each declared subcategory becomes its own grid; declaring one twice renders every dish in it
@@ -315,6 +323,8 @@ function validateSource(source, rid) {
     // 1D add-product B (rev 6, §0b.7): the ONE "no extras" representation, stamped on a launcher and every variant.
     // Absent = today's behaviour; the only authored value is 'none'.
     extras_policy: { required: false, type: 'string', enum: ['none'] },
+    // PLAN 4 r3 §8.1 (OWNER RULING (a)): the reward-picker icon, from the closed set the shipped sprite draws.
+    reward_icon: { required: false, type: 'string', enum: REWARD_ICONS },
   };
   const uiIds = new Map();
   for (const it of source.items) {
@@ -384,6 +394,8 @@ function validateSource(source, rid) {
       cat: { required: true, type: 'string', nonEmpty: true, sink: 'body' },
       name: { required: true, type: 'string', nonEmpty: true, sink: 'body' },
       price: { required: true, type: 'int_positive' },
+      // PLAN 4 r3 §8.1 (advisor ruling, flag 2): an extra the reward picker offers carries its icon too
+      reward_icon: { required: false, type: 'string', enum: REWARD_ICONS },
     };
     for (const [f, rule] of Object.entries(EXTRA_RULES)) checkField(ex.display[f], rule, `${rid}/extra ${ex.key}`, `display.${f}`);
     if (ex.display.price !== ex.price) fail(`${rid}/extra ${ex.key} — display price ${String(ex.display.price)} must be present and equal to the authoritative price ${ex.price}`);
@@ -628,6 +640,14 @@ function validateSource(source, rid) {
       if (!contract.badges.has(k)) fail(`${rid} — badge ${k} is not one the renderer can select (the badge set is fixed by the shipped form, not by this document)`);
     }
   }
+  // PLAN 4 r3 §8.1 — the ORDER badges are chosen in. Every entry names a badge THIS document declares, once: a priority
+  // entry naming no definition would be chosen and then render nothing.
+  if (st.badge_priority !== undefined) {
+    checkField(st.badge_priority, { required: false, type: 'string_array', unique: true }, `${rid}`, 'structure.badge_priority');
+    for (const k of st.badge_priority) {
+      if (!st.badges || !Object.prototype.hasOwnProperty.call(st.badges, k)) fail(`${rid} — badge_priority names ${k}, which this document declares no badge for`);
+    }
+  }
   // ALWAYS the contract's set — never the source's own keys. A brand with no badge renderer has an
   // EMPTY set, so any tag on it is refused; falling back to what the document declares would hand the
   // decision back to the document.
@@ -742,7 +762,7 @@ function sourceToBuildInputs(source) {
   // 1A Task 4: extra_categories (the ordered option-group namespace) and badges (the definitions a tag
   // resolves against) join the list. Both are display data the build was silently dropping, so a
   // catalog built from a source could not group its options or render a badge.
-  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'exposure', 'extra_categories', 'badges', 'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']) {
+  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'exposure', 'extra_categories', 'badges', 'badge_priority', 'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']) {
     if (source.structure[f] !== undefined) formData[f] = source.structure[f];
   }
   if (Array.isArray(source.extras) && source.extras.some((e) => e.display)) {

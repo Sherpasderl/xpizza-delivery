@@ -6,6 +6,7 @@
    "tests": [
     "agotado-failopen.test.mjs",
     "avail-key.test.mjs",
+    "boot-broken-latch.test.mjs",
     "cart-decoupling.test.mjs",
     "cart-extras-money.test.mjs",
     "cart-identity-order.test.mjs",
@@ -38,7 +39,9 @@
     "picker-extras-combos.test.mjs",
     "picker-extras-money.test.mjs",
     "picker-extras.test.mjs",
+    "post-bake-artifact.test.mjs",
     "price-notice.test.mjs",
+    "public-menu-display-noop.test.mjs",
     "qty-stepper-outside-click.test.mjs",
     "reorder-whole-page.test.mjs",
     "s2-stash-cleanup.test.mjs",
@@ -68,6 +71,8 @@
     "xpizza-functions/catalog/catalog-edit.test.js",
     "xpizza-functions/catalog/catalog-menu.test.js",
     "xpizza-functions/catalog/catalog-verifier.test.js",
+    "xpizza-functions/catalog/category-rename-flow.test.js",
+    "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
@@ -85,6 +90,7 @@
     "xpizza-functions/catalog/extras-exposure.test.js",
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
+    "xpizza-functions/catalog/form-rebake.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
     "xpizza-functions/catalog/group-index.test.js",
     "xpizza-functions/catalog/group-intake.test.js",
@@ -104,9 +110,11 @@
     "xpizza-functions/catalog/menu-order.test.js",
     "xpizza-functions/catalog/migration-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
+    "xpizza-functions/catalog/plan4-display-fields.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
     "xpizza-functions/catalog/public-menu.test.js",
+    "xpizza-functions/catalog/public-photos.test.js",
     "xpizza-functions/catalog/publish-edited.test.js",
     "xpizza-functions/catalog/publish-parity.test.js",
     "xpizza-functions/catalog/publish-paths.test.js",
@@ -145,6 +153,7 @@
     "xpizza-functions/f2-client.test.js",
     "xpizza-functions/form-bundle-splice.test.js",
     "xpizza-functions/form-load-execution.test.js",
+    "xpizza-functions/form-runtime-literals.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menu-parity.test.js",
@@ -244,10 +253,13 @@
     "xpizza-functions/test/trigger-runner.emulator.test.mjs",
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
+    "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/form-bundle-deployed-check.test.js",
     "xpizza-functions/tools/form-bundle-live-check.test.js",
+    "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
     "xpizza-groupless-golden.test.mjs",
@@ -285,6 +297,8 @@
     "xpizza-functions/catalog/catalog-context.test.js",
     "xpizza-functions/catalog/catalog-edit.test.js",
     "xpizza-functions/catalog/catalog-verifier.test.js",
+    "xpizza-functions/catalog/category-rename-flow.test.js",
+    "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
@@ -302,6 +316,7 @@
     "xpizza-functions/catalog/extras-exposure.test.js",
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
+    "xpizza-functions/catalog/form-rebake.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
     "xpizza-functions/catalog/group-intake.test.js",
     "xpizza-functions/catalog/group-rules.test.js",
@@ -320,6 +335,7 @@
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
+    "xpizza-functions/catalog/public-photos.test.js",
     "xpizza-functions/catalog/publish-edited.test.js",
     "xpizza-functions/catalog/publish-parity.test.js",
     "xpizza-functions/catalog/publish-paths.test.js",
@@ -432,10 +448,13 @@
     "xpizza-functions/test/trigger-runner.emulator.test.mjs",
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
+    "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/form-bundle-deployed-check.test.js",
     "xpizza-functions/tools/form-bundle-live-check.test.js",
+    "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
     "xpizza-functions/tools/verify-first-group.test.js"
    ]
@@ -444,6 +463,7 @@
    "tests": [
     "agotado-failopen.test.mjs",
     "avail-key.test.mjs",
+    "boot-broken-latch.test.mjs",
     "cart-decoupling.test.mjs",
     "cart-extras-money.test.mjs",
     "cart-identity-order.test.mjs",
@@ -474,7 +494,9 @@
     "picker-extras-combos.test.mjs",
     "picker-extras-money.test.mjs",
     "picker-extras.test.mjs",
+    "post-bake-artifact.test.mjs",
     "price-notice.test.mjs",
+    "public-menu-display-noop.test.mjs",
     "qty-stepper-outside-click.test.mjs",
     "reorder-whole-page.test.mjs",
     "s2-stash-cleanup.test.mjs",
@@ -504,6 +526,8 @@
     "xpizza-functions/catalog/catalog-edit.test.js",
     "xpizza-functions/catalog/catalog-menu.test.js",
     "xpizza-functions/catalog/catalog-verifier.test.js",
+    "xpizza-functions/catalog/category-rename-flow.test.js",
+    "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
@@ -521,6 +545,7 @@
     "xpizza-functions/catalog/extras-exposure.test.js",
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
+    "xpizza-functions/catalog/form-rebake.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
     "xpizza-functions/catalog/group-index.test.js",
     "xpizza-functions/catalog/group-intake.test.js",
@@ -539,9 +564,11 @@
     "xpizza-functions/catalog/menu-order.test.js",
     "xpizza-functions/catalog/migration-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
+    "xpizza-functions/catalog/plan4-display-fields.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
     "xpizza-functions/catalog/public-menu.test.js",
+    "xpizza-functions/catalog/public-photos.test.js",
     "xpizza-functions/catalog/publish-edited.test.js",
     "xpizza-functions/catalog/publish-parity.test.js",
     "xpizza-functions/catalog/publish-paths.test.js",
@@ -581,6 +608,7 @@
     "xpizza-functions/f2-client.test.js",
     "xpizza-functions/form-bundle-splice.test.js",
     "xpizza-functions/form-load-execution.test.js",
+    "xpizza-functions/form-runtime-literals.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/menu-parity.test.js",
@@ -679,10 +707,13 @@
     "xpizza-functions/test/trigger-runner.emulator.test.mjs",
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
+    "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/form-bundle-deployed-check.test.js",
     "xpizza-functions/tools/form-bundle-live-check.test.js",
+    "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
     "xpizza-groupless-golden.test.mjs",
     "xpizza-orders/form-cart.copy.test.mjs",
@@ -716,6 +747,8 @@
     "xpizza-functions/catalog/catalog-context.test.js",
     "xpizza-functions/catalog/catalog-edit.test.js",
     "xpizza-functions/catalog/catalog-verifier.test.js",
+    "xpizza-functions/catalog/category-rename-flow.test.js",
+    "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
@@ -733,6 +766,7 @@
     "xpizza-functions/catalog/extras-exposure.test.js",
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
+    "xpizza-functions/catalog/form-rebake.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
     "xpizza-functions/catalog/group-intake.test.js",
     "xpizza-functions/catalog/group-rules.test.js",
@@ -752,6 +786,7 @@
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
     "xpizza-functions/catalog/public-menu.test.js",
+    "xpizza-functions/catalog/public-photos.test.js",
     "xpizza-functions/catalog/publish-edited.test.js",
     "xpizza-functions/catalog/publish-parity.test.js",
     "xpizza-functions/catalog/publish-paths.test.js",
@@ -868,10 +903,13 @@
     "xpizza-functions/test/trigger-runner.emulator.test.mjs",
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
+    "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
     "xpizza-functions/tools/extras-baseline-audit.test.js",
+    "xpizza-functions/tools/form-bundle-deployed-check.test.js",
     "xpizza-functions/tools/form-bundle-live-check.test.js",
+    "xpizza-functions/tools/migrate-menu-structure.test.js",
     "xpizza-functions/tools/verify-first-group.test.js",
     "xpizza-groupless-golden.test.mjs"
    ]
@@ -1286,11 +1324,14 @@
   "xpizza-functions/test/kds-writer-capture.mjs",
   "xpizza-functions/tools/ack-identity-finding.js",
   "xpizza-functions/tools/app-suites.js",
+  "xpizza-functions/tools/bake-form-bundle.js",
   "xpizza-functions/tools/draft-drift-report.js",
   "xpizza-functions/tools/extras-baseline-audit.js",
   "xpizza-functions/tools/form-bundle-live-check.js",
   "xpizza-functions/tools/menus-divergence-report.js",
   "xpizza-functions/tools/migrate-catalog-display.js",
+  "xpizza-functions/tools/migrate-menu-structure.js",
+  "xpizza-functions/tools/migrations/gen-menu-structure-2026-10-26.js",
   "xpizza-functions/tools/publish-version.js",
   "xpizza-functions/tools/record-evidence-boundary.js",
   "xpizza-functions/tools/registry-writers.js",
@@ -1699,14 +1740,26 @@
   "alert-prune.js",
   "assign-hub.js",
   "assignment-conflict.js",
+  "catalog/add-product.js",
   "catalog/bound-reuse.js",
+  "catalog/bundle-compare.js",
   "catalog/canonical-binding.js",
   "catalog/catalog-edit-auth.js",
+  "catalog/catalog-edit.js",
+  "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
+  "catalog/exposure-source.js",
+  "catalog/form-menu-source.js",
+  "catalog/form-rebake.js",
+  "catalog/menu-structure-rows.js",
   "catalog/portal-reads.js",
+  "catalog/public-menu.js",
+  "catalog/public-photos.js",
   "catalog/publish-edited-handler.js",
   "catalog/publish-request.js",
   "catalog/reset-draft.js",
+  "catalog/reward-icons.js",
+  "catalog/source-store.js",
   "catalog/text-version.js",
   "createorder-classify.js",
   "driver-ingest.js",
@@ -1740,6 +1793,7 @@
   "photos/flag.js",
   "photos/functions.js",
   "photos/gcs-store.js",
+  "photos/photo-state.js",
   "photos/pipeline.js",
   "photos/process.js",
   "photos/signer.js",
@@ -1842,11 +1896,22 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/add-product.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/addproduct-b-wiring.guard.test.js",
+    "xpizza-portal/review.test.mjs"
+   ]
+  },
   "catalog/bound-reuse.js": {
    "pins": [],
    "lifts": [
     "xpizza-functions/addproduct-b-wiring.guard.test.js"
    ]
+  },
+  "catalog/bundle-compare.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/canonical-binding.js": {
    "pins": [],
@@ -1858,7 +1923,38 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/catalog-edit.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/draft-assess.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/edit-catalog-handler.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/exposure-source.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/form-menu-source.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/formbake-module-wiring.guard.test.js",
+     "inverses": [
+      "tools/formbake-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
+  },
+  "catalog/form-rebake.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/menu-structure-rows.js": {
    "pins": [],
    "lifts": []
   },
@@ -1867,6 +1963,21 @@
    "lifts": [
     "xpizza-functions/portal/ops-helpers.guard.test.js"
    ]
+  },
+  "catalog/public-menu.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/formbake-module-wiring.guard.test.js",
+     "inverses": [
+      "tools/formbake-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
+  },
+  "catalog/public-photos.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/publish-edited-handler.js": {
    "pins": [],
@@ -1880,6 +1991,44 @@
   },
   "catalog/reset-draft.js": {
    "pins": [],
+   "lifts": []
+  },
+  "catalog/reward-icons.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/source-store.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/identity-integrity-guards.test.js",
+     "inverses": [
+      "tools/extras-module-inverse.js",
+      "tools/formbake-module-inverse.js",
+      "tools/pmdisplay-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/extras-wiring.guard.test.js",
+     "inverses": [
+      "tools/extras-module-inverse.js",
+      "tools/formbake-module-inverse.js",
+      "tools/pmdisplay-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/formbake-module-wiring.guard.test.js",
+     "inverses": [
+      "tools/formbake-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/pmdisplay-wiring.guard.test.js",
+     "inverses": [
+      "tools/formbake-module-inverse.js",
+      "tools/pmdisplay-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": []
   },
   "catalog/text-version.js": {
@@ -1923,6 +2072,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
@@ -1946,6 +2096,7 @@
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/extras-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -1974,6 +2125,7 @@
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/extras-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -1997,6 +2149,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/photos-inverse.js",
@@ -2015,6 +2168,7 @@
       "tools/d4c5-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/extras-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2041,6 +2195,7 @@
       "tools/d12b-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/extras-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2063,6 +2218,7 @@
      "file": "xpizza-functions/dlite-push-wiring.guard.test.js",
      "inverses": [
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/photos-inverse.js",
@@ -2076,6 +2232,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/extras-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2094,11 +2251,19 @@
      ]
     },
     {
+     "file": "xpizza-functions/formbake-wiring.guard.test.js",
+     "inverses": [
+      "tools/formbake-inverse.js",
+      "tools/photos-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/h0-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2120,6 +2285,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
@@ -2137,6 +2303,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -2151,6 +2318,7 @@
     {
      "file": "xpizza-functions/membership-wiring.guard.test.js",
      "inverses": [
+      "tools/formbake-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/photos-inverse.js",
@@ -2160,6 +2328,7 @@
     {
      "file": "xpizza-functions/menu-warm-wiring.guard.test.js",
      "inverses": [
+      "tools/formbake-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/photos-inverse.js"
      ]
@@ -2175,6 +2344,7 @@
       "tools/d4c4-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/extras-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2211,6 +2381,7 @@
       "tools/d4c5-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/extras-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2232,6 +2403,7 @@
     {
      "file": "xpizza-functions/portalui-wiring.guard.test.js",
      "inverses": [
+      "tools/formbake-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/photos-inverse.js",
@@ -2243,6 +2415,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/photos-inverse.js",
@@ -2256,6 +2429,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
@@ -2277,6 +2451,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
@@ -2297,6 +2472,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
       "tools/membership-inverse.js",
@@ -2316,6 +2492,7 @@
       "tools/a1-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2338,6 +2515,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/photos-inverse.js",
@@ -2357,6 +2535,7 @@
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/extras-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2410,6 +2589,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/photos-inverse.js",
@@ -2423,6 +2603,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/photos-inverse.js",
@@ -2439,6 +2620,7 @@
       "tools/brand-server-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/extras-inverse.js",
+      "tools/formbake-inverse.js",
       "tools/h0-inverse.js",
       "tools/h1-inverse.js",
       "tools/h1c-inverse.js",
@@ -2656,6 +2838,10 @@
    "lifts": []
   },
   "photos/gcs-store.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/photo-state.js": {
    "pins": [],
    "lifts": []
   },

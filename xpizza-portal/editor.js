@@ -12,7 +12,8 @@
 // Pure and DOM-free on purpose: node can import it, so every rule below is asserted directly rather
 // than through a rendered page.
 //
-// STILL NOT IMPLEMENTED HERE: renaming or removing an EXISTING item, adding or removing an option, category edits.
+// STILL NOT IMPLEMENTED HERE: renaming or removing an EXISTING item, adding or removing an option, category edits other
+// than a section's display NAME (PLAN-public-menu-display T1; see "A SECTION'S NAME" at the end).
 // There is no setter for them in this file — not a disabled one, not a guarded one. A capability that does not exist
 // cannot be reached by accident.
 //
@@ -69,6 +70,12 @@ export function createDraft(source, opts = {}) {
     value: typeof opts.canEdit === 'function' ? opts.canEdit : () => true,
     writable: false, configurable: false, enumerable: true,
   });
+  // PLAN-public-menu-display T1 (Codex r1 P2-2/P2-3) — what the SERVER says is already pending against the published menu
+  // ('names' | 'prices' | null), from the caller; fixed at construction like canEdit. See "A RENAME PUBLISHES ALONE" below.
+  Object.defineProperty(draft, 'held', {
+    value: typeof opts.held === 'function' ? opts.held : () => null,
+    writable: false, configurable: false, enumerable: true,
+  });
   // Sealed, not frozen, and the difference is the point: no property may be ADDED or REMOVED, so the
   // draft's shape is fixed — but `orig` and `state` stay writable, because discard() and commit()
   // assign them and the document has to remain editable through the guarded setters.
@@ -78,6 +85,11 @@ export function createDraft(source, opts = {}) {
 // One predicate, asked by every mutator below. Exported so callers can render an affordance from the
 // same answer the guard uses, rather than keeping a second opinion.
 export const canEditDraft = (draft) => !!(draft && draft.canEdit());
+// 🔴 A RENAME PUBLISHES ALONE (server: rename_not_alone) — held HERE, at the state boundary every content mutator asks, not at
+// the controls: a drawer opened before the rename keeps its live inputs (Codex r1 P2-2), and a control that is merely
+// disabled can still be dispatched. A pending section NAME (local, or one the server says is saved and unpublished) refuses
+// every price / product / choice write; a pending price or product refuses a name (setCategoryNames).
+const canEditContent = (draft) => canEditDraft(draft) && pendingRenames(draft).length === 0 && draft.held() !== 'names';
 
 export function discard(draft) {
   // A user action like any other: refused while an operation owns the draft. Throwing the merchant's
@@ -129,7 +141,7 @@ const rowsOf = (src, surface) => (surface === 'item'
 function setPrice(draft, surface, key, raw) {
   // THE BOUNDARY. A mutation arriving while the draft is not owned for editing — from a detached
   // listener, a retained reference, a stray dispatch — is refused here, whatever the DOM looks like.
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   const row = rowsOf(draft.state, surface).find((r) => r && r.key === key);
   // An unknown key is a NO-OP, never a new row. Creating one here would be an accidental back door to
   // "add item", which writes a pricing key and belongs to 2b-2c.
@@ -155,7 +167,7 @@ export const setExtraPrice = (draft, key, raw) => setPrice(draft, 'extra', key, 
 // key, no id, no identity stamp). Appended at the END of item_order — the server refuses anything else. The price
 // starts empty (the merchant types it) and is held unvalidated like any other price field.
 export function addProduct(draft, { ref, cat, subcat = null } = {}) {
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   if (typeof ref !== 'string' || !ref.startsWith('tmp:') || typeof cat !== 'string' || !cat) return draft;
   const st = draft.state;
   if (!Array.isArray(st.items)) st.items = [];
@@ -174,7 +186,7 @@ export function addProduct(draft, { ref, cat, subcat = null } = {}) {
 // (they can still change its price, or remove it). Price goes through parsePrice like every price.
 // The branches below ARE the field whitelist: any other field (key, id, identity_id…) matches none and writes nothing.
 export function setAddition(draft, ref, field, raw) {
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   const row = rowsOf(draft.state, 'item').find((r) => r && r.ref === ref && isTmp(r));
   if (!row || isOptionRow(row)) return draft;   // an option is edited through the group mutators below
   if (field === 'price') {
@@ -199,7 +211,7 @@ export function setAddition(draft, ref, field, raw) {
 // 1D add-product B — a product with a required choice goes WITH its options and its variant_items entry (one unit, as the
 // server allocates and compares it); an option on its own is never removed here (removeChoice owns that, on an unsaved group).
 export function removeAddition(draft, id, savedAdditions = new Set()) {
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   const items = rowsOf(draft.state, 'item');
   const saved = savedAdditions instanceof Set ? savedAdditions : new Set();
   const i = items.findIndex((r) => r && rowId(r) === id && (isTmp(r) || (typeof r.key === 'string' && saved.has(r.key))));
@@ -435,7 +447,7 @@ export function optionPricesEqual(draft, id) {
 // Ninguna ⇄ a group. ON creates the group with the given option references (2, from the caller), each at the product's
 // current price; OFF ("Ninguna") removes the options, the map entry and "sin extras" — zero residue.
 export function setRequiredChoice(draft, id, on, optionRefs = [], savedAdditions = new Set()) {
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   const st = draft.state;
   // OFF ("Ninguna") on any NEW product — unsaved, or saved and listed as an unpublished addition (§0b.8): the product stays,
   // its group goes. A published group is never reachable here (editableLauncher refuses it).
@@ -454,14 +466,14 @@ export function setRequiredChoice(draft, id, on, optionRefs = [], savedAdditions
   return draft;
 }
 export function setGroupLabel(draft, id, raw) {
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   const l = editableLauncher(draft, id);
   const g = l && isTmp(l) ? groupOfRow(draft.state, l) : null;
   if (g) g.spec.label = typeof raw === 'string' ? raw : '';
   return draft;
 }
 export function setGroupExtrasNone(draft, id, on) {
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   const l = editableLauncher(draft, id);
   if (!l || !isTmp(l) || !groupOfRow(draft.state, l)) return draft;
   if (on) l.display.extras_policy = 'none'; else delete l.display.extras_policy;
@@ -469,7 +481,7 @@ export function setGroupExtrasNone(draft, id, on) {
 }
 // "Agregar opción": a new unnamed option, at the price given (the caller's shared price) or else the product's.
 export function addChoice(draft, id, ref, raw) {
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   const l = editableLauncher(draft, id);
   const g = l && isTmp(l) ? groupOfRow(draft.state, l) : null;
   if (!g || typeof ref !== 'string' || !ref.startsWith('tmp:') || rowsOf(draft.state, 'item').some((x) => x && x.ref === ref)) return draft;
@@ -482,7 +494,7 @@ export function addChoice(draft, id, ref, raw) {
 }
 // × on an unsaved option.
 export function removeChoice(draft, id, ref) {
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   const l = editableLauncher(draft, id);
   const g = l && isTmp(l) ? groupOfRow(draft.state, l) : null;
   const o = g && g.options.find((x) => x.ref === ref);
@@ -501,14 +513,14 @@ function editableOption(draft, id, savedAdditions) {
   return l ? { o, g: groupOfRow(draft.state, l) } : null;
 }
 export function setChoiceName(draft, id, raw) {
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   const x = editableOption(draft, id);
   if (x && isTmp(x.o)) x.o.display.choice = typeof raw === 'string' ? raw : '';
   return draft;
 }
 // RECOMENDADA, per option (the contract's choice badge; the caller shows it only where the brand's picker draws it).
 export function setChoiceRecommended(draft, id, on) {
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   const x = editableOption(draft, id);
   if (!x || !isTmp(x.o)) return draft;
   if (on) x.o.display.tags = ['recommended']; else delete x.o.display.tags;
@@ -516,7 +528,7 @@ export function setChoiceRecommended(draft, id, on) {
 }
 // ONE option's price (turning "Mismo precio" off is the caller's); the product's derived price follows.
 export function setChoicePrice(draft, id, raw, savedAdditions = new Set()) {
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   const x = editableOption(draft, id, savedAdditions);
   if (!x) return draft;
   setRowPrice(x.o, parsePrice(raw));
@@ -525,7 +537,7 @@ export function setChoicePrice(draft, id, raw, savedAdditions = new Set()) {
 }
 // THE group price mutator ("Mismo precio para todas"): the product AND every option, from one parse, together.
 export function setGroupPrice(draft, id, raw, savedAdditions = new Set()) {
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   const l = editableLauncher(draft, id, savedAdditions);
   const g = l ? groupOfRow(draft.state, l) : null;
   if (!g) return draft;
@@ -593,3 +605,59 @@ export function groupUsage(draft, groupName) {
   if (!declares) return null;
   return productsUsingGroup(draft, groupName).length;
 }
+
+// ── PLAN-public-menu-display T1 — A SECTION'S NAME ────────────────────────────────────────────────────────────────
+// The one field of a category the edit path may change (server: compareToActive, `sameCategoriesExceptName`). The id,
+// the order, the count and every other field stay frozen, so nothing here touches anything but `name`.
+//
+// Two server rules shape it:
+//   • A RENAME PUBLISHES ALONE (`rename_not_alone`): a draft that renames may change nothing else. The caller keeps the
+//     two apart (app.js); this module only reports both sides — pendingRenames here, pendingChanges above.
+//   • ALL-OR-NOTHING where names are optional: none named, or every one. setCategoryNames therefore applies a SET of names
+//     at once and refuses the whole set if any one is not a name — a half-applied set is the state the server refuses.
+// Where names are REQUIRED a name can never be removed: there is no way to clear one here at all.
+const CATEGORY_NAME_MAX = 40;
+const catsOf = (src) => (src && src.structure && Array.isArray(src.structure.categories) ? src.structure.categories : []);
+const catNameOf = (cat) => (cat && typeof cat.name === 'string' && cat.name.trim() ? cat.name : null);
+// The server's `body` sink (display-safety.js): no markup characters, no entity that decodes to one.
+const MARKUP = /[<>]|&(?:lt|gt|#0*(?:60|62)|#x0*3[ce]);?/i;
+// 'empty' | 'long' | 'markup' | null — the reason a typed value is not a name. Refuse, never repair: the name saved is
+// the name typed (trimmed, inner runs of spaces collapsed — the one normalisation, applied the same everywhere).
+const cleanCategoryName = (raw) => (typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ') : '');
+export function categoryNameProblem(raw) {
+  const v = cleanCategoryName(raw);
+  if (!v) return 'empty';
+  if (v.length > CATEGORY_NAME_MAX) return 'long';
+  if (MARKUP.test(v)) return 'markup';
+  return null;
+}
+// `names`: [[categoryId, typedValue], …]. Every id must be a declared section and every value a name, or NOTHING changes.
+export function setCategoryNames(draft, names) {
+  if (!canEditDraft(draft) || pendingCount(draft) > 0 || draft.held() === 'prices') return draft;
+  const cats = catsOf(draft.state);
+  const next = [];
+  for (const [id, raw] of (Array.isArray(names) ? names : [])) {
+    const cat = cats.find((c) => c && String(c.id) === String(id));
+    if (!cat || categoryNameProblem(raw) !== null) return draft;
+    next.push([cat, cleanCategoryName(raw)]);
+  }
+  for (const [cat, v] of next) cat.name = v;
+  return draft;
+}
+// The sections whose name differs from the baseline, in section order: { id, from, to } (null = no name).
+export function pendingRenames(draft) {
+  const orig = catsOf(draft.orig);
+  const out = [];
+  for (const cat of catsOf(draft.state)) {
+    const was = orig.find((c) => c && cat && String(c.id) === String(cat.id));
+    const from = catNameOf(was), to = catNameOf(cat);
+    if (from !== to) out.push({ id: String(cat.id), from, to });
+  }
+  return out;
+}
+// No section has a name yet: then they can only be named together (all-or-nothing), never one at a time.
+export function categoriesUnnamed(draft) {
+  const cats = catsOf(draft.state);
+  return cats.length > 0 && cats.every((c) => catNameOf(c) === null);
+}
+

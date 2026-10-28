@@ -664,6 +664,53 @@ const TWO = {
     ok('add-product A: renderedCategories from the contract, restaurantName from RTDB (id fallback), draft_unpublishable only when the saved draft cannot publish (drift / invalid → with the revision); an unavailable assessment never blocks loading');
   }
 
+  {
+    // PLAN-public-menu-display T1 (portal r1 #3) — what the saved draft has PENDING against the published menu, from a REAL
+    // saved draft and a REAL active build: pendingRenames ([{id, from, to}]) and pendingOther (anything besides a name).
+    const { buildSourceFromCode } = require('../tools/seed-source-store');
+    const { canonicalize, sourceToBuildInputs } = require('./source-store');
+    const { buildCatalogV2 } = require('./form-menu-source');
+    const asOwner4 = async () => ({ ok: true, uid: 'u1', role: 'owner', actor: 'o@m.hn' });
+    const activeOf = (rid, src) => { const i = sourceToBuildInputs(src); const b = buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable });
+      return { built: { items: b.items, structure: b.structure, extras: i.extras }, versionId: 'v-9', extraRecords: b.extras }; };
+    const call = (rid, src, active) => getEditableCatalogCore({ db: { ref: () => ({ get: async () => ({ val: () => 'Marca' }) }) }, fsdb: {}, authorize: asOwner4,
+      readActiveVersionId: async () => 'v-9', readActiveBuilt: active, ...mkFs(src) }, { method: 'GET', query: { restaurantId: rid }, get: () => 'Bearer tok' });
+    for (const rid of ['x_pizza', 'la_musa']) {
+      const live = canonicalize(buildSourceFromCode(rid));
+      const act = async () => activeOf(rid, live);
+      // nothing pending → the response carries NEITHER field: byte-identical to today's keys
+      const same = await call(rid, live, act);
+      assert.strictEqual(same.status, 200);
+      assert.ok(!('pendingRenames' in same.body) && !('pendingOther' in same.body), `${rid}: nothing pending → no new field`);
+      assert.deepStrictEqual(Object.keys(same.body).sort(), ['activeVersionId', 'choiceBadges', 'groupAuthoring', 'publish_via_request', 'renderedCategories', 'restaurantName', 'source', 'sourceUpdateTime', 'usesPlatformFactura'].filter((k) => k in same.body).sort(),
+        `${rid}: the response keys are exactly today's`);
+      // rename-only (every section named: x_pizza's names are all-or-nothing)
+      const ren = JSON.parse(JSON.stringify(live)); ren.structure.categories.forEach((c, i) => { c.name = `Sección ${i + 1}`; });
+      const r1 = await call(rid, ren, act);
+      assert.ok(!r1.body.draft_unpublishable, `${rid}: a rename-only draft is publishable`);
+      assert.deepStrictEqual(r1.body.pendingRenames, live.structure.categories.map((c, i) => ({ id: c.id, from: c.name === undefined ? null : c.name, to: `Sección ${i + 1}` })));
+      assert.ok(!('pendingOther' in r1.body), `${rid}: a rename is not «other»`);
+      // price-only
+      const pr = JSON.parse(JSON.stringify(live)); const it = pr.items.find((x) => Number.isInteger(x.price));
+      it.price += 7; if (it.display && 'price' in it.display) it.display.price = it.price;
+      const r2 = await call(rid, pr, act);
+      assert.ok(!r2.body.draft_unpublishable, `${rid}: a price-only draft is publishable`);
+      assert.strictEqual(r2.body.pendingOther, true, `${rid}: a pending price is «other»`);
+      assert.ok(!('pendingRenames' in r2.body));
+      // both → the draft cannot publish (rename_not_alone); neither field is claimed, the flag says why
+      const both = JSON.parse(JSON.stringify(ren)); const it2 = both.items.find((x) => Number.isInteger(x.price));
+      it2.price += 7; if (it2.display && 'price' in it2.display) it2.display.price = it2.price;
+      const r3 = await call(rid, both, act);
+      assert.strictEqual(r3.body.draft_unpublishable && r3.body.draft_unpublishable.code, 'rename_not_alone', `${rid}: both → rename_not_alone`);
+      assert.ok(!('pendingRenames' in r3.body) && !('pendingOther' in r3.body));
+      // the active read fails → both omitted, the editor still loads
+      const r4 = await call(rid, ren, async () => { throw new Error('down'); });
+      assert.strictEqual(r4.status, 200);
+      assert.ok(!('pendingRenames' in r4.body) && !('pendingOther' in r4.body), `${rid}: no assessment → no claim`);
+    }
+    ok('T1: pendingRenames / pendingOther from a real saved draft vs the active build — rename-only, price-only, both (rename_not_alone), active read down (omitted), nothing pending (response keys unchanged); both brands');
+  }
+
   console.log(`portal-reads: OK (${n})`);
   FINISHED = true;
 })().catch((e) => { console.error(e); process.exit(1); });

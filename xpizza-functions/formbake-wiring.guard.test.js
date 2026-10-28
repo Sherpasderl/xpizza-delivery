@@ -1,0 +1,37 @@
+'use strict';
+// PLAN 4 — the form rebake trigger + reconciler: the wiring guard for tools/formbake-inverse.js.
+//   1. PROOF: unapplyFormbakeIndex(index.js) === BASE:index.js byte-for-byte (one end-of-file block); a missing or a
+//      duplicated delimiter, delimiters out of order, a missing separator and a byte outside the block are each caught.
+//   2. The block holds exactly the two exports (trigger + reconciler) on the mirror path / a 10-minute schedule, bounded and
+//      without platform retry, the hooks read from the env (never a literal url), and nothing else of index.js moved.
+//   3. FOLD: the block survives foldPortalSplit and the same inverse strips it there.
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+const { BASE, BEGIN, END, unapplyFormbakeIndex } = require('./tools/formbake-inverse');
+
+let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+const real = require('./tools/photos-inverse').unapplyPhotosIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // the photos slice (A1, merged onto Plan 4) is newer: removed FIRST
+const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
+assert.notStrictEqual(unapplyFormbakeIndex(real), real, 'non-vacuity: the block is present and removed');
+assert.strictEqual(unapplyFormbakeIndex(real), base, `🔴 index.js minus the formbake block is not ${BASE}:index.js`);
+assert.ok(real.startsWith(base), 'APPEND-ONLY: every BASE byte is in place; the block only follows it (no R3 call site shifts)');
+const block = real.slice(real.indexOf(BEGIN), real.indexOf(END) + END.length);
+assert.deepStrictEqual(block.match(/^exports\.\w+/gm), ['exports.rebakeFormOnMirror', 'exports.reconcileFormBundles'], 'the block exports exactly the trigger + the reconciler');
+assert.ok(/onValueWritten\(\n\s*\{ ref: '\/catalog_snapshot\/\{rid\}', region: 'us-central1', timeoutSeconds: 30, memory: '256MiB', maxInstances: 2, retry: false \}/.test(block), 'the trigger: the mirror path, maxInstances 2, NO platform retry');
+assert.ok(/onSchedule\(\n\s*\{ schedule: 'every 10 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB', maxInstances: 1, retryCount: 0 \}/.test(block), 'the reconciler: every 10 minutes, maxInstances 1, no retry, a timeout below the interval');
+assert.ok(/env: process\.env/.test(block) && !/https?:\/\/[a-z]/i.test(block), 'the hooks come from the env; no url literal in the block');
+assert.throws(() => unapplyFormbakeIndex(real.replace(BEGIN, '/* formbake:BEGIN */')), /not found exactly once/, 'a missing begin');
+assert.throws(() => unapplyFormbakeIndex(real.replace(END, '/* formbake:END */')), /not found exactly once/, 'a missing end');
+assert.throws(() => unapplyFormbakeIndex(real + `\n${BEGIN}\n${END}\n`), /second delimiter/, 'a duplicated block');
+assert.throws(() => unapplyFormbakeIndex(`\n${END}\n${BEGIN}\n`), /out of order/, 'delimiters out of order');
+assert.throws(() => unapplyFormbakeIndex(real.replace(`\n${BEGIN}`, `;${BEGIN}`)), /blank-line separator/, 'a missing leading separator');
+assert.notStrictEqual(unapplyFormbakeIndex(real.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'a byte OUTSIDE the block survives (the base pin catches it)');
+ok(`index.js: unapplyFormbakeIndex → ${BASE}:index.js byte-for-byte (one appended block: rebakeFormOnMirror + reconcileFormBundles, bounded, no retry, env hooks); missing / duplicate / order / separator / outside each caught`);
+const { foldPortalSplit } = require('./tools/portal-split');
+const fold = foldPortalSplit();
+assert.ok(fold.includes(block), 'premise: the block survives the portal fold');
+assert.ok(!unapplyFormbakeIndex(fold).includes(BEGIN), 'the same inverse strips it from a fold');
+ok('FOLD: the block survives foldPortalSplit and unapplyFormbakeIndex strips it there too');
+console.log(`\nformbake-wiring.guard: OK (${n})`);

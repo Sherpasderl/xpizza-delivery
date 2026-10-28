@@ -380,10 +380,13 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // on/off (setRequiredChoice), its name / "sin extras" / options while unsaved (setGroupLabel, setGroupExtrasNone, addChoice,
   // removeChoice, setChoiceName, setChoiceRecommended), its prices while it is an addition (setChoicePrice, setGroupPrice —
   // the ONE group price mutator), and the read-only choiceGroup / optionPricesEqual / isNewGroupOption / optionParentId.
+  // PLAN-public-menu-display T1 — a SECTION'S DISPLAY NAME, and nothing else about a section: setCategoryNames (a whole SET of
+  // names applied at once or not at all — never an id, the order or the count), and the read-only pendingRenames /
+  // categoriesUnnamed / categoryNameProblem. No key is written: a section name is not a pricing key.
   assert.deepStrictEqual(exported, [
-    'addChoice', 'addProduct', 'adopt', 'canEditDraft', 'choiceGroup', 'commit', 'commitTo', 'createDraft', 'discard', 'draftSource', 'groupUsage', 'incompleteAdditions', 'invalidKeys', 'isNewGroupOption', 'isPublishable',
-    'optionGroups', 'optionParentId', 'optionPricesEqual', 'parsePrice', 'pendingChanges', 'pendingCount', 'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId',
-    'setAddition', 'setChoiceName', 'setChoicePrice', 'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setRequiredChoice',
+    'addChoice', 'addProduct', 'adopt', 'canEditDraft', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup', 'commit', 'commitTo', 'createDraft', 'discard', 'draftSource', 'groupUsage', 'incompleteAdditions', 'invalidKeys', 'isNewGroupOption', 'isPublishable',
+    'optionGroups', 'optionParentId', 'optionPricesEqual', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingRenames', 'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId',
+    'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice', 'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setRequiredChoice',
   ], 'the edit state exports exactly these');
   // commit and discard are OPPOSITE operations on the same draft, and confusing them reverted a
   // published price. Both must exist, and the publish path must use commit.
@@ -394,7 +397,10 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // node does not remove its listeners and neither inert nor disabled stops a programmatic dispatch.
   assert.ok(/export const canEditDraft/.test(editor), 'the predicate exists and is shared');
   const setPriceBody = editor.slice(editor.indexOf('function setPrice('), editor.indexOf('function setPrice(') + 900);
-  assert.ok(/if \(!canEditDraft\(draft\)\) return draft;/.test(setPriceBody), 'setPrice refuses when the draft is not owned for editing');
+  // PLAN-public-menu-display T1 (Codex r1 #2): the content mutators ask canEditContent — canEditDraft FIRST, then «a rename
+  // publishes alone» — so the ownership boundary is unchanged and the exclusion is enforced at the same place
+  assert.ok(/if \(!canEditContent\(draft\)\) return draft;/.test(setPriceBody), 'setPrice refuses when the draft is not owned for editing');
+  assert.ok(/const canEditContent = \(draft\) => canEditDraft\(draft\) && /.test(editor), 'canEditContent is canEditDraft first');
   const discardBody = editor.slice(editor.indexOf('export function discard('), editor.indexOf('export function discard(') + 400);
   assert.ok(/if \(!canEditDraft\(draft\)\) return draft;/.test(discardBody), '...and so does discard');
   // commit/commitTo must NOT be guarded — they run DURING a publish, when the lock is held by
@@ -972,6 +978,9 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.publishViaRequest':   [1, 'guarded', 'T-d (3a) — the server\u2019s publish_via_request, written ONLY in applyPublishRequestFacts: reset at the start of a load (fail closed: today\u2019s path) and set on the load / post-publish settle paths behind the generation check; it only chooses the review-bar CTA, and the server re-checks every request'],
     'state.uid':                 [1, 'ender',   'the auth handler itself — the identity change that ENDS the previous world'],
     'state.extras':              [1, 'guarded', 'the flat extras list, written by the load path behind the generation check'],
+    'state.savedRenames':        [2, 'guarded', 'PLAN-public-menu-display T1 (Codex r1 #3) — the SAVED draft\u2019s unpublished section names, from the server: set in applyAddProductFacts (load / post-publish settle, behind the generation check) and in sendToOwnerFlow\u2019s settle path from the server\u2019s own diff, behind its generation check. It only HOLDS edits (prices / names), it never writes the draft'],
+    'state.savedOther':          [2, 'guarded', 'PLAN-public-menu-display T1 (Codex r1 #3) — whether the SAVED draft has anything unpublished besides a name, from the server: the same two settle paths as state.savedRenames, generation-checked; it only HOLDS a rename'],
+    'state.renameEdit':          [5, 'view',    'PLAN-public-menu-display T1 — WHICH section title is being edited (an id, nothing else): reset by the load path, set by «Cambiar nombre», cleared by Guardar / Cancelar and by moving to another section. Presentational: the NAME itself reaches the draft only through setCategoryNames (canEdit), from bound() callbacks'],
     'state.selectedCat':         [5, 'view',    '[1D add-product A: + the add drawer\u2019s section change and the FIX action, both presentational] which category the rail highlights — a stale write repaints, it cannot mis-price'],
     'state.openGroups':          [6, 'view',    '[1D add-product B: + the same three for the "Elección requerida" chevron, keyed choice::<id>] which option groups are expanded in the drawer — one assignment plus the add/delete of the toggle; presentational only'],
     'state.drawerKey':           [6, 'view',    '[1D add-product A: + the add drawer\u2019s Cerrar and Listo] [1D add-product B: + renderDrawer redirecting a new product\u2019s OPTION to its product] which dish the drawer shows; the fields inside it are canEdit-guarded'],
@@ -1123,7 +1132,10 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo
                  'publishedChoiceBlock',
                  // PLAN-portal-team-invites T-d (3a) — the per-load publish-request facts (load + post-publish settle paths, behind
                  // the generation check) and the manager's send (the review's admission / lock / generation discipline)
-                 'applyPublishRequestFacts', 'sendToOwnerFlow'];
+                 'applyPublishRequestFacts', 'sendToOwnerFlow',
+                 // PLAN-public-menu-display T1 — a section's name: the canEdit-guarded setter and the three handlers that call it or
+                 // move the view state (state.renameEdit); every one is reached only through bound()
+                 'setCategoryNames', 'renameStart', 'renameSave', 'renameCancel'];
 function writesIn(code) {
   const m = maskLiterals(code);
   const found = new Set();
@@ -1180,7 +1192,7 @@ const LISTENERS = {
   "$('pubback')::click":          ['singleton', ['closeReview'], 'closing is refused while this world has a publish in flight'],
   "PUBBTN::click":                ['singleton', ['runPublish'], 'admission-controlled, and validates a current review before acquiring'],
   "document::portal:auth":        ['ender', ['invalidateReview', 'repaintFromDraft', 'state.draft', 'state.groups', 'state.currentRid', 'state.uid'], 'the identity change that ENDS a world; it clears, then repaints what follows'],
-  "renderRail::callback":         ['view', ['state.selectedCat'], 'which category the rail highlights'],
+  "renderRail::callback":         ['view', ['state.selectedCat', 'state.renameEdit'], 'which category the rail highlights — and (PLAN-public-menu-display T1) leaving a section drops its unsaved title edit; both presentational'],
   "renderDetail::callback":       ['bound', ['openDrawer'], 'the inline price cells. onPrice is bound AT THE CALL SITE — the function itself belongs to no world — and is deliberately NOT listed here, so the lexical check requires it to sit inside the wrapper. openDrawer is listed: it writes only which dish the drawer shows.'],
   "renderAttestation::callback":  ['bound', [], '🔴 the acknowledgement — nothing here is allowed outside the wrapper'],
   "renderOutcome::callback":      ['bound', [], 'the recovery controls — real transitions, not messages, and every one of them inside the wrapper'],
@@ -1206,6 +1218,11 @@ const LISTENERS = {
   "add::click":                   ['bound', [], '"Agregar opción", through addChoice (canEdit, unsaved only)'],
   "cb::change":                   ['bound', [], '"Mismo precio para todas" (setGroupPrice, the ONE group mutator) and "Sin extras" (setGroupExtrasNone) — canEdit'],
   "fold::click":                  ['bound', [], 'folds the choice\u2019s options away — view state (state.openGroups) and a drawer re-render'],
+  // PLAN-public-menu-display T1 — naming every section at once (mockup R1c / R2b)
+  "callBtn::click":               ['bound', [], '«Ponerles nombre»: opens the naming modal — view only, inside the wrapper'],
+  "nameIn::input":                ['view', [], 'one section\u2019s typed name: updates the modal\u2019s own «Falta N nombres» and «Guardar nombres», no shared state'],
+  "nameCancel::click":            ['view', [], 'closes the naming modal; nothing is written'],
+  "nameSave::click":              ['bound', [], '«Guardar nombres»: setCategoryNames (canEdit) for the WHOLE set at once, then a repaint'],
 };
 
 test('🔴 every listener that writes is bound, or ruled — and nothing else is registered', () => {
@@ -1434,6 +1451,8 @@ const ALLOWED_CONSUMERS = new Set([
   // 1D add-product B — the required-choice setters (canEdit-guarded) and their pure readers
   'setRequiredChoice', 'setGroupLabel', 'setGroupExtrasNone', 'addChoice', 'removeChoice', 'setChoiceName', 'setChoiceRecommended', 'setChoicePrice', 'setGroupPrice',
   'choiceGroup', 'optionPricesEqual', 'isNewGroupOption', 'optionParentId',
+  // PLAN-public-menu-display T1 — a section's name: the canEdit-guarded setter and its two pure readers
+  'setCategoryNames', 'pendingRenames', 'categoriesUnnamed',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.

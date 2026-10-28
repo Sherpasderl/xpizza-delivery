@@ -6,7 +6,7 @@
 // so the result === the base index.js byte-for-byte (photos-wiring.guard). unapplyPhotosFold strips ONLY the re-export hunk:
 // foldPortalSplit() already drops the whole early-branch region (the top hunk lives inside it). It is the NEWEST slice: every index.js
 // fold applies it FIRST (innermost).
-const BASE = 'bd777b6d';
+const BASE = '743277de';   // A2 base: Plan 4's tip 743277de merged with A1 b908d443 (the photo hunks are unchanged; their base re-pointed)
 const HUNKS = Object.freeze([
  {
   "file": "index.js",

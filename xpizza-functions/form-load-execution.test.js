@@ -92,7 +92,8 @@ for (const rid of ['x_pizza', 'la_musa']) {
   const src = readFileSync(FORM.x_pizza, 'utf8');
   // `const` or `let` — 1B Task 6 made MENU reassignable so the live apply can replace it. What this
   // guard pins is the ORDERING, which is unaffected by the keyword and is what TDZ actually turns on.
-  const decl = Math.max(src.indexOf('const MENU = _okDishes('), src.indexOf('let MENU = _okDishes('));
+  // PLAN 4: the select is now `let MENU = _bootSelect('dishes', …)` (the bundle only, never a literal); the ordering is what TDZ turns on
+  const decl = Math.max(src.indexOf('const MENU = _okDishes('), src.indexOf('let MENU = _okDishes('), src.indexOf("let MENU = _bootSelect('dishes'"));
   const firstUse = src.indexOf('MENU.forEach(');
   assert.ok(decl > 0 && firstUse > decl,
     'the MENU select must be declared BEFORE the first top-level use (qty / MENU.forEach) — TDZ otherwise');

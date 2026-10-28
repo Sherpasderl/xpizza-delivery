@@ -7529,3 +7529,43 @@ exports.merchantPendingOrders = merchantPushFunctions.merchantPendingOrders;
 exports.merchantPushOnStatus = merchantPushFunctions.merchantPushOnStatus;
 exports.merchantPushOnAnswered = merchantPushFunctions.merchantPushOnAnswered;
 /* h1c:end */
+
+/* formbake:begin */
+// PLAN 4 (bake from published) r3 §4 / §5 — a publish rebuilds its brand's form (best-effort, on the mirror write) and a
+// reconciler proves the DEPLOYED form carries the PUBLISHED menu. All logic is catalog/form-rebake.js; this block only wires
+// it. No platform retry, bounded instances and deadlines, off the publish and money paths. Dormant until FORM_BUILD_HOOKS is set.
+const FORM_REBAKE = require('./catalog/form-rebake');
+const formRebakeDeps = () => ({
+  db: getDatabase(),
+  env: process.env,
+  now: () => Date.now(),
+  alarm: (kind, detail) => paymentAlert(getDatabase(), kind, detail),
+  registry: restaurantRegistry(),
+  sites: require('./platform-manifest').PLATFORM.sites,
+  // the published menu WITHOUT the identity overlay: what a bake writes, so nothing needs stripping and the comparator ignores no key
+  // the overlay-free published menu + the ACTIVATION GENERATION it was read at (the budget's fence — it advances on rollbacks too)
+  readPublished: (rid) => FORM_REBAKE.readFencedPublished(rid, {
+    getPointer: (r) => require('./catalog/catalog-firestore').getActivePointer(getFirestore(), r),
+    readMenu: (r) => buildPublicMenu(getFirestore(), r, { known: () => restaurantRegistry().known(), isActive: defaultIsActive(getDatabase()), overlayIdentity: false }),
+  }),
+  http: {
+    post: (url) => fetch(url, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(FORM_REBAKE.HOOK_DEADLINE_MS) }).then((r) => ({ status: r.status })),
+    getText: (url, opts) => fetch(url, { headers: (opts && opts.headers) || {}, redirect: 'follow', signal: AbortSignal.timeout(15000) })
+      .then((r) => { if (!r.ok) throw new Error(`answered ${r.status}`); return r.text(); }),
+  },
+});
+exports.rebakeFormOnMirror = onValueWritten(
+  { ref: '/catalog_snapshot/{rid}', region: 'us-central1', timeoutSeconds: 30, memory: '256MiB', maxInstances: 2, retry: false },
+  async (event) => {
+    try { await FORM_REBAKE.onMirrorWrite(event.params.rid, formRebakeDeps()); } catch (e) {
+      console.error('form_rebake_trigger_failed', JSON.stringify({ rid: event.params.rid }));
+    }
+  },
+);
+exports.reconcileFormBundles = onSchedule(
+  { schedule: 'every 10 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB', maxInstances: 1, retryCount: 0 },
+  async () => {
+    try { await FORM_REBAKE.reconcile(formRebakeDeps()); } catch (e) { console.error('form_rebake_reconcile_failed', (e && e.code) || 'error'); }
+  },
+);
+/* formbake:end */

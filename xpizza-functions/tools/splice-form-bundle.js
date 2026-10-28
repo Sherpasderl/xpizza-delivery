@@ -6,7 +6,9 @@
 // written. The committed form HTML is what Netlify serves, so a bad splice would BE production.
 const { readFileSync } = require('fs');
 const { join } = require('path');
-const { catalogSnapshot, generateFormBundle } = require('../catalog/generate-form-bundle');
+const { catalogSnapshot } = require('../catalog/generate-form-bundle');
+// PLAN 4 (gap resolution A): the committed bundle takes the PUBLISHED shape — the ONE composer getPublicMenu serves
+const { composeServedMenu } = require('../catalog/public-menu');
 const { spliceFormFile } = require('../catalog/splice-form-bundle');
 
 const FORMS = {
@@ -22,7 +24,7 @@ function main() {
   for (const rid of Object.keys(FORMS)) {
     // The bundle is regenerated from the catalog here rather than trusted from disk, and cross-checked
     // against the committed artifact — so the form can never be spliced with a stale bundle.
-    const fresh = generateFormBundle(rid, catalogSnapshot(rid));
+    const fresh = composeServedMenu(rid, catalogSnapshot(rid));
     const committed = JSON.parse(readFileSync(BUNDLES[rid], 'utf8'));
     if (JSON.stringify(fresh) !== JSON.stringify(committed)) {
       throw new Error(`bundle_drift: ${rid} — the committed menu-bundle.generated.json differs from the catalog-generated bundle; re-run the 1c-b1 generation first`);

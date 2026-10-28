@@ -7,6 +7,8 @@ import { apiFetch, editCatalog, publishEdited, resetDraftToLive, requestPublish 
 import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
 // 1D add-product B — the required choice on a NEW product ("Elección requerida — el cliente elige 1")
 import { parsePrice } from './editor.js';
+// PLAN-public-menu-display T1 — a section's display NAME (owner-approved mockup «Cambiar nombre de sección», 2026-10-25)
+import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
 import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
@@ -15,7 +17,7 @@ import { token } from './auth.js';
 const $ = (id) => document.getElementById(id);
 const REMEMBERED = 'sherpa.portal.rid';
 
-export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set(), settle: null };
+export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set(), settle: null, savedRenames: [], savedOther: false };
 
 export { pickRid, messageFor } from './portal-logic.js';
 
@@ -406,6 +408,8 @@ export async function loadMenu(rid) {
   state.rawPrice = new Map();                 // typed price text that is not (yet) a price, per field (codex PB-3 P2-2)
   invalidateReview();                        // clears tenant-bound state AND bumps the generation
   const gen = opGeneration;
+  state.renameEdit = null;                    // PLAN-public-menu-display T1 — the section title being edited, if any
+  closeNameAll();
   $('detail').replaceChildren();
   showEmpty('Cargando tu menú…', 'Un momento.');
   let data;
@@ -439,7 +443,7 @@ export async function loadMenu(rid) {
   // publish. Every mutator asks this, so a retained or detached listener is refused at the state
   // rather than at the DOM.
   state.draft = createDraft((data && data.source) || { items: [], extras: [], structure: {} },
-    { canEdit: () => editLockHolder === null });
+    { canEdit: () => editLockHolder === null, held: savedHold });
   state.sourceUpdateTime = (data && data.sourceUpdateTime) || null;
   state.usesPlatformFactura = (data && data.usesPlatformFactura) === true;
   applyAddProductFacts(data);
@@ -483,6 +487,10 @@ function applyAddProductFacts(data) {
   // which badges this brand's picker draws on an option. Strictly from the server; absent = off / none.
   state.groupAuthoring = !!(data && data.groupAuthoring === true);
   state.choiceBadges = Array.isArray(data && data.choiceBadges) ? data.choiceBadges.filter((b) => typeof b === 'string') : [];
+  // PLAN-public-menu-display T1 (Codex r1 #3) — what the SAVED draft already has pending against the PUBLISHED menu (server
+  // truth), so «a rename publishes alone» survives a reload, a branch switch and «Enviar al dueño». Absent = nothing.
+  state.savedRenames = Array.isArray(data && data.pendingRenames) ? data.pendingRenames.filter((r) => r && typeof r.id === 'string') : [];
+  state.savedOther = !!(data && data.pendingOther === true);
 }
 // PLAN-portal-team-invites T-d — the two per-load facts of «Enviar al dueño para publicar», strictly from the server:
 //   publish_via_request  this caller SENDS the draft to the owner instead of publishing (getEditableCatalog decides it with the
@@ -501,6 +509,162 @@ function isAddition(it) {
 }
 const canAddTo = (catId) => state.renderedCategories.includes(catId);   // always an array: declared [] and set from data
 const categoriesOf = () => { const st = (draftSource(state.draft) || {}).structure || {}; return Array.isArray(st.categories) ? st.categories : []; };
+// ── PLAN-public-menu-display T1 — A SECTION'S NAME ──────────────────────────────────────────────────────────────────────
+// A RENAME PUBLISHES ALONE (server: rename_not_alone). The two sides are kept apart HERE, where the merchant can still see
+// why: with prices / new products pending the rename control is off (mockup R3); with a name change pending prices and
+// «Agregar producto» are off (R3b). The client sees only this session's draft — a saved draft that already mixes them is
+// refused by the server with its own designed panel (R4).
+// LOCAL (this session's draft) OR SAVED (the server's pendingRenames / pendingOther / pendingAdditions — Codex r1 #3): the
+// exclusion holds against the PUBLISHED menu, not against whatever baseline this screen loaded or last sent.
+const renamesPending = () => !!state.draft && (pendingRenames(state.draft).length > 0 || state.savedRenames.length > 0);
+const othersPending = () => !!state.draft && (pendingCount(state.draft, state.additionKeys) > 0 || state.savedOther === true || (state.additionKeys && state.additionKeys.size > 0));
+// the same SAVED half, handed to the draft so its state boundary refuses the other side (editor.js canEditContent)
+function savedHold() {
+  if (state.savedRenames.length) return 'names';
+  if (state.savedOther === true || (state.additionKeys && state.additionKeys.size > 0)) return 'prices';
+  return null;
+}
+const RENAME_NOTICE = {
+  others: 'Hay cambios de precio sin publicar. Un cambio de nombre se publica solo: publicá o descartá los precios primero.',
+  renames: 'Hay un cambio de nombre esperando publicarse. Publicalo o descartalo para seguir editando precios o agregando productos.',
+};
+const isDeclaredCategory = (id) => categoriesOf().some((c) => c && String(c.id) === String(id));
+const declaredName = (id) => { const c = categoriesOf().find((x) => x && String(x.id) === String(id)); return (c && typeof c.name === 'string') ? c.name : ''; };
+function renameStart(catId) {
+  if (!state.draft || othersPending() || categoriesUnnamed(state.draft) || !isDeclaredCategory(catId)) return;
+  state.renameEdit = { catId: String(catId) };
+  paint();
+}
+function renameSave(catId, value) {
+  if (!state.draft || othersPending() || categoryNameProblem(value) !== null) return;
+  setCategoryNames(state.draft, [[catId, value]]);
+  state.renameEdit = null;
+  repaintFromDraft();
+  if (state.drawerKey) { renderDrawer(); holdDrawerForRename(); }   // a drawer open BEFORE the rename locks too (Codex r1 #2)
+}
+function renameCancel() {
+  state.renameEdit = null;
+  paint();
+}
+// The R1c callout: shown only while NO section has a name — then they are named together (R2b), never one at a time.
+function paintNameCall() {
+  const host = $('seccall');
+  if (!host) return;
+  const show = !!state.draft && categoriesUnnamed(state.draft);
+  host.classList.toggle('hidden', !show);
+  host.replaceChildren();
+  if (!show) return;
+  const ic = document.createElement('div');
+  ic.className = 'seccallic';
+  ic.append(pencilIcon());
+  const tx = document.createElement('div');
+  tx.className = 'seccalltx';
+  const b = document.createElement('b');
+  b.textContent = 'Tus secciones todavía no tienen nombre';
+  const sp = document.createElement('span');
+  sp.textContent = 'En el portal se muestran por su código. Se nombran todas juntas, de una vez.';
+  tx.append(b, sp);
+  const callBtn = document.createElement('button');
+  callBtn.type = 'button'; callBtn.className = 'btn';
+  callBtn.append(pencilIcon(), document.createTextNode('Ponerles nombre'));
+  if (othersPending()) callBtn.disabled = true;
+  else callBtn.addEventListener('click', bound(openNameAll));
+  host.append(ic, tx, callBtn);
+}
+function pencilIcon() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+  for (const d of ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z']) { const pth = document.createElementNS(NS, 'path'); pth.setAttribute('d', d); svg.append(pth); }
+  return svg;
+}
+// R2b — every section in its order, its id as a hint, one field each; «Guardar nombres» only when every field is a name.
+function openNameAll() {
+  if (!state.draft || othersPending() || !categoriesUnnamed(state.draft)) return;
+  const modal = $('namemodal');
+  if (!modal) return;
+  modal.replaceChildren();
+  const mh = document.createElement('div'); mh.className = 'mh';
+  const mt = document.createElement('div'); mt.className = 'mt'; mt.id = 'nameTitle'; mt.textContent = 'Ponerles nombre a tus secciones';
+  const ms = document.createElement('div'); ms.className = 'ms'; ms.textContent = 'Se nombran todas juntas: el menú lleva nombre en todas sus secciones o en ninguna.';
+  mh.append(mt, ms);
+  const mb = document.createElement('div'); mb.className = 'mb mscroll';
+  const inputs = [];
+  categoriesOf().forEach((c, i) => {
+    if (!c) return;
+    const f = document.createElement('div'); f.className = 'fld secnm';
+    const hint = document.createElement('div'); hint.className = 'secnmid';
+    const k = document.createElement('span'); k.className = 'secnmk'; k.textContent = String(i + 1);
+    hint.append(k, document.createTextNode(String(c.id)));
+    const nameIn = document.createElement('input');
+    nameIn.type = 'text'; nameIn.maxLength = 40; nameIn.placeholder = 'Nombre de la sección'; nameIn.autocomplete = 'off';
+    nameIn.setAttribute('aria-label', `Nombre de la sección ${c.id}`);
+    nameIn.addEventListener('input', () => sync());
+    f.append(hint, nameIn);
+    mb.append(f);
+    inputs.push([String(c.id), nameIn]);
+  });
+  const mf = document.createElement('div'); mf.className = 'mf';
+  const note = document.createElement('span'); note.className = 'secmfnote';
+  const nameCancel = document.createElement('button'); nameCancel.type = 'button'; nameCancel.className = 'btn ghost'; nameCancel.textContent = 'Cancelar';
+  const nameSave = document.createElement('button'); nameSave.type = 'button'; nameSave.className = 'btn accent'; nameSave.textContent = 'Guardar nombres';
+  mf.append(note, nameCancel, nameSave);
+  function sync() {
+    const missing = inputs.filter(([, inp]) => categoryNameProblem(inp.value) !== null).length;
+    note.textContent = missing === 0 ? '' : (missing === 1 ? 'Falta 1 nombre' : `Faltan ${missing} nombres`);
+    nameSave.disabled = missing > 0;
+  }
+  nameCancel.addEventListener('click', () => closeNameAll());
+  nameSave.addEventListener('click', bound(() => {
+    if (othersPending() || inputs.some(([, inp]) => categoryNameProblem(inp.value) !== null)) return;
+    setCategoryNames(state.draft, inputs.map(([id, inp]) => [id, inp.value]));
+    closeNameAll();
+    repaintFromDraft();
+    if (state.drawerKey) { renderDrawer(); holdDrawerForRename(); }
+  }));
+  modal.append(mh, mb, mf);
+  sync();
+  $('namescrim').classList.add('show');
+  if (inputs.length) inputs[0][1].focus();
+}
+function closeNameAll() {
+  const scrim = $('namescrim');
+  if (scrim) scrim.classList.remove('show');
+  const modal = $('namemodal');
+  if (modal) modal.replaceChildren();
+}
+// R3 — prices are edited WITHOUT a repaint (the caret must stay), so the rename side follows in place: «Cambiar nombre» and
+// «Ponerles nombre» go off, and the slim reason appears under the section header, the moment a price becomes pending (and
+// come back when it is undone). A pending NAME repaints anyway (Guardar), so it is painted, not synced.
+function syncRenameHold() {
+  if (!state.draft || renamesPending()) return;
+  const hold = othersPending();
+  for (const b of document.querySelectorAll('#detail .secren, #seccall .btn')) b.disabled = hold;
+  const head = document.querySelector('#detail > .dhead');
+  const note = document.querySelector('#detail > .secnote');
+  const wants = hold && !!head && (!!document.querySelector('#detail .secren') || categoriesUnnamed(state.draft));
+  if (wants && !note) head.after(renameNote(RENAME_NOTICE.others));
+  if (!wants && note) note.remove();
+}
+function renameNote(text) {
+  const n = document.createElement('div');
+  n.className = 'secnote';
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+  const pth = document.createElementNS(NS, 'path');
+  pth.setAttribute('d', 'M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM8 11V7a4 4 0 0 1 8 0v4');
+  svg.append(pth);
+  const t = document.createElement('span');
+  t.textContent = text;
+  n.append(svg, t);
+  return n;
+}
+// R3b — the drawer follows the list: while a name change waits, its fields are off too (Cerrar stays).
+function holdDrawerForRename() {
+  if (!renamesPending()) return;
+  for (const c of $('drawer').querySelectorAll('input, textarea, select')) lockControl(c, true);
+}
 const categoryName = (id) => { const c = categoriesOf().find((x) => x && String(x.id) === String(id)); return (c && typeof c.name === 'string' && c.name.trim()) ? c.name : String(id); };
 // What a NEW product inherits from its section — said in the review so the owner knows before publishing.
 function inheritedRules(catId) {
@@ -556,7 +720,7 @@ function listGroupOf(it) {
 // An option row drawn under its product (listGroupOf), never as a product of its own.
 const listIsGroupOption = (it) => !!(it && optionParentId(state.draft, rowId(it)));
 function onAddProduct(catId) {
-  if (!state.draft || !canAddTo(catId)) return;
+  if (!state.draft || !canAddTo(catId) || renamesPending()) return;   // R3b: a name change travels alone
   const ref = `tmp:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
   const cat = categoriesOf().find((c) => c && String(c.id) === String(catId));
   addProduct(state.draft, { ref, cat: catId, subcat: (cat && Array.isArray(cat.subcats) && cat.subcats.length === 1) ? cat.subcats[0] : null });
@@ -612,7 +776,8 @@ function offerResetToLive(host, rid, rev) {
 // only place "you have unpublished work" is said, so it must never say it when the draft matches what
 // is published — and never stay silent when it does not.
 function refreshBar() {
-  const n = pendingCount(state.draft, state.additionKeys);
+  const renames = pendingRenames(state.draft).length;   // PLAN-public-menu-display T1 — a section name is a change too
+  const n = pendingCount(state.draft, state.additionKeys) + renames;
   // 🔴 #7-B — REACHABLE WHENEVER A DRAFT EXISTS, not only when this session typed something.
   //
   // editCatalog PERSISTS the draft and getEditableCatalog returns the SAVED draft, so after a reload
@@ -630,12 +795,13 @@ function refreshBar() {
   // whole change exists for.
   $('rbtxt').textContent = n === 0
     ? 'Revisá si hay algo sin publicar'
-    : (n === 1 ? '1 cambio sin publicar' : `${n} cambios sin publicar`);
+    : (n === 1 ? '1 cambio sin publicar' : `${n} cambios sin publicar`) + (renames && renames === n ? (n === 1 ? ' · nombre de sección' : ' · nombres de sección') : '');
   // T-d (mockup v8 D2): who publishes, said where the merchant decides — text only
   if (state.publishViaRequest) { const note = document.createElement('span'); note.textContent = ' · el dueño confirma y publica con la autorización fiscal'; $('rbtxt').append(note); }
   // Nothing typed, nothing to throw away. The review is the way forward here; discard would be a
   // control that looks live and does nothing.
   $('discard').classList.toggle('hidden', n === 0);
+  syncRenameHold();                          // PLAN-public-menu-display T1 — a typed price turns the rename control off, in place
   // A price we cannot vouch for blocks the way forward — HERE, where the merchant can still see which
   // row it is, rather than at the server after the review and the attestation. The RULE lives here; the
   // BUTTON is painted by syncUi, which also knows whether an operation currently owns the draft. Two
@@ -644,6 +810,7 @@ function refreshBar() {
 }
 
 function onPrice(surface, key, value) {
+  if (renamesPending()) return;                // R3b: a name change travels alone (the field is disabled; this is the state half)
   if (surface === 'extra') setExtraPrice(state.draft, key, value);
   else if (typeof key === 'string' && key.startsWith('tmp:')) setAddition(state.draft, key, 'price', value);   // an unsaved addition
   else setItemPrice(state.draft, key, value);
@@ -673,9 +840,28 @@ function cellChanged(changed, k) {
 }
 
 function paint() {
-  renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; paint(); });
+  renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; if (state.renameEdit && state.renameEdit.catId !== id) state.renameEdit = null; paint(); });
   const changed = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
+  paintNameCall();
+  // PLAN-public-menu-display T1 — the section-name control for the section on screen (mockup R1–R3b), or none: no draft, no
+  // section of its own (the uncategorized bucket), or no section named yet (then the R1c callout is the one way in).
+  const catId = state.selectedCat;
+  const nameHold = renamesPending();
+  const otherHold = !nameHold && othersPending();
+  const editing = !!(state.renameEdit && state.renameEdit.catId === catId);
+  const rename = (state.draft && catId !== null && isDeclaredCategory(catId) && !categoriesUnnamed(state.draft)) ? {
+    mode: editing ? 'edit' : (otherHold ? 'blocked' : 'idle'),
+    value: declaredName(catId),
+    focus: editing,
+    problemOf: categoryNameProblem,
+    onStart: bound(() => renameStart(catId)),
+    onSave: bound((v) => renameSave(catId, v)),
+    onCancel: bound(renameCancel),
+  } : null;
   renderDetail($('detail'), state.groups.find((g) => g.category.id === state.selectedCat), state.extras, {
+    rename,
+    locked: nameHold,
+    notice: nameHold ? RENAME_NOTICE.renames : (otherHold && (rename || categoriesUnnamed(state.draft)) ? RENAME_NOTICE.others : null),
     editable: true,
     changed: (surface, key) => changed.has(`${surface}::${key}`),
     // 🔴 BOUND AT THE CALL SITE, not declared bound. `onPrice` is one module-level function shared by
@@ -752,7 +938,7 @@ function setDrawerInert(on) {
 export function openDrawer(key) {
   state.drawerKey = key;
   state.openGroups = state.openGroups || new Set();
-  renderDrawer();
+  renderDrawer(); holdDrawerForRename();
 }
 
 // Re-rendered on every group toggle, so it PRESERVES the body's scroll position. Without that, opening
@@ -962,7 +1148,7 @@ function renderAddDrawer(d, it, keepScroll) {
     o.value = catId; o.selected = catId === disp.cat;
     sec.append(o);
   }
-  sec.addEventListener('change', bound(() => { setAddition(state.draft, id, 'cat', sec.value); state.selectedCat = sec.value; after(); renderDrawer(); }));
+  sec.addEventListener('change', bound(() => { setAddition(state.draft, id, 'cat', sec.value); state.selectedCat = sec.value; after(); renderDrawer(); holdDrawerForRename(); }));
   row2.append(field('Sección', sec, 'cat'));
   const prf = mk('div', 'fld pr');
   prf.append(mk('label', null, 'Precio'), mk('span', 'cur2', 'L'));
@@ -1051,7 +1237,7 @@ function renderAddDrawer(d, it, keepScroll) {
 function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, price, sameOn, optionPriceInputs, derivedUi }) {
   const svgPath = (dd) => { const NS = 'http://www.w3.org/2000/svg'; const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); const pth = document.createElementNS(NS, 'path'); pth.setAttribute('d', dd); svg.append(pth); return svg; };
   const newRef = () => `tmp:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
-  const restructure = (keys) => { after(); renderDrawer(); refocus(keys); };
+  const restructure = (keys) => { after(); renderDrawer(); holdDrawerForRename(); refocus(keys); };
   const errAt = (target, field) => (state.drawerError && state.drawerError.target === target && (!field || state.drawerError.field === field) && typeof state.drawerError.message === 'string' ? `${state.drawerError.message}` : null);
   const block = mk('div', 'modblock');
   block.append(mk('div', 'modh', 'Elección requerida — el cliente elige 1'));
@@ -1100,7 +1286,7 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
     fold.setAttribute('aria-label', 'Ver opciones'); fold.setAttribute('aria-expanded', String(open));
     fold.append(svgPath('M9 6l6 6-6 6'));
     focusKey(fold, 'fold');
-    fold.addEventListener('click', bound(() => { if (state.openGroups.has(foldKey)) state.openGroups.delete(foldKey); else state.openGroups.add(foldKey); renderDrawer(); refocus(['fold']); }));
+    fold.addEventListener('click', bound(() => { if (state.openGroups.has(foldKey)) state.openGroups.delete(foldKey); else state.openGroups.add(foldKey); renderDrawer(); holdDrawerForRename(); refocus(['fold']); }));
     h.append(fold);
   }
   grp.append(h);
@@ -1226,7 +1412,7 @@ function groupBlock(g) {
   main.append(nm, sub);
   const toggle = () => {
     if (state.openGroups.has(g.name)) state.openGroups.delete(g.name); else state.openGroups.add(g.name);
-    renderDrawer();
+    renderDrawer(); holdDrawerForRename();
   };
   main.addEventListener('click', toggle);
   const chev = document.createElement('button');
@@ -1629,7 +1815,7 @@ async function settlePublish() {
     syncUi();
     return;
   }
-  state.draft = createDraft(fresh.source, { canEdit: () => editLockHolder === null });
+  state.draft = createDraft(fresh.source, { canEdit: () => editLockHolder === null, held: savedHold });
   state.sourceUpdateTime = fresh.sourceUpdateTime || null;
   state.usesPlatformFactura = fresh.usesPlatformFactura === true;
   applyAddProductFacts(fresh);
@@ -1695,6 +1881,13 @@ async function sendToOwnerFlow() {
     if (res && res.updateTime) state.sourceUpdateTime = res.updateTime;
     await requestPublish({ rid, editToken: res && res.token, token });
     if (gen !== opGeneration) return;
+    // PLAN-public-menu-display T1 (Codex r1 #3): what was just SENT is saved and still unpublished — keep it as the saved
+    // half of the exclusion, from the server's own diff, before the local baseline moves forward
+    { const sent = (res && res.diff) || {};
+      const ch = Array.isArray(sent.changed) ? sent.changed : [];
+      const names = ch.filter((c) => c && c.surface === 'category' && c.field === 'name');
+      state.savedRenames = names.map((c) => ({ id: String(c.key), from: c.old, to: c.new }));
+      state.savedOther = ch.length > names.length || ['added', 'removed', 'renamed'].some((k) => Array.isArray(sent[k]) && sent[k].length > 0); }
     commit(state.draft);                       // saved and sent: nothing of this snapshot is pending on THIS screen any more
     repaintFromDraft();
     document.dispatchEvent(new CustomEvent('portal:publish-request-sent'));   // pubreq.js: «Enviado al dueño para publicar»
@@ -1834,7 +2027,7 @@ document.addEventListener('portal:auth', (e) => {
 function portalReloadFacts() {
   const a = document.activeElement;
   return { pendingWrite: !!pendingWrite, publishing: !!publisher.busy || !!state.settle, review: !!state.review, reviewLock: !!state.reviewLock,
-    pendingCount: state.draft ? pendingCount(state.draft, state.additionKeys) : 0, focusedTag: a ? a.tagName : null };
+    pendingCount: state.draft ? pendingCount(state.draft, state.additionKeys) + pendingRenames(state.draft).length : 0, focusedTag: a ? a.tagName : null };
 }
 try {
   const S = window.SherpaClient;

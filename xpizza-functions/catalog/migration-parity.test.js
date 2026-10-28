@@ -438,25 +438,24 @@ const tablesOf = (rid, menu) => {
     const dishCategories = xp.structure.categories.map((c) => c.id);
     const extraCategories = xp.structure.extra_categories;
 
-    // 🔴 THE GUARD READS THE SHIPPED FORM. A constant transcribed from a renderer line drifts the
-    // moment someone adds a second excluded dish, and the catalog would keep offering options for a
-    // pizza the form refuses to show them for. Planted both ways.
-    assert.doesNotThrow(() => assertExposureMatchesToday('x_pizza', formSource('x_pizza')), 'the real form still matches the authored set');
-    assert.throws(() => assertExposureMatchesToday('x_pizza', "const isNutella = pizza.name === 'Nutella';\nconst isTiramisu = pizza.name === 'Tiramisu';"),
-      /exposure_source_drift/, '🔴 a SECOND excluded dish in the form must fail rather than be quietly un-migrated');
-    assert.throws(() => assertExposureMatchesToday('x_pizza', 'const isNutella = false;'),
-      /exposure_source_drift/, '🔴 the exclusion disappearing from the form must fail too');
-
-    // A dish the exclusion names but the menu no longer has: the exclusion would silently evaporate.
-    assert.throws(() => deriveExposure('x_pizza', { dishCategories, extraCategories, items: xp.items.filter((i) => i.key !== 'Nutella') }),
-      /exposure_source_missing_item/, '🔴 an exclusion naming a dish that is gone must fail, not vanish');
+    // PLAN 4 GATED (G1): "no options" is DATA — a dish's extras_policy 'none' — so the guard asserts the SHIPPED renderer
+    // compares no dish name at all, and the exclusion is derived from the data, travelling with the dish.
+    assert.doesNotThrow(() => assertExposureMatchesToday('x_pizza', formSource('x_pizza')), 'the real form compares no dish name');
+    assert.throws(() => assertExposureMatchesToday('x_pizza', "const isNutella = pizza.name === 'Nutella';"),
+      /exposure_source_drift/, '🔴 a name check reappearing in the form must fail — an exclusion the data cannot see');
+    const deny = (items) => Object.keys(deriveExposure('x_pizza', { dishCategories, extraCategories, items }).item_overrides).sort();
+    assert.deepStrictEqual(deny(xp.items), ['Nutella'], 'the bootstrap exclusion is exactly the dishes whose extras_policy is none');
+    const renamed = xp.items.map((i) => (i.key === 'Nutella' ? { ...i, key: 'Nutella Bomb', display: { ...i.display, name: 'Nutella Bomb' } } : i));
+    assert.deepStrictEqual(deny(renamed), ['Nutella Bomb'], 'a RENAMED dish keeps its exclusion (it rides on the dish, not on a name list)');
+    const lifted = xp.items.map((i) => (i.key === 'Nutella' ? { ...i, display: { ...i.display, extras_policy: undefined } } : i));
+    assert.deepStrictEqual(deny(lifted), [], 'and a dish whose policy is lifted offers its options again — the data decides');
 
     // An EXTRACTED brand with nothing to extract from must refuse rather than invent an allow-list —
     // inventing one would offer every option on every dish, which is a menu change nobody authored.
     assert.throws(() => deriveExposure('la_musa', { dishCategories, extraCategories, items: [] }),
       /exposure_source_missing/, '🔴 an extracted brand must not invent exposure when it has no map');
     assert.ok(deriveExposure('some_new_brand', {}) === null, 'a brand with no shipped renderer simply has no exposure to migrate');
-    ok('the exposure authority is tied to the renderer: a second exclusion, a vanished one, a missing dish and a missing map are each refused');
+    ok('the exposure authority: the form compares no name (a reappearing check fails), the exclusion follows extras_policy (renames keep it, lifting drops it), a missing map is refused');
   }
 
   // ══ 5b. AN UNKNOWN STRUCTURE FIELD CANNOT RIDE INTO A PERSISTED DOCUMENT ══════════════════════
@@ -575,7 +574,10 @@ const tablesOf = (rid, menu) => {
         assert.deepStrictEqual(after.extras.map((e) => e.display.id), readLiteral(formSource(rid), 'EXTRAS').map((e) => e.id),
           `🔴 ${rid}: the SERVED option order is not the deployed one, off a REAL capture`);
         if (!edit) {
-          assert.deepStrictEqual(after.extras.map((e) => e.display), readLiteral(formSource(rid), 'EXTRAS'),
+          // PLAN 4 GATED (G1): the deployed records = the form's EXTRAS + the ONE reviewed data file's rows (la_musa's icons)
+          const deployed = readLiteral(formSource(rid), 'EXTRAS'); const FMS = require('./form-menu-source');
+          require('./menu-structure-rows').applyBootstrapRows(rid, { items: readLiteral(formSource(rid), 'MENU').map((d) => ({ key: FMS.pricingKeyOf(rid, d), display: d })), extras: deployed.map((e) => ({ key: FMS.extrasKeyOf(rid, e), display: e })) });
+          assert.deepStrictEqual(after.extras.map((e) => e.display), deployed,
             `🔴 ${rid}: an untouched catalog must serve the deployed option records field for field`);
         }
         for (const i of after.items) assert.strictEqual(i.display.price, i.price, `🔴 ${rid}/${i.key}: shown ≠ charged`);

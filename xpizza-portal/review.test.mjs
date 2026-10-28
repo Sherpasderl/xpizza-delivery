@@ -1034,7 +1034,7 @@ test('🔴 an EMPTY diff attests to nothing and publishes nothing', () => {
 
 
 // ── 1D add-product A — the add-only review, attestation, panels and receipt ─────────────────────────────────────
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 const ADD_DIFF = () => ({ added: [{ surface: 'item', key: 'Pizza Nueva', price: 420 }, { surface: 'extra', key: 'x', price: 5 }],
@@ -1084,6 +1084,14 @@ test('🔴 EVERY merchant-reachable add-product refusal has a designed panel —
   const { extrasCapabilities } = createRequire(import.meta.url)('../xpizza-functions/catalog/platform-extras.js');
   const EXTRAS_CODES = ['exposure_ref_mismatch', 'extras_not_supported_yet'];
   if (!extrasCapabilities().authoring) for (const c of EXTRAS_CODES) GENERIC_BY_DESIGN.add(c);
+  // PLAN-public-menu-display T1: a category rename beside another change (rename_not_alone) is unreachable from this portal
+  // ONLY while it has no category-rename control — it never writes a category's name. The exemption is TIED to that: the
+  // first portal source line that assigns a category `.name` turns this test red until the code has a designed panel.
+  const portalSrc = readdirSync(new URL('.', import.meta.url)).filter((f) => f.endsWith('.js') && !f.includes('.test.'))
+    .map((f) => readFileSync(new URL(f, import.meta.url), 'utf8')).join('\n');
+  // any `cat…` / `categor…` identifier's `.name` assigned — broad on purpose: a false hit only turns this red (the safe side)
+  const writesCategoryName = portalSrc.split('\n').some((l) => /\bcat\w*(?:\([^)]*\))?(?:\[[^\]]*\])?\.name\s*=[^=]/i.test(l) || (/categor/i.test(l) && /\.name\s*=[^=]/.test(l)));
+  if (!writesCategoryName) GENERIC_BY_DESIGN.add('rename_not_alone');
   const RESET = new Set(['existing_item_changed', 'existing_item_removed', 'extras_changed', 'item_order_changed', 'structure_changed']);
   for (const c of codes) {
     if (GENERIC_BY_DESIGN.has(c)) continue;
@@ -1195,4 +1203,75 @@ test('🔴 seal (add-product B): every OPTION is a factura line, by its full nam
   // a zero-priced option blocks the publish like any other priced line
   const z = attestationModel(GROUP_DIFF([624, 0, 654]), { usesPlatformFactura: true });
   assert.strictEqual(canPublish(z, true), false);
+});
+
+// ── PLAN-public-menu-display T1 — a section's name in the review, the seal, the receipt and the refusal ──────────────────
+const RENAME_DIFF = (lines) => ({ added: [], removed: [], renamed: [], largeChangeSet: [],
+  changed: lines.map(([key, old, nw]) => ({ key, surface: 'category', field: 'name', old, new: nw })) });
+
+test('T1: a section-name line is its own «Secciones» group — never a price row — and counts toward the total', () => {
+  const m = reviewModel(RENAME_DIFF([['uno', 'Primera', 'Primera de la casa']]));
+  assert.deepStrictEqual(m.rows, [], 'not among the prices');
+  assert.deepStrictEqual(m.sections, [{ surface: 'category', key: 'uno', was: 'Primera', now: 'Primera de la casa' }]);
+  assert.strictEqual(m.total, 1);
+  const root = renderReview(fakeDom(), m);
+  const groups = byClass(root, 'mgroup');
+  assert.strictEqual(groups.length, 1);
+  assert.match(textOf(groups[0]), /^Secciones 1/);
+  const row = byClass(root, 'prow')[0];
+  assert.strictEqual(row.dataset.k, 'category::uno');
+  assert.strictEqual(byClass(row, 'pname')[0].textContent, 'Primera');
+  assert.strictEqual(byClass(row, 'psub')[0].textContent, 'Nombre de la sección');
+  assert.deepStrictEqual(['was', 'arr', 'now'].map((c) => byClass(row, c)[0].textContent), ['Primera', '→', 'Primera de la casa'], 'WAS then NOW');
+});
+
+test('T1: a section with no name yet reads «Sin nombre», and its row is named by its id (as the rail shows it)', () => {
+  const root = renderReview(fakeDom(), reviewModel(RENAME_DIFF([['uno', null, 'Primera']])));
+  const row = byClass(root, 'prow')[0];
+  assert.strictEqual(byClass(row, 'pname')[0].textContent, 'uno');
+  assert.strictEqual(byClass(row, 'was')[0].textContent, 'Sin nombre');
+});
+
+test('T1: a FISCAL names-only publish still needs the owner’s «Autorizo», and the seal never claims the name is on the factura', () => {
+  const diff = RENAME_DIFF([['uno', null, 'Primera'], ['dos', null, 'Segunda'], ['tres', null, 'Tercera']]);
+  const att = attestationModel(diff, { usesPlatformFactura: true });
+  assert.strictEqual(att.needsSeal, true);
+  assert.strictEqual(att.needsAck, true);
+  assert.strictEqual(canPublish(att, false), false, '🔴 no exemption for a rename');
+  assert.strictEqual(canPublish(att, true), true);
+  assert.deepStrictEqual(att.sealRows, [], 'no price line');
+  const root = renderAttestation(fakeDom(), att, () => {});
+  const t = textOf(root);
+  assert.match(t, /Esta publicación requiere tu autorización como propietario/);
+  assert.match(t, /Como propietario, autorizás esta publicación\. No cambia ningún precio: solo el nombre de las secciones\./);
+  assert.match(t, /Autorizo\s+publicar el nombre de estas 3 secciones\./);
+  assert.doesNotMatch(t, /imprimen|factura fiscal|precio que publiques/, 'nothing about the factura printing the name');
+  assert.strictEqual(byClass(root, 'seachg').length, 3);
+  const one = renderAttestation(fakeDom(), attestationModel(RENAME_DIFF([['uno', 'Primera', 'Otra']]), { usesPlatformFactura: true }), () => {});
+  assert.match(textOf(one), /Autorizo\s+publicar el nombre de esta sección\./);
+  // a non-fiscal brand: nothing to sign, publish at once
+  const plain = attestationModel(diff, { usesPlatformFactura: false });
+  assert.strictEqual(plain.needsAck, false);
+  assert.strictEqual(canPublish(plain, false), true);
+});
+
+test('T1: the receipt names what changed — one rename, every section named at once, several renames', () => {
+  const p = (lines) => textOf(renderReceipt(fakeDom(), receiptFor({ versionId: 'v2' }, { diff: RENAME_DIFF(lines) })));
+  assert.match(p([['uno', 'Primera', 'Primera de la casa']]), /«Primera» ahora se llama «Primera de la casa»\. El menú publicado ya lleva el nuevo nombre\./);
+  assert.match(p([['uno', null, 'Primera'], ['dos', null, 'Segunda'], ['tres', null, 'Tercera']]), /Tus secciones ya tienen nombre: Primera, Segunda y Tercera\./);
+  assert.match(p([['uno', 'A', 'B'], ['dos', 'C', 'D']]), /«A» ahora se llama «B»; «C» ahora se llama «D»\. El menú publicado ya lleva los nuevos nombres\./);
+  assert.doesNotMatch(p([['uno', 'Primera', 'Otra']]), /muestra este precio/, 'not the price sentence');
+});
+
+test('T1: rename_not_alone has its designed panel, and the SAVE path keeps its words (they state the rule, not a publish)', () => {
+  const e = { code: 'rename_not_alone', status: 400, body: { error: 'rename_not_alone', field: 'categories' } };
+  for (const op of ['edit', 'publish']) {
+    const o = outcomeFor(e, op);
+    assert.strictEqual(o.generic, false);
+    assert.strictEqual(o.title, 'Un cambio de nombre se publica solo');
+    assert.strictEqual(o.detail, 'Tu borrador cambia el nombre de una sección y también otras cosas. Volvé al menú publicado, cambiá solo el nombre y publicalo; el resto hacelo después.');
+    assert.deepStrictEqual(o.action, { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' });
+  }
+  // non-vacuity: another publish-worded panel IS still restated on the save path
+  assert.strictEqual(outcomeFor({ code: 'store_unavailable', status: 503, body: {} }, 'edit').title, 'No se pudo guardar el borrador');
 });

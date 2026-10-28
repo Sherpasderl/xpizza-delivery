@@ -461,14 +461,6 @@
   "to": "  const found = new Set(spec.noExtras);"
  },
  {
-  "id": "task8-14",
-  "slice": "task8",
-  "label": "a dish the exclusion names but the menu lacks is ignored",
-  "file": "catalog/exposure-source.js",
-  "from": "    if (!keys.has(key)) {\n      throw new Error(`exposure_source_missing_item:",
-  "to": "    if (false) {\n      throw new Error(`exposure_source_missing_item:"
- },
- {
   "id": "task8-15",
   "slice": "task8",
   "label": "an extracted brand invents an allow-list when it has no map",
@@ -712,8 +704,8 @@
   "slice": "b1",
   "label": "the exposure maps and badges are not carried",
   "file": "catalog/public-menu.js",
-  "from": "      if (menu.structure[f] !== undefined) body[f] = menu.structure[f];",
-  "to": "      void f;"
+  "from": "    if (menu.structure[f] !== undefined) body[f] = menu.structure[f];",
+  "to": "    void f;"
  },
  {
   "id": "b1-11",
@@ -1989,9 +1981,9 @@
   "id": "b6-08",
   "slice": "b6",
   "label": "a non-positive price is accepted into the live menu",
-  "file": "../xpizza-orders/index.html",
-  "from": "    && typeof r.price === 'number' && isFinite(r.price) && r.price > 0;",
-  "to": "    && (r.price === undefined || typeof r.price === 'number');",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "    && typeof r.name === \"string\" && r.name !== \"\" && isPosInt(r.price);",
+  "to": "    && typeof r.name === \"string\" && r.name !== \"\" && (r.price === undefined || typeof r.price === \"number\");",
   "command": [
    "node",
    "../live-apply.test.mjs"
@@ -2001,8 +1993,8 @@
   "id": "b6-09",
   "slice": "b6",
   "label": "two dishes sharing an id are accepted — one silently wins every lookup",
-  "file": "../xpizza-orders/index.html",
-  "from": "  if (new Set(dishes.map((d) => String(d.id))).size !== dishes.length) throw new Error('apply_dish_duplicate');",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "  if (new Set(dishes.map(d => String(d.id))).size !== dishes.length) throw new Error(\"apply_dish_duplicate\");",
   "to": ";",
   "command": [
    "node",
@@ -2064,7 +2056,7 @@
   "slice": "b6",
   "label": "focus is not restored after the container holding it is re-rendered",
   "file": "../xpizza-orders/index.html",
-  "from": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; __serverQuote.failedKey = null; }\n  /* 🔴 AND THE REWARD QUOTE, which redeemAdjustedTotal() prefers over the one above. Invalidating only\n     __serverQuote left the reward's total standing across a reprice — a displayed-vs-charged window\n     that is NOT the checkout-hold and therefore 1B's to close. Re-requested rather than dropped; the\n     send gate refuses while a reward is pending without a price. */\n  try {\n    if (window.__ACCOUNT && typeof window.__ACCOUNT.requoteRedeem === 'function'\n        && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) {\n      Promise.resolve(window.__ACCOUNT.requoteRedeem(redeemCartItems())).catch(function(){});\n    }\n  } catch (_) {}\n  liveMenuPaint(prepared);\n  liveMenuUiRestore(ui);\n}\n",
+  "from": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; __serverQuote.failedKey = null; }\n  /* 🔴 AND THE REWARD QUOTE, which redeemAdjustedTotal() prefers over the one above. Invalidating only\n     __serverQuote left the reward's total standing across a reprice — a displayed-vs-charged window\n     that is NOT the checkout-hold and therefore 1B's to close. Re-requested rather than dropped; the\n     send gate refuses while a reward is pending without a price. */\n  try {\n    if (window.__ACCOUNT && typeof window.__ACCOUNT.requoteRedeem === 'function'\n        && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) {\n      Promise.resolve(window.__ACCOUNT.requoteRedeem(redeemCartItems())).catch(function(){});\n    }\n  } catch (_) {}\n  liveMenuPaint(prepared);\n  liveMenuUiRestore(ui);\n  _menuBrokenClear();   // PLAN 4 r2: a COMPLETE live menu applied successfully — the page can vouch for its menu again\n}\n",
   "to": "function liveMenuCommit(prepared){\n  const ui = liveMenuUiCapture();\n  if (typeof __serverQuote === 'object' && __serverQuote) { __serverQuote.key = null; __serverQuote.cents = null; __serverQuote.inflight = null; __serverQuote.inflightKey = null; __serverQuote.failedKey = null; }\n  /* 🔴 AND THE REWARD QUOTE, which redeemAdjustedTotal() prefers over the one above. Invalidating only\n     __serverQuote left the reward's total standing across a reprice — a displayed-vs-charged window\n     that is NOT the checkout-hold and therefore 1B's to close. Re-requested rather than dropped; the\n     send gate refuses while a reward is pending without a price. */\n  try {\n    if (window.__ACCOUNT && typeof window.__ACCOUNT.requoteRedeem === 'function'\n        && window.__ACCOUNT.getRedeemPayload && window.__ACCOUNT.getRedeemPayload()) {\n      Promise.resolve(window.__ACCOUNT.requoteRedeem(redeemCartItems())).catch(function(){});\n    }\n  } catch (_) {}\n  liveMenuPaint(prepared);\n}\n",
   "command": [
    "node",
@@ -2075,8 +2067,8 @@
   "id": "b6-20",
   "slice": "b6",
   "label": "la_musa: a dish in a category that does not exist is accepted (sellable and invisible)",
-  "file": "../la-musa-orders/index.html",
-  "from": "  dishes.forEach((d, i) => { if (!catIds.has(d.cat)) throw new Error('apply_dish_orphan@' + i); });",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "  dishes.forEach(function (d, i) { if (!catIds.has(d.cat)) throw new Error(\"apply_dish_orphan@\" + i); });",
   "to": ";",
   "command": [
    "node",
@@ -2087,8 +2079,8 @@
   "id": "b6-21",
   "slice": "b6",
   "label": "la_musa: two dishes sharing an id are accepted",
-  "file": "../la-musa-orders/index.html",
-  "from": "  if (new Set(dishes.map((d) => String(d.id))).size !== dishes.length) throw new Error('apply_dish_duplicate');",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "  if (new Set(dishes.map(d => String(d.id))).size !== dishes.length) throw new Error(\"apply_dish_duplicate\");",
   "to": ";",
   "command": [
    "node",
@@ -3110,9 +3102,9 @@
   "id": "b8-36",
   "slice": "b8",
   "label": "la_musa: a RETAINED variant block is trusted instead of re-checked against the arriving dishes",
-  "file": "../la-musa-orders/index.html",
-  "from": "  } else if (variantItems && Object.keys(variantItems).length) {\n    validateVariantBlock(variantItems, 'retained');\n  }",
-  "to": "  }",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "  if (vi !== undefined) validateVariantBlock(vi, dishes, o.origin || \"supplied\");",
+  "to": "  if (vi !== undefined && o.origin !== \"retained\") validateVariantBlock(vi, dishes, o.origin || \"supplied\");",
   "command": [
    "node",
    "../live-apply.test.mjs"
@@ -3194,9 +3186,9 @@
   "id": "b8-43",
   "slice": "b8",
   "label": "la_musa: an empty record id is accepted again",
-  "file": "../la-musa-orders/index.html",
-  "from": "    && r.id !== undefined && r.id !== null && String(r.id) !== ''",
-  "to": "    && r.id !== undefined && r.id !== null",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "  const okRecord = (r) => isPlainObj(r) && r.id !== undefined && r.id !== null && String(r.id) !== \"\"",
+  "to": "  const okRecord = (r) => isPlainObj(r) && r.id !== undefined && r.id !== null",
   "command": [
    "node",
    "../live-apply.test.mjs"
@@ -3206,9 +3198,9 @@
   "id": "b8-44",
   "slice": "b8",
   "label": "x_pizza: an empty record id is accepted again",
-  "file": "../xpizza-orders/index.html",
-  "from": "    && r.id !== undefined && r.id !== null && String(r.id) !== ''",
-  "to": "    && r.id !== undefined && r.id !== null",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "  const okRecord = (r) => isPlainObj(r) && r.id !== undefined && r.id !== null && String(r.id) !== \"\"",
+  "to": "  const okRecord = (r) => isPlainObj(r) && r.id !== undefined && r.id !== null",
   "command": [
    "node",
    "../live-apply.test.mjs"
@@ -19694,8 +19686,8 @@
   "id": "formcheck-01",
   "slice": "formcheck",
   "label": "identity keys the forms accept-and-ignore are compared, so every published menu reads as drifted",
-  "file": "tools/form-bundle-live-check.js",
-  "from": "const strip = (r) => Object.fromEntries(Object.entries(r || {}).filter(([k]) => !IDENTITY_KEYS.has(k)));",
+  "file": "catalog/bundle-compare.js",
+  "from": "const strip = (r) => Object.fromEntries(Object.entries(r || {}).filter(([k]) => !IGNORED.has(k)));",
   "to": "const strip = (r) => Object.fromEntries(Object.entries(r || {}));",
   "kills_with": [
    "identical menus (+ identity keys) pass clean"
@@ -19709,7 +19701,7 @@
   "id": "formcheck-02",
   "slice": "formcheck",
   "label": "a baked dish the brand no longer publishes passes the check",
-  "file": "tools/form-bundle-live-check.js",
+  "file": "catalog/bundle-compare.js",
   "from": "if (!live.has(k)) { out.fail.push(`${label} ${k}: baked but absent from the published menu`); continue; }",
   "to": "if (!live.has(k)) continue;",
   "kills_with": [
@@ -19724,7 +19716,7 @@
   "id": "formcheck-03",
   "slice": "formcheck",
   "label": "a published-only addition fails the deploy instead of warning",
-  "file": "tools/form-bundle-live-check.js",
+  "file": "catalog/bundle-compare.js",
   "from": "for (const [k, l] of live) if (!baked.has(k)) out.warn.push(",
   "to": "for (const [k, l] of live) if (!baked.has(k)) out.fail.push(",
   "kills_with": [
@@ -19739,7 +19731,7 @@
   "id": "formcheck-04",
   "slice": "formcheck",
   "label": "a repriced dish passes the check (the la_musa incident)",
-  "file": "tools/form-bundle-live-check.js",
+  "file": "catalog/bundle-compare.js",
   "from": "if (!same(bb[f], l[f])) out.fail.push(",
   "to": "if (false) out.fail.push(",
   "kills_with": [
@@ -20033,6 +20025,1046 @@
   "command": [
    "node",
    "../price-notice.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-1",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: validateSource stops checking that a badge_priority entry names a declared badge — a priority entry would select a badge that renders nothing",
+  "file": "catalog/source-store.js",
+  "from": "      if (!st.badges || !Object.prototype.hasOwnProperty.call(st.badges, k)) fail(",
+  "to": "      if (false) fail(",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-3",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: badge_priority duplicates are accepted (the unique rule dropped)",
+  "file": "catalog/source-store.js",
+  "from": "    checkField(st.badge_priority, { required: false, type: 'string_array', unique: true }, `${rid}`, 'structure.badge_priority');",
+  "to": "    checkField(st.badge_priority, { required: false, type: 'string_array' }, `${rid}`, 'structure.badge_priority');",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-4",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: the store path stops carrying badge_priority into the built structure — a published version silently loses the priority",
+  "file": "catalog/form-menu-source.js",
+  "from": "  carryStructure('badge_priority', () => bootstrapStructure.badge_priority);",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-5",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: getPublicMenu stops carrying badge_priority from the structure — the body would be refused as a half-menu (or never serve the order)",
+  "file": "catalog/public-menu.js",
+  "from": "const CARRIED_FROM_STRUCTURE = Object.freeze(['extras_by_category', 'extras_by_item', 'badges', 'badge_priority']);",
+  "to": "const CARRIED_FROM_STRUCTURE = Object.freeze(['extras_by_category', 'extras_by_item', 'badges']);",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-6",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: assertWholeBody stops checking badge_priority entries against the served badges",
+  "file": "catalog/public-menu.js",
+  "from": "    if (bad.length) problems.push(`badge_priority names ${bad.length} key(s) that are not served badges`);",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-8",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: the representation version is not advanced — a body with the new fields keeps the 1d.2 cache key",
+  "file": "catalog/public-menu.js",
+  "from": "const REPRESENTATION_VERSION = '1d.3';",
+  "to": "const REPRESENTATION_VERSION = '1d.2';",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-7",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: assertWholeBody stops checking a dish / extra reward_icon against the closed set",
+  "file": "catalog/public-menu.js",
+  "from": "    if (badIcon.length) problems.push(`${badIcon.length} ${coll} record(s) carry a reward_icon outside the closed set`);",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-9",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1 (flag 2): an extra's reward_icon is no longer bound to the closed sprite set",
+  "file": "catalog/source-store.js",
+  "from": "      reward_icon: { required: false, type: 'string', enum: REWARD_ICONS },\n    };",
+  "to": "      reward_icon: { required: false, type: 'string' },\n    };",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-2",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.1: the dish reward_icon is no longer bound to the closed sprite set — an icon that draws nothing is accepted",
+  "file": "catalog/source-store.js",
+  "from": "    // PLAN 4 r3 §8.1 (OWNER RULING (a)): the reward-picker icon, from the closed set the shipped sprite draws.\n    reward_icon: { required: false, type: 'string', enum: REWARD_ICONS },",
+  "to": "    // PLAN 4 r3 §8.1 (OWNER RULING (a)): the reward-picker icon, from the closed set the shipped sprite draws.\n    reward_icon: { required: false, type: 'string' },",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-10",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: the migration OVERWRITES a present value (a merchant edit) instead of preserving it",
+  "file": "tools/migrate-menu-structure.js",
+  "from": "    if (!has(target, field)) { target[field] = clone(want); added.push(at); return; }",
+  "to": "    if (!has(target, field) || !same(target[field], want)) { target[field] = clone(want); added.push(at); return; }",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
+ },
+ {
+  "id": "fb-11",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: the write skips the explicit revision comparison — a merchant save between plan and write is replaced",
+  "file": "tools/migrate-menu-structure.js",
+  "from": "        if (nowRevision !== revision) {",
+  "to": "        if (false) {",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
+ },
+ {
+  "id": "fb-12",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: the planned document is not validated — an off-set icon or a ghost priority would be written",
+  "file": "tools/migrate-menu-structure.js",
+  "from": "  validateSource(next, rid);   // THROWS on an invalid result — nothing is written",
+  "to": "",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
+ },
+ {
+  "id": "fb-13",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: a row whose dish is gone is silently dropped instead of reported",
+  "file": "tools/migrate-menu-structure.js",
+  "from": "        if (!rec || !rec.display || typeof rec.display !== 'object') { missing.push(at); continue; }",
+  "to": "        if (!rec || !rec.display || typeof rec.display !== 'object') { continue; }",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
+ },
+ {
+  "id": "fb-14",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: the dry run writes (the --write opt-in ignored)",
+  "file": "tools/migrate-menu-structure.js",
+  "from": "    if (!plan.added.length || !write) return report;",
+  "to": "    if (!plan.added.length) return report;",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
+ },
+ {
+  "id": "fb-15",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: a refused (moved) write is not re-planned — the migration gives up on the first concurrent save",
+  "file": "tools/migrate-menu-structure.js",
+  "from": "      if (e && e.code === 'migrate_menu_structure_moved' && attempt < MAX_TRIES) {",
+  "to": "      if (false) {",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
+ },
+ {
+  "id": "fb-16",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.2: the generator offers icons for alcohol (beer_*) too — rows the picker never shows",
+  "file": "tools/migrations/gen-menu-structure-2026-10-26.js",
+  "from": "        if (String(d.id).indexOf('beer_') === 0 || !Object.prototype.hasOwnProperty.call(CAT, d.cat)) continue;",
+  "to": "        if (!Object.prototype.hasOwnProperty.call(CAT, d.cat)) continue;",
+  "command": [
+   "node",
+   "tools/migrate-menu-structure.test.js"
+  ]
+ },
+ {
+  "id": "fb-20",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the fresh-read query is dropped — an intermediary cache can serve the bake a stale menu",
+  "file": "tools/bake-form-bundle.js",
+  "from": "function bakeUrl(html, rid, buildStartMs) { return `${publicMenuUrl(html, rid)}?_bake=${encodeURIComponent(String(buildStartMs))}`; }",
+  "to": "function bakeUrl(html, rid, buildStartMs) { return `${publicMenuUrl(html, rid)}`; }",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-21",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the bake stops asking for no-cache",
+  "file": "tools/bake-form-bundle.js",
+  "from": "{ headers: { accept: 'application/json', 'cache-control': 'no-cache' } }); } catch (e) {\n    return { rid, changed: false, refusals: [`bake_fetch_failed",
+  "to": "{ headers: { accept: 'application/json' } }); } catch (e) {\n    return { rid, changed: false, refusals: [`bake_fetch_failed",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-22",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: a wrong-brand body is baked (the rid check dropped)",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  if (env.rid !== rid) r.push(",
+  "to": "  if (false) r.push(",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-23",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: an unknown representation is baked",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  if (!KNOWN_REPRESENTATIONS.includes(env.representation_version)) r.push(",
+  "to": "  if (false) r.push(",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-24",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the identity keys are baked into the form (pre-apply payloads change)",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  const strip = (rec) => (isObj(rec) ? Object.fromEntries(Object.entries(rec).filter(([k]) => !IDENTITY_KEYS.has(k))) : rec);",
+  "to": "  const strip = (rec) => rec;",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-25",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: a refused body is spliced anyway",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  if (refusals.length) return { rid, changed: false, refusals };",
+  "to": "  if (false) return { rid, changed: false, refusals };",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-26",
+  "slice": "formbake",
+  "label": "PLAN 4 r2: a dish in no category is baked / booted / applied (the ONE menu contract)",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "  dishes.forEach(function (d, i) { if (!catIds.has(d.cat)) throw new Error(\"apply_dish_orphan@\" + i); });",
+  "to": ";",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-31",
+  "slice": "formbake",
+  "label": "PLAN 4 r2: the variant map is not checked (the ONE menu contract)",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "  if (vi !== undefined) validateVariantBlock(vi, dishes, o.origin || \"supplied\");",
+  "to": "  if (false) validateVariantBlock(vi, dishes, o.origin || \"supplied\");",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-32",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the bake runs without --this-form (it would rewrite a working tree)",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  if (!argv.includes('--this-form')) {",
+  "to": "  if (false) {",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-33",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the live check stops comparing badge_priority",
+  "file": "catalog/bundle-compare.js",
+  "from": "  compareKeyed('badge_priority', whole(baked.badge_priority), whole(published.badge_priority), out);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-34",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the live check stops comparing extras_by_category",
+  "file": "catalog/bundle-compare.js",
+  "from": "  compareKeyed('extras_by_category', byKey(baked.extras_by_category), byKey(published.extras_by_category), out);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-35",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: the live check stops comparing the weekend gate",
+  "file": "catalog/bundle-compare.js",
+  "from": "  compareKeyed('weekend_only', asSet(baked.weekend_only_cats), asSet(published.weekend_only_cats), out);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-36",
+  "slice": "formbake",
+  "label": "PLAN 4 r2: duplicate dish ids are baked / booted / applied (the ONE menu contract)",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "  if (new Set(dishes.map(d => String(d.id))).size !== dishes.length) throw new Error(\"apply_dish_duplicate\");",
+  "to": ";",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-40",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a hook on any host is accepted (the api.netlify.com pin dropped)",
+  "file": "catalog/form-rebake.js",
+  "from": "  return u.protocol === 'https:' && u.hostname === HOOK_HOST && u.port === ''",
+  "to": "  return u.protocol === 'https:' && u.port === ''",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ],
+  "equivalent": true,
+  "why": "the final exact-string clause (url === `https://${HOOK_HOST}${pathname}`) refuses every foreign host on its own; the deciding clause is fb-99"
+ },
+ {
+  "id": "fb-41",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a hook with a query (e.g. trigger_branch) is accepted",
+  "file": "catalog/form-rebake.js",
+  "from": "    && u.search === '' && u.hash === '' && HOOK_PATH_RE.test(u.pathname)",
+  "to": "    && u.hash === '' && HOOK_PATH_RE.test(u.pathname)",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ],
+  "equivalent": true,
+  "why": "the final exact-string clause refuses any query string on its own; the deciding clause is fb-99"
+ },
+ {
+  "id": "fb-42",
+  "slice": "formbake",
+  "label": "PLAN 4 r3: the trigger observes the published menu as OLDER than anything stored — it never spends from the budget (never posts)",
+  "file": "catalog/form-rebake.js",
+  "from": "  const { decision, attempts } = await claimAttempt(rid, read.obs, deps);\n  if (decision !== 'post') return { posted: false, reason: decision };",
+  "to": "  const { decision, attempts } = await claimAttempt(rid, { version: read.obs.version, generation: -1 }, deps);\n  if (decision !== 'post') return { posted: false, reason: decision };",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-43",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: the reconciler retries inside the cooldown",
+  "file": "catalog/form-rebake.js",
+  "from": "    if (typeof c.at === 'number' && now - c.at < COOLDOWN_MS) { decision = 'cooldown'; return c; }",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-44",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: the reconciler never gives up — no form_rebake_stuck after 3 attempts",
+  "file": "catalog/form-rebake.js",
+  "from": "    if ((c.attempts || 0) >= MAX_ATTEMPTS) { decision = 'stuck'; attempts = c.attempts; return { ...c, stuck: true }; }",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-45",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a stuck rid keeps POSTing (no silence)",
+  "file": "catalog/form-rebake.js",
+  "from": "    if (c.stuck) { decision = 'stuck_silent'; return c; }",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-46",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a NEW published menu does not re-arm a stuck rid",
+  "file": "catalog/form-rebake.js",
+  "from": "    if (obs.generation > genOf(c)) c = { ...c, version: obs.version, generation: obs.generation, attempts: 0, stuck: false };   // a NEWER activation re-arms",
+  "to": "    if (obs.generation > genOf(c)) c = { ...c, version: obs.version, generation: obs.generation };   // a NEWER activation re-arms",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-47",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: the bad / missing hook alarm repeats every run (once-per-configuration dropped)",
+  "file": "catalog/form-rebake.js",
+  "from": "  await deps.db.ref(`form_rebake/${rid}/hook_alarm`).transaction((cur) => { if (cur === mark) { fresh = false; return undefined; } fresh = true; return mark; });",
+  "to": "  fresh = true;",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-48",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: the mechanism is not dormant when FORM_BUILD_HOOKS is unset",
+  "file": "catalog/form-rebake.js",
+  "from": "  if (!cfg.configured) return { dormant: true, results: [] };",
+  "to": "  if (false) return { dormant: true, results: [] };",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-49",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: the hook url leaks into the log line",
+  "file": "catalog/form-rebake.js",
+  "from": "  log(deps, 'form_rebake_hook', { rid, class: cls });",
+  "to": "  log(deps, 'form_rebake_hook', { rid, class: cls, url });",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-50",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a converged rid keeps its attempt count (the alarm never clears)",
+  "file": "catalog/form-rebake.js",
+  "from": "      return { ...c, version: read.obs.version, generation: read.obs.generation, attempts: 0, stuck: false };\n    });\n    return { rid, decision: 'converged' };",
+  "to": "      return { ...c, version: read.obs.version, generation: read.obs.generation };\n    });\n    return { rid, decision: 'converged' };",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-51",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: the deployed read is not fresh (no cache-busting query) — a CDN copy can hide a stale deploy",
+  "file": "catalog/form-rebake.js",
+  "from": "    const html = await withDeadline(deps.http.getText(`${base}?_reconcile=${deps.now()}`, { headers: { 'cache-control': 'no-cache' } }), READ_DEADLINE_MS, 'deployed');",
+  "to": "    const html = await withDeadline(deps.http.getText(`${base}`, { headers: { 'cache-control': 'no-cache' } }), READ_DEADLINE_MS, 'deployed');",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-52",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a published-only addition (WARN) is treated as converged — an added dish never reaches the deployed form",
+  "file": "catalog/form-rebake.js",
+  "from": "  const converged = !fail.length && !warn.length;",
+  "to": "  const converged = !fail.length;",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-53",
+  "slice": "formbake",
+  "label": "PLAN 4 §4/§5: a rejected hook (non-2xx) counts as ok",
+  "file": "catalog/form-rebake.js",
+  "from": "    cls = res && res.status >= 200 && res.status < 300 ? 'ok' : 'hook_rejected';",
+  "to": "    cls = 'ok';",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-54",
+  "slice": "formbake",
+  "label": "PLAN 4 §4: the trigger gets a platform retry (a failing hook would be re-POSTed by the platform, outside the cooldown)",
+  "file": "index.js",
+  "from": "  { ref: '/catalog_snapshot/{rid}', region: 'us-central1', timeoutSeconds: 30, memory: '256MiB', maxInstances: 2, retry: false },",
+  "to": "  { ref: '/catalog_snapshot/{rid}', region: 'us-central1', timeoutSeconds: 30, memory: '256MiB', maxInstances: 2, retry: true },",
+  "command": [
+   "node",
+   "formbake-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "fb-27",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: an option value naming nothing is baked / applied (the shared rule)",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "      map[k].forEach(function (v) { if (!extraCats.has(v) && !extraNamed(extras, v)) throw new Error(\"apply_option_map_value:\" + f + \".\" + k + \"=\" + v); });",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-28",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: a gate naming no category is baked / applied (the shared rule)",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "    g.forEach(function (c) { if (!catIds.has(c)) throw new Error(\"apply_gate_unknown_category:\" + f + \"=\" + c); });",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-29",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: a badge priority naming no badge is baked / applied (the shared rule)",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "    body.badge_priority.forEach(function (k) { if (!isPlainObj(body.badges) || !Object.prototype.hasOwnProperty.call(body.badges, k)) throw new Error(\"apply_badge_priority_unknown:\" + k); });",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-30",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: an off-set reward icon is baked / applied (the shared rule)",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "    pair[1].forEach(function (x, i) { if (x && x.reward_icon !== undefined && REWARD_ICONS.indexOf(x.reward_icon) === -1) throw new Error(\"apply_reward_icon:\" + pair[0] + \"@\" + i); });",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-60",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.3: the shared resolver ignores an extra-key map value (only categories render)",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "    else { const e = extraNamed(extras, v); if (e) { const g = groupOf(e.cat); if (g.extras.indexOf(e) === -1) g.extras.push(e); } }",
+  "to": "",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-61",
+  "slice": "formbake",
+  "label": "PLAN 4 §1: x_pizza's options go back to 'every category of EXTRAS' (the published map ignored)",
+  "file": "../xpizza-orders/index.html",
+  "from": "  return GroupPicker.offeredExtraGroups(dish, EXTRAS, EXTRAS_BY_CATEGORY, EXTRAS_BY_ITEM);",
+  "to": "  return [...new Set(EXTRAS.map(e => e.cat))].map(cat => ({ cat, extras: EXTRAS.filter(e => e.cat === cat) }));",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-62",
+  "slice": "formbake",
+  "label": "PLAN 4 §1: x_pizza's EXTRAS boot falls back to the literal",
+  "file": "../xpizza-orders/index.html",
+  "from": "let EXTRAS = _bootSelect('extras', _okRecords, [], true);",
+  "to": "let EXTRAS = _bootSelect('extras', _okRecords, FALLBACK_EXTRAS, true);",
+  "command": [
+   "node",
+   "form-runtime-literals.guard.test.js"
+  ]
+ },
+ {
+  "id": "fb-63",
+  "slice": "formbake",
+  "label": "PLAN 4 §1: la_musa's badge choice ignores the published priority (TAG_PRIORITY)",
+  "file": "../la-musa-orders/index.html",
+  "from": "  for (const t of BADGE_PRIORITY) {",
+  "to": "  for (const t of TAG_PRIORITY) {",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-64",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.4: x_pizza's live apply stops running the shared display rule (a malformed map applies)",
+  "file": "../xpizza-orders/index.html",
+  "from": "  GroupPicker.validateMenu(body, { variantItems, origin: supplied ? 'supplied' : 'retained' });\n  const dishes = body.dishes, extras = body.extras;\n  const isMap",
+  "to": "  const dishes = body.dishes, extras = body.extras;\n  const isMap",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-65",
+  "slice": "formbake",
+  "label": "PLAN 4 §8.4: la_musa's live apply keeps the old badge definitions",
+  "file": "../la-musa-orders/index.html",
+  "from": "    TAG_BADGES: (body.badges && typeof body.badges === 'object' && !Array.isArray(body.badges)) ? body.badges : TAG_BADGES,",
+  "to": "    TAG_BADGES: TAG_BADGES,",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-66",
+  "slice": "formbake",
+  "label": "PLAN 4 §1: x_pizza's reward picker ignores the published reward_icon",
+  "file": "../xpizza-orders/index.html",
+  "from": "icon:p.reward_icon||'star' }));   // PLAN 4 GATED: the published reward_icon (the name-keyed literal map is gone)",
+  "to": "icon:'star' }));",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-67",
+  "slice": "formbake",
+  "label": "PLAN 4 §1: la_musa's reward picker ignores the published reward_icon",
+  "file": "../la-musa-orders/index.html",
+  "from": "section:c, icon:p.reward_icon||'star' }); });",
+  "to": "section:c, icon:'star' }); });",
+  "command": [
+   "node",
+   "../post-bake-artifact.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-68",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: an unusable boot structure is not announced",
+  "file": "../xpizza-orders/index.html",
+  "from": "  const go = () => { try { announceMenuBroken(); } catch(_){} };",
+  "to": "  const go = () => {};",
+  "command": [
+   "node",
+   "form-bundle-splice.test.js"
+  ]
+ },
+ {
+  "id": "fb-69",
+  "slice": "formbake",
+  "label": "PLAN 4 §3: a REQUIRED structure absent from the bundle is not treated as broken",
+  "file": "../xpizza-orders/index.html",
+  "from": "  if (v === undefined && !required) return empty;",
+  "to": "  if (v === undefined) return empty;",
+  "command": [
+   "node",
+   "form-bundle-splice.test.js"
+  ],
+  "equivalent": true,
+  "why": "since r2 _MENU_OK runs the full validateMenu contract first, so an absent REQUIRED collection already returns at `if (!_MENU_OK)`; the deciding clause is fb-100 (x_pizza) / fb-101 (la_musa)"
+ },
+ {
+  "id": "fb-70",
+  "slice": "formbake",
+  "label": "PLAN 4 §4: overlayIdentity:false is ignored — the reconciler's read carries identity keys the deployed bundle never has (every rid reads as stale forever)",
+  "file": "catalog/public-menu.js",
+  "from": "  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, body);",
+  "to": "  const enriched = await applyIdentityToServedBody(db, restaurantId, body);",
+  "command": [
+   "node",
+   "catalog/plan4-display-fields.test.js"
+  ]
+ },
+ {
+  "id": "fb-80",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 P1: x_pizza's add-to-cart ignores the broken-boot latch",
+  "file": "../xpizza-orders/index.html",
+  "from": "  if(d>0 && _MENU_BROKEN){ announceMenuBroken(); return; }   // PLAN 4 r2: a broken boot adds nothing (removing still works)\n",
+  "to": "",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-81",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 P1: la_musa's send gate ignores the broken-boot latch",
+  "file": "../la-musa-orders/index.html",
+  "from": "  if (_MENU_BROKEN) {\n    try { console.warn('cart_blocked_send_menu_broken', JSON.stringify({ at: where, error: 'boot' })); } catch (_) {}\n    announceMenuBroken();\n    return true;\n  }\n",
+  "to": "",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-82",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 P1: x_pizza's menu-broken announcement goes to a HIDDEN stage again (err3 first)",
+  "file": "../xpizza-orders/index.html",
+  "from": "  const err = ['err3', 'err1'].map(function (id) { return document.getElementById(id); }).find(function (el) { return el && active && active.contains(el); })\n    || document.getElementById('err3') || document.getElementById('err1');",
+  "to": "  const err = document.getElementById('err3') || document.getElementById('err1');",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-83",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 P1: la_musa never clears the latch after a complete live menu applies",
+  "file": "../la-musa-orders/index.html",
+  "from": "  _menuBrokenClear();   // PLAN 4 r2: a COMPLETE live menu applied successfully — the page can vouch for its menu again\n",
+  "to": "",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-84",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 P1: x_pizza does not latch a broken boot",
+  "file": "../xpizza-orders/index.html",
+  "from": "  _MENU_BROKEN = true;   // PLAN 4 r2: latched — not orderable until a complete live menu applies\n",
+  "to": "",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-85",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 #3: reverse coverage dropped — a variant whose launcher map is missing is accepted",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "    if (!cfg || !Array.isArray(cfg.variantIds) || !cfg.variantIds.some(v => sameDishId(v, d.id))) throw new Error(\"apply_variant_uncovered@\" + i);",
+  "to": "",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
+  ]
+ },
+ {
+  "id": "fb-86",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 #2: a non-integer price is accepted (the integer rule dropped)",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "const isPosInt = (p) => typeof p === \"number\" && Number.isInteger(p) && p > 0;",
+  "to": "const isPosInt = (p) => typeof p === \"number\" && isFinite(p) && p > 0;",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-87",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 (#4): the mirror trigger POSTs regardless of the shared budget (cooldown / attempts / stuck bypassed)",
+  "file": "catalog/form-rebake.js",
+  "from": "  if (decision !== 'post') return { posted: false, reason: decision };\n  const cls = await postHook(url, rid, deps);\n  await deps.db.ref(`form_rebake/${rid}/last_class`).set(cls);\n  return { posted: true, class: cls, attempts };",
+  "to": "  const cls = await postHook(url, rid, deps);\n  await deps.db.ref(`form_rebake/${rid}/last_class`).set(cls);\n  return { posted: true, class: cls, attempts };",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-88",
+  "slice": "formbake",
+  "label": "PLAN 4 r2 (#6): --deployed compares the CHECKOUT's bundle instead of the live site's — a stale deploy passes",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "  return { origin, ...withPremigration(rid, compareBundle(extractBundle(deployedHtml), body && body.menu), body && body.menu) };",
+  "to": "  return { origin, ...withPremigration(rid, compareBundle(extractBundle(html), body && body.menu), body && body.menu) };",
+  "command": [
+   "node",
+   "tools/form-bundle-deployed-check.test.js"
+  ]
+ },
+ {
+  "id": "fb-89",
+  "slice": "formbake",
+  "label": "PLAN 4 r3 (Codex r2 #1): the stale-observation fence is dropped — an OLDER read is treated as current",
+  "file": "catalog/form-rebake.js",
+  "from": "    if (obs.generation < genOf(c)) { decision = 'stale'; return undefined; }                 // an OLDER observation: no write at all\n",
+  "to": "",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-90",
+  "slice": "formbake",
+  "label": "PLAN 4 r4 (Codex r2/r3 #1): the budget resets on ANY generation difference, not only a NEWER activation",
+  "file": "catalog/form-rebake.js",
+  "from": "    if (obs.generation > genOf(c)) c = { ...c, version: obs.version, generation: obs.generation, attempts: 0, stuck: false };   // a NEWER activation re-arms",
+  "to": "    if (obs.generation !== genOf(c)) c = { ...c, version: obs.version, generation: obs.generation, attempts: 0, stuck: false };   // a NEWER activation re-arms",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ],
+  "equivalent": true,
+  "why": "line 107 already returns 'stale' for an older generation, so `!==` and `>` differ only for a non-number generation, which readFencedPublished never passes (Number.isSafeInteger); the deciding clause is fb-89"
+ },
+ {
+  "id": "fb-91",
+  "slice": "formbake",
+  "label": "PLAN 4 r3 (Codex r2 #2): strict parent resolution dropped — a variantOf of the wrong TYPE (\"30\" vs 30) resolves by string",
+  "file": "../xpizza-orders/form-group-picker.js",
+  "from": "    const parent = dishes.find(p => sameDishId(p.id, d.variantOf));",
+  "to": "    const parent = dishes.find(p => String(p.id) === String(d.variantOf));",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-92",
+  "slice": "formbake",
+  "label": "PLAN 4 r3: a choice listed by two launchers is accepted (production group-index.js refuses it)",
+  "file": "../la-musa-orders/form-group-picker.js",
+  "from": "      if (listedBy.has(String(v))) throw new Error(\"apply_variant_listed_twice:\" + String(v));\n",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-93",
+  "slice": "formbake",
+  "label": "PLAN 4 r4 (Codex r3 #1): the coherent read stops requiring the menu to BE the pointer's version — a generation is paired with another activation's menu",
+  "file": "catalog/form-rebake.js",
+  "from": "    if (p && m && p.version && m.version_id === p.version && Number.isSafeInteger(p.generation)) return { menu: m.body, generation: p.generation };",
+  "to": "    if (p && m && Number.isSafeInteger(p.generation)) return { menu: m.body, generation: p.generation };",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-71",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (G1): the exposure exclusion no longer follows extras_policy — a \"no options\" dish is offered every option (replaces task8-14, whose name-list check G1 removed by design)",
+  "file": "catalog/exposure-source.js",
+  "from": "const noExtrasKeys = (items) => items.filter((i) => i && i.display && i.display.extras_policy === 'none').map((i) => i.key);",
+  "to": "const noExtrasKeys = (items) => [];",
+  "command": [
+   "node",
+   "catalog/migration-parity.test.js"
+  ]
+ },
+ {
+  "id": "fb-72",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (G1): a dish-name comparison reappearing in the renderer passes the exposure guard",
+  "file": "catalog/exposure-source.js",
+  "from": "  if (found.size) {",
+  "to": "  if (false) {",
+  "command": [
+   "node",
+   "catalog/migration-parity.test.js"
+  ]
+ },
+ {
+  "id": "fb-73",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (G1): the text bootstrap skips the reviewed rows — the committed forms lose reward icons / extras_policy / the badge order",
+  "file": "catalog/form-menu-source.js",
+  "from": "  const bootstrapStructure = fd ? {} : applyBootstrapRows(restaurantId, { items, extras });",
+  "to": "  const bootstrapStructure = {};",
+  "command": [
+   "node",
+   "catalog-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-74",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED: la_musa's badge order falls back to the seed literal at runtime",
+  "file": "../la-musa-orders/index.html",
+  "from": "let BADGE_PRIORITY = _bootSelect('badge_priority', (v) => _okStrArr(v) && _DISPLAY_OK, [], false);",
+  "to": "let BADGE_PRIORITY = _bootSelect('badge_priority', (v) => _okStrArr(v) && _DISPLAY_OK, FALLBACK_TAG_PRIORITY, false);",
+  "command": [
+   "node",
+   "form-runtime-literals.guard.test.js"
+  ]
+ },
+ {
+  "id": "fb-94",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (Codex r3 #3): the bake ships a PRE-migration body (the premigration refusal dropped)",
+  "file": "tools/bake-form-bundle.js",
+  "from": "  if (gaps.length) r.push(`bake_premigration_body:",
+  "to": "  if (false) r.push(`bake_premigration_body:",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-95",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (Codex r3 #3): the pre-migration check ignores the per-record rows (reward icons, extras_policy)",
+  "file": "catalog/menu-structure-rows.js",
+  "from": "      for (const f of Object.keys((row && row.display) || {})) if (rec[f] === undefined) gaps.push(`${bodyColl}[${key}].${f}`);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/bake-form-bundle.test.js"
+  ]
+ },
+ {
+  "id": "fb-96",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (Codex r4): --deployed skips the premigration gate (a pre-migration body passes the deployed check)",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "  return { origin, ...withPremigration(rid, compareBundle(extractBundle(deployedHtml), body && body.menu), body && body.menu) };",
+  "to": "  return { origin, ...compareBundle(extractBundle(deployedHtml), body && body.menu) };",
+  "command": [
+   "node",
+   "tools/form-bundle-deployed-check.test.js"
+  ]
+ },
+ {
+  "id": "fb-97",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (Codex r4): the default live-check mode skips the premigration gate",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "  return withPremigration(rid, compareBundle(extractBundle(html), body && body.menu), body && body.menu);",
+  "to": "  return compareBundle(extractBundle(html), body && body.menu);",
+  "command": [
+   "node",
+   "tools/form-bundle-deployed-check.test.js"
+  ]
+ },
+ {
+  "id": "fb-98",
+  "slice": "formbake",
+  "label": "PLAN 4 GATED (Codex r4): withPremigration drops the gaps it found (both modes pass a pre-migration body)",
+  "file": "tools/form-bundle-live-check.js",
+  "from": "  return { ...res, fail: res.fail.concat(gaps.map(",
+  "to": "  return { ...res, fail: res.fail.concat([].map(",
+  "command": [
+   "node",
+   "tools/form-bundle-deployed-check.test.js"
+  ]
+ },
+ {
+  "id": "fb-99",
+  "slice": "formbake",
+  "label": "PLAN 4 (heavy follow-up): the hook check drops its exact-string clause — a parser-normalised url (host case, :443, backslashes, leading space) is accepted",
+  "file": "catalog/form-rebake.js",
+  "from": "    && u.search === '' && u.hash === '' && HOOK_PATH_RE.test(u.pathname) && url === `https://${HOOK_HOST}${u.pathname}`;",
+  "to": "    && u.search === '' && u.hash === '' && HOOK_PATH_RE.test(u.pathname);",
+  "command": [
+   "node",
+   "catalog/form-rebake.test.js"
+  ]
+ },
+ {
+  "id": "fb-100",
+  "slice": "formbake",
+  "label": "PLAN 4 (heavy follow-up): x_pizza's boot select ignores a bundle that failed the complete contract — its structures boot one by one",
+  "file": "../xpizza-orders/index.html",
+  "from": "  if (!_MENU_OK) return empty;\n  const v = _BUNDLE[field];",
+  "to": "  const v = _BUNDLE[field];",
+  "command": [
+   "node",
+   "form-bundle-splice.test.js"
+  ]
+ },
+ {
+  "id": "fb-101",
+  "slice": "formbake",
+  "label": "PLAN 4 (heavy follow-up): la_musa's boot select ignores a bundle that failed the complete contract — its structures boot one by one",
+  "file": "../la-musa-orders/index.html",
+  "from": "  if (!_MENU_OK) return empty;\n  const v = _BUNDLE[field];",
+  "to": "  const v = _BUNDLE[field];",
+  "command": [
+   "node",
+   "form-bundle-splice.test.js"
+  ]
+ },
+ {
+  "id": "fb-102",
+  "slice": "formbake",
+  "label": "PLAN 4 (heavy follow-up): la_musa's add-to-cart ignores the broken-boot latch (a refused tap no longer re-announces)",
+  "file": "../la-musa-orders/index.html",
+  "from": "  if(d>0 && _MENU_BROKEN){ announceMenuBroken(); return; }   // PLAN 4 r2: a broken boot adds nothing (removing still works)\n",
+  "to": "",
+  "command": [
+   "node",
+   "../boot-broken-latch.test.mjs"
   ]
  }
 ]
