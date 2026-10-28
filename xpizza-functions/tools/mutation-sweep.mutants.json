@@ -23652,8 +23652,8 @@
     "slice": "guest",
     "label": "the order body omits the checkout ticket",
     "file": "../customer-app/capp-api.js",
-    "from": "p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;",
-    "to": "p.checkoutTicket) void 0;",
+    "from": "p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;   // §4 (consumed",
+    "to": "p.checkoutTicket) void 0;   // §4 (consumed",
     "command": [
       "node",
       "--test",
@@ -24927,6 +24927,23 @@
     ],
     "kills_with": [
       "S4-r2-norecord"
+    ]
+  },
+  {
+    "id": "s4-32",
+    "slice": "s4",
+    "label": "under schedulingLive the guest's checkout ticket is not attached (the flag path)",
+    "file": "../customer-app/capp-api.js",
+    "from": "p.checkoutTicket) body.checkout_ticket = p.checkoutTicket.ticket;   // S4: the ticket is read NOW",
+    "to": "p.checkoutTicket) void 0;   // S4: the ticket is read NOW",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=S4 \\+ guest",
+      "../customer-app/capp-api.test.mjs"
+    ],
+    "kills_with": [
+      "S4-ticket"
     ]
   }
 ]

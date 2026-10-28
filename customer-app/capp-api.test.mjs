@@ -600,9 +600,9 @@ test('r4: the policy LOCK_INTERRUPTED_CARD — ON (shipped) ⇒ an interrupted c
 });
 
 // ── PLAN-capp-signin-required r5.4 / Codex guest r1 #1 + #5: the guest rules hold at EVERY dispatch; existing payments resolve first ──
-function grig({ script, storage = memStorage(), member = { cur: null }, clock = { t: at(12) }, sleep = async () => {} } = {}) {
+function grig({ script, storage = memStorage(), member = { cur: null }, clock = { t: at(12) }, sleep = async () => {}, extra = {} } = {}) {
   const srv = server(script, storage);
-  const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: { ...E, verifyCheckoutCode: EV }, hours: OPEN_ALL, guestCardOnly: true },
+  const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: { ...E, verifyCheckoutCode: EV }, hours: OPEN_ALL, guestCardOnly: true, ...extra },
     member: () => member.cur, fetch: srv.fetch, storage, now: () => clock.t, sleep, randomBytes: (k) => Uint8Array.from({ length: k }, () => (RNG++ * 7) % 256), setInterval: () => 0, clearInterval: () => {} });
   return { api: make(), reload: make, srv, storage, member };
 }
@@ -816,4 +816,11 @@ test('Codex S4 r2: the WIRE guard holds where only it can — a scheduled card a
   const a = sArgs(); a.flow.pay = 'online';
   const out = await R.api.place(a);
   assert.deepEqual([out.kind, R.srv.of('chargeOnlineOrder').length], ['schedule_needs_account', 1], '🔴 S4-wire: the in-progress re-send refused at the wire');
+});
+test('S4 + guest: under schedulingLive a guest\'s ASAP card send still carries its checkout ticket (the flag path attaches it NOW)', async () => {
+  const R = grig({ extra: { schedulingLive: true }, script: { chargeOnlineOrder: [CHECKOUT] } });
+  const a = placeArgs('online');
+  const out = await R.api.place({ ...a, checkoutTicket: await ticketFor(R, a) });
+  assert.equal(out.kind, 'redirect', 'premise: placed');
+  assert.equal(R.srv.of('chargeOnlineOrder')[0].body.checkout_ticket, 'tk_1', '🔴 S4-ticket: the guest ticket rides the flag path');
 });
