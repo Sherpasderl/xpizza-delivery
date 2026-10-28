@@ -22859,5 +22859,65 @@
    "node",
    "../form-signal-client.test.mjs"
   ]
+ },
+ {
+  "id": "guest-1",
+  "slice": "guest",
+  "label": "capp guest: a body carrying scheduled_for is NOT refused (scheduling requires an account — owner rule)",
+  "file": "checkout-guest-lib.js",
+  "from": "  if (b.scheduled_for !== undefined && b.scheduled_for !== null && b.scheduled_for !== '') return 'guest_schedule_requires_account';\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-lib.test.js"
+  ]
+ },
+ {
+  "id": "guest-2",
+  "slice": "guest",
+  "label": "capp guest: cash / card at delivery accepted (guests are card-online only)",
+  "file": "checkout-guest-lib.js",
+  "from": "  if (b.payment_method !== 'online') return 'guest_cash_not_allowed';\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-lib.test.js"
+  ]
+ },
+ {
+  "id": "guest-3",
+  "slice": "guest",
+  "label": "capp guest: a missing / invalid email accepted",
+  "file": "checkout-guest-lib.js",
+  "from": "  if (typeof b.customer_email !== 'string' || !GUEST_EMAIL_RE.test(b.customer_email.trim())) return 'guest_email_required';\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-lib.test.js"
+  ]
+ },
+ {
+  "id": "guest-4",
+  "slice": "guest",
+  "label": "capp guest: the discriminator also fires for a member (uid present)",
+  "file": "checkout-guest-lib.js",
+  "from": "  return !!clientHdr && clientHdr.deployment === CAPP_DEPLOYMENT && uid === null;",
+  "to": "  return !!clientHdr && clientHdr.deployment === CAPP_DEPLOYMENT;",
+  "command": [
+   "node",
+   "checkout-guest-lib.test.js"
+  ]
+ },
+ {
+  "id": "guest-5",
+  "slice": "guest",
+  "label": "capp guest: a ticket validates for ANOTHER order id",
+  "file": "checkout-guest-lib.js",
+  "from": "  return rec.rid === rid && rec.order_id === orderId && typeof cartFp === 'string'",
+  "to": "  return rec.rid === rid && typeof cartFp === 'string'",
+  "command": [
+   "node",
+   "checkout-guest-lib.test.js"
+  ]
  }
 ]

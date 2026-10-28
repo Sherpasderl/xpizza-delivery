@@ -661,6 +661,7 @@
   "checkout-otp.js#requestCheckoutCode": "infra",
   "checkout-otp.js#verifyCheckoutCode": "infra",
   "checkout-otp.js#verifyCheckoutCode>anon": "infra",
+  "checkout-guest-lib.js#guestBodyRefusal": "intake",
   "checkout-guest-lib.js#ticketValid": "intake",
   "checkout-guest-lib.js#signGrant": "intake",
   "checkout-guest-lib.js#verifyGrant": "infra",

@@ -79,6 +79,20 @@ ok('ticket: {phone, phone_hash, rid, cart_fp, order_id, exp} with no state; vali
 }
 ok('grant: HMAC over the exact payload bytes; deterministic per order (replay = same token); expiry; signature checked BEFORE the payload is believed; never throws; fail-closed secret');
 
+// ── 6. the guest gate's BODY refusals (payment, scheduling, email — in that order) ──
+{
+  const good = { payment_method: 'online', customer_email: 'ana@example.com' };
+  assert.strictEqual(L.guestBodyRefusal(good), null);
+  for (const pm of ['cash', 'card_delivery', '', undefined, 'ONLINE']) assert.strictEqual(L.guestBodyRefusal({ ...good, payment_method: pm }), 'guest_cash_not_allowed', `payment ${pm}`);
+  for (const sf of [1.8e12, '2026-10-28T12:00:00Z', 0, 'garbage', {}, false]) assert.strictEqual(L.guestBodyRefusal({ ...good, scheduled_for: sf }), 'guest_schedule_requires_account', `🔴 a guest body carrying scheduled_for=${JSON.stringify(sf)} must be refused`);
+  for (const sf of [undefined, null, '']) assert.strictEqual(L.guestBodyRefusal({ ...good, scheduled_for: sf }), null, `no scheduling: ${JSON.stringify(sf)}`);
+  for (const em of [undefined, '', 'ana', 'ana@', '@x.com', 'a b@x.com', 'ana@x', 42]) assert.strictEqual(L.guestBodyRefusal({ ...good, customer_email: em }), 'guest_email_required', `email ${JSON.stringify(em)}`);
+  assert.strictEqual(L.guestBodyRefusal({ payment_method: 'cash', scheduled_for: 1, customer_email: '' }), 'guest_cash_not_allowed', 'order: payment first');
+  assert.strictEqual(L.guestBodyRefusal({ payment_method: 'online', scheduled_for: 1, customer_email: '' }), 'guest_schedule_requires_account', 'order: scheduling before email');
+  assert.strictEqual(L.guestBodyRefusal(null), 'guest_cash_not_allowed');
+}
+ok('guestBodyRefusal: non-online ⇒ guest_cash_not_allowed; ANY scheduled_for carried ⇒ guest_schedule_requires_account (owner rule: scheduling requires an account); bad email ⇒ guest_email_required; in that order');
+
 // ── 5. the server phone allowlist = the forms' PHONE_COUNTRIES (drift guard: one list) ──
 for (const form of ['xpizza-orders', 'la-musa-orders']) {
   const html = fs.readFileSync(path.join(__dirname, '..', form, 'index.html'), 'utf8');

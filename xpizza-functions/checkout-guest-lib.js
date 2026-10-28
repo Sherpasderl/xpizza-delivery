@@ -33,6 +33,21 @@ function budgetReserve(cur, now, signupSends = []) {
   return { next: { sends: own.concat([now]), last: now }, ok: true, retryInMs: 0 };   // only OWN sends persist; never deleted by a verify; `last` indexes the age prune
 }
 
+// S2 §2.2 / §2.3 — the capp-guest gate's BODY refusals, in order (the ticket check is separate: it needs a read). Pure; the
+// gate calls it only when isCappGuest(…) is true, BEFORE any write. → a reason code | null.
+//   1. payment: anything but 'online' ⇒ guest_cash_not_allowed (guests are card-online only — D4 CLOSED, owner 10-27);
+//   2. scheduling requires an account (owner rule, S4 frame G = B): a body CARRYING scheduled_for (any non-empty value,
+//      even malformed) ⇒ guest_schedule_requires_account;
+//   3. the email (the chargeOnlineOrder rule, index.js:2210) ⇒ guest_email_required.
+const GUEST_EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+function guestBodyRefusal(body) {
+  const b = body && typeof body === 'object' ? body : {};
+  if (b.payment_method !== 'online') return 'guest_cash_not_allowed';
+  if (b.scheduled_for !== undefined && b.scheduled_for !== null && b.scheduled_for !== '') return 'guest_schedule_requires_account';
+  if (typeof b.customer_email !== 'string' || !GUEST_EMAIL_RE.test(b.customer_email.trim())) return 'guest_email_required';
+  return null;
+}
+
 // S1 §1.3 — the ticket record (stored at checkout_tickets/{sha256(ticket)}); NO state field (r3: single use = the order id).
 function ticketRecord({ phone, phoneHash, rid, cartFp, orderId, now }) {
   if (typeof phone !== 'string' || !phone || typeof phoneHash !== 'string' || !HEX64_RE.test(phoneHash)) throw new Error('ticketRecord: bad phone');
@@ -86,5 +101,5 @@ function verifyGrant(token, secret, nowMs) {
   } catch (_) { return bad('bad_format'); }
 }
 
-module.exports = { CAPP_DEPLOYMENT, TICKET_TTL_MS, GRANT_TTL_MS, BUDGET, ORDER_ID_RE, isCappGuest, budgetReserve,
+module.exports = { CAPP_DEPLOYMENT, TICKET_TTL_MS, GRANT_TTL_MS, BUDGET, ORDER_ID_RE, isCappGuest, guestBodyRefusal, budgetReserve,
   ticketRecord, newTicketId, ticketKey, ticketValid, grantPayload, signGrant, verifyGrant };
