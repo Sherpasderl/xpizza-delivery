@@ -53,6 +53,8 @@ const SERVICE_LISTENERS = {
   functions: ['functions', 'eventarc', 'tasks'],
   // Optional, and never implied: a suite that needs real Auth names it (`--only firestore,database,auth`). One listener.
   auth: ['auth'],
+  // Optional, and never implied, like auth: `--only firestore,database,storage` (dish-photos A1). One listener on its own band.
+  storage: ['storage'],
 };
 // Host vars the Admin SDK honours. Cleared for every service we are NOT starting, so an inherited
 // value from a parent shell can never point a suite at a foreign emulator (see CLEARED_ENV below).
@@ -64,6 +66,8 @@ const HOST_ENV = {
   database: ['FIREBASE_DATABASE_EMULATOR_HOST'],
   functions: ['CLOUD_EVENTARC_EMULATOR_HOST', 'CLOUD_TASKS_EMULATOR_HOST'],
   auth: ['FIREBASE_AUTH_EMULATOR_HOST'],
+  // BOTH spellings the CLI exports (emulator/env.js:22-23): host:port and http://host:port — kept only when storage starts
+  storage: ['FIREBASE_STORAGE_EMULATOR_HOST', 'STORAGE_EMULATOR_HOST'],
 };
 
 /* 🔴 EVERY HOST VAR THE INSTALLED CLI CAN EXPORT, not the ones that came to mind. My first list had
@@ -284,6 +288,16 @@ const PROJECT = opts.project || 'demo-xpizza';
   const need = [];
   if (services.includes('database') && base.database && base.database.rules) need.push(['database', base.database.rules]);
   if (services.includes('firestore') && base.firestore && base.firestore.rules) need.push(['firestore', base.firestore.rules]);
+  /* Storage: the config MUST name a rules file (firebase.json "storage": {"rules": …}) — a storage run with no rules has
+     nothing to assert denials against, so it is refused outright rather than started open. */
+  if (services.includes('storage')) {
+    if (!(base.storage && base.storage.rules)) {
+      console.error('\nemulator-run: 🔴 EMULATOR REFUSED TO START — --only names storage but firebase.json has no "storage": {"rules": …}.');
+      console.error('emulator-run:    A storage emulator without its rules would make every rules assertion vacuous.\n');
+      process.exit(2);
+    }
+    need.push(['storage', base.storage.rules]);
+  }
   for (const [svc, rel] of need) {
     const abs = path.join(ROOT, rel);
     let text = null;
@@ -438,6 +452,7 @@ async function runOnce(excluded, deadlineMs) {
     logging: { host: '127.0.0.1', port: PORTS.logging },
     hub: { host: '127.0.0.1', port: PORTS.hub },
     auth: { host: '127.0.0.1', port: PORTS.auth },
+    storage: { host: '127.0.0.1', port: PORTS.storage },
     ui: { enabled: false, host: '127.0.0.1', port: PORTS.ui },
     /* 🔴 NO singleProjectMode: it changes what the emulator ACCEPTS, and several rules suites use their own ids. */
   };
