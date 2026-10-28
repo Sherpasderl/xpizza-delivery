@@ -155,7 +155,8 @@
   },
   {
    "key": "tip_cents",
-   "reason": "PLAN-guest-checkout-server §1.4 (3a, S2): the capp cart SIGNATURE's input key — cart-sig.js cartSigInput / checkout-guest-lib.js cartSigFieldsFromBody build the six-field object the capp signed (the ticket's cart_fp binding); a hash input, never an order field, a charge or a tip write. §1's 'no tip' is untouched by this slice. PROPOSED by 3a for 2e review (the capp line's S2-srv-tip exemption carries the same key)"
+   "sites": [{ "file": "cart-sig.js", "fn": "cartSigInput" }, { "file": "checkout-guest-lib.js", "fn": "cartSigFieldsFromBody" }],
+   "reason": "PLAN-guest-checkout-server §1.4 (3a, S2): the capp cart SIGNATURE's input key — cart-sig.js cartSigInput / checkout-guest-lib.js cartSigFieldsFromBody build the six-field object the capp signed (the ticket's cart_fp binding); a hash input, never an order field, a charge or a tip write. §1's 'no tip' is untouched by this slice. 2e REVIEWED 2026-10-27: ACCEPTED, SCOPED to these two sites (both verified: each returns the hashed six-field object, no order write). The same key anywhere else stays a §1 sentinel decision, e.g. a real tip write when the capp tip slice lands"
   }
  ],
  "timerReview": {
@@ -997,7 +998,7 @@
    "class": "identity",
    "reason": "customer / restaurant identity (contact) — shown as-is, not a contract fact (§1)"
   },
-  "guest_verified": { "class": "identity", "reason": "PLAN-guest-checkout-server §2.3 (3a, S2): the capp guest's VERIFIED phone {phone, phone_hash} from the checkout ticket, written only for a capp guest in the same pending-order CAS write (acquireHostedAttempt) — customer identity (contact evidence) for the phone binding + the signup grant, not a contract fact (§1). PROPOSED by 3a for 2e review" },
+  "guest_verified": { "class": "identity", "reason": "PLAN-guest-checkout-server §2.3 (3a, S2): the capp guest's VERIFIED phone {phone, phone_hash} from the checkout ticket, written only for a capp guest in the same pending-order CAS write (acquireHostedAttempt) — customer identity (contact evidence) for the phone binding + the signup grant, not a contract fact (§1). 2e REVIEWED 2026-10-27: ACCEPTED as identity — written once (index.js chargeOnlineOrder pending-order CAS, capp guests only); read only by checkout-guest-gate.js to bind the order to the ticket\u0027s verified phone_hash (an access-control input, never priced / never a status / never an order output) and to sign the signup grant" },
   "customer_uid": {
    "class": "identity",
    "reason": "customer / restaurant identity (contact) — shown as-is, not a contract fact (§1)"
