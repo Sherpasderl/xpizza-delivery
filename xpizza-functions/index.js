@@ -861,6 +861,12 @@ createOrderApp.all('*', async (req, res) => {
       }
     } catch (_) { /* malformed/expired/foreign/tomb-read-failure → ignore, treat as guest */ }
   }
+  /* checkout:begin gate-create */
+  // PLAN-guest-checkout-server r4 §2.3 INVARIANT: createOrder never places a capp-guest order — refused HERE, after identity and
+  // BEFORE the existence read and every write. Forms + members: null with zero I/O (checkout-guest-gate.js).
+  const cappGuestRefusal = require('./checkout-guest-gate').createOrderRefusal(clientHdr, customer_uid, body);
+  if (cappGuestRefusal) return res.status(400).json({ error: cappGuestRefusal });
+  /* checkout:end gate-create */
 
   // Content fingerprint for THIS request — computed ONCE, read-only, and threaded to BOTH the idempotency
   // content-check (below) AND the stored payment_fingerprint (create-order-build), so store==compare can never
@@ -1574,6 +1580,19 @@ chargeOnlineApp.all('*', async (req, res) => {
       ]);
     } catch (_) { customer_uid = null; }   // any error → guest
   }
+  /* checkout:begin gate-charge */
+  // PLAN-guest-checkout-server r4 §2.2/§2.3: the capp-guest gate — refusals (payment → scheduling → email → ticket) returned
+  // DIRECTLY, before any write. Forms + members: null with zero I/O. otp-lib loads lazily (guest path only).
+  let cappGuest = null;
+  try {
+    cappGuest = await require('./checkout-guest-gate').chargeGate({ clientHdr, uid: customer_uid, body, rid: restaurantId, orderId, db,
+      now: Date.now(), OTP: { phoneHash: (d) => require('./otp-lib').phoneHash(d) }, normalizePhone: require('./whatsapp').normalizePhone });
+  } catch (e) {
+    console.error(`chargeOnlineOrder: capp-guest gate failed for ${orderId}`, e.message);
+    return res.status(500).json({ error: 'Database error', detail: 'guest gate unavailable' });
+  }
+  if (cappGuest && cappGuest.refuse) return res.status(400).json({ error: cappGuest.refuse });
+  /* checkout:end gate-charge */
 
   // ── Rewards Phase B1 (online): PREPARE the redemption BEFORE both fingerprint sites, so the reservation
   // binding AND the PixelPay payment fingerprint carry the discounted total + appended items_text. The RESERVE
@@ -1961,6 +1980,9 @@ chargeOnlineApp.all('*', async (req, res) => {
     pendingOrderRecord.release_at = scheduledReleaseAt;
   }
 
+  /* checkout:begin gate-verified */
+  if (cappGuest && cappGuest.guest) pendingOrderRecord.guest_verified = { phone: cappGuest.guest.phone, phone_hash: cappGuest.guest.phone_hash };   // §2.3: in the SAME CAS write, capp guests only
+  /* checkout:end gate-verified */
   // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a
   // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS
   // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is
@@ -2108,6 +2130,13 @@ chargeOnlineApp.all('*', async (req, res) => {
     return res.status(500).json({ error: 'Database error', detail: e.message });
   }
 
+  /* checkout:begin gate-bind */
+  // §2.5: an order that now exists under this id must carry THIS request's verified phone, before any outcome answers with it
+  if (cappGuest && cappGuest.guest && !(await require('./checkout-guest-gate').boundToGuest({ db, orderId, guest: cappGuest.guest }))) {
+    await releaseHoldIfOwned();
+    return res.status(400).json({ error: 'guest_ticket_invalid' });
+  }
+  /* checkout:end gate-bind */
   // Authoritative intake gate (Slice-4): a fresh/rotated payable URL was about to be minted for a 86'd
   // cart → the CAS aborted BEFORE any write. Respond 400 with the blocked labels; nothing was persisted.
   if (acq.outcome === 'item_unavailable') {
@@ -2261,6 +2290,18 @@ chargeOnlineApp.all('*', async (req, res) => {
      refusals, the reuse, AND a checkout-creation or persistence failure — so returning on it means a
      charge that never issued emits no heartbeat and no alert, without that being a separate rule
      somebody has to remember. Reporting below is reached only by a charge that actually issued. */
+  /* checkout:begin gate-grant */
+  // §2.5: the stateless signup grant, recomputed from the STORED order (same bytes on replay / reuse / concurrent success)
+  let cappGrant = null;
+  if (cappGuest && cappGuest.guest && (!flow.respond || flow.respond.status === 200)) {
+    let grantSecret = '';
+    try { grantSecret = SIGNUP_GRANT_SECRET.value() || ''; } catch (_) { grantSecret = ''; }
+    const g = await require('./checkout-guest-gate').grantFor({ db, orderId, guest: cappGuest.guest, secret: grantSecret, now: Date.now() });
+    if (g.refuse) return res.status(400).json({ error: g.refuse });
+    cappGrant = g.grant;
+    if (cappGrant && flow.respond) flow.respond.body = { ...flow.respond.body, signup_grant: cappGrant };
+  }
+  /* checkout:end gate-grant */
   if (flow.respond) return res.status(flow.respond.status).json(flow.respond.body);
   const hosted = flow.hosted;
 
@@ -2285,6 +2326,9 @@ chargeOnlineApp.all('*', async (req, res) => {
     pixelpay_order_id: pixelpayOrderId,
     poll_token: pollToken,
     checkout_url: hosted.url,
+    /* checkout:begin gate-grant-field */
+    ...(cappGrant ? { signup_grant: cappGrant } : {}),
+    /* checkout:end gate-grant-field */
     payment_status: 'pending'
   });
 });
@@ -2298,10 +2342,16 @@ chargeOnlineApp.use((err, req, res, next) => {
   next(err);
 });
 
+/* checkout:begin grant-secret */
+const SIGNUP_GRANT_SECRET = defineSecret('SIGNUP_GRANT_SECRET');   // PLAN-guest-checkout-server §2.5: the signup-grant HMAC key (owner-set; ≥ 32 chars)
+/* checkout:end grant-secret */
 exports.chargeOnlineOrder = onRequest(
   {
     region: 'us-central1',
     cors: true,
+    /* checkout:begin grant-secret-bind */
+    secrets: [SIGNUP_GRANT_SECRET],
+    /* checkout:end grant-secret-bind */
     timeoutSeconds: 30,
     memory: '256MiB',
     maxInstances: 10

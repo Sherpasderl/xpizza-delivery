@@ -152,6 +152,10 @@
   {
    "key": "normEmail",
    "reason": "lib/driver-admin-ops.js exports its email normalizer (trim + lowercase of a driver INVITE email) by name in module.exports — a helper, not an order field; §1 \"no order email\" stands"
+  },
+  {
+   "key": "tip_cents",
+   "reason": "PLAN-guest-checkout-server §1.4 (3a, S2): the capp cart SIGNATURE's input key — cart-sig.js cartSigInput / checkout-guest-lib.js cartSigFieldsFromBody build the six-field object the capp signed (the ticket's cart_fp binding); a hash input, never an order field, a charge or a tip write. §1's 'no tip' is untouched by this slice. PROPOSED by 3a for 2e review (the capp line's S2-srv-tip exemption carries the same key)"
   }
  ],
  "timerReview": {
@@ -662,6 +666,8 @@
   "checkout-otp.js#verifyCheckoutCode": "infra",
   "checkout-otp.js#verifyCheckoutCode>anon": "infra",
   "checkout-guest-lib.js#guestBodyRefusal": "intake",
+  "checkout-guest-lib.js#cartSigFieldsFromBody": "intake",
+  "cart-sig.js#cartSigInput": "intake",
   "checkout-guest-lib.js#ticketValid": "intake",
   "checkout-guest-lib.js#signGrant": "intake",
   "checkout-guest-lib.js#verifyGrant": "infra",
@@ -991,6 +997,7 @@
    "class": "identity",
    "reason": "customer / restaurant identity (contact) — shown as-is, not a contract fact (§1)"
   },
+  "guest_verified": { "class": "identity", "reason": "PLAN-guest-checkout-server §2.3 (3a, S2): the capp guest's VERIFIED phone {phone, phone_hash} from the checkout ticket, written only for a capp guest in the same pending-order CAS write (acquireHostedAttempt) — customer identity (contact evidence) for the phone binding + the signup grant, not a contract fact (§1). PROPOSED by 3a for 2e review" },
   "customer_uid": {
    "class": "identity",
    "reason": "customer / restaurant identity (contact) — shown as-is, not a contract fact (§1)"

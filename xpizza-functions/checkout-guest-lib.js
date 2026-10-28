@@ -5,7 +5,9 @@
 //   • budgetReserve(cur, now, signupSends)   the durable per-phone checkout send budget (otp_budget/{h}), a txn updater
 //   • ticketRecord(...) / ticketValid(...)   the order-id-bound checkout ticket (§1.3 / §2.3) — no state, a READ-ONLY check
 //   • signGrant / verifyGrant               the stateless signed SIGNUP GRANT (§2.5): HMAC(order_id ‖ phone_hash ‖ exp)
+//   • cartSigFieldsFromBody / cartFpFromBody the server's recompute of the capp's cartSig from a placement body (§1.4)
 const crypto = require('crypto');
+const CartSig = require('./cart-sig');
 
 const CAPP_DEPLOYMENT = 'orders-app';
 const TICKET_TTL_MS = 15 * 60e3;
@@ -40,12 +42,37 @@ function budgetReserve(cur, now, signupSends = []) {
 //      even malformed) ⇒ guest_schedule_requires_account;
 //   3. the email (the chargeOnlineOrder rule, index.js:2210) ⇒ guest_email_required.
 const GUEST_EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-function guestBodyRefusal(body) {
-  const b = body && typeof body === 'object' ? body : {};
-  if (b.payment_method !== 'online') return 'guest_cash_not_allowed';
-  if (b.scheduled_for !== undefined && b.scheduled_for !== null && b.scheduled_for !== '') return 'guest_schedule_requires_account';
-  if (typeof b.customer_email !== 'string' || !GUEST_EMAIL_RE.test(b.customer_email.trim())) return 'guest_email_required';
+function guestBodyRefusal(raw) {
+  const body = raw && typeof raw === 'object' ? raw : {};   // named `body` so the charge-inputs census reads these fields
+  if (body.payment_method !== 'online') return 'guest_cash_not_allowed';
+  if (body.scheduled_for !== undefined && body.scheduled_for !== null && body.scheduled_for !== '') return 'guest_schedule_requires_account';
+  if (typeof body.customer_email !== 'string' || !GUEST_EMAIL_RE.test(body.customer_email.trim())) return 'guest_email_required';
   return null;
+}
+
+// S2 §1.4 — the placement body → the six cartSig fields, EXACTLY as the capp's orderBody carries them (capp-checkout.js
+// sigInput ⇄ orderBody), or null when the body cannot be a capp-signed cart (⇒ the ticket cannot match ⇒ guest_ticket_invalid;
+// never a crash, never a pass). uid is null (a guest by definition); tip_cents omitted ⇒ 0; pickup ⇒ pin null regardless.
+function cartSigFieldsFromBody(raw) {
+  const body = raw && typeof raw === 'object' ? raw : {};   // named `body` so the charge-inputs census reads these fields
+  if (typeof body.restaurant_id !== 'string' || !Array.isArray(body.items)) return null;
+  if (body.order_type !== 'delivery' && body.order_type !== 'pickup') return null;
+  let pin = null;
+  if (body.order_type === 'delivery') {
+    if (typeof body.lat !== 'number' || !Number.isFinite(body.lat) || typeof body.lng !== 'number' || !Number.isFinite(body.lng)) return null;
+    pin = { lat: body.lat, lng: body.lng, confirmed: body.pin_confirmed === true };
+  }
+  let tip = 0;
+  if (body.tip_cents !== undefined) {
+    if (!Number.isInteger(body.tip_cents) || body.tip_cents < 0) return null;
+    tip = body.tip_cents;
+  }
+  return { restaurant_id: body.restaurant_id, items: body.items, order_type: body.order_type, pin, uid: null, tip_cents: tip };
+}
+// → Promise<hex | null> — the server's recompute of the capp's cartSig through the ONE shared module (cart-sig.js)
+async function cartFpFromBody(body) {
+  const f = cartSigFieldsFromBody(body);
+  return f ? CartSig.cartSigHex(f, (bytes) => crypto.createHash('sha256').update(bytes).digest()) : null;
 }
 
 // S1 §1.3 — the ticket record (stored at checkout_tickets/{sha256(ticket)}); NO state field (r3: single use = the order id).
@@ -101,5 +128,5 @@ function verifyGrant(token, secret, nowMs) {
   } catch (_) { return bad('bad_format'); }
 }
 
-module.exports = { CAPP_DEPLOYMENT, TICKET_TTL_MS, GRANT_TTL_MS, BUDGET, ORDER_ID_RE, isCappGuest, guestBodyRefusal, budgetReserve,
+module.exports = { CAPP_DEPLOYMENT, TICKET_TTL_MS, GRANT_TTL_MS, BUDGET, ORDER_ID_RE, isCappGuest, guestBodyRefusal, budgetReserve, cartSigFieldsFromBody, cartFpFromBody,
   ticketRecord, newTicketId, ticketKey, ticketValid, grantPayload, signGrant, verifyGrant };

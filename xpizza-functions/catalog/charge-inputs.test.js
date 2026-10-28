@@ -30,6 +30,11 @@ const PATHS = {
   chargeOnlineOrder: section('chargeOnlineApp.all('),
   validateOrderPayload: fnBody(idx, 'validateOrderPayload'),
   gateInputFromRequest: fnBody(readFileSync(join(__dirname, '..', 'token-gate.js'), 'utf8'), 'gateInputFromRequest'),
+  // PLAN-guest-checkout-server S2: the capp-guest gate reads the placement body too (forms never reach past its discriminator)
+  createOrderRefusal: fnBody(readFileSync(join(__dirname, '..', 'checkout-guest-gate.js'), 'utf8'), 'createOrderRefusal'),
+  chargeGate: fnBody(readFileSync(join(__dirname, '..', 'checkout-guest-gate.js'), 'utf8'), 'chargeGate'),
+  guestBodyRefusal: fnBody(readFileSync(join(__dirname, '..', 'checkout-guest-lib.js'), 'utf8'), 'guestBodyRefusal'),
+  cartSigFieldsFromBody: fnBody(readFileSync(join(__dirname, '..', 'checkout-guest-lib.js'), 'utf8'), 'cartSigFieldsFromBody'),
 };
 const READ = new Set();
 for (const [name, src] of Object.entries(PATHS)) {
@@ -65,7 +70,8 @@ const UNREAD = new Set(Object.keys(CI.UNREAD_FORM_FIELDS));
 const SAMPLE = {
   order_id: 'XP-1', restaurant_id: 'x_pizza', order_type: 'delivery', scheduled_for: null, pickup_time: 'standard', lat: 14.1, lng: -87.2,
   address_detected: 'Col. X', address_details: 'casa azul', payment_method: 'card', total: 1308, items_text: '2x NY Plain Slice - Combinada (L654)',
-  razon_social: '', rtn_cliente: '',
+  razon_social: '', rtn_cliente: '', pin_confirmed: true,   // S3a envío
+  tip_cents: 500,   // S2-srv-tip: a tipped payload (0 is the no-tip case and is normalized out — s2tip.test.js cell 6)
   items: [{ id: 33, name: 'NY Plain Slice - Combinada', qty: 2, price: 654, extras: [{ instance: 0, name: 'Salsa Roja', price: 39 }, { instance: 1, name: 'Mozzarella', price: 50 }] }],
   redeem: { type: 'free_pizza_choice', item_id: 'Carnivora', name: 'Carnivora' },
   customer_name: 'Ana Pérez', customer_phone: '99990000', customer_email: 'a@b.hn', notes: 'sin cebolla', quote_token: 'tok', expected_net_cents: 130800,

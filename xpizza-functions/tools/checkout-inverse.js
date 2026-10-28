@@ -1,14 +1,25 @@
 'use strict';
-// PLAN-guest-checkout-server S1 — the index.js inverse for the checkout slice: removes EXACTLY the one appended
-// `/* checkout:begin endpoints */ … /* checkout:end endpoints */` block (each marker exactly once), restoring the base
-// index.js byte-for-byte. Composed INNERMOST (newest slice first) into the index.js fold guards.
-const BEGIN = '/* checkout:begin endpoints */\n';
-const END = '/* checkout:end endpoints */\n';
-const HUNKS = [{ begin: BEGIN, end: END }];
+// PLAN-guest-checkout-server S1 + S2 — the index.js inverse for the checkout slices: removes EXACTLY the named
+// `/* checkout:begin NAME */ … /* checkout:end NAME */` hunks (each marker exactly once, each on its OWN line, the whole
+// lines removed), restoring the base index.js byte-for-byte. Every hunk is INSERTED whole lines — no base line is edited.
+// Composed INNERMOST (newest slice first) into the index.js fold guards.
+//   S1: endpoints (the appended block)
+//   S2: gate-create (createOrder), gate-charge / gate-verified / gate-bind / gate-grant / gate-grant-field (chargeOnlineOrder),
+//       grant-secret / grant-secret-bind (the signup-grant secret, bound to chargeOnlineOrder only)
+const NAMES = ['endpoints', 'gate-create', 'gate-charge', 'gate-verified', 'gate-bind', 'gate-grant', 'gate-grant-field', 'grant-secret', 'grant-secret-bind'];
+const HUNKS = NAMES.map((n) => ({ name: n, begin: `/* checkout:begin ${n} */`, end: `/* checkout:end ${n} */` }));
+const count = (s, t) => s.split(t).length - 1;
 function unapplyCheckoutIndex(src) {
-  const a = src.indexOf(BEGIN), b = src.indexOf(END);
-  if (a < 0 || b < 0 || b < a) throw new Error('checkout-inverse: the checkout block is missing or malformed');
-  if (src.indexOf(BEGIN, a + 1) >= 0 || src.indexOf(END, b + 1) >= 0) throw new Error('checkout-inverse: a checkout marker appears more than once');
-  return src.slice(0, a) + src.slice(b + END.length);
+  let out = src;
+  for (const h of HUNKS) {
+    if (count(out, h.begin) !== 1 || count(out, h.end) !== 1) throw new Error(`checkout-inverse: the ${h.name} hunk is missing or its marker appears more than once`);
+    const a = out.lastIndexOf('\n', out.indexOf(h.begin)) + 1;   // the begin marker's line start
+    const eAt = out.indexOf(h.end);
+    if (eAt < a) throw new Error(`checkout-inverse: the ${h.name} hunk is malformed`);
+    if (out.slice(a, out.indexOf(h.begin)).trim() !== '' || out[eAt + h.end.length] !== '\n') throw new Error(`checkout-inverse: the ${h.name} markers must sit on their own lines`);
+    out = out.slice(0, a) + out.slice(eAt + h.end.length + 1);
+  }
+  if (/checkout:(begin|end) /.test(out)) throw new Error('checkout-inverse: an unknown checkout hunk remains');
+  return out;
 }
 module.exports = { HUNKS, unapplyCheckoutIndex };
