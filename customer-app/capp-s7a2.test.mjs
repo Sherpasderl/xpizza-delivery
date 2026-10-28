@@ -293,7 +293,7 @@ test('shell: a tap on a PRESENTATION row is HELD (pressed) and opens the moment 
   const S = bootShell({ dirScript: [gate, 'complete'], storage });
   assert.equal(S.qa('.rlist .rcard').length, 2, 'presentation painted synchronously at boot');
   S.click('.rlist .rcard[data-rid="x_pizza"]');
-  assert.ok(S.q('.rlist .rcard[data-rid="x_pizza"]').classList.contains('held'), 'the drawn pressed state'); assert.equal(S.ui.store(), null);
+  { const row = S.q('.rlist .rcard[data-rid="x_pizza"]'); assert.ok(!!row && row.classList.contains('held'), 'the drawn pressed state'); } assert.equal(S.ui.store(), null);   // null-safe: an unverified entry removes the row (s7a2-15 dies HERE, by name)
   gate.resolve(resp('complete')); await flush();
   assert.equal(S.ui.store().rid, 'x_pizza', 'opened on the verified response'); assert.ok(S.q('.store-nav, .stick'), 'the store surface');
   S.click('[data-act="back"]'); await flush();
@@ -513,7 +513,7 @@ test('Codex s7a2 r1 #5: a tap HELD while the directory read is in flight is rele
   // menus held: no other event may re-run the held-tap check (only the directory's own notification can release it)
   const S = bootShell({ dirScript: [gate, 'complete'], envelope: 'hold', storage: memStorage(stored(SC.complete.body, T0 - 1000)) });
   S.click('.rlist .rcard[data-rid="x_pizza"]');
-  assert.ok(S.q('.rlist .rcard[data-rid="x_pizza"]').classList.contains('held'), 'premise: held while the read is in flight');
+  { const row = S.q('.rlist .rcard[data-rid="x_pizza"]'); assert.ok(!!row && row.classList.contains('held'), 'the drawn pressed state: held while the read is in flight'); }
   gate.resolve(resp('unavailable_503')); await flush();
   assert.equal(txt(S.q('.empty b')), 'No pudimos cargar los restaurantes', '🔴 the failed read releases the held tap to frame 7');
 });
