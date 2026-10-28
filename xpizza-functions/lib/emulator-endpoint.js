@@ -26,6 +26,8 @@ const STEP = 10;
 const BANDS = {
   ui: 4000, hub: 4400, logging: 4800, functions: 5200, eventarc: 5600, tasks: 6000,
   firestore: 8080, firestoreWebsocket: 8500, database: 9000, auth: 9400,
+  // Storage (dish-photos A1): the CLI default 9199 sits INSIDE the database band (9000–9390) — 9800–10190 is clear of all
+  storage: 9800,
 };
 const DATA_SERVICES = ['firestore', 'database'];
 const HOST_VAR = { firestore: 'FIRESTORE_EMULATOR_HOST', database: 'FIREBASE_DATABASE_EMULATOR_HOST' };
@@ -38,6 +40,13 @@ const HUB_VAR = 'FIREBASE_EMULATOR_HUB';
    point it at an in-process loopback stand-in (test/portal-handlers.emulator.test.js), but never at the auth band:
    that would be another run's emulator. */
 const AUTH_VAR = 'FIREBASE_AUTH_EMULATOR_HOST';
+/* STORAGE IS OPTIONAL TOO, and like auth NOT an emulator signal (lib/admin.js's prod/emulator split is unchanged). The CLI
+   exports TWO spellings for one emulator (firebase-tools 15.16.0 emulator/env.js:22-23): FIREBASE_STORAGE_EMULATOR_HOST as
+   host:port and STORAGE_EMULATOR_HOST as http://host:port. Both must be strict loopback and name the SAME port; on a run
+   that started storage, exactly this run's storage port. A run that did NOT start storage never points either at the
+   storage band (another run's emulator). assertStorageTestTarget() below is the prod-wipe guard a deleting suite calls. */
+const STORAGE_VAR = 'FIREBASE_STORAGE_EMULATOR_HOST';
+const STORAGE_ALIAS = 'STORAGE_EMULATOR_HOST';
 const OFFSET_VAR = 'XPIZZA_EMU_OFFSET';
 const SERVICES_VAR = 'XPIZZA_EMU_SERVICES';
 const DEAD_VAR = 'XPIZZA_EMU_DEAD';
@@ -131,9 +140,10 @@ function validateEmulatorEnv(env, { ns, lenient = false } = {}) {
   }
   if (present(env[HUB_VAR])) checkBand('hub', HUB_VAR, env[HUB_VAR], offset);
   const auth = checkAuth(env, offset, started, lenient);
+  const storage = checkStorage(env, offset, started, lenient);
   const project = checkProjectContract(env, offset);
   if (ns !== undefined && !/^[a-z0-9-]+$/.test(String(ns))) throw new EmulatorEndpointError(`RTDB namespace ${JSON.stringify(ns)} is malformed`);
-  return { offset, endpoints, nulls, started: [...started], dead: [...dead], project, auth };
+  return { offset, endpoints, nulls, started: [...started], dead: [...dead], project, auth, storage };
 }
 
 /* The optional Auth endpoint (see AUTH_VAR). Returns the validated value, or null when unset. */
@@ -154,6 +164,51 @@ function checkAuth(env, offset, started, lenient) {
     checkBand('auth', AUTH_VAR, raw, offset);   // the exact slot when XPIZZA_EMU_OFFSET is known
   }
   return raw;
+}
+
+/* The optional Storage endpoint (see STORAGE_VAR). Returns the validated host:port, or null when neither spelling is set. */
+function checkStorage(env, offset, started, lenient) {
+  const raw = env[STORAGE_VAR]; const alias = env[STORAGE_ALIAS];
+  if (!present(raw) && !present(alias)) {
+    if (!lenient && started.has('storage')) throw new EmulatorEndpointError(`${STORAGE_VAR} is not set but this run STARTED storage — Storage calls would go to PRODUCTION`);
+    return null;
+  }
+  // the alias is the CLI's http:// URL form of the same host:port; anything else (https, a path, a remote host) is refused
+  let aliasHp = null;
+  if (present(alias)) {
+    const m = /^http:\/\/([^/?#]+)\/?$/.exec(String(alias));
+    if (!m || !HOSTPORT.test(m[1])) throw new EmulatorEndpointError(`${STORAGE_ALIAS}=${JSON.stringify(alias)} is not http://<strict loopback host:port> — Storage would be sent off this machine`);
+    aliasHp = m[1];
+  }
+  if (present(raw) && !HOSTPORT.test(String(raw))) throw new EmulatorEndpointError(`${STORAGE_VAR}=${JSON.stringify(raw)} is not a strict loopback host:port — Storage would be sent off this machine`);
+  if (present(raw) && aliasHp !== null && aliasHp !== String(raw)) throw new EmulatorEndpointError(`${STORAGE_ALIAS}=${alias} disagrees with ${STORAGE_VAR}=${raw} — the SDKs honour both`);
+  const hp = present(raw) ? String(raw) : aliasHp;
+  const varName = present(raw) ? STORAGE_VAR : STORAGE_ALIAS;
+  if (hp === NULL_ENDPOINT) throw new EmulatorEndpointError(`${varName}=${NULL_ENDPOINT} (NULL) — storage has no NULL endpoint; leave it unset`);
+  if (started.has('storage')) { checkBand('storage', varName, hp, offset); return hp; }
+  const port = Number(HOSTPORT.exec(hp)[2]); const base = BANDS.storage;
+  if (port >= base && port <= base + (SLOTS - 1) * STEP && (port - base) % STEP === 0) {
+    if (!lenient && started.size) throw new EmulatorEndpointError(`${varName}=${hp} names a storage emulator this run did NOT start (${SERVICES_VAR}=${[...started].join(',')}) — that is someone else's`);
+    checkBand('storage', varName, hp, offset);
+  }
+  return hp;
+}
+
+/* 🔴 THE STORAGE PROD-WIPE GUARD (dish-photos A1 step 7). A suite that writes or DELETES objects calls this before its
+   first Storage client: it refuses unless this run STARTED storage, its slot offset is known, BOTH host spellings are
+   present and name exactly this run's storage port on strict loopback, and the bucket is a test bucket (demo-* / tb-*).
+   The bucket check is the second key: a correct host with a production bucket name still refuses. */
+const TEST_BUCKET = /^(demo|tb)-[a-z0-9][a-z0-9._-]{0,200}$/;
+function assertStorageTestTarget(env, bucket) {
+  const offset = readOffset(env);
+  const started = listVar(env, SERVICES_VAR);
+  if (!started.has('storage')) throw new EmulatorEndpointError(`storage target refused: this run did not start storage (${SERVICES_VAR}=${[...started].join(',') || '(unset)'})`);
+  if (offset === null) throw new EmulatorEndpointError(`storage target refused: ${OFFSET_VAR} is not set — this run's storage port cannot be pinned`);
+  if (!present(env[STORAGE_VAR]) || !present(env[STORAGE_ALIAS])) throw new EmulatorEndpointError(`storage target refused: both ${STORAGE_VAR} and ${STORAGE_ALIAS} must be set (the SDKs honour either)`);
+  const hp = checkStorage(env, offset, started, false);
+  if (Number(HOSTPORT.exec(hp)[2]) !== BANDS.storage + offset) throw new EmulatorEndpointError(`storage target refused: ${hp} is not this run's storage port ${BANDS.storage + offset}`);
+  if (typeof bucket !== 'string' || !TEST_BUCKET.test(bucket)) throw new EmulatorEndpointError(`storage target refused: bucket ${JSON.stringify(bucket)} is not a test bucket (demo-* / tb-*)`);
+  return { host: hp, bucket };
 }
 
 /* §c.1 PROJECT / FIREBASE_CONFIG CONTRACT (codex R1-build P2-6). Every project id present — GCLOUD_PROJECT,
@@ -259,7 +314,7 @@ function guardEmulatorProcess(env = process.env) {
 }
 
 module.exports = {
-  NULL_ENDPOINT, SLOTS, STEP, BANDS, DATA_SERVICES, HOST_VAR, FIRESTORE_ALIAS, HUB_VAR, AUTH_VAR,
+  NULL_ENDPOINT, SLOTS, STEP, BANDS, DATA_SERVICES, HOST_VAR, FIRESTORE_ALIAS, HUB_VAR, AUTH_VAR, STORAGE_VAR, STORAGE_ALIAS, TEST_BUCKET, assertStorageTestTarget, checkStorage,
   OFFSET_VAR, SERVICES_VAR, DEAD_VAR,
   planPorts, hasEmulatorSignal, validateEmulatorEnv, validateFunctionsUrl, validateRtdbUrl,
   installNullGuard, guardEmulatorProcess, firebaseAppPrototype, EmulatorEndpointError,
