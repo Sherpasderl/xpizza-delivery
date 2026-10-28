@@ -22865,7 +22865,7 @@
   "slice": "guest",
   "label": "capp guest: a body carrying scheduled_for is NOT refused (scheduling requires an account — owner rule)",
   "file": "checkout-guest-lib.js",
-  "from": "  if (b.scheduled_for !== undefined && b.scheduled_for !== null && b.scheduled_for !== '') return 'guest_schedule_requires_account';\n",
+  "from": "  if (body.scheduled_for !== undefined && body.scheduled_for !== null && body.scheduled_for !== '') return 'guest_schedule_requires_account';\n",
   "to": "",
   "command": [
    "node",
@@ -22877,7 +22877,7 @@
   "slice": "guest",
   "label": "capp guest: cash / card at delivery accepted (guests are card-online only)",
   "file": "checkout-guest-lib.js",
-  "from": "  if (b.payment_method !== 'online') return 'guest_cash_not_allowed';\n",
+  "from": "  if (body.payment_method !== 'online') return 'guest_cash_not_allowed';\n",
   "to": "",
   "command": [
    "node",
@@ -22889,7 +22889,7 @@
   "slice": "guest",
   "label": "capp guest: a missing / invalid email accepted",
   "file": "checkout-guest-lib.js",
-  "from": "  if (typeof b.customer_email !== 'string' || !GUEST_EMAIL_RE.test(b.customer_email.trim())) return 'guest_email_required';\n",
+  "from": "  if (typeof body.customer_email !== 'string' || !GUEST_EMAIL_RE.test(body.customer_email.trim())) return 'guest_email_required';\n",
   "to": "",
   "command": [
    "node",
@@ -22918,6 +22918,102 @@
   "command": [
    "node",
    "checkout-guest-lib.test.js"
+  ]
+ },
+ {
+  "id": "guest-6",
+  "slice": "guest",
+  "label": "capp guest: an EXISTING order under the id is not checked for THIS ticket's phone (Codex A/B: B reaches A's order)",
+  "file": "checkout-guest-gate.js",
+  "from": "  if (existing !== null && !(existing && existing.guest_verified && existing.guest_verified.phone_hash === rec.phone_hash)) return bad;\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "guest-7",
+  "slice": "guest",
+  "label": "createOrder: a capp guest is NOT refused (createOrder could place a guest order)",
+  "file": "checkout-guest-gate.js",
+  "from": "  return present(body.checkout_ticket) ? 'guest_ticket_invalid' : 'guest_cash_not_allowed';",
+  "to": "  return null;",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "guest-8",
+  "slice": "guest",
+  "label": "grant: issued without the stored order's phone binding",
+  "file": "checkout-guest-gate.js",
+  "from": "  if (!gv || gv.phone_hash !== guest.phone_hash) return { refuse: 'guest_ticket_invalid' };",
+  "to": "  if (!gv) return { refuse: 'guest_ticket_invalid' };",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "guest-9",
+  "slice": "guest",
+  "label": "post-CAS: any stored order is treated as bound to this guest",
+  "file": "checkout-guest-gate.js",
+  "from": "  return o === null || !!(o && o.guest_verified && o.guest_verified.phone_hash === guest.phone_hash);",
+  "to": "  return true;",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "guest-10",
+  "slice": "guest",
+  "label": "cart_fp: the wire's pin_confirmed is ignored (an unconfirmed-pin cart would match)",
+  "file": "checkout-guest-lib.js",
+  "from": "pin = { lat: body.lat, lng: body.lng, confirmed: body.pin_confirmed === true };",
+  "to": "pin = { lat: body.lat, lng: body.lng, confirmed: true };",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "guest-11",
+  "slice": "guest",
+  "label": "cart_fp: an omitted tip_cents is not the capp's 0",
+  "file": "checkout-guest-lib.js",
+  "from": "  let tip = 0;\n",
+  "to": "  let tip = null;\n",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "guest-12",
+  "slice": "guest",
+  "label": "index.js: createOrder's capp-guest refusal is computed but never answered",
+  "file": "index.js",
+  "from": "  if (cappGuestRefusal) return res.status(400).json({ error: cappGuestRefusal });\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "guest-13",
+  "slice": "guest",
+  "label": "index.js: guest_verified is not written in the CAS record (no binding, no grant)",
+  "file": "index.js",
+  "from": "  if (cappGuest && cappGuest.guest) pendingOrderRecord.guest_verified = { phone: cappGuest.guest.phone, phone_hash: cappGuest.guest.phone_hash };   // §2.3: in the SAME CAS write, capp guests only\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
   ]
  }
 ]

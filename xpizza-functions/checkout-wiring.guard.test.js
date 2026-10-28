@@ -48,6 +48,11 @@ assert.ok(at("customer_uid = null; }   // any error → guest\n  }\n  /* checkou
 for (const first of ["db.ref(`recent_order_content/", 'reserveRedemption(']) { const w = live.indexOf(first, chStart); assert.ok(w < 0 || w > order[0], `gate-charge precedes ${first}`); }
 assert.ok(/secrets: \[SIGNUP_GRANT_SECRET\]/.test(hunk('grant-secret-bind')) && live.indexOf('/* checkout:begin grant-secret-bind */') > live.indexOf('exports.chargeOnlineOrder = onRequest('), 'the grant secret binds to chargeOnlineOrder only');
 assert.strictEqual(live.split('SIGNUP_GRANT_SECRET]').length - 1, 1, 'no other function binds the grant secret');
+for (const [name, stmt] of [['gate-create', 'if (cappGuestRefusal) return res.status(400).json({ error: cappGuestRefusal });'],
+  ['gate-charge', 'if (cappGuest && cappGuest.refuse) return res.status(400).json({ error: cappGuest.refuse });'],
+  ['gate-verified', 'pendingOrderRecord.guest_verified = { phone: cappGuest.guest.phone, phone_hash: cappGuest.guest.phone_hash };'],
+  ['gate-bind', "return res.status(400).json({ error: 'guest_ticket_invalid' });"], ['gate-grant', 'if (g.refuse) return res.status(400).json({ error: g.refuse });'],
+  ['gate-grant-field', '...(cappGrant ? { signup_grant: cappGrant } : {}),']]) assert.ok(hunk(name).includes(stmt), `🔴 the ${name} hunk lost its effect: ${stmt}`);
 ok('(ii-S2) placement: gate-create after createOrder identity + before its existence read; chargeOnlineOrder gate → verified (pre-CAS) → bind (post-CAS, before every outcome) → grant (before any answer); secret bound to chargeOnlineOrder only');
 
 assert.throws(() => unapplyCheckoutIndex(live.replace(BEGIN, '/* checkout:BEGIN */\n')), /missing/, 'a missing begin');
