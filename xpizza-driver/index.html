@@ -2186,6 +2186,23 @@
 .llegue-btn { display: flex; background: #E3ECFB; color: #2F5FB8; font-size: 16px; letter-spacing: -.01em; padding: 15px 14px; gap: 8px; min-height: 52px; }
 /* navApp (S.navApp option check): the prototype colors every .opt svg — the selected-option check included — with --p-muted via `.opt svg { color: var(--p-muted) }` (proto line 255), which overrides the wrapper span's inline color:var(--p-p). So the approved check is slate #546078, NOT the primary blue. The frozen base `.set-opt .set-opt-ck` uses var(--accent) (blue); scope an ID-level override to the nav picker to match. --text-soft === #546078 === the prototype's --p-muted. */
 #screen-navApp .set-opt .set-opt-ck { color: var(--text-soft, #546078); }
+/* vuelto (openVuelto, S.vuelto): Total a cobrar + Vuelto as CENTERED cards (proto .card surface2 / ok-wash) with the
+   proto's .lbl (uppercase) + .big (46px, Red Hat Display) tokens; blue selected chip (proto .chip.p = pwash/p),
+   sentence-case field label (proto .field label), and a primary-blue «Listo» (proto .btn.primary). New card classes;
+   the baseline .vt-* row CSS is left frozen, these ID-scoped rules win. */
+#vuelto-sheet .vt-card { background: var(--surface-2, #F5F7FA); border-radius: 13px; padding: 16px 14px; text-align: center; margin-bottom: 14px; }
+#vuelto-sheet .vt-card .vt-card-l { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-dim, #8A93A6); }
+#vuelto-sheet .vt-card .vt-card-big { margin-top: 5px; font-family: 'Red Hat Display', sans-serif; font-size: 46px; font-weight: 800; color: var(--text, #0D1424); letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+#vuelto-sheet .vt-card .vt-card-big span { font-size: 22px; font-weight: 700; color: var(--text-dim, #8A93A6); vertical-align: top; margin-right: 3px; line-height: 1.6; }
+#vuelto-sheet .vt-card.vt-card-ok { background: var(--green-bg); }
+#vuelto-sheet .vt-card.vt-card-ok .vt-card-l { color: var(--green); }
+#vuelto-sheet .vt-card.vt-card-ok .vt-card-big { color: var(--green); }
+#vuelto-sheet .vt-card.vt-card-ok .vt-card-big span { color: var(--green); opacity: .6; }
+#vuelto-sheet .vt-card.hidden { display: none; }
+/* field label sentence case (proto .field label, not the uppercase .vt-inlbl); selected chip blue (proto .chip.p); «Listo» primary blue (proto .btn.primary) */
+#vuelto-sheet .vt-inlbl { text-transform: none; letter-spacing: .01em; font-weight: 700; color: var(--text-soft, #546078); font-size: 12px; }
+#vuelto-sheet .vt-chip.on { background: var(--sv-p-bg, #E3ECFB); color: var(--accent, #2F5FB8); }
+#vuelto-sheet .vt-done { background: var(--accent, #2F5FB8); color: #fff; }
 </style>
 <!-- ===== SLICE3:PRESENTATION-REVERIFY:END ===== -->
 <!-- ===== SLICE3:CUENTA-CARD:START — cuenta account-hub additions (owner ruled BUILD 2026-10-27). The profile card (display-only) is injected above the frozen .set-card; the Reglas/Ayuda rows are injected into it. Own trailing stylesheet, new classes only, zero frozen bytes. Light-only (the driver app has no dark theme). Exact to prototype S.cuenta card 1 + rows; the profile card mirrors the frozen .set-card surface, rows reuse the frozen .set-row/.set-ic/.set-tx. ===== -->
@@ -6221,6 +6238,9 @@ function renderIdleState() {
 }
 
 function openVuelto(total, tenderedPrefill) {
+  /* ===== SLICE3:MONEY-VUELTO:START — openVuelto refreshed to prototype S.vuelto: the Total + Vuelto rows become
+     CENTERED cards (proto .card surface2 / ok-wash), «Total a cobrar» + sentence-case «Vuelto». The editable input,
+     the presets and the live computeVuelto logic are UNCHANGED (the prototype's static «L 500» is a mockup). ===== */
   const t = Number(total) || 0;
   const sugg = vueltoSuggestions(t);
   const body = $('vuelto-sheet-body');
@@ -6228,11 +6248,11 @@ function openVuelto(total, tenderedPrefill) {
     <div class="grab"></div>
     <div class="vt-title">Vuelto</div>
     <div class="vt-sub">El cliente indicó este monto al ordenar — editá solo si paga con otra cosa</div>
-    <div class="vt-total"><span class="l">Total del pedido</span><span class="v">L ${t.toLocaleString('es-HN')}</span></div>
-    <div class="vt-inlbl">Cliente paga con</div>
+    <div class="vt-card"><div class="vt-card-l">Total a cobrar</div><div class="vt-card-big"><span>L</span> ${t.toLocaleString('es-HN')}</div></div>
+    <div class="vt-inlbl">El cliente paga con</div>
     <div class="vt-input"><span>L</span><input id="vt-tendered" inputmode="numeric" type="text" value="${tenderedPrefill != null && tenderedPrefill !== '' ? tenderedPrefill : ''}" placeholder="0"></div>
     <div class="vt-chips">${sugg.map(s => `<button class="vt-chip" data-amt="${s}">L ${s.toLocaleString('es-HN')}</button>`).join('')}</div>
-    <div class="vt-result hidden" id="vt-result"><span class="l">VUELTO</span><span class="v"><span>L</span> <span id="vt-amount">0</span></span></div>
+    <div class="vt-card vt-card-ok hidden" id="vt-result"><div class="vt-card-l">Vuelto</div><div class="vt-card-big"><span>L</span> <span id="vt-amount">0</span></div></div>
     <button class="vt-done" id="vuelto-done">Listo</button>`;
   const input = $('vt-tendered');
   const resultEl = $('vt-result');
@@ -6247,6 +6267,7 @@ function openVuelto(total, tenderedPrefill) {
   body.querySelectorAll('.vt-chip').forEach(c => c.addEventListener('click', () => { input.value = c.getAttribute('data-amt'); recompute(); }));
   recompute();
   $('vuelto-sheet').classList.add('open');
+  /* ===== SLICE3:MONEY-VUELTO:END ===== */
 }
 
 function renderActiveCard(o, solo) {
