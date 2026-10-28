@@ -2573,7 +2573,7 @@ test('Codex S4 r1 #1 (owner G=B): a GUEST never schedules — a closed store ope
   await toCheckout(c); await schedFill(c);
   await c.click('#cta'); await c.click('[data-act="tipc"][data-val="0"]'); await c.click('[data-act="tip-place"]'); await c.click('#layer [data-act="placing-go"]');
   await c.click('#layer [data-act="err-sched"]');
-  assert.deepEqual(J(c.events.filter((e) => e[0] === 'signin').pop()), ['signin', { ctx: 'schedule' }], '🔴 S4-guest-sheet: «Programar» ⇒ frame G');
+  { const ev = c.events.filter((e) => e[0] === 'signin').pop(); assert.ok(ev, '🔴 S4-guest-sheet: «Programar» ⇒ frame G'); assert.deepEqual(J(ev), ['signin', { ctx: 'schedule' }], '🔴 S4-guest-sheet: «Programar» ⇒ frame G (ctx schedule)'); }
   assert.equal(c.ui.state.flow.time, 'asap', 'the order stays ASAP'); assert.equal(c.q('.daychips'), null);
   // a scheduled flow reaching send() as a guest (a sign-out, a restore): frame G, NOTHING sent
   const d = bootS4({ member: null, script: { createOrder: [OK_CASH_UI] } });
