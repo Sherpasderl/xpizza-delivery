@@ -80,7 +80,8 @@ const server = https.createServer({ key: fsys.readFileSync(path.join(TMP, 'k.pem
   // the stamped REAL page (orders-app identity, a preview stamp: no heartbeat) — copied, so the repo folder is untouched
   const SITE = path.join(TMP, 'customer-app');
   fsys.mkdirSync(SITE);
-  for (const f of fsys.readdirSync(path.join(ROOT, 'customer-app'))) if (!/\.test\.mjs$/.test(f)) fsys.copyFileSync(path.join(ROOT, 'customer-app', f), path.join(SITE, f));
+  // recursive (customer-app/fixtures/ is a directory since S7a-2): every served file, never a *.test.mjs
+  fsys.cpSync(path.join(ROOT, 'customer-app'), SITE, { recursive: true, filter: (src) => !/\.test\.mjs$/.test(src) });
   const stamp = require(path.join(ROOT, 'platform/stamp-version.js')).stamp(SITE, { siteName: appDep.netlify_site, commit: 'tr', env: 'preview' });
   assert.ok(stamp.ok, `premise: the page is stamped (${stamp.error})`);
   const VERSION = JSON.parse(fsys.readFileSync(path.join(SITE, 'version.json'), 'utf8'));
