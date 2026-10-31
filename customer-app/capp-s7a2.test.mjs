@@ -718,11 +718,11 @@ test('G6 shell: a RESTORED session autofills from the cached profile of THAT uid
   const fb = fakeFirebase({ persisted: 'u_ana' });
   const S = bootShell({ auth: 'unresolved', storage: memStorage({ 'capp:member_profile': prof, 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }) }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
   await flush(); await flush();
-  assert.deepEqual(J(S.ui.state.member), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: 'id:u_ana' }, '🔴 restored ⇒ autofilled from the cache');
+  assert.deepEqual(J(S.ui.state.member ?? null), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: 'id:u_ana' }, '🔴 restored ⇒ autofilled from the cache');
   const fb2 = fakeFirebase({ persisted: 'u_other' });
   const O = bootShell({ auth: 'unresolved', storage: memStorage({ 'capp:member_profile': prof, 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_other' }) }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb2.loadSdk, signupFetch: signupServer(ANA).fetch } });
   await flush(); await flush();
-  assert.deepEqual(J(O.ui.state.member), { uid: 'u_other', name: '', phone: '', email: '', idToken: 'id:u_other' }, '🔴 another member\'s cached profile is never shown');
+  assert.deepEqual(J(O.ui.state.member ?? null), { uid: 'u_other', name: '', phone: '', email: '', idToken: 'id:u_other' }, '🔴 another member\'s cached profile is never shown');
 });
 
 // ── Codex G6 r1 (#1 / #2 / #3): the member never outlives its session in the mounted checkout ──
