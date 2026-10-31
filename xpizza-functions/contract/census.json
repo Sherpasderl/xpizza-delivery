@@ -3007,7 +3007,7 @@
   },
   {
    "id": "xpizza-functions/catalog/reset-draft.js#resetDraftToLiveCore#status#0",
-   "line": 25,
+   "line": 26,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -3020,7 +3020,7 @@
   },
   {
    "id": "xpizza-functions/catalog/reset-draft.js#resetDraftToLiveCore#items#0",
-   "line": 39,
+   "line": 46,
    "kind": "member",
    "facts": [
     "ITEMS"
