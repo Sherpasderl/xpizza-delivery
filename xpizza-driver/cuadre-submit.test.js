@@ -53,6 +53,7 @@ function build(opts = {}) {
 
   const calls = { recordCuadre: 0, finalize: 0, lastPayload: null, toasts: [] };
   let pendingRecord = null;
+  let pendingFinalize = null;
   let CASH = { deliveries: 6, totalCollected: 1430, paidOnlineTotal: 260, cashOrderCount: 5, cashOwed: 1430, provisional: false, legacy_provisional_count: 0, unresolved_count: 0 };
   const XPD = { recordCuadre: (uid, shiftId, payload) => { calls.recordCuadre++; calls.lastPayload = payload; pendingRecord = deferred(); return pendingRecord.promise; } };
 
@@ -68,14 +69,14 @@ function build(opts = {}) {
     computeShiftCash: () => CASH,
     makeOpId: () => 'op_test',
     XPD,
-    finalizeEndShift: async () => { calls.finalize++; return opts.finalizeOk !== false; },   // success by default; opts.finalizeOk:false = a failed clock-out
+    finalizeEndShift: async () => { calls.finalize++; if (opts.deferFinalize) { pendingFinalize = deferred(); return pendingFinalize.promise; } return opts.finalizeOk !== false; },   // success by default; opts.finalizeOk:false = failed close; opts.deferFinalize = controllable (resolveFinalize)
     showCerrado: (cash, start, closedAt) => { calls.cerrado = (calls.cerrado || 0) + 1; calls.cerradoArgs = { cash, start, closedAt }; },
     render: () => {},
     BLOCKED_CLOSE_TEXT: 'No se pudo registrar el cierre.',
     COMPLETION_SETTLE_TIMEOUT_MS: 100000,
   };
 
-  const body = 'let closeGen = 0; let closeInFlight = false; let shiftBusy = false; let optimisticShift = null;\n'
+  const body = 'let closeGen = 0; let closeInFlight = false; let shiftBusy = false; let optimisticShift = null; let authGen = 0;\n'
     + 'let feedReady = true; let cutoverLoaded = true; let driverState = {}; let driverFeed = null;\n'
     + 'let slidingEl = null; let renderPending = false; function renderActiveAndQueue() {}\n'   // stacked-view globals attachSlideConfirm touches
     + 'const pendingCompletions = new Set();\n'
@@ -85,7 +86,7 @@ function build(opts = {}) {
     + liftFn('attachSlideConfirm') + '\n'
     + liftFn('showCierreRechazado') + '\n'
     + regionBody('CUADRE-SUBMIT') + '\n'
-    + 'return { showCuadre, onCuadreConfirm, showCierreRechazado, refreshOpenCashSurfaces, setInFlight: (v) => { closeInFlight = v; }, getGen: () => closeGen, getInFlight: () => closeInFlight };';
+    + 'return { showCuadre, onCuadreConfirm, showCierreRechazado, refreshOpenCashSurfaces, setInFlight: (v) => { closeInFlight = v; }, getGen: () => closeGen, getInFlight: () => closeInFlight, bumpAuth: () => { authGen++; } };';
   const names = Object.keys(deps);
   const fn = new Function(...names, 'let CUADRE_ACK_TIMEOUT_MS = ' + ackTimeout + ';\n' + body);
   const api = fn(...names.map((n) => deps[n]));
@@ -94,6 +95,7 @@ function build(opts = {}) {
     setCash: (c) => { CASH = c; },
     resolveRecord: (v) => pendingRecord.resolve(v),
     rejectRecord: (e) => pendingRecord.reject(e),
+    resolveFinalize: (v) => pendingFinalize.resolve(v),
   };
 }
 
@@ -274,5 +276,59 @@ await t('finalizeEndShift returns true + clock-out side effects on success, fals
   assert.deepEqual(bad.calls.toasts, [['Error al terminar turno', 'error']], 'error toast unchanged');
 });
 
+await t('an auth change WHILE the clock-out is pending drops cerrado (session-bound gate)', async () => {
+  const h = build({ deferFinalize: true });
+  h.api.showCuadre();
+  slideToComplete(h);
+  await tick();
+  h.resolveRecord({});                 // server acks; p.then runs → awaits the (pending) clock-out
+  await tick();
+  h.api.bumpAuth();                    // a new session begins mid-clock-out
+  h.resolveFinalize(true);            // the clock-out then succeeds
+  await tick(); await tick();
+  assert.equal(h.calls.finalize, 1, 'clock-out ran');
+  assert.ok(!h.calls.cerrado, 'cerrado is NOT shown — the auth generation changed during finalize');
+});
+
+// REAL showCerrado (not stubbed): the modal + lifecycle + snapshot invariant Codex asked for.
+await t('REAL showCerrado: modal (focus+Tab trap), «Listo» → render (not offshift), teardown dismisses, cash is a snapshot', async () => {
+  const dom = new JSDOM('<!doctype html><html><body><button id="opener"></button></body></html>', { pretendToBeVisual: true });
+  const { document } = dom.window;
+  const calls = { render: 0, showScreen: [] };
+  const deps = { document, render: () => { calls.render++; }, showScreen: (s) => { calls.showScreen.push(s); } };
+  const names = Object.keys(deps);
+  const body = 'let authGen = 3; let drv2CerradoDismiss = null;\n'
+    + liftFn('showCerrado') + '\n'
+    + 'function teardown() { if (drv2CerradoDismiss) drv2CerradoDismiss(); }\n'
+    + 'return { showCerrado, teardown, getDismiss: () => drv2CerradoDismiss };';
+  const api = new Function(...names, body)(...names.map((n) => deps[n]));
+
+  const snap = { cashOwed: 1430, deliveries: 6 };
+  api.showCerrado(snap, 0, 116 * 60000);
+  snap.cashOwed = 9999;                               // mutate the SOURCE after show — the summary must keep its snapshot
+  const ov = document.getElementById('cerrado-screen');
+  assert.ok(ov && ov.classList.contains('open'), 'overlay shown');
+  assert.equal(ov.getAttribute('role'), 'dialog', 'modal: role=dialog');
+  assert.equal(ov.getAttribute('aria-modal'), 'true', 'modal: aria-modal=true');
+  assert.ok(/L 1,430/.test(ov.innerHTML) && !/9,999/.test(ov.innerHTML), 'shows the SUBMITTED snapshot (1,430), not the later-changed value');
+  assert.ok(/6 entregas · 1 h 56 min/.test(ov.innerHTML), 'count + duration from the passed snapshot');
+  const done = document.getElementById('cerrado-done');
+  assert.equal(document.activeElement, done, 'initial focus on «Listo»');
+  const ev = new dom.window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+  document.dispatchEvent(ev);
+  assert.ok(ev.defaultPrevented, 'Tab is contained (preventDefault — background not keyboard-reachable)');
+  assert.equal(document.activeElement, done, 'focus stays on «Listo»');
+  done.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(calls.render, 1, '«Listo» routes through render()');
+  assert.deepEqual(calls.showScreen, [], '«Listo» never forces showScreen(offshift)');
+  assert.ok(!document.getElementById('cerrado-screen'), 'overlay removed on «Listo»');
+  // teardown dismisses an OPEN summary (session change / sign-out)
+  api.showCerrado(snap, 0, 116 * 60000);
+  assert.ok(document.getElementById('cerrado-screen'), 're-shown');
+  api.teardown();
+  assert.ok(!document.getElementById('cerrado-screen'), 'teardown removes an open summary');
+  assert.equal(api.getDismiss(), null, 'the dismiss hook is cleared after teardown');
+});
+
 console.log(`✓ cuadre-submit: ${passed} checks passed`);
-process.exit(passed === 11 ? 0 : 1);   // force-exit past the lifted handler's lingering ack-timeout timers
+process.exit(passed === 13 ? 0 : 1);   // force-exit past the lifted handler's lingering ack-timeout timers

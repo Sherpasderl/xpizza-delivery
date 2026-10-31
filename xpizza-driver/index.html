@@ -3370,6 +3370,7 @@ function drv2SessionTeardown() {
   drv2ProblemGen += 1;            // invalidate any in-flight problema ack bound to a prior opening
   drv2ProblemInFlight = false;
   const pov = $('drv2-problema'); if (pov) pov.remove();   // the body-mounted overlay must not survive teardown
+  if (drv2CerradoDismiss) drv2CerradoDismiss();             // Codex r1 P2: an open «Turno cerrado» summary must not survive a session change
 }
 // ===== Slice 3-P — manual pause (prototype S.pausa). DARK behind DRV2_PAUSE_ENABLED until the «Pausa» server contract
 // (a5cd1bf4: a paused driver is never offered / hand-assigned — pickEligibleDriver skips on_break, assign/reassign
@@ -5258,6 +5259,7 @@ async function onCuadreConfirm(slideGen) {
   // authoritative closed_at stays a serverTimestamp() (integrity first — we never weaken it to a client clock); this
   // client instant is within ms of the server record, so the minute-granularity duration agrees. (Advisor-accepted.)
   const closedAt = Date.now();
+  const submitAuthGen = authGen;   // cerrado is bound to THIS session (Codex r1 P2): an auth change during the pending finalize drops the summary
   const p = XPD.recordCuadre(bound.uid, bound.shiftId, { ...cash, close_op_id: closeOpId });
   p.then(async () => {
     if (!isLatest()) return;                                   // a newer attempt owns the close now
@@ -5268,7 +5270,7 @@ async function onCuadreConfirm(slideGen) {
       $('cuadre-screen').classList.remove('open');
       optimisticShift = false; render();
       const closedOk = await finalizeEndShift();   // ordinary clock-out via the existing endDriverShift callable
-      if (closedOk) showCerrado(cash, bound.start, closedAt);   // «Turno cerrado» summary ONLY on a clean clock-out (never on the revert path)
+      if (closedOk && authGen === submitAuthGen) showCerrado(cash, bound.start, closedAt);   // «Turno cerrado» ONLY on a clean clock-out of THIS still-current session (never on the revert path, never after an auth change)
     } finally { shiftBusy = false; }
   }).catch((err) => {
     if (!isLatest()) return;
@@ -5305,7 +5307,10 @@ function cuadreSubmitting(label) {
    cuadre clock-out. On-demand overlay; reuses the cuadre's SUBMITTED cash (cashOwed + deliveries) and a
    start→closedAt duration (the instant the cuadre recorded, NOT Date.now() at render). «Ganado hoy» is OMITTED:
    it needs PAGOS live AND a real pay-rate reader, and the driver app has neither (only a hardcoded L70/delivery) —
-   so it must not invent the number. «Listo» → offshift. Wiring into onCuadreConfirm is held for the advisor. ===== */
+   so it must not invent the number. Modal + session-bound (Codex r1 P2): focus-trapped, dismissed on teardown via
+   drv2CerradoDismiss, «Listo» renders the current state (never forces offshift). Shows only on a clean clock-out of
+   THIS session (onCuadreConfirm gates on the auth generation). ===== */
+let drv2CerradoDismiss = null;   // teardown hook: tears down an open «Turno cerrado» summary (overlay + its Tab trap)
 function showCerrado(cash, startMs, closedAtMs) {
   const deliveries = (cash && cash.deliveries) || 0;
   const cashOwed = (cash && cash.cashOwed) || 0;
@@ -5317,17 +5322,32 @@ function showCerrado(cash, startMs, closedAtMs) {
   }
   const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
   const ent = deliveries === 1 ? 'entrega' : 'entregas';
+  const opener = document.activeElement;
   let ov = document.getElementById('cerrado-screen');
   if (!ov) { ov = document.createElement('div'); ov.id = 'cerrado-screen'; document.body.appendChild(ov); }
+  ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', 'Turno cerrado');
+  ov.dataset.gen = String(authGen);   // bound to THIS session (Codex r1 P2): a teardown drops it; it never reopens a prior session's summary
   ov.innerHTML = `
     <div class="cerrado-body">
       <div class="cerrado-illus">${CHECK}</div>
       <div><div class="cerrado-h">Turno cerrado</div><p class="cerrado-sub">Entregaste <b>L ${cashOwed.toLocaleString('es-HN')}</b> en efectivo · ${deliveries} ${ent}${dur ? ` · ${dur}` : ''}.</p></div>
     </div>
-    <div class="cerrado-foot"><button class="cerrado-done" id="cerrado-done">Listo</button></div>`;
+    <div class="cerrado-foot"><button class="cerrado-done" id="cerrado-done" type="button">Listo</button></div>`;
   ov.classList.add('open');
   const done = document.getElementById('cerrado-done');
-  if (done) done.addEventListener('click', () => { ov.classList.remove('open'); if (typeof showScreen === 'function') showScreen('offshift'); });
+  // MODAL (Codex r1 P2): initial focus on «Listo» and a contained Tab, so the offshift chrome behind can't be reached
+  // by keyboard («Iniciar turno» can't start a shift behind the summary). Mirrors terminar's focus trap.
+  const onKey = (e) => { if (e.key === 'Tab') { e.preventDefault(); if (done) done.focus(); } };
+  document.addEventListener('keydown', onKey, true);
+  drv2CerradoDismiss = () => { document.removeEventListener('keydown', onKey, true); const el = document.getElementById('cerrado-screen'); if (el) el.remove(); drv2CerradoDismiss = null; };
+  if (done) {
+    done.focus();
+    done.addEventListener('click', () => {
+      if (drv2CerradoDismiss) drv2CerradoDismiss();
+      if (opener && typeof opener.focus === 'function') { try { opener.focus(); } catch (_) {} }
+      render();   // route «Listo» through the CURRENT state (never force offshift over a changed session)
+    });
+  }
 }
 /* ===== SLICE3:MONEY-CERRADO:END ===== */
 async function cleanupShift() {
