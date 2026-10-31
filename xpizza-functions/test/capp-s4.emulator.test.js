@@ -105,8 +105,11 @@ async function serve(rid) { const m = await buildPublicMenu(fs, rid, { known: ne
 const dishOf = (m) => m.dishes.filter((d) => !d.launcher && !(m.weekendOnlyCats.has(String(d.cat)) || m.pickupOnlyCats.has(String(d.cat))))[0];
 function memStorage() { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), _m: m }; }
 let PH = 0;
+const S4_MEMBER = { uid: 'u_s4' };
 function page(rid, storage = memStorage()) {
-  const api = A.createApi({ config: { restaurantId: rid, orderIdPrefix: 'TS', pendingPayKey: `${rid}_s4_pending_pay`, hours: APP_HOURS, schedulingLive: true,
+  // G=B (Codex S4 r1 #1): scheduling requires an account — a member WITHOUT an id token: the app's account rule passes, and no
+  // token is sent (the server sees a guest; its own scheduled-order account check is 3a's, not here)
+  const api = A.createApi({ member: () => S4_MEMBER, config: { restaurantId: rid, orderIdPrefix: 'TS', pendingPayKey: `${rid}_s4_pending_pay`, hours: APP_HOURS, schedulingLive: true,
     endpoints: Object.fromEntries(Object.keys(ROUTES).map((k) => [k, `${BASE}/${k}`])) }, fetch: (u, i) => sherpa.fetch(u, i), storage, sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 50))) });
   return { api, storage, rid, reload: () => page(rid, storage) };
 }
