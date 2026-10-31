@@ -24983,5 +24983,149 @@
     ],
     "equivalent": true,
     "why": "layered defence: the tender buttons and «Cambiar» carry the disabled attribute while a scheduled send is retained (a disabled control never dispatches its click), and the render re-applies the recorded tender (s4-30) — the handler guard is unobservable from the UI"
+  },
+  {
+    "id": "s7a2-20",
+    "slice": "s7a2",
+    "label": "frame 15: a held tap whose menu failed shows no sheet (the row stays stuck)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "      if (st === 'enterable' && e && e.state === 'failed' && !cache.pending(h.rid)) { if (S.layer !== 'menuerr') openLayer('menuerr'); return false; }\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=S7a-2 frame",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "F15: the sheet over Inicio"
+    ]
+  },
+  {
+    "id": "s7a2-21",
+    "slice": "s7a2",
+    "label": "frame 15: pending() never sees the load land (the sheet never opens)",
+    "file": "../customer-app/capp-menu-cache.js",
+    "from": "entries.set(rid, next); landed.add(rid); notify(rid);",
+    "to": "entries.set(rid, next); notify(rid);",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=S7a-2 frame",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "F15: the sheet over Inicio"
+    ]
+  },
+  {
+    "id": "s7a2-22",
+    "slice": "s7a2",
+    "label": "frame 15: a failed menu is not re-fetched on the tap",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "      { const pe = cache.peek(rid); if (pe && pe.state === 'failed') cache.get(rid); }",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=S7a-2 frame",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "F15-refetch"
+    ]
+  },
+  {
+    "id": "s7a2-23",
+    "slice": "s7a2",
+    "label": "frame 15: «Reintentar» does not re-fetch",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "closeLayer(); if (S.held) cache.get(S.held.rid); return; }",
+    "to": "closeLayer(); return; }",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=S7a-2 frame",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "F15-retry"
+    ]
+  },
+  {
+    "id": "s7a2-24",
+    "slice": "s7a2",
+    "label": "frame 15: «Cerrar» keeps the row held",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "if (a === 'menu-close') { S.held = null; closeLayer();",
+    "to": "if (a === 'menu-close') { closeLayer();",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=S7a-2 frame",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "«Cerrar» releases the row"
+    ]
+  },
+  {
+    "id": "s7a2-25",
+    "slice": "s7a2",
+    "label": "frame 16: every menu down falls to the partial note",
+    "file": "../customer-app/capp-home.js",
+    "from": "} else if (m.all.length && m.all.every((r) => r.menuState === 'failed')) {",
+    "to": "} else if (false) {",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=S7a-2 frame",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "F16"
+    ]
+  },
+  {
+    "id": "s7a2-26",
+    "slice": "s7a2",
+    "label": "frame 17: no city ⇒ a bare number",
+    "file": "../customer-app/capp-home.js",
+    "from": "`${nLive} restaurantes`)",
+    "to": "`${nLive}`)",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=S7a-2 frame",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "F17"
+    ]
+  },
+  {
+    "id": "s7a2-27",
+    "slice": "s7a2",
+    "label": "frame 18: no recents ⇒ an empty Buscar",
+    "file": "../customer-app/capp-home.js",
+    "from": "      : emptyHtml('search', 'Buscá restaurantes o platos', 'Tus búsquedas recientes van a aparecer aquí.');   // frame 18",
+    "to": "      : '';",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=S7a-2 frame",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "F18"
+    ]
   }
 ]

@@ -882,8 +882,11 @@ test('S7a-2 frame 15: a held tap whose MENU does not load ⇒ «No pudimos abrir
   await flush();
   const nm = S.q('.rlist .rcard[data-rid="la_musa"]') && CappHome.storeOf({ rid: 'la_musa', entry: SC.complete.body.restaurants.find((r) => r.restaurant_id === 'la_musa'), cfg: {} }).name;
   const before = S.envCalls.filter((r) => r === 'la_musa').length;
-  S.click('.rlist .rcard[data-rid="la_musa"]'); await flush();
-  assert.ok(S.envCalls.filter((r) => r === 'la_musa').length > before, '🔴 F15-refetch: a failed menu is re-fetched on the tap before the sheet');
+  mode = 'hold'; S.click('.rlist .rcard[data-rid="la_musa"]'); await flush();
+  assert.ok(S.envCalls.filter((r) => r === 'la_musa').length > before, 'F15: the tap re-fetches the failed menu');
+  assert.equal(S.q('#layer .errsheet'), null, '🔴 F15-refetch: no sheet while the re-fetch is in flight (the row pressed)');
+  while ((S.pend.la_musa || []).length) { S.pend.la_musa.shift().resolve({ status: 500 }); await flush(); }   // the re-fetch (and its one retry) fails
+  mode = 'fail';
   assert.equal(S.q('#layer .errsheet h2') && S.q('#layer .errsheet h2').textContent, `No pudimos abrir ${nm}`, '🔴 F15: the sheet over Inicio');
   assert.equal(S.q('#layer .errsheet p').textContent, 'Su menú no cargó. Revisá tu conexión e intentá de nuevo.');
   assert.deepEqual(S.qa('#layer .errsheet button').map((b) => b.textContent), ['Reintentar', 'Cerrar']);
