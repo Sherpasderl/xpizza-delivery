@@ -1793,6 +1793,7 @@
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
   "photos/crops.js",
+  "photos/edit-io.js",
   "photos/errors.js",
   "photos/flag.js",
   "photos/functions.js",
@@ -1806,6 +1807,7 @@
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
+  "portal/functions.js",
   "portal/location-name.js",
   "portal/ops-core.js",
   "portal/ops-functions.js",
@@ -2829,6 +2831,10 @@
    "pins": [],
    "lifts": []
   },
+  "photos/edit-io.js": {
+   "pins": [],
+   "lifts": []
+  },
   "photos/errors.js": {
    "pins": [],
    "lifts": []
@@ -2897,6 +2903,14 @@
     "xpizza-functions/addproduct-b-wiring.guard.test.js",
     "xpizza-functions/addproduct-wiring.guard.test.js",
     "xpizza-functions/extras-wiring.guard.test.js"
+   ]
+  },
+  "portal/functions.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/stats/stats-guard.test.js",
+    "xpizza-functions/tools/portal-split.js"
    ]
   },
   "portal/location-name.js": {

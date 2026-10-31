@@ -29,5 +29,15 @@ function apply(src, hunks) {
   return out;
 }
 const unapplyPhotosIndex = (src) => apply(src, HUNKS);
-const unapplyPhotosFold = (src) => apply(src, HUNKS.slice(1));   // the early-branch hunk is consumed by foldPortalSplit
-module.exports = { BASE, HUNKS, unapplyPhotosIndex, unapplyPhotosFold };
+// DISH PHOTOS A2 step 8 — FOLD-ONLY hunks: edits inside portal/functions.js's MOVED blocks exist only in the fold (foldPortalSplit
+// inlines those blocks back into index form), never in index.js itself, so unapplyPhotosIndex never sees them. (The A2 header import
+// of photoIoForEdit sits OUTSIDE the moved blocks, like add-product's, and is pinned by portal-split's skeleton check instead.)
+const FOLD_HUNKS = Object.freeze([
+ {
+  "file": "portal/functions.js (moved block A, in the fold)",
+  "now": "        addProduct: addProductIoForEdit(), photos: photoIoForEdit(),   // 1D add-product A; DISH PHOTOS A2 step 8: the draft photo map\n",
+  "was": "        addProduct: addProductIoForEdit(),   // 1D add-product A\n"
+ }
+]);
+const unapplyPhotosFold = (src) => apply(apply(src, HUNKS.slice(1)), FOLD_HUNKS);   // the early-branch hunk is consumed by foldPortalSplit
+module.exports = { BASE, HUNKS, FOLD_HUNKS, unapplyPhotosIndex, unapplyPhotosFold };
