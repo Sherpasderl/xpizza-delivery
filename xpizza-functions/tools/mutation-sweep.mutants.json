@@ -23015,5 +23015,77 @@
    "node",
    "checkout-wiring.guard.test.js"
   ]
+ },
+ {
+  "id": "guest-14",
+  "slice": "guest",
+  "label": "verify: an uncached first run (null) ABORTS again (Codex r1 P1-1: a valid code fails on another instance)",
+  "file": "checkout-otp.js",
+  "from": "        if (v === null) { outcome = 'code_expired'; return null; }",
+  "to": "        if (v === null) { outcome = 'code_expired'; return undefined; }",
+  "command": [
+   "node",
+   "checkout-otp.test.js"
+  ]
+ },
+ {
+  "id": "guest-15",
+  "slice": "guest",
+  "label": "request: the sender config is no longer checked before the reservations (Codex r1 P2-3: budgets burned)",
+  "file": "checkout-otp.js",
+  "from": "      if (!platformSenderConfigured(deps.env || process.env)) {",
+  "to": "      if (false) {",
+  "command": [
+   "node",
+   "checkout-otp.test.js"
+  ]
+ },
+ {
+  "id": "guest-16",
+  "slice": "guest",
+  "label": "acquire: the pre-read no longer refuses a foreign guest phone (Codex r1 P1-2)",
+  "file": "pixelpay-hosted-charge.js",
+  "from": "      if (guestForeign(order, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };   // S2: before ANY answer about it\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "guest-17",
+  "slice": "guest",
+  "label": "acquire: the CAS lets a foreign guest phone mutate the order (Codex r1 P1-2)",
+  "file": "pixelpay-hosted-charge.js",
+  "from": "      if (guestForeign(c, pendingOrderRecord)) return c;                    // S2: a foreign guest phone never mutates the order (re-read refuses)\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "guest-18",
+  "slice": "guest",
+  "label": "chargeOnlineOrder: the capp guest's typed non-online refusal is computed but never answered (Codex r1 P2-4)",
+  "file": "index.js",
+  "from": "    return res.status(400).json({ error: 'guest_cash_not_allowed' });\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-wiring.guard.test.js"
+  ]
+ },
+ {
+  "id": "guest-19",
+  "slice": "guest",
+  "label": "chargeUidOf: the tombstone is ignored (not the handler's identity rules)",
+  "file": "checkout-guest-gate.js",
+  "from": "          return attributionUid(dec, tomb.exists());",
+  "to": "          return attributionUid(dec, false);",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
  }
 ]

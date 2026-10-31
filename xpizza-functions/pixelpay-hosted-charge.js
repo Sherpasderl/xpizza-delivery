@@ -59,6 +59,12 @@ function genPollToken() {
    lazy thunk for the untruncated-text candidate, compared ONLY against a record marked 'a8'; `fresh` is the text version of
    THIS request's fresh binding ('legacy' | 'a8'): 'a8' only when a retained 'a8' reservation selected it, and then the
    create CAS writes the a8 fingerprint (pendingOrderRecord already carries the a8 text + marker). */
+/* PLAN-guest-checkout-server S2 (Codex r1 P1-2): a capp GUEST's pending record carries `guest_verified` (forms / members never
+   do ⇒ every existing path is unchanged). An EXISTING order under the id must carry the SAME verified phone, or this call is a
+   foreign phone: it is refused at the pre-read AND inside the CAS (a no-op), so it can never install / recover / rotate another
+   guest's attempt — the caller answers guest_ticket_invalid, nothing written. */
+const guestForeign = (order, pending) => !!(pending && pending.guest_verified)
+  && !(order && order.guest_verified && order.guest_verified.phone_hash === pending.guest_verified.phone_hash);
 async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false, controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false, extrasRefuseFresh = null, textBinding = null) {
   const canon = once(canonicalFp);
   const a8 = once(textBinding && textBinding.a8Fp);
@@ -70,6 +76,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
 
     // Order-level terminal reads.
     if (order) {
+      if (guestForeign(order, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };   // S2: before ANY answer about it
       if (order.payment_status === 'confirmed') return { outcome: 'already_paid' };
       { const d = paymentBindingConflict(order, fingerprint, canon, a8); if (d) return conflictOutcome(d); }   // advisory
       if (['refunded', 'refund_pending'].includes(order.payment_status) || order.status === 'cancelled') {
@@ -139,6 +146,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
       }
       const c = cur || order;
       if (!c) return;
+      if (guestForeign(c, pendingOrderRecord)) return c;                    // S2: a foreign guest phone never mutates the order (re-read refuses)
       if (c.payment_status === 'confirmed') return c;
       if (paymentBindingConflict(c, fingerprint, canon, a8)) return c;     // the CAS: (format, fingerprint) on the record held
       if (decided.kind === 'install') {

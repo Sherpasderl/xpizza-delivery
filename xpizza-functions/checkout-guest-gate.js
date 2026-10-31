@@ -8,6 +8,7 @@
 //   chargeGate({...})                          §2.2/§2.3 — body refusals, then the READ-ONLY ticket check, then the phone
 //                                              binding against an EXISTING order → null | {refuse} | {guest:{phone, phone_hash}}
 //   boundToGuest({...})                        §2.5 — the same binding right after the CAS, before any outcome answers
+//   chargeUidOf(req, deps)                     Codex r1 P2-4 — the handler's identity rules, for the typed non-online refusal
 //   grantFor({...})                            §2.5 — the phone-binding check against the STORED order, then the stateless grant
 //                                              → {refuse} | {grant: {token, expires_at} | null}
 // Refusals are ONE reason each (guest_ticket_invalid has no oracle: which check failed is never said).
@@ -69,4 +70,25 @@ async function grantFor({ db, orderId, guest, secret, now }) {
   return { grant: { token, expires_at: payload.exp } };
 }
 
-module.exports = { createOrderRefusal, chargeGate, boundToGuest, grantFor };
+// Codex r1 P2-4: chargeOnlineOrder's identity, resolved EXACTLY as its handler does (a verified customer token, the tombstone
+// read, attributionUid, a 1.5 s deadline → guest; any error → guest) — used only to answer a capp guest's non-online body with
+// its typed reason before the handler's generic online-only 400. → uid | null
+async function chargeUidOf(req, { getAuth, getDatabase, attributionUid, deadlineMs = 1500 }) {
+  const idTok = req.get('x-firebase-id-token');
+  if (!idTok) return null;
+  try {
+    return await Promise.race([
+      (async () => {
+        const dec = await getAuth().verifyIdToken(idTok);
+        if (dec && dec.customer === true && dec.uid) {
+          const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();
+          return attributionUid(dec, tomb.exists());
+        }
+        return null;
+      })(),
+      new Promise((resolve) => setTimeout(() => resolve(null), deadlineMs)),
+    ]);
+  } catch (_) { return null; }
+}
+
+module.exports = { createOrderRefusal, chargeGate, boundToGuest, grantFor, chargeUidOf };

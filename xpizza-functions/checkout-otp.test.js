@@ -96,16 +96,45 @@ const reqBody = (o = {}) => ({ phone_e164: PHONE, restaurant_id: 'x_pizza', cart
   {
     for (const env of [{}, { ...ENV, CHECKOUT_OTP_TEMPLATE: 'no placeholder' }, { ...ENV, ULTRAMSG_TOKEN_PLATFORM: '' }]) {
       const t = harness({ env });
+      const live = { code_hash: 'h', expires_at: t.now() + 60e3, attempts: 0, rid: 'x_pizza', cart_fp: FP, phone: '50499990000' };
+      t.db.set('checkout_otp/' + OTP.phoneHash('50499990000'), live);
       const r = await t.call('requestCheckoutCode', reqBody());
-      assert.deepStrictEqual([r.statusCode, r.body], [502, { error: 'send_failed', attempt: 1, max_attempts: 3 }], 'unconfigured ⇒ 502, never a silent success');
+      assert.deepStrictEqual([r.statusCode, r.body], [502, { error: 'send_failed', attempt: 0, max_attempts: 3 }], 'unconfigured ⇒ 502, never a silent success');
       assert.strictEqual(t.sent.length, 0);
+      // Codex r1 P2-3: checked BEFORE every reservation — no shared IP allowance, no phone budget, the live code untouched
+      assert.strictEqual(t.db.get('otp_ip'), undefined, '🔴 the shared per-IP allowance (the forms\' too) is not burned');
+      assert.strictEqual(t.db.get('otp_budget'), undefined, '🔴 the durable phone budget is not burned');
+      assert.deepStrictEqual(t.db.get('checkout_otp/' + OTP.phoneHash('50499990000')), live, '🔴 the live code is not replaced');
+      const again = await t.call('requestCheckoutCode', reqBody());
+      assert.deepStrictEqual([again.statusCode, again.body.error], [502, 'send_failed'], 'an immediate retry is still 502, never 429');
     }
     const t = harness({ accept: false });
     const r = await t.call('requestCheckoutCode', reqBody());
     assert.strictEqual(r.statusCode, 502, 'a provider answer without a POSITIVE acceptance (isSendConfirmed) is a failure');
     t.tick(31e3); const r2 = await t.call('requestCheckoutCode', reqBody()); assert.deepStrictEqual([r2.statusCode, r2.body.attempt], [502, 2], 'attempt counts the window');
   }
-  ok('platform sender fails closed: unset instance / token / template (or no {code}) ⇒ 502 send_failed; an unconfirmed provider answer ⇒ 502; attempt / max_attempts reported');
+  ok('platform sender fails closed: unset instance / token / template (or no {code}) ⇒ 502 send_failed BEFORE any reservation (no IP / budget / code state; a retry is 502, not 429); an unconfirmed provider answer ⇒ 502; attempt / max_attempts reported');
+
+  // ── 4b. Codex r1 P1-1: issuance and verification on SEPARATE instances — the verifier's SDK has no cache of the challenge ──
+  {
+    const t = harness();
+    assert.strictEqual((await t.call('requestCheckoutCode', reqBody())).statusCode, 200);
+    // a second "instance": the SAME server tree, but every transaction's FIRST run sees null (the uncached SDK); a non-undefined
+    // result is re-checked against the server and the updater RE-RUNS with the stored value; undefined ABORTS (production semantics)
+    const uncached = { ...t.db, ref: (p) => { const r = t.db.ref(p); return { ...r, transaction: async (fn) => {
+      const first = fn(null);
+      if (first === undefined) return { committed: false, snapshot: { exists: () => false, val: () => null } };
+      if (t.db.get(p) == null) return r.transaction(() => first);
+      return r.transaction(fn);
+    } }; } };
+    const h2 = makeCheckoutOtp({ getDatabase: () => uncached, knownRid: async () => true, now: t.now, env: ENV, fetchImpl: async () => ({ ok: true, json: async () => ({ sent: 'true' }) }) });
+    const r = res(); await h2.verifyCheckoutCode({ method: 'POST', body: { ...reqBody(), order_id: 'XPZ-1', code: t.codeOf() }, ip: '9.9.9.9' }, r);
+    assert.strictEqual(r.statusCode, 200, `🔴 a valid code on an uncached instance must verify (${JSON.stringify(r.body)})`);
+    assert.match(r.body.checkout_ticket, /^ct_[0-9a-f]{32}$/);
+    const r2 = res(); await h2.verifyCheckoutCode({ method: 'POST', body: { ...reqBody(), order_id: 'XPZ-1', code: t.codeOf() }, ip: '9.9.9.9' }, r2);
+    assert.deepStrictEqual([r2.statusCode, r2.body], [400, { error: 'code_expired' }], 'consumed ⇒ truly absent ⇒ code_expired');
+  }
+  ok('verify on an UNCACHED instance (Codex r1 P1-1): the first null run no longer aborts — a valid code issued elsewhere verifies; a consumed one is code_expired');
 
   // ── 5. verify: success ⇒ the order-id-bound ticket; the code is consumed ──
   {

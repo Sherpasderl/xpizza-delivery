@@ -40,6 +40,11 @@ assert.ok(cStart < gC && gC < cEnd, 'gate-create is inside createOrder');
 assert.ok(at('treat as guest */ }\n  }\n  /* checkout:begin gate-create */') > 0, 'gate-create follows createOrder\'s identity resolution');
 assert.ok(gC < live.indexOf('const existing = await db.ref(`orders/${orderId}`).once', cStart), 'gate-create precedes the existence read');
 const chStart = at('chargeOnlineApp.all('), chEnd = live.indexOf('\nexports.', chStart);
+// gate-method (Codex r1 P2-4): after validation, IMMEDIATELY before the generic online-only refusal it pre-empts for capp guests
+{ const gm = live.indexOf('/* checkout:begin gate-method */', chStart);
+  assert.ok(gm > live.indexOf('validateOrderPayload(body, restaurantId, pricingTables);', chStart) && gm < chEnd, 'gate-method inside chargeOnlineOrder, after validation');
+  assert.ok(live.slice(live.indexOf('/* checkout:end gate-method */', gm)).startsWith('/* checkout:end gate-method */\n  // This endpoint is ONLY for online card payments. cash/card_delivery use createOrder.\n  if (fields.payment_method !== \'online\') {'), 'gate-method sits right above the online-only check');
+  assert.ok(gm < live.indexOf('/* checkout:begin gate-charge */', chStart), 'gate-method precedes the gate'); }
 const order = ['/* checkout:begin gate-charge */', '/* checkout:begin gate-verified */', 'const releaseHoldIfOwned = async', 'acq = await acquireHostedAttempt(',
   '/* checkout:begin gate-bind */', "if (acq.outcome === 'item_unavailable')", '/* checkout:begin gate-grant */', 'if (flow.respond) return res.status(',
   '/* checkout:begin gate-grant-field */'].map((t) => { const i = live.indexOf(t, chStart); assert.ok(i > chStart && i < chEnd, `inside chargeOnlineOrder: ${t}`); return i; });
@@ -49,11 +54,12 @@ for (const first of ["db.ref(`recent_order_content/", 'reserveRedemption(']) { c
 assert.ok(/secrets: \[SIGNUP_GRANT_SECRET\]/.test(hunk('grant-secret-bind')) && live.indexOf('/* checkout:begin grant-secret-bind */') > live.indexOf('exports.chargeOnlineOrder = onRequest('), 'the grant secret binds to chargeOnlineOrder only');
 assert.strictEqual(live.split('SIGNUP_GRANT_SECRET]').length - 1, 1, 'no other function binds the grant secret');
 for (const [name, stmt] of [['gate-create', 'if (cappGuestRefusal) return res.status(400).json({ error: cappGuestRefusal });'],
+  ['gate-method', "&& (await require('./checkout-guest-gate').chargeUidOf(req, { getAuth, getDatabase, attributionUid })) === null) {\n    return res.status(400).json({ error: 'guest_cash_not_allowed' });"],
   ['gate-charge', 'if (cappGuest && cappGuest.refuse) return res.status(400).json({ error: cappGuest.refuse });'],
   ['gate-verified', 'pendingOrderRecord.guest_verified = { phone: cappGuest.guest.phone, phone_hash: cappGuest.guest.phone_hash };'],
   ['gate-bind', "return res.status(400).json({ error: 'guest_ticket_invalid' });"], ['gate-grant', 'if (g.refuse) return res.status(400).json({ error: g.refuse });'],
   ['gate-grant-field', '...(cappGrant ? { signup_grant: cappGrant } : {}),']]) assert.ok(hunk(name).includes(stmt), `🔴 the ${name} hunk lost its effect: ${stmt}`);
-ok('(ii-S2) placement: gate-create after createOrder identity + before its existence read; chargeOnlineOrder gate → verified (pre-CAS) → bind (post-CAS, before every outcome) → grant (before any answer); secret bound to chargeOnlineOrder only');
+ok('(ii-S2) placement: gate-create after createOrder identity + before its existence read; chargeOnlineOrder gate → verified (pre-CAS) → bind (post-CAS, before every outcome) → grant (before any answer); gate-method right above the generic online-only refusal; secret bound to chargeOnlineOrder');
 
 assert.throws(() => unapplyCheckoutIndex(live.replace(BEGIN, '/* checkout:BEGIN */\n')), /missing/, 'a missing begin');
 assert.throws(() => unapplyCheckoutIndex(live.replace(END, '/* checkout:END */\n')), /missing/, 'a missing end');

@@ -22,10 +22,16 @@ const RESEND_IN_S = 30;
 
 const json = (res, status, body) => res.status(status).json(body);
 
+// The platform sender's configuration, checked BEFORE any reservation (Codex r1 P2-3: an unconfigured sender must never burn the
+// shared per-IP allowance, the durable phone budget, or replace a live code).
+const platformSenderConfigured = (env) => {
+  const e = env || {};
+  return !!(e.ULTRAMSG_INSTANCE_ID_PLATFORM && e.ULTRAMSG_TOKEN_PLATFORM && typeof e.CHECKOUT_OTP_TEMPLATE === 'string' && e.CHECKOUT_OTP_TEMPLATE.includes('{code}'));
+};
 // The platform sender. env + fetch injected (unit tests); acceptance is the POSITIVE provider signal (isSendConfirmed).
 async function sendPlatformOtp(toDigits, code, { env = process.env, fetchImpl = fetch, isSendConfirmed } = {}) {
   const id = env.ULTRAMSG_INSTANCE_ID_PLATFORM, token = env.ULTRAMSG_TOKEN_PLATFORM, tpl = env.CHECKOUT_OTP_TEMPLATE;
-  if (!id || !token || typeof tpl !== 'string' || !tpl.includes('{code}')) return { ok: false, reason: 'unconfigured' };
+  if (!platformSenderConfigured(env)) return { ok: false, reason: 'unconfigured' };
   try {
     const params = new URLSearchParams({ token, to: toDigits, body: tpl.split('{code}').join(code) });
     const resp = await fetchImpl(`https://api.ultramsg.com/${id}/messages/chat`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString() });
@@ -65,6 +71,10 @@ function makeCheckoutOtp(deps) {
       if (c.err) return json(res, ...c.err);
       const h = OTP.phoneHash(c.digits);
       if (!h) return json(res, 400, { error: 'bad_request' });
+      if (!platformSenderConfigured(deps.env || process.env)) {   // BEFORE every reservation and the code write (Codex r1 P2-3)
+        console.error('requestCheckoutCode: platform sender unconfigured (ULTRAMSG_*_PLATFORM / CHECKOUT_OTP_TEMPLATE) — failing closed, nothing reserved');
+        return json(res, 502, { error: 'send_failed', attempt: 0, max_attempts: G.BUDGET.MAX_PER_WINDOW });
+      }
       const t = now();
       const db = deps.getDatabase();
       // per-IP: the SHARED otp_ip budget (the same transaction updater requestOtp uses)
@@ -111,7 +121,10 @@ function makeCheckoutOtp(deps) {
       let outcome = null, expiresAt = 0;
       await db.ref('checkout_otp/' + h).transaction((v) => {
         outcome = null;
-        if (!v || typeof v !== 'object') { outcome = 'code_expired'; return undefined; }                 // nothing live
+        // Codex r1 P1-1: the SDK's FIRST run of an uncached path passes null — returning null (a no-op write) makes it re-check
+        // against the server and re-run with the stored challenge; returning undefined would ABORT on a valid code
+        if (v === null) { outcome = 'code_expired'; return null; }                                       // nothing live (if truly absent)
+        if (typeof v !== 'object') { outcome = 'code_expired'; return undefined; }
         expiresAt = v.expires_at;
         if (v.rid !== c.rid || v.cart_fp !== c.cartFp) { outcome = 'code_wrong'; return undefined; }      // a code for another attempt: no oracle
         if (!(t < v.expires_at)) { outcome = 'code_expired'; return null; }                               // expired ⇒ cleared
@@ -159,4 +172,4 @@ async function pruneCheckoutState(db, now) {
   return out;
 }
 
-module.exports = { makeCheckoutOtp, sendPlatformOtp, pruneCheckoutState };
+module.exports = { makeCheckoutOtp, sendPlatformOtp, platformSenderConfigured, pruneCheckoutState };

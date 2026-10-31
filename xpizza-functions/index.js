@@ -1542,6 +1542,15 @@ chargeOnlineApp.all('*', async (req, res) => {
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
   if (errors.length > 0) return badRequest(res, errors.join('; '));
 
+  /* checkout:begin gate-method */
+  // PLAN-guest-checkout-server §2.2 (Codex r1 P2-4): a capp GUEST's non-online body is answered with its typed reason, not the
+  // generic online-only 400 below. Only a request stamped orders-app pays the identity check here (the handler's own rules,
+  // checkout-guest-gate.js chargeUidOf); forms do no I/O and members get the line below, byte-identical.
+  if (fields.payment_method !== 'online' && clientHdr.deployment === 'orders-app'
+    && (await require('./checkout-guest-gate').chargeUidOf(req, { getAuth, getDatabase, attributionUid })) === null) {
+    return res.status(400).json({ error: 'guest_cash_not_allowed' });
+  }
+  /* checkout:end gate-method */
   // This endpoint is ONLY for online card payments. cash/card_delivery use createOrder.
   if (fields.payment_method !== 'online') {
     return badRequest(res, 'chargeOnlineOrder is for payment_method "online" only');

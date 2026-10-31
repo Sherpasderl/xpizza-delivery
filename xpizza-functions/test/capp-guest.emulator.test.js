@@ -167,6 +167,25 @@ const is400 = (r, reason, label) => { assert.strictEqual(r.status, 400, `${label
 (async () => {
   for (const rid of ['x_pizza', 'la_musa']) { await seed(rid); await rtdb.ref(`restaurants/${rid}/identity`).set(identityFor(rid)); }
 
+  // ═══ U — Codex r1 P1-1: issued on one SDK instance, verified on ANOTHER (a fresh admin app: nothing cached) ═══
+  {
+    const second = admin.initializeApp({ ...admin.app().options }, 'capp-guest-second');
+    const db2 = second.database();
+    const S1b = makeCheckoutOtp({ getDatabase: () => db2, registry: () => ({ ready: async () => {}, known: () => new Set(['x_pizza', 'la_musa']) }), now: () => clock,
+      env: { ULTRAMSG_INSTANCE_ID_PLATFORM: 'i', ULTRAMSG_TOKEN_PLATFORM: 't', CHECKOUT_OTP_TEMPLATE: '{code}' }, fetchImpl: async () => ({ ok: true, json: async () => ({ sent: 'true' }) }) });
+    const c = capp('x_pizza', 'u_sdk', { phone: '9955-0005' });
+    const cart_fp = await CAPP.cartSig(c.f, c.ctx, subtle);
+    clock += G.BUDGET.WINDOW + 1; await rtdb.ref('otp_ip').remove();
+    assert.strictEqual((await s1('requestCheckoutCode', { phone_e164: '+50499550005', restaurant_id: 'x_pizza', cart_fp })).code, 200);
+    const r = { status(x) { r.code = x; return r; }, json(b) { r.body = b; return r; } };
+    await S1b.verifyCheckoutCode({ method: 'POST', body: { phone_e164: '+50499550005', restaurant_id: 'x_pizza', cart_fp, order_id: 'u_sdk', code: SENT[SENT.length - 1] }, ip: '7.7.7.7' }, r);
+    assert.strictEqual(r.code, 200, `🔴 a valid code verified on another SDK instance (${JSON.stringify(r.body)})`);
+    assert.ok((await rtdb.ref(`checkout_tickets/${G.ticketKey(r.body.checkout_ticket)}`).get()).exists(), 'the ticket is written');
+    await second.delete();
+    clock = Date.now();
+  }
+  ok('U issuance on one SDK instance, verification on a SECOND uncached one ⇒ 200 + ticket (Codex r1 P1-1)');
+
   // ═══ C — createOrder refuses every capp guest; zero mutation ═══
   for (const rid of ['x_pizza', 'la_musa']) {
     const c = capp(rid, `c_${rid}`, { pay: 'cash' });
@@ -189,7 +208,7 @@ const is400 = (r, reason, label) => { assert.strictEqual(r.status, 400, `${label
     const noEmail = { ...good }; delete noEmail.customer_email;
     const other = capp(rid, `r2_${rid}`);
     const tOther = await ticketFor(other, '+50499550001');
-    for (const [label, body, why] of [['cash', { ...good, payment_method: 'cash' }, 'guest_cash_not_allowed'], ['scheduled', { ...good, scheduled_for: Date.now() + 3 * 3600e3 }, 'guest_schedule_requires_account'],
+    for (const [label, body, why] of [['cash', { ...good, payment_method: 'cash' }, 'guest_cash_not_allowed'], ['card_delivery', { ...good, payment_method: 'card_delivery' }, 'guest_cash_not_allowed'], ['scheduled', { ...good, scheduled_for: Date.now() + 3 * 3600e3 }, 'guest_schedule_requires_account'],
       ['no email', noEmail, 'guest_email_required'], ['no ticket', { ...c.body }, 'guest_ticket_invalid'], ['unknown ticket', { ...good, checkout_ticket: 'ct_' + 'f'.repeat(32) }, 'guest_ticket_invalid'],
       ['another order\'s ticket', { ...good, checkout_ticket: tOther }, 'guest_ticket_invalid'], ['a changed cart', { ...good, items: [{ ...good.items[0], qty: 2 }], items_text: good.items_text }, 'guest_ticket_invalid'],
       ['another phone', { ...good, customer_phone: '+504 9955-0099' }, 'guest_ticket_invalid']]) {
@@ -249,7 +268,7 @@ const is400 = (r, reason, label) => { assert.strictEqual(r.status, 400, `${label
 
   // ═══ X — N concurrent same-id guest charges ⇒ one order ═══
   {
-    const c = capp('x_pizza', 'x_race');
+    const c = capp('x_pizza', 'x_race', { phone: '9955-0003' });   // Codex r1 P2-5: the body's phone IS the ticket's
     const t = await ticketFor(c, '+50499550003');
     const body = { ...c.body, checkout_ticket: t };
     await rtdb.ref('rate_limits').remove();
@@ -269,7 +288,7 @@ const is400 = (r, reason, label) => { assert.strictEqual(r.status, 400, `${label
   // ═══ T — the capp-guest trace (separate golden) ═══
   {
     const { rateLimitKey } = require('../order-dedup');
-    const c = capp('x_pizza', 't_trace');
+    const c = capp('x_pizza', 't_trace', { phone: '9955-0004' });   // Codex r1 P2-5: the body's phone IS the ticket's
     const t = await ticketFor(c, '+50499550004');
     const subs = (oid) => [[oid, '<oid>'], [G.ticketKey(t), '<ticketKey>'], [OTP.phoneHash('50499550004'), '<phoneHash>'], [rateLimitKey(c.body.customer_phone), '<phoneKey>']];
     await rtdb.ref('rate_limits').remove();
@@ -316,7 +335,23 @@ const is400 = (r, reason, label) => { assert.strictEqual(r.status, 400, `${label
       assert.strictEqual(rc.status, 200, `${rid} ${label} cash: ${rc.text.slice(0, 200)}`);
     }
   }
-  ok('F forms / header-less / members (even with the orders-app header) are untouched: cash + online accepted as today, no grant, no guest_verified');
+  // Codex r1 P2-4 differential: a NON-online body to chargeOnlineOrder — the form, header-less and a member (even with the
+  // orders-app header) get the generic online-only answer, byte-identical to each other; only the capp guest gets its reason
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const c = capp(rid, `m_${rid}`, { pay: 'cash' });
+    const answers = [];
+    for (const [h, tok] of [[FORM_H(rid === 'x_pizza' ? 'orders-xpizza' : 'orders-lamusa'), null], [{}, null], [APP_H, `u_${rid}`]]) {
+      await rtdb.ref('rate_limits').remove();
+      const before = await tree();
+      const r = await charge({ ...c.body, payment_method: 'cash' }, { ...h, ...(tok ? { 'x-firebase-id-token': tok } : {}) });
+      assert.strictEqual(r.status, 400); answers.push(r.text);
+      assert.strictEqual(await tree(), before);
+    }
+    assert.ok(answers.every((a) => a === answers[0]) && !answers[0].includes('guest_'), `${rid}: forms / header-less / member answers are the SAME generic body (${answers[0].slice(0, 120)})`);
+    await rtdb.ref('rate_limits').remove();
+    is400(await charge({ ...c.body, payment_method: 'cash' }), 'guest_cash_not_allowed', `${rid}: the capp guest's typed reason is reachable`);
+  }
+  ok('F forms / header-less / members (even with the orders-app header) are untouched: cash + online accepted as today, no grant, no guest_verified; a non-online charge body gets the same generic answer for all of them, the capp guest its typed reason');
 
   FINISHED = true;
   console.log(`\ncapp-guest(emulator): OK (${n})`);

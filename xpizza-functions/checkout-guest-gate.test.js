@@ -32,6 +32,7 @@ function fakeDb() {
   return { tree, calls, get, set, ref: (p) => { calls.push(p); return {
     get: async () => snap(get(p)), once: async () => snap(get(p)),
     set: async (v) => set(p, v),
+    update: async (m) => { for (const [k, v] of Object.entries(m)) set(`${p}/${k}`, v); },
     transaction: async (fn) => { const next = fn(clone(get(p)) ?? null); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; set(p, next); return { committed: true, snapshot: snap(get(p)) }; },
   }; } };
 }
@@ -231,6 +232,57 @@ const wire = (b) => JSON.parse(JSON.stringify(b));   // as the wire delivers it
     assert.deepStrictEqual(await GATE.grantFor({ db, orderId: 'XPZ-G2', guest, secret: S, now: created }), { grant: null }, 'no created_at ⇒ no grant (fallback: normal signup)');
   }
   ok('grant: recomputed from the stored order (same bytes on replay, exp = created_at + 15 min, verifies); another phone / no order ⇒ refused; no secret / expired / no created_at ⇒ null, never a failed charge');
+
+  // ── 9. Codex r1 P1-2: the REAL acquireHostedAttempt never lets a foreign guest phone touch another guest's order / attempts ──
+  {
+    const { acquireHostedAttempt } = require('./pixelpay-hosted-charge');
+    const adb = fakeDb();
+    const gA = { phone: '50499990000', phone_hash: OTP.phoneHash('50499990000') }, gB = { phone: '50488881111', phone_hash: OTP.phoneHash('50488881111') };
+    const rec = (g) => ({ order_id: 'XPZ-R', status: 'pending_payment', payment_status: 'pending', total_cents: 1000, created_at: 1, guest_verified: g });
+    const T = 1.8e12, FPX = 'fp-1';
+    const a1 = await acquireHostedAttempt(adb, 'XPZ-R', rec(gA), FPX, T);
+    assert.strictEqual(a1.outcome, 'claimed', 'A creates O');
+    adb.set(`payment_attempts/${a1.attempt_id}/hosted_state`, 'failed_create');   // A's checkout creation failed (a non-money terminal)
+    const before = JSON.stringify(adb.tree);
+    const b = await acquireHostedAttempt(adb, 'XPZ-R', rec(gB), FPX, T + 1000);
+    assert.deepStrictEqual(b, { outcome: 'conflict', reason: 'guest_phone' }, '🔴 B (another verified phone) is refused before any rotation');
+    assert.strictEqual(JSON.stringify(adb.tree), before, '🔴 B wrote NOTHING: A\'s order and attempts untouched (A is not stranded)');
+    assert.strictEqual(await GATE.boundToGuest({ db: adb, orderId: 'XPZ-R', guest: gB }), false, 'the handler then answers B guest_ticket_invalid (gate-bind)');
+    const a2 = await acquireHostedAttempt(adb, 'XPZ-R', rec(gA), FPX, T + 2000);
+    assert.strictEqual(a2.outcome, 'claimed', 'A\'s retry rotates its own failed attempt (never in_progress forever)');
+    assert.notStrictEqual(a2.attempt_id, a1.attempt_id);
+    // INSIDE the CAS: a pre-read that looked like A's order, while the server holds another phone → the CAS is a no-op, the re-read refuses
+    adb.set('orders/XPZ-R/guest_verified', gB);
+    adb.set(`payment_attempts/${a2.attempt_id}/hosted_state`, 'failed_create');
+    let first = true;
+    const stale = { ...adb, ref: (p) => { const r = adb.ref(p); if (p !== 'orders/XPZ-R') return r; return { ...r, once: async () => { if (first) { first = false; const v = clone(adb.get(p)); v.guest_verified = gA; return { exists: () => true, val: () => v }; } return r.once(); } }; } };
+    const before2 = JSON.stringify(adb.tree);
+    const c = await acquireHostedAttempt(stale, 'XPZ-R', rec(gA), FPX, T + 3000);
+    assert.deepStrictEqual(c, { outcome: 'conflict', reason: 'guest_phone' }, 'the CAS itself refuses a foreign phone');
+    assert.strictEqual(JSON.stringify(adb.tree), before2, '🔴 nothing rotated inside the CAS');
+    // forms / members (no guest_verified on the pending record) are unchanged — the same rotation as today
+    const fdb = fakeDb();
+    const f1 = await acquireHostedAttempt(fdb, 'XPZ-F', { order_id: 'XPZ-F', total_cents: 1, status: 'pending_payment' }, FPX, T);
+    fdb.set(`payment_attempts/${f1.attempt_id}/hosted_state`, 'failed_create');
+    assert.strictEqual((await acquireHostedAttempt(fdb, 'XPZ-F', { order_id: 'XPZ-F', total_cents: 1, status: 'pending_payment' }, FPX, T + 1)).outcome, 'claimed', 'a form retry rotates as today');
+  }
+  ok('acquire (Codex r1 P1-2): B\'s foreign phone is refused at the pre-read AND inside the CAS with nothing written — A\'s failed attempt is never rotated by B, A\'s retry rotates it; form records unchanged');
+
+  // ── 10. Codex r1 P2-4: chargeUidOf = the charge handler's identity rules (guest ⇔ null) ──
+  {
+    const { attributionUid } = require('./create-order-build');
+    const tomb = new Set(['u_gone']);
+    const mk = (verify) => ({ getAuth: () => ({ verifyIdToken: verify }), getDatabase: () => ({ ref: (p) => ({ get: async () => ({ exists: () => tomb.has(p.split('/')[1]) }) }) }), attributionUid });
+    const req = (tok) => ({ get: (h) => (h === 'x-firebase-id-token' ? tok : undefined) });
+    assert.strictEqual(await GATE.chargeUidOf(req(undefined), mk(async () => { throw new Error('never'); })), null, 'no token ⇒ guest');
+    assert.strictEqual(await GATE.chargeUidOf(req('t'), mk(async () => ({ uid: 'u_a', customer: true }))), attributionUid({ uid: 'u_a', customer: true }, false), 'a verified customer ⇒ the handler\'s attribution');
+    assert.ok(await GATE.chargeUidOf(req('t'), mk(async () => ({ uid: 'u_a', customer: true }))), 'premise: a member resolves to a uid (⇒ the generic answer below, unchanged)');
+    assert.strictEqual(await GATE.chargeUidOf(req('t'), mk(async () => ({ uid: 'u_a' }))), null, 'a non-customer token ⇒ guest');
+    assert.strictEqual(await GATE.chargeUidOf(req('t'), mk(async () => ({ uid: 'u_gone', customer: true }))), attributionUid({ uid: 'u_gone', customer: true }, true), 'a tombstoned uid ⇒ as the handler');
+    assert.strictEqual(await GATE.chargeUidOf(req('t'), mk(async () => { throw new Error('expired'); })), null, 'a bad token ⇒ guest');
+    assert.strictEqual(await GATE.chargeUidOf(req('t'), { ...mk(() => new Promise(() => {})), deadlineMs: 20 }), null, 'a hung verify ⇒ guest at the deadline');
+  }
+  ok('chargeUidOf (Codex r1 P2-4): no / bad / non-customer / hung token ⇒ null (guest); a verified customer ⇒ the handler\'s attributionUid (tombstone included)');
 
   console.log(`\ncheckout-guest-gate: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
