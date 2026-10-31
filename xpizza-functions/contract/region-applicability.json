@@ -11591,7 +11591,7 @@
     "site": "await whatsapp.sendMessage(phone, whatsapp.tplOtp({ code }), restaurantId);   // D12b: the brand from this restaurant's config, never a literal",
     "siteSha": "c010876b3f6275d6d7b9286943dd885112439552e06d06fc4d1d568faddf47fb",
     "scope": "xpizza-functions/index.js#requestOtp",
-    "scopeSha": "cf0737b6bd9cceb181762d6fa042c99e07dabf6fdefc376d381f48180b46c41f"
+    "scopeSha": "0e2982d3040c34018a195d83df79034ccd925aa6f5cd39b9acef2bc5946fec4e"
    },
    "guards": [
     {
