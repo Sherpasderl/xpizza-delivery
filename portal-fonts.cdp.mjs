@@ -90,7 +90,7 @@ const STUB = {
   'xpizza-portal/auth.js': (st) => `export { authErrorMessage } from './auth-errors.js';
     export const login = async () => { const e = new Error('auth'); e.code = 'auth/invalid-credential'; throw e; };
     export const logout = async () => {};
-    export const watchAuth = (cb) => { setTimeout(() => cb(${st.signedOut ? 'null' : `{ uid: ${JSON.stringify(st.uid || 'uOwnerV')}, email: 'duena@ejemplo.test' }`}), 0); };
+    export const watchAuth = (cb) => { (window.__authGate || new Promise((r) => setTimeout(r, 0))).then(() => cb(${st.signedOut ? 'null' : `{ uid: ${JSON.stringify(st.uid || 'uOwnerV')}, email: 'duena@ejemplo.test' }`})); };
     export const token = () => Promise.resolve(${st.signedOut ? 'null' : "'T'"});`,
   // the invite page's DESIGNED seam (plan §4 r1.1): the REAL startAceptar with injected deps; the platform setTimeout (the real 31 s)
   'xpizza-portal/aceptar-boot.js': (st) => `import { startAceptar } from './aceptar.js';
@@ -257,6 +257,13 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     cdp.on('Runtime.consoleAPICalled', (p) => { if (p.type === 'error') errs.push(`console.error: ${p.args.map((a) => a.value ?? a.description ?? '').join(' ')}`.slice(0, 200)); });
     cdp.on('Log.entryAdded', (p) => { if (p.entry.level === 'error') errs.push({ log: p.entry.text.slice(0, 200), url: p.entry.url || '' }); });
     for (const src of [OBSERVER, SHIFT_SRC, PAINT_SNAP, THEME(theme), H.replace(/\n/g, ' ').replace(/^/, 'document.addEventListener("DOMContentLoaded", () => {').concat('});')]) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: src });
+    // FONTS_DELAY=getMyBranches:300 — the FINDING-portal-shell-late-shift acceptance test: the named endpoint's response is held IN PAGE
+    // until <ms> after FCP (same on both sides), so late shell content always lands after a painted frame
+    if (process.env.FONTS_DELAY) { const [fn, ms] = process.env.FONTS_DELAY.split(':'); await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+      let fcpAt = null; const waiters = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint' && fcpAt === null) { fcpAt = e.startTime; for (const w of waiters.splice(0)) w(); } }).observe({ type: 'paint', buffered: true }); } catch (_) {}
+      const afterFcp = () => new Promise((r) => (fcpAt !== null ? r() : waiters.push(r))).then(() => new Promise((r) => setTimeout(r, Math.max(0, fcpAt + ${Number(ms)} - performance.now()))));
+      if (${JSON.stringify(fn)} === 'auth') { window.__authGate = afterFcp(); return; }   // FONTS_DELAY=auth:<ms>: the session resolves <ms> after FCP
+      const f = window.fetch.bind(window); window.fetch = async (u, o) => { const res = await f(u, o); if (String(u).includes('/${fn}')) await afterFcp(); return res; }; })();` }); }
     if (deterministic) for (const src of [FREEZE, QUIET]) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: src });
     const t0 = Date.now();
     const page = def.page === 'aceptar' ? `aceptar.html${def.noInvite ? '' : `?invite=${INVITE_ID}&mode=signIn&oobCode=fx&apiKey=fx`}` : 'index.html';
