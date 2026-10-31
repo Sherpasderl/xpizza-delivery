@@ -566,6 +566,10 @@
     "    toast('Error al terminar turno', 'error');",
     "  }"
    ]
+  },
+  {
+   "name": "MONEY-RATE",
+   "kind": "insert"
   }
  ],
  "deps": [

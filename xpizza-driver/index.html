@@ -5350,6 +5350,38 @@ function showCerrado(cash, startMs, closedAtMs) {
   }
 }
 /* ===== SLICE3:MONEY-CERRADO:END ===== */
+/* ===== SLICE3:MONEY-RATE:START — the platform pay-rate reader (ONE source; 2e owns the server node contract:
+   platform_rates/driver_per_delivery/{pushId} = { cents, effective_from }, admin-write-only, drivers READ). The rate
+   in effect for a delivery = the greatest effective_from ≤ its delivered_at; a rate change is a NEW entry, never
+   retro-applied. NO hardcoded fallback — earnings render NOTHING (null) until the owner seeds an entry. The
+   subscription + the «* 70» rewire + ganancias ride later increments of this slice. ===== */
+let driverRateEntries = null;   // cached { pushId: { cents, effective_from } } | null until the first read
+// pure: the rate (cents) in effect at ms t over the entries map, or null when none applies
+function rateCentsInEffect(entries, t) {
+  if (!entries || typeof t !== 'number' || !Number.isFinite(t)) return null;
+  let best = null;
+  for (const k in entries) {
+    const e = entries[k];
+    if (e && typeof e.cents === 'number' && Number.isFinite(e.cents) && typeof e.effective_from === 'number' && e.effective_from <= t) {
+      if (!best || e.effective_from > best.effective_from) best = e;
+    }
+  }
+  return best ? best.cents : null;
+}
+// pure: total earnings (cents) over the resolved deliveries, EACH at its own in-effect rate. null when the rate is
+// unknown (no entries) or ANY delivery is uncovered — never a partial/invented total. 0 for no deliveries + a known rate.
+function shiftEarningsCents(resolvedDeliveries, entries) {
+  if (!entries) return null;
+  let total = 0;
+  for (const d of (resolvedDeliveries || [])) {
+    const at = d && typeof d.delivered_at === 'number' ? d.delivered_at : null;
+    const c = at != null ? rateCentsInEffect(entries, at) : null;
+    if (c == null) return null;
+    total += c;
+  }
+  return total;
+}
+/* ===== SLICE3:MONEY-RATE:END ===== */
 async function cleanupShift() {
   /* ===== SLICE2:SHIFT-CLEANUP:START — stop the map-aging timer on shift/session disposal (Codex r1 P2-7) ===== */
   // Shift end is a disposal: stop the display-only aging timer SYNCHRONOUSLY here (the visibilitychange handler
