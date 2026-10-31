@@ -86,6 +86,8 @@ const D = {
     'ack-identity-finding', 'record-evidence-boundary',
     // per-product extras gate 0: the READ-ONLY live export (active version + public menu) for the advisor's parity run
     'extras-export-live',
+    // DISH PHOTOS A2 step 12b — the owner's one-time legacy backfill (dry run + contact sheet; --apply owner-only): requireProject({ requireFlag: true }) first
+    'photos-legacy-backfill',
     // H1c step 0 — the owner-run hardware-gate sender (ONE data-only FCM message; no database read or write):
     // requireProject({ requireFlag: true }) before any client
     'handheld-push-probe',

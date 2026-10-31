@@ -1819,6 +1819,7 @@
   "photos/functions.js",
   "photos/gcs-copy.js",
   "photos/gcs-store.js",
+  "photos/legacy-encode.js",
   "photos/photo-state.js",
   "photos/pipeline.js",
   "photos/process.js",
@@ -2923,6 +2924,10 @@
    "lifts": []
   },
   "photos/gcs-store.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/legacy-encode.js": {
    "pins": [],
    "lifts": []
   },
