@@ -40,6 +40,9 @@
     bike: I('<circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M8.5 17h7"/><path d="M14 6h3l2.5 8.5"/><path d="M4 11h7l2 6"/>'),
     locoff: I('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><path d="M4 4l16 16"/>'), nav: I('<path d="M12 3l8 18-8-4-8 4z"/>'),
     plus: I('<path d="M12 5v14"/><path d="M5 12h14"/>'), close: I('<path d="M6 6l12 12"/><path d="M18 6L6 18"/>'),
+    bell: I('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>'),   // G7 (the approved mockup's)
+    out: I('<path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h5"/><path d="M14 16l4-4-4-4"/><path d="M18 12H9"/>'),
+    phone: I('<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 17h2"/>'),
     check: I('<path d="m5 12.5 4.5 4.5L19 7.5"/>'), help: I('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.7"/><path d="M12 17h.01"/>'),
     pinfill: '<svg width="38" height="38" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>',
   };
@@ -329,11 +332,35 @@
     <div class="rows"><button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button><button class="rowbtn" data-act="help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button></div></div>`);
   }
 
+  // G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27, frames 1 / 1b / 4a / 4b): the MEMBER's Cuenta — .acct-hero (name, phone and
+  // email on three lines; the initial in the avatar), Pedidos / Promociones (.switch) / Ayuda, the session group, the muted version.
+  // vm.acct = { placeholder, name, phone, email, promos: true | false | null (no served value ⇒ inert, frame 4b), version }
+  function accountMemberHtml(vm) {
+    const a = vm.acct || {}, inert = typeof a.promos !== 'boolean';
+    const hero = a.placeholder
+      ? '<div class="acct-hero"><span class="av ph" aria-hidden="true"></span><div class="t"><span class="bar n"></span><span class="bar s"></span><span class="bar e"></span></div></div>'
+      : `<div class="acct-hero"><span class="av" aria-hidden="true">${esc(String(a.name || '').trim().charAt(0).toUpperCase())}</span><div class="t"><b>${esc(a.name)}</b><span>${esc(a.phone)}</span><span>${esc(a.email)}</span></div></div>`;
+    return shellWrap(vm, `<div class="flow"><div class="flowbar plain"><h1>Cuenta</h1></div>
+    <div style="height:12px"></div>${hero}<div class="rows">
+      <button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>
+      <button class="rowbtn" data-act="promos"${inert ? ' aria-disabled="true"' : ''}>${IC.bell}<span class="t">Promociones<span>Ofertas por correo y WhatsApp</span></span><span class="switch" role="switch" aria-checked="${a.promos !== false}"${inert ? ' aria-disabled="true"' : ''}></span></button>
+      <button class="rowbtn" data-act="help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button></div>
+    <div class="rows sess">
+      <button class="rowbtn" data-act="signout">${IC.out}<span class="t">Cerrar sesión</span></button>
+      <button class="rowbtn" data-act="forget">${IC.phone}<span class="t">Olvidar este teléfono<span>Cierra tu sesión y deja de recordar tu número</span></span></button></div>
+    <div class="credit ver">v${esc(a.version || '')}</div></div>`);
+  }
+  // G7 frame 2: «Olvidar este teléfono» — the shell's .errsheet, the calm icon, two exits
+  const forgetSheetHtml = () => `<div class="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Olvidar este teléfono"><div class="grab"></div>
+    <div class="errsheet"><div class="icon calm">${IC.phone}</div><h2>¿Olvidar este teléfono?</h2>
+      <p>Cerramos tu sesión y este teléfono deja de recordar tu número: la próxima vez lo escribís de nuevo. Tu cuenta y tus pedidos no se borran.</p>
+      <div class="acts"><button class="primary" data-act="forget-confirm">Olvidar este teléfono</button><button class="btn2 wide" data-act="lclose">Cancelar</button></div></div></div>`;
+
   // coverage on Inicio (r1 §2.3, display only — the quote stays the authority): straight-line hub → location ≤ coverage_km
   const kmBetween = (a, b) => { const dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lng - a.lng) * Math.PI / 180, s = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2; return 2 * 6371 * Math.asin(Math.sqrt(s)); };
   const covers = (entry, loc) => { if (!loc || !entry || !Number.isFinite(entry.hub_lat) || !Number.isFinite(entry.hub_lng) || !Number.isFinite(entry.coverage_km)) return null; return kmBetween({ lat: entry.hub_lat, lng: entry.hub_lng }, loc) <= entry.coverage_km; };
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, searchHtml, tabbarHtml, neutralReturnHtml, accountGuestHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { homeHtml, searchHtml, tabbarHtml, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });

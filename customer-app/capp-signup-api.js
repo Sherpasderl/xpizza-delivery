@@ -75,6 +75,11 @@
         const r = await call(E.completeProfile, { idToken, body: { context: CONTEXT, email, accept_terms: true, promos: promos === true, name } });
         return r.status === 200 && r.json && r.json.ok === true ? { ok: true } : { ok: false, reason: reasonOf(r) };
       },
+      // G7 (CONTRACT-capp-signup-platform-wire §6): the member's promotions choice — {context:'platform', value}, the member's ID token
+      async setPromos({ idToken, value }) {
+        const r = await call(E.setPromos, { idToken, body: { context: CONTEXT, value: value === true } });
+        return r.status === 200 && r.json && r.json.ok === true ? { ok: true } : { ok: false, reason: reasonOf(r) };
+      },
       async redeemSignupGrant({ grant, email, name, promos }) {
         const r = await call(E.redeemSignupGrant, { body: { grant, context: CONTEXT, email, name, accept_terms: true, promos: promos === true } });
         const j = r.json;

@@ -246,7 +246,7 @@ function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 
   const w = dom.window;
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -707,7 +707,7 @@ test('G6 shell: the SDK after the first paint; «Entrá» opens the sheet; a ver
   assert.deepEqual(J(S.ui.state.member), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: 'id:u_ana' });
   assert.equal(await S.ui.state.member.getIdToken(), 'id:u_ana', 'the transport\'s send-time token comes from the SDK');
   S.click('.tabbar [data-tab="account"]'); await flush();
-  assert.deepEqual(S.events.filter((e) => e[0] === 'tab').pop(), ['tab', { tab: 'account' }], 'a member\'s Cuenta is the host\'s');
+  assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', 'G7: a member\'s Cuenta is the shell\'s (under runtime.signup)'); assert.equal(S.events.filter((e) => e[0] === 'tab').length, 0);
   await fb.loadSdk().then(({ authMod }) => authMod.signOut()); await flush();
   assert.equal(storage.getItem('capp:member_profile'), null, '🔴 an ordinary sign-out clears the cached profile');
   assert.ok(storage.getItem('capp:device_account'), 'the device marker is kept (§4c)');
@@ -899,4 +899,101 @@ test('S7a-2 frame 15: a held tap whose MENU does not load ⇒ «No pudimos abrir
   assert.ok(S.q('#layer .errsheet'), 'premise: the sheet again');
   mode = 'ok'; S.click('#layer [data-act="menu-retry"]'); await flush();
   assert.equal(S.ui.store() && S.ui.store().rid, 'la_musa', '🔴 F15-retry: «Reintentar» re-fetches and enters');
+});
+
+// ── G7 member Cuenta (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27: frames 1 / 1b / 2 / 3 / 4a / 4b) — under runtime.signup ──
+const G7_EP = { ...SU_EP, setPromos: 'https://fn.test/setPromos' };
+const G7_RUNTIME = { ...SU_RUNTIME, signup: { ...SU_RUNTIME.signup, endpoints: G7_EP } };
+const G7_PROFILE = (o = {}) => ({ uid: 'u_ana', name: 'Ana Pérez', phone: '+50496123344', email: 'ana.perez@gmail.com', ...o });
+const g7Store = (profile) => { const st = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }) }); DA.remember(st, '+50496123344'); if (profile) DA.rememberProfile(st, profile); return st; };
+function g7Server(promosOk = true) {
+  const sent = [];
+  const fetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); sent.push([ep, i && i.body ? JSON.parse(i.body) : null, i && i.headers ? i.headers['x-firebase-id-token'] : null]);
+    const j = ep === 'setPromos' ? (promosOk ? { ok: true } : { ok: false, reason: 'aborted' }) : ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false } : { ok: true };
+    return { status: ep === 'setPromos' && !promosOk ? 400 : 200, json: async () => j }; };
+  return { fetch, sent };
+}
+async function g7Boot({ profile = G7_PROFILE({ promos: true }), srv = g7Server(), fbOpts = {} } = {}) {
+  const fb = fakeFirebase({ persisted: 'u_ana', ...fbOpts });
+  const store = g7Store(profile);
+  const S = bootShell({ auth: 'unresolved', storage: store, runtime: G7_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch } });
+  await flush(); await flush();
+  S.click('.tabbar [data-tab="account"]'); await flush();
+  return { S, fb, srv, store };
+}
+const g7Rows = (S) => S.qa('.flow .rows .rowbtn').map((b) => txt(b));
+test('G7 frame 1 / 4a: the member\'s Cuenta from the cached profile — the initial, name / phone / email on three lines, Pedidos · Promociones (on) · Ayuda, the session group, «v0.1.0»; never the host\'s tab event', async () => {
+  const { S } = await g7Boot();
+  assert.equal(S.events.filter((e) => e[0] === 'tab').length, 0, '🔴 G7-shell: the member\'s Cuenta is the shell\'s (no host event)');
+  assert.equal(txt(S.q('.acct-hero .av')), 'A');
+  assert.deepEqual([...S.qa('.acct-hero .t > *')].map((x) => x.textContent), ['Ana Pérez', '+504 9612-3344', 'ana.perez@gmail.com'], '🔴 G7-hero: name, phone, email on three lines');
+  assert.deepEqual(g7Rows(S), ['Pedidos', 'Promociones Ofertas por correo y WhatsApp', 'Ayuda', 'Cerrar sesión', 'Olvidar este teléfono Cierra tu sesión y deja de recordar tu número']);
+  assert.equal(S.qa('.flow .rows').length, 2); assert.ok(S.q('.flow .rows.sess'));
+  const sw = S.q('[data-act="promos"] .switch');
+  assert.equal(sw.getAttribute('aria-checked'), 'true', '🔴 G7-promos: the cached value'); assert.equal(S.q('[data-act="promos"]').getAttribute('aria-disabled'), null);
+  assert.equal(S.q('.flow .credit.ver').textContent, 'v0.1.0', '🔴 G7-version: SYSTEM_VERSION');
+  assert.ok(!/recompens/i.test(txt(S.q('.flow'))), 'no rewards row (decision 1)');
+});
+test('G7 frame 1b: Promociones flips at once and calls setPromos (context platform, the member token); success keeps it and updates the cache; failure reverts + «No se guardó el cambio. Intentá de nuevo.»', async () => {
+  const ok = await g7Boot();
+  ok.S.click('[data-act="promos"]');
+  assert.equal(ok.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'false', '🔴 G7-optimistic: the new value at once');
+  await flush();
+  const call = ok.srv.sent.find((x) => x[0] === 'setPromos');
+  assert.deepEqual([call[1], call[2]], [{ context: 'platform', value: false }, 'id:u_ana'], '🔴 G7-setPromos: contract §6');
+  assert.equal(ok.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'false');
+  assert.equal(JSON.parse(ok.store.getItem('capp:member_profile')).promos, false, 'the cache follows a confirmed change');
+  const bad = await g7Boot({ srv: g7Server(false) });
+  bad.S.click('[data-act="promos"]'); await flush();
+  assert.equal(bad.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'true', '🔴 G7-revert: back to its value');
+  assert.equal(bad.S.q('#toast').textContent, 'No se guardó el cambio. Intentá de nuevo.', '🔴 G7-toast');
+  assert.equal(JSON.parse(bad.store.getItem('capp:member_profile')).promos, true);
+});
+test('G7 frame 4b: no served promotions value ⇒ the switch INERT (aria-disabled, the .45); a uid without a cached profile ⇒ the placeholder bars, the rows usable', async () => {
+  const noVal = await g7Boot({ profile: G7_PROFILE() });
+  assert.equal(noVal.S.q('[data-act="promos"]').getAttribute('aria-disabled'), 'true', '🔴 G7-inert: no value served ⇒ inert');
+  noVal.S.click('[data-act="promos"]'); await flush();
+  assert.equal(noVal.srv.sent.filter((x) => x[0] === 'setPromos').length, 0, 'an inert switch sends nothing');
+  const bare = await g7Boot({ profile: null });
+  assert.equal(bare.S.qa('.acct-hero .t .bar').length, 3, '🔴 G7-placeholder: three static bars'); assert.ok(bare.S.q('.acct-hero .av.ph'));
+  assert.ok(bare.S.q('[data-act="signout"]') && bare.S.q('[data-act="tab"][data-tab="orders"]'));
+});
+test('G7 decision 7: while the session RESOLVES, a profile on this device draws the member\'s Cuenta (no height change on resolving); none ⇒ the guest\'s', async () => {
+  const fb = fakeFirebase({ persisted: 'u_ana' });
+  const S = bootShell({ auth: 'unresolved', storage: g7Store(G7_PROFILE({ promos: true })), runtime: G7_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: g7Server().fetch } });
+  S.click('.tabbar [data-tab="account"]');
+  assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', '🔴 G7-predict: the member geometry before the SDK answers');
+  assert.equal(S.q('[data-act="promos"]').getAttribute('aria-disabled'), 'true', 'unresolved ⇒ the switch waits');
+  const G = bootShell({ auth: 'unresolved', storage: memStorage(), runtime: G7_RUNTIME, mountExtra: { loadSdk: fakeFirebase({}).loadSdk, signupFetch: g7Server().fetch } });
+  G.click('.tabbar [data-tab="account"]');
+  assert.equal(G.q('.acct-hero'), null); assert.ok(G.q('.guestcard'), 'no profile ⇒ the guest\'s geometry');
+});
+test('G7 frame 3: «Cerrar sesión» — no confirmation; the guest\'s Cuenta at once; the profile cache cleared on the confirmed sign-out; the device marker KEPT', async () => {
+  const { S, fb, store } = await g7Boot();
+  S.click('[data-act="signout"]');
+  assert.ok(S.q('.guestcard'), '🔴 G7-signout: the guest\'s Cuenta at once'); assert.equal(S.q('#layer .errsheet'), null, 'no confirmation');
+  await flush();
+  assert.equal(fb.calls.out, 1); assert.equal(store.getItem('capp:member_profile'), null, 'no personal data stays on show');
+  assert.ok(store.getItem('capp:device_account'), '🔴 G7-marker: an ordinary sign-out keeps the device marker');
+});
+test('G7 frame 2: «Olvidar este teléfono» asks first («¿Olvidar este teléfono?» + the body, [Olvidar este teléfono][Cancelar]); Cancelar changes nothing; confirming forgets the marker and signs out', async () => {
+  const { S, fb, store } = await g7Boot();
+  S.click('[data-act="forget"]');
+  assert.equal(S.q('#layer .errsheet h2') && S.q('#layer .errsheet h2').textContent, '¿Olvidar este teléfono?', '🔴 G7-forget-sheet');
+  assert.equal(S.q('#layer .errsheet p').textContent, 'Cerramos tu sesión y este teléfono deja de recordar tu número: la próxima vez lo escribís de nuevo. Tu cuenta y tus pedidos no se borran.');
+  assert.deepEqual(S.qa('#layer .errsheet button').map((b) => b.textContent), ['Olvidar este teléfono', 'Cancelar']); assert.ok(S.q('#layer .errsheet .icon.calm'));
+  S.click('#layer [data-act="lclose"]'); await flush();
+  assert.equal(S.q('#layer .errsheet'), null); assert.equal(fb.calls.out, 0); assert.ok(store.getItem('capp:device_account'), 'Cancelar keeps everything');
+  S.click('[data-act="forget"]'); S.click('#layer [data-act="forget-confirm"]'); await flush();
+  assert.equal(store.getItem('capp:device_account'), null, '🔴 G7-forget: the device marker removed'); assert.equal(fb.calls.out, 1); assert.ok(S.q('.guestcard'));
+});
+test('G7 a REJECTED sign-out restores the member (nothing pretends to be signed out)', async () => {
+  const { S, fb } = await g7Boot({ fbOpts: { failSignOut: 1 } });
+  S.click('[data-act="signout"]'); await flush(); await flush();
+  assert.equal(fb.calls.out, 1); assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', '🔴 G7-reject: still the member');
+});
+test('G7 flag absent: without runtime.signup a member\'s Cuenta stays the HOST\'s tab event, as before', async () => {
+  const S = bootShell({ auth: 'member', runtime: { ...RUNTIME, guestCardOnly: true } }); await flush();
+  S.click('.tabbar [data-tab="account"]'); await flush();
+  assert.deepEqual(S.events.filter((e) => e[0] === 'tab').pop(), ['tab', { tab: 'account' }]); assert.equal(S.q('.acct-hero'), null);
 });

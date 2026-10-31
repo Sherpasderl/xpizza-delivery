@@ -25129,5 +25129,275 @@
     "kills_with": [
       "F18"
     ]
+  },
+  {
+    "id": "g7-01",
+    "slice": "g7",
+    "label": "a member's Cuenta under runtime.signup goes back to the host's event",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "if (id === 'account' && !SU && (runtime.guestCardOnly",
+    "to": "if (id === 'account' && (runtime.guestCardOnly",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-shell"
+    ]
+  },
+  {
+    "id": "g7-02",
+    "slice": "g7",
+    "label": "the hero drops the email line",
+    "file": "../customer-app/capp-home.js",
+    "from": "<span>${esc(a.phone)}</span><span>${esc(a.email)}</span>",
+    "to": "<span>${esc(a.phone)}</span>",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-hero"
+    ]
+  },
+  {
+    "id": "g7-03",
+    "slice": "g7",
+    "label": "Promociones waits for the server before showing the new value",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "promosOv.uid = uid; promosOv.v = v; renderNow();   // optimistic",
+    "to": "promosOv.uid = uid; promosOv.v = v;   // optimistic",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-optimistic"
+    ]
+  },
+  {
+    "id": "g7-04",
+    "slice": "g7",
+    "label": "setPromos always sends true",
+    "file": "../customer-app/capp-signup-api.js",
+    "from": "body: { context: CONTEXT, value: value === true } });",
+    "to": "body: { context: CONTEXT, value: true } });",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-setPromos"
+    ]
+  },
+  {
+    "id": "g7-05",
+    "slice": "g7",
+    "label": "a failed setPromos keeps the new value",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "if (ok) { S.member.promos = v;",
+    "to": "if (true) { S.member.promos = v;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-revert"
+    ]
+  },
+  {
+    "id": "g7-06",
+    "slice": "g7",
+    "label": "a failed setPromos says nothing",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "renderNow(); if (!ok) toast('No se guardó el cambio. Intentá de nuevo.');",
+    "to": "renderNow();",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-toast"
+    ]
+  },
+  {
+    "id": "g7-07",
+    "slice": "g7",
+    "label": "no served promotions value ⇒ an active switch with an invented value",
+    "file": "../customer-app/capp-home.js",
+    "from": "const a = vm.acct || {}, inert = typeof a.promos !== 'boolean';",
+    "to": "const a = vm.acct || {}, inert = false;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-inert"
+    ]
+  },
+  {
+    "id": "g7-08",
+    "slice": "g7",
+    "label": "a uid-only member shows an empty hero instead of the placeholders",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "const placeholder = !(p.name || p.phone || p.email);",
+    "to": "const placeholder = false;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-placeholder"
+    ]
+  },
+  {
+    "id": "g7-09",
+    "slice": "g7",
+    "label": "an unresolved session draws the guest geometry despite a cached profile",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "else if (st === 'unresolved') p = CappDeviceAccount.peekProfile(storage); ",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-predict"
+    ]
+  },
+  {
+    "id": "g7-10",
+    "slice": "g7",
+    "label": "«Cerrar sesión» waits for the SDK before the guest Cuenta",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "signingOut = true; dropMember(); renderNow();",
+    "to": "signingOut = true;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-signout"
+    ]
+  },
+  {
+    "id": "g7-11",
+    "slice": "g7",
+    "label": "«Olvidar este teléfono» keeps the device marker",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "      if (forget) CappDeviceAccount.forget(storage);\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-forget:"
+    ]
+  },
+  {
+    "id": "g7-12",
+    "slice": "g7",
+    "label": "«Olvidar este teléfono» acts without asking",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "if (a === 'forget') return openLayer('forget');",
+    "to": "if (a === 'forget') return void signOutNow({ forget: true });",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-forget-sheet"
+    ]
+  },
+  {
+    "id": "g7-13",
+    "slice": "g7",
+    "label": "a rejected sign-out leaves the Cuenta signed out",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "if (u && u.uid) applyMember(CappDeviceAccount.readProfile(storage, u.uid) || { uid: u.uid }); renderNow(); return; }",
+    "to": "renderNow(); return; }",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-reject"
+    ]
+  },
+  {
+    "id": "g7-14",
+    "slice": "g7",
+    "label": "the version line loses SYSTEM_VERSION",
+    "file": "../customer-app/capp-home.js",
+    "from": "<div class=\"credit ver\">v${esc(a.version || '')}</div>",
+    "to": "<div class=\"credit ver\">v</div>",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-version"
+    ]
+  },
+  {
+    "id": "g7-15",
+    "slice": "g7",
+    "label": "the cached promotions value is ignored",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "(typeof ov === 'boolean' ? ov : p.promos)",
+    "to": "(typeof ov === 'boolean' ? ov : false)",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=^G7",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "G7-promos"
+    ]
   }
 ]

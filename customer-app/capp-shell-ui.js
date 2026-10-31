@@ -223,9 +223,45 @@
       if (!u || u.uid !== uid) return;
       // getIdToken: the transport asks the SDK at send time (cached while valid, refreshed once expired); idToken = the fallback
       // S-picker: with the runtime intlPhone the member's number stays E.164 (its own country); off ⇒ the local 8 digits, as before
-      S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', idToken, getIdToken: () => fbAuth.idToken() };
+      S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', ...(typeof p.promos === 'boolean' ? { promos: p.promos } : {}), idToken, getIdToken: () => fbAuth.idToken() };
       if (S.store) S.store.ui.setMember(S.member);   // §4c: back on the SAME checkout step, filled in
       schedule();
+    }
+    // ── G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27): the MEMBER's Cuenta, in the shell, under runtime.signup (G6's flag; absent ⇒
+    //    the member's Cuenta stays the host's event, byte for byte) ──
+    let suApi = null;
+    const promosOv = { uid: null, v: null };   // frame 1b: the optimistic value while setPromos is in flight
+    let signingOut = false;
+    const phoneShown = (ph) => { const P = typeof CappPhone !== 'undefined' ? CappPhone : (o.CappPhone || null); const raw = String(ph || ''); if (!raw || !P) return raw;
+      const q = P.parseE164(raw.startsWith('+') ? raw : '+' + P.DEFAULT_CC + P.digits(raw)); return q ? P.display(q.cc, P.format(q.cc, q.national)) : raw; };
+    // the Cuenta's data: a member (S.member — the cached profile at once, frame 4a; a uid only ⇒ the placeholders, frame 4b), or, while the
+    // session resolves, the profile on this device (decision 7: no height change on resolving); otherwise null ⇒ the guest's Cuenta
+    function acctVm() {
+      if (!SU || signingOut) return null;
+      const st = authNow(); let p = null;
+      if (st === 'member' && S.member) p = S.member; else if (st === 'unresolved') p = CappDeviceAccount.peekProfile(storage); if (!p) return null;
+      const placeholder = !(p.name || p.phone || p.email);
+      const ov = promosOv.uid && promosOv.uid === p.uid ? promosOv.v : null;
+      return { placeholder, name: p.name || '', phone: phoneShown(p.phone), email: p.email || '', promos: st === 'member' && typeof p.promos === 'boolean' ? (typeof ov === 'boolean' ? ov : p.promos) : null,
+        version: typeof CAPP_SYSTEM_VERSION !== 'undefined' ? CAPP_SYSTEM_VERSION : (o.version || '') };
+    }
+    async function togglePromos() {
+      const m = S.member; if (!m || typeof m.promos !== 'boolean' || !suApi || promosOv.uid) return;
+      const v = !m.promos, uid = m.uid; promosOv.uid = uid; promosOv.v = v; renderNow();   // optimistic
+      let ok = false; try { const tok = await fbAuth.idToken(); ok = !!tok && (await suApi.setPromos({ idToken: tok, value: v })).ok === true; } catch (_) { ok = false; }
+      promosOv.uid = null; promosOv.v = null;
+      if (dead || !S.member || S.member.uid !== uid) return;
+      if (ok) { S.member.promos = v; const c = CappDeviceAccount.readProfile(storage, uid); if (c) CappDeviceAccount.rememberProfile(storage, { ...c, promos: v }); }
+      renderNow(); if (!ok) toast('No se guardó el cambio. Intentá de nuevo.');   // frame 1b: back to its value
+    }
+    // «Cerrar sesión» (no confirm) / «Olvidar este teléfono» (frame 2, then also the device marker): the guest's Cuenta at once (frame 3);
+    // the 'guest' callback clears the profile cache + the completion mark once the SDK confirms; a rejected sign-out restores the member
+    async function signOutNow({ forget = false } = {}) {
+      if (!fbAuth) return;
+      if (forget) CappDeviceAccount.forget(storage);
+      signingOut = true; dropMember(); renderNow();
+      try { await fbAuth.signOut(); } catch (_) { signingOut = false; const u = auth && auth.user ? auth.user() : null; if (u && u.uid) applyMember(CappDeviceAccount.readProfile(storage, u.uid) || { uid: u.uid }); renderNow(); return; }
+      signingOut = false; renderNow();
     }
     function startAuth() {
       if (!SU || fbAuth || dead) return;
@@ -250,7 +286,7 @@
       (app.parentNode || doc.body).appendChild(host);
       const syncDark = () => host.classList.toggle('dark', app.classList.contains('dark'));
       signup = CappSignup.createSignup({ doc, host: { addEventListener: (...a) => host.addEventListener(...a), contains: (n) => host.contains(n), querySelector: (q) => host.querySelector(q), set innerHTML(v) { syncDark(); host.classList.toggle('open', !!v); host.innerHTML = v; }, get innerHTML() { return host.innerHTML; } },
-        api: CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch }), auth: fbAuth, google: o.google || null, timers: T,
+        api: (suApi = CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch })), auth: fbAuth, google: o.google || null, timers: T,
         onEvent: (n, d) => { if (n === 'signed-in') signedIn(d); } });
     }
     function settleRet(rid, out) {
@@ -313,7 +349,7 @@
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
       return { phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), cuisine: S.cuisine, filters: S.filters,
-        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent };
+        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }, locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
     function saveScreen() {
@@ -336,7 +372,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && runtime.guestCardOnly === true ? CappHome.accountGuestHtml(v) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -346,7 +382,7 @@
     function renderLayer() {
       const L = $('layer'); if (!L) return;
       pinGen++; pinMap = null;   // any open pin map is obsolete
-      L.innerHTML = S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
+      L.innerHTML = S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
       if (S.layer !== 'pin') return;
       const firstHub = dir.view().rows.map((r) => r.entry).find((e) => Number.isFinite(e.hub_lat) && Number.isFinite(e.hub_lng));
       pinDraft = S.loc ? { lat: S.loc.lat, lng: S.loc.lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
@@ -380,10 +416,14 @@
       const a = t.dataset.act;
       // the Cuenta tab: with the guest rules ON (runtime.guestCardOnly), a guest's (and an unresolved) is frame 5b; a member's is a
       // later slice. Flag absent ⇒ exactly the S7a-2 behaviour: a host event (Codex guest r1 #3)
-      if (a === 'tab') { const id = t.dataset.tab; if (id === 'account' && (runtime.guestCardOnly !== true || authNow() === 'member')) { emit('tab', { tab: id }); return; }
+      if (a === 'tab') { const id = t.dataset.tab; if (id === 'account' && !SU && (runtime.guestCardOnly !== true || authNow() === 'member')) { emit('tab', { tab: id }); return; }   // G7: under runtime.signup the Cuenta is the shell's
         if (id === 'home' || id === 'search' || id === 'account') { if (S.tab === id && nav.depth() === 1) return; nav.tab({ name: id }); } else emit('tab', { tab: id }); return; }
       if (a === 'signin') { openSignin({ ctx: t.dataset.ctx || 'account' }); return; }
       if (a === 'help') { emit('help', {}); return; }
+      if (a === 'promos') { if (t.getAttribute('aria-disabled') !== 'true') togglePromos(); return; }   // G7 frame 1 / 1b
+      if (a === 'signout') return void signOutNow();
+      if (a === 'forget') return openLayer('forget');   // G7 frame 2
+      if (a === 'forget-confirm') { closeLayer(); return void signOutNow({ forget: true }); }
       if (a === 'open-store') return enter(t.dataset.rid, null);
       if (a === 'open-dish') return enter(t.dataset.rid, t.dataset.id);
       if (a === 'cuisine') { S.cuisine = t.dataset.val || ''; return renderNow(); }

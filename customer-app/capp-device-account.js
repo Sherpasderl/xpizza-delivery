@@ -40,13 +40,19 @@
     try { const s = storage && storage.getItem(PROFILE_KEY); v = s ? JSON.parse(s) : null; } catch (_) { v = null; }
     if (!v || typeof v !== 'object' || v.v !== 1 || typeof v.uid !== 'string' || !v.uid || v.uid !== uid) return null;
     const str = (x, n) => (typeof x === 'string' ? x.slice(0, n) : '');
-    return { uid: v.uid, name: str(v.name, 80), phone: typeof v.phone === 'string' && E164.test(v.phone) ? v.phone : '', email: str(v.email, 254) };
+    return { uid: v.uid, name: str(v.name, 80), phone: typeof v.phone === 'string' && E164.test(v.phone) ? v.phone : '', email: str(v.email, 254), ...(typeof v.promos === 'boolean' ? { promos: v.promos } : {}) };
+  }
+  // G7 decision 7 (the unresolved-auth geometry predictor): the profile on THIS device, whichever uid — read only to draw the member's
+  // Cuenta while the session resolves (the cache exists only with a live session; an ordinary sign-out removes it)
+  function peekProfile(storage) {
+    let v = null; try { const s = storage && storage.getItem(PROFILE_KEY); v = s ? JSON.parse(s) : null; } catch (_) { v = null; }
+    return v && typeof v === 'object' && v.v === 1 && typeof v.uid === 'string' && v.uid ? readProfile(storage, v.uid) : null;
   }
   function rememberProfile(storage, p) {
     if (!p || typeof p.uid !== 'string' || !p.uid) return false;
-    try { storage.setItem(PROFILE_KEY, JSON.stringify({ v: 1, uid: p.uid, name: p.name || '', phone: E164.test(p.phone || '') ? p.phone : '', email: p.email || '' })); return true; } catch (_) { return false; }
+    try { storage.setItem(PROFILE_KEY, JSON.stringify({ v: 1, uid: p.uid, name: p.name || '', phone: E164.test(p.phone || '') ? p.phone : '', email: p.email || '', ...(typeof p.promos === 'boolean' ? { promos: p.promos } : {}) })); return true; } catch (_) { return false; }
   }
   function forgetProfile(storage) { try { storage.removeItem(PROFILE_KEY); return storage.getItem(PROFILE_KEY) === null; } catch (_) { return false; } }
 
-  return { read, remember, forget, KEY, readProfile, rememberProfile, forgetProfile, PROFILE_KEY };
+  return { read, remember, forget, KEY, readProfile, peekProfile, rememberProfile, forgetProfile, PROFILE_KEY };
 });
