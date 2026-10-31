@@ -84,6 +84,7 @@ const EXPECTED = [
   'catalog/catalog-firestore.js', 'catalog/catalog-menu.js', 'catalog/catalog-transform.js', 'catalog/catalog-integrity.js', 'catalog/content-hash.js', 'catalog/canonical-json.js',
   'catalog/form-menu-source.js', 'catalog/menu-structure-rows.js', 'tools/migrations/2026-10-26-menu-structure.json',   // plan 4 GATED (G1): the reviewed rows + their data file (pure / data)
   'catalog/redeem-source.js', 'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'menu-pricing.js', 'price-valid.js', 'rewards-redeem-config.js',
+  'photos/branch-photos.js', 'photos/served-photos.js',   // DISH PHOTOS A2 step 12 (E-P4): the branch's published photo cards (pure + one Firestore read)
 ].sort();
 const CONDITIONAL = ['lib/emulator-endpoint.js'];   // reached via lib/admin.js only when an emulator env var is set
 const FORBIDDEN = /^(catalog\/catalog-publish\.js|catalog\/portal-reads\.js|stats\/.*|factura\/.*|index\.js|merchant\/merchant-location\.js|merchant\/merchant-orders\.js|portal\/functions\.js)$/;

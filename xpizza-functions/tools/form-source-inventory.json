@@ -1809,6 +1809,7 @@
   "merchant/merchant-transitions.js",
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
+  "photos/branch-photos.js",
   "photos/crops.js",
   "photos/edit-io.js",
   "photos/editable-io.js",
@@ -2882,6 +2883,10 @@
    "lifts": []
   },
   "merchant/merchant-wiring.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/branch-photos.js": {
    "pins": [],
    "lifts": []
   },
