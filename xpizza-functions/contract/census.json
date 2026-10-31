@@ -48585,7 +48585,8 @@
    "key": "xpizza-functions/checkout-guest-gate.js:chargeUidOf>anon:setTimeout",
    "line": 89,
    "delay": "deadlineMs",
-   "class": "io-deadline"
+   "class": "io-deadline",
+   "reviewed": "PLAN-guest-checkout-server, Codex S2 r1 P2-4 (3a): chargeUidOf races chargeOnlineOrder's own identity resolution (verifyIdToken + the tombstone read) against deadlineMs (default 1500, mirroring the handler's 1.5 s identity deadline); on expiry it resolves null (= guest), which only selects a typed non-online refusal reason before the handler's generic online-only 400. Never delays an answer past 1.5 s; never writes. 2e REVIEWED 2026-10-31: io-deadline CONFIRMED; REAL"
   },
   {
    "key": "xpizza-functions/client-floor.js:read>anon>anon:setTimeout",
