@@ -1811,6 +1811,7 @@
   "photos/photo-state.js",
   "photos/pipeline.js",
   "photos/process.js",
+  "photos/publish-photos.js",
   "photos/signer.js",
   "photos/sniff.js",
   "photos/upload-start.js",
@@ -2880,6 +2881,10 @@
    ]
   },
   "photos/process.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/publish-photos.js": {
    "pins": [],
    "lifts": []
   },
