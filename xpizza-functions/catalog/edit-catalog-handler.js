@@ -419,7 +419,8 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
 
   // Everything below is read-only and in memory: the live catalog and the built draft were read and built
   // BEFORE the write (above).
-  const diff = catalogDiff(live, draftBuilt);
+  // DISH PHOTOS A2 step 9: the reviewed diff carries the photo lines (active meta/photos vs the stored draft map) when wired
+  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: photoMap } : draftBuilt);
   /* 🔴 THE TOKEN MUST HASH WHAT PUBLISH WILL HASH, AND THAT IS THE STORED DRAFT — NOT THE BODY.
      This hashed the incoming `source`, and publish hashes the draft it reads BACK. Those agreed only
      while the two were the same bytes, which stopped being true the moment the server began owning a

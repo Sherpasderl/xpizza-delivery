@@ -80,6 +80,8 @@ const withPhotos = (map, src = base()) => ({ ...src, photos: map });
     assert.deepStrictEqual(db.state.source.data.photos, { [KEY]: { state: 'pid', pid: P1 }, [KEY2]: { state: 'removed' } }, 'EDIT-PHOTOS-STORED');
     assert.deepStrictEqual(r.body.source.photos, db.state.source.data.photos, 'EDIT-PHOTOS-RETURNED');
     assert.deepStrictEqual(p.calls.attach, [[P1]], 'EDIT-PHOTOS-ATTACH-NEW-PID');
+    assert.deepStrictEqual(r.body.diff.changed.filter((l) => l.field === 'photo').map((l) => [l.key, l.old.kind, l.new.kind]).sort(),
+      [[KEY, 'legacy', 'pid'], [KEY2, 'legacy', 'removed']].sort(), 'EDIT-PHOTOS-DIFF-LINES (step 9: the reviewed diff carries the photo lines)');
     const p2 = photosDep({ registry: { [P1]: 'draft' } });
     const again = await save(withPhotos({ [KEY]: { state: 'pid', pid: P1 } }, db.state.source.data), { photos: p2.dep, db });
     void again; assert.deepStrictEqual(p2.calls.attach, [], 'EDIT-PHOTOS-ECHO-NO-ATTACH');
