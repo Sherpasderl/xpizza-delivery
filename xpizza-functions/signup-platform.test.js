@@ -271,5 +271,14 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
   }
   ok('signup family: getSignupConfig / completeProfile (+ name) / setPromos / googleStart take EITHER restaurant_id (forms, unchanged) OR context:platform (platform legal, consent/_platform, platform audiences); both / neither ⇒ 400');
 
+  // ── 10. rules: grants_used is server-only (the grant's use record: uid, recorded inputs, legal versions) ──
+  {
+    const rules = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'xpizza-reference', 'database.rules.json'), 'utf8')).rules;
+    assert.ok(rules.grants_used, 'grants_used has a rule');
+    assert.strictEqual(rules.grants_used['.read'], false); assert.strictEqual(rules.grants_used['.write'], false);
+    assert.deepStrictEqual(Object.keys(rules.grants_used).filter((x) => !x.startsWith('.')), [], 'no nested grant');
+  }
+  ok('rules: grants_used is server-only with no nested grant');
+
   console.log(`\nsignup-platform: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

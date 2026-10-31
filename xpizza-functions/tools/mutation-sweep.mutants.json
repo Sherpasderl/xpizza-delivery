@@ -23123,5 +23123,137 @@
    "node",
    "checkout-guest-gate.test.js"
   ]
+ },
+ {
+  "id": "guest-23",
+  "slice": "guest",
+  "label": "S3a: verifyConsume ignores the challenge scope (forms ⇄ platform cross-use)",
+  "file": "otp-lib.js",
+  "from": "  if (v && (v.scope === undefined ? undefined : v.scope) !== scope) return { next: v, outcome: 'fail' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-24",
+  "slice": "guest",
+  "label": "S3a: a platform code is issued without its scope (the forms could verify it)",
+  "file": "signup-platform.js",
+  "from": "return r.next ? { ...r.next, scope: P } : r.next; });",
+  "to": "return r.next; });",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-25",
+  "slice": "guest",
+  "label": "S3a: scopeOf accepts restaurant_id AND context together",
+  "file": "signup-endpoints.js",
+  "from": "    return src.context === 'platform' && (src.restaurant_id === undefined || src.restaurant_id === null) ? S.PLATFORM_SCOPE : null;",
+  "to": "    return src.context === 'platform' ? S.PLATFORM_SCOPE : null;",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-26",
+  "slice": "guest",
+  "label": "S3b: the grant re-applies consent / email / name on every replay (a later member edit is overwritten)",
+  "file": "signup-platform.js",
+  "from": "      if (stored.applied !== true) {",
+  "to": "      if (true) {",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-27",
+  "slice": "guest",
+  "label": "S3b: the phone is not re-derived from the order (OTP.phoneHash(guest_verified.phone) unchecked)",
+  "file": "signup-platform.js",
+  "from": " || OTP.phoneHash(gv.phone) !== gv.phone_hash) return bad(400, 'grant_invalid');",
+  "to": ") return bad(400, 'grant_invalid');",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-28",
+  "slice": "guest",
+  "label": "S3d: getMyProfile accepts extra query parameters (an identifier could ride along)",
+  "file": "signup-platform.js",
+  "from": "if (q.context !== 'platform' || Object.keys(q).length !== 1 || Object.keys(body).length)",
+  "to": "if (q.context !== 'platform' || Object.keys(body).length)",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-29",
+  "slice": "guest",
+  "label": "S3a: a LEGACY account (created before rollout_at) is routed into completion",
+  "file": "signup-core.js",
+  "from": "  if (created < cfg.rollout_at) return 'off';\n",
+  "to": "",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-30",
+  "slice": "guest",
+  "label": "S3c: the legal CLI writes without --apply (no dry run)",
+  "file": "tools/platform-legal.js",
+  "from": "  if (!apply) return { ok: true, dryRun: true, changes };\n",
+  "to": "",
+  "command": [
+   "node",
+   "tools/platform-legal.test.js"
+  ]
+ },
+ {
+  "id": "guest-31",
+  "slice": "guest",
+  "label": "S3: promos is always present (absent consent would read as false, not inert)",
+  "file": "signup-core.js",
+  "from": "  if (pr && typeof pr.value === 'boolean') out.promos = pr.value;",
+  "to": "  out.promos = !!(pr && pr.value);",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-32",
+  "slice": "guest",
+  "label": "S3a: the platform sender config is checked after the reservations (budgets burned)",
+  "file": "signup-platform.js",
+  "from": "      if (!deps.senderConfigured(env, 'SIGNUP_OTP_TEMPLATE_PLATFORM')) {",
+  "to": "      if (false) {",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-33",
+  "slice": "guest",
+  "label": "S3b: a grant already used by ANOTHER uid is resumed",
+  "file": "signup-platform.js",
+  "from": "      if (!stored || stored.uid !== uid) return bad(400, 'grant_invalid');",
+  "to": "      if (!stored) return bad(400, 'grant_invalid');",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
  }
 ]
