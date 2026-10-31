@@ -4,7 +4,7 @@
 //      outside a hunk, a duplicated and a missing hunk are each detected; non-vacuity.
 //   2. SAME-LINE: index.js has exactly the base's line count, and exactly the two hunk lines differ.
 //   3. The fold variant: unapplyPhotosFold(foldPortalSplit()) strips the re-exports (foldPortalSplit consumes the top hunk).
-//   4. The early branch is the EXACT pinned text: a frozen Set of the two names, exact Set.has(FUNCTION_TARGET), the marker,
+//   4. The early branch is the EXACT pinned text: a frozen Set of the three names, exact Set.has(FUNCTION_TARGET), the marker,
 //      module.exports = photos/functions, return — after the ops branch on the same line.
 const assert = require('assert');
 const fs = require('fs');
@@ -53,12 +53,12 @@ assert.throws(() => unapplyPhotosFold(folded), /occurs 0 times/, 'applying it tw
 ok('FOLD: unapplyPhotosFold(foldPortalSplit()) leaves no photos byte; the early branch is consumed by the portal fold');
 
 // ── 4. the exact pinned early branch ──
-const PHOTOS_BRANCH = " const PHOTOS_TARGETS = Object.freeze(new Set(['photoUploadStart', 'photoProcess']));"
+const PHOTOS_BRANCH = " const PHOTOS_TARGETS = Object.freeze(new Set(['photoUploadStart', 'photoProcess', 'photoSweep']));"
   + " if (PHOTOS_TARGETS.has(process.env.FUNCTION_TARGET)) { console.log('photos_entry', process.env.FUNCTION_TARGET); module.exports = require('./photos/functions'); return; }";
 const setLine = rl.find((l) => l.startsWith('const PORTAL_ISOLATED_TARGETS = '));
 assert.ok(setLine.includes("module.exports = require('./portal/ops-functions'); return; }" + PHOTOS_BRANCH), '🔴 the photos early branch is not the exact pinned text, right after the ops branch');
 assert.strictEqual(real.split('PHOTOS_TARGETS').length - 1, 2, 'the photos Set is declared once and read once');
-for (const name of ['photoUploadStart', 'photoProcess']) assert.ok(HUNKS[1].now.includes(`exports.${name} = require('./photos/functions').${name};`), `the full load re-exports ${name}`);
+for (const name of ['photoUploadStart', 'photoProcess', 'photoSweep']) assert.ok(HUNKS[1].now.includes(`exports.${name} = require('./photos/functions').${name};`), `the full load re-exports ${name}`);
 ok('EARLY BRANCH: the exact pinned photos branch (frozen Set of 2, exact Set.has, marker, module.exports = photos/functions, return) after the ops branch; both re-exported on the full load');
 
 console.log(`\nphotos-wiring.guard: OK (${n})`);

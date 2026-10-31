@@ -7,6 +7,7 @@
 require('../lib/admin');   // the ONE Admin app — before any module that may touch it, as in index.js
 const crypto = require('crypto');
 const { onRequest } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');   // A2 step 13: photoSweep
 const { getDatabase } = require('firebase-admin/database');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
@@ -68,4 +69,27 @@ exports.photoProcess = onRequest(
       processImage: (buf, crops) => require('./pipeline').processImage(buf, crops),   // lazy: sharp loads only here
     }, { uid, rid: body.rid, uploadId: body.uploadId, crops: body.crops });
   }),
+);
+
+// DISH PHOTOS A2 step 13 (PLAN-dish-photos r2 §2.6; advisor ruling #5) — the daily SWEEPER, in this same isolation group. Its mode is RTDB
+// config/photos_sweep: exactly 'dry_run' | 'live', else OFF (absent = off: nothing is read beyond the flag). 'live' while
+// PHOTOS_PUBLIC_BUCKET is unset runs as 'dry_run'. One instance; every restaurant in photo_registry, one at a time (photos/sweep-io.js).
+exports.photoSweep = onSchedule(
+  { schedule: 'every day 04:30', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 540, memory: '512MiB', maxInstances: 1 },
+  async () => {
+    const { modeOf, makeGcsDeleter, runSweep } = require('./sweep-io');
+    const { sweepRid } = require('./sweep-core');
+    const { PHOTOS_PUBLIC_BUCKET } = require('./editable-io');
+    const { getActiveVersionId } = require('../catalog/catalog-firestore');
+    const fs = getFirestore();
+    const pubName = (PHOTOS_PUBLIC_BUCKET.value() || '').trim();
+    const mode = await modeOf(getDatabase(), pubName);
+    const r = await runSweep({
+      mode, sweepRid, fs, now: Date.now, newClaimId: randomId, log: console,
+      listRids: async () => (await fs.collection('photo_registry').listDocuments()).map((d) => d.id),
+      priv: makeGcsDeleter(getStorage().bucket()), pub: pubName ? makeGcsDeleter(getStorage().bucket(pubName)) : null,
+      activeVersionId: (rid) => getActiveVersionId(fs, rid),
+    });
+    console.log('photo_sweep_done', JSON.stringify({ mode, rids: (r.results || []).length, failed: r.failed || [] }));
+  },
 );

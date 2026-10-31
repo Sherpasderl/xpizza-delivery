@@ -14,7 +14,7 @@ const { spawnSync } = require('child_process');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const WATCHDOG = setTimeout(() => { console.error('photos-split: FAILED — watchdog (300 s)'); process.kill(process.pid, 'SIGKILL'); }, 300000); WATCHDOG.unref();
 const FN = path.join(__dirname, '..');
-const PHOTOS = ['photoUploadStart', 'photoProcess'];
+const PHOTOS = ['photoUploadStart', 'photoProcess', 'photoSweep'];
 const CHILD = `
   const path = require('path');
   const m = require(path.join(${JSON.stringify(FN)}, 'index.js'));
