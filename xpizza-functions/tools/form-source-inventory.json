@@ -1157,6 +1157,7 @@
     "xpizza-functions/contract/timer-bounds.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
     "xpizza-functions/contract/tracer.test.js",
+    "xpizza-functions/pay-rate.test.js",
     "xpizza-functions/test/brands-rules.emulator.test.js",
     "xpizza-functions/test/driver-assignment-parity.emulator.test.js",
     "xpizza-functions/test/driver-cuadre-rules.emulator.test.js",
@@ -1835,6 +1836,7 @@
   "merchant/merchant-transitions.js",
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
+  "pay-rate.js",
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
   "pixelpay-hosted-charge.js",
@@ -3083,6 +3085,12 @@
   "merchant/merchant-wiring.js": {
    "pins": [],
    "lifts": []
+  },
+  "pay-rate.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/pay-rate.test.js"
+   ]
   },
   "pixelpay-charge.js": {
    "pins": [],
