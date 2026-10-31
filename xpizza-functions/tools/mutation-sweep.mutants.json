@@ -23153,8 +23153,8 @@
   "slice": "guest",
   "label": "S3a: scopeOf accepts restaurant_id AND context together",
   "file": "signup-endpoints.js",
-  "from": "    return src.context === 'platform' && (src.restaurant_id === undefined || src.restaurant_id === null) ? S.PLATFORM_SCOPE : null;",
-  "to": "    return src.context === 'platform' ? S.PLATFORM_SCOPE : null;",
+  "from": "return src.context === 'platform' && !Object.prototype.hasOwnProperty.call(src, 'restaurant_id') ? S.PLATFORM_SCOPE : null;",
+  "to": "return src.context === 'platform' ? S.PLATFORM_SCOPE : null;",
   "command": [
    "node",
    "signup-platform.test.js"
@@ -23163,10 +23163,10 @@
  {
   "id": "guest-26",
   "slice": "guest",
-  "label": "S3b: the grant re-applies consent / email / name on every replay (a later member edit is overwritten)",
+  "label": "S3b: the apply-once marker is ignored — a replay re-applies consent / email (a later member edit is overwritten)",
   "file": "signup-platform.js",
-  "from": "      if (stored.applied !== true) {",
-  "to": "      if (true) {",
+  "from": "        if (cur && cur.grants_applied && cur.grants_applied[v.payload.order_id] === true) { outcome = 'already'; return undefined; }\n",
+  "to": "",
   "command": [
    "node",
    "signup-platform.test.js"
@@ -23251,6 +23251,102 @@
   "file": "signup-platform.js",
   "from": "      if (!stored || stored.uid !== uid) return bad(400, 'grant_invalid');",
   "to": "      if (!stored) return bad(400, 'grant_invalid');",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-34",
+  "slice": "guest",
+  "label": "S3b: the apply transaction ignores the tombstone (Codex S3 r1 P1: consent restored beside deleted_at)",
+  "file": "signup-platform.js",
+  "from": "        if (cur && cur.deleted_at != null) { outcome = 'deleted'; return undefined; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-35",
+  "slice": "guest",
+  "label": "S3b: no tombstone check immediately before the mint (Codex S3 r1 P1: a token for a deleted uid)",
+  "file": "signup-platform.js",
+  "from": "      if (await isDeleted(db, uid)) return bad(403, 'deleted');\n      const token = await deps.getAuth().createCustomToken(uid, { customer: true });\n      await SE.refreshActivity(db, uid, t);",
+  "to": "      const token = await deps.getAuth().createCustomToken(uid, { customer: true });\n      await SE.refreshActivity(db, uid, t);",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-36",
+  "slice": "guest",
+  "label": "S3b: the profile this call created is not undone when the deletion wins (resurrection)",
+  "file": "signup-platform.js",
+  "from": "        if (isNew) await undoCreatedProfile(db, uid, freshProfile);\n",
+  "to": "",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-37",
+  "slice": "guest",
+  "label": "S3: the profile is overwritten instead of created-if-absent (Codex S3 r1 P2: a grant's name erased)",
+  "file": "signup-platform.js",
+  "from": "      return cur === null ? fresh : { ...cur, last_login: now };",
+  "to": "      return fresh;",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-38",
+  "slice": "guest",
+  "label": "S3b: the name write recreates a deleted profile",
+  "file": "signup-platform.js",
+  "from": "      await db.ref(`user_profiles/${uid}`).transaction((cur) => (cur === null ? null\n",
+  "to": "      await db.ref(`user_profiles/${uid}`).transaction((cur) => (cur === null ? { name: stored.inputs.name }\n",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-39",
+  "slice": "guest",
+  "label": "S3b: a retry after a failed name write never fills the recorded name",
+  "file": "signup-platform.js",
+  "from": "(outcome === 'applied' || typeof cur.name !== 'string' ?",
+  "to": "(outcome === 'applied' ?",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-40",
+  "slice": "guest",
+  "label": "S3: an explicit null restaurant_id passes the platform XOR (signup-platform)",
+  "file": "signup-platform.js",
+  "from": "b.context === 'platform' && !Object.prototype.hasOwnProperty.call(b, 'restaurant_id');",
+  "to": "b.context === 'platform' && (b.restaurant_id === undefined || b.restaurant_id === null);",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-41",
+  "slice": "guest",
+  "label": "S3: an explicit null restaurant_id passes the platform XOR (signup-endpoints scopeOf)",
+  "file": "signup-endpoints.js",
+  "from": "return src.context === 'platform' && !Object.prototype.hasOwnProperty.call(src, 'restaurant_id') ? S.PLATFORM_SCOPE : null;",
+  "to": "return src.context === 'platform' && (src.restaurant_id === undefined || src.restaurant_id === null) ? S.PLATFORM_SCOPE : null;",
   "command": [
    "node",
    "signup-platform.test.js"

@@ -31,8 +31,9 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
   // context:'platform' (the customer app) — never both, never neither. → the scope (a rid or '_platform') | null (bad_request)
   const scopeOf = (o) => {
     const src = o || {};
-    if (src.context === undefined) return signupRidOf(src.restaurant_id);
-    return src.context === 'platform' && (src.restaurant_id === undefined || src.restaurant_id === null) ? S.PLATFORM_SCOPE : null;
+    if (!Object.prototype.hasOwnProperty.call(src, 'context')) return signupRidOf(src.restaurant_id);   // the forms: today's exact path
+    // Codex S3 r1 P2: EXACTLY one selector — the restaurant_id KEY at all (null included) refuses a platform request
+    return src.context === 'platform' && !Object.prototype.hasOwnProperty.call(src, 'restaurant_id') ? S.PLATFORM_SCOPE : null;
   };
   const isPlatform = (scope) => scope === S.PLATFORM_SCOPE;
   const ipOf = (req) => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';

@@ -24,6 +24,7 @@ function fakeDb() {
   const set = (p, v) => { const ks = parts(p); if (!ks.length) throw new Error('root set'); let o = tree; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (v === null || v === undefined) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = clone(v); };
   const snap = (v) => ({ exists: () => v != null, val: () => (v == null ? null : clone(v)) });
   const FAIL = { at: null };   // inject a failure: a path prefix whose next write throws once
+  const HOOK = { after: null, fn: null };   // run fn ONCE right after the next transaction on a path with this prefix (a race interleaving)
   const guard = (p) => { if (FAIL.at && String(p).startsWith(FAIL.at)) { FAIL.at = null; throw new Error(`injected failure at ${p}`); } };
   const ref = (p = '') => ({
     get: async () => snap(get(p)), once: async () => snap(get(p)),
@@ -31,23 +32,29 @@ function fakeDb() {
     remove: async () => { guard(p); set(p, null); },
     update: async (m) => { for (const k of Object.keys(m)) guard(p ? `${p}/${k}` : k); for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, v); },
     child: (c) => ref(p ? `${p}/${c}` : c),
-    transaction: async (fn) => { guard(p); const next = fn(clone(get(p)) ?? null); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; set(p, next); return { committed: true, snapshot: snap(get(p)) }; },
+    transaction: async (fn) => {
+      guard(p); const next = fn(clone(get(p)) ?? null);
+      const out = next === undefined ? { committed: false, snapshot: snap(get(p)) } : (set(p, next), { committed: true, snapshot: snap(get(p)) });
+      if (HOOK.after && String(p).startsWith(HOOK.after)) { const f = HOOK.fn; HOOK.after = null; HOOK.fn = null; await f(); }
+      return out;
+    },
   });
-  return { tree, get, set, ref, FAIL };
+  return { tree, get, set, ref, FAIL, HOOK };
 }
 function res() { const r = { statusCode: 0, body: null, headers: {} }; r.status = (c) => { r.statusCode = c; return r; }; r.json = (b) => { r.body = b; return r; }; r.set = (k, v) => { r.headers[k] = v; return r; }; return r; }
 function harness({ legal = true, rollout = 1, env = {} } = {}) {
   const db = fakeDb(); let clock = 1.8e12; const sent = []; const minted = [];
   if (legal) db.set('platform_config/legal', { terms_url: 'https://sherpa.test/t', privacy_url: 'https://sherpa.test/p', terms_version: 't1', privacy_version: 'p1', promos_copy_version: 'c1' });
   if (rollout !== null) db.set('signup_config/rollout_at', rollout);
-  const auth = { createCustomToken: async (uid, claims) => { minted.push([uid, claims]); return `tok:${uid}`; }, verifyIdToken: async (t) => { const [kind, uid] = String(t).split(':'); if (kind === 'cust') return { uid, customer: true }; if (kind === 'staff') return { uid }; throw new Error('bad'); } };
+  const mintFail = { once: false };
+  const auth = { createCustomToken: async (uid, claims) => { if (mintFail.once) { mintFail.once = false; throw new Error('injected mint failure'); } minted.push([uid, claims]); return `tok:${uid}`; }, verifyIdToken: async (t) => { const [kind, uid] = String(t).split(':'); if (kind === 'cust') return { uid, customer: true }; if (kind === 'staff') return { uid }; throw new Error('bad'); } };
   const H = makeSignupPlatform({ getDatabase: () => db, getAuth: () => auth, checkRateLimit: async () => ({ allowed: true, retryAfterSec: 0 }), now: () => clock,
     env: { ULTRAMSG_INSTANCE_ID_PLATFORM: 'i', ULTRAMSG_TOKEN_PLATFORM: 't', SIGNUP_OTP_TEMPLATE_PLATFORM: 'Sherpa: {code}', ...env },
     sendPlatformOtp: require('./checkout-otp').sendPlatformOtp, senderConfigured: require('./checkout-otp').platformSenderConfigured, isSendConfirmed: () => true,
     fetchImpl: async (u, init) => { sent.push(new URLSearchParams(init.body).get('body')); return { ok: true, json: async () => ({ sent: 'true' }) }; },
     grantSecret: () => SECRET });
   const call = async (fn, body, extra = {}) => { const r = res(); const req = { method: 'POST', body, ip: '1.1.1.1', headers: {}, query: {}, get: (h) => (extra.headers || {})[h], ...extra }; await (fn === 'requestOtp' || fn === 'verifyOtp' ? H[fn](req, r, OTP) : H[fn](req, r)); return r; };
-  return { db, sent, minted, call, tick: (ms) => { clock += ms; }, now: () => clock, code: () => sent[sent.length - 1].match(/\d{6}/)[0] };
+  return { db, sent, minted, mintFail, call, tick: (ms) => { clock += ms; }, now: () => clock, code: () => sent[sent.length - 1].match(/\d{6}/)[0] };
 }
 const PHONE = '+50499990000', DIGITS = '50499990000', PH = OTP.phoneHash(DIGITS);
 const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
@@ -279,6 +286,85 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
     assert.deepStrictEqual(Object.keys(rules.grants_used).filter((x) => !x.startsWith('.')), [], 'no nested grant');
   }
   ok('rules: grants_used is server-only with no nested grant');
+
+  // ── 11. Codex S3 r1 P1: a deletion racing a redemption never resurrects the account and never gets a token ──
+  {
+    const ACCOUNT = require('./account-lib');
+    // the REAL deletion sequence (signup-endpoints deleteAccountCore): the BC2 tombstone FIRST, then today's removals
+    const deleteNow = (t, uid) => async () => { await S.tombstone(t.db, uid, { now: t.now() }); await t.db.ref().update(ACCOUNT.accountDeleteUpdates(uid, PH, t.now())); };
+    for (const after of ['grants_used', 'user_profiles', 'user_private']) {
+      const t = harness();
+      const grant = await grantSetup(t);
+      t.db.HOOK.after = after;
+      t.db.HOOK.fn = async () => deleteNow(t, t.db.get(`phone_index/${PH}`) || Object.keys(t.db.get('user_profiles') || {})[0])();
+      const r = await t.call('redeemSignupGrant', redeemBody(grant));
+      const uid = t.db.get('grants_used/XPZ-G1/uid');
+      assert.deepStrictEqual([r.statusCode, r.body], [403, { ok: false, reason: 'deleted' }], `🔴 deletion after the ${after} step ⇒ refused`);
+      assert.strictEqual(t.minted.length, 0, `🔴 deletion after ${after}: NO token for the tombstoned uid`);
+      assert.strictEqual(t.db.get(`user_profiles/${uid}`), undefined, `🔴 deletion after ${after}: the profile is NOT resurrected`);
+      assert.deepStrictEqual(Object.keys(t.db.get(`user_private/${uid}`)), ['deleted_at'], `🔴 deletion after ${after}: no consent / email restored beside the tombstone`);
+    }
+  }
+  ok('Codex S3 r1 P1: a deletion completing after the use record / the profile / the apply ⇒ 403 deleted, NO token, the profile not resurrected, user_private stays exactly {deleted_at}');
+
+  // ── 12. a failure AFTER the apply (before the name / before the mint), then a retry ──
+  {
+    const t = harness();
+    const grant = await grantSetup(t);
+    t.db.HOOK.after = 'user_private'; t.db.HOOK.fn = async () => { t.db.FAIL.at = 'user_profiles'; };   // the apply commits, the name write then fails
+    assert.strictEqual((await t.call('redeemSignupGrant', redeemBody(grant))).statusCode, 500);
+    const uid = t.db.get(`phone_index/${PH}`);
+    assert.strictEqual(t.db.get(`user_profiles/${uid}/name`), undefined, 'premise: applied, name not yet written');
+    let r = await t.call('redeemSignupGrant', redeemBody(grant, { name: 'Otro' }));
+    assert.strictEqual(r.statusCode, 200); assert.strictEqual(t.db.get(`user_profiles/${uid}/name`), 'Ana Pérez', 'the retry fills the RECORDED name (never the new input)');
+    assert.strictEqual(t.db.get(`user_private/${uid}/grants_applied/XPZ-G1`), true);
+    // the mint fails after a complete apply ⇒ a retry only re-mints (nothing re-applied)
+    const t2 = harness(); const g2 = await grantSetup(t2);
+    t2.mintFail.once = true;
+    assert.strictEqual((await t2.call('redeemSignupGrant', redeemBody(g2))).statusCode, 500);
+    const uid2 = t2.db.get(`phone_index/${PH}`);
+    t2.db.set(`user_private/${uid2}/email`, 'editado@example.com');
+    r = await t2.call('redeemSignupGrant', redeemBody(g2));
+    assert.deepStrictEqual([r.statusCode, r.body.token, r.body.name], [200, `tok:${uid2}`, 'Ana Pérez']);
+    assert.strictEqual(t2.db.get(`user_private/${uid2}/email`), 'editado@example.com', 'nothing re-applied after a failed mint');
+  }
+  ok('a failure after the apply (the name write, or the mint) then a retry ⇒ 200, the RECORDED name filled once, nothing re-applied, a token for the claimed uid');
+
+  // ── 13. Codex S3 r1 P2: platform verifyOtp never overwrites a profile a concurrent grant redemption created ──
+  {
+    const t = harness();
+    const grant = await grantSetup(t);
+    await t.call('requestOtp', plat());
+    // pause verify right after it claimed the uid (phone_index txn); a grant redemption for the same phone completes; verify resumes
+    t.db.HOOK.after = 'phone_index'; t.db.HOOK.fn = async () => { const x = await t.call('redeemSignupGrant', redeemBody(grant)); assert.strictEqual(x.statusCode, 200); };
+    const r = await t.call('verifyOtp', plat({ code: t.code() }));
+    const uid = t.db.get(`phone_index/${PH}`);
+    assert.strictEqual(r.body.ok, true);
+    assert.strictEqual(t.db.get(`user_profiles/${uid}/name`), 'Ana Pérez', '🔴 the grant-created profile (name) survives the interleaved verify');
+    assert.deepStrictEqual([r.body.is_new, r.body.name, r.body.completion], [false, 'Ana Pérez', 'complete']);
+  }
+  ok('Codex S3 r1 P2: verify paused after the uid claim, a grant redemption completes, verify resumes ⇒ the profile (and its name) is never overwritten; is_new false');
+
+  // ── 14. Codex S3 r1 P2: EXACTLY one selector — an explicit null restaurant_id refuses a platform request (and context on a form) ──
+  {
+    const t = harness();
+    for (const fn of ['requestOtp', 'verifyOtp']) {
+      const r = await t.call(fn, plat({ restaurant_id: null, code: '123456' }));
+      assert.deepStrictEqual([r.statusCode, r.body], [400, { ok: false, reason: 'bad_request' }], `${fn}: {context:'platform', restaurant_id:null}`);
+    }
+    assert.strictEqual(t.sent.length, 0, '🔴 no OTP sent');
+    const grant = await grantSetup(t);
+    assert.deepStrictEqual((await t.call('redeemSignupGrant', { ...redeemBody(grant), restaurant_id: null })).body, { ok: false, reason: 'bad_request' });
+    const db = fakeDb(); db.set('platform_config/legal', { terms_url: 'u', privacy_url: 'p', terms_version: 't', privacy_version: 'p', promos_copy_version: 'c' });
+    const H = SE.makeSignup({ getDatabase: () => db, getAuth: () => ({ verifyIdToken: async (x) => ({ uid: x, customer: true }) }), checkRateLimit: async () => ({ allowed: true }),
+      resolveRid: (raw) => (raw === 'x_pizza' ? { restaurantId: 'x_pizza' } : raw == null ? { restaurantId: 'x_pizza', defaulted: true } : { error: 'unknown' }), env: {} });
+    const c = async (fn, o) => { const r = res(); await H[fn]({ method: o.method || 'POST', body: o.body || {}, query: o.query || {}, headers: {}, ip: '1', get: () => 'u_' + 'd'.repeat(24) }, r); return r.statusCode; };
+    for (const [fn, o] of [['getSignupConfig', { method: 'GET', query: { context: 'platform', restaurant_id: '' } }], ['googleStart', { body: { context: 'platform', restaurant_id: null, session_id: 's'.repeat(24) } }],
+      ['googleSignIn', { body: { context: 'platform', restaurant_id: null, session_id: 's'.repeat(24), id_token: 'x' } }], ['completeProfile', { body: { context: 'platform', restaurant_id: null, email: 'a@b.hn', accept_terms: true, promos: true } }],
+      ['setPromos', { body: { context: 'platform', restaurant_id: null, value: true } }], ['completeProfile', { body: { context: null, restaurant_id: 'x_pizza', email: 'a@b.hn', accept_terms: true, promos: true } }]])
+      assert.strictEqual(await c(fn, o), 400, `${fn}: ${JSON.stringify(o.body || o.query)}`);
+  }
+  ok('Codex S3 r1 P2: an explicit null restaurant_id refuses every platform endpoint (requestOtp sends nothing); a context key (even null) refuses a forms-shaped body — the forms never send context');
 
   console.log(`\nsignup-platform: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

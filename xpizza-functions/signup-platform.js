@@ -23,7 +23,8 @@ const { parseE164 } = require('./phone-countries');
 
 const P = S.PLATFORM_SCOPE;
 const NAME_MAX = 80;
-const isPlatformBody = (b) => !!b && b.context === 'platform' && (b.restaurant_id === undefined || b.restaurant_id === null);
+// Codex S3 r1 P2: EXACTLY one selector — a platform request carrying the restaurant_id KEY at all (null included) is refused
+const isPlatformBody = (b) => !!b && b.context === 'platform' && !Object.prototype.hasOwnProperty.call(b, 'restaurant_id');
 const newUid = () => 'u_' + crypto.randomBytes(12).toString('hex');
 const ipOf = (req) => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
 
@@ -45,6 +46,21 @@ function makeSignupPlatform(deps) {
   const isDeleted = async (db, uid) => {
     const [gone, priv] = await Promise.all([db.ref(`deleted_uids/${uid}`).once('value'), db.ref(`user_private/${uid}/deleted_at`).once('value')]);
     return gone.exists() || priv.exists();
+  };
+  // Codex S3 r1 P2: the profile, CREATE-IF-ABSENT in one transaction (never overwrites a profile a concurrent sign-in / grant made).
+  // → { created, prof } from the FINAL run (the SDK's uncached first run sees null; the server re-runs it with the real value)
+  const ensureProfile = async (db, uid, fresh, now) => {
+    let created = false;
+    const tx = await db.ref(`user_profiles/${uid}`).transaction((cur) => {
+      created = cur === null;
+      return cur === null ? fresh : { ...cur, last_login: now };
+    });
+    return { created, prof: tx.snapshot.val() };
+  };
+  // undo ONLY the profile THIS call created (same created_at + phone_hash) — after a deletion raced it
+  const undoCreatedProfile = async (db, uid, fresh) => {
+    await db.ref(`user_profiles/${uid}`).transaction((cur) => (cur === null ? null
+      : (cur.created_at === fresh.created_at && cur.phone_hash === fresh.phone_hash ? null : undefined)));
   };
 
   // ── S3a requestOtp ──
@@ -106,16 +122,13 @@ function makeSignupPlatform(deps) {
       if (outcome !== 'ok') return reason === 'too_many_attempts' ? fail(reason, { retry_in_s: Math.max(1, Math.ceil(((expiresAt || t) - t) / 1000)) }) : fail(reason);
       const uid = await claimUid(db, pHash);
       const t2 = now();
-      const profRef = db.ref('user_profiles/' + uid);
-      const prof = (await profRef.once('value')).val();
-      if (!prof) await profRef.set({ phone: OTP.normalizePhone(p.e164), phone_hash: pHash, created_at: t2, last_login: t2 });
-      else await profRef.child('last_login').set(t2);
+      const { created, prof } = await ensureProfile(db, uid, { phone: OTP.normalizePhone(p.e164), phone_hash: pHash, created_at: t2, last_login: t2 }, t2);
       await otpRef.remove();   // one-time use
       const token = await deps.getAuth().createCustomToken(uid, { customer: true });   // mint ONLY after verified + consumed
       // NO signup-time welcome credit for the platform scope (plan §3.1)
       await SE.refreshActivity(db, uid, t2);
       const [completion, profile] = await Promise.all([S.completionState(db, uid, P, env), S.profileOf(db, uid, P)]);
-      const out = { ok: true, token, is_new: !prof, name: (prof && prof.name) || null, completion, profile };
+      const out = { ok: true, token, is_new: created, name: (!created && prof && prof.name) || null, completion, profile };
       if (b.link_ticket != null) out.link = await SE.redeemOtpTicket(db, { body: b, uid, phoneHash: pHash, rid: P, consumedOtp: otpTx.snapshot.val(), now: t2 });
       return res.status(200).json(out);
     } catch (e) {
@@ -158,26 +171,36 @@ function makeSignupPlatform(deps) {
       const used = await db.ref(`grants_used/${v.payload.order_id}`).transaction((cur) => (cur === null ? fresh : undefined));
       const stored = used.snapshot.val();
       if (!stored || stored.uid !== uid) return bad(400, 'grant_invalid');
-      // 3. the profile (create-if-absent with the ORDER's phone; else last_login)
-      let isNew = false;
-      await db.ref(`user_profiles/${uid}`).transaction((cur) => {
-        isNew = cur === null;
-        return cur === null ? { phone: gv.phone, phone_hash: gv.phone_hash, created_at: t, last_login: t } : { ...cur, last_login: t };
+      // 3. the profile: create-if-absent with the ORDER's phone (a transaction — never overwrites; else last_login)
+      const freshProfile = { phone: gv.phone, phone_hash: gv.phone_hash, created_at: t, last_login: t };
+      const { created: isNew } = await ensureProfile(db, uid, freshProfile, t);
+      // 4. apply ONCE — ONE transaction on user_private/{uid}, the node deletion tombstones FIRST (BC2): it ABORTS on deleted_at
+      //    (Codex S3 r1 P1: a deletion that completed after step 1 is never resurrected) and writes consent + email + the per-order
+      //    `grants_applied` marker together, every value from the STORED use. A replay finds the marker and changes nothing.
+      const verified = await S.verifiedEmailOf(db, uid, stored.inputs.email);
+      let outcome = null;
+      await db.ref(`user_private/${uid}`).transaction((cur) => {
+        if (cur && cur.deleted_at != null) { outcome = 'deleted'; return undefined; }
+        if (cur && cur.grants_applied && cur.grants_applied[v.payload.order_id] === true) { outcome = 'already'; return undefined; }
+        outcome = 'applied';
+        const base = cur || {};
+        return { ...base, email: stored.inputs.email, email_verified: verified, email_source: 'typed',
+          consent: { ...(base.consent || {}), [P]: { terms: { version: stored.legal.terms_version, privacy_version: stored.legal.privacy_version, at: stored.at },
+            promos: { value: stored.inputs.promos, copy_version: stored.legal.promos_copy_version, at: stored.at } } },
+          grants_applied: { ...(base.grants_applied || {}), [v.payload.order_id]: true } };
       });
-      // 4. apply ONCE: consent + email + name + `applied`, ONE atomic multi-path update, every value from the STORED use
-      if (stored.applied !== true) {
-        const verified = await S.verifiedEmailOf(db, uid, stored.inputs.email);
-        await db.ref().update({
-          [`user_private/${uid}/consent/${P}`]: { terms: { version: stored.legal.terms_version, privacy_version: stored.legal.privacy_version, at: stored.at },
-            promos: { value: stored.inputs.promos, copy_version: stored.legal.promos_copy_version, at: stored.at } },
-          [`user_private/${uid}/email`]: stored.inputs.email,
-          [`user_private/${uid}/email_verified`]: verified,
-          [`user_private/${uid}/email_source`]: 'typed',
-          [`user_profiles/${uid}/name`]: stored.inputs.name,
-          [`grants_used/${v.payload.order_id}/applied`]: true,
-        });
+      if (outcome === 'deleted') {   // the deletion won: no consent, no token, and the profile THIS call made is undone
+        if (isNew) await undoCreatedProfile(db, uid, freshProfile);
+        return bad(403, 'deleted');
       }
-      // 5. mint (a retry after `applied` only re-mints for the claimed uid)
+      // the name (a different node): written by the redemption that applied; a RETRY after a failure between the apply and this
+      // write fills it only while the profile has none (a member's later edit always sets a name, so it is never overwritten);
+      // only ever onto a profile that still exists (a deletion's removal is never undone by it)
+      await db.ref(`user_profiles/${uid}`).transaction((cur) => (cur === null ? null
+        : (outcome === 'applied' || typeof cur.name !== 'string' ? { ...cur, name: stored.inputs.name } : undefined)));
+      if (stored.applied !== true) await db.ref(`grants_used/${v.payload.order_id}/applied`).set(true);   // the use's bookkeeping
+      // 5. mint — never for a tombstoned uid (checked immediately before; a retry after `applied` only re-mints for the claimed uid)
+      if (await isDeleted(db, uid)) return bad(403, 'deleted');
       const token = await deps.getAuth().createCustomToken(uid, { customer: true });
       await SE.refreshActivity(db, uid, t);
       const nm = (await db.ref(`user_profiles/${uid}/name`).once('value')).val();
