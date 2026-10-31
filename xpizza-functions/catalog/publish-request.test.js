@@ -167,3 +167,24 @@ test('NOTHING TO PUBLISH + ABA (codex plan r2 P1-1): draft == active → refused
   // a no-op reset after the publish: the draft document is untouched (same updateTime) → still hidden
   assert.strictEqual(await ownerView(), undefined);
 });
+
+test('DISH PHOTOS A2 step 10: a PHOTO-ONLY draft is a real change on the request path when the photos dependency is wired (same diff as the save)', async () => {
+  const db = rtdb();
+  const S = store();
+  const P = 'a'.repeat(32);
+  const key = S.live.items[0].key;
+  setSource(S.fs, FISCAL, { ...JSON.parse(JSON.stringify(S.live)), photos: { [key]: { state: 'pid', pid: P } } });
+  const photoToken = async () => {
+    const { source, updateTime } = await PR.readDraftFrom(S.fs, FISCAL);
+    const { inputs, built } = buildSourceCandidate(FISCAL, source);
+    const diff = catalogDiff({ ...builtOf(S.live, FISCAL), photos: null }, { ...built, extras: inputs.extras, photos: source.photos });
+    return issueEditToken({ rid: FISCAL, baseActiveVersionId: await getActiveVersionId(S.fs, FISCAL), sourceUpdateTime: updateTime, sourceHash: sha256(source), diff });
+  };
+  const wired = { ...S.deps(db), photos: { readActive: async () => null } };
+  const r = await PR.requestPublishCore(wired, as('mgrOn01'), { restaurantId: FISCAL, token: await photoToken() });
+  assert.strictEqual(r.status, 200, `PR-PHOTO-ONLY-REQUESTABLE ${JSON.stringify(r.body)}`);
+  // without the dependency the request path is today's: the photo map is invisible to its diff
+  assert.deepStrictEqual(await PR.requestPublishCore(S.deps(db), as('mgrOn01'), { restaurantId: FISCAL, token: await S.tokenFor() }), { status: 409, body: { error: 'nothing_to_publish' } }, 'PR-UNWIRED-TODAY');
+  const down = { ...S.deps(db), photos: { readActive: async () => { throw new Error('down'); } } };
+  assert.deepStrictEqual(await PR.requestPublishCore(down, as('mgrOn01'), { restaurantId: FISCAL, token: await photoToken() }), { status: 503, body: { error: 'store_unavailable', retryable: true } }, 'PR-PHOTO-ACTIVE-UNREADABLE');
+});

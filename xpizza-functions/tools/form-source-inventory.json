@@ -165,6 +165,7 @@
     "xpizza-functions/photos/diff-photos.test.js",
     "xpizza-functions/photos/edit-photos.test.js",
     "xpizza-functions/photos/editable-wiring.test.js",
+    "xpizza-functions/photos/publish-wiring.test.js",
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
     "xpizza-functions/portal/ops-core.test.js",
@@ -374,6 +375,7 @@
     "xpizza-functions/photos/diff-photos.test.js",
     "xpizza-functions/photos/edit-photos.test.js",
     "xpizza-functions/photos/editable-wiring.test.js",
+    "xpizza-functions/photos/publish-wiring.test.js",
     "xpizza-functions/portal/ops-core.test.js",
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
@@ -626,6 +628,7 @@
     "xpizza-functions/photos/diff-photos.test.js",
     "xpizza-functions/photos/edit-photos.test.js",
     "xpizza-functions/photos/editable-wiring.test.js",
+    "xpizza-functions/photos/publish-wiring.test.js",
     "xpizza-functions/pickup-conflict-modal.test.js",
     "xpizza-functions/pin-save-prompt.test.js",
     "xpizza-functions/portal/ops-core.test.js",
@@ -835,6 +838,7 @@
     "xpizza-functions/photos/diff-photos.test.js",
     "xpizza-functions/photos/edit-photos.test.js",
     "xpizza-functions/photos/editable-wiring.test.js",
+    "xpizza-functions/photos/publish-wiring.test.js",
     "xpizza-functions/portal/ops-core.test.js",
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
@@ -1758,6 +1762,7 @@
   "catalog/canonical-binding.js",
   "catalog/catalog-edit-auth.js",
   "catalog/catalog-edit.js",
+  "catalog/catalog-publish.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
   "catalog/exposure-source.js",
@@ -1807,10 +1812,12 @@
   "photos/errors.js",
   "photos/flag.js",
   "photos/functions.js",
+  "photos/gcs-copy.js",
   "photos/gcs-store.js",
   "photos/photo-state.js",
   "photos/pipeline.js",
   "photos/process.js",
+  "photos/publish-io.js",
   "photos/publish-photos.js",
   "photos/signer.js",
   "photos/sniff.js",
@@ -1943,6 +1950,33 @@
   "catalog/catalog-edit.js": {
    "pins": [],
    "lifts": []
+  },
+  "catalog/catalog-publish.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/context-guards.test.js",
+     "inverses": [
+      "tools/extras-module-inverse.js",
+      "tools/photos-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/catalog/identity-integrity-guards.test.js",
+     "inverses": [
+      "tools/extras-module-inverse.js",
+      "tools/photos-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/photos-module-wiring.guard.test.js",
+     "inverses": [
+      "tools/photos-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": [
+    "xpizza-functions/catalog/publish-paths.test.js"
+   ]
   },
   "catalog/draft-assess.js": {
    "pins": [],
@@ -2866,6 +2900,10 @@
    "pins": [],
    "lifts": []
   },
+  "photos/gcs-copy.js": {
+   "pins": [],
+   "lifts": []
+  },
   "photos/gcs-store.js": {
    "pins": [],
    "lifts": []
@@ -2881,6 +2919,10 @@
    ]
   },
   "photos/process.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/publish-io.js": {
    "pins": [],
    "lifts": []
   },

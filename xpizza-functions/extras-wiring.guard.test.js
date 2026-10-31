@@ -43,7 +43,7 @@ const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-func
   const { unapplyPmdisplayModule } = require('./tools/pmdisplay-module-inverse');
   // PLAN 4 landed after public-menu-display: its exact module inverse (proven by formbake-module-wiring.guard) is reversed FIRST
   const { unapplyFormbakeModule } = require('./tools/formbake-module-inverse');
-  const pmdRead = (f) => unapplyPmdisplayModule(f, unapplyFormbakeModule(f, read(f)));
+  const pmdRead = (f) => unapplyPmdisplayModule(f, unapplyFormbakeModule(f, require('./tools/photos-module-inverse').unapplyPhotosModule(f, read(f))));   // DISH PHOTOS A2 (newest) reversed FIRST
   for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, unapplyPriceSync(f, pmdRead(f))), baseOf(f), `🔴 ${f} minus the price-sync and extras hunks is not ${BASE}:${f}`);
   const f = 'catalog/source-store.js'; const src = pmdRead(f);
   const h = HUNKS.find((x) => x.file === f && x.now.includes('deny_extras'));

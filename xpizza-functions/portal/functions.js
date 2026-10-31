@@ -14,7 +14,7 @@ const { getSalesStatsCore } = require('../stats/stats-api');
 const { statsKeyer, _statsLiveCache } = require('../stats/keyer');
 const { withPreflightMaxAge } = require('./preflight-max-age');
 const { addProductIo } = require('../catalog/add-product-io');   // 1D add-product A — outside the moved blocks (the fold counts their requires)
-const addProductIoForEdit = () => addProductIo({ fs: getFirestore(), rtdb: getDatabase() }); const { photoIoForEdit } = require('../photos/edit-io'); const { editableIoForPortal } = require('../photos/editable-io');   // DISH PHOTOS A2 steps 8–9 — same line, outside the moved blocks (the fold counts their requires)
+const addProductIoForEdit = () => addProductIo({ fs: getFirestore(), rtdb: getDatabase() }); const { photoIoForEdit } = require('../photos/edit-io'); const { editableIoForPortal } = require('../photos/editable-io'); const { photoPublishIoForEdit } = require('../photos/publish-io');   // DISH PHOTOS A2 steps 8–10 — same line, outside the moved blocks (the fold counts their requires)
 
 // ⟪moved:A — verbatim from index.js@bb37684 (relative require specifiers './' → '../')⟫
 // ── Portal 2b-1 — the merchant catalog write path ──────────────────────────────────────────────
@@ -106,7 +106,7 @@ exports.publishEdited = onRequest(
         publishVersion: publishVersionForEdit,
         mirror: makeRtdbMirrorForEdit(getDatabase()),
         alarm: (kind, detail) => paymentAlert(getDatabase(), kind, detail),
-        addProduct: addProductIoForEdit(),   // 1D add-product A
+        addProduct: addProductIoForEdit(), photos: photoPublishIoForEdit(),   // 1D add-product A; DISH PHOTOS A2 step 10: the photo publish
       }, req.body || {}, req);
       return res.status(out.status).json(out.body);
     } catch (e) {

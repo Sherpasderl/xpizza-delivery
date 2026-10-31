@@ -117,7 +117,8 @@ try {
     const { unapplyA1Module, FILES: A1_FILES } = require('../tools/a1-inverse');
     // the menu price sync landed after A-1: its exact inverse (tools/price-sync-inverse.js, proven by extras-wiring.guard) is reversed FIRST
     const { unapplyPriceSync, FILES: PS_FILES } = require('../tools/price-sync-inverse');
-    const psRead = (f) => (PS_FILES.includes(f) ? unapplyPriceSync(f, read(f)) : read(f));
+    const phRead = (f) => require('../tools/photos-module-inverse').unapplyPhotosModule(f, read(f));   // DISH PHOTOS A2 (newest): reversed FIRST
+    const psRead = (f) => (PS_FILES.includes(f) ? unapplyPriceSync(f, phRead(f)) : phRead(f));
     const a1Read = (f) => (A1_FILES.includes(f) ? unapplyA1Module(f, psRead(f)) : psRead(f));
     const xRead = (f) => (EXTRAS_FILES.includes(f) ? unapplyExtrasModule(f, a1Read(f)) : a1Read(f));
     const pinRead = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, xRead(f)) : xRead(f));

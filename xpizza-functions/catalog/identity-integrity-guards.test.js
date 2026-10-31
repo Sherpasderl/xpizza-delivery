@@ -42,7 +42,8 @@ try {
   // PLAN 4 (bake from published) landed after public-menu-display: its exact module inverse (tools/formbake-module-inverse.js,
   // proven by formbake-module-wiring.guard) is reversed FIRST (newest first) — source-store.js gains badge_priority / reward_icon
   const { unapplyFormbakeModule, FILES: FB_FILES } = require('../tools/formbake-module-inverse');
-  const fbRead = (f) => (FB_FILES.includes(f) ? unapplyFormbakeModule(f, read(f)) : read(f));
+  const phRead = (f) => require('../tools/photos-module-inverse').unapplyPhotosModule(f, read(f));   // DISH PHOTOS A2 (newest): reversed FIRST
+  const fbRead = (f) => (FB_FILES.includes(f) ? unapplyFormbakeModule(f, phRead(f)) : phRead(f));
   const pmdRead = (f) => (PMD_FILES.includes(f) ? unapplyPmdisplayModule(f, fbRead(f)) : fbRead(f));
   const pinned = (f) => (EXTRAS_FILES.includes(f) ? unapplyExtrasModule(f, pmdRead(f)) : pmdRead(f));
   for (const [f, want] of Object.entries(PINS)) assert.strictEqual(sha(pinned(f)), want, `🔴 ${f} changed — c2b imports it and must never edit it`);
