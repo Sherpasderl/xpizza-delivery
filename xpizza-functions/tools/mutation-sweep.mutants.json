@@ -24980,6 +24980,8 @@
     ],
     "kills_with": [
       "S4-tender"
-    ]
+    ],
+    "equivalent": true,
+    "why": "layered defence: the tender buttons and «Cambiar» carry the disabled attribute while a scheduled send is retained (a disabled control never dispatches its click), and the render re-applies the recorded tender (s4-30) — the handler guard is unobservable from the UI"
   }
 ]
