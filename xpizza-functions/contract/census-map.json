@@ -667,7 +667,9 @@
   "photos/functions.js#sendPhotoReply": "catalog",
   "photos/process.js#fail": "catalog",
   "photos/process.js#without": "catalog",
-  "photos/upload-start.js#fail": "catalog"
+  "photos/upload-start.js#fail": "catalog",
+  "photos/editable-io.js#fieldsFor": "catalog",
+  "photos/editable-photos.js#editablePhotoFields": "catalog"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",

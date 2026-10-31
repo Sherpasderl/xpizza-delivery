@@ -37,6 +37,11 @@ const FOLD_HUNKS = Object.freeze([
   "file": "portal/functions.js (moved block A, in the fold)",
   "now": "        addProduct: addProductIoForEdit(), photos: photoIoForEdit(),   // 1D add-product A; DISH PHOTOS A2 step 8: the draft photo map\n",
   "was": "        addProduct: addProductIoForEdit(),   // 1D add-product A\n"
+ },
+ {
+  "file": "portal/functions.js (moved block B, in the fold)",
+  "now": "        readActiveBuilt: readActiveBuiltForEdit, photoReads: editableIoForPortal(),   // 1D add-product A: assess the saved draft against what is serving; DISH PHOTOS A2 step 9 (E-P3)\n",
+  "was": "        readActiveBuilt: readActiveBuiltForEdit,   // 1D add-product A: assess the saved draft against what is serving\n"
  }
 ]);
 const unapplyPhotosFold = (src) => apply(apply(src, HUNKS.slice(1)), FOLD_HUNKS);   // the early-branch hunk is consumed by foldPortalSplit

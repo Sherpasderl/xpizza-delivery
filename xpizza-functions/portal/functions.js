@@ -14,7 +14,7 @@ const { getSalesStatsCore } = require('../stats/stats-api');
 const { statsKeyer, _statsLiveCache } = require('../stats/keyer');
 const { withPreflightMaxAge } = require('./preflight-max-age');
 const { addProductIo } = require('../catalog/add-product-io');   // 1D add-product A — outside the moved blocks (the fold counts their requires)
-const addProductIoForEdit = () => addProductIo({ fs: getFirestore(), rtdb: getDatabase() }); const { photoIoForEdit } = require('../photos/edit-io');   // DISH PHOTOS A2 step 8 — same line, outside the moved blocks (the fold counts their requires)
+const addProductIoForEdit = () => addProductIo({ fs: getFirestore(), rtdb: getDatabase() }); const { photoIoForEdit } = require('../photos/edit-io'); const { editableIoForPortal } = require('../photos/editable-io');   // DISH PHOTOS A2 steps 8–9 — same line, outside the moved blocks (the fold counts their requires)
 
 // ⟪moved:A — verbatim from index.js@bb37684 (relative require specifiers './' → '../')⟫
 // ── Portal 2b-1 — the merchant catalog write path ──────────────────────────────────────────────
@@ -155,7 +155,7 @@ exports.getEditableCatalog = onRequest(
         fsdb: getFirestore(),
         authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
         readActiveVersionId: (fsdb, rid) => getActiveVersionIdForPortal(fsdb, rid),
-        readActiveBuilt: readActiveBuiltForEdit,   // 1D add-product A: assess the saved draft against what is serving
+        readActiveBuilt: readActiveBuiltForEdit, photoReads: editableIoForPortal(),   // 1D add-product A: assess the saved draft against what is serving; DISH PHOTOS A2 step 9 (E-P3)
       }, req);
       return res.status(out.status).json(out.body);
     } catch (e) {

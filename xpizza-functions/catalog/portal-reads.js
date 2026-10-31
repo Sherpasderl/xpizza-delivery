@@ -100,7 +100,7 @@ async function getMyRestaurantsCore({ db, verifyIdToken }, req) {
 //
 // READ-ONLY. Nothing in this module writes.
 // ---------------------------------------------------------------------------
-async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource, _readPublishRequest = null, _resolveAccess = resolveAccess, now = () => Date.now() }, req) {
+async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, photoReads = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource, _readPublishRequest = null, _resolveAccess = resolveAccess, now = () => Date.now() }, req) {
   if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
   const rid = req.query && req.query.restaurantId;
 
@@ -215,6 +215,20 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     catch (_) { publishViaRequest = false; }
   }
 
+  /* DISH PHOTOS A2 step 9 (E-P3) — photos / photoPreviews / legacyPreviews / photosEnabled, each OMITTED when empty or off (a restaurant
+     without photo data gets today's response byte-for-byte). Best effort: a failed photo read omits them and the editor still loads
+     (the draft map is in `source` regardless). A pending photo change counts as «something besides a name» (pendingOther). */
+  let photoOut = {};
+  if (photoReads) {
+    try {
+      const { photosPending, ...fields } = (await photoReads.fieldsFor({ rid, source, activeVersionId: activeVersionId == null ? null : activeVersionId })) || {};
+      photoOut = fields;
+      if (photosPending === true && !draftUnpublishable) pendingOther = true;
+    } catch (e) {
+      console.warn('portal_photo_fields_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
+    }
+  }
+
   return reply(200, {
     renderedCategories,
     groupAuthoring,
@@ -226,6 +240,7 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     ...(pendingAdditions ? { pendingAdditions } : {}),
     ...(pendingRenames ? { pendingRenames } : {}),
     ...(pendingOther ? { pendingOther: true } : {}),
+    ...photoOut,   // DISH PHOTOS A2 step 9 (E-P3)
     source,
     // The CAS baseline. Byte-identical to editCatalog's baseSourceUpdateTime by construction.
     sourceUpdateTime: doc.updateTime ? encodeUpdateTime(doc.updateTime) : null,

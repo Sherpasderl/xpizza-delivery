@@ -69,16 +69,20 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/mirror-rtdb.js',
   'catalog/platform-extras.js',             // per-product extras: the platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/platform-groups.js',             // 1D add-product B: the ONE platform authoring switch (editCatalog / publishEdited); no I/O
-  'catalog/portal-reads.js', 'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',
+  'catalog/portal-reads.js',
+  'catalog/public-photos.js',              // DISH PHOTOS A2 step 9: the public menu's own legacy-image rule (buildPhotos / assetBaseFor; pure)
+  'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',
   'catalog/reward-icons.js',                // plan 4 r3 §8.1: the closed reward_icon set, via source-store.js (a frozen list; no I/O)
   'catalog/seed-catalog-core.js', 'catalog/source-store.js',
   'factura/eligibility.js',                 // usesPlatformFactura (getEditableCatalog's fiscal capability) — pure
   'index.js',                               // the entry: only its early branch runs
   'lib/admin.js', 'lib/payment-alert.js',   // the shared Admin app + the publish alarm
   'menu-pricing.js',
-  'photos/edit-io.js', 'photos/flag.js',   // DISH PHOTOS A2 step 8: editCatalog's photos dependency (registry attach, meta/photos read, PHOTOS_UPLOADS flag)
-  'photos/photo-state.js',                  // DISH PHOTOS A2: the pure three-state photo vocabulary (editCatalog's draft photo map)
+  // DISH PHOTOS A2 steps 8–9: editCatalog's photos dependency (registry attach, meta/photos read, PHOTOS_UPLOADS flag) and
+  // getEditableCatalog's photo reads (E-P3) + the draft-preview signer; photo-state = the pure three-state vocabulary
+  'photos/edit-io.js', 'photos/editable-io.js', 'photos/editable-photos.js', 'photos/flag.js', 'photos/gcs-store.js', 'photos/photo-state.js',
   'pickup-label.js',                        // PLAN-portal-membership r3: brandText, via brands/brand-model.js → restaurant-config.js (pure)
+  'platform-manifest.js', 'platform/compat.json', 'platform/sites.json',   // DISH PHOTOS A2 step 9: the legacy image base (public-photos assetBaseFor; config + data)
   'portal/functions.js', 'portal/origins.js', 'portal/preflight-max-age.js', 'price-valid.js',
   'restaurant-config.js',                   // PLAN-portal-membership r3: isRoutingValid, via brands/brand-model.js (pure)
   'restaurant-id.js',
@@ -485,7 +489,7 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
     ];
     // DISH PHOTOS A2 step 8 appends EXACTLY one import to add-product's header line (same line: no portal line shifts; outside the
     // moved blocks) — removed FIRST (it sits inside that AP line's text), exactly once like add-product's lines
-    const PHOTO_LINES = [" const { photoIoForEdit } = require('../photos/edit-io');   // DISH PHOTOS A2 step 8 — same line, outside the moved blocks (the fold counts their requires)"];
+    const PHOTO_LINES = [" const { photoIoForEdit } = require('../photos/edit-io'); const { editableIoForPortal } = require('../photos/editable-io');   // DISH PHOTOS A2 steps 8–9 — same line, outside the moved blocks (the fold counts their requires)"];
     const skeletonPre = [...PHOTO_LINES, ...AP_LINES, ...R1_LINES].reduce((acc, l) => { const i = acc.indexOf(l); assert.ok(i > -1 && acc.indexOf(l, i + 1) === -1, `add-product header line exactly once: ${l.slice(0, 60)}`); return acc.slice(0, i) + acc.slice(i + l.length); }, skeleton);
     assert.strictEqual(sha(skeletonPre), SKELETON, `🔴 the split's non-moved text changed (headers / imports / exports / the wrap loop / the wrapper): ${sha(skeletonPre)}`);
     assert.notStrictEqual(sha(skeleton), SKELETON, '(the add-product lines are really there)');
@@ -493,7 +497,7 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
     // metadata preservation is guarded by section 3 (its naive-wrapper sensitivity); REQUIRE_REWRITES is the exact count
     assert.strictEqual(REQUIRE_REWRITES, 12);
     // + 1D add-product A's add-product-io header import (the fifth header import; outside the moved blocks)
-    assert.strictEqual((read('portal/functions.js').match(/require\('\.\.\//g) || []).length, REQUIRE_REWRITES + 6, '12 rewritten in-block specifiers + the 6 header imports (catalog/add-product-io, lib/admin, lib/payment-alert, stats/stats-api, stats/keyer, photos/edit-io)');
+    assert.strictEqual((read('portal/functions.js').match(/require\('\.\.\//g) || []).length, REQUIRE_REWRITES + 7, '12 rewritten in-block specifiers + the 7 header imports (catalog/add-product-io, lib/admin, lib/payment-alert, stats/stats-api, stats/keyer, photos/edit-io, photos/editable-io)');
   }
   ok('fold-guard sensitivity: a byte changed inside a moved handler, a moved helper, a moved block\'s non-require text, outside the permitted edits, in paymentAlert / the Admin URL / PORTAL_ORIGINS / the keyer, a re-export pointed at the wrong function, one rewrite too few or a rewrite outside the rule — each FAILS the reconstruction; the routing Set and the marker fail the exact early-branch pin; every non-moved byte of the split files (headers, imports, the wrap loop, the wrapper module) is SKELETON-pinned; the wrapper\'s metadata preservation fails §3');
 
