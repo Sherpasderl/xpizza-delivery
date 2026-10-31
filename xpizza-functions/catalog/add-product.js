@@ -517,7 +517,19 @@ function changesNothingElse(draftBuilt, activeBuilt, additions, removals) {
   const da = new Map(draftBuilt.items.map((it) => [it.key, it]));
   if (!activeBuilt.items.every((a) => { const d = da.get(a.key); return d && d.price === a.price && sameJson(d.display, a.display) && !!d.has_photo === !!a.has_photo; })) return false;
   const de = new Map((draftBuilt.extras || []).map((e) => [e.key, e]));
-  return (activeBuilt.extras || []).every((a) => { const d = de.get(a.key); return d && d.price === a.price && sameJson(d.display, a.display); });
+  if (!(activeBuilt.extras || []).every((a) => { const d = de.get(a.key); return d && d.price === a.price && sameJson(d.display, a.display); })) return false;
+  // DISH PHOTOS A2 (§2.1, Codex P1-2): the photo states must be equal too (absent on both = equal ⇒ unchanged for callers without photos)
+  return samePhotoStates(draftBuilt.photos, activeBuilt.photos);
+}
+
+// DISH PHOTOS A2 — photo-state equality, INLINE because this module requires nothing (add-product.test pins that). Per item key the
+// state is legacy (no entry) | pid:<pid> | removed; URLs on version entries are ignored. Parity with photos/photo-state.js sameStates
+// is pinned by photos/photo-state.test.js over a matrix.
+function samePhotoStates(a, b) {
+  const kind = (e) => (!e || typeof e !== 'object' ? 'legacy' : e.state === 'pid' ? `pid:${e.pid}` : e.state === 'removed' ? 'removed' : 'legacy');
+  const x = isObj(a) ? a : {}, y = isObj(b) ? b : {};
+  for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) if (kind(x[k]) !== kind(y[k])) return false;
+  return true;
 }
 
 // exposure minus the typed deny_extras: each override without the field, and an override left EMPTY by that removal
@@ -559,6 +571,7 @@ function assertSameAuthoredFields(incomingStructure, storedStructure, { activeHa
 module.exports = {
   MAX_ADDITIONS, TMP_RE, AddProductError, normalizeName, tidyName, slugify, sameJson,
   resolveKeyMode, classifyItems, allocateAdditions, compareToActive, assertSameAuthoredFields, isGroupVariant, optionName, prospectiveAdditionNames,
+  samePhotoStates,      // DISH PHOTOS A2: parity-tested against photos/photo-state.js
   changesNothingElse,   // PLAN-public-menu-display T1 (portal r1 #3): the SAME «anything but a category name» rule, read by draft-assess
   ALWAYS_COMPARED, COMPARED_WHEN_AUTHORED,
 };

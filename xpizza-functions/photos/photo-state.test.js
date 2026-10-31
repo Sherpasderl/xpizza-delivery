@@ -75,4 +75,13 @@ assert.strictEqual(S.versionPhotosDoc(null, url), null, 'PS-VERSION-DOC-ABSENT')
 assert.throws(() => S.versionPhotosDoc({ a: { state: 'pid', pid: P1 } }, () => null), /photo_publish_failed/, 'PS-VERSION-DOC-NO-URL-FAILS-CLOSED');
 ok('versionPhotosDoc: {schema:1, entries} with resolved card/hero URLs; null when the map is absent; an unresolvable URL fails closed');
 
+// ── 6. parity: catalog/add-product.js keeps an INLINE copy (it requires nothing); it must agree with sameStates everywhere ──
+{
+  const { samePhotoStates } = require('../catalog/add-product');
+  const E = [undefined, null, {}, { k: { state: 'removed' } }, { k: { state: 'pid', pid: P1 } }, { k: { state: 'pid', pid: P1, card: 'c', hero: 'h' } }, { k: { state: 'pid', pid: P2 } }, { j: { state: 'removed' } }, { k: { state: 'removed' }, j: { state: 'pid', pid: P3 } }];
+  let pairs = 0;
+  for (const a of E) for (const b of E) { pairs++; assert.strictEqual(samePhotoStates(a, b), S.sameStates(a, b), `PS-INLINE-PARITY ${JSON.stringify(a)} ~ ${JSON.stringify(b)}`); }
+  ok(`parity: add-product.js's inline samePhotoStates == photo-state.sameStates over ${pairs} pairs`);
+}
+
 console.log(`photo-state: OK (${n})`);

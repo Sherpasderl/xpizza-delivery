@@ -76,6 +76,7 @@ const PORTAL_GRAPH_LOCAL = [
   'index.js',                               // the entry: only its early branch runs
   'lib/admin.js', 'lib/payment-alert.js',   // the shared Admin app + the publish alarm
   'menu-pricing.js',
+  'photos/photo-state.js',                  // DISH PHOTOS A2: the pure three-state photo vocabulary (editCatalog's draft photo map)
   'pickup-label.js',                        // PLAN-portal-membership r3: brandText, via brands/brand-model.js → restaurant-config.js (pure)
   'portal/functions.js', 'portal/origins.js', 'portal/preflight-max-age.js', 'price-valid.js',
   'restaurant-config.js',                   // PLAN-portal-membership r3: isRoutingValid, via brands/brand-model.js (pure)
