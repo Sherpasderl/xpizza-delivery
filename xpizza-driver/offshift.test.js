@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
+import { shiftDeliveries } from './cash-helpers.js';   // REAL resolved-deliveries source for the «Ganado hoy» earnings
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(join(__dir, '..', 'xpizza-functions', 'package.json'));
@@ -31,7 +32,7 @@ function liftConst(name) {
   const start = hits[0].index; return SCRIPT.slice(start, SCRIPT.indexOf(';', start) + 1);
 }
 
-function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+504 9999 8888' } = {}) {
+function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+504 9999 8888', allOrders = {}, rateEntries = null } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="screen-offshift" class="with-header hidden"></div></body></html>', { pretendToBeVisual: true });
   const { document, window } = dom.window;
   const calls = { start: 0, render: 0, openCuenta: 0, sync: 0, notif: 0 };
@@ -66,14 +67,17 @@ function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+50
     'function updateNotifBanners(){ _calls.notif++; }\n' +
     'function todayMidnightMs(){ return 0; }\n' +
     'const driverIdentityCutoverMs = null;\n' +
+    'let driverRateEntries = ' + JSON.stringify(rateEntries) + ';\n' +   // platform rate (seeded per cell)
+    liftFn('rateCentsInEffect') + '\n' +
+    liftFn('shiftEarningsCents') + '\n' +
     liftFn('attachSlideConfirm') + '\n' +
     liftFn('driverRow') + '\n' +
     liftFn('renderOffshift') + '\n' +
     'return { renderOffshift, getShiftBusy: () => shiftBusy, getOptimistic: () => optimisticShift };';
-  const names = ['document', '$', 'computeShiftCash', 'allOrders', 'SYSTEM_VERSION', 'toast', 'ICONS', 'fbOnValue', 'fbRef', 'XPD', '_suspended', '_driverState', '_currentUser', '_calls', '_startImpl'];
+  const names = ['document', '$', 'computeShiftCash', 'allOrders', 'SYSTEM_VERSION', 'toast', 'ICONS', 'fbOnValue', 'fbRef', 'XPD', '_suspended', '_driverState', '_currentUser', '_calls', '_startImpl', 'shiftDeliveries'];
   const api = (new Function(...names, body))(
-    document, $, computeShiftCash, {}, '2.5.3', () => {}, ICONS, fbOnValue, fbRef, XPD, suspended,
-    { name: 'Marvin Posadas', active: false }, { uid: 'drv', email: 'marvin@x.pizza' }, calls, startImpl);
+    document, $, computeShiftCash, allOrders, '2.5.3', () => {}, ICONS, fbOnValue, fbRef, XPD, suspended,
+    { name: 'Marvin Posadas', active: false }, { uid: 'drv', email: 'marvin@x.pizza' }, calls, startImpl, shiftDeliveries);
   const host = () => document.getElementById('screen-offshift');
   async function slide(id = 'btn-start-shift') {
     const el = host().querySelector('#' + id);
@@ -109,12 +113,29 @@ await t('structure: greeting (natural case), status chip, «Efectivo a entregar�
   assert.ok(h.calls.clearReturn >= 1, 'renderOffshift clears the returning nav target (off-shift / shift-end — advisor clear hook)');
 });
 
-await t('PAGOS_LIVE → «Ganado hoy» appears as a second stat (no code change, just the flag)', () => {
-  const h = boot({ pagosLive: true });
+// seed REAL resolved deliveries for this driver (uid 'drv'): orders delivered today (delivered_at ≥ 0) with the
+// money-grade stamp — shiftDeliveries().resolved then drives shiftEarningsCents per delivery.
+const ordersFor = (times) => { const m = {}; times.forEach((at, i) => { m['o' + i] = { delivered_at: at, delivered_by_driver_uid: 'drv' }; }); return m; };
+
+await t('PAGOS_LIVE → «Ganado hoy» = the SUM of each delivery\'s platform rate (seeded orders + one rate entry)', () => {
+  const h = boot({ pagosLive: true, allOrders: ordersFor([100, 200, 300, 400, 500, 600, 700]), rateEntries: { r1: { cents: 7000, effective_from: 0 } } });
   h.api.renderOffshift();
   const html = h.host().innerHTML;
-  assert.ok(/Ganado hoy/.test(html) && /L 490/.test(html), '«Ganado hoy» = deliveries×70 when PAGOS_LIVE');
+  assert.ok(/Ganado hoy/.test(html) && /L 490/.test(html), '7 deliveries × 7000¢ = L 490 (N × cents/100, no hardcoded 70)');
   assert.ok(h.host().querySelector('.off2-stats.two'), 'two-stat layout');
+});
+
+await t('PAGOS_LIVE → a mid-day rate change applies PER DELIVERY (two entries; never retro-applied)', () => {
+  // 2 deliveries at 7000¢ (before the change) + 2 at 9000¢ (after effective_from 1000)
+  const h = boot({ pagosLive: true, allOrders: ordersFor([100, 100, 5000, 5000]), rateEntries: { a: { cents: 7000, effective_from: 0 }, b: { cents: 9000, effective_from: 1000 } } });
+  h.api.renderOffshift();
+  assert.ok(/Ganado hoy/.test(h.host().innerHTML) && /L 320/.test(h.host().innerHTML), '2×7000 + 2×9000 = 32000¢ = L 320 (not 4×70, not 4×90)');
+});
+
+await t('PAGOS_LIVE but NO rate entry → «Ganado hoy» renders NOTHING (never an invented number)', () => {
+  const h = boot({ pagosLive: true, allOrders: ordersFor([100, 200]), rateEntries: null });
+  h.api.renderOffshift();
+  assert.ok(!/Ganado hoy/.test(h.host().innerHTML), 'no rate seeded → no «Ganado hoy» stat');
 });
 
 await t('the «Iniciar turno» slide drives the REAL handleStartShift down to the XPD.startShift clock-in (P2.5)', async () => {

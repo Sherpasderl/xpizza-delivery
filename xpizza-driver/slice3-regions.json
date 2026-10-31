@@ -570,6 +570,13 @@
   {
    "name": "MONEY-RATE",
    "kind": "insert"
+  },
+  {
+   "name": "MONEY-RATE-SUB",
+   "kind": "replace",
+   "restore": [
+    "  startCountdownTick();"
+   ]
   }
  ],
  "deps": [

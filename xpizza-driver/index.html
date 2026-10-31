@@ -3251,7 +3251,10 @@ function renderOffshift() {
   }
   const cash = computeShiftCash(allOrders, currentUser && currentUser.uid, todayMidnightMs(), driverIdentityCutoverMs);
   const cashStat = `<div class="off2-stat"><b>L ${(cash.cashOwed || 0).toLocaleString('es-HN')}</b><small>Efectivo a entregar</small></div>`;
-  const earnStat = PAGOS_LIVE ? `<div class="off2-stat"><b class="off2-earn">L ${((cash.deliveries || 0) * 70).toLocaleString('es-HN')}</b><small>Ganado hoy</small></div>` : '';
+  // «Ganado hoy» = the sum of each delivery's in-effect platform rate (one source; NO hardcode). Renders NOTHING
+  // unless PAGOS is live AND a rate is seeded AND every delivery is covered (shiftEarningsCents → null otherwise).
+  const earnCents = PAGOS_LIVE ? shiftEarningsCents(shiftDeliveries(allOrders, currentUser && currentUser.uid, todayMidnightMs(), driverIdentityCutoverMs).resolved, driverRateEntries) : null;
+  const earnStat = (earnCents != null) ? `<div class="off2-stat"><b class="off2-earn">L ${(earnCents / 100).toLocaleString('es-HN')}</b><small>Ganado hoy</small></div>` : '';
   host.innerHTML = `
     <header class="off2-hdr"><span class="off2-hm">${SOLA_HM}</span><div class="off2-ttl">Hola, <span id="off-driver-name"></span></div>
       <button class="off2-cuenta" id="cuenta-btn" title="Cuenta" aria-label="Cuenta">${USER}</button></header>
@@ -4520,7 +4523,11 @@ function subscribeToFirebase() {
     render();                       // P2-6: a cutover can reclassify legacy cash → refresh idle "Efectivo hoy" too
     refreshOpenCashSurfaces();
   });
+  /* ===== SLICE3:MONEY-RATE-SUB:START — wire the platform-rate subscription into the boot hook; one added call,
+     restore = the baseline startCountdownTick line, byte-identical otherwise. ===== */
+  subscribeDriverRate();            // platform pay rate → driverRateEntries (one source; earnings blank until seeded)
   startCountdownTick();
+  /* ===== SLICE3:MONEY-RATE-SUB:END ===== */
 }
 
 // ============================================================
@@ -5368,13 +5375,14 @@ function rateCentsInEffect(entries, t) {
   }
   return best ? best.cents : null;
 }
-// pure: total earnings (cents) over the resolved deliveries, EACH at its own in-effect rate. null when the rate is
-// unknown (no entries) or ANY delivery is uncovered — never a partial/invented total. 0 for no deliveries + a known rate.
+// pure: total earnings (cents) over shiftDeliveries().resolved items ({ orderId, order, at }, `at` = delivered_at),
+// EACH at its own in-effect rate. null when the rate is unknown (no entries) or ANY delivery is uncovered — never a
+// partial/invented total. 0 for no deliveries + a known rate.
 function shiftEarningsCents(resolvedDeliveries, entries) {
   if (!entries) return null;
   let total = 0;
   for (const d of (resolvedDeliveries || [])) {
-    const at = d && typeof d.delivered_at === 'number' ? d.delivered_at : null;
+    const at = d && typeof d.at === 'number' ? d.at : null;
     const c = at != null ? rateCentsInEffect(entries, at) : null;
     if (c == null) return null;
     total += c;

@@ -43,9 +43,10 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 // `process.exit(0)` appended to it cannot short-circuit this guard (Codex r2 P1). A tampered contract (widened/
 // dropped restore, added/removed/shrunk region, changed kind) is caught even though the file is editable.
 const SLICE3_PINS = {
-  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO', 'INICIO-CHECKLIST-FLAG', 'INICIO-POSTACT-ROUTE', 'INICIO-PERFIL', 'INICIO-CHECKLIST', 'INICIO-PRACTICA', 'INICIO-DEMO', 'INICIO-DEMO-TEARDOWN', 'TABBAR-SHOW', 'TABBAR-BOARD', 'DISP-HEADER', 'RETURN-TARGET-CAPTURE', 'SOLO-CANCEL', 'ARRIVAL-ACTION', 'PAUSE-BOARD', 'PRESENTATION-REVERIFY', 'CUENTA-CARD', 'INICIO-DESACTIVADA', 'MONEY-VUELTO', 'MONEY-TERMINAR', 'MONEY-CERRADO', 'MONEY-FINALIZE-RET', 'MONEY-RATE'],
-  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace', 'insert', 'replace', 'replace', 'replace', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'insert', 'replace', 'insert'],
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO', 'INICIO-CHECKLIST-FLAG', 'INICIO-POSTACT-ROUTE', 'INICIO-PERFIL', 'INICIO-CHECKLIST', 'INICIO-PRACTICA', 'INICIO-DEMO', 'INICIO-DEMO-TEARDOWN', 'TABBAR-SHOW', 'TABBAR-BOARD', 'DISP-HEADER', 'RETURN-TARGET-CAPTURE', 'SOLO-CANCEL', 'ARRIVAL-ACTION', 'PAUSE-BOARD', 'PRESENTATION-REVERIFY', 'CUENTA-CARD', 'INICIO-DESACTIVADA', 'MONEY-VUELTO', 'MONEY-TERMINAR', 'MONEY-CERRADO', 'MONEY-FINALIZE-RET', 'MONEY-RATE', 'MONEY-RATE-SUB'],
+  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace', 'insert', 'replace', 'replace', 'replace', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'insert', 'replace', 'insert', 'replace'],
   restoreSha: {
+    'MONEY-RATE-SUB': 'bfcbeacaa4e570679a4e0adfb7657042c6eeb08cb514359942411c9ab00a17b7',
     'MONEY-FINALIZE-RET': '33ab550ff1959a13738616ffca3ba50824b94b949a1179b1978e8e89124ed333',
     'MONEY-TERMINAR': 'c975577a9b0eeb3129eaaa6724570f9dd8500f86def9b9769880b26460ed5502',
     'MONEY-VUELTO': '11452ea4099ddd8e07ebd85c0603ce25e036f067860dbe756755acac33c94acd',
@@ -64,7 +65,7 @@ const SLICE3_PINS = {
     'INICIO-CHECKLIST': 'f270a45d4f0bc010c18de365e97fd1427138962b2b8d2abbdc07270db8cc4d74',
     'INICIO-PRACTICA': 'dc6e3b5213046e049f1ba47cd428392caca2cfcb84c7ffea4744c83f312e1e13',
   },
-  fileSha: '4a6b18bfcb066e7979963dd5c48bab0aeab125ebfcae9290d0e1e0a139b43e87',
+  fileSha: 'a8551f9930eaf884b49dcd3cb266674877b591527653aa71a3c06d0538622533',
 };
 // SLICE3DEPS carve-outs (advisor 2026-10-26): a REGISTERED exception to the non-nesting rule — a tiny span that MAY
 // live inside its declared SLICE2 parent, so slice 3 can edit slice-2-added host code (the fresh-offer deps object)
@@ -101,7 +102,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = '10c4fe5d3a0e7784526ce391af27d6d25d365756d200e65d75a7184ee8d6413b';
+const SLICE2_GUARD_SHA = 'd2051d5d9092999c8c67abf76543e2c3f9208dd0910c8f19b6d8ba7a84e1b2ee';
 const SLICE2_GUARD_CHECKS = 16;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 14)
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs

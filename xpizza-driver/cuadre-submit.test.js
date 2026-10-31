@@ -342,12 +342,12 @@ await t('pay-rate helpers: rateCentsInEffect (versioned, no retro-apply) + shift
   assert.equal(rateCentsInEffect(E, 5000), 8000, 'after → the latest rate');
   assert.equal(rateCentsInEffect({ a: { cents: 7000, effective_from: 2000 } }, 1000), null, 'a delivery BEFORE the earliest entry → null (never retro-apply a later rate)');
   assert.equal(rateCentsInEffect({ a: { cents: 'x', effective_from: 0 } }, 100), null, 'malformed entry skipped');
-  // shiftEarningsCents — sum of per-delivery rates; null when unknown/uncovered
+  // shiftEarningsCents — over shiftDeliveries().resolved items ({ at }); sum of per-delivery rates; null when unknown/uncovered
   assert.equal(shiftEarningsCents([], null), null, 'rate unknown (no entries) → null');
   assert.equal(shiftEarningsCents([], E), 0, 'no deliveries + a known rate → 0');
-  assert.equal(shiftEarningsCents([{ delivered_at: 500 }, { delivered_at: 1500 }], E), 7000 + 8000, 'each delivery at its OWN in-effect rate (a mid-period change is counted, not retro-applied)');
-  assert.equal(shiftEarningsCents([{ delivered_at: 500 }, { delivered_at: -1 }], E), null, 'any uncovered delivery → null (never a partial/invented total)');
-  assert.equal(shiftEarningsCents([{}], E), null, 'a delivery with no delivered_at → null');
+  assert.equal(shiftEarningsCents([{ at: 500 }, { at: 1500 }], E), 7000 + 8000, 'each delivery at its OWN in-effect rate (a mid-period change is counted, not retro-applied)');
+  assert.equal(shiftEarningsCents([{ at: 500 }, { at: -1 }], E), null, 'any uncovered delivery → null (never a partial/invented total)');
+  assert.equal(shiftEarningsCents([{}], E), null, 'a resolved item with no `at` → null');
 });
 
 console.log(`✓ cuadre-submit: ${passed} checks passed`);
