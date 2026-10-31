@@ -1828,6 +1828,7 @@
   "photos/served-photos.js",
   "photos/signer.js",
   "photos/sniff.js",
+  "photos/sweep-core.js",
   "photos/upload-start.js",
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
@@ -2962,6 +2963,10 @@
    "lifts": []
   },
   "photos/sniff.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/sweep-core.js": {
    "pins": [],
    "lifts": []
   },
