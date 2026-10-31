@@ -13,7 +13,7 @@ const pub = (k) => `https://storage.googleapis.com/tb-public/photos/${RID}/${P1}
 
 (async () => {
   // ── 1. overlay: pid replaces / adds, removed drops (no legacy fallback), absent keeps legacy; never mutates its input ──
-  const entries = { tb_a: { state: 'pid', pid: P1, card: pub('card'), hero: pub('hero') }, tb_b: { state: 'removed' }, tb_c: { state: 'pid', pid: P1, card: pub('card'), hero: pub('hero') }, tb_noid: { state: 'pid', pid: P1, card: 'x', hero: 'y' }, tb_gone: { state: 'pid', pid: P1, card: 'x', hero: 'y' } };
+  const entries = { tb_a: { state: 'pid', pid: P1, card: pub('card'), hero: pub('hero') }, tb_b: { state: 'removed' }, tb_c: { state: 'pid', pid: P1, card: pub('card'), hero: pub('hero') }, tb_noid: { state: 'pid', pid: P1, card: pub('card'), hero: pub('hero') }, tb_gone: { state: 'pid', pid: P1, card: pub('card'), hero: pub('hero') } };
   const before = JSON.stringify(legacy);
   assert.deepStrictEqual(overlay(legacy, menu, entries), { 1: { card: pub('card'), hero: pub('hero') }, 3: { card: pub('card'), hero: pub('hero') } }, 'SERVED-OVERLAY');
   assert.strictEqual(JSON.stringify(legacy), before, 'SERVED-OVERLAY-PURE');
@@ -31,8 +31,14 @@ const pub = (k) => `https://storage.googleapis.com/tb-public/photos/${RID}/${P1}
   const warn = console.warn; const w = []; console.warn = (...a) => w.push(a.join(' '));
   assert.strictEqual(await withVersionPhotos({}, RID, menu, legacy, async () => { throw new Error('down'); }), null, 'SERVED-READ-ERROR-OMITS');
   assert.strictEqual(await withVersionPhotos({}, RID, menu, legacy, async () => ({ schema: 2, entries })), null, 'SERVED-MALFORMED-OMITS');
+  // codex r1 P2-5: EACH entry is validated — one malformed entry omits the whole field (deviation #3), never a silent legacy fallback
+  for (const [label, bad] of [['pid without hero', { state: 'pid', pid: P1, card: pub('card') }], ['null entry', null], ['unknown state', { state: 'legacy' }],
+    ['pid not hex', { state: 'pid', pid: 'XYZ', card: pub('card'), hero: pub('hero') }], ['card not https', { state: 'pid', pid: P1, card: 'http://x/y.webp', hero: pub('hero') }],
+    ['removed with extra', { state: 'removed', pid: P1 }]]) {
+    assert.strictEqual(await withVersionPhotos({}, RID, menu, legacy, async () => ({ schema: 1, entries: { tb_a: { state: 'pid', pid: P1, card: pub('card'), hero: pub('hero') }, tb_b: bad } })), null, `SERVED-MALFORMED-ENTRY-OMITS ${label}`);
+  }
   console.warn = warn;
-  assert.ok(w.length === 2 && w.every((x) => x.includes('public_menu_version_photos_unreadable')), 'SERVED-UNREADABLE-LOGGED');
+  assert.ok(w.length === 8 && w.every((x) => x.includes('public_menu_version_photos_unreadable')), 'SERVED-UNREADABLE-LOGGED');
   ok('withVersionPhotos: reads versions/{servedVid}/meta/photos only; no doc / no version id → today\'s map (same object); unreadable or malformed → photos omitted (never a removed photo shown) + logged');
 
   console.log(`served-photos: OK (${n})`);

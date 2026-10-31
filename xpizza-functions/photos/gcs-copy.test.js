@@ -28,7 +28,7 @@ function fakeStorage() {
   s.objs.set('tb-default/drafts/r/p-card.webp', '1');
   const a = await C.copyIfAbsent('drafts/r/p-card.webp', 'tb-public', 'photos/r/p-card.webp');
   assert.deepStrictEqual(a, { generation: s.objs.get('tb-public/photos/r/p-card.webp'), created: true }, 'COPY-CREATED');
-  assert.deepStrictEqual(s.calls[0].opts, { preconditionOpts: { ifGenerationMatch: 0 }, contentType: 'image/webp', metadata: { cacheControl: 'public, max-age=31536000, immutable' } }, 'COPY-CREATE-ONLY-IMMUTABLE');
+  assert.deepStrictEqual(s.calls[0].opts, { preconditionOpts: { ifGenerationMatch: 0 }, contentType: 'image/webp', cacheControl: 'public, max-age=31536000, immutable' }, 'COPY-CREATE-ONLY-IMMUTABLE (codex r1 P2-6: cacheControl at the TOP level, beside contentType — File.copy maps nested metadata to CUSTOM metadata)');
   const b = await C.copyIfAbsent('drafts/r/p-card.webp', 'tb-public', 'photos/r/p-card.webp');
   assert.deepStrictEqual(b, { generation: a.generation, created: false }, 'COPY-412-IS-EXISTING');
   ok('copyIfAbsent: create-only (ifGenerationMatch 0), webp + public immutable cache; a 412 → the existing generation, created:false');

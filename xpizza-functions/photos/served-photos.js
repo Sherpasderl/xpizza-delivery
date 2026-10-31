@@ -8,6 +8,16 @@
 // An unreadable or malformed doc → null (the caller omits `photos`, exactly as photosFor's own trouble path): serving the legacy map
 // instead could show a photo the merchant REMOVED. Never throws.
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+// codex r1 P2-5: EVERY entry is validated before any is used — exactly {state:'removed'} or {state:'pid', pid: 32 hex, card + hero https URLs}.
+// One malformed entry makes the whole doc malformed (→ photos omitted, deviation #3), never a silent per-dish legacy fallback.
+const PID_RE = /^[0-9a-f]{32}$/;
+const httpsUrl = (u) => typeof u === 'string' && /^https:\/\/[^\s]+$/.test(u);
+function entryOk(e) {
+  if (!isObj(e)) return false;
+  const ks = Object.keys(e).sort().join(',');
+  if (e.state === 'removed') return ks === 'state';
+  return e.state === 'pid' && ks === 'card,hero,pid,state' && typeof e.pid === 'string' && PID_RE.test(e.pid) && httpsUrl(e.card) && httpsUrl(e.hero);
+}
 
 function overlay(legacy, menu, entries) {
   const out = { ...(legacy || {}) };
@@ -28,7 +38,7 @@ async function withVersionPhotos(db, rid, menu, legacy, read) {
   let doc;
   try {
     doc = await read(db, rid, vid);
-    if (doc !== null && doc !== undefined && !(isObj(doc) && doc.schema === 1 && isObj(doc.entries))) throw new Error('malformed meta/photos');
+    if (doc !== null && doc !== undefined && !(isObj(doc) && doc.schema === 1 && isObj(doc.entries) && Object.values(doc.entries).every(entryOk))) throw new Error('malformed meta/photos');
   } catch (e) {
     console.warn('public_menu_version_photos_unreadable', JSON.stringify({ rid, vid, error: String((e && e.message) || e).slice(0, 120) }));
     return null;
