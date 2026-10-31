@@ -11,6 +11,10 @@ import {
   contactRowHtml, waTemplatesHtml, offerExpiredBannerHtml, splashHtml,
   relativeAgeLabel, helpDiagnosisHtml, cierreRechazadoHtml,
 } from './stacked-view.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const __dir = dirname(fileURLToPath(import.meta.url));
 
 let passed = 0;
 function t(name, fn) { fn(); passed += 1; }
@@ -587,6 +591,23 @@ t('offerScreenHtml: NEVER renders the of-area line today — coloniaOf is "" unc
   const offers = [deepFreeze({ orderId: 'A', phase: 'awaiting_acceptance', order: { colonia: 'Col. Trejo', restaurant_display_name: 'X. Pizza', display_number: 9 } })];
   const html = offerScreenHtml(offers, DEPS, {});
   assert.ok(!html.includes('class="of-area"') && !html.includes('Col. Trejo'), 'no location line, even from an unverified alias');
+});
+
+// PAGOS_LIVE PRECONDITION — self-enforcing deferral (advisor 2026-10-31). The interlude/summary «+L 70» chips are
+// NOT yet on the real rate reader: their call sites (index.html interludeHtml/deliverySummaryHtml) are baseline
+// code added AFTER the slice-2 freeze baseline e2266b24, so the dual-baseline freeze can't host a SLICE3 replace
+// region there (replace-span-safety needs the span in BOTH baselines). That rewire is OWED (STRUCTURAL-DELTAS /
+// COVERAGE), with the design fixed: earningsCents = window.PayRate.rateCentsInEffect(driverRateEntries, the
+// delivered order's delivered_at), gated + blank when unknown. Until it lands, driver payments MUST NOT go live
+// with a fixed rate: if PAGOS_LIVE is ever flipped true while stacked-view.js still carries a hardcoded «+L 70»
+// earnings literal, this FAILS — nobody can turn payments on with a frozen rate left behind.
+t('PAGOS_LIVE precondition: no hardcoded «L 70» earnings literal in stacked-view.js once payments go live', () => {
+  const indexHtml = readFileSync(join(__dir, 'index.html'), 'utf8');
+  const stackedSrc = readFileSync(join(__dir, 'stacked-view.js'), 'utf8');
+  const pagosLive = /const\s+PAGOS_LIVE\s*=\s*true\b/.test(indexHtml);   // the master driver-earnings flag
+  const hardcodedEarnings = /\+ ?L ?\d/.test(stackedSrc);                // «+L 70» / «+ L 70» — gone once rewired to «+L ${…}»
+  assert.ok(!(pagosLive && hardcodedEarnings),
+    'PAGOS_LIVE is true but stacked-view.js still has a hardcoded «L 70» earnings literal — wire the interlude/summary chips to window.PayRate.rateCentsInEffect(driverRateEntries, delivered_at) BEFORE turning driver payments live (STRUCTURAL-DELTAS: OWED interlude/summary rate rewire)');
 });
 
 console.log(`stacked-view.test.js: ${passed} passed`);
