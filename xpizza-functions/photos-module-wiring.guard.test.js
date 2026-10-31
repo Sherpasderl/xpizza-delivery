@@ -14,12 +14,18 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
-assert.deepStrictEqual([...FILES], ['catalog/catalog-publish.js'], 'PHOTOS-MODULE-FILES');
+assert.deepStrictEqual([...FILES], ['catalog/catalog-publish.js', 'catalog/public-menu.js'], 'PHOTOS-MODULE-FILES');
+for (const f2 of FILES) {
+  const s2 = read(f2); const b2 = baseOf(f2);
+  assert.notStrictEqual(s2, b2, `non-vacuity: ${f2} carries the hunks`);
+  assert.strictEqual(unapplyPhotosModule(f2, s2), b2, `🔴 PHOTOS-MODULE-PROOF: ${f2} minus the photos hunks is not ${BASE}:${f2}`);
+  assert.strictEqual(s2.split('\n').length, b2.split('\n').length, `PHOTOS-MODULE-SAME-LINE ${f2}`);
+}
 const f = FILES[0]; const src = read(f); const base = baseOf(f);
 assert.notStrictEqual(src, base, 'non-vacuity: the hunks are present');
 assert.strictEqual(unapplyPhotosModule(f, src), base, `🔴 PHOTOS-MODULE-PROOF: ${f} minus the photos hunks is not ${BASE}:${f}`);
 assert.strictEqual(src.split('\n').length, base.split('\n').length, 'PHOTOS-MODULE-SAME-LINE');
-for (const h of HUNKS) {
+for (const h of HUNKS.filter((x) => x.file === f)) {
   assert.throws(() => unapplyPhotosModule(f, src.replace(h.now, h.now.replace('DISH PHOTOS', 'DISH PHOTOZ'))), /occurs 0 times/, 'a byte INSIDE a hunk');
   assert.throws(() => unapplyPhotosModule(f, src + h.now), /occurs 2 times/, 'a duplicated hunk');
   assert.throws(() => unapplyPhotosModule(f, src.replace(h.now, h.was)), /occurs 0 times/, 'a missing hunk');

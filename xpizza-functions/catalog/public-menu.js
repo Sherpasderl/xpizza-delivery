@@ -227,7 +227,7 @@ async function buildPublicMenu(db, rid, deps = {}) {
   /* PLAN-public-menu-display r2 T2 — PHOTOS, after the body is whole and before identity. A separate top-level field (never
      on a dish record: the cart serializes records into the order), and a decoration that cannot fail the serve —
      photosFor returns null on any trouble. The default manifest is the one index.js already loaded at module load. */
-  const photos = photosFor(restaurantId, menu, deps.sites !== undefined ? deps.sites : require('../platform-manifest').PLATFORM.sites);
+  const photos = await require('../photos/served-photos').withVersionPhotos(db, restaurantId, menu, photosFor(restaurantId, menu, deps.sites !== undefined ? deps.sites : require('../platform-manifest').PLATFORM.sites), deps.readVersionPhotos || require('../photos/served-photos').defaultReadVersionPhotos);   // DISH PHOTOS A2 step 11: the SERVED version's meta/photos overlaid (no doc ⇒ unchanged)
   if (photos) body = { ...body, photos };
   else console.warn('public_menu_photos_absent', JSON.stringify({ rid: restaurantId }));
 

@@ -1823,6 +1823,7 @@
   "photos/process.js",
   "photos/publish-io.js",
   "photos/publish-photos.js",
+  "photos/served-photos.js",
   "photos/signer.js",
   "photos/sniff.js",
   "photos/upload-start.js",
@@ -2025,7 +2026,14 @@
     {
      "file": "xpizza-functions/formbake-module-wiring.guard.test.js",
      "inverses": [
-      "tools/formbake-module-inverse.js"
+      "tools/formbake-module-inverse.js",
+      "tools/photos-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/photos-module-wiring.guard.test.js",
+     "inverses": [
+      "tools/photos-module-inverse.js"
      ]
     }
    ],
@@ -2932,6 +2940,10 @@
    "lifts": []
   },
   "photos/publish-photos.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/served-photos.js": {
    "pins": [],
    "lifts": []
   },

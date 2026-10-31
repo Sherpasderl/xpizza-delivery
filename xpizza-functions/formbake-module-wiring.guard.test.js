@@ -17,7 +17,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 
 assert.deepStrictEqual([...FILES].sort(), ['catalog/form-menu-source.js', 'catalog/public-menu.js', 'catalog/source-store.js']);
 for (const f of FILES) {
-  const src = read(f);
+  const src = require('./tools/photos-module-inverse').unapplyPhotosModule(f, read(f));   // DISH PHOTOS A2 (newest): reversed FIRST
   assert.notStrictEqual(unapplyFormbakeModule(f, src), src, `non-vacuity: ${f} carries the hunks`);
   assert.strictEqual(unapplyFormbakeModule(f, src), baseOf(f), `🔴 ${f} minus the plan-4 hunks is not ${BASE}:${f}`);
 }
