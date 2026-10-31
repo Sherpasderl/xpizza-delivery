@@ -506,6 +506,30 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
     assert.strictEqual(allFail.status, 503, 'every rid failing → 503');
     ok('E4: a deleted item doc, an emptied version, a tampered display field and a pointer failure each fail ONLY that branch (menu_unavailable, code logged not sent); all failing → 503');
   }
+  {
+    // DISH PHOTOS A2 step 12 (E-P4, per branch entry) — through the REAL core and the DEPLOYED export: tencha_centro's ACTIVE version gains a
+    // meta/photos doc (one pid entry + one removed); tencha_norte has none. Removed again at the end (later cells see today's state).
+    const C = require('../portal/ops-core');
+    const { getAuth } = require('firebase-admin/auth');
+    const { getActiveVersionId } = require('../catalog/catalog-firestore');
+    const { defaultReadVersionPhotos } = require('../photos/served-photos');
+    const vid = await getActiveVersionId(fs, 'tencha_centro');
+    const metaRef = fs.collection('restaurants').doc('tencha_centro').collection('versions').doc(vid).collection('meta').doc('photos');
+    const [k1, k2] = published.tencha_centro;
+    const card = `https://storage.googleapis.com/demo-photos-public/photos/tencha_centro/${'1'.repeat(32)}-card.webp`;
+    await metaRef.set({ schema: 1, entries: { [k1]: { state: 'pid', pid: '1'.repeat(32), card, hero: card.replace('-card', '-hero') }, [k2]: { state: 'removed' } } });
+    const req = { method: 'GET', query: { brandId: 'tencha' }, get: (h) => (h === 'authorization' ? `Bearer ${idToken(OWNER_T)}` : undefined) };
+    const withP = await C.getBranchAvailabilityCore({ db, fs, verifyIdToken: (t) => getAuth().verifyIdToken(t), log: { warn() {}, log() {} }, readVersionPhotos: defaultReadVersionPhotos }, req);
+    const by = Object.fromEntries(withP.body.branches.map((b) => [b.rid, b]));
+    assert.deepStrictEqual(by.tencha_centro.photos, { [k1]: { card } }, 'A2-E5-BRANCH-CARDS (pid entry only; removed omitted)');
+    assert.ok(!('photos' in by.tencha_norte), 'A2-E5-NO-DOC-NO-FIELD');
+    const without = await C.getBranchAvailabilityCore({ db, fs, verifyIdToken: (t) => getAuth().verifyIdToken(t), log: { warn() {}, log() {} } }, req);
+    assert.ok(without.body.branches.every((b) => !('photos' in b)), 'A2-E5-UNWIRED-UNCHANGED');
+    const deployed = await call(ops.getBranchAvailability, { uid: OWNER_T, query: '?brandId=tencha' });
+    assert.deepStrictEqual(Object.fromEntries(deployed.json.branches.map((b) => [b.rid, b])).tencha_centro.photos, { [k1]: { card } }, 'A2-E5-DEPLOYED-EXPORT-WIRED');
+    await metaRef.delete();
+    ok('A2-E5 E-P4: per branch, the ACTIVE version\'s published cards (pid only; removed / no doc → nothing); the unwired core unchanged; the deployed export wired');
+  }
 
   // ── slice 2: E6 getBranchDevices / E7 revokeBranchDevice (PLAN-portal-ui-slice2-equipos r1.1 §5) ─────────────────────
   // Real writers: devices from the REAL H1 pairDevice core on the REAL Auth emulator, last_seen from the REAL heartbeat core,
