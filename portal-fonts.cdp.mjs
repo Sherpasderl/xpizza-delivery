@@ -136,7 +136,7 @@ const STATES = {
   'P-drawer':        { page: 'index', container: '#drawer', drive: rowChev(1) },
   'P-review':        { page: 'index', container: '#scrim .modal', edit: { diff: DIFF }, drive: seq(editPrice, at("(document.getElementById('review').click(), true)", 800)) },
   'P-receipt':       { page: 'index', container: '#mbody .receipt', edit: { diff: DIFF }, drive: seq(editPrice, at("(document.getElementById('review').click(), true)", 800), at("(document.getElementById('pubbtn').click(), true)", 900)) },
-  'P-conflict':      { page: 'index', container: '#mbody .conflict', edit: { status: 409, body: { error: 'stale_edit' } }, drive: at("(document.getElementById('review').click(), true)", 800) },
+  'P-conflict':      { page: 'index', container: '#mbody .conflict', edit: { status: 409, body: { error: 'stale_edit' } }, drive: seq(editPrice, at("(document.getElementById('review').click(), true)", 800)) },
   'P-readonly':      { page: 'index', role: 'manager', caps: MGR_RO, container: '#detail', drive: async () => {} },
   'A-drawer':        { page: 'index', role: 'manager', caps: MGR_RO, container: '#availdrawer', drive: rowChev(0) },
   'S-list':          { page: 'index', container: '#viewsuc', drive: nav('navsuc') },
