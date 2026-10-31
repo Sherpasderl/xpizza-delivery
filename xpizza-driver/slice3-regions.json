@@ -543,6 +543,29 @@
   {
    "name": "MONEY-CERRADO",
    "kind": "insert"
+  },
+  {
+   "name": "MONEY-FINALIZE-RET",
+   "kind": "replace",
+   "restore": [
+    "  try {",
+    "    // Clock out via the server (the existing endDriverShift callable, which returns { ok: true } or throws), and",
+    "    // stop tracking ONLY after it succeeds: cleanupShift (kills the PWA GPS watch) and the native FGS stop both",
+    "    // run after a successful call, so a failed close never leaves active:true with no location.",
+    "    const res = isNative()",
+    "      ? await stopNativeTracking(XPD.getAuthInstance().app)",
+    "      : await XPD.endShift(currentUser.uid);",
+    "    if (res && res.ok === false) throw new Error('clock-out not ok');   // defensive; the live callable throws on failure",
+    "    await cleanupShift();",
+    "    toast('Turno terminado');",
+    "  } catch (e) {",
+    "    // End failed — the driver is still on shift server-side; revert the optimistic off-shift screen. Tracking was",
+    "    // never stopped (we call the server before cleanupShift), so no stranded active-but-untracked state.",
+    "    optimisticShift = null;",
+    "    render();",
+    "    toast('Error al terminar turno', 'error');",
+    "  }"
+   ]
   }
  ],
  "deps": [

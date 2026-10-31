@@ -68,7 +68,8 @@ function build(opts = {}) {
     computeShiftCash: () => CASH,
     makeOpId: () => 'op_test',
     XPD,
-    finalizeEndShift: async () => { calls.finalize++; },
+    finalizeEndShift: async () => { calls.finalize++; return opts.finalizeOk !== false; },   // success by default; opts.finalizeOk:false = a failed clock-out
+    showCerrado: (cash, start, closedAt) => { calls.cerrado = (calls.cerrado || 0) + 1; calls.cerradoArgs = { cash, start, closedAt }; },
     render: () => {},
     BLOCKED_CLOSE_TEXT: 'No se pudo registrar el cierre.',
     COMPLETION_SETTLE_TIMEOUT_MS: 100000,
@@ -216,5 +217,62 @@ await t('showCierreRechazado LATCHES the surface so an observer refresh cannot c
   assert.ok(/No se pudo cerrar el turno/.test(h.screen.innerHTML), 'the rejection screen SURVIVES the refresh (latch held)');
 });
 
+// ───────── cerrado wiring (money): cerrado shows ONLY on a clean clock-out, with the SUBMITTED cuadre figures ─────────
+await t('a successful clock-out shows cerrado ONCE, with the submitted cuadre cash + count (not before the ack)', async () => {
+  const h = build();                       // finalizeOk defaults to true (clean clock-out)
+  h.api.showCuadre();
+  slideToComplete(h);
+  await tick();
+  assert.equal(h.calls.recordCuadre, 1, 'submitted');
+  assert.ok(!h.calls.cerrado, 'cerrado is NOT shown before the server ack');
+  h.resolveRecord({});                     // server acks the cuadre
+  await tick(); await tick();
+  assert.equal(h.calls.finalize, 1, 'clock-out ran');
+  assert.equal(h.calls.cerrado, 1, 'cerrado shown exactly once, after finalize');
+  assert.equal(h.calls.cerradoArgs.cash.cashOwed, 1430, 'cerrado cashOwed = the SUBMITTED cuadre value');
+  assert.equal(h.calls.cerradoArgs.cash.deliveries, 6, 'cerrado deliveries = the SUBMITTED cuadre count');
+  assert.equal(typeof h.calls.cerradoArgs.closedAt, 'number', 'a single captured closedAt instant is passed');
+});
+
+await t('a FAILED clock-out does NOT show cerrado (shown only on success)', async () => {
+  const h = build({ finalizeOk: false });  // the clock-out reverts
+  h.api.showCuadre();
+  slideToComplete(h);
+  await tick();
+  h.resolveRecord({});
+  await tick(); await tick();
+  assert.equal(h.calls.finalize, 1, 'clock-out attempted');
+  assert.ok(!h.calls.cerrado, 'cerrado is NOT shown when the clock-out failed');
+});
+
+await t('finalizeEndShift returns true + clock-out side effects on success, false + revert (byte-identical) on failure', async () => {
+  function buildFin(fail) {
+    const calls = { cleanup: 0, render: 0, toasts: [] };
+    const deps = {
+      isNative: () => false,
+      currentUser: { uid: 'd' },
+      XPD: { endShift: async () => { if (fail) throw new Error('clock-out failed'); return { ok: true }; }, getAuthInstance: () => ({ app: {} }) },
+      stopNativeTracking: async () => ({ ok: true }),
+      cleanupShift: async () => { calls.cleanup++; },
+      toast: (m, k) => calls.toasts.push([m, k || '']),
+      render: () => { calls.render++; },
+    };
+    const names = Object.keys(deps);
+    const body = 'let optimisticShift = {};\n' + liftFn('finalizeEndShift') + '\nreturn { finalizeEndShift, getOptimistic: () => optimisticShift };';
+    const api = new Function(...names, body)(...names.map((n) => deps[n]));
+    return { api, calls };
+  }
+  const ok = buildFin(false);
+  assert.equal(await ok.api.finalizeEndShift(), true, 'success → true');
+  assert.equal(ok.calls.cleanup, 1, 'cleanupShift ran (success path unchanged)');
+  assert.deepEqual(ok.calls.toasts, [['Turno terminado', '']], 'success toast unchanged');
+  const bad = buildFin(true);
+  assert.equal(await bad.api.finalizeEndShift(), false, 'failure → false');
+  assert.equal(bad.calls.cleanup, 0, 'cleanupShift never reached on failure (ordering unchanged)');
+  assert.equal(bad.api.getOptimistic(), null, 'the revert sets optimisticShift = null (unchanged)');
+  assert.equal(bad.calls.render, 1, 'the revert re-renders (unchanged)');
+  assert.deepEqual(bad.calls.toasts, [['Error al terminar turno', 'error']], 'error toast unchanged');
+});
+
 console.log(`✓ cuadre-submit: ${passed} checks passed`);
-process.exit(passed === 8 ? 0 : 1);   // force-exit past the lifted handler's lingering ack-timeout timers
+process.exit(passed === 11 ? 0 : 1);   // force-exit past the lifted handler's lingering ack-timeout timers

@@ -4991,6 +4991,9 @@ function renderCuadreReceipt(bound) {
 /* ===== SLICE3:CUADRE-RENDER:END ===== */
 
 async function finalizeEndShift() {
+  /* ===== SLICE3:MONEY-FINALIZE-RET:START — add a success/failure RETURN (true after a clean clock-out, false on the
+     internal catch/revert) so the cuadre-submit path can show cerrado ONLY on success. Behavior is otherwise
+     byte-identical to the baseline: every side effect, the catch/revert, and all ordering are unchanged. ===== */
   try {
     // Clock out via the server (the existing endDriverShift callable, which returns { ok: true } or throws), and
     // stop tracking ONLY after it succeeds: cleanupShift (kills the PWA GPS watch) and the native FGS stop both
@@ -5001,13 +5004,16 @@ async function finalizeEndShift() {
     if (res && res.ok === false) throw new Error('clock-out not ok');   // defensive; the live callable throws on failure
     await cleanupShift();
     toast('Turno terminado');
+    return true;
   } catch (e) {
     // End failed — the driver is still on shift server-side; revert the optimistic off-shift screen. Tracking was
     // never stopped (we call the server before cleanupShift), so no stranded active-but-untracked state.
     optimisticShift = null;
     render();
     toast('Error al terminar turno', 'error');
+    return false;
   }
+  /* ===== SLICE3:MONEY-FINALIZE-RET:END ===== */
 }
 
 // Wire up the duty toggles. The off-screen toggle starts the shift; the
@@ -5248,6 +5254,7 @@ async function onCuadreConfirm(slideGen) {
   // — is handled exactly once, HERE, and only while this attempt is still the latest (not superseded by a
   // retry) AND the bound identity still holds. finalize runs under shiftBusy so the (briefly re-exposed)
   // start toggle can't interleave a clock-in mid-clock-out.
+  const closedAt = Date.now();   // the single client record-instant for cerrado's duration end (the cuadre's own closed_at is a serverTimestamp(); we do NOT weaken it — this is the client capture at submit, within ms of it)
   const p = XPD.recordCuadre(bound.uid, bound.shiftId, { ...cash, close_op_id: closeOpId });
   p.then(async () => {
     if (!isLatest()) return;                                   // a newer attempt owns the close now
@@ -5257,7 +5264,8 @@ async function onCuadreConfirm(slideGen) {
     try {
       $('cuadre-screen').classList.remove('open');
       optimisticShift = false; render();
-      await finalizeEndShift();                 // ordinary clock-out via the existing endDriverShift callable
+      const closedOk = await finalizeEndShift();   // ordinary clock-out via the existing endDriverShift callable
+      if (closedOk) showCerrado(cash, bound.start, closedAt);   // «Turno cerrado» summary ONLY on a clean clock-out (never on the revert path)
     } finally { shiftBusy = false; }
   }).catch((err) => {
     if (!isLatest()) return;
