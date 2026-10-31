@@ -35,6 +35,7 @@ function liftConst(name) {
 function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+504 9999 8888', allOrders = {}, rateEntries = null } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="screen-offshift" class="with-header hidden"></div></body></html>', { pretendToBeVisual: true });
   const { document, window } = dom.window;
+  new Function('self', readFileSync(join(__dir, 'pay-rate.js'), 'utf8'))(window);   // load the classic pay-rate script into the jsdom window → window.PayRate, exactly as the PAYRATE-SCRIPT <script> does (driver dir is type:module → not require()able as CJS); renderOffshift reads it (one source)
   const calls = { start: 0, render: 0, openCuenta: 0, sync: 0, notif: 0 };
   const $ = (id) => document.getElementById(id);
   const computeShiftCash = () => ({ cashOwed: 1430, deliveries: 7 });
@@ -68,16 +69,14 @@ function boot({ pagosLive = false, startImpl, suspended = false, dispatch = '+50
     'function todayMidnightMs(){ return 0; }\n' +
     'const driverIdentityCutoverMs = null;\n' +
     'let driverRateEntries = ' + JSON.stringify(rateEntries) + ';\n' +   // platform rate (seeded per cell)
-    liftFn('rateCentsInEffect') + '\n' +
-    liftFn('shiftEarningsCents') + '\n' +
     liftFn('attachSlideConfirm') + '\n' +
     liftFn('driverRow') + '\n' +
     liftFn('renderOffshift') + '\n' +
     'return { renderOffshift, getShiftBusy: () => shiftBusy, getOptimistic: () => optimisticShift };';
-  const names = ['document', '$', 'computeShiftCash', 'allOrders', 'SYSTEM_VERSION', 'toast', 'ICONS', 'fbOnValue', 'fbRef', 'XPD', '_suspended', '_driverState', '_currentUser', '_calls', '_startImpl', 'shiftDeliveries'];
+  const names = ['document', '$', 'computeShiftCash', 'allOrders', 'SYSTEM_VERSION', 'toast', 'ICONS', 'fbOnValue', 'fbRef', 'XPD', '_suspended', '_driverState', '_currentUser', '_calls', '_startImpl', 'shiftDeliveries', 'window'];
   const api = (new Function(...names, body))(
     document, $, computeShiftCash, allOrders, '2.5.3', () => {}, ICONS, fbOnValue, fbRef, XPD, suspended,
-    { name: 'Marvin Posadas', active: false }, { uid: 'drv', email: 'marvin@x.pizza' }, calls, startImpl, shiftDeliveries);
+    { name: 'Marvin Posadas', active: false }, { uid: 'drv', email: 'marvin@x.pizza' }, calls, startImpl, shiftDeliveries, window);
   const host = () => document.getElementById('screen-offshift');
   async function slide(id = 'btn-start-shift') {
     const el = host().querySelector('#' + id);

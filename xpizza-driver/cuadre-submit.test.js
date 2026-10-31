@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
 import { cierreRechazadoHtml } from './stacked-view.js';
 import { fmtClockHM } from './time-format.js';   // CUADRE-RENDER's date line now uses the shared formatter
 
@@ -330,10 +331,10 @@ await t('REAL showCerrado: modal (focus+Tab trap), «Listo» → render (not off
   assert.equal(api.getDismiss(), null, 'the dismiss hook is cleared after teardown');
 });
 
-await t('pay-rate helpers: rateCentsInEffect (versioned, no retro-apply) + shiftEarningsCents (sum; nothing when unknown/uncovered)', () => {
-  const api = new Function(liftFn('rateCentsInEffect') + '\n' + liftFn('shiftEarningsCents') + '\nreturn { rateCentsInEffect, shiftEarningsCents };')();
-  const { rateCentsInEffect, shiftEarningsCents } = api;
-  // rateCentsInEffect — the greatest effective_from ≤ t
+await t('pay-rate reader = window.PayRate (carried byte-identical from platform/client/pay-rate.js, 2e 52ef3331) + byte-parity', () => {
+  const _g = {}; new Function('self', readFileSync(join(__dir, 'pay-rate.js'), 'utf8'))(_g);   // load the classic pay-rate script (self.PayRate), exactly as the browser's PAYRATE-SCRIPT <script> does (the driver dir is type:module → it can't be require()d as CJS)
+  const { rateCentsInEffect, shiftEarningsCents } = _g.PayRate;
+  // rateCentsInEffect — the greatest effective_from ≤ t (versioned; never retro-apply)
   assert.equal(rateCentsInEffect(null, 100), null, 'no entries → null');
   assert.equal(rateCentsInEffect({}, 100), null, 'empty entries → null');
   const E = { a: { cents: 7000, effective_from: 0 }, b: { cents: 8000, effective_from: 1000 } };
@@ -342,12 +343,21 @@ await t('pay-rate helpers: rateCentsInEffect (versioned, no retro-apply) + shift
   assert.equal(rateCentsInEffect(E, 5000), 8000, 'after → the latest rate');
   assert.equal(rateCentsInEffect({ a: { cents: 7000, effective_from: 2000 } }, 1000), null, 'a delivery BEFORE the earliest entry → null (never retro-apply a later rate)');
   assert.equal(rateCentsInEffect({ a: { cents: 'x', effective_from: 0 } }, 100), null, 'malformed entry skipped');
-  // shiftEarningsCents — over shiftDeliveries().resolved items ({ at }); sum of per-delivery rates; null when unknown/uncovered
+  // shiftEarningsCents — over ORDER objects ({ delivered_at }); the shape renderOffshift passes (resolved.map(d=>d.order)).
+  // sum of per-delivery rates; null when the rate is unknown or ANY delivery is uncovered.
   assert.equal(shiftEarningsCents([], null), null, 'rate unknown (no entries) → null');
   assert.equal(shiftEarningsCents([], E), 0, 'no deliveries + a known rate → 0');
-  assert.equal(shiftEarningsCents([{ at: 500 }, { at: 1500 }], E), 7000 + 8000, 'each delivery at its OWN in-effect rate (a mid-period change is counted, not retro-applied)');
-  assert.equal(shiftEarningsCents([{ at: 500 }, { at: -1 }], E), null, 'any uncovered delivery → null (never a partial/invented total)');
-  assert.equal(shiftEarningsCents([{}], E), null, 'a resolved item with no `at` → null');
+  assert.equal(shiftEarningsCents([{ delivered_at: 500 }, { delivered_at: 1500 }], E), 7000 + 8000, 'each delivery at its OWN in-effect rate (a mid-period change is counted, not retro-applied)');
+  assert.equal(shiftEarningsCents([{ delivered_at: 500 }, { delivered_at: -1 }], E), null, 'any uncovered delivery → null (never a partial/invented total)');
+  assert.equal(shiftEarningsCents([{}], E), null, 'an order with no delivered_at → null');
+  // ONE source: the driver copy is byte-identical to the canonical platform/client copy, and both ARE the 2e-reviewed
+  // blob 52ef3331. EXPECTED_BLOB = `git rev-parse 52ef3331:xpizza-driver/pay-rate.js` (== platform/client's blob).
+  const DRV = join(__dir, 'pay-rate.js'), CANON = join(__dir, '..', 'platform', 'client', 'pay-rate.js');
+  assert.equal(Buffer.compare(readFileSync(DRV), readFileSync(CANON)), 0, 'xpizza-driver/pay-rate.js drifted from the canonical platform/client/pay-rate.js — re-carry/sync');
+  const EXPECTED_BLOB = 'cce3755df6f3f65006b62cf118d2380e4fb34f0f';
+  const gitHash = (p) => execFileSync('git', ['hash-object', p], { cwd: __dir }).toString().trim();
+  assert.equal(gitHash(DRV), EXPECTED_BLOB, 'driver copy diverged from the 2e 52ef3331 reviewed blob');
+  assert.equal(gitHash(CANON), EXPECTED_BLOB, 'platform/client copy diverged from the 2e 52ef3331 reviewed blob');
 });
 
 console.log(`✓ cuadre-submit: ${passed} checks passed`);

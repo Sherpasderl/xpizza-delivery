@@ -577,6 +577,10 @@
    "restore": [
     "  startCountdownTick();"
    ]
+  },
+  {
+   "name": "PAYRATE-SCRIPT",
+   "kind": "insert"
   }
  ],
  "deps": [
