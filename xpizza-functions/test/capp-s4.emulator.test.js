@@ -27,9 +27,9 @@ process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'capp-s4-secret';
 process.env.QUOTE_TOKEN_SECRET = process.env.QUOTE_TOKEN_SECRET || 'capp-s4-quote-secret';
 process.env.PIXELPAY_MERCHANT_EMAIL = process.env.PIXELPAY_MERCHANT_EMAIL || 'pagos@example.com';
 const stub = (rel, exportsOf) => { const p = require.resolve(rel); const real = require(rel); require.cache[p] = { id: p, filename: p, loaded: true, children: [], paths: [], exports: exportsOf(real) }; };
-const CHARGED = [];
+const CHARGED = [];   // the hosted stub below answers in the REAL provider shape { ok, url } (as capp-s2a's)
 stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
-stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CHARGED.push(Number(q.amountLempiras)); return { ok: true, checkout_url: `https://pay.example/${CHARGED.length}`, payment_uuid: `U${CHARGED.length}` }; } }));
+stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CHARGED.push(Number(q.amountLempiras)); return { ok: true, url: `https://pay.example/${q.pixelpayOrderId}` }; } }));
 
 const app = require('../index.js');
 const admin = require('firebase-admin');
