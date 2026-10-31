@@ -912,6 +912,10 @@
         "exp"
       ]
     },
+    "grants_used": {
+      ".read": false,
+      ".write": false
+    },
     "merchant_reject_notices": {
       ".read": false,
       ".write": false

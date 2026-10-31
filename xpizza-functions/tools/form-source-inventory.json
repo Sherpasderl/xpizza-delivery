@@ -1846,6 +1846,7 @@
   "merchant/merchant-transitions.js",
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
+  "otp-lib.js",
   "phone-countries.js",
   "pixelpay-charge.js",
   "pixelpay-confirm.js",
@@ -1879,6 +1880,7 @@
   "sequencing/writer.js",
   "signup-core.js",
   "signup-endpoints.js",
+  "signup-platform.js",
   "staff-push.js",
   "stats/stats-api.js",
   "test-push-core.js",
@@ -3157,6 +3159,10 @@
    "pins": [],
    "lifts": []
   },
+  "otp-lib.js": {
+   "pins": [],
+   "lifts": []
+  },
   "phone-countries.js": {
    "pins": [],
    "lifts": []
@@ -3391,6 +3397,10 @@
    "lifts": [
     "xpizza-functions/signup-wiring.guard.test.js"
    ]
+  },
+  "signup-platform.js": {
+   "pins": [],
+   "lifts": []
   },
   "staff-push.js": {
    "pins": [],
