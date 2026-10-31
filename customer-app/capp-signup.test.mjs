@@ -85,7 +85,7 @@ function sheet(o = {}) {
   const w = new JSDOM('<!doctype html><body><div id="h"></div></body>', { pretendToBeVisual: true }).window;
   const host = w.document.getElementById('h'); const api = fakeApi(o); const auth = fakeAuth(); const events = [];
   if (o.holdSignIn) { const real = auth.signInWithCustomToken; auth.signInWithCustomToken = (t) => new Promise((r) => { o.holdSignIn.release = () => r(real(t)); }); }
-  const su = createSignup({ doc: w.document, host, api, auth, google: o.google || null, timers: { setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {} }, onEvent: (n, d) => events.push([n, d]) });
+  const su = createSignup({ doc: w.document, host, api, auth, google: o.google || null, ...(o.intl ? { intlPhone: true, CappPhone: require('./capp-phone.js') } : {}), timers: { setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {} }, onEvent: (n, d) => events.push([n, d]) });
   const q = (s) => host.querySelector(s), qa = (s) => [...host.querySelectorAll(s)];
   const txt = (s) => { const el = q(s); return el ? el.textContent.replace(/\s+/g, ' ').trim() : null; };
   const click = async (s) => { const el = q(s); assert.ok(el, `premise: ${s}`); assert.ok(!el.disabled, `premise: ${s} enabled`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle(); };
@@ -274,4 +274,38 @@ test('S4 frame G = B (only with the host\'s scheduleGate, i.e. schedulingLive): 
   await g.click('[data-su="guest"]'); assert.deepEqual(g.events, [['guest', {}]]);
   const o = sheet(); o.su.open({ ctx: 'schedule', memberOnly: true }); await settle();
   assert.equal(o.txt('.sg .sub'), 'Guardá tus datos y pedí más rápido la próxima vez.'); assert.equal(o.q('[data-su="guest"]'), null, 'G6 unchanged without the gate');
+});
+
+// ── the sign-in sheet's country picker (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27 part B, option (b)) — under runtime.intlPhone ──
+test('Part B (b): under intlPhone the .cc is a BUTTON; the country list is a PANE inside the sheet (← Atrás back to the phone); the approved rows, Honduras checked', async () => {
+  const b = sheet({ intl: true }); b.su.open({ ctx: 'account' }); await settle();
+  const cc = b.q('.phonerow button.cc');
+  assert.ok(cc, '🔴 SP-cc: the .cc is a button'); assert.equal(cc.textContent.trim(), '+504'); assert.equal(cc.getAttribute('aria-label'), 'País del número: Honduras +504'); assert.ok(cc.querySelector('svg'));
+  await b.click('.phonerow button.cc');
+  assert.equal(b.txt('.sg .h1'), 'País del número', '🔴 SP-pane: the country list is a pane of THIS sheet');
+  assert.equal(b.txt('.sg .sub'), 'Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.');
+  assert.equal(b.qa('.sg .clist .crow').length, 10); assert.deepEqual([b.txt('.crow.on .nm'), b.txt('.crow.on .code')], ['Honduras', '+504']); assert.ok(b.q('.crow.on svg'));
+  assert.ok(b.q('[data-su="back"]'), 'the sheet\'s own ← Atrás'); assert.equal(b.w.document.querySelectorAll('.sheet').length, 1, 'never a second sheet');
+  await b.click('[data-su="back"]');
+  assert.equal(b.txt('.sg .h1'), 'Entrá a tu cuenta', 'Atrás ⇒ the phone pane');
+});
+test('Part B (b): picking a country returns to the phone pane with its code, its length and format; E.164 on the wire (request, verify, the signed-in phone)', async () => {
+  const b = sheet({ intl: true, verify: { ok: true, token: 'ct:u_us', isNew: false, name: 'Ann', completion: 'complete', profile: { name: 'Ann', email: 'a@b.co' } } }); b.su.open({ ctx: 'account' }); await settle();
+  await b.click('.phonerow button.cc'); await b.click('.crow[data-cc="1"]');
+  assert.equal(b.txt('.sg .h1'), 'Entrá a tu cuenta', '🔴 SP-pick: back on the phone pane');
+  assert.equal(b.q('.phonerow button.cc').textContent.trim(), '+1', '🔴 SP-pick: the chosen code'); assert.equal(b.q('#su-phone').getAttribute('placeholder'), '(555) 123-4567');
+  await b.type('#su-phone', '30555512349'); assert.equal(b.q('#su-phone').value, '(305) 555-1234', '🔴 SP-len: the country\'s length and format');
+  await b.click('[data-su="phone-go"]');
+  assert.deepEqual(b.api.of('requestOtp'), [{ phone: '+13055551234' }], '🔴 SP-wire: E.164 of the chosen country');
+  assert.match(b.txt('.sg .sub'), /\+1 \(305\) 555-1234/);
+  await b.code('482913'); await b.click('[data-su="verify"]');
+  assert.deepEqual(b.api.of('verifyOtp'), [{ phone: '+13055551234', code: '482913' }]);
+  await b.click('[data-su="finish"]');
+  assert.equal(b.events.find((e) => e[0] === 'signed-in')[1].phone, '+13055551234');
+});
+test('Part B (b): a device marker\'s full E.164 pre-fills ITS country; without intlPhone the sheet keeps the «+504» span and the 8-digit field, byte for byte', async () => {
+  const b = sheet({ intl: true }); b.su.open({ ctx: 'checkout-returning', prefill: '+13055551234' }); await settle();
+  assert.equal(b.q('.phonerow button.cc').textContent.trim(), '+1', '🔴 SP-prefill: the marker\'s country'); assert.equal(b.q('#su-phone').value, '(305) 555-1234');
+  const off = sheet(); off.su.open({ ctx: 'account' }); await settle();
+  assert.equal(off.q('.phonerow button.cc'), null); assert.equal(off.q('.phonerow span.cc').textContent, '+504');
 });

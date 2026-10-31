@@ -997,3 +997,12 @@ test('G7 flag absent: without runtime.signup a member\'s Cuenta stays the HOST\'
   S.click('.tabbar [data-tab="account"]'); await flush();
   assert.deepEqual(S.events.filter((e) => e[0] === 'tab').pop(), ['tab', { tab: 'account' }]); assert.equal(S.q('.acct-hero'), null);
 });
+
+test('Part B (b) in the shell: runtime.intlPhone reaches the sign-in sheet (the .cc button); absent ⇒ the «+504» span', async () => {
+  const on = bootShell({ auth: 'unresolved', runtime: { ...SU_RUNTIME, intlPhone: true }, mountExtra: { loadSdk: fakeFirebase({}).loadSdk, signupFetch: signupServer(ANA).fetch } });
+  await flush(); await flush(); on.click('.tabbar [data-tab="account"]'); await flush(); on.click('.guestcard .primary'); await flush();
+  assert.ok(suHost(on).querySelector('.phonerow button.cc'), '🔴 SP-shell: the flag reaches the sheet');
+  const off = bootShell({ auth: 'unresolved', runtime: SU_RUNTIME, mountExtra: { loadSdk: fakeFirebase({}).loadSdk, signupFetch: signupServer(ANA).fetch } });
+  await flush(); await flush(); off.click('.tabbar [data-tab="account"]'); await flush(); off.click('.guestcard .primary'); await flush();
+  assert.equal(suHost(off).querySelector('.phonerow button.cc'), null); assert.ok(suHost(off).querySelector('.phonerow span.cc'));
+});

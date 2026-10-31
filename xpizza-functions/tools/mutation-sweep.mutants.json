@@ -25399,5 +25399,142 @@
     "kills_with": [
       "G7-promos"
     ]
+  },
+  {
+    "id": "picker-14",
+    "slice": "picker",
+    "label": "the sign-in sheet ignores runtime.intlPhone (the .cc stays a span)",
+    "file": "../customer-app/capp-signup.js",
+    "from": "const INTL = o.intlPhone === true && !!o.CappPhone,",
+    "to": "const INTL = false,",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Part B",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "SP-cc"
+    ]
+  },
+  {
+    "id": "picker-15",
+    "slice": "picker",
+    "label": "the .cc button opens nothing",
+    "file": "../customer-app/capp-signup.js",
+    "from": "      if (a === 'cc' && INTL && !S.busy) return void go('country');\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Part B",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "SP-pane"
+    ]
+  },
+  {
+    "id": "picker-16",
+    "slice": "picker",
+    "label": "a picked country is not applied",
+    "file": "../customer-app/capp-signup.js",
+    "from": "if (P.byCc(c)) { S.cc = c; S.phone",
+    "to": "if (P.byCc(c)) { S.phone",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Part B",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "SP-pick"
+    ]
+  },
+  {
+    "id": "picker-17",
+    "slice": "picker",
+    "label": "the wire keeps +504 under intlPhone",
+    "file": "../customer-app/capp-signup.js",
+    "from": "const wire = () => (INTL ? '+' + ccNow() + digits() : '+504' + digits());",
+    "to": "const wire = () => ('+504' + digits());",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Part B",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "SP-wire"
+    ]
+  },
+  {
+    "id": "picker-18",
+    "slice": "picker",
+    "label": "the national length stays 8 for every country",
+    "file": "../customer-app/capp-signup.js",
+    "from": "const natLen = () => (INTL ? P.byCc(ccNow()).len : 8);",
+    "to": "const natLen = () => 8;",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Part B",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "SP-len"
+    ]
+  },
+  {
+    "id": "picker-19",
+    "slice": "picker",
+    "label": "a device marker's country is not pre-filled",
+    "file": "../customer-app/capp-signup.js",
+    "from": "        if (INTL && prefill) { const q = P.parseE164(prefill); if (q) { S.cc = q.cc; S.phone = P.format(q.cc, q.national); } }\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Part B",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "SP-prefill"
+    ]
+  },
+  {
+    "id": "picker-20",
+    "slice": "picker",
+    "label": "the shell does not pass runtime.intlPhone to the sheet",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "...(runtime.intlPhone === true ? { intlPhone: true, CappPhone: typeof CappPhone !== 'undefined' ? CappPhone : o.CappPhone } : {}),",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=60000",
+      "--test-name-pattern=Part B",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "SP-shell"
+    ]
+  },
+  {
+    "id": "picker-21",
+    "slice": "picker",
+    "label": "picking a country leaves the list open",
+    "file": "../customer-app/capp-signup.js",
+    "from": "S.pane = S.stack.pop() || 'phone'; S.err = ''; render(); return; }",
+    "to": "S.err = ''; render(); return; }",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Part B",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "SP-pick"
+    ]
   }
 ]

@@ -1050,3 +1050,8 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .crow.on{color:var(--acc);font-weight:600}
 .crow.on .code{color:var(--acc)}
 .crow.on svg.i{width:18px;height:18px;color:var(--acc)}
+/* the sign-in sheet's .cc as a BUTTON + the country list as a PANE inside the sheet (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27 part B (b)) */
+.sg button.cc{gap:6px;color:var(--ink);cursor:pointer}
+.sg button.cc svg.i{width:16px;height:16px;color:var(--mute)}
+.sg button.cc.focus{border-color:var(--ink)}
+.sg .clist{display:flex;flex-direction:column;margin:0 -20px -6px;border-bottom:1px solid var(--line)}
