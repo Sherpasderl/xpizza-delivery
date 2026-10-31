@@ -2131,9 +2131,9 @@ chargeOnlineApp.all('*', async (req, res) => {
   }
 
   /* checkout:begin gate-bind */
-  // §2.5: an order that now exists under this id must carry THIS request's verified phone, before any outcome answers with it
+  // §2.5: an order that now exists under this id must carry THIS request's verified phone, before any outcome answers with it.
+  // No hold to release: a capp guest has no verified uid, so it can never have reserved a redemption hold.
   if (cappGuest && cappGuest.guest && !(await require('./checkout-guest-gate').boundToGuest({ db, orderId, guest: cappGuest.guest }))) {
-    await releaseHoldIfOwned();
     return res.status(400).json({ error: 'guest_ticket_invalid' });
   }
   /* checkout:end gate-bind */
