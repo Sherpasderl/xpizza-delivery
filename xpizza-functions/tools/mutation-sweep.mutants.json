@@ -22508,7 +22508,9 @@
     "kills_with": [
       "✗ F4-warm: the faces are LOADED",
       "✗ F4-warm: a heading at weight"
-    ]
+    ],
+    "equivalent": true,
+    "why": "equivalent against this harness (advisor ruling (1), 2026-10-27): F4-cold measures a FRESH profile, so re-adding setCacheDisabled changes nothing it observes; non-vacuity is proven by F4-ctrl (255/451 boxes moved under the old swap policy). Killable once a warm from-cache cell exists (follow-up)"
   },
   {
     "id": "perf-core-1",
