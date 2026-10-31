@@ -5381,6 +5381,16 @@ function shiftEarningsCents(resolvedDeliveries, entries) {
   }
   return total;
 }
+// subscribe to the platform rate (best-effort; absent/denied/no-SDK ⇒ driverRateEntries stays null ⇒ earnings blank).
+// Mirrors the config reads: READ-only, one-shot wire kept live so a rate change propagates. 2e owns the node + rules.
+function subscribeDriverRate() {
+  if (typeof fbOnValue !== 'function' || typeof fbRef !== 'function' || !XPD || typeof XPD.getDb !== 'function') return;
+  try {
+    fbOnValue(fbRef(XPD.getDb(), 'platform_rates/driver_per_delivery'),
+      (snap) => { driverRateEntries = (snap && snap.val()) || null; if (typeof render === 'function') render(); if (typeof refreshOpenCashSurfaces === 'function') refreshOpenCashSurfaces(); },
+      () => { driverRateEntries = null; });
+  } catch (_) { driverRateEntries = null; }
+}
 /* ===== SLICE3:MONEY-RATE:END ===== */
 async function cleanupShift() {
   /* ===== SLICE2:SHIFT-CLEANUP:START — stop the map-aging timer on shift/session disposal (Codex r1 P2-7) ===== */
