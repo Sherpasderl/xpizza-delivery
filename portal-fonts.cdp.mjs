@@ -33,7 +33,7 @@ const BASELINE_REV = process.env.FONTS_BASELINE_REV || 'd23bef66';   // the base
 const PIN = JSON.parse(fs.readFileSync(path.join(ROOT, 'platform/fonts/baseline/portal.pin.json'), 'utf8'));
 const BASELINE_CSS = fs.readFileSync(path.join(ROOT, 'platform/fonts/baseline/portal.google.css'));
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.slice(k.length + 3).split(',') : d; };
-const CELLS = arg('cells', ['fast', 'slow', 'failed', 'ctrl', 'typing', 'same']);
+const CELLS = arg('cells', ['fast', 'clsctrl', 'slow', 'failed', 'ctrl', 'typing', 'same']);
 const VIEWS = arg('views', ['1280', '390']).map(Number);
 const THEMES = arg('themes', ['light', 'dark']);
 const REPEATS = Number(process.env.FONTS_REPEATS || 3);
@@ -206,14 +206,45 @@ function baselineRoot() {   // today's portal, exported from the base (independe
 const PAINT_SNAP = `(() => { const GEO = () => [...document.querySelectorAll('body *')].filter((e) => !/^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE)$/.test(e.tagName)).map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map((v) => v.toFixed(2)).join(','); });
   try { new PerformanceObserver((l, obs) => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint' && !window.__paintSnap) { obs.disconnect();
     requestAnimationFrame(() => { window.__paintSnap = { t: performance.now(), fcp: e.startTime, geo: GEO(), loaded: [...document.fonts].filter((f) => f.family.replace(/["']/g, '') === 'Archivo' && f.status === 'loaded').map((f) => 'Archivo ' + f.weight + ' ' + f.unicodeRange.slice(0, 12)) }; }); } }).observe({ type: 'paint', buffered: true }); } catch (_) {} })();`;
-// per shift: when, how much, and WHICH nodes moved (prev → current rect) — printed with any CLS failure, so a font reflow is told
-// apart from content arriving (the editor's rows land after the shell's discovery)
-const SHIFT_SRC = `window.__shiftSrc = []; try { const d = (n) => { if (!n || !n.nodeType) return '?'; const e = n.nodeType === 1 ? n : n.parentElement; if (!e) return '#text';
-  return e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (e.classList.length ? '.' + [...e.classList].slice(0, 3).join('.') : ''); };
+// per shift: when, how much, WHICH nodes moved (prev → current rect), and what each source is (text-bearing? its first family / weight),
+// plus the page's FONT TIMELINE from document start (FontFaceSet loading / loadingdone / loadingerror per face) — the advisor's ruling
+// (2026-10-31) classifies each entry from these; the hosted-font resource windows are read from Resource Timing at the end of the run
+const SHIFT_SRC = `window.__shiftSrc = []; window.__fontEv = []; try {
+  const key = (f) => f.family.replace(/["']/g, '') + '|' + f.weight + '|' + f.unicodeRange.slice(0, 16);
+  for (const type of ['loading', 'loadingdone', 'loadingerror']) document.fonts.addEventListener(type, (ev) => { for (const f of ev.fontfaces) window.__fontEv.push({ t: performance.now(), type, face: key(f), family: f.family.replace(/["']/g, '') }); });
+  const d = (n) => { if (!n || !n.nodeType) return '?'; const e = n.nodeType === 1 ? n : n.parentElement; if (!e) return '#text';
+    return e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (e.classList.length ? '.' + [...e.classList].slice(0, 3).join('.') : ''); };
+  const textOf = (n) => { if (!n) return []; const out = []; const w = document.createTreeWalker(n.nodeType === 1 ? n : n.parentNode || n, NodeFilter.SHOW_TEXT);
+    for (let x = n.nodeType === 3 ? n : w.nextNode(); x && out.length < 40; x = w.nextNode()) { if (x.data.trim() && x.parentElement) { const cs = getComputedStyle(x.parentElement);
+      out.push({ family: cs.fontFamily.split(',')[0].trim().replace(/^["']|["']$/g, ''), weight: cs.fontWeight }); } if (n.nodeType === 3) break; } return out; };
   const r = (x) => [x.x, x.y, x.width, x.height].map((v) => Math.round(v)).join(',');
-  new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__shiftSrc.push({ t: Math.round(e.startTime), v: +e.value.toFixed(4),
+  // a source inside #viewmenu: by its node when Chrome reports one, else (node already detached / null) by its rect inside #viewmenu's box
+  const inVm = (s) => { const e = s.node && (s.node.nodeType === 1 ? s.node : s.node.parentElement); if (e && e.isConnected) return !!e.closest('#viewmenu');
+    const vm = document.getElementById('viewmenu'); if (!vm) return false; const b = vm.getBoundingClientRect(), c = s.currentRect;
+    return c.width > 0 && c.x >= b.x - 1 && c.y >= b.y - 1 && c.x + c.width <= b.right + 1 && c.y + c.height <= b.bottom + 1; };
+  new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__shiftSrc.push({ t: e.startTime, v: e.value,
     fontsLoaded: [...document.fonts].filter((f) => f.status === 'loaded' && f.family.replace(/["']/g, '') === 'Archivo').length,
-    src: (e.sources || []).map((s) => d(s.node) + ' ' + r(s.previousRect) + '→' + r(s.currentRect)) }); }).observe({ type: 'layout-shift', buffered: true }); } catch (_) {}`;
+    sources: (e.sources || []).map((s) => ({ desc: d(s.node) + ' ' + r(s.previousRect) + '→' + r(s.currentRect), inViewmenu: inVm(s), text: textOf(s.node) })) }); }).observe({ type: 'layout-shift', buffered: true }); } catch (_) {}`;
+const FONT_RES = `performance.getEntriesByType('resource').filter((e) => /\\.woff2(\\?|$)|fonts\\.gstatic\\.com\\/s\\//.test(e.name)).map((e) => ({ name: e.name.split('/').pop(), start: e.startTime, end: e.responseEnd || e.startTime + e.duration }))`;
+const FRAME = 1000 / 60;
+// The RULING: an entry is FONT-ATTRIBUTED (fails) iff (a) it starts while any hosted font request is in flight or within one frame after
+// it completes (Resource Timing for the bytes; FontFaceSet loading → loadingdone|loadingerror for the face), OR (b) a source carries text
+// whose first family is a hosted face AND a face of that family finished loading between the frame before the entry and the entry (its
+// rendered family changed across the entry: fallback → hosted). Everything else is LOGGED against FINDING-portal-shell-late-shift.md.
+// No selector list: a font shift inside the shell's containers is caught by (a)/(b) like any other.
+export function classifyShifts(shifts, fontEv, fontRes) {
+  const windows = fontRes.map((x) => ({ from: x.start, to: x.end, why: `font request ${x.name}` }));
+  const open = new Map();
+  for (const e of fontEv) { if (!hostedOf(e.family)) continue; if (e.type === 'loading') open.set(e.face, e.t); else { windows.push({ from: open.has(e.face) ? open.get(e.face) : e.t, to: e.t, why: `face ${e.face} ${e.type}` }); open.delete(e.face); } }
+  for (const [face, t] of open) windows.push({ from: t, to: Infinity, why: `face ${face} still loading` });
+  const loadedAt = fontEv.filter((e) => e.type === 'loadingdone' && hostedOf(e.family));
+  return shifts.map((x) => {
+    const a = windows.find((w) => x.t >= w.from && x.t <= w.to + FRAME);
+    const b = x.sources.some((s) => s.text.some((tx) => hostedOf(tx.family) && loadedAt.some((e) => e.family === hostedOf(tx.family) && e.t > x.t - 2 * FRAME && e.t <= x.t + FRAME)));
+    return { ...x, font: !!(a || b), armA: !!a, armB: !!b, why: a ? `(a) ${a.why}` : b ? '(b) a text source\'s hosted face finished loading across the entry' : 'shell content (no font in flight, no text source changed face)' };
+  });
+}
+const showShifts = (cls) => { for (const x of cls) console.log(`      ${x.font ? 'FONT ' : 'shell'} shift @${Math.round(x.t)} ms ${+x.v.toPrecision(4)} [${x.why}] ${x.sources.slice(0, 4).map((s) => s.desc).join(' | ')}`); };
 const FREEZE = `(() => { const T = ${T0}; const D = Date; class FD extends D { constructor(...a) { super(...(a.length ? a : [T])); } static now() { return T; } } window.Date = FD; })();`;
 const QUIET = `document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}'; document.head.appendChild(s); });`;
 const THEME = (t) => `document.addEventListener('DOMContentLoaded', () => document.documentElement.setAttribute('data-theme', ${JSON.stringify(t)}));`;
@@ -298,7 +329,7 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     await premisePane(cdp, def.container);
     const caret1 = typing ? await caretOf(cdp) : null;
     const typedValue = typing ? await cdp.ev(`document.getElementById('__typing').value`) : null;
-    const after = { heldMs, bootMs, paintSnap, paintGeo: paintSnap ? paintSnap.geo : null, errs, refused: [...rt.refused], nodes: await census(cdp), geo, cls: await cdp.ev('window.__cls'), shifts: await cdp.ev('window.__shiftSrc'),
+    const after = { heldMs, bootMs, paintSnap, paintGeo: paintSnap ? paintSnap.geo : null, errs, refused: [...rt.refused], nodes: await census(cdp), geo, cls: await cdp.ev('window.__cls'), shifts: await cdp.ev('window.__shiftSrc'), fontEv: await cdp.ev('window.__fontEv'), fontRes: await cdp.ev(FONT_RES),
       fontsFailed: fontUrls().filter((u) => rt.finished.get(u) === 'failed').length, caret: caret1, typedValue };
     const shot = async () => Buffer.from((await cdp.s('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })).data, 'base64');
     const raw = deterministic ? await shot() : null;
@@ -399,7 +430,7 @@ const fails = []; const check = (ok, msg) => { console.log(`  ${ok ? '✓' : '�
 const fidelity = (r, label) => { const bad = r.after.nodes.flatMap((n) => runsOf(n, r.probe).fidelity.map((f) => `${n.path.slice(-40)} ${f}`)); check(!bad.length, `${label}: probe fidelity (${bad.length ? bad.slice(0, 3).join('; ') : 'every node'})`); };
 const expectedErr = (e, r) => typeof e === 'object' && /^Failed to load resource/.test(e.log) && (isFontUrl(e.url) || r.after.refused.includes(e.url));
 
-const showShifts = (r) => { for (const x of r.after.shifts || []) console.log(`      shift @${x.t} ms ${x.v} (Archivo faces loaded: ${x.fontsLoaded}): ${x.src.slice(0, 4).join(' | ')}`); };
+const SHELL_LOG = [];
 const CELL_STATES = { index: 'P-editor', aceptar: 'I-email' };
 for (let rep = 1; rep <= REPEATS; rep++) {
   for (const view of VIEWS) {
@@ -412,7 +443,18 @@ for (let rep = 1; rep <= REPEATS; rep++) {
         const m = moved(r.after.paintGeo, r.after.geo);
         if (stateName === 'P-editor') console.log(`    · P-editor's rows arrive after the shell's discovery — boxes added after FCP are content, not reflow; the FIRST-PAINT comparison is recorded (${m}), the settled comparison is FF-slow's`);
         else check(r.after.geo.length > 20 && m === 0, `[${page}] FF-fast: 0 of ${r.after.geo.length} boxes moved from FIRST PAINT to settled (${m})`);
-        check(r.after.cls === 0, `[${page}] FF-fast: CLS 0 over the whole window from navigation start (${r.after.cls})`); if (r.after.cls) showShifts(r);
+        const cls = classifyShifts(r.after.shifts, r.after.fontEv, r.after.fontRes), fontCls = cls.filter((x) => x.font).reduce((a, x) => a + x.v, 0), shellCls = cls.filter((x) => !x.font).reduce((a, x) => a + x.v, 0);
+        check(fontCls === 0, `[${page}] FF-fast: FONT-ATTRIBUTED CLS 0 over the whole window from navigation start (${+fontCls.toPrecision(3)}; total ${r.after.cls})`);
+        if (shellCls) { console.log(`    · logged against FINDING-portal-shell-late-shift.md: shell-content CLS ${+shellCls.toFixed(4)}`); SHELL_LOG.push({ page, view, rep, cls: shellCls }); }
+        if (cls.length) showShifts(cls);
+      }
+      if (CELLS.includes('clsctrl') && page === 'index') {   // NEGATIVE CONTROL for the ruling: a deliberate font SWAP inside #viewmenu must FAIL it
+        const r = await run({ stateName, view, fontGate: 'hold', holdMs: 2500, oldPolicy: true });
+        const cls = classifyShifts(r.after.shifts, r.after.fontEv, r.after.fontRes), font = cls.filter((x) => x.font);
+        const inside = font.filter((x) => x.sources.some((s) => s.inViewmenu));
+        check(hostedPainted(r.after.nodes) && !hostedPainted(r.before.nodes), `[${page}] CLS-ctrl premise: the old policy swapped fallback → Archivo at release (${r.after.heldMs} ms)`);
+        check(inside.length > 0 && font.reduce((a, x) => a + x.v, 0) > 0, `[${page}] CLS-ctrl: the swap's shift inside #viewmenu is FONT-ATTRIBUTED, so the FF-fast rule FAILS it (${inside.length} entr${inside.length === 1 ? 'y' : 'ies'}; arm (a) ${inside.filter((x) => x.armA).length}, arm (b) ${inside.filter((x) => x.armB).length}; font CLS ${+font.reduce((a, x) => a + x.v, 0).toPrecision(3)})`);
+        showShifts(cls);
       }
       if (CELLS.includes('slow')) {
         const r = await run({ stateName, view, fontGate: 'hold', throttle: true });
@@ -421,7 +463,7 @@ for (let rep = 1; rep <= REPEATS; rep++) {
         check(!hostedPainted(r.after.nodes), `[${page}] FF-slow: the fallback is KEPT after the held fonts complete`);
         const m = moved(r.before.geo, r.after.geo);
         check(r.after.geo.length > 20 && m === 0, `[${page}] FF-slow: 0 of ${r.after.geo.length} boxes moved (${m})`);
-        check(r.after.cls - r.before.cls === 0, `[${page}] FF-slow: CLS across the font window 0 (${r.after.cls - r.before.cls})`); if (r.after.cls) showShifts(r);
+        check(r.after.cls - r.before.cls === 0, `[${page}] FF-slow: CLS across the font window 0 (${r.after.cls - r.before.cls})`); if (r.after.cls) showShifts(classifyShifts(r.after.shifts, r.after.fontEv, r.after.fontRes));
       }
       if (CELLS.includes('failed')) {
         const r = await run({ stateName: page === 'index' ? 'P-drawer' : 'I-password', view, fontGate: 'fail' });
@@ -487,6 +529,7 @@ for (let rep = 1; rep <= REPEATS; rep++) {
     }
   }
 }
+if (SHELL_LOG.length) console.log(`\nshell-content CLS logged against FINDING-portal-shell-late-shift.md (not failed, advisor ruling 2026-10-31): ${SHELL_LOG.map((x) => `${x.page} ${x.view}px r${x.rep} ${+x.cls.toFixed(4)}`).join(' · ')}`);
 console.log(`\nartifacts: ${OUT}`);
 console.log(fails.length ? `\nportal-fonts.cdp: ${fails.length} FAILED` : '\nportal-fonts.cdp: OK');
 process.exit(fails.length ? 1 : 0);
