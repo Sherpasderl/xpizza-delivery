@@ -2,10 +2,11 @@
 // the order forms' own endpoints, scoped to the platform — never a restaurant id; additive fields only). UMD, brand-agnostic. DARK.
 //
 //   createSignupApi({ endpoints, fetch?, timeoutMs?, timers? }) → { config, requestOtp, verifyOtp, googleStart, googleSignIn,
-//   completeProfile, redeemSignupGrant }. Every call is BOUNDED (timeoutMs) and returns a plain result — never throws:
+//   completeProfile, redeemSignupGrant, setPromos }. Every call is BOUNDED (timeoutMs) and returns a plain result — never throws:
 //     { ok:true, … } | { ok:false, reason } with reason ∈ the contract's codes, or 'offline' (network / timeout / unparsable).
-//   endpoints: { requestOtp, verifyOtp, getSignupConfig, googleStart, googleSignIn, completeProfile, redeemSignupGrant } — the app
-//   runtime's (the same deployed functions the forms call; the app's web origin is already in their CORS list).
+//   endpoints: one URL per key of ENDPOINTS (below) — the app runtime's (the same deployed functions the forms call; the app's web
+//   origin is already in their CORS list). ENDPOINTS is the ONE source of the set: the host that builds runtime.signup builds its
+//   endpoints from it, and a guard holds every call here to a key in it.
 (function (root, factory) {
   const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -15,6 +16,8 @@
 
   const CONTEXT = 'platform';
   const TIMEOUT_MS = 12000;
+  // the runtime.signup endpoint set — every call below uses one of these keys (capp-signup.test.mjs guard)
+  const ENDPOINTS = Object.freeze(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant', 'setPromos']);
 
   function createSignupApi(opts) {
     const o = opts || {};
@@ -89,5 +92,5 @@
     };
   }
 
-  return { createSignupApi, CONTEXT, TIMEOUT_MS };
+  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS };
 });

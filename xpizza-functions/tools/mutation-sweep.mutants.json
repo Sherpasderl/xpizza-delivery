@@ -25536,5 +25536,22 @@
     "kills_with": [
       "SP-pick"
     ]
+  },
+  {
+    "id": "g7-16",
+    "slice": "g7",
+    "label": "the runtime.signup endpoint set drops setPromos (the host never builds its URL)",
+    "file": "../customer-app/capp-signup-api.js",
+    "from": "'completeProfile', 'redeemSignupGrant', 'setPromos']);",
+    "to": "'completeProfile', 'redeemSignupGrant']);",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=runtime.signup endpoints",
+      "../customer-app/capp-signup.test.mjs"
+    ],
+    "kills_with": [
+      "SU-endpoints"
+    ]
   }
 ]

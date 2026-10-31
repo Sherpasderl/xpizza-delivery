@@ -663,7 +663,7 @@ function fakeFirebase({ persisted = null, hold = null, failSignOut = 0 } = {}) {
     signOut: async () => { calls.out++; if (failSignOut > 0) { failSignOut--; throw new Error('network'); } user = null; emitU(); } };
   return { calls, loadSdk: async () => { calls.load++; return { initializeApp: () => ({}), authMod }; } };
 }
-const SU_EP = Object.fromEntries(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant'].map((k) => [k, `https://fn.test/${k}`]));
+const SU_EP = Object.fromEntries(require('./capp-signup-api.js').ENDPOINTS.map((k) => [k, `https://fn.test/${k}`]));   // the ONE source of the set
 const SU_RUNTIME = { ...RUNTIME, guestCardOnly: true, signup: { firebase: { apiKey: 'k_test', projectId: 'p' }, endpoints: SU_EP } };
 function signupServer(verify) {
   const sent = [];
@@ -902,8 +902,7 @@ test('S7a-2 frame 15: a held tap whose MENU does not load ⇒ «No pudimos abrir
 });
 
 // ── G7 member Cuenta (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27: frames 1 / 1b / 2 / 3 / 4a / 4b) — under runtime.signup ──
-const G7_EP = { ...SU_EP, setPromos: 'https://fn.test/setPromos' };
-const G7_RUNTIME = { ...SU_RUNTIME, signup: { ...SU_RUNTIME.signup, endpoints: G7_EP } };
+const G7_RUNTIME = SU_RUNTIME;   // the endpoint set (ENDPOINTS) carries setPromos
 const G7_PROFILE = (o = {}) => ({ uid: 'u_ana', name: 'Ana Pérez', phone: '+50496123344', email: 'ana.perez@gmail.com', ...o });
 const g7Store = (profile) => { const st = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }) }); DA.remember(st, '+50496123344'); if (profile) DA.rememberProfile(st, profile); return st; };
 function g7Server(promosOk = true) {

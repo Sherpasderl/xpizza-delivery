@@ -309,3 +309,11 @@ test('Part B (b): a device marker\'s full E.164 pre-fills ITS country; without i
   const off = sheet(); off.su.open({ ctx: 'account' }); await settle();
   assert.equal(off.q('.phonerow button.cc'), null); assert.equal(off.q('.phonerow span.cc').textContent, '+504');
 });
+
+test('runtime.signup endpoints: ENDPOINTS is the ONE source — every call in the transport uses a key in it, and every key is called (G7 setPromos included)', () => {
+  const { ENDPOINTS } = require('./capp-signup-api.js');
+  const src = readFileSync(join(HERE, 'capp-signup-api.js'), 'utf8');
+  const used = [...new Set([...src.matchAll(/\bE\.([A-Za-z]+)/g)].map((m) => m[1]))].sort();
+  assert.deepEqual(used, [...ENDPOINTS].sort(), '🔴 SU-endpoints: the calls and the endpoint set agree');
+  assert.ok(ENDPOINTS.includes('setPromos'));
+});
