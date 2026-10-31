@@ -48,6 +48,9 @@ const state = async (w, pid) => (await w.reg(pid).get()).data();
     assert.deepStrictEqual([...refs].sort(), [P_REF, P_RB].sort(), 'SWEEP-REFS');
     const broken = { ...w.deps, fs: { collection: (c) => (c === 'restaurants' ? { doc: () => ({ collection: (c2) => (c2 === 'versions' ? { get: async () => { throw new Error('down'); } } : w.fs.collection('restaurants').doc(RID).collection(c2)) }) } : w.fs.collection(c)) } };
     await assert.rejects(() => S.scanReferences(broken, RID), /scan_incomplete/, 'SWEEP-SCAN-FAILURE-ABORTS');
+    const r = await S.sweepRid({ ...w.deps, fs: broken.fs, mode: 'live' }, RID);
+    assert.strictEqual(r.aborted, 'scan_incomplete', 'SWEEP-SCAN-FAILURE-RUN-ABORTED');
+    assert.deepStrictEqual([r.deleted, w.priv.deletes, w.pub.deletes, (await state(w, P_OLD)).state], [[], [], [], 'draft'], 'SWEEP-SCAN-FAILURE-NOTHING-DELETED');
     ok('scan: the draft map ∪ meta/photos of every retained version (a rolled-back-to version keeps its pid); a read failure → scan_incomplete');
   }
   // ── 2. a LIVE run: only the expired, unreferenced pids are deleted (generation-matched, both buckets) and marked deleted ──
