@@ -206,6 +206,14 @@ function baselineRoot() {   // today's portal, exported from the base (independe
 const PAINT_SNAP = `(() => { const GEO = () => [...document.querySelectorAll('body *')].filter((e) => !/^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE)$/.test(e.tagName)).map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map((v) => v.toFixed(2)).join(','); });
   try { new PerformanceObserver((l, obs) => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint' && !window.__paintSnap) { obs.disconnect();
     requestAnimationFrame(() => { window.__paintSnap = { t: performance.now(), fcp: e.startTime, geo: GEO(), loaded: [...document.fonts].filter((f) => f.family.replace(/["']/g, '') === 'Archivo' && f.status === 'loaded').map((f) => 'Archivo ' + f.weight + ' ' + f.unicodeRange.slice(0, 12)) }; }); } }).observe({ type: 'paint', buffered: true }); } catch (_) {} })();`;
+// per shift: when, how much, and WHICH nodes moved (prev → current rect) — printed with any CLS failure, so a font reflow is told
+// apart from content arriving (the editor's rows land after the shell's discovery)
+const SHIFT_SRC = `window.__shiftSrc = []; try { const d = (n) => { if (!n || !n.nodeType) return '?'; const e = n.nodeType === 1 ? n : n.parentElement; if (!e) return '#text';
+  return e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (e.classList.length ? '.' + [...e.classList].slice(0, 3).join('.') : ''); };
+  const r = (x) => [x.x, x.y, x.width, x.height].map((v) => Math.round(v)).join(',');
+  new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__shiftSrc.push({ t: Math.round(e.startTime), v: +e.value.toFixed(4),
+    fontsLoaded: [...document.fonts].filter((f) => f.status === 'loaded' && f.family.replace(/["']/g, '') === 'Archivo').length,
+    src: (e.sources || []).map((s) => d(s.node) + ' ' + r(s.previousRect) + '→' + r(s.currentRect)) }); }).observe({ type: 'layout-shift', buffered: true }); } catch (_) {}`;
 const FREEZE = `(() => { const T = ${T0}; const D = Date; class FD extends D { constructor(...a) { super(...(a.length ? a : [T])); } static now() { return T; } } window.Date = FD; })();`;
 const QUIET = `document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}'; document.head.appendChild(s); });`;
 const THEME = (t) => `document.addEventListener('DOMContentLoaded', () => document.documentElement.setAttribute('data-theme', ${JSON.stringify(t)}));`;
@@ -248,7 +256,7 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     cdp.on('Runtime.exceptionThrown', (p) => errs.push(`exception: ${(p.exceptionDetails.exception && p.exceptionDetails.exception.description) || p.exceptionDetails.text}`.slice(0, 200)));
     cdp.on('Runtime.consoleAPICalled', (p) => { if (p.type === 'error') errs.push(`console.error: ${p.args.map((a) => a.value ?? a.description ?? '').join(' ')}`.slice(0, 200)); });
     cdp.on('Log.entryAdded', (p) => { if (p.entry.level === 'error') errs.push({ log: p.entry.text.slice(0, 200), url: p.entry.url || '' }); });
-    for (const src of [OBSERVER, PAINT_SNAP, THEME(theme), H.replace(/\n/g, ' ').replace(/^/, 'document.addEventListener("DOMContentLoaded", () => {').concat('});')]) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: src });
+    for (const src of [OBSERVER, SHIFT_SRC, PAINT_SNAP, THEME(theme), H.replace(/\n/g, ' ').replace(/^/, 'document.addEventListener("DOMContentLoaded", () => {').concat('});')]) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: src });
     if (deterministic) for (const src of [FREEZE, QUIET]) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: src });
     const t0 = Date.now();
     const page = def.page === 'aceptar' ? `aceptar.html${def.noInvite ? '' : `?invite=${INVITE_ID}&mode=signIn&oobCode=fx&apiKey=fx`}` : 'index.html';
@@ -283,7 +291,7 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     await premisePane(cdp, def.container);
     const caret1 = typing ? await caretOf(cdp) : null;
     const typedValue = typing ? await cdp.ev(`document.getElementById('__typing').value`) : null;
-    const after = { heldMs, bootMs, paintSnap, paintGeo: paintSnap ? paintSnap.geo : null, errs, refused: [...rt.refused], nodes: await census(cdp), geo, cls: await cdp.ev('window.__cls'),
+    const after = { heldMs, bootMs, paintSnap, paintGeo: paintSnap ? paintSnap.geo : null, errs, refused: [...rt.refused], nodes: await census(cdp), geo, cls: await cdp.ev('window.__cls'), shifts: await cdp.ev('window.__shiftSrc'),
       fontsFailed: fontUrls().filter((u) => rt.finished.get(u) === 'failed').length, caret: caret1, typedValue };
     const shot = async () => Buffer.from((await cdp.s('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })).data, 'base64');
     const raw = deterministic ? await shot() : null;
@@ -384,19 +392,20 @@ const fails = []; const check = (ok, msg) => { console.log(`  ${ok ? '✓' : '�
 const fidelity = (r, label) => { const bad = r.after.nodes.flatMap((n) => runsOf(n, r.probe).fidelity.map((f) => `${n.path.slice(-40)} ${f}`)); check(!bad.length, `${label}: probe fidelity (${bad.length ? bad.slice(0, 3).join('; ') : 'every node'})`); };
 const expectedErr = (e, r) => typeof e === 'object' && /^Failed to load resource/.test(e.log) && (isFontUrl(e.url) || r.after.refused.includes(e.url));
 
+const showShifts = (r) => { for (const x of r.after.shifts || []) console.log(`      shift @${x.t} ms ${x.v} (Archivo faces loaded: ${x.fontsLoaded}): ${x.src.slice(0, 4).join(' | ')}`); };
 const CELL_STATES = { index: 'P-editor', aceptar: 'I-email' };
 for (let rep = 1; rep <= REPEATS; rep++) {
   for (const view of VIEWS) {
     console.log(`\n== repeat ${rep} · ${view}px`);
     for (const [page, stateName] of Object.entries(CELL_STATES)) {
       if (CELLS.includes('fast')) {
-        const r = await run({ stateName, view });
+        const r = await run({ side: process.env.FONTS_FAST_SIDE || 'candidate', stateName, view });   // FONTS_FAST_SIDE=baseline: today's portal, the diagnostic reference
         check(hostedPainted(r.after.nodes), `[${page}] FF-fast: Archivo paints (census)`);
         check(!!r.after.paintSnap && r.after.paintGeo.length > 20, `[${page}] FF-fast premise: geometry captured in-page at FCP + 1 rAF (FCP ${r.after.paintSnap && Math.round(r.after.paintSnap.fcp)} ms; Archivo loaded then: ${r.after.paintSnap ? r.after.paintSnap.loaded.length : '?'})`);
         const m = moved(r.after.paintGeo, r.after.geo);
         if (stateName === 'P-editor') console.log(`    · P-editor's rows arrive after the shell's discovery — boxes added after FCP are content, not reflow; the FIRST-PAINT comparison is recorded (${m}), the settled comparison is FF-slow's`);
         else check(r.after.geo.length > 20 && m === 0, `[${page}] FF-fast: 0 of ${r.after.geo.length} boxes moved from FIRST PAINT to settled (${m})`);
-        check(r.after.cls === 0, `[${page}] FF-fast: CLS 0 over the whole window from navigation start (${r.after.cls})`);
+        check(r.after.cls === 0, `[${page}] FF-fast: CLS 0 over the whole window from navigation start (${r.after.cls})`); if (r.after.cls) showShifts(r);
       }
       if (CELLS.includes('slow')) {
         const r = await run({ stateName, view, fontGate: 'hold', throttle: true });
@@ -405,7 +414,7 @@ for (let rep = 1; rep <= REPEATS; rep++) {
         check(!hostedPainted(r.after.nodes), `[${page}] FF-slow: the fallback is KEPT after the held fonts complete`);
         const m = moved(r.before.geo, r.after.geo);
         check(r.after.geo.length > 20 && m === 0, `[${page}] FF-slow: 0 of ${r.after.geo.length} boxes moved (${m})`);
-        check(r.after.cls - r.before.cls === 0, `[${page}] FF-slow: CLS across the font window 0 (${r.after.cls - r.before.cls})`);
+        check(r.after.cls - r.before.cls === 0, `[${page}] FF-slow: CLS across the font window 0 (${r.after.cls - r.before.cls})`); if (r.after.cls) showShifts(r);
       }
       if (CELLS.includes('failed')) {
         const r = await run({ stateName: page === 'index' ? 'P-drawer' : 'I-password', view, fontGate: 'fail' });
