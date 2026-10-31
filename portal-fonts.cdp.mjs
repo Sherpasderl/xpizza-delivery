@@ -153,7 +153,8 @@ const STATES = {
       const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       for (const i of ins) { if (i.type === 'email') { set.call(i, 'luis@ejemplo.test'); i.dispatchEvent(new Event('input', { bubbles: true })); }
         else if (i.type === 'text') { set.call(i, 'Luis Mejía'); i.dispatchEvent(new Event('input', { bubbles: true })); }
-        else if (i.type === 'checkbox' && !i.checked) { i.click(); break; } }
+      }
+      const pick = m.querySelector('.tpick'); if (!pick) throw new Error('premise: no branch pick in the invite modal'); pick.click();   // the branch picks are .tpick buttons (team.js)
       return true; })()`); await sleep(200); }, at("__click('Enviar invitación')", 900)) },
   'T-remove':        { page: 'index', container: '.modal[role=dialog]', drive: seq(navLabel('Equipo de trabajo'), at("__click('Quitar acceso')", 500)) },
   // P-crop: only when the dish-photos B slice is in the build tip (it is not at this base); listed, then skipped with its reason
@@ -179,7 +180,7 @@ function decideFor(st) {
     if (fn === 'editCatalog') { const e = st.edit || {}; if (e.status) return { status: e.status, body: JSON.stringify(e.body) }; let src = null; try { src = JSON.parse(req.postData || '{}').source; } catch (_) {} return ok({ diff: e.diff || DIFF, token: 'tok', updateTime: 'T2', source: src }); }
     if (fn === 'publishEdited') return ok({ ok: true, versionId: 'v143' });
     if (fn === 'memberList') return ok(TEAM);
-    if (fn === 'memberInvite') return ok({ ok: true, email: 'luis@ejemplo.test', name: 'Luis Mejía' });
+    if (fn === 'memberInvite') return ok({ ok: true, inviteId: 'inv_' + 'c'.repeat(24), email: 'luis@ejemplo.test', name: 'Luis Mejía' });
     if (fn === 'getBranchDevices') return ok(DEVICES);
     if (fn === 'getSalesStats') return ok(STATS);
     if (fn === 'reportClientVersion') return 'fail';
@@ -261,6 +262,9 @@ async function premisePane(cdp, sel) {
 async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy = false, stateName = 'P-editor', deterministic = false, holdMs = 6000, faceChange = false,
   view = 1280, theme = 'light', typing = false }) {
   const def = STATES[stateName];
+  const load1 = os.loadavg()[0];   // the slot rule: load1 > 45 ⇒ UNTRUSTED STOP (checked before EVERY run, not only at launch)
+  LOAD_MAX = Math.max(LOAD_MAX, load1);
+  if (load1 > 45) { console.log(`\nUNTRUSTED STOP: 1-min load ${load1.toFixed(2)} > 45 before ${side} ${stateName} @${view}px`); process.exit(3); }
   const st = { ...def, baseline: side === 'baseline', fontGate };
   const root = side === 'baseline' ? baselineRoot() : ROOT;
   const srv = await serveDir(root, {
@@ -431,6 +435,7 @@ const fidelity = (r, label) => { const bad = r.after.nodes.flatMap((n) => runsOf
 const expectedErr = (e, r) => typeof e === 'object' && /^Failed to load resource/.test(e.log) && (isFontUrl(e.url) || r.after.refused.includes(e.url));
 
 const SHELL_LOG = [];
+let LOAD_MAX = 0;
 const CELL_STATES = { index: 'P-editor', aceptar: 'I-email' };
 for (let rep = 1; rep <= REPEATS; rep++) {
   for (const view of VIEWS) {
@@ -530,6 +535,7 @@ for (let rep = 1; rep <= REPEATS; rep++) {
   }
 }
 if (SHELL_LOG.length) console.log(`\nshell-content CLS logged against FINDING-portal-shell-late-shift.md (not failed, advisor ruling 2026-10-31): ${SHELL_LOG.map((x) => `${x.page} ${x.view}px r${x.rep} ${+x.cls.toFixed(4)}`).join(' · ')}`);
+console.log(`\nmax 1-min load at a run start: ${LOAD_MAX.toFixed(2)} (limit 45)`);
 console.log(`\nartifacts: ${OUT}`);
 console.log(fails.length ? `\nportal-fonts.cdp: ${fails.length} FAILED` : '\nportal-fonts.cdp: OK');
 process.exit(fails.length ? 1 : 0);
