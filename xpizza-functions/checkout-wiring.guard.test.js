@@ -52,7 +52,8 @@ for (let k = 1; k < order.length; k++) assert.ok(order[k - 1] < order[k], 'charg
 assert.ok(at("customer_uid = null; }   // any error → guest\n  }\n  /* checkout:begin gate-charge */") > 0, 'gate-charge follows chargeOnlineOrder\'s identity resolution');
 for (const first of ["db.ref(`recent_order_content/", 'reserveRedemption(']) { const w = live.indexOf(first, chStart); assert.ok(w < 0 || w > order[0], `gate-charge precedes ${first}`); }
 assert.ok(/secrets: \[SIGNUP_GRANT_SECRET\]/.test(hunk('grant-secret-bind')) && live.indexOf('/* checkout:begin grant-secret-bind */') > live.indexOf('exports.chargeOnlineOrder = onRequest('), 'the grant secret binds to chargeOnlineOrder only');
-assert.strictEqual(live.split('SIGNUP_GRANT_SECRET]').length - 1, 1, 'no other function binds the grant secret');
+assert.strictEqual(live.split('SIGNUP_GRANT_SECRET]').length - 1, 2, 'the grant secret binds to exactly chargeOnlineOrder + redeemSignupGrant');
+assert.ok(/exports\.redeemSignupGrant = onRequest\(\n  \{[^\n]*secrets: \[SIGNUP_GRANT_SECRET\] \}/.test(block), 'S3b: redeemSignupGrant (in the endpoints block) binds it');
 for (const [name, stmt] of [['gate-create', 'if (cappGuestRefusal) return res.status(400).json({ error: cappGuestRefusal });'],
   ['gate-method', "&& (await require('./checkout-guest-gate').chargeUidOf(req, { getAuth, getDatabase, attributionUid })) === null) {\n    return res.status(400).json({ error: 'guest_cash_not_allowed' });"],
   ['gate-charge', 'if (cappGuest && cappGuest.refuse) return res.status(400).json({ error: cappGuest.refuse });'],
@@ -67,6 +68,19 @@ assert.throws(() => unapplyCheckoutIndex(live + BEGIN + END), /more than once/, 
 assert.throws(() => unapplyCheckoutIndex(live.replace('  /* checkout:begin gate-create */\n', '  x; /* checkout:begin gate-create */\n')), /own lines/, 'a marker sharing a base line');
 assert.throws(() => unapplyCheckoutIndex(live.replace('/* checkout:end gate-bind */', '/* checkout:end gate-bindx */')), /missing|unknown/, 'a renamed S2 marker');
 assert.notStrictEqual(unapplyCheckoutIndex(live.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'an edit OUTSIDE the hunks is detected');
+// S3a placement: each platform hand-off is the FIRST statement after its handler's POST check (before any read / write); the
+// forms' path below it is byte-identical (proven by (i)); exactly the bodies carrying `context` leave
+for (const [fn, name, next] of [['exports.requestOtp = onRequest(', 's3a-request', 'const { phone, restaurant_id } = req.body || {};'], ['exports.verifyOtp = onRequest(', 's3a-verify', 'const { phone, code } = req.body || {};']]) {
+  const f = at(fn), e = live.indexOf('\nexports.', f + 1), h = live.indexOf(`/* checkout:begin ${name} */`, f);
+  assert.ok(h > f && h < e, `${name} is inside ${fn}`);
+  const before = live.slice(f, h);
+  assert.ok(/if \(req\.method !== 'POST'\) return res\.status\(405\)\.json\(\{ ok: false \}\);\n      $/.test(before), `${name} immediately follows the POST check`);
+  assert.ok(!/\b(getDatabase|db\.ref|\.transaction\(|sendMessage)\b/.test(before.slice(before.indexOf('async (req, res)'))), `${name}: no I/O above it`);
+  assert.ok(live.slice(h).split('\n')[1].includes("if ((req.body || {}).context !== undefined) return SIGNUP_PLATFORM."), `${name}: hands off ONLY a body carrying context`);
+  assert.ok(live.indexOf(next, h) === live.indexOf(`/* checkout:end ${name} */`, h) + `/* checkout:end ${name} */`.length + 7, `${name}: the forms' path resumes right after it`);
+}
+ok('(ii-S3) placement: the s3a hand-offs are the first statement after each handler\'s POST check, no I/O above them, only a `context` body leaves; redeemSignupGrant + chargeOnlineOrder are the only grant-secret bindings');
+
 ok('(iii) sensitivity: missing / duplicated / shared-line / renamed markers refused; an edit outside the hunks is detected');
 
 console.log(`\ncheckout-wiring.guard: OK (${n})`);

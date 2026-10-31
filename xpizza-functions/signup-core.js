@@ -22,6 +22,11 @@ const SIGNUP = Object.freeze({
   SESSION_RE: /^[A-Za-z0-9_-]{20,128}$/,
   ID_RE: /^[A-Za-z0-9_-]{16,64}$/,
 });
+// PLAN-guest-checkout-server S3a — the customer APP's signup SCOPE. Every per-brand key (consent node, legal, Google audiences,
+// challenges / tickets) takes either a restaurant id (the forms, unchanged) or this scope (the app, `context:'platform'`).
+// It can never collide with a restaurant id: RID_RE requires a leading [a-z0-9].
+const PLATFORM_SCOPE = '_platform';
+const isScope = (s) => s === PLATFORM_SCOPE || SIGNUP.RID_RE.test(String(s || ''));
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const randomId = () => crypto.randomBytes(18).toString('base64url');
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
@@ -34,15 +39,19 @@ const validEmail = (e) => !!e && e.length <= SIGNUP.EMAIL_MAX && EMAIL_RE.test(e
 // The key is derived ONLY for an id of [a-z0-9_] (upper-casing that set is collision-free — the return-URL codex P2-1 lesson:
 // r3-synth must never read r3_synth's key); any other id has no key → Google fail-closed for it.
 function audiencesFor(rid, env) {
+  if (rid === PLATFORM_SCOPE) return listOf((env || {}).GOOGLE_OAUTH_AUDIENCES__PLATFORM);   // S3a: the app's own OAuth clients
   if (typeof rid !== 'string' || !/^[a-z0-9_]+$/.test(rid) || !SIGNUP.RID_RE.test(rid)) return null;
-  const raw = (env || {})[`GOOGLE_OAUTH_AUDIENCES__${rid.toUpperCase()}`];
+  return listOf((env || {})[`GOOGLE_OAUTH_AUDIENCES__${rid.toUpperCase()}`]);
+}
+function listOf(raw) {
   const list = typeof raw === 'string' ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
   return list.length ? list : null;
 }
 // restaurants/{rid}/legal: { terms_url, privacy_url, terms_version, privacy_version, promos_copy_version } (admin-only)
+// S3a: the platform scope reads platform_config/legal — the SAME 5-field shape, Sherpa's own documents (written by the ops CLI)
 async function legalFor(db, rid) {
-  if (typeof rid !== 'string' || !SIGNUP.RID_RE.test(rid)) return null;
-  const v = (await db.ref(`restaurants/${rid}/legal`).once('value')).val();
+  if (typeof rid !== 'string' || !isScope(rid)) return null;
+  const v = (await db.ref(rid === PLATFORM_SCOPE ? 'platform_config/legal' : `restaurants/${rid}/legal`).once('value')).val();
   const ok = v && typeof v.terms_url === 'string' && typeof v.privacy_url === 'string' && typeof v.terms_version === 'string' && v.terms_version
     && typeof v.privacy_version === 'string' && v.privacy_version && typeof v.promos_copy_version === 'string' && v.promos_copy_version;
   return ok ? v : null;
@@ -88,7 +97,7 @@ async function verifyGoogleIdToken(idToken, { audiences, client, certs }) {
 
 // ── the Google challenge (nonce), bound to the client session + brand; single use ──
 async function startGoogle(db, { rid, sessionId, now }) {
-  if (!SIGNUP.SESSION_RE.test(String(sessionId || '')) || !SIGNUP.RID_RE.test(String(rid || ''))) return { ok: false, reason: 'bad_request' };
+  if (!SIGNUP.SESSION_RE.test(String(sessionId || '')) || !isScope(rid)) return { ok: false, reason: 'bad_request' };
   const nonce = randomId();
   await db.ref(`auth_challenges/${sha256(nonce)}`).set({ session: sha256(sessionId), rid, exp: now + SIGNUP.CHALLENGE_TTL_MS, used: false });
   return { ok: true, nonce };
@@ -124,7 +133,7 @@ async function touchActivity(db, uid, now) {
 
 // ── googleSignIn: a VALID link → that uid; otherwise a ticket (no profile, no index, no token) ──
 async function googleSignIn(db, { idToken, sessionId, rid, now, verify }) {
-  if (!SIGNUP.SESSION_RE.test(String(sessionId || '')) || !SIGNUP.RID_RE.test(String(rid || ''))) return { ok: false, reason: 'bad_request' };
+  if (!SIGNUP.SESSION_RE.test(String(sessionId || '')) || !isScope(rid)) return { ok: false, reason: 'bad_request' };
   // `verify` = verifyGoogleIdToken bound to this brand's audiences; the token's nonce must be a live challenge of THIS session + brand
   const peek = await verify(idToken);
   if (!peek.ok) return { ok: false, reason: peek.reason };
@@ -222,7 +231,7 @@ async function verifiedEmailOf(db, uid, email) {
   return !!(row && row.uid === uid);
 }
 async function setPromos(db, { uid, rid, value, now }) {
-  if (typeof value !== 'boolean' || !SIGNUP.RID_RE.test(String(rid || ''))) return { ok: false, reason: 'bad_request' };
+  if (typeof value !== 'boolean' || !isScope(rid)) return { ok: false, reason: 'bad_request' };
   const legal = await legalFor(db, rid);
   if (!legal) return { ok: false, reason: 'legal_unconfigured' };
   let reason = null;
@@ -237,6 +246,31 @@ async function setPromos(db, { uid, rid, value, now }) {
     return { ...cur, consent };
   });
   return r.committed && !reason ? { ok: true } : { ok: false, reason: reason || 'aborted' };
+}
+
+// ── S3a: the server-side completion state (the forms' account.js suCompletionState, computed here so the app needs no RTDB
+// read after sign-in) and the member profile the app autofills from ──
+//   'off'      the rollout is not active for this scope (no rollout_at, or legal not ready), or a LEGACY account (created
+//              before rollout_at) — never routed into completion;
+//   'complete' this scope's terms are on record;
+//   'needed'   a post-rollout account without them (the forms' 'unknown' — an unreadable profile — is 'needed' too: it must complete).
+async function completionState(db, uid, scope, env) {
+  const cfg = await signupConfig(db, scope, env);
+  if (typeof cfg.rollout_at !== 'number' || cfg.legal_ready !== true) return 'off';
+  const created = (await db.ref(`user_profiles/${uid}/created_at`).once('value')).val();
+  if (!isNum(created)) return 'needed';
+  if (created < cfg.rollout_at) return 'off';
+  const terms = (await db.ref(`user_private/${uid}/consent/${scope}/terms`).once('value')).val();
+  return terms && typeof terms === 'object' ? 'complete' : 'needed';
+}
+// {name, email} + `promos` (the stored consent for this scope; OMITTED when none is stored — the client treats absent as inert)
+async function profileOf(db, uid, scope) {
+  const [name, priv] = await Promise.all([db.ref(`user_profiles/${uid}/name`).once('value'), db.ref(`user_private/${uid}`).once('value')]);
+  const p = priv.val() || {};
+  const out = { name: typeof name.val() === 'string' ? name.val() : null, email: typeof p.email === 'string' && p.deleted_at == null ? p.email : null };
+  const pr = p.consent && p.consent[scope] && p.consent[scope].promos;
+  if (pr && typeof pr.value === 'boolean') out.promos = pr.value;
+  return out;
 }
 
 // ── deletion (BC2): REPLACE user_private/{uid} with exactly {deleted_at}; an existing deleted_at is kept on retry. For the
@@ -285,6 +319,6 @@ async function hasSignupData(db, uid) {
   return !!g;
 }
 
-module.exports = { SIGNUP, sha256, audiencesFor, legalFor, signupConfig, verifyGoogleIdToken, startGoogle, consumeChallenge, isLive,
-  touchActivity, googleSignIn, bindTicket, redeemTicket, linkIdentity, completeProfile, noteProviderEmail, setPromos, tombstone, removeLinks, pruneExpired, hasSignupData,
+module.exports = { SIGNUP, PLATFORM_SCOPE, isScope, completionState, profileOf, sha256, audiencesFor, legalFor, signupConfig, verifyGoogleIdToken, startGoogle, consumeChallenge, isLive,
+  touchActivity, googleSignIn, bindTicket, redeemTicket, linkIdentity, completeProfile, noteProviderEmail, verifiedEmailOf, setPromos, tombstone, removeLinks, pruneExpired, hasSignupData,
   normEmail, validEmail };

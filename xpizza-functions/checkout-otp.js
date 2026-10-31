@@ -24,14 +24,15 @@ const json = (res, status, body) => res.status(status).json(body);
 
 // The platform sender's configuration, checked BEFORE any reservation (Codex r1 P2-3: an unconfigured sender must never burn the
 // shared per-IP allowance, the durable phone budget, or replace a live code).
-const platformSenderConfigured = (env) => {
+const platformSenderConfigured = (env, templateKey = 'CHECKOUT_OTP_TEMPLATE') => {
   const e = env || {};
-  return !!(e.ULTRAMSG_INSTANCE_ID_PLATFORM && e.ULTRAMSG_TOKEN_PLATFORM && typeof e.CHECKOUT_OTP_TEMPLATE === 'string' && e.CHECKOUT_OTP_TEMPLATE.includes('{code}'));
+  return !!(e.ULTRAMSG_INSTANCE_ID_PLATFORM && e.ULTRAMSG_TOKEN_PLATFORM && typeof e[templateKey] === 'string' && e[templateKey].includes('{code}'));
 };
 // The platform sender. env + fetch injected (unit tests); acceptance is the POSITIVE provider signal (isSendConfirmed).
-async function sendPlatformOtp(toDigits, code, { env = process.env, fetchImpl = fetch, isSendConfirmed } = {}) {
-  const id = env.ULTRAMSG_INSTANCE_ID_PLATFORM, token = env.ULTRAMSG_TOKEN_PLATFORM, tpl = env.CHECKOUT_OTP_TEMPLATE;
-  if (!platformSenderConfigured(env)) return { ok: false, reason: 'unconfigured' };
+// `templateKey`: the env key of the message template — CHECKOUT_OTP_TEMPLATE (S1) or SIGNUP_OTP_TEMPLATE_PLATFORM (S3a's app signup)
+async function sendPlatformOtp(toDigits, code, { env = process.env, fetchImpl = fetch, isSendConfirmed, templateKey = 'CHECKOUT_OTP_TEMPLATE' } = {}) {
+  const id = env.ULTRAMSG_INSTANCE_ID_PLATFORM, token = env.ULTRAMSG_TOKEN_PLATFORM, tpl = env[templateKey];
+  if (!platformSenderConfigured(env, templateKey)) return { ok: false, reason: 'unconfigured' };
   try {
     const params = new URLSearchParams({ token, to: toDigits, body: tpl.split('{code}').join(code) });
     const resp = await fetchImpl(`https://api.ultramsg.com/${id}/messages/chat`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString() });

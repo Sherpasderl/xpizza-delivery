@@ -1,0 +1,275 @@
+'use strict';
+// PLAN-guest-checkout-server r4 §3 — S3a (context:'platform' across the signup family), S3b (redeemSignupGrant), S3d (getMyProfile)
+// over an in-memory RTDB whose TRANSACTION + multi-path UPDATE semantics match production (undefined ABORTS, null DELETES, a
+// root update writes every path at once). The REAL handlers, otp-lib, signup-core and checkout-guest-lib; the grant comes from
+// S2's REAL issuer (checkout-guest-gate grantFor over a stored order). The emulator cells are the S3 heavy suite.
+// Run: node signup-platform.test.js
+process.env.OTP_SALT = process.env.OTP_SALT || 'test-salt-'.padEnd(40, 'x');
+const assert = require('assert');
+const OTP = require('./otp-lib');
+const S = require('./signup-core');
+const SE = require('./signup-endpoints');
+const G = require('./checkout-guest-lib');
+const GATE = require('./checkout-guest-gate');
+const { makeSignupPlatform } = require('./signup-platform');
+
+let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+const SECRET = 'q'.repeat(40);
+
+function fakeDb() {
+  const tree = {};
+  const parts = (p) => String(p).split('/').filter(Boolean);
+  const get = (p) => parts(p).reduce((o, k) => (o == null ? undefined : o[k]), tree);
+  const set = (p, v) => { const ks = parts(p); if (!ks.length) throw new Error('root set'); let o = tree; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (v === null || v === undefined) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = clone(v); };
+  const snap = (v) => ({ exists: () => v != null, val: () => (v == null ? null : clone(v)) });
+  const FAIL = { at: null };   // inject a failure: a path prefix whose next write throws once
+  const guard = (p) => { if (FAIL.at && String(p).startsWith(FAIL.at)) { FAIL.at = null; throw new Error(`injected failure at ${p}`); } };
+  const ref = (p = '') => ({
+    get: async () => snap(get(p)), once: async () => snap(get(p)),
+    set: async (v) => { guard(p); set(p, v); },
+    remove: async () => { guard(p); set(p, null); },
+    update: async (m) => { for (const k of Object.keys(m)) guard(p ? `${p}/${k}` : k); for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, v); },
+    child: (c) => ref(p ? `${p}/${c}` : c),
+    transaction: async (fn) => { guard(p); const next = fn(clone(get(p)) ?? null); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; set(p, next); return { committed: true, snapshot: snap(get(p)) }; },
+  });
+  return { tree, get, set, ref, FAIL };
+}
+function res() { const r = { statusCode: 0, body: null, headers: {} }; r.status = (c) => { r.statusCode = c; return r; }; r.json = (b) => { r.body = b; return r; }; r.set = (k, v) => { r.headers[k] = v; return r; }; return r; }
+function harness({ legal = true, rollout = 1, env = {} } = {}) {
+  const db = fakeDb(); let clock = 1.8e12; const sent = []; const minted = [];
+  if (legal) db.set('platform_config/legal', { terms_url: 'https://sherpa.test/t', privacy_url: 'https://sherpa.test/p', terms_version: 't1', privacy_version: 'p1', promos_copy_version: 'c1' });
+  if (rollout !== null) db.set('signup_config/rollout_at', rollout);
+  const auth = { createCustomToken: async (uid, claims) => { minted.push([uid, claims]); return `tok:${uid}`; }, verifyIdToken: async (t) => { const [kind, uid] = String(t).split(':'); if (kind === 'cust') return { uid, customer: true }; if (kind === 'staff') return { uid }; throw new Error('bad'); } };
+  const H = makeSignupPlatform({ getDatabase: () => db, getAuth: () => auth, checkRateLimit: async () => ({ allowed: true, retryAfterSec: 0 }), now: () => clock,
+    env: { ULTRAMSG_INSTANCE_ID_PLATFORM: 'i', ULTRAMSG_TOKEN_PLATFORM: 't', SIGNUP_OTP_TEMPLATE_PLATFORM: 'Sherpa: {code}', ...env },
+    sendPlatformOtp: require('./checkout-otp').sendPlatformOtp, senderConfigured: require('./checkout-otp').platformSenderConfigured, isSendConfirmed: () => true,
+    fetchImpl: async (u, init) => { sent.push(new URLSearchParams(init.body).get('body')); return { ok: true, json: async () => ({ sent: 'true' }) }; },
+    grantSecret: () => SECRET });
+  const call = async (fn, body, extra = {}) => { const r = res(); const req = { method: 'POST', body, ip: '1.1.1.1', headers: {}, query: {}, get: (h) => (extra.headers || {})[h], ...extra }; await (fn === 'requestOtp' || fn === 'verifyOtp' ? H[fn](req, r, OTP) : H[fn](req, r)); return r; };
+  return { db, sent, minted, call, tick: (ms) => { clock += ms; }, now: () => clock, code: () => sent[sent.length - 1].match(/\d{6}/)[0] };
+}
+const PHONE = '+50499990000', DIGITS = '50499990000', PH = OTP.phoneHash(DIGITS);
+const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
+
+(async () => {
+  // ── 1. requestOtp(platform): the scope IN the issuing transaction, the platform sender + template, scope refusals ──
+  {
+    const t = harness();
+    const r = await t.call('requestOtp', plat());
+    assert.deepStrictEqual([r.statusCode, r.body], [200, { ok: true, cooldown: 30 }]);
+    assert.strictEqual(t.db.get(`otp/${PH}/scope`), '_platform', 'the scope is on the challenge');
+    assert.strictEqual(t.db.get(`otp/${PH}/rid`), '_platform', 'the stash names the platform — never a brand default');
+    assert.match(t.sent[0], /^Sherpa: \d{6}$/, 'the PLATFORM sender with the configured SIGNUP template');
+    for (const b of [plat({ restaurant_id: 'x_pizza' }), plat({ context: 'app' }), { phone: PHONE, context: null }]) {
+      const x = await t.call('requestOtp', b); assert.deepStrictEqual([x.statusCode, x.body], [400, { ok: false, reason: 'bad_request' }], JSON.stringify(b));
+    }
+    for (const ph of ['99990000', '+4412345678901', '+5049999000']) { t.tick(31e3); const before = t.sent.length; const x = await t.call('requestOtp', plat({ phone: ph })); assert.deepStrictEqual(x.body, { ok: true, cooldown: 30 }); assert.strictEqual(t.sent.length, before, `no send for ${ph}`); }
+    const u = harness({ env: { SIGNUP_OTP_TEMPLATE_PLATFORM: '' } });
+    assert.deepStrictEqual((await u.call('requestOtp', plat())).body, { ok: true, cooldown: 30 }, 'an unconfigured sender is still uniform (logged)');
+    assert.strictEqual(u.sent.length, 0);
+    assert.strictEqual(u.db.get('otp_ip'), undefined, '🔴 nothing reserved: the shared IP allowance (the forms\' too)');
+    assert.strictEqual(u.db.get(`otp/${PH}`), undefined, '🔴 nothing reserved: the per-phone window / no code');
+  }
+  ok('requestOtp(platform): scope _platform written in the issuing transaction, stash _platform, the platform sender + SIGNUP template; both/other scopes ⇒ 400; disallowed phones ⇒ uniform, no send');
+
+  // ── 2. the scope is enforced INSIDE verifyConsume, both directions ──
+  {
+    const now = 1e12, code = '123456';
+    const rec = (scope) => ({ code_hash: OTP.hashCode(code), expires_at: now + 1000, attempts: 0, sends: [now], ...(scope ? { scope } : {}) });
+    assert.strictEqual(OTP.verifyConsume(rec(), now, code).outcome, 'ok', 'forms: an unscoped record (today)');
+    assert.strictEqual(OTP.verifyConsume(rec('_platform'), now, code).outcome, 'fail', '🔴 forms cannot use a platform challenge');
+    assert.deepStrictEqual(OTP.verifyConsume(rec('_platform'), now, code).next, rec('_platform'), 'untouched (no attempt counted)');
+    assert.strictEqual(OTP.verifyConsume(rec('_platform'), now, code, '_platform').outcome, 'ok');
+    assert.strictEqual(OTP.verifyConsume(rec(), now, code, '_platform').outcome, 'fail', '🔴 the app cannot use a forms challenge');
+  }
+  ok('verifyConsume: the challenge scope must EQUAL the caller\'s — forms ⇄ platform cross-use fails untouched; unscoped forms records verify exactly as today');
+
+  // ── 3. verifyOtp(platform): success, reasons, no welcome credit, completion + profile ──
+  {
+    const t = harness();
+    await t.call('requestOtp', plat());
+    let r = await t.call('verifyOtp', plat({ code: '000000' === t.code() ? '111111' : '000000' }));
+    assert.deepStrictEqual(r.body, { ok: false, reason: 'code_wrong' });
+    r = await t.call('verifyOtp', plat({ code: t.code() }));
+    assert.strictEqual(r.body.ok, true); assert.strictEqual(r.body.is_new, true); assert.strictEqual(r.body.name, null);
+    const uid = t.db.get(`phone_index/${PH}`);
+    assert.match(uid, /^u_[0-9a-f]{24}$/); assert.strictEqual(r.body.token, `tok:${uid}`); assert.deepStrictEqual(t.minted.pop(), [uid, { customer: true }]);
+    assert.strictEqual(r.body.completion, 'needed', 'post-rollout, no platform terms yet');
+    assert.deepStrictEqual(r.body.profile, { name: null, email: null }, 'promos OMITTED when no consent is stored');
+    assert.strictEqual(t.db.get('reward_welcome'), undefined, '🔴 NO signup-time welcome credit for the platform scope');
+    assert.strictEqual(t.db.get(`otp/${PH}`), undefined, 'one-time use');
+    assert.deepStrictEqual((await t.call('verifyOtp', plat({ code: '123456' }))).body, { ok: false, reason: 'code_wrong' }, 'nothing live');
+    // expired / too many attempts (+ retry_in_s)
+    t.tick(60e3); await t.call('requestOtp', plat()); t.tick(OTP.LIMITS.CODE_TTL + 1);
+    assert.deepStrictEqual((await t.call('verifyOtp', plat({ code: t.code() }))).body, { ok: false, reason: 'code_expired' });
+    t.tick(60e3); await t.call('requestOtp', plat());
+    const wrong = t.code() === '000000' ? '111111' : '000000';
+    for (let i = 0; i < OTP.LIMITS.MAX_ATTEMPTS - 1; i++) assert.strictEqual((await t.call('verifyOtp', plat({ code: wrong }))).body.reason, 'code_wrong');
+    const last = (await t.call('verifyOtp', plat({ code: wrong }))).body;
+    assert.strictEqual(last.reason, 'too_many_attempts'); assert.ok(last.retry_in_s >= 1);
+    assert.strictEqual((await t.call('verifyOtp', plat({ code: t.code() }))).body.reason, 'too_many_attempts', 'capped');
+    // a forms-issued challenge cannot be verified by the app
+    t.tick(60e3); t.db.set(`otp/${PH}`, { code_hash: OTP.hashCode('424242'), expires_at: t.now() + 60e3, attempts: 0, sends: [t.now()] });
+    assert.deepStrictEqual((await t.call('verifyOtp', plat({ code: '424242' }))).body, { ok: false, reason: 'code_wrong' });
+    // the returning member: completion complete + profile with promos
+    t.db.set(`user_private/${uid}/consent/_platform`, { terms: { version: 't1', privacy_version: 'p1', at: 1 }, promos: { value: true, copy_version: 'c1', at: 1 } });
+    t.db.set(`user_private/${uid}/email`, 'ana@example.com'); t.db.set(`user_profiles/${uid}/name`, 'Ana');
+    t.tick(60e3); t.db.set(`otp/${PH}`, null); await t.call('requestOtp', plat());
+    r = await t.call('verifyOtp', plat({ code: t.code() }));
+    assert.deepStrictEqual([r.body.is_new, r.body.name, r.body.completion, r.body.profile], [false, 'Ana', 'complete', { name: 'Ana', email: 'ana@example.com', promos: true }]);
+    assert.strictEqual(t.db.get(`phone_index/${PH}`), uid, 'the SAME global phone account');
+  }
+  ok('verifyOtp(platform): reasons code_wrong / code_expired / too_many_attempts (+retry_in_s); success mints for the global phone account, NO welcome credit, completion needed→complete, profile {name, email, promos?}; a forms challenge is refused');
+
+  // ── 4. completion: off when the rollout is inactive / legal missing / legacy ──
+  {
+    for (const [o, want] of [[{ legal: false }, 'off'], [{ rollout: null }, 'off']]) {
+      const t = harness(o); await t.call('requestOtp', plat());
+      assert.strictEqual((await t.call('verifyOtp', plat({ code: t.code() }))).body.completion, want, JSON.stringify(o));
+    }
+    const t = harness({ rollout: 2e12 }); await t.call('requestOtp', plat());
+    assert.strictEqual((await t.call('verifyOtp', plat({ code: t.code() }))).body.completion, 'off', 'a LEGACY account (created before rollout_at)');
+  }
+  ok('completion: off without rollout_at / without platform legal / for a legacy account (the forms\' suCompletionState, server-side)');
+
+  // ── the grant, from S2's REAL issuer over a stored capp-guest order ──
+  async function grantSetup(t, { orderId = 'XPZ-G1', phone = DIGITS } = {}) {
+    const guest = { phone, phone_hash: OTP.phoneHash(phone) };
+    t.db.set(`orders/${orderId}`, { status: 'pending_payment', created_at: t.now(), guest_verified: guest });
+    const g = await GATE.grantFor({ db: t.db, orderId, guest, secret: SECRET, now: t.now() });
+    assert.ok(g.grant, 'premise: the real issuer granted');
+    return g.grant.token;
+  }
+  const redeemBody = (grant, o = {}) => ({ grant, context: 'platform', email: 'Ana@Example.com', name: ' Ana Pérez ', accept_terms: true, promos: true, ...o });
+
+  // ── 5. redeemSignupGrant: success, apply once, replay re-mints only, a later member edit survives ──
+  {
+    const t = harness();
+    const grant = await grantSetup(t);
+    let r = await t.call('redeemSignupGrant', redeemBody(grant));
+    assert.strictEqual(r.statusCode, 200, JSON.stringify(r.body));
+    const uid = t.db.get(`phone_index/${PH}`);
+    assert.deepStrictEqual(r.body, { ok: true, token: `tok:${uid}`, is_new: true, name: 'Ana Pérez', completion: 'complete' });
+    assert.deepStrictEqual(t.db.get(`user_profiles/${uid}`), { phone: DIGITS, phone_hash: PH, created_at: t.now(), last_login: t.now(), name: 'Ana Pérez' }, 'the phone from the ORDER');
+    const priv = t.db.get(`user_private/${uid}`);
+    assert.strictEqual(priv.email, 'ana@example.com'); assert.strictEqual(priv.email_source, 'typed'); assert.strictEqual(priv.email_verified, false);
+    assert.deepStrictEqual(priv.consent._platform, { terms: { version: 't1', privacy_version: 'p1', at: t.now() }, promos: { value: true, copy_version: 'c1', at: t.now() } }, 'consent/_platform with the RECORDED legal versions');
+    assert.strictEqual(t.db.get('grants_used/XPZ-G1/applied'), true);
+    assert.strictEqual(t.db.get('grants_used/XPZ-G1/uid'), uid);
+    // the member edits the email (completeProfile path) — a replay of the grant never rewrites it, and only re-mints
+    t.db.set(`user_private/${uid}/email`, 'nuevo@example.com');
+    t.tick(1000);
+    r = await t.call('redeemSignupGrant', redeemBody(grant, { email: 'otra@example.com', name: 'Otra', promos: false }));
+    assert.deepStrictEqual(r.body, { ok: true, token: `tok:${uid}`, is_new: false, name: 'Ana Pérez', completion: 'complete' });
+    assert.strictEqual(t.db.get(`user_private/${uid}/email`), 'nuevo@example.com', '🔴 the later member edit wins (apply ONCE)');
+    assert.strictEqual(t.db.get(`user_private/${uid}/consent/_platform/promos/value`), true, 'changed inputs on a retry are ignored');
+  }
+  ok('redeemSignupGrant: one uid for the order\'s phone, profile from the ORDER, consent/_platform + email + name applied ONCE from the recorded inputs; a replay only re-mints and never overwrites a later member edit');
+
+  // ── 6. redeemSignupGrant refusals: grant_invalid (no oracle), fields, legal, deleted; nothing consumed ──
+  {
+    const t = harness();
+    const grant = await grantSetup(t);
+    const [, body, sig] = grant.split('.');
+    const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body, 'base64url').toString()), exp: t.now() + 1e9 })).toString('base64url');
+    for (const [why, b] of [['tampered', redeemBody(`sg.${forged}.${sig}`)], ['garbage', redeemBody('sg.x.y')], ['another secret', redeemBody(G.signGrant(G.grantPayload('XPZ-G1', PH, t.now()), 'z'.repeat(40)))]])
+      assert.deepStrictEqual((await t.call('redeemSignupGrant', b)).body, { ok: false, reason: 'grant_invalid' }, why);
+    for (const [why, b, reason] of [['no terms', redeemBody(grant, { accept_terms: 'yes' }), 'bad_request'], ['promos not boolean', redeemBody(grant, { promos: 1 }), 'bad_request'],
+      ['empty name', redeemBody(grant, { name: '  ' }), 'bad_request'], ['long name', redeemBody(grant, { name: 'x'.repeat(81) }), 'bad_request'], ['bad email', redeemBody(grant, { email: 'ana@' }), 'bad_email'],
+      ['a rid scope', { ...redeemBody(grant), restaurant_id: 'x_pizza' }, 'bad_request'], ['no context', { ...redeemBody(grant), context: undefined }, 'bad_request']])
+      assert.deepStrictEqual((await t.call('redeemSignupGrant', b)).body, { ok: false, reason }, why);
+    assert.strictEqual(t.db.get('grants_used'), undefined, 'nothing consumed by a refusal');
+    // the order lost its guest_verified / the stored phone does not hash to the grant's
+    t.db.set('orders/XPZ-G1/guest_verified/phone', '50488881111');
+    assert.deepStrictEqual((await t.call('redeemSignupGrant', redeemBody(grant))).body, { ok: false, reason: 'grant_invalid' }, '🔴 the phone is re-derived from the order');
+    t.db.set('orders/XPZ-G1/guest_verified', null);
+    assert.deepStrictEqual((await t.call('redeemSignupGrant', redeemBody(grant))).body, { ok: false, reason: 'grant_invalid' }, 'no guest_verified');
+    // expired
+    const t2 = harness(); const g2 = await grantSetup(t2); t2.tick(G.GRANT_TTL_MS);
+    assert.deepStrictEqual((await t2.call('redeemSignupGrant', redeemBody(g2))).body, { ok: false, reason: 'grant_invalid' }, 'expired');
+    // legal unconfigured; a deleted account
+    const t3 = harness({ legal: false }); const g3 = await grantSetup(t3);
+    assert.deepStrictEqual((await t3.call('redeemSignupGrant', redeemBody(g3))).body, { ok: false, reason: 'legal_unconfigured' });
+    const t4 = harness(); const g4 = await grantSetup(t4); t4.db.set(`phone_index/${PH}`, 'u_' + 'a'.repeat(24)); t4.db.set('deleted_uids/u_' + 'a'.repeat(24), 1);
+    const d = await t4.call('redeemSignupGrant', redeemBody(g4)); assert.deepStrictEqual([d.statusCode, d.body], [403, { ok: false, reason: 'deleted' }]);
+    // a grant already used by ANOTHER uid
+    const t5 = harness(); const g5 = await grantSetup(t5); t5.db.set('grants_used/XPZ-G1', { uid: 'u_' + 'b'.repeat(24), at: 1, inputs: {}, legal: {} });
+    assert.deepStrictEqual((await t5.call('redeemSignupGrant', redeemBody(g5))).body, { ok: false, reason: 'grant_invalid' });
+  }
+  ok('redeemSignupGrant refusals: tampered / foreign-secret / expired / lost or mismatched guest_verified ⇒ grant_invalid (one reason); fields ⇒ bad_request / bad_email; legal_unconfigured; deleted ⇒ 403; another uid\'s use ⇒ grant_invalid; nothing consumed');
+
+  // ── 7. failure injected after each step, then a retry: one uid, one profile, consent once ──
+  for (const at of ['grants_used', 'user_profiles', 'user_private', 'never']) {
+    const t = harness();
+    const grant = await grantSetup(t);
+    if (at !== 'never') t.db.FAIL.at = at;
+    const first = await t.call('redeemSignupGrant', redeemBody(grant));
+    if (at !== 'never') assert.strictEqual(first.statusCode, 500, `${at}: the injected failure surfaces`);
+    const r = await t.call('redeemSignupGrant', redeemBody(grant, { email: 'cambio@example.com' }));
+    assert.strictEqual(r.statusCode, 200, `${at}: the retry completes (${JSON.stringify(r.body)})`);
+    const uid = t.db.get(`phone_index/${PH}`);
+    assert.strictEqual(r.body.token, `tok:${uid}`);
+    assert.strictEqual(Object.keys(t.db.get('user_profiles')).length, 1, `${at}: one profile`);
+    assert.strictEqual(t.db.get(`user_private/${uid}/consent/_platform/terms/version`), 't1');
+    const wantEmail = at === 'grants_used' ? 'cambio@example.com' : 'ana@example.com';   // the use is recorded at step 2: before it, a retry's inputs are the first recorded
+    assert.strictEqual(t.db.get(`user_private/${uid}/email`), wantEmail, `${at}: the RECORDED inputs win`);
+  }
+  ok('redeemSignupGrant: a failure injected at the use record / the profile / the apply, then a retry ⇒ one uid, one profile, consent once, the recorded inputs');
+
+  // ── 8. getMyProfile: own data only ──
+  {
+    const t = harness();
+    const A = 'u_' + 'a'.repeat(24), B = 'u_' + 'b'.repeat(24);
+    t.db.set(`user_profiles/${A}`, { phone: '50499990000', phone_hash: PH, created_at: 5, name: 'Ana' });
+    t.db.set(`user_private/${A}`, { email: 'a@x.hn', consent: { _platform: { terms: { version: 't1' }, promos: { value: false } } } });
+    t.db.set(`user_profiles/${B}`, { phone: '50488881111', created_at: 5, name: 'Beto' });
+    const get = (q, hdr, body) => t.call('getMyProfile', body, { method: 'GET', query: q, headers: hdr ? { 'x-firebase-id-token': hdr } : {} });
+    let r = await get({ context: 'platform' }, `cust:${A}`);
+    assert.deepStrictEqual(r.body, { ok: true, name: 'Ana', email: 'a@x.hn', phone: '50499990000', phone_last4: '0000', consent: { terms: true, terms_version: 't1', promos: false }, completion: 'complete', promos: false });
+    assert.strictEqual(r.headers['Cache-Control'], 'no-store');
+    for (const [q, why] of [[{ context: 'platform', uid: B }, 'a uid param'], [{ context: 'platform', phone: '50488881111' }, 'a phone param'], [{}, 'no scope'], [{ context: 'x_pizza' }, 'a rid scope']]) {
+      r = await get(q, `cust:${A}`); assert.deepStrictEqual([r.statusCode, r.body], [400, { ok: false, reason: 'bad_request' }], `🔴 ${why}`);
+    }
+    r = await get({ context: 'platform' }, `cust:${A}`, { uid: B }); assert.strictEqual(r.statusCode, 400, '🔴 a body field');
+    for (const tok of [null, `staff:${A}`, 'garbage']) { r = await get({ context: 'platform' }, tok); assert.deepStrictEqual([r.statusCode, r.body], [401, { ok: false, reason: 'unauthenticated' }], String(tok)); }
+    t.db.set(`deleted_uids/${A}`, 1);
+    r = await get({ context: 'platform' }, `cust:${A}`); assert.deepStrictEqual([r.statusCode, r.body], [403, { ok: false, reason: 'deleted' }]);
+    r = await get({ context: 'platform' }, `cust:${B}`);
+    assert.strictEqual(r.body.name, 'Beto'); assert.ok(!('promos' in r.body), 'promos OMITTED when no consent is stored'); assert.deepStrictEqual(r.body.consent, { terms: false, terms_version: null, promos: false });
+  }
+  ok('getMyProfile: the caller\'s OWN data (token uid only); any uid / phone / body parameter or a wrong scope ⇒ 400; non-customer / missing token ⇒ 401; tombstone ⇒ 403; promos omitted when unset; no-store');
+
+  // ── 9. the signup family's scope parsing (signup-endpoints): forms unchanged, platform additive, both/neither refused ──
+  {
+    const db = fakeDb();
+    db.set('platform_config/legal', { terms_url: 'u', privacy_url: 'p', terms_version: 't1', privacy_version: 'p1', promos_copy_version: 'c1' });
+    db.set('restaurants/x_pizza/legal', { terms_url: 'xu', privacy_url: 'xp', terms_version: 'x1', privacy_version: 'xp1', promos_copy_version: 'xc1' });
+    db.set('signup_config/rollout_at', 1);
+    const env = { GOOGLE_OAUTH_AUDIENCES__PLATFORM: 'plat-client', GOOGLE_OAUTH_AUDIENCES__X_PIZZA: 'xp-client' };
+    const H = SE.makeSignup({ getDatabase: () => db, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: t, customer: true }) }), checkRateLimit: async () => ({ allowed: true }),
+      resolveRid: (raw) => (raw === 'x_pizza' ? { restaurantId: 'x_pizza' } : raw == null ? { restaurantId: 'x_pizza', defaulted: true } : { error: 'unknown' }), env });
+    const call = async (fn, o) => { const r = res(); await H[fn]({ method: o.method || 'POST', body: o.body || {}, query: o.query || {}, headers: {}, ip: '1', get: (h) => (o.headers || {})[h] }, r); return r; };
+    let r = await call('getSignupConfig', { method: 'GET', query: { context: 'platform' } });
+    assert.deepStrictEqual(r.body, { ok: true, terms_url: 'u', privacy_url: 'p', legal_ready: true, google_enabled: true, google_client_id: 'plat-client', email_login_enabled: false, rollout_at: 1 });
+    r = await call('getSignupConfig', { method: 'GET', query: { restaurant_id: 'x_pizza' } });
+    assert.strictEqual(r.body.google_client_id, 'xp-client', 'forms: unchanged'); assert.strictEqual(r.body.terms_url, 'xu');
+    for (const q of [{ restaurant_id: 'x_pizza', context: 'platform' }, {}, { context: 'other' }]) assert.strictEqual((await call('getSignupConfig', { method: 'GET', query: q })).statusCode, 400, JSON.stringify(q));
+    const U = 'u_' + 'c'.repeat(24);
+    r = await call('completeProfile', { body: { context: 'platform', email: 'c@x.hn', accept_terms: true, promos: false, name: ' Cami ' }, headers: { 'x-firebase-id-token': U } });
+    assert.deepStrictEqual(r.body, { ok: true });
+    assert.strictEqual(db.get(`user_private/${U}/consent/_platform/terms/version`), 't1'); assert.strictEqual(db.get(`user_profiles/${U}/name`), 'Cami');
+    assert.strictEqual(db.get(`user_private/${U}/consent/x_pizza`), undefined, 'never a brand consent');
+    assert.strictEqual((await call('completeProfile', { body: { context: 'platform', email: 'c@x.hn', accept_terms: true, promos: false, name: '' }, headers: { 'x-firebase-id-token': U } })).statusCode, 400, 'an empty name');
+    r = await call('completeProfile', { body: { restaurant_id: 'x_pizza', email: 'c@x.hn', accept_terms: true, promos: true }, headers: { 'x-firebase-id-token': U } });
+    assert.deepStrictEqual(r.body, { ok: true }); assert.strictEqual(db.get(`user_private/${U}/consent/x_pizza/terms/version`), 'x1', 'forms: unchanged');
+    r = await call('setPromos', { body: { context: 'platform', value: true }, headers: { 'x-firebase-id-token': U } });
+    assert.deepStrictEqual(r.body, { ok: true }); assert.strictEqual(db.get(`user_private/${U}/consent/_platform/promos/value`), true);
+    for (const b of [{ restaurant_id: 'x_pizza', context: 'platform', session_id: 's'.repeat(24) }, { session_id: 's'.repeat(24) }]) assert.strictEqual((await call('googleStart', { body: b })).statusCode, 400, JSON.stringify(b));
+    r = await call('googleStart', { body: { context: 'platform', session_id: 's'.repeat(24) } });
+    assert.ok(r.body.ok && r.body.nonce); assert.strictEqual(Object.values(db.get('auth_challenges'))[0].rid, '_platform');
+  }
+  ok('signup family: getSignupConfig / completeProfile (+ name) / setPromos / googleStart take EITHER restaurant_id (forms, unchanged) OR context:platform (platform legal, consent/_platform, platform audiences); both / neither ⇒ 400');
+
+  console.log(`\nsignup-platform: OK (${n})`);
+})().catch((e) => { console.error(e); process.exit(1); });

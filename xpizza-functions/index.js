@@ -7242,6 +7242,9 @@ exports.requestOtp = onRequest(
     catch (e) { console.error('requestOtp: OTP_SALT misconfigured — failing closed', e.message); return res.status(500).json({ ok: false }); }
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
+      /* checkout:begin s3a-request */
+      if ((req.body || {}).context !== undefined) return SIGNUP_PLATFORM.requestOtp(req, res, OTP);   // S3a: the app's scope (the forms never send `context`)
+      /* checkout:end s3a-request */
       const { phone, restaurant_id } = req.body || {};
       const { restaurantId } = resolveRestaurantId(restaurant_id, restaurantRegistry().known());
       const pHash = OTP.phoneHash(phone);
@@ -7282,6 +7285,9 @@ exports.verifyOtp = onRequest(
     catch (e) { console.error('verifyOtp: OTP_SALT misconfigured — failing closed', e.message); return res.status(500).json({ ok: false }); }
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
+      /* checkout:begin s3a-verify */
+      if ((req.body || {}).context !== undefined) return SIGNUP_PLATFORM.verifyOtp(req, res, OTP);   // S3a: the app's scope (the forms never send `context`)
+      /* checkout:end s3a-verify */
       const { phone, code } = req.body || {};
       const pHash = OTP.phoneHash(phone);
       if (!pHash || !/^\d{6}$/.test(String(code || ''))) return res.status(200).json({ ok: false });   // generic
@@ -7741,5 +7747,20 @@ exports.pruneCheckoutState = onSchedule(
     const out = await require('./checkout-otp').pruneCheckoutState(getDatabase(), Date.now());
     if (out.tickets || out.codes || out.budgets) console.log(`pruneCheckoutState: ${JSON.stringify(out)}`);
   },
+);
+// S3 (PLAN §3, CONTRACT-capp-signup-platform-wire.md): the customer app's signup family, context:'platform'. requestOtp /
+// verifyOtp hand a body carrying `context` to these handlers (the s3a-request / s3a-verify hunks); two NEW endpoints.
+const SIGNUP_PLATFORM = require('./signup-platform').makeSignupPlatform({
+  getDatabase, getAuth, checkRateLimit,
+  sendPlatformOtp: require('./checkout-otp').sendPlatformOtp, senderConfigured: require('./checkout-otp').platformSenderConfigured, isSendConfirmed: (d) => whatsapp.isSendConfirmed(d),
+  grantSecret: () => { try { return SIGNUP_GRANT_SECRET.value() || ''; } catch (_) { return ''; } },
+});
+exports.redeemSignupGrant = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [SIGNUP_GRANT_SECRET] },
+  SIGNUP_PLATFORM.redeemSignupGrant,
+);
+exports.getMyProfile = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  SIGNUP_PLATFORM.getMyProfile,
 );
 /* checkout:end endpoints */
