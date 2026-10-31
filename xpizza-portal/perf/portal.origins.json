@@ -1,0 +1,350 @@
+{
+  "plan": "PLAN-portal-fonts r1.1 §3.1",
+  "sdkVersion": "10.13.2",
+  "sdkFiles": [
+    {
+      "name": "firebase-auth.js",
+      "sha256": "09211458a3bd82b48e2f58f95c90008c9db715302c408c774118b934b4fa830e",
+      "bytes": 150700
+    },
+    {
+      "name": "firebase-app.js",
+      "sha256": "7689323827fc416edc653dd06f6bd93314312ff5f71b1077a936e6803d7578d6",
+      "bytes": 102760
+    }
+  ],
+  "repeats": 3,
+  "admissionRule": "a request to the origin starts before the useful-paint marker in T2 or T4, in every repeat",
+  "admitted": [
+    "https://identitytoolkit.googleapis.com",
+    "https://us-central1-xpizza-delivery.cloudfunctions.net",
+    "https://www.gstatic.com"
+  ],
+  "lateOnly": [
+    "https://securetoken.googleapis.com"
+  ],
+  "states": {
+    "T1": {
+      "page": "index.html",
+      "session": null,
+      "marker": "login",
+      "runs": [
+        {
+          "markerMs": 59,
+          "navToMarkerMs": 60,
+          "origins": [
+            {
+              "origin": "https://www.gstatic.com",
+              "firstUrl": "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js",
+              "startMs": 70,
+              "beforeMarker": false,
+              "initiator": "script"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "markerMs": 52,
+          "navToMarkerMs": 53,
+          "origins": [
+            {
+              "origin": "https://www.gstatic.com",
+              "firstUrl": "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js",
+              "startMs": 67,
+              "beforeMarker": false,
+              "initiator": "script"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "markerMs": 68,
+          "navToMarkerMs": 69,
+          "origins": [
+            {
+              "origin": "https://www.gstatic.com",
+              "firstUrl": "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js",
+              "startMs": 80,
+              "beforeMarker": false,
+              "initiator": "script"
+            }
+          ],
+          "errors": []
+        }
+      ]
+    },
+    "T2": {
+      "page": "index.html",
+      "session": "fresh",
+      "marker": "editor",
+      "runs": [
+        {
+          "markerMs": 152,
+          "navToMarkerMs": 154,
+          "origins": [
+            {
+              "origin": "https://www.gstatic.com",
+              "firstUrl": "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js",
+              "startMs": 37,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://identitytoolkit.googleapis.com",
+              "firstUrl": "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=<apiKey>",
+              "startMs": 115,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://us-central1-xpizza-delivery.cloudfunctions.net",
+              "firstUrl": "https://us-central1-xpizza-delivery.cloudfunctions.net/getMyBranches",
+              "startMs": 127,
+              "beforeMarker": true,
+              "initiator": "script"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "markerMs": 483,
+          "navToMarkerMs": 485,
+          "origins": [
+            {
+              "origin": "https://www.gstatic.com",
+              "firstUrl": "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js",
+              "startMs": 105,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://identitytoolkit.googleapis.com",
+              "firstUrl": "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=<apiKey>",
+              "startMs": 193,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://us-central1-xpizza-delivery.cloudfunctions.net",
+              "firstUrl": "https://us-central1-xpizza-delivery.cloudfunctions.net/getMyBranches",
+              "startMs": 416,
+              "beforeMarker": true,
+              "initiator": "script"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "markerMs": 190,
+          "navToMarkerMs": 192,
+          "origins": [
+            {
+              "origin": "https://www.gstatic.com",
+              "firstUrl": "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js",
+              "startMs": 38,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://identitytoolkit.googleapis.com",
+              "firstUrl": "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=<apiKey>",
+              "startMs": 122,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://us-central1-xpizza-delivery.cloudfunctions.net",
+              "firstUrl": "https://us-central1-xpizza-delivery.cloudfunctions.net/getMyBranches",
+              "startMs": 147,
+              "beforeMarker": true,
+              "initiator": "script"
+            }
+          ],
+          "errors": []
+        }
+      ]
+    },
+    "T3": {
+      "page": "index.html",
+      "session": "expired",
+      "marker": "editor",
+      "runs": [
+        {
+          "markerMs": 182,
+          "navToMarkerMs": 184,
+          "origins": [
+            {
+              "origin": "https://www.gstatic.com",
+              "firstUrl": "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js",
+              "startMs": 43,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://securetoken.googleapis.com",
+              "firstUrl": "https://securetoken.googleapis.com/v1/token?key=<apiKey>",
+              "startMs": 111,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://identitytoolkit.googleapis.com",
+              "firstUrl": "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=<apiKey>",
+              "startMs": 145,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://us-central1-xpizza-delivery.cloudfunctions.net",
+              "firstUrl": "https://us-central1-xpizza-delivery.cloudfunctions.net/getMyBranches",
+              "startMs": 154,
+              "beforeMarker": true,
+              "initiator": "script"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "markerMs": 624,
+          "navToMarkerMs": 625,
+          "origins": [
+            {
+              "origin": "https://www.gstatic.com",
+              "firstUrl": "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js",
+              "startMs": 61,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://securetoken.googleapis.com",
+              "firstUrl": "https://securetoken.googleapis.com/v1/token?key=<apiKey>",
+              "startMs": 380,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://identitytoolkit.googleapis.com",
+              "firstUrl": "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=<apiKey>",
+              "startMs": 515,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://us-central1-xpizza-delivery.cloudfunctions.net",
+              "firstUrl": "https://us-central1-xpizza-delivery.cloudfunctions.net/getMyBranches",
+              "startMs": 531,
+              "beforeMarker": true,
+              "initiator": "script"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "markerMs": 448,
+          "navToMarkerMs": 450,
+          "origins": [
+            {
+              "origin": "https://www.gstatic.com",
+              "firstUrl": "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js",
+              "startMs": 56,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://securetoken.googleapis.com",
+              "firstUrl": "https://securetoken.googleapis.com/v1/token?key=<apiKey>",
+              "startMs": 290,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://identitytoolkit.googleapis.com",
+              "firstUrl": "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=<apiKey>",
+              "startMs": 378,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://us-central1-xpizza-delivery.cloudfunctions.net",
+              "firstUrl": "https://us-central1-xpizza-delivery.cloudfunctions.net/getMyBranches",
+              "startMs": 408,
+              "beforeMarker": true,
+              "initiator": "script"
+            }
+          ],
+          "errors": []
+        }
+      ]
+    },
+    "T4": {
+      "page": "aceptar.html",
+      "session": null,
+      "marker": "invite",
+      "runs": [
+        {
+          "markerMs": 148,
+          "navToMarkerMs": 150,
+          "origins": [
+            {
+              "origin": "https://www.gstatic.com",
+              "firstUrl": "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js",
+              "startMs": 39,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://us-central1-xpizza-delivery.cloudfunctions.net",
+              "firstUrl": "https://us-central1-xpizza-delivery.cloudfunctions.net/memberInvitePreview",
+              "startMs": 134,
+              "beforeMarker": true,
+              "initiator": "script"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "markerMs": 313,
+          "navToMarkerMs": 315,
+          "origins": [
+            {
+              "origin": "https://www.gstatic.com",
+              "firstUrl": "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js",
+              "startMs": 64,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://us-central1-xpizza-delivery.cloudfunctions.net",
+              "firstUrl": "https://us-central1-xpizza-delivery.cloudfunctions.net/memberInvitePreview",
+              "startMs": 294,
+              "beforeMarker": true,
+              "initiator": "script"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "markerMs": 261,
+          "navToMarkerMs": 263,
+          "origins": [
+            {
+              "origin": "https://www.gstatic.com",
+              "firstUrl": "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js",
+              "startMs": 82,
+              "beforeMarker": true,
+              "initiator": "script"
+            },
+            {
+              "origin": "https://us-central1-xpizza-delivery.cloudfunctions.net",
+              "firstUrl": "https://us-central1-xpizza-delivery.cloudfunctions.net/memberInvitePreview",
+              "startMs": 243,
+              "beforeMarker": true,
+              "initiator": "script"
+            }
+          ],
+          "errors": []
+        }
+      ]
+    }
+  }
+}

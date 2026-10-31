@@ -88,11 +88,16 @@ test('/fonts/*.woff2 — and ONLY the hashed woff2 — is immutable', () => {
   assert.match(blocks.find(([f]) => f === '/fonts/*.woff2')[1], /Cache-Control = "public, max-age=31536000, immutable"/);
 });
 
-test('preconnects: www.gstatic.com + the Functions origin on both pages, each crossorigin, each tied to its source constant', () => {
+// the Firebase Auth REST hosts the SDK may call; one is preconnected ONLY when the §3.1 trace shows it before the useful paint
+const AUTH_HOSTS = ['https://identitytoolkit.googleapis.com', 'https://securetoken.googleapis.com'];
+const origins = () => JSON.parse(read('perf/portal.origins.json'));
+
+test('preconnects: www.gstatic.com + the Functions origin (tied to their source constants) + exactly the trace-admitted auth hosts, both pages, each crossorigin', () => {
   const sdkOrigin = new URL(/from '(https:\/\/www\.gstatic\.com\/[^']+)'/.exec(read('firebase.js'))[1]).origin;
   const base = (f) => new URL(/const BASE = '([^']+)'/.exec(read(f))[1]).origin;
   assert.equal(base('api.js'), base('aceptar-boot.js'), 'one Functions origin');
-  const want = [sdkOrigin, base('api.js')].sort();
+  const auth = origins().admitted.filter((o) => AUTH_HOSTS.includes(o));
+  const want = [sdkOrigin, base('api.js'), ...auth].sort();
   for (const page of PAGES) {
     const pc = linksOf(read(page)).filter((l) => attr(l, 'rel') === 'preconnect');
     assert.deepEqual(pc.map((l) => attr(l, 'href')).sort(), want, `${page}: exactly the SDK origin + the Functions origin`);
@@ -100,11 +105,19 @@ test('preconnects: www.gstatic.com + the Functions origin on both pages, each cr
   }
 });
 
-// P2 (heavy, slotted): the §3.1 real-SDK origin trace commits perf/portal.origins.json; the preconnect set must then equal its
-// `admitted` set (an admitted auth host trace-evidenced, the SDK version = firebase.js's), and the §4 census JSON is asserted here.
-test('the trace-ratified preconnect set (perf/portal.origins.json) and the census JSON', { todo: existsSync(join(DIR, 'perf', 'portal.origins.json')) ? false : 'P2: the §3.1 origin trace + §4 census run in the heavy slot' }, () => {
-  const rec = JSON.parse(read('perf/portal.origins.json'));
-  const pc = linksOf(read('index.html')).filter((l) => attr(l, 'rel') === 'preconnect').map((l) => attr(l, 'href')).sort();
-  assert.deepEqual(pc, [...rec.admitted].sort());
+// P2 — the §3.1 real-SDK origin trace (portal-origins.cdp.mjs --write, heavy slot) recorded perf/portal.origins.json: the preconnect
+// set IS its admitted set, it ran the SDK firebase.js imports from the pinned bytes, and nothing it admitted is an excluded origin.
+test('the trace-ratified preconnect set (perf/portal.origins.json)', () => {
+  const rec = origins();
+  for (const page of PAGES) {
+    const pc = linksOf(read(page)).filter((l) => attr(l, 'rel') === 'preconnect').map((l) => attr(l, 'href')).sort();
+    assert.deepEqual(pc, [...rec.admitted].sort(), `${page}: preconnects = the trace's admitted set`);
+  }
   assert.equal(rec.sdkVersion, /firebasejs\/([0-9.]+)\//.exec(read('firebase.js'))[1], 'the trace ran the SDK firebase.js imports');
+  const pin = JSON.parse(readFileSync(join(DIR, '..', 'platform/perf/sdk/firebasejs', rec.sdkVersion, 'sdk.pin.json'), 'utf8'));
+  assert.deepEqual(rec.sdkFiles, pin.files.map(({ name, sha256, bytes }) => ({ name, sha256, bytes })), 'the trace ran the PINNED SDK bytes');
+  assert.ok(rec.repeats >= 3 && ['T1', 'T2', 'T3', 'T4'].every((t) => rec.states[t] && rec.states[t].runs.length === rec.repeats), 'every boot state, every repeat');
+  for (const o of rec.admitted) assert.ok(!/fonts\.(googleapis|gstatic)\.com|storage\.googleapis\.com|firebaseio\.com/.test(o), `excluded origin admitted: ${o}`);
+  for (const o of rec.admitted) assert.ok(['T2', 'T4'].some((t) => rec.states[t].runs.every((r) => r.origins.some((x) => x.origin === o && x.beforeMarker))), `${o}: admitted only on T2/T4 evidence before the marker, every repeat`);
+  assert.ok(!/AIza/.test(read('perf/portal.origins.json')), 'the record carries no api key');
 });
