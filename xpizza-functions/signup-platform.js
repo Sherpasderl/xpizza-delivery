@@ -57,10 +57,10 @@ function makeSignupPlatform(deps) {
     });
     return { created, prof: tx.snapshot.val() };
   };
-  // undo ONLY the profile THIS call created (same created_at + phone_hash) — after a deletion raced it
-  const undoCreatedProfile = async (db, uid, fresh) => {
-    await db.ref(`user_profiles/${uid}`).transaction((cur) => (cur === null ? null
-      : (cur.created_at === fresh.created_at && cur.phone_hash === fresh.phone_hash ? null : undefined)));
+  // undo ONLY the profile THIS call created — identified by its unique creation marker `created_by` (this call's random op id,
+  // advisor ruling 3 after Codex S3 r2: created_at + phone_hash could match ANOTHER call's profile); in a transaction
+  const undoCreatedProfile = async (db, uid, opId) => {
+    await db.ref(`user_profiles/${uid}`).transaction((cur) => (cur === null ? null : (cur.created_by === opId ? null : undefined)));
   };
 
   // ── S3a requestOtp ──
@@ -122,6 +122,8 @@ function makeSignupPlatform(deps) {
       if (outcome !== 'ok') return reason === 'too_many_attempts' ? fail(reason, { retry_in_s: Math.max(1, Math.ceil(((expiresAt || t) - t) / 1000)) }) : fail(reason);
       const uid = await claimUid(db, pHash);
       const t2 = now();
+      // ACCEPTED RESIDUAL (advisor ruling 1): a deletion completing between the uid claim and the mint can mint a useless token —
+      // every customer endpoint and the client-writable rule deny a tombstoned uid (see redeemSignupGrant step 5)
       const { created, prof } = await ensureProfile(db, uid, { phone: OTP.normalizePhone(p.e164), phone_hash: pHash, created_at: t2, last_login: t2 }, t2);
       await otpRef.remove();   // one-time use
       const token = await deps.getAuth().createCustomToken(uid, { customer: true });   // mint ONLY after verified + consumed
@@ -172,34 +174,40 @@ function makeSignupPlatform(deps) {
       const stored = used.snapshot.val();
       if (!stored || stored.uid !== uid) return bad(400, 'grant_invalid');
       // 3. the profile: create-if-absent with the ORDER's phone (a transaction — never overwrites; else last_login)
-      const freshProfile = { phone: gv.phone, phone_hash: gv.phone_hash, created_at: t, last_login: t };
+      const opId = 'g_' + crypto.randomBytes(12).toString('hex');   // this redemption's unique creation marker (ruling 3)
+      const freshProfile = { phone: gv.phone, phone_hash: gv.phone_hash, created_at: t, last_login: t, created_by: opId };
       const { created: isNew } = await ensureProfile(db, uid, freshProfile, t);
       // 4. apply ONCE — ONE transaction on user_private/{uid}, the node deletion tombstones FIRST (BC2): it ABORTS on deleted_at
       //    (Codex S3 r1 P1: a deletion that completed after step 1 is never resurrected) and writes consent + email + the per-order
       //    `grants_applied` marker together, every value from the STORED use. A replay finds the marker and changes nothing.
-      const verified = await S.verifiedEmailOf(db, uid, stored.inputs.email);
       let outcome = null;
-      await db.ref(`user_private/${uid}`).transaction((cur) => {
-        if (cur && cur.deleted_at != null) { outcome = 'deleted'; return undefined; }
-        if (cur && cur.grants_applied && cur.grants_applied[v.payload.order_id] === true) { outcome = 'already'; return undefined; }
-        outcome = 'applied';
-        const base = cur || {};
-        return { ...base, email: stored.inputs.email, email_verified: verified, email_source: 'typed',
-          consent: { ...(base.consent || {}), [P]: { terms: { version: stored.legal.terms_version, privacy_version: stored.legal.privacy_version, at: stored.at },
-            promos: { value: stored.inputs.promos, copy_version: stored.legal.promos_copy_version, at: stored.at } } },
-          grants_applied: { ...(base.grants_applied || {}), [v.payload.order_id]: true } };
-      });
-      if (outcome === 'deleted') {   // the deletion won: no consent, no token, and the profile THIS call made is undone
-        if (isNew) await undoCreatedProfile(db, uid, freshProfile);
+      try {
+        const verified = await S.verifiedEmailOf(db, uid, stored.inputs.email);
+        await db.ref(`user_private/${uid}`).transaction((cur) => {
+          if (cur && cur.deleted_at != null) { outcome = 'deleted'; return undefined; }
+          if (cur && cur.grants_applied && cur.grants_applied[v.payload.order_id] === true) { outcome = 'already'; return undefined; }
+          outcome = 'applied';
+          const base = cur || {};
+          return { ...base, email: stored.inputs.email, email_verified: verified, email_source: 'typed',
+            consent: { ...(base.consent || {}), [P]: { terms: { version: stored.legal.terms_version, privacy_version: stored.legal.privacy_version, at: stored.at },
+              promos: { value: stored.inputs.promos, copy_version: stored.legal.promos_copy_version, at: stored.at } } },
+            grants_applied: { ...(base.grants_applied || {}), [v.payload.order_id]: true } };
+        });
+      } catch (e) { outcome = 'failed'; if (isNew) await undoCreatedProfile(db, uid, opId).catch(() => {}); throw e; }   // ruling 2: ANY failed apply
+      if (outcome !== 'applied' && outcome !== 'already') {   // the deletion won (ruling 2: any non-success) — no consent, no token
+        if (isNew) await undoCreatedProfile(db, uid, opId);
         return bad(403, 'deleted');
       }
-      // the name (a different node): written by the redemption that applied; a RETRY after a failure between the apply and this
-      // write fills it only while the profile has none (a member's later edit always sets a name, so it is never overwritten);
-      // only ever onto a profile that still exists (a deletion's removal is never undone by it)
+      // the name (a different node), CREATE-IF-ABSENT (ruling 4): set ONLY while the profile has none — a delayed or retried
+      // redemption never overwrites a later completeProfile edit; only ever onto a profile that still exists
       await db.ref(`user_profiles/${uid}`).transaction((cur) => (cur === null ? null
-        : (outcome === 'applied' || typeof cur.name !== 'string' ? { ...cur, name: stored.inputs.name } : undefined)));
+        : (typeof cur.name === 'string' && cur.name ? undefined : { ...cur, name: stored.inputs.name })));
       if (stored.applied !== true) await db.ref(`grants_used/${v.payload.order_id}/applied`).set(true);   // the use's bookkeeping
-      // 5. mint — never for a tombstoned uid (checked immediately before; a retry after `applied` only re-mints for the claimed uid)
+      // 5. mint — never for a tombstoned uid (checked immediately before; a retry after `applied` only re-mints for the claimed uid).
+      // ACCEPTED RESIDUAL (advisor anti-spiral ruling 1, Codex S3 r2): a deletion completing between this read and the mint (and the
+      // same window in verifyOtp below) can still mint a token for the tombstoned uid. It is useless: every customer endpoint denies
+      // a tombstoned uid (the order / quote attribution, the order-claim endpoint, the signup family's customerOf, getMyProfile) and
+      // the client-writable rule (user_profiles) checks deleted_uids. See PLAN §3.2 residuals.
       if (await isDeleted(db, uid)) return bad(403, 'deleted');
       const token = await deps.getAuth().createCustomToken(uid, { customer: true });
       await SE.refreshActivity(db, uid, t);

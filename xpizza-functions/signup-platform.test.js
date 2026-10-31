@@ -158,7 +158,10 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
     assert.strictEqual(r.statusCode, 200, JSON.stringify(r.body));
     const uid = t.db.get(`phone_index/${PH}`);
     assert.deepStrictEqual(r.body, { ok: true, token: `tok:${uid}`, is_new: true, name: 'Ana Pérez', completion: 'complete' });
-    assert.deepStrictEqual(t.db.get(`user_profiles/${uid}`), { phone: DIGITS, phone_hash: PH, created_at: t.now(), last_login: t.now(), name: 'Ana Pérez' }, 'the phone from the ORDER');
+    const prof = t.db.get(`user_profiles/${uid}`);
+    assert.match(prof.created_by, /^g_[0-9a-f]{24}$/, 'the redemption\'s unique creation marker (ruling 3)');
+    delete prof.created_by;
+    assert.deepStrictEqual(prof, { phone: DIGITS, phone_hash: PH, created_at: t.now(), last_login: t.now(), name: 'Ana Pérez' }, 'the phone from the ORDER');
     const priv = t.db.get(`user_private/${uid}`);
     assert.strictEqual(priv.email, 'ana@example.com'); assert.strictEqual(priv.email_source, 'typed'); assert.strictEqual(priv.email_verified, false);
     assert.deepStrictEqual(priv.consent._platform, { terms: { version: 't1', privacy_version: 'p1', at: t.now() }, promos: { value: true, copy_version: 'c1', at: t.now() } }, 'consent/_platform with the RECORDED legal versions');
@@ -213,6 +216,7 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
     if (at !== 'never') t.db.FAIL.at = at;
     const first = await t.call('redeemSignupGrant', redeemBody(grant));
     if (at !== 'never') assert.strictEqual(first.statusCode, 500, `${at}: the injected failure surfaces`);
+    if (at === 'user_private') assert.strictEqual(Object.keys(t.db.get('user_profiles') || {}).length, 0, '🔴 ruling 2: a FAILED apply undoes the profile this call created');
     const r = await t.call('redeemSignupGrant', redeemBody(grant, { email: 'cambio@example.com' }));
     assert.strictEqual(r.statusCode, 200, `${at}: the retry completes (${JSON.stringify(r.body)})`);
     const uid = t.db.get(`phone_index/${PH}`);
@@ -365,6 +369,46 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
       assert.strictEqual(await c(fn, o), 400, `${fn}: ${JSON.stringify(o.body || o.query)}`);
   }
   ok('Codex S3 r1 P2: an explicit null restaurant_id refuses every platform endpoint (requestOtp sends nothing); a context key (even null) refuses a forms-shaped body — the forms never send context');
+
+  // ── 15. ruling 3 (Codex S3 r2): the rollback removes ONLY the profile THIS call created — never another call's, even with the
+  //    SAME created_at + phone_hash (Codex's repro: redemption creates, deletion removes, an overlapping sign-in recreates it)
+  {
+    const t = harness();
+    const ACCOUNT = require('./account-lib');
+    const grant = await grantSetup(t);
+    t.db.HOOK.after = 'user_profiles';   // right after the redemption's create-if-absent
+    t.db.HOOK.fn = async () => {
+      const uid = t.db.get(`phone_index/${PH}`);
+      const mine = t.db.get(`user_profiles/${uid}`);
+      await S.tombstone(t.db, uid, { now: t.now() }); await t.db.ref().update(ACCOUNT.accountDeleteUpdates(uid, PH, t.now()));
+      // another call's profile at the same uid with the SAME created_at + phone_hash (no marker of this redemption)
+      t.db.set(`user_profiles/${uid}`, { phone: mine.phone, phone_hash: mine.phone_hash, created_at: mine.created_at, last_login: mine.created_at });
+    };
+    const r = await t.call('redeemSignupGrant', redeemBody(grant));
+    assert.deepStrictEqual([r.statusCode, r.body], [403, { ok: false, reason: 'deleted' }]);
+    const uid = t.db.get('grants_used/XPZ-G1/uid');
+    assert.ok(t.db.get(`user_profiles/${uid}`), '🔴 the other call\'s profile survives the rollback (same created_at + phone_hash)');
+    assert.strictEqual(t.minted.length, 0);
+  }
+  ok('ruling 3: the rollback is keyed on this call\'s unique created_by marker — another call\'s profile with the SAME created_at + phone_hash is never removed');
+
+  // ── 16. ruling 4 (Codex S3 r2): a DELAYED redemption never overwrites a later completeProfile name edit ──
+  {
+    const t = harness();
+    const grant = await grantSetup(t);
+    // pause the original right after its apply; a retry completes; the member edits the name; the original resumes
+    t.db.HOOK.after = 'user_private';
+    t.db.HOOK.fn = async () => {
+      const retry = await t.call('redeemSignupGrant', redeemBody(grant));
+      assert.strictEqual(retry.statusCode, 200);
+      t.db.set(`user_profiles/${t.db.get(`phone_index/${PH}`)}/name`, 'Editado por el miembro');   // completeProfile's name write
+    };
+    const r = await t.call('redeemSignupGrant', redeemBody(grant));
+    assert.strictEqual(r.statusCode, 200);
+    assert.strictEqual(t.db.get(`user_profiles/${t.db.get(`phone_index/${PH}`)}/name`), 'Editado por el miembro', '🔴 the later edit survives the resumed original');
+    assert.strictEqual(r.body.name, 'Editado por el miembro');
+  }
+  ok('ruling 4: the name is create-if-absent — a paused original resuming after a retry + a member edit never overwrites the edit');
 
   console.log(`\nsignup-platform: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

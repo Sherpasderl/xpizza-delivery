@@ -23285,8 +23285,8 @@
   "slice": "guest",
   "label": "S3b: the profile this call created is not undone when the deletion wins (resurrection)",
   "file": "signup-platform.js",
-  "from": "        if (isNew) await undoCreatedProfile(db, uid, freshProfile);\n",
-  "to": "",
+  "from": "        if (isNew) await undoCreatedProfile(db, uid, opId);\n        return bad(403, 'deleted');",
+  "to": "        return bad(403, 'deleted');",
   "command": [
    "node",
    "signup-platform.test.js"
@@ -23319,10 +23319,10 @@
  {
   "id": "guest-39",
   "slice": "guest",
-  "label": "S3b: a retry after a failed name write never fills the recorded name",
+  "label": "S3b: a retry after a failed name write never fills the recorded name (only the applying call writes it)",
   "file": "signup-platform.js",
-  "from": "(outcome === 'applied' || typeof cur.name !== 'string' ?",
-  "to": "(outcome === 'applied' ?",
+  "from": "(typeof cur.name === 'string' && cur.name ? undefined : { ...cur, name: stored.inputs.name })",
+  "to": "(typeof cur.name === 'string' ? undefined : (outcome === 'applied' ? { ...cur, name: stored.inputs.name } : undefined))",
   "command": [
    "node",
    "signup-platform.test.js"
@@ -23347,6 +23347,42 @@
   "file": "signup-endpoints.js",
   "from": "return src.context === 'platform' && !Object.prototype.hasOwnProperty.call(src, 'restaurant_id') ? S.PLATFORM_SCOPE : null;",
   "to": "return src.context === 'platform' && (src.restaurant_id === undefined || src.restaurant_id === null) ? S.PLATFORM_SCOPE : null;",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-42",
+  "slice": "guest",
+  "label": "S3b: the rollback removes ANY profile at the uid, not only this call's (ruling 3: another call's profile deleted)",
+  "file": "signup-platform.js",
+  "from": "(cur === null ? null : (cur.created_by === opId ? null : undefined))",
+  "to": "(cur === null ? null : null)",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-43",
+  "slice": "guest",
+  "label": "S3b: a FAILED apply transaction leaves the created profile behind (ruling 2)",
+  "file": "signup-platform.js",
+  "from": "} catch (e) { outcome = 'failed'; if (isNew) await undoCreatedProfile(db, uid, opId).catch(() => {}); throw e; }",
+  "to": "} catch (e) { outcome = 'failed'; throw e; }",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-44",
+  "slice": "guest",
+  "label": "S3b: the name is written unconditionally (ruling 4: a delayed redemption overwrites a later member edit)",
+  "file": "signup-platform.js",
+  "from": "(typeof cur.name === 'string' && cur.name ? undefined : { ...cur, name: stored.inputs.name })",
+  "to": "({ ...cur, name: stored.inputs.name })",
   "command": [
    "node",
    "signup-platform.test.js"
