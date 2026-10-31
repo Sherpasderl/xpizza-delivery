@@ -168,6 +168,9 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
 
     if (!tx.committed) continue;
     const committed = tx.snapshot.val();
+    // S2 (Codex r2 P1): the guarded CAS answers a foreign phone with the record UNCHANGED — still a committed transaction — so the
+    // AUTHORITATIVE record is re-checked here, before every claim / recovery write: a foreign phone writes NO payment_attempts row
+    if (guestForeign(committed, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };
     if (committed.payment_status === 'confirmed') return { outcome: 'already_paid' };
     { const d = paymentBindingConflict(committed, fingerprint, canon, a8); if (d) return conflictOutcome(d); }   // advisory post-txn
     const winner = committed.active_attempt_id;

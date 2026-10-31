@@ -23087,5 +23087,41 @@
    "node",
    "checkout-guest-gate.test.js"
   ]
+ },
+ {
+  "id": "guest-20",
+  "slice": "guest",
+  "label": "chargeUidOf: a timed-out verification is treated as a GUEST (a slow member gets the guest refusal — not fail-closed)",
+  "file": "checkout-guest-gate.js",
+  "from": "      new Promise((resolve) => setTimeout(() => resolve(undefined), deadlineMs)),   // undecided — never \"a guest\"",
+  "to": "      new Promise((resolve) => setTimeout(() => resolve(null), deadlineMs)),",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "guest-21",
+  "slice": "guest",
+  "label": "acquire: the authoritative post-CAS record is not re-checked (Codex r2 P1: a foreign recovery writes an attempt)",
+  "file": "pixelpay-hosted-charge.js",
+  "from": "    if (guestForeign(committed, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
+ },
+ {
+  "id": "guest-22",
+  "slice": "guest",
+  "label": "chargeUidOf: an error is treated as a GUEST (Codex r2 P2: a member whose verify / tombstone read fails gets the guest refusal)",
+  "file": "checkout-guest-gate.js",
+  "from": "  } catch (_) { return undefined; }   // unresolved — never \"a guest\"",
+  "to": "  } catch (_) { return null; }",
+  "command": [
+   "node",
+   "checkout-guest-gate.test.js"
+  ]
  }
 ]

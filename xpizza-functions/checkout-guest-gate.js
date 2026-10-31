@@ -70,9 +70,12 @@ async function grantFor({ db, orderId, guest, secret, now }) {
   return { grant: { token, expires_at: payload.exp } };
 }
 
-// Codex r1 P2-4: chargeOnlineOrder's identity, resolved EXACTLY as its handler does (a verified customer token, the tombstone
-// read, attributionUid, a 1.5 s deadline → guest; any error → guest) — used only to answer a capp guest's non-online body with
-// its typed reason before the handler's generic online-only 400. → uid | null
+// Codex r1 P2-4 / r2 P2: chargeOnlineOrder's identity, by its handler's rules — used ONLY to answer a capp guest's non-online body
+// with its typed reason before the handler's generic online-only 400. → uid | null | undefined:
+//   null       VERIFIED no identity: no token, a token that verifies but is not a customer, or attributionUid's answer after a
+//              successful tombstone read (a real guest) — the caller answers guest_cash_not_allowed;
+//   undefined  UNRESOLVED: the deadline passed, or ANY error (a token that fails to verify, a tombstone read error) — FAIL-CLOSED:
+//              the caller takes the generic answer, byte-identical to today, never the guest path.
 async function chargeUidOf(req, { getAuth, getDatabase, attributionUid, deadlineMs = 1500 }) {
   const idTok = req.get('x-firebase-id-token');
   if (!idTok) return null;
@@ -86,9 +89,9 @@ async function chargeUidOf(req, { getAuth, getDatabase, attributionUid, deadline
         }
         return null;
       })(),
-      new Promise((resolve) => setTimeout(() => resolve(null), deadlineMs)),
+      new Promise((resolve) => setTimeout(() => resolve(undefined), deadlineMs)),   // undecided — never "a guest"
     ]);
-  } catch (_) { return null; }
+  } catch (_) { return undefined; }   // unresolved — never "a guest"
 }
 
 module.exports = { createOrderRefusal, chargeGate, boundToGuest, grantFor, chargeUidOf };
