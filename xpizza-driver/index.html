@@ -5254,7 +5254,10 @@ async function onCuadreConfirm(slideGen) {
   // — is handled exactly once, HERE, and only while this attempt is still the latest (not superseded by a
   // retry) AND the bound identity still holds. finalize runs under shiftBusy so the (briefly re-exposed)
   // start toggle can't interleave a clock-in mid-clock-out.
-  const closedAt = Date.now();   // the single client record-instant for cerrado's duration end (the cuadre's own closed_at is a serverTimestamp(); we do NOT weaken it — this is the client capture at submit, within ms of it)
+  // closedAt: captured ONCE at submit, used ONLY for cerrado's DISPLAY duration (minute granularity). The cuadre's
+  // authoritative closed_at stays a serverTimestamp() (integrity first — we never weaken it to a client clock); this
+  // client instant is within ms of the server record, so the minute-granularity duration agrees. (Advisor-accepted.)
+  const closedAt = Date.now();
   const p = XPD.recordCuadre(bound.uid, bound.shiftId, { ...cash, close_op_id: closeOpId });
   p.then(async () => {
     if (!isLatest()) return;                                   // a newer attempt owns the close now
