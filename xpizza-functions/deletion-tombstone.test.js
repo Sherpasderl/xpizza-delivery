@@ -333,6 +333,34 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
   }
   ok('Codex r2 P2: the forms first-login claim is create-if-absent — a concurrent platform first login converges on ONE uid; an existing entry is adopted, never overwritten');
 
+  // ── 13. slot 69b045de (signup-http differential): the claim draws a fresh uid ONLY when it creates the entry — a returning login
+  //    consumes NO randomness (the base draws only in `if (!uid)`), so the forms' uid stream is byte-identical. The wrapper runs every
+  //    transaction updater FIRST on null (the Admin SDK's uncached first run), so a merely-lazy draw cannot pass. ──
+  {
+    const counter = (id) => { const f = () => { f.n += 1; return id; }; f.n = 0; return f; };
+    const uncached = (db, onGet) => ({ ...db, ref: (p) => { const r = db.ref(p); return { ...r,
+      get: async () => { const s = await r.get(); if (onGet) await onGet(p); return s; },
+      transaction: async (fn) => { fn(null); return r.transaction(fn); } }; } });
+    const P = 'ph_ret';
+    // returning: phone_index names a uid ⇒ that uid, ZERO draws, nothing written
+    const d1 = fakeDb(); d1.set(`phone_index/${P}`, F2);
+    const g1 = counter(F1);
+    assert.strictEqual(await SE.claimPhoneUid(uncached(d1), P, g1), F2);
+    assert.strictEqual(g1.n, 0, '🔴 a returning login drew a fresh uid (shifts every later new uid — the forms differential)');
+    // new: absent ⇒ ONE draw even across the uncached rerun, and the entry names it
+    const d2 = fakeDb(); const g2 = counter(F1);
+    assert.strictEqual(await SE.claimPhoneUid(uncached(d2), P, g2), F1);
+    assert.strictEqual(g2.n, 1, 'a first login draws exactly once');
+    assert.strictEqual(d2.get(`phone_index/${P}`), F1);
+    // race: absent at the read, created by a concurrent login before the txn ⇒ the existing entry is adopted, never overwritten
+    const d3 = fakeDb(); const g3 = counter(F1);
+    const raced = uncached(d3, async (p) => { if (p === `phone_index/${P}`) d3.set(p, F2); });
+    assert.strictEqual(await SE.claimPhoneUid(raced, P, g3), F2, 'the concurrent winner is adopted');
+    assert.strictEqual(d3.get(`phone_index/${P}`), F2, 'never overwritten');
+    assert.ok(g3.n <= 1, 'at most one draw on the race');
+  }
+  ok('the forms claim draws ONLY to create: a returning login ⇒ the existing uid with ZERO draws; a first login ⇒ one draw (Admin-SDK uncached rerun included); a raced entry is adopted, never overwritten');
+
   FINISHED = true;
   console.log(`\ndeletion-tombstone: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

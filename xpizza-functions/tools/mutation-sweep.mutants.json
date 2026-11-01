@@ -30587,8 +30587,8 @@
   "slice": "sec",
   "label": "security backlog: r2 fix P2: the phone uid claim OVERWRITES an existing entry (orphans a concurrent first login)",
   "file": "signup-endpoints.js",
-  "from": "  const tx = await db.ref(`phone_index/${pHash}`).transaction((cur) => (typeof cur === 'string' && cur ? undefined : cand));\n  const uid = tx.committed ? cand : tx.snapshot.val();\n  if (typeof uid !== 'string' || !uid) throw new Error('claimPhoneUid: phone_index unreadable');",
-  "to": "  const tx = await db.ref(`phone_index/${pHash}`).transaction(() => cand);\n  const uid = tx.committed ? cand : tx.snapshot.val();\n  if (typeof uid !== 'string' || !uid) throw new Error('claimPhoneUid: phone_index unreadable');",
+  "from": "  const tx = await ref.transaction((cur) => (typeof cur === 'string' && cur ? undefined : (cand = cand || newUid())));",
+  "to": "  const tx = await ref.transaction(() => (cand = cand || newUid()));",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -31649,6 +31649,30 @@
   "kills_with": [
    "s3c-module-inverse",
    "s2tip-module-inverse"
+  ]
+ },
+ {
+  "id": "sec-27",
+  "slice": "sec",
+  "label": "the forms claim draws a fresh uid even for an existing entry (no pre-read return) — a returning login shifts the uid stream",
+  "file": "signup-endpoints.js",
+  "from": "  if (typeof seen === 'string' && seen) return seen;",
+  "to": "  if (false) return seen;",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
+  ]
+ },
+ {
+  "id": "sec-28",
+  "slice": "sec",
+  "label": "the forms claim's draw is not memoized — the Admin SDK's uncached rerun draws twice for a new phone",
+  "file": "signup-endpoints.js",
+  "from": "(cand = cand || newUid())",
+  "to": "(cand = newUid())",
+  "command": [
+   "node",
+   "deletion-tombstone.test.js"
   ]
  }
 ]

@@ -37,7 +37,8 @@ function makeSignupPlatform(deps) {
     if (allowed) return false;
     res.set('Retry-After', String(retryAfterSec)); res.status(429).json({ ok: false, reason: 'rate_limited' }); return true;
   };
-  // the phone account, found or created ATOMICALLY (two concurrent sign-ins of a new phone get the SAME uid)
+  // the phone account, found or created ATOMICALLY (two concurrent sign-ins of a new phone get the SAME uid). It draws a uid even for
+  // an existing entry: deliberate — a new path with no byte-identity duty (advisor 2026-11-01); the forms' SE.claimPhoneUid draws only to create.
   const claimUid = async (db, phoneHash) => {
     const cand = newUid();
     const tx = await db.ref(`phone_index/${phoneHash}`).transaction((cur) => (typeof cur === 'string' && cur ? undefined : cand));
