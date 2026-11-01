@@ -2157,7 +2157,7 @@
 .wa-tpl { gap: 10px; border: 0; border-radius: 12px; background: #E7ECF4; font-size: 13.5px; font-weight: 500; line-height: 1.35; }
 .wa-tpl .wa-txt { line-height: 1.35; font-weight: 500; }
 .wa-tpl .wa-txt small { margin-top: 2px; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-soft, #546078); }
-/* resumen (S.resumen): .rs-* tokens mapped to the prototype generic illus.ok / h4 / sub / card / row / stat / btn.primary. The full-screen-vs-sheet presentation, the missing 2nd stat card, the row-icon tiles and the row divider model are STRUCTURAL/component deltas tabled for the owner, not changed here. */
+/* resumen (S.resumen): .rs-* tokens mapped to the prototype generic illus.ok / h4 / sub / card / row / stat / btn.primary. The full-screen-vs-sheet presentation, the row-icon tiles and the row divider model are STRUCTURAL/component deltas tabled for the owner. The prototype's 2nd stat card «Ganado hoy · N entregas» IS now built — injected by drv2InjectResumenEarn (PAGOS-gated, same money-readiness as dayCashOwed) into the .rs-stats 2-up grid. */
 .rs-illus { width: 44px; height: 44px; border-radius: 14px; background: #E3F3E9; color: #15803D; }
 .rs-illus svg { width: 22px; height: 22px; }
 .rs-title { font-size: 19px; letter-spacing: -.02em; line-height: 1.15; }
@@ -2173,6 +2173,8 @@
 .rs-rv { font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; }
 .rs-stat b { font-size: 24px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .rs-stat small { font-size: 11.5px; font-weight: 600; color: var(--text-soft, #546078); }
+/* the 2-up stat grid when PAGOS is live: «Efectivo a entregar hoy» + the injected «Ganado hoy · N entregas» (prototype .stat2). */
+.rs-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .rs-done { font-weight: 700; font-size: 16px; letter-spacing: -.01em; padding: 15px 14px; min-height: 52px; margin-top: 0; }
 /* ofertaExpirada (S.ofertaExpirada banner): .oe-* tokens mapped to the prototype .banner.warn / svg / b / .x. Copy gap (missing "Despacho se la pasó a otro repartidor.") is flagged to the advisor, not changed here. */
 .oe-banner { gap: 11px; font-size: 13.5px; line-height: 1.35; background: #FBF1DC; }
@@ -2752,7 +2754,15 @@ function drv2ShowResumen(info) {
   }, { ICONS, esc: escapeHtml });
   /* SLICE3DEPS:RESUMEN-EARN:START — «Tu pago por esta entrega» row injection, carved inside SLICE2:IMPORT (the pure builder no longer renders it). Idempotent; blank when the rate is unknown; late rate load re-injects via refreshOpenCashSurfaces. */
   ov.classList.add('open');
-  ov.dataset.oid = info.orderId || ''; drv2InjectResumenEarn(ov);
+  ov.dataset.oid = info.orderId || '';
+  // Stash the shift's delivered orders + money-readiness (same gate as dayCashOwed) so drv2InjectResumenEarn can
+  // render the «Ganado hoy» day-earnings card (it needs window.PayRate, which the pure builder can't read).
+  ov.dataset.earnReady = moneyReady ? '1' : '0';
+  try {
+    const esd = moneyReady ? shiftDeliveries(allOrders, currentUser.uid, ident.start, driverIdentityCutoverMs) : null;
+    ov.dataset.earnOrders = JSON.stringify(esd ? esd.resolved.concat(esd.legacyProvisional).map((d) => ({ delivered_at: d.order && d.order.delivered_at })) : []);
+  } catch (_) { ov.dataset.earnOrders = '[]'; }
+  drv2InjectResumenEarn(ov);
   const done = ov.querySelector('#btn-resumen-done'); if (done) done.onclick = drv2DismissResumen;
   /* SLICE3DEPS:RESUMEN-EARN:END */
   drv2ResumenShownFor = info.orderId;
@@ -3827,9 +3837,26 @@ function drv2InjectResumenEarn(ov) {
   const card = ov.querySelector('.rs-card'); if (!card) return;
   for (const r of card.querySelectorAll('.rs-row')) { const t = r.querySelector('.rs-rt'); if (t && t.textContent === 'Tu pago por esta entrega') r.remove(); }   // idempotent (identify by content; no marker class → DOM-equal)
   const rc = drv2EarnRateFor(ov.dataset.oid);
-  if (rc == null) return;
-  const icon = ICONS.wallet || ICONS.cash || '';
-  card.insertAdjacentHTML('beforeend', '<div class="rs-row"><span class="ico ">' + icon + '</span><div class="rs-rtext"><div class="rs-rt">Tu pago por esta entrega</div><div class="rs-rd">Informativo · se paga aparte, no sale del efectivo</div></div><div class="rs-rv"><span class="rs-pos">+ L ' + (rc / 100).toLocaleString('es-HN') + '</span></div></div>');
+  if (rc != null) {
+    const icon = ICONS.wallet || ICONS.cash || '';
+    card.insertAdjacentHTML('beforeend', '<div class="rs-row"><span class="ico ">' + icon + '</span><div class="rs-rtext"><div class="rs-rt">Tu pago por esta entrega</div><div class="rs-rd">Informativo · se paga aparte, no sale del efectivo</div></div><div class="rs-rv"><span class="rs-pos">+ L ' + (rc / 100).toLocaleString('es-HN') + '</span></div></div>');
+  }
+  // «Ganado hoy · N entregas» day-earnings stat card — inject-side (needs window.PayRate); SAME money-readiness as
+  // dayCashOwed (drv2ShowResumen stashes ov.dataset.earnReady + the shift's delivered orders). Idempotent: unwrap any
+  // prior card first, then (re)add only when PAGOS live + ready + the shift is priced — blank otherwise, never a false
+  // L0. Recomputes from the CURRENT rate so a late-rate refreshOpenCashSurfaces fills it in (orders are stashed, fixed).
+  const g0 = ov.querySelector('.rs-stats');
+  if (g0) { const b0 = g0.querySelector('.rs-stat:not(.rs-earned)'); if (b0) g0.parentNode.insertBefore(b0, g0); g0.remove(); }   // unwrap back to the single stat
+  if (!PAGOS_LIVE || typeof window === 'undefined' || !window.PayRate || ov.dataset.earnReady !== '1') return;
+  let eOrders = []; try { eOrders = JSON.parse(ov.dataset.earnOrders || '[]'); } catch (_) { eOrders = []; }
+  if (!eOrders.length) return;
+  const eCents = window.PayRate.shiftEarningsCents(eOrders, driverRateEntries);
+  if (eCents == null || eCents <= 0) return;   // unseeded, or any delivery unpriced → blank (never invented)
+  const base = ov.querySelector('.rs-stat'); if (!base || !base.parentNode) return;
+  const grid = ov.ownerDocument.createElement('div'); grid.className = 'rs-stats';
+  base.parentNode.insertBefore(grid, base); grid.appendChild(base);   // wrap the «Efectivo a entregar hoy» card
+  const en = eOrders.length;
+  grid.insertAdjacentHTML('beforeend', '<div class="rs-stat rs-earned"><b style="color:var(--green,#2F9E66)">L ' + (eCents / 100).toLocaleString('es-HN') + '</b><small>Ganado hoy · ' + en + ' entrega' + (en === 1 ? '' : 's') + '</small></div>');
 }
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to

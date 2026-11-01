@@ -276,6 +276,66 @@ t('injection #3 late load: unknown rate → nothing; re-inject after the rate ar
   assert.equal((ov.innerHTML.match(/Tu pago por esta entrega/g) || []).length, 1, 'exactly ONE row after repeated re-injects (idempotent)');
 });
 
+// ---------- resumen «Ganado hoy» day-earnings stat card (PAGOS precondition; insert-only, same gate as dayCashOwed) ----------
+// Inject-side (needs window.PayRate): wraps the single «Efectivo a entregar hoy» .rs-stat into a 2-up grid and appends
+// «L {day} · Ganado hoy · N entregas» (green) when PAGOS_LIVE && window.PayRate && ov.dataset.earnReady==='1' (the
+// money-readiness drv2ShowResumen stashes) && the shift is priced. Blank otherwise — never a false L0. Idempotent;
+// recomputes from the CURRENT rate on a late-rate refresh (the shift's delivered orders are stashed on the overlay).
+function injectSummaryEarned({ rate = 7000, pagosLive = true, earnReady = '1', orders = [{ delivered_at: BB + 1000 }, { delivered_at: BB + 2000 }] } = {}) {
+  const rsInfo = { order: { payment_method: 'cash', total: 385 }, deliveredName: 'Daniela', time: '7:43', vuelto: 115, showEarnings: false, dayCashOwed: 385 };
+  const dom = new JSDOM('<!doctype html><html><body><div id="ov"></div></body></html>');
+  const win = dom.window, doc = win.document;
+  new Function('self', readFileSync(join(__dir, 'pay-rate.js'), 'utf8'))(win);
+  const ov = doc.getElementById('ov'); ov.innerHTML = deliverySummaryHtml(rsInfo, DEPS); ov.dataset.oid = 'o1';
+  if (earnReady != null) ov.dataset.earnReady = earnReady;
+  if (orders != null) ov.dataset.earnOrders = JSON.stringify(orders);
+  const allOrders = { o1: { delivered_at: BB + 1000, delivered_by_driver_uid: 'drv' } };
+  const entries = rate != null ? { r: { cents: rate, effective_from: BB } } : null;
+  const ir = (new Function('PAGOS_LIVE', 'window', 'allOrders', 'driverRateEntries', 'ICONS',
+    liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectResumenEarn') + '\nreturn drv2InjectResumenEarn;'))(pagosLive, win, allOrders, entries, IC);
+  ir(ov);
+  return { ov, win, rsInfo };
+}
+
+t('resumen «Ganado hoy» #1: PAGOS on + ready + rate → 2-up grid, «Ganado hoy · N entregas» (derived sum), keeps «Efectivo a entregar hoy»', () => {
+  const { ov } = injectSummaryEarned({ rate: 7000, orders: [{ delivered_at: BB + 1000 }, { delivered_at: BB + 2000 }] });
+  assert.ok(ov.querySelector('.rs-stats'), 'the two stats are in a 2-up grid (.rs-stats)');
+  const earned = ov.querySelector('.rs-stat.rs-earned'); assert.ok(earned, 'the «Ganado hoy» card exists');
+  assert.ok(/L\s*140(?!\d)/.test(earned.textContent), '2 × L70 = L 140 (derived sum, never hardcoded)');
+  assert.ok(/Ganado hoy · 2 entregas/.test(earned.textContent), '«Ganado hoy · 2 entregas»');
+  assert.ok(ov.textContent.includes('Efectivo a entregar hoy'), '«Efectivo a entregar hoy» still present');
+});
+
+t('resumen «Ganado hoy» #2: singular «1 entrega»; a different platform rate lands the new amount', () => {
+  const earned = injectSummaryEarned({ rate: 9000, orders: [{ delivered_at: BB + 1000 }] }).ov.querySelector('.rs-stat.rs-earned');
+  assert.ok(/L\s*90(?!\d)/.test(earned.textContent), 'rate 90, 1 delivery → L 90 (not hardcoded 70/140)');
+  assert.ok(/Ganado hoy · 1 entrega\b/.test(earned.textContent) && !/1 entregas/.test(earned.textContent), 'singular «1 entrega»');
+});
+
+t('resumen «Ganado hoy» #3: PAGOS off → NO card; resumen byte-identical to the old builder (no-regression)', () => {
+  const { ov, win, rsInfo } = injectSummaryEarned({ pagosLive: false, earnReady: '1', orders: [{ delivered_at: BB + 1000 }] });
+  assert.ok(!ov.querySelector('.rs-earned') && !ov.querySelector('.rs-stats'), 'PAGOS off → no «Ganado hoy» card, no grid');
+  const norm = (h) => { const d = win.document.createElement('div'); d.innerHTML = h; return d.innerHTML; };
+  assert.equal(ov.innerHTML, norm(OLD.deliverySummaryHtml(rsInfo, DEPS)), 'byte-identical to the old builder (PAGOS off)');
+});
+
+t('resumen «Ganado hoy» #4: money gate — earnReady 0 / unseeded rate / no priced deliveries → NO card (never a false L0)', () => {
+  assert.ok(!injectSummaryEarned({ earnReady: '0' }).ov.querySelector('.rs-earned'), 'feed settling (earnReady 0) → hidden');
+  assert.ok(!injectSummaryEarned({ rate: null }).ov.querySelector('.rs-earned'), 'unseeded rate → hidden (blank, not L0)');
+  assert.ok(!injectSummaryEarned({ orders: [] }).ov.querySelector('.rs-earned'), 'no priced deliveries → hidden');
+});
+
+t('resumen «Ganado hoy» #5: late rate + idempotent — unknown → none; arrives → appears; re-inject → exactly one', () => {
+  const { ov, win } = injectSummaryEarned({ rate: null, orders: [{ delivered_at: BB + 1000 }, { delivered_at: BB + 2000 }] });
+  assert.ok(!ov.querySelector('.rs-earned'), 'unknown rate → no card');
+  const entries = { r: { cents: 7000, effective_from: BB } };   // rate arrives
+  const ir = (new Function('PAGOS_LIVE', 'window', 'allOrders', 'driverRateEntries', 'ICONS',
+    liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectResumenEarn') + '\nreturn drv2InjectResumenEarn;'))(true, win, { o1: { delivered_at: BB + 1000 } }, entries, IC);
+  ir(ov); ir(ov);   // re-inject twice (late-rate refresh + idempotence)
+  assert.equal(ov.querySelectorAll('.rs-stat.rs-earned').length, 1, 'exactly one «Ganado hoy» card after repeated re-injects');
+  assert.ok(/L\s*140(?!\d)/.test(ov.querySelector('.rs-earned').textContent), 'shows L 140 after the rate arrives');
+});
+
 // ---------- OVERLAY REUSE through the REAL drv2ShowInterlude/drv2ShowResumen + refreshOpenCashSurfaces (Codex rewire r1 P1) ----------
 function showHarness({ pagosLive = true, rateEntries = null, allOrders = {} } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="cuadre-screen"></div><div id="history-modal"></div></body></html>');
