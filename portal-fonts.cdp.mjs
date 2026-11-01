@@ -166,8 +166,22 @@ const STATES = {
       const pick = m.querySelector('.tpick'); if (!pick) throw new Error('premise: no branch pick in the invite modal'); pick.click();   // the branch picks are .tpick buttons (team.js)
       return true; })()`); await sleep(200); }, at("__click('Enviar invitación')", 900)) },
   'T-remove':        { page: 'index', container: '.modal[role=dialog]', drive: seq(navLabel('Equipo de trabajo'), at("__click('Quitar acceso')", 500)) },
-  // P-crop: only when the dish-photos B slice is in the build tip (it is not at this base); listed, then skipped with its reason
-  'P-crop':          { page: 'index', requires: 'xpizza-portal/photo.js', container: '#drawer .phcrop', drive: async () => { throw new Error('P-crop needs the photos B tip'); } },
+  // P-crop (dish photos B §3, P3 «Ajustar foto»): only when the photos B slice is in the build tip; listed, then skipped with its reason.
+  // Uploads ON for this state only; the row camera opens the drawer WITH the picker, and the picker gets a REAL JPEG (photos B's own
+  // mockup fixture) through DOM.setFileInputFiles, so the crop step is reached by the shipped decode path — never a hand-built DOM.
+  'P-crop':          { page: 'index', requires: 'xpizza-portal/photo.js', photos: true, container: '#drawer .phcrop',
+    drive: seq(at(`(() => { const r = __q('#detail .irow').find((x) => x.querySelector('.nm') && x.querySelector('.nm').firstChild.textContent === 'Pepperoni');
+      if (!r || !r.querySelector('button.thumb')) throw new Error('premise: no row camera on Pepperoni (uploads on?)'); r.querySelector('button.thumb').click(); return true; })()`, 500),
+    async (c) => {
+      const jpg = path.join(ROOT, 'review/portal-photos-b/mockup/mockup-dish-photo/09-pepperoni.jpg');
+      if (!fs.existsSync(jpg)) throw new Error(`premise: the photos B fixture ${jpg} is not in this tip`);
+      const { root } = await c.s('DOM.getDocument', { depth: 1 });
+      const { nodeIds } = await c.s('DOM.querySelectorAll', { nodeId: root.nodeId, selector: 'input[type=file]' });
+      if (!nodeIds.length) throw new Error('premise: the row camera opened no picker');
+      await c.s('DOM.setFileInputFiles', { files: [jpg], nodeId: nodeIds[nodeIds.length - 1] });
+      await sleep(900);
+      if (!(await c.ev("!!document.querySelector('#drawer .phcrop img')"))) throw new Error('premise: the crop step did not open on the picked photo');
+    }) },
 };
 
 // ── the router: every external https request answered per state ──
@@ -184,7 +198,7 @@ function decideFor(st) {
     const fn = fnOf(url);
     if (!fn) return 'fail';                                                        // the SDK host, the heartbeat, anything else
     if (fn === 'getMyBranches') return ok(E1(st.role || 'owner', st.caps || OWNER));
-    if (fn === 'getEditableCatalog') return ok(MENU());
+    if (fn === 'getEditableCatalog') return ok(st.photos ? { ...MENU(), photosEnabled: true, photos: {}, photoPreviews: {}, legacyPreviews: {} } : MENU());   // P-crop: uploads on
     if (fn === 'getBranchAvailability') return ok(AVAIL());
     if (fn === 'editCatalog') { const e = st.edit || {}; if (e.status) return { status: e.status, body: JSON.stringify(e.body) }; let src = null; try { src = JSON.parse(req.postData || '{}').source; } catch (_) {} return ok({ diff: e.diff || DIFF, token: 'tok', updateTime: 'T2', source: src }); }
     if (fn === 'publishEdited') return ok({ ok: true, versionId: 'v143' });
