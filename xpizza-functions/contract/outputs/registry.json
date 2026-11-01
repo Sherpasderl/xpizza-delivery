@@ -1024,6 +1024,10 @@
   "xpizza-driver/cash-helpers.js#shiftDeliveries@xpizza-driver/cash-helpers.js#computeShiftCash": {
    "status": "pending"
   },
+  "xpizza-driver/cash-helpers.js#shiftDeliveries@xpizza-driver/index.html<script@0>#drv2DayEarned": {
+   "status": "pending",
+   "reason": "2f \u00abGanado hoy\u00bb metadata (87eed83c, 11b): drv2DayEarned is THE one-source day-earnings read/derive (HN-day, resolved-only); pure, no persistence; not a gate-A observable. Display only."
+  },
   "xpizza-driver/cash-helpers.js#shiftDeliveries@xpizza-driver/index.html<script@0>#renderHistoryModal": {
    "status": "pending"
   },
@@ -1191,6 +1195,10 @@
   },
   "xpizza-driver/overview-map.js#projectGeo>anon@self": {
    "status": "pending"
+  },
+  "xpizza-driver/pay-rate.js#shiftEarningsCents@xpizza-driver/index.html<script@0>#drv2DayEarned": {
+   "status": "pending",
+   "reason": "2e-applied under 2f's blanket ruling (87eed83c, 11b: \u00abapply pending to the whole drv2DayEarned-era set\u00bb) \u2014 NOT in 2f's enumerated list (2f expected the PR alias to hide it); FLAGGED to 2f for confirmation. The PAGOS-gated \u00abGanado hoy\u00bb amount derived in drv2DayEarned; informativo pay, never persisted/collected. Display only."
   },
   "xpizza-driver/single-order-view.js#itemLines@xpizza-driver/single-order-view.js#svItems": {
    "status": "pending"
@@ -2830,14 +2838,6 @@
    "status": "pending",
    "reason": "2f driver NOTE (A1 money-path, per-site): Feeds the earnings list + count; display derivation over `delivered_by_driver_uid`."
   },
-  "xpizza-driver/cash-helpers.js#shiftDeliveries@xpizza-driver/index.html<script@0>#renderGanancias~2": {
-   "status": "pending",
-   "reason": "2f driver NOTE (A1 money-path, per-site): Feeds the earnings list + count; display derivation over `delivered_by_driver_uid`."
-  },
-  "xpizza-driver/cash-helpers.js#shiftDeliveries@xpizza-driver/index.html<script@0>#renderOffshift": {
-   "status": "pending",
-   "reason": "2f driver NOTE (A1 money-path, per-site): Feeds the off-shift cash stat; display derivation."
-  },
   "xpizza-driver/index.html<script@0>#drv2CaptureReturnTarget@xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon": {
    "status": "pending",
    "reason": "2f driver NOTE (A2 G4 — client-local nav-return / pause state (11).: `drv2IsPaused` (reads `driverState.status==='on_break'` + a pending write-kind — pure read), and the returning-nav memory `drv2GetReturnTarget` / `drv2SetReturnTarget` / `drv2CaptureReturnTarget` (held in memory + `sessionStorage`, uid-stamped). **NO)"
@@ -3109,14 +3109,6 @@
   "xpizza-driver/pay-rate.js#shiftEarningsCents@xpizza-driver/index.html<script@0>#renderGanancias": {
    "status": "pending",
    "reason": "2f driver NOTE (A1 money-path, per-site): The \"Ganado hoy/semana\" earnings + per-row amounts; PAGOS-gated (PAGOS_LIVE && a known rate; blank otherwise), never a persisted/collected figure — it's informativo pay, paid aparte from the cash. Display only."
-  },
-  "xpizza-driver/pay-rate.js#shiftEarningsCents@xpizza-driver/index.html<script@0>#renderGanancias~2": {
-   "status": "pending",
-   "reason": "2f driver NOTE (A1 money-path, per-site): The \"Ganado hoy/semana\" earnings + per-row amounts; PAGOS-gated (PAGOS_LIVE && a known rate; blank otherwise), never a persisted/collected figure — it's informativo pay, paid aparte from the cash. Display only."
-  },
-  "xpizza-driver/pay-rate.js#shiftEarningsCents@xpizza-driver/index.html<script@0>#renderOffshift": {
-   "status": "pending",
-   "reason": "2f driver NOTE (A1 money-path, per-site): The off-shift \"Ganado hoy\" card (PAGOS-gated). Display only."
   },
   "xpizza-driver/practica-fixture.js#practicaDemoOrder@xpizza-driver/index.html<script@0>#companionPracticeStart": {
    "status": "pending",

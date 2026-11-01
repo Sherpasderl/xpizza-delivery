@@ -5234,9 +5234,9 @@
      "output": "xpizza-driver/cash-helpers.js#shiftDeliveries",
      "callers": [
       "xpizza-driver/cash-helpers.js#computeShiftCash",
+      "xpizza-driver/index.html<script@0>#drv2DayEarned",
       "xpizza-driver/index.html<script@0>#renderGanancias",
-      "xpizza-driver/index.html<script@0>#renderHistoryModal",
-      "xpizza-driver/index.html<script@0>#renderOffshift"
+      "xpizza-driver/index.html<script@0>#renderHistoryModal"
      ]
     },
     {
@@ -5245,7 +5245,7 @@
      "counts": {
       "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 4
      }
     },
     {
@@ -5315,7 +5315,7 @@
      "counts": {
       "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 9,
       "xpizza-driver/stacked-view.js#xpizza-driver": 2,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1
      }
@@ -6998,9 +6998,9 @@
      "output": "xpizza-driver/cash-helpers.js#shiftDeliveries",
      "callers": [
       "xpizza-driver/cash-helpers.js#computeShiftCash",
+      "xpizza-driver/index.html<script@0>#drv2DayEarned",
       "xpizza-driver/index.html<script@0>#renderGanancias",
-      "xpizza-driver/index.html<script@0>#renderHistoryModal",
-      "xpizza-driver/index.html<script@0>#renderOffshift"
+      "xpizza-driver/index.html<script@0>#renderHistoryModal"
      ]
     },
     {
@@ -7009,7 +7009,7 @@
      "counts": {
       "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 5
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 4
      }
     },
     {
@@ -7079,7 +7079,7 @@
      "counts": {
       "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 8,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 9,
       "xpizza-driver/stacked-view.js#xpizza-driver": 2,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1
      }
