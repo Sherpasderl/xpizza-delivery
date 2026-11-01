@@ -118,8 +118,19 @@ const dbOf = (fn) => ({ ref: (p) => ({ once: async () => { assert.strictEqual(p,
       assert.strictEqual(reads.length, n1, 'FLAG-WARM-NEXT-REQUEST-ZERO-READS (a recorded request after the warm reads no flag)');
       v += 29999; F.phoneWireStrictNow(db); await settle();
       assert.strictEqual(reads.length, n1, 'FLAG-WARM-FULL-TTL (fresh for a whole TTL from the warm)');
+      // a timed-out refresh backs off on the SAME injected clock (5 s), not on wall time
+      const hang = { ref: (p) => ({ once: () => { reads.push(p); return new Promise(() => {}); } }) };
+      F._resetForTest(); const e0 = console.error; console.error = () => {};
+      try {
+        F.phoneWireStrictNow(hang); await new Promise((r) => setTimeout(r, F.FLAG_REFRESH_TIMEOUT_MS + 100));
+        const n2 = reads.length;
+        v += F.FLAG_BACKOFF_MS - 1; F.phoneWireStrictNow(db); await settle();
+        assert.strictEqual(reads.length, n2, 'FLAG-CLOCK-BACKOFF-HELD (inside the 5 s backoff on the injected clock: no read)');
+        v += 1; F.phoneWireStrictNow(db); await settle();
+        assert.strictEqual(reads.length, n2 + 1, 'FLAG-CLOCK-BACKOFF-ENDS (the backoff ends on the injected clock, not wall time)');
+      } finally { console.error = e0; }
     } finally { Date.now = realNow; }
-    ok('injectable TTL clock: one config/phone_wire_strict read per expired TTL on the injected clock, none within it, a wall-clock jump ignored, installed once; _warmForTest waits out an in-flight refresh, reads once, and the next request reads nothing for a full TTL');
+    ok('injectable TTL clock: one config/phone_wire_strict read per expired TTL on the injected clock, none within it, a wall-clock jump ignored, installed once; _warmForTest waits out an in-flight refresh, reads once, and the next request reads nothing for a full TTL; a timed-out refresh backs off 5 s on the injected clock');
   }
 
   console.log(`phone-flag: OK (${n})`);
