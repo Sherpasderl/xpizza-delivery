@@ -51,6 +51,7 @@ async function claim({ fs, now, newClaimId }, rid, cand) {
     const s = await tx.get(ref);
     const d = s.exists ? s.data() : null;
     if (!d || !['draft', 'published'].includes(d.state) || d.last_ref_at !== cand.last_ref_at) return null;
+    if (isObj(d.reserve) && d.reserve.until > now()) return null;   // codex r1 P1-2: a live processing reservation is respected
     const c = { id, lease_until: now() + LEASE_MS };
     tx.update(ref, { state: 'deleting', claim: c });
     return c;

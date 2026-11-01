@@ -112,10 +112,22 @@ async function photoProcessCore(deps, { uid, rid, uploadId, crops }) {
   const regRef = db.collection('photo_registry').doc(rid).collection('pids').doc(pid);
   const deletingLive = (r) => r && r.state === 'deleting' && r.claim && now() <= r.claim.lease_until + DELETING_GRACE_MS;
 
-  // ── 5. registry pre-check ──
+  // ── 5. the registry RESERVATION (codex r1 P1-2) — BEFORE any derivative is created or reused. One transaction: a live `deleting` claim →
+  // in_progress; otherwise this processor takes ownership (`reserve: {id, until}`) and bumps last_ref_at, so a sweeper that scanned
+  // earlier can no longer claim (its claim requires the scanned last_ref_at, and skips a live reservation). A new pid becomes `draft`;
+  // draft / published keep their state; a `deleted` (or expired-`deleting`) pid is REUSED as `draft` with its stale generations cleared —
+  // the objects are re-created below and only their live generations are ever recorded.
   try {
-    const r = await regRef.get();
-    if (r.exists && deletingLive(r.data())) { await settle({ state: 'issued' }); return fail('in_progress'); }
+    const rsv = await db.runTransaction(async (tx) => {
+      const rs = await tx.get(regRef); const r = rs.exists ? rs.data() : null; const t = now();
+      if (r && deletingLive(r)) return { code: 'in_progress' };
+      const reserve = { id: claimId, until: t + LEASE_MS };
+      if (!r) tx.set(regRef, { state: 'draft', last_ref_at: t, generations: {}, created_at: t, reserve });
+      else if (r.state === 'draft' || r.state === 'published') tx.set(regRef, { ...r, last_ref_at: t, reserve });
+      else tx.set(regRef, { ...without(r, 'claim'), state: 'draft', last_ref_at: t, generations: {}, reserve });
+      return {};
+    });
+    if (rsv.code) { await settle({ state: 'issued' }); return fail('in_progress'); }
   } catch (_) { return transient(); }
 
   // ── 6. completion objects (create-only) ──
@@ -124,6 +136,9 @@ async function photoProcessCore(deps, { uid, rid, uploadId, crops }) {
     const card = await storage.createIfAbsent(draftPath(rid, pid, 'card'), out.card, { contentType: 'image/webp' });
     const hero = await storage.createIfAbsent(draftPath(rid, pid, 'hero'), out.hero, { contentType: 'image/webp' });
     gens = { draft_card: card.generation, draft_hero: hero.generation };
+    // codex r1 P1-2: completion records only LIVE generations — both objects must still exist at exactly these generations
+    const [mc, mh] = [await storage.metadata(draftPath(rid, pid, 'card')), await storage.metadata(draftPath(rid, pid, 'hero'))];
+    if (!mc || !mh || String(mc.generation) !== String(gens.draft_card) || String(mh.generation) !== String(gens.draft_hero)) return transient();
   } catch (_) { return transient(); }
 
   // ── 7. the completion transaction ──
@@ -136,10 +151,9 @@ async function photoProcessCore(deps, { uid, rid, uploadId, crops }) {
       if (!u || !u.claim || u.claim.id !== claimId) return { code: 'in_progress' };   // fenced out
       const r = rs.exists ? rs.data() : null;
       const t = now();
-      if (r && deletingLive(r)) return { code: 'in_progress', release: true };
-      if (!r) tx.set(regRef, { state: 'draft', last_ref_at: t, generations: gens, created_at: t });
-      else if (r.state === 'draft' || r.state === 'published') tx.set(regRef, { ...r, last_ref_at: t });   // published is NEVER reset
-      else tx.set(regRef, { ...without(r, 'claim'), state: 'draft', last_ref_at: t, generations: gens });   // deleted (reuse) / deleting past grace (take-over)
+      // codex r1 P1-2: only the processor that still OWNS the reservation completes; a deleted / deleting / re-reserved entry is never written
+      if (!r || !r.reserve || r.reserve.id !== claimId || (r.state !== 'draft' && r.state !== 'published')) return { code: 'in_progress', release: true };
+      tx.set(regRef, { ...without(r, 'reserve'), last_ref_at: t, generations: { ...(r.generations || {}), ...gens } });   // published is NEVER reset
       tx.set(upRef, { ...without(u, 'claim'), state: 'done', result: { pid }, crops_hash: hash });
       return { pid };
     });

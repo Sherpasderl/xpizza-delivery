@@ -135,11 +135,12 @@ const reg = async (h, pid, rid = 'tb_r1') => { const s = await h.db.collection('
   // ── crash after the objects, before the completion transaction → the retry completes with the same pid ──
   {
     const h = harness(); await seedUpload(h);
-    const realTx = h.db.runTransaction.bind(h.db); let calls = 0;
-    h.deps.db = { ...h.db, collection: h.db.collection, runTransaction: async (fn) => { calls += 1; if (calls === 2) throw new Error('crash before completion'); return realTx(fn); } };
+    const realTx = h.db.runTransaction.bind(h.db); let crashed = false;
+    const pid = `p4096x0`.padEnd(32, '0');
+    // the crash hits the first transaction AFTER both draft objects exist = the completion transaction (the reservation precedes them)
+    h.deps.db = { ...h.db, collection: h.db.collection, runTransaction: async (fn) => { if (!crashed && h.storage.objects.has(`drafts/tb_r1/${pid}-hero.webp`)) { crashed = true; throw new Error('crash before completion'); } return realTx(fn); } };
     const r1 = await photoProcessCore(h.deps, REQ);
     assert.strictEqual(r1.status, 503, 'PROC-CRASH-BEFORE-COMPLETION-503');
-    const pid = `p4096x0`.padEnd(32, '0');
     assert.ok(h.storage.objects.has(`drafts/tb_r1/${pid}-card.webp`), 'premise: the draft objects were written');
     const r2 = await photoProcessCore(h.deps, REQ);
     assert.deepStrictEqual([r2.status, r2.body.pid], [200, pid], 'PROC-RETRY-COMPLETES-SAME-PID');
@@ -194,6 +195,49 @@ const reg = async (h, pid, rid = 'tb_r1') => { const s = await h.db.collection('
     const m = await sharp(card).metadata();
     assert.deepStrictEqual([m.format, m.width, m.height], ['webp', 800, 600], 'PROC-REAL-CARD-WEBP');
     ok('end to end with the REAL pipeline: a real JPEG → a real 800×600 WEBP draft object under its content-id pid');
+  }
+
+  // ── codex r1 P1-2: registry OWNERSHIP fences the sweeper BEFORE derivatives are created / reused; completion re-checks it ──
+  {
+    const SW = require('./sweep-core');
+    const pid = `p4096x0`.padEnd(32, '0');
+    const regRef = (h) => h.db.collection('photo_registry').doc('tb_r1').collection('pids').doc(pid);
+    // an OLD, unreferenced, long-idle pid is re-uploaded; a sweeper scanned it BEFORE the re-upload and claims DURING derivative creation
+    const h = harness(); await seedUpload(h);
+    await regRef(h).set({ state: 'draft', last_ref_at: 1, generations: { draft_card: '1', draft_hero: '2' }, created_at: 1 });
+    h.storage.put(`drafts/tb_r1/${pid}-card.webp`, Buffer.from('old card')); h.storage.put(`drafts/tb_r1/${pid}-hero.webp`, Buffer.from('old hero'));
+    const scanned = (await reg(h, pid)).last_ref_at;
+    let sweepClaim = 'not tried';
+    const orig = h.storage.createIfAbsent.bind(h.storage);
+    h.storage.createIfAbsent = async (...a) => {
+      const r = await orig(...a);
+      if (sweepClaim === 'not tried') sweepClaim = await SW.claim({ fs: h.db, now: () => T0, newClaimId: () => 'sweepX' }, 'tb_r1', { pid, last_ref_at: scanned });
+      return r;
+    };
+    const r = await photoProcessCore(h.deps, REQ);
+    assert.strictEqual(sweepClaim, null, 'PROC-RESERVATION-FENCES-THE-SWEEPER (the claim saw a changed last_ref_at)');
+    const g = await reg(h, pid);
+    assert.deepStrictEqual([r.status, g.state, g.reserve], [200, 'draft', undefined], 'PROC-RESERVED-COMPLETES (reservation cleared)');
+    assert.ok(h.storage.objects.has(`drafts/tb_r1/${pid}-card.webp`) && h.storage.objects.has(`drafts/tb_r1/${pid}-hero.webp`), 'PROC-RESERVED-OBJECTS-INTACT');
+    assert.strictEqual(g.generations.draft_card, h.storage.objects.get(`drafts/tb_r1/${pid}-card.webp`).generation, 'PROC-GENERATIONS-ARE-THE-LIVE-OBJECTS');
+    // lost ownership: another processor re-reserved the pid between creation and completion → this one is fenced, the registry untouched
+    const h2 = harness(); await seedUpload(h2);
+    const orig2 = h2.storage.createIfAbsent.bind(h2.storage);
+    let stolen = false;
+    h2.storage.createIfAbsent = async (...a) => { const x = await orig2(...a); if (!stolen) { stolen = true; const d = (await regRef(h2).get()).data(); await regRef(h2).set({ ...d, reserve: { id: 'someone-else', until: T0 + 90000 } }); } return x; };
+    const fenced = await photoProcessCore(h2.deps, REQ);
+    assert.notStrictEqual(fenced.status, 200, `PROC-COMPLETION-REQUIRES-OWNERSHIP ${JSON.stringify(fenced.body)}`);
+    assert.strictEqual((await reg(h2, pid)).reserve.id, 'someone-else', 'PROC-FENCED-REGISTRY-UNTOUCHED');
+    // an object that vanished between creation and completion → never completed with a dead generation
+    const h3 = harness(); await seedUpload(h3);
+    const orig3 = h3.storage.createIfAbsent.bind(h3.storage);
+    let n3 = 0;
+    h3.storage.createIfAbsent = async (path, ...a) => { const x = await orig3(path, ...a); if (++n3 === 2) h3.storage.objects.delete(`drafts/tb_r1/${pid}-card.webp`); return x; };
+    const gone = await photoProcessCore(h3.deps, REQ);
+    assert.notStrictEqual(gone.status, 200, 'PROC-COMPLETION-VERIFIES-GENERATIONS');
+    const g3 = await reg(h3, pid);
+    assert.ok(!g3 || !g3.generations || !g3.generations.draft_card, `PROC-NO-DEAD-GENERATION-RECORDED ${JSON.stringify(g3)}`);
+    ok('codex r1 P1-2: the reservation (last_ref_at bump + reserve) lands BEFORE derivatives, so a sweeper that scanned earlier cannot claim; completion requires the reservation and live generations — a lost reservation or a vanished object never completes');
   }
 
   console.log(`process: OK (${n})`);

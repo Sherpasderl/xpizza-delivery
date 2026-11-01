@@ -134,6 +134,18 @@ const state = async (w, pid) => (await w.reg(pid).get()).data();
     assert.deepStrictEqual([(await w.fs.collection('photo_uploads').doc('up1').get()).data().state, (await w.fs.collection('photo_uploads').doc('up2').get()).data().state], ['expired', 'issued'], 'SWEEP-STALE-UPLOADS-EXPIRED');
     ok('repair: an active-version pid still marked draft → published; issued uploads older than 1 day → expired');
   }
+  // ── 4c. codex r1 P1-2: a LIVE processing reservation blocks the claim (same last_ref_at); an expired one does not ──
+  {
+    const w = await world();
+    await w.reg(P_OLD).set({ ...(await state(w, P_OLD)), reserve: { id: 'proc1', until: T + 1 } });
+    const cand = { pid: P_OLD, last_ref_at: (await state(w, P_OLD)).last_ref_at };
+    assert.strictEqual(await S.claim(w.deps, RID, cand), null, 'SWEEP-LIVE-RESERVE-BLOCKS-CLAIM');
+    assert.strictEqual((await state(w, P_OLD)).state, 'draft', 'SWEEP-LIVE-RESERVE-KEPT');
+    w.setNow(T + 1);
+    const c = await S.claim(w.deps, RID, cand);
+    assert.ok(c && c.id, 'SWEEP-EXPIRED-RESERVE-CLAIMABLE');
+    ok('claim: a live processing reservation (reserve.until > now) is respected; once it expires the pid is claimable again');
+  }
   console.log(`sweep-core: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('sweep-core: FAILED —', e && e.stack || e); process.exit(1); });
