@@ -122,6 +122,7 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/slice2-freeze.proof.sh',          // the mutation-outside-regions → RED proof harness
   'xpizza-driver/nav-view.js',                     // R7 Cuenta/navApp pure builders
   'xpizza-driver/nav-view.test.js',                // R7 Cuenta/navApp builder tests
+  'xpizza-driver/pay-rate.js',                     // the ONE pay-rate reader (window.PayRate), carried byte-identical from platform/client/pay-rate.js (2e 52ef3331) (SLICE3)
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';
