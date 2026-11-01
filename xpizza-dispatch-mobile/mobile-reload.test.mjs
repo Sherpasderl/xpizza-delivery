@@ -25,18 +25,22 @@ function sliceFrom(src, header, { arrowBody = false } = {}) {
 }
 const onAuthBody = sliceFrom(HTML, 'XPD.onAuth((user) => {', { arrowBody: true });
 const requestReloadSrc = sliceFrom(HTML, 'function requestReload()');
+const teardownAlertsSrc = sliceFrom(HTML, 'function teardownAlerts()');
 const onMapaBody = sliceFrom(HTML, 'window.__onMapaShown = async () => {', { arrowBody: true });
+const openOrderFromAlertSrc = sliceFrom(HTML, 'function openOrderFromAlert(');   // REAL late-fetch token guard
 
 function makeHarness() {
-  const log = { reload: 0, screen: null, startApp: 0, guard: 0, inert: false, renderDrivers: 0, mapMsg: [], initMap: 0, renderPill: 0, teardown: 0 };
+  const log = { reload: 0, screen: null, startApp: 0, guard: 0, inert: false, renderDrivers: 0, mapMsg: [], initMap: 0, renderPill: 0, teardown: 0, openDetail: 0, openedOrder: null, toast: 0 };
   const seq = [];                         // ordered record of teardown / pill / reload — proves cleanup precedes nav
   const ext = { authUid: null };
   const authObj = { get currentUser() { return ext.authUid ? { uid: ext.authUid } : null; } };
-  let resolveMap, rejectMap;
+  let resolveMap, rejectMap, resolveFetch;
   const stubs = {
     show: (s) => { log.screen = s; },
     window: { __startApp: () => { log.startApp++; } },
-    XPD: { setAuthedRequestGuard: () => { log.guard++; }, getAuthInstance: () => authObj },
+    XPD: { setAuthedRequestGuard: () => { log.guard++; }, getAuthInstance: () => authObj,
+      // the alert order-fetch (openOrderFromAlert) — controllable so a result can complete AFTER a switch
+      fetchOrderById: () => new Promise((res) => { resolveFetch = res; }) },
     document: { body: { set inert(v) { log.inert = v; } } },
     location: { pathname: '/', replace: () => { log.reload++; seq.push('reload'); } },
     initMap: () => { log.initMap++; return new Promise((res, rej) => { resolveMap = res; rejectMap = rej; }); },
@@ -45,8 +49,10 @@ function makeHarness() {
     map: {},
     renderDrivers: () => { log.renderDrivers++; },
     renderAlertsPill: () => { log.renderPill++; seq.push('pill'); },
+    openDetail: (id) => { log.openDetail++; log.openedOrder = id; },   // the alert fetch's success sink — must NOT run for a superseded fetch
+    toast: () => { log.toast++; },
     // the unsubscribe the shipped alerts surface installs via __startApp's driver_problem subscription;
-    // armed by the test (armAlerts) because __startApp is stubbed here, invoked by the REAL teardown.
+    // armed by the test (armAlerts) because __startApp is stubbed here, invoked by the REAL teardownAlerts.
     onTeardown: () => { log.teardown++; seq.push('teardown'); },
   };
   const src = `
@@ -54,15 +60,23 @@ function makeHarness() {
     let priorUid = null, sessionUid = null, reloading = false, started = false;
     let mapReady = false, mapFailed = false, mapInit = null;
     let alertsUnsub = null, alertsList = [], alertsSheetOwner = false, alertNavToken = 0;
+    let STORE = { orders: {}, scheduled: {} };   // empty ⇒ openOrderFromAlert takes the fetch path
+    let _subLive = false;                          // models whether the driver_problem subscription still delivers
+    ${teardownAlertsSrc}
     ${requestReloadSrc}
+    ${openOrderFromAlertSrc}
     const onAuth = (user) => {${onAuthBody}};
     const onMapaShown = async () => {${onMapaBody}};
     return {
-      onAuth, onMapaShown,
-      // simulate an authorized session that has an active alert listener (what __startApp establishes in prod)
-      armAlerts: () => { alertsUnsub = onTeardown; alertsList = ['x']; alertsSheetOwner = true; },
+      onAuth, onMapaShown, openOrderFromAlert,
+      // model __startApp's ONE subscription: alertsUnsub = subscribeToDispatcherAlerts(cb). The unsub both kills
+      // delivery (SDK contract) AND records the teardown; deliver() is a would-be-late SDK callback whose SHAPE
+      // mirrors the real cb (sets alertsList + repaints the pill) — the real buildAlerts filter is covered by
+      // dispatch-alerts-mobile.test.mjs; here the claim is purely the subscription LIFECYCLE.
+      armAlerts: () => { _subLive = true; alertsUnsub = () => { _subLive = false; onTeardown(); }; alertsList = ['A-alert']; alertsSheetOwner = true; },
+      deliver: (raw) => { if (_subLive) { alertsList = raw.slice(); renderAlertsPill(); } },
       read: () => ({ priorUid, sessionUid, reloading, started, mapFailed, mapInit: !!mapInit,
-        alertsUnsub: !!alertsUnsub, alertsList: alertsList.length, alertsSheetOwner, alertNavToken }),
+        alertsUnsub: !!alertsUnsub, alertsList: alertsList.length, alertsSheetOwner, alertNavToken, subLive: _subLive }),
     };
   `;
   const names = Object.keys(stubs);
@@ -71,7 +85,8 @@ function makeHarness() {
   return { ...api, log, seq, read: api.read,
     fire: (user) => { ext.authUid = user ? user.uid : null; return api.onAuth(user); },
     setAuthUid: (u) => { ext.authUid = u; },
-    resolveMap: () => resolveMap(), rejectMap: (e) => rejectMap(e || new Error('map fail')) };
+    resolveMap: () => resolveMap(), rejectMap: (e) => rejectMap(e || new Error('map fail')),
+    resolveFetch: (r) => resolveFetch(r) };
 }
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -140,13 +155,50 @@ test('account switch A→B ⇒ reload BEFORE any B startApp', () => {
   assert.equal(h.log.startApp, before, 'B does not startApp before the reload');
 });
 
-test('account switch A→B reloads immediately (the reload nukes A\'s listener; no separate teardown path needed)', () => {
+test('account switch A→B tears A\'s alert listener down AT navigation time, THEN reloads (Codex r1 P1)', () => {
   const h = makeHarness();
   h.fire({ uid: 'A' });
-  h.armAlerts();                 // A had an active alert listener
+  h.armAlerts();                 // A had an active alert listener + a populated sheet
   h.fire({ uid: 'B' });          // direct switch (Firebase fires B with no null in between)
   assert.equal(h.log.reload, 1, 'the switch reloads');
-  assert.equal(h.read().reloading, true, 'the one-shot latch is set — the page is unloading, taking A\'s listener with it');
+  assert.equal(h.read().reloading, true, 'the one-shot latch is set');
+  // location.replace does NOT unload synchronously, and body.inert neither hides A's data nor stops a late
+  // listener callback / pending fetch from repainting. So the listener MUST already be gone and A's board hidden
+  // at navigation time — the switch has to run the SAME teardown as a sign-out (Codex r1 P1):
+  assert.equal(h.log.teardown, 1, 'A\'s alert listener was unsubscribed before navigating');
+  assert.equal(h.read().alertsUnsub, false, 'the unsubscribe handle is nulled');
+  assert.equal(h.read().alertsList, 0, 'A\'s alert list is cleared');
+  assert.equal(h.read().alertsSheetOwner, false, 'A\'s alerts sheet ownership is released');
+  assert.equal(h.read().alertNavToken, 1, 'the nav token is bumped so a pending A order-fetch is dropped');
+  assert.equal(h.log.screen, 'login', 'A\'s board is hidden immediately (show login) — no stale repaint is visible');
+  assert.ok(h.seq.indexOf('teardown') !== -1 && h.seq.indexOf('teardown') < h.seq.indexOf('reload'), 'teardown precedes the navigation');
+});
+
+test('Codex r1 P2 — a late listener callback AFTER a switch cannot repaint A\'s data', () => {
+  const h = makeHarness();
+  h.fire({ uid: 'A' });
+  h.armAlerts();
+  // sanity: while A owns the session the subscription DOES deliver (repaints A's list)
+  h.deliver(['A-1', 'A-2']);
+  assert.equal(h.read().alertsList, 2, 'the live subscription repaints while A is current');
+  h.fire({ uid: 'B' });                         // account switch → teardown unsubscribes
+  assert.equal(h.read().subLive, false, 'the subscription is dead at navigation time');
+  const pillsAtNav = h.log.renderPill;
+  h.deliver(['A-LEAK-1', 'A-LEAK-2', 'A-LEAK-3']);   // a would-be-late SDK callback for A
+  assert.equal(h.read().alertsList, 0, 'the late callback does NOT repopulate A\'s alert list');
+  assert.equal(h.log.renderPill, pillsAtNav, 'the late callback does NOT repaint the pill');
+});
+
+test('Codex r1 P2 — a late alert order-fetch completing AFTER a switch is dropped (token bump)', async () => {
+  const h = makeHarness();
+  h.fire({ uid: 'A' });
+  h.armAlerts();
+  h.openOrderFromAlert('o-A');                  // A taps an alert row (order not in STORE) → fetch captures the token
+  h.fire({ uid: 'B' });                         // switch → teardown bumps alertNavToken, superseding the captured token
+  h.resolveFetch({ ok: true, order: { order_id: 'o-A' } });   // the fetch finally resolves
+  await tick();
+  assert.equal(h.log.openDetail, 0, 'the superseded fetch does NOT open A\'s order');
+  assert.equal(h.log.openedOrder, null, 'A\'s order is never surfaced after the switch');
 });
 
 test('requestReload is ONE-SHOT: A→null→B issues exactly one navigation', () => {

@@ -228,12 +228,16 @@ test('INTEGRATION startup: __startApp wires exactly one driver_problem subscript
   assert.ok(REC.pill >= 1 && REC.sheet >= 1, 'an alert update refreshes the pill and the owned sheet');
 });
 
-test('INTEGRATION logout: the onAuth !user branch tears alerts down, THEN reloads (authorized) or shows login (fresh)', () => {
+test('INTEGRATION logout: the onAuth !user branch tears alerts down via teardownAlerts, THEN reloads (authorized) or shows login (fresh)', () => {
   const body = innerBlock(html, 'if (!user) {');
-  assert.ok(body.includes('alertsUnsub') && body.includes('alertNavToken'), 'extracted the logout branch');
-  // Restack (reload session model, PLAN-dispatch-maps-decouple §2): an AUTHORIZED-session logout routes to a full
-  // page reload; a fresh-page logout (never authorized) routes to show('login'). The alerts teardown — the shipped
-  // surface's guarantee — runs BEFORE either route in BOTH cases. Drive the REAL branch for each priorUid.
+  // Restack (reload session model, PLAN-dispatch-maps-decouple §2): the teardown now lives in ONE function,
+  // teardownAlerts — called by requestReload (authorized logout AND account switch) and directly on a fresh-page
+  // logout. Extract the REAL teardownAlerts and assert its statements; assert the branch routes through it.
+  const teardownSrc = 'function teardownAlerts(){' + innerBlock(html, 'function teardownAlerts() {') + '}';
+  assert.ok(teardownSrc.includes('alertsUnsub') && teardownSrc.includes('alertNavToken'), 'teardownAlerts carries the unsub + nav-token reset');
+  assert.ok(body.includes('teardownAlerts') && body.includes('requestReload'), 'the logout branch routes through teardownAlerts / requestReload');
+  // an AUTHORIZED-session logout routes to a full page reload; a fresh-page logout (never authorized) routes to
+  // show('login'). teardownAlerts runs BEFORE either route in BOTH cases (requestReload tears down first).
   const runBranch = (priorUid) => {
     const REC = { unsubCalls: 0, pill: 0, pillSawLen: -1, shown: null, reload: 0 };
     const run = new Function('REC', 'priorUid', `
@@ -244,8 +248,9 @@ test('INTEGRATION logout: the onAuth !user branch tears alerts down, THEN reload
       let alertsSheetOwner = true;
       let alertNavToken = 0;
       const show = (s) => { REC.shown = s; };
-      const requestReload = () => { REC.reload++; };
       const renderAlertsPill = () => { REC.pill++; REC.pillSawLen = alertsList.length; };
+      ${teardownSrc}
+      const requestReload = () => { teardownAlerts(); REC.reload++; };   // prod: requestReload tears down FIRST
       (() => {
 ${body}
       })();

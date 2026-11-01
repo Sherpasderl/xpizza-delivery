@@ -543,10 +543,21 @@ let mapReady = false, mapFailed = false, mapInit = null;
 // previous operator's state into the next. priorUid = authorized uid seen THIS page life (loop guard);
 // sessionUid = the uid the SDK authed-write barrier compares against; reloading = one-shot latch.
 let priorUid = null, sessionUid = null, reloading = false;
+// Tear the driver-«Problema» alert listener down and reset its surface (shipped alerts surface). ONE function so
+// EVERY session change runs it before anything else: location.replace() does NOT unload synchronously and inert
+// neither hides A's data nor stops a late listener callback / pending order-fetch from repainting, so a superseded
+// session's alert plumbing must be dead before we navigate. Idempotent (no-op on a fresh page).
+function teardownAlerts() {
+  if (alertsUnsub) { alertsUnsub(); alertsUnsub = null; }   // drop the subscription so no further driver_problem callbacks arrive
+  alertsList = []; alertsSheetOwner = false; alertNavToken += 1;   // clear the list, release the sheet, invalidate any in-flight alert order-fetch
+  renderAlertsPill();   // repaint the (now empty) pill so no stale count lingers
+}
 function requestReload() {
   if (reloading) return;
   reloading = true;
+  teardownAlerts();                     // ALWAYS tear down first — sign-out AND account switch both route here
   try { document.body.inert = true; } catch (_) {}
+  show('login');                        // hide A's board immediately; any late repaint lands on the hidden screen
   location.replace(location.pathname);
 }
 let animateBoard = false;   // set ONLY by a user action (chip change); consumed by renderBoard
@@ -565,17 +576,12 @@ XPD.onAuth((user) => {
   // Staff-only surface. A customer token can technically auth but the RTDB rules
   // deny /orders + /drivers reads, so the board stays empty.
   if (!user) {                                   // sign-out
-    // Tear the alert listener down FIRST (shipped alerts surface) so a superseded session's late driver_problem
-    // callback can't fire, accumulate, or repaint during the brief window before the reload unloads the page —
-    // then reload. The teardown runs on EVERY sign-out (idempotent on a fresh page); the reload is conditional.
     started = false;
-    if (alertsUnsub) { alertsUnsub(); alertsUnsub = null; }   // tear down the alert listener so sign-in cycles don't accumulate callbacks
-    alertsList = []; alertsSheetOwner = false; alertNavToken += 1;   // invalidate any in-flight alert order-fetch so a late result can't replace the sheet after logout
-    renderAlertsPill();   // clear the pill NOW so the previous count isn't visible on the next sign-in before its snapshot arrives
-    if (priorUid !== null) return requestReload();   // had an authorized session this page life → reload to a clean login (AFTER teardown)
-    show('login'); return;                            // fresh page, never authorized → no reload (loop-safe)
+    if (priorUid !== null) return requestReload();   // had an authorized session this page life → teardown + reload to a clean login
+    teardownAlerts();                                 // fresh page, never authorized → still tear down (idempotent, clears pill)
+    show('login'); return;                            // no reload (loop-safe)
   }
-  if (priorUid !== null && priorUid !== user.uid) return requestReload();   // account switch A→B → reload BEFORE any re-subscribe
+  if (priorUid !== null && priorUid !== user.uid) return requestReload();   // account switch A→B → teardown + reload BEFORE any re-subscribe
   priorUid = sessionUid = user.uid;              // arm loop guard + barrier key
   // Opt-in authed-write barrier (byte-identical hook already in the mobile SDK): refuse any authed write
   // (RTDB reassign/unassign/assign, HTTP, onCall) that a superseded session's in-flight continuation tries to
