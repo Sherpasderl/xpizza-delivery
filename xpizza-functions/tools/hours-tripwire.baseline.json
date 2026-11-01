@@ -647,5 +647,16 @@
     "line": 149,
     "text": "//   GENERAL_INQUIRY — wants to order, asking about menu/prices/hours",
     "reason": "comments only (the L6 family is G1-pinned)"
+  },
+  {
+    "file": "index.js",
+    "line_sha256": "c2e650f1e4436df9685c49b9b3510b66b9d9e2ce8fe7a4a118a7b5aab72f1f6a",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 2060,
+    "text": "const returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('orig",
+    "reason": "R4 false positive: S3b hosted-checkout return routing reads identity/brand_id (resolveReturnBaseForCharge readBrandId), no hours"
   }
 ]
