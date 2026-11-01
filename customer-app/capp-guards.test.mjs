@@ -9,6 +9,9 @@
 // assembled tip, other approved slices legitimately change those files, and that is not this lane's change.
 //   RANGE: BASE 2ce3198d → CAPP_TIP 097471a4 (capp G7 batch + the S3c module inverse + its regenerated form-source inventory). A later capp commit that touches the live
 //   forms or xpizza-functions/ re-points CAPP_TIP to itself. Fails closed: both resolve, BASE ⊑ CAPP_TIP ⊑ HEAD, git answers.
+//   SELF-ENFORCING (Codex capp-tail r1 P2): any commit after CAPP_TIP that touches customer-app/ FAILS the range until CAPP_TIP is
+//   re-pointed — a later capp commit can never escape the scope checks. This file alone is exempt (a re-pin cannot name itself);
+//   a commit touching it AND anything else under customer-app/ is still caught.
 // Run: node --test customer-app/capp-guards.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,6 +29,8 @@ const capRange = () => {
   for (const sha of [BASE, CAPP_TIP]) assert.equal(git('cat-file', '-t', sha).trim(), 'commit', `🔴 ${sha} is not a commit`);
   assert.ok(isAncestor(BASE, CAPP_TIP), `🔴 ${BASE} is not an ancestor of ${CAPP_TIP} — not the capp range`);
   assert.ok(isAncestor(CAPP_TIP, 'HEAD'), `🔴 ${CAPP_TIP} is not in HEAD's history — the capp range is not part of this tree`);
+  const later = git('log', '--format=%h %s', `${CAPP_TIP}..HEAD`, '--', 'customer-app/', ':(exclude)customer-app/capp-guards.test.mjs').trim();
+  assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP ${CAPP_TIP} — re-point CAPP_TIP to the newest of them:\n${later}`);
   return [BASE, CAPP_TIP];
 };
 const LEAK = /x_pizza|la_musa|xpizza|lamusa|X\.? ?Pizza|La Musa/i;
