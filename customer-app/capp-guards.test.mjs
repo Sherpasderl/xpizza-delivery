@@ -8,7 +8,7 @@
 // 3 and 4 are proven over the capp lane's OWN commit range, never the live tree (the portal/slice2-untouched precedent): at an
 // assembled tip, other approved slices legitimately change those files, and that is not this lane's change.
 //   RANGE: BASE 2ce3198d → CAPP_TIP 927acf22 (capp G7 batch + the S3c module inverse + its regenerated form-source inventory + the
-//   native shell N1–N2). A later capp commit that touches the live
+//   native shell N1–N2 + readAvailability). A later capp commit that touches the live
 //   forms or xpizza-functions/ re-points CAPP_TIP to itself. Fails closed: both resolve, BASE ⊑ CAPP_TIP ⊑ HEAD, git answers.
 //   SELF-ENFORCING (Codex capp-tail r1 P2): any commit after CAPP_TIP that touches customer-app/ FAILS the range until CAPP_TIP is
 //   re-pointed — a later capp commit can never escape the scope checks. This file alone is exempt (a re-pin cannot name itself);
@@ -29,7 +29,7 @@ import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '2ce3198d';
-const CAPP_TIP = '927acf22';
+const CAPP_TIP = '5be8df85';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 const isAncestor = (a, b) => { try { git('merge-base', '--is-ancestor', a, b); return true; } catch (_) { return false; } };
 // the files tools/sync-client.js copies INTO customer-app/ — read from sync-client itself (run against a recording fs; nothing written)
