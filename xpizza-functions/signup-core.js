@@ -143,6 +143,9 @@ async function googleSignIn(db, { idToken, sessionId, rid, now, verify }) {
     // the activity transaction is the LAST liveness check: a deletion that committed after isLive() makes it abort → REFUSE
     // (codex build r1 P1-1 — never a token for a uid whose tombstone the transaction saw)
     if (!(await touchActivity(db, link.uid, now))) return { ok: false, reason: 'account_unavailable' };
+    // security r2 (Codex P1-b): THE lifecycle gate — the authoritative last_login on user_profiles, linearized with the sweep's
+    // claim; a claimed profile is refused. FAIL-CLOSED: an infra failure propagates (the handler's generic 500), no token.
+    if ((await loginTouch(db, link.uid, now)) !== 'live') return { ok: false, reason: 'account_unavailable' };
     return { ok: true, linked: true, uid: link.uid, name: peek.name };
   }
   const id = randomId();
@@ -299,6 +302,35 @@ async function tombstone(db, uid, { now, staleBefore = null } = {}) {
   });
   return !!r.committed && stands;
 }
+// ── ACCOUNT LIFECYCLE (security backlog r2, advisor ruling 1): user_profiles/{uid} is THE lifecycle node. Every login path's gate
+// and the inactivity sweep's claim are transactions on it, so they LINEARIZE: whichever commits first wins.
+//   loginTouch → 'live' (last_login bumped) | 'claimed' (a sweep claimed it: never hand this uid to a login) | 'absent' (no profile)
+//   sweepClaim → 'claimed' (deleting_at written, or already there: a crashed run resumes) | 'fresh' (a login won) | 'absent'
+// The SDK's uncached first run sees null: return null there (a no-op), never undefined (an abort would end the retry).
+async function loginTouch(db, uid, now) {
+  let out = 'absent';
+  await db.ref(`user_profiles/${uid}`).transaction((cur) => {
+    if (cur === null) { out = 'absent'; return null; }
+    if (cur.deleting_at != null) { out = 'claimed'; return undefined; }
+    out = 'live'; return { ...cur, last_login: now };
+  });
+  return out;
+}
+async function sweepClaim(db, uid, cutoff, now) {
+  let out = 'absent';
+  await db.ref(`user_profiles/${uid}`).transaction((cur) => {
+    if (cur === null) { out = 'absent'; return null; }
+    if (cur.deleting_at != null) { out = 'claimed'; return cur; }
+    const last = Number(cur.last_login || cur.created_at || 0);
+    if (!(last && last < cutoff)) { out = 'fresh'; return undefined; }   // a login (or no timestamp: fail-safe) — never swept
+    out = 'claimed'; return { ...cur, deleting_at: now };
+  });
+  return out;
+}
+async function isTombstoned(db, uid) {
+  const [gone, priv] = await Promise.all([db.ref(`deleted_uids/${uid}`).once('value'), db.ref(`user_private/${uid}/deleted_at`).once('value')]);
+  return gone.exists() || priv.exists();
+}
 // every auth_links row of the account, found by the uid query, removed only if it still points at it
 async function removeLinks(db, uid) {
   let removed = 0;
@@ -332,6 +364,6 @@ async function hasSignupData(db, uid) {
   return !!g;
 }
 
-module.exports = { SIGNUP, PLATFORM_SCOPE, isScope, completionState, profileOf, sha256, audiencesFor, legalFor, signupConfig, verifyGoogleIdToken, startGoogle, consumeChallenge, isLive,
+module.exports = { SIGNUP, PLATFORM_SCOPE, isScope, loginTouch, sweepClaim, isTombstoned, completionState, profileOf, sha256, audiencesFor, legalFor, signupConfig, verifyGoogleIdToken, startGoogle, consumeChallenge, isLive,
   touchActivity, googleSignIn, bindTicket, redeemTicket, linkIdentity, completeProfile, noteProviderEmail, verifiedEmailOf, setPromos, tombstone, removeLinks, pruneExpired, hasSignupData,
   normEmail, validEmail };

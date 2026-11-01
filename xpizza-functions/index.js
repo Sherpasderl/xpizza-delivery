@@ -7309,8 +7309,19 @@ exports.verifyOtp = onRequest(
       // UIDs by construction (staff sign in with email/password; their UIDs are never `u_...`), so a
       // customer:true token can never collide with a staff uid in the uid-match rules.
       const idxRef = db.ref('phone_index/' + pHash);
+      /* lifecycle:begin login-claim */
+      // security r2 (Codex r2 P2): claim the phone's uid CREATE-IF-ABSENT in ONE transaction before the read below — a concurrent first
+      // login on the platform path converges on the winner's uid, and the `if (!uid)` set below never fires on a live entry
+      const lcUid = await SE.claimPhoneUid(db, pHash, () => 'u_' + require('crypto').randomBytes(12).toString('hex'));
+      /* lifecycle:end login-claim */
       let uid = (await idxRef.get()).val();
       if (!uid) { uid = 'u_' + require('crypto').randomBytes(12).toString('hex'); await idxRef.set(uid); }
+      /* lifecycle:begin login-uid */
+      // security r2 (Codex P1-a/P1-b): THE lifecycle gate — a profile a sweep claimed, or a tombstoned uid with no profile, is never
+      // handed to this login: a FRESH uid, phone_index CAS-repointed; a live profile's last_login bumped (linearized with the sweep's
+      // claim on user_profiles/{uid}). FAIL-CLOSED: a failure lands in the catch below (the generic retryable answer), no mint.
+      uid = await SE.loginUid(db, { pHash, uid: lcUid, now: Date.now(), newUid: () => 'u_' + require('crypto').randomBytes(12).toString('hex') });
+      /* lifecycle:end login-uid */
       const now2 = Date.now();
       const profRef = db.ref('user_profiles/' + uid);
       const prof = (await profRef.get()).val();

@@ -15,7 +15,7 @@ const { HUNKS, unapplyMem512Index } = require('./mem512-inverse');
 const { unapplyMenuWarmIndex } = require('./menu-warm-inverse');
 
 const BASE = 'ed4e75b6';   // DRYRUN assembly state just before the mem512 layer (re-point at the real assembly)
-const live = require('./checkout-inverse').unapplyCheckoutIndex(fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8'));   // R-WIRE: the guest-checkout hunks are NEWER than mem512 (innermost)
+const live = require('./checkout-inverse').unapplyCheckoutIndex(require('./lifecycle-inverse').unapplyLifecycleIndex(fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8')));   // R-WIRE: the guest-checkout hunks are NEWER than mem512 (innermost)
 const base0 = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 const FS_NOW = "  { region: 'us-central1', cors: FORM_SIGNAL_ORIGINS, timeoutSeconds: 10, memory: '256MiB', maxInstances: 5, concurrency: 40 },\n";
 assert.strictEqual(base0.split(FS_NOW).length - 1, 1, 'premise: the pre-mem512 base carries the shipped formSignal 256MiB line once');

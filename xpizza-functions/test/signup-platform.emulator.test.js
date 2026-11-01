@@ -9,6 +9,7 @@
 //   G  redeemSignupGrant from a grant issued by S2's REAL issuer over a stored capp-guest order: one uid, consent/_platform,
 //      apply once; 2 concurrent redemptions ⇒ one uid, both mint; refusals
 //   M  getMyProfile: own data only (cross-user, deleted, non-customer); promos omitted / present
+//   C2 security r2: a forms first login + a platform first claim on the same phone, concurrently ⇒ one uid, nothing orphaned
 //   S  setPromos(platform) (Codex capp batch r1 #4): the member's own uid, exactly one selector, consent/_platform/promos read back
 //      by getMyProfile, → {ok, value} (the stored value); tombstones write nothing; the forms' {ok:true} unchanged; Codex setPromos r1
 //      P2-2: the REAL database.rules.json through the client SDK — the member reads its own consent/_platform; unauthenticated /
@@ -140,6 +141,26 @@ const reset = async () => { await rtdb.ref('otp_ip').remove(); await rtdb.ref('r
     assert.deepStrictEqual((await call(app.redeemSignupGrant, { body: { ...body, grant: 'sg.x.y' } })).json, { ok: false, reason: 'grant_invalid' });
   }
   ok('G redeemSignupGrant through the REAL export from a REAL S2 grant: 2 concurrent redemptions ⇒ one uid, both mint; consent/_platform; apply once; a forged grant ⇒ grant_invalid');
+
+  // ═══ C2 — security r2 (Codex r2 P2): a forms FIRST login and a platform FIRST claim on the same phone, CONCURRENTLY ═══
+  {
+    const phone = '+50499770050', h = OTP.phoneHash(phone);
+    assert.strictEqual(OTP.phoneHash('50499770050'), h, 'premise: one phone hash for both paths');
+    const guest = { phone: '50499770050', phone_hash: h };
+    await rtdb.ref('orders/G-2').set({ status: 'pending_payment', created_at: Date.now(), guest_verified: guest });
+    const g = await GATE.grantFor({ db: rtdb, orderId: 'G-2', guest, secret: process.env.SIGNUP_GRANT_SECRET, now: Date.now() });
+    await reset();
+    await call(app.requestOtp, { body: { phone, restaurant_id: 'x_pizza' } });
+    const code = BRAND_SENT[BRAND_SENT.length - 1].match(/\d{6}/)[0];
+    const body = { grant: g.grant.token, context: 'platform', email: 'c@example.com', name: 'Cora', accept_terms: true, promos: false };
+    const [f, p] = await Promise.all([call(app.verifyOtp, { body: { phone, code } }), call(app.redeemSignupGrant, { body })]);
+    assert.ok(f.json && f.json.ok && p.status === 200, `both first logins succeed (${f.text} / ${p.text})`);
+    const uid = (await rtdb.ref(`phone_index/${h}`).get()).val();
+    assert.ok(f.json.token.startsWith(`tok:${uid}:`) && p.json.token.startsWith(`tok:${uid}:`), '🔴 forms + platform converge on ONE uid (the create-if-absent claim)');
+    const profs = Object.entries((await rtdb.ref('user_profiles').get()).val() || {}).filter(([, v]) => v && v.phone_hash === h);
+    assert.deepStrictEqual(profs.map(([k]) => k), [uid], '🔴 nothing orphaned: exactly ONE profile for the phone, the one phone_index names');
+  }
+  ok('C2 security r2: a forms first login and a platform first claim on the same phone, concurrently through the REAL exports ⇒ ONE uid, one profile, nothing orphaned');
 
   // ═══ M — getMyProfile: own data only ═══
   {

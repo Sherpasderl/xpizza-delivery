@@ -840,7 +840,7 @@
     "user_profiles": {
       "$uid": {
         ".read": "auth != null && auth.token.handheld !== true && auth.uid === $uid",
-        ".write": "auth != null && auth.token.handheld !== true && auth.uid === $uid && newData.exists() && newData.hasChildren(['phone', 'phone_hash', 'created_at', 'last_login']) && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && (!newData.child('default_address').exists() || newData.child('default_address').val() === null || newData.child('addresses').hasChild(newData.child('default_address').val()))",
+        ".write": "auth != null && auth.token.handheld !== true && auth.uid === $uid && newData.exists() && newData.hasChildren(['phone', 'phone_hash', 'created_at', 'last_login']) && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !data.child('deleting_at').exists() && (!newData.child('default_address').exists() || newData.child('default_address').val() === null || newData.child('addresses').hasChild(newData.child('default_address').val()))",
         "name": {
           ".validate": "newData.isString() && newData.val().length <= 80"
         },

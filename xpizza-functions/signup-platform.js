@@ -120,7 +120,8 @@ function makeSignupPlatform(deps) {
         return r.next;
       });
       if (outcome !== 'ok') return reason === 'too_many_attempts' ? fail(reason, { retry_in_s: Math.max(1, Math.ceil(((expiresAt || t) - t) / 1000)) }) : fail(reason);
-      const uid = await claimUid(db, pHash);
+      // security r2 (Codex P1-a/P1-b): the lifecycle gate — a claimed / tombstoned-with-no-profile uid ⇒ a fresh uid; fail-closed
+      const uid = await SE.loginUid(db, { pHash, uid: await claimUid(db, pHash), now: now(), newUid });
       const t2 = now();
       // ACCEPTED RESIDUAL (advisor ruling 1): a deletion completing between the uid claim and the mint can mint a useless token —
       // every customer endpoint and the client-writable rule deny a tombstoned uid (see redeemSignupGrant step 5)
@@ -164,7 +165,7 @@ function makeSignupPlatform(deps) {
       // the phone is re-derived from the ORDER: its stored phone hashes to the stored hash, which the grant names
       if (!gv || typeof gv.phone !== 'string' || gv.phone_hash !== v.payload.phone_hash || OTP.phoneHash(gv.phone) !== gv.phone_hash) return bad(400, 'grant_invalid');
       // 1. claim the uid (atomic, deterministic per phone)
-      const uid = await claimUid(db, gv.phone_hash);
+      const uid = await SE.loginUid(db, { pHash: gv.phone_hash, uid: await claimUid(db, gv.phone_hash), now: t, newUid });   // security r2: the lifecycle gate
       if (await isDeleted(db, uid)) return bad(403, 'deleted');
       // 2. record the use (single-valued uid ↔ grant); a retry RESUMES with the stored inputs + legal versions
       const fresh = { uid, at: t, inputs: { email, name, promos: b.promos },
