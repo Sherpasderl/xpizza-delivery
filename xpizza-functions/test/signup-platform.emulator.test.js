@@ -34,7 +34,7 @@ globalThis.fetch = async (url, init) => {
 const realWhatsapp = require('../whatsapp');
 const wr = require.resolve('../whatsapp');
 const BRAND_SENT = [];
-require.cache[wr] = { id: wr, filename: wr, loaded: true, children: [], paths: [], exports: { ...realWhatsapp, isEnabledForRestaurant: async () => false,
+require.cache[wr] = { id: wr, filename: wr, loaded: true, children: [], paths: [], exports: { ...realWhatsapp, tplOtp: ({ code }) => `CODE:${code}`, isEnabledForRestaurant: async () => false,
   sendMessage: async (phone, text) => { BRAND_SENT.push(String(text)); return { ok: true }; } } };
 const fa = require.resolve('firebase-admin/auth');
 const realAuth = require('firebase-admin/auth');
