@@ -173,7 +173,11 @@ t('P2-3/NEW-2: drv2SessionTeardown clears returnTarget + drv2SoloCancel + the pr
   const $ = (id) => document.getElementById(id);
   const sessionStorage = dom.window.sessionStorage;
   sessionStorage.setItem(RETURN_TARGET_KEY, JSON.stringify({ name: 'X', lat: 1, lng: 1, uid: 'drvA' }));
-  const body = KEY_LINE + '\nlet returnTarget = { name: "X", lat: 1, lng: 1, uid: "drvA" };\nlet drv2SoloCancel = { cancelledNum: 7 };\nlet drv2ProblemGen = 5, drv2ProblemInFlight = true;\n'
+  // FIXTURE (prod parity): the lifted drv2SessionTeardown reads drv2CerradoDismiss through an `if (…)` guard. Production
+  // ALWAYS declares it at module scope (index.html `let drv2CerradoDismiss = null;`), null unless a «Turno cerrado» summary
+  // is open — so the real teardown resolves the binding and the guard short-circuits when no summary is open. Declare it
+  // null here (the no-open-summary default) so the fragment harness mirrors that always-declared binding.
+  const body = KEY_LINE + '\nlet returnTarget = { name: "X", lat: 1, lng: 1, uid: "drvA" };\nlet drv2SoloCancel = { cancelledNum: 7 };\nlet drv2ProblemGen = 5, drv2ProblemInFlight = true;\nlet drv2CerradoDismiss = null;\n'
     + liftFn('drv2ClearReturnTarget') + '\n' + liftFn('drv2SessionTeardown') + '\n'
     + 'return { run: () => drv2SessionTeardown(), state: () => ({ returnTarget, drv2SoloCancel, drv2ProblemGen, drv2ProblemInFlight }), raw: () => { try { return sessionStorage.getItem(RETURN_TARGET_KEY); } catch { return null; } } };';
   const api = (new Function('document', '$', 'sessionStorage', body))(document, $, sessionStorage);
@@ -193,7 +197,10 @@ t('P2-3/r3: the auth-transition teardown fires on sign-out or a uid change, NOT 
   const region = SCRIPT.match(/SLICE3:INICIO-DEMO-TEARDOWN:START[\s\S]*?===== \*\/\n([\s\S]*?)\n\s*\/\* ===== SLICE3:INICIO-DEMO-TEARDOWN:END/)[1];
   const run = (prevUid, user) => {
     let tore = 0;
-    const body = 'let drv2PrevAuthUid = _prev;\nfunction companionDemoTeardown(){}\nfunction drv2SessionTeardown(){ _spy(); }\n' + region + '\nreturn drv2PrevAuthUid;';
+    // Prod parity: the auth-transition region drops the platform-rate listener via unsubscribeDriverRate() (a real
+    // module-scope fn in production). This cell asserts the teardown GATING (prevUid logic), not the rate unsubscribe,
+    // so stub it as a no-op — matching that production always resolves the binding.
+    const body = 'let drv2PrevAuthUid = _prev;\nfunction companionDemoTeardown(){}\nfunction unsubscribeDriverRate(){}\nfunction drv2SessionTeardown(){ _spy(); }\n' + region + '\nreturn drv2PrevAuthUid;';
     const after = (new Function('_prev', 'user', '_spy', body))(prevUid, user, () => { tore++; });
     return { tore, after };
   };
