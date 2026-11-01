@@ -238,3 +238,23 @@ export async function getBranchDevices({ rid, brandId, token, assertLive }) {
 export async function revokeBranchDevice({ rid, uid, token }) {
   return apiFetch('revokeBranchDevice', { token, body: { rid, uid } });
 }
+
+// PORTAL-UI 1b (PLAN-portal-ui-slice1b-sucursales r4 §3.2) — the O1b branch-lifecycle endpoints (portal/branch-lifecycle-core.js).
+// The token (`expectedVersion`) is OPAQUE: an integer (identity) or a string (draft), echoed exactly as E1 sent it. Bodies are
+// built here and nowhere else, so the allowlist tests run against the real request builders. Additions only.
+export const E6_KEYS = Object.freeze(['brand_id', 'hours', 'location_name', 'op_id', 'phone', 'prep_default_min']);
+export const E7_PATCH_KEYS = Object.freeze(['hours', 'phone', 'prep_default_min']);
+export async function createBranchDraft({ opId, brandId, locationName, phone, hours, prepDefaultMin, token }) {
+  return apiFetch('createBranchDraft', { token, body: { op_id: opId, brand_id: brandId, location_name: locationName, phone, hours, prep_default_min: prepDefaultMin } });
+}
+export async function updateBranchProfile({ rid, expectedVersion, patch, token }) {
+  const p = {};
+  for (const k of E7_PATCH_KEYS) if (patch && Object.prototype.hasOwnProperty.call(patch, k)) p[k] = patch[k];   // never another key
+  return apiFetch('updateBranchProfile', { token, body: { rid, expectedVersion, patch: p } });
+}
+export async function setBranchActive({ rid, expectedVersion, active, token }) {
+  return apiFetch('setBranchActive', { token, body: { rid, expectedVersion, active: active === true } });
+}
+export async function deleteBranchDraft({ rid, expectedVersion, token }) {
+  return apiFetch('deleteBranchDraft', { token, body: { rid, expectedVersion } });
+}

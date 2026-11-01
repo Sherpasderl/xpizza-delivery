@@ -51,7 +51,7 @@
       <div class="switchmenu hidden" id="scopemenu" role="listbox"></div>
       <p class="scopenote hidden" id="scopenote" role="status" aria-live="polite"></p>
     </div>
-    <div class="nlabel">Menú</div>
+    <div class="nlabel" id="navmenulabel">Menú</div>
     <button class="nav on" id="navprod" type="button" aria-current="page"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Productos</button>
     <!-- PORTAL-UI 1a: Operación (shell.js shows these only to a holder of the location capabilities) -->
     <div class="nlabel hidden" id="navopslabel">Operación</div>
@@ -119,6 +119,8 @@
   <div class="scrim pausescrim" id="pausescrim"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="pausetitle" id="pausemodal"></div></div>
   <!-- the «Desvincular» modal (equipos.js) -->
   <div class="scrim pausescrim" id="devscrim"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="devtitle" id="devmodal"></div></div>
+  <!-- PORTAL-UI 1b: the Sucursales confirms (Desactivar, Nueva sucursal, Eliminar borrador), built by branches-view.js -->
+  <div class="scrim pausescrim" id="sucscrim"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="suctitle" id="sucmodal"></div></div>
   <!-- «Disponibilidad por sucursal» (availability.js; the read-only menu only — the editor's chevron keeps opening #drawer) -->
   <aside class="drawer ops" id="availdrawer" aria-label="Disponibilidad por sucursal"></aside>
   <div class="ops opsscrim hidden" id="availscrim"></div>
