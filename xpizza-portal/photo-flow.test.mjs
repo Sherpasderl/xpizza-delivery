@@ -776,3 +776,15 @@ test('codex ruleA r1 #2 — with a name pending, the renewal and image-error red
   if (im) { im.dispatchEvent(new window.Event('error')); await settle(60); }               // 2nd error: the retried-path redraw
   assert.ok(off() || !drawer(d).querySelector('.phacts'), 'after the image-error redraw: still locked');
 });
+// 5f review (2026-10-31): the fake's rate limit answers EXACTLY as the server (photos/errors.js rate_limited: 429, retryable) —
+// a stub laxer than production voids the test. 30 new starts pass; the 31st is refused; a retry of a known op is never charged.
+test('5f review — the fake\'s rate limit is the server\'s: the 31st new start is 429 rate_limited (retryable); a known op is not charged', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const start = (op) => fake.fetchHandler('photoUploadStart', { rid: fake.rid, op_id: op, contentType: 'image/jpeg', bytes: 1000 });
+  for (let i = 0; i < 30; i++) assert.equal((await start(`op:${i}`)).status, 200, `start ${i + 1} of 30`);
+  const r = await start('op:30');
+  assert.equal(r.status, 429, 'the server sends 429 (photos/errors.js), not 503');
+  assert.equal(r.body.error, 'rate_limited');
+  assert.equal(r.body.retryable, true);
+  assert.equal((await start('op:0')).status, 200, 'an existing op is a retry, never rate-charged');
+});
