@@ -73,6 +73,12 @@ const run = (b, extra = {}) => runCheck({ store: b.store, deleter: b.deleter, ra
     assert.deepStrictEqual([r.cleanup.ok, b.live.size], [true, 0], 'E4CLI-CLEANUP-FAIL');
     assert.strictEqual(r.exitCode, 1, 'E4CLI-EXIT-FAIL');
   }
+  {
+    // both report created:true at the SAME generation (impossible on GCS, but the verdict must not rest on the generation check alone)
+    const store = { metadata: async () => null, createIfAbsent: async () => ({ generation: '7', created: true }) };
+    const r = await runCheck({ store, deleter: { deleteIfGeneration: async () => 'deleted' }, randomHex: () => HEX, ...quiet });
+    assert.strictEqual(r.verdict, 'FAIL', `E4CLI-TWO-CREATED-SAME-GENERATION-FAILS ${JSON.stringify(r.results)}`);
+  }
   ok('non-serializing bucket (the emulator): both created → FAIL, exit 1; exactly the generations this run created are deleted, cleanup confirmed');
 
   // ── 4. refusals and loud cleanup trouble ──
