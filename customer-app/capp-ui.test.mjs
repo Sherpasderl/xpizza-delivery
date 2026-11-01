@@ -2685,3 +2685,23 @@ test('Codex G7 r1 #1 (member B): another member gets a clean flow and the local 
   const s = b.srv.of('createOrder');
   assert.equal(s.length, 2, '🔴 S4-expiry: B places once A\'s record expired'); assert.notEqual(s[1].body.order_id, rec.order_id, '🔴 S4-expiry: B\'s own identity');
 });
+// Codex G7 r3 (P2, regression of the r2 ASAP ownership): an owned ASAP retained send has NO slot — lockedSlot() is null for it (ONE
+// null-safe predicate, hasSlotLock), so the checkout never draws a slot lock («NaN:NaN») nor a dead «Reintentar»; the tender stays locked
+test('Codex G7 r3: an unresolved ASAP cash send, its error closed — back on the checkout no «NaN», no slot lock, the retry SENDS; the owner\'s tender stays fixed', async () => {
+  const b = bootS4({ script: { createOrder: ['network', { status: 200, json: { ok: true, order_id: 'x', tracking_token: 't' } }] } });
+  await toCheckout(b); await schedFill(b);
+  await b.click('#cta'); await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.srv.of('createOrder').length, 1, 'premise: the ASAP cash send went out (and was lost)');
+  await b.click('#layer [data-act="lclose"]'); await settle();
+  await b.click('[data-act="back"]'); await settle();   // back to the checkout (the Codex repro)
+  assert.equal(b.ui.state.screen, 'checkout', 'premise: on the checkout');
+  assert.ok(!/NaN/.test(b.text('#flow') || ''), '🔴 R3-asap: no «NaN» slot text for an ASAP send');
+  assert.notEqual(b.ui.state.flow.time, 'schedule', '🔴 R3-asap: an ASAP send never turns into a slot lock');
+  const pay = b.q('[data-act="showpay"]') || b.q('[data-act="pay"][data-val="online"]');
+  assert.ok(pay && pay.disabled, '🔴 R3-asap: the owner\'s tender stays fixed');
+  await b.click('#cta'); await settle();
+  if (b.q('[data-act="tip-place"]')) { await b.click('[data-act="tipc"][data-val="0"]'); await b.click('[data-act="tip-place"]'); }
+  if (b.q('#layer [data-act="placing-go"]')) await b.click('#layer [data-act="placing-go"]');
+  assert.equal(b.srv.of('createOrder').length, 2, '🔴 R3-asap: the retry SENDS');
+  assert.deepEqual(b.srv.of('createOrder')[1].body, b.srv.of('createOrder')[0].body, 'the exact recorded bytes');
+});

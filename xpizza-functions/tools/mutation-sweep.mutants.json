@@ -24553,7 +24553,7 @@
     "slice": "s4",
     "label": "no pre-dispatch re-check (a stale slot is sent)",
     "file": "../customer-app/capp-ui.js",
-    "from": "      if (sched() && f && f.time === 'schedule' && lockedSlot() === null && !schedMod().offered(S.schedHeld || servedSched(), now().getTime(), f.mode, f.slot)) {",
+    "from": "      if (sched() && f && f.time === 'schedule' && !hasSlotLock() && !schedMod().offered(S.schedHeld || servedSched(), now().getTime(), f.mode, f.slot)) {",
     "to": "      if (false) {",
     "command": [
       "node",
@@ -24883,7 +24883,7 @@
     "slice": "s4",
     "label": "row 10's CTA depends on fresh-slot availability",
     "file": "../customer-app/capp-ui.js",
-    "from": "anySlot: lockedSlot() !== null || anySlotNow()",
+    "from": "anySlot: hasSlotLock() || anySlotNow()",
     "to": "anySlot: anySlotNow()",
     "command": [
       "node",
@@ -24901,7 +24901,7 @@
     "slice": "s4",
     "label": "row 10 hides the retained slot once the generator drops it",
     "file": "../customer-app/capp-ui.js",
-    "from": "const daySlots = lk !== null ? [...new Set([...(sd && sd.key === K.dayKey(s, lk) ? sd.slots : []), lk])].sort((x, y) => x - y) : sd ? sd.slots : [];",
+    "from": "const daySlots = on ? [...new Set([...(sd && sd.key === K.dayKey(s, lk) ? sd.slots : []), lk])].sort((x, y) => x - y) : sd ? sd.slots : [];",
     "to": "const daySlots = sd ? sd.slots : [];",
     "command": [
       "node",
@@ -25931,6 +25931,23 @@
     ],
     "kills_with": [
       "SU-endpoints"
+    ]
+  },
+  {
+    "id": "s4-44",
+    "slice": "s4",
+    "label": "lockedSlot() is no longer null for a slot-less (ASAP) retained send — «NaN:NaN» and a dead «Reintentar»",
+    "file": "../customer-app/capp-ui.js",
+    "from": "return b && Number.isFinite(b.scheduled_for) ? b.scheduled_for : null; }",
+    "to": "return b ? b.scheduled_for : null; }",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=Codex G7 r3",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "R3-asap"
     ]
   }
 ]
