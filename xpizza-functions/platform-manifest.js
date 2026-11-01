@@ -78,6 +78,24 @@ function validateManifest(m) {
         if (new Set(nv.origins).size !== nv.origins.length) errs.push(`${tag}: native origins must be unique`);
       }
     }
+    // PLAN-capp-native-shell D3: the customer app's RUNTIME transport (functions base, menu endpoint, availability base, and the
+    // PUBLIC client keys the live forms already serve) — only on the platform orders deployment, exact keys, exact shapes
+    if (d.runtime !== undefined) {
+      const rt = d.runtime, FB = ['apiKey', 'authDomain', 'databaseURL', 'projectId', 'messagingSenderId', 'appId'];
+      const KEYS = ['note', 'functions_base', 'menu_endpoint', 'availability_base', 'intake_key', 'maps_key', 'firebase'];
+      if (d.app !== 'orders' || d.context !== PLATFORM_CONTEXT) errs.push(`${tag}: runtime is only for the platform orders deployment`);
+      else if (!rt || typeof rt !== 'object' || Array.isArray(rt) || Object.keys(rt).sort().join() !== [...KEYS].sort().join()) errs.push(`${tag}: runtime must be exactly { ${KEYS.join(', ')} }`);
+      else {
+        if (typeof rt.note !== 'string' || !rt.note) errs.push(`${tag}: runtime.note must say these are public client keys`);
+        for (const k of ['functions_base', 'availability_base']) if (!isExactHttpsOrigin(rt[k])) errs.push(`${tag}: runtime.${k} must be an exact https origin`);
+        if (typeof rt.menu_endpoint !== 'string' || !/^[a-z][A-Za-z0-9]{1,62}$/.test(rt.menu_endpoint)) errs.push(`${tag}: runtime.menu_endpoint must be a function name`);
+        if (typeof rt.intake_key !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(rt.intake_key)) errs.push(`${tag}: runtime.intake_key malformed`);
+        if (typeof rt.maps_key !== 'string' || !/^[A-Za-z0-9_-]{20,80}$/.test(rt.maps_key)) errs.push(`${tag}: runtime.maps_key malformed`);
+        const fb = rt.firebase;
+        if (!fb || typeof fb !== 'object' || Array.isArray(fb) || Object.keys(fb).sort().join() !== [...FB].sort().join() || FB.some((k) => typeof fb[k] !== 'string' || !fb[k])) errs.push(`${tag}: runtime.firebase must be exactly { ${FB.join(', ')} } (non-empty strings)`);
+        else if (fb.databaseURL !== rt.availability_base) errs.push(`${tag}: runtime.availability_base must be the firebase databaseURL`);
+      }
+    }
     if (!Array.isArray(d.origins)) errs.push(`${tag}: origins must be an array`);
     else for (const o of d.origins) {
       if (!isExactHttpsOrigin(o)) errs.push(`${tag}: origin ${JSON.stringify(o)} is not an exact https origin`);
@@ -133,6 +151,8 @@ function loadPlatform(sites = SITES, compat = COMPAT) {
     // a heartbeat's (app, deployment, context) must be exactly a manifest combination
     isValidCombination: (app, deployment, context) => { const d = byId.get(deployment); return !!d && d.app === app && d.context === context; },
     isAppDeployment: (id) => typeof id === 'string' && appIds.has(id),
+    // the app's runtime transport (D3) — null when the manifest carries none
+    appRuntime: () => { const d = sites.deployments.find((x) => x.app === 'orders' && x.context === PLATFORM_CONTEXT && x.runtime); return d ? d.runtime : null; },
     nativeDeployment: () => { const d = sites.deployments.find((x) => x.app === 'orders' && x.context === PLATFORM_CONTEXT && x.native); return d ? d.native.deployment : null; },
     maxCompat: (app) => (Number.isInteger(compat.generations[app]) ? compat.generations[app] : 0),
     isKnownApp: (app) => sites.apps.includes(app),
