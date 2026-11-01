@@ -62,6 +62,7 @@ function boot({ allOrders = {}, rateEntries = null, now = Date.UTC(2026, 9, 28, 
     'function showCuadre(){} function renderHistoryModal(){}\n' +
     liftConst('HN_OFFSET_MS') + '\n' +
     liftFn('hnDayStartMs') + '\n' + liftFn('hnDow') + '\n' + liftFn('gananciasWeekStartMs') + '\n' +
+    liftFn('drv2DayEarned') + '\n' +   // THE one source renderGanancias (Hoy) now calls
     liftFn('renderGanancias') + '\n' +
     liftFn('refreshOpenCashSurfaces') + '\n' +
     'return { renderGanancias, refreshOpenCashSurfaces, setReady: (b) => { feedReady = b; cutoverLoaded = b; driverState = b ? { active: true } : null; } };';
@@ -225,7 +226,9 @@ function injectOverlay(kind, info, { rate = 7000, pagosLive = true } = {}) {
   const allOrders = { [oid]: { delivered_at: BB + 1000, delivered_by_driver_uid: 'drv' } };
   const entries = rate != null ? { r: { cents: rate, effective_from: BB } } : null;
   const fns = (new Function('PAGOS_LIVE', 'window', 'allOrders', 'driverRateEntries', 'ICONS',
-    liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectInterludeEarn') + '\n' + liftFn('drv2InjectResumenEarn') + '\nreturn { ii: drv2InjectInterludeEarn, ir: drv2InjectResumenEarn };'))(pagosLive, win, allOrders, entries, IC);
+    // these conditions assert the «Tu pago» ROW only; drv2DayEarned is wired not-ready so no «Ganado hoy» card appears (byte-equality with the old builder holds). The card itself is covered by the dayEarnedHarness tests.
+    'let feedReady=false, cutoverLoaded=false, driverState=null; const driverFeed={hasPendingHandoff:()=>false}; function shiftIdentity(){return {valid:true,start:0};}\n' +
+    liftFn('drv2DayEarned') + '\n' + liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectInterludeEarn') + '\n' + liftFn('drv2InjectResumenEarn') + '\nreturn { ii: drv2InjectInterludeEarn, ir: drv2InjectResumenEarn };'))(pagosLive, win, allOrders, entries, IC);
   ov.dataset.oid = oid;
   (kind === 'interlude' ? fns.ii : fns.ir)(ov);
   const norm = (h) => { const d = doc.createElement('div'); d.innerHTML = h; return d.innerHTML; };   // normalize the raw builder string through the SAME jsdom serializer, so the comparison is DOM-equality (not string formatting)
@@ -267,13 +270,107 @@ t('injection #3 late load: unknown rate → nothing; re-inject after the rate ar
   const allOrders = { o1: { delivered_at: BB + 1000, delivered_by_driver_uid: 'drv' } };
   let entries = null;   // rate NOT loaded yet
   const mk = () => (new Function('PAGOS_LIVE', 'window', 'allOrders', 'driverRateEntries', 'ICONS',
-    liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectResumenEarn') + '\nreturn drv2InjectResumenEarn;'))(true, win, allOrders, entries, IC);
+    'let feedReady=false, cutoverLoaded=false, driverState=null; const driverFeed={hasPendingHandoff:()=>false}; function shiftIdentity(){return {valid:true,start:0};}\n' +   // this test asserts the «Tu pago» ROW only; drv2DayEarned wired not-ready → no «Ganado hoy» card
+    liftFn('drv2DayEarned') + '\n' + liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectResumenEarn') + '\nreturn drv2InjectResumenEarn;'))(true, win, allOrders, entries, IC);
   mk()(ov);
   assert.ok(!ov.innerHTML.includes('Tu pago por esta entrega'), 'unknown rate → NOTHING injected (never stale/invented)');
   entries = { r: { cents: 7000, effective_from: BB } };   // rate arrives
   mk()(ov); mk()(ov);   // re-inject twice → idempotent
   assert.ok(ov.innerHTML.includes('Tu pago por esta entrega') && /<span class="rs-pos">\+ L 70<\/span>/.test(ov.innerHTML), 'after the rate arrives → the row appears');
   assert.equal((ov.innerHTML.match(/Tu pago por esta entrega/g) || []).length, 1, 'exactly ONE row after repeated re-injects (idempotent)');
+});
+
+// ---------- resumen «Ganado hoy» day-earnings stat card — ONE SOURCE with the Ganancias screen (Codex r1 REVISE) ----------
+// drv2DayEarned() is THE single day-earnings computation: HN-midnight day (hnDayStartMs), RESOLVED-only deliveries, the
+// SAME money-readiness gate as the Ganancias screen — recomputed on EVERY call, nothing cached on the overlay. Both
+// renderGanancias (Hoy) and drv2InjectResumenEarn call it, so the resumen card can never show a figure that differs
+// from the Ganancias «Ganado hoy» (parity asserted below across a 2nd shift / provisional attribution / pending
+// handoff / overlay reuse). The overlay harness runs the REAL shiftDeliveries (imported) + real hnDayStartMs — no stub,
+// no silent catch → [].
+const HN_OFF = -6 * 3600000;
+const hnTodayStart = () => Math.floor((Date.now() + HN_OFF) / 86400000) * 86400000 - HN_OFF;   // HN midnight of today
+const DLV = (ms = Date.now() - 1000, uid = 'drv') => ({ delivered_at: ms, delivered_by_driver_uid: uid });   // a RESOLVED delivery
+function dayEarnedHarness({ pagosLive = true, entries = { r: { cents: 7000, effective_from: Date.UTC(2026, 0, 1) } },
+    allOrders = {}, feedReady = true, cutoverLoaded = true, driverState = {}, hasPendingHandoff = false, identValid = true, uid = 'drv', cutover = null } = {}) {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>');
+  const win = dom.window, doc = win.document;
+  new Function('self', readFileSync(join(__dir, 'pay-rate.js'), 'utf8'))(win);
+  const driverFeed = { hasPendingHandoff: () => hasPendingHandoff };
+  const shiftIdentity = () => ({ valid: identValid, start: 0 });
+  const api = (new Function('PAGOS_LIVE', 'window', 'allOrders', '_rates0', 'currentUser', 'driverIdentityCutoverMs',
+    'feedReady', 'cutoverLoaded', 'driverState', 'driverFeed', 'shiftIdentity', 'shiftDeliveries', 'HN_OFFSET_MS', 'ICONS',
+    'let driverRateEntries = _rates0;\n' +
+    liftFn('hnDayStartMs') + '\n' + liftFn('drv2DayEarned') + '\n' + liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectResumenEarn') + '\n' +
+    'return { de: () => drv2DayEarned(), ir: drv2InjectResumenEarn, setRates: (r) => { driverRateEntries = r; } };'))(
+    pagosLive, win, allOrders, entries, { uid }, cutover, feedReady, cutoverLoaded, driverState, driverFeed, shiftIdentity, shiftDeliveries, HN_OFF, IC);
+  const freshOverlay = () => { const ov = doc.createElement('div'); ov.innerHTML = deliverySummaryHtml({ order: { payment_method: 'cash', total: 385 }, deliveredName: 'Daniela', time: '7:43', vuelto: 115, showEarnings: false, dayCashOwed: 385 }, DEPS); ov.dataset.oid = 'x'; return ov; };
+  return { win, doc, de: api.de, ir: api.ir, setRates: api.setRates, freshOverlay };
+}
+// the card's figure from the overlay, or null when hidden
+function cardFigure(ov) {
+  const e = ov.querySelector('.rs-stat.rs-earned'); if (!e) return null;
+  const m = e.textContent.match(/L\s*([\d.,]+)\s*Ganado hoy · (\d+) entrega/);
+  return m ? { cents: Math.round(parseFloat(m[1].replace(/,/g, '')) * 100), count: Number(m[2]) } : { raw: e.textContent };
+}
+
+t('resumen «Ganado hoy» ONE-SOURCE: card === drv2DayEarned() (the Ganancias value), rendered in the 2-up grid', () => {
+  const h = dayEarnedHarness({ allOrders: { a: DLV(Date.now() - 2000), b: DLV(Date.now() - 1000) } });
+  const exp = h.de();
+  assert.equal(exp.ready, true); assert.equal(exp.count, 2); assert.equal(exp.cents, 14000, 'day total = 2 × L70');
+  const ov = h.freshOverlay(); h.ir(ov);
+  assert.ok(ov.querySelector('.rs-stats'), '2-up grid');
+  assert.deepEqual(cardFigure(ov), { cents: exp.cents, count: exp.count }, 'card shows exactly the Ganancias figure');
+  assert.ok(ov.textContent.includes('Ganado hoy · 2 entregas'), '«Ganado hoy · 2 entregas»');
+  assert.ok(ov.textContent.includes('Efectivo a entregar hoy'), 'the cash stat is kept');
+});
+
+t('resumen «Ganado hoy» no-regression: PAGOS off → no card; byte-identical to the old builder', () => {
+  const h = dayEarnedHarness({ pagosLive: false, allOrders: { a: DLV() } });
+  const ov = h.freshOverlay(); h.ir(ov);
+  assert.equal(cardFigure(ov), null, 'no «Ganado hoy» card');
+  assert.ok(!ov.querySelector('.rs-stats'), 'no grid');
+  const norm = (s) => { const d = h.doc.createElement('div'); d.innerHTML = s; return d.innerHTML; };
+  assert.equal(ov.innerHTML, norm(OLD.deliverySummaryHtml({ order: { payment_method: 'cash', total: 385 }, deliveredName: 'Daniela', time: '7:43', vuelto: 115, showEarnings: false, dayCashOwed: 385 }, DEPS)), 'byte-identical to the old builder');
+});
+
+t('resumen «Ganado hoy» PARITY: overlay figure === drv2DayEarned() across 2nd shift / provisional / pending handoff / reuse', () => {
+  // (a) second shift, SAME HN day — a delivery from an earlier shift today still counts (DAY-based, not shift-based)
+  { const h = dayEarnedHarness({ allOrders: { early: DLV(hnTodayStart() + 1000), late: DLV(Date.now() - 1000) } });
+    const exp = h.de(); assert.equal(exp.count, 2, "both of today's deliveries count regardless of shift");
+    const ov = h.freshOverlay(); h.ir(ov);
+    assert.deepEqual(cardFigure(ov), { cents: exp.cents, count: exp.count }, 'card === the day figure across shifts'); }
+  // (b) provisional attribution — a legacy-only (delivered_by_uid) delivery is NOT resolved → excluded from BOTH
+  { const h = dayEarnedHarness({ allOrders: { res: DLV(), prov: { delivered_at: Date.now() - 1000, delivered_by_uid: 'drv' } } });
+    const exp = h.de(); assert.equal(exp.count, 1, 'only the resolved delivery counts (provisional excluded)');
+    const ov = h.freshOverlay(); h.ir(ov);
+    assert.deepEqual(cardFigure(ov), { cents: exp.cents, count: exp.count }, 'card excludes provisional, exactly like Ganancias'); }
+  // (c) pending handoff → not ready → BOTH hide (never a false figure)
+  { const h = dayEarnedHarness({ allOrders: { a: DLV() }, hasPendingHandoff: true });
+    assert.equal(h.de().ready, false, 'pending handoff → not ready');
+    const ov = h.freshOverlay(); h.ir(ov);
+    assert.equal(cardFigure(ov), null, 'card hidden under a pending handoff'); }
+  // (d) overlay reuse — inject twice on the same overlay → exactly one card, still the one-source figure
+  { const h = dayEarnedHarness({ allOrders: { a: DLV(), b: DLV(Date.now() - 1500) } });
+    const ov = h.freshOverlay(); h.ir(ov); h.ir(ov);
+    assert.equal(ov.querySelectorAll('.rs-stat.rs-earned').length, 1, 'exactly one card after reuse');
+    assert.deepEqual(cardFigure(ov), { cents: h.de().cents, count: h.de().count }, 'reused overlay still shows the one-source figure'); }
+});
+
+t('resumen «Ganado hoy» late rate (recomputed, not cached): unseeded → hidden; rate arrives on the SAME overlay → appears', () => {
+  const h = dayEarnedHarness({ entries: null, allOrders: { a: DLV(), b: DLV(Date.now() - 1500) } });
+  const ov = h.freshOverlay(); h.ir(ov);
+  assert.equal(cardFigure(ov), null, 'unseeded rate → hidden (blank, not a false L0)');
+  h.setRates({ r: { cents: 7000, effective_from: Date.UTC(2026, 0, 1) } });   // rate arrives (refreshOpenCashSurfaces re-injects)
+  h.ir(ov);
+  assert.deepEqual(cardFigure(ov), { cents: 14000, count: 2 }, 'the card appears, recomputed from the current rate (no stale cache)');
+  assert.equal(ov.querySelectorAll('.rs-stat.rs-earned').length, 1, 'exactly one card');
+});
+
+t('resumen «Ganado hoy» singular «1 entrega»; a different platform rate lands the new amount (never hardcoded)', () => {
+  const h = dayEarnedHarness({ entries: { r: { cents: 9000, effective_from: Date.UTC(2026, 0, 1) } }, allOrders: { a: DLV() } });
+  const ov = h.freshOverlay(); h.ir(ov);
+  assert.deepEqual(cardFigure(ov), { cents: 9000, count: 1 }, 'rate 90, 1 delivery → L 90 · 1 entrega');
+  assert.ok(/Ganado hoy · 1 entrega\b/.test(ov.textContent) && !/1 entregas/.test(ov.textContent), 'singular «1 entrega»');
 });
 
 // ---------- OVERLAY REUSE through the REAL drv2ShowInterlude/drv2ShowResumen + refreshOpenCashSurfaces (Codex rewire r1 P1) ----------
@@ -292,11 +389,12 @@ function showHarness({ pagosLive = true, rateEntries = null, allOrders = {} } = 
     'const driverFeed = { hasPendingHandoff: () => false }; const driverIdentityCutoverMs = null;\n' +
     'function drv2DismissInterlude(){ const o=$("drv2-interlude"); if(o) o.classList.remove("open"); drv2Interlude=null; drv2InterludeShownFor=null; }\n' +
     'function showCuadre(){} function renderHistoryModal(){} function renderGanancias(){}\n' +
+    liftConst('HN_OFFSET_MS') + '\n' + liftFn('hnDayStartMs') + '\n' + liftFn('drv2DayEarned') + '\n' +   // the «Ganado hoy» one source drv2InjectResumenEarn now calls
     liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectInterludeEarn') + '\n' + liftFn('drv2InjectResumenEarn') + '\n' +
     liftFn('refreshOpenCashSurfaces') + '\n' + liftFn('drv2DismissResumen') + '\n' + liftFn('drv2ShowResumen') + '\n' + liftFn('drv2ShowInterlude') + '\n' +
-    'return { showInterlude: (info) => { drv2Interlude = info; drv2ShowInterlude(); }, showResumen: (info) => drv2ShowResumen(info), refresh: () => refreshOpenCashSurfaces(), setRate: (e) => { driverRateEntries = e; }, setOrders: (o) => { allOrders = o; } };';
-  const names = ['document', 'window', '$', 'PAGOS_LIVE', 'ICONS', 'escapeHtml', 'coloniaOf', 'interludeHtml', 'deliverySummaryHtml', 'readyTimeHHMM', 'XPD', 'currentUser', 'allTasks', 'shiftIdentity', 'computeShiftCash', 'clearTimeout', 'setTimeout', '_allOrders', '_rateEntries'];
-  const api = (new Function(...names, body))(doc, win, $, pagosLive, IC, ESC, coloniaOf, interludeHtml, deliverySummaryHtml, readyTimeHHMM, XPD, { uid: 'drv' }, {}, shiftIdentity, computeShiftCash, () => 0, () => 0, allOrders, rateEntries);
+    'return { showInterlude: (info) => { drv2Interlude = info; drv2ShowInterlude(); }, showResumen: (info) => drv2ShowResumen(info), refresh: () => refreshOpenCashSurfaces(), setRate: (e) => { driverRateEntries = e; }, setOrders: (o) => { allOrders = o; }, setReady: (b) => { feedReady = b; cutoverLoaded = b; driverState = b ? { active: true } : null; } };';
+  const names = ['document', 'window', '$', 'PAGOS_LIVE', 'ICONS', 'escapeHtml', 'coloniaOf', 'interludeHtml', 'deliverySummaryHtml', 'readyTimeHHMM', 'XPD', 'currentUser', 'allTasks', 'shiftIdentity', 'computeShiftCash', 'shiftDeliveries', 'clearTimeout', 'setTimeout', '_allOrders', '_rateEntries'];
+  const api = (new Function(...names, body))(doc, win, $, pagosLive, IC, ESC, coloniaOf, interludeHtml, deliverySummaryHtml, readyTimeHHMM, XPD, { uid: 'drv' }, {}, shiftIdentity, computeShiftCash, shiftDeliveries, () => 0, () => 0, allOrders, rateEntries);
   return { api, il: () => $('drv2-interlude'), rs: () => $('drv2-resumen') };
 }
 const ilInfo = (orderId, cash, vuelto) => ({ orderId, name: 'X', cash, vuelto });
@@ -353,6 +451,30 @@ t('reuse: summary A→B shows B\'s order + B\'s rate (the Tu-pago row never carr
   const b = h.rs().innerHTML;
   assert.ok(b.includes('L 777') && /\+ L 90/.test(b) && !b.includes('385') && !/\+ L 70/.test(b), 'B: total 777 + pay L 90, no stale A');
   assert.equal((b.match(/Tu pago por esta entrega/g) || []).length, 1, 'exactly one Tu-pago row');
+});
+
+t('reuse resumen «Ganado hoy» readiness transition (Codex r2 P2): shown → not-ready HIDES → ready REAPPEARS, via the refresh hook', () => {
+  const RATE = { r: { cents: 7000, effective_from: Date.UTC(2026, 0, 1) } };
+  const h = showHarness({ pagosLive: true, rateEntries: RATE, allOrders: { a: DLV(), b: DLV(Date.now() - 1500) } });
+  h.api.showResumen({ orderId: 'a', name: 'X' });
+  assert.ok(h.rs().querySelector('.rs-stat.rs-earned') && /Ganado hoy · 2 entregas/.test(h.rs().innerHTML), 'ready → «Ganado hoy · 2 entregas» shown');
+  h.api.setReady(false); h.api.refresh();   // feed goes not-ready → refreshOpenCashSurfaces re-injects the OPEN resumen
+  assert.ok(!h.rs().querySelector('.rs-stat.rs-earned'), 'not ready → card hidden (no false figure)');
+  h.api.setReady(true); h.api.refresh();     // readiness returns
+  assert.ok(h.rs().querySelector('.rs-stat.rs-earned') && /Ganado hoy · 2 entregas/.test(h.rs().innerHTML), 'ready again → card reappears via the refresh hook (no manual re-open)');
+  assert.equal(h.rs().querySelectorAll('.rs-stat.rs-earned').length, 1, 'exactly one card after the transitions');
+});
+
+t('reuse resumen «Ganado hoy» added-delivery (Codex r2 P2): a 2nd delivery lands while open → the figure updates on refresh', () => {
+  const RATE = { r: { cents: 7000, effective_from: Date.UTC(2026, 0, 1) } };
+  const h = showHarness({ pagosLive: true, rateEntries: RATE, allOrders: { a: DLV() } });
+  h.api.showResumen({ orderId: 'a', name: 'X' });
+  assert.ok(/Ganado hoy · 1 entrega\b/.test(h.rs().innerHTML), 'starts at 1 delivery');
+  assert.deepEqual(cardFigure(h.rs()), { cents: 7000, count: 1 }, 'L 70 · 1 entrega');
+  h.api.setOrders({ a: DLV(), b: DLV(Date.now() - 1500) });   // a 2nd delivery lands while the resumen is open
+  h.api.refresh();
+  assert.deepEqual(cardFigure(h.rs()), { cents: 14000, count: 2 }, 'after the refresh → L 140 · 2 entregas (figure updated live)');
+  assert.equal(h.rs().querySelectorAll('.rs-stat.rs-earned').length, 1, 'still exactly one card');
 });
 
 t('reuse P2a: cash→cashless interlude — B has NO cash line, nothing stale from A', () => {

@@ -2157,7 +2157,7 @@
 .wa-tpl { gap: 10px; border: 0; border-radius: 12px; background: #E7ECF4; font-size: 13.5px; font-weight: 500; line-height: 1.35; }
 .wa-tpl .wa-txt { line-height: 1.35; font-weight: 500; }
 .wa-tpl .wa-txt small { margin-top: 2px; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-soft, #546078); }
-/* resumen (S.resumen): .rs-* tokens mapped to the prototype generic illus.ok / h4 / sub / card / row / stat / btn.primary. The full-screen-vs-sheet presentation, the missing 2nd stat card, the row-icon tiles and the row divider model are STRUCTURAL/component deltas tabled for the owner, not changed here. */
+/* resumen (S.resumen): .rs-* tokens mapped to the prototype generic illus.ok / h4 / sub / card / row / stat / btn.primary. The full-screen-vs-sheet presentation, the row-icon tiles and the row divider model are STRUCTURAL/component deltas tabled for the owner. The prototype's 2nd stat card «Ganado hoy · N entregas» IS now built — injected by drv2InjectResumenEarn (PAGOS-gated, same money-readiness as dayCashOwed) into the .rs-stats 2-up grid. */
 .rs-illus { width: 44px; height: 44px; border-radius: 14px; background: #E3F3E9; color: #15803D; }
 .rs-illus svg { width: 22px; height: 22px; }
 .rs-title { font-size: 19px; letter-spacing: -.02em; line-height: 1.15; }
@@ -2173,6 +2173,8 @@
 .rs-rv { font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; }
 .rs-stat b { font-size: 24px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .rs-stat small { font-size: 11.5px; font-weight: 600; color: var(--text-soft, #546078); }
+/* the 2-up stat grid when PAGOS is live: «Efectivo a entregar hoy» + the injected «Ganado hoy · N entregas» (prototype .stat2). */
+.rs-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .rs-done { font-weight: 700; font-size: 16px; letter-spacing: -.01em; padding: 15px 14px; min-height: 52px; margin-top: 0; }
 /* ofertaExpirada (S.ofertaExpirada banner): .oe-* tokens mapped to the prototype .banner.warn / svg / b / .x. Copy gap (missing "Despacho se la pasó a otro repartidor.") is flagged to the advisor, not changed here. */
 .oe-banner { gap: 11px; font-size: 13.5px; line-height: 1.35; background: #FBF1DC; }
@@ -2752,7 +2754,8 @@ function drv2ShowResumen(info) {
   }, { ICONS, esc: escapeHtml });
   /* SLICE3DEPS:RESUMEN-EARN:START — «Tu pago por esta entrega» row injection, carved inside SLICE2:IMPORT (the pure builder no longer renders it). Idempotent; blank when the rate is unknown; late rate load re-injects via refreshOpenCashSurfaces. */
   ov.classList.add('open');
-  ov.dataset.oid = info.orderId || ''; drv2InjectResumenEarn(ov);
+  ov.dataset.oid = info.orderId || '';
+  drv2InjectResumenEarn(ov);   // «Ganado hoy» is recomputed inside via drv2DayEarned (the one source) — nothing cached on the overlay
   const done = ov.querySelector('#btn-resumen-done'); if (done) done.onclick = drv2DismissResumen;
   /* SLICE3DEPS:RESUMEN-EARN:END */
   drv2ResumenShownFor = info.orderId;
@@ -3309,7 +3312,7 @@ function renderOffshift() {
   const cashStat = `<div class="off2-stat"><b>L ${(cash.cashOwed || 0).toLocaleString('es-HN')}</b><small>Efectivo a entregar</small></div>`;
   // «Ganado hoy» = the sum of each delivery's in-effect platform rate (one source; NO hardcode). Renders NOTHING
   // unless PAGOS is live AND a rate is seeded AND every delivery is covered (shiftEarningsCents → null otherwise).
-  const earnCents = (PAGOS_LIVE && window.PayRate) ? window.PayRate.shiftEarningsCents(shiftDeliveries(allOrders, currentUser && currentUser.uid, todayMidnightMs(), driverIdentityCutoverMs).resolved.map((d) => d.order), driverRateEntries) : null;
+  const earnCents = PAGOS_LIVE ? drv2DayEarned().cents : null;   // THE one source (HN-day, resolved-only, money-ready) — same as the Ganancias screen + the resumen card; PAGOS-gated here since the offshift landing shows regardless of Pagos
   const earnStat = (earnCents != null) ? `<div class="off2-stat"><b class="off2-earn">L ${(earnCents / 100).toLocaleString('es-HN')}</b><small>Ganado hoy</small></div>` : '';
   host.innerHTML = `
     <header class="off2-hdr"><span class="off2-hm">${SOLA_HM}</span><div class="off2-ttl">Hola, <span id="off-driver-name"></span></div>
@@ -3717,6 +3720,20 @@ function gananciasWeekStartMs(nowMs) {   // Monday 00:00 HN of the week containi
   const dow = hnDow(dayStart);
   return dayStart - ((dow === 0) ? 6 : dow - 1) * 86400000;
 }
+// THE one source for «Ganado hoy» (Codex r1 ONE-SOURCE): the Ganancias-screen Hoy selection — HN-midnight day
+// (hnDayStartMs), RESOLVED-only deliveries, the SAME money-readiness gate (feed + cutover + a valid identity + no
+// pending handoff). Recomputed on EVERY call — never cached on the overlay. renderGanancias (Hoy) AND
+// drv2InjectResumenEarn both call it, so the resumen card can never show a figure that differs from the Ganancias
+// «Ganado hoy». Returns { ready, resolved, cents, count }; cents is null when PAGOS off / unseeded / any delivery unpriced.
+function drv2DayEarned() {
+  const ident = (typeof shiftIdentity === 'function') ? shiftIdentity() : { valid: true, start: null };
+  const ready = feedReady && cutoverLoaded && !!driverState && !(driverFeed && driverFeed.hasPendingHandoff()) && ident.valid;
+  if (!ready) return { ready: false, resolved: [], cents: null, count: 0 };
+  const resolved = shiftDeliveries(allOrders, currentUser && currentUser.uid, hnDayStartMs(Date.now()), driverIdentityCutoverMs).resolved;
+  const PR = (typeof window !== 'undefined' && window.PayRate) || null;   // PAGOS gating is at the consumer (the Ganancias screen is PAGOS-reachable; the resumen card guards its call site)
+  const cents = PR ? PR.shiftEarningsCents(resolved.map((d) => d.order), driverRateEntries) : null;
+  return { ready: true, resolved, cents, count: resolved.length };
+}
 let drv2GananciasView = 'hoy';   // the open Hoy/Semana view, so refreshOpenCashSurfaces can re-render it on a readiness flip
 function openGanancias() { renderGanancias('hoy'); showScreen('ganancias'); }
 function renderGanancias(view) {
@@ -3741,9 +3758,10 @@ function renderGanancias(view) {
   const seg = `<div class="gn-seg"><span class="${v === 'hoy' ? 'on' : ''}" data-gn="hoy" role="button" tabindex="0">Hoy</span><span class="${v === 'semana' ? 'on' : ''}" data-gn="semana" role="button" tabindex="0">Esta semana</span></div>`;
   let body;
   if (v === 'hoy') {
-    const resolved = moneyReady ? shiftDeliveries(allOrders, uid, hnDayStartMs(now), driverIdentityCutoverMs).resolved : [];   // HN midnight cutoff
-    const n = resolved.length;
-    const earnCents = (moneyReady && PR) ? PR.shiftEarningsCents(resolved.map((d) => d.order), entries) : null;
+    const de = drv2DayEarned();   // THE one source (also feeds the resumen «Ganado hoy» card) — HN-day, resolved-only, same money gate
+    const resolved = de.resolved;   // HN midnight cutoff, RESOLVED-only
+    const n = de.count;
+    const earnCents = de.cents;
     const cashOwed = moneyReady ? computeShiftCash(allOrders, uid, hnDayStartMs(now), driverIdentityCutoverMs).cashOwed : null;   // Lempiras; null (blank) until ready — no false L0
     const perRates = resolved.map((d) => PR ? PR.rateCentsInEffect(entries, d.at) : null);   // each delivery's own in-effect rate
     const uniform = perRates.length > 0 && perRates.every((r) => r != null && r === perRates[0]);   // #3: «× L R» only when every delivery is the SAME known rate
@@ -3827,9 +3845,24 @@ function drv2InjectResumenEarn(ov) {
   const card = ov.querySelector('.rs-card'); if (!card) return;
   for (const r of card.querySelectorAll('.rs-row')) { const t = r.querySelector('.rs-rt'); if (t && t.textContent === 'Tu pago por esta entrega') r.remove(); }   // idempotent (identify by content; no marker class → DOM-equal)
   const rc = drv2EarnRateFor(ov.dataset.oid);
-  if (rc == null) return;
-  const icon = ICONS.wallet || ICONS.cash || '';
-  card.insertAdjacentHTML('beforeend', '<div class="rs-row"><span class="ico ">' + icon + '</span><div class="rs-rtext"><div class="rs-rt">Tu pago por esta entrega</div><div class="rs-rd">Informativo · se paga aparte, no sale del efectivo</div></div><div class="rs-rv"><span class="rs-pos">+ L ' + (rc / 100).toLocaleString('es-HN') + '</span></div></div>');
+  if (rc != null) {
+    const icon = ICONS.wallet || ICONS.cash || '';
+    card.insertAdjacentHTML('beforeend', '<div class="rs-row"><span class="ico ">' + icon + '</span><div class="rs-rtext"><div class="rs-rt">Tu pago por esta entrega</div><div class="rs-rd">Informativo · se paga aparte, no sale del efectivo</div></div><div class="rs-rv"><span class="rs-pos">+ L ' + (rc / 100).toLocaleString('es-HN') + '</span></div></div>');
+  }
+  // «Ganado hoy · N entregas» day-earnings stat card — computed by drv2DayEarned, THE SAME one source as the Ganancias
+  // screen (HN-midnight day, resolved-only, money-ready gate). Recomputed on EVERY inject/refresh — never cached on the
+  // overlay — so a late rate OR a newly-pending handoff is reflected. Idempotent: unwrap any prior card, then (re)add
+  // only when PAGOS live + ready + priced. The PAGOS_LIVE guard here keeps drv2DayEarned out of the PAGOS-off harnesses.
+  const g0 = ov.querySelector('.rs-stats');
+  if (g0) { const b0 = g0.querySelector('.rs-stat:not(.rs-earned)'); if (b0) g0.parentNode.insertBefore(b0, g0); g0.remove(); }   // unwrap back to the single stat
+  if (!PAGOS_LIVE || typeof window === 'undefined' || !window.PayRate) return;
+  const de = drv2DayEarned();
+  if (!de.ready || de.cents == null || de.cents <= 0) return;   // not ready / unseeded / any delivery unpriced → blank (never a false L0)
+  const base = ov.querySelector('.rs-stat'); if (!base || !base.parentNode) return;
+  const grid = ov.ownerDocument.createElement('div'); grid.className = 'rs-stats';
+  base.parentNode.insertBefore(grid, base); grid.appendChild(base);   // wrap the «Efectivo a entregar hoy» card
+  const en = de.count;
+  grid.insertAdjacentHTML('beforeend', '<div class="rs-stat rs-earned"><b style="color:var(--green,#2F9E66)">L ' + (de.cents / 100).toLocaleString('es-HN') + '</b><small>Ganado hoy · ' + en + ' entrega' + (en === 1 ? '' : 's') + '</small></div>');
 }
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
@@ -5061,6 +5094,7 @@ function shiftIdentity() {
 function refreshOpenCashSurfaces() {
   /* ===== SLICE3:GANANCIAS-REFRESH:START — re-render the OPEN earnings screen when the feed re-emits (readiness flip / reconnect / reconcile), so its gated amounts fill in without a manual re-open (Codex r1 #1). Also re-inject the interlude/summary per-delivery pay on a LATE rate load (Codex money #3), idempotently. Insert, not a frozen-line change. ===== */
   { const gn = $('screen-ganancias'); if (gn && !gn.classList.contains('hidden') && typeof renderGanancias === 'function') renderGanancias(drv2GananciasView);
+    const os = $('screen-offshift'); if (os && !os.classList.contains('hidden') && typeof renderOffshift === 'function') renderOffshift();   // the offshift landing «Ganado hoy»/«Efectivo» read the same drv2DayEarned/computeShiftCash — refresh it too on a readiness flip (Codex r2 P2)
     const il = $('drv2-interlude'); if (il && il.classList.contains('open') && typeof drv2InjectInterludeEarn === 'function') drv2InjectInterludeEarn(il);
     const rs = $('drv2-resumen'); if (rs && rs.classList.contains('open') && typeof drv2InjectResumenEarn === 'function') drv2InjectResumenEarn(rs); }
   /* ===== SLICE3:GANANCIAS-REFRESH:END ===== */
