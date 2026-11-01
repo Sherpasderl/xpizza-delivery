@@ -29,6 +29,18 @@ process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'a1-secret';
 process.env.PIXELPAY_RETURN_URL_LA_MUSA = process.env.PIXELPAY_RETURN_URL_LA_MUSA || 'https://lamusa.test';
 process.env.OTP_SALT = process.env.OTP_SALT || 'a'.repeat(40);   // otp-lib fails closed at require without a >=32-char salt (a TEST value, as claim-order.emulator does)
+// S3b (2026-10-22, after this file's third-brand cells were written): the hosted-checkout RETURN is routed by platform/sites.json — a
+// rid with no orders deployment (and, on the BASE handlers, no brand fallback at all) is refused return_url_unconfigured. A real third
+// brand ships with its own orders deployment; the synthetic one gets one here, IN MEMORY (the capp-domain-transition pattern), before
+// any module loads the manifest — so today's AND the BASE handlers route its card checkout identically
+{
+  const sitesPath = require.resolve('../platform/sites.json');
+  const sites = JSON.parse(JSON.stringify(require('../platform/sites.json')));
+  const THIRD_RID = require('../contract/third-brand').THIRD;
+  sites.deployments.push({ id: 'orders-r3-synth', app: 'orders', folder: 'r3-synth-orders', entrypoints: ['index.html'], context: THIRD_RID,
+    origins: ['https://orders.r3-synth.test'], pay_return: { env: 'PIXELPAY_RETURN_URL_R3_SYNTH', default: 'https://orders.r3-synth.test' } });
+  require.cache[sitesPath] = { id: sitesPath, filename: sitesPath, loaded: true, children: [], paths: [], exports: sites };
+}
 const realWhatsapp = require('../whatsapp');
 const wr = require.resolve('../whatsapp');
 require.cache[wr] = { id: wr, filename: wr, loaded: true, children: [], paths: [], exports: { ...realWhatsapp, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) } };
