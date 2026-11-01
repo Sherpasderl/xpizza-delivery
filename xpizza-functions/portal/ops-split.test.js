@@ -88,6 +88,8 @@ const EXPECTED = [
   'portal/branch-read-model.js', 'branches/branch-ops.js', 'branches/branch-store.js', 'branches/drafts.js', 'branches/readiness-readers.js', 'branches/rid-alloc.js', 'sweep-pending.js',
   /* ORCHESTRATION O1b T7/T9: the lifecycle endpoints E6 / E7 / E8 / E10 (cores, Q10 phone, the fenced publish) */
   'portal/branch-lifecycle-core.js', 'portal/branch-phone.js', 'brands/brand-store.js', 'brands/brand-projection.js',
+  /* S4 C′: branch-ops.js now requires the ONE hours grammar (hours7Errors MOVED there, re-exported); a pure leaf, no requires */
+  'schedule/hours-grammar.js',
 ].sort();
 const CONDITIONAL = ['lib/emulator-endpoint.js'];   // reached via lib/admin.js only when an emulator env var is set
 const FORBIDDEN = /^(catalog\/catalog-publish\.js|catalog\/portal-reads\.js|stats\/.*|factura\/.*|index\.js|merchant\/merchant-location\.js|merchant\/merchant-orders\.js|portal\/functions\.js)$/;

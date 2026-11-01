@@ -1965,7 +1965,11 @@
   "retention-sweep.js",
   "rewards-redeem-intake.js",
   "rewards-reserve.js",
+  "schedule/hours-grammar.js",
+  "schedule/load-schedule.js",
+  "schedule/schedule-only.js",
   "scheduled-release-core.js",
+  "seed_identity.js",
   "sequencing/bounded.js",
   "sequencing/budget.js",
   "sequencing/cancel-promotion.js",
@@ -2524,6 +2528,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2620,6 +2625,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2629,6 +2635,7 @@
      "inverses": [
       "tools/drvc-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     },
@@ -2638,6 +2645,7 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     },
@@ -2680,7 +2688,8 @@
     {
      "file": "xpizza-functions/formsignal-wiring.guard.test.js",
      "inverses": [
-      "tools/formsignal-inverse.js"
+      "tools/formsignal-inverse.js",
+      "tools/s4hours-inverse.js"
      ]
     },
     {
@@ -2790,6 +2799,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2802,6 +2812,7 @@
       "tools/formsignal-inverse.js",
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2813,6 +2824,7 @@
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/o1b-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2910,6 +2922,7 @@
       "tools/menu-warm-inverse.js",
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -2928,6 +2941,7 @@
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
      ]
@@ -3193,8 +3207,15 @@
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
       "tools/formsignal-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/wahealth-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/test/s4-schedule-only.emulator.test.js",
+     "inverses": [
+      "tools/s4hours-inverse.js"
      ]
     },
     {
@@ -3253,6 +3274,7 @@
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/wahealth-inverse.js"
@@ -3272,6 +3294,7 @@
       "tools/o1b-inverse.js",
       "tools/portalui-inverse.js",
       "tools/release-race-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
@@ -3319,6 +3342,7 @@
      "file": "xpizza-functions/wahealth-wiring.guard.test.js",
      "inverses": [
       "tools/formsignal-inverse.js",
+      "tools/s4hours-inverse.js",
       "tools/wahealth-inverse.js"
      ]
     }
@@ -3687,6 +3711,18 @@
    "pins": [],
    "lifts": []
   },
+  "schedule/hours-grammar.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "schedule/load-schedule.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "schedule/schedule-only.js": {
+   "pins": [],
+   "lifts": []
+  },
   "scheduled-release-core.js": {
    "pins": [
     {
@@ -3706,6 +3742,10 @@
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js"
    ]
+  },
+  "seed_identity.js": {
+   "pins": [],
+   "lifts": []
   },
   "sequencing/bounded.js": {
    "pins": [],
@@ -3900,5 +3940,117 @@
    "lifts": []
   }
  },
- "unregistered": []
+ "unregistered": [],
+ "region_pins": [
+  {
+   "id": "L1-read",
+   "module": "index.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L1-gate",
+   "module": "index.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L2-read",
+   "module": "index.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L2-gate",
+   "module": "index.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L3-confirm",
+   "module": "pixelpay-confirm.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L4-release",
+   "module": "scheduled-release-core.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L5-reply",
+   "module": "index.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L6-default-table",
+   "module": "whatsapp_inbound.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L6-status",
+   "module": "whatsapp_inbound.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L6-converter",
+   "module": "whatsapp_inbound.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L7-reset",
+   "module": "availability-reset.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L8-grace",
+   "module": "materialize-guard.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L9-control",
+   "module": "portal/ops-core.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L9-operational",
+   "module": "portal/ops-core.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L9-degrade",
+   "module": "portal/ops-core.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L10-store",
+   "module": "brands/brand-store.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L10-pick",
+   "module": "brands/brand-projection.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L10-row",
+   "module": "brands/brand-projection.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L11-hhmm",
+   "module": "brands/brand-model.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L11-istime",
+   "module": "brands/brand-model.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L11-errors",
+   "module": "brands/brand-model.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  },
+  {
+   "id": "L12-interp",
+   "module": "scheduled-orders.js",
+   "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  }
+ ]
 }

@@ -7309,7 +7309,7 @@ exports.quoteOrder = onRequest(
       // Public + unauthenticated (a non-redemption cart's price is not user-specific), so it is
       // rate-limited like the other public endpoints.
       const db = getDatabase();
-      const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+      const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown'; /* s4hours:begin */ if (body.schedule_only === true && await require('./schedule/schedule-only').handle({ res, body, db, restaurantId, clientIp, checkRateLimit })) return; /* s4hours:end */
       const dpP = DW.loadPricing(db, restaurantId); const { allowed, retryAfterSec } = await checkRateLimit(db, 'quote_ip', clientIp, RATE_LIMIT_BUCKETS.quote_ip);   // S3a: envío config read in parallel
       if (!allowed) {
         res.set('Retry-After', String(retryAfterSec));
