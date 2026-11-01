@@ -7,7 +7,7 @@
 //      package.json test chain (whose dependencies stay identical)
 // 3 and 4 are proven over the capp lane's OWN commit range, never the live tree (the portal/slice2-untouched precedent): at an
 // assembled tip, other approved slices legitimately change those files, and that is not this lane's change.
-//   RANGE: BASE 2ce3198d → CAPP_TIP 15a3b2cf (capp G7 batch + the S3c module inverse). A later capp commit that touches the live
+//   RANGE: BASE 2ce3198d → CAPP_TIP 097471a4 (capp G7 batch + the S3c module inverse + its regenerated form-source inventory). A later capp commit that touches the live
 //   forms or xpizza-functions/ re-points CAPP_TIP to itself. Fails closed: both resolve, BASE ⊑ CAPP_TIP ⊑ HEAD, git answers.
 // Run: node --test customer-app/capp-guards.test.mjs
 import { test } from 'node:test';
@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '2ce3198d';
-const CAPP_TIP = '15a3b2cf';
+const CAPP_TIP = '097471a4';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 const isAncestor = (a, b) => { try { git('merge-base', '--is-ancestor', a, b); return true; } catch (_) { return false; } };
 const capRange = () => {
