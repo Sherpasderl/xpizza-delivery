@@ -43,6 +43,11 @@ const STUBS = `
 var escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function $(id){ return document.getElementById(id); }
 var allDrivers = {};
+// S4B: callDriverAdmin (the admin onCall transport) carries the session-superseded barrier that reads the
+// page-lifetime vars (reloading, sessionUid) declared in index.html OUTSIDE this extracted slice, plus a local
+// auth. Model a NORMAL operator session -- not mid-reload, auth uid matches sessionUid -- so admin writes
+// proceed exactly as in a live page. The barrier's blocking path is covered by mobile-reload.test.mjs.
+var reloading = false, sessionUid = 'op1';
 var STORE = { drivers: {} };
 var H = { accData:{}, accSubs:[], cashSubs:[], unsub:0, getData:{}, getDelay:0, getFail:false, call:'ok', toasts:[], picked:[], waUrl:'', calls:[] };
 window.H = H;
@@ -51,7 +56,7 @@ function openPicker(oid, reassign){ H.picked.push({ oid: oid, reassign: !!reassi
 window.open = (u) => { H.waUrl = String(u); return null; };
 var XPD = {
   getDb: () => ({}),
-  getAuthInstance: () => ({ app:{}, currentUser:{ getIdToken: async()=> 't' } }),
+  getAuthInstance: () => ({ app:{}, currentUser:{ uid:'op1', getIdToken: async()=> 't' } }),
   subscribeToDriverCash: (onData, onErr) => { var s={onData:onData,onErr:onErr}; H.cashSubs.push(s); onData(H.cashData||{}); return () => { H.unsub++; var i=H.cashSubs.indexOf(s); if(i>=0) H.cashSubs.splice(i,1); }; },
 };
 function _ref(db, p){ return { path: p }; }
