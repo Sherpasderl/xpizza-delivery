@@ -15,7 +15,7 @@
 // The sweep, grammar and computed pairs are aids with no completeness claim.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
@@ -716,4 +716,20 @@ test('the CSP already admits the two Google font hosts (unchanged)', () => {
   const csp = (toml.match(/Content-Security-Policy\s*=\s*"([^"]+)"/) || [])[1] || '';
   assert.match(csp, /style-src [^;]*https:\/\/fonts\.googleapis\.com/, 'style-src allows fonts.googleapis.com');
   assert.match(csp, /font-src [^;]*https:\/\/fonts\.gstatic\.com/, 'font-src allows fonts.gstatic.com');
+});
+
+// DECISIONS 2026-10-23 follow-up: every switch is a <button class="tog"> (ops-dom toggle(), team.js, branches-view.js), and a button
+// carries the UA's outset border + padding — the BASE .tog rule resets both, so no builder depends on a scoped patch (the .teamv /
+// .ops .hrow1b resets predate it and stay harmless)
+test('every .tog builder makes a <button>, and the base .tog rule resets the UA border and padding', () => {
+  const builders = [];
+  for (const f of readdirSync(new URL('./', import.meta.url)).filter((n) => n.endsWith('.js'))) {
+    for (const m of read(`./${f}`).matchAll(/el\('([a-z]+)',\s*[`']tog(?:\$\{[^}]*\}|[ '`])/g)) builders.push({ f, tag: m[1] });
+  }
+  assert.ok(builders.length >= 2, `non-vacuity: at least two .tog builders found (${builders.length})`);
+  for (const b of builders) assert.equal(b.tag, 'button', `${b.f}: a .tog is built as <${b.tag}>`);
+  const base = (/(^|\n)\s*\.tog\{([^}]*)\}/.exec(css) || [])[2] || '';
+  assert.ok(base, 'the base .tog rule exists');
+  assert.match(base, /(^|;)border:none(;|$)/, 'the base .tog rule resets the UA border');
+  assert.match(base, /(^|;)padding:0(;|$)/, 'the base .tog rule resets the UA padding');
 });
