@@ -802,11 +802,16 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .acct-hero .t .bar.n{width:132px;height:13px;margin:5px 0 7px}
 .acct-hero .t .bar.s{width:118px;height:10px;margin:5px 0}
 .acct-hero .t .bar.e{width:168px;height:10px;margin:5px 0}
+/* advisor ruling A (2026-10-31): frame 4b's caption + the no-reflow rule outrank the drawing's 67 px — the bars stand in the REAL line
+   boxes (the name 17px × 1.5 = 25.5, the two lines 13.5px × 1.5 = 20.25), each centred on its line; flex items' margins never collapse */
+.acct-hero .t:has(>.bar){display:flex;flex-direction:column;align-items:flex-start}
+.acct-hero .t:has(>.bar)>.bar.n{margin:6.25px 0}
+.acct-hero .t:has(>.bar)>.bar.s,.acct-hero .t:has(>.bar)>.bar.e{margin:5.125px 0}
 
 /* ── SIGNUP (the approved sheet) ── */
 .sg{display:flex;flex-direction:column;gap:14px;padding:0 20px}
 .sg .topb{display:flex;align-items:center;justify-content:space-between;height:44px;margin:0 -8px}
-.sg .topb .bm{font-family:var(--name);font-weight:var(--name-weight);font-size:17px;flex:1;text-align:center}
+.sg .topb .bm{font-family:var(--name);font-weight:var(--name-weight);font-size:17px;flex:1;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px}
 .sg .h1{font:800 25px/1.12 var(--sans);letter-spacing:-.02em}
 .sg .sub{color:var(--mute);font-size:14.5px;line-height:1.5;max-width:34ch}
 .sg .ml{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
@@ -1015,7 +1020,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .guestcard ul li{display:flex;gap:8px;align-items:flex-start}
 .guestcard ul li svg.i{width:18px;height:18px;color:var(--ok);margin-top:1px}
 /* frames 2 / 2b–2d (approved): the code sheet's pieces the shell lacked — values from the approved mockup */
-.sg .topb .bm{font-family:var(--name);font-weight:var(--name-weight);font-size:17px;flex:1;text-align:center}
+.sg .topb .bm{font-family:var(--name);font-weight:var(--name-weight);font-size:17px;flex:1;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px}
 .sg .otp.bad input{border-color:var(--err)}
 .sg .otp.off input{opacity:.45}
 .sg .inline{font-size:13.5px;line-height:1.4;font-weight:500;display:flex;gap:6px;align-items:flex-start;margin-top:-4px}
