@@ -88,6 +88,9 @@ const D = {
     'extras-export-live',
     // DISH PHOTOS A2 step 12b — the owner's one-time legacy backfill (dry run + contact sheet; --apply owner-only): requireProject({ requireFlag: true }) first
     'photos-legacy-backfill',
+    // DISH PHOTOS E4 (3) — the owner's real-GCS create-only acceptance check (--yes writes ONE throwaway object, deletes only its own
+    // generations): requireProject({ requireFlag: true }) before any client
+    'photo-create-only-check',
     // H1c step 0 — the owner-run hardware-gate sender (ONE data-only FCM message; no database read or write):
     // requireProject({ requireFlag: true }) before any client
     'handheld-push-probe',
@@ -131,6 +134,7 @@ const D = {
   [F('tools/verify-first-group.test.js')]: 'unit: drives the CLI\'s require-project + argument refusals before any client (no data I/O); its spawned CLI points at a dead loopback RTDB port with void credentials',
   [F('test/kds-writer-capture.mjs')]: 'unit: a STUB initializeApp (returns {})', [F('portal/portal-split.test.js')]: 'unit: fold-guard text',
   [F('portal/ops-split.test.js')]: 'unit: static require closure + module-load checks only — no handler is invoked; its emulator hosts are DELETED or set to the dead loopback 127.0.0.1:1 (no data I/O)',
+  [F('photos/gcs-store.test.js')]: 'unit: fake buckets + ONE real-SDK cell against its OWN loopback server (127.0.0.1, ephemeral port; STORAGE_EMULATOR_HOST deleted for the cell and restored) — no data I/O, no egress (green under tools/egress-guard.js)',
   [F('photos/photos-split.test.js')]: 'unit: child index.js loads + a static require closure only — no handler is invoked; every emulator host var is DELETED in the children (no data I/O)',
   [F('pselfupdate-client.test.js')]: 'unit: injected fetch, no network', [F('pselfupdate-wrapper-lint.test.js')]: 'unit: lints source text',
   'order-control-client.test.mjs': 'unit: injected fetch, no network',
