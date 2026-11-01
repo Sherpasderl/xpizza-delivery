@@ -47,7 +47,7 @@ const state = async (w, pid) => (await w.reg(pid).get()).data();
     const w = await world();
     const refs = await S.scanReferences(w.deps, RID);
     assert.deepStrictEqual([...refs].sort(), [P_REF, P_RB].sort(), 'SWEEP-REFS');
-    const broken = { ...w.deps, fs: { collection: (c) => (c === 'restaurants' ? { doc: () => ({ collection: (c2) => (c2 === 'versions' ? { get: async () => { throw new Error('down'); } } : w.fs.collection('restaurants').doc(RID).collection(c2)) }) } : w.fs.collection(c)) } };
+    const broken = { ...w.deps, fs: { collection: (c) => (c === 'restaurants' ? { doc: () => ({ collection: (c2) => (c2 === 'versions' ? { get: async () => { throw new Error('down'); }, doc: (v) => w.fs.collection('restaurants').doc(RID).collection('versions').doc(v) } : w.fs.collection('restaurants').doc(RID).collection(c2)) }) } : w.fs.collection(c)) } };
     broken.fs.runTransaction = (fn) => w.fs.runTransaction(fn);   // a fail-open scan would go on to claim — caught by the labels below, not a TypeError
     await assert.rejects(() => S.scanReferences(broken, RID), /scan_incomplete/, 'SWEEP-SCAN-FAILURE-ABORTS');
     const r = await S.sweepRid({ ...w.deps, fs: broken.fs, mode: 'live' }, RID);
