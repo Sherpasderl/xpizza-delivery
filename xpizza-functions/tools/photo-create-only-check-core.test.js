@@ -288,7 +288,7 @@ const run = (b) => runCheck({ store: b.store, gens: b.gens, randomHex: () => HEX
     assert.strictEqual(DP, `drafts/__acceptance__/del-${HEX}-card.webp`, 'DELCLI-PATH');
     assert.throws(() => deletePinPath('nope'), /16 random hex/, 'DELCLI-PATH-NEEDS-HEX');
     // `honours`: the bucket answers a delete pinned to a non-live generation with 412 (real GCS) — false = deletes the live one (emulator)
-    const delBucket = ({ honours = true, preexisting = false, deleteThrows = false, versioned = false }) => {
+    const delBucket = ({ honours = true, preexisting = false, deleteThrows = false, versioned = false, lies = false }) => {
       const objs = new Map(); const live = new Map(); let gen = 900; const calls = [];
       if (preexisting) { const g = String(++gen); live.set(DP, g); objs.set(`${DP}#${g}`, 'x'); }
       const put = (p, buf) => { const old = live.get(p); const g = String(++gen); objs.set(`${p}#${g}`, buf); live.set(p, g); if (old && !versioned) objs.delete(`${p}#${old}`); return g; };
@@ -306,6 +306,7 @@ const run = (b) => runCheck({ store: b.store, gens: b.gens, randomHex: () => HEX
           calls.push(['deleteIfGeneration', p, g]);
           if (deleteThrows) throw Object.assign(new Error('gcs 503'), { code: 503 });
           if (!live.has(p)) return 'missing';
+          if (lies) { const lg = live.get(p); objs.delete(`${p}#${lg}`); live.delete(p); return 'other_generation'; }   // answers 412 yet the object is gone
           if (live.get(p) !== String(g) && honours) return 'other_generation';
           const lg = live.get(p); objs.delete(`${p}#${lg}`); live.delete(p); return 'deleted';
         },
@@ -323,6 +324,8 @@ const run = (b) => runCheck({ store: b.store, gens: b.gens, randomHex: () => HEX
     assert.deepStrictEqual([r.verdict, r.result, r.exitCode], ['FAIL', 'deleted', 1], `DELCLI-PRECONDITION-IGNORED-FAILS (the re-created object was deleted) ${JSON.stringify(r)}`);
     assert.ok(/re-created/.test(r.reason), `DELCLI-FAIL-SAYS-WHY ${r.reason}`);
     assert.ok(r.cleanup.ok && b.objs.size === 0, 'DELCLI-FAIL-STILL-CLEANS');
+    b = delBucket({ lies: true }); r = await del(b);
+    assert.deepStrictEqual([r.verdict, r.result, r.exitCode], ['FAIL', 'other_generation', 1], `DELCLI-OBJECT-MUST-SURVIVE (other_generation alone is not enough: the re-created object must still be live) ${JSON.stringify(r)}`);
     b = delBucket({ deleteThrows: true }); r = await del(b);
     assert.deepStrictEqual([r.verdict, r.exitCode], ['FAIL', 1], `DELCLI-DELETE-ERROR-FAILS ${JSON.stringify(r)}`);
     assert.ok(r.cleanup.ok && b.objs.size === 0, 'DELCLI-DELETE-ERROR-STILL-CLEANS');
