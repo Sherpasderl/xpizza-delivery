@@ -169,7 +169,7 @@ const STATES = {
   // P-crop (dish photos B §3, P3 «Ajustar foto»): only when the photos B slice is in the build tip; listed, then skipped with its reason.
   // Uploads ON for this state only; the row camera opens the drawer WITH the picker, and the picker gets a REAL JPEG (photos B's own
   // mockup fixture) through DOM.setFileInputFiles, so the crop step is reached by the shipped decode path — never a hand-built DOM.
-  'P-crop':          { page: 'index', requires: 'xpizza-portal/photo.js', photos: true, container: '#drawer .phcrop',
+  'P-crop':          { page: 'index', requires: 'xpizza-portal/photo.js', photos: true, container: '#drawer',   // the crop STEP of the drawer: its text (title, frames, the order-page previews); .phcrop itself is image-only
     drive: seq(at(`(() => { const r = __q('#detail .irow').find((x) => x.querySelector('.nm') && x.querySelector('.nm').firstChild.textContent === 'Pepperoni');
       if (!r || !r.querySelector('button.thumb')) throw new Error('premise: no row camera on Pepperoni (uploads on?)'); r.querySelector('button.thumb').click(); return true; })()`, 500),
     async (c) => {
