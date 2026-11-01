@@ -190,5 +190,19 @@ t('capture fixture (#32 Semana): proto per-day counts → week L 1,890 + bars L4
   for (let i = 0; i < bars.length; i += 2) assert.ok(new RegExp(`<span class="gn-blb">${bars[i]}</span>.*?<span class="gn-bv">${bars[i + 1]}</span>`, 's').test(html), `${bars[i]} = ${bars[i + 1]}`);
 });
 
+t('practica hint (#5): «Ves tu resumen y tu +L {rate}» DERIVED from PayRate; «Ves tu resumen» when unknown/not-ready', () => {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>');
+  const win = dom.window;
+  new Function('self', readFileSync(join(__dir, 'pay-rate.js'), 'utf8'))(win);   // win.PayRate
+  const B = 1767225600000;
+  const run = (entries) => (new Function('window', 'driverRateEntries', liftFn('drv2PracticaPayHint') + '\nreturn drv2PracticaPayHint();'))(win, entries);
+  Date.now = () => B + 1000;
+  assert.equal(run({ r: { cents: 7000, effective_from: B } }), 'Ves tu resumen y tu +L 70', 'rate known → the prototype sentence with the DERIVED amount (L 70)');
+  assert.equal(run({ r: { cents: 9000, effective_from: B } }), 'Ves tu resumen y tu +L 90', 'a different platform rate → that amount (never hardcoded 70)');
+  assert.equal(run(null), 'Ves tu resumen', 'rate unknown → the prototype sentence minus the amount clause');
+  assert.equal(run({ r: { cents: 7000, effective_from: B + 99999999 } }), 'Ves tu resumen', 'rate not yet in effect → minus the amount clause');
+  Date.now = realDateNow;
+});
+
 Date.now = realDateNow;   // restore the real clock
 console.log(`ganancias.test.js: ${passed} passed`);

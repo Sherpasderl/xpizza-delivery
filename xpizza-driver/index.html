@@ -4357,7 +4357,7 @@ function companionRenderOnboarding() {
           ${prow(ICONS.bell || '', '1 · Te llega una oferta', 'Tenés 36 s para aceptar deslizando')}
           ${prow(ICONS.store || '', '2 · Vas al restaurante', 'Revisá el número de pedido y las bebidas')}
           ${prow(ICONS.cash || '', '3 · Cobrás y das vuelto', 'Solo en pedidos en efectivo')}
-          ${prow(ICONS.check || '', '4 · Deslizás "Entregado"', 'Ves el resumen del pedido')}
+          ${prow(ICONS.check || '', '4 · Deslizás "Entregado"', drv2PracticaPayHint())}
         </div>
         <div style="flex:1"></div>`,
         `<button class="big-btn primary co-onb-btn" id="co-practica-start"${canStart ? '' : ' disabled'}>Empezar práctica</button>`);
@@ -5525,6 +5525,13 @@ function subscribeDriverRate() {
       (snap) => { driverRateEntries = (snap && snap.val()) || null; if (typeof render === 'function') render(); if (typeof refreshOpenCashSurfaces === 'function') refreshOpenCashSurfaces(); },
       () => { driverRateEntries = null; });
   } catch (_) { driverRateEntries = null; }
+}
+// The practica-demo step-4 hint (prototype S.practica «Ves tu resumen y tu +L 70»): the amount is DERIVED from the
+// platform rate (window.PayRate.rateCentsInEffect at now), same formatter as the gn screens — NEVER a hardcoded rate.
+// When the rate is unknown / not ready it degrades to the prototype sentence minus the amount clause («Ves tu resumen»).
+function drv2PracticaPayHint() {
+  const rc = (typeof window !== 'undefined' && window.PayRate) ? window.PayRate.rateCentsInEffect(driverRateEntries, Date.now()) : null;
+  return 'Ves tu resumen' + (rc != null ? ' y tu +L ' + (rc / 100).toLocaleString('es-HN') : '');
 }
 /* ===== SLICE3:MONEY-RATE:END ===== */
 async function cleanupShift() {
