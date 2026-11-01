@@ -4,7 +4,7 @@
   "units": 465,
   "sites": 4124,
   "mapped": 1723,
-  "exempt": 2401,
+  "exempt": 2399,
   "byR": {
    "R9": 66,
    "R8": 131,
@@ -40,7 +40,7 @@
    "server seed": 2,
    "server fixtures": 5,
    "unreachable-on-surface": 337,
-   "page-fn": 429,
+   "page-fn": 427,
    "form-account-profile": 14,
    "form-composer": 55
   },
@@ -45158,28 +45158,26 @@
    "exempt": true
   },
   {
-   "id": "xpizza-portal/app.js#renderDrawer#items#0",
-   "line": 1194,
+   "id": "xpizza-portal/app.js#drawDrawer#items#0",
+   "line": 1196,
    "kind": "member",
    "facts": [
     "ITEMS"
    ],
-   "rule": "page-fn",
-   "exempt": true
+   "rule": null
   },
   {
-   "id": "xpizza-portal/app.js#renderDrawer#items#1",
-   "line": 1195,
+   "id": "xpizza-portal/app.js#drawDrawer#items#1",
+   "line": 1197,
    "kind": "member",
    "facts": [
     "ITEMS"
    ],
-   "rule": "page-fn",
-   "exempt": true
+   "rule": null
   },
   {
    "id": "xpizza-portal/app.js#renderAddDrawer>anon#items#0",
-   "line": 1414,
+   "line": 1416,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45189,7 +45187,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#0",
-   "line": 1563,
+   "line": 1565,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45199,7 +45197,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#1",
-   "line": 1598,
+   "line": 1600,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45209,7 +45207,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#2",
-   "line": 1616,
+   "line": 1618,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45219,7 +45217,7 @@
   },
   {
    "id": "xpizza-portal/app.js#showOutcome>anon#items#0",
-   "line": 2201,
+   "line": 2203,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45229,7 +45227,7 @@
   },
   {
    "id": "xpizza-portal/app.js#showOutcome>anon#items#1",
-   "line": 2206,
+   "line": 2208,
    "kind": "member",
    "facts": [
     "ITEMS"

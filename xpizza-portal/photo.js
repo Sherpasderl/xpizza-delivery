@@ -114,7 +114,7 @@ function zone({ invalid, expanded, onPick }) {
   return [ph];
 }
 // Returns the field, or null when there is nothing to show (uploads off and no photo: today's drawer, unchanged).
-export function photoField({ name, view, job, enabled, expanded = false, onPick, onRemove, onUndo, onRetry, onCancel, onImgError }) {
+export function photoField({ name, view, job, enabled, expanded = false, held = false, onPick, onRemove, onUndo, onRetry, onCancel, onImgError }) {
   const shows = view.kind === 'photo' && !!(view.url || view.neutral);
   if (!enabled && !shows) return null;
   const f = el('div', 'fld');
@@ -133,6 +133,19 @@ export function photoField({ name, view, job, enabled, expanded = false, onPick,
     stop.addEventListener('click', onCancel);
     ov.append(bar, el('span', null, P.COPY.uploading), stop);
     u.append(ov);
+    f.append(u);
+    return f;
+  }
+  if (job && job.phase === 'ready' && held) {
+    // ruling A (Codex r1 #1) — uploaded, but HELD beside a pending section name: the cropped photo with the busy state's own
+    // «Cancelar» (.phheld: the rename lock leaves it on), so the merchant's way out is never «discard everything»
+    const u = el('div', 'uphoto');
+    u.append(img('gimg', job.url, P.COPY.alt(name)));
+    const a = el('div', 'phacts phheld');
+    const stop = el('button', 'uprm', P.COPY.cancel); stop.type = 'button';
+    stop.addEventListener('click', onCancel);
+    a.append(stop);
+    u.append(a);
     f.append(u);
     return f;
   }
