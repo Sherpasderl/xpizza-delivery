@@ -41,7 +41,11 @@ const noTouchDb = { ref: (p) => { throw new Error(`🔴 the gate touched the dat
 
 // ── the capp's REAL writer: capp-checkout.js @ ed70fed8 (customer-app/capp-checkout.js), verbatim ──
 const CAPP_SRC = fs.readFileSync(path.join(FIX, 'capp-checkout.ed70fed8.js'));
-const CAPP = require(path.join(FIX, 'capp-checkout.ed70fed8.js'));
+const CAPP_FIXTURE = require(path.join(FIX, 'capp-checkout.ed70fed8.js'));
+// ASSEMBLY OBLIGATION (ruling C): once the capp has LANDED, cell 3's real-writer equivalence ALSO runs on the landed module
+const CAPP_LANDED_PATH = path.join(__dirname, '..', 'customer-app', 'capp-checkout.js');
+const CAPP_WRITERS = [['ed70fed8 fixture', CAPP_FIXTURE], ...(fs.existsSync(CAPP_LANDED_PATH) ? [['the LANDED customer-app/capp-checkout.js', require(CAPP_LANDED_PATH)]] : [])];
+let CAPP = CAPP_FIXTURE;   // flow() / the later cells use the pinned fixture; cell 3 iterates every writer
 const subtle = globalThis.crypto.subtle;
 const RID = 'x_pizza';
 const ITEMS = [{ id: 33, name: 'NY Plain Slice - Combinada', qty: 2, price: 654, extras: [{ instance: 0, name: 'Salsa Roja', price: 39 }] }];
@@ -71,55 +75,76 @@ const wire = (b) => JSON.parse(JSON.stringify(b));   // as the wire delivers it
     const line = SITES_F838.toString('utf8').split('\n').find((l) => l.includes('"id": "orders-app"'));
     assert.deepStrictEqual(JSON.parse(line.trim().replace(/,$/, '')), appEntry[0], 'the entry IS the line (no hand-built object)');
     const mainSites = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'platform', 'sites.json'), 'utf8'));
-    assert.ok(!mainSites.deployments.some((d) => d.id === G.CAPP_DEPLOYMENT), 'premise: the base (main) has no orders-app yet — S2 is inert in prod until f838eaa7 lands');
-    const at = mainSites.deployments.findIndex((d) => d.id === 'orders-lamusa');
-    const merged = { ...mainSites, deployments: [...mainSites.deployments.slice(0, at + 1), appEntry[0], ...mainSites.deployments.slice(at + 1)] };
-    const P = PM.loadPlatform(merged, require('./platform/compat.json'));
+    const compat = require('./platform/compat.json');
+    const landed = mainSites.deployments.filter((d) => d.id === G.CAPP_DEPLOYMENT);
+    let P, entry, formsOrigins;
+    if (landed.length) {
+      // ASSEMBLY OBLIGATION (ruling C, DECISIONS 2026-10-27): f838eaa7 has LANDED — the S2 cells now run on the REAL merged
+      // manifest. The landed entry must carry f838eaa7's S2-relevant fields (the discriminator id + app + context, the CORS
+      // origins); other fields (entrypoints) are the app shell's. A moved S2 field ⇒ RED ⇒ re-review S2 against it.
+      assert.strictEqual(landed.length, 1, 'exactly one orders-app entry landed');
+      const s2 = (d) => ({ id: d.id, app: d.app, context: d.context, origins: d.origins });
+      assert.deepStrictEqual(s2(landed[0]), s2(appEntry[0]), '🔴 the LANDED orders-app entry moved an S2-relevant field vs f838eaa7 — re-review S2');
+      entry = landed[0];
+      P = PM.loadPlatform(mainSites, compat);
+      formsOrigins = PM.loadPlatform({ ...mainSites, deployments: mainSites.deployments.filter((d) => d.id !== G.CAPP_DEPLOYMENT) }, compat).ACCOUNT_ORIGINS;
+    } else {
+      // a pre-landing base: main's REAL sites.json + f838eaa7's EXACT line spliced in (S2 inert in prod until it lands)
+      const at = mainSites.deployments.findIndex((d) => d.id === 'orders-lamusa');
+      entry = appEntry[0];
+      P = PM.loadPlatform({ ...mainSites, deployments: [...mainSites.deployments.slice(0, at + 1), entry, ...mainSites.deployments.slice(at + 1)] }, compat);
+      formsOrigins = PM.PLATFORM.ACCOUNT_ORIGINS;
+    }
     const platformOrders = P.sites.deployments.filter((d) => d.app === 'orders' && d.context === PM.PLATFORM_CONTEXT);
     assert.deepStrictEqual(platformOrders.map((d) => d.id), [G.CAPP_DEPLOYMENT], '🔴 the discriminator names THE platform orders deployment');
-    assert.ok(appEntry[0].origins.every((o) => P.ACCOUNT_ORIGINS.includes(o)), 'its origins join ACCOUNT_ORIGINS by derivation (the checkout endpoints\' CORS)');
-    assert.deepStrictEqual(P.ACCOUNT_ORIGINS.filter((o) => !appEntry[0].origins.includes(o)), PM.PLATFORM.ACCOUNT_ORIGINS, 'the forms\' origins are unchanged');
+    assert.ok(entry.origins.every((o) => P.ACCOUNT_ORIGINS.includes(o)), 'its origins join ACCOUNT_ORIGINS by derivation (the checkout endpoints\' CORS)');
+    assert.deepStrictEqual(P.ACCOUNT_ORIGINS.filter((o) => !entry.origins.includes(o)), formsOrigins, 'the forms\' origins are unchanged');
     // the header the capp stamps from that id parses to exactly the discriminator's value
-    const hdr = CF.readClientHeaders({ headers: { 'x-client-app': 'orders', 'x-client-deployment': appEntry[0].id } });
+    const hdr = CF.readClientHeaders({ headers: { 'x-client-app': 'orders', 'x-client-deployment': entry.id } });
     assert.strictEqual(G.isCappGuest(hdr, null), true);
   }
-  ok('manifest: main\'s sites.json + f838eaa7\'s EXACT orders-app line load through the real loader; it is THE platform orders deployment, its id is the discriminator, its origin joins ACCOUNT_ORIGINS, form origins unchanged');
+  ok('manifest (the REAL merged sites.json once f838eaa7 landed — its S2 fields == f838eaa7\'s line; else the exact line spliced in) through the real loader; it is THE platform orders deployment, its id is the discriminator, its origin joins ACCOUNT_ORIGINS, form origins unchanged');
 
   // ── 3. cart_fp equivalence FROM THE REAL WRITER: capp cartSig(f) === server recompute(the capp's own order body, over the wire) ──
-  {
-    const cases = [
-      ['delivery, no tip chosen', flow()], ['delivery, «Sin propina»', flow({ tip: 0 })], ['delivery, preset tip', flow({ tip: 40 })],
-      ['delivery, «Otro» tip', flow({ tip: { other: 75 } })], ['pickup', flow({ mode: 'pickup' })], ['floating lat/lng', flow({ lat: 14.07230000000001, lng: -87.19219999999999 })],
-    ];
-    const extrasCtx = ctxOf({ items: [{ id: 7, name: 'Pizza Ñandú — «especial»', qty: 1, price: 300, extras: [{ instance: 0, name: 'Jalapeño', price: 25 }, { instance: 1, name: 'Piña', price: 25 }] }] });
-    for (const [label, f] of cases) {
-      for (const ctx of [ctxOf(), extrasCtx]) {
-        const capp = await CAPP.cartSig(f, ctx, subtle);
-        const server = await G.cartFpFromBody(wire(CAPP.orderBody(f, ctx)));
-        assert.strictEqual(server, capp, `🔴 ${label}: the server recompute differs from the capp's cartSig`);
+  try {
+  for (const [writer, mod] of CAPP_WRITERS) {
+    CAPP = mod;
+    {
+      const cases = [
+        ['delivery, no tip chosen', flow()], ['delivery, «Sin propina»', flow({ tip: 0 })], ['delivery, preset tip', flow({ tip: 40 })],
+        ['delivery, «Otro» tip', flow({ tip: { other: 75 } })], ['pickup', flow({ mode: 'pickup' })], ['floating lat/lng', flow({ lat: 14.07230000000001, lng: -87.19219999999999 })],
+      ];
+      const extrasCtx = ctxOf({ items: [{ id: 7, name: 'Pizza Ñandú — «especial»', qty: 1, price: 300, extras: [{ instance: 0, name: 'Jalapeño', price: 25 }, { instance: 1, name: 'Piña', price: 25 }] }] });
+      for (const [label, f] of cases) {
+        for (const ctx of [ctxOf(), extrasCtx]) {
+          const capp = await CAPP.cartSig(f, ctx, subtle);
+          const server = await G.cartFpFromBody(wire(CAPP.orderBody(f, ctx)));
+          assert.strictEqual(server, capp, `🔴 ${label}: the server recompute differs from the capp's cartSig`);
+        }
       }
+      // the one-source module IS the capp's algorithm (same canonical form)
+      const f = flow({ tip: 20 });
+      assert.strictEqual(require('./cart-sig').canonicalJson(CAPP.sigInput(f, ctxOf())), CAPP.canonicalJson(CAPP.sigInput(f, ctxOf())));
+      // negatives — a different cart than the one signed never matches
+      const signed = await CAPP.cartSig(flow(), ctxOf(), subtle);
+      const body = wire(CAPP.orderBody(flow(), ctxOf()));
+      for (const [why, mut] of [['items', (b) => { b.items = [{ ...b.items[0], qty: 3 }]; }], ['mode', (b) => { b.order_type = 'pickup'; }], ['pin lat', (b) => { b.lat += 0.0001; }],
+        ['tip', (b) => { b.tip_cents = 2000; }], ['rid', (b) => { b.restaurant_id = 'la_musa'; }], ['pin unconfirmed on the wire', (b) => { b.pin_confirmed = false; }]]) {
+        const m = clone(body); mut(m);
+        assert.notStrictEqual(await G.cartFpFromBody(m), signed, `🔴 a changed ${why} must not match`);
+      }
+      // an UNCONFIRMED pin signed by the capp can never match what the wire carries (orderBody always sends pin_confirmed:true)
+      const unconf = flow({ confirmed: false });
+      assert.notStrictEqual(await G.cartFpFromBody(wire(CAPP.orderBody(unconf, ctxOf()))), await CAPP.cartSig(unconf, ctxOf(), subtle), 'an unconfirmed-pin signature never matches');
+      for (const bad of [{ ...body, items: 'x' }, { ...body, order_type: 'dinein' }, { ...body, lat: '14.07' }, { ...body, lng: NaN }, { ...body, tip_cents: -1 }, { ...body, tip_cents: 1.5 },
+        { ...body, tip_cents: null }, { ...body, restaurant_id: 7 }, null]) assert.strictEqual(await G.cartFpFromBody(bad), null, `unrepresentable ⇒ null: ${JSON.stringify(bad && Object.keys(bad))}`);
+      assert.strictEqual(await G.cartFpFromBody({ ...wire(CAPP.orderBody(flow({ mode: 'pickup' }), ctxOf())), lat: 1, lng: 2, pin_confirmed: true }),
+        await CAPP.cartSig(flow({ mode: 'pickup' }), ctxOf(), subtle), 'pickup ⇒ pin null regardless of stray lat/lng');
+      assert.strictEqual(await G.cartFpFromBody({ ...body, tip_cents: 0 }), signed, 'an explicit tip_cents 0 = omitted (the capp\'s tipCentsOf)');
     }
-    // the one-source module IS the capp's algorithm (same canonical form)
-    const f = flow({ tip: 20 });
-    assert.strictEqual(require('./cart-sig').canonicalJson(CAPP.sigInput(f, ctxOf())), CAPP.canonicalJson(CAPP.sigInput(f, ctxOf())));
-    // negatives — a different cart than the one signed never matches
-    const signed = await CAPP.cartSig(flow(), ctxOf(), subtle);
-    const body = wire(CAPP.orderBody(flow(), ctxOf()));
-    for (const [why, mut] of [['items', (b) => { b.items = [{ ...b.items[0], qty: 3 }]; }], ['mode', (b) => { b.order_type = 'pickup'; }], ['pin lat', (b) => { b.lat += 0.0001; }],
-      ['tip', (b) => { b.tip_cents = 2000; }], ['rid', (b) => { b.restaurant_id = 'la_musa'; }], ['pin unconfirmed on the wire', (b) => { b.pin_confirmed = false; }]]) {
-      const m = clone(body); mut(m);
-      assert.notStrictEqual(await G.cartFpFromBody(m), signed, `🔴 a changed ${why} must not match`);
-    }
-    // an UNCONFIRMED pin signed by the capp can never match what the wire carries (orderBody always sends pin_confirmed:true)
-    const unconf = flow({ confirmed: false });
-    assert.notStrictEqual(await G.cartFpFromBody(wire(CAPP.orderBody(unconf, ctxOf()))), await CAPP.cartSig(unconf, ctxOf(), subtle), 'an unconfirmed-pin signature never matches');
-    for (const bad of [{ ...body, items: 'x' }, { ...body, order_type: 'dinein' }, { ...body, lat: '14.07' }, { ...body, lng: NaN }, { ...body, tip_cents: -1 }, { ...body, tip_cents: 1.5 },
-      { ...body, tip_cents: null }, { ...body, restaurant_id: 7 }, null]) assert.strictEqual(await G.cartFpFromBody(bad), null, `unrepresentable ⇒ null: ${JSON.stringify(bad && Object.keys(bad))}`);
-    assert.strictEqual(await G.cartFpFromBody({ ...wire(CAPP.orderBody(flow({ mode: 'pickup' }), ctxOf())), lat: 1, lng: 2, pin_confirmed: true }),
-      await CAPP.cartSig(flow({ mode: 'pickup' }), ctxOf(), subtle), 'pickup ⇒ pin null regardless of stray lat/lng');
-    assert.strictEqual(await G.cartFpFromBody({ ...body, tip_cents: 0 }), signed, 'an explicit tip_cents 0 = omitted (the capp\'s tipCentsOf)');
   }
-  ok('cart_fp: the server recompute of the capp\'s REAL order body (via the wire) === the capp\'s REAL cartSig for delivery/pickup, tip omitted/0/preset/other, extras, unicode, floating pins; each changed field, an unconfirmed pin and every unrepresentable body never match');
+  } finally { CAPP = CAPP_FIXTURE; }
+  ok(`cart_fp (${CAPP_WRITERS.map(([w]) => w).join(' + ')}): the server recompute of the capp\'s REAL order body (via the wire) === the capp\'s REAL cartSig for delivery/pickup, tip omitted/0/preset/other, extras, unicode, floating pins; each changed field, an unconfirmed pin and every unrepresentable body never match`);
 
   // ── 4. createOrder: every capp guest refused, pure; everyone else untouched ──
   {

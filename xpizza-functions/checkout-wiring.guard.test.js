@@ -19,8 +19,20 @@ const BASE = '8a31e2a3';   // origin/main at the plan's code map
 const live = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 const BEGIN = '/* checkout:begin endpoints */\n', END = '/* checkout:end endpoints */\n';
+// R-WIRE (assembly restack onto f75e5cf9): this slice is the NEWEST, so its inverse runs FIRST (innermost); the tip's slices that
+// landed after this guard's parent (8a31e2a3) are then stripped in the assembly's inner→outer order. mem512's formSignal hunk is
+// MAIN-SHIPPED IN 8a31e2a3 (its own note), so for THIS parent it is re-applied after the full mem512 inverse — byte-exact either way.
+const TIP_LAYERS = ['mem512', 'pausa', 's4hours', 'formbake', 'area', 's2app', 's2tip', 's5r', 's3c', 's3b', 's3a', 'driver-ledger'];
+const M512 = require('./tools/mem512-inverse');
+const FS5 = M512.HUNKS.find((h) => h.fn === 'formSignal');
+const once = (src, from, to, label) => { const k = src.split(from).length - 1; if (k !== 1) throw new Error(`checkout-wiring: ${label} occurs ${k} times (expected exactly 1)`); return src.replace(from, () => to); };
+const toBase = (src) => {
+  let out = unapplyCheckoutIndex(src);
+  for (const t of TIP_LAYERS) { const m = require(`./tools/${t}-inverse`); out = m[Object.keys(m).find((k) => /^unapply\w*Index$/.test(k))](out); if (t === 'mem512') out = once(out, FS5.was, FS5.now, 'the 8a31e2a3 formSignal line'); }
+  return out;
+};
 
-assert.strictEqual(unapplyCheckoutIndex(live), base, `🔴 index.js minus the checkout block is not ${BASE}:index.js — something beyond the block changed`);
+assert.strictEqual(toBase(live), base, `🔴 index.js minus the checkout block (then the tip's newer layers) is not ${BASE}:index.js — something beyond the block changed`);
 ok(`(i) index.js minus the checkout block === ${BASE}:index.js byte-for-byte`);
 
 assert.notStrictEqual(live, base, 'non-vacuity: the live index.js differs from the base');
@@ -67,7 +79,7 @@ assert.throws(() => unapplyCheckoutIndex(live.replace(END, '/* checkout:END */\n
 assert.throws(() => unapplyCheckoutIndex(live + BEGIN + END), /more than once/, 'a duplicated block');
 assert.throws(() => unapplyCheckoutIndex(live.replace('  /* checkout:begin gate-create */\n', '  x; /* checkout:begin gate-create */\n')), /own lines/, 'a marker sharing a base line');
 assert.throws(() => unapplyCheckoutIndex(live.replace('/* checkout:end gate-bind */', '/* checkout:end gate-bindx */')), /missing|unknown/, 'a renamed S2 marker');
-assert.notStrictEqual(unapplyCheckoutIndex(live.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'an edit OUTSIDE the hunks is detected');
+assert.notStrictEqual(toBase(live.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'an edit OUTSIDE the hunks is detected');
 // S3a placement: each platform hand-off is the FIRST statement after its handler's POST check (before any read / write); the
 // forms' path below it is byte-identical (proven by (i)); exactly the bodies carrying `context` leave
 for (const [fn, name, next] of [['exports.requestOtp = onRequest(', 's3a-request', 'const { phone, restaurant_id } = req.body || {};'], ['exports.verifyOtp = onRequest(', 's3a-verify', 'const { phone, code } = req.body || {};']]) {
