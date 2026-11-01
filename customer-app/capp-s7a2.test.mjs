@@ -239,14 +239,15 @@ function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }
 const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 // stampedDir: a copy of customer-app/ stamped by the REAL platform/stamp-version.js — the page's own sherpa-client.js runs on its
 // stamped identity and capp-api.js runs in the page realm (its SherpaClient.fetch arm), the network = pageFetch (window.fetch)
-function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {} } = {}) {
+function bootShell({ dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://app.test/' });
   const w = dom.window;
+  if (media) w.matchMedia = media.matchMedia;   // D-2: the viewport the shell reads at mount (a controllable matchMedia)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-view.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -583,7 +584,8 @@ test('G2 frame 5b: a guest\'s Cuenta tab = ONE «Entrá o creá tu cuenta» + th
   assert.equal(txt(S.q('.flowbar h1')), 'Cuenta');
   assert.deepEqual(S.qa('.guestcard li').map((l) => txt(l)), ['Efectivo al entregar o al recoger', 'Recompensas, promos y envío gratis', 'Programá pedidos y guardá tu dirección']);
   assert.equal(S.qa('.guestcard button.primary').length, 1); assert.equal(txt(S.q('.guestcard .primary')), 'Entrá o creá tu cuenta');
-  assert.deepEqual(S.qa('.rows .rowbtn').map((b) => txt(b)), ['Pedidos Los de este teléfono', 'Ayuda']);
+  // PLAN-capp-desktop-website r2 (advisor ruling): «Pedidos» has no screen ⇒ its row is left out (capp-home ORDERS_SCREEN)
+  assert.deepEqual(S.qa('.rows .rowbtn').map((b) => txt(b)), ['Ayuda']);
   assert.equal(S.q('.tabbar [data-tab="account"]').getAttribute('aria-current'), 'true');
   const U = bootShell({ auth: 'unresolved', runtime: GR }); await flush();
   U.click('.tabbar [data-tab="account"]'); await flush();
@@ -951,10 +953,10 @@ test('G7 setPromos fake (Codex G7 r1 #4): as strict as the real handler — toda
   assert.deepEqual(await api.setPromos({ idToken: 'id:u_ana', value: false }), { ok: true, value: false }, '🔴 G7-fake: the client\'s real request is accepted (the value read back)');
   assert.deepEqual(await api.setPromos({ idToken: null, value: false }), { ok: false, reason: 'unauthenticated' }, 'a tokenless client call is refused, as in production');
 });
-async function g7Boot({ profile = G7_PROFILE({ promos: true }), srv = g7Server(), fbOpts = {} } = {}) {
+async function g7Boot({ profile = G7_PROFILE({ promos: true }), srv = g7Server(), fbOpts = {}, media = null } = {}) {
   const fb = fakeFirebase({ persisted: 'u_ana', ...fbOpts });
   const store = g7Store(profile);
-  const S = bootShell({ auth: 'unresolved', storage: store, runtime: G7_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch } });
+  const S = bootShell({ auth: 'unresolved', storage: store, runtime: G7_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch }, media });
   await flush(); await flush();
   S.click('.tabbar [data-tab="account"]'); await flush();
   return { S, fb, srv, store };
@@ -965,7 +967,8 @@ test('G7 frame 1 / 4a: the member\'s Cuenta from the cached profile — the init
   assert.equal(S.events.filter((e) => e[0] === 'tab').length, 0, '🔴 G7-shell: the member\'s Cuenta is the shell\'s (no host event)');
   assert.equal(txt(S.q('.acct-hero .av')), 'A');
   assert.deepEqual([...S.qa('.acct-hero .t > *')].map((x) => x.textContent), ['Ana Pérez', '+504 9612-3344', 'ana.perez@gmail.com'], '🔴 G7-hero: name, phone, email on three lines');
-  assert.deepEqual(g7Rows(S), ['Pedidos', 'Promociones Ofertas por correo y WhatsApp', 'Ayuda', 'Cerrar sesión', 'Olvidar este teléfono Cierra tu sesión y deja de recordar tu número']);
+  // PLAN-capp-desktop-website r2 (advisor ruling): «Pedidos» has no screen ⇒ its row is left out (capp-home ORDERS_SCREEN)
+  assert.deepEqual(g7Rows(S), ['Promociones Ofertas por correo y WhatsApp', 'Ayuda', 'Cerrar sesión', 'Olvidar este teléfono Cierra tu sesión y deja de recordar tu número']);
   assert.equal(S.qa('.flow .rows').length, 2); assert.ok(S.q('.flow .rows.sess'));
   const sw = S.q('[data-act="promos"] .switch');
   assert.equal(sw.getAttribute('aria-checked'), 'true', '🔴 G7-promos: the cached value'); assert.equal(S.q('[data-act="promos"]').getAttribute('aria-disabled'), null);
@@ -994,7 +997,7 @@ test('G7 frame 4b: no served promotions value ⇒ the switch INERT (aria-disable
   assert.equal(noVal.srv.sent.filter((x) => x[0] === 'setPromos').length, 0, 'an inert switch sends nothing');
   const bare = await g7Boot({ profile: null });
   assert.equal(bare.S.qa('.acct-hero .t .bar').length, 3, '🔴 G7-placeholder: three static bars'); assert.ok(bare.S.q('.acct-hero .av.ph'));
-  assert.ok(bare.S.q('[data-act="signout"]') && bare.S.q('[data-act="tab"][data-tab="orders"]'));
+  assert.ok(bare.S.q('[data-act="signout"]') && bare.S.q('[data-act="help"]'), 'the rows usable (Ayuda; «Pedidos» is left out — no orders screen)');
 });
 // Codex G7 r1 #3: the promotions consent rides the REAL sign-in — the server's profile.promos (an existing account), or the value a
 // successful completeProfile stored (a new one) — into «Listo», the cache and the Cuenta switch; none stored (a legacy account,
@@ -1136,4 +1139,133 @@ test('Part B (b) in the shell: runtime.intlPhone reaches the sign-in sheet (the 
   const off = bootShell({ auth: 'unresolved', runtime: SU_RUNTIME, mountExtra: { loadSdk: fakeFirebase({}).loadSdk, signupFetch: signupServer(ANA).fetch } });
   await flush(); await flush(); off.click('.tabbar [data-tab="account"]'); await flush(); off.click('.guestcard .primary'); await flush();
   assert.equal(suHost(off).querySelector('.phonerow button.cc'), null); assert.ok(suHost(off).querySelector('.phonerow span.cc'));
+});
+
+
+// ── PLAN-capp-desktop-website r2 D-2: the APPROVED v6 desktop switched on — ONE breakpoint (≥ 1024 px, capp-view.js) read
+// SYNCHRONOUSLY at mount, the v6 view-conditional DOM (the store's deskcart aside, the checkout's col-b = «Tu pedido»), the cart
+// aside kept in sync, state preserved across a resize, the phone below the breakpoint unchanged, and «Pedidos» (no orders screen
+// exists) offered nowhere. The viewport is a controllable matchMedia installed before the REAL shell mounts.
+function fakeMedia(desk) {
+  const subs = new Set(); let cur = desk;
+  const mql = (q) => ({ media: q, get matches() { return /min-width:\s*1024px/.test(q) ? cur : false; }, addEventListener: (t, f) => { if (t === 'change') subs.add(f); }, removeEventListener: (t, f) => subs.delete(f) });
+  return { matchMedia: mql, set(v) { if (v === cur) return; cur = v; for (const f of [...subs]) f({ matches: v }); }, subs };
+}
+const DESK_SETTLE = 300;   // > the view's resize debounce
+async function deskStore(desk, items = 1) {
+  const media = fakeMedia(desk);
+  const S = bootShell({ media }); await flush();
+  S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  const ui = S.ui.store().ui;
+  const plain = ui.menu.dishes.filter((d) => !d.launcher && !d.variantOf);
+  for (let i = 0; i < items; i++) S.click(`.qty-add-btn[data-id="${plain[i].key}"]`);
+  await flush();
+  return { S, ui, media, plain };
+}
+const pedidoCount = (S) => S.qa('section[aria-label="Resumen del pedido"]').length;
+
+test('D-2 view: ONE breakpoint (≥1024) read synchronously; a crossing notifies once after the debounce; no matchMedia ⇒ phone', async () => {
+  const CappView = require('./capp-view.js');
+  assert.equal(CappView.BREAKPOINT, 1024); assert.equal(CappView.QUERY, '(min-width: 1024px)');
+  const m = fakeMedia(true), v = CappView.createView({ matchMedia: m.matchMedia });
+  assert.equal(v.desk(), true, 'synchronous at creation');
+  const seen = []; v.subscribe((d) => seen.push(d));
+  m.set(false); m.set(true); m.set(false); await flush(DESK_SETTLE);
+  assert.deepEqual(seen, [false], 'a burst of crossings settles to ONE notification with the final value');
+  assert.equal(v.desk(), false);
+  assert.equal(CappView.createView({}).desk(), false, 'no matchMedia ⇒ the phone layout');
+  v.destroy(); assert.equal(m.subs.size, 0, 'destroy unsubscribes');
+});
+
+test('D-2 mount: the desktop class is on #app BEFORE the first paint returns (no pop-in); the phone never gets it', () => {
+  const D = bootShell({ media: fakeMedia(true) });
+  assert.ok(D.q('#app').classList.contains('desk'), '🔴 desk not set synchronously at mount');
+  assert.ok(D.q('.desknav'), 'the v6 desknav is in the first paint');
+  const P = bootShell({ media: fakeMedia(false) });
+  assert.equal(P.q('#app').classList.contains('desk'), false);
+});
+
+test('D-2 store (v6 :1628): desktop ⇒ the deskcart aside inside storewrap, no close button; an item edit refreshes it (v6 syncPill :1726); phone ⇒ no aside', async () => {
+  const { S, ui, plain } = await deskStore(true, 1);
+  const aside = S.q('.storewrap > aside.deskcart[aria-label="Tu pedido"]');
+  assert.ok(aside, '🔴 no deskcart aside on the desktop store');
+  assert.equal(aside.querySelector('[data-act="cartclose"]'), null, 'the aside has no close button (v6 cartInner(rid, true))');
+  assert.equal(aside.querySelectorAll('.cline').length, 1);
+  S.click(`.qty-add-btn[data-id="${plain[1].key}"]`);
+  assert.equal(S.q('.deskcart').querySelectorAll('.cline').length, 2, '🔴 an item edit must refresh the aside (syncPill)');
+  assert.equal(ui.cart.count(), 2);
+  assert.ok(S.q('.deskcart [data-act="checkout"]'), 'the aside carries «Ir al checkout»');
+  // the path where ONLY syncPill updates (no full render): the dish sheet stays open while its quantity changes
+  S.click(`.txtbtn[data-id="${plain[0].key}"]`); assert.ok(ui.state.open, 'premise: the dish sheet is open');
+  S.click('#detail-modal .detail-step-btn[data-delta="1"]');
+  assert.equal(ui.cart.count(), 3, 'premise: the sheet\'s + added one'); assert.ok(ui.state.open, 'premise: the sheet stayed open (no re-render)');
+  assert.equal(S.q('.deskcart .cline .cstep span').textContent, '2', '🔴 the dish sheet\'s edit must refresh the aside (syncPill)');
+  const P = await deskStore(false, 1);
+  assert.equal(P.S.q('.deskcart'), null, 'the phone store has no aside');
+});
+
+test('D-2 checkout (v6 :1886-1887): desktop ⇒ col-b = «Tu pedido» (MOVED, once), col-a without it; phone ⇒ no col-b, «Tu pedido» once in col-a', async () => {
+  const { S, ui } = await deskStore(true, 1);
+  S.click('.deskcart [data-act="checkout"]'); await flush();
+  assert.equal(ui.state.screen, 'checkout');
+  assert.ok(S.q('.flow > .col-b > section[aria-label="Resumen del pedido"]'), '🔴 desktop: «Tu pedido» in col-b');
+  assert.equal(S.q('.col-a section[aria-label="Resumen del pedido"]'), null, 'not also in col-a');
+  assert.equal(pedidoCount(S), 1, '🔴 «Tu pedido» exactly once (moved, never duplicated)');
+  const P = await deskStore(false, 1);
+  P.S.click('#cart-bar'); P.S.click('[data-act="checkout"]'); await flush();
+  assert.equal(P.S.q('.col-b'), null, 'phone: no col-b');
+  assert.ok(P.S.q('.col-a section[aria-label="Resumen del pedido"]')); assert.equal(pedidoCount(P.S), 1);
+});
+
+test('D-2 resize: crossing the breakpoint re-renders the view and PRESERVES state — the cart, the screen, a typed field', async () => {
+  const { S, ui, media } = await deskStore(true, 2);
+  media.set(false); await flush(DESK_SETTLE);
+  assert.equal(S.q('#app').classList.contains('desk'), false); assert.equal(S.q('.deskcart'), null, 'phone: the aside is gone');
+  assert.equal(ui.cart.count(), 2, '🔴 the cart survives the crossing'); assert.ok(S.q('#cart-bar'));
+  media.set(true); await flush(DESK_SETTLE);
+  assert.equal(S.q('.deskcart').querySelectorAll('.cline').length, 2, 'desktop again: the aside with both lines');
+  S.click('.deskcart [data-act="checkout"]'); await flush();
+  const nm = S.q('#flow input[type="text"], #flow input:not([type])');
+  assert.ok(nm, 'premise: a text field on the checkout');
+  nm.value = 'Ana Prueba'; nm.dispatchEvent(new S.w.Event('input', { bubbles: true }));
+  const id = nm.id;
+  media.set(false); await flush(DESK_SETTLE);
+  assert.equal(ui.state.screen, 'checkout', 'still on the checkout'); assert.equal(S.q('.col-b'), null);
+  assert.equal(id ? S.q('#' + id).value : S.q('#flow input').value, 'Ana Prueba', '🔴 a typed field survives the crossing');
+  assert.equal(pedidoCount(S), 1);
+});
+
+test('D-2 no-regression: below the breakpoint the store and the checkout are BYTE-IDENTICAL to a shell with no viewport signal at all', async () => {
+  const run = async (media) => {
+    const S = bootShell(media ? { media } : {}); await flush();
+    S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    const ui = S.ui.store().ui; S.click(`.qty-add-btn[data-id="${ui.menu.dishes.find((d) => !d.launcher && !d.variantOf).key}"]`); await flush();
+    const store = S.q('#app').innerHTML; S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush();
+    return { store, checkout: S.q('#app').innerHTML, cls: S.q('#app').className };
+  };
+  const a = await run(fakeMedia(false)), b = await run(null);
+  assert.equal(a.store, b.store, '🔴 the phone store changed'); assert.equal(a.checkout, b.checkout, '🔴 the phone checkout changed'); assert.equal(a.cls, b.cls);
+});
+
+test('D-2 «Pedidos»: NO reachable orders control anywhere — tabbar, desknav, the member Cuenta, the guest card — on desktop AND phone', async () => {
+  for (const desk of [true, false]) {
+    const H = bootShell({ media: fakeMedia(desk), runtime: { ...RUNTIME, guestCardOnly: true } }); await flush();
+    assert.equal(H.qa('[data-tab="orders"]').length, 0, `🔴 home (${desk ? 'desktop' : 'phone'}): an orders control`);
+    H.click('.tabbar [data-tab="account"]'); await flush();
+    assert.ok(H.q('.guestcard'), 'premise: the guest card');
+    assert.equal(H.qa('[data-tab="orders"]').length, 0, `🔴 guest Cuenta (${desk ? 'desktop' : 'phone'}): an orders control`);
+    const { S } = await g7Boot({ media: fakeMedia(desk) });
+    assert.ok(S.q('.acct-hero'), 'premise: the member Cuenta');
+    assert.equal(S.qa('[data-tab="orders"]').length, 0, `🔴 member Cuenta (${desk ? 'desktop' : 'phone'}): an orders control`);
+    assert.ok(!S.qa('.rows .rowbtn').some((b) => /Pedidos/.test(b.textContent)), 'no «Pedidos» row');
+  }
+});
+
+test('D-2 the signup surface follows the breakpoint (its .app host carries desk too, both ways)', async () => {
+  const media = fakeMedia(true);
+  const { S } = await g7Boot({ media });
+  const host = S.q('#su-host'); assert.ok(host, 'premise: the signup host exists (runtime.signup)');
+  assert.ok(host.classList.contains('desk'), '🔴 the signup host misses desk');
+  media.set(false); await flush(DESK_SETTLE);
+  assert.equal(host.classList.contains('desk'), false);
 });

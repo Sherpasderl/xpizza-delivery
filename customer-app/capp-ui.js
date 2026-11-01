@@ -195,7 +195,10 @@
     const cart = CappCart.createCart(menu, cfg.cartKey && cfg.placedKey ? { provenance: true } : undefined);
     const $ = (id) => doc.getElementById(id);
     const app = $('app');
-    const S = { mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
+    // PLAN-capp-desktop-website r2 D-2: the host's viewport (capp-view.js) — DESKTOP ⇒ the APPROVED v6 desk view's DOM (the store's
+    // deskcart aside, the checkout's col-b); no view handed over (the single-store page, every phone) ⇒ byte-identical to before
+    const view = opts.view && typeof opts.view.desk === 'function' ? opts.view : null;
+    const S = { desk: view ? !!view.desk() : false, mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
       // S2b
       screen: 'store', stack: [], flow: null, q: null, qKey: null, askedKey: null, outZone: false, closedRefused: false, geo: null, err: null, tipDraft: '',
       backScreen: null, sendHint: null, sendTotals: null, pinDraft: null, pinToast: false, pinStepOk: false, lastDelivery: null };
@@ -307,7 +310,7 @@
     <div class="stick" id="stick"><div class="slim">${S.entry === 'app' ? `<button class="iconbtn" data-act="back" aria-label="Cerrar">${IC.close}</button>` : '<span class="sp"></span>'}<b>${esc(cfg.name || '')}</b><button class="iconbtn" data-act="ssearch" aria-label="Buscar en el menú">${IC.search}</button></div>
       <div class="tabsbar"><button class="iconbtn" data-act="menu" aria-label="Ver todo el menú">${IC.menu}</button><nav class="tabs" id="tabs" aria-label="Categorías">${sections.map((s, i) => `<button class="tab" data-act="jump" data-jump="${esc(s.id)}" aria-current="${i === 0}">${esc(s.name)}</button>`).join('')}</nav>${S.entry === 'app' ? '' : `<button class="iconbtn" data-act="ssearch" aria-label="Buscar en el menú">${IC.search}</button>`}</div></div>
     <main class="content" id="content">${content}</main></div>`;
-      return `<div class="storewrap">${scroller}</div>${pill}`;
+      return `<div class="storewrap">${scroller}${S.desk ? `<aside class="deskcart" aria-label="Tu pedido">${cartInner(true)}</aside>` : ''}</div>${pill}`;   // v6 :1628
     }
     let sectionEls = [];
     function wireStore() {
@@ -446,7 +449,7 @@
       if (!mutate(() => cart.edit(o.key, o.g, Object.keys(o.staged.ex), target))) { renderDetail(); return; }   // refused: the sheet stays open, the reason shown in it
       closeDetail();
     }
-    function syncPill() { const p = $('cart-bar'); if (!p) return; const n = cart.count(); p.querySelectorAll('.cart-pill-text')[0].textContent = n ? unitOf(n) : 'Tu pedido'; p.querySelectorAll('.cart-pill-text')[1].textContent = money(cartTotal()); }
+    function syncPill() { const p = $('cart-bar'); if (!p) return; const n = cart.count(); p.querySelectorAll('.cart-pill-text')[0].textContent = n ? unitOf(n) : 'Tu pedido'; p.querySelectorAll('.cart-pill-text')[1].textContent = money(cartTotal()); const dc = app.querySelector('.deskcart'); if (dc) dc.innerHTML = cartInner(true); }   // v6 :1726 — the desk aside follows every edit
     function bumpPill() { const p = $('cart-bar'); if (!p) return; p.classList.remove('bump'); void p.offsetWidth; p.classList.add('bump'); }
 
     // ── CART SHEET (Subtotal only in S1: the fee rows are S2/S3) ──
@@ -454,7 +457,7 @@
       ? `<button class="lnedit ${cls}" data-act="edit" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Editar ${esc(d.item.n)}"><span class="ln-n">${esc(d.item.n)}</span>${d.extras ? `<span class="ln-x">+ ${esc(d.extras)}</span>` : ''}<span class="ln-ed">Editar</span></button>`
       : `<div class="lnstatic ${cls}"><span class="ln-n">${esc(d.item.n)}</span>${d.extras ? `<span class="ln-x">+ ${esc(d.extras)}</span>` : ''}</div>`);
     const lineStep = (d, sold = false) => `<div class="cstep"><button data-act="rev" data-rev="-1" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Quitar uno de ${esc(d.item.n)}">${d.n <= 1 ? TRASH(14) : '−'}</button><span>${d.n}</span><button data-act="rev" data-rev="1" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Agregar otro igual: ${esc(d.item.n)}"${sold ? ' disabled aria-disabled="true"' : ''}>+</button></div>`;
-    function cartInner() {
+    function cartInner(desk = false) {   // v6 :1743 — desk ⇒ the aside: no close button, no «Ver el menú» on the empty state
       const lines = displayLines(), mode = S.mode;
       // the owner's frame 14 (MOCKUP-capp-S7a-states.html, approved 2026-10-27): a line whose dish is unavailable NOW — after a
       // dispatch refusal, or known before — keeps its row: «Agotado» in the price slot (muted, frame 12), the name block .45,
@@ -464,11 +467,11 @@
       const soldOfLine = (d) => isSold(find(d.key));
       const soldDishes = [...new Map(lines.filter(soldOfLine).map((d) => [d.key, d.item.n])).values()];
       const total = lines.reduce((a, d) => a + (soldOfLine(d) ? 0 : d.total), 0);
-      const head = `<div class="sheethead"><div><h2>Tu pedido</h2><small>${lines.length ? unitOf(cart.count()) + ' · ' : ''}${mode === 'delivery' ? 'Delivery' : 'Pickup'}</small></div><button class="iconbtn" data-act="cartclose" aria-label="Cerrar el carrito">${IC.close}</button></div>`;
+      const head = `<div class="sheethead"><div><h2>Tu pedido</h2><small>${lines.length ? unitOf(cart.count()) + ' · ' : ''}${mode === 'delivery' ? 'Delivery' : 'Pickup'}</small></div>${desk ? '' : `<button class="iconbtn" data-act="cartclose" aria-label="Cerrar el carrito">${IC.close}</button>`}</div>`;
       const note = S.cartNote ? `<div class="cartnote">${IC.info}<span>${S.cartNote === 1 ? '1 plato ya no está disponible' : S.cartNote + ' platos ya no están disponibles'}</span></div>` : '';
       const over = tooLong();
       const refusal = S.refusal || over ? `<div class="cartnote">${IC.info}<span>${esc(over ? FULL_CART : S.refusal)}</span></div>` : '';
-      if (!lines.length) return head + note + `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span><button class="btn2" data-act="cartclose">Ver el menú</button></div>`;
+      if (!lines.length) return head + note + `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span>${desk ? '' : '<button class="btn2" data-act="cartclose">Ver el menú</button>'}</div>`;
       const soldNote = soldDishes.length ? `<div class="cartnote" role="status">${IC.info}<span>${soldDishes.map((n) => `<span class="cn-l">${esc(n)} se agotó. Quitalo para enviar tu pedido.</span>`).join('')}</span></div>` : '';
       // the owner's frame 10 (approved 2026-10-27): a cart FROZEN for a placement (S7a-1 r3 §1.1) is read-only — one calm note,
       // the lines' controls at the drawn .45 (disabled), and «Ver estado del pedido»: the placement's STATUS (poll with its stored
@@ -856,7 +859,7 @@
       const bar = `<div class="paybar"><button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button></div>`;
       // the prototype's footer «¿Problemas con tu pedido? Escribinos al …» (:1886) is omitted — pending a ruling
       return `<div class="flow" id="flow"><div class="flowbar plain"><h1>Entrega &amp; Pago</h1></div>
-    <div class="col-a">${entrega}${datos}${pedido}${pago}</div>${bar}</div>`;
+    <div class="col-a">${entrega}${datos}${S.desk ? pago : pedido + pago}</div>${S.desk ? `<div class="col-b">${pedido}</div>` : ''}${bar}</div>`;   // v6 :1886-1887 — desk MOVES «Tu pedido» to col-b
     }
     // the cash panel: chips + the change line against the QUOTED Total (no chips until that Total exists)
     const tenderNote = (T) => { const f = S.flow; if (!T.ready || !f.tendered) return ''; const ch = C.changeCents(f, T.total); return ch === null ? 'Ese monto es menor que el total (' + moneyC(T.total) + ').' : ch > 0 ? 'Tu cambio: ' + moneyC(ch) : 'Pago exacto, sin cambio.'; };
@@ -1422,6 +1425,7 @@
     function render() {
       if (dead) return;
       app.classList.toggle('narrow', app.clientWidth > 0 && app.clientWidth < 375);
+      if (view) app.classList.toggle('desk', S.desk);   // D-2 (v6 :1384); never touched without a view
       const keepSearch = S.layerKind === 'ssearch' && $('layer') && $('layer').querySelector('#sq') ? $('layer') : null;
       const ae = doc.activeElement;
       const had = app.contains(ae) ? descOf(ae) : null;
@@ -1558,6 +1562,9 @@
     const returning = /[?&]pay=/.test(search || '') ? handlePayReturn(search) : null;
     return {
       cart, menu, render, state: S, openCheckout, returning,
+      // D-2: the viewport crossed the breakpoint — re-render THIS screen in the other view; every piece of state (cart, screen, flow,
+      // open layer, locks, refusals) lives in S / the records and is untouched; render() keeps focus, caret and the checkout scroll
+      setView(desk) { if (dead || !view) return; const d = desk === true; if (d === S.desk) return; S.desk = d; render(); },
       deviceBack,
       // the host's AUTHORITATIVE availability has been re-read (its Set / function now reflects it): a dispatch refusal yields to it
       availabilityUpdated() { if (dead) return; refused.clear(); render(); },

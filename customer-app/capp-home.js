@@ -176,16 +176,20 @@
   const rowAttrs = (r) => `${r.gone ? ' disabled aria-disabled="true"' : ''}`;
   const rowCls = (r) => `${r.gone ? ' gone' : ''}${r.held ? ' held' : ''}`;
 
+  // «Pedidos» (PLAN-capp-desktop-website r2 D-3 / Gates, advisor ruling): NO approved orders-list screen exists, so no control may
+  // lead to one — the tab, the desknav entry and both Cuenta rows are left out (a control without effect is never shipped). An
+  // orders screen = an owner mockup + a handler, and then this flips (the controls come back exactly as drawn)
+  const ORDERS_SCREEN = false;
   // ── the shell chrome (P tabbarHtml / desknavHtml; entry 'app') ──
   function tabbarHtml(vm) {
     const cur = (id) => vm.tab === id;
     const t = (id, label, ic, extra = '') => `<button data-act="tab" data-tab="${id}" aria-current="${cur(id)}" aria-label="${label}">${ic}<span>${label}</span>${extra}</button>`;
     const badge = vm.cartN ? `<i class="badge" aria-hidden="true">${vm.cartN}</i>` : vm.live ? '<i class="badge dot" aria-hidden="true"></i>' : '';
-    return `<nav class="tabbar" aria-label="Navegación">${t('home', 'Inicio', IC.home)}<button class="search" data-act="tab" data-tab="search" aria-current="${cur('search')}">${IC.search}<span>Buscar</span></button>${t('orders', 'Pedidos', IC.receipt, badge)}${t('account', 'Cuenta', IC.user)}</nav>`;
+    return `<nav class="tabbar" aria-label="Navegación">${t('home', 'Inicio', IC.home)}<button class="search" data-act="tab" data-tab="search" aria-current="${cur('search')}">${IC.search}<span>Buscar</span></button>${ORDERS_SCREEN ? t('orders', 'Pedidos', IC.receipt, badge) : ''}${t('account', 'Cuenta', IC.user)}</nav>`;
   }
   function desknavHtml(vm) {
     const t = (id, label) => `<button class="nb" data-act="tab" data-tab="${id}" aria-current="${vm.tab === id}">${label}</button>`;
-    return `<div class="desknav"><span class="lock">${SOLA(22, 'var(--acc)')}Sherpa</span>${t('home', 'Inicio')}${t('search', 'Buscar')}${t('orders', 'Pedidos')}${t('account', 'Cuenta')}<span class="sp"></span><span class="mute" style="font-size:13px">${esc(city(vm.platform))}</span></div>`;
+    return `<div class="desknav"><span class="lock">${SOLA(22, 'var(--acc)')}Sherpa</span>${t('home', 'Inicio')}${t('search', 'Buscar')}${ORDERS_SCREEN ? t('orders', 'Pedidos') : ''}${t('account', 'Cuenta')}<span class="sp"></span><span class="mute" style="font-size:13px">${esc(city(vm.platform))}</span></div>`;
   }
   const shellWrap = (vm, inner) => `${desknavHtml(vm)}${inner}${tabbarHtml(vm)}`;
 
@@ -329,7 +333,7 @@
     <div class="guestcard"${known ? '' : ' style="visibility:hidden" aria-hidden="true"'}><h2>Tu cuenta</h2>
       <ul><li>${IC.check}<span>Efectivo al entregar o al recoger</span></li><li>${IC.check}<span>Recompensas, promos y envío gratis</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
       ${known ? '<button class="primary" data-act="signin" data-ctx="account">Entrá o creá tu cuenta</button>' : '<span class="primary" aria-hidden="true">Entrá o creá tu cuenta</span>'}</div>
-    <div class="rows"><button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button><button class="rowbtn" data-act="help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button></div></div>`);
+    <div class="rows">${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button>` : ''}<button class="rowbtn" data-act="help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button></div></div>`);
   }
 
   // G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27, frames 1 / 1b / 4a / 4b): the MEMBER's Cuenta — .acct-hero (name, phone and
@@ -343,7 +347,7 @@
       : `<div class="acct-hero"><span class="av" aria-hidden="true">${esc(String(a.name || '').trim().charAt(0).toUpperCase())}</span><div class="t"><b>${esc(a.name)}</b><span>${esc(a.phone)}</span><span>${esc(a.email)}</span></div></div>`;
     return shellWrap(vm, `<div class="flow"><div class="flowbar plain"><h1>Cuenta</h1></div>
     <div style="height:12px"></div>${hero}<div class="rows">
-      <button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>
+      ${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>` : ''}
       <button class="rowbtn" data-act="promos"${inert ? ' aria-disabled="true"' : ''}>${IC.bell}<span class="t">Promociones<span>Ofertas por correo y WhatsApp</span></span><span class="switch" role="switch" aria-checked="${inert ? !a.settled : a.promos}"${inert ? ' aria-disabled="true"' : ''}></span></button>
       <button class="rowbtn" data-act="help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button></div>
     <div class="rows sess">

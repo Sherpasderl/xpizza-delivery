@@ -25980,5 +25980,151 @@
       "s3c-module-inverse",
       "s2tip-module-inverse"
     ]
+  },
+  {
+    "id": "dsk-01",
+    "slice": "desk",
+    "label": "the desktop class is set only on a later crossing, not at mount (pop-in)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "    if (view) app.classList.toggle('desk', view.desk());   // D-2: BEFORE the first paint (no pop-in)\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "desk not set synchronously at mount"
+    ]
+  },
+  {
+    "id": "dsk-02",
+    "slice": "desk",
+    "label": "the store's deskcart aside is never emitted (the cart unreachable on desktop)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "${S.desk ? `<aside class=\"deskcart\" aria-label=\"Tu pedido\">${cartInner(true)}</aside>` : ''}</div>${pill}`;   // v6 :1628",
+    "to": "</div>${pill}`;   // v6 :1628",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "no deskcart aside on the desktop store"
+    ]
+  },
+  {
+    "id": "dsk-03",
+    "slice": "desk",
+    "label": "syncPill no longer refreshes the desk aside (an item edit leaves it stale)",
+    "file": "../customer-app/capp-ui.js",
+    "from": " const dc = app.querySelector('.deskcart'); if (dc) dc.innerHTML = cartInner(true); }   // v6 :1726",
+    "to": " }   // v6 :1726",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the dish sheet's edit must refresh the aside"
+    ]
+  },
+  {
+    "id": "dsk-04",
+    "slice": "desk",
+    "label": "desktop checkout DUPLICATES «Tu pedido» (col-b added, not moved)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "${S.desk ? pago : pedido + pago}</div>",
+    "to": "${pedido + pago}</div>",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "not also in col-a",
+      "exactly once"
+    ]
+  },
+  {
+    "id": "dsk-05",
+    "slice": "desk",
+    "label": "a breakpoint crossing never reaches the mounted store (setView a no-op)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if (d === S.desk) return; S.desk = d; render(); },",
+    "to": "if (d === S.desk) return; },",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the aside is gone",
+      "desktop again"
+    ]
+  },
+  {
+    "id": "dsk-06",
+    "slice": "desk",
+    "label": "«Pedidos» offered again with no orders screen (a dead control)",
+    "file": "../customer-app/capp-home.js",
+    "from": "  const ORDERS_SCREEN = false;",
+    "to": "  const ORDERS_SCREEN = true;",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "an orders control"
+    ]
+  },
+  {
+    "id": "dsk-07",
+    "slice": "desk",
+    "label": "the signup sheet's host ignores the viewport",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": " host.classList.toggle('desk', app.classList.contains('desk')); };",
+    "to": " };",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the signup host misses desk"
+    ]
+  },
+  {
+    "id": "dsk-08",
+    "slice": "desk",
+    "label": "the view reports every raw crossing (no debounce / settle)",
+    "file": "../customer-app/capp-view.js",
+    "from": "timer = T.setTimeout(settle, settleMs); };",
+    "to": "settle(); };",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=D-2",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "ONE notification"
+    ]
   }
 ]
