@@ -63,14 +63,16 @@ function semanaFixture() {
 }
 
 function harnessHtml(view) {
-  const fx = view === 'semana' ? semanaFixture() : hoyFixture();
+  const base = view.startsWith('semana') ? semanaFixture() : hoyFixture();
+  const fx = view.endsWith('unseeded') ? { ...base, entries: null } : base;   // blank-rate proof: NO entry → earnings render NOTHING
+  const renderArg = view.startsWith('semana') ? 'semana' : 'hoy';
   const lifted = liftFn(SRC, 'gananciasWeekStartMs') + '\n' + liftFn(SRC, 'renderGanancias');
   return `<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=390, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <style>${mainCss}</style>
 <style>${gananciasCss()}</style>
-<style>html,body{margin:0;width:390px;height:860px;overflow:hidden;background:var(--bg,#F5F7FA)}#screen-ganancias{height:860px}</style>
+<style>html,body{margin:0;width:390px;height:860px;overflow:hidden;background:var(--bg,#F5F7FA)}#screen-ganancias{height:860px}#__cs{display:none}</style>
 </head><body>
 <div id="screen-ganancias"></div>
 <script src="pay-rate.js"></script>
@@ -89,13 +91,17 @@ function todayMidnightMs(){ const d=new Date(); d.setHours(0,0,0,0); return d.ge
 function computeShiftCash(){ return { cashOwed: ${fx.cashOwed} }; }   // stub: capture is visual; cashOwed is proven real in cash-helpers.test
 function syncTabBarForScreen(){}   // the O6 bar is already APPROVED on the other tab-root screens; captured separately
 ${lifted}
-renderGanancias(${JSON.stringify(view)});
+renderGanancias(${JSON.stringify(renderArg)});
 window.__ready = true;
+// computed-style dump for the diff (chrome --dump-dom reads <pre id="__cs">). gn-* vs the prototype's .pseg/.big/.bars/.card/.row/.sub/.lbl.
+const CS_PROPS=['font-family','font-size','font-weight','line-height','letter-spacing','color','background-color','border-top-left-radius','border-top-width','border-top-style','padding-top','padding-right','padding-bottom','padding-left','column-gap','row-gap','text-transform','display','width','height','box-shadow','font-variant-numeric','align-items','grid-template-columns','vertical-align','margin-top'];
+const CS_SEL={seg:'.gn-seg',segOn:'.gn-seg span.on',card:'.gn-card',earn:'.gn-earn',big:'.gn-big',cur:'.gn-cur',lbl:'.gn-lbl',sub:'.gn-sub',flat:'.gn-flat',row:'.gn-row',ic:'.gn-ic',rt:'.gn-rt',rd:'.gn-rd',rv:'.gn-rv',drow:'.gn-drow',dic:'.gn-dic',dt:'.gn-dt',dv:'.gn-dv',bars:'.gn-bars',bar:'.gn-bar',blb:'.gn-blb',btr:'.gn-btr',btri:'.gn-btr i',bv:'.gn-bv',ttl:'.gn-ttl'};
+try{const o={};for(const[r,s]of Object.entries(CS_SEL)){const el=document.querySelector(s);if(!el){o[r]='MISSING';continue;}const cs=getComputedStyle(el);const m={};for(const p of CS_PROPS)m[p]=cs.getPropertyValue(p);o[r]=m;}const pre=document.createElement('pre');pre.id='__cs';pre.textContent=JSON.stringify(o);document.body.appendChild(pre);document.title='CS-READY';}catch(e){document.title='CS-ERR:'+e.message;}
 </script>
 </body></html>`;
 }
 
-const views = ['hoy', 'semana'];
+const views = ['hoy', 'semana', 'hoy-unseeded'];   // hoy-unseeded = blank-rate proof for #31 (advisor 2026-10-31)
 const shoot = process.argv.includes('--shoot');
 for (const v of views) {
   const out = join(__dir, `__cap-earnings-${v}.html`);
