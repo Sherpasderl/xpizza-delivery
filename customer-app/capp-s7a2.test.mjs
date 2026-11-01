@@ -1567,8 +1567,12 @@ test('store promo: a GUEST on a promo store — the «Envío gratis con tu cuent
   assert.ok(ib, '🔴 store promo: the fee ⓘ is missing'); assert.equal(ib.getAttribute('aria-label'), 'Detalle del envío');
 });
 
-test('store promo: a MEMBER on a promo store — no pill, «Envío gratis» in place of «Envío desde», the ⓘ kept', async () => {
-  const S = await promoStore({ auth: 'member' });
+test('store promo: an ADMITTED member on a promo store — no pill, «Envío gratis» in place of «Envío desde», the ⓘ kept; a raw session alone (host «member», nothing admitted) claims nothing', async () => {
+  const raw = await promoStore({ auth: 'member' });   // Codex promo r1 #1: the checkout would send this one as a guest
+  assert.equal(raw.q('.info .facts .free'), null, '🔴 store promo: a raw session the checkout does not admit gets no «Envío gratis»');
+  assert.equal(raw.q('.info .pill.deal').getAttribute('aria-hidden'), 'true', 'not admitted ⇒ the pill stays reserved');
+  const R = await realAuthStore({ persisted: 'u_ana', complete: 'u_ana', prof: { v: 1, uid: 'u_ana', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com' } });
+  await R.release(); const S = R.S;
   assert.equal(S.q('.info .pill.deal'), null, '🔴 store promo: a member never sees the guest pill');
   const f = S.q('.info .facts');
   assert.ok(f.querySelector('.free') && f.querySelector('.free').textContent === 'Envío gratis', `🔴 store promo: the member's «Envío gratis» is missing: ${txt(f)}`);
@@ -1576,7 +1580,7 @@ test('store promo: a MEMBER on a promo store — no pill, «Envío gratis» in p
   assert.ok(f.querySelector('.infobtn[data-act="feeinfo"]'), 'the ⓘ stays');
 });
 
-test('store promo: while auth is UNRESOLVED the pill is RESERVED (hidden, aria-hidden, same markup ⇒ same box); it resolves IN PLACE — guest shows it, member swaps it for «Envío gratis»', async () => {
+test('store promo: while auth is UNRESOLVED the pill is RESERVED (hidden, aria-hidden, same markup ⇒ same box); it resolves IN PLACE — guest shows it; a raw session not admitted re-reserves it (claims nothing)', async () => {
   const la = liveAuth('unresolved');
   const S = await promoStore({ mountExtra: { auth: la.a } });
   const pill = S.q('.info .pill.deal');
@@ -1589,9 +1593,9 @@ test('store promo: while auth is UNRESOLVED the pill is RESERVED (hidden, aria-h
   assert.equal(S.q('.info .pill.deal').getAttribute('aria-hidden'), null, 'the guest pill is now shown');
   assert.equal(info.outerHTML, reserved, '🔴 store promo: the reserved header IS the guest header (no reflow when it resolves)');
   const G = await promoStore({ auth: 'guest' }); assert.equal(G.q('.info').outerHTML, info.outerHTML, 'identical to a guest boot');
-  la.set('member'); await flush();
-  assert.equal(S.q('.info'), info); assert.equal(S.q('.info .pill.deal'), null, '🔴 store promo: a resolved member drops the pill');
-  assert.ok(S.q('.info .facts .free'), '🔴 store promo: a resolved member sees «Envío gratis»');
+  la.set('member'); await flush();   // a raw session, not admitted (no setMember): Codex promo r1 #1 — back to reserved, nothing claimed
+  assert.equal(S.q('.info'), info); assert.equal(S.q('.info .pill.deal').getAttribute('aria-hidden'), 'true', '🔴 store promo: an unadmitted session re-reserves the pill');
+  assert.equal(S.q('.info .facts .free'), null, '🔴 store promo: «Envío gratis» only for the ADMITTED member');
 });
 
 test('store promo: nothing invented — an unpriced store draws no pill, no fee text, no ⓘ; a priced store without a zone draws no ⓘ', async () => {
@@ -1609,4 +1613,48 @@ test('store promo: the store ⓘ opens the feeinfo sheet with the DIRECTORY valu
   const p = txt(S.q('#layer .errsheet p'));
   assert.ok(p && p.includes('Desde L 45; zona de entrega hasta 7 km de'), `🔴 store promo: the feeinfo sheet must fall back to the directory: ${p}`);
   assert.ok(!/undefined|NaN|null/.test(p), p);
+});
+
+// Codex promo-feeinfo r1 — through the REAL Firebase callback path (fakeFirebase + the shell's own auth state, not liveAuth):
+// #1 «Envío gratis» follows the ADMITTED identity (the one the checkout sends with), never the raw session; #2 the production
+// auth handling (dropMember → setMember) keeps the store page — scroll and focus — when the identity does not change
+async function realAuthStore({ persisted = null, failSignOut = 0, complete = null, prof = null } = {}) {
+  const fb = fakeFirebase({ persisted, failSignOut }), gate = deferred();
+  const st = memStorage({ ...(complete ? { 'capp:member_complete': JSON.stringify({ v: 1, uid: complete }) } : {}), ...(prof ? { 'capp:member_profile': JSON.stringify(prof) } : {}) });
+  const S = await promoStore({ auth: 'unresolved', storage: st, runtime: SU_RUNTIME, mountExtra: { loadSdk: () => gate.p.then(() => fb.loadSdk()), signupFetch: signupServer(ANA).fetch } });
+  const sc = S.q('#scroller'), info = S.q('.info'), btn = S.q('.seg [data-val="pickup"]');
+  sc.scrollTop = 250; btn.focus();
+  assert.equal(S.w.document.activeElement, btn, 'premise: focus on the Pickup control');
+  return { S, fb, sc, info, release: async () => { gate.resolve(); await flush(); await flush(); await flush(); } };
+}
+
+test('store promo r1 #1: an INCOMPLETE restored account whose sign-out is rejected — not admitted (S.member null) ⇒ no «Envío gratis», the guest pill stays reserved', async () => {
+  const R = await realAuthStore({ persisted: 'u_inc', failSignOut: 9 });
+  await R.release();
+  assert.ok(R.fb.calls.out >= 1, 'premise: the shell tried to sign the incomplete session out (and it was rejected)');
+  assert.equal(R.S.ui.state.member ?? null, null, 'premise: the checkout identity is a guest (not admitted)');
+  const f = R.S.q('.info .facts');
+  assert.equal(f.querySelector('.free'), null, `🔴 store promo r1: «Envío gratis» from a session the checkout does not admit: ${txt(f)}`);
+  assert.ok(txt(f).includes('Envío desde L 45'), txt(f));
+});
+
+test('store promo r1 #2: unresolved → GUEST through the real Firebase callback keeps the store page — same nodes, scroll 250, focus — and shows the pill', async () => {
+  const R = await realAuthStore({ persisted: null });
+  assert.equal(R.S.q('.info .pill.deal').getAttribute('aria-hidden'), 'true', 'premise: reserved while unresolved');
+  await R.release();
+  assert.equal(R.S.q('#scroller'), R.sc, '🔴 store promo r1: the real auth callback re-rendered the store');
+  assert.equal(R.S.q('.info'), R.info);
+  assert.equal(R.sc.scrollTop, 250, '🔴 store promo r1: the scroll was reset');
+  assert.equal(R.S.w.document.activeElement && R.S.w.document.activeElement.dataset.val, 'pickup', '🔴 store promo r1: focus was lost');
+  assert.equal(R.S.q('.info .pill.deal').getAttribute('aria-hidden'), null, 'the guest pill is shown');
+});
+
+test('store promo r1 #2: an ADMITTED member arriving (a restored complete session) on a scrolled store — «Envío gratis», the pill gone, scroll and focus kept', async () => {
+  const R = await realAuthStore({ persisted: 'u_ana', complete: 'u_ana', prof: { v: 1, uid: 'u_ana', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com' } });
+  await R.release();
+  assert.ok(R.S.ui.state.member && R.S.ui.state.member.uid === 'u_ana', 'premise: admitted');
+  assert.ok(R.S.q('.info .facts .free'), '🔴 store promo r1: the admitted member sees «Envío gratis»');
+  assert.equal(R.S.q('.info .pill.deal'), null);
+  assert.equal(R.S.q('#scroller').scrollTop, 250, '🔴 store promo r1: the scroll was reset when the member arrived');
+  assert.equal(R.S.w.document.activeElement && R.S.w.document.activeElement.dataset.val, 'pickup', '🔴 store promo r1: focus was lost when the member arrived');
 });

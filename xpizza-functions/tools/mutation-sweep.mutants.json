@@ -26535,10 +26535,10 @@
   {
     "id": "pf-05",
     "slice": "promo",
-    "label": "PLAN-capp-store-promo-feeinfo: authChanged is a no-op (a resolved auth never reaches the mounted store's header)",
+    "label": "PLAN-capp-store-promo-feeinfo: the in-place header patch is a no-op (a resolved auth never reaches the mounted store's header)",
     "file": "../customer-app/capp-ui.js",
-    "from": "        if (dead) return;\n        const top = $('top'), info = top && top.querySelector('.info'); if (!info) return;",
-    "to": "        return;\n        const top = $('top'), info = top && top.querySelector('.info'); if (!info) return;",
+    "from": "      const top = $('top'), info = top && top.querySelector('.info'); if (!info) return;\n      const old = info.querySelector('.hdpills'), html = pillsHtml();",
+    "to": "      return;\n      const old = null, html = '';",
     "command": [
       "node",
       "--test",
@@ -26548,7 +26548,64 @@
     ],
     "kills_with": [
       "the guest pill is now shown",
-      "a resolved member drops the pill"
+      "the guest pill is shown"
+    ],
+    "repointed": "Codex promo r1: authChanged's body moved into patchAuth (shared with setMember's same-identity path)"
+  },
+  {
+    "id": "pf-06",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r1 #1 reverted: the RAW session counts as the member (an unadmitted session gets «Envío gratis»)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      return v === 'guest' ? 'guest' : 'unresolved';",
+    "to": "      return v === 'guest' || v === 'member' ? v : 'unresolved';",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "«Envío gratis» from a session the checkout does not admit",
+      "a raw session the checkout does not admit gets no «Envío gratis»"
+    ]
+  },
+  {
+    "id": "pf-07",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r1 #2 reverted: the same identity re-renders the store (dropMember on unresolved → guest resets the page)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "if ((!prevCtx && !memberCtx) || (prevCtx && memberCtx && prevCtx.uid != null && prevCtx.uid === memberCtx.uid)) { patchAuth(); return; }",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the real auth callback re-rendered the store"
+    ]
+  },
+  {
+    "id": "pf-08",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r1 #2 reverted: a new identity on the store page re-renders WITHOUT keeping scroll / focus",
+    "file": "../customer-app/capp-ui.js",
+    "from": "        if (S.screen === 'store') {\n          if ((!prevCtx",
+    "to": "        if (false) {\n          if ((!prevCtx",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the scroll was reset when the member arrived",
+      "the real auth callback re-rendered the store"
     ]
   }
 ]

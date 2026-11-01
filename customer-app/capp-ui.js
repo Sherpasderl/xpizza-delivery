@@ -289,8 +289,9 @@
     // zone: no control without effect). The auth tri-state is the HOST's (opts.authState); no getter ⇒ no promo UI at all
     function authOf() {
       if (typeof opts.authState !== 'function') return null;
+      if (memberCtx) return 'member';   // the ADMITTED identity — the one the checkout sends with (Codex promo r1 #1), never the raw session
       let v; try { v = opts.authState(); } catch (_) { v = null; }
-      return v === 'guest' || v === 'member' ? v : 'unresolved';
+      return v === 'guest' ? 'guest' : 'unresolved';   // a session not (yet) admitted — restoring, or an incomplete one being signed out — claims nothing
     }
     function pillsHtml() {
       const a = authOf();
@@ -305,6 +306,12 @@
           ? `${etaTxt('delivery') ? `<span>${esc(etaTxt('delivery'))}</span>` : ''}${feeTxt}`
           : `${etaTxt('pickup') ? `<span>${esc(etaTxt('pickup'))}</span>` : ''}${cfg.addr ? `<span class="mute full">Recogé en ${esc(cfg.addr)}</span>` : ''}`)
         : `<span class="full"><span class="dot off"></span><strong>Cerrado</strong> · ${esc(opensText())}</span>`;
+    }
+    function patchAuth() {
+      const top = $('top'), info = top && top.querySelector('.info'); if (!info) return;
+      const old = info.querySelector('.hdpills'), html = pillsHtml();
+      if (old) { if (html) old.outerHTML = html; else old.remove(); } else if (html) { const id = info.querySelector('.idrow'); if (id) id.insertAdjacentHTML('afterend', html); }
+      const f = info.querySelector('.facts'); if (f) f.innerHTML = factsHtml();
     }
     function storeHtml() {
       const mode = S.mode, open = isOpen();
@@ -1645,18 +1652,13 @@
       orderable: () => orderable,
       // PLAN-capp-store-promo-feeinfo r0: the host's auth tri-state moved — the store header's pill and fee line update IN PLACE
       // (no store re-render: an open sheet, the scroll and focus stay); a reserved pill becomes the guest's without a reflow
-      authChanged() {
-        if (dead) return;
-        const top = $('top'), info = top && top.querySelector('.info'); if (!info) return;
-        const old = info.querySelector('.hdpills'), html = pillsHtml();
-        if (old) { if (html) old.outerHTML = html; else old.remove(); } else if (html) { const id = info.querySelector('.idrow'); if (id) id.insertAdjacentHTML('afterend', html); }
-        const f = info.querySelector('.facts'); if (f) f.innerHTML = factsHtml();
-      },
+      authChanged() { if (!dead) patchAuth(); },
       openCart() { if (dead || S.screen !== 'store') return false; openLayer('cart'); return true; },
       // G6 §4c: a sign-in on THIS checkout — the member's details fill «Tus datos» (name, phone, email; never over what the customer
       // typed differently), the step and the cart stay; the tender is the customer's (a guest's card stays card)
       setMember(m) {
         if (dead) return;
+        const prevCtx = memberCtx;
         memberCtx = m && typeof m === 'object' ? m : null;
         if (!memberCtx) S.schedAfterSignin = false;
         const f = S.flow;
@@ -1669,6 +1671,13 @@
           if (!String(f.email || '').trim() && memberCtx.email) f.email = String(memberCtx.email);
           f.editWho = unread; S.emailRefused = false;   // an unreadable member number stays in edit (intl)
           if (S.schedAfterSignin && sched()) { f.time = 'schedule'; f.slot = null; }   // frame G: signed in ⇒ the picker opens
+        }
+        // Codex promo r1 #2: on the STORE page the production auth path (dropMember / applyMember → here) keeps the page — the same
+        // admitted identity (none → none, the same uid) patches the header in place; a new one re-renders keeping scroll and focus
+        if (S.screen === 'store') {
+          if ((!prevCtx && !memberCtx) || (prevCtx && memberCtx && prevCtx.uid != null && prevCtx.uid === memberCtx.uid)) { patchAuth(); return; }
+          const fd = descOf(doc.activeElement); renderStoreKeep(); const el = refind(fd); if (el && el !== doc.activeElement) el.focus({ preventScroll: true });
+          return;
         }
         render();
       },
