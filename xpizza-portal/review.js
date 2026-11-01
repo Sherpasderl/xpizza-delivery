@@ -14,6 +14,8 @@
 // >50% rule, no re-derivation from the draft, no second opinion — the screen shows what the server
 // decided, because that is what the token is bound to and what publishEdited will re-check.
 
+import { isPhotoLine, lineKind, COPY as PHOTO } from './photo-logic.js';
+
 // The acknowledgement set: the server's OWN objects, untouched.
 //
 // Not mapped, not filtered, not reshaped to {key,surface}. `ackMatches` compares membership in both
@@ -33,7 +35,11 @@ const idOf = (x) => `${x && x.surface}::${x && x.key}`;
 // a key, and flagging by key alone would light the wrong row.
 export function reviewModel(diff) {
   const d = diff || {};
-  const changed = Array.isArray(d.changed) ? d.changed : [];
+  // DISH PHOTOS B (§2.1) — the server's photo lines ({field:'photo', old, new} three-state) are their own group, «Fotos»;
+  // arranged, never derived: every line the server sent is shown exactly once.
+  const all = Array.isArray(d.changed) ? d.changed : [];
+  const changed = all.filter((c) => !isPhotoLine(c));
+  const photos = all.filter(isPhotoLine);
   const added = Array.isArray(d.added) ? d.added : [];
   const removed = Array.isArray(d.removed) ? d.removed : [];
   const renamed = Array.isArray(d.renamed) ? d.renamed : [];
@@ -69,8 +75,9 @@ export function reviewModel(diff) {
     added,
     removed,
     renamed,
+    photos,
     // everything that will publish, so the header cannot understate it
-    total: rows.length + sections.length + added.length + removed.length + renamed.length,
+    total: rows.length + sections.length + added.length + removed.length + renamed.length + photos.length,
   };
 }
 
@@ -231,6 +238,45 @@ export function renderReview(root, model, opts = {}) {
     }
     root.append(g);
   }
+
+  // DISH PHOTOS B (P8) — «Fotos»: one line per dish, «Foto nueva / cambiada / quitada», antes → después as 4:3 card thumbs
+  // («Sin foto» where there is none). The URLs come from the caller (E-P3 previews / legacy previews); an unknown one draws
+  // the neutral frame, never a broken image.
+  if (model.photos && model.photos.length) {
+    const ph = opts.photos || {};
+    const nameOf = typeof ph.nameOf === 'function' ? ph.nameOf : (k) => String(k);
+    const urlOf = typeof ph.urlOf === 'function' ? ph.urlOf : () => null;
+    const g = el('div', 'mgroup');
+    g.append(groupHead(PHOTO.group, model.photos.length));
+    for (const c of model.photos) {
+      const kind = lineKind(c, ph.legacy);
+      const row = el('div', 'prow');
+      row.dataset.k = `${c.surface}::${c.key}`;
+      const main = el('div', 'pmain');
+      main.append(el('div', 'pname', nameOf(c.key)), el('div', 'psub', PHOTO.line[kind]));
+      const val = el('div', 'pval phpval');
+      const side = (st, cls) => {
+        const has = kind === 'changed' || (cls === 'was' ? kind === 'removed' : kind === 'new');
+        if (!has) return el('span', `${cls} phnone`, PHOTO.none);
+        const t = el('span', `phpth${cls === 'was' ? ' was' : ''}`);
+        const u = urlOf(st, c.key);
+        if (u) {
+          const i = el('img', 'gimg'); i.alt = '';
+          // the photo's identity, so a preview renewal can replace this picture in place (no rebuild of the review)
+          i.dataset.ph = st && st.kind === 'pid' ? `pid:${st.pid}` : `legacy:${c.key}`;
+          // ONE handler for the node's life, bound to the photo's IDENTITY (codex r2 #1): a renewal swaps only the src, so an
+          // obsolete URL can never be mistaken for another photo; the handler reports whatever the node is showing now
+          if (typeof ph.onImgError === 'function') i.addEventListener('error', () => ph.onImgError(i.getAttribute('src'), i.dataset.ph));
+          i.src = u; t.append(i);
+        }
+        return t;
+      };
+      val.append(side(c.old, 'was'), el('span', 'arr', '\u2192'), side(c.new, 'now'));
+      row.append(main, val);
+      g.append(row);
+    }
+    root.append(g);
+  }
   return root;
 }
 
@@ -286,6 +332,12 @@ export function attestationModel(diff, ctx = {}) {
   const addedRows = ((diff && Array.isArray(diff.added)) ? diff.added : []).filter((a) => a && a.surface === 'item')
     .map((a) => ({ key: a.key, now: a.price }));
   const hasZero = sealRows.some((r) => !(Number.isInteger(r.now) && r.now > 0)) || addedRows.some((r) => !(Number.isInteger(r.now) && r.now > 0));
+  // DISH PHOTOS B (§2.4) — a publish whose EVERY diff line is a photo line gets the photos seal copy (client-side, like the
+  // names-only seal); the server's gate is unchanged (usesPlatformFactura only). The kind of each line is fixed HERE, at mint,
+  // from the legacy previews the caller had — the record is evidence and does not change afterwards.
+  const m = reviewModel(diff);
+  const photoRows = m.photos.map((c) => ({ key: c.key, kind: lineKind(c, ctx.legacy) }));
+  const photosOnly = photoRows.length > 0 && m.rows.length === 0 && m.added.length === 0 && m.removed.length === 0 && m.renamed.length === 0;
 
   // PLAN-public-menu-display T1 — the section names this publish changes (a rename publishes alone, so on a fiscal brand
   // these are the seal's only lines): listed with the same was → now as the prices.
@@ -301,6 +353,8 @@ export function attestationModel(diff, ctx = {}) {
     addedRows,
     ackSet,
     hasZero,
+    photoRows,
+    photosOnly,
     // What the publish will send. Two separate fields for two separate facts: the attestation, and
     // the exact set of large changes the server flagged.
     fiscalAck: isFiscal,
@@ -325,6 +379,33 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
     label.append(build());
     return label;
   };
+
+  if (model.needsSeal && model.photosOnly) {
+    // DISH PHOTOS B (P8) — the photos-only seal: the same box and the same one checkbox, the approved photo copy
+    const nameP = (k) => (opts.photos && typeof opts.photos.nameOf === 'function' ? opts.photos.nameOf(k) : String(k));
+    const seal = el('div', 'seal phseal');
+    const h = el('div', 'sealh');
+    h.append(el('div', 'sealbadge'));
+    const ht = el('div');
+    ht.append(el('b', null, 'Autorización fiscal · SAR'), el('span', null, PHOTO.sealSub));
+    h.append(ht);
+    seal.append(h);
+    const body = el('div', 'sealbody');
+    body.append(el('p', null, PHOTO.sealBody));
+    for (const r of model.photoRows) {
+      const c = el('div', 'seachg');
+      c.append(el('span', 'sn', nameP(r.key)), el('span', 'sv', PHOTO.line[r.kind]));
+      body.append(c);
+    }
+    seal.append(body);
+    seal.append(checkbox('attest', () => {
+      const t = el('span', 'at');
+      t.append(el('b', null, 'Autorizo'), document.createTextNode(PHOTO.sealAck(model.photoRows.length)));
+      return t;
+    }));
+    root.append(seal);
+    return root;
+  }
 
   if (model.needsSeal) {
     const seal = el('div', 'seal');
@@ -779,11 +860,16 @@ export function outcomeFor(err, op = 'publish') {
 // The receipt is built from the CAPTURED review, not the draft. On success the draft is discarded and
 // the screen repaints — the publish IS the new baseline — so by the time this renders there is nothing
 // pending left to read. Reading the draft would report zero changes on a successful publish.
-export function receiptFor(res, captured) {
+export function receiptFor(res, captured, opts = {}) {
   const diff = (captured && captured.diff) || {};
   const arr = (v) => (Array.isArray(v) ? v : []);
   const rows = arr(diff.changed);
+  // DISH PHOTOS B (P9) — a publish of photos only says which dishes' photos are live; mixed keeps today's sentence
+  const photoKeys = rows.filter(isPhotoLine).map((c) => c.key);
+  const photosOnly = photoKeys.length > 0 && photoKeys.length === rows.length && !arr(diff.added).length && !arr(diff.removed).length && !arr(diff.renamed).length;
+  const nameOf = typeof opts.nameOf === 'function' ? opts.nameOf : (k) => String(k);
   return {
+    photoNames: photosOnly ? photoKeys.map(nameOf) : null,
     versionId: (res && typeof res.versionId === 'string' && res.versionId) ? res.versionId : null,
     // EVERY surface, not just `changed`. An added or removed item is genuinely a change, and a
     // receipt that counted only `changed` would read "estos 0 cambios" on a real publish the moment
@@ -834,8 +920,11 @@ export function renderReceipt(root, receipt) {
   ck.append(icon(ICONS.check));
   r.append(ck);
   r.append(el('h3', null, 'Publicado'));
+  // DISH PHOTOS B (P9) × PLAN-public-menu-display T1 (R6): the photos-only and names-only sentences are mutually exclusive by
+  // construction (each requires EVERY changed line to be its kind); anything mixed keeps today's sentence
   const secs = Array.isArray(receipt.sections) ? receipt.sections : [];
-  if (secs.length && secs.length === receipt.count) r.append(el('p', null, sectionsReceipt(secs)));
+  if (receipt.photoNames) r.append(el('p', null, PHOTO.receipt(receipt.photoNames)));
+  else if (secs.length && secs.length === receipt.count) r.append(el('p', null, sectionsReceipt(secs)));
   else r.append(el('p', null, receipt.count === 1
     ? 'Tu menú en vivo ya muestra este precio. Los clientes que ordenen ahora verán la nueva versión.'
     : `Tu menú en vivo ya muestra estos ${receipt.count} cambios. Los clientes que ordenen ahora verán la nueva versión.`));

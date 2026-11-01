@@ -1,0 +1,370 @@
+[
+ {
+  "frame": "p1",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p1",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p1-nuevo",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p1-nuevo",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p2",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p2",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p3",
+  "theme": "light",
+  "w": 1280,
+  "h": 1000,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p3",
+  "theme": "dark",
+  "w": 1280,
+  "h": 1000,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p4",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p4",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p5",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p5",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p5-sinfoto",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p5-sinfoto",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p6a",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p6a",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p6b",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p6b",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p6c",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p6c",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p7",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p7",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p7-quitar",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p7-quitar",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p7-fila",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p7-fila",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p8",
+  "theme": "light",
+  "w": 1280,
+  "h": 1000,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p8",
+  "theme": "dark",
+  "w": 1280,
+  "h": 1000,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p8-sinsello",
+  "theme": "light",
+  "w": 1280,
+  "h": 1000,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p8-sinsello",
+  "theme": "dark",
+  "w": 1280,
+  "h": 1000,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p9",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p9",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p10a",
+  "theme": "light",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p10a",
+  "theme": "dark",
+  "w": 1280,
+  "h": 820,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p10b",
+  "theme": "light",
+  "w": 1280,
+  "h": 560,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "p10b",
+  "theme": "dark",
+  "w": 1280,
+  "h": 560,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "s-p1",
+  "theme": "light",
+  "w": 390,
+  "h": 844,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "s-p1",
+  "theme": "dark",
+  "w": 390,
+  "h": 844,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "s-p1d",
+  "theme": "light",
+  "w": 390,
+  "h": 844,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "s-p1d",
+  "theme": "dark",
+  "w": 390,
+  "h": 844,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "s-p2",
+  "theme": "light",
+  "w": 390,
+  "h": 844,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "s-p2",
+  "theme": "dark",
+  "w": 390,
+  "h": 844,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "s-p3",
+  "theme": "light",
+  "w": 390,
+  "h": 844,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "s-p3",
+  "theme": "dark",
+  "w": 390,
+  "h": 844,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "s-p7",
+  "theme": "light",
+  "w": 390,
+  "h": 844,
+  "mock": true,
+  "errs": []
+ },
+ {
+  "frame": "s-p7",
+  "theme": "dark",
+  "w": 390,
+  "h": 844,
+  "mock": true,
+  "errs": []
+ }
+]

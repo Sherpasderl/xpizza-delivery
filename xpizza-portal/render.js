@@ -236,6 +236,10 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   // 1D add-product B — a NEW product with a required choice: {label, min, max} from the caller, or null. Its row shows the
   // group as a chip and its price as the order page will (read-only: it is the group's, edited in the drawer).
   const groupOf = typeof opts.groupOf === 'function' ? opts.groupOf : () => null;
+  // DISH PHOTOS B — the caller builds the row's thumb (+ its tag) from the photo state, or answers null (uploads off and no
+  // photo: today's placeholder, exactly). The camera opens the drawer with the picker; render.js only places what it gets.
+  const photoOf = typeof opts.photoOf === 'function' ? opts.photoOf : () => null;
+  const onPhoto = typeof opts.onPhoto === 'function' ? opts.onPhoto : (id) => onOpen && onOpen(id);
   const onAdd = editable && typeof opts.onAdd === 'function' && group && opts.canAdd && opts.canAdd(group.category.id) ? opts.onAdd : null;
   // PLAN-public-menu-display T1 — a section's NAME (owner-approved mockup R1–R3b). All three are the caller's answers:
   //   rename   null (no control) | {mode: 'idle' | 'blocked' | 'edit', value, problem, onStart, onInput, onSave, onCancel}
@@ -315,10 +319,17 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       // The mock's own three openers, rather than an invented control: a neutral 50x50 placeholder, the
       // info block itself, and a chevron. The placeholder stays EMPTY — the mock puts a camera there,
       // but images are deferred in this slice and a camera would advertise an upload that does nothing.
-      const thumb = el('div', 'thumb');
-      thumb.title = 'Editar producto';
-      thumb.addEventListener('click', () => onOpen(id));
-      cells.push(thumb);
+      // DISH PHOTOS B — the caller's photo view for this row, or null (uploads off and no photo: today's placeholder, exactly)
+      const ph = photoOf(it, { name: label, open: () => onOpen(id), upload: () => onPhoto(id) });
+      if (ph && ph.thumb) {
+        cells.push(ph.thumb);
+        if (ph.tag) nmEl.append(ph.tag);
+      } else {
+        const thumb = el('div', 'thumb');
+        thumb.title = 'Editar producto';
+        thumb.addEventListener('click', () => onOpen(id));
+        cells.push(thumb);
+      }
       info.classList.add('clk');
       info.addEventListener('click', () => onOpen(id));
       // A real <button>, not the mock's <span>: this is the row's only keyboard-reachable way into the

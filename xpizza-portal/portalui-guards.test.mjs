@@ -14,6 +14,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import * as acorn from 'acorn';
+import { PB_FOLD } from './photos-b-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
@@ -72,14 +73,40 @@ function withoutT1(f, src) {
   }
   return out;
 }
-const appJs = () => withoutFs(withoutT1('app.js', read('app.js')));
+// ── DISH PHOTOS B (PLAN-dish-photos r2 §3): the slice's EXACT hunks in app.js / editor.js / review.js / render.js
+// (photos-b-fold.mjs), cut against main PB_BASE (8a31e2a3, which carries T1). Folded out FIRST (it is the newest layer): what
+// is left is PB_BASE byte-for-byte, so T1's own registry (portalui-guards.t1-hunks.json) and every pin below keep judging
+// exactly what they judged before — a line both slices touch is ONE photos hunk whose `was` is T1's line.
+const PB_BASE = '8a31e2a3';
+function withoutPb(f, src) {
+  let out = src;
+  for (const [now, was] of PB_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `photos-B hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+test('DISH PHOTOS B: exactly the named hunks in the four frozen files — anything else, or an edit inside one, fails', () => {
+  for (const f of ['app.js', 'editor.js', 'review.js', 'render.js']) {
+    assert.ok((PB_FOLD[f] || []).length > 0, `non-vacuity: ${f} has named hunks`);
+    assert.notEqual(withoutPb(f, read(f)), read(f), `non-vacuity: the ${f} fold changes something`);
+    const was = execFileSync('git', ['show', `${PB_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.equal(withoutPb(f, read(f)), was, `${f} minus the DISH PHOTOS B hunks ≠ ${PB_BASE}`);
+  }
+  // a stray edit outside the hunks survives the fold (and so fails the byte pins); an edit INSIDE one breaks its match
+  const stray = read('render.js').replace('export function renderDetail(', 'export function renderDetail (');
+  assert.notEqual(withoutT1('render.js', withoutPb('render.js', stray)), base('render.js'));
+  const [inside] = PB_FOLD['editor.js'].find(([now]) => now.includes('setPhoto'));   // the hunk that DEFINES setPhoto
+  assert.throws(() => withoutPb('editor.js', read('editor.js').replace(inside, inside.replace('setPhoto', 'setPhot0'))));
+});
+const appJs = () => withoutFs(withoutT1('app.js', withoutPb('app.js', read('app.js'))));
 test('T1 (PLAN-public-menu-display): exactly the named hunks — folding them out gives the T1 base byte-for-byte', () => {
   for (const f of ['app.js', 'editor.js', 'review.js', 'render.js']) {
     const was = execFileSync('git', ['show', `${T1_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
     assert.ok((T1_HUNKS[f] || []).length > 0, `${f}: the fold is not empty`);
-    assert.equal(withoutT1(f, read(f)), was, `${f} minus the T1 hunks ≠ ${T1_BASE}`);
+    assert.equal(withoutT1(f, withoutPb(f, read(f))), was, `${f} minus the T1 hunks ≠ ${T1_BASE}`);
     // non-vacuity: a stray extra edit survives the fold
-    assert.notEqual(withoutT1(f, read(f) + '\n// stray\n'), was);
+    assert.notEqual(withoutT1(f, withoutPb(f, read(f) + '\n// stray\n')), was);
   }
   // the DRAFT side writes a section's NAME and nothing else: editor.js's only new property assignment is `cat.name = …`
   const writes = T1_HUNKS['editor.js'].flatMap(([now]) => [...now.matchAll(/\b\w+\.\w+\s*=[^=>]/g)].map((m) => m[0].replace(/\s*=.*$/, '')));
@@ -151,7 +178,7 @@ test('ventas.js: exactly one added line — the A3 owner-only early return in it
 
 test('the editor, review, render, auth and logic modules are byte-identical to the base', () => {
   for (const f of ['editor.js', 'review.js', 'render.js', 'auth.js', 'auth-errors.js', 'firebase.js', 'portal-logic.js', 'ventas-logic.js', 'sherpa-client.js']) {
-    assert.equal(withoutT1(f, read(f)), base(f), `${f} changed`);   // T1's own hunks are judged by the T1 test above
+    assert.equal(withoutT1(f, withoutPb(f, read(f))), base(f), `${f} changed (beyond the named DISH PHOTOS B and T1 hunks)`);   // each layer's hunks are judged by its own test above
   }
 });
 

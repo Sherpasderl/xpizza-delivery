@@ -1174,3 +1174,71 @@
   /* side-by-side s2-empty / s2-onedraft at 390: a short ops page must not stretch the stacked shell rows (top bar, nav) */
   @media(max-width:920px){ .app.opsview{align-content:start} }
   @media(max-width:920px){ .ops .secwide1b{grid-column:auto} .frow1b{grid-template-columns:1fr} .ops .brows1b{grid-template-columns:1fr} .ops .brow1b{flex-wrap:wrap} .ops .bt1b{min-width:60%} }
+
+  /* ── DISH PHOTOS B (MOCKUP-portal-dish-photo.html, owner-approved 2026-10-26) — the mockup's new pieces as product classes.
+     Existing tokens only. Small text on --card uses --mute, not the mockup's --mute2 (4.46:1 in dark; the 1a/1b AA rule). ── */
+  img.gimg{width:100%;height:100%;object-fit:cover;display:block}
+  button.thumb{font:inherit;padding:0}
+  .thumb.phro{cursor:default;border-color:transparent;pointer-events:none}
+  .thumb.phchg{border:1.5px solid var(--accent);box-shadow:0 0 0 3px var(--tint2)}
+  .thumb.phrmthumb img{opacity:.42;filter:grayscale(1)}
+  .tag.phtag{font-weight:650;letter-spacing:0;white-space:nowrap}
+  .nm:has(.phtag){flex-wrap:wrap;row-gap:3px}
+  button.uploader{width:100%;font-family:inherit;background:none}
+  .uploader:focus-visible{outline:none;border-color:var(--accent);background:var(--tint);box-shadow:var(--focus)}
+  .uploader.phinv,.fld.invalid .uploader{border-color:var(--red)}
+  .uploader.phph2{cursor:default}
+  .phph2b{display:flex;flex-direction:column;gap:8px;margin-top:8px;width:100%}
+  .phph2b .btn{flex:1;justify-content:center;min-height:44px}
+  .phacts{position:absolute;top:9px;right:9px;display:flex;gap:6px}
+  .phacts .uprm,.phov .uprm{position:static;font-family:inherit}
+  .uphoto .uprm{font-family:inherit}
+  .uphoto.phbusy img{opacity:.55}
+  .phov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(10,10,11,.62);color:#fff;font-size:13px;font-weight:650}
+  .phov .uprm{margin-top:2px}
+  .phbar{width:62%;height:6px;border-radius:999px;background:rgba(255,255,255,.3);overflow:hidden}
+  .phbar i{display:block;height:100%;background:#fff;border-radius:999px}
+  .phferr{display:flex;align-items:flex-start;gap:6px}
+  .phferr svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;flex:none;margin-top:1px}
+  .pherr{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .pherr.phright{justify-content:flex-end;margin-top:-2px}
+  .phrm{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--mute)}
+  .btn.ptext.sm{padding:6px 8px}
+  .phpval{display:flex;align-items:center;gap:0}
+  .phpth{position:relative;display:inline-block;width:64px;height:48px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--card);vertical-align:middle}
+  .phpth.was{opacity:.55}
+  .prow .phnone{font-size:12.5px}
+  .prow .now.phnone{font-weight:600;color:var(--mute)}
+  .prow .was.phnone{text-decoration:none}
+  .seal.phseal .seachg .sv{color:var(--mute)}
+  .phseg{align-self:flex-start}
+  .phseg button{font-family:inherit;min-height:36px}
+  .phsegb,.uprm{cursor:pointer}
+  .phcrop{position:relative;width:100%;border-radius:12px;overflow:hidden;cursor:grab;border:1px solid var(--line);touch-action:none}
+  .phcrop:active{cursor:grabbing}
+  .phcrop:focus-visible{outline:none;box-shadow:var(--focus)}
+  .phcrop img,.phophoto img,.phohero img{position:absolute;max-width:none;display:block;user-select:none;-webkit-user-drag:none;pointer-events:none}
+  .phgrid{position:absolute;inset:0;pointer-events:none;background:linear-gradient(to right,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px)),linear-gradient(to right,transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px)),linear-gradient(to bottom,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px)),linear-gradient(to bottom,transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px));box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.7)}
+  .phhint{font-size:12px;color:var(--mute);line-height:1.45}
+  .phzoom{display:flex;align-items:center;gap:10px}
+  .phzoom svg,.phzi svg{width:14px;height:14px;stroke:var(--mute2);fill:none;stroke-width:2;flex:none}
+  .phzi{display:flex}
+  .phzl{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute)}
+  .phzoom input[type=range]{flex:1;accent-color:var(--accent);min-height:24px}
+  .phsp{flex:1}
+  .phpvlbl{font-size:12.5px;color:var(--mute);margin:-2px 0 2px}
+  .phpv2{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+  .phpvcap{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);font-weight:750;margin-bottom:6px}
+  /* the order page's own card and detail (their tokens, as the customer sees them — not the portal theme) */
+  .phocard{background:#fff;border:1px solid #E6E6E2;border-radius:12px;overflow:hidden;box-shadow:0 1px 2px rgba(30,28,24,.04),0 6px 16px -12px rgba(30,28,24,.18);color:#1E1B18}
+  .phophoto,.phohero{position:relative;overflow:hidden}
+  .phophoto{aspect-ratio:4/3}
+  .phohero{aspect-ratio:16/10}
+  .phshc,.phshh{position:absolute;inset:0;pointer-events:none}
+  .phshc{background:linear-gradient(to bottom,transparent 40%,rgba(0,0,0,.35) 100%)}
+  .phshh{background:linear-gradient(to bottom,transparent 50%,rgba(0,0,0,.25) 100%)}
+  .phobody{padding:9px 10px 10px}
+  .phoname{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;font-weight:700;letter-spacing:-.1px;line-height:1.25;margin-bottom:3px}
+  .phoname.phoh{font-family:'Playfair Display',Georgia,serif;font-size:17px;letter-spacing:-.4px;margin-bottom:5px}
+  .phodesc{font-size:11.5px;color:#5A4F47;line-height:1.4;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .phoprice{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;font-weight:700;color:#7A5A08;font-variant-numeric:tabular-nums}

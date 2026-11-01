@@ -2447,6 +2447,108 @@
    ],
    [
     "",
+    ".phbar i",
+    "background",
+    "#fff"
+   ],
+   [
+    "",
+    ".phbar",
+    "background",
+    "rgba(255,255,255,.3)"
+   ],
+   [
+    "",
+    ".phgrid",
+    "background",
+    "linear-gradient(to right,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px)),linear-gradient(to right,transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px)),linear-gradient(to bottom,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px)),linear-gradient(to bottom,transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px))"
+   ],
+   [
+    "",
+    ".phhint",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".phocard",
+    "background",
+    "#fff"
+   ],
+   [
+    "",
+    ".phocard",
+    "color",
+    "#1E1B18"
+   ],
+   [
+    "",
+    ".phodesc",
+    "color",
+    "#5A4F47"
+   ],
+   [
+    "",
+    ".phoprice",
+    "color",
+    "#7A5A08"
+   ],
+   [
+    "",
+    ".phov",
+    "background",
+    "rgba(10,10,11,.62)"
+   ],
+   [
+    "",
+    ".phov",
+    "color",
+    "#fff"
+   ],
+   [
+    "",
+    ".phpth",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".phpvcap",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".phpvlbl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".phrm",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".phshc",
+    "background",
+    "linear-gradient(to bottom,transparent 40%,rgba(0,0,0,.35) 100%)"
+   ],
+   [
+    "",
+    ".phshh",
+    "background",
+    "linear-gradient(to bottom,transparent 50%,rgba(0,0,0,.25) 100%)"
+   ],
+   [
+    "",
+    ".phzl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".pill i",
     "background",
     "var(--mute2)"
@@ -2795,6 +2897,12 @@
    ],
    [
     "",
+    ".prow .now.phnone",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".prow .pflag",
     "color",
     "var(--amber)"
@@ -3122,6 +3230,12 @@
     ".seal",
     "background",
     "var(--gold-soft)"
+   ],
+   [
+    "",
+    ".seal.phseal .seachg .sv",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -3581,6 +3695,12 @@
    ],
    [
     "",
+    ".thumb.phro",
+    "border-color",
+    "transparent"
+   ],
+   [
+    "",
     ".thumb.set",
     "border-color",
     "transparent"
@@ -3776,6 +3896,24 @@
     ".uploader span",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".uploader.phinv,.fld.invalid .uploader",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".uploader:focus-visible",
+    "background",
+    "var(--tint)"
+   ],
+   [
+    "",
+    ".uploader:focus-visible",
+    "border-color",
+    "var(--accent)"
    ],
    [
     "",
@@ -4136,6 +4274,12 @@
     "body",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    "button.uploader",
+    "background",
+    "none"
    ],
    [
     "@media(max-width:920px)",
