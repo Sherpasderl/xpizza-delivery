@@ -905,16 +905,22 @@ test('S7a-2 frame 15: a held tap whose MENU does not load ⇒ «No pudimos abrir
 const G7_RUNTIME = SU_RUNTIME;   // the endpoint set (ENDPOINTS) carries setPromos
 const G7_PROFILE = (o = {}) => ({ uid: 'u_ana', name: 'Ana Pérez', phone: '+50496123344', email: 'ana.perez@gmail.com', ...o });
 const g7Store = (profile) => { const st = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }) }); DA.remember(st, '+50496123344'); if (profile) DA.rememberProfile(st, profile); return st; };
-// Codex G7 r1 #4: the setPromos fake is NEVER laxer than the real handler (xpizza-functions/signup-endpoints.js setPromos + signup-core
-// setPromos): the same checks in the same order and the same answers, with the platform contract's context:'platform' standing where
-// today's handler reads restaurant_id (CONTRACT-capp-signup-platform-wire §6; the server half is 3a's)
-function setPromosHandler(i, promosOk) {
+// Codex G7 r1 #4 / r2: the setPromos fake mirrors 3a's REAL platform handler EXACTLY (wip/guest-s3 deb1594b: signup-endpoints.js setPromos +
+// scopeOf, signup-core.js setPromos with confirm): the same checks in the same order and the same answers. ASSEMBLY OBLIGATION (train):
+// a contract test against that real handler (TRAIN-NEXT-INVENTORY.md). state: 'ok' | 'not_completed' | 'legal_unconfigured' | 'deleted' | 'aborted'
+function setPromosHandler(i, state = 'ok') {
+  if (state === true) state = 'ok'; if (state === false) state = 'not_completed';
   if (!i || i.method !== 'POST') return [405, { ok: false }];
   let b = null; try { b = JSON.parse(i.body); } catch (_) { b = null; } b = b && typeof b === 'object' ? b : {};
-  if (b.context !== 'platform') return [400, { ok: false, reason: 'bad_request' }];
+  const has = (k) => Object.prototype.hasOwnProperty.call(b, k);
+  // scopeOf: no `context` key ⇒ the forms' path (a known restaurant_id — none here); else EXACTLY context:'platform' and no restaurant_id key
+  const scope = !has('context') ? null : b.context === 'platform' && !has('restaurant_id') ? '_platform' : null;
+  if (!scope) return [400, { ok: false, reason: 'bad_request' }];
   if (!(i.headers && i.headers['x-firebase-id-token'])) return [401, { ok: false, reason: 'unauthenticated' }];
   if (typeof b.value !== 'boolean') return [400, { ok: false, reason: 'bad_request' }];
-  return promosOk ? [200, { ok: true, value: b.value }] : [400, { ok: false, reason: 'not_completed' }];   // the platform answer: the committed value read back (contract §6, 3a 6c513450)
+  if (state === 'legal_unconfigured' || state === 'not_completed' || state === 'aborted') return [400, { ok: false, reason: state }];
+  if (state === 'deleted') return [403, { ok: false, reason: 'deleted' }];
+  return [200, { ok: true, value: b.value }];   // the committed value read back
 }
 function g7Server(promosOk = true) {
   const sent = [];
@@ -926,6 +932,8 @@ function g7Server(promosOk = true) {
 test('G7 setPromos fake (Codex G7 r1 #4): as strict as the real handler — today\'s restaurant_id shape, a tokenless call, a non-boolean value and a GET are refused; the client\'s request passes', async () => {
   const P = (body, headers = { 'x-firebase-id-token': 't' }, method = 'POST') => setPromosHandler({ method, headers, body: JSON.stringify(body) }, true);
   assert.deepEqual(P({ restaurant_id: 'r1', value: true }), [400, { ok: false, reason: 'bad_request' }], '🔴 G7-fake: no context ⇒ bad_request, as the handler without restaurant_id');
+  assert.deepEqual(P({ context: 'platform', restaurant_id: null, value: true }), [400, { ok: false, reason: 'bad_request' }], '🔴 G7-fake: both selectors ⇒ bad_request (deb1594b scopeOf: the restaurant_id KEY at all)');
+  assert.deepEqual(setPromosHandler({ method: 'POST', headers: { 'x-firebase-id-token': 't' }, body: JSON.stringify({ context: 'platform', value: true }) }, 'deleted'), [403, { ok: false, reason: 'deleted' }], 'a tombstone ⇒ 403, as the handler');
   assert.deepEqual(P({ context: 'platform', value: true }, {}), [401, { ok: false, reason: 'unauthenticated' }], '🔴 G7-fake: no ID token ⇒ unauthenticated');
   assert.deepEqual(P({ context: 'platform', value: 'yes' }), [400, { ok: false, reason: 'bad_request' }], '🔴 G7-fake: a non-boolean value ⇒ bad_request');
   assert.deepEqual(P({ context: 'platform', value: true }, undefined, 'GET'), [405, { ok: false }]);

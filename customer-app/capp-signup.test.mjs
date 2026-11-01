@@ -310,16 +310,33 @@ test('Part B (b): a device marker\'s full E.164 pre-fills ITS country; without i
   assert.equal(off.q('.phonerow button.cc'), null); assert.equal(off.q('.phonerow span.cc').textContent, '+504');
 });
 
-// Codex G7 r1 #6: EVERY transport call site — its first argument must be E.<a listed key> (or the template that wraps exactly one);
-// a literal URL, a computed E[...] or an unlisted key is a violation. The rule is a function so its negative controls run too.
+// Codex G7 r1 #6 / r2: EVERY transport call site, PARSED (acorn — a regex is bypassed by `call ('…')`): each use of the transport's
+// `call` (or any alias of it) must be a direct call whose first argument is E.<a listed key> or a template that begins with exactly
+// one; a literal URL, a computed E[...], an unlisted key, an alias call or any other use of `call` (passed, .call/.apply) is a violation.
+const acorn = createRequire(join(ROOT, 'xpizza-functions/x.js'))('acorn');
 function endpointViolations(src, listed) {
+  const ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'script' });
+  const kids = (n) => Object.values(n).flatMap((v) => (Array.isArray(v) ? v : [v])).filter((v) => v && typeof v.type === 'string');
+  const all = []; (function walk(n, parent, key) { all.push({ n, parent, key }); for (const [k, v] of Object.entries(n)) for (const c of (Array.isArray(v) ? v : [v])) if (c && typeof c.type === 'string') walk(c, n, k); })(ast, null, null);
+  const names = new Set(['call']);   // the transport's function and every alias bound to it, transitively
+  for (let grew = true; grew;) { grew = false; for (const { n } of all) if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && n.init && n.init.type === 'Identifier' && names.has(n.init.name) && !names.has(n.id.name)) { names.add(n.id.name); grew = true; } }
+  const isE = (x) => x && x.type === 'MemberExpression' && x.object.type === 'Identifier' && x.object.name === 'E';
+  const keyOf = (a) => (a && isE(a) && !a.computed && a.property.type === 'Identifier' ? a.property.name
+    : a && a.type === 'TemplateLiteral' && a.quasis[0].value.cooked === '' && a.expressions.length && isE(a.expressions[0]) && !a.expressions[0].computed ? a.expressions[0].property.name : null);
   const bad = [], called = new Set();
-  if (/\bE\s*\[/.test(src)) bad.push('computed E[...]');
-  for (const m of src.matchAll(/\bcall\(/g)) {
-    if (/function\s+$/.test(src.slice(Math.max(0, m.index - 9), m.index))) continue;   // the definition itself
-    const arg = src.slice(m.index + 5).match(/^\s*(?:`\$\{E\.([A-Za-z]+)\}[^`]*`|E\.([A-Za-z]+))\s*[,)]/);
-    const k = arg && (arg[1] || arg[2]);
-    if (!k) bad.push('call(' + src.slice(m.index + 5, m.index + 45).split('\n')[0]); else if (!listed.includes(k)) bad.push('unlisted E.' + k); else called.add(k);
+  for (const { n, parent, key } of all) {
+    if (isE(n) && n.computed) bad.push('computed E[...]');
+    if (isE(n) && !n.computed && !listed.includes(n.property.name)) bad.push('unlisted E.' + n.property.name);
+    if (n.type !== 'Identifier' || !names.has(n.name)) continue;
+    if (parent && parent.type === 'FunctionDeclaration' && key === 'id') continue;                        // async function call(…)
+    if (parent && parent.type === 'VariableDeclarator') continue;                                        // an alias binding (its uses are checked)
+    if (parent && parent.type === 'CallExpression' && key === 'callee') {
+      const k = keyOf(parent.arguments[0]);
+      if (k === null) bad.push('call(' + src.slice(parent.arguments[0] ? parent.arguments[0].start : parent.start, (parent.arguments[0] || parent).end).slice(0, 40) + ')');
+      else if (listed.includes(k)) called.add(k);
+      continue;
+    }
+    bad.push('other use of ' + n.name);                                                                  // passed as a value, .call / .apply, …
   }
   for (const k of listed) if (!called.has(k)) bad.push('never called: ' + k);
   return bad;
@@ -335,6 +352,10 @@ test('runtime.signup endpoints: ENDPOINTS is the ONE source — every transport 
   assert.ok(endpointViolations(inject("call('https://outside.test')"), ENDPOINTS).length > 0, 'control: a literal URL fails the guard');
   assert.ok(endpointViolations(inject("call(E['unlisted'])"), ENDPOINTS).length > 0, 'control: a computed key fails the guard');
   assert.ok(endpointViolations(inject('call(E.unlisted)'), ENDPOINTS).length > 0, 'control: an unlisted key fails the guard');
+  assert.ok(endpointViolations(inject("call ('https://outside.test')"), ENDPOINTS).length > 0, '🔴 SU-endpoints control: the SPACED literal form fails the guard');
+  assert.ok(endpointViolations(inject("call(E[ENDPOINTS[0]])"), ENDPOINTS).length > 0, 'control: a computed member fails the guard');
+  assert.ok(endpointViolations(inject("(() => { const c = call; return c('https://outside.test'); })()"), ENDPOINTS).length > 0, '🔴 SU-endpoints control: an ALIASED call fails the guard');
+  assert.ok(endpointViolations(inject("call.call(null, 'https://outside.test')"), ENDPOINTS).length > 0, 'control: call.call fails the guard');
   // runtime: every method, driven against a recording fetch, requests ONLY the listed endpoints
   const seen = [], EP = Object.fromEntries(ENDPOINTS.map((k) => [k, 'https://ep.test/' + k]));
   const a = createSignupApi({ endpoints: EP, fetch: async (u) => { seen.push(String(u).split('?')[0]); return { status: 200, json: async () => ({ ok: true }) }; } });
