@@ -27,6 +27,7 @@ const NON_PLATFORM_FETCH = {
   'la-musa-orders/index.html': ['AVAIL_URL', 'trackingUrl'],  //   (order_tracking/<token>/display_number — the confirmation's kitchen number), not functions
   'xpizza-dispatch-mobile/sw.js': ['e.request'],              // the service worker's own network-first pass-through
   'xpizza-catering/index.html': ["'/'"],                      // Netlify Forms submit to the site itself
+  'xpizza-dispatch/dispatch-maps-perf.mjs': ["'/report'"],    // dev-only maps perf harness (run via `node dispatch-maps-perf.mjs --run`); loaded by NO deployed entrypoint (index.html never imports it), so it never executes in the shipped app. Its injected REPORTER posts board/driver-useful timing deltas to the harness's LOCAL measurement server at /report — never a platform function.
 };
 const SHERPA_FALLBACK = /: fetch\(u, o\); \}$/;               // the fallback arm inside a local sherpaFetch definition
 
