@@ -80,6 +80,7 @@
       fetchEnvelope: (rid, etag) => conditional(fetchFn, `${rt.functions_base}/${rt.menu_endpoint}/menu/${encodeURIComponent(rid)}`, etag),
       readAvailability: async (rid, menu) => {
         if (!mapper || !menu || !menu.availIdentity || typeof rid !== 'string' || !rid) return null;   // no identity ⇒ fail-open, no read
+        mapper.observe(menu);   // the key history BEFORE the read, every time (a failed read still records it — the forms' rule)
         try {
           const res = await fetchFn(`${rt.availability_base}/restaurants/${encodeURIComponent(rid)}/item_availability.json`, { method: 'GET', cache: 'no-store' });
           if (!res || res.status !== 200) return null;

@@ -7,7 +7,10 @@
 // 'any_false') says so — the forms' own rule (their ownSoldOut over availKeysFor's per-session key history), with the SAME synced
 // modules the forms and the server use. No identity (an old envelope) ⇒ null: FAIL-OPEN, exactly the shell's contract.
 //
-// createAvailability({ availKey, decide }) → { soldKeys(menu, data) → array of sold dish keys | null }
+// createAvailability({ availKey, decide }) → { observe(menu), soldKeys(menu, data) → array of sold dish keys | null }
+//   observe(menu): records every dish's CURRENT key in the session history — called each time the menu is seen, BEFORE the read
+//   is awaited (Codex r1 P2): the forms record a dish's key on EVERY availability pass, a failed read included, so a rename after a
+//   failed read must still carry the old key
 //   data: the RTDB restaurants/{rid}/item_availability node (an object; anything else reads as empty — the forms' rule)
 (function (root, factory) {
   const api = factory();
@@ -32,6 +35,12 @@
       history.set(hk, seen);
       return seen;
     }
+    function observe(menu) {
+      const field = menu && menu.availIdentity;
+      if (!FIELDS.includes(field) || !Array.isArray(menu.dishes)) return false;
+      for (const d of menu.dishes) keysOf(menu.rid, d, field);
+      return true;
+    }
     function soldKeys(menu, data) {
       const field = menu && menu.availIdentity;
       if (!FIELDS.includes(field) || !Array.isArray(menu.dishes)) return null;
@@ -43,7 +52,7 @@
       }
       return sold;
     }
-    return { soldKeys };
+    return { observe, soldKeys };
   }
 
   return { createAvailability, FIELDS };

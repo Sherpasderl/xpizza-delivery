@@ -115,3 +115,48 @@ test('key HISTORY (the forms\' availKeysFor): a dish renamed mid-session stays s
   assert.ok(A.soldKeys(m2, node).includes(m2.dishes.find((x) => String(x.id) === String(d.id)).key), '🔴 a rename must not silently re-open a sold dish');
   assert.deepEqual(mapper().soldKeys(m2, node).filter((k) => String(m2.dish(k).id) === String(d.id)), [], 'a FRESH session (no history) sees only the new key');
 });
+
+// Codex r1 P2 (the exact repro, through the REAL form and the REAL boot): the first availability read FAILS → the dish is RENAMED →
+// a successful read returns the OLD key false + the NEW key true. The form recorded the old key on its failed pass, so it says SOLD;
+// the app must too — its history is recorded BEFORE every read (mapper.observe), never only after a success.
+test('REGRESSION (Codex r1 P2): failed read → rename → old key false + new key true ⇒ the form and the app BOTH say sold', async () => {
+  const dir = 'xpizza-orders', rid = BRAND[dir].rid, field = availIdentityField(rid);
+  assert.equal(field, 'name', 'premise: x_pizza is keyed by NAME (a rename changes its key)');
+  const RT = M.PLATFORM.appRuntime(), AVAIL = `${RT.availability_base}/restaurants/${rid}/item_availability.json`;
+  const body1 = await servedBody(rid);
+  const w = loadForm(dir); await settle();
+  try {
+    await serve(w, envelope(rid, body1, '1d.2'));
+    const d = w.liveMenuGlobalGet('MENU').find((it) => it.name && w.document.getElementById('card-' + it.id));
+    assert.ok(d, 'premise: a dish with a card (the form records keys for painted dishes)');
+    const oldName = d.name, newName = `${d.name} (nuevo)`;
+    // the app: the REAL boot with a scripted network
+    let next; let opts;
+    Boot.boot({}, { runtime: { ...RT, flags: {}, sdk_base: './' }, CappShellUI: { mount: (x, o) => { opts = o; return {}; } }, CappSignupApi: { ENDPOINTS: [] },
+      CappAvailability, availabilityReducer: Reducer, availKey, fetch: async (u) => { assert.equal(u, AVAIL); return next(); } });
+    // 1. the first read FAILS — on both
+    w.__respond = (u) => (String(u) === AVAIL ? Promise.resolve({ ok: false, status: 503, json: async () => ({}) }) : new Promise(() => {}));
+    await w.loadAvailability(); await settle();
+    next = () => ({ status: 503, json: async () => ({}) });
+    const m1 = CappMenu.adaptMenu(cappEnvelope(rid, body1, field));
+    assert.equal(await opts.readAvailability(rid, m1), null, 'premise: the failed read is fail-open');
+    // 2. the dish is RENAMED — the form gets the new body through its real live-menu path; the app adapts the new envelope
+    const body2 = JSON.parse(JSON.stringify(body1));
+    const walk = (o) => { if (Array.isArray(o)) o.forEach(walk); else if (o && typeof o === 'object') { if (String(o.id) === String(d.id) && o.name === oldName) o.name = newName; Object.values(o).forEach(walk); } };
+    walk(body2);
+    await serve(w, envelope(rid, body2, '1d.2'));
+    const fd = w.liveMenuGlobalGet('MENU').find((it) => String(it.id) === String(d.id));
+    assert.equal(fd && fd.name, newName, 'premise: the form holds the renamed dish');
+    const m2 = CappMenu.adaptMenu(cappEnvelope(rid, body2, field)), ad = m2.dishes.find((x) => String(x.id) === String(d.id));
+    assert.equal(ad.name, newName, 'premise: the app holds the renamed dish');
+    // 3. a successful read: the OLD key false, the NEW key true
+    const node = { [availKey(oldName)]: OFF, [availKey(newName)]: ON };
+    w.__respond = (u) => (String(u) === AVAIL ? Promise.resolve({ ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(node)) }) : new Promise(() => {}));
+    await w.loadAvailability(); await settle();
+    assert.equal(w.ownSoldOut(fd), true, 'premise: the FORM says sold (it recorded the old key on its failed pass)');
+    next = () => ({ status: 200, json: async () => JSON.parse(JSON.stringify(node)) });
+    const sold = await opts.readAvailability(rid, m2);
+    assert.ok(Array.isArray(sold) && sold.includes(ad.key), '🔴 Codex r1 P2: the app says AVAILABLE where the form says sold (history recorded only after a successful read)');
+    assert.deepEqual(mapper().soldKeys(m2, node).filter((k) => k === ad.key), [], 'non-vacuity: with NO history the same node reads available — the recorded old key is what decides');
+  } finally { closeAll(); }
+});
