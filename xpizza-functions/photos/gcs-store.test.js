@@ -72,6 +72,35 @@ function fakeBucket() {
   await assert.rejects(() => makeGcsStore(b2).metadata('x'), (e) => e.code === 503, 'GCS-OTHER-ERRORS-PROPAGATE');
   ok('other errors propagate unchanged (transient for the core)');
 
+  // the REAL @google-cloud/storage (installed version) against a loopback server, no emulator, no egress: the create-only save puts
+  // ifGenerationMatch=0 ON THE UPLOAD REQUEST, and the server's real 412 maps to {the winner's generation, created:false}.
+  // Why here: the Storage emulator does not enforce the precondition between two CONCURRENT creates (heavy 2026-11-01, E4 — both got
+  // created:true), so the emulator cannot prove it; the real-GCS concurrent check is a deploy-time acceptance item.
+  {
+    const http = require('http');
+    const { Storage } = require('@google-cloud/storage');
+    const seen = [];
+    const srv = http.createServer((rq, rs) => {
+      rq.resume();
+      rq.on('end', () => {
+        seen.push([rq.method, rq.url]);
+        if (rq.method === 'POST') { rs.writeHead(412, { 'content-type': 'application/json' }); rs.end(JSON.stringify({ error: { code: 412, message: 'At least one of the pre-conditions you specified did not hold.', errors: [{ reason: 'conditionNotMet' }] } })); return; }
+        rs.writeHead(200, { 'content-type': 'application/json' }); rs.end(JSON.stringify({ name: 'drafts/tb_r/p-card.webp', bucket: 'tb-bucket', generation: '777', size: '1' }));
+      });
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const saved = process.env.STORAGE_EMULATOR_HOST; delete process.env.STORAGE_EMULATOR_HOST;
+    try {
+      const real = makeGcsStore(new Storage({ projectId: 'demo-xpizza', apiEndpoint: `http://127.0.0.1:${srv.address().port}` }).bucket('tb-bucket'));
+      const r = await labelled('GCS-REAL-SDK-412', Promise.race([real.createIfAbsent('drafts/tb_r/p-card.webp', Buffer.from('a'), { contentType: 'image/webp' }),
+        new Promise((_, no) => setTimeout(() => no(new Error('no answer in 10 s')), 10000))]));
+      const up = seen.find((s) => s[0] === 'POST');
+      assert.ok(up && new URL(up[1], 'http://x').searchParams.get('ifGenerationMatch') === '0', `GCS-REAL-SDK-UPLOAD-CARRIES-IF-GENERATION-MATCH-0 ${JSON.stringify(seen)}`);
+      assert.deepStrictEqual(r, { generation: '777', created: false }, 'GCS-REAL-SDK-412');
+    } finally { if (saved !== undefined) process.env.STORAGE_EMULATOR_HOST = saved; srv.close(); }
+    ok('the real SDK: the create-only upload carries ifGenerationMatch=0 on the wire; its real 412 → the existing generation, created:false');
+  }
+
   console.log(`gcs-store: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('gcs-store: FAILED —', e && e.stack || e); process.exit(1); });

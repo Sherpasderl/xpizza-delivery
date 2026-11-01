@@ -111,13 +111,17 @@ function rest(method, path) {   // the Firebase Storage REST surface the CLIENT 
     assert.strictEqual(decodes, 1, 'PHOTO-EMU-ONE-CLAIM the retry does not decode');
     ok('E3 PHOTO-EMU-ONE-CLAIM: 2 concurrent processPhoto calls → one decode, one success, the other in_progress/stored; a retry returns the stored pid');
   }
-  // ── E4: createIfAbsent races on the REAL 412 ──
+  // ── E4: createIfAbsent on the emulator's 412 — SEQUENTIAL ──
+  // EMULATOR LIMITATION (heavy 2026-11-01): two CONCURRENT create-only saves BOTH succeeded (two generations), although the upload
+  // carries ifGenerationMatch=0 (pinned on the wire by photos/gcs-store.test.js GCS-REAL-SDK-UPLOAD-CARRIES-IF-GENERATION-MATCH-0).
+  // The emulator does not serialize the precondition; the concurrent guarantee is a deploy-time real-GCS acceptance item.
   {
     const path = `drafts/${RID}/e4-${newId('x')}-card.webp`;
-    const rs = await Promise.all([store.createIfAbsent(path, Buffer.from('a'), { contentType: 'image/webp' }), store.createIfAbsent(path, Buffer.from('a'), { contentType: 'image/webp' })]);
-    assert.deepStrictEqual(rs.map((r) => r.created).sort(), [false, true], `PHOTO-EMU-CREATE-IF-ABSENT exactly one created ${JSON.stringify(rs)}`);
-    assert.strictEqual(rs[0].generation, rs[1].generation, 'PHOTO-EMU-CREATE-IF-ABSENT the loser reports the winner\'s generation');
-    ok('E4 PHOTO-EMU-CREATE-IF-ABSENT: 2 concurrent create-only saves → one created, the other the SAME generation (the real 412 path)');
+    const first = await store.createIfAbsent(path, Buffer.from('a'), { contentType: 'image/webp' });
+    const second = await store.createIfAbsent(path, Buffer.from('a'), { contentType: 'image/webp' });
+    assert.deepStrictEqual([first.created, second.created], [true, false], `PHOTO-EMU-CREATE-IF-ABSENT the second create meets the 412 ${JSON.stringify([first, second])}`);
+    assert.strictEqual(second.generation, first.generation, 'PHOTO-EMU-CREATE-IF-ABSENT the second reports the first\'s generation');
+    ok('E4 PHOTO-EMU-CREATE-IF-ABSENT: create-only then create-only → created, then the SAME generation via the emulator\'s 412 (concurrency: unit wire pin + real-GCS acceptance)');
   }
   // ── E5: an upload replaced between metadata and download is refused (generation pin) ──
   {
