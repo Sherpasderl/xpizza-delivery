@@ -2353,6 +2353,10 @@ chargeOnlineApp.use((err, req, res, next) => {
 
 /* checkout:begin grant-secret */
 const SIGNUP_GRANT_SECRET = defineSecret('SIGNUP_GRANT_SECRET');   // PLAN-guest-checkout-server §2.5: the signup-grant HMAC key (owner-set; ≥ 32 chars)
+// OTP_SALT for the three NEW otp-lib readers ONLY (requestCheckoutCode, verifyCheckoutCode, redeemSignupGrant): a new function gets no
+// plain env at a dotenv-free deploy. The EXISTING readers keep their deployed plain OTP_SALT — never bound here (no secret/plain
+// overlap). The owner creates the secret with the SAME value as the live plain OTP_SALT (cross-function phone hashes must match).
+const OTP_SALT_SECRET = defineSecret('OTP_SALT');
 /* checkout:end grant-secret */
 exports.chargeOnlineOrder = onRequest(
   {
@@ -7790,11 +7794,11 @@ const CHECKOUT_OTP = require('./checkout-otp').makeCheckoutOtp({
   registry: restaurantRegistry,   // checkout-otp warms it and checks a KNOWN rid (never defaulted, never resolveRestaurantId's default)
 });
 exports.requestCheckoutCode = onRequest(
-  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET] },
   CHECKOUT_OTP.requestCheckoutCode,
 );
 exports.verifyCheckoutCode = onRequest(
-  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET] },
   CHECKOUT_OTP.verifyCheckoutCode,
 );
 exports.pruneCheckoutState = onSchedule(
@@ -7812,7 +7816,7 @@ const SIGNUP_PLATFORM = require('./signup-platform').makeSignupPlatform({
   grantSecret: () => { try { return SIGNUP_GRANT_SECRET.value() || ''; } catch (_) { return ''; } },
 });
 exports.redeemSignupGrant = onRequest(
-  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [SIGNUP_GRANT_SECRET] },
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET, SIGNUP_GRANT_SECRET] },
   SIGNUP_PLATFORM.redeemSignupGrant,
 );
 exports.getMyProfile = onRequest(
