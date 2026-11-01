@@ -2704,8 +2704,11 @@ function drv2ShowInterlude() {
     next: { name: nextOrder.customer_name || (next.deliveryTask && next.deliveryTask.recipient_name) || '', area: coloniaOf(next) },
     liveTracking: false,   // omitted until tracker_fixes ON (advisor); the 2nd nav sentence always renders
   }, { ICONS, esc: escapeHtml });
+  /* SLICE3DEPS:INTERLUDE-EARN:START — per-delivery pay injection, carved inside SLICE2:IMPORT (the pure builder no longer renders earnings; it can't read window.PayRate). Idempotent; blank when the rate is unknown; late rate load re-injects via refreshOpenCashSurfaces. */
   ov.classList.add('open');
+  ov.dataset.oid = info.orderId || ''; drv2InjectInterludeEarn(ov);
   const go = ov.querySelector('#btn-interlude-go'); if (go) go.onclick = drv2DismissInterlude;
+  /* SLICE3DEPS:INTERLUDE-EARN:END */
   drv2InterludeShownFor = info.orderId;
   if (drv2InterludeTimer != null) clearTimeout(drv2InterludeTimer);
   drv2InterludeTimer = setTimeout(drv2DismissInterlude, 3000);   // armed ONCE per interlude — fixed expiry
@@ -2747,8 +2750,11 @@ function drv2ShowResumen(info) {
     showEarnings: false,                        // «+L 70» / «Ganado hoy» HELD until Pagos ships (advisor R2)
     dayCashOwed,
   }, { ICONS, esc: escapeHtml });
+  /* SLICE3DEPS:RESUMEN-EARN:START — «Tu pago por esta entrega» row injection, carved inside SLICE2:IMPORT (the pure builder no longer renders it). Idempotent; blank when the rate is unknown; late rate load re-injects via refreshOpenCashSurfaces. */
   ov.classList.add('open');
+  ov.dataset.oid = info.orderId || ''; drv2InjectResumenEarn(ov);
   const done = ov.querySelector('#btn-resumen-done'); if (done) done.onclick = drv2DismissResumen;
+  /* SLICE3DEPS:RESUMEN-EARN:END */
   drv2ResumenShownFor = info.orderId;
 }
 
@@ -3790,6 +3796,40 @@ function renderGanancias(view) {
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
   });
   if (typeof syncTabBarForScreen === 'function') syncTabBarForScreen('ganancias');   // (re)mount the O6 bar after overwriting innerHTML
+}
+// ============================================================
+// INTERLUDE/SUMMARY EARNINGS — post-render per-delivery pay injection (the interlude/summary rewire; the pure builders
+// no longer render earnings — they can't read window.PayRate). The amount is each delivery's OWN in-effect rate at its
+// delivered_at (ONE source), gated PAGOS_LIVE && a known rate; blank otherwise (never stale/invented). Idempotent so a
+// late rate load (refreshOpenCashSurfaces) re-runs it. The injected DOM is byte-equal to the old builder's
+// showEarnings:true output (same element/classes/text/position) — proven in stacked-view.test.js.
+function drv2EarnRateFor(orderId) {
+  if (!PAGOS_LIVE || typeof window === 'undefined' || !window.PayRate) return null;
+  const o = (typeof allOrders === 'object' && allOrders && allOrders[orderId]) || null;
+  const at = o && typeof o.delivered_at === 'number' ? o.delivered_at : null;
+  return at == null ? null : window.PayRate.rateCentsInEffect(driverRateEntries, at);   // this delivery's OWN in-effect rate
+}
+function drv2InjectInterludeEarn(ov) {
+  if (!ov) return;
+  const rc = drv2EarnRateFor(ov.dataset.oid);
+  const bit = (rc != null) ? '+L ' + (rc / 100).toLocaleString('es-HN') : null;
+  let sub = ov.querySelector('.il-sub');
+  if (ov.dataset.ilhadsub === undefined) { ov.dataset.ilhadsub = sub ? '1' : '0'; ov.dataset.ilbase = sub ? sub.textContent : ''; }   // earnings-free base, captured once
+  if (ov.dataset.ilhadsub === '1') {
+    if (sub) sub.textContent = ov.dataset.ilbase + (bit != null ? ' · ' + bit : '');   // rebuild as PLAIN text → byte-equal to the builder's joined bits
+  } else {
+    if (bit != null) { if (!sub) { const head = ov.querySelector('.il-head'); if (head) { head.insertAdjacentHTML('afterend', '<p class="il-sub"></p>'); sub = ov.querySelector('.il-sub'); } } if (sub) sub.textContent = bit; }
+    else if (sub) sub.remove();   // earnings-only sub we created, now unknown → drop it
+  }
+}
+function drv2InjectResumenEarn(ov) {
+  if (!ov) return;
+  const card = ov.querySelector('.rs-card'); if (!card) return;
+  for (const r of card.querySelectorAll('.rs-row')) { const t = r.querySelector('.rs-rt'); if (t && t.textContent === 'Tu pago por esta entrega') r.remove(); }   // idempotent (identify by content; no marker class → DOM-equal)
+  const rc = drv2EarnRateFor(ov.dataset.oid);
+  if (rc == null) return;
+  const icon = ICONS.wallet || ICONS.cash || '';
+  card.insertAdjacentHTML('beforeend', '<div class="rs-row"><span class="ico ">' + icon + '</span><div class="rs-rtext"><div class="rs-rt">Tu pago por esta entrega</div><div class="rs-rd">Informativo · se paga aparte, no sale del efectivo</div></div><div class="rs-rv"><span class="rs-pos">+ L ' + (rc / 100).toLocaleString('es-HN') + '</span></div></div>');
 }
 /* ===== SLICE3:LOGIC-3:END ===== */
 /* ===== SLICE2:NAVPREF:START — Cuenta + «App de navegación» screens (R7). Exact to the prototype; a leaf write to
@@ -5018,8 +5058,10 @@ function shiftIdentity() {
 // always equals what a confirm would record. NEVER while a close is in flight — the amount being saved must
 // not shift under the driver mid-operation (and re-rendering would reset the in-progress confirm button).
 function refreshOpenCashSurfaces() {
-  /* ===== SLICE3:GANANCIAS-REFRESH:START — re-render the OPEN earnings screen when the feed re-emits (readiness flip / reconnect / reconcile), so its gated amounts fill in without a manual re-open (Codex r1 #1). Insert, not a frozen-line change. ===== */
-  { const gn = $('screen-ganancias'); if (gn && !gn.classList.contains('hidden') && typeof renderGanancias === 'function') renderGanancias(drv2GananciasView); }
+  /* ===== SLICE3:GANANCIAS-REFRESH:START — re-render the OPEN earnings screen when the feed re-emits (readiness flip / reconnect / reconcile), so its gated amounts fill in without a manual re-open (Codex r1 #1). Also re-inject the interlude/summary per-delivery pay on a LATE rate load (Codex money #3), idempotently. Insert, not a frozen-line change. ===== */
+  { const gn = $('screen-ganancias'); if (gn && !gn.classList.contains('hidden') && typeof renderGanancias === 'function') renderGanancias(drv2GananciasView);
+    const il = $('drv2-interlude'); if (il && il.classList.contains('open') && typeof drv2InjectInterludeEarn === 'function') drv2InjectInterludeEarn(il);
+    const rs = $('drv2-resumen'); if (rs && rs.classList.contains('open') && typeof drv2InjectResumenEarn === 'function') drv2InjectResumenEarn(rs); }
   /* ===== SLICE3:GANANCIAS-REFRESH:END ===== */
   if (closeInFlight) return;
   if ($('cuadre-screen').classList.contains('open')) showCuadre();

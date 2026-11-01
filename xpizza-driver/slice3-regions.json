@@ -667,6 +667,24 @@
    "restore": [
     "    + activeCardHtml(active, deps2, { ordinal: activeOrdinal2, solo, showActualPill: !solo, arrived: a2Arrived && !mapStale2, navLabel: labels2[0] && labels2[0].label, canNotifyArrival: DRV2_CAN_NOTIFY_ARRIVAL, previewHtml: queue.length ? queuedPreviewHtml(queue[0], activeOrdinal2 + 1, deps2) : '' });"
    ]
+  },
+  {
+   "name": "INTERLUDE-EARN",
+   "kind": "slice3deps",
+   "parent": "IMPORT",
+   "restore": [
+    "  ov.classList.add('open');",
+    "  const go = ov.querySelector('#btn-interlude-go'); if (go) go.onclick = drv2DismissInterlude;"
+   ]
+  },
+  {
+   "name": "RESUMEN-EARN",
+   "kind": "slice3deps",
+   "parent": "IMPORT",
+   "restore": [
+    "  ov.classList.add('open');",
+    "  const done = ov.querySelector('#btn-resumen-done'); if (done) done.onclick = drv2DismissResumen;"
+   ]
   }
  ]
 }

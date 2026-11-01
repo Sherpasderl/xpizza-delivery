@@ -794,7 +794,9 @@ export function interludeHtml(info = {}, deps = {}) {
   const bits = [];
   if (cash != null) bits.push(`Cobraste L ${Number(cash).toLocaleString('es-HN')}`);
   if (vuelto != null) bits.push(`vuelto L ${Number(vuelto).toLocaleString('es-HN')}`);
-  if (showEarnings === true) bits.push('+L 70');
+  // Earnings are NO LONGER rendered by the builder (was a hardcoded «+L 70» gated by showEarnings). The per-delivery
+  // pay is injected post-render from the platform pay-rate reader (SLICE3:INTERLUDE-EARN in drv2ShowInterlude) — pure builder can't
+  // read the rate. showEarnings is vestigial (kept so the frozen call site may still pass it, ignored).
   const sub = bits.length ? `<p class="il-sub">${bits.map(esc).join(' · ')}</p>` : '';
   const dl = next.deadline ? ` · antes de ${esc(next.deadline)}` : '';
   const liveSentence = liveTracking === true ? `${esc(next.name || '')} pasó a seguimiento en vivo. ` : '';
@@ -836,8 +838,7 @@ export function deliverySummaryHtml(info = {}, deps = {}) {
   const rsRow = (icon, t, sub, v, variant = '') => `<div class="rs-row"><span class="ico ${variant}">${icon}</span><div class="rs-rtext"><div class="rs-rt">${esc(t)}</div>${sub ? `<div class="rs-rd">${esc(sub)}</div>` : ''}</div>${v ? `<div class="rs-rv">${v}</div>` : ''}</div>`;
   const vueltoRow = (c.kind === 'cash' && vuelto != null)
     ? rsRow(ICONS.cash || '', 'Diste de vuelto', '', `L ${Number(vuelto).toLocaleString('es-HN')}`) : '';
-  const earnRow = showEarnings === true
-    ? rsRow(ICONS.wallet || ICONS.cash || '', 'Tu pago por esta entrega', 'Informativo · se paga aparte, no sale del efectivo', '<span class="rs-pos">+ L 70</span>') : '';
+  const earnRow = '';   // earnings NO LONGER rendered by the builder (was a hardcoded «+ L 70»); the «Tu pago por esta entrega» row is injected post-render from the platform pay-rate reader (SLICE3:RESUMEN-EARN in drv2ShowResumen). showEarnings is vestigial.
   const stat = dayCashOwed != null
     ? `<div class="rs-stat"><b>L ${Number(dayCashOwed).toLocaleString('es-HN')}</b><small>Efectivo a entregar hoy</small></div>` : '';
   const sub = [displayOrderLabel(order), time].filter(Boolean).map(esc).join(' · ');

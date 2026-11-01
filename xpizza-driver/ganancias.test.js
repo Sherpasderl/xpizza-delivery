@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { shiftDeliveries, computeShiftCash, } from './cash-helpers.js';   // REAL cash source (Codex r1 #1)
-import { coloniaOf, readyTimeHHMM } from './stacked-view.js';
+import { coloniaOf, readyTimeHHMM, interludeHtml, deliverySummaryHtml } from './stacked-view.js';
 import { brandLabel } from './brand-helpers.js';
 const realDateNow = Date.now;
 
@@ -76,6 +76,11 @@ const ordersAt = (times) => { const m = {}; times.forEach((at, i) => { m['o' + i
 
 let passed = 0;
 const t = (name, fn) => { fn(); passed += 1; };
+// The OLD builders (0d110f5b, before the interlude/summary rewire) — the DOM-equality reference for the injection tests.
+const __oldTmp = join(__dir, '__old-sv.tmp.mjs');
+writeFileSync(__oldTmp, execFileSync('git', ['show', '0d110f5b:xpizza-driver/stacked-view.js'], { cwd: __dir }).toString());
+const OLD = await import('file://' + __oldTmp);
+try { require('fs').unlinkSync(__oldTmp); } catch {}   // unlink immediately (module is cached) so it never leaks as a stray add
 
 const NOW = Date.UTC(2026, 9, 28, 18, 0, 0);   // Wed 2026-10-28 12:00 HN — a fixed mid-week instant
 const T = hnDayStart(NOW);                      // 00:00 HN today
@@ -202,6 +207,73 @@ t('practica hint (#5): «Ves tu resumen y tu +L {rate}» DERIVED from PayRate; �
   assert.equal(run(null), 'Ves tu resumen', 'rate unknown → the prototype sentence minus the amount clause');
   assert.equal(run({ r: { cents: 7000, effective_from: B + 99999999 } }), 'Ves tu resumen', 'rate not yet in effect → minus the amount clause');
   Date.now = realDateNow;
+});
+
+// ---------- INTERLUDE/SUMMARY injection (the rewire; Codex money) ----------
+const ESC = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+const IC = { wallet: '<svg class="w"></svg>', cash: '<svg class="c"></svg>', check: '✓' };
+const DEPS = { ICONS: IC, esc: ESC };
+const BB = 1767225600000;
+// build a jsdom overlay from a builder, lift + run the injection with PAGOS + a seeded rate
+function injectOverlay(kind, info, { rate = 7000, pagosLive = true } = {}) {
+  const dom = new JSDOM('<!doctype html><html><body><div id="ov"></div></body></html>');
+  const win = dom.window, doc = win.document;
+  new Function('self', readFileSync(join(__dir, 'pay-rate.js'), 'utf8'))(win);
+  const ov = doc.getElementById('ov');
+  ov.innerHTML = (kind === 'interlude' ? interludeHtml(info, DEPS) : deliverySummaryHtml(info, DEPS));
+  const oid = 'o1';
+  const allOrders = { [oid]: { delivered_at: BB + 1000, delivered_by_driver_uid: 'drv' } };
+  const entries = rate != null ? { r: { cents: rate, effective_from: BB } } : null;
+  const fns = (new Function('PAGOS_LIVE', 'window', 'allOrders', 'driverRateEntries', 'ICONS',
+    liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectInterludeEarn') + '\n' + liftFn('drv2InjectResumenEarn') + '\nreturn { ii: drv2InjectInterludeEarn, ir: drv2InjectResumenEarn };'))(pagosLive, win, allOrders, entries, IC);
+  ov.dataset.oid = oid;
+  (kind === 'interlude' ? fns.ii : fns.ir)(ov);
+  const norm = (h) => { const d = doc.createElement('div'); d.innerHTML = h; return d.innerHTML; };   // normalize the raw builder string through the SAME jsdom serializer, so the comparison is DOM-equality (not string formatting)
+  return { ov, win, norm };
+}
+
+// Condition 1 — NO-REGRESSION: with PAGOS off, the overlay (new builder + inert injection) is byte-identical to the OLD builder (showEarnings:false).
+t('injection #1 no-regression: PAGOS off → overlay == old builder output (both call sites), byte-identical', () => {
+  const ilInfo = { deliveredName: 'Daniela', cash: 385, vuelto: 115, showEarnings: false, next: { name: 'Carlos' } };
+  const il = injectOverlay('interlude', ilInfo, { pagosLive: false });
+  assert.equal(il.ov.innerHTML, il.norm(OLD.interludeHtml(ilInfo, DEPS)), 'interlude: PAGOS off → identical to the old builder');
+  const rsInfo = { order: { payment_method: 'cash', total: 385 }, deliveredName: 'Daniela', time: '7:43', vuelto: 115, showEarnings: false, dayCashOwed: 385 };
+  const rs = injectOverlay('summary', rsInfo, { pagosLive: false });
+  assert.equal(rs.ov.innerHTML, rs.norm(OLD.deliverySummaryHtml(rsInfo, DEPS)), 'summary: PAGOS off → identical to the old builder');
+});
+
+// Condition 2 — FIDELITY when live: new builder + inject(rate 70) == OLD builder with showEarnings:true (same element/classes/text/position); rate 90 case.
+t('injection #2 fidelity: PAGOS on + rate 70 → overlay == old builder showEarnings:true; rate 90 lands the new amount', () => {
+  const ilInfo = { deliveredName: 'Daniela', cash: 385, vuelto: 115, showEarnings: false, next: { name: 'Carlos' } };
+  const il = injectOverlay('interlude', ilInfo, { rate: 7000 });
+  assert.equal(il.ov.innerHTML, il.norm(OLD.interludeHtml({ ...ilInfo, showEarnings: true }, DEPS)), 'interlude rate 70 == old builder showEarnings:true (DOM-equal .il-sub)');
+  const rsInfo = { order: { payment_method: 'cash', total: 385 }, deliveredName: 'Daniela', time: '7:43', vuelto: 115, showEarnings: false, dayCashOwed: 385 };
+  const rs = injectOverlay('summary', rsInfo, { rate: 7000 });
+  assert.equal(rs.ov.innerHTML, rs.norm(OLD.deliverySummaryHtml({ ...rsInfo, showEarnings: true }, DEPS)), 'summary rate 70 == old builder showEarnings:true (.rs-row in .rs-card, same position)');
+  // rate 90 → the NEW amount, same shape, never hardcoded 70
+  const il90 = injectOverlay('interlude', ilInfo, { rate: 9000 }).ov.innerHTML;
+  assert.ok(il90.includes('+L 90') && !il90.includes('+L 70'), 'interlude rate 90 → «+L 90»');
+  const rs90 = injectOverlay('summary', rsInfo, { rate: 9000 }).ov.innerHTML;
+  assert.ok(/<span class="rs-pos">\+ L 90<\/span>/.test(rs90) && !rs90.includes('+ L 70'), 'summary rate 90 → «+ L 90» in the rs-pos span');
+});
+
+// Condition 3 — LATE rate load: rate unknown at show → nothing; rate arrives → re-inject (idempotent) shows the amount.
+t('injection #3 late load: unknown rate → nothing; re-inject after the rate arrives → the amount appears (idempotent)', () => {
+  const rsInfo = { order: { payment_method: 'cash', total: 385 }, deliveredName: 'Daniela', time: '7:43', vuelto: 115, showEarnings: false, dayCashOwed: 385 };
+  const dom = new JSDOM('<!doctype html><html><body><div id="ov"></div></body></html>');
+  const win = dom.window, doc = win.document;
+  new Function('self', readFileSync(join(__dir, 'pay-rate.js'), 'utf8'))(win);
+  const ov = doc.getElementById('ov'); ov.innerHTML = deliverySummaryHtml(rsInfo, DEPS); ov.dataset.oid = 'o1';
+  const allOrders = { o1: { delivered_at: BB + 1000, delivered_by_driver_uid: 'drv' } };
+  let entries = null;   // rate NOT loaded yet
+  const mk = () => (new Function('PAGOS_LIVE', 'window', 'allOrders', 'driverRateEntries', 'ICONS',
+    liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectResumenEarn') + '\nreturn drv2InjectResumenEarn;'))(true, win, allOrders, entries, IC);
+  mk()(ov);
+  assert.ok(!ov.innerHTML.includes('Tu pago por esta entrega'), 'unknown rate → NOTHING injected (never stale/invented)');
+  entries = { r: { cents: 7000, effective_from: BB } };   // rate arrives
+  mk()(ov); mk()(ov);   // re-inject twice → idempotent
+  assert.ok(ov.innerHTML.includes('Tu pago por esta entrega') && /<span class="rs-pos">\+ L 70<\/span>/.test(ov.innerHTML), 'after the rate arrives → the row appears');
+  assert.equal((ov.innerHTML.match(/Tu pago por esta entrega/g) || []).length, 1, 'exactly ONE row after repeated re-injects (idempotent)');
 });
 
 Date.now = realDateNow;   // restore the real clock

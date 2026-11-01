@@ -399,9 +399,10 @@ t('interludeHtml: «Parada 1 entregada» + cash/vuelto; +L70 HIDDEN (R2); 2nd na
   assert.ok(!html.includes('pasó a seguimiento en vivo'), 'live-tracking sentence omitted when off');
   assert.ok(html.includes('id="btn-interlude-go"') && html.includes('Ir a la parada 2'));
 });
-t('interludeHtml: earnings on → +L 70; live on → the live sentence', () => {
+t('interludeHtml: the BUILDER no longer renders earnings (showEarnings vestigial — now injected post-render); live sentence still gated', () => {
   const html = interludeHtml({ next: { name: 'Carlos' }, cash: 385, showEarnings: true, liveTracking: true }, DEPS);
-  assert.ok(html.includes('+L 70') && html.includes('Carlos pasó a seguimiento en vivo.'));
+  assert.ok(!html.includes('+L 70') && !html.includes('+ L 70'), 'NO hardcoded earnings from the builder, even with showEarnings:true (the per-delivery pay is injected from window.PayRate)');
+  assert.ok(html.includes('Carlos pasó a seguimiento en vivo.'), 'live-tracking sentence still rendered');
 });
 
 // ---------- deliverySummaryHtml (resumen / S16 — end-of-run summary; Pagos gated; collectionFor-driven) ----------
@@ -423,7 +424,7 @@ t('deliverySummaryHtml: affirmative-only + Pagos gate — paid-online never «Co
   const pending = deliverySummaryHtml({ order: { payment_method: 'online', total: 410 }, deliveredName: 'Ana', dayCashOwed: 0 }, DEPS);
   assert.ok(pending.includes('Sin cobro confirmado') && !/pagad/i.test(pending), 'pending online → never «pagado» (affirmative-only)');
   const earn = deliverySummaryHtml({ order: { payment_method: 'cash', total: 385 }, deliveredName: 'Daniela', vuelto: 115, showEarnings: true, dayCashOwed: 385 }, DEPS);
-  assert.ok(earn.includes('+ L 70') && earn.includes('Tu pago por esta entrega'), 'earnings on → +L 70 shows');
+  assert.ok(!earn.includes('+ L 70') && !earn.includes('Tu pago por esta entrega'), 'the BUILDER no longer renders the «Tu pago» row (injected post-render from window.PayRate now)');
 });
 t('deliverySummaryHtml: cobro icon is the green .ok tile ONLY when collected (cash/card); never for sin-cobro/paid-online', () => {
   const cash = deliverySummaryHtml({ order: { payment_method: 'cash', total: 385 }, deliveredName: 'Daniela', dayCashOwed: 385 }, DEPS);
@@ -603,8 +604,9 @@ t('offerScreenHtml: NEVER renders the of-area line today — coloniaOf is "" unc
 // earnings literal, this FAILS — nobody can turn payments on with a frozen rate left behind.
 // The RENDERED-earnings surfaces (Codex r1 #5): a FIXED rate literal in EITHER file blocks PAGOS_LIVE. Comments are
 // stripped first so the gate targets what RENDERS, not documentation; templates («L ${…}») and plain cash amounts
-// («L 1,430», no earnings marker) are NOT flagged. stacked-view.js still carries the DEFERRED interlude/summary «+L 70»
-// (the OWED rewire is a precondition of PAGOS) — so this correctly stays armed until that rewire lands.
+// («L 1,430», no earnings marker) are NOT flagged. The interlude/summary rewire LANDED — the builders no longer
+// render «+L 70» (injected post-render from window.PayRate), so BOTH files are now literal-free and the precondition
+// is SATISFIED (the flip test below proves a simulated PAGOS_LIVE=true passes the gate).
 const stripComments = (s) => s
   .replace(/<!--[\s\S]*?-->/g, '')          // HTML comments
   .replace(/\/\*[\s\S]*?\*\//g, '')         // JS/CSS block comments
@@ -616,6 +618,15 @@ t('PAGOS_LIVE precondition: no hardcoded earnings-rate literal in stacked-view.j
   const pagosLive = /const\s+PAGOS_LIVE\s*=\s*true\b/.test(idx);   // the master driver-earnings flag
   assert.ok(!(pagosLive && (EARN_LITERAL.test(sv) || EARN_LITERAL.test(idx))),
     'PAGOS_LIVE is true but a hardcoded earnings-rate literal remains in stacked-view.js or index.html — derive every rendered earnings amount from window.PayRate (blank when unknown) BEFORE turning driver payments live (STRUCTURAL-DELTAS: OWED interlude/summary rate rewire)');
+});
+t('PAGOS_LIVE precondition NOW SATISFIED: flip the flag → the gate passes (both files literal-free after the interlude/summary rewire)', () => {
+  const idx = stripComments(readFileSync(join(__dir, 'index.html'), 'utf8'));
+  const sv = stripComments(readFileSync(join(__dir, 'stacked-view.js'), 'utf8'));
+  assert.ok(!EARN_LITERAL.test(sv), 'stacked-view.js code is literal-free (interlude/summary earnings removed)');
+  assert.ok(!EARN_LITERAL.test(idx), 'index.html code is literal-free (earnings all templated from window.PayRate)');
+  // SIMULATE the activation: pagosLive = true. With both files clean, the precondition gate is GREEN → activation is no longer blocked by a frozen rate.
+  const pagosLiveSimulated = true;
+  assert.ok(!(pagosLiveSimulated && (EARN_LITERAL.test(sv) || EARN_LITERAL.test(idx))), 'with PAGOS_LIVE simulated true, no rate literal blocks activation — the precondition is met');
 });
 t('NEG: a planted fixed-rate literal is caught in either file; templates + plain cash are not', () => {
   assert.ok(EARN_LITERAL.test("bits.push('+L 70')"), 'per-delivery chip «+L 70» caught');
