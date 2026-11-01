@@ -732,3 +732,47 @@ test('ruling A — an upload already open (crop → upload) is a pending photo: 
   btnText(drawer(d), 'Cancelar').click(); await settle();
   assert.equal(d.querySelector('#detail .secren').disabled, false, 'cancelled: the rename is back');
 });
+// ── Codex ruleA r1 (2026-10-31) ────────────────────────────────────────────────────────────────────────────────────────
+// #1 an upload HELD beside a section name ('ready': the guard refused to write it) keeps its way out — «Cancelar», the busy
+// state's own control and copy — and cancelling it loses nothing else. The UI blocks each side while the other is pending, so
+// the one seeded fact is the SERVER's (state.savedRenames — what getEditableCatalog / «Enviar al dueño» write) landing while
+// the PUT is held: the rest is the real flow.
+test('codex ruleA r1 #1 — a photo held beside a pending name shows «Cancelar» (enabled); cancel → the name is still pending, nothing else lost', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, w, mods } = await boot(fake);
+  await openDrawerFor(d, 'Margarita');
+  const price = drawer(d).querySelector('input[aria-label="Precio"]');
+  price.value = '290'; price.dispatchEvent(new window.Event('input')); await settle();
+  btnText(drawer(d), 'Cerrar').click(); await settle();
+  const release = fake.holdPut();
+  await uploadVia(d, w, fake, 'Pepperoni', mkFile(w));
+  await until(() => drawer(d).querySelector('.phbusy'), 'P4: the PUT is in flight');
+  mods.app.state.savedRenames = [{ id: 'cl', from: 'Clásicas', to: 'Pizzas' }];   // the server's saved name, landing now
+  release();
+  await until(() => { const j = drawer(d).querySelector('.uphoto:not(.phbusy)'); return j && btnText(drawer(d), 'Cancelar'); }, 'the held photo');
+  const cancel = btnText(drawer(d), 'Cancelar');
+  assert.equal(cancel.disabled, false, 'its way out is NOT locked with the rest of the field');
+  assert.deepEqual(mods.app.state.draft.state.photos, undefined, 'premise: held, not written');
+  cancel.click(); await settle();
+  assert.ok(!btnText(drawer(d), 'Cancelar') && drawer(d).querySelector('button.uploader.phdesk'), 'cancelled: the empty zone again');
+  assert.equal(mods.app.state.savedRenames.length, 1, 'the name is still pending');
+  const marg = mods.app.state.draft.state.items.find((i) => i.key === 'Margarita');
+  assert.equal(marg.price, 290, 'the other edit is kept');
+  assert.equal(d.getElementById('review').disabled, false, 'nothing is held any more: the review is reachable');
+});
+// #2 every drawer render path carries the lock — the preview-renewal and image-error redraws included
+test('codex ruleA r1 #2 — with a name pending, the renewal and image-error redraws keep Cambiar / Quitar disabled', async () => {
+  const fake = createPhotoFake({ items: ITEMS(), legacy: { Margarita: true } });
+  const { d } = await boot(fake);
+  await renameSection(d, 'Pizzas clásicas');
+  await openDrawerFor(d, 'Margarita');
+  const off = () => { const a = [...drawer(d).querySelectorAll('.phacts button')]; return a.length === 2 && a.every((b) => b.disabled); };
+  assert.ok(off(), 'premise: locked on open');
+  drawer(d).querySelector('.uphoto img').dispatchEvent(new window.Event('error')); // 1st error: ONE renewal read → its redraw
+  await settle(60);
+  assert.ok(drawer(d).querySelector('.uphoto'), 'premise: the drawer was redrawn with its photo field');
+  assert.ok(off(), 'after the renewal redraw: still locked');
+  const im = drawer(d).querySelector('.uphoto img');
+  if (im) { im.dispatchEvent(new window.Event('error')); await settle(60); }               // 2nd error: the retried-path redraw
+  assert.ok(off() || !drawer(d).querySelector('.phacts'), 'after the image-error redraw: still locked');
+});
