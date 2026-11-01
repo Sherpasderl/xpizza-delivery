@@ -8,7 +8,7 @@ const assert = require('assert');
 const { canonicalize, validateSource, sourceToBuildInputs } = require('./source-store');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { buildCatalogV2, rebuildFormMenu } = require('./form-menu-source');
-const { assertWholeBody } = require('./public-menu');
+const { assertWholeBody } = require('./public-menu'); const { availIdentityField } = require('../menu-pricing');
 const { generateFormBundle } = require('./generate-form-bundle');
 const { groupIndexFrom } = require('./group-index');
 
@@ -100,7 +100,7 @@ const rename = (src, id, name) => {
   // assertWholeBody. Its reader is not injectable, so the carry is mirrored here; the real endpoint is exercised by the
   // emulator cells (public menu) in the PB-1 hand-back.
   const body = generateFormBundle('x_pizza', menu);
-  for (const f of ['extras_by_category', 'extras_by_item', 'badges']) if (menu.structure[f] !== undefined) body[f] = menu.structure[f];
+  for (const f of ['extras_by_category', 'extras_by_item', 'badges']) if (menu.structure[f] !== undefined) body[f] = menu.structure[f]; body.avail_identity = { field: availIdentityField('x_pizza') };   // + the 1d.3 field the server sets before the check (PLAN-avail-identity r1)
   assert.doesNotThrow(() => assertWholeBody('x_pizza', body, menu), 'the public body is whole (variant_items reaches it)');
   const dropped = { ...body }; delete dropped.variant_items;
   assert.throws(() => assertWholeBody('x_pizza', dropped, menu), /variant_items is missing although the catalog carries it/, 'sensitivity: a body that dropped the groups is refused');
