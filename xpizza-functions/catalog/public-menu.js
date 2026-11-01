@@ -30,7 +30,7 @@ const { getRestaurantMenu } = require('./catalog-menu');
 const { generateFormBundle } = require('./generate-form-bundle');
 const { canonicalJson } = require('./canonical-json');
 const { applyIdentityToServedBody } = require('./identity-overlay');
-const { photosFor } = require('./public-photos');
+const { photosFor } = require('./public-photos'); const { availIdentityField } = require('../menu-pricing');
 const { REWARD_ICONS } = require('./reward-icons');
 
 // Bumped whenever THIS module's projection changes — a field added, a shape altered, a generator
@@ -81,7 +81,7 @@ const BODY_CONTRACT = Object.freeze({
   extras_eligibility: { type: 'object', fromSource: (menu) => menu.eligibility != null },
   // PLAN-public-menu-display r2 T2: absolute dish photo URLs, { [String(dish.id)]: { card, hero } }. Declared but NEVER
   // required — a decoration omitted on any trouble (catalog/public-photos.js), so its absence is not a half-menu.
-  photos: { type: 'object' },
+  photos: { type: 'object' }, avail_identity: { required: true, type: 'object' },   // PLAN-avail-identity r1: { field } — the restaurant's availability identity, from the server's ONE rule
 });
 const PUBLIC_MENU_BODY_FIELDS = Object.freeze(Object.keys(BODY_CONTRACT));
 
@@ -225,7 +225,7 @@ async function buildPublicMenu(db, rid, deps = {}) {
   let body;
   try {
     body = composeServedMenu(restaurantId, menu, generate);
-    if (menu.eligibility) body.extras_eligibility = menu.eligibility;
+    if (menu.eligibility) body.extras_eligibility = menu.eligibility; body.avail_identity = { field: availIdentityField(restaurantId) };   // the NORMALIZED rid (codex P1)
   } catch (e) {
     fail('public_menu_unavailable', `${restaurantId}: the live catalog does not project to a servable menu — ${String((e && e.message) || e).slice(0, 160)}`);
   }

@@ -44,8 +44,10 @@ const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-func
   const { unapplyPmdisplayModule } = require('./tools/pmdisplay-module-inverse');
   // PLAN 4 landed after public-menu-display: its exact module inverse (proven by formbake-module-wiring.guard) is reversed FIRST
   const { unapplyFormbakeModule } = require('./tools/formbake-module-inverse');
-  const pmdRead = (f) => unapplyPmdisplayModule(f, unapplyFormbakeModule(f, read(f)));
-  for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, unapplyPriceSync(f, pmdRead(f))), baseOf(f), `🔴 ${f} minus the formbake, pmdisplay, price-sync and extras hunks is not ${BASE}:${f}`);
+  // DRYRUN R-WIRE (2e): PLAN-avail-identity landed newest — its exact inverse is reversed FIRST (innermost)
+  const aiRead = (f) => require('./tools/avail-identity-inverse').unapplyAvailIdentity(f, read(f));
+  const pmdRead = (f) => unapplyPmdisplayModule(f, unapplyFormbakeModule(f, aiRead(f)));
+  for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, unapplyPriceSync(f, pmdRead(f))), baseOf(f), `🔴 ${f} minus the avail-identity, formbake, pmdisplay, price-sync and extras hunks is not ${BASE}:${f}`);
   const f = 'catalog/source-store.js'; const src = pmdRead(f);
   const h = HUNKS.find((x) => x.file === f && x.now.includes('deny_extras'));
   assert.throws(() => unapplyExtrasModule(f, src.replace(h.now, h.now.replace('deny_extras', 'deny_extraz'))), /occurs 0 times/, 'a byte INSIDE a hunk');

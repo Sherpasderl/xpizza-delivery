@@ -121,7 +121,9 @@ try {
     // S2-srv-tip landed after S3a: its exact module inverse (tools/s2tip-module-inverse.js, proven by s2tip-wiring.guard) is reversed FIRST
     const { unapplyS2tipModule, FILES: S2T_FILES } = require('../tools/s2tip-module-inverse');
     // order colonia landed after S2-srv-tip (create-order-build.js; tools/area-inverse.js, proven by area-wiring.guard): reversed FIRST
-    const areaRead = (f) => require('../tools/area-inverse').unapplyAreaModule(f, read(f));
+    // DRYRUN R-WIRE (2e): PLAN-avail-identity landed newest — its exact inverse (tools/avail-identity-inverse.js, 6 hunks) is reversed FIRST (innermost)
+    const aiRead = (f) => require('../tools/avail-identity-inverse').unapplyAvailIdentity(f, read(f));
+    const areaRead = (f) => require('../tools/area-inverse').unapplyAreaModule(f, aiRead(f));
     const s2tRead = (f) => (S2T_FILES.includes(f) ? unapplyS2tipModule(f, areaRead(f)) : areaRead(f));
     const s3aRead = (f) => (S3A_FILES.includes(f) ? unapplyS3aModule(f, s2tRead(f)) : s2tRead(f));
     // the menu price sync landed after A-1: its exact inverse (tools/price-sync-inverse.js, proven by extras-wiring.guard) is reversed after the capp layers
