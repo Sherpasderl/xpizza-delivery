@@ -117,7 +117,10 @@ try {
   // Every page in the repo that loads account.js carries the config block BEFORE it.
   const pages = [];
   (function walk(d) { for (const e of readdirSync(ROOT + d, { withFileTypes: true })) { if (e.name === 'node_modules' || e.name.startsWith('.')) continue; const p = d ? `${d}/${e.name}` : e.name; if (e.isDirectory()) walk(p); else if (/\.html$/.test(e.name)) pages.push(p); } })('');
-  const loaders = pages.filter((p) => /<script[^>]*src="[^"]*account\.js"/.test(readFileSync(ROOT + p, 'utf8')));
+  // the FILE account.js (any directory) — not a name that merely ends in it (customer-app's capp-device-account.js)
+  const LOADS = /<script[^>]*src="(?:[^"]*\/)?account\.js"/;
+  assert.ok(LOADS.test('<script src="account.js">') && LOADS.test('<script src="../xpizza-orders/account.js">') && !LOADS.test('<script src="capp-device-account.js">'), 'premise: the loader pattern names the file exactly');
+  const loaders = pages.filter((p) => LOADS.test(readFileSync(ROOT + p, 'utf8')));
   assert.deepStrictEqual(loaders.sort(), ORDER_FORM_DIRS.map((d) => `${d}/index.html`).sort(), `the pages that load account.js are exactly the order forms (found ${JSON.stringify(loaders)})`);
   for (const p of loaders) {
     const h = readFileSync(ROOT + p, 'utf8');

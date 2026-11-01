@@ -3280,7 +3280,21 @@
    "lifts": []
   },
   "whatsapp.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/s3c-wiring.guard.test.js",
+     "inverses": [
+      "tools/s2tip-module-inverse.js",
+      "tools/s3c-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/tools/s3c-module-inverse.js",
+     "inverses": [
+      "tools/s3c-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": [
     "xpizza-functions/area-wiring.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",

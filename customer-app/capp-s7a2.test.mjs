@@ -612,7 +612,10 @@ test('stamp: shell.html is stamped as orders-app; on the stamped shell SherpaCli
   const tmp = mkdtempSync(join(tmpdir(), 'capp-stamp-')), dir = join(tmp, 'customer-app');
   cpSync(HERE, dir, { recursive: true, filter: (src) => !/node_modules/.test(src) });
   try {
-    const r = Stamp.stamp(dir, { siteName: 'sherpa-pedir', commit: 'c0ffee', env: 'preview' });
+    // the site name from the manifest (config), never a literal — platform-domain-swap scans tests too
+    const site = (JSON.parse(readFileSync(join(ROOT, 'platform/sites.json'), 'utf8')).deployments.find((d) => d.folder === 'customer-app') || {}).netlify_site;
+    assert.ok(typeof site === 'string' && site.length > 0, 'premise: the manifest names the app\'s Netlify site');
+    const r = Stamp.stamp(dir, { siteName: site, commit: 'c0ffee', env: 'preview' });
     assert.ok(r.ok, r.error); assert.equal(r.deployment, 'orders-app');
     assert.ok(r.files.includes('shell.html'), '🔴 shell.html is stamped');
     assert.ok(readFileSync(join(dir, 'shell.html'), 'utf8').includes('<meta name="sherpa-deployment" content="orders-app">'));
