@@ -22,7 +22,8 @@ const BEGIN = '/* checkout:begin endpoints */\n', END = '/* checkout:end endpoin
 // R-WIRE (assembly restack onto f75e5cf9): this slice is the NEWEST, so its inverse runs FIRST (innermost); the tip's slices that
 // landed after this guard's parent (8a31e2a3) are then stripped in the assembly's inner→outer order. mem512's formSignal hunk is
 // MAIN-SHIPPED IN 8a31e2a3 (its own note), so for THIS parent it is re-applied after the full mem512 inverse — byte-exact either way.
-const TIP_LAYERS = ['mem512', 'pausa', 's4hours', 'formbake', 'area', 's2app', 's2tip', 's5r', 's3c', 's3b', 's3a', 'driver-ledger'];
+const TIP_LAYERS = ['intl', 'mem512',   // DRYRUN R-WIRE (2e): intl-core 308e28b0 (merged newest) added
+  'pausa', 's4hours', 'formbake', 'area', 's2app', 's2tip', 's5r', 's3c', 's3b', 's3a', 'driver-ledger'];
 const M512 = require('./tools/mem512-inverse');
 const FS5 = M512.HUNKS.find((h) => h.fn === 'formSignal');
 const once = (src, from, to, label) => { const k = src.split(from).length - 1; if (k !== 1) throw new Error(`checkout-wiring: ${label} occurs ${k} times (expected exactly 1)`); return src.replace(from, () => to); };

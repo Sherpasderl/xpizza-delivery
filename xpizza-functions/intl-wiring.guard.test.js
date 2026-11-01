@@ -14,7 +14,19 @@ const { execFileSync } = require('child_process');
 const { HUNKS, BASE, unapplyIntlIndex } = require('./tools/intl-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+// DRYRUN R-WIRE (2e): intl-core is merged NEWEST onto the assembly, so its 8a31e2a3 pin first folds out every other layer the tip
+// carries (the checkout-wiring toBase pattern: lifecycle → checkout → the tip layers, and mem512's hunk 5 restored to 8a31e2a3's 256MiB).
+const FS5 = require('./tools/mem512-inverse').HUNKS.find((h) => h.fn === 'formSignal');
+const TIP_LAYERS = ['mem512', 'pausa', 's4hours', 'formbake', 'area', 's2app', 's2tip', 's5r', 's3c', 's3b', 's3a', 'driver-ledger'];
+const foldOthers = (src) => {
+  let out = require('./tools/checkout-inverse').unapplyCheckoutIndex(require('./tools/lifecycle-inverse').unapplyLifecycleIndex(src));
+  for (const t of TIP_LAYERS) {
+    const m = require(`./tools/${t}-inverse`); out = m[Object.keys(m).find((k) => /^unapply\w*Index$/.test(k))](out);
+    if (t === 'mem512') { const k = out.split(FS5.was).length - 1; if (k !== 1) throw new Error(`intl-wiring: the 8a31e2a3 formSignal line occurs ${k} times`); out = out.replace(FS5.was, () => FS5.now); }
+  }
+  return out;
+};
+const real = foldOthers(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // ── 1. the inverse ──
