@@ -21,11 +21,20 @@ import { makeReleasedOrder, withFrozenClock, FROZEN } from './scheduled-badge-fi
 const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(here, 'index.html'), 'utf8');
 
-const sliceFn = (src, sig) => { const s = src.indexOf(sig); assert.ok(s > -1, `${sig} present`); return src.slice(s, src.indexOf('\n}', s) + 2); };
+// Extract a `function NAME(...) { … }` by NAME — robust to its parameter list (e.g. openDetail(orderId) grew a
+// `fetched` arg on the integration base) — and brace-match the body instead of a fragile first-`\n}` scan.
+const sliceFn = (src, name) => {
+  const m = new RegExp(`function\\s+${name}\\s*\\(`).exec(src);
+  assert.ok(m, `function ${name} present`);
+  let i = src.indexOf('{', m.index), depth = 0;
+  for (; i < src.length; i++) { if (src[i] === '{') depth++; else if (src[i] === '}') { depth--; if (!depth) break; } }
+  assert.ok(depth === 0, `function ${name} body is brace-balanced`);
+  return src.slice(m.index, i + 1);
+};
 const sliceConst = (src, sig) => { const s = src.indexOf(sig); assert.ok(s > -1, `${sig} present`); return src.slice(s, src.indexOf('\n', s)); };
 
-const passHTMLSrc = sliceFn(html, 'function passHTML(id, order){');
-const openDetailSrc = sliceFn(html, 'function openDetail(orderId){');
+const passHTMLSrc = sliceFn(html, 'passHTML');
+const openDetailSrc = sliceFn(html, 'openDetail');
 const hasSlotSrc = sliceConst(html, 'const hasSlot =');
 const slotSafeSrc = sliceConst(html, 'const slotLabelSafe =');
 const minutesOfSrc = sliceConst(html, 'const minutesOf =');
@@ -86,7 +95,7 @@ const branch = buildFrom(passHTMLSrc, openDetailSrc);
 
 // The e2266b24 parent renderers, for byte-equality of non-badge output.
 const baseHtml = execSync('git show e2266b24:xpizza-dispatch-mobile/index.html', { cwd: here + '/..', maxBuffer: 50 * 1024 * 1024 }).toString();
-const base = buildFrom(sliceFn(baseHtml, 'function passHTML(id, order){'), sliceFn(baseHtml, 'function openDetail(orderId){'));
+const base = buildFrom(sliceFn(baseHtml, 'passHTML'), sliceFn(baseHtml, 'openDetail'));
 
 // The released order comes from the REAL releaseOne writer under a FROZEN clock (scheduled-badge-fixture.mjs),
 // so slot validity, the "min" and the slot label are all deterministic regardless of wall-clock time.
