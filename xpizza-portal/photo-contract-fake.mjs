@@ -107,7 +107,7 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
         if (u.contentType !== b.contentType || u.bytes !== b.bytes) return err(409, 'op_conflict');
         return answer(200, signed(u));
       }
-      if (fake.starts >= 30) return err(503, 'rate_limited', { retryable: true });   // fail-closed
+      if (fake.starts >= 30) return err(429, 'rate_limited', { retryable: true });   // fail-closed; 429 exactly as the server (photos/errors.js)
       fake.starts += 1;
       const u = { uploadId: nid('up'), rid: b.rid, uid: fake.uid, op_id: b.op_id, contentType: b.contentType, bytes: b.bytes, state: 'issued', attempts: 0 };
       fake.uploads.set(u.uploadId, u);
