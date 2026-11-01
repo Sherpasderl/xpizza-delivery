@@ -3312,7 +3312,7 @@ function renderOffshift() {
   const cashStat = `<div class="off2-stat"><b>L ${(cash.cashOwed || 0).toLocaleString('es-HN')}</b><small>Efectivo a entregar</small></div>`;
   // «Ganado hoy» = the sum of each delivery's in-effect platform rate (one source; NO hardcode). Renders NOTHING
   // unless PAGOS is live AND a rate is seeded AND every delivery is covered (shiftEarningsCents → null otherwise).
-  const earnCents = (PAGOS_LIVE && window.PayRate) ? window.PayRate.shiftEarningsCents(shiftDeliveries(allOrders, currentUser && currentUser.uid, todayMidnightMs(), driverIdentityCutoverMs).resolved.map((d) => d.order), driverRateEntries) : null;
+  const earnCents = PAGOS_LIVE ? drv2DayEarned().cents : null;   // THE one source (HN-day, resolved-only, money-ready) — same as the Ganancias screen + the resumen card; PAGOS-gated here since the offshift landing shows regardless of Pagos
   const earnStat = (earnCents != null) ? `<div class="off2-stat"><b class="off2-earn">L ${(earnCents / 100).toLocaleString('es-HN')}</b><small>Ganado hoy</small></div>` : '';
   host.innerHTML = `
     <header class="off2-hdr"><span class="off2-hm">${SOLA_HM}</span><div class="off2-ttl">Hola, <span id="off-driver-name"></span></div>
