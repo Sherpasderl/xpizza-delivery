@@ -14,7 +14,9 @@ const ACCOUNT = require('./account-lib');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 // a hanging await empties the event loop and Node exits rc 0 WITHOUT finishing — that is a FAILURE, never a silent pass
 let FINISHED = false;
-process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('deletion-tombstone: FAILED — exited without completing (a hang)'); process.exitCode = 1; } });
+// failure output goes through process.stderr.write: a cell's quietly() may still hold console.error redirected when a `within` deadline
+// rejects (the hung promise never reaches its finally), which swallowed the 🔴 message (train-gate sweep, sec-20 ERRORED)
+process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('🔴 deletion-tombstone: FAILED — exited without completing (a hang)\n'); process.exitCode = 1; } });
 const within = (p, ms, label) => { let t; return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(new Error(`${label}: not done within ${ms} ms`)), ms); })]).finally(() => clearTimeout(t)); };
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 function fakeDb() {
@@ -363,4 +365,4 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
 
   FINISHED = true;
   console.log(`\ndeletion-tombstone: OK (${n})`);
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch((e) => { process.stderr.write(`deletion-tombstone: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });
