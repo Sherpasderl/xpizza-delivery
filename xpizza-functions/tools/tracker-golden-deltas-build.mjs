@@ -24,6 +24,7 @@ const CATS = [
     'live with no location yet → legacy (null, null): no gen-1 countdown with a name and an absent flag (D-defect)'],
   ['name-terminal', (d) => d.path === '/tracking/driver_name' && d.a === 'Uno' && d.b === ABSENT && ['complete', 'dispatcher cancel', 'end (background handlers settled)'].includes(d.step) && d.journey !== 'reassign',
     'terminal → legacy name cleared (the delivered/cancelled branches never read driver_name)'],
+  // reassign-clear unreachable via dispatch reassign since 39b59b08 (post-pickup «Reasignar» refused); kept for unassign/admin paths
   ['reassign-clear', (d) => d.journey === 'reassign' && ['reassign to D2', 'D2 accept', 'end (background handlers settled)'].includes(d.step)
     && ['/tracking/driver_name', '/tracking/driver_location', '/tracking/dest_lat', '/tracking/dest_lng', '/tracking/is_active_drop'].includes(d.path) && d.b === ABSENT,
     'reassigned away: the old driver\'s name, location, destination pin and active-drop flag are cleared until the new driver goes live (stale-map fix)'],

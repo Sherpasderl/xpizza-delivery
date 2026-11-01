@@ -12,7 +12,10 @@
 //   native   create → assign (dispatch SDK) → clock-in (native token) → accept → preparing → ready → pickup → ingest ×3 → complete
 //   pwa      the same, clock-in 'pwa' and driver-SDK updateDriverLocation ×3 instead of ingest
 //   cancel   native up to pickup + 1 ingest → dispatcher cancel (the real HTTP endpoint, RECON_SECRET bearer)
-//   reassign native up to pickup + 1 ingest → dispatch SDK reassignOrder to a second driver → that driver's accept/pickup/complete
+//   reassign native up to kitchen ready (BEFORE pickup: since 39b59b08 «Reasignar» is refused post-pickup) → dispatch SDK
+//            reassignOrder to a second driver (asserted { ok: true }) → that driver's accept
+//   --refusal-check (candidate only, not a golden journey): native up to pickup + 1 ingest → reassignOrder must be REFUSED
+//            { ok: false, reason: 'picked_up' } and the delivery task stays with the first driver
 // Captured after every step (at trigger quiescence): order_tracking/{token}, orders/{id}, dispatcher_alerts, and the side-effect
 // log (WhatsApp sends, web-push, FCM). Canonicalized (only): sorted keys; server timestamps → T<rank> per capture step (rank over
 // the distinct timestamp values in that step's capture: order + equality preserved); generated identities → ID<n> by first
@@ -24,7 +27,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((a, x, i, arr) => (x.startsWith('--') ? [...a, [x.slice(2), arr[i + 1]]] : a), []));
-if (!args.root || !args.out) { console.error('usage: tracker-golden.mjs --root <repo> --out <file> [--flag on|off]'); process.exit(2); }
+if (!args.root || (!args.out && !('refusal-check' in args))) { console.error('usage: tracker-golden.mjs --root <repo> (--out <file> [--flag on|off] | --refusal-check)'); process.exit(2); }
 // TRACKER FIXES flag modes (BUILD §3.3 "Candidate OFF … with the flag (a) missing, (b) false, (c) a refresh failure, (d) a refresh
 // timeout"): off (default; the key is ABSENT) | false (seeded false) | on (seeded true) | fault-fail / fault-hang (seeded TRUE, but every
 // read of the flag path REJECTS / NEVER ANSWERS — so the capture equals OFF only if the flag fails closed).
@@ -170,6 +173,16 @@ async function journey(kind) {
   await doStep('accept', () => X1.acceptTask(D1, `${OID}_pickup`));
   await doStep('kitchen preparing', () => db.ref(`orders/${OID}/status`).set('preparing'));
   await doStep('kitchen ready', () => db.ref(`orders/${OID}/status`).set('ready'));
+  if (kind === 'reassign') {
+    // reassign BEFORE pickup (39b59b08 refuses «Reasignar» once the order is picked up; that refusal is --refusal-check)
+    await clockIn(X2, D2);
+    await doStep('reassign to D2', async () => { const r = await XD.reassignOrder(OID, D2, D1); if (!r || r.ok !== true) throw new Error(`golden: pre-pickup reassign refused ${JSON.stringify(r)}`); return r; });
+    await doStep('D2 accept', () => X2.acceptTask(D2, `${OID}_pickup`));
+    await capture('end (background handlers settled)', { awaitBackground: true });
+    for (const L of loaders) L.cleanup();
+    R.close();
+    return steps;
+  }
   await doStep('pickup', () => X1.pickupComplete(D1, `${OID}_pickup`));
   if (kind === 'native' || kind === 'pwa') {
     for (const i of [1, 2, 3]) await ingest(i, 2000);
@@ -177,11 +190,14 @@ async function journey(kind) {
   } else if (kind === 'cancel') {
     await ingest(1, 2000);
     await doStep('dispatcher cancel', () => post(app.cancelPaidOrder, { headers: { Authorization: `Bearer ${process.env.RECON_SECRET}` }, body: { order_id: OID, reason: 'golden' } }));
-  } else if (kind === 'reassign') {
+  } else if (kind === 'reassign-refused') {
     await ingest(1, 2000);
     await clockIn(X2, D2);
-    await doStep('reassign to D2', () => XD.reassignOrder(OID, D2, D1));
-    await doStep('D2 accept', () => X2.acceptTask(D2, `${OID}_pickup`));
+    let refused;
+    await doStep('reassign to D2 after pickup', async () => { refused = await XD.reassignOrder(OID, D2, D1); return refused; });
+    if (JSON.stringify(refused) !== JSON.stringify({ ok: false, reason: 'picked_up' })) throw new Error(`golden: post-pickup reassign was NOT refused as picked_up: ${JSON.stringify(refused)}`);
+    const owner = (await db.ref(`tasks/${OID}_delivery/assigned_driver_id`).once('value')).val();
+    if (owner !== D1) throw new Error(`golden: the refused reassign moved the delivery task (assigned_driver_id=${owner})`);
   }
   await capture('end (background handlers settled)', { awaitBackground: true });
   for (const L of loaders) L.cleanup();
@@ -240,6 +256,11 @@ const watchdog = setTimeout(() => { console.error('golden: FAIL — timed out');
 try {
   const { execFileSync } = await import('node:child_process');
   const out = { root_head: execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), flag: FLAG_MODE, journeys: {} };
+  if ('refusal-check' in args) {   // candidate-only cell: no capture is written for comparison
+    await journey('reassign-refused');
+    console.log("golden: refusal-check — post-pickup reassign REFUSED { ok: false, reason: 'picked_up' }; the delivery task stayed with D1");
+    clearTimeout(watchdog); process.exit(0);
+  }
   for (const k of ['native', 'pwa', 'cancel', 'reassign']) { out.journeys[k] = canonical(await journey(k)); console.log(`golden: ${k} — ${out.journeys[k].length} steps`); }
   fs.writeFileSync(args.out, JSON.stringify(out, null, 1) + '\n');
   console.log(`golden: wrote ${args.out}`);
