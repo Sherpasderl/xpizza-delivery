@@ -2708,11 +2708,13 @@ test('Codex G7 r3: an unresolved ASAP cash send, its error closed — back on th
 
 // PLAN-capp-store-promo-feeinfo / Codex promo r1 #1 — the MODULE's own rule, for ANY host of CappUI (not only the shell, whose getter is
 // already the admitted one): a host saying «member» with no admitted identity (opts.member / setMember) claims nothing
-test('store promo (CappUI host): a raw «member» authState with nothing admitted ⇒ no «Envío gratis», the pill reserved; an admitted member ⇒ «Envío gratis»', () => {
+test('store promo (CappUI host): a raw «member» authState with nothing admitted ⇒ no «Envío gratis», the pill reserved; an admitted member WITHOUT a token ⇒ none; WITH a token ⇒ «Envío gratis»', () => {
   const cfg = { feeFromCents: 4500, zoneKm: 7, promoFree: true };
   const raw = boot('x_pizza', { config: cfg, mount: { authState: () => 'member' } });
   assert.equal(raw.q('.info .facts .free'), null, `🔴 store promo (host): «Envío gratis» from an unadmitted session: ${raw.text('.info .facts')}`);
   assert.equal(raw.q('.info .pill.deal').getAttribute('aria-hidden'), 'true', 'not admitted ⇒ reserved');
-  const adm = boot('x_pizza', { config: cfg, mount: { authState: () => 'member', member: { uid: 'u_1', name: 'Ana', phone: '99990000', email: '' } } });
+  const noTok = boot('x_pizza', { config: cfg, mount: { CappApi: require('./capp-api.js'), authState: () => 'member', member: { uid: 'u_1', name: 'Ana', phone: '99990000', email: '', idToken: null } } });
+  assert.equal(noTok.q('.info .facts .free'), null, '🔴 store promo (host): an admitted member WITHOUT a usable token claims nothing (Codex promo r2 P2-A)');
+  const adm = boot('x_pizza', { config: cfg, mount: { CappApi: require('./capp-api.js'), authState: () => 'member', member: { uid: 'u_1', name: 'Ana', phone: '99990000', email: '', idToken: 't_1' } } });
   assert.ok(adm.q('.info .facts .free'), '🔴 store promo (host): the admitted member\'s «Envío gratis»'); assert.equal(adm.q('.info .pill.deal'), null);
 });

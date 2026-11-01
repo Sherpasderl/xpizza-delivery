@@ -289,7 +289,9 @@
     // zone: no control without effect). The auth tri-state is the HOST's (opts.authState); no getter ⇒ no promo UI at all
     function authOf() {
       if (typeof opts.authState !== 'function') return null;
-      if (memberCtx) return 'member';   // the ADMITTED identity — the one the checkout sends with (Codex promo r1 #1), never the raw session
+      // the ADMITTED identity — the one the checkout sends with (Codex promo r1 #1) — AND a usable token by the transport's own predicate
+      // (Codex promo r2 P2-A, CappApi.tokenOf): no token ⇒ the server prices a guest ⇒ 'unresolved', nothing claimed
+      if (memberCtx) { let A = null; try { A = opts.CappApi || (typeof self !== 'undefined' && self.CappApi) || (typeof require === 'function' ? require('./capp-api.js') : null); } catch (_) { A = null; } return A && typeof A.tokenOf === 'function' && A.tokenOf(memberCtx) ? 'member' : 'unresolved'; }
       let v; try { v = opts.authState(); } catch (_) { v = null; }
       return v === 'guest' ? 'guest' : 'unresolved';   // a session not (yet) admitted — restoring, or an incomplete one being signed out — claims nothing
     }
@@ -311,7 +313,22 @@
       const top = $('top'), info = top && top.querySelector('.info'); if (!info) return;
       const old = info.querySelector('.hdpills'), html = pillsHtml();
       if (old) { if (html) old.outerHTML = html; else old.remove(); } else if (html) { const id = info.querySelector('.idrow'); if (id) id.insertAdjacentHTML('afterend', html); }
-      const f = info.querySelector('.facts'); if (f) f.innerHTML = factsHtml();
+      const f = info.querySelector('.facts'); if (f) patchFacts(f);
+    }
+    // Codex promo r2 P2-B: the fee line changes IN PLACE — the live «Detalle del envío» node is kept (a focused ⓘ stays focused); only
+    // the nodes before it are swapped. Without an ⓘ on both sides: the whole line, focus restored by descriptor
+    function patchFacts(f) {
+      const tpl = doc.createElement('div'); tpl.innerHTML = factsHtml();
+      const ib = f.querySelector('.infobtn'), nib = tpl.querySelector('.infobtn');
+      if (ib && nib && ib.parentElement && nib.parentElement) {
+        const fs = ib.parentElement, nfs = nib.parentElement;
+        while (fs.firstChild && fs.firstChild !== ib) fs.removeChild(fs.firstChild);
+        for (const n of [...nfs.childNodes]) if (n !== nib) fs.insertBefore(n, ib);
+        return;
+      }
+      const fd = f.contains(doc.activeElement) ? descOf(doc.activeElement) : null;
+      f.innerHTML = tpl.innerHTML;
+      if (fd) { const el = refind(fd); if (el) el.focus({ preventScroll: true }); }
     }
     function storeHtml() {
       const mode = S.mode, open = isOpen();

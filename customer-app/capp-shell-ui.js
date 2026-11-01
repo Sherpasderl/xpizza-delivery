@@ -68,7 +68,10 @@
     // the ADMITTED identity's tri-state (Codex promo r1 #1 + the advisor's home ruling): 'member' only once S.member is applied — the
     // identity the checkout sends with — never the raw session; a session not (yet) admitted claims nothing. ONE rule: Inicio's promo
     // (vm.promoAuth) and a mounted store's header (its authState) both read it
-    const admittedAuth = () => (S.member ? 'member' : authNow() === 'guest' ? 'guest' : 'unresolved');
+    // Codex promo r2 P2-A: 'member' needs a USABLE token by the TRANSPORT's own predicate (CappApi.tokenOf — what x-firebase-id-token
+    // is built from); an admitted member without one is 'unresolved' (reserved, nothing claimed) until the token arrives
+    const tokenOf = (m) => { const A = pick(o, 'CappApi', './capp-api.js'); return A && typeof A.tokenOf === 'function' ? A.tokenOf(m) : null; };
+    const admittedAuth = () => (S.member ? (tokenOf(S.member) ? 'member' : 'unresolved') : authNow() === 'guest' ? 'guest' : 'unresolved');
     const storeAuth = () => { if (S.store && typeof S.store.ui.authChanged === 'function') S.store.ui.authChanged(); };
     const emit = (name, detail) => { try { (o.onEvent || (() => {}))(name, detail); } catch (_) {} };
     const $ = (id) => doc.getElementById(id);
@@ -253,6 +256,20 @@
       S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', ...(typeof p.promos === 'boolean' ? { promos: p.promos } : {}), idToken, getIdToken: () => fbAuth.idToken() };
       if (S.store) S.store.ui.setMember(S.member);   // §4c: back on the SAME checkout step, filled in
       schedule();
+      if (!idToken) retryToken(gen, uid, 0);
+    }
+    // Codex promo r2 P2-A: an admitted member whose token failed is retried (bounded); when it arrives, the SAME identity is re-handed to
+    // the store (setMember, same uid ⇒ the header patched in place) and Inicio repaints — the claim upgrades, nothing re-renders
+    const TOKEN_RETRY_MS = [2000, 10000, 30000];
+    function retryToken(gen, uid, i) {
+      T.setTimeout(async () => {
+        const live = () => !dead && gen === memberGen && S.member && S.member.uid === uid;
+        if (!live() || tokenOf(S.member)) return;
+        let t = null; try { t = await fbAuth.idToken(); } catch (_) { t = null; }
+        if (!live() || tokenOf(S.member)) return;
+        if (typeof t === 'string' && t) { S.member.idToken = t; if (S.store) S.store.ui.setMember(S.member); schedule(); }
+        else if (i + 1 < TOKEN_RETRY_MS.length) retryToken(gen, uid, i + 1);
+      }, TOKEN_RETRY_MS[i]);
     }
     // ── G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27): the MEMBER's Cuenta, in the shell, under runtime.signup (G6's flag; absent ⇒
     //    the member's Cuenta stays the host's event, byte for byte) ──

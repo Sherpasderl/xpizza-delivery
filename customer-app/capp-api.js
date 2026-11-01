@@ -47,6 +47,11 @@
 })(typeof self !== 'undefined' ? self : this, function (root) {
   'use strict';
 
+  // the member's USABLE token as the transport will attach it (memberToken's fallback — x-firebase-id-token): ONE predicate. The promo
+  // claim («Envío gratis», the member state of the pill) reads it too (Codex promo r2 P2-A): no usable token ⇒ the server prices a guest
+  // ⇒ the screen claims nothing
+  const tokenOf = (m) => (m && typeof m.idToken === 'string' && m.idToken ? m.idToken : null);
+
   const HOSTED_CHECKOUT_MS = 45 * 60 * 1000;             // the server's hosted-checkout window (HOSTED_TTL_MS, pinned by a test)
   const CAPP_SEND_GRACE_MS = HOSTED_CHECKOUT_MS + 15 * 60 * 1000;
   // POLICY (advisor ruling 2026-10-26, Codex r4): an interrupted card payment LOCKS its order in the app — no card AND no cash
@@ -234,9 +239,10 @@
     const TOKEN_WAIT_MS = 2000;
     async function memberToken(m) {
       if (!m) return null;
-      if (typeof m.getIdToken !== 'function') return m.idToken || null;
+      if (typeof m.getIdToken !== 'function') return tokenOf(m);
       const fresh = await Promise.race([Promise.resolve().then(() => m.getIdToken()).then((t) => (typeof t === 'string' && t ? t : null), () => null), timeout(TOKEN_WAIT_MS).then(() => null)]);
-      return fresh || m.idToken || null;
+      if (fresh && m.idToken !== fresh) { try { m.idToken = fresh; } catch (_) {} }   // the usable token the next send — and the promo claim (tokenOf) — see
+      return fresh || tokenOf(m);
     }
     const headersFor = (extra, token) => { const h = { 'Content-Type': 'application/json', ...(extra || {}) }; if (token) h['x-firebase-id-token'] = token; return h; };
     async function post(url, body, extraHeaders) {
@@ -720,5 +726,5 @@
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }
 
-  return { createApi, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
+  return { createApi, tokenOf, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
 });

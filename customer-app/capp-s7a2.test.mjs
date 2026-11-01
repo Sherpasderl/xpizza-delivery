@@ -656,10 +656,10 @@ test('stamp: shell.html is stamped as orders-app; on the stamped shell SherpaCli
 });
 
 // ── G6: the in-app sign-in, owned by the shell when the runtime carries the signup config (DARK: absent ⇒ exactly as before) ──
-function fakeFirebase({ persisted = null, hold = null, failSignOut = 0 } = {}) {
+function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0 } = {}) {   // failToken: the next N getIdToken() calls REJECT (no usable token)
   const calls = { load: 0, ct: [], out: 0 }; let listeners = [], user = persisted;
   // hold: { on, q } — while on, every token read waits for the test to release it (a slow SDK)
-  const tok = (u) => (hold && hold.on ? new Promise((r) => hold.q.push(() => r(`id:${u}`))) : Promise.resolve(`id:${u}`));
+  const tok = (u) => (failToken > 0 ? (failToken--, Promise.reject(new Error('network'))) : hold && hold.on ? new Promise((r) => hold.q.push(() => r(`id:${u}`))) : Promise.resolve(`id:${u}`));
   const auth = { get currentUser() { const u = user; return u ? { uid: u, getIdToken: () => tok(u) } : null; } };
   const emitU = () => { for (const l of listeners) l(user ? { uid: user } : null); };
   const authMod = { browserLocalPersistence: 'LOCAL', getAuth: () => auth, setPersistence: async () => {},
@@ -1551,7 +1551,9 @@ test('D-4a r2: an in-store action during a LOCKED dish hydration cancels it — 
 // :1615-1617 the guest promo pill) — the ONE promoFree predicate (home's), the auth tri-state (a reserved pill while unresolved:
 // no pop-in), the ⓘ only when fee + zone are finite, the feeinfo sheet falling back to the DIRECTORY values (never «undefined km»)
 const liveAuth = (st) => { const fns = new Set(); return { a: { state: () => st, onChange: (f) => { fns.add(f); return () => fns.delete(f); } }, set(v) { st = v; for (const f of [...fns]) f(v); } }; };
-async function promoStore(opts = {}, rid = 'x_pizza') { const S = bootShell(opts); await flush(); S.click(`.rlist .rcard[data-rid="${rid}"]`); await flush(); assert.ok(S.q('.info'), `premise: the ${rid} store header`); return S; }
+// bounded wait for a boot condition (load-robust: a fixed flush count flaked at load1 ≈ 12); the cell's own asserts still decide
+const until = async (f, ms = 4000) => { const t0 = Date.now(); while (!f() && Date.now() - t0 < ms) await flush(); };
+async function promoStore(opts = {}, rid = 'x_pizza') { const S = bootShell(opts); await until(() => S.q(`.rlist .rcard[data-rid="${rid}"]`)); S.click(`.rlist .rcard[data-rid="${rid}"]`); await flush(); assert.ok(S.q('.info'), `premise: the ${rid} store header`); return S; }
 const bare = (html) => html.replace(/<span class="pill deal" style="visibility:hidden" aria-hidden="true">/g, '<span class="pill deal">');   // the reserved pill's two attributes only
 
 test('store promo: a GUEST on a promo store — the «Envío gratis con tu cuenta» pill between the name and the facts, «Envío desde L 45» and the fee ⓘ', async () => {
@@ -1618,14 +1620,14 @@ test('store promo: the store ⓘ opens the feeinfo sheet with the DIRECTORY valu
 // Codex promo-feeinfo r1 — through the REAL Firebase callback path (fakeFirebase + the shell's own auth state, not liveAuth):
 // #1 «Envío gratis» follows the ADMITTED identity (the one the checkout sends with), never the raw session; #2 the production
 // auth handling (dropMember → setMember) keeps the store page — scroll and focus — when the identity does not change
-async function realAuthStore({ persisted = null, failSignOut = 0, complete = null, prof = null } = {}) {
+async function realAuthStore({ persisted = null, failSignOut = 0, complete = null, prof = null, focus = '.seg [data-val="pickup"]' } = {}) {
   const fb = fakeFirebase({ persisted, failSignOut }), gate = deferred();
   const st = memStorage({ ...(complete ? { 'capp:member_complete': JSON.stringify({ v: 1, uid: complete }) } : {}), ...(prof ? { 'capp:member_profile': JSON.stringify(prof) } : {}) });
   const S = await promoStore({ auth: 'unresolved', storage: st, runtime: SU_RUNTIME, mountExtra: { loadSdk: () => gate.p.then(() => fb.loadSdk()), signupFetch: signupServer(ANA).fetch } });
-  const sc = S.q('#scroller'), info = S.q('.info'), btn = S.q('.seg [data-val="pickup"]');
+  const sc = S.q('#scroller'), info = S.q('.info'), btn = S.q(focus);
   sc.scrollTop = 250; btn.focus();
-  assert.equal(S.w.document.activeElement, btn, 'premise: focus on the Pickup control');
-  return { S, fb, sc, info, release: async () => { gate.resolve(); await flush(); await flush(); await flush(); } };
+  assert.equal(S.w.document.activeElement, btn, `premise: focus on ${focus}`);
+  return { S, fb, sc, info, btn, release: async () => { gate.resolve(); await flush(); await flush(); await flush(); } };
 }
 
 test('store promo r1 #1: an INCOMPLETE restored account whose sign-out is rejected — not admitted (S.member null) ⇒ no «Envío gratis», the guest pill stays reserved', async () => {
@@ -1665,7 +1667,7 @@ async function realAuthHome({ persisted = null, failSignOut = 0, complete = null
   const fb = fakeFirebase({ persisted, failSignOut });
   const st = memStorage({ ...(complete ? { 'capp:member_complete': JSON.stringify({ v: 1, uid: complete }) } : {}), ...(prof ? { 'capp:member_profile': JSON.stringify(prof) } : {}) });
   const S = bootShell({ auth: 'unresolved', storage: st, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
-  await flush(); await flush(); await flush();
+  await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && (!persisted || fb.calls.out > 0 || S.ui.state.member)); await flush();
   assert.ok(S.q('.rlist .rcard[data-rid="x_pizza"]'), 'premise: Inicio with the x_pizza card');
   return { S, fb };
 }
@@ -1682,4 +1684,50 @@ test('home promo: an ADMITTED member (a restored complete session) ⇒ «Envío 
   const card = S.q('.rlist .rcard[data-rid="x_pizza"]');
   assert.ok(card.querySelector('.free') && card.querySelector('.free').textContent === 'Envío gratis', `🔴 home promo: the admitted member's «Envío gratis»: ${txt(card)}`);
   assert.equal(card.querySelector('.pill.deal'), null);
+});
+
+// Codex promo r2 — P2-A: the claim uses the SAME predicate the transport attaches the token with (CappApi.tokenOf, memberToken's
+// fallback): a member with NO usable token ⇒ 'unresolved' (reserved, no claim) and no x-firebase-id-token on the quote; P2-B: the
+// in-place patch keeps a focused «Detalle del envío»
+const ANA_PROF = { v: 1, uid: 'u_ana', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com' };
+async function tokenBoot(failToken) {
+  const quotes = []; const apiFetch = (u, i) => { if (u.startsWith('/x/q')) { quotes.push(i.headers['x-firebase-id-token'] || null); return quoteOk(u, i); } return new Promise(() => {}); };
+  const fb = fakeFirebase({ persisted: 'u_ana', failToken });
+  const S = bootShell({ auth: 'unresolved', apiFetch, storage: memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF) }), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+  return { S, quotes };
+}
+test('store promo r2 P2-A: an admitted member with NO usable token — no «Envío gratis» on Inicio or the store AND no member token on the quote; with a token — both', async () => {
+  const N = await tokenBoot(99);
+  assert.ok(N.S.ui.state.member && N.S.ui.state.member.uid === 'u_ana' && !N.S.ui.state.member.idToken, 'premise: admitted, no usable token');
+  assert.equal(N.S.q('#app .free'), null, '🔴 store promo r2: Inicio claims «Envío gratis» for a member whose requests carry no token');
+  assert.equal(N.S.q('.rlist .rcard[data-rid="x_pizza"] .pill.deal').getAttribute('aria-hidden'), 'true', 'no usable token ⇒ unresolved ⇒ reserved');
+  N.S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  assert.equal(N.S.q('.info .facts .free'), null, '🔴 store promo r2: the store claims «Envío gratis» for a member whose requests carry no token');
+  N.S.click('#app [data-act="back"], #app .store-nav [aria-label="Cerrar"]'); await flush(); await flush();
+  await toShellCheckout(N.S); N.S.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();
+  assert.ok(N.quotes.length >= 1, 'premise: a quote was sent'); assert.equal(N.quotes[N.quotes.length - 1], null, 'and it carries no member token (the server prices a guest)');
+  const T = await tokenBoot(0);
+  assert.equal(txt(T.S.q('.rlist .rcard[data-rid="x_pizza"] .free')), 'Envío gratis', '🔴 store promo r2: a member WITH a token sees «Envío gratis» on Inicio');
+  T.S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  assert.ok(T.S.q('.info .facts .free'), '🔴 store promo r2: … and on the store');
+  T.S.click('#app [data-act="back"], #app .store-nav [aria-label="Cerrar"]'); await flush(); await flush();
+  await toShellCheckout(T.S); T.S.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();
+  assert.equal(T.quotes[T.quotes.length - 1], 'id:u_ana', 'and the quote carries the member token');
+});
+test('store promo r2 P2-A: a token that ARRIVES LATER upgrades the claim in place (the same header node, «Envío gratis» shown)', async () => {
+  const U = await tokenBoot(1);
+  U.S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  assert.equal(U.S.q('.info .facts .free'), null, 'premise: no token yet ⇒ no claim');
+  const info = U.S.q('.info');
+  await flush(2300);
+  assert.equal(U.S.q('.info'), info, '🔴 store promo r2: the upgrade re-rendered the store');
+  assert.ok(U.S.q('.info .facts .free'), '🔴 store promo r2: the token that arrived later never upgraded the claim');
+});
+test('store promo r2 P2-B: a focused «Detalle del envío» survives the real unresolved → guest callback (the same node focused, scroll 250)', async () => {
+  const R = await realAuthStore({ persisted: null, focus: '.info .facts .infobtn' });
+  await R.release();
+  assert.equal(R.S.w.document.activeElement, R.btn, `🔴 store promo r2: the focused ⓘ was destroyed (focus on ${R.S.w.document.activeElement && R.S.w.document.activeElement.tagName})`);
+  assert.equal(R.sc.scrollTop, 250);
+  assert.equal(R.S.q('.info .pill.deal').getAttribute('aria-hidden'), null, 'the guest pill shown');
 });

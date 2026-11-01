@@ -26625,5 +26625,77 @@
     "kills_with": [
       "«Envío gratis» on Inicio for a session the checkout does not admit"
     ]
+  },
+  {
+    "id": "pf-10",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r2 P2-A reverted in the SHELL: the claim ignores the token (Inicio claims «Envío gratis» for a member whose requests carry none)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "(S.member ? (tokenOf(S.member) ? 'member' : 'unresolved') :",
+    "to": "(S.member ? 'member' :",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo r2 P2-A",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "Inicio claims «Envío gratis» for a member whose requests carry no token"
+    ]
+  },
+  {
+    "id": "pf-11",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r2 P2-A reverted in CappUI: the store claim ignores the token",
+    "file": "../customer-app/capp-ui.js",
+    "from": "return A && typeof A.tokenOf === 'function' && A.tokenOf(memberCtx) ? 'member' : 'unresolved'; }",
+    "to": "return 'member'; }",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo",
+      "../customer-app/capp-ui.test.mjs"
+    ],
+    "kills_with": [
+      "an admitted member WITHOUT a usable token claims nothing"
+    ]
+  },
+  {
+    "id": "pf-12",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r2 P2-B reverted: the fee line is replaced wholesale (the focused ⓘ node is destroyed)",
+    "file": "../customer-app/capp-ui.js",
+    "from": "      if (ib && nib && ib.parentElement && nib.parentElement) {",
+    "to": "      if (false) {",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo r2 P2-B",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the focused ⓘ was destroyed"
+    ]
+  },
+  {
+    "id": "pf-13",
+    "slice": "promo",
+    "label": "PLAN-capp-store-promo-feeinfo: Codex promo r2 P2-A: the token retry removed (a token that arrives later never upgrades the claim)",
+    "file": "../customer-app/capp-shell-ui.js",
+    "from": "      if (!idToken) retryToken(gen, uid, 0);\n",
+    "to": "",
+    "command": [
+      "node",
+      "--test",
+      "--test-timeout=120000",
+      "--test-name-pattern=store promo r2 P2-A",
+      "../customer-app/capp-s7a2.test.mjs"
+    ],
+    "kills_with": [
+      "the token that arrived later never upgraded the claim"
+    ]
   }
 ]
