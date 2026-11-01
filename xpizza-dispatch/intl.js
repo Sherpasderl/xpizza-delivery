@@ -1,8 +1,9 @@
 // INTL PHONE — dispatch-lane ESM copy of the server's ONE wire-contract parser (xpizza-functions/phone/intl.js
-// @ feat/intl-phone-core 8f24b269). Behavior is byte-identical (dispatch-intl-parity.test.mjs proves it against
+// @ feat/intl-phone-core 308e28b0). Behavior is byte-identical (dispatch-intl-parity.test.mjs proves it against
 // the vendored canonical intl.ref.cjs). Pure, no I/O, never logs its input. Used by the dispatch comms grouping
 // (index.html) to key a conversation by IDENTITY digits, not a last-8 suffix.
 //   parseSubmitted(raw)    → {cc, national, canonical '+CCnational', identity 'CCnational'} | null
+//                            QUALIFIED: a LEADING '+' (or '00') + a supported CC + exactly that country's national length.
 //   legacyRawForms(canon)  → the raw strings an older server stored for the SAME number | []
 export const SUPPORTED = Object.freeze([
   ['504', 8], ['1', 10], ['52', 10], ['502', 8], ['503', 8], ['505', 8], ['506', 8], ['507', 8], ['501', 7], ['34', 9],
@@ -22,12 +23,21 @@ function fromDigits(d) {
   return null;
 }
 
-export function parseSubmitted(raw) {
+// codex r1 #5: the qualifier must LEAD the trimmed input — '+' or the '00' international prefix — and is read BEFORE separators
+// are stripped, so '(+504) 9795-0000' is NOT qualified (it takes the bare rule). → {qualified, prefix '+'|'00'|null, digits} | null.
+export function splitSubmitted(raw) {
   if (typeof raw !== 'string') return null;
-  const s = raw.trim().replace(SEPARATORS_RE, '');
-  if (/^\+\d+$/.test(s)) return fromDigits(s.slice(1));
-  if (/^\d{8}$/.test(s)) return fromDigits(DEFAULT_CC + s);
-  return null;
+  const t = raw.trim();
+  const prefix = t.startsWith('+') ? '+' : t.startsWith('00') ? '00' : null;
+  const d = (prefix === null ? t : t.slice(prefix.length)).replace(SEPARATORS_RE, '');
+  return /^\d+$/.test(d) ? { qualified: prefix !== null, prefix, digits: d } : null;
+}
+
+export function parseSubmitted(raw) {
+  const x = splitSubmitted(raw);
+  if (!x) return null;
+  if (x.qualified) return fromDigits(x.digits);
+  return x.digits.length === 8 ? fromDigits(DEFAULT_CC + x.digits) : null;
 }
 
 export function legacyRawForms(canonical) {
