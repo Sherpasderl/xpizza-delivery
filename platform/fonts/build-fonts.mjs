@@ -42,8 +42,11 @@ export function parseBaseline(cssText) {
   for (const m of cssText.matchAll(/\/\* ([a-z-]+) \*\/\s*@font-face \{([^}]*)\}/g)) {
     const b = m[2];
     const get = (re) => { const x = b.match(re); if (!x) fail(`baseline block without ${re}`); return x[1].trim(); };
+    // PLAN-portal-fonts r1.1 §2.1: an OPTIONAL font-stretch, carried verbatim when the baseline declares it (the portal's
+    // Archivo: `font-stretch: 100%`). Absent in the orders-form baseline, so its output is byte-identical.
+    const stretch = (b.match(/font-stretch: ([^;]+);/) || [])[1];
     out.push({ subset: m[1], family: get(/font-family: '([^']+)'/), style: get(/font-style: ([a-z]+)/), weight: get(/font-weight: ([0-9 ]+);/),
-      url: get(/src: url\(([^)]+)\)/), unicodeRange: get(/unicode-range: ([^;]+);/) });
+      ...(stretch ? { stretch: stretch.trim() } : {}), url: get(/src: url\(([^)]+)\)/), unicodeRange: get(/unicode-range: ([^;]+);/) });
   }
   if (!out.length) fail('the baseline css has no @font-face blocks');
   return out;
@@ -63,7 +66,7 @@ export function plan(surface, man = loadManifest(), dir = HERE) {
   });
   const files = new Map(faces.map((f) => [f.file, f.pin]));
   if (!s.metrics) fail(`${surface}: no derived fallback metrics — run python3 -P platform/fonts/metrics.py --derive ${surface}`);
-  const primary = faces.map((f) => `@font-face{font-family:'${f.family}';font-style:${f.style};font-weight:${f.weight};font-display:optional;`
+  const primary = faces.map((f) => `@font-face{font-family:'${f.family}';font-style:${f.style};font-weight:${f.weight};${f.stretch ? `font-stretch:${f.stretch};` : ''}font-display:optional;`
     + `src:url(fonts/${f.file}) format('woff2');unicode-range:${f.unicodeRange}}`);
   const fallback = [];
   for (const [family, fam] of Object.entries(s.families)) {

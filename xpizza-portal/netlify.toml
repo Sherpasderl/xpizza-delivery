@@ -24,13 +24,20 @@
     #                also means a compromised dependency cannot exfiltrate one to an arbitrary host.
     #   frame-ancestors 'none'  the portal edits prices in later slices; it must never be framed
     #   base-uri / object-src / form-action  close the usual redirection and injection routes
-    Content-Security-Policy = "default-src 'none'; script-src 'self' https://www.gstatic.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us-central1-xpizza-delivery.cloudfunctions.net; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'"
+    Content-Security-Policy = "default-src 'none'; script-src 'self' https://www.gstatic.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us-central1-xpizza-delivery.cloudfunctions.net; style-src 'self'; font-src 'self'; img-src 'self' data:; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'"
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     # No full URL — and no restaurant id — leaks to a cross-origin third party.
     Referrer-Policy = "strict-origin-when-cross-origin"
     # This is a private tool, not a page anyone should find.
     X-Robots-Tag = "noindex, nofollow"
+
+# PLAN-portal-fonts r1.1 §2.3: the self-hosted font FILES are content-hashed (a new file = a new name), so they are cached
+# forever. ONLY the hashed .woff2 — fonts/OFL.txt and portal-fonts.css keep Netlify's normal headers (as the forms do).
+[[headers]]
+  for = "/fonts/*.woff2"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
 
 # Single page: anything that is not a real file resolves to the shell rather than a Netlify 404.
 [[redirects]]
