@@ -13,6 +13,9 @@ const KITCHEN = path.join(FN, '..', 'xpizza-kitchen');
 
 // opts.kitchenDir: load the SDK from another kitchen folder (e.g. a git-archived past build); opts.mockUser: an authenticated
 // emulator user ({ sub, … claims }) via connectDatabaseEmulator's mockUserToken (rules see auth.uid + auth.token).
+// app names are unique PER PROCESS (rules hardening, Codex build r1 P2-1): a per-loader counter restarted at 1 for every loader, so two
+// loaders on the SAME project/ns minted the same app name and the second client silently reused the first one's app — and its token.
+let KDS_APPS = 0;
 export function makeKdsLoader(project, opts = {}) {
   const KDIR = opts.kitchenDir || KITCHEN;
   const [host, port] = process.env.FIREBASE_DATABASE_EMULATOR_HOST.split(':');
@@ -47,9 +50,8 @@ export function signInWithEmailAndPassword() { return Promise.resolve({ user: {}
 export function signOut() { return Promise.resolve(); }
 export function onAuthStateChanged() { return () => {}; }
 `);
-  let k = 0;
   async function loadKds(hostname) {
-    const appName = `kds-${project}-${++k}`;   // unique per loader AND project (a reused name would be a duplicate-app error)
+    const appName = `kds-${project}-${++KDS_APPS}`;   // unique per PROCESS (a reused name would reuse another client's app + token)
     globalThis.location = { hostname };
     let sdk = fs.readFileSync(path.join(KDIR, 'xpizza-delivery.js'), 'utf8');
     sdk = sdk
