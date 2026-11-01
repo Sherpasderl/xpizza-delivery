@@ -792,8 +792,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 446,
+                "price": 249,
+                "subtotal": 498,
                 "extras": [],
                 "extrasTotal": 0,
                 "dish_id": "dimsum_01"
@@ -815,8 +815,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -850,8 +850,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -865,8 +865,8 @@
                 "dish_id": "dimsum_01"
               }
             ],
-            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
-            "total": 496,
+            "items_text": "2x Sichuan Spicy Wonton (L249) [+ Arroz Blanco]",
+            "total": 548,
             "notes": "—",
             "lat": 15.514137854561978,
             "lng": -88.02848413956526,
@@ -883,7 +883,7 @@
             "customer_email": "cliente@prueba.hn",
             "razon_social": "",
             "rtn_cliente": "",
-            "expected_net_cents": 49600
+            "expected_net_cents": 54800
           }
         }
       ]
@@ -904,8 +904,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 446,
+                "price": 249,
+                "subtotal": 498,
                 "extras": [],
                 "extrasTotal": 0,
                 "dish_id": "dimsum_01"
@@ -927,8 +927,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -962,8 +962,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -977,8 +977,8 @@
                 "dish_id": "dimsum_01"
               }
             ],
-            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
-            "total": 496,
+            "items_text": "2x Sichuan Spicy Wonton (L249) [+ Arroz Blanco]",
+            "total": 548,
             "notes": "—",
             "lat": null,
             "lng": null,
@@ -995,7 +995,7 @@
             "customer_email": "cliente@prueba.hn",
             "razon_social": "",
             "rtn_cliente": "",
-            "expected_net_cents": 49600
+            "expected_net_cents": 54800
           }
         }
       ]
@@ -1016,8 +1016,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 446,
+                "price": 249,
+                "subtotal": 498,
                 "extras": [],
                 "extrasTotal": 0,
                 "dish_id": "dimsum_01"
@@ -1039,8 +1039,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -1074,8 +1074,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -1089,8 +1089,8 @@
                 "dish_id": "dimsum_01"
               }
             ],
-            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
-            "total": 496,
+            "items_text": "2x Sichuan Spicy Wonton (L249) [+ Arroz Blanco]",
+            "total": 548,
             "notes": "—",
             "lat": 15.514137854561978,
             "lng": -88.02848413956526,
@@ -1107,7 +1107,7 @@
             "customer_email": "cliente@prueba.hn",
             "razon_social": "",
             "rtn_cliente": "",
-            "expected_net_cents": 49600
+            "expected_net_cents": 54800
           }
         }
       ]
@@ -1128,8 +1128,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 446,
+                "price": 249,
+                "subtotal": 498,
                 "extras": [],
                 "extrasTotal": 0,
                 "dish_id": "dimsum_01"
@@ -1151,8 +1151,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -1186,8 +1186,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -1201,8 +1201,8 @@
                 "dish_id": "dimsum_01"
               }
             ],
-            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
-            "total": 496,
+            "items_text": "2x Sichuan Spicy Wonton (L249) [+ Arroz Blanco]",
+            "total": 548,
             "notes": "—",
             "lat": 15.514137854561978,
             "lng": -88.02848413956526,
@@ -1219,7 +1219,7 @@
             "customer_email": "cliente@prueba.hn",
             "razon_social": "Empresa Prueba S. de R.L.",
             "rtn_cliente": "08011999123456",
-            "expected_net_cents": 49600
+            "expected_net_cents": 54800
           }
         }
       ]
@@ -1240,8 +1240,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 446,
+                "price": 249,
+                "subtotal": 498,
                 "extras": [],
                 "extrasTotal": 0,
                 "dish_id": "dimsum_01"
@@ -1263,8 +1263,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -1298,8 +1298,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -1313,8 +1313,8 @@
                 "dish_id": "dimsum_01"
               }
             ],
-            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
-            "total": 496,
+            "items_text": "2x Sichuan Spicy Wonton (L249) [+ Arroz Blanco]",
+            "total": 548,
             "notes": "—",
             "lat": 15.514137854561978,
             "lng": -88.02848413956526,
@@ -1331,7 +1331,7 @@
             "customer_email": "cliente@prueba.hn",
             "razon_social": "",
             "rtn_cliente": "",
-            "expected_net_cents": 49600
+            "expected_net_cents": 54800
           }
         }
       ]
@@ -1352,8 +1352,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 446,
+                "price": 249,
+                "subtotal": 498,
                 "extras": [],
                 "extrasTotal": 0,
                 "dish_id": "dimsum_01"
@@ -1375,8 +1375,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -1410,8 +1410,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -1425,8 +1425,8 @@
                 "dish_id": "dimsum_01"
               }
             ],
-            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
-            "total": 496,
+            "items_text": "2x Sichuan Spicy Wonton (L249) [+ Arroz Blanco]",
+            "total": 548,
             "notes": "—",
             "lat": 15.514137854561978,
             "lng": -88.02848413956526,
@@ -1443,7 +1443,7 @@
             "customer_email": "pedidos@lamusa.hn",
             "razon_social": "",
             "rtn_cliente": "",
-            "expected_net_cents": 49600
+            "expected_net_cents": 54800
           }
         }
       ]
@@ -1470,8 +1470,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 446,
+                "price": 249,
+                "subtotal": 498,
                 "extras": [],
                 "extrasTotal": 0,
                 "dish_id": "dimsum_01"
@@ -1493,8 +1493,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -1524,8 +1524,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -1571,8 +1571,8 @@
                 "name": "Sichuan Spicy Wonton",
                 "cat": "dim_sum",
                 "qty": 2,
-                "price": 223,
-                "subtotal": 496,
+                "price": 249,
+                "subtotal": 548,
                 "extras": [
                   {
                     "id": "rice_white",
@@ -1586,8 +1586,8 @@
                 "dish_id": "dimsum_01"
               }
             ],
-            "items_text": "2x Sichuan Spicy Wonton (L223) [+ Arroz Blanco]",
-            "total": 496,
+            "items_text": "2x Sichuan Spicy Wonton (L249) [+ Arroz Blanco]",
+            "total": 548,
             "notes": "—",
             "lat": 15.514137854561978,
             "lng": -88.02848413956526,
@@ -1614,7 +1614,7 @@
                 }
               ]
             },
-            "expected_net_cents": 49600,
+            "expected_net_cents": 54800,
             "quote_token": "<masked:quote_token>"
           }
         }

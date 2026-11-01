@@ -24,8 +24,8 @@ const FN = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export const T0 = Date.UTC(2026, 9, 22, 0, 0, 0);          // Wed 2026-10-21 18:00 America/Tegucigalpa
 export const PLAN_ETAG = {                                // PLAN-shared-order-form.FINAL §10.3
-  x_pizza: '"ae86a305a2ef6182f69bca11154e853cd46a4eaa48eb41cb780713675fafc22e"',
-  la_musa: '"cdc6aacb177948ea8b7f5ca2aadee58f7e4b81b5ba210191138d44ba31ef7e94"',
+  x_pizza: '"f5d28c63fe9d99497ec3395073a6ceef6b2166d9105b288f1376e6c5e958d960"',
+  la_musa: '"e8d62d92e4737c9288cf7f4c76fb89341d5bd9ce5f193b7e0249ebb8a0409bc0"',
 };
 
 export const PREAMBLE = `(function(){
