@@ -38,6 +38,7 @@ const Stamp = require('../stamp-version');
 const ROOT = path.join(__dirname, '..', '..');
 const APP = 'customer-app';
 const FLAGS = ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive'];
+const GUEST_SERVER = 'xpizza-functions/checkout-guest-gate.js';   // 3a's capp-guest gate (PLAN-guest-checkout-server)
 const BOOT = ['capp-runtime.js', 'capp-boot.js'];
 const TARGETS = ['web', 'native'];
 const ENTRY = 'index.html';   // the packaged web shell.html (Capacitor's entry)
@@ -86,6 +87,12 @@ function build({ sha, flags = [], root = ROOT, show, target = 'native', env } = 
   const full = execFileSync('git', ['rev-parse', '--verify', `${sha}^{commit}`], { cwd: root, encoding: 'utf8' }).trim();
   for (const f of flags) if (!FLAGS.includes(f)) throw new Error(`unknown flag ${f} (known: ${FLAGS.join(', ')})`);
   const S = typeof show === 'function' ? show : (rel) => gitShow(full, rel, root), T = (rel) => S(rel).toString('utf8');
+  // APP-TRAIN OBLIGATION (advisor ruling 2026-11-01): 3a's capp-guest server refuses every capp guest that is not card + email + a
+  // verified ticket; a bundle that can serve capp guests WITHOUT the client's guestCardOnly rules must never be built (web or native)
+  if (!flags.includes('guestCardOnly')) {
+    let guestServer = true; try { S(GUEST_SERVER); } catch (_) { guestServer = false; }
+    if (guestServer) throw new Error(`the capp-guest server (${GUEST_SERVER}) is in this commit: --flags guestCardOnly is required (owner 10-27: guests are card only)`);
+  }
   const sites = JSON.parse(T('platform/sites.json')), compat = JSON.parse(T('platform/compat.json'));
   const dep = sites.deployments.find((d) => d.app === 'orders' && d.context === 'platform');
   if (!dep || !dep.native || !ID_RE.test(String(dep.native.deployment || ''))) throw new Error('the manifest declares no native deployment id — refusing to ship an inert build');

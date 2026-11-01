@@ -185,4 +185,21 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   finally { fs.rmSync(out, { recursive: true, force: true }); }
   ok(`the WEB target: stamped orders / ${DEP.id} / production (readIdentity), /version.json = the stamp's build + compat, runtime.mode web, the SAME CSP; it differs from native ONLY in the stamp block, the mode, the manifest and version.json; a preview stamps its environment; --verify covers it`);
 }
+// APP-TRAIN OBLIGATION (advisor ruling 2026-11-01, enforced in CODE): 3a's capp-guest server (checkout-guest-gate.js) refuses every capp
+// guest that is not card + email + a verified ticket — so a bundle that can serve capp guests without the client's guestCardOnly rules
+// (card only, the email, the WhatsApp code) must never be built. The packager refuses it, web AND native; the release command carries it.
+{
+  const GUEST = 'xpizza-functions/checkout-guest-gate.js';
+  const withGuest = (rel) => (rel === GUEST ? Buffer.from('// the capp-guest server is present\n') : show(rel));
+  for (const t of [NAT, WEB]) {
+    assert.throws(() => P.build({ sha: HEAD, ...t, show: withGuest }), /guestCardOnly/, `🔴 ${t.target}: the guest server is present and guestCardOnly is NOT set ⇒ packaging must REFUSE`);
+    const G = P.build({ sha: HEAD, ...t, show: withGuest, flags: ['guestCardOnly'] });
+    assert.ok(G.files.has(P.ENTRY), `${t.target}: with guestCardOnly the build proceeds`);
+  }
+  const present = (() => { try { show(GUEST); return true; } catch (_) { return false; } })();
+  const cmd = (fs.readFileSync(path.join(ROOT, 'customer-app/netlify.toml'), 'utf8').match(/command\s*=\s*"([^"]*package-capp[^"]*)"/) || [])[1] || '';
+  assert.ok(cmd, 'premise: the web release command runs the packager');
+  if (present) assert.ok(/--flags\s+\S*\bguestCardOnly\b/.test(cmd), `🔴 the guest server is in this tree: the web release command must pass --flags …guestCardOnly (${cmd})`);
+  ok(`APP-TRAIN obligation: with 3a's capp-guest server present, the packager REFUSES a web or native build without guestCardOnly (and builds with it); the web release command is checked against this tree (guest server ${present ? 'PRESENT' : 'absent'})`);
+}
 console.log(`package-capp: OK (${n})`);

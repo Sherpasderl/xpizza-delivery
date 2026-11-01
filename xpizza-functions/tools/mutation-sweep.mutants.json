@@ -26849,5 +26849,20 @@
       "Ana's token went out after her sign-out",
       "Ana's token went out after the switch"
     ]
+  },
+  {
+    "id": "ng-01",
+    "slice": "native",
+    "label": "APP-TRAIN obligation reverted: the packager builds a capp bundle without guestCardOnly although 3a's capp-guest server is in the commit",
+    "file": "../platform/native/package-capp.js",
+    "from": "    if (guestServer) throw new Error(",
+    "to": "    if (false) throw new Error(",
+    "command": [
+      "node",
+      "../platform/native/package-capp.test.js"
+    ],
+    "kills_with": [
+      "packaging must REFUSE"
+    ]
   }
 ]
