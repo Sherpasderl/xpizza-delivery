@@ -44,7 +44,7 @@ async function seedDraftPid(pid) {
   for (const k of ['card', 'hero']) { const f = priv.file(`drafts/${RID}/${pid}-${k}.webp`); await f.save(Buffer.from(`${pid}-${k}`), { resumable: false, contentType: 'image/webp' }); gens[`draft_${k}`] = String((await f.getMetadata())[0].generation); }
   await reg(pid).set({ state: 'draft', last_ref_at: Date.now(), generations: gens, created_at: Date.now() });
 }
-const pp = makePublishPhotos({ fs: db, store: makeGcsCopy(getStorage()), publicBucket: () => PUB });
+const pp = makePublishPhotos({ fs: db, store: makeGcsCopy(getStorage(), PRIV), publicBucket: () => PUB });   // the private source bucket NAMED, as photos/publish-io.js wires it (codex r1 P1-1)
 const edit = makePhotoEditIo({ fs: db, enabled: async () => true });
 
 (async () => {
