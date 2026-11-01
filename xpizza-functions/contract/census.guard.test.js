@@ -6,7 +6,7 @@
 // Regenerate after a REVIEWED change: node contract/census-build.js --write
 const assert = require('assert');
 const fs = require('fs');
-const { build, OUT } = require('./census-build');
+const { build, OUT, sentinelExempt } = require('./census-build');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const FAIL = (msg) => `🔴 R3-CENSUS ${msg}`;
@@ -36,5 +36,22 @@ for (const [name, f] of [['writes', (w) => w.key], ['fieldsWritten', (x) => `${x
   assert.strictEqual(keyset(doc[name], f), keyset(committed[name], f), FAIL(`the ${name} inventory differs from the reviewed census — review, then regenerate`));
 }
 ok(`the WRITE inventory (${doc.writes.length} write keys, ${doc.fieldsWritten.length} fields, ${doc.opaqueWrites.length} bound opaque writes), opaque reads, projection links (incl. the KDS pedido / estado / maps premise), write sentinel, ${doc.timers.length} timers and ${doc.clocks.length} clock sites all equal the reviewed census`);
+
+// SCOPED sentinel exemptions (2e review, guest-checkout tip_cents): an entry with `sites` exempts ONLY those {file, fn}; the
+// same key written anywhere else is still a §1 decision. Probed on a synthetic map, then pinned on the real tip_cents entry.
+{
+  const MAP = JSON.parse(fs.readFileSync(require('path').join(__dirname, 'census-map.json'), 'utf8'));
+  const hit = (file, fn, key = 'tip_cents') => ({ file: `xpizza-functions/${file}`, fn, key });
+  const scoped = { sentinelExemptions: [{ key: 'tip_cents', sites: [{ file: 'cart-sig.js', fn: 'cartSigInput' }] }] };
+  assert.ok(sentinelExempt(scoped, hit('cart-sig.js', 'cartSigInput')), 'a scoped site is exempt');
+  assert.ok(!sentinelExempt(scoped, hit('index.js', 'chargeOnlineOrder')), FAIL('a scoped tip_cents exemption also waved through a write in ANOTHER file'));
+  assert.ok(!sentinelExempt(scoped, hit('cart-sig.js', 'other')), FAIL('a scoped exemption also waved through another function in the same file'));
+  assert.ok(!sentinelExempt(scoped, hit('cart-sig.js', 'cartSigInput', 'tips')), 'another key is not exempt');
+  assert.ok(sentinelExempt({ sentinelExemptions: [{ key: 'tip_cents' }] }, hit('index.js', 'anything')), 'premise — an unscoped entry is key-wide');
+  const real = (MAP.sentinelExemptions || []).filter((e) => e.key === 'tip_cents');
+  assert.ok(real.length >= 1 && real.every((e) => Array.isArray(e.sites) && e.sites.length), FAIL('the tip_cents sentinel exemption must be SCOPED to its reviewed sites — key-wide it would hide a real tip write'));
+  assert.ok(!sentinelExempt(MAP, hit('index.js', 'chargeOnlineOrder')), FAIL('the real map exempts a tip_cents write in index.js'));
+}
+ok('scoped sentinel exemptions: an entry with sites exempts only those {file, fn}; the real tip_cents exemption is scoped (a tip_cents write elsewhere is RED)');
 
 console.log(`\nr3-census guard: OK (${n})`);

@@ -34,6 +34,7 @@ const NON_CHARGE_FIELDS = Object.freeze({
   free_order: 'the cash path\'s $0 routing claim; the server re-prices regardless and the card path refuses $0',
   entry_mode: 'S3b: selects only WHICH allowlisted order site PixelPay returns to (direct | app); never priced',
   address_area: 'the pre-accept area label for the driver (display only); never priced, routed, deduped, receipted or bound',
+  checkout_ticket: 'PLAN-guest-checkout-server §2.3: the capp guest\'s verified-phone evidence, checked read-only by the guest gate; never priced',
 });
 // Fields the order forms SEND that NO order path reads (the census proves it) — non-charge by construction.
 const UNREAD_FORM_FIELDS = Object.freeze({

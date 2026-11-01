@@ -861,6 +861,12 @@ createOrderApp.all('*', async (req, res) => {
       }
     } catch (_) { /* malformed/expired/foreign/tomb-read-failure → ignore, treat as guest */ }
   }
+  /* checkout:begin gate-create */
+  // PLAN-guest-checkout-server r4 §2.3 INVARIANT: createOrder never places a capp-guest order — refused HERE, after identity and
+  // BEFORE the existence read and every write. Forms + members: null with zero I/O (checkout-guest-gate.js).
+  const cappGuestRefusal = require('./checkout-guest-gate').createOrderRefusal(clientHdr, customer_uid, body);
+  if (cappGuestRefusal) return res.status(400).json({ error: cappGuestRefusal });
+  /* checkout:end gate-create */
 
   // Content fingerprint for THIS request — computed ONCE, read-only, and threaded to BOTH the idempotency
   // content-check (below) AND the stored payment_fingerprint (create-order-build), so store==compare can never
@@ -1536,6 +1542,15 @@ chargeOnlineApp.all('*', async (req, res) => {
   const { errors, total, lat, lng, fields } = validateOrderPayload(body, restaurantId, pricingTables);
   if (errors.length > 0) return badRequest(res, errors.join('; '));
 
+  /* checkout:begin gate-method */
+  // PLAN-guest-checkout-server §2.2 (Codex r1 P2-4): a capp GUEST's non-online body is answered with its typed reason, not the
+  // generic online-only 400 below. Only a request stamped orders-app pays the identity check here (the handler's own rules,
+  // checkout-guest-gate.js chargeUidOf); forms do no I/O and members get the line below, byte-identical.
+  if (fields.payment_method !== 'online' && clientHdr.deployment === 'orders-app'
+    && (await require('./checkout-guest-gate').chargeUidOf(req, { getAuth, getDatabase, attributionUid })) === null) {
+    return res.status(400).json({ error: 'guest_cash_not_allowed' });
+  }
+  /* checkout:end gate-method */
   // This endpoint is ONLY for online card payments. cash/card_delivery use createOrder.
   if (fields.payment_method !== 'online') {
     return badRequest(res, 'chargeOnlineOrder is for payment_method "online" only');
@@ -1574,6 +1589,19 @@ chargeOnlineApp.all('*', async (req, res) => {
       ]);
     } catch (_) { customer_uid = null; }   // any error → guest
   }
+  /* checkout:begin gate-charge */
+  // PLAN-guest-checkout-server r4 §2.2/§2.3: the capp-guest gate — refusals (payment → scheduling → email → ticket) returned
+  // DIRECTLY, before any write. Forms + members: null with zero I/O. otp-lib loads lazily (guest path only).
+  let cappGuest = null;
+  try {
+    cappGuest = await require('./checkout-guest-gate').chargeGate({ clientHdr, uid: customer_uid, body, rid: restaurantId, orderId, db,
+      now: Date.now(), OTP: { phoneHash: (d) => require('./otp-lib').phoneHash(d) }, normalizePhone: require('./whatsapp').normalizePhone });
+  } catch (e) {
+    console.error(`chargeOnlineOrder: capp-guest gate failed for ${orderId}`, e.message);
+    return res.status(500).json({ error: 'Database error', detail: 'guest gate unavailable' });
+  }
+  if (cappGuest && cappGuest.refuse) return res.status(400).json({ error: cappGuest.refuse });
+  /* checkout:end gate-charge */
 
   // ── Rewards Phase B1 (online): PREPARE the redemption BEFORE both fingerprint sites, so the reservation
   // binding AND the PixelPay payment fingerprint carry the discounted total + appended items_text. The RESERVE
@@ -1961,6 +1989,9 @@ chargeOnlineApp.all('*', async (req, res) => {
     pendingOrderRecord.release_at = scheduledReleaseAt;
   }
 
+  /* checkout:begin gate-verified */
+  if (cappGuest && cappGuest.guest) pendingOrderRecord.guest_verified = { phone: cappGuest.guest.phone, phone_hash: cappGuest.guest.phone_hash };   // §2.3: in the SAME CAS write, capp guests only
+  /* checkout:end gate-verified */
   // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a
   // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS
   // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is
@@ -2108,6 +2139,13 @@ chargeOnlineApp.all('*', async (req, res) => {
     return res.status(500).json({ error: 'Database error', detail: e.message });
   }
 
+  /* checkout:begin gate-bind */
+  // §2.5: an order that now exists under this id must carry THIS request's verified phone, before any outcome answers with it.
+  // No hold to release: a capp guest has no verified uid, so it can never have reserved a redemption hold.
+  if (cappGuest && cappGuest.guest && !(await require('./checkout-guest-gate').boundToGuest({ db, orderId, guest: cappGuest.guest }))) {
+    return res.status(400).json({ error: 'guest_ticket_invalid' });
+  }
+  /* checkout:end gate-bind */
   // Authoritative intake gate (Slice-4): a fresh/rotated payable URL was about to be minted for a 86'd
   // cart → the CAS aborted BEFORE any write. Respond 400 with the blocked labels; nothing was persisted.
   if (acq.outcome === 'item_unavailable') {
@@ -2261,6 +2299,18 @@ chargeOnlineApp.all('*', async (req, res) => {
      refusals, the reuse, AND a checkout-creation or persistence failure — so returning on it means a
      charge that never issued emits no heartbeat and no alert, without that being a separate rule
      somebody has to remember. Reporting below is reached only by a charge that actually issued. */
+  /* checkout:begin gate-grant */
+  // §2.5: the stateless signup grant, recomputed from the STORED order (same bytes on replay / reuse / concurrent success)
+  let cappGrant = null;
+  if (cappGuest && cappGuest.guest && (!flow.respond || flow.respond.status === 200)) {
+    let grantSecret = '';
+    try { grantSecret = SIGNUP_GRANT_SECRET.value() || ''; } catch (_) { grantSecret = ''; }
+    const g = await require('./checkout-guest-gate').grantFor({ db, orderId, guest: cappGuest.guest, secret: grantSecret, now: Date.now() });
+    if (g.refuse) return res.status(400).json({ error: g.refuse });
+    cappGrant = g.grant;
+    if (cappGrant && flow.respond) flow.respond.body = { ...flow.respond.body, signup_grant: cappGrant };
+  }
+  /* checkout:end gate-grant */
   if (flow.respond) return res.status(flow.respond.status).json(flow.respond.body);
   const hosted = flow.hosted;
 
@@ -2285,6 +2335,9 @@ chargeOnlineApp.all('*', async (req, res) => {
     pixelpay_order_id: pixelpayOrderId,
     poll_token: pollToken,
     checkout_url: hosted.url,
+    /* checkout:begin gate-grant-field */
+    ...(cappGrant ? { signup_grant: cappGrant } : {}),
+    /* checkout:end gate-grant-field */
     payment_status: 'pending'
   });
 });
@@ -2298,10 +2351,16 @@ chargeOnlineApp.use((err, req, res, next) => {
   next(err);
 });
 
+/* checkout:begin grant-secret */
+const SIGNUP_GRANT_SECRET = defineSecret('SIGNUP_GRANT_SECRET');   // PLAN-guest-checkout-server §2.5: the signup-grant HMAC key (owner-set; ≥ 32 chars)
+/* checkout:end grant-secret */
 exports.chargeOnlineOrder = onRequest(
   {
     region: 'us-central1',
     cors: true,
+    /* checkout:begin grant-secret-bind */
+    secrets: [SIGNUP_GRANT_SECRET],
+    /* checkout:end grant-secret-bind */
     timeoutSeconds: 30,
     memory: '512MiB',
     maxInstances: 10
@@ -7188,6 +7247,9 @@ exports.requestOtp = onRequest(
     catch (e) { console.error('requestOtp: OTP_SALT misconfigured — failing closed', e.message); return res.status(500).json({ ok: false }); }
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
+      /* checkout:begin s3a-request */
+      if ((req.body || {}).context !== undefined) return SIGNUP_PLATFORM.requestOtp(req, res, OTP);   // S3a: the app's scope (the forms never send `context`)
+      /* checkout:end s3a-request */
       const { phone, restaurant_id } = req.body || {};
       const { restaurantId } = resolveRestaurantId(restaurant_id, restaurantRegistry().known());
       const pHash = OTP.phoneHash(phone);
@@ -7228,6 +7290,9 @@ exports.verifyOtp = onRequest(
     catch (e) { console.error('verifyOtp: OTP_SALT misconfigured — failing closed', e.message); return res.status(500).json({ ok: false }); }
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
+      /* checkout:begin s3a-verify */
+      if ((req.body || {}).context !== undefined) return SIGNUP_PLATFORM.verifyOtp(req, res, OTP);   // S3a: the app's scope (the forms never send `context`)
+      /* checkout:end s3a-verify */
       const { phone, code } = req.body || {};
       const pHash = OTP.phoneHash(phone);
       if (!pHash || !/^\d{6}$/.test(String(code || ''))) return res.status(200).json({ ok: false });   // generic
@@ -7705,3 +7770,42 @@ exports.reconcileFormBundles = onSchedule(
   },
 );
 /* formbake:end */
+/* checkout:begin endpoints */
+// PLAN-guest-checkout-server r4 (FINAL) §1 — S1: the checkout-purpose WhatsApp code for the customer app's guest checkout.
+// NEW endpoints only; requestOtp / verifyOtp are untouched (the forms' wire and the signup inverse are unaffected). The
+// handlers live in checkout-otp.js; this block is folded back by tools/checkout-inverse.js (checkout-wiring.guard.test.js).
+const CHECKOUT_OTP = require('./checkout-otp').makeCheckoutOtp({
+  getDatabase,
+  registry: restaurantRegistry,   // checkout-otp warms it and checks a KNOWN rid (never defaulted, never resolveRestaurantId's default)
+});
+exports.requestCheckoutCode = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  CHECKOUT_OTP.requestCheckoutCode,
+);
+exports.verifyCheckoutCode = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  CHECKOUT_OTP.verifyCheckoutCode,
+);
+exports.pruneCheckoutState = onSchedule(
+  { schedule: 'every 60 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const out = await require('./checkout-otp').pruneCheckoutState(getDatabase(), Date.now());
+    if (out.tickets || out.codes || out.budgets) console.log(`pruneCheckoutState: ${JSON.stringify(out)}`);
+  },
+);
+// S3 (PLAN §3, CONTRACT-capp-signup-platform-wire.md): the customer app's signup family, context:'platform'. requestOtp /
+// verifyOtp hand a body carrying `context` to these handlers (the s3a-request / s3a-verify hunks); two NEW endpoints.
+const SIGNUP_PLATFORM = require('./signup-platform').makeSignupPlatform({
+  getDatabase, getAuth, checkRateLimit,
+  sendPlatformOtp: require('./checkout-otp').sendPlatformOtp, senderConfigured: require('./checkout-otp').platformSenderConfigured, isSendConfirmed: (d) => whatsapp.isSendConfirmed(d),
+  grantSecret: () => { try { return SIGNUP_GRANT_SECRET.value() || ''; } catch (_) { return ''; } },
+});
+exports.redeemSignupGrant = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [SIGNUP_GRANT_SECRET] },
+  SIGNUP_PLATFORM.redeemSignupGrant,
+);
+exports.getMyProfile = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  SIGNUP_PLATFORM.getMyProfile,
+);
+/* checkout:end endpoints */

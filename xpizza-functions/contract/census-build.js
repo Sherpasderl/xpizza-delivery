@@ -13,6 +13,16 @@ const OUT = path.join(__dirname, 'census.json');
 // half listed narrowly by file / file#fn, (3) a page reader by the surface rules, or (4) EXEMPTED by an explicit per-
 // FUNCTION entry carrying its category reason. Anything else is unmapped → RED.
 const used = { serverFunctions: new Set(), pageFunctionExemptions: new Set(), serverReaders: new Set(), unreachableOnSurface: new Set() };
+/* A write-sentinel hit is exempt when a reviewed entry names its key — and, when that entry carries `sites`, ONLY at those
+   {file, fn} (paths relative to xpizza-functions/). A scoped exemption keeps the §1 decision live for the same key written
+   anywhere else (2e review of PLAN-guest-checkout-server's tip_cents signature key: a key-wide exemption would also wave
+   through a future real tip_cents order write). */
+const FN_PREFIX = 'xpizza-functions/';
+function sentinelExempt(map, hit) {
+  return (map.sentinelExemptions || []).some((e) => e.key === hit.key
+    && (!e.sites || e.sites.some((x) => hit.file === FN_PREFIX + x.file && hit.fn === x.fn)));
+}
+
 function ruleFor(x) {
   const fileRel = x.file.replace(/^xpizza-functions\//, '');
   if (x.send) return { rule: 'send-boundary', map: x.send };
@@ -57,8 +67,10 @@ function build({ extraUnits = [] } = {}) {
     for (const a of want) if (!have.has(a)) problems.push(`projection premise: ${scope} lacks alias ${a}`);
   }
   // sentinel: every hit must be exempted by key
-  const exemptKeys = new Set((MAP.sentinelExemptions || []).map((e) => e.key));
-  const sentinel = c.sentinel.map((s) => ({ ...s, exempt: exemptKeys.has(s.key) }));
+  const sentinel = c.sentinel.map((s) => ({ ...s, exempt: sentinelExempt(MAP, s) }));
+  for (const e of MAP.sentinelExemptions || []) for (const x of e.sites || []) {
+    if (!c.sentinel.some((s) => s.key === e.key && s.file === FN_PREFIX + x.file && s.fn === x.fn)) problems.push(`sentinel exemption ${e.key} @ ${x.file}#${x.fn}: no such write-sentinel site (a stale scoped exemption)`);
+  }
   for (const s of sentinel.filter((x) => !x.exempt)) problems.push(`write sentinel: ${s.file} ${s.fn} writes '${s.key}' (${s.how}) — a tip / delivery fee / order email is not implemented (§1): decide`);
   // timers: reviewed class; the application-sleep set must equal the scheduler's reviewed set
   const timers = c.timers.map((t) => {
@@ -117,7 +129,7 @@ function build({ extraUnits = [] } = {}) {
   };
 }
 
-module.exports = { build, OUT };
+module.exports = { build, OUT, sentinelExempt };
 
 if (require.main === module) {
   const { problems, doc } = build();

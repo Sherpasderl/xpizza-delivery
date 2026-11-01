@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "apps": ["orders", "kitchen", "dispatch", "dispatch-mobile", "portal", "track", "dashboard", "catering", "legal"],
+  "deployments": [
+    { "id": "orders-xpizza",   "app": "orders",          "folder": "xpizza-orders",          "entrypoints": ["index.html"],                  "context": "x_pizza",  "origins": ["https://orders.xpizza.hn"], "netlify_site": "xpizzaorders", "pay_return": { "env": "PIXELPAY_RETURN_URL", "default": "https://xpizzaorders.netlify.app" } },
+    { "id": "orders-lamusa",   "app": "orders",          "folder": "la-musa-orders",         "entrypoints": ["index.html"],                  "context": "la_musa",  "origins": ["https://orders.lamusa.hn"], "netlify_site": "lamusaorders", "pay_return": { "env": "PIXELPAY_RETURN_URL_LA_MUSA" } },
+    { "id": "orders-app",      "app": "orders",          "folder": "customer-app",           "entrypoints": ["index.html"],                  "context": "platform", "origins": ["https://sherpa-pedir.netlify.app"], "netlify_site": "sherpa-pedir", "pay_return": { "env": "PIXELPAY_RETURN_URL_APP", "default": "https://sherpa-pedir.netlify.app" } },
+    { "id": "kitchen-xpizza",  "app": "kitchen",         "folder": "xpizza-kitchen",         "entrypoints": ["index.html"],                  "context": "x_pizza",  "origins": [], "netlify_site": "xpizzakitchendisplay" },
+    { "id": "kitchen-lamusa",  "app": "kitchen",         "folder": "xpizza-kitchen",         "entrypoints": ["index.html"],                  "context": "la_musa",  "origins": [], "netlify_site": "lamusakitchendisplay" },
+    { "id": "track-xpizza",    "app": "track",           "folder": "xpizza-track",           "entrypoints": ["index.html"],                  "context": "x_pizza",  "origins": [], "netlify_site": "xpizzatrack" },
+    { "id": "track-lamusa",    "app": "track",           "folder": "xpizza-track",           "entrypoints": ["index.html"],                  "context": "la_musa",  "origins": [], "netlify_site": "lamusatrack" },
+    { "id": "dispatch",        "app": "dispatch",        "folder": "xpizza-dispatch",        "entrypoints": ["index.html"],                  "context": "platform", "origins": [], "netlify_site": "xpizzadispatch" },
+    { "id": "dispatch-mobile", "app": "dispatch-mobile", "folder": "xpizza-dispatch-mobile", "entrypoints": ["index.html"],                  "context": "platform", "origins": [], "netlify_site": "xpizzadispatchlite" },
+    { "id": "portal",          "app": "portal",          "folder": "xpizza-portal",          "entrypoints": ["index.html"],                  "context": "platform", "origins": [], "netlify_site": "sherpa-portal" },
+    { "id": "dashboard",       "app": "dashboard",       "folder": "xpizza-dashboard",       "entrypoints": ["index.html"],                  "context": "platform", "origins": [], "netlify_site": "xpizzadashboard" },
+    { "id": "catering-xpizza", "app": "catering",        "folder": "xpizza-catering",        "entrypoints": ["index.html"],                  "context": "x_pizza",  "origins": [], "netlify_site": "xpizzacatering" },
+    { "id": "legal",           "app": "legal",           "folder": "legal",                  "entrypoints": ["index.html", "es/index.html"], "context": "platform", "origins": [], "netlify_site": "sherpa-driver-privacy" }
+  ]
+}
