@@ -111,4 +111,97 @@ const mutant = (id, command) => ({ id, slice: 'probe', file: anchorFile, command
   ok('the refusal carries the suite\'s own output, the command, and the mutant that reached it');
 }
 
+// ── 6. 🔴 AN UNKNOWN OR MALFORMED FLAG RUNS NOTHING; --help / -h PRINT THE USAGE ─────────────────────
+/* `--help` used to start a FULL sweep (three sessions). The refusal must come BEFORE the catalogue is
+   read, so that is what is observed, directly: every refusal probe runs under a preloaded shim that
+   EXITS 97 on any file read other than the tool itself (the catalogue is a require()d JSON, read
+   through fs.readFileSync), on any write / copy / rename / existence probe, and on any child process.
+   The shim is also the safeguard: a regressed tool cannot load the REAL catalogue or run a suite from
+   this test, because the first such read stops it. The probes carry NO valid --mutants (one would mask
+   an empty one as a repeat), except the repeat probe itself. */
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sweep-args-'));
+  const sentinel = path.join(dir, 'ran.txt');
+  const writes = ['node', '-e', `require('fs').appendFileSync(${JSON.stringify(sentinel)}, 'ran\\n')`];
+  const fixture = path.join(ROOT, anchorFile); const before = fs.readFileSync(fixture, 'utf8');
+  const shim = path.join(dir, 'no-io-shim.js');
+  fs.writeFileSync(shim, `'use strict';
+const fs = require('fs'); const cp = require('child_process'); const path = require('path'); const { fileURLToPath } = require('url');
+const MAIN = path.resolve(process.argv[1]);
+const trip = (op, p) => { process.stderr.write('SHIM-TRIPPED ' + op + ' ' + p + '\\n'); process.exit(97); };
+const own = (p) => { try { return path.resolve(String(p)) === MAIN; } catch (_) { return false; } };
+// every module load (require AND import, JSON included) other than the tool itself and builtins
+require('module').registerHooks({ load(url, ctx, next) {
+  if (url.startsWith('node:') || (url.startsWith('file:') && fileURLToPath(url) === MAIN)) return next(url, ctx);
+  trip('load', url.startsWith('file:') ? fileURLToPath(url) : url);
+} });
+// path-taking reads: the tool's own source passes, anything else trips
+for (const op of ['readFileSync', 'readFile', 'openSync', 'open', 'createReadStream', 'statSync', 'lstatSync', 'accessSync']) {
+  const orig = fs[op]; fs[op] = function (p, ...rest) { if (!own(p)) trip(op, path.resolve(String(p))); return orig.call(this, p, ...rest); };
+}
+for (const op of ['readFile', 'open', 'stat', 'lstat', 'access']) { const orig = fs.promises[op]; fs.promises[op] = function (p, ...rest) { if (!own(p)) trip('promises.' + op, path.resolve(String(p))); return orig.call(this, p, ...rest); }; }
+// fd reads, writes and tree changes: always trip
+for (const op of ['readSync', 'read', 'writeFileSync', 'appendFileSync', 'copyFileSync', 'renameSync', 'unlinkSync', 'rmSync', 'existsSync', 'readdirSync', 'createWriteStream',
+  'writeFile', 'appendFile', 'copyFile', 'rename', 'unlink', 'rm', 'readdir']) fs[op] = (p) => trip(op, String(p));
+for (const op of ['writeFile', 'appendFile', 'copyFile', 'rename', 'unlink', 'rm', 'readdir', 'mkdir', 'cp']) fs.promises[op] = (p) => trip('promises.' + op, String(p));
+for (const op of ['execFileSync', 'execSync', 'spawnSync', 'spawn', 'execFile', 'exec', 'fork']) cp[op] = (c) => trip(op, String(c));
+`);
+  const probe = (args) => spawnSync(process.execPath, ['-r', shim, SWEEP, ...args], { cwd: ROOT, encoding: 'utf8', timeout: 60000 });
+  const runArgs = (file, args) => spawnSync(process.execPath, [SWEEP, `--mutants=${file}`, ...args], { cwd: ROOT, encoding: 'utf8', timeout: 120000 });
+  const noIo = (r, label) => assert.ok(!/SHIM-TRIPPED/.test(r.stderr || ''), `🔴 ${label}: the catalogue or the tree was touched before the refusal — ${(r.stderr || '').split('\n').find((l) => /SHIM-TRIPPED/.test(l))}`);
+  const untouched = (label) => {
+    assert.ok(!fs.existsSync(sentinel), `🔴 ${label}: a suite command RAN`);
+    assert.strictEqual(fs.readFileSync(fixture, 'utf8'), before, `🔴 ${label}: the tree was mutated`);
+    assert.ok(!fs.existsSync(`${fixture}.bak`), `🔴 ${label}: a backup was left behind`);
+  };
+  try {
+    withCatalogue([mutant('probe-08', writes)], (file) => {
+      // premise: the shim DOES see a catalogue read: a valid --list (the real default, a synthetic one, and one under a path with a
+      // SPACE) is stopped at the read, which names that exact file
+      const spaced = path.join(dir, 'a catalogue dir'); fs.mkdirSync(spaced); fs.copyFileSync(file, path.join(spaced, 'cat.json'));
+      for (const [args, cat] of [[['--list'], path.join(__dirname, 'mutation-sweep.mutants.json')], [[`--mutants=${file}`, '--list'], file],
+        [[`--mutants=${path.join(spaced, 'cat.json')}`, '--list'], path.join(spaced, 'cat.json')]]) {
+        const r = probe(args);
+        assert.strictEqual(r.status, 97, `premise: ${args.join(' ')} reads the catalogue and the shim stops it (got ${r.status}: ${(r.stderr || '').slice(0, 200)})`);
+        const want = fs.realpathSync(cat);
+        assert.ok((r.stderr || '').split('\n').some((l) => /^SHIM-TRIPPED (load|readFileSync) /.test(l) && l.slice(l.indexOf(' ', 13) + 1) === want),
+          `premise: the trip names the catalogue itself (${want}): ${(r.stderr || '').slice(0, 300)}`);
+      }
+      for (const flag of ['--help', '-h']) {
+        const r = probe([flag]);
+        noIo(r, flag);
+        assert.strictEqual(r.status, 0, `${flag} exits 0 (got ${r.status})`);
+        assert.match(r.stdout, /^usage: node tools\/mutation-sweep\.js/, `${flag} prints the usage`);
+      }
+      const refusals = [['--halp'], ['--slice'], ['--slice='], ['--slice=   '], ['--mutants='], ['--mutants=   '], ['--mutants=\t'], ['task7'],
+        ['--slice=probe', '--slice=other'], [`--mutants=${file}`, `--mutants=${file}`], ['--list', '--bogus'], ['--help', '--bogus']];
+      for (const args of refusals) {
+        const label = JSON.stringify(args.map((x) => x.replace(file, '<cat>')));
+        const r = probe(args);
+        noIo(r, label);
+        assert.strictEqual(r.status, 2, `${label}: exits 2 (got ${r.status})`);
+        assert.match(r.stderr, /nothing was run\.\nusage: node tools\/mutation-sweep\.js/, `${label}: says nothing ran and prints the usage`);
+      }
+      untouched('the refusals');
+      // an empty selection is a refusal too (pre-existing; asserted here so it stays one)
+      const e = runArgs(file, ['--slice=no-such-slice']);
+      assert.strictEqual(e.status, 2, `an empty selection exits 2 (got ${e.status})`);
+      assert.match(e.stderr, /no mutants matched --slice=no-such-slice — nothing was measured/);
+      untouched('an empty selection');
+      // valid flags are still accepted: --list reads the catalogue and runs nothing; a path with an inner space is kept whole
+      for (const f of [file, path.join(spaced, 'cat.json')]) {
+        const l = runArgs(f, ['--list', '--slice=probe']);
+        assert.strictEqual(l.status, 0, `--list --slice=probe exits 0 for ${f} (got ${l.status}: ${(l.stderr || '').slice(0, 200)})`);
+        assert.match(l.stdout, /probe-08/, '--list lists the selection');
+      }
+      untouched('--list');
+      // non-vacuity: the sentinel DOES record a run
+      const g = runArgs(file, ['--slice=probe']);
+      assert.ok(fs.existsSync(sentinel), `premise: a valid --slice run executes the command and the sentinel sees it (${(g.stdout || '').slice(-200)})`);
+      assert.strictEqual(fs.readFileSync(fixture, 'utf8'), before, 'and the run restored the fixture');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  ok('--help / -h print the usage and exit 0; unknown, empty / blank-valued, positional and repeated flags exit 2 with the usage; under a no-I/O shim none of them reads the catalogue, touches the tree or spawns; an empty selection exits 2; valid runs (incl. a path with a space) are still accepted');
+}
+
 console.log(`\n${n} cells passed`);
