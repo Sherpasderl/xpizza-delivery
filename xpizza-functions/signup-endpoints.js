@@ -212,9 +212,16 @@ async function revokeSessions(db, uid, now, revoke, deadlineMs) {
 }
 // Codex r2 P2: the phone's uid CLAIM, create-if-absent in ONE transaction (the same contract as signup-platform's claimUid) —
 // a concurrent first login on another path converges on the winner's uid; an existing entry is adopted, never overwritten.
+// A fresh uid is drawn ONLY to create (slot 69b045de, the signup-http forms differential): a returning login reads its entry and
+// draws nothing, as the base did (it drew only in `if (!uid)`), so the forms' uid stream is byte-identical. The draw is memoized:
+// the Admin SDK runs the updater first on an uncached null, so a merely-lazy draw would still consume one for an existing entry.
+// (signup-platform's claimUid draws eagerly: a new path, no byte-identity duty — advisor 2026-11-01.)
 async function claimPhoneUid(db, pHash, newUid) {
-  const cand = newUid();
-  const tx = await db.ref(`phone_index/${pHash}`).transaction((cur) => (typeof cur === 'string' && cur ? undefined : cand));
+  const ref = db.ref(`phone_index/${pHash}`);
+  const seen = (await ref.get()).val();
+  if (typeof seen === 'string' && seen) return seen;
+  let cand = null;
+  const tx = await ref.transaction((cur) => (typeof cur === 'string' && cur ? undefined : (cand = cand || newUid())));
   const uid = tx.committed ? cand : tx.snapshot.val();
   if (typeof uid !== 'string' || !uid) throw new Error('claimPhoneUid: phone_index unreadable');
   return uid;
