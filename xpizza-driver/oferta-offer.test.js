@@ -70,4 +70,11 @@ t('foot: the slide «Aceptar pedido» + the reassign note with N from the REAL d
   assert.ok(!/a tiempo/.test(h), 'never the live «a tiempo» wording');
 });
 
+t('PRIVACY (R4): the offer card (pre-accept) renders NO customer name or phone — mutation-anchor home for r3p0-98 / r3p0-99', () => {
+  const h = singleOrderCardHtml(offer({ customer_name: 'SECRETA PRIVADA', customer_phone: '50499990000' }), { ...DEPS, nowMs: 1760000000000 });
+  assert.ok(!h.includes('SECRETA PRIVADA'), 'the customer NAME is never shown on an un-accepted offer (r3p0-98)');
+  assert.ok(!h.includes('50499990000'), 'the customer PHONE is never shown on an un-accepted offer (r3p0-99)');
+  // the offer carries only the order #, brand, colonia, km, the pay rows and the deadline — no customer PII before accept.
+});
+
 console.log(`✓ oferta-offer: ${passed} checks passed`);
