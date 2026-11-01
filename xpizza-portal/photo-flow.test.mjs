@@ -673,3 +673,62 @@ test('codex r2 #3 — a SAVED pid the server stopped serving shows P5 with its r
   assert.ok([...d.querySelectorAll('input[type=file]')].length >= 1, '…and its Reintentar is a re-upload (the picker)');
   // the unsaved twin (the frame) is codex r1 #2's test: an upload E-P3 does not know → stale → neutral frame
 });
+
+// ── Ruling A (advisor 2026-10-31, interim; T1's «a rename publishes alone»): a photo is a change like any other ─────────────
+// A pending photo already turns «Cambiar nombre» off; these pin the other direction. While a section name waits, every photo
+// control is off — the same disabled treatment as the prices — and nothing is picked, uploaded or written; an upload that is
+// already open (crop → upload) is a pending photo too, so it turns the rename off until it lands or is cancelled.
+async function renameSection(d, to) {
+  d.querySelector('#detail .secren').click(); await settle();
+  const input = d.querySelector('#detail .secin');
+  input.value = to; input.dispatchEvent(new window.Event('input'));
+  btnText(d.getElementById('detail'), 'Guardar').click(); await settle();
+}
+test('ruling A — while a section rename is pending, the photo controls are off and no photo is picked, uploaded or written', async () => {
+  const fake = createPhotoFake({ items: ITEMS(), legacy: { Margarita: true } });
+  const { d, calls, mods } = await boot(fake);
+  await renameSection(d, 'Pizzas clásicas');
+  assert.ok(d.querySelector('#detail > .secnote'), 'premise: the name change is pending (its notice is up)');
+  // the row camera: the drawer opens (as a row does), the picker does not
+  rowOf(d, 'Pepperoni').querySelector('button.thumb').click(); await settle();
+  assert.equal(d.querySelectorAll('input[type=file]').length, 0, 'no picker while a name change waits');
+  const zoneBtn = drawer(d).querySelector('button.uploader.phdesk');
+  assert.ok(zoneBtn, 'premise: the drawer shows its «Foto» zone');
+  assert.equal(zoneBtn.disabled, true, 'the zone is off, like the price field');
+  zoneBtn.click(); await settle();
+  assert.equal(d.querySelectorAll('input[type=file]').length, 0, 'a dispatched click on the zone opens nothing');
+  btnText(drawer(d), 'Cerrar').click(); await settle();
+  // a dish WITH a photo: «Cambiar» / «Quitar» are off too
+  await openDrawerFor(d, 'Margarita');
+  const acts = [...drawer(d).querySelectorAll('.phacts button')];
+  assert.ok(acts.length === 2 && acts.every((b) => b.disabled), 'Cambiar / Quitar are off');
+  assert.equal(n(calls, 'photoUploadStart') + n(calls, 'photoProcess'), 0, 'no photo call');
+  void mods;
+});
+test('ruling A — the state boundary: setPhoto is refused while a name change is pending (local or saved), like every price write', async () => {
+  const E = await import('./editor.js');
+  const src = { restaurant_id: 'r', schema_version: 1, extras: [], items: [{ key: 'A', price: 100, display: { name: 'A', cat: 'c', price: 100 } }],
+    structure: { schema_version: 2, item_order: ['A'], categories: [{ id: 'c', name: 'Uno' }] } };
+  const local = E.createDraft(JSON.parse(JSON.stringify(src)), { canEdit: () => true, held: () => null });
+  E.setCategoryNames(local, [['c', 'Dos']]);
+  assert.equal(E.pendingRenames(local).length, 1, 'premise: a local rename');
+  E.setPhoto(local, 'A', { state: 'removed' });
+  assert.deepEqual(E.pendingPhotos(local), [], 'refused beside a LOCAL rename');
+  const saved = E.createDraft(JSON.parse(JSON.stringify(src)), { canEdit: () => true, held: () => 'names' });
+  E.setPhoto(saved, 'A', { state: 'removed' });
+  assert.deepEqual(E.pendingPhotos(saved), [], 'refused beside a SAVED rename');
+  const free = E.createDraft(JSON.parse(JSON.stringify(src)), { canEdit: () => true, held: () => null });
+  E.setPhoto(free, 'A', { state: 'removed' });
+  assert.deepEqual(E.pendingPhotos(free), ['A'], 'non-vacuity: with no rename the same write lands');
+});
+test('ruling A — an upload already open (crop → upload) is a pending photo: «Cambiar nombre» is off until it lands or is cancelled', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, w } = await boot(fake);
+  assert.equal(d.querySelector('#detail .secren').disabled, false, 'premise: the rename is on with nothing pending');
+  rowOf(d, 'Pepperoni').querySelector('button.thumb').click(); await settle();
+  await choose(d, w, mkFile(w));
+  await until(() => drawer(d).querySelector('.phcrop'), 'the crop step');
+  assert.equal(d.querySelector('#detail .secren').disabled, true, 'the crop step is open: the rename is off');
+  btnText(drawer(d), 'Cancelar').click(); await settle();
+  assert.equal(d.querySelector('#detail .secren').disabled, false, 'cancelled: the rename is back');
+});
