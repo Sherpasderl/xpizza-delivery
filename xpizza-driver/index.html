@@ -4597,6 +4597,7 @@ async function boot() {
        the SAME every-transition point also drops the per-session UI state (returning target, solo-cancel banner,
        problema sheet), so a uid change A→B that never renders B's returning state cannot resurrect A's target. ===== */
     companionDemoTeardown();
+    unsubscribeDriverRate();   // drop the platform-rate listener on EVERY auth transition (sign-out / uid change), mirroring disposeDriverFeed above — a re-login re-subscribes in the boot hook; a signed-out session holds no live rate listener
     // Codex r3: teardown per-session UI state ONLY on a real sign-out or a uid CHANGE (compared to the previous uid) —
     // NOT on the initial same-account restore (drv2PrevAuthUid null → A, an ordinary reload), which must keep A's saved
     // return target so the returning screen can rehydrate it. (Sign-out is also covered by cleanupShift below; a double
@@ -5558,15 +5559,23 @@ function showCerrado(cash, startMs, closedAtMs) {
    entry, never retro-applied. NO hardcoded fallback — earnings render NOTHING (null) until the owner seeds an
    entry. ===== */
 let driverRateEntries = null;   // cached { pushId: { cents, effective_from } } | null until the first read
+let driverRateUnsub = null;     // the platform-rate onValue unsub handle — torn down at every auth transition (unsubscribeDriverRate, mirroring the feed's disposeDriverFeed); the captured-handle idiom offerConnUnsub / offlineBannerConnUnsub already use
 // subscribe to the platform rate (best-effort; absent/denied/no-SDK ⇒ driverRateEntries stays null ⇒ earnings blank).
 // Mirrors the config reads: READ-only, one-shot wire kept live so a rate change propagates. 2e owns the node + rules.
+// Idempotent: a second call while already subscribed is a no-op (exactly one listener), like offerConnUnsub's `if (!unsub)` guard.
 function subscribeDriverRate() {
+  if (driverRateUnsub) return;   // already subscribed — never stack a second listener (a double boot keeps exactly one)
   if (typeof fbOnValue !== 'function' || typeof fbRef !== 'function' || !XPD || typeof XPD.getDb !== 'function') return;
   try {
-    fbOnValue(fbRef(XPD.getDb(), 'platform_rates/driver_per_delivery'),
+    driverRateUnsub = fbOnValue(fbRef(XPD.getDb(), 'platform_rates/driver_per_delivery'),
       (snap) => { driverRateEntries = (snap && snap.val()) || null; if (typeof render === 'function') render(); if (typeof refreshOpenCashSurfaces === 'function') refreshOpenCashSurfaces(); },
-      () => { driverRateEntries = null; });
-  } catch (_) { driverRateEntries = null; }
+      () => { driverRateEntries = null; driverRateUnsub = null; if (typeof render === 'function') render(); if (typeof refreshOpenCashSurfaces === 'function') refreshOpenCashSurfaces(); });   // error/cancel: the listener is dead — blank the amount + re-render, AND drop the handle so a later boot can re-subscribe (the `if (driverRateUnsub) return` guard won't block it)
+  } catch (_) { driverRateEntries = null; driverRateUnsub = null; }
+}
+// Tear down the platform-rate listener (sign-out / uid change / before a re-subscribe). Called from the auth-transition
+// teardown — the SAME lifecycle point as the feed's disposeDriverFeed. Idempotent; a re-login re-subscribes via the boot hook.
+function unsubscribeDriverRate() {
+  if (driverRateUnsub) { try { driverRateUnsub(); } catch (_) {} driverRateUnsub = null; }
 }
 // The practica-demo step-4 hint (prototype S.practica «Ves tu resumen y tu +L 70»): the amount is DERIVED from the
 // platform rate (window.PayRate.rateCentsInEffect at now), same formatter as the gn screens — NEVER a hardcoded rate.
