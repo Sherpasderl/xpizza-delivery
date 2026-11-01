@@ -3052,7 +3052,9 @@
   },
   "platform-manifest.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "customer-app/capp-native-boot.test.mjs"
+   ]
   },
   "portal/location-name.js": {
    "pins": [],
