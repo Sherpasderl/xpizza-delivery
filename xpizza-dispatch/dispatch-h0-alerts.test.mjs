@@ -82,7 +82,9 @@ const noAmt = alertRecord('PZX-1', 'c3', { kind: 'reversal_uncertain', version: 
   assert.strictEqual(h0DismissUpdate('K2', { type: 'no_drivers_available', order_id: 'X' }), null, 'any other alert → plain removal');
   assert.strictEqual(h0DismissUpdate('K3', { ...sup2, version: null }), null, 'no version → plain removal (never a dismissal of an unknown version)');
   const del = fs.readFileSync(path.join(__dirname, 'xpizza-delivery.js'), 'utf8');
-  assert.ok(/const u = h0DismissUpdate\(alertId, rec\);\n  if \(u\) \{ await fbUpdate\(ref\(db\), u\); return; \}/.test(del), 'dismissDispatcherAlert sends the H0 update atomically');
+  // PLAN-dispatch-maps-decouple r6: the H0 dismiss update routes through the GUARDED `update` wrapper (not raw
+  // fbUpdate) so a superseded session can't write it — still one atomic update with the h0DismissUpdate payload.
+  assert.ok(/const u = h0DismissUpdate\(alertId, rec\);\n  if \(u\) \{ await update\(ref\(db\), u\); return; \}/.test(del), 'dismissDispatcherAlert sends the H0 update atomically (via the guarded wrapper)');
   assert.ok(html.includes('XPD.dismissDispatcherAlert(id, latestAlerts[id])'), 'the × passes the alert record');
   ok('the × on a payment alert writes {dismissed_kind, dismissed_version} on its evidence in ONE update with the removal; other alerts are removed as before');
 }
