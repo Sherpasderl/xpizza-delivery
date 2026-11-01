@@ -18,7 +18,7 @@
    "R1": 92,
    "R2": 415,
    "R3": 161,
-   "R4": 283,
+   "R4": 285,
    "R7": 102,
    "R18": 12,
    "R15": 179
@@ -36,6 +36,7 @@
    "server readytime": 40,
    "server scheduling": 46,
    "server merchant": 38,
+   "server driverpay": 2,
    "server prepstats": 6,
    "server ratings": 8,
    "server seed": 2,
@@ -32450,6 +32451,28 @@
    "kind": "member",
    "facts": [
     "PLACE"
+   ],
+   "rule": "driver",
+   "r": "R4"
+  },
+  {
+   "id": "xpizza-driver/pay-rate.js#shiftEarningsCents#delivered_at#0",
+   "line": 51,
+   "kind": "member",
+   "facts": [
+    "DRIVER",
+    "CASH"
+   ],
+   "rule": "driver",
+   "r": "R4"
+  },
+  {
+   "id": "xpizza-driver/pay-rate.js#shiftEarningsCents#delivered_at#1",
+   "line": 51,
+   "kind": "member",
+   "facts": [
+    "DRIVER",
+    "CASH"
    ],
    "rule": "driver",
    "r": "R4"

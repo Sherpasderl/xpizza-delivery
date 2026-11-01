@@ -303,6 +303,18 @@
     "platform_config":       { ".read": false, ".write": false },
     "form_signals":          { ".read": false, ".write": false },
     "form_signal_limits":    { ".read": false, ".write": false, ".indexOn": ["window_start"] },
+    "platform_rates": {
+      ".read": "auth != null && auth.token.customer !== true && auth.token.handheld !== true",
+      ".write": false,
+      "driver_per_delivery": {
+        "$entry": {
+          ".validate": "newData.hasChildren(['cents', 'effective_from']) && newData.child('cents').isNumber() && newData.child('cents').val() % 1 === 0 && newData.child('cents').val() >= 100 && newData.child('cents').val() <= 100000 && newData.child('effective_from').isNumber() && newData.child('effective_from').val() % 1 === 0 && newData.child('effective_from').val() >= 1767225600000 && newData.child('effective_from').val() <= now + 31622400000",
+          "cents": { ".validate": true },
+          "effective_from": { ".validate": true },
+          "$other": { ".validate": false }
+        }
+      }
+    },
 
     "form_rebake": {
       ".read": false,

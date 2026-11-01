@@ -15,4 +15,6 @@ const orderFolders = [...new Set(require(path.join(ROOT, 'platform', 'sites.json
 for (const f of orderFolders) fs.copyFileSync(ORDER_SRC, path.join(ROOT, f, 'order-self-update.js'));
 // D4-c4: the ONE pause-state interpretation (functions + CLI) → dispatch's committed copy (order-control-state-sync.guard.test.js)
 fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'order-control-state.js'), path.join(ROOT, 'xpizza-dispatch', 'order-control-state.js'));
-console.log(`sync-client: copied sherpa-client.js into ${folders.length} site folders, order-self-update.js into ${orderFolders.length}, order-control-state.js into xpizza-dispatch`);
+// PAY RATE (PROPOSAL-driver-pay-rate-reader r2): the ONE rate reader → the functions (ledger, owner CLI) + the driver app
+for (const dst of ['xpizza-functions', 'xpizza-driver']) fs.copyFileSync(path.join(ROOT, 'platform', 'client', 'pay-rate.js'), path.join(ROOT, dst, 'pay-rate.js'));
+console.log(`sync-client: copied sherpa-client.js into ${folders.length} site folders, order-self-update.js into ${orderFolders.length}, order-control-state.js into xpizza-dispatch, pay-rate.js into xpizza-functions + xpizza-driver`);
