@@ -45139,7 +45139,7 @@
   },
   {
    "id": "xpizza-portal/app.js#describeAddition#items#0",
-   "line": 911,
+   "line": 913,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45149,7 +45149,7 @@
   },
   {
    "id": "xpizza-portal/app.js#onAddProduct#items#0",
-   "line": 958,
+   "line": 960,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45159,7 +45159,7 @@
   },
   {
    "id": "xpizza-portal/app.js#renderDrawer#items#0",
-   "line": 1192,
+   "line": 1194,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45169,7 +45169,7 @@
   },
   {
    "id": "xpizza-portal/app.js#renderDrawer#items#1",
-   "line": 1193,
+   "line": 1195,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45179,7 +45179,7 @@
   },
   {
    "id": "xpizza-portal/app.js#renderAddDrawer>anon#items#0",
-   "line": 1412,
+   "line": 1414,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45189,7 +45189,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#0",
-   "line": 1561,
+   "line": 1563,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45199,7 +45199,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#1",
-   "line": 1596,
+   "line": 1598,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45209,7 +45209,7 @@
   },
   {
    "id": "xpizza-portal/app.js#choiceBlock>anon#items#2",
-   "line": 1614,
+   "line": 1616,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45219,7 +45219,7 @@
   },
   {
    "id": "xpizza-portal/app.js#showOutcome>anon#items#0",
-   "line": 2199,
+   "line": 2201,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45229,7 +45229,7 @@
   },
   {
    "id": "xpizza-portal/app.js#showOutcome>anon#items#1",
-   "line": 2204,
+   "line": 2206,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45339,7 +45339,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#addChoice#items#0",
-   "line": 524,
+   "line": 525,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45349,7 +45349,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#addChoice#items#1",
-   "line": 527,
+   "line": 528,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45359,7 +45359,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#addChoice#items#2",
-   "line": 527,
+   "line": 528,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -45369,7 +45369,7 @@
   },
   {
    "id": "xpizza-portal/editor.js#productsUsingGroup#items#0",
-   "line": 619,
+   "line": 620,
    "kind": "member",
    "facts": [
     "ITEMS"

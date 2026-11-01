@@ -330,10 +330,11 @@ export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, sav
 const photoMap = (src) => (src && src.photos && typeof src.photos === 'object' && !Array.isArray(src.photos) ? src.photos : null);
 export const draftPhotos = (draft) => photoMap(draft && draft.state) || {};
 export const origPhotos = (draft) => photoMap(draft && draft.orig) || {};
-// One mutator: `entry` null = back to absent (legacy). Refused while the draft is owned, for a row that is not in the draft,
-// and for any entry that is not one of the two states.
+// One mutator: `entry` null = back to absent (legacy). Refused while the draft is owned, while a section name waits (ruling A:
+// a photo is content, and a rename publishes alone — canEditContent, like every price write), for a row that is not in the
+// draft, and for any entry that is not one of the two states.
 export function setPhoto(draft, id, entry) {
-  if (!canEditDraft(draft)) return draft;
+  if (!canEditContent(draft)) return draft;
   if (!rowsOf(draft.state, 'item').some((r) => r && rowId(r) === id)) return draft;
   const ok = entry === null || (entry && entry.state === 'removed' && Object.keys(entry).length === 1)
     || (entry && entry.state === 'pid' && typeof entry.pid === 'string' && entry.pid && Object.keys(entry).length === 2);

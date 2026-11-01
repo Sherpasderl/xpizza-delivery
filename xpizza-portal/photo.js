@@ -374,6 +374,8 @@ export function createUploader(deps) {
   return {
     jobOf: (key) => jobs.get(key) || null,
     busy: () => [...jobs.values()].some((j) => j.phase === 'busy' || j.phase === 'reading' || j.phase === 'ready'),
+    // an upload the merchant has open (reading → crop → upload → held): a pending photo for the rename hold (ruling A)
+    active: () => [...jobs.values()].some((j) => j.phase === 'reading' || j.phase === 'crop' || j.phase === 'busy' || j.phase === 'ready'),
     take,
     // P3 «Listo»: freeze the two rects (the contract's), then upload
     upload(key) {

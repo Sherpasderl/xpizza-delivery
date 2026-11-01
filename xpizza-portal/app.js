@@ -40,7 +40,7 @@ const uploader = createUploader({
   alive: (w) => w === photoWorld,
   // the ONE write of an uploaded pid, through the guarded editor; refused (→ held, applied on the next repaint) while owned
   apply: (key, pid, preview) => {
-    if (!state.draft || !canEditDraft(state.draft)) return false;
+    if (!state.draft || !canEditDraft(state.draft) || renamesPending()) return false;   // ruling A: held, never dropped, beside a name
     if (preview && typeof preview === 'object') photo.previews[pid] = preview;
     setPhoto(state.draft, key, { 'state': 'pid', pid });   // a quoted key: the census reads a bare `state:` as the state object
     scheduleRenew();
@@ -605,7 +605,7 @@ function rowPhoto(it, { name, open, upload }) {
 let photoExpandedKey = null;
 const isPhone = () => !!(typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 560px)').matches);
 function pickPhoto(key, capture) {
-  if (!photo.enabled || !state.draft || !canEditDraft(state.draft)) return;
+  if (!photo.enabled || !state.draft || !canEditDraft(state.draft) || renamesPending()) return;   // ruling A: a rename publishes alone
   if (capture === null && isPhone() && photoExpandedKey !== key) { photoExpandedKey = key; renderDrawer(); return; }
   openPicker((file) => { photoExpandedKey = null; uploader.take(key, file); }, { capture: capture === true });
 }
@@ -618,7 +618,7 @@ function photoChanged(key, what) {
     if (job && bar) { const pct = Math.round((job.progress || 0) * 100); bar.setAttribute('aria-valuenow', String(pct)); const i = bar.querySelector('i'); if (i) i.style.width = `${pct}%`; }
     return;
   }
-  if (state.drawerKey === key && $('drawer').classList.contains('show')) renderDrawer();
+  if (state.drawerKey === key && $('drawer').classList.contains('show')) { renderDrawer(); holdDrawerForRename(); }
   if (state.draft) { paint(); refreshBar(); }
 }
 // The drawer's «Foto» field for a product, or null (uploads off and no photo: the drawer exactly as today).
@@ -636,7 +636,7 @@ function photoFieldFor(it) {
     }),
     onUndo: bound(() => { setPhoto(state.draft, key, PL.undoEntry(key, { orig: origPhotos(state.draft) })); photoChanged(key); }),
     // P5: the same upload again; a preview the server could not give (a pid it cannot show) needs a new file
-    onRetry: bound(() => { const j = uploader.jobOf(key); if (j && j.phase === 'failed') uploader.retry(key); else pickPhoto(key, null); }),
+    onRetry: bound(() => { if (renamesPending()) return; const j = uploader.jobOf(key); if (j && j.phase === 'failed') uploader.retry(key); else pickPhoto(key, null); }),
     onCancel: bound(() => uploader.cancel(key)),
     onImgError: onPhotoImgError,
   });
@@ -651,7 +651,7 @@ function renderCropDrawer(d, it, job) {
     onFrame: bound((id) => uploader.setFrame(key, id)),
     onView: (id, v) => uploader.setView(key, id, v),
     onCancel: bound(() => uploader.cancel(key)),
-    onDone: bound(() => uploader.upload(key)),
+    onDone: bound(() => { if (!renamesPending()) uploader.upload(key); }),
     onClose: bound(() => { state.drawerKey = null; uploader.cancel(key); d.classList.remove('show'); d.replaceChildren(); }),
   });
   d.replaceChildren(head, body, foot);
@@ -748,7 +748,7 @@ const categoriesOf = () => { const st = (draftSource(state.draft) || {}).structu
 // LOCAL (this session's draft) OR SAVED (the server's pendingRenames / pendingOther / pendingAdditions — Codex r1 #3): the
 // exclusion holds against the PUBLISHED menu, not against whatever baseline this screen loaded or last sent.
 const renamesPending = () => !!state.draft && (pendingRenames(state.draft).length > 0 || state.savedRenames.length > 0);
-const othersPending = () => !!state.draft && (pendingCount(state.draft, state.additionKeys) > 0 || state.savedOther === true || (state.additionKeys && state.additionKeys.size > 0));
+const othersPending = () => !!state.draft && (pendingCount(state.draft, state.additionKeys) > 0 || state.savedOther === true || (state.additionKeys && state.additionKeys.size > 0) || uploader.active());   // ruling A: an open upload is a pending photo
 // the same SAVED half, handed to the draft so its state boundary refuses the other side (editor.js canEditContent)
 function savedHold() {
   if (state.savedRenames.length) return 'names';
@@ -895,6 +895,8 @@ function renameNote(text) {
 function holdDrawerForRename() {
   if (!renamesPending()) return;
   for (const c of $('drawer').querySelectorAll('input, textarea, select')) lockControl(c, true);
+  // ruling A — the «Foto» field's controls too (zone, Cambiar / Quitar, Reintentar, Deshacer); a photo is content like a price
+  for (const c of $('drawer').querySelectorAll('button.uploader, .phph2b button, .phacts button, .pherr button, .phrm button')) lockControl(c, true);
 }
 const categoryName = (id) => { const c = categoriesOf().find((x) => x && String(x.id) === String(id)); return (c && typeof c.name === 'string' && c.name.trim()) ? c.name : String(id); };
 // What a NEW product inherits from its section — said in the review so the owner knows before publishing.
