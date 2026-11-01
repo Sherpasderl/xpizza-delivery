@@ -98,7 +98,12 @@ test('customer-app/ is the one platform orders deployment, with exactly the appr
   assert.ok(d.origins.includes(d.pay_return.default), 'pay_return.default is one of its own origins');
   assert.ok(typeof d.netlify_site === 'string' && d.netlify_site.length > 0, 'names its Netlify site (the stamp keys on it)');
   assert.ok(existsSync(join(ROOT, 'customer-app', 'netlify.toml')), 'the build stamp is wired (netlify.toml)');
-  assert.match(readFileSync(join(ROOT, 'customer-app', 'netlify.toml'), 'utf8'), /command = "node \.\.\/platform\/stamp-version\.js"/);
+  // PLAN-capp-desktop-website D-1 (advisor ruling 2026-11-01): the site is built by the ONE shell packager's WEB target (it stamps
+  // + writes version.json itself), fail-closed, published from dist/. assert.ok (never assert.match): the toml carries the public
+  // key omit list, and a failure must not dump it
+  const toml = readFileSync(join(ROOT, 'customer-app', 'netlify.toml'), 'utf8');
+  assert.ok(/command = "node \.\.\/platform\/native\/package-capp\.js --target web --env \$CONTEXT --sha \$COMMIT_REF --out dist"/.test(toml), '🔴 customer-app/netlify.toml must build with the shell packager\'s web target');
+  assert.ok(/^\s*publish = "dist"$/m.test(toml), '🔴 customer-app/netlify.toml must publish dist/');
 });
 
 test(`the live forms are byte-unchanged by the capp range ${BASE}..${CAPP_TIP}`, () => {
