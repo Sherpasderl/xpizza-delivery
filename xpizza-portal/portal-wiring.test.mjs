@@ -394,7 +394,9 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
     'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice', 'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
   ], 'the edit state exports exactly these');
   const setPhotoBody = editor.slice(editor.indexOf('export function setPhoto('), editor.indexOf('export function setPhoto(') + 300);
-  assert.ok(/if \(!canEditDraft\(draft\)\) return draft;/.test(setPhotoBody), 'setPhoto refuses when the draft is not owned for editing');
+  // ruling A: setPhoto asks canEditContent — owned-for-editing (canEditDraft) AND no section name waiting (local or saved)
+  assert.ok(/if \(!canEditContent\(draft\)\) return draft;/.test(setPhotoBody), 'setPhoto refuses when the draft is not owned for editing, or a name waits');
+  assert.ok(/const canEditContent = \(draft\) => canEditDraft\(draft\) && pendingRenames\(draft\)\.length === 0 && draft\.held\(\) !== 'names';/.test(editor), 'canEditContent still includes canEditDraft');
   // commit and discard are OPPOSITE operations on the same draft, and confusing them reverted a
   // published price. Both must exist, and the publish path must use commit.
   assert.ok(/export function commit\(/.test(editor) && /export function discard\(/.test(editor), 'both baseline operations exist');
