@@ -117,7 +117,9 @@ const EXTRA = []; const OBS = {};
 
   // ── A0 / D0 ──
   assert.deepStrictEqual(S.sites.calls.map((c) => c.arg).sort(), ['ACCEPT_TIMEOUT_MS', 'GRACE_PERIOD_MS'], FAIL('A0', 'the reviewed application sleep set'));
-  const cmp = D.compare(RT, D.sourceInventory().entries);
+  const SRC = D.sourceInventory();
+  assert.deepStrictEqual(SRC.unclassified, [], FAIL('D0', `source discovery left exports UNCLASSIFIED (a new export shape must be taught to contract/discovery.js, never dropped): ${JSON.stringify(SRC.unclassified)}`));   // 2e 11-01: fail loud
+  const cmp = D.compare(RT, SRC.entries);
   assert.deepStrictEqual(cmp.diffs, {}, FAIL('D0', `runtime vs source discovery differ per category: ${JSON.stringify(cmp.diffs)}`));
   assert.ok(cmp.counts.db >= 20 && TRIGGERS.length === cmp.counts.db, FAIL('D0', `DB trigger table (${TRIGGERS.length}) = the runtime db count (${cmp.counts.db})`));
   ok(`A0/D0 sleep sites :${SITE('GRACE_PERIOD_MS')} GRACE, :${SITE('ACCEPT_TIMEOUT_MS')} ACCEPT via sleep() :${S.sites.def}; discovery runtime == source per category ${JSON.stringify(cmp.counts)} (re-exports included), no diff`);
