@@ -33,6 +33,12 @@
   "package-lock.json",
   "package.json",
   "pausas.js",
+  "photo-contract-fake.mjs",
+  "photo-flow.test.mjs",
+  "photo-logic.js",
+  "photo-logic.test.mjs",
+  "photo.js",
+  "photos-b-fold.mjs",
   "portal-logic.js",
   "portal-look.test.mjs",
   "portal-site-freeze.golden.json",
@@ -82,8 +88,8 @@
    "bytes": 10716
   },
   "netlify.toml": {
-   "sha256": "fe3ef565e42ad144919fa416dd111b322958d83486746116dd07c228faed22ee",
-   "bytes": 2549
+   "sha256": "8d37bba0fbe719e7cb94f4a37e63bb26efd80d85f4c82a93b26a92acb51b3aff",
+   "bytes": 3391
   },
   "package-lock.json": {
    "sha256": "2a0d35b67d76dd7ddc912326272387f6e960371c9a490ad009e7c8d091de7a7f",
@@ -98,8 +104,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "4ead038d1053564038b56f44c1f491ca5d4ca266d2718d09090dbead7966490e",
-   "bytes": 93271
+   "sha256": "464364016fe46baefd14fc5b33ae682fe75a51e9a1a664d6322d70c5291143b7",
+   "bytes": 99097
   }
  },
  "diff_aid": {
@@ -2025,6 +2031,108 @@
    ],
    [
     "",
+    ".phbar i",
+    "background",
+    "#fff"
+   ],
+   [
+    "",
+    ".phbar",
+    "background",
+    "rgba(255,255,255,.3)"
+   ],
+   [
+    "",
+    ".phgrid",
+    "background",
+    "linear-gradient(to right,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px)),linear-gradient(to right,transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px)),linear-gradient(to bottom,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px)),linear-gradient(to bottom,transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px))"
+   ],
+   [
+    "",
+    ".phhint",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".phocard",
+    "background",
+    "#fff"
+   ],
+   [
+    "",
+    ".phocard",
+    "color",
+    "#1E1B18"
+   ],
+   [
+    "",
+    ".phodesc",
+    "color",
+    "#5A4F47"
+   ],
+   [
+    "",
+    ".phoprice",
+    "color",
+    "#7A5A08"
+   ],
+   [
+    "",
+    ".phov",
+    "background",
+    "rgba(10,10,11,.62)"
+   ],
+   [
+    "",
+    ".phov",
+    "color",
+    "#fff"
+   ],
+   [
+    "",
+    ".phpth",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".phpvcap",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".phpvlbl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".phrm",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".phshc",
+    "background",
+    "linear-gradient(to bottom,transparent 40%,rgba(0,0,0,.35) 100%)"
+   ],
+   [
+    "",
+    ".phshh",
+    "background",
+    "linear-gradient(to bottom,transparent 50%,rgba(0,0,0,.25) 100%)"
+   ],
+   [
+    "",
+    ".phzl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".pill i",
     "background",
     "var(--mute2)"
@@ -2262,6 +2370,12 @@
     ".prow .now",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    ".prow .now.phnone",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -2586,6 +2700,12 @@
     ".seal",
     "background",
     "var(--gold-soft)"
+   ],
+   [
+    "",
+    ".seal.phseal .seachg .sv",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -3045,6 +3165,12 @@
    ],
    [
     "",
+    ".thumb.phro",
+    "border-color",
+    "transparent"
+   ],
+   [
+    "",
     ".thumb.set",
     "border-color",
     "transparent"
@@ -3240,6 +3366,24 @@
     ".uploader span",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".uploader.phinv,.fld.invalid .uploader",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".uploader:focus-visible",
+    "background",
+    "var(--tint)"
+   ],
+   [
+    "",
+    ".uploader:focus-visible",
+    "border-color",
+    "var(--accent)"
    ],
    [
     "",
@@ -3600,6 +3744,12 @@
     "body",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    "button.uploader",
+    "background",
+    "none"
    ],
    [
     "@media(max-width:920px)",
