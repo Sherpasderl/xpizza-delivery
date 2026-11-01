@@ -275,7 +275,7 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
     r = await call('completeProfile', { body: { restaurant_id: 'x_pizza', email: 'c@x.hn', accept_terms: true, promos: true }, headers: { 'x-firebase-id-token': U } });
     assert.deepStrictEqual(r.body, { ok: true }); assert.strictEqual(db.get(`user_private/${U}/consent/x_pizza/terms/version`), 'x1', 'forms: unchanged');
     r = await call('setPromos', { body: { context: 'platform', value: true }, headers: { 'x-firebase-id-token': U } });
-    assert.deepStrictEqual(r.body, { ok: true }); assert.strictEqual(db.get(`user_private/${U}/consent/_platform/promos/value`), true);
+    assert.deepStrictEqual(r.body, { ok: true, value: true }); assert.strictEqual(db.get(`user_private/${U}/consent/_platform/promos/value`), true);
     for (const b of [{ restaurant_id: 'x_pizza', context: 'platform', session_id: 's'.repeat(24) }, { session_id: 's'.repeat(24) }]) assert.strictEqual((await call('googleStart', { body: b })).statusCode, 400, JSON.stringify(b));
     r = await call('googleStart', { body: { context: 'platform', session_id: 's'.repeat(24) } });
     assert.ok(r.body.ok && r.body.nonce); assert.strictEqual(Object.values(db.get('auth_challenges'))[0].rid, '_platform');
@@ -409,6 +409,76 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
     assert.strictEqual(r.body.name, 'Editado por el miembro');
   }
   ok('ruling 4: the name is create-if-absent — a paused original resuming after a retry + a member edit never overwrites the edit');
+
+  // ── 17. Codex capp batch r1 #4: the PLATFORM setPromos — the member's own uid, exactly one selector, the forms unchanged, the
+  //    platform consent where getMyProfile / profileOf read it, the stored value confirmed; a tombstone writes nothing ──
+  {
+    const db = fakeDb();
+    db.set('platform_config/legal', { terms_url: 'u', privacy_url: 'p', terms_version: 't1', privacy_version: 'p1', promos_copy_version: 'c1' });
+    db.set('restaurants/x_pizza/legal', { terms_url: 'xu', privacy_url: 'xp', terms_version: 'x1', privacy_version: 'xp1', promos_copy_version: 'xc1' });
+    const H = SE.makeSignup({ getDatabase: () => db, getAuth: () => ({ verifyIdToken: async (x) => { if (!String(x).startsWith('cust:')) throw new Error('bad'); return { uid: x.slice(5), customer: true }; } }),
+      checkRateLimit: async () => ({ allowed: true }), resolveRid: (raw) => (raw === 'x_pizza' ? { restaurantId: 'x_pizza' } : raw == null ? { restaurantId: 'x_pizza', defaulted: true } : { error: 'unknown' }), env: {}, now: () => 777 });
+    const call = async (body, tok) => { const r = res(); await H.setPromos({ method: 'POST', body, query: {}, headers: {}, ip: '1', get: (h) => (h === 'x-firebase-id-token' ? tok : undefined) }, r); return r; };
+    const A = 'u_' + 'e'.repeat(24), B = 'u_' + 'f'.repeat(24);
+    const terms = { version: 't1', at: 1 };
+    db.set(`user_private/${A}`, { email: 'a@x.hn', consent: { _platform: { terms, promos: { value: false, copy_version: 'c0', at: 1 } }, x_pizza: { terms: { version: 'x1', at: 1 }, promos: { value: false, copy_version: 'xc1', at: 1 } } } });
+    db.set(`user_private/${B}`, { email: 'b@x.hn', consent: { _platform: { terms, promos: { value: false, copy_version: 'c0', at: 1 } } } });
+    const snapB = JSON.stringify(db.get(`user_private/${B}`));
+    // the member's OWN uid: a body uid is ignored; B is never touched
+    let r = await call({ context: 'platform', value: true, uid: B }, `cust:${A}`);
+    assert.deepStrictEqual([r.statusCode, r.body], [200, { ok: true, value: true }]);
+    assert.deepStrictEqual(db.get(`user_private/${A}/consent/_platform`), { terms, promos: { value: true, copy_version: 'c1', at: 777 } }, 'terms kept; the platform copy version + server clock');
+    assert.strictEqual(db.get(`user_private/${A}/consent/x_pizza/promos/value`), false, 'never a brand consent');
+    assert.strictEqual(JSON.stringify(db.get(`user_private/${B}`)), snapB, '🔴 another member untouched');
+    // exactly what the platform profile reads
+    assert.strictEqual((await S.profileOf(db, A, S.PLATFORM_SCOPE)).promos, true);
+    r = await call({ context: 'platform', value: false }, `cust:${A}`);
+    assert.deepStrictEqual(r.body, { ok: true, value: false }); assert.strictEqual((await S.profileOf(db, A, S.PLATFORM_SCOPE)).promos, false);
+    // exactly one selector: any restaurant_id key (a known brand, null, empty) with context:'platform' ⇒ 400, nothing written
+    const before = JSON.stringify(db.tree);
+    for (const b of [{ context: 'platform', restaurant_id: 'x_pizza', value: true }, { context: 'platform', restaurant_id: null, value: true }, { context: 'platform', restaurant_id: '', value: true },
+      { context: 'Platform', value: true }, { context: null, value: true }, { value: true }])
+      assert.deepStrictEqual([(r = await call(b, `cust:${A}`)).statusCode, r.body], [400, { ok: false, reason: 'bad_request' }], JSON.stringify(b));
+    for (const v of ['true', 1, null, undefined]) assert.deepStrictEqual((await call({ context: 'platform', value: v }, `cust:${A}`)).body, { ok: false, reason: 'bad_request' }, String(v));
+    // signed-in member only
+    for (const tok of [undefined, '', 'garbage', A]) assert.deepStrictEqual([(r = await call({ context: 'platform', value: true }, tok)).statusCode, r.body], [401, { ok: false, reason: 'unauthenticated' }], String(tok));
+    const H2 = SE.makeSignup({ getDatabase: () => db, getAuth: () => ({ verifyIdToken: async () => ({ uid: A, customer: false }) }), checkRateLimit: async () => ({ allowed: true }), resolveRid: () => ({ error: 'x' }), env: {} });
+    r = res(); await H2.setPromos({ method: 'POST', body: { context: 'platform', value: true }, headers: {}, ip: '1', get: () => 'staff' }, r);
+    assert.strictEqual(r.statusCode, 401, 'a non-customer token');
+    assert.strictEqual(JSON.stringify(db.tree), before, '🔴 no refused request wrote anything');
+    // no completed platform profile (no consent/_platform/terms) ⇒ not_completed, nothing created; no platform legal ⇒ legal_unconfigured
+    const C = 'u_' + 'g'.repeat(24);
+    db.set(`user_private/${C}`, { email: 'c@x.hn', consent: { x_pizza: { terms: { version: 'x1', at: 1 } } } });
+    assert.deepStrictEqual([(r = await call({ context: 'platform', value: true }, `cust:${C}`)).statusCode, r.body], [400, { ok: false, reason: 'not_completed' }]);
+    assert.strictEqual(db.get(`user_private/${C}/consent/_platform`), undefined, 'a brand completion never completes the platform');
+    assert.deepStrictEqual((await call({ context: 'platform', value: true }, `cust:${'u_' + 'h'.repeat(24)}`)).body, { ok: false, reason: 'not_completed' });
+    assert.strictEqual(db.get(`user_private/${'u_' + 'h'.repeat(24)}`), undefined, 'an absent record is never created');
+    // the tombstones: deleted_uids ⇒ 401 (never resolved to a uid); user_private deleted_at ⇒ 403; neither writes
+    db.set(`deleted_uids/${B}`, 1);
+    assert.deepStrictEqual([(r = await call({ context: 'platform', value: true }, `cust:${B}`)).statusCode, r.body], [401, { ok: false, reason: 'unauthenticated' }]);
+    assert.strictEqual(JSON.stringify(db.get(`user_private/${B}`)), snapB, '🔴 deleted_uids: nothing written');
+    db.set(`user_private/${C}`, { deleted_at: 5 });
+    assert.deepStrictEqual([(r = await call({ context: 'platform', value: true }, `cust:${C}`)).statusCode, r.body], [403, { ok: false, reason: 'deleted' }]);
+    assert.deepStrictEqual(db.get(`user_private/${C}`), { deleted_at: 5 }, '🔴 the tombstone stays exactly {deleted_at}');
+    db.set('platform_config/legal', null);
+    assert.deepStrictEqual([(r = await call({ context: 'platform', value: true }, `cust:${A}`)).statusCode, r.body], [400, { ok: false, reason: 'legal_unconfigured' }]);
+    // the forms: byte-identical — {ok:true} only (no value), the brand consent only
+    r = await call({ restaurant_id: 'x_pizza', value: true }, `cust:${A}`);
+    assert.deepStrictEqual([r.statusCode, r.body], [200, { ok: true }], 'forms: no `value` field');
+    assert.strictEqual(db.get(`user_private/${A}/consent/x_pizza/promos/value`), true); assert.strictEqual(db.get(`user_private/${A}/consent/_platform/promos/value`), false);
+  }
+  {
+    // the confirmed value is READ BACK from the committed record, never echoed from the request
+    const legal = { terms_url: 'u', privacy_url: 'p', terms_version: 't', privacy_version: 'p', promos_copy_version: 'c' };
+    const stub = (committedVal) => ({ ref: (p) => ({ once: async () => ({ val: () => (p === 'platform_config/legal' ? legal : null), exists: () => p === 'platform_config/legal' }),
+      transaction: async (fn) => { fn({ consent: { _platform: { terms: { version: 't' } } } }); return { committed: true, snapshot: { val: () => committedVal } }; } }) });
+    const U = 'u_' + 'i'.repeat(24);
+    assert.deepStrictEqual(await S.setPromos(stub({ consent: { _platform: { terms: {}, promos: { value: false } } } }), { uid: U, rid: '_platform', value: true, now: 1, confirm: true }), { ok: true, value: false }, '🔴 the STORED value');
+    for (const v of [null, { deleted_at: 9, consent: { _platform: { promos: { value: true } } } }, { consent: {} }, { consent: { _platform: { promos: { value: 'yes' } } } }])
+      assert.deepStrictEqual(await S.setPromos(stub(v), { uid: U, rid: '_platform', value: true, now: 1, confirm: true }), { ok: false, reason: 'aborted' }, JSON.stringify(v));
+    assert.deepStrictEqual(await S.setPromos(stub(null), { uid: U, rid: '_platform', value: true, now: 1 }), { ok: true }, 'without confirm: today\'s answer');
+  }
+  ok('Codex capp batch r1 #4: platform setPromos — own uid only (a body uid ignored), exactly one selector, boolean only, 401 without a customer token; consent/_platform/promos (what profileOf reads) with the platform copy version, terms kept; → {ok, value} READ BACK from the committed record; not_completed / legal_unconfigured; deleted_uids ⇒ 401 and deleted_at ⇒ 403 with nothing written; the forms\' {ok:true} unchanged');
 
   console.log(`\nsignup-platform: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

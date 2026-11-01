@@ -23387,5 +23387,53 @@
    "node",
    "signup-platform.test.js"
   ]
+ },
+ {
+  "id": "guest-45",
+  "slice": "guest",
+  "label": "capp #4: the forms' setPromos also gets the read-back `value` (the forms' answer is no longer byte-identical)",
+  "file": "signup-endpoints.js",
+  "from": "confirm: true }) : await S.setPromos(db, { uid, rid, value: b.value, now: now() });",
+  "to": "confirm: true }) : await S.setPromos(db, { uid, rid, value: b.value, now: now(), confirm: true });",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-46",
+  "slice": "guest",
+  "label": "capp #4: the platform setPromos echoes the REQUESTED value instead of the stored one",
+  "file": "signup-core.js",
+  "from": "{ ok: true, value: stored.value }",
+  "to": "{ ok: true, value }",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-47",
+  "slice": "guest",
+  "label": "capp #4: the read-back ignores a tombstone on the committed record",
+  "file": "signup-core.js",
+  "from": "c && c.deleted_at == null && c.consent",
+  "to": "c && c.consent",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
+ },
+ {
+  "id": "guest-48",
+  "slice": "guest",
+  "label": "capp #4: the platform setPromos never confirms (the app gets no stored value)",
+  "file": "signup-endpoints.js",
+  "from": "now: now(), confirm: true })",
+  "to": "now: now() })",
+  "command": [
+   "node",
+   "signup-platform.test.js"
+  ]
  }
 ]

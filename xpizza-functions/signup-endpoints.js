@@ -9,6 +9,7 @@
 //   googleSignIn     POST {restaurant_id, session_id, id_token}    → {ok, linked:true, token, name} | {ok, linked:false, ticket, email, name}
 //   completeProfile  POST {restaurant_id, email, accept_terms, promos}  (customer ID token) → {ok} | {ok:false, reason}
 //   setPromos        POST {restaurant_id, value}                         (customer ID token) → {ok} | {ok:false, reason}
+//                    platform: POST {context:'platform', value}          (customer ID token) → {ok, value} (the stored value) | {ok:false, reason}
 //   getSignupConfig  GET  ?restaurant_id=                           → {terms_url, privacy_url, legal_ready, google_enabled, email_login_enabled}
 // PLAN-guest-checkout-server S3a: every endpoint above takes EITHER restaurant_id (the forms, byte-identical) OR context:'platform'
 // (the customer app → consent/_platform, platform_config/legal, GOOGLE_OAUTH_AUDIENCES__PLATFORM); both / neither → 400.
@@ -116,7 +117,8 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
       if (!rid) return res.status(400).json({ ok: false, reason: 'bad_request' });
       if (await limited(db, 'profile', req, res)) return;
       const uid = await customerOf(req, db); if (!uid) return res.status(401).json({ ok: false, reason: 'unauthenticated' });
-      const r = await S.setPromos(db, { uid, rid, value: b.value, now: now() });
+      // the platform (the app's member Cuenta): + `value`, the stored choice read back from the committed record; the forms: unchanged
+      const r = isPlatform(rid) ? await S.setPromos(db, { uid, rid, value: b.value, now: now(), confirm: true }) : await S.setPromos(db, { uid, rid, value: b.value, now: now() });
       return res.status(r.ok ? 200 : (r.reason === 'deleted' ? 403 : 400)).json(r);
     } catch (e) { console.error('setPromos', e && e.message); return res.status(500).json({ ok: false }); }
   };

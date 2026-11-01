@@ -230,7 +230,9 @@ async function verifiedEmailOf(db, uid, email) {
   const row = (await db.ref(`auth_links/email/${sha256(email)}`).once('value')).val();
   return !!(row && row.uid === uid);
 }
-async function setPromos(db, { uid, rid, value, now }) {
+// `confirm` (the platform setPromos only — the forms never pass it, so their {ok:true} is unchanged): + the value READ BACK from the
+// committed record, so the app shows what is stored, never what it asked for
+async function setPromos(db, { uid, rid, value, now, confirm = false }) {
   if (typeof value !== 'boolean' || !isScope(rid)) return { ok: false, reason: 'bad_request' };
   const legal = await legalFor(db, rid);
   if (!legal) return { ok: false, reason: 'legal_unconfigured' };
@@ -245,7 +247,11 @@ async function setPromos(db, { uid, rid, value, now }) {
     consent[rid] = { ...prev, promos: { value, copy_version: legal.promos_copy_version, at: now } };   // terms untouched
     return { ...cur, consent };
   });
-  return r.committed && !reason ? { ok: true } : { ok: false, reason: reason || 'aborted' };
+  if (!(r.committed && !reason)) return { ok: false, reason: reason || 'aborted' };
+  if (!confirm) return { ok: true };
+  const c = r.snapshot && r.snapshot.val();
+  const stored = c && c.deleted_at == null && c.consent && c.consent[rid] && c.consent[rid].promos;
+  return stored && typeof stored.value === 'boolean' ? { ok: true, value: stored.value } : { ok: false, reason: 'aborted' };
 }
 
 // ── S3a: the server-side completion state (the forms' account.js suCompletionState, computed here so the app needs no RTDB
