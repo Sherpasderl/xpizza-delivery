@@ -309,6 +309,14 @@
         ".write": false
       }
     },
+    "order_ratings": {
+      ".read": false,
+      ".write": false
+    },
+    "public_stats": {
+      ".read": true,
+      ".write": false
+    },
     "order_tracking": {
       "$token": {
         ".read": true,
@@ -611,6 +619,10 @@
           }
         }
       }
+    },
+    "form_rebake": {
+      ".read": false,
+      ".write": false
     },
     "payment_attempts": {
       ".read": false,
