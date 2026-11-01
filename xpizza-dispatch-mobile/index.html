@@ -1918,7 +1918,7 @@ window.__onMapaShown = async () => {
   if (!mapInit) {
     mapInit = initMap().catch((e) => {
       mapFailed = true; mapInit = null;
-      showMapMsg('Mapa no disponible — tocá para reintentar. El tablero sigue en vivo.');
+      showMapMsg(XPD.MAP_UNAVAILABLE_MSG);   // shared constant (owner ruling (b)); whole line is the retry target
       throw e;
     });
   }
