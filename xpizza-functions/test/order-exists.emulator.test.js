@@ -194,6 +194,7 @@ async function traced(c, rid, setupState) {
   // outran the 10 s TTL, so the handler re-read order_control/<rid>/current — one call the pre-c4 golden never had.
   await CTL.controlWarm(rtdb, rid);
   await CFG.warm();   // the client floor + extras mode caches: freshly read, OUTSIDE the recording (test/_config-warm.js)
+  await require('./_catalog-clock').warmPhoneFlag(rtdb);   // the phone flag (30 s, never-awaited refresh) freshly read with the recorder OFF — no refresh lands inside the recording (advisor ruling B, 2026-11-01)
   const mark = CLOCK.loads().length;   // R1c: which rids THIS request cold-loads — observed, not inferred from the trace's shape
   REC = [];
   const r = await c.request(rid, setupState);
@@ -373,7 +374,7 @@ async function pageSends(dir, c, firstStatus, firstBody) {
         const cs = SD.compareShape(r.ops, g.ops, { mode, content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
         if (cs.bound) S3_BOUND += 1; else S3_UNBOUND += 1;
         if (JSON.stringify(r.ops) !== JSON.stringify(g.ops)) S3_DIFF += 1;
-        assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${L}: the handler's database CALL SEQUENCE changed — a refusal must add no read and move no write`);
+        assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${L}: the handler's database CALL SEQUENCE changed — a refusal must add no read and move no write — ${RD.opsDiff(cs.expected, cs.actual)}`);
         const ch = SD.changedShape(r.changed, g.changed, { content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
         assert.deepStrictEqual(ch.actual, ch.expected, `🔴 ${L}: the set of database paths the request changed is not the base's (cleanup / writes must be identical)`);
         if (c.kind === 'refusal') {
@@ -427,7 +428,7 @@ async function pageSends(dir, c, firstStatus, firstBody) {
           const noFill = (r, side) => FILL.strip(r.ops, rid, r, `${L}${side}`, { ignore: (e) => e.db === 'rtdb' && e.op === 'remove' && e.path === 'rate_limits', cold: COLD_OF.get(r) });
           const offOps = RD.normOps(noFill(off, ' [render-OFF side]')); const onOps = RD.normOps(noFill(on, ''));
           if (c.path === 'card' && carriesReward(off, rid)) { RD.assertInserted(offOps, onOps, RD.afterUidCheck(offOps, L), RD.PROBE_ABSENT(), L); probed += 1; }
-          else assert.deepStrictEqual(onOps, offOps, `🔴 ${L}: the call sequence must equal the render-OFF one`);
+          else RD.assertSameOps(offOps, onOps, L);
         });
       }
     }

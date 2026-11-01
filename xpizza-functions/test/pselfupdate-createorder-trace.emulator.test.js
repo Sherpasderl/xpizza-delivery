@@ -157,6 +157,7 @@ function bodyFor(rid, oid, phone, { redeem: withRedeem = false, qty = 1 } = {}) 
 // one handler call, recorded; request-local ids normalised AFTER the call (the attempt id / poll token are read back)
 async function traced(rid, oid, uid, phone, opts = {}) {
   await rtdb.ref('rate_limits').remove();   // every test request is 127.0.0.1 — the per-IP limit is reset between charges (test env only)
+  await require('./_catalog-clock').warmPhoneFlag(rtdb);   // the phone flag (30 s, never-awaited refresh) freshly read with the recorder OFF — no refresh lands inside the recording (advisor ruling B, 2026-11-01)
   REC = [];
   const r = await post(app.createOrder, bodyFor(rid, oid, phone, opts), { 'x-firebase-id-token': uid });
   await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
@@ -238,7 +239,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
       assert.ok(floorCalls.every((e) => e.op === 'get'), `🔴 ${rid} ${k}: the floor path is only ever READ (got ${JSON.stringify(floorCalls)})`);
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request (cached) — got ${floorCalls.length}`);
       const rest = CTL.withoutControlRead(out[rid][k], rid, { expected: 0, label: `${rid} ${k} (switch cache ${CACHE[k]})` });
-      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen ba29282 trace`);
+      { const got = rest.filter((e) => !isFloorRead(e)); assert.deepStrictEqual(got, golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen ba29282 trace — ${require('./_render-delta').opsDiff(golden[rid][k], got)}`); }
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get)`);
     }
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());

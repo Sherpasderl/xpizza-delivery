@@ -32,23 +32,26 @@ function evaluateStrict(v, now) {
 const FLAG_PATH = 'config/phone_wire_strict';
 const FLAG_TTL_MS = 30_000, FLAG_REFRESH_TIMEOUT_MS = 500, FLAG_BACKOFF_MS = 5_000;
 let _cache = { value: false, at: 0 }, _inflight = null, _backoffUntil = 0;
+// the TTL / backoff clock: production = Date.now (late-bound); a trace suite installs its catalog clock ONCE (test/_catalog-clock.js),
+// so no refresh can land inside a recorded request by wall time (advisor ruling B, 2026-11-01). The 500 ms deadline stays a real timer.
+let _clock = () => Date.now(), _clockHooked = false;
 function _withTimeout(p, ms, onTimeout) {
   let timer; const t = new Promise((res) => { timer = setTimeout(() => res(onTimeout()), ms); });
   return Promise.race([p.then((v) => { clearTimeout(timer); return v; }, (e) => { clearTimeout(timer); throw e; }), t]);
 }
-async function phoneWireStrict(db, now = Date.now()) {
+async function phoneWireStrict(db, now = _clock()) {
   if (now - _cache.at < FLAG_TTL_MS) return _cache.value;
   if (now < _backoffUntil) return false;
   if (_inflight) return _inflight;
   _inflight = (async () => {
     try {
       const r = await _withTimeout(db.ref(FLAG_PATH).once('value').then((s) => ({ v: evaluateStrict(s.val(), now) })), FLAG_REFRESH_TIMEOUT_MS, () => ({ timeout: true }));
-      if (r.timeout) { _backoffUntil = Date.now() + FLAG_BACKOFF_MS; _cache = { value: false, at: 0 }; return false; }
+      if (r.timeout) { _backoffUntil = _clock() + FLAG_BACKOFF_MS; _cache = { value: false, at: 0 }; return false; }
       _cache = { value: r.v, at: now };
       return r.v;
     } catch (e) {
       console.error('phone-wire-strict: flag read failed → OFF, backing off', e && e.message);
-      _backoffUntil = Date.now() + FLAG_BACKOFF_MS; _cache = { value: false, at: 0 };
+      _backoffUntil = _clock() + FLAG_BACKOFF_MS; _cache = { value: false, at: 0 };
       return false;
     } finally { _inflight = null; }
   })();
@@ -58,11 +61,22 @@ async function phoneWireStrict(db, now = Date.now()) {
 // Fresh cache → its value. Otherwise ONE background revalidation (phoneWireStrict: in-flight dedupe, backoff, fail-closed) is
 // started and NEVER awaited, and this call answers at once: a cold cache → OFF; a stale cached value → that value (stale-while-
 // revalidate; a failed refresh resets the cache to OFF, so a stale `true` cannot outlive a failure).
-function phoneWireStrictNow(db, now = Date.now()) {
+function phoneWireStrictNow(db, now = _clock()) {
   if (_cache.at && now - _cache.at < FLAG_TTL_MS) return _cache.value;
   const answer = _cache.at ? _cache.value : false;
   phoneWireStrict(db, now).catch(() => {});
   return answer;
 }
 function _resetForTest() { _cache = { value: false, at: 0 }; _inflight = null; _backoffUntil = 0; }
-module.exports = { phoneWireStrict, phoneWireStrictNow, evaluateStrict, CENSUS_MAX_AGE_MS, FLAG_PATH, FLAG_TTL_MS, FLAG_REFRESH_TIMEOUT_MS, FLAG_BACKOFF_MS, _resetForTest };
+function _useClock(fn) {
+  if (typeof fn !== 'function') throw new Error('phone flag: _useClock needs a function');
+  if (_clockHooked) throw new Error('phone flag: _useClock is once per process — a clock is already installed');
+  _clock = fn; _clockHooked = true;
+}
+// a trace suite's warm (recorder OFF): wait out any in-flight refresh, then ONE fresh read → full-TTL fresh for the next request
+async function _warmForTest(db) {
+  while (_inflight) await _inflight;
+  _cache = { value: false, at: 0 }; _backoffUntil = 0;
+  return phoneWireStrict(db);
+}
+module.exports = { phoneWireStrict, phoneWireStrictNow, evaluateStrict, CENSUS_MAX_AGE_MS, FLAG_PATH, FLAG_TTL_MS, FLAG_REFRESH_TIMEOUT_MS, FLAG_BACKOFF_MS, _resetForTest, _useClock, _warmForTest };
