@@ -23,6 +23,10 @@ const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;          // app / deployment ids: pat
 const PLATFORM_CONTEXT = 'platform';
 // Local development against production data — public menu only (kept from the pre-manifest literal list).
 const LOCALHOST_DEV_RE = /^http:\/\/localhost(:\d+)?$/;
+// PLAN-capp-native-shell §1.1 (Codex #1, P1): the bundled native shell's WebView origins — iOS (WKWebView, capacitor scheme) and
+// Android (Capacitor's https://localhost). EXACTLY these two, and only in the platform orders deployment's `native` block: they are
+// not https sites, so they never enter `origins` (the pay-return allowlist, the stamp, the domain swap) — only the CORS lists.
+const NATIVE_ORIGINS = Object.freeze(['capacitor://localhost', 'https://localhost']);
 
 function isExactHttpsOrigin(o) {
   if (typeof o !== 'string' || o.includes('*')) return false;
@@ -62,6 +66,16 @@ function validateManifest(m) {
         if (pr.default !== undefined && !isExactHttpsOrigin(pr.default)) errs.push(`${tag}: pay_return.default must be an exact https origin`);
       }
     }
+    if (d.native !== undefined) {
+      const nv = d.native;
+      if (d.app !== 'orders' || d.context !== PLATFORM_CONTEXT) errs.push(`${tag}: native is only for the platform orders deployment`);
+      else if (!nv || typeof nv !== 'object' || Array.isArray(nv) || Object.keys(nv).some((k) => k !== 'origins')) errs.push(`${tag}: native must be { origins }`);
+      else if (!Array.isArray(nv.origins) || !nv.origins.length) errs.push(`${tag}: native.origins must be a non-empty array`);
+      else {
+        for (const o of nv.origins) if (!NATIVE_ORIGINS.includes(o)) errs.push(`${tag}: native origin ${JSON.stringify(o)} is not one of ${NATIVE_ORIGINS.join(', ')}`);
+        if (new Set(nv.origins).size !== nv.origins.length) errs.push(`${tag}: native origins must be unique`);
+      }
+    }
     if (!Array.isArray(d.origins)) errs.push(`${tag}: origins must be an array`);
     else for (const o of d.origins) {
       if (!isExactHttpsOrigin(o)) errs.push(`${tag}: origin ${JSON.stringify(o)} is not an exact https origin`);
@@ -94,8 +108,10 @@ function validateCompat(c, apps) {
 
 // The order sites' exact origins, in manifest order (the CORS audience of the shared order-site constants).
 const orderOrigins = (m) => m.deployments.filter((d) => d.app === 'orders').flatMap((d) => d.origins);
+// …then the native shell's WebView origins (§1.1), AFTER every site origin (today's lists keep their members and order)
+const nativeOrigins = (m) => m.deployments.filter((d) => d.app === 'orders' && d.context === PLATFORM_CONTEXT && d.native).flatMap((d) => d.native.origins);
 function deriveCorsLists(m) {
-  const o = orderOrigins(m);
+  const o = [...orderOrigins(m), ...nativeOrigins(m)];
   return { ACCOUNT_ORIGINS: [...o], PUBLIC_MENU_ORIGINS: [LOCALHOST_DEV_RE, ...o] };
 }
 
@@ -113,4 +129,4 @@ function loadPlatform(sites = SITES, compat = COMPAT) {
 }
 
 const PLATFORM = loadPlatform();
-module.exports = { PLATFORM, loadPlatform, validateManifest, validateCompat, deriveCorsLists, isExactHttpsOrigin, LOCALHOST_DEV_RE, PLATFORM_CONTEXT, RID_RE, ID_RE };
+module.exports = { PLATFORM, loadPlatform, validateManifest, validateCompat, deriveCorsLists, isExactHttpsOrigin, LOCALHOST_DEV_RE, NATIVE_ORIGINS, PLATFORM_CONTEXT, RID_RE, ID_RE };
