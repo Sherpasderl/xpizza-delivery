@@ -98,7 +98,10 @@ const edit = makePhotoEditIo({ fs: db, enabled: async () => true });
     await seedDraftPid(P2);
     const seen = (await reg(P2).get()).data().last_ref_at;
     const other = label === 'attach' ? edit.attach(RID, [P2]) : (async () => {
-      const prep2 = await pp.prepare(RID, { [key]: { state: 'pid', pid: P2 } });
+      // the claim can win BEFORE the hook commits: prepare's own registry transaction then fails closed with photo_unavailable — a loss
+      // at that stage is the publish side losing the race (any other error still fails the cell loudly)
+      let prep2;
+      try { prep2 = await pp.prepare(RID, { [key]: { state: 'pid', pid: P2 } }); } catch (e) { if (e && e.code === 'photo_unavailable') return { ok: false, code: e.code, stage: 'prepare' }; throw e; }
       return pp.hook(prep2).commit(db, RID, `tb-vx-${Date.now()}`).then(() => ({ ok: true }), (e) => ({ ok: false, code: e.code }));
     })();
     const [a, c] = await Promise.all([other, S.claim({ fs: db, now: Date.now, newClaimId: () => `emu${Date.now()}` }, RID, { pid: P2, last_ref_at: seen })]);
