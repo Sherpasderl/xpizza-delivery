@@ -2706,7 +2706,7 @@ function drv2ShowInterlude() {
   }, { ICONS, esc: escapeHtml });
   /* SLICE3DEPS:INTERLUDE-EARN:START — per-delivery pay injection, carved inside SLICE2:IMPORT (the pure builder no longer renders earnings; it can't read window.PayRate). Idempotent; blank when the rate is unknown; late rate load re-injects via refreshOpenCashSurfaces. */
   ov.classList.add('open');
-  ov.dataset.oid = info.orderId || ''; drv2InjectInterludeEarn(ov);
+  ov.dataset.oid = info.orderId || ''; delete ov.dataset.ilhadsub; delete ov.dataset.ilbase; drv2InjectInterludeEarn(ov);   // RESET the cached base on each fresh render (overlay is REUSED across orders) — Codex rewire r1 P1; the refresh re-inject keeps the cache
   const go = ov.querySelector('#btn-interlude-go'); if (go) go.onclick = drv2DismissInterlude;
   /* SLICE3DEPS:INTERLUDE-EARN:END */
   drv2InterludeShownFor = info.orderId;

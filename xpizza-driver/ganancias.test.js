@@ -276,5 +276,84 @@ t('injection #3 late load: unknown rate → nothing; re-inject after the rate ar
   assert.equal((ov.innerHTML.match(/Tu pago por esta entrega/g) || []).length, 1, 'exactly ONE row after repeated re-injects (idempotent)');
 });
 
+// ---------- OVERLAY REUSE through the REAL drv2ShowInterlude/drv2ShowResumen + refreshOpenCashSurfaces (Codex rewire r1 P1) ----------
+function showHarness({ pagosLive = true, rateEntries = null, allOrders = {} } = {}) {
+  const dom = new JSDOM('<!doctype html><html><body><div id="cuadre-screen"></div><div id="history-modal"></div></body></html>');
+  const win = dom.window, doc = win.document;
+  new Function('self', readFileSync(join(__dir, 'pay-rate.js'), 'utf8'))(win);
+  const $ = (id) => doc.getElementById(id);
+  const XPD = { getDriverOrders: () => [{ phase: 'in_transit', order: {} }] };   // a live next stop → the interlude path (not resumen)
+  const shiftIdentity = () => ({ valid: true, start: 0 });
+  const computeShiftCash = () => ({ cashOwed: 1430 });
+  const body =
+    'let drv2Interlude = null, drv2InterludeShownFor = null, drv2ResumenShownFor = null, drv2InterludeTimer = null;\n' +
+    'let allOrders = _allOrders, driverRateEntries = _rateEntries, drv2GananciasView = "hoy";\n' +
+    'let feedReady = true, cutoverLoaded = true, driverState = { active: true }, closeInFlight = false;\n' +
+    'const driverFeed = { hasPendingHandoff: () => false }; const driverIdentityCutoverMs = null;\n' +
+    'function drv2DismissInterlude(){ const o=$("drv2-interlude"); if(o) o.classList.remove("open"); drv2Interlude=null; drv2InterludeShownFor=null; }\n' +
+    'function showCuadre(){} function renderHistoryModal(){} function renderGanancias(){}\n' +
+    liftFn('drv2EarnRateFor') + '\n' + liftFn('drv2InjectInterludeEarn') + '\n' + liftFn('drv2InjectResumenEarn') + '\n' +
+    liftFn('refreshOpenCashSurfaces') + '\n' + liftFn('drv2DismissResumen') + '\n' + liftFn('drv2ShowResumen') + '\n' + liftFn('drv2ShowInterlude') + '\n' +
+    'return { showInterlude: (info) => { drv2Interlude = info; drv2ShowInterlude(); }, showResumen: (info) => drv2ShowResumen(info), refresh: () => refreshOpenCashSurfaces(), setRate: (e) => { driverRateEntries = e; }, setOrders: (o) => { allOrders = o; } };';
+  const names = ['document', 'window', '$', 'PAGOS_LIVE', 'ICONS', 'escapeHtml', 'coloniaOf', 'interludeHtml', 'deliverySummaryHtml', 'readyTimeHHMM', 'XPD', 'currentUser', 'allTasks', 'shiftIdentity', 'computeShiftCash', 'clearTimeout', 'setTimeout', '_allOrders', '_rateEntries'];
+  const api = (new Function(...names, body))(doc, win, $, pagosLive, IC, ESC, coloniaOf, interludeHtml, deliverySummaryHtml, readyTimeHHMM, XPD, { uid: 'drv' }, {}, shiftIdentity, computeShiftCash, () => 0, () => 0, allOrders, rateEntries);
+  return { api, il: () => $('drv2-interlude'), rs: () => $('drv2-resumen') };
+}
+const ilInfo = (orderId, cash, vuelto) => ({ orderId, name: 'X', cash, vuelto });
+
+t('reuse P1: interlude A→B shows B\'s cash (not A\'s stale base), PAGOS OFF — the regression Codex found', () => {
+  const h = showHarness({ pagosLive: false });
+  h.api.showInterlude(ilInfo('A', 385, 115));
+  assert.ok(h.il().innerHTML.includes('Cobraste L 385') && h.il().innerHTML.includes('vuelto L 115'), 'A shows 385/115');
+  h.api.showInterlude(ilInfo('B', 500, 0));   // reuse the SAME #drv2-interlude element
+  const b = h.il().innerHTML;
+  assert.ok(b.includes('Cobraste L 500'), 'B shows ITS OWN cash (500), not A\'s stale 385');
+  assert.ok(!b.includes('385') && !b.includes('vuelto L 115'), 'no stale A data leaks into B');
+});
+
+t('reuse: cashless→cash keeps B\'s cash line (PAGOS off)', () => {
+  const h = showHarness({ pagosLive: false });
+  h.api.showInterlude({ orderId: 'A', name: 'X' });                 // cashless (no cash/vuelto → no .il-sub)
+  h.api.showInterlude(ilInfo('B', 500, 0));                         // cash
+  assert.ok(h.il().innerHTML.includes('Cobraste L 500'), 'cashless→cash: B\'s cash line is present, not dropped');
+});
+
+t('reuse with PAGOS on: A→B injects B\'s per-delivery rate at B\'s delivered_at; A→unknown→nothing', () => {
+  const B = 1767225600000;
+  const orders = { A: { delivered_at: B + 1000, delivered_by_driver_uid: 'drv' }, B: { delivered_at: B + 3 * 86400000, delivered_by_driver_uid: 'drv' } };
+  const h = showHarness({ pagosLive: true, rateEntries: { a: { cents: 7000, effective_from: B }, b: { cents: 9000, effective_from: B + 2 * 86400000 } }, allOrders: orders });
+  h.api.showInterlude(ilInfo('A', 385, 115));
+  assert.ok(h.il().innerHTML.includes('+L 70'), 'A (delivered before the change) → L 70, its historical rate');
+  h.api.showInterlude(ilInfo('B', 500, 0));
+  assert.ok(h.il().innerHTML.includes('+L 90') && !h.il().innerHTML.includes('+L 70'), 'B (delivered after the change) → L 90 at ITS delivered_at, not A\'s 70');
+  h.api.setOrders({ C: {} });   // C has NO delivered_at → the rate is unknowable
+  h.api.showInterlude(ilInfo('C', 100, 0));
+  assert.ok(!/\+L \d/.test(h.il().innerHTML), 'C with an unknown rate (no delivered_at) → nothing injected');
+});
+
+t('reuse: refreshOpenCashSurfaces re-injects the OPEN interlude on a late rate load, idempotently', () => {
+  const B = 1767225600000;
+  const h = showHarness({ pagosLive: true, rateEntries: null, allOrders: { A: { delivered_at: B + 1000, delivered_by_driver_uid: 'drv' } } });
+  h.api.showInterlude(ilInfo('A', 385, 115));
+  assert.ok(!/\+L \d/.test(h.il().innerHTML), 'no rate yet → nothing');
+  h.api.setRate({ r: { cents: 7000, effective_from: B } });
+  h.api.refresh(); h.api.refresh();   // late load + repeat
+  assert.ok(h.il().innerHTML.includes('+L 70'), 'after the rate arrives → +L 70 via the refresh hook');
+  assert.equal((h.il().innerHTML.match(/\+L 70/g) || []).length, 1, 'exactly ONE «+L 70» (idempotent refresh)');
+});
+
+t('reuse: summary A→B shows B\'s order + B\'s rate (the Tu-pago row never carries stale state)', () => {
+  const B = 1767225600000;
+  const orders = { A: { payment_method: 'cash', total: 385, delivered_at: B + 1000, delivered_by_driver_uid: 'drv' }, B: { payment_method: 'cash', total: 777, delivered_at: B + 3 * 86400000, delivered_by_driver_uid: 'drv' } };
+  const h = showHarness({ pagosLive: true, rateEntries: { a: { cents: 7000, effective_from: B }, b: { cents: 9000, effective_from: B + 2 * 86400000 } }, allOrders: orders });
+  h.api.showResumen({ orderId: 'A', name: 'X' });
+  assert.ok(h.rs().innerHTML.includes('L 385') && /\+ L 70/.test(h.rs().innerHTML), 'A: total 385 + pay L 70');
+  h.rs().classList.remove('open');            // dismissed; new run
+  h.api.showResumen({ orderId: 'B', name: 'X' });
+  const b = h.rs().innerHTML;
+  assert.ok(b.includes('L 777') && /\+ L 90/.test(b) && !b.includes('385') && !/\+ L 70/.test(b), 'B: total 777 + pay L 90, no stale A');
+  assert.equal((b.match(/Tu pago por esta entrega/g) || []).length, 1, 'exactly one Tu-pago row');
+});
+
 Date.now = realDateNow;   // restore the real clock
 console.log(`ganancias.test.js: ${passed} passed`);
