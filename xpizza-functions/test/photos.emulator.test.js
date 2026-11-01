@@ -64,14 +64,38 @@ function rest(method, path) {   // the Firebase Storage REST surface the CLIENT 
     assert.strictEqual(docs.size, 1, 'PHOTO-EMU-OP-IDEMPOTENT one photo_uploads doc');
     ok('E1 PHOTO-EMU-OP-IDEMPOTENT: 3 concurrent starts with one op_id → one upload doc, the same uploadId every time');
   }
-  // ── E2: the per-uid hourly limit is EXACT under concurrency (fail-closed transactions) ──
+  // ── E2: the per-uid hourly limit NEVER over-grants under concurrency, and is EXACT once contention clears (advisor ruling, A1
+  //    heavy turn): contended transactions that exhaust their retries answer `unavailable` (fail CLOSED by design, upload-start.js);
+  //    the exact status mix is asserted: every answer is a grant, rate_limited or unavailable — nothing else — and the counter equals
+  //    the grants; then the non-granted calls re-issued ONE AT A TIME top the grants up to exactly the limit, every further one rate_limited ──
   {
     const uid = 'tb_uid_e2';
-    const rs = await Promise.all(Array.from({ length: RATE.PER_UID_PER_HOUR + 1 }, () =>
-      photoUploadStartCore(startDeps(), { uid, rid: RID, op_id: newId('op'), contentType: 'image/jpeg', bytes: 10 })));
-    const granted = rs.filter((r) => r.status === 200).length, limited = rs.filter((r) => r.body && r.body.error === 'rate_limited').length;
-    assert.deepStrictEqual([granted, limited], [RATE.PER_UID_PER_HOUR, 1], `PHOTO-EMU-RATE-EXACT ${granted}/${limited}`);
-    ok(`E2 PHOTO-EMU-RATE-EXACT: ${RATE.PER_UID_PER_HOUR + 1} concurrent starts → exactly ${RATE.PER_UID_PER_HOUR} grants + 1 rate_limited`);
+    const N = RATE.PER_UID_PER_HOUR + 1;
+    const start = () => photoUploadStartCore(startDeps(), { uid, rid: RID, op_id: newId('op'), contentType: 'image/jpeg', bytes: 10 });
+    const rs = await Promise.all(Array.from({ length: N }, start));
+    const mix = { granted: 0, rate_limited: 0, unavailable: 0, other: [] };
+    for (const r of rs) {
+      if (r.status === 200) mix.granted += 1;
+      else if (r.body && r.body.error === 'rate_limited' && r.status === 429) mix.rate_limited += 1;
+      else if (r.body && r.body.error === 'unavailable' && r.status === 503 && r.body.retryable === true) mix.unavailable += 1;
+      else mix.other.push([r.status, r.body && r.body.error]);
+    }
+    const counted = async () => (await db.collection('photo_rate_uid').where('uid', '==', uid).get()).docs.reduce((n, d) => n + (Number(d.data().count) || 0), 0);
+    assert.deepStrictEqual(mix.other, [], `PHOTO-EMU-RATE-MIX only grant / rate_limited / unavailable ${JSON.stringify(mix)}`);
+    assert.strictEqual(mix.granted + mix.rate_limited + mix.unavailable, N, `PHOTO-EMU-RATE-MIX every call answered ${JSON.stringify(mix)}`);
+    assert.ok(mix.granted <= RATE.PER_UID_PER_HOUR, `PHOTO-EMU-RATE-NEVER-OVER ${JSON.stringify(mix)}`);
+    assert.strictEqual(await counted(), mix.granted, `PHOTO-EMU-RATE-COUNTER-EQUALS-GRANTS ${JSON.stringify(mix)}`);
+    let granted = mix.granted;
+    for (let i = 0; i < N - mix.granted; i++) {   // the non-granted calls, again, sequentially (no contention)
+      const r = await start();
+      if (r.status === 200) granted += 1;
+      else assert.strictEqual(r.body && r.body.error, 'rate_limited', `PHOTO-EMU-RATE-SEQUENTIAL only grants then rate_limited (${r.status} ${r.body && r.body.error})`);
+    }
+    assert.strictEqual(granted, RATE.PER_UID_PER_HOUR, `PHOTO-EMU-RATE-EXACT-ONCE-CLEAR ${granted} (concurrent ${JSON.stringify(mix)})`);
+    const more = await start();
+    assert.deepStrictEqual([more.status, more.body && more.body.error], [429, 'rate_limited'], 'PHOTO-EMU-RATE-EXACT-ONCE-CLEAR the next is rate_limited');
+    assert.strictEqual(await counted(), RATE.PER_UID_PER_HOUR, 'PHOTO-EMU-RATE-COUNTER-EXACT');
+    ok(`E2 PHOTO-EMU-RATE: ${N} concurrent starts → ${JSON.stringify({ granted: mix.granted, rate_limited: mix.rate_limited, unavailable: mix.unavailable })} (never over, counter = grants); sequential retries → exactly ${RATE.PER_UID_PER_HOUR} grants, then rate_limited`);
   }
   // ── E3: two concurrent process calls on one upload → ONE decode ──
   {

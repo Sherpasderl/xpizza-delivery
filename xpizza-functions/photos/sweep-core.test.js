@@ -48,6 +48,7 @@ const state = async (w, pid) => (await w.reg(pid).get()).data();
     const refs = await S.scanReferences(w.deps, RID);
     assert.deepStrictEqual([...refs].sort(), [P_REF, P_RB].sort(), 'SWEEP-REFS');
     const broken = { ...w.deps, fs: { collection: (c) => (c === 'restaurants' ? { doc: () => ({ collection: (c2) => (c2 === 'versions' ? { get: async () => { throw new Error('down'); } } : w.fs.collection('restaurants').doc(RID).collection(c2)) }) } : w.fs.collection(c)) } };
+    broken.fs.runTransaction = (fn) => w.fs.runTransaction(fn);   // a fail-open scan would go on to claim — caught by the labels below, not a TypeError
     await assert.rejects(() => S.scanReferences(broken, RID), /scan_incomplete/, 'SWEEP-SCAN-FAILURE-ABORTS');
     const r = await S.sweepRid({ ...w.deps, fs: broken.fs, mode: 'live' }, RID);
     assert.strictEqual(r.aborted, 'scan_incomplete', 'SWEEP-SCAN-FAILURE-RUN-ABORTED');
@@ -101,6 +102,8 @@ const state = async (w, pid) => (await w.reg(pid).get()).data();
     let r = await S.sweepRid({ ...w.deps, mode: 'live' }, RID);
     assert.strictEqual((await state(w, P_OLD)).state, 'deleting', 'SWEEP-LIVE-LEASE-RESPECTED');
     assert.ok(!r.recovered.includes(P_OLD), 'premise: not yet');
+    const dr = await S.sweepRid({ ...w.deps, mode: 'dry_run' }, RID);
+    assert.ok(!dr.recovered.includes(P_OLD), 'SWEEP-LIVE-LEASE-RESPECTED dry_run (a live lease is never reported as recoverable)');
     w.setNow(T + S.LEASE_MS + 61e3);
     r = await S.sweepRid({ ...w.deps, mode: 'live' }, RID);
     assert.ok(r.recovered.includes(P_OLD), 'SWEEP-RECOVERY-TAKES-OVER');
@@ -146,6 +149,16 @@ const state = async (w, pid) => (await w.reg(pid).get()).data();
     const c = await S.claim(w.deps, RID, cand);
     assert.ok(c && c.id, 'SWEEP-EXPIRED-RESERVE-CLAIMABLE');
     ok('claim: a live processing reservation (reserve.until > now) is respected; once it expires the pid is claimable again');
+  }
+  // ── 4e. the pending_public loop also stops at lease − 30 s (no generations recorded: only the pending path is left) ──
+  {
+    const w = await world();
+    const c = await S.claim(w.deps, RID, { pid: P_OLD, last_ref_at: (await state(w, P_OLD)).last_ref_at });
+    const mine = `photos/${RID}/${P_OLD}-card.webp`; w.pub.objs.set(mine, '77');
+    w.setNow(c.lease_until - 29e3);
+    const done = await S.deleteObjects(w.deps, RID, { ...(await state(w, P_OLD)), pid: P_OLD, generations: {}, pending_public: [mine] }, c);   // as finish() passes it
+    assert.deepStrictEqual([done, w.pub.deletes], [false, []], 'SWEEP-PENDING-STOPS-NEAR-LEASE-END');
+    ok('pending_public: no unconditional delete is issued once now > lease − 30 s (recovery finishes)');
   }
   // ── 4d. codex r2: pending_public (an intended copy, generation never recorded) is deleted unconditionally — but ONLY this pid's own paths ──
   {

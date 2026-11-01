@@ -54,6 +54,7 @@ assert.deepStrictEqual(S.photoDiffLines(active, cand), [
   { surface: 'item', key: 'tb_pepperoni', field: 'photo', old: { kind: 'legacy' }, new: { kind: 'removed' } },
 ], 'PS-DIFF-LINES');
 assert.deepStrictEqual(S.photoDiffLines(null, null), [], 'PS-DIFF-NONE');
+assert.deepStrictEqual(S.photoDiffLines({ tb_a: { state: 'pid', pid: P1, card: 'https://a/1', hero: 'https://a/2' } }, { tb_a: { state: 'pid', pid: P1, card: 'https://b/1', hero: 'https://b/2' } }), [], 'PS-DIFF-URL-ONLY-IS-NO-CHANGE');
 ok('photoDiffLines: three-state lines for changed keys only, sorted by key; legacy → removed is a line; URLs never compared');
 
 // ── 4. equality (changesNothingElse / flag-off) + reset map + newly referenced pids ──

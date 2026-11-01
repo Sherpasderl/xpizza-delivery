@@ -10,7 +10,7 @@ const path = require('path');
 const B = require('./buckets');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
-assert.strictEqual(B.privateBucketName({ param: () => 'tb-priv', env: {} }), 'tb-priv', 'BUCKETS-PRIVATE-PARAM-WINS');
+assert.strictEqual((() => { try { return B.privateBucketName({ param: () => 'tb-priv', env: {} }); } catch (e) { return `threw ${e && e.code}`; } })(), 'tb-priv', 'BUCKETS-PRIVATE-PARAM-WINS');
 assert.strictEqual(B.privateBucketName({ param: () => '', env: { FIREBASE_CONFIG: JSON.stringify({ projectId: 'tb-proj', storageBucket: 'tb-proj.appspot.com' }) } }), 'tb-proj.appspot.com', 'BUCKETS-PRIVATE-FIREBASE-CONFIG');
 assert.strictEqual(B.privateBucketName({ param: () => ' ', env: { GCLOUD_PROJECT: 'tb-proj' } }), 'tb-proj.firebasestorage.app', 'BUCKETS-PRIVATE-PROJECT-DEFAULT');
 assert.throws(() => B.privateBucketName({ param: () => '', env: {} }), /photos_private_bucket_unknown/, 'BUCKETS-PRIVATE-UNKNOWN-THROWS');

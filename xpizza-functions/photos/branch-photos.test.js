@@ -11,6 +11,7 @@ const pub = 'https://storage.googleapis.com/tb-public/photos/tb_r1/' + P + '-car
 (async () => {
   assert.deepStrictEqual(cardsFrom({ tb_a: { state: 'pid', pid: P, card: pub, hero: 'h' }, tb_b: { state: 'removed' }, tb_c: { state: 'pid', pid: P } }), { tb_a: { card: pub } }, 'BRANCH-CARDS-PID-ONLY');
   assert.strictEqual(cardsFrom({ tb_b: { state: 'removed' } }), null, 'BRANCH-CARDS-EMPTY-NULL');
+  assert.deepStrictEqual(cardsFrom({ tb_a: { state: 'pid', pid: P, card: pub }, tb_b: { state: 'removed', card: 'https://x/stale.webp' }, tb_c: { state: 'legacy', card: 'https://x/l.webp' } }), { tb_a: { card: pub } }, 'BRANCH-CARDS-NON-PID-WITH-CARD-IGNORED');
   assert.strictEqual(cardsFrom(null), null, 'BRANCH-CARDS-NONE');
   ok('cardsFrom: pid entries with a published card URL → {key: {card}}; removed / URL-less / none → omitted (null when empty)');
 
