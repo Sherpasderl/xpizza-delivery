@@ -18,15 +18,16 @@ for (const m of Object.keys(HUNKS)) {
   const real = fs.readFileSync(path.join(__dirname, m), 'utf8');
   const base = git(['show', `${BASE}:xpizza-functions/${m}`]);
   assert.notStrictEqual(real, base, `non-vacuity: ${m} carries the directory hunks`);
-  assert.strictEqual(unapplyDirectoryModule(m, real), base, `🔴 ${m} minus the directory hunks is not ${BASE}:${m}`);
+  assert.strictEqual(require('./tools/formbake-module-inverse').unapplyFormbakeModule(m, unapplyDirectoryModule(m, real)), base,   // DRYRUN R-WIRE (2e): directory (newest) first, then PLAN 4's module hunks
+    `🔴 ${m} minus the directory hunks is not ${BASE}:${m}`);
   assert.throws(() => unapplyDirectoryModule(m, base), /not found exactly once/, `a missing hunk is detected (${m})`);
 }
 ok(`MODULES: public-menu.js + restaurant-registry.js minus the directory hunks === ${BASE} byte-for-byte (additive only)`);
 
-const changed = git(['diff', '--name-only', BASE, '--', '.']).split('\n').filter(Boolean);
-const outside = git(['diff', '--name-only', BASE, '--', ':(top)', ':(top,exclude)xpizza-functions']).split('\n').filter(Boolean);
+const changed = git(['diff', '--name-only', BASE, 'cfa03b37', '--', '.'])   /* DRYRUN (2e): bounded at the approved directory tip, as s2tip-wiring is */.split('\n').filter(Boolean);
+const outside = git(['diff', '--name-only', BASE, 'cfa03b37', '--', ':(top)', ':(top,exclude)xpizza-functions']).split('\n').filter(Boolean);
 assert.deepStrictEqual(outside, [], `🔴 files outside xpizza-functions changed (the forms must be byte-identical): ${outside.join(', ')}`);
-assert.ok(!changed.includes('xpizza-functions/index.js') && git(['diff', BASE, '--', 'index.js']) === '', '🔴 index.js changed (the endpoint is wired later)');
+assert.ok(!changed.includes('xpizza-functions/index.js') && git(['diff', BASE, 'cfa03b37', '--', 'index.js']) === '', '🔴 index.js changed (the endpoint is wired later)');
 ok('FORMS + INDEX: nothing outside xpizza-functions changed; index.js byte-identical (no endpoint yet)');
 
 const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'xpizza-reference', 'database.rules.json'), 'utf8')).rules;

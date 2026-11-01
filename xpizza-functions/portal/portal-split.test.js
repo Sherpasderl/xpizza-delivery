@@ -66,8 +66,8 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/identity-partition.js', 'catalog/identity-plan.js', 'catalog/identity-reconcile.js', 'catalog/identity-registry.js',
   'catalog/identity-stampmap.js', 'catalog/identity-verdict.js', 'catalog/identity-writer.js',
   'catalog/kds-manifest.js',                // 1D add-product A: the conditional /menus writer, after a successful publish
-  'catalog/mirror-keys.js',                 // hotfix 2026-10-26: mirror-rtdb's PURE key encoder (RTDB-unsafe name keys)
   'catalog/menu-structure-rows.js',         // plan 4 GATED (G1): the reviewed rows the bootstrap applies, via form-menu-source.js (pure; no I/O)
+  'catalog/mirror-keys.js',                 // hotfix 2026-10-26: mirror-rtdb's PURE key encoder (RTDB-unsafe name keys)
   'catalog/mirror-rtdb.js',
   'catalog/platform-extras.js',             // per-product extras: the platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/platform-groups.js',             // 1D add-product B: the ONE platform authoring switch (editCatalog / publishEdited); no I/O
@@ -148,7 +148,7 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
   // ── 1. ROUTING ────────────────────────────────────────────────────────────────────────────────────────────────
   // PORTAL-UI 1a: the ops early branch is appended to the Set line (a same-line hunk); its own pin + routing proofs live in
   // portal/ops-split.test.js, so this section pins the five-target branch on index.js minus the portal-ui hunks.
-  const idx = require('../tools/portalui-inverse').unapplyPortalUiIndex(require('../tools/menu-warm-inverse').unapplyMenuWarmIndex(require('../tools/o1b-inverse').unapplyO1bIndex(require('../tools/stackseq-inverse').unapplyStackseqIndex(require('../tools/drvf-inverse').unapplyDrvfIndex(require('../tools/drvc-inverse').unapplyDrvcIndex(require('../tools/wahealth-inverse').unapplyWaHealthIndex(require('../tools/formsignal-inverse').unapplyFormSignalIndex(require('../tools/formbake-inverse').unapplyFormbakeIndex(require('../tools/s4hours-inverse').unapplyS4HoursIndex(require('../tools/pausa-inverse').unapplyPausaIndex(read('index.js'))))))))))));
+  const idx = require('../tools/portalui-inverse').unapplyPortalUiIndex(require('../tools/menu-warm-inverse').unapplyMenuWarmIndex(require('../tools/o1b-inverse').unapplyO1bIndex(require('../tools/stackseq-inverse').unapplyStackseqIndex(require('../tools/drvf-inverse').unapplyDrvfIndex(require('../tools/drvc-inverse').unapplyDrvcIndex(require('../tools/wahealth-inverse').unapplyWaHealthIndex(require('../tools/formsignal-inverse').unapplyFormSignalIndex(require('../tools/formbake-inverse').unapplyFormbakeIndex(require('../tools/s4hours-inverse').unapplyS4HoursIndex(require('../tools/pausa-inverse').unapplyPausaIndex(require('../tools/driver-ledger-inverse').unapplyDriverLedgerIndex(require('../tools/s3a-inverse').unapplyS3aIndex(require('../tools/s3b-inverse').unapplyS3bIndex(require('../tools/s3c-inverse').unapplyS3cIndex(require('../tools/s5r-inverse').unapplyS5rIndex(require('../tools/s2tip-inverse').unapplyS2tipIndex(require('../tools/s2app-inverse').unapplyS2appIndex(require('../tools/area-inverse').unapplyAreaIndex(read('index.js'))))))))))))))))))));   // DRYRUN R-WIRE (2e): Area,S2app,S2tip,S5r,S3c,S3b,S3a,DriverLedger innermost
   // R-WIRE (codex train-tip r1 P2): an EQUALITY with the complete earlier layer, not only the selected early-branch text —
   // idx must be byte-equal to portal-ui's proven parent layer (built exactly as portalui-wiring.guard does: 2920b705 + the
   // membership hunk, T-c's later same-line export folded out), so a missing train inverse fails here
