@@ -129,4 +129,23 @@ t('Semana: NO rate seeded → week earn BLANK + every non-empty bar value blank 
   assert.ok(!/gn-bv">L \d/.test(html), 'no bar shows an «L {n}» amount when the rate is unknown');
 });
 
+// CAPTURE-FIXTURE SANITY (no Chrome) — the #32 capture fixture in capture-earnings.mjs (proto S.gananciasSemana per-day
+// counts [Lun6·Mar3·Mié5·Jue4·Vie3·Sáb6·Dom0] = 27 deliveries at L70) must render the prototype's numbers, so the
+// Chrome side-by-side is pixel confirmation, not a numbers hunt. (The #31 Hoy fixture = the «L 420» case above.)
+t('capture fixture (#32 Semana): proto per-day counts → week L 1,890 + bars L420/210/350/280/210/420/—', () => {
+  const ws = weekStartMs();
+  const counts = [6, 3, 5, 4, 3, 6, 0];   // Lun..Dom
+  const orders = {}; let k = 0;
+  counts.forEach((c, day) => { for (let j = 0; j < c; j++) orders['o' + (k++)] = order(ws + day * DAY + (10 + j) * 3600000); });
+  const h = boot({ now: ws, allOrders: orders, rateEntries: { r: { cents: 7000, effective_from: ws - DAY } }, cashOwed: 0 });
+  h.api.renderGanancias('semana');
+  const html = h.host().innerHTML;
+  assert.ok(/class="gn-big"><span class="gn-cur">L<\/span>1,890</.test(html), '27 × 7000¢ = L 1,890');
+  assert.ok(/27 entregas · lun /.test(html), '27 entregas · {current-week range}');
+  const bars = ['Lun', 'L 420', 'Mar', 'L 210', 'Mié', 'L 350', 'Jue', 'L 280', 'Vie', 'L 210', 'Sáb', 'L 420', 'Dom', '—'];
+  for (let i = 0; i < bars.length; i += 2) {
+    assert.ok(new RegExp(`<span class="gn-blb">${bars[i]}</span>.*?<span class="gn-bv">${bars[i + 1]}</span>`, 's').test(html), `${bars[i]} bar = ${bars[i + 1]}`);
+  }
+});
+
 console.log(`ganancias.test.js: ${passed} passed`);
