@@ -1670,6 +1670,11 @@
      Amber cue + inline reason; the row stays fully clickable (the confirm() override is unchanged). */
   .picker-row.needs-confirm { background: var(--warn-soft); border-color: var(--warn-soft); }
   .picker-row.needs-confirm:hover { background: var(--warn-soft); }
+  /* «Pausa» (owner ruling BLOCK): a paused driver is LISTED but not assignable — the row carries the native
+     `disabled` attribute (so the click + 1–9 shortcut are inert) plus this dimmed treatment. Not the old
+     fake-disabled class: the «En pausa» tag stays legible and nothing uses pointer-events/cursor:not-allowed. */
+  .picker-row.paused { opacity: 0.6; }
+  .picker-row.paused:hover { background: transparent; }
   .picker-row .confirm-reason {
     font-family: 'Inter', sans-serif;
     font-size: 10px;
@@ -4558,6 +4563,15 @@ async function forceOffShift(uid) {
   catch (e) { toast('Error: ' + e.message, 'error'); }
 }
 
+// «Pausa» — the on_break status label with elapsed minutes from drivers/{uid}/break_since. Number.isFinite
+// FIRST, before any subtraction, so missing/string/NaN/Infinity never coerce; N<1 (just-started OR a future
+// stamp → negative) shows «En pausa» with no tail. Re-evaluated on the 5 s roster refresh (no new timer).
+function pausaLabel(d) {
+  if (!d || !Number.isFinite(d.break_since)) return 'En pausa';
+  const n = Math.floor((Date.now() - d.break_since) / 60000);
+  return n < 1 ? 'En pausa' : `En pausa · ${n} min`;
+}
+
 function renderDriverNode(uid, d) {
   const stale = XPD.isStalePing(d.last_ping);
   // Reachable = on duty AND we can wake their phone (FCM or web push).
@@ -4617,6 +4631,15 @@ function renderDriverNode(uid, d) {
   // so we don't invent "Moto"; we show availability / active-order count honestly.
   let metaText;
   if (!d.active) metaText = 'Fuera de turno';
+  // «Pausa»: the pause label must survive connectivity/load status (which would otherwise REPLACE it). Show
+  // «En pausa · N min» and APPEND the connectivity/load token that would have shown (same priority), so both stay visible.
+  else if (d.status === 'on_break') {
+    const conn = gpsDark ? 'Sin señal'
+      : !hasPushReachability(d) ? 'Sin notificaciones'
+      : hasOrders ? `${ordersForDriver.length} activa${ordersForDriver.length > 1 ? 's' : ''}`
+      : '';
+    metaText = conn ? `${pausaLabel(d)} · ${conn}` : pausaLabel(d);
+  }
   else if (gpsDark) metaText = 'Sin señal';
   else if (!hasPushReachability(d)) metaText = 'Sin notificaciones';
   else if (hasOrders) metaText = `${ordersForDriver.length} activa${ordersForDriver.length > 1 ? 's' : ''}`;
@@ -5798,8 +5821,15 @@ function openPicker(orderId, isReassign = false) {
       if (t.order_id) ordersByDriver[t.assigned_driver_id].add(t.order_id);
     });
 
+    // «Pausa» quick-assign numbering: the 1–9 knum badges number the ENABLED (assignable) rows only, in
+    // display order, so a displayed badge always matches the digit shortcut (which targets enabled rows).
+    let knumSeq = 0;
     $('picker-list').innerHTML = drivers.map(({ uid, driver, distBase, distCust, stale }, i) => {
       const orderCount = ordersByDriver[uid] ? ordersByDriver[uid].size : 0;
+      const paused = driver.status === 'on_break';   // «Pausa» (owner ruling BLOCK): listed but NOT assignable
+      // knum badge = the 1-based position among ENABLED rows (first 9 only); paused rows get none and do not
+      // advance the counter, so badges align 1:1 with the digit shortcut's enabled-row targets.
+      const knum = paused ? null : (++knumSeq <= 9 ? knumSeq : null);
       const full = orderCount >= 2;
       const enRoute = driver.status === 'en_route_delivery';
       // Reachable means we can deliver them a push notification.
@@ -5845,7 +5875,7 @@ function openPicker(orderId, isReassign = false) {
       // layout is regrouped. The knum badge renders ONLY for the first 9 rows — i.e. only where the 1–9
       // direct-assign shortcut is live (no dead numbers).
       return `
-        <button type="button" class="picker-row ${requireConfirm ? 'needs-confirm' : ''}" data-driver-uid="${uid}"
+        <button type="button" class="picker-row ${paused ? 'paused' : requireConfirm ? 'needs-confirm' : ''}" data-driver-uid="${uid}" ${paused ? 'disabled aria-disabled="true"' : ''}
              ${full ? 'data-full="1"' : ''} ${enRoute ? 'data-enroute="1"' : ''} ${unreachable ? 'data-unreachable="1"' : ''}
              aria-label="${escapeHtml(String(ariaLabel))}">
           <span class="status-dot ${getDotClass(driver)}"></span>
@@ -5861,7 +5891,7 @@ function openPicker(orderId, isReassign = false) {
             <span><strong>${formatDistance(distBase)}</strong> a base</span>
             <span>${formatDistance(distCust)} a cliente</span>
           </span>
-          ${i < 9 ? `<span class="knum" aria-hidden="true">${i + 1}</span>` : ''}
+          ${knum !== null ? `<span class="knum" aria-hidden="true">${knum}</span>` : ''}
         </button>
       `;
     }).join('');
@@ -5909,7 +5939,7 @@ function openPicker(orderId, isReassign = false) {
   // a11y: move focus into the dialog (first/highest-priority driver, else the remove row, else Cancel when empty).
   // preventScroll under reduced-motion so no focus-scroll animation runs.
   const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  const firstFocusable = $('picker-list').querySelector('.picker-row') || $('picker-remove-row') || $('picker-cancel-btn');
+  const firstFocusable = $('picker-list').querySelector('.picker-row:not([disabled])') || $('picker-remove-row') || $('picker-cancel-btn');
   if (firstFocusable) firstFocusable.focus({ preventScroll: reduceMotion });
 }
 
@@ -5961,7 +5991,7 @@ $('picker-overlay').addEventListener('keydown', (e) => {
     return;
   }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k') {
-    const rows = [...$('picker-list').querySelectorAll('.picker-row')];
+    const rows = [...$('picker-list').querySelectorAll('.picker-row:not([disabled])')];   // «Pausa»: paused rows are disabled → never a nav/shortcut target
     if (rows.length === 0) return;
     const idx = rows.indexOf(document.activeElement);
     if (idx === -1) return;
@@ -5974,7 +6004,7 @@ $('picker-overlay').addEventListener('keydown', (e) => {
   // confirm()+assign cascade — so a risky driver (full / en-route / unreachable) still raises its confirm;
   // nothing here calls the assign path directly. Only the first 9 rows carry a knum badge (shortcut = live).
   if (/^[1-9]$/.test(e.key)) {
-    const rows = [...$('picker-list').querySelectorAll('.picker-row')];
+    const rows = [...$('picker-list').querySelectorAll('.picker-row:not([disabled])')];   // «Pausa»: paused rows are disabled → never a nav/shortcut target
     const n = Number(e.key) - 1;
     if (n < rows.length) {
       e.preventDefault();
@@ -5989,6 +6019,8 @@ $('picker-overlay').addEventListener('keydown', (e) => {
 // is RTDB-subscription-driven so it already reflects reality — this just stops the misleading success cue.
 function assignFailMsg(reason) {
   switch (reason) {
+    case 'on_break':
+      return 'El repartidor está en pausa';   // «Pausa» backstop: a raced/stale assign to a paused driver is refused
     case 'already_assigned':
     case 'pickup_taken':
       return 'Ya fue asignada a otro repartidor';
