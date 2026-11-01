@@ -2763,6 +2763,18 @@
   },
   "xpizza-driver/pay-rate.js#shiftEarningsCents@self": {
    "status": "pending"
+  },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/index.html<script@0>#drv2CaptureReturnTarget": {
+   "status": "pending",
+   "reason": "display-only: brandLabel = the server-stamped restaurant_display_name used as the returning-state nav-target LABEL (drv2SetReturnTarget.name; '' -> no target -> hidden). Text-only, brand-agnostic, never a literal; same contract class as the other brandLabel consumers, not a gate-A observable (adapter not built)."
+  },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/index.html<script@0>#renderGanancias>anon": {
+   "status": "pending",
+   "reason": "display-only: brandLabel labels each delivery row in the earnings meta «H:MM · {brand}» (renderGanancias). The Ganancias screen is gated TAB_SHOW_GANANCIAS=PAGOS_LIVE. Text-only, brand-agnostic; same class as the other brandLabel consumers, not a gate-A observable (adapter not built)."
+  },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/stacked-view.js#contactRowHtml": {
+   "status": "pending",
+   "reason": "display-only: brandLabel labels the restaurant in the stacked contact row (contactRowHtml). Text-only, brand-agnostic; same class as the other brandLabel consumers, not a gate-A observable (adapter not built)."
   }
  }
 }
