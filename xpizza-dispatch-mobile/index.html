@@ -538,6 +538,17 @@ let connected = true;
 let lastData = null;
 let map = null, driverMarkers = {}, focusLayer = { markers:[], line:null, route:null };
 let mapReady = false, mapFailed = false, mapInit = null;
+// Reload session model (PLAN-dispatch-maps-decouple §2, mobile companion): a session change (sign-out or
+// account switch) does a FULL PAGE RELOAD, so no closure/timer/subscription/overlay/pending-promise leaks the
+// previous operator's state into the next. priorUid = authorized uid seen THIS page life (loop guard);
+// sessionUid = the uid the SDK authed-write barrier compares against; reloading = one-shot latch.
+let priorUid = null, sessionUid = null, reloading = false;
+function requestReload() {
+  if (reloading) return;
+  reloading = true;
+  try { document.body.inert = true; } catch (_) {}
+  location.replace(location.pathname);
+}
 let animateBoard = false;   // set ONLY by a user action (chip change); consumed by renderBoard
 let sheetDir = null;        // 'push' | 'pop' for the next openSheet; null for a root sheet
 // Re-trigger a CSS animation on an element that may already carry the class.
@@ -553,13 +564,23 @@ XPD.initDelivery(firebaseConfig);
 XPD.onAuth((user) => {
   // Staff-only surface. A customer token can technically auth but the RTDB rules
   // deny /orders + /drivers reads, so the board stays empty.
-  if (!user) {
+  if (!user) {                                   // sign-out
+    // Tear the alert listener down FIRST (shipped alerts surface) so a superseded session's late driver_problem
+    // callback can't fire, accumulate, or repaint during the brief window before the reload unloads the page —
+    // then reload. The teardown runs on EVERY sign-out (idempotent on a fresh page); the reload is conditional.
     started = false;
     if (alertsUnsub) { alertsUnsub(); alertsUnsub = null; }   // tear down the alert listener so sign-in cycles don't accumulate callbacks
     alertsList = []; alertsSheetOwner = false; alertNavToken += 1;   // invalidate any in-flight alert order-fetch so a late result can't replace the sheet after logout
     renderAlertsPill();   // clear the pill NOW so the previous count isn't visible on the next sign-in before its snapshot arrives
-    show('login'); return;
+    if (priorUid !== null) return requestReload();   // had an authorized session this page life → reload to a clean login (AFTER teardown)
+    show('login'); return;                            // fresh page, never authorized → no reload (loop-safe)
   }
+  if (priorUid !== null && priorUid !== user.uid) return requestReload();   // account switch A→B → reload BEFORE any re-subscribe
+  priorUid = sessionUid = user.uid;              // arm loop guard + barrier key
+  // Opt-in authed-write barrier (byte-identical hook already in the mobile SDK): refuse any authed write
+  // (RTDB reassign/unassign/assign, HTTP, onCall) that a superseded session's in-flight continuation tries to
+  // issue in the ms before the reload unloads the page.
+  XPD.setAuthedRequestGuard(() => reloading || (XPD.getAuthInstance()?.currentUser?.uid !== sessionUid));
   show('main');
   window.__startApp?.();
 });
@@ -1923,6 +1944,9 @@ window.__onMapaShown = async () => {
     });
   }
   try { await mapInit; } catch { return; }
+  // The map load is the one awaited gap in mobile auth: if the session was superseded (sign-out / account
+  // switch) WHILE mapInit was pending, drop this stale render — the reload will take over (backlog :1769).
+  if (reloading || (XPD.getAuthInstance()?.currentUser?.uid !== sessionUid)) return;
   showMapMsg('');
   google.maps.event.trigger(map, 'resize');
   renderDrivers();
